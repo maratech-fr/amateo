@@ -227,6 +227,39 @@ final class ValidateConstraintsTest extends WebTestCase
     }
 
     /**
+     * NR (P4-319, axe constraint semantics) — « contrainte de vacances OFF par défaut ».
+     *
+     * Une COACH_AVAILABILITY de SAISON est OFF par défaut en période de VACANCES
+     * (PeriodConstraintSelector, décision fondateur 2026-10-10) : elle ne part pas au solveur
+     * pour cette période. Le gate calcule donc son avertissement « coach indisponible » sur les
+     * contraintes EN VIGUEUR (la sélection de période), pas sur la saison brute — sinon il
+     * crierait un conflit qui ne se produira jamais pour ces vacances.
+     *
+     * NON VACANT par son TÉMOIN {@see testClosurePeriodKeepsSeasonCoachUnavailabilityAndWarns} :
+     * même scénario en FERMETURE (tout hérité) → la MÊME indisponibilité est gardée et l'avertissement
+     * RESSORT. Un gate qui lirait la saison brute avertirait dans les deux cas — ici on exige le silence.
+     */
+    public function testHolidaySeasonCoachUnavailabilityIsOffByDefaultAndDoesNotWarn(): void
+    {
+        $warnings = implode(' | ', $this->validateSeasonCoachUnavailabilityForPeriod(CalendarEntryPeriodType::HOLIDAY)['warnings']);
+
+        self::assertStringNotContainsString(
+            'malgré son indisponibilité',
+            $warnings,
+            'en vacances, la dispo coach de saison est OFF par défaut : le gate ne doit pas en avertir',
+        );
+    }
+
+    /** Témoin de P4-319 — en FERMETURE, tout est hérité : la même indisponibilité de saison AVERTIT bien. */
+    public function testClosurePeriodKeepsSeasonCoachUnavailabilityAndWarns(): void
+    {
+        $warnings = implode(' | ', $this->validateSeasonCoachUnavailabilityForPeriod(CalendarEntryPeriodType::CLOSURE)['warnings']);
+
+        self::assertStringContainsString('malgré son indisponibilité', $warnings, 'en fermeture, la dispo coach héritée AVERTIT');
+        self::assertStringContainsString('Emerick', $warnings);
+    }
+
+    /**
      * NR — P3-20 (décision fondateur 2026-08-06) : « si j'ai déclaré 3 réservations alors
      * que l'équipe ne veut que 2 créneaux, on BLOQUE — c'est une incohérence gestionnaire ».
      * Ce n'est pas une préférence bafouée : un verrou étant pré-placé hors modèle
@@ -620,6 +653,43 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->em->flush();
     }
 
+    /**
+     * Une indisponibilité coach de SAISON (permanente, scope COACH) — plein-jour sur ``$days``.
+     *
+     * @param list<int> $days
+     */
+    private function seasonCoachUnavailability(string $coachId, string $name, array $days): void
+    {
+        $constraint = new Constraint;
+        $constraint->setClubId($this->club->getId());
+        $constraint->setSeasonId($this->season->getId());
+        $constraint->setName($name);
+        $constraint->setScope(ConstraintScope::COACH);
+        $constraint->setScopeTargetId($coachId);
+        $constraint->setFamily(ConstraintFamily::COACH_AVAILABILITY);
+        $constraint->setRuleType(ConstraintRuleType::HARD);
+        $constraint->setConfig(['unavailableDays' => $days]);
+        $constraint->setIsActive(true);
+        $this->em->persist($constraint);
+        $this->em->flush();
+    }
+
+    /** Une réservation ancrée à un PLAN de période (schedulePlanId non null) — verrou de la période. */
+    private function planScopedReservation(string $teamId, string $venueId, string $schedulePlanId, int $dayOfWeek, string $start): void
+    {
+        $reservation = new Reservation;
+        $reservation->setClubId($this->club->getId());
+        $reservation->setSeasonId($this->season->getId());
+        $reservation->setTeamId($teamId);
+        $reservation->setVenueId($venueId);
+        $reservation->setDayOfWeek($dayOfWeek);
+        $reservation->setStartTime(new DateTimeImmutable($start));
+        $reservation->setDurationMinutes(90);
+        $reservation->setSchedulePlanId($schedulePlanId);
+        $this->em->persist($reservation);
+        $this->em->flush();
+    }
+
     /** Une réservation du socle (schedulePlanId null) — un verrou HARD pour le solveur. */
     private function reservation(string $teamId, string $venueId, int $dayOfWeek, string $start): void
     {
@@ -690,6 +760,27 @@ final class ValidateConstraintsTest extends WebTestCase
         $constraint->setIsActive(true);
         $this->em->persist($constraint);
         $this->em->flush();
+    }
+
+    /**
+     * Scénario P4-319 : un coach principal indisponible le mardi, une réservation le mardi ancrée
+     * au plan de la PÉRIODE, une grille de saison qui porte ce créneau (copiée au plan → la
+     * réservation n'est pas orpheline). Rend le corps de la validation du gate pour cette période.
+     *
+     * @return array<string, mixed>
+     */
+    private function validateSeasonCoachUnavailabilityForPeriod(CalendarEntryPeriodType $type): array
+    {
+        $venueId = $this->venue('Matéo');
+        $teamId = $this->team(sessionsPerWeek: 1);
+        $coachId = $this->mainCoach($teamId, 'Emerick');
+        $this->trainingSlot($venueId, dayOfWeek: 2, start: '17:00');
+        $this->seasonCoachUnavailability($coachId, 'Emerick indisponible le mardi', [2]);
+
+        $entry = $this->period($type);
+        $this->planScopedReservation($teamId, $venueId, $this->planIdOf($entry), dayOfWeek: 2, start: '17:00');
+
+        return $this->validateForPeriod($entry);
     }
 
     /** @return array<string, mixed> */

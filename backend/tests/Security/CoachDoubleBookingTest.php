@@ -190,6 +190,73 @@ final class CoachDoubleBookingTest extends KernelTestCase
         self::assertSame([], $this->detector->detectUnavailabilityClashes([$reservation], [$constraint], $ctx['clubId'], $ctx['seasonId']));
     }
 
+    // ── P4-319 — « UN COACH SUFFIT » : plusieurs coachs principaux par équipe ────────────
+    // Avant, UN seul coach principal était résolu par équipe (last-wins) et une
+    // indisponibilité suffisait à crier au loup. Désormais le détecteur prend la LISTE des
+    // principaux et n'avertit que si TOUS sont bloqués (même règle que le moteur,
+    // availability.py). Chaque cas négatif ne diffère du témoin QUE par la variable testée.
+
+    /**
+     * NR — une équipe à DEUX coachs principaux dont l'UN est disponible le jour réservé : aucun
+     * avertissement (un coach suffit à servir la séance).
+     *
+     * PREUVE DE CHUTE : remplacer le verdict « tous bloqués » de `detectUnavailabilityClashes`
+     * par « au moins un bloqué » (l'ancienne doctrine mono-coach) → ce cas rougit (avertissement
+     * fantôme), le témoin ci-dessous reste vert.
+     */
+    public function testOneAvailableMainCoachAmongTwoDoesNotWarn(): void
+    {
+        $ctx = $this->seed();
+        $second = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamA'], $second, TeamCoachRole::MAIN);
+
+        $reservation = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        // Maxime n'est disponible que le mercredi → bloqué le mardi ; Lea est disponible le mardi.
+        $maximeOff = $this->unavailability($ctx, ['availableDays' => [3]]);
+        $leaOnTuesday = $this->unavailabilityFor($ctx, $second, ['availableDays' => [2]]);
+
+        self::assertSame(
+            [],
+            $this->detector->detectUnavailabilityClashes([$reservation], [$maximeOff, $leaOnTuesday], $ctx['clubId'], $ctx['seasonId']),
+            'un principal disponible le mardi suffit : la séance est servable, rien à prévenir',
+        );
+    }
+
+    /** Témoin — les DEUX principaux indisponibles le mardi : la séance n'a aucun coach → un avertissement. */
+    public function testBothMainCoachesUnavailableWarns(): void
+    {
+        $ctx = $this->seed();
+        $second = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamA'], $second, TeamCoachRole::MAIN);
+
+        $reservation = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $maximeOff = $this->unavailability($ctx, ['availableDays' => [3]]);
+        $leaOff = $this->unavailabilityFor($ctx, $second, ['availableDays' => [3]]);
+
+        self::assertCount(1, $this->detector->detectUnavailabilityClashes([$reservation], [$maximeOff, $leaOff], $ctx['clubId'], $ctx['seasonId']), 'aucun principal disponible le mardi : la séance ne peut pas être coachée');
+    }
+
+    /**
+     * NR — une SÉANCE COMMUNE (deux équipes co-localisées) met en commun leurs coachs : un seul
+     * coach disponible, quelle que soit l'équipe dont il dépend, rend la case servable.
+     *
+     * teamA (Maxime) et teamB (Nicolas) sur la MÊME case (gymnase 1, mardi 17h). Maxime est bloqué
+     * le mardi ; Nicolas est disponible : la séance commune est couverte → aucun avertissement.
+     */
+    public function testCommonSessionIsServableWhenAnyCoLocatedCoachIsAvailable(): void
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue1'], 2, '17:00', 90);
+        $maximeOff = $this->unavailability($ctx, ['unavailableDays' => [2]]); // Maxime (teamA) bloqué mardi
+
+        self::assertSame(
+            [],
+            $this->detector->detectUnavailabilityClashes([$a, $b], [$maximeOff], $ctx['clubId'], $ctx['seasonId']),
+            'Nicolas (teamB) est disponible le mardi : la séance commune est servable malgré l\'absence de Maxime',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -293,6 +360,31 @@ final class CoachDoubleBookingTest extends KernelTestCase
         $constraint->setRuleType(ConstraintRuleType::HARD);
         $constraint->setConfig(['coachId' => $ctx['coachId'], ...$config]);
         $constraint->setIsActive($isActive);
+        $this->em->persist($constraint);
+        $this->em->flush();
+
+        return $constraint;
+    }
+
+    /**
+     * Une indisponibilité pour un coach ARBITRAIRE (pas le coach par défaut du contexte) —
+     * nécessaire aux cas « un coach suffit » où une équipe a plusieurs principaux.
+     *
+     * @param array{clubId: string, seasonId: string} $ctx
+     * @param array<string, mixed>                    $config
+     */
+    private function unavailabilityFor(array $ctx, string $coachId, array $config): Constraint
+    {
+        $constraint = new Constraint;
+        $constraint->setClubId($ctx['clubId']);
+        $constraint->setSeasonId($ctx['seasonId']);
+        $constraint->setName('Indisponibilité');
+        $constraint->setScope(ConstraintScope::COACH);
+        $constraint->setScopeTargetId($coachId);
+        $constraint->setFamily(ConstraintFamily::COACH_AVAILABILITY);
+        $constraint->setRuleType(ConstraintRuleType::HARD);
+        $constraint->setConfig(['coachId' => $coachId, ...$config]);
+        $constraint->setIsActive(true);
         $this->em->persist($constraint);
         $this->em->flush();
 

@@ -70,6 +70,45 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         );
     }
 
+    /**
+     * NR (P4-319) — « un coach suffit » PAR ÉQUIPE : une équipe membre du bloc peut avoir
+     * PLUSIEURS coachs principaux, et le second peut à lui seul rendre la case servable. Le
+     * miroir réunit la LISTE des principaux de chaque membre ({@see PreSolvePreventionWarnings}
+     * `teamMainCoaches`) ; cette parité épingle que le moteur fait de même.
+     *
+     * Bascule coordonnée sur le MÊME gymnase (ouvert mardi seul), t1 ayant deux principaux :
+     *   - le 2ᵉ principal de t1 couvre le mardi → miroir SILENCIEUX et moteur `completed` ;
+     *   - aucun principal (de t1 NI de t2) ne couvre le mardi → miroir AVERTIT et moteur `failed`.
+     * Une régression qui ne garderait qu'un principal par équipe romprait l'une des deux.
+     */
+    public function testBlockServableThroughATeamsSecondMainCoachMatchesTheEngine(): void
+    {
+        // t1 : cA1 (mercredi) + cA2 (mardi) ; t2 : cB (mercredi). Seul cA2 couvre la case du mardi.
+        $feasible = $this->payloadTwoCoachesOnFirstTeam(venueDays: [2], a1Days: [3], a2Days: [2], bDays: [3]);
+        self::assertSame(
+            [],
+            $this->blockWarnings($this->warnings->detect($feasible)),
+            'PARITÉ ROMPUE : le miroir avertit alors que le 2ᵉ coach principal de t1 couvre la case du mardi.',
+        );
+        self::assertSame(
+            'completed',
+            $this->solve($feasible)['status'],
+            'témoin : un bloc servi par le 2ᵉ coach principal d\'un membre doit être résolu par le moteur',
+        );
+
+        // Le 2ᵉ principal de t1 bascule au mercredi lui aussi : plus aucun coach de l'union le mardi.
+        $infeasible = $this->payloadTwoCoachesOnFirstTeam(venueDays: [2], a1Days: [3], a2Days: [3], bDays: [3]);
+        self::assertNotEmpty(
+            $this->blockWarnings($this->warnings->detect($infeasible)),
+            'le miroir doit AVERTIR : aucun coach de l\'union n\'est disponible le mardi',
+        );
+        self::assertSame(
+            'failed',
+            $this->solve($infeasible)['status'],
+            'PARITÉ ROMPUE : le miroir annonce un bloc inservable mais le moteur a résolu.',
+        );
+    }
+
     protected function setUp(): void
     {
         $this->warnings = new PreSolvePreventionWarnings;
@@ -112,6 +151,40 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
                 $this->teamCoach('tcA', 't1', 'cA'),
                 $this->teamCoach('tcB', 't2', 'cB'),
                 $this->coachAvailable('avA', 'cA', $aDays),
+                $this->coachAvailable('avB', 'cB', $bDays),
+            ],
+            'slotTemplates' => [],
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]],
+        ];
+    }
+
+    /**
+     * MÊME forme que {@see payload}, mais t1 a DEUX coachs principaux (cA1, cA2) et t2 un seul
+     * (cB), chacun disponible UNIQUEMENT ses jours — pour la parité « un coach suffit PAR équipe ».
+     *
+     * @param list<int> $venueDays
+     * @param list<int> $a1Days
+     * @param list<int> $a2Days
+     * @param list<int> $bDays
+     *
+     * @return array<string, mixed>
+     */
+    private function payloadTwoCoachesOnFirstTeam(array $venueDays, array $a1Days, array $a2Days, array $bDays): array
+    {
+        return [
+            'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-block-presolve-mirror',
+            'seasonId' => 'season-block-presolve-mirror',
+            'solverSeed' => 42,
+            'teams' => [$this->team('t1'), $this->team('t2')],
+            'venues' => [$this->venue('11111111-1111-4111-8111-111111111111', $venueDays)],
+            'coaches' => [],
+            'constraints' => [
+                $this->teamCoach('tcA1', 't1', 'cA1'),
+                $this->teamCoach('tcA2', 't1', 'cA2'),
+                $this->teamCoach('tcB', 't2', 'cB'),
+                $this->coachAvailable('avA1', 'cA1', $a1Days),
+                $this->coachAvailable('avA2', 'cA2', $a2Days),
                 $this->coachAvailable('avB', 'cB', $bDays),
             ],
             'slotTemplates' => [],
