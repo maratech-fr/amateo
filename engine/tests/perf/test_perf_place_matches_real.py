@@ -30,13 +30,15 @@ from tests.semantic.test_match_placement_semantics import assert_no_hard_violati
 FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "bccl_home_matches_2026.json"
 # Founder decision: ≥ 90 % of the home matches placeable at 60 s on the real fixture.
 MIN_PLACED_RATIO = 0.9
-# Wall budget of the WHOLE test — NOT a product promise and NOT a target to speed up to.
-# The only promise is a 60 s solver budget PER ISO WEEK: ``solve_match_placement`` in
-# ``app/solver/match_placement/__init__.py`` (see its docstring, ~l.690-703) slices the
-# request week by week and spends that budget on EACH week, so the real BCCL fixture —
-# 141 matches spread over several ISO weeks — sums several per-week solves plus model
-# build and I/O. This ceiling is RECALIBRATED on the real CI measurement (the solve is
-# deliberately NOT accelerated), with headroom above the observed wall time.
+# Wall budget of the WHOLE test — a ceiling RECALIBRATED on the measured wall time, NOT
+# a target to speed up to. ``solve_match_placement`` in
+# ``app/solver/match_placement/__init__.py`` (see its docstring, ~l.690-703) solves the
+# request ISO week by ISO week, spending the fixture's ``solverTimeoutSeconds`` (60 s
+# here) on EACH week; the fixture covers 24 ISO weeks carrying TO_PLACE matches, so the
+# total wall time is the SUM of the per-week solves plus model build and I/O. Note the
+# fixture's 60 s is NOT what production sends: the async rail sizes each week at
+# ``MatchPlacementPayloadBuilder::WEEK_BUDGET_SECONDS`` = 35 s
+# (``backend/src/Service/MatchPlacementPayloadBuilder.php``).
 BUDGET_SECONDS = 180.0
 
 
