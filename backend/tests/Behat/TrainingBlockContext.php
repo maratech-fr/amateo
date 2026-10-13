@@ -108,6 +108,20 @@ final class TrainingBlockContext extends BaseContext
     /** @var list<string> */
     private array $socleInsertedSlotIds = [];
 
+    /** @var list<string> */
+    private array $socleInsertedWindowIds = [];
+
+    // Scénario « le groupe prend la place d'une équipe » (P4-329) : une TROISIÈME équipe jetable
+    // occupe une case d'accueil ouverte ; le groupe l'y évince, elle passe « à replacer ».
+    private string $occupantTeamId = '';
+
+    private string $occupantSlotId = '';
+
+    private int $occupantDay = 0;
+
+    /** @var array{status: int, json: array<mixed>} */
+    private array $groupMoveResult = ['status' => 0, 'json' => []];
+
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
     {
@@ -370,6 +384,83 @@ final class TrainingBlockContext extends BaseContext
         }
     }
 
+    #[Given('une troisième équipe JETABLE occupant une case d\'accueil ouverte')]
+    public function uneTroisiemeEquipeOccupante(): void
+    {
+        $categories = $this->apiGet('sport_categories', $this->token);
+        $category = $this->members($categories['json'])[0]['id'] ?? null;
+        if (!\is_string($category) || '' === $category) {
+            throw new RuntimeException('aucune catégorie sportive pour bâtir une équipe jetable');
+        }
+
+        $this->occupantTeamId = $this->createdId(
+            $this->apiPost('teams', ['name' => 'Socle Jetable C', 'sportCategoryId' => $category, 'priorityTierId' => 1, 'sessionsPerWeek' => 1], $this->token),
+            'équipe C',
+        );
+
+        // Une case d'accueil OUVERTE sur le gymnase jetable (jeudi 18:00, capacité 1) : le groupe y
+        // tient APRÈS éviction (une séance de bloc = UNE occupation, dé-comptée par le solveur). La
+        // fenêtre est nécessaire ici (move-group tire la durée de la fenêtre CIBLE), pas pour la source.
+        $this->occupantDay = self::DAY + 2;
+        $this->insertSocleWindow($this->occupantDay, self::START_TIME, 1);
+        $this->occupantSlotId = $this->insertSocleSlot($this->occupantTeamId, $this->occupantDay, self::START_TIME);
+    }
+
+    #[When('je déplace le groupe sur la case occupée par la troisième équipe')]
+    public function jeDeplaceLeGroupeSurLaCaseOccupee(): void
+    {
+        $this->groupMoveResult = $this->apiPost('schedule-slots/move-group', [
+            'scheduleId' => $this->periodVersionId,
+            'blockId' => $this->periodBlockId,
+            'source' => ['venueId' => $this->sourceVenueId, 'dayOfWeek' => $this->sourceDay, 'startTime' => self::START_TIME],
+            'target' => ['venueId' => $this->venueId, 'dayOfWeek' => $this->occupantDay, 'startTime' => self::START_TIME],
+            'evictSlotId' => $this->occupantSlotId,
+        ], $this->token);
+        if (200 !== $this->groupMoveResult['status']) {
+            $detail = json_encode($this->groupMoveResult['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES);
+            throw new RuntimeException(\sprintf('le déplacement du groupe avec éviction a répondu %d (200 attendu) — %s', $this->groupMoveResult['status'], \is_string($detail) ? $detail : '?'));
+        }
+        if (true !== ($this->groupMoveResult['json']['valid'] ?? null)) {
+            throw new RuntimeException('le déplacement du groupe avec éviction aurait dû être accepté par le moteur');
+        }
+    }
+
+    #[Then('le groupe siège sur la case d\'accueil et la troisième équipe est à replacer')]
+    public function leGroupeSiegeEtLoccupanteEstAReplacer(): void
+    {
+        // Les deux séances du groupe ont pris la case d'accueil, liées au bloc.
+        $onCase = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT COUNT(*) AS behatval FROM schedule_slot_template'
+                . ' WHERE schedule_id=\'%s\' AND shared_training_block_id=\'%s\''
+                . ' AND venue_id=\'%s\' AND day_of_week=%d AND start_time=\'%s\'',
+                $this->periodVersionId,
+                $this->periodBlockId,
+                $this->venueId,
+                $this->occupantDay,
+                self::START_TIME . ':00',
+            ),
+            admin: true,
+        );
+        if (2 !== $onCase) {
+            throw new RuntimeException(\sprintf('les deux séances du groupe devraient siéger sur la case d\'accueil, liées au bloc (%d trouvée[s])', $onCase));
+        }
+
+        // L'occupante évincée a disparu de la case, et la réponse la NOMME (à replacer).
+        $remaining = (int) $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE id=\'%s\'', $this->occupantSlotId),
+            admin: true,
+        );
+        if (0 !== $remaining) {
+            throw new RuntimeException('l\'équipe occupante évincée aurait dû disparaître de la case (à replacer)');
+        }
+        $evicted = $this->groupMoveResult['json']['evicted'] ?? null;
+        $evictedTeam = \is_array($evicted) ? ($evicted['teamId'] ?? null) : null;
+        if ($evictedTeam !== $this->occupantTeamId) {
+            throw new RuntimeException('la réponse aurait dû NOMMER l\'équipe évincée (à replacer)');
+        }
+    }
+
     #[Given('deux séances placées d\'équipes distinctes, chacune sur sa propre case')]
     public function deuxSeancesPlacees(): void
     {
@@ -540,20 +631,24 @@ final class TrainingBlockContext extends BaseContext
             return;
         }
 
-        foreach ([$this->teamA, $this->teamB] as $teamId) {
+        foreach ([$this->teamA, $this->teamB, $this->occupantTeamId] as $teamId) {
             if ('' !== $teamId) {
                 $this->dbalExec(\sprintf('DELETE FROM reservation WHERE team_id=\'%s\'', $teamId), admin: true);
             }
         }
         // Le bloc d'abord (au cas où la cascade équipe ne le prendrait pas dans tel ordre), puis les
-        // équipes, puis le gymnase — DELETE tolérant si une ressource a déjà disparu.
+        // équipes, puis les fenêtres jetables, puis le gymnase — DELETE tolérant si une ressource a
+        // déjà disparu. Les fenêtres partent AVANT le gymnase (FK).
         if ('' !== $this->blockId) {
             $this->apiDelete(\sprintf('shared_training_blocks/%s', $this->blockId), $this->token);
         }
-        foreach ([$this->teamA, $this->teamB] as $teamId) {
+        foreach ([$this->teamA, $this->teamB, $this->occupantTeamId] as $teamId) {
             if ('' !== $teamId) {
                 $this->apiDelete(\sprintf('teams/%s', $teamId), $this->token);
             }
+        }
+        foreach ($this->socleInsertedWindowIds as $windowId) {
+            $this->dbalExec(\sprintf('DELETE FROM venue_training_slot WHERE id=\'%s\'', $windowId), admin: true);
         }
         if ('' !== $this->venueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->venueId), $this->token);
@@ -645,6 +740,32 @@ final class TrainingBlockContext extends BaseContext
             admin: true,
         );
         $this->socleInsertedSlotIds[] = $id;
+
+        return $id;
+    }
+
+    /**
+     * Insère une fenêtre de gymnase JETABLE (`venue_training_slot`) à portée saison (connexion admin,
+     * hors RLS) — la case d'accueil ouverte dont `move-group` tire la durée CIBLE. Retirée en fin de run.
+     */
+    private function insertSocleWindow(int $day, string $start, int $capacity): string
+    {
+        $id = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', %d, \'%s\', 90, %d)',
+                $id,
+                $this->clubId,
+                $this->socleSeasonId,
+                $this->venueId,
+                $day,
+                $start . ':00',
+                $capacity,
+            ),
+            admin: true,
+        );
+        $this->socleInsertedWindowIds[] = $id;
 
         return $id;
     }

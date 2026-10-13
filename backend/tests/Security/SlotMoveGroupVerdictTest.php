@@ -16,8 +16,13 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Exception\EvictTargetIsGroupException;
+use App\Exception\EvictTargetLockedException;
+use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ClubGenerationLock;
@@ -280,6 +285,204 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
         self::assertFalse($schedule?->isManuallyEditedSinceGeneration());
     }
 
+    /**
+     * P4-329, axes *planning lifecycle* ET *constraint semantics* — ÉVICTION : déposer le groupe sur
+     * une case OCCUPÉE par une équipe en retire l'occupant, qui passe « à replacer ». Verdict « oui »
+     * → les DEUX membres bougent ENSEMBLE vers la cible, l'occupant est SUPPRIMÉ, le BLOC survit, le
+     * marqueur est posé, et la réponse NOMME l'évincé (son équipe, sa case) pour le bandeau de replacement.
+     */
+    public function testAcceptedGroupMoveWithEvictionTakesCaseAndRemovesOccupant(): void
+    {
+        $ctx = $this->seed();
+        $occupant = $this->seedOccupant($ctx); // équipe ordinaire, non verrouillée, hors bloc.
+        $occupantId = $occupant->getId();
+        $occupantTeamId = $occupant->getTeamId();
+
+        $service = $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])));
+        $result = $service->moveGroup(
+            $ctx['schedule'],
+            $ctx['block'],
+            2,
+            DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+            $ctx['venue1'],
+            4,
+            DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+            $ctx['venue2'],
+            $occupantId,
+        );
+
+        self::assertTrue($result['valid']);
+        self::assertCount(2, $result['movedSlotIds'] ?? []);
+        self::assertSame($occupantTeamId, $result['evicted']['teamId'] ?? null, 'la réponse NOMME l\'équipe évincée (à replacer)');
+        self::assertSame($occupantId, $result['evicted']['slotId'] ?? null);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        // Les deux membres du bloc ont pris la case cible, ENSEMBLE.
+        foreach ($ctx['sourceIds'] as $id) {
+            $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($id);
+            self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+            self::assertSame(4, $reloaded->getDayOfWeek());
+            self::assertSame('20:00', $reloaded->getStartTime()->format('H:i'));
+            self::assertSame($ctx['venue2'], $reloaded->getVenueId());
+        }
+        // L'occupant a disparu, le BLOC survit.
+        self::assertNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($occupantId), 'l\'occupant évincé est supprimé');
+        self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($ctx['block']->getId()), 'le bloc de mutualisation survit à l\'éviction');
+
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertTrue($schedule?->isManuallyEditedSinceGeneration());
+    }
+
+    /**
+     * `dryRun` : l'essai rend le verdict ET l'état qui SERAIT évincé, mais N'ÉCRIT RIEN — ni
+     * déplacement des membres, ni suppression de l'occupant, ni marqueur. Falsification de l'oubli du
+     * garde dryRun : une écriture ferait rougir les trois assertions d'immuabilité.
+     */
+    public function testDryRunGroupEvictionWritesNothing(): void
+    {
+        $ctx = $this->seed();
+        $occupant = $this->seedOccupant($ctx);
+        $occupantId = $occupant->getId();
+
+        $service = $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])));
+        $result = $service->moveGroup(
+            $ctx['schedule'],
+            $ctx['block'],
+            2,
+            DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+            $ctx['venue1'],
+            4,
+            DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+            $ctx['venue2'],
+            $occupantId,
+            true,
+        );
+
+        self::assertTrue($result['valid']);
+        self::assertTrue($result['dryRun'] ?? false);
+        self::assertSame($occupantId, $result['evicted']['slotId'] ?? null, 'l\'essai décrit l\'évincé sans le supprimer');
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        foreach ($ctx['sourceIds'] as $id) {
+            $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($id);
+            self::assertSame(2, $reloaded?->getDayOfWeek(), 'un essai ne déplace aucun membre');
+            self::assertSame($ctx['venue1'], $reloaded?->getVenueId());
+        }
+        self::assertNotNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($occupantId), 'un essai ne supprime pas l\'occupant');
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertFalse($schedule?->isManuallyEditedSinceGeneration(), 'un essai ne pose pas le marqueur');
+    }
+
+    /** Abus : l'occupant désigné appartient à un AUTRE planning → 422 (mismatch) AVANT le moteur. */
+    public function testEvictOccupantOfAnotherScheduleRefusedBeforeEngine(): void
+    {
+        $ctx = $this->seed();
+        $this->scopeGucToClub($ctx['clubId']);
+        $other = (new Schedule)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Autre version')->setStatus(ScheduleStatus::COMPLETED)->setScore(50);
+        $this->linkSeededSchedule($other);
+        $this->em->flush();
+        $foreign = $this->seedOccupant($ctx, scheduleId: $other->getId());
+
+        $this->expectException(EvictTargetMismatchException::class);
+        $this->service($this->engineMustNotBeCalled())->moveGroup(
+            $ctx['schedule'],
+            $ctx['block'],
+            2,
+            DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+            $ctx['venue1'],
+            4,
+            DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+            $ctx['venue2'],
+            $foreign->getId(),
+        );
+    }
+
+    /** Abus : l'occupant désigné est l'UNE DES SÉANCES du groupe qui bouge → 422 (mismatch) AVANT le moteur. */
+    public function testEvictingAGroupSourceRefusedBeforeEngine(): void
+    {
+        $ctx = $this->seed();
+
+        $this->expectException(EvictTargetMismatchException::class);
+        $this->service($this->engineMustNotBeCalled())->moveGroup(
+            $ctx['schedule'],
+            $ctx['block'],
+            2,
+            DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+            $ctx['venue1'],
+            4,
+            DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+            $ctx['venue2'],
+            $ctx['sourceIds'][0],
+        );
+    }
+
+    /** Abus : l'occupant désigné NE SIÈGE PAS à la case cible (autre jour) → 422 (mismatch) AVANT le moteur. */
+    public function testEvictOccupantNotAtTargetCaseRefusedBeforeEngine(): void
+    {
+        $ctx = $this->seed();
+        $elsewhere = $this->seedOccupant($ctx, day: 5, start: '20:00'); // venue2 mais vendredi, pas jeudi.
+
+        $this->expectException(EvictTargetMismatchException::class);
+        $this->service($this->engineMustNotBeCalled())->moveGroup(
+            $ctx['schedule'],
+            $ctx['block'],
+            2,
+            DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+            $ctx['venue1'],
+            4,
+            DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+            $ctx['venue2'],
+            $elsewhere->getId(),
+        );
+    }
+
+    /** Abus : l'occupant (équipe) est VERROUILLÉ → 422 `target_locked` (D3) AVANT le moteur. */
+    public function testEvictLockedTeamOccupantRefusedBeforeEngine(): void
+    {
+        $ctx = $this->seed();
+        $locked = $this->seedOccupant($ctx, LockLevel::HARD); // équipe ordinaire, verrouillée par le gestionnaire.
+
+        $this->expectException(EvictTargetLockedException::class);
+        $this->service($this->engineMustNotBeCalled())->moveGroup(
+            $ctx['schedule'],
+            $ctx['block'],
+            2,
+            DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+            $ctx['venue1'],
+            4,
+            DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+            $ctx['venue2'],
+            $locked->getId(),
+        );
+    }
+
+    /**
+     * Abus : l'occupant est lui-même une SÉANCE DE GROUPE (sharedTrainingBlockId posé) → 422
+     * `evict_target_is_group` AVANT le moteur — et AVANT le contrôle de verrou : la séance porte ici
+     * un verrou HARD (son ancrage) mais c'est le refus « groupe » qui doit tomber, pas `target_locked`.
+     */
+    public function testEvictGroupSessionOccupantRefusedBeforeEngineAndBeforeLock(): void
+    {
+        $ctx = $this->seed();
+        // Verrouillée (comme une ancre de groupe) ET portant un blockId : le refus « groupe » prime.
+        $groupOccupant = $this->seedOccupant($ctx, LockLevel::HARD, $ctx['block']->getId());
+
+        $this->expectException(EvictTargetIsGroupException::class);
+        $this->service($this->engineMustNotBeCalled())->moveGroup(
+            $ctx['schedule'],
+            $ctx['block'],
+            2,
+            DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+            $ctx['venue1'],
+            4,
+            DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+            $ctx['venue2'],
+            $groupOccupant->getId(),
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -405,6 +608,55 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
             'clubId' => $clubId, 'seasonId' => $seasonId, 'scheduleId' => $schedule->getId(),
             'schedule' => $schedule, 'block' => $block,
             'venue1' => $venueIds[0], 'venue2' => $venueIds[1], 'sourceIds' => $sourceIds,
+            'categoryId' => $category->getId(), 'tierId' => $tier->getId(),
         ];
+    }
+
+    /**
+     * Une séance OCCUPANT la case cible (venue2, jeudi 20:00 par défaut), d'une équipe jetable neuve.
+     * Sert les tests d'éviction : équipe ordinaire (défauts) à évincer, séance verrouillée (D3),
+     * séance de GROUPE (sharedTrainingBlockId posé), ou occupant d'un AUTRE planning.
+     *
+     * @param array<string, mixed> $ctx
+     */
+    private function seedOccupant(array $ctx, LockLevel $lock = LockLevel::NONE, ?string $blockId = null, ?string $scheduleId = null, int $day = 4, string $start = '20:00'): ScheduleSlotTemplate
+    {
+        $this->scopeGucToClub((string) $ctx['clubId']);
+        $team = (new Team)
+            ->setClubId((string) $ctx['clubId'])
+            ->setSeasonId((string) $ctx['seasonId'])
+            ->setSportCategoryId((string) $ctx['categoryId'])
+            ->setPriorityTierId((int) $ctx['tierId'])
+            ->setName('Occupant ' . bin2hex(random_bytes(3)))
+            ->setSessionsPerWeek(1);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        $slot = (new ScheduleSlotTemplate)
+            ->setClubId((string) $ctx['clubId'])
+            ->setSeasonId((string) $ctx['seasonId'])
+            ->setScheduleId($scheduleId ?? (string) $ctx['scheduleId'])
+            ->setTeamId($team->getId())
+            ->setVenueId((string) $ctx['venue2'])
+            ->setDayOfWeek($day)
+            ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $start))
+            ->setDurationMinutes(90)
+            ->setLockLevel($lock)
+            ->setSharedTrainingBlockId($blockId);
+        if (LockLevel::NONE !== $lock) {
+            $slot->setLockOrigin(LockOrigin::MANUAL);
+        }
+        $this->em->persist($slot);
+        $this->em->flush();
+
+        return $slot;
+    }
+
+    /** Un client moteur qui ÉCHOUE le test s'il est appelé : les refus pré-moteur ne doivent jamais le joindre. */
+    private function engineMustNotBeCalled(): MockHttpClient
+    {
+        return new MockHttpClient(static function (): MockResponse {
+            self::fail('un refus d\'éviction doit être tranché AVANT tout appel moteur');
+        });
     }
 }
