@@ -100,7 +100,7 @@ final class CoachDoubleBookingDetector
         }
 
         // Le BLOQUEUR de dédoublement reste mono-coach : prendre un 2ᵉ coach principal en
-        // compte ici est un item de roadmap distinct (P4-319). On aplatit donc la liste au
+        // compte ici est un item de roadmap distinct (P4-333). On aplatit donc la liste au
         // PREMIER coach principal par équipe — comportement strictement inchangé.
         $mainCoachByTeam = array_map(static fn (array $coachIds): string => $coachIds[0], $this->mainCoachesByTeam($clubId, $seasonId));
         // Une équipe sans coach MAIN ne peut pas dédoubler qui que ce soit : on la sort
