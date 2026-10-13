@@ -2,12 +2,12 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-12 (« Retirer une séance placée ») : §6.7 gagne le geste F4 « Retirer »/
-« Retirer le groupe », confronté à `SlotDetail.tsx`/`PlanningPage.tsx`/`useRetouchGestures.ts`/
-`queries.ts` (`useDeleteSlot`/`useDeleteSlotGroup`) — aucun appel moteur, `dryRun` obligatoire,
-raccourci un-clic réutilisé pour une séance seule, absent pour un groupe, `unmetPresence` verbatim.
-Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans
-`git log -p --follow` ce fichier.
+Last verified @ 2026-10-13 (mutualisation au socle) : §6.7 ter recalé contre `PlanningPage.tsx`/
+`MutualizeDialog.tsx`/`SlotDetail.tsx` — « Mutualiser… » est désormais offert au planning de SAISON
+(socle) comme sur un plan de PÉRIODE, la seule restriction au socle étant l'activation d'une équipe
+à 0 séance (refus serveur, non proposée côté écran). Modèle et décisions fondateur :
+[`mutualisation.md`](../../specs/courantes/mutualisation.md). Reste du fichier non re-confronté
+cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
 
 ### 6.7 Retouche manuelle — mode cible, éviction, dérive, verrouiller (rail read-only + verdict moteur, 2026-08-16)
 
@@ -413,16 +413,18 @@ la saison au moindre effort », 2026-09-02)** :
   `PayloadCapacityMirror::demand`). Rien sur une vacance (`capacityArmed` exclut HOLIDAY) ou sans
   payload.
 
-### 6.7 ter Mutualiser depuis une séance déjà placée (lot 9 F3, 2026-10-10)
+### 6.7 ter Mutualiser depuis une séance déjà placée (lot 9 F3, ouvert au socle lot 2 2026-10-13)
 
 Second rail de mutualisation, distinct de la déclaration du wizard (§1 de `frontend-wizard.md`,
 qui attend la génération pour placer les séances) et du rail « Déplacer le groupe » ci-dessus
-(§6.7). Depuis la fiche d'une séance d'un plan de **PÉRIODE** (jamais le socle de saison), le
-bouton **« Mutualiser… »** de `SlotDetail` (`onMutualize`) ouvre `MutualizeDialog`
-(`features/planning/MutualizeDialog.tsx`) — **désactivé avec motif découvrable** (`disabledReason`)
-si le planning est **validé** (« Planning validé — rouvrez-le pour mutualiser ce créneau. ») ou si
-la séance est **déjà membre d'un groupe** (« Cette séance fait déjà partie d'un groupe de
-mutualisation. »).
+(§6.7). Depuis la fiche d'une séance, **au planning de SAISON (socle) comme sur un plan de
+PÉRIODE** (le socle se comporte comme la saison, décision fondateur 2026-10-13 — modèle et
+décisions : [`mutualisation.md`](../../specs/courantes/mutualisation.md)), le bouton
+**« Mutualiser… »** de `SlotDetail` (`onMutualize`, fourni dès que `PlanningPage` affiche un
+planning) ouvre `MutualizeDialog` (`features/planning/MutualizeDialog.tsx`) — **désactivé avec
+motif découvrable** (`disabledReason`) si le planning est **validé** (« Planning validé — rouvrez-le
+pour mutualiser ce créneau. ») ou si la séance est **déjà membre d'un groupe** (« Cette séance fait
+déjà partie d'un groupe de mutualisation. »).
 
 - **La séance d'ancrage (source) est pré-cochée et VERROUILLÉE** dans la modale : elle reste sur
   place et devient la séance commune du groupe. Les équipes à rattacher se choisissent via
@@ -430,7 +432,10 @@ mutualisation. »).
   celle que la séance commune remplace (`replacedSlotIds`, défaut = la première, annoncé) ;
   **une seule séance** → elle est prise par défaut (annoncé en texte, pas de choix à faire) ;
   **aucune séance** → l'équipe est **ACTIVÉE** dans le plan avec la séance du groupe (pastille
-  « via mutualisation », rien à retirer). Nom de groupe optionnel ≤ 40 caractères.
+  « via mutualisation », rien à retirer) — **sauf au socle** : une équipe à 0 séance n'est pas
+  proposée dans le sélecteur d'ajout (`isSocle`), l'activation restant propre aux plans de période
+  (le serveur la refuse 422 au socle, `mutualisation.md` §2.2). Nom de groupe optionnel ≤ 40
+  caractères.
 - `POST /api/schedule-slots/{id}/mutualize` (`api.ts::mutualizeSlot`, hook `useMutualizeSlot`) :
   un refus **NOMMÉ** (422 métier, 409 planning validé/génération en cours, 404 séance disparue)
   est affiché **TEL QUEL dans la modale** (`MutualizationRefusedError`) — jamais un second toast
@@ -449,11 +454,14 @@ mutualisation. »).
   (`SharedTrainingBlockPanel` du wizard, `frontend-wizard.md` §1) : quand le bloc a des séances
   déjà placées (`SharedTrainingBlock.sessions`, servi par le serveur), chacune est listée — équipe ·
   jour · heure · gymnase ; un bloc SOCLE ou sans séance placée retombe sur le texte par équipes.
-- **Chemin réel pour atteindre ce bouton** : la grille d'un plan de période non validé ne se voit
-  QUE via le wizard (cockpit → « Ajuster » la période → étape **Génération**, grille EMBARQUÉE —
+- **Chemin réel pour atteindre ce bouton** : la grille d'un plan de **période** non validé ne se
+  voit QUE via le wizard (cockpit → « Ajuster » la période → étape **Génération**, grille EMBARQUÉE —
   `PlanningPage embedded scopePlanId=…`). `/planning` en autonome ne rend qu'un **overlay validé**,
   lecture seule, où le bouton resterait toujours désactivé — preuve de bout en bout dans
-  `frontend/tests/e2e/lot9-mutualize-reachability.spec.ts`.
+  `frontend/tests/e2e/lot9-mutualize-reachability.spec.ts`. Pour le **socle** (saison), le même
+  écran de génération (`GenerateStep`, `scopePlanId={null}`) et `/planning` en autonome tant que la
+  version n'est pas encore **choisie** (`isChosen=false` ⇒ `isReadOnly=false`, §0) l'offrent de la
+  même façon.
 
 ### 6.7 quater « Régénérer » un overlay repart des données en cours ; « Charger » pour une période (lot verrous V1/V1bis)
 
