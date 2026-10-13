@@ -35,19 +35,25 @@ use InvalidArgumentException;
  * dit au solveur que ces équipes forment UNE occupation. L'invariant est gardé par
  * `CrossStack/SharedBlockAnchoredCaseGateTest`.
  *
+ * Disponible au planning de SAISON (socle) comme sur un plan de PÉRIODE (le socle se comporte comme
+ * la saison, décision fondateur 2026-10-13). La PORTÉE du bloc suit l'écran : NULL au socle (comme
+ * les blocs de saison), le plan de période sinon. Seule l'ACTIVATION d'une équipe à 0 séance reste
+ * propre à la période — au socle c'est un refus nommé.
+ *
  * Ce que le geste écrit, en UNE transaction (tout-ou-rien) :
- *  - un {@see SharedTrainingBlock} de PORTÉE PLAN (`schedulePlanId` = le plan de période),
- *    `commonSessions = 1`, nom optionnel ;
+ *  - un {@see SharedTrainingBlock} de PORTÉE adaptée à l'écran (`schedulePlanId` = le plan de période,
+ *    ou NULL au socle), `commonSessions = 1`, nom optionnel ;
  *  - la séance de la SOURCE verrouillée HARD/MANUAL sur place ;
  *  - pour chaque équipe rejoignante DÉJÀ placée : la séance qu'elle DÉSIGNE (Q1 — choix conscient)
  *    est DÉPLACÉE sur la case et verrouillée HARD/MANUAL ;
  *  - pour chaque équipe rejoignante à 0 séance dans le plan : un override de période l'ACTIVE
  *    (1 séance, `source = mutualisation`) et une séance NEUVE naît sur la case, verrouillée.
  *
- * Refus 422 NOMMÉS (rien n'est écrit) : socle (plan de période seulement), équipe inactive, équipe
- * inconnue, ensemble déjà déclaré, case déjà occupée (capacité), Σ des séances communes dépassant
- * le volume d'une équipe, équipe déjà placée sans séance désignée, équipe rejoignante siégeant déjà
- * à la case d'ancrage par une AUTRE séance (une équipe ne siège jamais deux fois à la même case).
+ * Refus 422 NOMMÉS (rien n'est écrit) : équipe à 0 séance activée AU SOCLE (période seulement),
+ * équipe inactive, équipe inconnue, ensemble déjà déclaré, case déjà occupée (capacité), Σ des
+ * séances communes dépassant le volume d'une équipe, équipe déjà placée sans séance désignée, équipe
+ * rejoignante siégeant déjà à la case d'ancrage par une AUTRE séance (une équipe ne siège jamais
+ * deux fois à la même case).
  */
 final class MutualizeSlotService
 {
@@ -85,15 +91,20 @@ final class MutualizeSlotService
             throw new ScheduleGenerationInProgressException;
         }
 
-        // Q5 — plans de PÉRIODE seulement : le socle de saison n'est pas un plan sur lequel on
-        // mutualise à la main (il pilote la génération de base, pas une retouche de période).
-        if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
-            throw new MutualizationRefusedException('La mutualisation depuis la génération se fait sur un plan de période, pas sur le planning de saison.');
-        }
+        // « Mutualiser… » est disponible au planning de SAISON comme sur un plan de période — le
+        // socle se comporte comme la saison (décision fondateur 2026-10-13). La PORTÉE du geste suit
+        // l'écran : au socle, le bloc et tout ce qu'il scope (grille de gymnase, budget Σ, unicité de
+        // l'ensemble d'équipes) vivent à portée NULL — exactement comme les blocs de saison que
+        // `SchedulePlanProvisioner::copySocleSharedBlocks` recopie vers les fermetures. Sur un plan de
+        // période, la portée est ce plan. ⚠ `Schedule::getSchedulePlanId()` d'un socle rend l'id du
+        // plan SEASON (non-null) — c'est précisément ce qu'on NE veut PAS écrire dans le bloc : au
+        // socle on force `null`. Seule l'ACTIVATION d'une équipe à 0 séance reste propre à la période
+        // (refus nommé au socle, cf. activateTeamForPeriod).
+        $isSocle = $this->schedulePlanProvisioner->isSeasonSchedule($schedule);
 
         $clubId = $anchor->getClubId();
         $seasonId = $anchor->getSeasonId();
-        $planId = $schedule->getSchedulePlanId();
+        $planId = $isSocle ? null : $schedule->getSchedulePlanId();
         $normalizedLabel = null === $label || '' === trim($label) ? null : trim($label);
 
         return $this->entityManager->wrapInTransaction(function () use ($anchor, $schedule, $clubId, $seasonId, $planId, $teamIds, $replacedSlotIds, $normalizedLabel): array {
@@ -337,7 +348,10 @@ final class MutualizeSlotService
     private function activateTeamForPeriod(string $clubId, string $seasonId, ?string $planId, string $teamId): void
     {
         if (null === $planId) {
-            return; // défense : Q5 borne déjà au plan de période (planId non-null)
+            // Au socle (planId NULL), il n'y a pas d'override de période pour donner une séance à une
+            // équipe qui n'en a aucune : on REFUSE (l'UI ne propose déjà pas ces équipes au socle, ce
+            // refus est le filet). Activer une équipe à 0 séance reste propre aux plans de période.
+            throw new MutualizationRefusedException('Au planning de saison, on ne peut pas mutualiser une équipe qui n\'a aucune séance : donnez-lui d\'abord des séances dans la saisie.');
         }
 
         $override = $this->entityManager->getRepository(TeamPeriodOverride::class)

@@ -65,8 +65,6 @@ interface SlotDetailProps {
    *  individuel n'est plus proposé — le moteur le refuse). `memberCount` = nombre d'équipes du bloc,
    *  annoncé sur le bouton et en note. `null`/absent = créneau ordinaire. */
   groupSession?: { memberCount: number } | null;
-  /** Lot 9 — la mutualisation ne s'offre que sur un plan de PÉRIODE (jamais le socle de saison). */
-  isPeriodPlan?: boolean;
   /** Lot 9 — cette séance fait DÉJÀ partie d'un groupe de mutualisation : le geste est désactivé
    *  (motif), et le nom du bloc + l'origine « via mutualisation » s'affichent. */
   inBlock?: boolean;
@@ -140,7 +138,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
 
 const noName = (): string | undefined => undefined;
 
-export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, isPeriodPlan = false, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
+export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
   // Repliées par défaut : ouvrir un créneau ne doit pas agrandir l'aside (retour fondateur).
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
   const [constraintsOpen, setConstraintsOpen] = useState(false);
@@ -360,11 +358,12 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
         </div>
         )}
 
-        {/* Lot 9 — « Mutualiser… » : plans de PÉRIODE seulement. Désactivé AVEC MOTIF découvrable au
-            clavier (disabledReason) si le planning est validé (lecture seule) ou si la séance fait
-            déjà partie d'un groupe. Rendu même en lecture seule pour porter son motif, contrairement
-            aux gestes Déplacer/Verrouiller (qui disparaissent). */}
-        {isPeriodPlan && undefined !== onMutualize ? (
+        {/* Lot 2 (2026-10-13) — « Mutualiser… » : disponible au planning de SAISON comme sur un plan
+            de période / fermeture (c'est la page qui décide de fournir `onMutualize`). Désactivé AVEC
+            MOTIF découvrable au clavier (disabledReason) si le planning est validé (lecture seule) ou
+            si la séance fait déjà partie d'un groupe. Rendu même en lecture seule pour porter son
+            motif, contrairement aux gestes Déplacer/Verrouiller (qui disparaissent). */}
+        {undefined !== onMutualize ? (
           <div className="mt-3 border-t border-border pt-3">
             <Button
               size="sm"
