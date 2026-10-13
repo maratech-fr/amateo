@@ -1,6 +1,6 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : `CONTRACT_VERSION` 1.5
+Last verified @ 2026-10-13 (couverture « Import/réconciliation » recalée : les 2 features Behat dépendant de l'API FFBB réelle retirées, promesses renvoyées vers `OpponentVenueAutoLocatorTest` et `OpponentVenueSuggestionShareTest`) : `CONTRACT_VERSION` 1.5
 (bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne `venueId`/`keep` — bloc sans effet sur
 `/place-matches`, qui ne réutilise pas les schémas hebdomadaires de `/generate`) confronté à
 `engine/CONTRACT_VERSION`. Le reste du module (découpe en paquet `match_placement/`, citations
