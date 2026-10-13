@@ -1227,7 +1227,7 @@ jobs:
         run: docker compose build engine
 
       - name: Run perf gate
-        run: docker compose run --rm engine pytest -m perf
+        run: docker compose run --rm engine pytest -m perf --durations=0
 
   engine-perf-pr:
     name: Engine Perf (PR, dense only)

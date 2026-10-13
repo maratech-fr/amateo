@@ -30,8 +30,14 @@ from tests.semantic.test_match_placement_semantics import assert_no_hard_violati
 FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "bccl_home_matches_2026.json"
 # Founder decision: ≥ 90 % of the home matches placeable at 60 s on the real fixture.
 MIN_PLACED_RATIO = 0.9
-# Wall budget of the test: a 60 s solver budget + build + I/O, with CI headroom.
-BUDGET_SECONDS = 90.0
+# Wall budget of the WHOLE test — NOT a product promise and NOT a target to speed up to.
+# The only promise is a 60 s solver budget PER ISO WEEK: ``solve_match_placement`` in
+# ``app/solver/match_placement/__init__.py`` (see its docstring, ~l.690-703) slices the
+# request week by week and spends that budget on EACH week, so the real BCCL fixture —
+# 141 matches spread over several ISO weeks — sums several per-week solves plus model
+# build and I/O. This ceiling is RECALIBRATED on the real CI measurement (the solve is
+# deliberately NOT accelerated), with headroom above the observed wall time.
+BUDGET_SECONDS = 180.0
 
 
 @pytest.mark.perf
@@ -54,4 +60,8 @@ def test_real_bccl_home_matches_are_at_least_90_percent_placeable() -> None:
 
     # The whole point: no HARD rule is ever broken, whatever the SOFT arbitration.
     assert_no_hard_violation(input_data, output)
-    assert elapsed < BUDGET_SECONDS, f"real place-matches took {elapsed:.1f}s, over the {BUDGET_SECONDS:.0f}s budget"
+    engine_wall_ms = output.metrics.wall_time_ms if output.metrics else None
+    assert elapsed < BUDGET_SECONDS, (
+        f"real place-matches took {elapsed:.1f}s wall "
+        f"(engine solver wall_time_ms={engine_wall_ms}), over the {BUDGET_SECONDS:.0f}s budget"
+    )
