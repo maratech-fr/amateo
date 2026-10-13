@@ -269,6 +269,39 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    /**
+     * « Revenir au défaut du club » sur une équipe auto-localisée : retirer le lien AUTO
+     * (DELETE /venue-links/{id}) efface la localisation automatique — le gymnase quitte le
+     * feed et le lien disparaît. Promesse reprise du scénario Behat retiré (qui dépendait de
+     * l'API FFBB réelle) ; le retrait d'un lien AUTO ne touche jamais le catalogue partagé
+     * (le décrément est réservé au MANUAL, cf. {@see OpponentVenueLinkManager::delete}).
+     */
+    public function testDeletingAnAutoLinkRemovesTheAutomaticLocation(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $this->awayFixture($club, $season, 'ARA0069055', 'Adversaire auto', 'SALLE AUTO');
+        $this->directory('ARA0069055', OpponentLocationPrecision::VENUE, 'Lyon', '69001');
+        $link = $this->link($club, 'ARA0069055', 'SALLE AUTO', 'Gymnase AUTO', '166900055', 45.80, 5.00, OpponentVenueLinkSource::AUTO);
+
+        // Le feed localise d'abord l'adversaire en source automatique.
+        $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($user));
+        $venuesBefore = $this->venuesOf('ARA0069055');
+        self::assertCount(1, $venuesBefore, 'l\'adversaire est d\'abord localisé');
+        self::assertSame('AUTO', $venuesBefore[0]['source'], 'la localisation est en source automatique');
+
+        // Revenir au défaut du club = retirer le lien AUTO.
+        $this->client->request('DELETE', '/api/opponents/venue-links/' . $link->getId(), [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(204);
+
+        // La localisation automatique a disparu : plus aucun gymnase au feed, lien retiré en base.
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        self::assertNull(self::getContainer()->get(OpponentVenueLinkRepository::class)->find($link->getId()), 'le lien AUTO est retiré');
+
+        $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($user));
+        self::assertSame([], $this->venuesOf('ARA0069055'), 'plus aucun gymnase localisé après le retour au défaut');
+    }
+
     public function testWritesAreForbiddenForANonManagementMember(): void
     {
         [$club, , $season] = $this->seedClub();
@@ -620,5 +653,24 @@ final class OpponentTravelApiTest extends WebTestCase
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
         return $data;
+    }
+
+    /**
+     * Les gymnases listés pour l'adversaire `$code` dans la réponse courante de GET /travel.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function venuesOf(string $code): array
+    {
+        foreach ($this->responseData()['opponents'] as $opponent) {
+            if ($code === ($opponent['code'] ?? null)) {
+                /** @var list<array<string, mixed>> $venues */
+                $venues = $opponent['venues'];
+
+                return $venues;
+            }
+        }
+
+        return [];
     }
 }
