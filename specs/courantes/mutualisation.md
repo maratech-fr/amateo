@@ -1,8 +1,10 @@
 # Mutualisation — un ensemble d'équipes qui se comporte comme UNE équipe
 
-Last verified @ 2026-10-13 (`SharedTrainingBlock` re-vérifié contre le code : entité, service de
-mutualisation depuis le planning, processeur API, provisioning, prune de suppression d'équipe,
-panneau du wizard, planning (`SlotDetail`/`MutualizeDialog`/`PlanningPage`) et sémantique moteur).
+Last verified @ 2026-10-14 (§2.3 recalé contre `MoveSlotService::moveGroup` : éviction optionnelle
+d'un occupant ÉQUIPE non verrouillé, `evictSlotId`+`dryRun`, P4-329 — §5 mis à jour en conséquence).
+Reste du fichier re-vérifié le 2026-10-13 (`SharedTrainingBlock` : entité, service de mutualisation
+depuis le planning, processeur API, provisioning, prune de suppression d'équipe, panneau du
+wizard, planning (`SlotDetail`/`MutualizeDialog`/`PlanningPage`) et sémantique moteur).
 
 > **But** : permettre à des équipes de s'entraîner ENSEMBLE sur une même case de gymnase, sans que
 > le solveur les compte comme deux occupations séparées (ce qui créerait un faux conflit de
@@ -105,8 +107,15 @@ AUTRE séance (une équipe ne siège jamais deux fois à la même case — `Team
   (`backend/src/Controller/ManualEditController.php:390`, `MoveSlotService::moveGroup`) — déplace
   les N créneaux des membres d'un coup, sous un seul verdict moteur, en une transaction. Le corps
   ne porte QUE le bloc et les deux cases (source/cible), jamais de `slotIds` client ; le serveur
-  résout lui-même les membres. Ce rail **n'évince pas** : un membre qui siégerait déjà à la case
-  cible par une autre séance est un refus 422 nommé (`team_already_at_case`), aucun des N créneaux
+  résout lui-même les membres. **Éviction optionnelle (P4-329)** : déposer le groupe sur une case
+  occupée par une séance d'ÉQUIPE non verrouillée l'évince dans la MÊME transaction (`evictSlotId`,
+  patron de `move()`) — l'occupant disparaît et passe « à replacer », nommé dans la réponse
+  (`evicted`) ; un `dryRun` rend le même verdict (+ l'état qui SERAIT évincé) sans rien écrire.
+  Refus 422 NOMMÉS avant le moteur : cible d'éviction introuvable/d'un autre planning/source du
+  groupe ou hors case cible (`evict_target_mismatch`), occupant verrouillé (`target_locked`,
+  D3 souverain), occupant lui-même une séance de GROUPE (`evict_target_is_group` — l'échange de
+  deux groupes reste à livrer, §5) ; un membre déplacé siégeant DÉJÀ à la case cible par une AUTRE
+  séance que l'éviction ne libère pas reste un refus `team_already_at_case`, aucun des N créneaux
   ne bouge.
 - **Retirer la séance de la case courante** : `POST /api/schedule-slots/remove-group` — retire la
   séance de groupe SANS toucher au bloc ni à ses adhésions (distinct de la suppression du bloc).
@@ -143,8 +152,9 @@ elles ne doivent pas être lues comme un comportement actuel :
 
 - **Menu à 3 choix au dépôt sur une case occupée** : déposer une séance (équipe ou groupe) sur une
   case déjà occupée proposera **Prendre sa place / Échanger / Mutualiser**, au lieu du seul choix
-  actuel. Aujourd'hui, `MoveSlotService::move()` sait déjà évincer une équipe simple (`evictSlotId`)
-  mais `moveGroup()` ne sait pas évincer (§2.3) et il n'existe pas d'endpoint d'échange atomique.
+  actuel. Livré : `move()` ET `moveGroup()` savent évincer un occupant ÉQUIPE non verrouillé
+  (§2.3, P4-329). Restent à livrer : il n'existe toujours pas d'endpoint d'échange atomique, et un
+  occupant de GROUPE reste un refus nommé sur les deux rails (point suivant).
 - **Équipe sur groupe ⇒ rejoindre ; groupe sur groupe ⇒ fusionner.** Dans les deux cas, Amateo
   AVERTIT des risques et CONTRÔLE la faisabilité (≤ 10 équipes, Σ des séances communes, capacité de
   la case) — jamais un refus de principe. Le gestionnaire assume le geste.

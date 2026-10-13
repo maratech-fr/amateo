@@ -2,10 +2,14 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-13 (mutualisation au socle) : §6.7 ter recalé contre `PlanningPage.tsx`/
-`MutualizeDialog.tsx`/`SlotDetail.tsx` — « Mutualiser… » est désormais offert au planning de SAISON
-(socle) comme sur un plan de PÉRIODE, la seule restriction au socle étant l'activation d'une équipe
-à 0 séance (refus serveur, non proposée côté écran). Modèle et décisions fondateur :
+Last verified @ 2026-10-14 (éviction sur le déplacement de GROUPE, P4-329) : le bloc « Déplacer le
+GROUPE » est recalé contre `useRetouchGestures.ts`/`queries.ts` — une case occupée ouvre désormais
+la même `EvictConfirmDialog` que le move simple (essai `useMoveGroupDryRun` + confirmation
+`useMoveGroup` avec `evictSlotId`), l'occupant passe « à replacer ». §6.7 ter recalé le 2026-10-13
+(mutualisation au socle) contre `PlanningPage.tsx`/`MutualizeDialog.tsx`/`SlotDetail.tsx` —
+« Mutualiser… » est désormais offert au planning de SAISON (socle) comme sur un plan de PÉRIODE, la
+seule restriction au socle étant l'activation d'une équipe à 0 séance (refus serveur, non proposée
+côté écran). Modèle et décisions fondateur :
 [`mutualisation.md`](../../specs/courantes/mutualisation.md). Reste du fichier non re-confronté
 cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
 
@@ -147,28 +151,38 @@ par un CRUD brut sur la ressource :
     accepter à côté). *Option b (évincer au placement) reste délibérément hors scope — on
     n'itère que si le terrain le réclame, décision fondateur.* Un refus toast la première
     violation et surligne le conflit ; le mode placement reste armé.
-- **Déplacer le GROUPE — même mode cible, rail dédié (P2-51 PR-6, 2026-08-31, D11)** : sur une
-  séance de bloc de mutualisation (tous ses membres co-localisés sur la même case), le bouton
-  « Déplacer » de `SlotDetail` devient **« Déplacer le groupe »** (compte de membres annoncé, note
-  de conséquence « Déplace les N équipes du groupe ensemble. ») — pas de déplacement individuel
-  proposé, le verdict le refuserait (`shared_block_broken`). **Ce geste continue de dériver
-  l'appartenance par CO-LOCALISATION**, pas par le lien serveur : `ScheduleSlotTemplateResource`
-  expose bien `sharedTrainingBlockId` depuis le lot 9 (F3), mais seulement pour NOMMER/AFFICHER
-  (§6.7 ter) — « Déplacer le groupe » reste câblé sur la dérivation **FAIL-SAFE**
-  côté front (`frontend/src/features/planning/lib/blockSession.ts::blocksForSlot` — un bloc
-  « siège » sur une case quand TOUS ses membres y ont un créneau), le serveur restant seul juge —
-  la dérivation ne décide QUE de PROPOSER le geste, jamais de l'accepter (une case source devenue
-  fausse répond `slot_unavailable`, affiché tel quel). Même mode cible click-click que le
-  déplacement simple (armé par `armMoveGroup`, `targetMode.kind === "move-group"`) ; case cible
-  libre OU occupée envoyée telle quelle au rail — **aucune éviction** sur ce rail (le moteur
-  tranche, violations affichées telles quelles). `POST /api/schedule-slots/move-group`
-  (`useMoveGroup`, MÊME paquet d'invalidation que `useMoveSlot`) : le serveur résout LUI-MÊME les
-  créneaux membres depuis la case source (jamais de slotIds client). Accepté → toast (suffixé
-  « — N compromis » si `compromises.length > 0`) ; refusé (422) → violations NOMMÉES dans le
-  panneau + surlignage du conflit (même dérivation que `moveState`, présentation
-  `moveGroupState`) ; 409/502/504 toastés, mode cible reste armé. **Pas d'undo** (geste 4) pour un
-  déplacement de groupe — il faudrait rejouer `move-group`, hors scope de cette PR ; un éventuel
-  undo d'un geste simple précédent est invalidé au succès.
+- **Déplacer le GROUPE — même mode cible, rail dédié (P2-51 PR-6, 2026-08-31, D11 ; éviction
+  P4-329, 2026-10-14)** : sur une séance de bloc de mutualisation (tous ses membres co-localisés
+  sur la même case), le bouton « Déplacer » de `SlotDetail` devient **« Déplacer le groupe »**
+  (compte de membres annoncé, note de conséquence « Déplace les N équipes du groupe ensemble. ») —
+  pas de déplacement individuel proposé, le verdict le refuserait (`shared_block_broken`). **Ce
+  geste continue de dériver l'appartenance par CO-LOCALISATION**, pas par le lien serveur :
+  `ScheduleSlotTemplateResource` expose bien `sharedTrainingBlockId` depuis le lot 9 (F3), mais
+  seulement pour NOMMER/AFFICHER (§6.7 ter) — « Déplacer le groupe » reste câblé sur la dérivation
+  **FAIL-SAFE** côté front (`frontend/src/features/planning/lib/blockSession.ts::blocksForSlot` —
+  un bloc « siège » sur une case quand TOUS ses membres y ont un créneau), le serveur restant seul
+  juge — la dérivation ne décide QUE de PROPOSER le geste, jamais de l'accepter (une case source
+  devenue fausse répond `slot_unavailable`, affiché tel quel). Même mode cible click-click que le
+  déplacement simple (armé par `armMoveGroup`, `targetMode.kind === "move-group"`).
+  - **Case LIBRE** : envoyée directement au rail (`doMoveGroup`, sans `evictSlotId`) — le moteur
+    tranche, violations affichées telles quelles.
+  - **Case OCCUPÉE (P4-329)** : ouvre la **MÊME `EvictConfirmDialog`** que le move simple (§6.7
+    geste 2 ci-dessus), alimentée par un ESSAI (`useMoveGroupDryRun`, `evictSlotId` = l'occupant +
+    `dryRun:true`) avant toute écriture — mêmes quatre états `checking`/`accepted`/`refused`/
+    `failed`/`indeterminate`. Confirmé (`accepted`) → `useMoveGroup` RÉEL avec le MÊME
+    `evictSlotId` (sans `dryRun`) : l'occupant disparaît (il passe « à replacer », le bandeau
+    d'éviction existant se réutilise, suffixe toast « — \<équipe\> est à replacer ») et les N
+    membres prennent la case. Un refus MÉTIER au transport (verrou posé entre-temps, génération en
+    cours) ferme la modale et toaste le motif, mode cible reste armé — même traitement que le move
+    simple.
+  - `POST /api/schedule-slots/move-group` (`useMoveGroup`, MÊME paquet d'invalidation que
+    `useMoveSlot`) : le serveur résout LUI-MÊME les créneaux membres depuis la case source (jamais
+    de slotIds client). Accepté → toast (suffixé « — N compromis » si `compromises.length > 0`) ;
+    refusé (422) → violations NOMMÉES dans le panneau + surlignage du conflit (même dérivation que
+    `moveState`, présentation `moveGroupState`) ; 409/502/504 toastés, mode cible reste armé.
+    **Pas d'undo** (geste 4) pour un déplacement de groupe (évincé compris) — il faudrait rejouer
+    `move-group` puis un replacement de l'évincée, hors scope ; un éventuel undo d'un geste simple
+    précédent est invalidé au succès.
 - **Retirer une séance placée — « vider un créneau » (geste F4, 2026-10-12)** : sur `SlotDetail`,
   un bouton **« Retirer »** (icône `Trash2`, N2 — destructif confirmé) à côté de « Déplacer » —
   **« Retirer le groupe »** sur une séance de bloc, qui retire les N membres ensemble. Masqué
