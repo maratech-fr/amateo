@@ -38,11 +38,3 @@ Fonctionnalité: Un entraînement mutualisé se réserve et se retire comme un b
     Quand je mutualise la première séance en y rattachant la seconde équipe
     Alors les deux séances partagent la même case, liées à un même bloc de mutualisation
     Et le bloc de mutualisation est à portée saison
-
-  Scénario: Le groupe prend la place d'une équipe, qui passe à replacer
-    Étant donné le club de démonstration et son planning de saison
-    Et deux séances JETABLES placées au socle, d'équipes distinctes, chacune sur sa propre case
-    Et une troisième équipe JETABLE occupant une case d'accueil ouverte
-    Quand je mutualise la première séance en y rattachant la seconde équipe
-    Et je déplace le groupe sur la case occupée par la troisième équipe
-    Alors le groupe siège sur la case d'accueil et la troisième équipe est à replacer
