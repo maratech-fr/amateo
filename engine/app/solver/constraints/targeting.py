@@ -41,6 +41,28 @@ def _closure_index(var: BoolVarLike) -> int | None:
         return None
 
 
+def time_window_excludes_slot(
+    slot_start_minutes: int,
+    duration_minutes: int,
+    *,
+    min_start_minutes: int | None = None,
+    max_start_minutes: int | None = None,
+    max_end_minutes: int | None = None,
+) -> bool:
+    """Vrai si une fenêtre horaire HARD exclut un créneau qui COMMENCE à ``slot_start_minutes`` et
+    dure ``duration_minutes``.
+
+    ALGÈBRE UNIQUE de la fenêtre ``TIME``, partagée par la POSE (``add_time_window_constraints``,
+    ci-dessous) et le DIAGNOSTIC de bloc (``result_builder…shared_blocks._diagnose_shared_blocks``) —
+    jamais une seconde logique (rail de preuve P4-322). ``minStartTime``/``maxStartTime`` bornent le
+    DÉBUT ; ``maxEndTime`` borne la FIN (début + durée de la séance)."""
+    if min_start_minutes is not None and slot_start_minutes < min_start_minutes:
+        return True
+    if max_start_minutes is not None and slot_start_minutes > max_start_minutes:
+        return True
+    return max_end_minutes is not None and slot_start_minutes + duration_minutes > max_end_minutes
+
+
 def add_time_window_constraints(
     model: Any,
     x: Mapping[Any, BoolVarLike],
@@ -138,21 +160,24 @@ def add_time_window_constraints(
 
             slot_start = slot_key[3]
             slot_start_minutes = _time_to_minutes(slot_start)
-            if min_start_minutes is not None and slot_start_minutes < min_start_minutes:
+            # maxEndTime borne la FIN (début + durée du créneau, la sienne venue/day/start, défaut
+            # 90 min) : la durée n'est lue QUE si une borne de fin existe (chemin inchangé). L'algèbre
+            # elle-même vit dans ``time_window_excludes_slot`` (source unique partagée avec le
+            # diagnostic de bloc P4-322) : une fermeture au PLUS par (créneau, contrainte), inchangé.
+            duration = (
+                model.slot_durations.get((slot_key[1], slot_key[2], slot_key[3]), DEFAULT_SESSION_MINUTES)
+                if max_end_minutes is not None
+                else DEFAULT_SESSION_MINUTES
+            )
+            if time_window_excludes_slot(
+                slot_start_minutes,
+                duration,
+                min_start_minutes=min_start_minutes,
+                max_start_minutes=max_start_minutes,
+                max_end_minutes=max_end_minutes,
+            ):
                 _enforce_closure(model, var, dict(window_cause), window_literal)
                 added += 1
-                continue
-            if max_start_minutes is not None and slot_start_minutes > max_start_minutes:
-                _enforce_closure(model, var, dict(window_cause), window_literal)
-                added += 1
-                continue
-            # maxEndTime: the session must END by that time (start + its duration).
-            # The duration is the slot's own (venue/day/start), default 90 min.
-            if max_end_minutes is not None:
-                duration = model.slot_durations.get((slot_key[1], slot_key[2], slot_key[3]), DEFAULT_SESSION_MINUTES)
-                if slot_start_minutes + duration > max_end_minutes:
-                    _enforce_closure(model, var, dict(window_cause), window_literal)
-                    added += 1
 
     team_day_vars: dict[str, dict[int, list[BoolVarLike]]] = defaultdict(lambda: defaultdict(list))
     team_all_vars: dict[str, list[BoolVarLike]] = defaultdict(list)

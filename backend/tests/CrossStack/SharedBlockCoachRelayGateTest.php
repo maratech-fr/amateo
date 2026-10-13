@@ -83,6 +83,146 @@ final class SharedBlockCoachRelayGateTest extends TestCase
     }
 
     /**
+     * P4-322 — le même bloc, infaisable pour DEUX autres raisons, NOMME le groupe et la cause au lieu
+     * de retomber sur le générique muet (décision fondateur Q3). De bout en bout contre le VRAI
+     * moteur, kinds EXISTANTS (``hard_lock`` / ``time_window``), aucun bump de contrat :
+     *   (1) un VERROU HARD d'une équipe NON membre (t3) sur la seule case commune ⇒ ``hard_lock``, le
+     *       message nomme t3 et la case ;
+     *   (2) une FENÊTRE HORAIRE dure d'un membre (t1, début au plus tard 18:00) qui exclut la seule
+     *       case (20:00) ⇒ ``time_window`` portant la contrainte, de quoi composer l'origine backend.
+     */
+    public function testNonMemberLockAndHardTimeWindowNameTheGroup(): void
+    {
+        // (1) VERROU non-membre — V ouvert lundi 18:00 (capacité 1), t3 (hors bloc) épinglé HARD là.
+        $lockPayload = [
+            'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-block-lock',
+            'seasonId' => 'season-block-lock',
+            'solverSeed' => 42,
+            'teams' => [$this->team('t1'), $this->team('t2'), $this->team('t3')],
+            'venues' => [$this->oneSlotVenue('22222222-2222-4222-8222-222222222222', 1, '18:00')],
+            'coaches' => [],
+            'constraints' => [],
+            'slotTemplates' => [$this->hardLock('t3', '22222222-2222-4222-8222-222222222222', 1, '18:00')],
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]],
+        ];
+        $locked = $this->solve($lockPayload);
+        self::assertSame('failed', $locked['status'], 'la seule case commune est verrouillée pour un non-membre');
+        $lockedDiag = $this->firstWithCauseKind($this->notHonoured($locked), 'hard_lock');
+        self::assertNotNull($lockedDiag, 'P4-322 : un verrou non-membre doit NOMMER le groupe (cause hard_lock)');
+        self::assertStringContainsString('T1', (string) $lockedDiag['message']);
+        self::assertStringContainsString('T2', (string) $lockedDiag['message']);
+        self::assertStringContainsString('T3', (string) $lockedDiag['message'], 'l\'équipe qui verrouille est nommée');
+
+        // (2) FENÊTRE HORAIRE dure — V ouvert lundi 20:00, t1 ne peut pas commencer après 18:00.
+        $windowPayload = [
+            'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-block-window',
+            'seasonId' => 'season-block-window',
+            'solverSeed' => 42,
+            'teams' => [$this->team('t1'), $this->team('t2')],
+            'venues' => [$this->oneSlotVenue('33333333-3333-4333-8333-333333333333', 1, '20:00')],
+            'coaches' => [],
+            'constraints' => [$this->hardTimeWindow('win-late', 't1', '18:00')],
+            'slotTemplates' => [],
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]],
+        ];
+        $windowed = $this->solve($windowPayload);
+        self::assertSame('failed', $windowed['status'], 'la fenêtre horaire ferme la seule case commune');
+        $windowDiag = $this->firstWithCauseKind($this->notHonoured($windowed), 'time_window');
+        self::assertNotNull($windowDiag, 'P4-322 : une fenêtre horaire dure doit NOMMER le groupe (cause time_window)');
+        self::assertStringContainsString('T1', (string) $windowDiag['message']);
+        self::assertStringContainsString('T2', (string) $windowDiag['message']);
+        $timeCause = $this->firstCauseOfKind($windowDiag, 'time_window');
+        self::assertSame('win-late', $timeCause['constraintId'] ?? null, 'la contrainte est portée pour composer son origine');
+    }
+
+    /**
+     * Le premier diagnostic de bloc portant une cause du ``$kind`` donné, ou ``null``.
+     *
+     * @param list<array<string, mixed>> $diagnostics
+     *
+     * @return array<string, mixed>|null
+     */
+    private function firstWithCauseKind(array $diagnostics, string $kind): ?array
+    {
+        foreach ($diagnostics as $diagnostic) {
+            if (\in_array($kind, array_column($diagnostic['causes'] ?? [], 'kind'), true)) {
+                return $diagnostic;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $diagnostic
+     *
+     * @return array<string, mixed>
+     */
+    private function firstCauseOfKind(array $diagnostic, string $kind): array
+    {
+        foreach ($diagnostic['causes'] ?? [] as $cause) {
+            if (\is_array($cause) && ($cause['kind'] ?? null) === $kind) {
+                return $cause;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Un gymnase avec UN unique créneau (capacité 1).
+     *
+     * @return array<string, mixed>
+     */
+    private function oneSlotVenue(string $id, int $day, string $start): array
+    {
+        return [
+            'id' => $id, 'name' => 'V-' . substr($id, 0, 4),
+            'trainingSlots' => [['dayOfWeek' => $day, 'startTime' => $start, 'durationMinutes' => 90, 'capacity' => 1]],
+        ];
+    }
+
+    /**
+     * Un verrou HARD (``slotTemplates``) posé sur une équipe précise.
+     *
+     * @return array<string, mixed>
+     */
+    private function hardLock(string $teamId, string $venueId, int $day, string $start): array
+    {
+        return [
+            'id' => \sprintf('lock-%s-%d-%s', $teamId, $day, $start),
+            'teamId' => $teamId,
+            'venueId' => $venueId,
+            'dayOfWeek' => $day,
+            'startTime' => $start,
+            'durationMinutes' => 90,
+            'lockLevel' => 'HARD',
+        ];
+    }
+
+    /**
+     * Une fenêtre horaire dure (famille TIME) : l'équipe ne peut pas COMMENCER après ``$maxStart``.
+     *
+     * @return array<string, mixed>
+     */
+    private function hardTimeWindow(string $id, string $teamId, string $maxStart): array
+    {
+        return [
+            'id' => $id,
+            'scope' => 'TEAM',
+            'scopeTargetId' => $teamId,
+            'family' => 'TIME',
+            'ruleType' => 'HARD',
+            'name' => 'fenêtre horaire ' . $teamId,
+            'config' => ['maxStartTime' => $maxStart],
+            'sortOrder' => 0,
+            'isActive' => true,
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $result
      */
     private function coLocated(array $result): bool
