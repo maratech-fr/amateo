@@ -31,3 +31,10 @@ Fonctionnalité: Un entraînement mutualisé se réserve et se retire comme un b
     Alors les deux séances partagent la même case, liées à un même bloc de mutualisation
     Quand je supprime le bloc de mutualisation
     Alors les deux séances du groupe ont disparu du plan
+
+  Scénario: Mutualiser au planning de saison garde la case, le groupe naît à portée saison
+    Étant donné le club de démonstration et son planning de saison
+    Et deux séances JETABLES placées au socle, d'équipes distinctes, chacune sur sa propre case
+    Quand je mutualise la première séance en y rattachant la seconde équipe
+    Alors les deux séances partagent la même case, liées à un même bloc de mutualisation
+    Et le bloc de mutualisation est à portée saison

@@ -35,6 +35,13 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  *
  * Tourne contre le VRAI moteur `/generate` (groupes `phase1` + `contract`) ; skip propre s'il est
  * indisponible. Gate CI : step nommé du job `blocking-tests` + ligne `docs/testing/blocking-tests.md`.
+ *
+ * Lot 2 (2026-10-13) — « Mutualiser… » est désormais ouvert au planning de SAISON (socle). Le
+ * payload du moteur est IDENTIQUE quelle que soit la portée (le `sharedBlocks` ne porte pas de
+ * schedulePlanId) : ce gate couvre donc le socle verbatim. On ajoute un cas de bloc à TROIS équipes
+ * (le socle mutualise ≥ 2 équipes — « un groupe est un groupe ») pour prouver que le dé-comptage
+ * tient le bloc en UNE occupation même au-delà d'une paire, là où trois verrous HARD co-localisés
+ * sur une case capacité 1 sur-occuperaient SANS la déclaration de bloc.
  */
 #[Group('phase1')]
 #[Group('contract')]
@@ -92,6 +99,27 @@ final class SharedBlockAnchoredCaseGateTest extends TestCase
     }
 
     /**
+     * Lot 2 — un bloc de mutualisation à TROIS équipes (un « groupe » que le geste au socle peut
+     * former) ancré sur une case capacité 1 tient en UNE occupation : les trois membres restent sur
+     * la case, honorés, sans conflit de sur-capacité. Falsifiable par son TÉMOIN frère : SANS la
+     * déclaration de bloc, les trois verrous HARD co-localisés sur une case capacité 1 sur-occupent.
+     */
+    public function testThreeTeamBlockFoldsToOneOccupationOnCapacityOneCase(): void
+    {
+        $withBlock = $this->solve($this->threeTeamPayload(withBlock: true));
+        self::assertSame('completed', $withBlock['status'], 'le scénario doit rester résoluble');
+        foreach (['t1', 't2', 't3'] as $teamId) {
+            self::assertSame(self::ANCHOR_CASE, $this->caseOf($withBlock, $teamId), 'chaque membre du groupe de 3 reste sur la case d\'ancrage');
+        }
+        self::assertSame([], $this->venueConflicts($withBlock), 'un bloc de 3 ancré ne sur-occupe pas sa case (dé-comptage au-delà d\'une paire)');
+        self::assertSame([], $this->notHonoured($withBlock), 'le bloc de 3 ancré ne doit jamais être signalé non honoré');
+
+        // TÉMOIN — sans le bloc, trois verrous HARD co-localisés sur une case capacité 1 sur-occupent.
+        $withoutBlock = $this->solve($this->threeTeamPayload(withBlock: false));
+        self::assertNotSame([], $this->venueConflicts($withoutBlock), 'témoin cassé : 3 séances HARD co-localisées cap. 1 passent sans conflit même SANS bloc');
+    }
+
+    /**
      * Le payload que le geste LAISSE : t1 et t2 verrouillés HARD sur la case d'ancrage (capacité 1),
      * et — avec le bloc — la déclaration `sharedBlocks` {t1,t2} 1 séance commune qui fait tenir leur
      * co-présence en UNE occupation.
@@ -117,6 +145,38 @@ final class SharedBlockAnchoredCaseGateTest extends TestCase
 
         if ($withBlock) {
             $payload['sharedBlocks'] = [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Le payload d'un bloc à TROIS équipes toutes verrouillées HARD sur la case d'ancrage (cap. 1) —
+     * avec le bloc, la déclaration `sharedBlocks` {t1,t2,t3} 1 séance commune les tient en UNE
+     * occupation ; sans lui, trois verrous HARD co-localisés sur une case cap. 1 sur-occupent.
+     *
+     * @return array<string, mixed>
+     */
+    private function threeTeamPayload(bool $withBlock): array
+    {
+        $payload = [
+            'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-anchored-block-gate-3',
+            'seasonId' => 'season-anchored-block-gate-3',
+            'solverSeed' => 42,
+            'teams' => [$this->team('t1'), $this->team('t2'), $this->team('t3')],
+            'venues' => [$this->venue(self::V1, [[1, '18:00', 1]])],
+            'coaches' => [],
+            'constraints' => [],
+            'slotTemplates' => [
+                $this->hardLock('lock-t1', 't1', self::V1, 1, '18:00'),
+                $this->hardLock('lock-t2', 't2', self::V1, 1, '18:00'),
+                $this->hardLock('lock-t3', 't3', self::V1, 1, '18:00'),
+            ],
+        ];
+
+        if ($withBlock) {
+            $payload['sharedBlocks'] = [['id' => 'b', 'teamIds' => ['t1', 't2', 't3'], 'commonSessions' => 1]];
         }
 
         return $payload;

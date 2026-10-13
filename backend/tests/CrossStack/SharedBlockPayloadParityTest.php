@@ -151,6 +151,45 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
     }
 
     /**
+     * Lot 2 (2026-10-13) — « Mutualiser… » au planning de SAISON écrit un bloc de PORTÉE NULL
+     * (commonSessions 1, comme le geste au socle). Ce bloc DOIT sortir dans le build base (socle) —
+     * la régénération du socle le ré-émet, l'ancrage survit — et NE DOIT PAS fuir dans le build
+     * d'une période sœur. C'est la garantie planning-lifecycle du geste au socle : il se range
+     * EXACTEMENT comme un bloc de saison déjà couvert, par le MÊME prédicat de portée (ADR-0002).
+     */
+    public function testSeasonBaseMutualizeBlockEmitsInBaseAndNotInSiblingPeriod(): void
+    {
+        [$club, $season] = $this->seed();
+        $t1 = $this->team($club, $season, 2);
+        $t2 = $this->team($club, $season, 2);
+        $this->em->flush();
+
+        // La période sœur naît D'ABORD (sa naissance recopie les blocs de socle EXISTANTS ; on crée
+        // donc le bloc socle APRÈS, pour isoler le prédicat de portée du comportement de copie —
+        // comme testPeriodOverlayPayloadEmitsPeriodBlocksOnly).
+        $entry = $this->holidayPeriod($club, $season);
+        $periodPlanId = $this->planIdOf($entry);
+        // Le bloc que « Mutualiser… » au socle laisse : portée NULL, 1 séance commune.
+        $socleBlock = $this->block($club, $season, null, [$t1, $t2], 1);
+        $this->em->flush();
+
+        $basePayload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        self::assertSame(
+            [[
+                'id' => $socleBlock->getId(),
+                'teamIds' => $this->sorted([$t1->getId(), $t2->getId()]),
+                'commonSessions' => 1,
+            ]],
+            $basePayload['sharedBlocks'],
+            'le bloc de mutualisation du socle (portée NULL) est émis dans le build base — la régénération du socle garde l\'ancrage',
+        );
+
+        // La même période sœur n'émet PAS le bloc socle (il n'est pas de SA portée).
+        $periodPayload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $periodPlanId, $entry);
+        self::assertSame([], $periodPayload['sharedBlocks'], 'un bloc de socle ne fuit pas dans le build d\'une période sœur');
+    }
+
+    /**
      * Aucun bloc stocké ⇒ bloc VIDE : chemin byte-identique côté moteur (default_factory=list).
      */
     public function testNoBlocksEmitsEmptyBlock(): void

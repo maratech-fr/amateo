@@ -595,8 +595,12 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
   const selectedCell = model.cells.find((c) => c.slotId === selectedSlotId) ?? null;
 
-  // Lot 9 — la mutualisation ne s'offre QUE sur un plan de PÉRIODE (slotLayerId non-null = période).
-  const isPeriodPlan = null !== slotLayerId;
+  // Lot 2 (2026-10-13) — « Mutualiser… » est disponible au planning de SAISON comme sur un plan de
+  // période / fermeture : le geste existe dès qu'un planning est affiché. Seule la PORTÉE diffère
+  // (bloc NULL au socle, géré serveur) et UNE restriction demeure au socle — pas d'activation d'une
+  // équipe à 0 séance : la modale ne propose donc pas ces équipes au socle (`isSocle`).
+  const isSocle = isSeasonPlanType(selectedSchedule?.planType);
+  const mutualizeAvailable = null !== selectedSchedule;
   // Les équipes ACTIVÉES par la mutualisation (override `source = mutualisation`, actif) : pastille
   // « via mutualisation ». Le serveur pose la source ; le front ne fait que la lire.
   const activatedViaMutualisation = useMemo(() => {
@@ -1267,15 +1271,14 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                               ? requestRemoveGroup(selectedSlotBlock.id, { venueId: selectedSlot.venueId, dayOfWeek: selectedSlot.dayOfWeek, startTime: selectedSlot.startTime }, selectedSlotBlock.teamIds.length)
                               : requestRemoveSlot(selectedSlot.id)
                           }
-                          // Lot 9 — « Mutualiser… » (plan de période uniquement). Désactivé AVEC motif
-                          // si la séance est déjà en groupe ; nom du bloc + pastille « via mutualisation »
-                          // affichés depuis le lien serveur (jamais re-dérivés).
-                          isPeriodPlan={isPeriodPlan}
+                          // Lot 2 — « Mutualiser… » (saison comme période / fermeture). Désactivé AVEC
+                          // motif si la séance est déjà en groupe ; nom du bloc + pastille « via
+                          // mutualisation » affichés depuis le lien serveur (jamais re-dérivés).
                           inBlock={null !== selectedSlotBlockId}
                           blockLabel={selectedSlotBlockLabel}
                           viaMutualisation={selectedViaMutualisation}
                           onMutualize={
-                            isPeriodPlan
+                            mutualizeAvailable
                               ? () => {
                                   setMutualizeError(null);
                                   setMutualizeOpen(true);
@@ -1477,15 +1480,17 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         <SeasonComparisonModal seasonScheduleId={seasonComparisonId} viewMode={viewMode} onClose={() => setCompareOpen(false)} />
       ) : null}
 
-      {/* Lot 9 — MUTUALISER depuis la fiche d'une séance (plan de période). La modale pré-coche la
-          source (verrouillée), fait choisir les équipes à rattacher + la séance remplacée, annonce
-          une activation à 0 séance, et affiche un refus 422 tel quel. */}
-      {mutualizeOpen && null !== selectedSlot && isPeriodPlan ? (
+      {/* Lot 2 — MUTUALISER depuis la fiche d'une séance (saison comme période / fermeture). La modale
+          pré-coche la source (verrouillée), fait choisir les équipes à rattacher + la séance remplacée,
+          annonce une activation à 0 séance (hors socle, où ces équipes ne sont pas proposées), et
+          affiche un refus 422 tel quel. */}
+      {mutualizeOpen && null !== selectedSlot && mutualizeAvailable ? (
         <MutualizeDialog
           anchor={selectedSlot}
           teams={teams}
           tiers={tiers}
           slots={slots}
+          isSocle={isSocle}
           teamName={teamNameOf}
           venueName={venueNameOf}
           busy={mutualizeMutation.isPending}

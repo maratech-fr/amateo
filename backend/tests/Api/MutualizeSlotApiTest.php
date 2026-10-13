@@ -202,17 +202,69 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
-    /** Socle : l'ancre est une séance d'un planning de SAISON → période seulement → 422. */
-    public function testSeasonBasePlanRefused(): void
+    /**
+     * Lot 2 (2026-10-13) — le socle est AUTORISÉ : l'ancre est une séance d'un planning de SAISON,
+     * deux équipes DÉJÀ placées. Le bloc (et ses membres) naît à PORTÉE NULL — comme les blocs de
+     * saison que `copySocleSharedBlocks` recopie ensuite vers les fermetures —, séances co-localisées
+     * HARD/MANUAL et liées au bloc, exactement comme sur un plan de période.
+     */
+    public function testMutualizesAtSeasonBasePlanWithNullScope(): void
     {
         $ctx = $this->seedSeason('h');
         $source = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
+        $joinerSlot = $this->placeSlot($ctx, $ctx['teams']['joiner'], ['venueId' => $ctx['venueId'], 'dayOfWeek' => 3, 'startTime' => '18:00']);
+
+        $this->client->request('POST', '/api/schedule-slots/' . $source->getId() . '/mutualize', [], [], $this->managerHeaders($ctx), json_encode([
+            'teamIds' => [$ctx['teams']['source'], $ctx['teams']['joiner']],
+            'label' => 'Socle U11',
+            'replacedSlotIds' => [$joinerSlot->getId()],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        // PORTÉE NULL : le bloc du socle n'est rattaché à aucun plan de période.
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId'], 'schedulePlanId' => null]);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+        self::assertNull($block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
+        self::assertSame(1, $block->getCommonSessions());
+        self::assertSame('Socle U11', $block->getLabel());
+        $members = $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()]);
+        self::assertCount(2, $members);
+        foreach ($members as $member) {
+            self::assertNull($member->getSchedulePlanId(), 'les membres du bloc de socle vivent aussi à portée NULL');
+        }
+
+        foreach ([$source->getId(), $joinerSlot->getId()] as $slotId) {
+            $slot = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slotId);
+            self::assertInstanceOf(ScheduleSlotTemplate::class, $slot);
+            self::assertSame($ctx['venueId'], $slot->getVenueId());
+            self::assertSame(2, $slot->getDayOfWeek());
+            self::assertSame('18:00', $slot->getStartTime()->format('H:i'));
+            self::assertSame(LockLevel::HARD, $slot->getLockLevel());
+            self::assertSame(LockOrigin::MANUAL, $slot->getLockOrigin());
+            self::assertSame($block->getId(), $slot->getSharedTrainingBlockId());
+        }
+    }
+
+    /**
+     * Lot 2 — l'unique restriction du socle : activer une équipe à 0 séance est propre aux plans de
+     * période. Au socle, une équipe rejoignante sans aucune séance est un REFUS 422 NOMMÉ (rien
+     * n'est écrit). L'UI ne propose déjà pas ces équipes au socle ; ce 422 est le filet serveur.
+     */
+    public function testSeasonBasePlanZeroSessionActivationRefused(): void
+    {
+        $ctx = $this->seedSeason('h0');
+        $source = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
+        // Le joiner n'a AUCUNE séance dans ce planning de saison → activation interdite au socle.
 
         $this->client->request('POST', '/api/schedule-slots/' . $source->getId() . '/mutualize', [], [], $this->managerHeaders($ctx), json_encode([
             'teamIds' => [$ctx['teams']['source'], $ctx['teams']['joiner']], 'replacedSlotIds' => [],
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
-        self::assertCount(0, $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $ctx['clubId']]));
+        self::assertStringContainsString('Au planning de saison, on ne peut pas mutualiser une équipe qui n\'a aucune séance', (string) ($this->responseData()['error'] ?? ''));
+        self::assertCount(0, $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $ctx['clubId']]), 'rien n\'est écrit : aucun bloc, aucun override');
+        self::assertCount(0, $this->em->getRepository(TeamPeriodOverride::class)->findBy(['clubId' => $ctx['clubId']]));
     }
 
     /** Ancre d'un AUTRE club : le filtre tenant la rend invisible → 404. */

@@ -39,7 +39,7 @@ const slots: Slot[] = [
 const venueName = (id: string): string => ({ v1: "Gymnase A", v2: "Gymnase B" })[id] ?? "Gymnase";
 const teamName = (id: string): string => teams.find((t) => t.id === id)?.name ?? "?";
 
-function renderDialog(over: { error?: string | null; busy?: boolean; onConfirm?: (b: unknown) => void; onClose?: () => void } = {}) {
+function renderDialog(over: { error?: string | null; busy?: boolean; isSocle?: boolean; onConfirm?: (b: unknown) => void; onClose?: () => void } = {}) {
   const onConfirm = over.onConfirm ?? vi.fn();
   renderWithProviders(
     <MutualizeDialog
@@ -47,6 +47,7 @@ function renderDialog(over: { error?: string | null; busy?: boolean; onConfirm?:
       teams={teams}
       tiers={tiers}
       slots={slots}
+      isSocle={over.isSocle ?? false}
       teamName={teamName}
       venueName={venueName}
       busy={over.busy ?? false}
@@ -84,6 +85,14 @@ describe("MutualizeDialog — lot 9 F3", () => {
     await addTeam("U11F2");
     expect(screen.getByText(/n'a aucune séance : elle sera activée/)).toBeInTheDocument();
     expect(screen.getByText("via mutualisation")).toBeInTheDocument();
+  });
+
+  it("AU SOCLE, ne propose PAS une équipe à 0 séance (aucune activation hors période)", async () => {
+    renderDialog({ isSocle: true });
+    await userEvent.click(screen.getByRole("button", { name: /Ajouter une équipe à mutualiser/ }));
+    // U11F2 (0 séance) est exclue du sélecteur ; U11M1 (1 séance) reste proposée.
+    expect(screen.queryByRole("option", { name: "U11F2" })).toBeNull();
+    expect(screen.getByRole("option", { name: "U11M1" })).toBeInTheDocument();
   });
 
   it("annonce la séance remplacée d'une équipe à séance unique (prise par défaut)", async () => {

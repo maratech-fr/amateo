@@ -90,6 +90,24 @@ final class TrainingBlockContext extends BaseContext
 
     private string $periodBlockId = '';
 
+    // Scénario « mutualiser au planning de saison » (lot 2) : décor JETABLE placé DANS le socle
+    // (deux séances d'équipes jetables, chacune sur sa case d'un gymnase jetable) — la grille RÉELLE
+    // du socle seedé n'est jamais touchée. On neutralise le pointeur du socle le temps du scénario
+    // (une version CHOISIE serait en lecture seule, cf. ManualEditController::scheduleIsLocked) et on
+    // le repose à sa valeur d'origine en fin de run.
+    private bool $socleScenario = false;
+
+    private string $socleScheduleId = '';
+
+    private string $socleSeasonId = '';
+
+    private string $socleOldPointer = '';
+
+    private bool $soclePointerCleared = false;
+
+    /** @var list<string> */
+    private array $socleInsertedSlotIds = [];
+
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
     {
@@ -263,6 +281,93 @@ final class TrainingBlockContext extends BaseContext
             \sprintf('SELECT season_id AS behatval FROM schedule WHERE id=\'%s\'', $this->periodVersionId),
             admin: true,
         );
+    }
+
+    #[Given('le club de démonstration et son planning de saison')]
+    public function leClubEtSonPlanningDeSaison(): void
+    {
+        $this->socleScenario = true;
+        $this->token = $this->mintToken(self::USER_EMAIL);
+
+        $me = $this->apiGet('me', $this->token);
+        $club = $me['json']['club'] ?? null;
+        $clubId = \is_array($club) ? ($club['id'] ?? null) : null;
+        if (!\is_string($clubId) || '' === $clubId) {
+            throw new RuntimeException('aucun club pour le gestionnaire de démonstration — la base est-elle seedée ?');
+        }
+        $this->clubId = $clubId;
+
+        // La version EN VIGUEUR du plan SEASON = le socle. On opère sur elle, mais JAMAIS sur ses
+        // séances réelles : on neutralise son pointeur (une version choisie serait en lecture seule)
+        // et on y place un décor JETABLE. Pointeur et drapeau d'édition reposés en fin de run.
+        $this->socleScheduleId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM schedule WHERE club_id=\'%s\' AND status=\'COMPLETED\' AND schedule_plan_id=(SELECT id FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\') ORDER BY created_at DESC LIMIT 1', $this->clubId, $this->clubId),
+            admin: true,
+        );
+        if ('' === $this->socleScheduleId) {
+            throw new RuntimeException('aucun planning de saison COMPLETED — la base est-elle seedée ?');
+        }
+
+        $this->socleOldPointer = $this->dbalScalar(
+            \sprintf('SELECT COALESCE(chosen_schedule_id::text, \'\') AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->clubId),
+            admin: true,
+        );
+        if ('' !== $this->socleOldPointer) {
+            $this->dbalExec(
+                \sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->clubId),
+                admin: true,
+            );
+            $this->soclePointerCleared = true;
+        }
+
+        // Le décor s'aligne sur la version du socle (son club + saison), comme le feront les séances
+        // placées : les étapes mutualisation réutilisent les mêmes champs que le rail de période.
+        $this->socleSeasonId = $this->dbalScalar(
+            \sprintf('SELECT season_id AS behatval FROM schedule WHERE id=\'%s\'', $this->socleScheduleId),
+            admin: true,
+        );
+        $this->periodVersionId = $this->socleScheduleId;
+        $this->periodSeasonId = $this->socleSeasonId;
+    }
+
+    #[Given('deux séances JETABLES placées au socle, d\'équipes distinctes, chacune sur sa propre case')]
+    public function deuxSeancesJetablesAuSocle(): void
+    {
+        $categories = $this->apiGet('sport_categories', $this->token);
+        $category = $this->members($categories['json'])[0]['id'] ?? null;
+        if (!\is_string($category) || '' === $category) {
+            throw new RuntimeException('aucune catégorie sportive pour bâtir une équipe jetable');
+        }
+
+        // Équipes + gymnase JETABLES (réutilisent les champs nettoyés en fin de run) ; 1 séance/semaine
+        // chacune ⇒ le budget Σ (1 séance commune) passe. Le gymnase jetable n'a aucune fenêtre →
+        // capacité par défaut 1 : le bloc (UNE occupation) tient la case d'ancrage.
+        $this->teamA = $this->createdId($this->apiPost('teams', ['name' => 'Socle Jetable A', 'sportCategoryId' => $category, 'priorityTierId' => 1, 'sessionsPerWeek' => 1], $this->token), 'équipe A');
+        $this->teamB = $this->createdId($this->apiPost('teams', ['name' => 'Socle Jetable B', 'sportCategoryId' => $category, 'priorityTierId' => 1, 'sessionsPerWeek' => 1], $this->token), 'équipe B');
+        $this->venueId = $this->createdId($this->apiPost('venues', ['name' => 'Gym Jetable Socle', 'source' => 'manual'], $this->token), 'gymnase');
+
+        // Deux séances placées DANS le socle, chacune sur sa propre case du gymnase jetable (la source
+        // mardi 18:00, la joiner mercredi 18:00) — insert admin (hors RLS), supprimées en fin de run.
+        $this->sourceTeamId = $this->teamA;
+        $this->sourceVenueId = $this->venueId;
+        $this->sourceDay = self::DAY;
+        $this->sourceStart = self::START_TIME . ':00';
+        $this->sourceSlotId = $this->insertSocleSlot($this->teamA, self::DAY, self::START_TIME);
+
+        $this->joinerTeamId = $this->teamB;
+        $this->joinerSlotId = $this->insertSocleSlot($this->teamB, self::DAY + 1, self::START_TIME);
+    }
+
+    #[Then('le bloc de mutualisation est à portée saison')]
+    public function leBlocEstAPorteeSaison(): void
+    {
+        $atSeasonScope = (int) $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM shared_training_block WHERE id=\'%s\' AND schedule_plan_id IS NULL', $this->periodBlockId),
+            admin: true,
+        );
+        if (1 !== $atSeasonScope) {
+            throw new RuntimeException('au planning de saison, le bloc de mutualisation doit naître à portée saison (schedulePlanId NULL)');
+        }
     }
 
     #[Given('deux séances placées d\'équipes distinctes, chacune sur sa propre case')]
@@ -466,6 +571,31 @@ final class TrainingBlockContext extends BaseContext
                 admin: true,
             );
         }
+
+        // Décor du scénario « mutualiser au planning de saison » : supprimer le bloc (portée saison)
+        // emporte ses séances de groupe liées (FK cascade) ; on balaie par sécurité les séances
+        // jetables encore là (geste non abouti), puis on repose le drapeau d'édition et le pointeur du
+        // socle exactement comme avant — la grille réelle du socle reste intacte.
+        if ($this->socleScenario) {
+            if ('' !== $this->periodBlockId) {
+                $this->apiDelete(\sprintf('shared_training_blocks/%s', $this->periodBlockId), $this->token);
+            }
+            foreach ($this->socleInsertedSlotIds as $slotId) {
+                $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE id=\'%s\'', $slotId), admin: true);
+            }
+            if ('' !== $this->socleScheduleId) {
+                $this->dbalExec(
+                    \sprintf('UPDATE schedule SET manually_edited_since_generation=false WHERE id=\'%s\'', $this->socleScheduleId),
+                    admin: true,
+                );
+            }
+            if ($this->soclePointerCleared && '' !== $this->clubId) {
+                $this->dbalExec(
+                    \sprintf('UPDATE schedule_plan SET chosen_schedule_id=\'%s\' WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->socleOldPointer, $this->clubId),
+                    admin: true,
+                );
+            }
+        }
     }
 
     /**
@@ -490,6 +620,42 @@ final class TrainingBlockContext extends BaseContext
     {
         $ids = $json['ids'] ?? [];
         $this->groupReservationIds = array_values(array_filter(\is_array($ids) ? $ids : [], 'is_string'));
+    }
+
+    /**
+     * Insère une séance JETABLE dans la version du socle (connexion admin, hors RLS) — un décor
+     * déterministe pour le scénario « mutualiser au planning de saison », retiré en fin de run.
+     */
+    private function insertSocleSlot(string $teamId, int $day, string $start): string
+    {
+        $id = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO schedule_slot_template (id, version, created_at, updated_at, club_id, season_id, schedule_id, team_id, venue_id, day_of_week, start_time, duration_minutes, lock_level)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', %d, \'%s\', 90, \'NONE\')',
+                $id,
+                $this->clubId,
+                $this->socleSeasonId,
+                $this->socleScheduleId,
+                $teamId,
+                $this->venueId,
+                $day,
+                $start . ':00',
+            ),
+            admin: true,
+        );
+        $this->socleInsertedSlotIds[] = $id;
+
+        return $id;
+    }
+
+    private function uuid(): string
+    {
+        $bytes = random_bytes(16);
+        $bytes[6] = \chr((\ord($bytes[6]) & 0x0F) | 0x40);
+        $bytes[8] = \chr((\ord($bytes[8]) & 0x3F) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     private function reservationCountOnCase(): int

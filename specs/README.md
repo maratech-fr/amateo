@@ -1,15 +1,13 @@
 # Living Specs System
 
-Last verified @ 2026-10-11 (`documentation-update`, découpe par thème de
-`accueil-cockpit-temporel.md` — plafond de 800 lignes, `DocSizeCeilingTest`). Re-confronté : les
-six gardes `{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
+Last verified @ 2026-10-13 (ajout de `mutualisation.md`, doc canonique de la mutualisation créée
+par `documentation-update`) : `ls specs/courantes/*.md` rend désormais **15 fichiers** (+1 depuis
+la passe précédente), et la liste du § « Files Overview » ci-dessous les nomme bien tous. Les six
+gardes `{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
 BlockingTestsListMatchesCiTest, SpecsCarryNoHistoryTest, WorkflowPermissionsDeclaredTest}.php`
 existent toujours (`ls backend/tests/Unit/Documentation/`) ; `docs/testing/blocking-tests.md`
-existe ; `ls specs/courantes/*.md` rend désormais **14 fichiers** (+1 :
-`calendar-entry-modele-donnees.md`, extrait de `accueil-cockpit-temporel.md` §9ter), et la liste
-du § « Files Overview » ci-dessous les nomme bien tous. Rien de faux trouvé cette passe.
-`ls specs/evolution/` et `ls specs/audit/` non re-sondés cette passe (zone non touchée par ce
-fichier).
+existe. Rien d'autre re-sondé cette passe (zone non touchée par ce fichier) : `ls specs/evolution/`
+et `ls specs/audit/` non re-vérifiés.
 
 ## 3-Tier Structure
 
@@ -68,7 +66,7 @@ Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié
 ## Files Overview
 
 - `specs/initiales/` — `ClubScheduler_v3.md` (spec produit consolidée, figée) · `ClubScheduler_Specification_des_contraintes_v2.md` (modèle de contraintes d'origine) · prompt orchestrateur v3.
-- `specs/courantes/` — `etat-des-lieux.md` (**point d'entrée** : ce que l'app sait faire, décisions fermées, traces datées) · `modules-produit.md` (la carte ci-dessus **en langage club** : une promesse, ce qui est livré, où c'est dans l'app — nourrit la page de vente/FAQ/démo) · specs de features livrées graduées depuis evolution (`planning-lifecycle-validated`, `types-de-planning` — les 3 types (socle / overlay / vacances) et l'axe collecte coach · `superadmin-auth` — console SA0-SA4 + monitoring · `identite-visuelle-club`, `identite-visuelle-produit` (base produit + accent club, en-tête, fond d'écran commun), `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel` — calendrier d'exceptions/overlays livré #122 (son modèle de données `CalendarEntry` vit à part dans `calendar-entry-modele-donnees.md`, découpé par thème) · `module-matchs` — import FBI + placement + radar conflits) · `canal-signalement` (signalement/support/reproduction, `X-Request-Id` bout en bout) · `generation-pipeline` (conduite normalisée bout en bout front→backend→engine→import→affichage + invariants silencieux) · `openapi-snapshot.json` + son meta (régénéré à chaque changement d'API).
+- `specs/courantes/` — `etat-des-lieux.md` (**point d'entrée** : ce que l'app sait faire, décisions fermées, traces datées) · `modules-produit.md` (la carte ci-dessus **en langage club** : une promesse, ce qui est livré, où c'est dans l'app — nourrit la page de vente/FAQ/démo) · specs de features livrées graduées depuis evolution (`planning-lifecycle-validated`, `types-de-planning` — les 3 types (socle / overlay / vacances) et l'axe collecte coach · `superadmin-auth` — console SA0-SA4 + monitoring · `identite-visuelle-club`, `identite-visuelle-produit` (base produit + accent club, en-tête, fond d'écran commun), `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel` — calendrier d'exceptions/overlays livré #122 (son modèle de données `CalendarEntry` vit à part dans `calendar-entry-modele-donnees.md`, découpé par thème) · `module-matchs` — import FBI + placement + radar conflits) · `mutualisation` — le modèle `SharedTrainingBlock` (« groupe »), les gestes (wizard + planning, socle ET période) et les décisions fondateur, pointe la sémantique moteur sans la dupliquer · `canal-signalement` (signalement/support/reproduction, `X-Request-Id` bout en bout) · `generation-pipeline` (conduite normalisée bout en bout front→backend→engine→import→affichage + invariants silencieux) · `openapi-snapshot.json` + son meta (régénéré à chaque changement d'API).
 - `specs/evolution/` — `roadmap.md` (**index unique de l'OUVERT** : toute évolution/gap/idée non livrée y laisse une ligne) · fichiers de détail référencés depuis la roadmap quand une ligne ne suffit pas (liste des fichiers actifs tenue dans le header de la roadmap). Règle : un fichier de détail devenu sans objet (sujet livré/tranché) est supprimé après absorption dans la roadmap (`features-futures.md`, `backend-gaps.md`, `contraintes-modele-cible.md` absorbés le 2026-07-05 — leurs IDs `FF#n`/`G#n` restent cités comme réf historiques).
 - `specs/audit/` — éditions d'audit horodatées (`AUDIT-<date>-<model>.md`, skill `/audit`) ; registre de findings à ID stables, comparaison inter-éditions.
 

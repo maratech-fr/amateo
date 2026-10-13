@@ -8,8 +8,9 @@ import { forceTheme, loginSeededClub, settleVeil, watchFailedApiCalls } from "./
  * overlay VALIDÉ (lecture seule, `/planning` via `viewOverlay`, gardé sur `chosenScheduleId`), le
  * bouton serait TOUJOURS désactivé → F3 inutilisable. Le vrai chemin d'un plan NON validé passe par
  * le wizard : cockpit → « Ajuster » (plan sans `chosenScheduleId`) → mode période → étape
- * « Génération » → grille EMBARQUÉE (`PlanningPage embedded scopePlanId=…`), où `isPeriodPlan` est
- * vrai ET `readOnly` faux. Ce trajet le prouve de bout en bout.
+ * « Génération » → grille EMBARQUÉE (`PlanningPage embedded scopePlanId=…`), où « Mutualiser… » est
+ * OFFERT (`onMutualize` fourni) ET `readOnly` faux. Ce trajet le prouve de bout en bout. (Lot 2 : le
+ * geste est désormais aussi offert au planning de SAISON ; ce spec garde la preuve du chemin période.)
  *
  * Décor DÉTERMINISTE (patron `TrainingBlockContext::unPlanDePeriodeGenere`) : une fermeture jetable
  * + son plan, transcrits DEPUIS LE SOCLE (copie de la grille de saison, séances PLACÉES, sans
@@ -165,8 +166,8 @@ test("lot 9 F3 — « Mutualiser… » est atteignable et actif sur un plan de p
     await railGenerate.click();
     await settleVeil(page);
 
-    // La grille embarquée rend la séance source comme carte cliquable (data-slot-id). isPeriodPlan
-    // y est vrai (version de période affichée) ET readOnly faux (brouillon) → geste disponible.
+    // La grille embarquée rend la séance source comme carte cliquable (data-slot-id). Le geste
+    // « Mutualiser… » y est offert (`onMutualize` fourni) ET readOnly faux (brouillon) → disponible.
     const sourceCard = page.locator(`[data-slot-id="${source.id}"]`);
     await expect(sourceCard, "la séance source doit être rendue dans la grille de période").toBeVisible({ timeout: 30_000 });
     await sourceCard.scrollIntoViewIfNeeded();

@@ -25,6 +25,10 @@ interface MutualizeDialogProps {
   /** Les créneaux de la version affichée : servent à lister les séances de chaque équipe rejoignante
    *  (choix de la séance remplacée) et à repérer une équipe à 0 séance (activation annoncée). */
   slots: Slot[];
+  /** Lot 2 — au planning de SAISON (socle), activer une équipe à 0 séance est interdit (le serveur
+   *  refuse) : on ne propose donc PAS ces équipes à l'ajout. Hors socle (période / fermeture) elles
+   *  restent proposées, avec l'activation annoncée. */
+  isSocle?: boolean;
   teamName: (teamId: string) => string;
   venueName: (venueId: string) => string;
   busy: boolean;
@@ -44,7 +48,7 @@ function slotWhen(slot: Slot, venueName: (venueId: string) => string): string {
 /**
  * Lot 9 — MUTUALISER DEPUIS LA GÉNÉRATION EN GARDANT LE CRÉNEAU (F3).
  *
- * Depuis la fiche d'une séance (plan de période), déclarer un bloc de mutualisation ancré à SA case :
+ * Depuis la fiche d'une séance (saison comme période / fermeture), déclarer un bloc de mutualisation ancré à SA case :
  * la source reste sur place (sa séance devient la séance commune), et chaque équipe rattachée rejoint
  * la case. Trois cas par équipe rattachée, tous ANNONCÉS avant le geste (décisions fondateur) :
  *  - plusieurs séances → le gestionnaire CHOISIT celle que la séance commune remplace ;
@@ -54,7 +58,7 @@ function slotWhen(slot: Slot, venueName: (venueId: string) => string): string {
  * Le serveur reste seul juge : la modale AFFICHE un refus 422 tel quel (capacité, Σ, inactive,
  * ensemble déjà déclaré…) sans rien re-dériver. Réutilise `Modal`/`Button`/`TeamSelect`/`StatusPill`.
  */
-export function MutualizeDialog({ anchor, teams, tiers, slots, teamName, venueName, busy, error, onClose, onConfirm }: MutualizeDialogProps) {
+export function MutualizeDialog({ anchor, teams, tiers, slots, isSocle = false, teamName, venueName, busy, error, onClose, onConfirm }: MutualizeDialogProps) {
   // Les équipes rattachées, dans l'ordre d'ajout (la source n'y figure jamais — elle est verrouillée).
   const [attached, setAttached] = useState<string[]>([]);
   // Par équipe rattachée AYANT plusieurs séances : l'id de la séance remplacée (défaut = la première).
@@ -73,8 +77,10 @@ export function MutualizeDialog({ anchor, teams, tiers, slots, teamName, venueNa
   }, [slots]);
 
   const attachedSet = new Set(attached);
-  // Options du sélecteur d'ajout : toutes les équipes sauf la source et celles déjà rattachées.
-  const addableTeams = teams.filter((t) => t.id !== sourceTeamId && !attachedSet.has(t.id));
+  // Options du sélecteur d'ajout : toutes les équipes sauf la source et celles déjà rattachées. Au
+  // socle (Lot 2), on exclut EN PLUS les équipes à 0 séance dans cette version — les activer est
+  // interdit au planning de saison (le serveur refuse) ; on ne les propose donc pas.
+  const addableTeams = teams.filter((t) => t.id !== sourceTeamId && !attachedSet.has(t.id) && (!isSocle || (slotsByTeam.get(t.id)?.length ?? 0) >= 1));
 
   const addTeam = (teamId: string) => {
     if ("" === teamId || teamId === sourceTeamId || attachedSet.has(teamId)) {
