@@ -860,7 +860,11 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * Les jours où un entraîneur PRINCIPAL de l'équipe est indisponible TOUTE la journée (union).
+     * Les jours où TOUS les entraîneurs PRINCIPAUX de l'équipe sont indisponibles toute la
+     * journée — INTERSECTION, pas union. « Un coach suffit » (P4-319, même règle que le moteur
+     * `closures.py` / `availability.py`) : une équipe peut avoir plusieurs principaux, et un
+     * jour n'est FERMÉ que si AUCUN d'eux n'est disponible. Un principal qui couvre le jour le
+     * garde ouvert. Aucun principal ⇒ aucun jour fermé par ce biais.
      *
      * @param list<array<string, mixed>> $constraints
      *
@@ -868,7 +872,7 @@ final readonly class PreSolvePreventionWarnings
      */
     private function mainCoachFullDayUnavailableDays(string $teamId, array $constraints): array
     {
-        $days = [];
+        $coachIds = [];
         foreach ($constraints as $constraint) {
             if ('TEAM_COACH' !== ($constraint['type'] ?? null) || $this->stringOf($constraint, 'teamId') !== $teamId) {
                 continue;
@@ -878,15 +882,25 @@ final readonly class PreSolvePreventionWarnings
                 continue;
             }
             $coachId = $this->stringOf($metadata, 'coachId');
-            if ('' === $coachId) {
-                continue;
+            if ('' !== $coachId) {
+                $coachIds[$coachId] = true;
             }
-            foreach ($this->unavailableDaysOf($coachId, $constraints) as $day) {
-                $days[$day] = true;
+        }
+        if ([] === $coachIds) {
+            return [];
+        }
+
+        $intersection = null;
+        foreach (array_keys($coachIds) as $coachId) {
+            $coachDays = array_fill_keys($this->unavailableDaysOf($coachId, $constraints), true);
+            $intersection = null === $intersection ? $coachDays : array_intersect_key($intersection, $coachDays);
+            if ([] === $intersection) {
+                return []; // un principal disponible tous les jours ⇒ aucun jour fermé pour l'équipe
             }
         }
 
-        return $days;
+        // `$coachIds` non vide ⇒ la boucle a tourné au moins une fois ⇒ `$intersection` affectée.
+        return $intersection;
     }
 
     /**

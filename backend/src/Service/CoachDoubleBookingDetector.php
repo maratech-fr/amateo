@@ -99,7 +99,10 @@ final class CoachDoubleBookingDetector
             return []; // il faut deux verrous pour se dédoubler
         }
 
-        $mainCoachByTeam = $this->mainCoachByTeam($clubId, $seasonId);
+        // Le BLOQUEUR de dédoublement reste mono-coach : prendre un 2ᵉ coach principal en
+        // compte ici est un item de roadmap distinct (P4-333). On aplatit donc la liste au
+        // PREMIER coach principal par équipe — comportement strictement inchangé.
+        $mainCoachByTeam = array_map(static fn (array $coachIds): string => $coachIds[0], $this->mainCoachesByTeam($clubId, $seasonId));
         // Une équipe sans coach MAIN ne peut pas dédoubler qui que ce soit : on la sort
         // AVANT le balayage plutôt que de la tester à chaque paire.
         $relevant = array_values(array_filter(
@@ -155,9 +158,16 @@ final class CoachDoubleBookingDetector
     /**
      * PR A (2026-08-06) — « le coach est indisponible et on a un créneau en DUR » :
      * remonté APRÈS génération en INFO (`diagnose_locked_slot_violations`) alors qu'on
-     * peut s'en prémunir AVANT (décision fondateur). Même doctrine que `detect()` :
-     * coach MAIN seul, le verrou est souverain donc c'est un AVERTISSEMENT (la
-     * génération passera, la réservation écrasera l'indisponibilité), pas un bloqueur.
+     * peut s'en prémunir AVANT (décision fondateur). Coachs MAIN seuls, le verrou est
+     * souverain donc c'est un AVERTISSEMENT (la génération passera, la réservation
+     * écrasera l'indisponibilité), pas un bloqueur.
+     *
+     * ⚠ « UN COACH SUFFIT » (P4-319, même règle que le moteur — `availability.py` /
+     * `structural/closures.py`) : une équipe peut avoir PLUSIEURS coachs principaux, et une
+     * séance COMMUNE (plusieurs équipes co-localisées sur la même case gymnase/jour/début)
+     * réunit l'UNION de leurs coachs. On n'avertit donc que si TOUS les coachs requis de la
+     * case sont bloqués sur l'intervalle — un seul disponible rend la séance servable. Une
+     * équipe SEULE sur sa case ⇒ ses propres coachs principaux.
      *
      * Les intervalles bloqués sont le MIROIR du parse moteur (`constraints.py`,
      * branche COACH_AVAILABILITY) : `unavailableDays` ajoute (jour, from, until) ;
@@ -183,38 +193,64 @@ final class CoachDoubleBookingDetector
             return [];
         }
 
-        $mainCoachByTeam = $this->mainCoachByTeam($clubId, $seasonId);
+        $mainCoaches = $this->mainCoachesByTeam($clubId, $seasonId);
+        // Une équipe sans coach MAIN ne peut « manquer de coach » : on l'écarte AVANT.
         $relevant = array_values(array_filter(
             $reservations,
-            static fn (Reservation $r): bool => isset($blocked[$mainCoachByTeam[$r->getTeamId()] ?? '']),
+            static fn (Reservation $r): bool => [] !== ($mainCoaches[$r->getTeamId() ?? ''] ?? []),
         ));
         if ([] === $relevant) {
             return [];
         }
 
-        $names = $this->displayNames($relevant, $mainCoachByTeam);
+        // Les équipes posées sur chaque case (gymnase, jour, début) : une séance COMMUNE en
+        // réunit plusieurs, et « un coach suffit » se décide sur l'UNION de leurs coachs.
+        $teamsByCase = [];
+        foreach ($relevant as $reservation) {
+            $teamsByCase[$this->caseKey($reservation)][$reservation->getTeamId() ?? ''] = true;
+        }
+
+        // Nommer / afficher reste mono-coach (le coach principal de l'équipe placée) : la liste
+        // ne sert qu'au verdict « tous bloqués ». Le premier coach par équipe suffit à l'habillage.
+        $firstCoachByTeam = array_map(static fn (array $coachIds): string => $coachIds[0], $mainCoaches);
+        $names = $this->displayNames($relevant, $firstCoachByTeam);
+
         $clashes = [];
         foreach ($relevant as $reservation) {
-            $coachId = $mainCoachByTeam[$reservation->getTeamId()];
-            $start = (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i');
-            $end = $start + $reservation->getDurationMinutes();
-            foreach ($blocked[$coachId] as [$day, $fromMinutes, $untilMinutes]) {
-                // Intervalles demi-ouverts, comme `collide()` : un créneau qui COMMENCE
-                // à la fin de l'indisponibilité ne la chevauche pas.
-                if ($day !== $reservation->getDayOfWeek() || $start >= $untilMinutes || $fromMinutes >= $end) {
-                    continue;
+            // Coachs REQUIS sur la case = union des coachs principaux des équipes co-localisées
+            // (séance commune) ; une équipe seule ⇒ ses seuls coachs.
+            $requiredCoachIds = [];
+            foreach (array_keys($teamsByCase[$this->caseKey($reservation)]) as $teamId) {
+                foreach ($mainCoaches[$teamId] ?? [] as $coachId) {
+                    $requiredCoachIds[$coachId] = true;
                 }
-                $described = $this->describe($reservation, $names);
-                $clashes[] = [
-                    'coachId' => $coachId,
-                    'coachName' => $names['coach'][$coachId] ?? 'Ce coach',
-                    'dayOfWeek' => $reservation->getDayOfWeek(),
-                    'teamName' => $described['teamName'],
-                    'venueName' => $described['venueName'],
-                    'startTime' => $described['startTime'],
-                ];
-                break; // une réservation = un avertissement, même si plusieurs règles la couvrent
             }
+
+            // « Un coach suffit » : conflit SEULEMENT si TOUS les coachs requis sont bloqués sur
+            // l'intervalle. Un seul disponible rend la séance servable — aucun avertissement.
+            $allBlocked = true;
+            foreach (array_keys($requiredCoachIds) as $coachId) {
+                if (!$this->coachBlockedDuring($coachId, $reservation, $blocked)) {
+                    $allBlocked = false;
+                    break;
+                }
+            }
+            if (!$allBlocked) {
+                continue;
+            }
+
+            // Le coach principal de l'équipe placée est FORCÉMENT bloqué (il fait partie des
+            // coachs requis, tous bloqués) — cohérent avec « une réservation place CETTE équipe ».
+            $coachId = $firstCoachByTeam[$reservation->getTeamId() ?? ''] ?? '';
+            $described = $this->describe($reservation, $names);
+            $clashes[] = [
+                'coachId' => $coachId,
+                'coachName' => $names['coach'][$coachId] ?? 'Ce coach',
+                'dayOfWeek' => $reservation->getDayOfWeek(),
+                'teamName' => $described['teamName'],
+                'venueName' => $described['venueName'],
+                'startTime' => $described['startTime'],
+            ];
         }
 
         return $clashes;
@@ -233,6 +269,36 @@ final class CoachDoubleBookingDetector
             $clash['teamName'],
             $clash['venueName'],
         );
+    }
+
+    /** La case (gymnase, jour, minute de début) d'une réservation — clé de co-localisation. */
+    private function caseKey(Reservation $reservation): string
+    {
+        $start = (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i');
+
+        return $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $start;
+    }
+
+    /**
+     * Le coach est-il indisponible pendant l'intervalle réel de la réservation ? Intervalles
+     * demi-ouverts, comme `collide()` : un créneau qui COMMENCE à la fin de l'indisponibilité
+     * ne la chevauche pas. Coach absent de la carte des blocages ⇒ disponible.
+     *
+     * @param array<string, list<array{0: int, 1: int, 2: int}>> $blocked
+     */
+    private function coachBlockedDuring(string $coachId, Reservation $reservation, array $blocked): bool
+    {
+        $start = (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i');
+        $end = $start + $reservation->getDurationMinutes();
+        foreach ($blocked[$coachId] ?? [] as [$day, $fromMinutes, $untilMinutes]) {
+            if ($day !== $reservation->getDayOfWeek() || $start >= $untilMinutes || $fromMinutes >= $end) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -319,8 +385,8 @@ final class CoachDoubleBookingDetector
     private function bookingOf(Reservation $reservation, array $mainCoachByTeam): array
     {
         // Lot 4bis — un créneau LIBRE (teamId null) n'a pas de coach : il est déjà écarté en amont
-        // (le filtre `isset($mainCoachByTeam[teamId])` de `detect`/`detectUnavailabilityClashes`),
-        // jamais une réservation passée ici. Le `?? ''` ne fait que satisfaire le typage.
+        // (le filtre `isset($mainCoachByTeam[teamId])` de `detect`), jamais une réservation passée
+        // ici. Le `?? ''` ne fait que satisfaire le typage.
         return [
             'coachId' => $mainCoachByTeam[$reservation->getTeamId() ?? ''] ?? '',
             'teamId' => $reservation->getTeamId() ?? '',
@@ -374,14 +440,17 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * @return array<string, string> teamId => coachId du coach MAIN
+     * teamId => coachIds des coachs PRINCIPAUX (MAIN), ordre d'insertion. Une équipe peut en
+     * avoir plusieurs (P4-319) ; la règle « un coach suffit » en a besoin de la LISTE entière.
+     *
+     * @return array<string, list<string>>
      */
-    private function mainCoachByTeam(string $clubId, string $seasonId): array
+    private function mainCoachesByTeam(string $clubId, string $seasonId): array
     {
         $map = [];
         foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $link) {
-            if (TeamCoachRole::MAIN === $link->getRole()) {
-                $map[$link->getTeamId()] = $link->getCoachId();
+            if (TeamCoachRole::MAIN === $link->getRole() && !\in_array($link->getCoachId(), $map[$link->getTeamId()] ?? [], true)) {
+                $map[$link->getTeamId()][] = $link->getCoachId();
             }
         }
 

@@ -454,6 +454,63 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'une autre règle')));
     }
 
+    /**
+     * NR (P4-319, axe constraint semantics) — « UN COACH SUFFIT » appliqué au jour imposé
+     * fermé : une équipe à DEUX entraîneurs principaux dont l'UN est disponible le jour imposé
+     * ne doit PAS voir ce jour fermé. {@see PreSolvePreventionWarnings::mainCoachFullDayUnavailableDays}
+     * prend l'INTERSECTION des indisponibilités plein-jour, pas l'union (même règle que le moteur
+     * `closures.py` / `availability.py`).
+     *
+     * PREUVE DE CHUTE : remettre l'UNION (l'ancienne doctrine mono-coach) → ce cas rougit (un
+     * avertissement « aucun créneau » fantôme apparaît), tandis que le témoin ci-dessous reste vert.
+     */
+    public function testForcedDayStaysOpenWhenOneOfTwoMainCoachesCoversIt(): void
+    {
+        // t1 doit s'entraîner le mercredi (3), un créneau mercredi existe. c1 est indisponible le
+        // mercredi, c2 est disponible le mercredi (indispo lundi) : un principal couvre le jour.
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [3])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna'), $this->coach('c2', 'Bea')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [3]]),
+                $this->teamCoach('t1', 'c1', 'MAIN'),
+                $this->teamCoach('t1', 'c2', 'MAIN'),
+                $this->coachUnavailable('c1', [3]),
+                $this->coachUnavailable('c2', [1]),
+            ],
+        ));
+
+        self::assertSame(
+            [],
+            array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1') && str_contains($w, 'une autre règle'))),
+            'un second entraîneur principal disponible le mercredi garde le jour imposé ouvert',
+        );
+    }
+
+    /** Témoin : les DEUX principaux indisponibles le mercredi → le jour imposé est bien fermé. */
+    public function testForcedDayClosedWhenBothMainCoachesAreUnavailable(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [3])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna'), $this->coach('c2', 'Bea')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [3]]),
+                $this->teamCoach('t1', 'c1', 'MAIN'),
+                $this->teamCoach('t1', 'c2', 'MAIN'),
+                $this->coachUnavailable('c1', [3]),
+                $this->coachUnavailable('c2', [3]),
+            ],
+        ));
+
+        self::assertNotSame(
+            [],
+            array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1') && str_contains($w, 'aucun créneau'))),
+            'les deux principaux indisponibles le mercredi : aucun ne couvre le jour imposé',
+        );
+    }
+
     /** Un payload vide n'invente rien : zéro équipe, zéro gymnase, zéro bruit. */
     public function testAnEmptyPayloadSaysNothing(): void
     {
