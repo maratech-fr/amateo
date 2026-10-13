@@ -120,7 +120,9 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 Agents/skills = **manuels, déclenchés par le user** (exception : hook `code-review-graph`).
 ⚠ **Les subagents ne reçoivent PAS ce fichier** — leurs définitions leur ordonnent de le lire en
 première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
-branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready ».
+branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready » ;
+**une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas
+l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; les autres branches attendent.
 **Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
 déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
 (`docs/ops/deploy.md`).

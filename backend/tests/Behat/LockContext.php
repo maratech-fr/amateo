@@ -492,6 +492,21 @@ final class LockContext extends BaseContext
         // Une case ACTUELLEMENT occupée du socle, servie par un créneau NON divisible de capacité 1
         // (base, schedule_plan_id NULL) : un créneau libre y retire LA place, donc après régénération
         // la case est vide — preuve que le créneau libre a bien retiré la place (pas un trou préexistant).
+        //
+        // P4-324 — le choix de la case est DÉTERMINISTE (tri venue_id, day_of_week, start_time) et
+        // restreint aux cases ÉLIGIBLES à une réservation de créneau libre du socle, pour ne jamais
+        // tomber sur une case que `ReservationStateProcessor` refuse légitimement (422) : un ancien
+        // `ORDER BY sst.id LIMIT 1` sur des uuid aléatoires choisissait une case différente à chaque
+        // run et rougissait par intermittence. Les filtres MIROITENT les gardes du processor pour un
+        // créneau libre (teamId null) posé au socle (schedulePlanId null) :
+        //   - FIN AVANT MINUIT : début + durée (90 min, ci-dessous) ≤ 24:00 ({@see ReservationStateProcessor::assertEndsWithinDay}) ;
+        //   - GYMNASE OUVERT ce jour-là : garanti par la jointure `venue_training_slot` (une case du socle
+        //     EST servie par un créneau de base ce jour/heure ; `assertVenueOpenForPlan` est de toute
+        //     façon un no-op au socle, schedulePlanId null) ;
+        //   - PAS D'OCCUPATION DE GROUPE ni d'occupant : la case ne porte AUCUNE réservation du socle
+        //     (équipe, bloc mutualisé COMPLET ou créneau libre), sans quoi la règle de capacité (e)
+        //     — capacité 1 — refuserait le créneau libre ({@see ReservationGroupOccupancy::assertFreeSlotReservationAllowed}) ;
+        //     on écarte aussi toute case portant une séance de bloc mutualisé matérialisée (shared_training_block_id).
         $row = $this->dbalScalar(
             \sprintf(
                 'SELECT sst.venue_id || \'|\' || sst.day_of_week || \'|\' || to_char(sst.start_time, \'HH24:MI\') AS behatval'
@@ -499,8 +514,22 @@ final class LockContext extends BaseContext
                 . ' JOIN venue v ON v.id = sst.venue_id AND v.can_split = false'
                 . ' JOIN venue_training_slot vts ON vts.venue_id = sst.venue_id AND vts.day_of_week = sst.day_of_week'
                 . ' AND to_char(vts.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\')'
-                . ' AND vts.schedule_plan_id IS NULL AND vts.club_id = \'%s\' AND vts.capacity = 1'
-                . ' WHERE sst.schedule_id = \'%s\' ORDER BY sst.id LIMIT 1',
+                . ' AND vts.schedule_plan_id IS NULL AND vts.club_id = \'%1$s\' AND vts.capacity = 1'
+                . ' WHERE sst.schedule_id = \'%2$s\''
+                // FIN AVANT MINUIT : début (minutes) + 90 ≤ 1440.
+                . ' AND (extract(hour from sst.start_time)::int * 60 + extract(minute from sst.start_time)::int + 90) <= 1440'
+                // PAS D'OCCUPATION DE GROUPE : aucune séance de bloc mutualisé sur cette case.
+                . ' AND NOT EXISTS ('
+                . ' SELECT 1 FROM schedule_slot_template g WHERE g.schedule_id = sst.schedule_id'
+                . ' AND g.venue_id = sst.venue_id AND g.day_of_week = sst.day_of_week'
+                . ' AND to_char(g.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\')'
+                . ' AND g.shared_training_block_id IS NOT NULL)'
+                // PAS D'OCCUPANT RÉSERVÉ : aucune réservation du socle sur cette case (capacité 1).
+                . ' AND NOT EXISTS ('
+                . ' SELECT 1 FROM reservation res WHERE res.club_id = \'%1$s\' AND res.schedule_plan_id IS NULL'
+                . ' AND res.venue_id = sst.venue_id AND res.day_of_week = sst.day_of_week'
+                . ' AND to_char(res.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\'))'
+                . ' ORDER BY sst.venue_id, sst.day_of_week, sst.start_time LIMIT 1',
                 $this->clubId,
                 $this->socleVersionId,
             ),
@@ -508,7 +537,7 @@ final class LockContext extends BaseContext
         );
         $parts = '' === $row ? [] : explode('|', $row);
         if (3 !== \count($parts)) {
-            throw new RuntimeException('aucune case occupée servie par un créneau non divisible de capacité 1 — la base est-elle seedée ?');
+            throw new RuntimeException('aucune case occupée éligible à un créneau libre (capacité 1, finissant avant minuit, sans occupation de groupe) — la base est-elle seedée ?');
         }
         [$this->freeSlotVenueId, $day, $this->freeSlotStart] = $parts;
         $this->freeSlotDay = (int) $day;
@@ -522,7 +551,9 @@ final class LockContext extends BaseContext
             'schedulePlanId' => null,
         ], $this->token);
         if (!\in_array($created['status'], [200, 201], true)) {
-            throw new RuntimeException(\sprintf('la pose du créneau libre a répondu %d (201 attendu)', $created['status']));
+            // Corps du 422 dans le message : un rouge CI (case refusée) est alors diagnosticable
+            // sans relance, au lieu du nu « a répondu 422 (201 attendu) ».
+            throw new RuntimeException(\sprintf('la pose du créneau libre a répondu %d (201 attendu) — corps : %s', $created['status'], json_encode($created['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES)));
         }
         $this->freeSlotReservationId = (string) ($created['json']['id'] ?? '');
         if ('' === $this->freeSlotReservationId) {
