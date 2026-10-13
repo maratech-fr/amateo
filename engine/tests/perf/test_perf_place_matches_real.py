@@ -6,7 +6,7 @@ via ``derive_rechercher_rencontre.py``): every HOME match the club hosts is a
 ``TO_PLACE`` match, on the real venues, with access windows built as the envelope
 of the kickoffs actually observed per (venue, ISO weekday) — so the fixture is
 100 % placeable BY CONSTRUCTION. The gate asserts the solver places at least 90 %
-of them inside the 60 s budget and NEVER violates a HARD rule.
+of them under the PRODUCTION per-ISO-week budget and NEVER violates a HARD rule.
 
 Marked ``perf`` (main-only, EXCLUDED from the default suite) like its synthetic
 sibling: real volume (141 matches · 5 gyms) under the full solver budget is too
@@ -28,24 +28,30 @@ from app.solver.match_placement import solve_match_placement
 from tests.semantic.test_match_placement_semantics import assert_no_hard_violation
 
 FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "bccl_home_matches_2026.json"
-# Founder decision: ≥ 90 % of the home matches placeable at 60 s on the real fixture.
+# Founder decision: ≥ 90 % of the home matches placeable under the production per-ISO-week
+# budget on the real fixture.
 MIN_PLACED_RATIO = 0.9
-# Wall budget of the WHOLE test — a ceiling RECALIBRATED on the measured wall time, NOT
-# a target to speed up to. ``solve_match_placement`` in
-# ``app/solver/match_placement/__init__.py`` (see its docstring, ~l.690-703) solves the
-# request ISO week by ISO week, spending the fixture's ``solverTimeoutSeconds`` (60 s
-# here) on EACH week; the fixture covers 24 ISO weeks carrying TO_PLACE matches, so the
-# total wall time is the SUM of the per-week solves plus model build and I/O. Note the
-# fixture's 60 s is NOT what production sends: the async rail sizes each week at
+# Per-ISO-week solver budget, PINNED to what production actually sends so the test measures
+# the real experience and not the fixture's own figure:
 # ``MatchPlacementPayloadBuilder::WEEK_BUDGET_SECONDS`` = 35 s
-# (``backend/src/Service/MatchPlacementPayloadBuilder.php``).
+# (``backend/src/Service/MatchPlacementPayloadBuilder.php``). It overrides the fixture's
+# ``solverTimeoutSeconds`` below.
+PROD_WEEK_BUDGET_SECONDS = 35
+# Wall budget of the WHOLE test — a ceiling RECALIBRATED on the measured wall time, NOT a
+# target to speed up to. ``solve_match_placement`` in
+# ``app/solver/match_placement/__init__.py`` (see its docstring, ~l.690-703) solves the
+# request ISO week by ISO week, spending ``solver_timeout_seconds`` on EACH week; the
+# fixture covers 24 ISO weeks carrying TO_PLACE matches, so the total wall time is the SUM
+# of the per-week solves plus model build and I/O.
 BUDGET_SECONDS = 180.0
 
 
 @pytest.mark.perf
 def test_real_bccl_home_matches_are_at_least_90_percent_placeable() -> None:
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    input_data = MatchPlacementInputSchema.model_validate(data)
+    input_data = MatchPlacementInputSchema.model_validate(data).model_copy(
+        update={"solver_timeout_seconds": PROD_WEEK_BUDGET_SECONDS}
+    )
     to_place = sum(1 for m in input_data.matches if m.kind == "TO_PLACE")
     assert to_place == 141, f"the real fixture should carry 141 home matches, got {to_place}"
 
