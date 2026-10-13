@@ -125,7 +125,10 @@ def test_hard_time_window_of_a_member_closes_the_only_case_names_the_group_and_w
     assert windowed is not None, "la cause fenêtre horaire doit être portée (kind time_window)"
     message = str(windowed["message"])
     assert "t1" in message and "t2" in message, f"le groupe doit être nommé : {message}"
-    assert "fenêtre horaire" in message, f"la cause doit être dite : {message}"
+    # Q3 : la cause fenêtre NOMME l'équipe dont la fenêtre ferme les cases ET le libellé de la règle.
+    assert "« pas de séance après 18h » de t1" in message, (
+        f"l'équipe et la règle en cause doivent être nommées : {message}"
+    )
     cause = next(c for c in windowed["causes"] if c.get("kind") == "time_window")
     assert cause["constraintId"] == "win-t1-late", "la contrainte doit être nommée pour composer son origine"
     assert cause["label"] == "pas de séance après 18h"

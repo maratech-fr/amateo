@@ -281,6 +281,12 @@ def _concrete_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[_Conc
     return cases
 
 
+def _sessions_phrase(common_sessions: int) -> str:
+    """« sa séance commune » au singulier, « ses N séances communes » au pluriel (jamais le laid
+    « ses 1 séance(s) commune(s) »)."""
+    return "sa séance commune" if common_sessions == 1 else f"ses {common_sessions} séances communes"
+
+
 def _format_locked_cases(
     blocked: list[tuple[str, int, str, frozenset[str]]],
     team_names: Mapping[str, str],
@@ -340,18 +346,19 @@ def _diagnose_blocks_blocked_by_nonmember_lock(
             continue
         names = _named_list(members, team_names)
         detail = _format_locked_cases(blocked, team_names, venue_names)
+        sessions = _sessions_phrase(common_sessions)
         if usable == 0:
             message = (
-                f"Le groupe {names} ne peut placer aucune de ses {common_sessions} séance(s) commune(s) : "
-                f"chaque case où réunir ses équipes est verrouillée pour une autre équipe ({detail}). "
+                f"Le groupe {names} ne peut placer {sessions} : chaque case où réunir ses équipes est "
+                f"verrouillée pour une autre équipe ({detail}). "
                 "Libérez l'une de ces cases ou déplacez le verrou qui l'occupe."
             )
         else:
             reste = "reste" if usable == 1 else "restent"
             message = (
                 f"Le groupe {names} : seulement {usable} case(s) où réunir ses équipes {reste} libre(s), "
-                f"pour {common_sessions} séance(s) commune(s) à placer — les autres sont verrouillées pour "
-                f"une autre équipe ({detail}). Libérez l'une de ces cases ou déplacez un verrou."
+                f"pour {sessions} à placer — les autres sont verrouillées pour une autre équipe ({detail}). "
+                "Libérez l'une de ces cases ou déplacez un verrou."
             )
         diagnostics.append(
             {
@@ -418,10 +425,11 @@ def _diagnose_blocks_blocked_by_time_window(
         if common_sessions <= 0:
             continue
         closed = 0
-        # constraintId → [label, nombre de cases qu'elle ferme] (ordre d'apparition, first-wins label).
-        causes_seen: dict[Any, list[Any]] = {}
+        # constraintId → [team_id (propriétaire de la fenêtre), label, nombre de cases qu'elle ferme].
+        # Ordre d'apparition (membres puis fenêtres) = déterministe ; une fenêtre appartient à UNE équipe.
+        offenders: dict[Any, list[Any]] = {}
         for _venue_id, _day, _start_hhmm, start_min, duration in concrete_cases:
-            closing: list[tuple[Any, Any]] = []
+            excluded = False
             for team_id in members:
                 for constraint_id, label, min_start, max_start, max_end in windows_by_team.get(team_id, ()):
                     if time_window_excludes_slot(
@@ -431,33 +439,39 @@ def _diagnose_blocks_blocked_by_time_window(
                         max_start_minutes=max_start,
                         max_end_minutes=max_end,
                     ):
-                        closing.append((constraint_id, label))
-            if not closing:
-                continue
-            closed += 1
-            for constraint_id, label in closing:
-                if constraint_id not in causes_seen:
-                    causes_seen[constraint_id] = [label, 0]
-                causes_seen[constraint_id][1] += 1
+                        excluded = True
+                        if constraint_id not in offenders:
+                            offenders[constraint_id] = [team_id, label, 0]
+                        offenders[constraint_id][2] += 1
+            if excluded:
+                closed += 1
         usable = total - closed
         if not (usable < common_sessions <= total):
             continue
         names = _named_list(members, team_names)
+        sessions = _sessions_phrase(common_sessions)
+        # NOMME l'équipe (Q3) et le libellé de chaque fenêtre en cause : « « pas après 18h » de U11M2 ».
+        fragments = [
+            f"« {label} » de {_label(team_id, team_names)}" if label else f"de {_label(team_id, team_names)}"
+            for team_id, label, _count in offenders.values()
+        ]
+        if len(fragments) == 1:
+            windows_phrase, verb, elargir = f"la fenêtre horaire {fragments[0]}", "exclut", "cette fenêtre"
+        else:
+            windows_phrase, verb, elargir = "les fenêtres horaires " + ", ".join(fragments), "excluent", "ces fenêtres"
         if usable == 0:
             message = (
-                f"Le groupe {names} ne peut placer aucune de ses {common_sessions} séance(s) commune(s) : "
-                "une fenêtre horaire interdit à l'une de ses équipes chaque case où les réunir. "
-                "Élargissez la fenêtre horaire en cause ou ajoutez un créneau commun compatible."
+                f"Le groupe {names} ne peut placer {sessions} : {windows_phrase} {verb} chaque case où "
+                f"réunir ses équipes. Élargissez {elargir} ou ajoutez un créneau commun compatible."
             )
         else:
             message = (
-                f"Le groupe {names} : seulement {usable} case(s) commune(s) compatible(s) avec les fenêtres "
-                f"horaires de ses équipes, pour {common_sessions} séance(s) commune(s) à placer. "
-                "Élargissez la fenêtre horaire en cause ou ajoutez un créneau commun compatible."
+                f"Le groupe {names} : seulement {usable} case(s) commune(s) échappe(nt) à {windows_phrase}, "
+                f"pour {sessions} à placer. Élargissez {elargir} ou ajoutez un créneau commun compatible."
             )
         causes = [
             {"kind": "time_window", "constraintId": constraint_id, "label": label, "count": count}
-            for constraint_id, (label, count) in causes_seen.items()
+            for constraint_id, (_team_id, label, count) in offenders.items()
         ]
         diagnostics.append(
             {

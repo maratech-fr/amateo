@@ -131,10 +131,12 @@ final class SharedBlockCoachRelayGateTest extends TestCase
         self::assertSame('failed', $windowed['status'], 'la fenêtre horaire ferme la seule case commune');
         $windowDiag = $this->firstWithCauseKind($this->notHonoured($windowed), 'time_window');
         self::assertNotNull($windowDiag, 'P4-322 : une fenêtre horaire dure doit NOMMER le groupe (cause time_window)');
-        self::assertStringContainsString('T1', (string) $windowDiag['message']);
-        self::assertStringContainsString('T2', (string) $windowDiag['message']);
+        self::assertStringContainsString('T2', (string) $windowDiag['message'], 'le groupe est nommé');
+        // Q3 : le message NOMME l'équipe dont la fenêtre ferme les cases (t1 → « T1 ») ET le libellé.
+        self::assertStringContainsString('« fenêtre horaire t1 » de T1', (string) $windowDiag['message']);
         $timeCause = $this->firstCauseOfKind($windowDiag, 'time_window');
         self::assertSame('win-late', $timeCause['constraintId'] ?? null, 'la contrainte est portée pour composer son origine');
+        self::assertSame('fenêtre horaire t1', $timeCause['label'] ?? null, 'le libellé de la règle est porté');
     }
 
     /**
