@@ -14,13 +14,17 @@ from ortools.sat.python import cp_model
 
 from ...constraints.availability import _coach_available_at, case_has_available_coach, required_coaches_of
 from ...constraints.common import _fold_case_occupant_identity
-from ...model import _time_to_minutes
+from ...constraints.targeting import time_window_excludes_slot
+from ...model import DEFAULT_SESSION_MINUTES, _format_time, _time_to_minutes
 from ..helpers import (
     _collection,
+    _day_label,
     _get,
+    _label,
     _named_list,
     _slot_day,
     _team_name_map,
+    _venue_name_map,
 )
 
 
@@ -136,6 +140,21 @@ def _diagnose_shared_blocks(
                         "createdAt": datetime.now(UTC).isoformat(),
                     }
                 )
+        # P4-322 — deux causes de plus, au MÊME patron que le rail coach : on n'accuse qu'avec une
+        # preuve de compte (cases servables < séances communes <= total), on nomme le groupe, la cause
+        # réutilise un kind EXISTANT (``hard_lock`` / ``time_window``, aucun bump de contrat), et la
+        # question est REJOUÉE via le helper de pose concerné (comblement model.py / algèbre
+        # ``targeting.time_window_excludes_slot``), jamais une seconde logique.
+        concrete_cases = _concrete_candidate_cases(model_data)
+        venue_names = _venue_name_map(model_data)
+        diagnostics.extend(
+            _diagnose_blocks_blocked_by_nonmember_lock(
+                valid_blocks, team_names, venue_names, concrete_cases, pinned_teams_by_case
+            )
+        )
+        diagnostics.extend(
+            _diagnose_blocks_blocked_by_time_window(model_data, valid_blocks, team_names, concrete_cases)
+        )
         # Lot 3B PR B — rail de preuve « un coach suffit » (Q4B). La boucle ci-dessus ne compte que
         # les cases de gymnase (sur-contrainte de PLACE/verrous). Un bloc peut avoir ASSEZ de cases
         # mais AUCUNE où un coach de l'UNION de ses membres soit disponible : après la pose « un
@@ -232,6 +251,242 @@ def _block_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[tuple[in
                 continue
             cases.append((day, start))
     return cases
+
+
+# Case CONCRÈTE de gymnase : (venue_id, jour, début HH:MM, début en minutes, durée en minutes).
+_ConcreteCase = tuple[str, int, str, int, int]
+
+
+def _concrete_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[_ConcreteCase]:
+    """Toutes les ``trainingSlots`` du payload en cases CONCRÈTES — le gymnase est GARDÉ (contrairement
+    à ``_block_candidate_cases`` du rail coach) : un verrou de non-membre ou une fenêtre horaire ferme
+    une case PRÉCISE, pas toutes les cases du même horaire. Slot illisible (jour/heure) écarté."""
+    cases: list[_ConcreteCase] = []
+    for venue in _collection(model_data, "venues"):
+        venue_id = str(_get(venue, "id", "venue_id", "venueId", default=""))
+        for slot in _collection(venue, "training_slots", "trainingSlots"):
+            raw_day = _get(slot, "day_of_week", "dayOfWeek", default=None)
+            raw_start = _get(slot, "start_time", "startTime", default=None)
+            if raw_day is None or raw_start is None:
+                continue
+            try:
+                day = int(raw_day)
+                start_minutes = _time_to_minutes(str(raw_start))
+            except (TypeError, ValueError):
+                continue
+            duration = int(_get(slot, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES) or 0)
+            cases.append(
+                (venue_id, day, _format_time(start_minutes), start_minutes, duration or DEFAULT_SESSION_MINUTES)
+            )
+    return cases
+
+
+def _sessions_phrase(common_sessions: int) -> str:
+    """« sa séance commune » au singulier, « ses N séances communes » au pluriel (jamais le laid
+    « ses 1 séance(s) commune(s) »)."""
+    return "sa séance commune" if common_sessions == 1 else f"ses {common_sessions} séances communes"
+
+
+def _format_locked_cases(
+    blocked: list[tuple[str, int, str, frozenset[str]]],
+    team_names: Mapping[str, str],
+    venue_names: Mapping[str, str],
+    *,
+    limit: int = 3,
+) -> str:
+    """Énumère, de façon DÉTERMINISTE (tri jour/heure/gymnase) et BORNÉE, les cases verrouillées en
+    les nommant : « mardi 18:00 au gymnase X (verrouillé pour SF1) ». Jamais d'identifiant interne —
+    ``_label`` rend le NOM (repli sur l'id brut seulement si le nom manque)."""
+    ordered = sorted(blocked, key=lambda case: (case[1], case[2], case[0]))
+    parts = [
+        f"{_day_label(day)} {start} au gymnase {_label(venue_id, venue_names)} "
+        f"(verrouillé pour {_named_list(sorted(blockers), team_names)})"
+        for venue_id, day, start, blockers in ordered[:limit]
+    ]
+    text = " ; ".join(parts)
+    extra = len(ordered) - limit
+    if extra > 0:
+        text += f" ; et {extra} autre(s)"
+    return text
+
+
+def _diagnose_blocks_blocked_by_nonmember_lock(
+    valid_blocks: list[tuple[int, Any, list[str], set[str]]],
+    team_names: Mapping[str, str],
+    venue_names: Mapping[str, str],
+    concrete_cases: list[_ConcreteCase],
+    pinned_teams_by_case: Mapping[tuple[str, str, str], set[str]],
+) -> list[dict[str, Any]]:
+    """PROUVE, à l'échec, qu'un bloc est infaisable parce que ses SEULES cases communes sont
+    VERROUILLÉES HARD pour une équipe NON membre du groupe — et NOMME le groupe, les cases et l'équipe
+    qui verrouille, avec QUOI FAIRE (décision fondateur Q3, P4-322).
+
+    Rejoue la logique de COMBLEMENT (``model.py`` : un verrou de non-partenaire RETIRE le candidat du
+    membre libre ; un verrou de partenaire le GARDE) — une case est fermée pour le bloc ssi elle porte
+    un pin HARD ET qu'AUCUN membre du bloc n'y est épinglé. On ne tire la sonnette que lorsque les
+    cases LIBRES sont STRICTEMENT moins nombreuses que les séances communes demandées ALORS QUE la
+    grille en offre assez (``usable < commonSessions <= total``) — sinon la pénurie est de PLACE, déjà
+    nommée par la boucle de sur-contrainte. Cause kind EXISTANT ``hard_lock`` (un verrou n'est pas une
+    contrainte nommée → ``constraintId``/``label`` None ; le backend n'y accole aucune origine)."""
+    total = len(concrete_cases)
+    if total == 0:
+        return []
+    diagnostics: list[dict[str, Any]] = []
+    for index, block, members, member_set in valid_blocks:
+        common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        if common_sessions <= 0:
+            continue
+        blocked: list[tuple[str, int, str, frozenset[str]]] = []
+        for venue_id, day, start_hhmm, _start_min, _duration in concrete_cases:
+            pins = pinned_teams_by_case.get((venue_id, str(day), start_hhmm[:5]))
+            if pins and not (pins & member_set):
+                blocked.append((venue_id, day, start_hhmm[:5], frozenset(pins)))
+        usable = total - len(blocked)
+        if not (usable < common_sessions <= total):
+            continue
+        names = _named_list(members, team_names)
+        detail = _format_locked_cases(blocked, team_names, venue_names)
+        sessions = _sessions_phrase(common_sessions)
+        if usable == 0:
+            message = (
+                f"Le groupe {names} ne peut placer {sessions} : chaque case où réunir ses équipes est "
+                f"verrouillée pour une autre équipe ({detail}). "
+                "Libérez l'une de ces cases ou déplacez le verrou qui l'occupe."
+            )
+        else:
+            reste = "reste" if usable == 1 else "restent"
+            message = (
+                f"Le groupe {names} : seulement {usable} case(s) où réunir ses équipes {reste} libre(s), "
+                f"pour {sessions} à placer — les autres sont verrouillées pour une autre équipe ({detail}). "
+                "Libérez l'une de ces cases ou déplacez un verrou."
+            )
+        diagnostics.append(
+            {
+                "id": f"shared-block-locked-{_get(block, 'id', default=index)}",
+                "type": "shared_block_not_honored",
+                "severity": "ERROR",
+                "message": message,
+                "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": len(blocked)}],
+                "suggestions": [
+                    "Libérez l'une des cases verrouillées pour une autre équipe, ou déplacez le verrou qui l'occupe.",
+                ],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+    return diagnostics
+
+
+def _diagnose_blocks_blocked_by_time_window(
+    model_data: Mapping[str, Any] | Any,
+    valid_blocks: list[tuple[int, Any, list[str], set[str]]],
+    team_names: Mapping[str, str],
+    concrete_cases: list[_ConcreteCase],
+) -> list[dict[str, Any]]:
+    """PROUVE, à l'échec, qu'un bloc est infaisable parce qu'une FENÊTRE HORAIRE dure (``family=TIME``,
+    ``ruleType=HARD``) d'un de ses membres exclut ses cases communes — et NOMME le groupe + porte la
+    contrainte en cause (kind EXISTANT ``time_window``) pour que le backend en compose l'origine
+    (P4-322, décision Q3).
+
+    RÉUTILISE l'algèbre de pose ``targeting.time_window_excludes_slot`` (source unique) : une case est
+    fermée pour le bloc dès qu'UNE fenêtre d'UN membre l'exclut (tous doivent être présents). Même
+    garde de compte que le rail coach : ``usable < commonSessions <= total``."""
+    total = len(concrete_cases)
+    if total == 0:
+        return []
+    # Fenêtres horaires HARD par équipe : (constraintId, label, minStart, maxStart, maxEnd) en minutes.
+    windows_by_team: dict[str, list[tuple[Any, Any, int | None, int | None, int | None]]] = defaultdict(list)
+    for constraint in _collection(model_data, "constraints"):
+        if (_get(constraint, "ruleType", "rule_type", default=None)) != "HARD":
+            continue
+        if _get(constraint, "family", default=None) != "TIME":
+            continue
+        team_id = _get(constraint, "scope_target_id", "scopeTargetId", default=None)
+        if team_id is None:
+            continue
+        config = _get(constraint, "config", default=None) or {}
+        min_start = config.get("minStartTime")
+        max_start = config.get("maxStartTime")
+        max_end = config.get("maxEndTime")
+        windows_by_team[str(team_id)].append(
+            (
+                _get(constraint, "id", default=None),
+                _get(constraint, "name", default=None),
+                _time_to_minutes(str(min_start)) if min_start is not None else None,
+                _time_to_minutes(str(max_start)) if max_start is not None else None,
+                _time_to_minutes(str(max_end)) if max_end is not None else None,
+            )
+        )
+    if not windows_by_team:
+        return []
+
+    diagnostics: list[dict[str, Any]] = []
+    for index, block, members, _member_set in valid_blocks:
+        common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        if common_sessions <= 0:
+            continue
+        closed = 0
+        # constraintId → [team_id (propriétaire de la fenêtre), label, nombre de cases qu'elle ferme].
+        # Ordre d'apparition (membres puis fenêtres) = déterministe ; une fenêtre appartient à UNE équipe.
+        offenders: dict[Any, list[Any]] = {}
+        for _venue_id, _day, _start_hhmm, start_min, duration in concrete_cases:
+            excluded = False
+            for team_id in members:
+                for constraint_id, label, min_start, max_start, max_end in windows_by_team.get(team_id, ()):
+                    if time_window_excludes_slot(
+                        start_min,
+                        duration,
+                        min_start_minutes=min_start,
+                        max_start_minutes=max_start,
+                        max_end_minutes=max_end,
+                    ):
+                        excluded = True
+                        if constraint_id not in offenders:
+                            offenders[constraint_id] = [team_id, label, 0]
+                        offenders[constraint_id][2] += 1
+            if excluded:
+                closed += 1
+        usable = total - closed
+        if not (usable < common_sessions <= total):
+            continue
+        names = _named_list(members, team_names)
+        sessions = _sessions_phrase(common_sessions)
+        # NOMME l'équipe (Q3) et le libellé de chaque fenêtre en cause : « « pas après 18h » de U11M2 ».
+        fragments = [
+            f"« {label} » de {_label(team_id, team_names)}" if label else f"de {_label(team_id, team_names)}"
+            for team_id, label, _count in offenders.values()
+        ]
+        if len(fragments) == 1:
+            windows_phrase, verb, elargir = f"la fenêtre horaire {fragments[0]}", "exclut", "cette fenêtre"
+        else:
+            windows_phrase, verb, elargir = "les fenêtres horaires " + ", ".join(fragments), "excluent", "ces fenêtres"
+        if usable == 0:
+            message = (
+                f"Le groupe {names} ne peut placer {sessions} : {windows_phrase} {verb} chaque case où "
+                f"réunir ses équipes. Élargissez {elargir} ou ajoutez un créneau commun compatible."
+            )
+        else:
+            message = (
+                f"Le groupe {names} : seulement {usable} case(s) commune(s) échappe(nt) à {windows_phrase}, "
+                f"pour {sessions} à placer. Élargissez {elargir} ou ajoutez un créneau commun compatible."
+            )
+        causes = [
+            {"kind": "time_window", "constraintId": constraint_id, "label": label, "count": count}
+            for constraint_id, (_team_id, label, count) in offenders.items()
+        ]
+        diagnostics.append(
+            {
+                "id": f"shared-block-timewindow-{_get(block, 'id', default=index)}",
+                "type": "shared_block_not_honored",
+                "severity": "ERROR",
+                "message": message,
+                "causes": causes,
+                "suggestions": [
+                    "Élargissez la fenêtre horaire en cause, ou ajoutez un créneau commun compatible.",
+                ],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+    return diagnostics
 
 
 def _diagnose_blocks_without_union_coach(

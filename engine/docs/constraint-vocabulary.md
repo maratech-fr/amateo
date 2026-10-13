@@ -1,21 +1,17 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur lot 3B PR B') : `engine/CONTRACT_VERSION` = `1.5`
-(bump 1.4 → 1.5, et non 1.3 comme l'écrivait un stamp précédent — dérive corrigée) ; section
-« Référence socle » réécrite pour le second régime KEEP (`SOCLE_KEEP_FULL_TIER_WEIGHTS`/
-`SOCLE_KEEP_PARTIAL_TIER_WEIGHTS`, `weights.py`), `SCORE_FORMULA_VERSION` V13 → V14 ; §Bloc de
-mutualisation complétée du MIROIR pré-solve déclaré de « un coach suffit » — confronté à
-`backend/src/Service/PreSolvePreventionWarnings.php::sharedBlockWithoutCommonServableCase` et à
-`backend/tests/CrossStack/SharedBlockPreSolveMirrorParityTest.php`. §COACH_AVAILABILITY et §Bloc de
-mutualisation (règle moteur elle-même) restent telles que confrontées en PR A à
-`engine/app/solver/constraints/structural/closures.py::add_coach_unavailability_constraints` et
-`engine/app/solver/constraints/availability.py` — « un coach suffit » (Q4B, fondateur 2026-10-10) :
-une équipe à plusieurs coachs requis n'est fermée que si TOUS sont indisponibles ; une case de bloc
-emprunte un coach de l'union, un membre sans coach propre n'y est que via le bloc (`x ≤ Σb`), un
-bloc sans aucun coach de l'union dispo est fermé (`b == 0`). Reste du vocabulaire (découpe en
-paquets `constraints/structural/`, `constraints/wellness/`, `match_placement/`, citations P4-295
-C3-C6, 2026-10-09 ; `preferredDays` P4-312) non re-sondé cette passe — un stamp REMPLACE, il ne
-s'empile pas.
+Last verified @ 2026-10-13 (P4-322 — diagnostic de bloc mutualisé, deux causes de plus) : ligne
+« Diagnostic post-solve (`_diagnose_shared_blocks`) » de la table §Bloc de mutualisation complétée
+des causes `hard_lock` (verrou HARD d'une équipe non membre sur les seules cases libres) et
+`time_window` (fenêtre horaire dure d'un membre qui les exclut), confrontée à
+`engine/app/solver/result_builder/diagnostics/shared_blocks.py::
+_diagnose_blocks_blocked_by_nonmember_lock`/`_diagnose_blocks_blocked_by_time_window` — kinds
+EXISTANTS, aucun bump de contrat (`engine/CONTRACT_VERSION` reste `1.5`). Reste du vocabulaire non
+re-sondé cette passe (dernière relecture 2026-10-11) : section « Référence socle » (second régime
+KEEP, `SOCLE_KEEP_FULL_TIER_WEIGHTS`/`SOCLE_KEEP_PARTIAL_TIER_WEIGHTS`, `SCORE_FORMULA_VERSION` V14),
+§Bloc de mutualisation (règle moteur + MIROIR pré-solve « un coach suffit »), §COACH_AVAILABILITY
+(Q4B, fondateur 2026-10-10), découpe en paquets `constraints/structural/`, `constraints/wellness/`,
+`match_placement/` (P4-295 C3-C6), `preferredDays` (P4-312) — un stamp REMPLACE, il ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -314,7 +310,7 @@ membre de s'effondrer sur la MÊME case (sinon une séance physique compterait p
 | `team_share_declared_pairs` | co-présence des membres exemptée de l'anti-chevauchement passerelle (§ci-dessus) |
 | `shared_block_case_bvars` → `add_coach_player_non_overlap` | co-présence des membres exemptée de l'anti-chevauchement coach-joueur/joueur-joueur QUAND la séance de bloc de la case est active (borne `≤ 1 + Σb`) — voir `COACH_PLAYER_NO_OVERLAP` ci-dessus |
 | `shared_block_case_bvars` → `add_coach_unavailability_constraints` (`constraints/structural/closures.py`, Q4B) | « un coach suffit » (§COACH_AVAILABILITY ci-dessus) : un membre sans coach propre dispo n'est présent sur la case QUE via le bloc (`x ≤ Σ b`) ; un bloc dont l'UNION n'a aucun coach dispo sur la case est fermé (`b == 0`, littérale nommée `coach_unavail_block`) |
-| Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées, OU plus de cases toute-épinglées EXCLUSIVES (aucun autre bloc toute-épinglé dessus) que de séances demandées (deux causes certaines, la seconde nomme le bloc sur-épinglé) ; solve abouti : défense en profondeur si le compte réel diverge — **une case de co-présence n'est comptée pour un bloc QUE s'il y est le bloc ÉLU** (maximal, `_fold_case_occupant_identity`, comme la sur-capacité ci-dessous), jamais la co-présence BRUTE : deux blocs imbriqués réunis sur une même case créditent le seul bloc maximal (P4-183, sinon faux positif sur le bloc inclus) |
+| Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées, OU plus de cases toute-épinglées EXCLUSIVES (aucun autre bloc toute-épinglé dessus) que de séances demandées (deux causes certaines, la seconde nomme le bloc sur-épinglé) ; OU, même patron de preuve par compte (P4-322, `usable < commonSessions ≤ total`) — ses seules cases LIBRES sont verrouillées HARD pour une équipe NON membre (`_diagnose_blocks_blocked_by_nonmember_lock`, kind EXISTANT `hard_lock`, message nommant le groupe + les cases + l'équipe qui verrouille) ou exclues par une fenêtre horaire dure d'un membre (`_diagnose_blocks_blocked_by_time_window`, kind EXISTANT `time_window`, algèbre `targeting.py::time_window_excludes_slot` partagée avec la pose) ; OU, lot 3B PR B, aucun coach de l'UNION disponible (`coach_unavailability`) ; solve abouti : défense en profondeur si le compte réel diverge — **une case de co-présence n'est comptée pour un bloc QUE s'il y est le bloc ÉLU** (maximal, `_fold_case_occupant_identity`, comme la sur-capacité ci-dessous), jamais la co-présence BRUTE : deux blocs imbriqués réunis sur une même case créditent le seul bloc maximal (P4-183, sinon faux positif sur le bloc inclus) |
 | Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe). **Blocs IMBRIQUÉS sur la MÊME case** (l'un contient l'autre) : le repli élit le bloc **MAXIMAL** — tri déterministe taille décroissante puis clé (`sorted(blocks, key=(-len, key))`) — MIROIR EXACT du repli backend (`ReservationGroupOccupancy::occupantCount`, même tri). Un tri sur la seule clé (« premier bloc gagne » par l'alphabet) élirait un bloc de 2 devant un bloc de 3 et compterait un occupant fantôme (le tiers isolé) là où le solveur, par sa garde de distinctness (`targeting.py`), réunit le bloc de 3 en une seule occupation |
 | `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11), dans les DEUX sens de `Σb == commonSessions` — `shared_block_broken` : un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; `shared_block_overformed` : un déplacement qui FORME une séance commune de TROP (plutôt que de tomber sur `unknown_hard_conflict` générique) ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`) : un bloc DÉJÀ cassé (ou déjà sur-formé) dans la baseline ne bloque pas les déplacements |
 

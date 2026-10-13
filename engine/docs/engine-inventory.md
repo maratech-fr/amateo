@@ -1,17 +1,16 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur lot 3B PR A) : `CONTRACT_VERSION` = `1.5` (bump
-1.4 → 1.5, §3 `SocleReferenceAssignmentSchema`) confronté à `engine/CONTRACT_VERSION` et
-`input_schema.py` ; `ScheduleCpModel`/`app/solver/objective/weights.py` confrontés pour
-`SOCLE_KEEP_FULL_TIER_WEIGHTS`/`SOCLE_KEEP_PARTIAL_TIER_WEIGHTS` (§3, `SCORE_FORMULA_VERSION`
-V14) ; §4.4 ligne 7 (`coach_unavailability`) recalée — « un coach suffit » (Q4B, fondateur
-2026-10-10) : la fermeture ne tient plus que si TOUS les coachs requis de l'équipe (ou de l'union
-d'un bloc) sont indisponibles, confronté à
-`app/solver/constraints/structural/closures.py::add_coach_unavailability_constraints` et au
-nouveau `app/solver/constraints/availability.py` — détail : `engine/docs/constraint-vocabulary.md`
-§COACH_AVAILABILITY. La découpe en paquets `constraints/structural/`, `constraints/wellness/`,
-`match_placement/`, `objective/terms/`, `validate_assignments/` (§1, P4-295 C2-C6, 2026-10-09) non
-re-sondée cette passe — historique des bumps de contrat dans
+Last verified @ 2026-10-13 (P4-322 — `shared_block_not_honored` nomme deux causes de plus) : §4.5
+complétée d'une ligne sur `time_window_excludes_slot` (`constraints/targeting.py`, helper extrait,
+source unique partagée entre `add_time_window_constraints` et le diagnostic de bloc mutualisé) ;
+confronté à `result_builder/diagnostics/shared_blocks.py::_diagnose_blocks_blocked_by_nonmember_lock`/
+`_diagnose_blocks_blocked_by_time_window`. Reste non re-sondé cette passe (dernière relecture
+2026-10-11) : `CONTRACT_VERSION` = `1.5` (bump 1.4 → 1.5, §3 `SocleReferenceAssignmentSchema`) ;
+`ScheduleCpModel`/`app/solver/objective/weights.py` pour
+`SOCLE_KEEP_FULL_TIER_WEIGHTS`/`SOCLE_KEEP_PARTIAL_TIER_WEIGHTS` (§3, `SCORE_FORMULA_VERSION` V14) ;
+§4.4 ligne 7 (`coach_unavailability`) — « un coach suffit » (Q4B, fondateur 2026-10-10) ; la découpe
+en paquets `constraints/structural/`, `constraints/wellness/`, `match_placement/`, `objective/terms/`,
+`validate_assignments/` (§1, P4-295 C2-C6, 2026-10-09) — historique des bumps de contrat dans
 `git log -p --follow engine/CONTRACT_VERSION` / `specs/courantes/etat-des-lieux.md` §3.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
@@ -454,6 +453,7 @@ mécanismes non reliés) : `travel_feasibility_stub`, `required_bridge_stub`
 
 - `family == "TIME"` + `ruleType == "HARD"` : force `var == 0` si `startTime` hors `[minStartTime, maxStartTime]`.
 - `family == "TIME"` + `maxEndTime` (HARD only, ALIGN-04) : force `var == 0` si `début du créneau + sa durée > maxEndTime`. Le chemin soft (`add_preferred_time_bonus`) ne lit **que** min/maxStartTime.
+- **Algèbre extraite en helper partagé** (P4-322) : `time_window_excludes_slot` (`constraints/targeting.py`) porte les trois tests min/max start + maxEndTime ci-dessus — seule logique, consommée ICI par `add_time_window_constraints` et par le diagnostic de bloc mutualisé (`result_builder/diagnostics/shared_blocks.py::_diagnose_blocks_blocked_by_time_window`, kind `time_window`).
 - `family == "DAY"` + `ruleType == "HARD"` : `forcedDays` (≥ 1 session sur ces jours), `forbiddenDays` (vars à 0), `allowedDays` (liste blanche : tout jour praticable hors liste est interdit ; liste vide = « non configuré », aucune restriction).
 - `family == "TIME"`/`"DAY"` + `ruleType == "PREFERRED"` : **bonus soft dans l'objectif** (`add_preferred_time_bonus` / `add_preferred_day_bonus`, poids `preferred_time`/`preferred_day` = 30) — pas de contrainte hard. Cf. commentaire `constraints.py` « PREFERRED TIME is a soft bonus handled in the objective ».
 - Conflit → diagnostic `day_constraint_conflict` (severity ERROR), toutes vars team à 0. **Deux formes** : `forcedDays ∩ forbiddenDays` non vide, OU une liste blanche `allowedDays` dont **tous** les jours sont explicitement interdits (les deux sont testées contre le `forbiddenDays` d'origine, pas contre le complément de la whitelist, pour que le diagnostic soit explicite).

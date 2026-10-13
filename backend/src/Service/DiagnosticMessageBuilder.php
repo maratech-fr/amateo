@@ -63,12 +63,18 @@ final class DiagnosticMessageBuilder
     }
 
     /**
-     * Compose le message d'un bloc de mutualisation non honoré : le texte du moteur (groupe nommé)
-     * SUIVI, pour chaque contrainte citée en `causes[]`, de son origine — « héritée du planning de
-     * saison — désactivable pour cette période » quand elle n'est PAS datée (`calendarEntryId` NULL),
-     * « posée pour cette période » sinon. Aucun identifiant interne (seulement le LIBELLÉ de la
-     * contrainte, texte gestionnaire). Une cause dégradée (sans libellé) ou une contrainte non
-     * résolue n'ajoute rien — jamais un groupe accusé avec une origine fantôme.
+     * Compose le message d'un bloc de mutualisation non honoré : le texte du moteur (groupe nommé,
+     * cause + case nommées, et QUOI FAIRE — décision fondateur Q3) SUIVI, pour chaque CONTRAINTE
+     * citée en `causes[]`, de son origine — « héritée du planning de saison — désactivable pour cette
+     * période » quand elle n'est PAS datée (`calendarEntryId` NULL), « posée pour cette période »
+     * sinon. Aucun identifiant interne (seulement le LIBELLÉ de la contrainte, texte gestionnaire).
+     * Une cause dégradée (sans libellé) ou une contrainte non résolue n'ajoute rien — jamais un groupe
+     * accusé avec une origine fantôme.
+     *
+     * Les causes `coach_unavailability` (« un coach suffit ») et `time_window` (fenêtre horaire dure)
+     * SONT des contraintes nommées : leur origine s'accole ici. La cause `hard_lock` est un VERROU,
+     * pas une contrainte datée — le moteur nomme déjà la case et l'équipe qui verrouille dans son
+     * message, et aucune origine ne s'y accole (le verrou n'a pas de `calendarEntryId`).
      *
      * @param array<string, mixed> $diagnostic
      * @param array<string, bool>  $constraintOrigins
@@ -84,6 +90,11 @@ final class DiagnosticMessageBuilder
         $seen = [];
         foreach ($causes as $cause) {
             if (!\is_array($cause)) {
+                continue;
+            }
+            // Un verrou n'est pas une contrainte datée : le moteur le nomme déjà dans le message
+            // (case + équipe qui verrouille), aucune origine à accoler ici.
+            if ('hard_lock' === ($cause['kind'] ?? null)) {
                 continue;
             }
             $label = trim((string) ($cause['label'] ?? $cause['name'] ?? ''));
