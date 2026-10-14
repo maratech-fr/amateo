@@ -2,16 +2,18 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-14 (éviction sur le déplacement de GROUPE, P4-329) : le bloc « Déplacer le
-GROUPE » est recalé contre `useRetouchGestures.ts`/`queries.ts` — une case occupée ouvre désormais
-la même `EvictConfirmDialog` que le move simple (essai `useMoveGroupDryRun` + confirmation
-`useMoveGroup` avec `evictSlotId`), l'occupant passe « à replacer ». §6.7 ter recalé le 2026-10-13
-(mutualisation au socle) contre `PlanningPage.tsx`/`MutualizeDialog.tsx`/`SlotDetail.tsx` —
-« Mutualiser… » est désormais offert au planning de SAISON (socle) comme sur un plan de PÉRIODE, la
-seule restriction au socle étant l'activation d'une équipe à 0 séance (refus serveur, non proposée
-côté écran). Modèle et décisions fondateur :
-[`mutualisation.md`](../../specs/courantes/mutualisation.md). Reste du fichier non re-confronté
-cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-14 (lot 2 « la séance de groupe est une séance », chemin DÉPLACEMENT) :
+§6.7 recalé contre `useRetouchGestures.ts`/`PlanningPage.tsx`/`DropActionMenu.tsx`/
+`MutualizeAtCaseDialog.tsx`/`EvictConfirmDialog.tsx` — déposer une séance sur une case OCCUPÉE ouvre
+désormais un **menu à 3 choix** (`DropActionMenu` : Prendre sa place / Échanger / Mutualiser, un
+choix impossible désactivé AVEC motif via `disabledReason`, A11Y-30) au lieu d'ouvrir d'emblée la
+modale d'éviction. « Échanger » (`useSwapSlot`/`useSwapDryRun` → `EvictConfirmDialog kind="swap"`) et
+« Mutualiser » depuis le dépôt (`useMutualizeAtCase` → `MutualizeAtCaseDialog`) sont câblés ; une
+éviction d'un occupant de GROUPE (`evictedGroup`) toaste « groupe de N séances à replacer » (pas de
+un-clic). §6.7 ter (mutualisation au socle, 2026-10-13) et « Déplacer le GROUPE » (P4-329) inchangés.
+Modèle et décisions fondateur : [`mutualisation.md`](../../specs/courantes/mutualisation.md) §2.4.
+Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans
+`git log -p --follow` ce fichier.
 
 ### 6.7 Retouche manuelle — mode cible, éviction, dérive, verrouiller (rail read-only + verdict moteur, 2026-08-16)
 
@@ -86,10 +88,25 @@ par un CRUD brut sur la ressource :
       20 s + marge bout-en-bout mesurée > 30 s sur un club dense — au lieu du timeout par défaut de
       ky (~10 s), qui abandonnait la requête (nginx 499) AVANT que le moteur ait tranché : les logs
       du fondateur montraient un `valid=True` rendu UNE seconde après l'abandon client.
-  - **Case occupée → éviction, remplie par un ESSAI (P2-32, décision fermée D6+D8, 2026-08-16)** :
-    un clic sur une carte occupée arme `evictDialog` en **`checking`** et lance IMMÉDIATEMENT un
+  - **Case occupée → MENU à 3 choix (lot 2, « la séance de groupe est une séance »)** : déposer une
+    séance (équipe OU groupe) sur une carte occupée n'ouvre plus d'emblée la modale d'éviction — un
+    **menu à 3 choix** s'interpose (`DropActionMenu`,
+    `frontend/src/features/planning/DropActionMenu.tsx`, armé par `useRetouchGestures.openDropMenu`) :
+    **Prendre sa place** (→ l'éviction ci-dessous), **Échanger** (→ `EvictConfirmDialog kind="swap"`,
+    essai `useSwapDryRun` + confirmation `useSwapSlot` sur `POST /api/schedule-slots/swap`, N↔M), ou
+    **Mutualiser** (→ `MutualizeAtCaseDialog`, `useMutualizeAtCase` sur
+    `POST /api/schedule-slots/mutualize-at-case`, rejoindre/fusion). Un choix IMPOSSIBLE est **désactivé
+    AVEC SON MOTIF** (prop `disabledReason` du `Button`, A11Y-30 — focalisable, annoncé) pour les
+    seules impossibilités d'IDENTITÉ que le front connaît (verrou gestionnaire de l'occupant, deux
+    groupes pour « Prendre sa place », équipe des deux côtés ou > 10 pour « Mutualiser ») ; le reste
+    (capacité, Σ…) reste ACTIF et remonte un refus serveur NOMMÉ dans la modale qui suit.
+  - **Prendre sa place → éviction, remplie par un ESSAI (P2-32, décision fermée D6+D8, 2026-08-16)** :
+    choisir « Prendre sa place » arme `evictDialog` en **`checking`** et lance IMMÉDIATEMENT un
     **dry-run** — `POST /api/schedule-slots/{id}/move` avec `evictSlotId` = l'occupant **et
-    `dryRun: true`** (`useMoveDryRun`) — le moteur juge SANS RIEN ÉCRIRE. `EvictConfirmDialog`
+    `dryRun: true`** (`useMoveDryRun`) — le moteur juge SANS RIEN ÉCRIRE. **Q2 (lot 2)** : l'occupant
+    peut être un GROUPE — l'éviction retire alors ses N séances ENSEMBLE (le bloc survit), la réponse
+    porte `evictedGroup` et un toast « groupe de N séances à replacer » (pas de raccourci un-clic,
+    réservé à une équipe). `EvictConfirmDialog`
     (`frontend/src/features/planning/EvictConfirmDialog.tsx`) porte quatre états :
     - **`checking`** : « Vérification… » (spinner), aucun bouton de confirmation ;
     - **`accepted`** (dry-run `valid: true`) : « Ce créneau est occupé par \<équipe\>. […] » **+
