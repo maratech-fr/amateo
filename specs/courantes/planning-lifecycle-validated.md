@@ -1,6 +1,7 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-11 (lot verrous V1/V1bis) : nouveau §3.1bis (verrous d'une période
+Last verified @ 2026-10-14 (renommage des sous-agents Matrix — `contrarian-review` → `smith`, nom
+seul, aucun fait re-confronté cette passe ; précédemment 2026-10-11, lot verrous V1/V1bis) : nouveau §3.1bis (verrous d'une période
 survivant à « Régénérer », « Charger » pour une période) confronté à
 `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`/`pointLockSource`, `LoadLocksController` et
 `ScheduleConstraintBuilder::buildForPeriodPlan` ; §3.5 et §4 gagnent `canLoadLocks`/

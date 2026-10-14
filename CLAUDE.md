@@ -211,7 +211,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
    (`.claude/agents/neo.md` §Worktree).
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
-`docs/glossary.md` · `docs/testing/testing-strategy.md` · `specs/evolution/roadmap.md`
+`docs/glossary.md` · `docs/testing/testing-strategy.md` · `docs/testing/tests-par-parcours.md` (charte des tests : ce que chaque niveau prouve, par parcours — maison de l'agent `tank`) · `specs/evolution/roadmap.md`
 (**l'ouvert**) · `specs/courantes/etat-des-lieux.md` (**le livré**) ·
 `docs/architecture/adr-index.md` · `backend/docs/commands.md` · ops : `docs/ops/` · sécurité :
 `docs/security/` · clés `config` d'une contrainte : `backend/docs/constraint-config-keys.md`.

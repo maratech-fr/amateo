@@ -1,6 +1,7 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-10-11 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+Last verified @ 2026-10-14 (renommage des sous-agents Matrix — `coder`/`planner` → `neo`/`morpheus`,
+nom seul, aucun fait re-confronté cette passe ; précédemment 2026-10-11 : `documentation-update`, rotation de fraîcheur — sujet de la PR sans
 rapport, lot 3B PR B'). Re-confronté : `testTimeout: 15_000` (`vitest.config.ts:49`)
 et `asyncUtilTimeout: 5_000` (`src/test/setup.ts:28`) toujours les valeurs posées ✓ ; `lint:deps`
 toujours câblé dans `package.json`/`Makefile` ✓. Reste du fichier (§ Stack Versions Fixed et le
