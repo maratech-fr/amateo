@@ -251,12 +251,6 @@ final class ConflictTruthContext extends BaseContext
         $this->poserOverlayAvecEntrainement($this->sisterTeamId);
     }
 
-    #[Given('le plan du milieu pointe une version portant un entraînement de sa propre équipe le jeudi à 20h45 sur ce gymnase')]
-    public function lePlanDuDebutPointeUneVersionAvecEntrainementPropreEquipe(): void
-    {
-        $this->poserOverlayAvecEntrainement($this->teamId);
-    }
-
     #[Given('un match à domicile de l\'équipe ce jeudi, coup d\'envoi à 20h45, sur ce gymnase')]
     public function unMatchADomicileCeJeudiSoir(): void
     {
@@ -269,42 +263,6 @@ final class ConflictTruthContext extends BaseContext
             'kickoffTime' => '20:45',
         ], $this->token);
         $this->fixtureId = $this->idOf($fixture, 'match à domicile');
-    }
-
-    #[Given('deux matchs à domicile enchaînés à deux heures dans ce gymnase, un samedi à venir')]
-    public function deuxMatchsEnchainesADeuxHeures(): void
-    {
-        // Samedi À VENIR relatif à l'horloge épinglée → futur, conservé par la règle 3.
-        // 18:45 puis 20:45, même gymnase : les fenêtres SALLE (match seul) ne se touchent
-        // pas — le radar ne DOIT signaler aucune collision de gymnase (D1 règle 1).
-        $saturday = new DateTimeImmutable(self::PINNED_NOW)->modify('next saturday')->format('Y-m-d');
-        $this->gymFixtureAId = $this->poserMatchDomicile($this->teamId, $saturday, '18:45');
-        $this->gymFixtureBId = $this->poserMatchDomicile($this->sisterTeamId, $saturday, '20:45');
-    }
-
-    #[Given('deux matchs à domicile qui se chevauchaient dans ce gymnase, mais joués hier')]
-    public function deuxMatchsQuiSeChevauchaientMaisJouesHier(): void
-    {
-        // HIER relatif à l'horloge épinglée : deux matchs qui se chevauchaient (même gymnase,
-        // 30 min d'écart) mais déjà JOUÉS → la règle 3 (D1) les sort du radar.
-        $yesterday = new DateTimeImmutable(self::PINNED_NOW)->modify('-1 day')->format('Y-m-d');
-        $this->gymFixtureAId = $this->poserMatchDomicile($this->teamId, $yesterday, '18:00');
-        $this->gymFixtureBId = $this->poserMatchDomicile($this->sisterTeamId, $yesterday, '18:30');
-    }
-
-    #[Given('la même personne coache deux équipes qui enchaînent un match à domicile chacune dans le même gymnase')]
-    public function enchainementMemePersonneMemeGymnase(): void
-    {
-        $this->poserEnchainementMemePersonne($this->venueId);
-    }
-
-    #[Given('la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents')]
-    public function enchainementMemePersonneDeuxGymnases(): void
-    {
-        // Lot M — enchaînement à échauffement seul (B à 20h15, après la fin de A à
-        // 20h00), mais dans DEUX gymnases : la règle générale retranche l'échauffement
-        // quel que soit le gymnase → toujours aucun conflit de personne.
-        $this->poserEnchainementMemePersonne($this->creerSecondGymnase());
     }
 
     #[Given('la même personne coache deux équipes dont les matchs à domicile se chevauchent vraiment, le second commençant avant la fin du premier')]
@@ -378,29 +336,6 @@ final class ConflictTruthContext extends BaseContext
             $effectiveLeague,
             self::CUP_CATEGORY_NAME,
         ), admin: true);
-    }
-
-    /**
-     * P4-272 ① — variante « corrigée par le club » : le gestionnaire pose la MÊME
-     * fenêtre étroite mais par l'API CRUD (`POST club_league_windows`), pas par un
-     * INSERT SQL. Prouve le chemin réel écriture gestionnaire → copie → radar : une
-     * fenêtre corrigée par le club est honorée par le radar (et le placement, qui lit
-     * la même copie).
-     */
-    #[Given('le club corrige au samedi matin sa fenêtre de ligue pour cette équipe, via l\'API gestionnaire')]
-    public function leClubCorrigeSaFenetreDeLigueViaLApi(): void
-    {
-        $this->prepareCupTeamAndCategory();
-
-        $created = $this->apiPost('club_league_windows', [
-            'category' => self::CUP_CATEGORY_NAME,
-            'level' => 'REGIONAL',
-            'gender' => null,
-            'dayOfWeek' => 6,
-            'kickoffMin' => '10:00',
-            'kickoffMax' => '10:30',
-        ], $this->token);
-        $this->cupWindowId = $this->idOf($created, 'fenêtre de ligue corrigée');
     }
 
     #[Given('une rencontre de coupe à domicile ce samedi, coup d\'envoi le soir hors de la fenêtre')]
@@ -508,55 +443,6 @@ final class ConflictTruthContext extends BaseContext
         // de la case, aligné sur le kickoff) — jamais « …+02:00 ».
         if (1 !== preg_match('/^\d{4}-\d{2}-\d{2}T20:45:00$/', $start)) {
             throw new RuntimeException(\sprintf('borne de début attendue en heure murale « …T20:45:00 » sans décalage, obtenue « %s »', $start));
-        }
-    }
-
-    #[Then('aucun conflit d\'entraînement ne porte ce match')]
-    public function aucunConflitDEntrainementNePorteCeMatch(): void
-    {
-        foreach ($this->conflicts as $conflict) {
-            if (!\is_array($conflict) || 'MATCH_TRAINING' !== ($conflict['type'] ?? null)) {
-                continue;
-            }
-            $fixtureBlock = $conflict['fixture'] ?? null;
-            $fixtureId = \is_array($fixtureBlock) ? ($fixtureBlock['fixtureId'] ?? null) : null;
-            if ($fixtureId === $this->fixtureId) {
-                throw new RuntimeException('un conflit MATCH_TRAINING porte ce match alors qu\'il se pose sur le créneau de sa PROPRE équipe (D1 règle 2)');
-            }
-        }
-    }
-
-    #[Then('le radar ne signale aucune collision de gymnase pour ces deux matchs')]
-    public function aucuneCollisionDeGymnasePourCesDeuxMatchs(): void
-    {
-        $pair = [$this->gymFixtureAId, $this->gymFixtureBId];
-        foreach ($this->conflicts as $conflict) {
-            if (!\is_array($conflict) || 'VENUE_OVERLAP' !== ($conflict['type'] ?? null)) {
-                continue;
-            }
-            foreach (['left', 'right'] as $side) {
-                $block = $conflict[$side] ?? null;
-                $fixtureId = \is_array($block) ? ($block['fixtureId'] ?? null) : null;
-                if (\in_array($fixtureId, $pair, true)) {
-                    throw new RuntimeException('une collision de gymnase VENUE_OVERLAP porte ces deux matchs alors qu\'elle ne devrait pas (fenêtre SALLE disjointe, ou match déjà joué — D1)');
-                }
-            }
-        }
-    }
-
-    #[Then('le radar ne signale aucun conflit de personne entre ces deux matchs')]
-    public function aucunConflitDePersonneEntreCesDeuxMatchs(): void
-    {
-        if (null !== $this->matchMatchDeLaPaireEnchainee()) {
-            throw new RuntimeException('un conflit de personne MATCH_MATCH porte ces deux matchs enchaînés alors que l\'échauffement du second, dans le même gymnase, ne recouvre rien de réel (D1 étendu 2026-09-17)');
-        }
-    }
-
-    #[Then('un conflit de personne en double porte ces deux matchs enchaînés')]
-    public function unConflitDePersonnePorteLesDeuxMatchsEnchaines(): void
-    {
-        if (null === $this->matchMatchDeLaPaireEnchainee()) {
-            throw new RuntimeException('aucun conflit de personne MATCH_MATCH ne porte ces deux matchs enchaînés — dans deux gymnases différents, la personne ne peut être aux deux, le conflit doit demeurer');
         }
     }
 
@@ -940,21 +826,6 @@ final class ConflictTruthContext extends BaseContext
     }
 
     /** Pose un match à domicile (gymnase + coup d'envoi) et renvoie son id. */
-    private function poserMatchDomicile(string $teamId, string $date, string $kickoff): string
-    {
-        return $this->idOf(
-            $this->apiPost('fixtures', [
-                'teamId' => $teamId,
-                'matchDate' => $date,
-                'homeAway' => 'HOME',
-                'opponentLabel' => 'Adversaire jetable',
-                'venueId' => $this->venueId,
-                'kickoffTime' => $kickoff,
-            ], $this->token),
-            'match à domicile jetable',
-        );
-    }
-
     /**
      * Épingle une catégorie à durée CONNUE (match 90 / échauffement 30) sur les deux
      * équipes jetables du MÊME coach, puis pose deux matchs à domicile enchaînés : A à
@@ -1025,30 +896,6 @@ final class ConflictTruthContext extends BaseContext
             'venueId' => $secondVenueId,
             'kickoffTime' => $secondKickoff,
         ], $this->token), 'match enchaîné B');
-    }
-
-    /**
-     * Le conflit MATCH_MATCH portant la paire de matchs enchaînés, ou null.
-     *
-     * @return array<string, mixed>|null
-     */
-    private function matchMatchDeLaPaireEnchainee(): ?array
-    {
-        $pair = [$this->personGymMatchAId, $this->personGymMatchBId];
-        foreach ($this->conflicts as $conflict) {
-            if (!\is_array($conflict) || 'MATCH_MATCH' !== ($conflict['type'] ?? null)) {
-                continue;
-            }
-            $left = $conflict['left'] ?? null;
-            $right = $conflict['right'] ?? null;
-            $leftId = \is_array($left) ? ($left['fixtureId'] ?? null) : null;
-            $rightId = \is_array($right) ? ($right['fixtureId'] ?? null) : null;
-            if (\in_array($leftId, $pair, true) && \in_array($rightId, $pair, true)) {
-                return $conflict;
-            }
-        }
-
-        return null;
     }
 
     private function createEntry(string $title, string $start, string $end, ?string $parentEntryId): string

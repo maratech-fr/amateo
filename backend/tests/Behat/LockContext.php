@@ -77,22 +77,6 @@ final class LockContext extends BaseContext
     /** Règle de jours contraire au verrou (scénario c). */
     private string $constraintId = '';
 
-    /** Gymnase jetable SANS aucun créneau ouvert — la « case fermée » du scénario b. */
-    private string $closedVenueId = '';
-
-    /** Lot 4bis — créneau LIBRE posé sur une case occupée du socle, et sa case. */
-    private string $freeSlotReservationId = '';
-
-    private string $freeSlotVenueId = '';
-
-    private int $freeSlotDay = 0;
-
-    private string $freeSlotStart = '';
-
-    private int $moveStatus = 0;
-
-    private string $moveMessage = '';
-
     /** @var list<string> Versions de saison présentes à l'entrée — à épargner au nettoyage. */
     private array $preexistingVersionIds = [];
 
@@ -486,107 +470,6 @@ final class LockContext extends BaseContext
         }
     }
 
-    #[Given('un créneau libre réservé sur une case occupée du socle')]
-    public function unCreneauLibreReserveSurUneCaseOccupee(): void
-    {
-        // Une case ACTUELLEMENT occupée du socle, servie par un créneau NON divisible de capacité 1
-        // (base, schedule_plan_id NULL) : un créneau libre y retire LA place, donc après régénération
-        // la case est vide — preuve que le créneau libre a bien retiré la place (pas un trou préexistant).
-        //
-        // P4-324 — le choix de la case est DÉTERMINISTE (tri venue_id, day_of_week, start_time) et
-        // restreint aux cases ÉLIGIBLES à une réservation de créneau libre du socle, pour ne jamais
-        // tomber sur une case que `ReservationStateProcessor` refuse légitimement (422) : un ancien
-        // `ORDER BY sst.id LIMIT 1` sur des uuid aléatoires choisissait une case différente à chaque
-        // run et rougissait par intermittence. Les filtres MIROITENT les gardes du processor pour un
-        // créneau libre (teamId null) posé au socle (schedulePlanId null) :
-        //   - FIN AVANT MINUIT : début + durée (90 min, ci-dessous) ≤ 24:00 ({@see ReservationStateProcessor::assertEndsWithinDay}) ;
-        //   - GYMNASE OUVERT ce jour-là : garanti par la jointure `venue_training_slot` (une case du socle
-        //     EST servie par un créneau de base ce jour/heure ; `assertVenueOpenForPlan` est de toute
-        //     façon un no-op au socle, schedulePlanId null) ;
-        //   - PAS D'OCCUPATION DE GROUPE ni d'occupant : la case ne porte AUCUNE réservation du socle
-        //     (équipe, bloc mutualisé COMPLET ou créneau libre), sans quoi la règle de capacité (e)
-        //     — capacité 1 — refuserait le créneau libre ({@see ReservationGroupOccupancy::assertFreeSlotReservationAllowed}) ;
-        //     on écarte aussi toute case portant une séance de bloc mutualisé matérialisée (shared_training_block_id).
-        $row = $this->dbalScalar(
-            \sprintf(
-                'SELECT sst.venue_id || \'|\' || sst.day_of_week || \'|\' || to_char(sst.start_time, \'HH24:MI\') AS behatval'
-                . ' FROM schedule_slot_template sst'
-                . ' JOIN venue v ON v.id = sst.venue_id AND v.can_split = false'
-                . ' JOIN venue_training_slot vts ON vts.venue_id = sst.venue_id AND vts.day_of_week = sst.day_of_week'
-                . ' AND to_char(vts.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\')'
-                . ' AND vts.schedule_plan_id IS NULL AND vts.club_id = \'%1$s\' AND vts.capacity = 1'
-                . ' WHERE sst.schedule_id = \'%2$s\''
-                // FIN AVANT MINUIT : début (minutes) + 90 ≤ 1440.
-                . ' AND (extract(hour from sst.start_time)::int * 60 + extract(minute from sst.start_time)::int + 90) <= 1440'
-                // PAS D'OCCUPATION DE GROUPE : aucune séance de bloc mutualisé sur cette case.
-                . ' AND NOT EXISTS ('
-                . ' SELECT 1 FROM schedule_slot_template g WHERE g.schedule_id = sst.schedule_id'
-                . ' AND g.venue_id = sst.venue_id AND g.day_of_week = sst.day_of_week'
-                . ' AND to_char(g.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\')'
-                . ' AND g.shared_training_block_id IS NOT NULL)'
-                // PAS D'OCCUPANT RÉSERVÉ : aucune réservation du socle sur cette case (capacité 1).
-                . ' AND NOT EXISTS ('
-                . ' SELECT 1 FROM reservation res WHERE res.club_id = \'%1$s\' AND res.schedule_plan_id IS NULL'
-                . ' AND res.venue_id = sst.venue_id AND res.day_of_week = sst.day_of_week'
-                . ' AND to_char(res.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\'))'
-                . ' ORDER BY sst.venue_id, sst.day_of_week, sst.start_time LIMIT 1',
-                $this->clubId,
-                $this->socleVersionId,
-            ),
-            admin: true,
-        );
-        $parts = '' === $row ? [] : explode('|', $row);
-        if (3 !== \count($parts)) {
-            throw new RuntimeException('aucune case occupée éligible à un créneau libre (capacité 1, finissant avant minuit, sans occupation de groupe) — la base est-elle seedée ?');
-        }
-        [$this->freeSlotVenueId, $day, $this->freeSlotStart] = $parts;
-        $this->freeSlotDay = (int) $day;
-
-        $created = $this->apiPost('reservations', [
-            'label' => 'Loto du club (fonctionnel)',
-            'venueId' => $this->freeSlotVenueId,
-            'dayOfWeek' => $this->freeSlotDay,
-            'startTime' => $this->freeSlotStart,
-            'durationMinutes' => 90,
-            'schedulePlanId' => null,
-        ], $this->token);
-        if (!\in_array($created['status'], [200, 201], true)) {
-            // Corps du 422 dans le message : un rouge CI (case refusée) est alors diagnosticable
-            // sans relance, au lieu du nu « a répondu 422 (201 attendu) ».
-            throw new RuntimeException(\sprintf('la pose du créneau libre a répondu %d (201 attendu) — corps : %s', $created['status'], json_encode($created['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES)));
-        }
-        $this->freeSlotReservationId = (string) ($created['json']['id'] ?? '');
-        if ('' === $this->freeSlotReservationId) {
-            throw new RuntimeException('le créneau libre n\'a pas rendu d\'identifiant');
-        }
-    }
-
-    #[When('je tente de déplacer cette séance vers une case sans créneau ouvert')]
-    public function jeTenteUnDeplacementImpossible(): void
-    {
-        // Un gymnase JETABLE sans aucun créneau d'entraînement : toute case y est « fermée ».
-        $venue = $this->apiPost('venues', ['name' => 'Gym Jetable Sans Créneau', 'source' => 'manual'], $this->token);
-        $venueId = $venue['json']['id'] ?? null;
-        if (!\is_string($venueId) || '' === $venueId) {
-            throw new RuntimeException(\sprintf('création du gymnase jetable sans identifiant (HTTP %d)', $venue['status']));
-        }
-        $this->closedVenueId = $venueId;
-
-        $moved = $this->apiPost(\sprintf('schedule-slots/%s/move', $this->slotId), [
-            'dayOfWeek' => $this->lockDay,
-            'startTime' => $this->lockStartTime,
-            'venueId' => $this->closedVenueId,
-        ], $this->token);
-        $this->moveStatus = $moved['status'];
-        foreach (['error', 'code', 'hydra:description', 'detail'] as $key) {
-            if (\is_string($moved['json'][$key] ?? null)) {
-                $this->moveMessage = $moved['json'][$key];
-
-                break;
-            }
-        }
-    }
-
     #[When('je régénère le planning de saison')]
     public function jeRegenere(): void
     {
@@ -603,16 +486,6 @@ final class LockContext extends BaseContext
         $this->finalStatus = $this->pollUntilTerminal($this->regeneratedId);
     }
 
-    #[Then('la séance verrouillée occupe toujours la même case')]
-    public function laSeanceVerrouilleeOccupeLaMemeCase(): void
-    {
-        if ('COMPLETED' !== $this->finalStatus) {
-            throw new RuntimeException(\sprintf('la régénération aurait dû aboutir (COMPLETED), statut obtenu « %s »', $this->finalStatus));
-        }
-
-        $this->assertSeanceALaMemeCaseDans($this->regeneratedId);
-    }
-
     #[Then('la régénération aboutit, le verrou satisfaisant le jour imposé')]
     public function laRegenerationAboutitVerrouSatisfaitJourImpose(): void
     {
@@ -623,30 +496,6 @@ final class LockContext extends BaseContext
         }
 
         $this->assertSeanceALaMemeCaseDans($this->regeneratedId);
-    }
-
-    #[Then('aucune équipe n\'est placée sur la case du créneau libre')]
-    public function aucuneEquipeSurLaCaseDuCreneauLibre(): void
-    {
-        if ('COMPLETED' !== $this->finalStatus) {
-            throw new RuntimeException(\sprintf('la régénération aurait dû aboutir (COMPLETED) : un créneau libre retire une place, il ne rend jamais le planning infaisable ; statut obtenu « %s »', $this->finalStatus));
-        }
-
-        // La case du créneau libre a perdu sa place : le payload n'y a plus de créneau, le solveur
-        // n'y place personne. Aucune séance de la version régénérée ne tombe sur cette case.
-        $placed = (int) $this->dbalScalar(
-            \sprintf(
-                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\'',
-                $this->regeneratedId,
-                $this->freeSlotVenueId,
-                $this->freeSlotDay,
-                $this->freeSlotStart,
-            ),
-            admin: true,
-        );
-        if (0 !== $placed) {
-            throw new RuntimeException('un créneau libre aurait dû retirer la place : aucune équipe ne devait être placée sur sa case après régénération');
-        }
     }
 
     #[Then('le verrou reste à sa case et la règle violée est signalée')]
@@ -672,32 +521,6 @@ final class LockContext extends BaseContext
         );
         if ($signalements < 1) {
             throw new RuntimeException('la règle de jours contredite par le verrou aurait dû être signalée par un diagnostic nommant la règle');
-        }
-    }
-
-    #[Then('le déplacement est refusé et nommé, et la séance n\'a pas bougé')]
-    public function leDeplacementEstRefuseEtNomme(): void
-    {
-        if (422 !== $this->moveStatus) {
-            throw new RuntimeException(\sprintf('un déplacement vers une case fermée aurait dû être refusé (422), obtenu %d', $this->moveStatus));
-        }
-        if (!str_contains($this->moveMessage, 'créneau') && !str_contains($this->moveMessage, 'slot_unavailable')) {
-            throw new RuntimeException(\sprintf('le refus aurait dû nommer l\'absence de créneau ouvert, message obtenu « %s »', $this->moveMessage));
-        }
-
-        // « Sans la déplacer en silence » : la séance reste exactement à sa case d'origine.
-        $stillThere = $this->dbalScalar(
-            \sprintf(
-                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\'',
-                $this->slotId,
-                $this->lockVenueId,
-                $this->lockDay,
-                $this->lockStartTime,
-            ),
-            admin: true,
-        );
-        if ('1' !== $stillThere) {
-            throw new RuntimeException('la séance n\'aurait jamais dû être déplacée par un geste refusé');
         }
     }
 
@@ -741,15 +564,6 @@ final class LockContext extends BaseContext
         }
         if ($this->socleSetForPeriod) {
             $this->pointSocleTo('');
-        }
-
-        if ('' !== $this->closedVenueId) {
-            $this->apiDelete(\sprintf('venues/%s', $this->closedVenueId), $this->token);
-        }
-
-        // Lot 4bis — retirer le créneau libre posé (quoi qu'il arrive), pour rendre la case au seed.
-        if ('' !== $this->freeSlotReservationId) {
-            $this->apiDelete(\sprintf('reservations/%s', $this->freeSlotReservationId), $this->token);
         }
 
         if ('' !== $this->constraintId) {

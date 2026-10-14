@@ -88,12 +88,6 @@ final class ConstraintHonoredContext extends BaseContext
         }
     }
 
-    #[Given('une contrainte qui interdit à l\'équipe SM1 de s\'entraîner avant 20h30')]
-    public function uneContrainteFeasible(): void
-    {
-        $this->createTeamTimeConstraint('SM1 pas avant 20h30 (fonctionnel)', ['minStartTime' => '20:30']);
-    }
-
     #[Given('un entraînement mutualisé qu\'aucun créneau ne peut accueillir')]
     public function unEntrainementMutualiseImpossible(): void
     {
@@ -147,30 +141,6 @@ final class ConstraintHonoredContext extends BaseContext
         }
 
         $this->finalStatus = $this->pollUntilTerminal($this->scheduleId);
-    }
-
-    #[Then('la génération aboutit et aucune séance de SM1 n\'est placée avant 20h30')]
-    public function aucuneSeanceAvant2030(): void
-    {
-        if ('COMPLETED' !== $this->finalStatus) {
-            throw new RuntimeException(\sprintf('la génération aurait dû aboutir (COMPLETED), obtenu « %s »', $this->finalStatus));
-        }
-
-        $count = (int) $this->dbalScalar(
-            \sprintf('SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\'', $this->scheduleId, $this->teamId),
-            admin: true,
-        );
-        if ($count < 1) {
-            throw new RuntimeException('SM1 n\'a aucune séance : la contrainte serait honorée à vide, la preuve serait creuse');
-        }
-
-        $earliest = $this->dbalScalar(
-            \sprintf('SELECT MIN(start_time)::text AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\'', $this->scheduleId, $this->teamId),
-            admin: true,
-        );
-        if ($earliest < '20:30:00') {
-            throw new RuntimeException(\sprintf('une séance de SM1 est placée à %s, avant l\'heure interdite 20:30', $earliest));
-        }
     }
 
     #[Then('la génération échoue avec un diagnostic nommé, sans planning produit')]

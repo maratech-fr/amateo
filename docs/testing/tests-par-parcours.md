@@ -142,6 +142,15 @@ dense (~20 équipes / 6-7 gymnases) tient le palier 180 s (au lieu de 600 s). Un
 (équipes + gymnases + coachs + fichier FBI) se réutilise entre les parcours (naissance de club,
 matchs, incident, reprise).
 
+**Maison du décor** : le trait `SmallClubFixtureTrait` (`backend/tests/Behat/`) bâtit ce petit club
+jetable PAR L'API (inscription → vérification → approbation, puis 11 équipes de rangs variés dont un
+rang S, 3 gymnases avec leurs créneaux, des coachs dont un sur deux équipes), génère et VALIDE son
+socle (palier 60 s, complexité équipes × gymnases ≤ 50, `engine/app/main.py::_adaptive_timeout`), et
+le nettoie en `AfterScenario` par la purge canonique `app:clubs:purge-erased` (gardée par
+`PurgeCompletenessTest`). Un context qui `use` ce trait appelle `teardownSmallClub()`. Son smoke :
+`un-petit-club-se-genere-par-l-api.feature`. Réutilisé par la boucle de travail (P3) et, à venir
+(PR4c), par la fermeture (P1) et la reprise (P2).
+
 **Fichier FBI canonique** (via `support-xlsx.ts`) : **10 équipes**, import =
 **6 équipes × 5 journées + 3 équipes × 10 journées + 1 équipe × 22 journées** (≈ 82 rencontres,
 domicile/extérieur). C'est la matière de l'import réel qui alimente le parcours matchs et la
@@ -161,9 +170,14 @@ B ≥ 80 % des séances ; aucune prioritaire ne perd.
   `VenueTrainingSlot`.
 - Bilan par rang : **manque produit** (ligne de roadmap). Aperçu « qui est touché » dès la
   déclaration : **manque produit** (patron `DeletionImpactParityTest`).
-- **Cible Behat** (décor ~12 équipes / 3 gymnases, palier 60 s) : un enchaînement « une fermeture se
-  déclare, montre les touchés, et le planning s'adapte » (rang S garde son jour, aucune séance posée
-  au gymnase fermé) ; garder `plan-de-periode-en-overlay` (re-datage découpé avec aperçu).
+- **Cible Behat → PR4c** (décor ~12 équipes / 3 gymnases, palier 60 s) : un enchaînement « une fermeture
+  se déclare, montre les touchés, et le planning s'adapte » (rang S garde son jour, aucune séance posée
+  au gymnase fermé). Reporté en PR4c (décision fondateur) car la fermeture d'UN gymnase est une contrainte
+  datée FACILITY `venue_closed` (elle alimente `effectiveClosedWeekdaysByVenue`, le transcripteur SAUTE le
+  couple gymnase/jour fermé en « à replacer », `OrphanPinGuard` interdit un épinglage orphelin) ET, à 3
+  gymnases, fermer le plus occupé exige la MUTUALISATION pour rester faisable — le décor de fermeture
+  (mutualisation + plus de gymnases) est à cadrer. `plan-de-periode-en-overlay:45` (re-datage découpé avec
+  aperçu) gardé.
 - **Cible E2E** : `club-life.spec.ts` (incident consulté), `redate-closure.spec.ts` (incident
   re-daté + contraste).
 
@@ -173,29 +187,42 @@ laissés par la mairie → ~20 équipes (SM1/SF1/U21M1 prennent leur semaine) �
 saison écartées du solveur → génération. **Réussite** : doléances appliquées, tenant dans les
 gymnases laissés.
 - Briques : `voeux-des-coachs`, bloquants `CoachWishTransferTest`, `SeasonSlotKeepSemanticsGateTest`.
-- **Cible Behat** (≈20 équipes / 6-7 gymnases, palier 180 s) : « la semaine de reprise se prépare
+- **Cible Behat → PR4c** (≈20 équipes / 6-7 gymnases, palier 180 s) : « la semaine de reprise se prépare
   comme sur le terrain, puis se génère » (aucune séance des équipes en pause, aucune sur un gymnase
-  retiré, aucune des U13M le mardi, contraintes d'équipe de saison non parties au solveur). Le filet
-  PHPUnit `PeriodConstraintSelector` est écrit AVANT de retirer le scénario « contrainte d'équipe
-  ignorée en vacances ».
+  retiré, aucune des U13M le mardi, contraintes d'équipe de saison non parties au solveur). Reporté en
+  PR4c (décision fondateur) — demande un mode ~20 équipes du `SmallClubFixtureTrait` et le flux doléances
+  → transfert. Le filet PHPUnit `PeriodConstraintSelector` est écrit AVANT de retirer le scénario
+  « contrainte d'équipe ignorée en vacances ».
 
 ### P3 — Planning de saison
 Smoke A→Z, puis nominal : équipes + passerelles, gymnases, coachs, règles de club, préférences,
 créneaux S réservés, indispos → génération → corrections (**verrouiller puis relancer le solveur**).
-- **Cible** : garder le smoke `generation-du-planning-de-saison` (seul plein format) ; fondre
-  `une-contrainte-saisie-est-honoree` + les régénérations de `un-verrou-est-souverain` en UN
-  enchaînement « je contrains, je réserve, je verrouille, je régénère : tout tient » ; garder
-  `une-personne-est-signalee-a-deux-endroits` et `l-import-des-equipes`. Passerelles / repos / ≤ 3
-  séances à la suite = niveau engine, pas de Behat.
+- **Fait (PR4b)** : le smoke `generation-du-planning-de-saison` reste (seul plein format) ; l'enchaînement
+  `la-boucle-de-travail-du-gestionnaire.feature` (« je contrains, je réserve, je verrouille, je régénère :
+  tout tient », sur `SmallClubFixtureTrait`, 2 solves) replace `une-contrainte-saisie-est-honoree:9` +
+  `un-verrou-est-souverain:9` (verrou de saison après régénération) + `un-verrou:31` (créneau libre réservé).
+  `une-contrainte-saisie:15` (impossible → FAILED diagnostiqué) gardée ; `un-verrou:15` (déplacer vers une
+  case fermée) repliée au plus bas sur `SlotMoveVerdictTest::testMoveToCaseWithNoOpenSlotIsRejectedWithoutCallingEngine`
+  (jumeau MOVE de `SlotPlacementVerdictTest::testPlacementWithNoWindowIsRejectedBeforeEngine`) ; `un-verrou:21/:40`
+  (jour imposé satisfait par verrou, règle contraire signalée) et `:47/:57/:69` (régénérations de PLAN DE PÉRIODE)
+  GARDÉS — promesses distinctes du cycle de vie des plans de période, sans filet plus bas. `une-personne-est-signalee-a-deux-endroits`
+  et `l-import-des-equipes` gardés. Passerelles / repos / ≤ 3 séances à la suite = niveau engine, pas de Behat.
 
 ### P4 — Matchs
 Erreurs de recopie FBI signalées (4a) ; conflits de coach remontés et traités (4b) ; puzzle par
 vagues (4c) : le déjà placé ne bouge pas, tout placé, aucun conflit, **anticiper les vagues à venir**
 (manque produit, roadmap).
-- **Cible** : `placement-des-matchs` reste la colonne (élaguer ce que le gate
-  `MatchPlacementSemanticsGateTest` prouve déjà) ; replier les vérités géométriques de `les-conflits`
-  dans `MatchConflictDetectorTest` (étoffé AVANT) ; garder ~4 enchaînements import → conflit → statut
-  → registre FBI → re-dépôt muet (fusion de `ce-que-fbi-doit-refleter` et `une-erreur-fbi`).
+- **Fait (PR4b)** : les 6 vérités GÉOMÉTRIQUES pures de `les-conflits` (D1/lot M — match sur sa propre
+  équipe, deux matchs enchaînés 2 h même gymnase, match déjà joué, échauffement du 2ᵉ domicile même/deux
+  gymnases, recouvrement réel qui maintient le conflit) sont repliées sur `Unit/Service/MatchConflictDetectorTest`
+  (famille `testTwoHomeMatches*` / `testTwoMatchesChainedTwoHoursApart` / `testMatchOnItsOwnTeamTrainingStaysSilent`
+  / `testPastMatchesAreDroppedFromEveryFamily…`) ; le chemin RADAR→DÉTECTION de bout en bout reste prouvé par les
+  scénarios SERVEUR gardés (heure murale via plan de période pointé, conflit de personne joueuse/coache, enveloppe
+  de ligue). `les-conflits:130` (fenêtre de ligue corrigée) repliée sur `Integration/Service/ConflictRadarLeagueWindowTest`.
+- **Reste (non fait, ROI faible)** : `placement-des-matchs` demeure la colonne — l'élagage de ce que
+  `MatchPlacementSemanticsGateTest` prouve n'a pas été fait (le gate est à MOTEUR réel, il ne couvre pas le chemin
+  API→payload que le Behat prouve) ; la fusion `ce-que-fbi-doit-refleter` + `une-erreur-fbi` non faite (réorganisation,
+  réduction faible).
 
 ### P5 — Mutualisation
 Déclarée à l'étape Équipes (5a) ou en cours de route (5b, « on répartit, on ne crée rien »).
@@ -215,8 +242,12 @@ franchissable (manque produit, roadmap) ; méthode : **verrouiller puis relancer
 Deux clubs de la même ville, même gymnase, mêmes adversaires : le partagé exprès (suggestions de
 gymnase d'adversaire — un compte, jamais un « qui ») le reste, tout le reste est étanche.
 - **Cible** : prouvé en PHPUnit bloquant (`TenantIsolationTest`, `RlsIsolationTest`,
-  `MatchTenantIsolationTest`, `OpponentVenueSuggestionShareTest`). UN scénario Behat « deux clubs
-  partagent le gymnase et les adversaires, jamais leurs données » remplace les doublons. Pas d'E2E.
+  `MatchTenantIsolationTest`, `OpponentVenueSuggestionShareTest`). Pas d'E2E.
+- **Écarté (décision fondateur 2026-10-14)** : PAS de nouvel enchaînement Behat « deux clubs ». L'invariant
+  du partagé (suggestion de gymnase d'adversaire — « un compte, jamais un qui ») est DÉJÀ prouvé bloquant
+  par `OpponentVenueSuggestionShareTest` (falsifié dans les deux sens), et un scénario Behat le dupliquerait
+  sans plus-value (le gate couvre la vérité que le Behat illustrerait). `un-club-ne-voit-jamais-un-autre-club`
+  reste en l'état.
 
 ### P8 — Inscription
 Seul (compte → e-mail → code FFBB → approbation du contact officiel → gestionnaire) ou invité par un

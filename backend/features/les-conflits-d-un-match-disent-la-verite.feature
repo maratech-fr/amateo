@@ -21,64 +21,14 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors un conflit d'entraînement porte ce match et sa borne de début est l'heure murale sans décalage
 
-  Scénario: Un match posé sur le créneau de sa PROPRE équipe n'est jamais un conflit (D1)
-    Un match d'une équipe et un entraînement de CETTE MÊME équipe ne se superposent pas : les
-    joueurs qui jouent ne s'entraînent pas en même temps. Le radar ne DOIT rien signaler.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et une fermeture racine découpée en milieu et fin, la racine et le milieu partageant leur date de départ
-    Et le plan du milieu pointe une version portant un entraînement de sa propre équipe le jeudi à 20h45 sur ce gymnase
-    Et un match à domicile de l'équipe ce jeudi, coup d'envoi à 20h45, sur ce gymnase
-    Quand je demande les conflits des matchs
-    Alors aucun conflit d'entraînement ne porte ce match
-
-  Scénario: Deux matchs enchaînés à deux heures dans le même gymnase ne se chevauchent pas (D1)
-    La fenêtre de collision d'un gymnase est le match seul (sans échauffement) : deux rencontres
-    espacées de deux heures dans la même salle ne se marchent pas dessus.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et deux matchs à domicile enchaînés à deux heures dans ce gymnase, un samedi à venir
-    Quand je demande les conflits des matchs
-    Alors le radar ne signale aucune collision de gymnase pour ces deux matchs
-
-  Scénario: Un match déjà joué ne porte aucun conflit (D1)
-    Un match dont la date est passée sort du radar : deux rencontres qui se chevauchaient dans le
-    même gymnase hier ne sont plus signalées.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et deux matchs à domicile qui se chevauchaient dans ce gymnase, mais joués hier
-    Quand je demande les conflits des matchs
-    Alors le radar ne signale aucune collision de gymnase pour ces deux matchs
-
-  Scénario: Deux domiciles enchaînés dans le même gymnase : l'échauffement du second n'est pas un conflit de personne (D1 étendu)
-    Une même personne coache deux équipes qui enchaînent deux matchs à domicile dans le MÊME gymnase.
-    La personne est déjà sur place pour le premier : l'échauffement du second ne recouvre plus rien de
-    réel, le radar ne DOIT signaler aucun conflit de personne entre ces deux matchs (décision 2026-09-17).
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et la même personne coache deux équipes qui enchaînent un match à domicile chacune dans le même gymnase
-    Quand je demande les conflits des matchs
-    Alors le radar ne signale aucun conflit de personne entre ces deux matchs
-
-  Scénario: Deux domiciles enchaînés dans deux gymnases différents : l'échauffement seul n'est plus un conflit (lot M)
-    Le même enchaînement à échauffement seul, mais dans DEUX gymnases. Depuis le lot M l'échauffement
-    sort de l'empreinte de personne QUEL QUE SOIT le gymnase : la personne n'a qu'à ARRIVER pour le
-    coup d'envoi du second, elle saute l'échauffement. Le radar ne DOIT signaler aucun conflit de personne.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents
-    Quand je demande les conflits des matchs
-    Alors le radar ne signale aucun conflit de personne entre ces deux matchs
-
-  Scénario: Deux domiciles qui se chevauchent vraiment : le conflit de personne demeure (contre-exemple, lot M)
-    Contre-exemple à recouvrement RÉEL : le second coup d'envoi tombe AVANT la fin du premier match.
-    L'échauffement retranché n'y change rien — la personne ne peut pas être au coup d'envoi du second
-    pendant que le premier match tourne encore. Le conflit de personne demeure.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et la même personne coache deux équipes dont les matchs à domicile se chevauchent vraiment, le second commençant avant la fin du premier
-    Quand je demande les conflits des matchs
-    Alors un conflit de personne en double porte ces deux matchs enchaînés
+  # Les VÉRITÉS GÉOMÉTRIQUES pures du radar (D1 / lot M) — match sur le créneau de sa propre équipe,
+  # deux matchs enchaînés 2 h dans un gymnase, match déjà joué, échauffement du second domicile
+  # (même gymnase ou deux gymnases), recouvrement RÉEL qui maintient le conflit de personne — sont
+  # repliées sur leur filet au plus bas `Unit/Service/MatchConflictDetectorTest` (famille
+  # testTwoHomeMatches* / testTwoMatchesChainedTwoHoursApart / testMatchOnItsOwnTeamTrainingStaysSilent
+  # / testPastMatchesAreDroppedFromEveryFamily… — 84 tests verts). Le chemin RADAR→DÉTECTION de bout
+  # en bout reste prouvé par les scénarios SERVEUR gardés ci-dessous (heure murale via plan de période
+  # pointé, conflit de personne joueuse/coache, enveloppe de ligue).
 
   Scénario: Un amical posé un week-end de match est signalé, jamais bloqué (P4-193)
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
@@ -123,18 +73,6 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables
     Et une fenêtre de ligue étroite le samedi matin cadre cette équipe
-    Et une rencontre de coupe à domicile ce samedi, coup d'envoi le soir hors de la fenêtre
-    Quand je demande les conflits des matchs
-    Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau
-
-  Scénario: Une fenêtre de ligue corrigée par le club est honorée (P4-272 ①)
-    La copie de la ligue appartient au club : quand le gestionnaire pose sa fenêtre par l'écran des
-    contraintes, c'est CETTE fenêtre — pas le catalogue fédéral — que le radar (et le placement, qui
-    lisent la même copie) fait respecter. Un coup d'envoi hors de la fenêtre corrigée crie donc une
-    violation.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et le club corrige au samedi matin sa fenêtre de ligue pour cette équipe, via l'API gestionnaire
     Et une rencontre de coupe à domicile ce samedi, coup d'envoi le soir hors de la fenêtre
     Quand je demande les conflits des matchs
     Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau

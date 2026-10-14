@@ -6,17 +6,14 @@ Fonctionnalité: Un verrou est souverain à la régénération
   contredit un verrou ne le déplace pas : le créneau reste, la règle violée est
   signalée. Un verrou est une vérité absolue.
 
-  Scénario: Une séance verrouillée reste à la même case après régénération
-    Étant donné le club de démonstration, connecté, avec une version de saison rouverte
-    Et une séance de cette version verrouillée en dur
-    Quand je régénère le planning de saison
-    Alors la séance verrouillée occupe toujours la même case
-
-  Scénario: Déplacer une séance verrouillée vers une case fermée est refusé sans la déplacer
-    Étant donné le club de démonstration, connecté, avec une version de saison rouverte
-    Et une séance de cette version verrouillée en dur
-    Quand je tente de déplacer cette séance vers une case sans créneau ouvert
-    Alors le déplacement est refusé et nommé, et la séance n'a pas bougé
+  # « Une séance verrouillée reste à sa case après régénération » (verrou de SAISON souverain) est
+  # désormais prouvée, sur un décor léger et dans un enchaînement complet, par
+  # `la-boucle-de-travail-du-gestionnaire.feature` (contrainte + réservation + verrou + régénération).
+  # « Déplacer une séance vers une case sans créneau ouvert est refusé » est replié sur son filet au
+  # plus bas `SlotMoveVerdictTest::testMoveToCaseWithNoOpenSlotIsRejectedWithoutCallingEngine`
+  # (jumeau MOVE de `SlotPlacementVerdictTest::testPlacementWithNoWindowIsRejectedBeforeEngine`).
+  # Restent ici les promesses DISTINCTES : le verrou qui satisfait un jour imposé, le verrou souverain
+  # face à une règle contraire, et la survie des verrous à travers la régénération d'un PLAN DE PÉRIODE.
 
   Scénario: Un jour imposé couvert par une séance verrouillée ne fait pas échouer la régénération
     Une séance verrouillée le jour imposé SATISFAIT « au moins une séance ce jour-là » : le verrou
@@ -28,14 +25,9 @@ Fonctionnalité: Un verrou est souverain à la régénération
     Quand je régénère le planning de saison
     Alors la régénération aboutit, le verrou satisfaisant le jour imposé
 
-  Scénario: Un créneau libre réservé retire la place au solveur
-    Une case réservée en créneau libre n'accueille plus aucune équipe à la génération : la
-    place est retirée, exactement comme une capacité en moins. Le créneau libre n'est pas une
-    équipe — il n'épingle personne, il occupe la case.
-    Étant donné le club de démonstration, connecté, avec une version de saison rouverte
-    Et un créneau libre réservé sur une case occupée du socle
-    Quand je régénère le planning de saison
-    Alors aucune équipe n'est placée sur la case du créneau libre
+  # « Un créneau libre réservé retire la place au solveur » est désormais prouvé, sur un décor léger
+  # et dans un enchaînement complet, par `la-boucle-de-travail-du-gestionnaire.feature` (la case
+  # réservée reste vide après régénération).
 
   Scénario: Une règle qui contredit un verrou est signalée, le créneau reste
     Étant donné le club de démonstration, connecté, avec une version de saison rouverte

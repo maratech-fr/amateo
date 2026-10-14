@@ -19,6 +19,8 @@ use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
 use App\Tests\Behat\SeasonGenerationContext;
+use App\Tests\Behat\SeasonWorkLoopContext;
+use App\Tests\Behat\SmallClubSmokeContext;
 use App\Tests\Behat\SoclePlansContext;
 use App\Tests\Behat\TeamsImportContext;
 use App\Tests\Behat\TenantIsolationContext;
@@ -46,6 +48,16 @@ return (new Config)
                 new Suite('generation')
                     ->withPaths('%paths.base%/features/generation-du-planning-de-saison.feature')
                     ->withContexts(SeasonGenerationContext::class),
+            )
+            ->withSuite(
+                new Suite('petit-club')
+                    ->withPaths('%paths.base%/features/un-petit-club-se-genere-par-l-api.feature')
+                    ->withContexts(SmallClubSmokeContext::class),
+            )
+            ->withSuite(
+                new Suite('boucle-travail')
+                    ->withPaths('%paths.base%/features/la-boucle-de-travail-du-gestionnaire.feature')
+                    ->withContexts(SeasonWorkLoopContext::class),
             )
             ->withSuite(
                 new Suite('onboarding')

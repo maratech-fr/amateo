@@ -6,11 +6,10 @@ Fonctionnalité: Ce que le gestionnaire saisit, le planning le respecte
   impossible à satisfaire, la génération le DIT — elle échoue avec un diagnostic
   nommé, sans jamais produire un planning bricolé qui la contournerait en silence.
 
-  Scénario: Une équipe interdite d'entraînement avant 20h30 n'a aucune séance plus tôt
-    Étant donné le club de démonstration, connecté, dont le planning de saison est rouvert
-    Et une contrainte qui interdit à l'équipe SM1 de s'entraîner avant 20h30
-    Quand je génère le planning de saison
-    Alors la génération aboutit et aucune séance de SM1 n'est placée avant 20h30
+  # « Une contrainte d'équipe honorée » (SM1 pas avant 20h30) est désormais prouvée, sur un décor
+  # léger et dans un enchaînement complet, par `la-boucle-de-travail-du-gestionnaire.feature`
+  # (contrainte + réservation + verrou + régénération). Reste ici la promesse JUMELLE qu'elle ne
+  # porte pas : l'impossible NOMMÉ (le solveur ne bricole jamais un planning qui contourne).
 
   Scénario: Une contrainte impossible fait échouer la génération avec un diagnostic
     Étant donné le club de démonstration, connecté, dont le planning de saison est rouvert
