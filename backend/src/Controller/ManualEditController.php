@@ -17,6 +17,8 @@ use App\Exception\EvictTargetMismatchException;
 use App\Exception\MutualizationRefusedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
+use App\Exception\SwapCrossScheduleException;
+use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ManagementAccessGuard;
 use App\Service\ManualEditService;
@@ -51,7 +53,8 @@ final class ManualEditController extends AbstractController implements SeasonSco
     /**
      * SEC-13 — la cible dépend du geste : place-slot vise un Schedule (id = schedule),
      * lock/move/remove visent un créneau (id = schedule-slot), move-group/remove-group visent un
-     * Schedule dont l'id vit dans le CORPS (route sans `{id}`). On branche sur le nom de route.
+     * Schedule dont l'id vit dans le CORPS (route sans `{id}`), swap vise deux créneaux dont le
+     * premier (`slotId`) vit dans le CORPS. On branche sur le nom de route.
      */
     public function writeTargetSeasonId(Request $request): ?string
     {
@@ -62,6 +65,15 @@ final class ManualEditController extends AbstractController implements SeasonSco
                 : null;
 
             return null === $scheduleId ? null : $this->writeTargetSeasonResolver->ofSchedule($scheduleId);
+        }
+
+        if ('api_schedule_slot_swap' === $request->attributes->get('_route')) {
+            $data = json_decode($request->getContent(), true);
+            $slotId = \is_array($data) && isset($data['slotId']) && \is_string($data['slotId'])
+                ? $data['slotId']
+                : null;
+
+            return null === $slotId ? null : $this->writeTargetSeasonResolver->ofScheduleSlot($slotId);
         }
 
         $id = $request->attributes->get('id');
@@ -533,6 +545,126 @@ final class ManualEditController extends AbstractController implements SeasonSco
         }
 
         return $this->json($body, Response::HTTP_OK);
+    }
+
+    /**
+     * ÉCHANGER DEUX SÉANCES ATOMIQUEMENT (P4-327) — chaque créneau prend la case de l'autre, SOUS UN
+     * SEUL VERDICT et en une transaction (tout-ou-rien). Pendant « sans perte » de l'éviction : rien
+     * n'est supprimé, les deux côtés restent placés. Le corps ne porte que `{slotId, otherSlotId,
+     * dryRun?}` — les positions sont résolues CÔTÉ SERVEUR (la case réelle de chaque créneau). La
+     * source (`slotId`) peut être une séance d'équipe OU de groupe ; l'occupant (`otherSlotId`) doit
+     * être une séance d'équipe non verrouillée (occupant de groupe refusé, lot ultérieur).
+     */
+    #[Route('/api/schedule-slots/swap', name: 'api_schedule_slot_swap', methods: ['POST'])]
+    public function swap(Request $request): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+
+        $data = json_decode($request->getContent(), true);
+        if (!\is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $slotId = isset($data['slotId']) && \is_string($data['slotId']) ? $data['slotId'] : '';
+        if ('' === $slotId) {
+            return $this->json(['error' => 'Missing required field: slotId.'], Response::HTTP_BAD_REQUEST);
+        }
+        $otherSlotId = isset($data['otherSlotId']) && \is_string($data['otherSlotId']) ? $data['otherSlotId'] : '';
+        if ('' === $otherSlotId) {
+            return $this->json(['error' => 'Missing required field: otherSlotId.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $source = $this->findSlot($slotId);
+        if (!$source instanceof ScheduleSlotTemplate) {
+            return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
+        }
+        $target = $this->findSlot($otherSlotId);
+        if (!$target instanceof ScheduleSlotTemplate) {
+            return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // Lecture seule : la version choisie du plan est le calendrier (ADR-0002 inv. 1).
+        if ($this->scheduleIsLocked($source)) {
+            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        }
+
+        // P2-32 — `dryRun` : un ESSAI. Même chemin jusqu'au verdict (gardes pré-moteur comprises),
+        // puis retour SANS rien écrire.
+        $dryRun = isset($data['dryRun']) && true === $data['dryRun'];
+
+        try {
+            $result = $this->moveSlotService->swap($source, $target, $dryRun);
+        } catch (ScheduleGenerationInProgressException) {
+            return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
+        } catch (SwapCrossScheduleException) {
+            // Les deux créneaux ne vivent pas dans le même planning : rien écrit, moteur jamais appelé.
+            return $this->json(['code' => 'swap_cross_schedule', 'error' => 'Les deux créneaux n\'appartiennent pas au même planning.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (SwapWithSelfException) {
+            // Même créneau, ou une équipe commune aux deux côtés : l'échange n'a pas de sens.
+            return $this->json(['code' => 'swap_with_self', 'error' => 'On ne peut pas échanger un créneau avec lui-même ou avec un autre créneau de la même équipe.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (EvictTargetIsGroupException) {
+            // L'occupant est lui-même une séance de GROUPE : l'échange de deux groupes arrive dans un
+            // lot ultérieur — ici on refuse NOMMÉMENT, rien n'est écrit.
+            return $this->json(['code' => 'evict_target_is_group', 'error' => 'Cette case est occupée par un autre groupe — l\'échange de deux groupes n\'est pas encore possible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (EvictTargetLockedException) {
+            // D4 : un verrou est souverain — on n'échange pas un créneau verrouillé.
+            return $this->json(['code' => 'target_locked', 'error' => 'Ce créneau est verrouillé — déverrouillez-le d\'abord.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (SlotUnavailableException) {
+            // Une des deux cases n'a plus de fenêtre de gymnase ouverte : le créneau n'existe pas.
+            return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucun créneau de gymnase n\'est ouvert à l\'un des deux horaires.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyAtCaseException $e) {
+            // Règle fondateur : un côté déplacé siège déjà à sa case d'arrivée par une AUTRE séance —
+            // 422 NOMMÉ, rien n'est écrit, le moteur n'a pas été appelé.
+            return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (EngineTimeoutException $e) {
+            $this->logger->error('Swap validation timed out on the engine.', ['exception' => $e]);
+
+            return $this->json(['code' => EngineTimeoutException::CODE, 'error' => 'The engine did not answer in time — please retry.'], Response::HTTP_GATEWAY_TIMEOUT);
+        } catch (TransportExceptionInterface $e) {
+            $this->logger->error('Swap validation could not reach the engine.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The engine did not respond — please retry.'], Response::HTTP_BAD_GATEWAY);
+        } catch (Throwable $e) {
+            $this->logger->error('Slot swap failed.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (isset($result['dryRun'])) {
+            // Un essai : 200, le verdict complet, AUCUNE écriture.
+            $body = [
+                'valid' => $result['valid'],
+                'dryRun' => true,
+                'violations' => $result['violations'],
+                'compromises' => $result['compromises'],
+            ];
+            if (true === ($result['indeterminate'] ?? false)) {
+                $body['indeterminate'] = true;
+            }
+            if (isset($result['movedSlotIds'])) {
+                $body['movedSlotIds'] = $result['movedSlotIds'];
+            }
+
+            return $this->json($body, Response::HTTP_OK);
+        }
+
+        if (true === ($result['indeterminate'] ?? false)) {
+            // ENG-51 — le solveur n'a pas tranché dans le temps imparti : 200 + drapeau NEUTRE, aucun
+            // des deux côtés n'a bougé ; l'UI invite à réessayer.
+            return $this->json(['valid' => false, 'indeterminate' => true], Response::HTTP_OK);
+        }
+
+        if (false === $result['valid']) {
+            // Le moteur refuse : 422 + les règles violées — AUCUN des deux côtés n'a bougé (atomicité).
+            return $this->json(['valid' => false, 'violations' => $result['violations']], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $this->json([
+            'message' => 'Slots swapped.',
+            'valid' => true,
+            'compromises' => $result['compromises'],
+            'movedSlotIds' => $result['movedSlotIds'] ?? [],
+        ], Response::HTTP_OK);
     }
 
     /**
