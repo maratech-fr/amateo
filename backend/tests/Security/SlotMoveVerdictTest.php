@@ -24,6 +24,7 @@ use App\Exception\EngineTimeoutException;
 use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
+use App\Exception\SlotUnavailableException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
@@ -134,6 +135,42 @@ final class SlotMoveVerdictTest extends KernelTestCase
         $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
         self::assertInstanceOf(Schedule::class, $schedule);
         self::assertFalse($schedule->isManuallyEditedSinceGeneration(), 'un refus ne marque pas le planning comme retouché');
+    }
+
+    /**
+     * Déplacer une séance (même verrouillée) vers une case SANS créneau ouvert (aucune fenêtre de
+     * gymnase au triplet cible) est refusé par la garde précoce de `move()` AVANT tout appel moteur,
+     * et rien n'est écrit. C'est le filet au plus bas de `un-verrou-est-souverain.feature:15`
+     * (« Déplacer une séance verrouillée vers une case fermée est refusé sans la déplacer ») — jumeau
+     * MOVE de {@see SlotPlacementVerdictTest::testPlacementWithNoWindowIsRejectedBeforeEngine} (PLACE).
+     */
+    public function testMoveToCaseWithNoOpenSlotIsRejectedWithoutCallingEngine(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        $originalDay = $slot->getDayOfWeek();
+        $originalVenue = $slot->getVenueId();
+        $originalStart = $slot->getStartTime()->format('H:i');
+
+        $client = new MockHttpClient(static function (): MockResponse {
+            self::fail('le moteur ne doit PAS être appelé quand la case cible n\'a aucun créneau ouvert');
+        });
+
+        // Jour 3 : aucune fenêtre de gymnase (la seule fenêtre seedée est venue2, jour 4).
+        try {
+            $this->service($client)->move($slot, 3, new DateTimeImmutable('20:00'), $ctx['venue2']);
+            self::fail('un déplacement vers une case sans créneau ouvert doit lever SlotUnavailableException');
+        } catch (SlotUnavailableException) {
+            // attendu
+        }
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+        self::assertSame($originalDay, $reloaded->getDayOfWeek(), 'un déplacement refusé ne doit PAS déplacer le créneau');
+        self::assertSame($originalVenue, $reloaded->getVenueId());
+        self::assertSame($originalStart, $reloaded->getStartTime()->format('H:i'));
     }
 
     /** ENG-51 — verdict INDÉTERMINÉ : le drapeau remonte, rien n'est écrit, aucune violation inventée. */
