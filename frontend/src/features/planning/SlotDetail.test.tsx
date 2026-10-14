@@ -14,6 +14,7 @@ import { buildTagTeamIds } from "./lib/applicableConstraints";
 import type { Constraint, LockOrigin, Slot, Venue } from "./api";
 import type { GridCell } from "./lib/grid";
 import { SlotDetail, type MoveFeedback } from "./SlotDetail";
+import { PLANNING_TEXTS } from "./texts";
 
 const slot = (over: Partial<Slot> = {}): Slot => ({
   id: "s1",
@@ -228,8 +229,8 @@ describe("SlotDetail — contraintes applicables (F1)", () => {
       ],
     });
     await openConstraints();
-    expect(screen.getByText("Cette équipe")).toBeInTheDocument();
-    expect(screen.getByText("Tout le club")).toBeInTheDocument();
+    expect(screen.getByText(PLANNING_TEXTS.scopeThisTeam)).toBeInTheDocument();
+    expect(screen.getByText(PLANNING_TEXTS.scopeWholeClub)).toBeInTheDocument();
     expect(screen.getByText("Pas le lundi")).toBeInTheDocument();
     expect(screen.getByText("Toute la saison")).toBeInTheDocument();
   });
@@ -243,8 +244,8 @@ describe("SlotDetail — contraintes applicables (F1)", () => {
     await openConstraints();
     expect(screen.getByText("Préfèrent Matéo")).toBeInTheDocument();
     // Elle vise une équipe précise → jamais dans « Tout le club ».
-    expect(screen.queryByText("Tout le club")).not.toBeInTheDocument();
-    expect(screen.getByText("Cette équipe")).toBeInTheDocument();
+    expect(screen.queryByText(PLANNING_TEXTS.scopeWholeClub)).not.toBeInTheDocument();
+    expect(screen.getByText(PLANNING_TEXTS.scopeThisTeam)).toBeInTheDocument();
   });
 
   it("la même contrainte CLUB+tag est ABSENTE sur une équipe non taguée", () => {
@@ -369,7 +370,7 @@ describe("SlotDetail — verdict du déplacement (F2b)", () => {
 
   it("ENG-51 — un verdict INDÉTERMINÉ montre un bandeau NEUTRE « réessayez », jamais un style de refus", () => {
     renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, moveState: { status: "indeterminate" } });
-    expect(screen.getByText("La vérification a pris trop de temps, réessayez.")).toBeInTheDocument();
+    expect(screen.getByText(PLANNING_TEXTS.verifyTimeout)).toBeInTheDocument();
     // Ton NEUTRE, pas un refus : aucun « Déplacement refusé » ni alerte conflit.
     expect(screen.queryByText(/refusé/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -465,11 +466,11 @@ describe("SlotDetail — mutualiser depuis la fiche (lot 9, F3 ; lot 2 — socle
   it("affiche le NOM du groupe et la pastille « via mutualisation »", () => {
     renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, inBlock: true, blockLabel: "U11", viaMutualisation: true });
     expect(screen.getByText(/Groupe « U11 »/)).toBeInTheDocument();
-    expect(screen.getByText("via mutualisation")).toBeInTheDocument();
+    expect(screen.getByText(PLANNING_TEXTS.viaMutualization)).toBeInTheDocument();
   });
 
   it("un bloc SANS nom affiche « Mutualisé » plutôt qu'un nom vide", () => {
     renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, inBlock: true, blockLabel: null });
-    expect(screen.getByText("Mutualisé")).toBeInTheDocument();
+    expect(screen.getByText(PLANNING_TEXTS.mutualizedBadge)).toBeInTheDocument();
   });
 });

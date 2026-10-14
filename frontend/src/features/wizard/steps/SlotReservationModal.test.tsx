@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
+import { WIZARD_TEXTS } from "../texts";
 
 import type { PriorityTier, Reservation, SharedTrainingBlock, Team, TeamSoloBudget, Venue, VenueTrainingSlot } from "../api";
 
@@ -115,7 +116,7 @@ describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {
     expect(selectorTrigger()).toBeNull();
     // Le lot en brouillon est nommé et « à valider ».
     expect(screen.getByText(/SM1 \+ SM2/)).toBeInTheDocument();
-    expect(screen.getByText("à valider")).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.toValidate)).toBeInTheDocument();
   });
 
   it("« retirer SM4 + poser le bloc » passe en UNE validation, retraits AVANT ajouts, un seul appel au rail bloc", async () => {
@@ -183,7 +184,7 @@ describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {
   // la copie d'écran de l'état vide est assertée (elle ne s'affiche QUE dans ce cas).
   it("annonce « Aucune équipe disponible » (role=status) quand rien n'est proposable sur un créneau libre", () => {
     renderModal({ teams: [], sharedTrainingBlocks: [] });
-    const hint = screen.getByText("Aucune équipe disponible (toutes ont atteint leur nombre de créneaux, sont déjà sur ce créneau, ou s'entraînent uniquement en groupe).");
+    const hint = screen.getByText(WIZARD_TEXTS.noTeamAvailable);
     expect(hint).toBeInTheDocument();
     // L'invite REMPLACE le contrôle et s'annonce à un lecteur d'écran.
     expect(hint).toHaveAttribute("role", "status");
@@ -233,13 +234,13 @@ describe("SlotReservationModal — budget solo servi par le backend (P2-60 / P4-
     const list = await openListbox(userEvent.setup(), "Ajouter une équipe");
     // Le NOM de l'option reste l'équipe seule ; le résidu et « hors groupe » sont des textes distincts.
     const opt = (name: string) => within(list).getByRole("option", { name });
-    expect(within(opt("SM1")).getByText("reste 2 créneaux")).toBeInTheDocument();
-    expect(within(opt("SM1")).getByText("hors groupe")).toBeInTheDocument();
-    expect(within(opt("SM2")).getByText("reste 1 créneau")).toBeInTheDocument();
-    expect(within(opt("SM2")).getByText("hors groupe")).toBeInTheDocument();
-    expect(within(opt("SM3")).getByText("reste 1 créneau")).toBeInTheDocument();
-    expect(within(opt("SM3")).queryByText("hors groupe")).toBeNull();
-    expect(within(opt("SM4")).getByText("reste 2 créneaux")).toBeInTheDocument();
+    expect(within(opt("SM1")).getByText(WIZARD_TEXTS.soloResidual(2))).toBeInTheDocument();
+    expect(within(opt("SM1")).getByText(WIZARD_TEXTS.outOfGroup)).toBeInTheDocument();
+    expect(within(opt("SM2")).getByText(WIZARD_TEXTS.soloResidual(1))).toBeInTheDocument();
+    expect(within(opt("SM2")).getByText(WIZARD_TEXTS.outOfGroup)).toBeInTheDocument();
+    expect(within(opt("SM3")).getByText(WIZARD_TEXTS.soloResidual(1))).toBeInTheDocument();
+    expect(within(opt("SM3")).queryByText(WIZARD_TEXTS.outOfGroup)).toBeNull();
+    expect(within(opt("SM4")).getByText(WIZARD_TEXTS.soloResidual(2))).toBeInTheDocument();
   });
 
   it("une équipe en PAUSE n'est JAMAIS proposée, même à résidu disponible (verrou décision)", async () => {
@@ -255,7 +256,7 @@ describe("SlotReservationModal — budget solo servi par le backend (P2-60 / P4-
     renderModal({ sharedTrainingBlocks: [], teamSoloBudgets: [soloBudget("a"), soloBudget("b"), soloBudget("c", { residual: 1, effectiveSessions: 1 }), soloBudget("d")] });
     await pickListboxOption(user, "Ajouter une équipe", "SM3");
     // SM3 passe « à valider » et ne réapparaît plus dans le sélecteur (créneau libre restant, mais résidu épuisé + déjà sur la case).
-    expect(screen.getByText("à valider")).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.toValidate)).toBeInTheDocument();
     const list = await openListbox(user, "Ajouter une équipe");
     expect(within(list).queryByRole("option", { name: "SM3" })).toBeNull();
   });
@@ -268,7 +269,7 @@ describe("SlotReservationModal — budget solo servi par le backend (P2-60 / P4-
     const list = await openListbox(userEvent.setup(), "Ajouter une équipe");
     const sm1 = within(list).getByRole("option", { name: "SM1" });
     expect(sm1).toHaveAttribute("aria-disabled", "true");
-    expect(within(sm1).getByText("Tous ses créneaux sont placés")).toBeInTheDocument();
+    expect(within(sm1).getByText(WIZARD_TEXTS.allSlotsPlaced)).toBeInTheDocument();
     expect(within(sm1).queryByText(/passez par le groupe/)).toBeNull(); // pas inBlock → aucun aiguillage
   });
 
@@ -288,14 +289,14 @@ describe("SlotReservationModal — budget solo servi par le backend (P2-60 / P4-
     renderModal({ sharedTrainingBlocks: [] });
 
     await pickListboxOption(user, "Ajouter une équipe", "SM1"); // choisir SM1 (résidu 2 par défaut)
-    expect(screen.getByText("à valider")).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.toValidate)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Valider" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("SM1 a déjà toutes ses réservations individuelles pour ce plan.");
     // La ligne « à valider » de l'équipe refusée reste, avec son Undo (rejeu possible).
-    expect(screen.getByText("à valider")).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.toValidate)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Annuler l'ajout de SM1" })).toBeInTheDocument();
   });
 });

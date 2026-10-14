@@ -110,9 +110,30 @@ preuve.
 - Viser le **rôle + le nom accessible** (`getByRole('button', { name: … })`,
   `getByRole('heading', { name: … })`) plutôt que la phrase exacte (`getByText("…")`) quand c'est
   possible — robuste au changement de libellé, porteur de sens a11y.
-- La vérification d'un TEXTE précis passera par les **clés de textes centralisées** (chantier à
-  venir) : un test vérifie la CLÉ, jamais la phrase recopiée. En attendant, un libellé en dur
-  recopié reste toléré là où le rôle ne discrimine pas — on n'en ajoute pas sans nécessité.
+- La vérification d'un TEXTE précis passe par les **clés de textes centralisées** (fondation PR7,
+  cf. ci-dessous) : un test vérifie la CLÉ, jamais la phrase recopiée. Sur un écran pas encore
+  migré, un libellé en dur recopié reste toléré là où le rôle ne discrimine pas — on n'en ajoute
+  pas sans nécessité, et migrer l'écran est le bon réflexe.
+
+### Textes centralisés (fondation PR7)
+
+- **Maison unique par feature** : `frontend/src/features/<feature>/texts.ts` (scission
+  `texts/<écran>.ts` au-delà de ~300 lignes), `export const <FEATURE>_TEXTS = { … } as const
+  satisfies Record<string, string | ((...args: never[]) => string)>` ; clés camelCase par
+  INTENTION ; interpolation par fonctions typées (pluriels compris). Pas de lib i18n (une typo de
+  clé = erreur `tsc`). JAMAIS dans une valeur : libellé de jour (→ `shared/lib/days.ts`),
+  heure/durée (→ `time.ts`/`duration.ts`), marque (→ `shared/lib/product.ts`), identifiant interne.
+- **Côté test** : un test d'un écran migré assert la CLÉ — `getByText(PLANNING_TEXTS.evictTitle)`,
+  ou `getByRole(…, { name: PLANNING_TEXTS.… })` quand c'est plus juste — **jamais** la phrase
+  recopiée. Une clé dont la valeur = le texte actuel laisse le test VERT (byte-identique) : c'est
+  normal, la valeur bouge, le test non.
+- **Garde** : `frontend/src/test/hardcodedTextGuard.test.ts` (patron `timeFormatGuard`), liste
+  nominative `MIGRATED_FILES`. Dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres ou un
+  littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=` rougit. Largeur
+  documentée (reliquat helper-returned / interpolation mêlée → revue) ; exemptions ≤ 5 motivées.
+  `texts.ts` est hors portée (il DÉTIENT les littéraux). **Chaque PR qui touche un écran le migre et
+  l'ajoute à `MIGRATED_FILES`** ; la migration ne recule jamais.
+- **Les E2E gardent leurs littéraux** (`tests/e2e/` hors portée) : témoin indépendant des clés.
 
 ## 3. Règle anti-doublon opérationnelle (les 4 étages)
 

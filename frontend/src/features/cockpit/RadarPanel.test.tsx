@@ -10,6 +10,7 @@ import { setTodayOverride } from "@/shared/lib/clock";
 import { addDays, frDateShort, frDateShortNoYear, mondayOf, todayISO } from "./lib/date";
 import { useToastStore } from "@/shared/stores/toastStore";
 import { RadarPanel } from "./RadarPanel";
+import { COCKPIT_TEXTS } from "./texts";
 
 const createHolidayMutate = vi.fn();
 const createHolidayMutateAsync = vi.fn();
@@ -194,7 +195,7 @@ describe("RadarPanel", () => {
     plansData = [{ id: "pl-h1", type: "HOLIDAY", name: "Plan", startDate: FUTURE, calendarEntryId: "h1", chosenScheduleId: null, teamSelectionInitialized: false }];
     schedulesData = [{ schedulePlanId: "pl-h1" }];
     renderRadar({ entries: [closure({ id: "h1", periodType: "holiday", title: "Vacances de Noël", startDate: startedIso, endDate: addDays(todayISO(), 3) })] });
-    expect(screen.getByText("Planning en cours — à finaliser")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.resumePlanning)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reprendre" }));
   });
 
@@ -220,7 +221,7 @@ describe("RadarPanel", () => {
     schedulesData = []; // aucune version générée
     renderRadar({ entries: [closure({ id: "h1", periodType: "holiday", title: "Vacances de Noël", startDate: todayISO(), endDate: addDays(todayISO(), 5) })] });
 
-    expect(screen.getByText("Planning en cours — à finaliser")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.resumePlanning)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reprendre" })).toBeInTheDocument();
   });
 
@@ -246,7 +247,7 @@ describe("RadarPanel", () => {
     renderRadar({ entries: [closure({})] });
     expect(screen.getByText(/2 séances à replacer · planning en cours — à finaliser/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reprendre" })).toBeInTheDocument();
-    expect(screen.queryByText("Planning en cours — à finaliser")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.resumePlanning)).not.toBeInTheDocument();
   });
 
   it("no « en cours » card when the plan is validated or has no versions (fail-closed on missing data)", () => {
@@ -255,7 +256,7 @@ describe("RadarPanel", () => {
     schedulesData = [{ schedulePlanId: "pl-c1" }];
     conflictsData = { conflicts: [], seasonPlanChosen: true };
     renderRadar({ entries: [closure({})] });
-    expect(screen.queryByText("Planning en cours — à finaliser")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.resumePlanning)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reprendre" })).not.toBeInTheDocument();
   });
 
@@ -299,7 +300,7 @@ describe("RadarPanel", () => {
         closure({ id: "w2", title: "S2", parentEntryId: "m1", startDate: w2s, endDate: addDays(w2s, 6) }),
       ],
     });
-    expect(screen.getByText("1/2 semaines à venir couverte")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.weeksCoveredCount(1, 2))).toBeInTheDocument();
     // Semaine validée → ✅ (Voir) ; à faire → Reprendre (adapt).
     await expandCard(user, "Barros en travaux");
     expect(screen.getByRole("button", { name: /✅/ })).toBeInTheDocument();
@@ -326,7 +327,7 @@ describe("RadarPanel", () => {
       ],
     });
     // Le compte reste au niveau semaine : 0 couverte sur 2 (l'enfant existe mais n'est pas généré).
-    expect(screen.getByText("0/2 semaines à venir couverte")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.weeksCoveredCount(0, 2))).toBeInTheDocument();
     await expandCard(user, "Barros en travaux");
     // Une seule puce, libellée « du X au Y » — pas deux puces répétées pour le même enfant.
     expect(screen.getAllByRole("button", { name: /sem\. du .+ au .+· à faire/ })).toHaveLength(1);
@@ -369,7 +370,7 @@ describe("RadarPanel", () => {
         // Semaine 2 jamais créée — décochée au picker.
       ],
     });
-    expect(screen.getByText("1/2 semaines à venir couverte")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.weeksCoveredCount(1, 2))).toBeInTheDocument();
     await expandCard(user, "Barros en travaux");
     expect(screen.getByRole("button", { name: /\+ sem\. du/ })).toBeInTheDocument();
   });
@@ -443,7 +444,7 @@ describe("RadarPanel", () => {
       entries: [closure({ id: "h1", periodType: "holiday", title: "Vacances de Noël", schoolHolidayId: "h1", startDate: FUTURE, endDate: FUTURE_END })],
     });
 
-    expect(screen.getByText("Planning en cours — à finaliser")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.resumePlanning)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reprendre" })).toBeInTheDocument();
   });
 
@@ -463,7 +464,7 @@ describe("RadarPanel", () => {
         entries: [closure({ id: "e-ete", periodType: "holiday", title: "Vacances de Noël", schoolHolidayId: "h1", startDate: FUTURE, endDate: FUTURE_END })],
       });
       // La carte de l'entrée matérialisée reste ; celle du feed scolaire (« Adapter ») disparaît.
-      expect(screen.getByText("Planning en cours — à finaliser")).toBeInTheDocument();
+      expect(screen.getByText(COCKPIT_TEXTS.resumePlanning)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Adapter" })).not.toBeInTheDocument();
     });
 
@@ -474,7 +475,7 @@ describe("RadarPanel", () => {
         entries: [closure({ id: "e-ete", periodType: "holiday", title: "Vacances de Noël", schoolHolidayId: null, startDate: FUTURE, endDate: FUTURE_END })],
       });
       // L'entrée matérialisée ET le feed scolaire (« Adapter ») coexistent : c'est le doublon.
-      expect(screen.getByText("Planning en cours — à finaliser")).toBeInTheDocument();
+      expect(screen.getByText(COCKPIT_TEXTS.resumePlanning)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Adapter" })).toBeInTheDocument();
     });
   });
@@ -497,7 +498,7 @@ describe("RadarPanel", () => {
     });
 
     // S1 est révolue ; S2 (en cours), S3 et S4 restent — pas 4, pas 2.
-    expect(screen.getByText("0/3 semaines à venir couverte")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.weeksCoveredCount(0, 3))).toBeInTheDocument();
     await expandCard(user, "Barros en travaux");
     expect(screen.getAllByRole("button", { name: /sem\. du/ })).toHaveLength(3);
   });
@@ -523,7 +524,7 @@ describe("RadarPanel", () => {
     });
 
     // Le dénominateur exclut les 3 semaines de vacances : 4 ajustables, pas 7.
-    expect(screen.getByText("0/4 semaines à venir couverte")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.weeksCoveredCount(0, 4))).toBeInTheDocument();
 
     await expandCard(user, "Matéo indisponible");
     // Les 3 semaines sous vacances sont grisées avec leur raison, et jamais cliquables.
@@ -602,7 +603,7 @@ describe("RadarPanel", () => {
       entries: [closure({ id: "w1", title: "S1", parentEntryId: "absente", startDate: w1s, endDate: addDays(w1s, 6) })],
     });
 
-    expect(screen.getByText("Planning de semaine à finaliser")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.weekPlanningToFinalize)).toBeInTheDocument();
     expect(screen.queryByText(/Rien à l'horizon/)).not.toBeInTheDocument();
   });
 
@@ -653,7 +654,7 @@ describe("RadarPanel", () => {
     renderRadar({ holidays: [{ id: "h9", label: "Vacances longues", holidayType: "noel", startDate: w1s, endDate: addDays(w1s, 20), schoolYear: "2998-2999" }] });
 
     await user.click(screen.getByRole("button", { name: "Adapter" }));
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(screen.queryByText(new RegExp(`du ${frDateShort(w1s)} `))).toBeNull();
     // P2-41 — les deux semaines restantes (la révolue écartée) forment UN segment débutant au
     // lundi de la 2ᵉ semaine. A2 — la fenêtre tient dans la saison → le libellé omet l'année.
@@ -673,7 +674,7 @@ describe("RadarPanel", () => {
     renderRadar({ holidays: [{ id: "h9", label: "Vacances longues", holidayType: "noel", startDate: w1s, endDate: addDays(w1s, 20), schoolYear: "2998-2999" }] });
 
     await user.click(screen.getByRole("button", { name: "Adapter" }));
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     // L'encart servi, tel quel, avec le raccourci d'ouverture.
     expect(screen.getByText(/déjà planifiées par « Reprise » \(semaine du 11 janv\.\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /ouvrir le planning en place/i })).toBeInTheDocument();
@@ -740,12 +741,12 @@ describe("RadarPanel", () => {
 
   it("asks for the school zone when unknown", () => {
     renderRadar({ zone: null });
-    expect(screen.getByText("Zone scolaire à renseigner")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.schoolZoneToSet)).toBeInTheDocument();
   });
 
   it("does not flash the zone card while holidays are loading", () => {
     renderRadar({ zone: null, zoneLoading: true });
-    expect(screen.queryByText("Zone scolaire à renseigner")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.schoolZoneToSet)).not.toBeInTheDocument();
   });
 
   // NR #1 (retour fondateur 2026-07-19) : adapter une vacance MULTI-SEMAINES ouvre
@@ -761,7 +762,7 @@ describe("RadarPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Adapter" }));
     // Le picker s'ouvre…
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     // …mais RIEN n'a été créé (ni mère, ni semaines).
     expect(createHolidayMutate).not.toHaveBeenCalled();
     expect(createHolidayMutateAsync).not.toHaveBeenCalled();
@@ -781,7 +782,7 @@ describe("RadarPanel", () => {
     renderRadar({ holidays: [oneWeek] });
 
     await user.click(screen.getByRole("button", { name: "Adapter" }));
-    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
     expect(createHolidayMutate).toHaveBeenCalledWith({ schoolHolidayId: "h2", label: "Pont", startDate: mon, endDate: addDays(mon, 2) }, expect.anything());
   });
 
@@ -790,7 +791,7 @@ describe("RadarPanel", () => {
     meData = { seasonPlan: { chosenScheduleId: null } };
     renderRadar({ holidays: [holiday] });
 
-    expect(screen.getByText("Planning de saison à valider")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.seasonPlanToValidate)).toBeInTheDocument();
     // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
     expect(screen.getByRole("button", { name: "Adapter" })).toHaveAttribute("aria-disabled", "true");
   });
@@ -811,7 +812,7 @@ describe("RadarPanel", () => {
     renderRadar({ entries: [closure({})] });
 
     expect(screen.getByText(/Planning de la saison incomplet · impact non évalué/)).toBeInTheDocument();
-    expect(screen.queryByText("Rien à signaler")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.nothingToReport)).not.toBeInTheDocument();
   });
 
   it("never announces « tout roule » while a closure's impact is still loading", () => {
@@ -822,7 +823,7 @@ describe("RadarPanel", () => {
     renderRadar({ entries: [closure({ title: "Gymnase fermé" })] });
 
     expect(screen.queryByText("Gymnase fermé")).not.toBeInTheDocument();
-    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
   });
 
   it("surfaces a closure whose impact could NOT be read (failed request) instead of silently dropping it", () => {
@@ -835,7 +836,7 @@ describe("RadarPanel", () => {
     expect(screen.getByText("Gymnase fermé")).toBeInTheDocument();
     // …et sans PRÉTENDRE savoir pourquoi : « planning incomplet » serait affirmer un
     // fait sur le plan qu'on n'a justement pas pu vérifier.
-    expect(screen.getByText("Impact non évalué · réessayez")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.impactNotAssessedRetry)).toBeInTheDocument();
     expect(screen.queryByText(/Planning de la saison incomplet/)).not.toBeInTheDocument();
   });
 
@@ -847,7 +848,7 @@ describe("RadarPanel", () => {
 
     expect(screen.queryByText("Gymnase fermé")).not.toBeInTheDocument();
     // …et le panneau redevient franchement vide, au lieu d'un cadre « À traiter » désert.
-    expect(screen.getByText("Rien à l'horizon. Tout roule.")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.allClear)).toBeInTheDocument();
   });
 
   it("fail-closed: while plans are unresolved (no data yet), neither flashes the all-clear nor offers a misleading 'Adapter'", () => {
@@ -857,7 +858,7 @@ describe("RadarPanel", () => {
     plansData = undefined;
     renderRadar({ entries: [closure({ title: "Gymnase fermé" })] });
 
-    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Adapter" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Voir le planning" })).not.toBeInTheDocument();
   });
@@ -881,14 +882,14 @@ describe("RadarPanel", () => {
     plansData = [validatedPlan("c1", "ov1")];
     renderRadar({ entries: [closure({})] });
 
-    expect(screen.getByText("Planning secondaire validé")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.secondaryPlanValidated)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Voir le planning" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ajuster" })).toBeInTheDocument();
   });
 
   it("shows the all-clear when there is nothing to handle", () => {
     renderRadar();
-    expect(screen.getByText("Rien à l'horizon. Tout roule.")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.allClear)).toBeInTheDocument();
   });
 
   it("shows an upcoming cutoff as a plain reminder without any CTA", () => {
@@ -912,7 +913,7 @@ describe("RadarPanel", () => {
   it("does not flash the all-clear while public holidays are still loading", () => {
     renderRadar({ publicHolidaysLoading: true });
 
-    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
   });
 
   it("P4-9 — un férié n'a de carte que s'il TOMBE un jour d'entraînement, et la carte dit l'impact", () => {
@@ -955,13 +956,13 @@ describe("RadarPanel", () => {
     impactItemsData = [{ unavailabilityId: "u1", trainingSlotCount: 3 }];
     renderRadar();
 
-    expect(screen.getByText("Armand indisponible (travaux)")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.venueUnavailableTitle("Armand", "travaux"))).toBeInTheDocument();
     expect(screen.getByText(/Dans 12 j · 3 créneaux d'entraînement\/sem\. concernés/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Adapter" }));
 
     // Le picker s'ouvre — l'entrée n'est PAS encore née (rien créé tant que non tranché).
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(createVenueClosureMutate).not.toHaveBeenCalled();
     expect(createVenueClosureMutateAsync).not.toHaveBeenCalled();
 
@@ -982,7 +983,7 @@ describe("RadarPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Adapter" }));
 
-    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
     expect(createVenueClosureMutate).toHaveBeenCalledWith(
       expect.objectContaining({ venueId: "gym-1", startDate: mon, endDate: addDays(mon, 2) }),
       expect.anything(),
@@ -1007,7 +1008,7 @@ describe("RadarPanel", () => {
       ],
     });
 
-    expect(screen.queryByText("Armand indisponible (travaux)")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.venueUnavailableTitle("Armand", "travaux"))).not.toBeInTheDocument();
   });
 
   it("P4-9 — un férié SANS séance ce jour-là disparaît (rien à protéger)", () => {
@@ -1033,7 +1034,7 @@ describe("RadarPanel", () => {
     renderRadar({ entries: [closure({})] });
 
     await user.click(screen.getByRole("button", { name: "Reprendre" }));
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(screen.getByText(/déjà été adaptée d'un bloc — 1 version/)).toBeInTheDocument();
     // Le repli « d'un bloc » reste offert.
     expect(screen.getByRole("button", { name: /Continuer d'un bloc/i })).toBeInTheDocument();
@@ -1102,7 +1103,7 @@ describe("RadarPanel", () => {
 
       await user.click(screen.getByRole("button", { name: "Adapter" }));
 
-      expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+      expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
       expect(screen.getByText(/couvertes par Vacances test/)).toBeInTheDocument();
       expect(screen.getByText(/le rappel vous attend/i)).toBeInTheDocument();
       // P2-41 — les deux semaines pleines hors vacances forment UN segment (une coche). ALIGNEMENT
@@ -1190,21 +1191,21 @@ describe("RadarPanel — échec de lecture jamais « Tout roule » (UXS-09)", ()
     renderRadar({ entriesFailed: true });
 
     expect(screen.getByText(/Impossible de charger les éléments à traiter/)).toBeInTheDocument();
-    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
   });
 
   it("publicHolidaysFailed → bandeau d'échec, jamais « Rien à l'horizon »", () => {
     renderRadar({ publicHolidaysFailed: true });
 
     expect(screen.getByText(/Impossible de charger les éléments à traiter/)).toBeInTheDocument();
-    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
   });
 
   it("entriesLoading → squelette, ni « Rien à l'horizon » ni bandeau d'échec", () => {
     renderRadar({ entriesLoading: true });
 
-    expect(screen.getByText("Chargement des éléments à traiter…")).toBeInTheDocument();
-    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.loadingItemsToHandle)).toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
     expect(screen.queryByText(/Impossible de charger les éléments à traiter/)).not.toBeInTheDocument();
   });
 });

@@ -11,6 +11,7 @@ import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
 import { usePlanningStore } from "./store";
 import { useWizardStore } from "@/features/wizard/store";
+import { PLANNING_TEXTS } from "./texts";
 
 // The api layer is mocked (not HTTP): ky + jsdom + MSW disagree on AbortSignal,
 // so we exercise the screen from the api boundary down — queries, PlanningPage
@@ -342,7 +343,7 @@ describe("PlanningPage (integration)", () => {
     // version de travail. Nouveau contrat (2026-08-20) : sur /planning autonome, les gestes
     // de TRAVAIL (Valider/Régénérer/Supprimer/sélecteur) vivent au wizard ; cette version
     // n'est pas en vigueur, donc pas de Rouvrir non plus — d'où l'absence de Valider ici.
-    expect(screen.getByText("principal")).toBeInTheDocument();
+    expect(screen.getByText(PLANNING_TEXTS.seasonPlanBadge)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
   });
 
@@ -655,7 +656,7 @@ describe("PlanningPage (integration)", () => {
     expect(await screen.findByText("U11")).toBeInTheDocument();
     expect(screen.getByText(/La génération a échoué/)).toBeInTheDocument();
     expect(screen.getByText(/Seuls vos créneaux réservés sont affichés/)).toBeInTheDocument();
-    expect(screen.queryByText("Planning vide")).not.toBeInTheDocument();
+    expect(screen.queryByText(PLANNING_TEXTS.emptyPlanningTitle)).not.toBeInTheDocument();
   });
 
   it("échec SANS réservation : état vide dédié, pas « Planning vide »", async () => {
@@ -666,8 +667,8 @@ describe("PlanningPage (integration)", () => {
     usePlanningStore.setState({ selectedScheduleId: SID });
     renderWithProviders(<PlanningPage />);
 
-    expect(await screen.findByText("Génération en échec")).toBeInTheDocument();
-    expect(screen.queryByText("Planning vide")).not.toBeInTheDocument();
+    expect(await screen.findByText(PLANNING_TEXTS.generationFailed)).toBeInTheDocument();
+    expect(screen.queryByText(PLANNING_TEXTS.emptyPlanningTitle)).not.toBeInTheDocument();
   });
 
   it("une réservation d'un gymnase désactivé pour la période ne s'affiche pas sur un échec", async () => {
@@ -685,7 +686,7 @@ describe("PlanningPage (integration)", () => {
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "equipe" });
     renderWithProviders(<PlanningPage />);
 
-    expect(await screen.findByText("Génération en échec")).toBeInTheDocument();
+    expect(await screen.findByText(PLANNING_TEXTS.generationFailed)).toBeInTheDocument();
     expect(screen.queryByText("U11")).not.toBeInTheDocument();
   });
 
@@ -1520,7 +1521,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(getSlots).mockResolvedValue([]);
       renderWithProviders(<PlanningPage />);
 
-      expect(await screen.findByText("Génération en échec")).toBeInTheDocument();
+      expect(await screen.findByText(PLANNING_TEXTS.generationFailed)).toBeInTheDocument();
       expect(screen.queryByRole("region", { name: /séances à replacer/i })).not.toBeInTheDocument();
     });
 
@@ -2028,7 +2029,7 @@ describe("PlanningPage — portée période (embedded + scopePlanId)", () => {
     expect(await screen.findByRole("heading", { name: "Ajustement gymnase" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Planning A" })).not.toBeInTheDocument();
     // …le badge « principal » (réservé au socle) ne peut pas apparaître…
-    expect(screen.queryByText("principal")).not.toBeInTheDocument();
+    expect(screen.queryByText(PLANNING_TEXTS.seasonPlanBadge)).not.toBeInTheDocument();
     // …et la sélection périmée a bien été remplacée par une version DE LA PÉRIODE.
     await waitFor(() => expect(["ov-1", "ov-2"]).toContain(usePlanningStore.getState().selectedScheduleId));
   });
@@ -2626,7 +2627,7 @@ describe("PlanningPage — échec de lecture jamais rendu comme du vide (UXS-09)
 
     expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
-    expect(screen.queryByText("Aucun planning")).not.toBeInTheDocument();
+    expect(screen.queryByText(PLANNING_TEXTS.noPlanning)).not.toBeInTheDocument();
   });
 
   it("slots en échec → « Le chargement a échoué » à la place de « Planning vide »", async () => {
@@ -2634,7 +2635,7 @@ describe("PlanningPage — échec de lecture jamais rendu comme du vide (UXS-09)
     renderWithProviders(<PlanningPage />);
 
     expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
-    expect(screen.queryByText("Planning vide")).not.toBeInTheDocument();
+    expect(screen.queryByText(PLANNING_TEXTS.emptyPlanningTitle)).not.toBeInTheDocument();
   });
 });
 
@@ -2703,7 +2704,7 @@ describe("PlanningPage — retirer une séance placée (F4)", () => {
     await openSlotAndClickRemove(user);
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Elle est verrouillée — le verrou sera perdu.")).toBeInTheDocument();
+    expect(within(dialog).getByText(PLANNING_TEXTS.lockWillBeLost)).toBeInTheDocument();
   });
 
   it("affiche VERBATIM la présence de saison que le retrait n'honore plus", async () => {

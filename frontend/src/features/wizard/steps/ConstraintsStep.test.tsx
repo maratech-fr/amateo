@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
+import { WIZARD_TEXTS } from "../texts";
 
 import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock } from "../api";
 import { PRODUCT_RULES, WELLBEING_RULES } from "../lib/implicitRules";
@@ -328,7 +329,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 
     await user.click(screen.getByRole("button", { name: "Dispo coach" }));
     expect(screen.queryByLabelText("Règle")).not.toBeInTheDocument();
-    expect(screen.getByText("Obligatoire")).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.ruleMandatory)).toBeInTheDocument();
 
     // Pick coach + a day, add → the payload pins ruleType HARD.
     await user.selectOptions(screen.getByLabelText("Coach"), "co1");
@@ -353,9 +354,9 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     await user.click(screen.getByRole("button", { name: "Dispo coach" }));
     await user.selectOptions(screen.getByLabelText("Coach"), "co1");
 
-    expect(screen.getByText("Indicatif")).toBeInTheDocument();
-    expect(screen.getByText("un adjoint indisponible ne bloque jamais une séance")).toBeInTheDocument();
-    expect(screen.queryByText("Obligatoire")).not.toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.ruleIndicative)).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.assistantNeverBlocks)).toBeInTheDocument();
+    expect(screen.queryByText(WIZARD_TEXTS.ruleMandatory)).not.toBeInTheDocument();
   });
 
   it("ALIGN-19 — un coach PRINCIPAL (même sur une seule équipe) garde « Obligatoire », sans la phrase", async () => {
@@ -366,9 +367,9 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     await user.click(screen.getByRole("button", { name: "Dispo coach" }));
     await user.selectOptions(screen.getByLabelText("Coach"), "co1");
 
-    expect(screen.getByText("Obligatoire")).toBeInTheDocument();
-    expect(screen.queryByText("un adjoint indisponible ne bloque jamais une séance")).not.toBeInTheDocument();
-    expect(screen.queryByText("Indicatif")).not.toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.ruleMandatory)).toBeInTheDocument();
+    expect(screen.queryByText(WIZARD_TEXTS.assistantNeverBlocks)).not.toBeInTheDocument();
+    expect(screen.queryByText(WIZARD_TEXTS.ruleIndicative)).not.toBeInTheDocument();
   });
 
   it("names generated constraints with full day words (« jeudi », not « Jeu ») — founder 2026-08-12", async () => {
@@ -465,7 +466,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
     // Mode « préfère » par défaut : « préfère » est TOUJOURS une préférence, pas un choix.
     expect(screen.queryByLabelText("Règle")).not.toBeInTheDocument();
-    expect(screen.getByText("Préféré")).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.rulePreferred)).toBeInTheDocument();
   });
 
   it("FACILITY « évite » : le sélecteur Règle revient avec ses deux options (D1)", async () => {
@@ -570,7 +571,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     // « à privilégier » est TOUJOURS une préférence (soft) — comme « préfère ce gymnase ».
     await user.selectOptions(screen.getByLabelText("Type de jour"), "preferred");
     expect(screen.queryByLabelText("Règle")).not.toBeInTheDocument();
-    expect(screen.getByText("Préféré")).toBeInTheDocument();
+    expect(screen.getByText(WIZARD_TEXTS.rulePreferred)).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Jours à privilégier" })).toBeInTheDocument();
   });
 
@@ -969,7 +970,7 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     expect(fanion).toHaveAttribute("aria-disabled", "true");
     const sm1 = within(list).getByRole("option", { name: "SM1" });
     expect(sm1).not.toHaveAttribute("aria-disabled");
-    expect(within(sm1).getByText("reste 2 créneaux")).toBeInTheDocument();
+    expect(within(sm1).getByText(WIZARD_TEXTS.soloResidual(2))).toBeInTheDocument();
   });
 });
 

@@ -1,0 +1,173 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+/**
+ * Textes centralisés — garde STATIQUE (PR7, fondation, patron `timeFormatGuard.test.ts` /
+ * `pageHeaderGuard.test.ts`).
+ *
+ * UNE promesse : **un écran MIGRÉ ne porte plus aucun libellé français EN DUR — chaque texte vit
+ * dans le module `texts.ts` de sa feature, et le test vérifie la CLÉ, jamais la phrase recopiée**
+ * (charte `docs/testing/tests-par-parcours.md` § Sélecteurs front ; règle `.claude/rules/frontend.md`).
+ *
+ * La garde grep les SOURCES des fichiers listés dans `MIGRATED_FILES` et rougit dès qu'un libellé
+ * FR y reste en dur. jsdom n'a pas de moteur de rendu : comme ses sœurs, elle MORD dans Vitest,
+ * indépendamment de tout scan visuel.
+ *
+ * ── CE QUI EST POLICÉ (largeur DOCUMENTÉE) ───────────────────────────────────────────────────
+ *   (a) un NŒUD TEXTE JSX littéral d'au moins 3 lettres, sous deux formes :
+ *       • en ligne : `>…texte…</` (le `</` ferme une balise — exclut les génériques TS `Map<A, B>`) ;
+ *       • sur sa propre ligne : une ligne de PROSE pure (lettres + ponctuation FR, aucun caractère
+ *         de code) dont la ligne non vide PRÉCÉDENTE ferme une balise ouvrante (`…>`, ni `/>` ni
+ *         `=>`). Le garde-fou « balise ouvrante avant » écarte le code (`return allMain`, `icon,`,
+ *         `? null`) qu'une simple prose attraperait et que NEO ne pourrait jamais blanchir.
+ *   (b) un littéral FR dans un attribut `title=` · `aria-label=` · `placeholder=` · `message=` ·
+ *       `label=` (forme JSX `attr="…"`).
+ *
+ * Un texte est « FR » ici = contient un mot d'au moins 3 lettres ET au moins une minuscule (épargne
+ * les enums/identifiants tout en capitales rendus tels quels, p.ex. « PDF »).
+ *
+ * ── CONTRAT red → green ──────────────────────────────────────────────────────────────────────
+ * NEO verdit la garde en EXTRAYANT chaque littéral vers `texts.ts` et en le rendant par une
+ * EXPRESSION : `<Foo>{TEXTS.x}</Foo>`, `aria-label={TEXTS.x}`, une ligne `{TEXTS.x}`. Chacune de ces
+ * formes porte `{`/`}` ou perd son `="…"` → les trois détecteurs se taisent. La garde ne peut donc
+ * PAS rester rouge « pour toujours » : elle devient verte dès l'extraction.
+ *
+ * ── CE QUI N'EST PAS POLICÉ (gap assumé) ─────────────────────────────────────────────────────
+ * Les chaînes rendues via une fonction d'aide (`switch` qui retourne un libellé), un texte mêlé à
+ * une interpolation sur la même ligne (`>Reste {n} j</`), un littéral dans un template multi-ligne.
+ * NEO les extrait aussi dans la PR, mais la garde automatique ne les attrape pas — c'est la revue
+ * qui tient ce reliquat. Élargir la largeur = décision, pas un ajout silencieux.
+ *
+ * PORTÉE = EXCLUSIVEMENT les fichiers de `MIGRATED_FILES`. `texts.ts` est HORS portée par
+ * construction (c'est LUI qui détient les littéraux, une seule fois). Un écran entre dans
+ * `MIGRATED_FILES` quand sa PR le migre (règle `.claude/rules/frontend.md`).
+ */
+const SRC_ROOT = join(import.meta.dirname, "..");
+
+// Les écrans migrés — chemins relatifs à `src/`. Chacun DOIT être lavé de tout texte en dur.
+// ⚠ Au moment où TANK pose cette garde (PR7), AUCUN n'est encore extrait : la garde est ROUGE,
+// c'est VOULU — NEO la verdit en déplaçant les littéraux dans les `texts.ts` de chaque feature.
+const MIGRATED_FILES = [
+  "features/cockpit/RadarPanel.tsx",
+  "features/cockpit/DayDialog.tsx",
+  "features/planning/PlanningPage.tsx",
+  "features/planning/SlotDetail.tsx",
+  "features/planning/DiagnosticsPanel.tsx",
+  "features/matches/ConflictLine.tsx",
+  "features/wizard/steps/SlotReservationModal.tsx",
+  "features/wizard/steps/ConstraintsStep.tsx",
+  "features/wizard/steps/RecapStep.tsx",
+];
+
+// Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.
+// Plafond STRICT : 5. Idéalement VIDE. Si vous en ajoutez une, dites pourquoi la clé ne convient
+// pas (raison STRUCTURELLE, jamais « pour faire taire un rouge »).
+const EXEMPTIONS: { file: string; reason: string }[] = [];
+
+const POLICED_ATTRS = ["title", "aria-label", "placeholder", "message", "label"];
+
+/** Un texte « FR » : un mot d'au moins 3 lettres ET au moins une minuscule. */
+function looksFrench(text: string): boolean {
+  return /\p{L}{3,}/u.test(text) && /\p{Ll}/u.test(text);
+}
+
+/** Une ligne de PROSE pure : lettres, marques, chiffres, espaces et ponctuation FR — rien de code. */
+const PROSE_LINE = /^[\p{L}\p{M}0-9\s.,!?%…«»’–—-]+$/u;
+
+/** La ligne (non vide) précédente ferme une balise ouvrante (`…>`), ni auto-fermante ni fléchée. */
+function endsWithOpeningTag(line: string): boolean {
+  const t = line.trimEnd();
+  return t.endsWith(">") && !t.endsWith("/>") && !t.endsWith("=>");
+}
+
+/** Scanne un contenu source et rend la liste des offenses `rel:line → raison`. */
+function scan(rel: string, content: string): string[] {
+  const offenders: string[] = [];
+  const lines = content.split("\n");
+  let prevNonEmpty = "";
+  lines.forEach((line, idx) => {
+    const n = idx + 1;
+
+    // (a) nœud texte JSX en ligne : `>…texte…</`.
+    for (const m of line.matchAll(/>([^<>{}]*)<\//gu)) {
+      if (looksFrench(m[1])) offenders.push(`${rel}:${n} → texte JSX en dur « ${m[1].trim()} »`);
+    }
+
+    // (b) attribut policé `attr="…"`.
+    for (const attr of POLICED_ATTRS) {
+      const re = new RegExp(`(?:^|[\\s{(])${attr.replace("-", "\\-")}="([^"]*)"`, "g");
+      for (const m of line.matchAll(re)) {
+        if (looksFrench(m[1])) offenders.push(`${rel}:${n} → ${attr}="${m[1]}" en dur`);
+      }
+    }
+
+    // (a bis) nœud texte JSX sur sa propre ligne, précédé d'une balise ouvrante.
+    const trimmed = line.trim();
+    if (trimmed.length >= 3 && PROSE_LINE.test(trimmed) && looksFrench(trimmed) && endsWithOpeningTag(prevNonEmpty)) {
+      offenders.push(`${rel}:${n} → texte JSX en dur « ${trimmed} »`);
+    }
+
+    if (trimmed !== "") prevNonEmpty = line;
+  });
+  return offenders;
+}
+
+function isExempt(rel: string): boolean {
+  return EXEMPTIONS.some((e) => rel === e.file || rel.startsWith(e.file));
+}
+
+describe("Textes centralisés — garde statique", () => {
+  it("le plafond d'exemptions (≤ 5) tient", () => {
+    expect(EXEMPTIONS.length).toBeLessThanOrEqual(5);
+  });
+
+  // Contrôle POSITIF/NÉGATIF (falsification des DEUX sens, patron `timeFormatGuard`) : le détecteur
+  // MORD le littéral en dur et ÉPARGNE la forme extraite (`{TEXTS.x}`) + le code voisin. Déterministe,
+  // il prouve que la garde n'est ni morte ni trop laxiste — indépendamment de l'état des écrans réels.
+  it("mord le texte en dur, épargne la forme extraite et le code", () => {
+    const bad = [
+      "<Button>Reprendre</Button>", // (a) en ligne
+      '<span className="x">Deux matchs sur le même créneau</span>', // (a) en ligne
+      '<Foo\n  title="Planning de saison à valider"', // (b) title
+      '  <input placeholder="Intitulé (optionnel)" />', // (b) placeholder
+      '  <IconButton aria-label="Supprimer la semaine" />', // (b) aria-label
+      '<Dialog message="Cette entrée sera retirée du calendrier." />', // (b) message
+      "<Button>\n  Adapter\n</Button>", // (a bis) prose sur sa ligne après une balise ouvrante
+    ];
+    for (const sample of bad) {
+      expect(scan("x.tsx", sample).length, `devrait mordre : ${sample}`).toBeGreaterThan(0);
+    }
+
+    const good = [
+      "<Button>{COCKPIT_TEXTS.resumePlanning}</Button>", // extrait : expression
+      "<Foo title={COCKPIT_TEXTS.seasonPlanToValidate} />", // attribut dynamique
+      "<input placeholder={WIZARD_TEXTS.optionalTitle} aria-label={WIZARD_TEXTS.a} />",
+      "<Button>\n  {COCKPIT_TEXTS.adapt}\n</Button>", // prose extraite → porte des accolades
+      "function Item({ icon, title, detail }: Props) {", // destructuring, pas du texte
+      "  return allMain", // code nu après un `=>`/`;`, jamais après une balise ouvrante
+      "const venues: Map<string, Venue> = new Map();", // générique TS, pas un `</`
+      '<div className="rounded border px-2 py-1">{value}</div>', // utilitaires + expression
+      "<Button aria-label={`Déplier ${title}`}>", // template dynamique
+    ];
+    for (const sample of good) {
+      expect(scan("x.tsx", sample), `ne devrait PAS mordre : ${sample}`).toEqual([]);
+    }
+  });
+
+  // La vraie garde : aucun écran migré ne porte de texte FR en dur. ROUGE tant que NEO n'a pas
+  // extrait (c'est le but de la PR7 — TANK pose la garde, NEO la verdit). Les offenses sont NOMMÉES
+  // `fichier:ligne → …` pour que chaque écran listé se voie reproché ses littéraux.
+  it("aucun libellé français en dur dans un écran migré (texts.ts fait foi)", () => {
+    const offenders: string[] = [];
+    for (const rel of MIGRATED_FILES) {
+      if (isExempt(rel)) continue;
+      offenders.push(...scan(`src/${rel}`, readFileSync(join(SRC_ROOT, rel), "utf8")));
+    }
+    expect(
+      offenders,
+      "Un écran de MIGRATED_FILES porte encore du texte FR en dur. Déplacez chaque libellé dans le `texts.ts` de sa feature (clé camelCase par intention) et rendez-le par une expression `{FEATURE_TEXTS.clé}` ; le test vérifie la CLÉ, jamais la phrase. Voir docs/testing/tests-par-parcours.md et .claude/rules/frontend.md.",
+    ).toEqual([]);
+  });
+});
