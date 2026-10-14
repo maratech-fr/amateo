@@ -63,6 +63,12 @@ interface EvictConfirmDialogProps {
   kind?: "evict" | "swap";
   /** Nom de l'équipe occupant la cible (déjà résolu par la page). */
   occupantName: string;
+  /**
+   * L'occupant est un GROUPE mutualisé (plusieurs séances), pas une équipe : la tournure du texte
+   * d'acceptation passe au masculin pluriel (« Le déplacer d'ici ? Ses séances passeront… »), car
+   * c'est tout un bloc de séances qui part à replacer, pas une seule.
+   */
+  occupantIsGroup?: boolean;
   /** Compromis du verdict accepté (peut être vide → « Aucun compromis détecté. »). */
   compromises: Compromise[];
   /** Motifs du refus (état `refused`). */
@@ -77,7 +83,7 @@ interface EvictConfirmDialogProps {
   onClose: () => void;
 }
 
-export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, compromises, violations, failureKind, busy, onConfirm, onRetry, onClose }: EvictConfirmDialogProps) {
+export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, occupantIsGroup = false, compromises, violations, failureKind, busy, onConfirm, onRetry, onClose }: EvictConfirmDialogProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   useModalA11y({ ref: panelRef, onClose, active: open });
@@ -133,6 +139,10 @@ export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, 
                 {isSwap ? (
                   <>
                     Échanger avec <span className="font-medium text-foreground">{occupantName}</span> ? Les deux séances troqueront leurs créneaux, sans perte.
+                  </>
+                ) : occupantIsGroup ? (
+                  <>
+                    Ce créneau est occupé par <span className="font-medium text-foreground">{occupantName}</span>. Le déplacer d'ici ? Ses séances passeront dans les séances à replacer.
                   </>
                 ) : (
                   <>

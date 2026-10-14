@@ -46,4 +46,19 @@ describe("EvictConfirmDialog", () => {
     expect(screen.queryByRole("button", { name: "Déplacer et évincer" })).not.toBeInTheDocument();
     expect(screen.queryByText(/séances à replacer/)).not.toBeInTheDocument();
   });
+
+  it("accepted + occupantIsGroup — le texte parle d'un GROUPE (« Le déplacer », « Ses séances passeront »), jamais le féminin singulier d'une équipe", () => {
+    render(<EvictConfirmDialog {...baseProps} phase="accepted" occupantIsGroup occupantName="le groupe" />);
+
+    expect(screen.getByText(/Ses séances passeront dans les séances à replacer/)).toBeInTheDocument();
+    // Un groupe n'est pas « une » séance : jamais la tournure équipe « Elle passera ».
+    expect(screen.queryByText(/Elle passera/)).not.toBeInTheDocument();
+  });
+
+  it("accepted — pour une ÉQUIPE (occupant non groupe), la tournure reste au féminin singulier (« Elle passera »)", () => {
+    render(<EvictConfirmDialog {...baseProps} phase="accepted" occupantName="U13 M1" />);
+
+    expect(screen.getByText(/Elle passera dans les séances à replacer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Ses séances passeront/)).not.toBeInTheDocument();
+  });
 });

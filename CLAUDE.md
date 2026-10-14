@@ -122,7 +122,10 @@ Agents/skills = **manuels, déclenchés par le user** (exception : hook `code-re
 première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
 branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready » ;
 **une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas
-l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; les autres branches attendent.
+l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; **on n'ouvre JAMAIS une PR dont
+la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'ouvrir, comparer
+`git diff --name-only origin/main...HEAD` aux fichiers des PR ouvertes (`gh pr diff <n> --name-only`),
+intersection non vide = la branche attend le merge ; les autres branches attendent.
 **Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
 déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
 (`docs/ops/deploy.md`).
@@ -135,13 +138,15 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
 **Cycle full lane** :
 0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
    `fichier:ligne`, jamais de mémoire ni depuis un doc ; jamais « vérifié » sur balayage partiel.
-1. **Need validation** (agent `cadreur`, lecture seule) : besoin reformulé, constats cités
+1. **Need validation** (agent `oracle`, lecture seule) : besoin reformulé, constats cités
    `fichier:ligne`, scénario UI réel, décisions avec exemple, ambiguïtés, hors-périmètre.
    **User valide — pas de `/plan` avant.**
-2. `/plan` (agent `planner`, porte la checklist §9) ; optionnel `contrarian-review`. User valide.
-3. Implémenter **strictement dans le scope** (agent `coder`, zéro refactor opportuniste).
-4. **NR obligatoire si axe §7.1 touché — même PR.** ⚠ `phase1` ne gate pas (§4) : un NR qui doit
-   gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
+2. `/plan` (agent `morpheus`, porte la checklist §9) ; optionnel `smith`. User valide.
+3. **Tests ROUGES d'abord** (agent `tank`, depuis la promesse) puis implémenter **strictement dans
+   le scope** (agent `neo`, zéro refactor opportuniste) jusqu'au vert — `neo` adapte MÉCANIQUEMENT un
+   test (renommage/signature), jamais n'en crée ni n'en supprime (option A, charte `docs/testing/`).
+4. **NR obligatoire si axe §7.1 touché — même PR, porté par `tank`.** ⚠ `phase1` ne gate pas (§4) :
+   un NR qui doit gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
 5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
    contrats cross-zone). **Behat** : le gate est le job CI `functional-tests` (required check,
    §4) — plus de run local systématique avant chaque PR/merge (décision fondateur 2026-10-11) ;
@@ -174,9 +179,9 @@ auth & memberships.
 `AGENTS.md` pointe ici ; `<zone>/AGENTS.md` = détail de zone. Mise à jour via le skill
 `documentation-update` avant chaque PR. Décisions structurantes → ADR
 (`docs/architecture/adr-index.md`). Décision business prise en session (positionnement, marque,
-prix, juridique, terrain) → l'agent `business-writer` met `business/` à jour (hors dépôt, hors PR,
+prix, juridique, terrain) → l'agent `niobe` met `business/` à jour (hors dépôt, hors PR,
 jamais exigé en CI ; ce qui doit être opposable au code est recopié en substance dans
-`specs/courantes/` par `docs-writer`).
+`specs/courantes/` par `trinity`).
 
 **Les deux fichiers de suivi — ne jamais les confondre** : `specs/evolution/roadmap.md` =
 **l'ouvert seulement** ; `specs/courantes/etat-des-lieux.md` = **le livré + les décisions fermées**.
@@ -187,7 +192,7 @@ l'état des lieux.
 
 La checklist de cadrage (zone, dossiers autorisés/interdits, fichiers probables, doc à mettre à
 jour, axes §7.1 → NR, feature Behat qui prouve la zone si backend/engine touché — info de
-couverture, pas un run local obligatoire, §7 étape 5) **vit dans `.claude/agents/planner.md`** —
+couverture, pas un run local obligatoire, §7 étape 5) **vit dans `.claude/agents/morpheus.md`** —
 maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir littéralement.
 
 ## 10. Gotchas (top)
@@ -206,10 +211,10 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 5. ⚠ **Worktree + `docker compose exec` = code du dépôt PRINCIPAL** : les cibles Docker (make test,
    vitest tooling) montent/copient le dépôt principal — depuis un worktree elles valident du code
    qui n'est pas le tien ; `tests-complete`/e2e/Behat se jouent sur le dépôt principal, sérialisés
-   (`.claude/agents/coder.md` §Worktree).
+   (`.claude/agents/neo.md` §Worktree).
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
-`docs/glossary.md` · `docs/testing/testing-strategy.md` · `specs/evolution/roadmap.md`
+`docs/glossary.md` · `docs/testing/testing-strategy.md` · `docs/testing/tests-par-parcours.md` (charte des tests : ce que chaque niveau prouve, par parcours — maison de l'agent `tank`) · `specs/evolution/roadmap.md`
 (**l'ouvert**) · `specs/courantes/etat-des-lieux.md` (**le livré**) ·
 `docs/architecture/adr-index.md` · `backend/docs/commands.md` · ops : `docs/ops/` · sécurité :
 `docs/security/` · clés `config` d'une contrainte : `backend/docs/constraint-config-keys.md`.

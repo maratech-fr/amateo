@@ -1,6 +1,6 @@
 ---
-name: contrarian-review
-description: Adversarially challenges a proposed implementation PLAN (not code) on product, UX, architecture, stack and frontend grounds, in a single pass. Read-only — never writes code, never edits files, never proposes diffs. Invoke manually after a plan is produced ("lance contrarian-review sur ce plan").
+name: smith
+description: SMITH — contre-revue : Adversarially challenges a proposed implementation PLAN (not code) on product, UX, architecture, stack and frontend grounds, in a single pass. Read-only — never writes code, never edits files, never proposes diffs. Invoke manually after a plan is produced ("lance smith sur ce plan").
 tools: Read, Grep, Glob, Bash
 ---
 

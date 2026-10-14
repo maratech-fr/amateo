@@ -1,6 +1,7 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-11 (lot verrous V1/V1bis) : nouveau §3.1bis (verrous d'une période
+Last verified @ 2026-10-14 (renommage des sous-agents Matrix — `contrarian-review` → `smith`, nom
+seul, aucun fait re-confronté cette passe ; précédemment 2026-10-11, lot verrous V1/V1bis) : nouveau §3.1bis (verrous d'une période
 survivant à « Régénérer », « Charger » pour une période) confronté à
 `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`/`pointLockSource`, `LoadLocksController` et
 `ScheduleConstraintBuilder::buildForPeriodPlan` ; §3.5 et §4 gagnent `canLoadLocks`/
@@ -129,7 +130,7 @@ Le verrou se dérive du **pointeur** : « verrouillé » = **le plan pointe cett
 > provider, aucun processor) : aucun rail d'écriture à garder sur ce verrou.
 - `ScheduleStateProcessor` DELETE : la **version choisie ne se supprime pas** (409 — la rouvrir d'abord) et une version en cours de génération non plus (409). Gardé par `ScheduleLifecycleGuardTest` (phase1).
 
-> Le verrou front seul serait une illusion (contrarian-review) : l'enforcement est **serveur**.
+> Le verrou front seul serait une illusion (smith) : l'enforcement est **serveur**.
 
 ### 3.2bis Unicité du socle en vigueur
 

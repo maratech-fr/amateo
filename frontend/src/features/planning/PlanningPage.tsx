@@ -1349,6 +1349,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         open={null !== evictDialog}
         phase={(evictDialog?.phase ?? "checking") as EvictDialogPhase}
         occupantName={null !== evictDialog ? (null !== evictDialog.targetSlot.sharedTrainingBlockId ? "le groupe" : teamNameOf(evictDialog.targetSlot.teamId)) : ""}
+        occupantIsGroup={null !== evictDialog && null !== evictDialog.targetSlot.sharedTrainingBlockId}
         compromises={null !== evictDialog && "accepted" === evictDialog.phase ? evictDialog.compromises : []}
         violations={null !== evictDialog && "refused" === evictDialog.phase ? evictDialog.violations : []}
         failureKind={null !== evictDialog && "failed" === evictDialog.phase ? evictDialog.failureKind : "timeout"}
@@ -1377,6 +1378,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         kind="swap"
         phase={(swapDialog?.phase ?? "checking") as EvictDialogPhase}
         occupantName={null !== swapDialog ? (null !== swapDialog.targetSlot.sharedTrainingBlockId ? "le groupe" : teamNameOf(swapDialog.targetSlot.teamId)) : ""}
+        occupantIsGroup={null !== swapDialog && null !== swapDialog.targetSlot.sharedTrainingBlockId}
         compromises={null !== swapDialog && "accepted" === swapDialog.phase ? swapDialog.compromises : []}
         violations={null !== swapDialog && "refused" === swapDialog.phase ? swapDialog.violations : []}
         failureKind={null !== swapDialog && "failed" === swapDialog.phase ? swapDialog.failureKind : "timeout"}

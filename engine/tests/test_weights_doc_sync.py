@@ -25,7 +25,7 @@ valeur = 60) sans ligne de citation.
 
 RED prouvé en injectant une valeur factice dans le registre (voir le rapport de la PR).
 Si un doc cite ENCORE une valeur fausse hors des citations gardées (p. ex. un exemple oublié à
-« +60 »), ce test reste VERT et le résidu est REMONTÉ au docs-writer, pas corrigé ici.
+« +60 »), ce test reste VERT et le résidu est REMONTÉ au trinity, pas corrigé ici.
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ _UNCITED_BY_DESIGN = frozenset({"W_COACH_MAIN"})
 # Chaque entrée : (symbole, doc, regex à UN groupe capturant la valeur citée). Le regex ancre
 # sur le VOISINAGE du symbole (« bonus objectif **+NN** », « poids `−NN` », …) pour ne pas
 # ferrer un nombre voisin — et pour laisser hors filet les citations relâchées type « (soft, +60) »
-# d'un exemple, remontées au docs-writer plutôt que corrigées ici.
+# d'un exemple, remontées au trinity plutôt que corrigées ici.
 CITATIONS: tuple[tuple[str, pathlib.Path, str], ...] = (
     # preferred = 10
     ("preferred", VOCAB, r"bonus objectif \*\*\+(\d+)\*\*"),

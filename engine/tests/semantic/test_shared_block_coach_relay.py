@@ -5,7 +5,7 @@ contrainte d'indisponibilité de coach saisie est honorée par le solveur AU SEN
 séance a plusieurs coachs requis (équipe seule multi-coachs OU séance de BLOC, union des coachs des
 membres), UN seul coach disponible suffit.
 
-Origine prouvée en prod (prod-reader 2026-10-10) : Toussaint BCCL, un bloc U11 de 4 équipes aux
+Origine prouvée en prod (link 2026-10-10) : Toussaint BCCL, un bloc U11 de 4 équipes aux
 coachs mono-jour incompatibles sortait INFEASIBLE alors qu'un coach de l'union couvre chaque jour.
 Chaque test est écrit pour ROUGIR si la direction est retirée :
   1. cas prod reproduit : bloc de 4 équipes U11, coachs mardi-seul / mercredi-seul, 0 verrou →

@@ -181,7 +181,7 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
   Intensité **HARD** (bloque, comportement historique = défaut) ou **PREFERRED** (le solveur vise
   la règle via un littéral de violation AGRÉGÉ par entité, poids −6, preuve d'empilement dans
   `objective.py` — jamais un terme par occurrence, qui pouvait supprimer des séances). Un cran
-  DÉSACTIVÉE est une **extension future**, coupée du lot sur contrarian-review.
+  DÉSACTIVÉE est une **extension future**, coupée du lot sur smith.
   ⚠ **Bien-être PAR PÉRIODE** : la portée n'est PAS « club+saison » — `schedule_plan_id` sur
   `ImplicitRuleSetting` (ADR-0002 inv. 5) fixe la portée réelle au **plan** : NULL = la saison
   (base + repli des plans nés avant la fonctionnalité), un plan de période reçoit à sa NAISSANCE

@@ -1,13 +1,12 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-10-10 (§1 : ajout du régime « Connexion Docker Hub (anti-429) » — steps
-`docker/login-action` conditionnels dans les jobs qui tirent de Docker Hub, confronté aux cinq
-workflows `.github/workflows/*.yml`. Reste du fichier non re-confronté cette passe — dernier
-balayage complet du graphe CI §1 : 2026-10-06, voir
+Last verified @ 2026-10-14 (ajout du pointeur vers la charte `tests-par-parcours.md` — aucun fait
+du graphe CI re-confronté cette passe ; dernier ajout §1 « Connexion Docker Hub (anti-429) » le
+2026-10-10, dernier balayage complet du graphe CI §1 : 2026-10-06, voir
 `git log -p --follow docs/testing/testing-strategy.md`). Ce fichier ne couvre que backend+engine
 (« Scope » ci-dessous), sauf le graphe CI §1 qui est cross-zone par nature.
 
-Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
+Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts), [`tests-par-parcours.md`](tests-par-parcours.md) (ce que chaque niveau doit prouver, par parcours — la charte de l'agent `tank`) and [`../project-map.md`](../project-map.md).
 
 ---
 
