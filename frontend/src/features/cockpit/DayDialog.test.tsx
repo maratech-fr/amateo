@@ -8,6 +8,7 @@ import { pickListboxOption } from "@/test/pickListboxOption";
 
 import type { CalendarEntry, PublicHoliday, RedateEffect, SchoolHoliday } from "./api";
 import { DayDialog } from "./DayDialog";
+import { COCKPIT_TEXTS } from "./texts";
 
 const deleteMutate = vi.fn();
 const cutoffMutate = vi.fn();
@@ -183,7 +184,7 @@ describe("DayDialog — deletion is always confirmed", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Supprimer Vide" }));
 
-    expect(screen.getByText("Cette entrée sera retirée du calendrier.")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.entryWillBeRemoved)).toBeInTheDocument();
   });
 
   it("fail-closed: while the period's plan/versions are unresolved (no data yet), warns about the cascade (never under-warns)", async () => {
@@ -208,7 +209,7 @@ describe("DayDialog — deletion is always confirmed", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Supprimer Vacances" }));
 
-    expect(screen.getByText("Cette entrée sera retirée du calendrier.")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.entryWillBeRemoved)).toBeInTheDocument();
   });
 
   it("never flashes the cascade warning for a cutoff, even while unresolved (no plan, inv. 9)", async () => {
@@ -219,7 +220,7 @@ describe("DayDialog — deletion is always confirmed", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Supprimer Coupure" }));
 
-    expect(screen.getByText("Cette entrée sera retirée du calendrier.")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.entryWillBeRemoved)).toBeInTheDocument();
   });
 
   it("keeps the custom period button disabled (deferred palier B/C)", () => {
@@ -342,7 +343,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
   // item 1: a public holiday (jour férié) shows read-only info.
   it("shows the public-holiday info banner", () => {
     renderDialog([], { publicHoliday: { id: "ph1", date: "2026-05-12", label: "Ascension", national: true } });
-    expect(screen.getByText("Jour férié")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.publicHolidayTitle)).toBeInTheDocument();
     expect(screen.getByText(/Ascension/)).toBeInTheDocument();
   });
 
@@ -354,12 +355,12 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     // Vacances 10/05 (dim) → 22/05 (ven) : DEUX semaines DE VACANCES (lun→ven couvert) — 11–17 et
     // 18–24 (le vendredi 22 couvre la seconde) ; la semaine d'entame du 04–10 reste de saison.
     renderDialog([], { holiday: schoolHoliday({ endDate: "2026-05-22" }) });
-    expect(screen.getByText("Vacances")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.holidayTag)).toBeInTheDocument();
     expect(screen.getByText(/Vacances de Noël/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
     // Le picker s'ouvre immédiatement — AUCUNE création tant que non confirmé.
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(holidayMutateAsync).not.toHaveBeenCalled();
     expect(startPeriodMode).not.toHaveBeenCalled();
     // Le chemin « d'un bloc » matérialise ALORS la mère puis mène au wizard.
@@ -378,7 +379,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
     await waitFor(() => expect(startPeriodMode).toHaveBeenCalledWith("hol-1w"));
-    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
     expect(navigate).toHaveBeenCalledWith("/wizard");
   });
 
@@ -403,8 +404,8 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
   // The modal reuses the calendar's emoji markers (same look in both places).
   it("marks day entries with the same calendar emojis (⛔ closure, 🛑 cutoff)", () => {
     renderDialog([entry({ id: "c1", kind: "period", periodType: "closure", title: "Gym fermé" }), entry({ id: "c2", kind: "period", periodType: "cutoff", title: "Coupure de Noël" })]);
-    expect(screen.getByText("⛔")).toBeInTheDocument();
-    expect(screen.getByText("🛑")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.closureMarker)).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.cutoffMarker)).toBeInTheDocument();
   });
 
   // L'été s'adapte comme les autres vacances (planning de reprise — retour
@@ -421,7 +422,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
   it("explains instead of a dead button when the holiday is fully outside the season", () => {
     renderDialog([], { holiday: schoolHoliday({ id: "sh-out", label: "Vacances lointaines", startDate: "2027-10-01", endDate: "2027-10-15" }) });
     // P4-150 — copie d'écran EXACTE (le « rien à adapter » est protégé, pas seulement l'entête).
-    expect(screen.getByText("Hors de la saison en cours — rien à adapter.")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.outsideSeasonNothingToAdapt)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Adapter" })).not.toBeInTheDocument();
   });
 
@@ -434,7 +435,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
 
     expect(screen.queryByRole("button", { name: /Supprimer Vacances de Noël/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Supprimer AG du club" })).toBeInTheDocument();
-    expect(screen.getByText("Vacances")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.holidayTag)).toBeInTheDocument();
   });
 
   // Revue F2 : sur un jour de vacances « bloc » dont la seule entrée est la mère
@@ -445,7 +446,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     renderDialog([mother], { holiday: schoolHoliday() });
 
     expect(screen.queryByText(/Rien ce jour-là/)).not.toBeInTheDocument();
-    expect(screen.getByText("Vacances")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.holidayTag)).toBeInTheDocument();
   });
 
   // NR #5 : plan de saison non validé → l'ajustement d'une vacance est désactivé.
@@ -486,7 +487,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     renderDialog([], { holiday: schoolHoliday({ id: "sh-fri", label: "Toussaint", startDate: "2026-05-15", endDate: "2026-05-31" }) });
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     // La semaine partielle du 11–17 mai (contenant le vendredi) n'est pas proposée.
     expect(screen.queryByText(/11 mai/)).not.toBeInTheDocument();
     // P2-41 — les deux semaines pleines restantes (18–24 + 25–31) sont un SEGMENT unique,
@@ -504,7 +505,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
     await waitFor(() => expect(startPeriodMode).toHaveBeenCalledWith("hol-1w"));
-    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
   });
 
   // B1 : après avoir choisi ≥2 semaines, le wizard s'ouvre sur la 1ʳᵉ semaine créée.
@@ -690,7 +691,7 @@ describe("DayDialog — P2-36 : le picker nomme l'état « bloc déjà généré
     renderDialog([materialisedHoliday()], { holiday: schoolHoliday() });
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(screen.getByText(/déjà été adaptée d'un bloc — 1 version/)).toBeInTheDocument();
     // Rien n'a été matérialisé/navigué en silence.
     expect(startPeriodMode).not.toHaveBeenCalled();
@@ -744,7 +745,7 @@ describe("DayDialog — P2-36 tranche 2 : la liste du jour passe par le sélecte
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
 
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     // Le plan de bloc N'EST PAS créé tant que le gestionnaire n'a pas tranché.
     expect(periodPlanMutateAsync).not.toHaveBeenCalled();
     expect(startPeriodMode).not.toHaveBeenCalled();
@@ -757,7 +758,7 @@ describe("DayDialog — P2-36 tranche 2 : la liste du jour passe par le sélecte
 
     await waitFor(() => expect(periodPlanMutateAsync).toHaveBeenCalledWith("cl1"));
     await waitFor(() => expect(startPeriodMode).toHaveBeenCalledWith("cl1"));
-    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
     expect(navigate).toHaveBeenCalledWith("/wizard");
   });
 
@@ -768,7 +769,7 @@ describe("DayDialog — P2-36 tranche 2 : la liste du jour passe par le sélecte
 
     await userEvent.click(screen.getByRole("button", { name: "Ajuster" }));
 
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(screen.getByText(/déjà été adaptée d'un bloc — 1 version/)).toBeInTheDocument();
     // Rien n'a été navigué en silence — le picker attend la décision.
     expect(startPeriodMode).not.toHaveBeenCalled();
@@ -783,7 +784,7 @@ describe("DayDialog — P2-36 tranche 2 : la liste du jour passe par le sélecte
 
     await userEvent.click(screen.getByRole("button", { name: "Ajuster" }));
 
-    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
     await waitFor(() => expect(startPeriodMode).toHaveBeenCalledWith("cls"));
     expect(navigate).toHaveBeenCalledWith("/wizard");
   });
@@ -812,7 +813,7 @@ describe("DayDialog — fermeture chevauchant des vacances (P2-40)", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
 
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(screen.getByText(/couvertes par Petites vacances/)).toBeInTheDocument();
     // P2-41 — les deux semaines pleines hors vacances forment UN segment (une coche). ALIGNEMENT
     // fondateur (P2-38) : le chemin « d'un bloc » n'est plus CACHÉ mais DÉSACTIVÉ avec sa raison
@@ -832,7 +833,7 @@ describe("DayDialog — fermeture chevauchant des vacances (P2-40)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
 
     await waitFor(() => expect(periodPlanMutateAsync).toHaveBeenCalledWith("cl1"));
-    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
   });
 
   // Une fermeture À SEMAINE ENTAMÉE (mardi 12 → dimanche 31 : début partiel + milieu) OUVRE le
@@ -843,7 +844,7 @@ describe("DayDialog — fermeture chevauchant des vacances (P2-40)", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
 
-    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Adapter toute la période d'un bloc/i })).toBeDisabled();
     expect(screen.queryByText(/couvertes par/)).not.toBeInTheDocument();
   });

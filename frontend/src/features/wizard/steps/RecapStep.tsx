@@ -23,6 +23,7 @@ import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { SectionCountTitle, SummaryRow, TeamTierAccordion } from "./StructureSummary";
 import { useActiveTeams, useActiveVenues, useGridSlots, usePriorityTiers, useReservations, useSharedTrainingBlocks, useWizardCoachPlayers, useWizardCoaches, useWizardConstraints, useWizardTeamCoaches, useWizardTeams, useWizardTeamTags, useWizardVenues } from "../queries";
 import { sharedGroupLabel } from "../lib/sharedTraining";
+import { WIZARD_TEXTS } from "../texts";
 import { useWizardStore } from "../store";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { dayLabel, hhmm } from "../lib/days";
@@ -110,7 +111,7 @@ function FreeSlotRow({ label, where, reason, onRemove, busy }: { label: string; 
 
   return (
     <SummaryRow
-      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : <span>{label} <span className="text-muted-foreground">· créneau libre</span></span>}
+      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : <span>{label} <span className="text-muted-foreground">{WIZARD_TEXTS.freeSlotTag}</span></span>}
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
         unserved ? (
@@ -429,14 +430,14 @@ export function RecapStep() {
           `max-w-3xl` y est une mesure de longueur de LIGNE DE TEXTE — l'emprunter sans le dire
           serait lui faire dire ce qu'il ne dit pas (cf. `frontend-features.md` §6.9). */}
       <div className="mb-4 grid max-w-3xl grid-cols-2 gap-2 sm:grid-cols-4">
-        <Counter label="Équipes" value={teams.length} />
-        <Counter label="Gymnases" value={venues.length} />
-        <Counter label="Coachs" value={coaches.length} sub={`dont ${salaried} salarié(s) · ${coachPlayerIds.size} coach-joueur(s)`} />
-        <Counter label="Contraintes dures" value={hardConstraints} />
+        <Counter label={WIZARD_TEXTS.teams} value={teams.length} />
+        <Counter label={WIZARD_TEXTS.venues} value={venues.length} />
+        <Counter label={WIZARD_TEXTS.coaches} value={coaches.length} sub={`dont ${salaried} salarié(s) · ${coachPlayerIds.size} coach-joueur(s)`} />
+        <Counter label={WIZARD_TEXTS.hardConstraints} value={hardConstraints} />
       </div>
 
       <div className="mb-4 flex flex-col gap-1.5">
-        <AccordionSection title={<SectionCountTitle label="Équipes" count={teams.length} />}>
+        <AccordionSection title={<SectionCountTitle label={WIZARD_TEXTS.teams} count={teams.length} />}>
           {0 === teams.length && 0 === pausedTeams.length ? (
             empty
           ) : (
@@ -454,7 +455,7 @@ export function RecapStep() {
                     label={
                       <span className={cn("flex flex-wrap items-baseline gap-x-2", paused && "text-muted-foreground")}>
                         <span className={cn(paused && "line-through")}>{t.name}</span>
-                        {paused ? <span className="text-xs italic">en pause pour cette période</span> : null}
+                        {paused ? <span className="text-xs italic">{WIZARD_TEXTS.pausedForPeriod}</span> : null}
                         {/* P4-58 (c) — l'absence se DIT : une équipe sans coach affichait
                             un blanc, indistinguable d'un oubli de rendu. */}
                         <span className="text-xs italic text-muted-foreground">{coach ?? "Sans coach"}</span>
@@ -468,7 +469,7 @@ export function RecapStep() {
             />
           )}
         </AccordionSection>
-        <AccordionSection title={<SectionCountTitle label="Gymnases" count={venues.length} />}>
+        <AccordionSection title={<SectionCountTitle label={WIZARD_TEXTS.venues} count={venues.length} />}>
           {0 === venues.length
             ? empty
             : venues.map((v) => (
@@ -484,7 +485,7 @@ export function RecapStep() {
                 />
               ))}
         </AccordionSection>
-        <AccordionSection title={<SectionCountTitle label="Coachs" count={coaches.length} />}>
+        <AccordionSection title={<SectionCountTitle label={WIZARD_TEXTS.coaches} count={coaches.length} />}>
           {0 === coaches.length
             ? empty
             : coachGroups.map((group) => (
@@ -504,7 +505,7 @@ export function RecapStep() {
                 </div>
               ))}
         </AccordionSection>
-        <AccordionSection title={<SectionCountTitle label="Contraintes" count={constraints.length} />}>
+        <AccordionSection title={<SectionCountTitle label={WIZARD_TEXTS.constraints} count={constraints.length} />}>
           {0 === constraints.length
             ? empty
             : constraintFamilies.map((group) => (
@@ -532,7 +533,7 @@ export function RecapStep() {
                 </div>
               ))}
         </AccordionSection>
-        <AccordionSection title={<SectionCountTitle label="Réservations" count={reservations.length} />}>
+        <AccordionSection title={<SectionCountTitle label={WIZARD_TEXTS.reservations} count={reservations.length} />}>
           {0 === sortedReservations.length && 0 === freeSlots.length
             ? empty
             : (() => {
@@ -555,14 +556,14 @@ export function RecapStep() {
                     ))}
                     {orphanRows.length > 0 ? (
                       <div className="mb-2 last:mb-0">
-                        <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">Autres</p>
+                        <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">{WIZARD_TEXTS.others}</p>
                         {orphanRows.map(renderReservationRow)}
                       </div>
                     ) : null}
                     {/* Lot 4bis — les CRÉNEAUX LIBRES (réservations sans équipe) dans leur propre groupe. */}
                     {freeSlots.length > 0 ? (
                       <div className="mb-2 last:mb-0">
-                        <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">Créneaux libres</p>
+                        <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">{WIZARD_TEXTS.freeSlots}</p>
                         {freeSlots.map((r) => (
                           <FreeSlotRow
                             key={r.id}
@@ -579,7 +580,7 @@ export function RecapStep() {
                 );
               })()}
         </AccordionSection>
-        <AccordionSection title={<SectionCountTitle label="Mutualisation" count={sharedBlocks.length} />}>
+        <AccordionSection title={<SectionCountTitle label={WIZARD_TEXTS.mutualization} count={sharedBlocks.length} />}>
           {0 === sharedBlocks.length
             ? empty
             : sharedBlocks.map((b) => <SummaryRow key={b.id} label={sharedGroupLabel(b.teamIds, b.commonSessions, (id) => teamName.get(id) ?? "?")} />)}
@@ -592,7 +593,7 @@ export function RecapStep() {
       {blockers.length > 0 ? (
         <p className="text-sm text-destructive">{blockers.length} blocage(s) — détail en haut de page.</p>
       ) : (
-        <p className="text-sm text-success">Tout est prêt. Utilisez « Continuer vers la génération » en bas pour lancer.</p>
+        <p className="text-sm text-success">{WIZARD_TEXTS.allReady}</p>
       )}
       {/* Respiration avant la barre du bouton « Continuer » (demande fondateur). */}
       <div className="h-4" aria-hidden />

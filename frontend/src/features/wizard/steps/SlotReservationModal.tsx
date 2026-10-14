@@ -19,6 +19,7 @@ import { offerableGroups, postedGroupOnSlot } from "../lib/groupReservation";
 import { assignableTeams, effectiveSlotCapacity, slotKey } from "../lib/reservationSlots";
 import { useCreateGroupReservation, useCreateReservation, useDeleteReservation } from "../queries";
 import { WizardStepLink } from "../WizardStepLink";
+import { WIZARD_TEXTS } from "../texts";
 
 /** Préfixe des valeurs de la section « Entraînements mutualisés » du sélecteur (P2-51). */
 const BLOCK_VALUE_PREFIX = "block:";
@@ -216,11 +217,10 @@ export function SlotReservationModal({
   const optionMetaFor = (team: Team): { count?: string; sub?: string; disabled?: boolean } => {
     if (assignableIds.has(team.id)) {
       const n = remainingByTeam.get(team.id) ?? 0;
-      const unit = n > 1 ? "créneaux" : "créneau";
-      return { count: `reste ${n} ${unit}`, sub: true === budgetByTeam.get(team.id)?.inBlock ? "hors groupe" : undefined };
+      return { count: WIZARD_TEXTS.soloResidual(n), sub: true === budgetByTeam.get(team.id)?.inBlock ? WIZARD_TEXTS.outOfGroup : undefined };
     }
     const name = true === budgetByTeam.get(team.id)?.inBlock ? blockNameOf(team.id) : null;
-    return { disabled: true, sub: `Tous ses créneaux sont placés${null === name ? "" : ` — passez par le groupe ${name}`}` };
+    return { disabled: true, sub: `${WIZARD_TEXTS.allSlotsPlaced}${null === name ? "" : ` — passez par le groupe ${name}`}` };
   };
 
   // MUTUALISATION (P2-51). Un bloc occupe la case SEUL : il exige un créneau libre dans le brouillon
@@ -350,13 +350,13 @@ export function SlotReservationModal({
 
   return (
     <Modal
-      label="Réserver ce créneau"
+      label={WIZARD_TEXTS.reserveSlotModalLabel}
       title={`${venue.name} · ${dayLabel(slot.dayOfWeek)} ${hhmm(slot.startTime)}`}
       onClose={dismiss}
       footer={
         <>
           <Button variant="ghost" onClick={dismiss} disabled={busy}>
-            Annuler
+            {WIZARD_TEXTS.cancel}
           </Button>
           <Button onClick={() => void submit()} disabled={busy || !dirty}>
             {busy ? "Enregistrement…" : "Valider"}
@@ -376,7 +376,7 @@ export function SlotReservationModal({
             <li key="posted-lot" className="flex items-start gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
               <Users className="mt-0.5 size-3.5 shrink-0 text-accent" />
               <span className="flex-1 font-medium">
-                {lotLabel(postedLot.group.teamIds)} <span className="font-normal text-muted-foreground">· entraînement mutualisé</span>
+                {lotLabel(postedLot.group.teamIds)} <span className="font-normal text-muted-foreground">{WIZARD_TEXTS.mutualizedTrainingTag}</span>
               </span>
               <button
                 type="button"
@@ -416,9 +416,9 @@ export function SlotReservationModal({
             <li key="removed-lot" className="flex items-start gap-2 rounded-md border border-dashed border-destructive/50 bg-surface-destructive px-3 py-1.5 text-sm">
               <Trash2 className="mt-0.5 size-3.5 shrink-0 text-destructive" />
               <span className="flex-1 font-medium line-through">
-                {lotLabel(removedLot.group.teamIds)} <span className="font-normal text-muted-foreground no-underline">· entraînement mutualisé</span>
+                {lotLabel(removedLot.group.teamIds)} <span className="font-normal text-muted-foreground no-underline">{WIZARD_TEXTS.mutualizedTrainingTag}</span>
               </span>
-              <span className="text-xs text-muted-foreground">retrait à valider</span>
+              <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.removalToValidate}</span>
               <button
                 type="button"
                 aria-label={`Annuler le retrait de l'entraînement mutualisé ${lotLabel(removedLot.group.teamIds)}`}
@@ -438,7 +438,7 @@ export function SlotReservationModal({
               <li key={`removed-${r.id}`} className="flex items-center gap-2 rounded-md border border-dashed border-destructive/50 bg-surface-destructive px-3 py-1.5 text-sm">
                 <Trash2 className="size-3.5 text-destructive" />
                 <span className="flex-1 font-medium line-through">{null === r.teamId ? (r.label ?? "Créneau libre") : (teamName.get(r.teamId) ?? "?")}</span>
-                <span className="text-xs text-muted-foreground">retrait à valider</span>
+                <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.removalToValidate}</span>
                 <button
                   type="button"
                   aria-label={`Annuler le retrait de ${null === r.teamId ? (r.label ?? "ce créneau libre") : (teamName.get(r.teamId) ?? "l'équipe")}`}
@@ -456,7 +456,7 @@ export function SlotReservationModal({
             <li key={`draft-${teamId}`} className="flex items-center gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
               <Lock className="size-3.5 text-accent" />
               <span className="flex-1 font-medium">{teamName.get(teamId) ?? "?"}</span>
-              <span className="text-xs text-muted-foreground">à valider</span>
+              <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toValidate}</span>
               <button
                 type="button"
                 aria-label={`Annuler l'ajout de ${teamName.get(teamId) ?? "l'équipe"}`}
@@ -479,9 +479,9 @@ export function SlotReservationModal({
               <li key={`draft-block-${blockId}`} className="flex items-start gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
                 <Users className="mt-0.5 size-3.5 shrink-0 text-accent" />
                 <span className="flex-1 font-medium">
-                  {lotLabel(members)} <span className="font-normal text-muted-foreground">· entraînement mutualisé</span>
+                  {lotLabel(members)} <span className="font-normal text-muted-foreground">{WIZARD_TEXTS.mutualizedTrainingTag}</span>
                 </span>
-                <span className="text-xs text-muted-foreground">à valider</span>
+                <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toValidate}</span>
                 <button
                   type="button"
                   aria-label={`Annuler l'ajout de l'entraînement mutualisé ${lotLabel(members)}`}
@@ -501,7 +501,7 @@ export function SlotReservationModal({
             <li key={`free-${r.id}`} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
               <CalendarClock className="size-3.5 text-accent" />
               <span className="flex-1 font-medium">
-                {r.label ?? "Créneau réservé"} <span className="font-normal text-muted-foreground">· créneau libre</span>
+                {r.label ?? "Créneau réservé"} <span className="font-normal text-muted-foreground">{WIZARD_TEXTS.freeSlotTag}</span>
               </span>
               <button
                 type="button"
@@ -521,9 +521,9 @@ export function SlotReservationModal({
             <li key="draft-free" className="flex items-center gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
               <CalendarClock className="size-3.5 text-accent" />
               <span className="flex-1 font-medium">
-                {addedFree} <span className="font-normal text-muted-foreground">· créneau libre</span>
+                {addedFree} <span className="font-normal text-muted-foreground">{WIZARD_TEXTS.freeSlotTag}</span>
               </span>
-              <span className="text-xs text-muted-foreground">à valider</span>
+              <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toValidate}</span>
               <button
                 type="button"
                 aria-label={`Annuler le créneau libre ${addedFree}`}
@@ -569,7 +569,7 @@ export function SlotReservationModal({
             <>
               {coachesFailed ? "Impossible de vérifier les coachs" : "Vérification des coachs indisponible"} — la saisie est bloquée pour ne pas créer un conflit sans le voir.{" "}
               <button type="button" className="underline" onClick={onRetryCoaches}>
-                Réessayer
+                {WIZARD_TEXTS.retry}
               </button>
             </>
           )}
@@ -585,7 +585,7 @@ export function SlotReservationModal({
             <>
               {budgetsFailed ? "Impossible de charger les créneaux réservables" : "Créneaux réservables indisponibles"} — la saisie est bloquée pour ne pas dépasser le nombre de créneaux libres d'une équipe.{" "}
               <button type="button" className="underline" onClick={onRetryBudgets}>
-                Réessayer
+                {WIZARD_TEXTS.retry}
               </button>
             </>
           )}
@@ -593,7 +593,7 @@ export function SlotReservationModal({
       ) : groupOccupies ? (
         // Un groupe occupe la case SEUL (règle b) : plus d'ajout individuel. Le lot ci-dessus le
         // nomme, la ligne reste donc sans libellé. `status` poli : c'est un état issu du brouillon.
-        <NoticeBanner tone="warning" role="status" message="Un entraînement mutualisé occupe seul ce créneau. Retirez-le pour ajouter des équipes." />
+        <NoticeBanner tone="warning" role="status" message={WIZARD_TEXTS.groupOccupiesSlotNotice} />
       ) : occupied < capacity ? (
         selectorTeams.length > 0 || mutualisationOptions.length > 0 ? (
           <>
@@ -601,7 +601,7 @@ export function SlotReservationModal({
                 TeamSelect est le home unique du découpage S/A/B/C/D. La section « Entraînements
                 mutualisés » vient EN TÊTE (P2-51), avant les paliers, valeurs préfixées `block:`. */}
             <TeamSelect
-              aria-label="Ajouter une équipe"
+              aria-label={WIZARD_TEXTS.addTeamLabel}
               aria-describedby={blockedMutualisations.length > 0 ? blockedGroupsDescId : undefined}
               wrapperClassName="w-full"
               value=""
@@ -611,7 +611,7 @@ export function SlotReservationModal({
               tiers={tiers}
               optionMeta={optionMetaFor}
               mutualisationGroups={mutualisationOptions}
-              placeholder="— ajouter une équipe —"
+              placeholder={WIZARD_TEXTS.addTeamPlaceholder}
             />
             {/* Raison NOMMÉE par bloc indisponible (séances communes atteintes, membre en pause, membre au plafond) :
                 liste muette interdite. Contenu STATIQUE au rendu (pas une région live) — relié au
@@ -620,7 +620,7 @@ export function SlotReservationModal({
               <ul id={blockedGroupsDescId} className="mt-2 flex flex-col gap-0.5">
                 {blockedMutualisations.map((g) => (
                   <li key={g.id} className="text-xs text-muted-foreground">
-                    {g.label} — {g.reason} <span className="font-medium">· indisponible</span>
+                    {g.label} — {g.reason} <span className="font-medium">{WIZARD_TEXTS.unavailableTag}</span>
                   </li>
                 ))}
               </ul>
@@ -630,7 +630,7 @@ export function SlotReservationModal({
           // D1 (P2-60) — `role="status"` : l'invite REMPLACE le contrôle quand le dernier résidu est
           // consommé ; un lecteur d'écran doit l'entendre. Couvre aussi « uniquement en groupe ».
           <EmptyHint role="status" className="text-xs">
-            Aucune équipe disponible (toutes ont atteint leur nombre de créneaux, sont déjà sur ce créneau, ou s'entraînent uniquement en groupe).
+            {WIZARD_TEXTS.noTeamAvailable}
           </EmptyHint>
         )
       ) : (
@@ -645,7 +645,7 @@ export function SlotReservationModal({
             from="reservation"
             className="mt-1 inline-flex items-center gap-1 font-medium text-accent underline underline-offset-2 hover:text-accent"
           >
-            Régler ce créneau dans « Gymnases »
+            {WIZARD_TEXTS.adjustSlotInVenues}
           </WizardStepLink>
         </div>
       )}
@@ -653,7 +653,7 @@ export function SlotReservationModal({
       {/* Guide (b) — la case porte des équipes alors que des groupes existent : dire POURQUOI aucun
           groupe n'est proposé et où agir (les retirer). `status` poli, comme « Créneau complet ». */}
       {showGroupGuide ? (
-        <NoticeBanner tone="warning" role="status" className="mt-3" message="Un entraînement mutualisé ne se pose que sur un créneau libre — retirez les équipes ci-dessus pour en poser un." />
+        <NoticeBanner tone="warning" role="status" className="mt-3" message={WIZARD_TEXTS.groupNeedsFreeSlotNotice} />
       ) : null}
 
       {/* Lot 4bis — poser un CRÉNEAU LIBRE (sans équipe) : il occupe la case comme une place en
@@ -662,16 +662,16 @@ export function SlotReservationModal({
           une mutualisation — mêmes gardes que l'ajout d'équipe. */}
       {!blockAdd && !groupOccupies && guardReady && budgetReady && 0 === freeOnSlot.length && null === addedFree && occupied < capacity ? (
         <div className="mt-3 border-t border-border pt-3">
-          <p className="mb-1 text-xs font-medium text-foreground">Créneau libre…</p>
-          <p className="mb-2 text-xs text-muted-foreground">Occupez cette case sans équipe (un évènement, un prêt, une fermeture ponctuelle) : elle ne sera plus proposée comme place disponible à la génération.</p>
+          <p className="mb-1 text-xs font-medium text-foreground">{WIZARD_TEXTS.freeSlotTitle}</p>
+          <p className="mb-2 text-xs text-muted-foreground">{WIZARD_TEXTS.freeSlotHint}</p>
           <div className="flex items-center gap-2">
             <Input
-              aria-label="Libellé du créneau libre"
+              aria-label={WIZARD_TEXTS.freeSlotInputLabel}
               className="flex-1"
               maxLength={40}
               value={freeLabel}
               onChange={(e) => setFreeLabel(e.target.value)}
-              placeholder="Ex. Loto du club"
+              placeholder={WIZARD_TEXTS.freeSlotPlaceholder}
               disabled={busy}
             />
             <Button
@@ -684,7 +684,7 @@ export function SlotReservationModal({
                 setFreeLabel("");
               }}
             >
-              Poser un créneau libre
+              {WIZARD_TEXTS.placeFreeSlot}
             </Button>
           </div>
         </div>

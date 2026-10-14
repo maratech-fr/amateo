@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Coach, Conflict, Team, Venue } from "./api";
 import { ConflictLine } from "./ConflictLine";
+import { MATCHES_TEXTS } from "./texts";
 
 const teams = new Map<string, Team>([
   ["team-1", { id: "team-1", name: "U13", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
@@ -28,28 +29,28 @@ function renderLine(props: Partial<React.ComponentProps<typeof ConflictLine>> = 
 describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
   it("rend le titre et la phrase du conflit", () => {
     renderLine();
-    expect(screen.getByText("Deux matchs sur le même créneau")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.venueOverlapTitle)).toBeInTheDocument();
     expect(screen.getByText(/U13 et Seniors/)).toBeInTheDocument();
   });
 
   it("COMPETITION_INCOMPLETE OVER : titre « Calendrier à vérifier », phrase « N matchs pour une poule de M adversaires »", () => {
     const over: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-1", competitionName: "Championnat X", imported: 12, expected: 10, reason: "OVER" };
     renderLine({ conflict: over, tone: "muted" });
-    expect(screen.getByText("Calendrier à vérifier")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.calendarToCheckTitle)).toBeInTheDocument();
     expect(screen.getByText(/12 matchs pour une poule de 5 adversaires/)).toBeInTheDocument();
   });
 
   it("COMPETITION_INCOMPLETE INCOHERENT : titre « Calendrier incohérent », phrase « ni aller simple ni aller-retour »", () => {
     const incoherent: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-1", competitionName: "Championnat X", imported: 7, expected: 10, reason: "INCOHERENT" };
     renderLine({ conflict: incoherent, tone: "muted" });
-    expect(screen.getByText("Calendrier incohérent")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.calendarIncoherentTitle)).toBeInTheDocument();
     expect(screen.getByText(/ni aller simple \(5\) ni aller-retour \(10\)/)).toBeInTheDocument();
   });
 
   it("COMPETITION_INCOMPLETE PENDING : titre « Calendrier incomplet », phrase « pas encore entièrement sortie »", () => {
     const pending: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 7, resolution: null, teamId: "team-1", competitionName: "Championnat X", imported: 3, expected: 10, reason: "PENDING" };
     renderLine({ conflict: pending, tone: "muted" });
-    expect(screen.getByText("Calendrier incomplet")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.calendarIncompleteTitle)).toBeInTheDocument();
     expect(screen.getByText(/3\/10 journées attendues : la phase n'est pas encore entièrement sortie/)).toBeInTheDocument();
   });
 
@@ -67,9 +68,9 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
       ],
     };
     renderLine({ conflict: access });
-    expect(screen.getByText("Hors accès match")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.accessWindowLostTitle)).toBeInTheDocument();
     expect(
-      screen.getByText("Placé hors des accès match de Gymnase Mateo (samedi 16:00–18:00, mercredi 18:00–20:00) — déplacez le match ou ajustez l'accès dans Configuration."),
+      screen.getByText(MATCHES_TEXTS.accessWindowLostPhrase("Gymnase Mateo", "samedi 16:00–18:00, mercredi 18:00–20:00")),
     ).toBeInTheDocument();
   });
 
@@ -83,7 +84,7 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
       rules: [{ daysOfWeek: [6], kickoffMin: null, kickoffMax: "21:00" }],
     };
     renderLine({ conflict: clubRule });
-    expect(screen.getByText("Hors règle du club")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.clubRuleViolationTitle)).toBeInTheDocument();
     expect(screen.getByText(/règle : « pas après 21:00 »/)).toBeInTheDocument();
     expect(screen.getByText(/pose libre, à surveiller/)).toBeInTheDocument();
   });
@@ -109,12 +110,12 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
 
   it("montre la chip « Nouveau » quand isNew, jamais sinon", () => {
     renderLine({ isNew: true });
-    expect(screen.getByText("Nouveau")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.newChip)).toBeInTheDocument();
   });
 
   it("sans isNew : aucune chip « Nouveau »", () => {
     renderLine({ isNew: false });
-    expect(screen.queryByText("Nouveau")).not.toBeInTheDocument();
+    expect(screen.queryByText(MATCHES_TEXTS.newChip)).not.toBeInTheDocument();
   });
 
   it("rend le slot trailing quand il est fourni ; rien quand il est absent", () => {
@@ -128,8 +129,10 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
   });
 
   it("rend le slot below sous la ligne (P4-207)", () => {
-    renderLine({ below: <p>Note de traitement</p> });
-    expect(screen.getByText("Note de traitement")).toBeInTheDocument();
+    // Contenu de test injecté via `below` (fixture, pas une phrase d'app) → const locale, pas une clé.
+    const belowNote = "Note de traitement";
+    renderLine({ below: <p>{belowNote}</p> });
+    expect(screen.getByText(belowNote)).toBeInTheDocument();
   });
 
   it("porte aria-busy sur le <li> pendant une écriture (P4-207)", () => {
@@ -208,7 +211,7 @@ describe("ConflictLine — personne en double, rôle PAR CÔTÉ (une personne = 
       fixture: { ...side("fx-1", "team-2"), role: "PLAYER" },
       training: { slotTemplateId: "t", scheduleId: "sc", teamId: "team-1", venueId: "v", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, role: "MAIN", windowStart: "", windowEnd: "" },
     });
-    expect(screen.getByText("Match Seniors (joueuse) × entraînement U13 (coach)")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.matchVsTrainingSummary("Seniors (joueuse)", "U13 (coach)"))).toBeInTheDocument();
   });
 });
 
@@ -279,10 +282,10 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     const bodyRows = within(table).getAllByRole("row").slice(1);
     expect(bodyRows).toHaveLength(2);
     // Lieu + adversaire par côté.
-    expect(screen.getByText("extérieur à Villeurbanne")).toBeInTheDocument();
-    expect(screen.getByText("domicile")).toBeInTheDocument();
-    expect(screen.getByText("vs ASVEL - 2")).toBeInTheDocument();
-    expect(screen.getByText("vs VAULX EN VELIN BASKET CLUB - 2")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.awayAt("Villeurbanne"))).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.homeSide)).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.versus("ASVEL - 2"))).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.versus("VAULX EN VELIN BASKET CLUB - 2"))).toBeInTheDocument();
     // Le chevauchement, avec sa durée compacte.
     expect(screen.getByText(/Chevauchement/)).toBeInTheDocument();
     expect(screen.getByText("1h55")).toBeInTheDocument();
@@ -300,7 +303,7 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
 
   it("le coup d'envoi estimé porte la pastille « estimé » DANS sa case ; la pastille GLOBALE « heure estimée » disparaît", () => {
     renderDetail(matchMatch);
-    expect(screen.queryByText("heure estimée")).not.toBeInTheDocument();
+    expect(screen.queryByText(MATCHES_TEXTS.estimatedTimeTag)).not.toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Détail par équipe" });
     const awayRow = within(table).getAllByRole("row").slice(1)[0];
     expect(cellsOf(awayRow)[2].textContent).toContain("estimé");
@@ -352,7 +355,7 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
       right: { ...homeReal },
     };
     renderDetail(venueOverlap);
-    expect(screen.getByText("heure estimée")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.estimatedTimeTag)).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Détail par équipe" })).not.toBeInTheDocument();
   });
 
@@ -374,10 +377,10 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gymnase", "Date", "Créneau"]);
     // Le gymnase est nommé sur CHAQUE ligne (forme imposée par le fondateur).
     expect(within(table).getAllByText("Gymnase Mateo")).toHaveLength(2);
-    expect(screen.getByText("vs BC Villeurbanne")).toBeInTheDocument();
-    expect(screen.getByText("vs ASVEL U21")).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.versus("BC Villeurbanne"))).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.versus("ASVEL U21"))).toBeInTheDocument();
     // La pastille GLOBALE « heure estimée » et la ligne grise horaire disparaissent (comme pour les familles de personne).
-    expect(screen.queryByText("heure estimée")).not.toBeInTheDocument();
+    expect(screen.queryByText(MATCHES_TEXTS.estimatedTimeTag)).not.toBeInTheDocument();
     expect(screen.getByText(/Chevauchement/)).toBeInTheDocument();
   });
 
@@ -397,7 +400,7 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
 
   it("VENUE_OVERLAP : équipe et « vs adversaire » sur UNE ligne (flex empilable), jamais deux blocs empilés", () => {
     renderDetail(oneLineVenue);
-    const opponent = screen.getByText("vs BC Villeurbanne");
+    const opponent = screen.getByText(MATCHES_TEXTS.versus("BC Villeurbanne"));
     // L'adversaire n'est plus un `block` (qui forçait un saut de ligne sous l'équipe).
     expect(opponent).not.toHaveClass("block");
     const identity = opponent.parentElement as HTMLElement;

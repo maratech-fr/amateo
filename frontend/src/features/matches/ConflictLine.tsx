@@ -16,6 +16,7 @@ import { sideRoleWord } from "./lib/conflictLabels";
 import { buildConflictSideLines, type ConflictOverlapLine, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
 import { sortConflictsByDate } from "./lib/conflictOrder";
 import { groupBySeverity, type DiagnosticGroup } from "./lib/diagnostic";
+import { MATCHES_TEXTS } from "./texts";
 
 /**
  * PR A (onglet Conflits) — la LIGNE de conflit et son regroupement par gravité,
@@ -55,23 +56,23 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
   }
   switch (conflict.type) {
     case "VENUE_OVERLAP":
-      return "Deux matchs sur le même créneau";
+      return MATCHES_TEXTS.venueOverlapTitle;
     case "LEAGUE_WINDOW_VIOLATION":
-      return "Hors fenêtre autorisée par la ligue";
+      return MATCHES_TEXTS.leagueWindowViolationTitle;
     case "CLUB_RULE_VIOLATION":
-      return "Hors règle du club";
+      return MATCHES_TEXTS.clubRuleViolationTitle;
     case "TEAM_VENUE_FORBIDDEN":
-      return "Gymnase interdit à l'équipe";
+      return MATCHES_TEXTS.teamVenueForbiddenTitle;
     case "ACCESS_WINDOW_LOST":
-      return "Hors accès match";
+      return MATCHES_TEXTS.accessWindowLostTitle;
     case "COMPETITION_INCOMPLETE":
-      return "OVER" === conflict.reason ? "Calendrier à vérifier" : "INCOHERENT" === conflict.reason ? "Calendrier incohérent" : "Calendrier incomplet";
+      return "OVER" === conflict.reason ? MATCHES_TEXTS.calendarToCheckTitle : "INCOHERENT" === conflict.reason ? MATCHES_TEXTS.calendarIncoherentTitle : MATCHES_TEXTS.calendarIncompleteTitle;
     case "AWAY_NO_FOOTPRINT":
-      return "Extérieur sans heure ni habitude";
+      return MATCHES_TEXTS.awayNoFootprintTitle;
     case "FRIENDLY_ON_MATCH_SLOT":
-      return "Amical sur un créneau de match";
+      return MATCHES_TEXTS.friendlyOnMatchSlotTitle;
     default:
-      return `Gymnase indisponible${null != conflict.label && "" !== conflict.label ? ` (${conflict.label})` : ""}`;
+      return MATCHES_TEXTS.venueUnavailableConflictTitle(conflict.label);
   }
 }
 
@@ -105,7 +106,7 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     const matchRole = "role" in conflict.fixture ? conflict.fixture.role : undefined;
     const allMain = [matchRole, conflict.training.role].every((role) => "MAIN" === role);
     return allMain
-      ? `Match ${matchName} × entraînement ${trainingName}`
+      ? MATCHES_TEXTS.matchVsTrainingSummary(matchName, trainingName)
       : `Match ${annotateSide(matchName, matchRole, coachGender)} × entraînement ${annotateSide(trainingName, conflict.training.role, coachGender)}`;
   }
   if ("VENUE_UNAVAILABLE" === conflict.type && conflict.fixture) {
@@ -113,7 +114,7 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
   }
   if ("ACCESS_WINDOW_LOST" === conflict.type && conflict.fixture) {
     const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
-    return `Placé hors des accès match de ${venueName} (${accessWindowsPhrase(conflict)}) — déplacez le match ou ajustez l'accès dans Configuration.`;
+    return MATCHES_TEXTS.accessWindowLostPhrase(venueName, accessWindowsPhrase(conflict));
   }
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
     const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
@@ -175,7 +176,7 @@ const KIND_ICON: Record<ConflictSideKind, typeof Home> = {
 function EstimatedPill(): ReactNode {
   return (
     <StatusPill variant="neutral" className="px-1.5 py-0" icon={<Clock className="size-3" aria-hidden="true" />}>
-      estimé
+      {MATCHES_TEXTS.estimated}
     </StatusPill>
   );
 }
@@ -256,16 +257,16 @@ function ConflictSideDetail({ model }: { model: ConflictSideModel }) {
   return (
     <div className="mt-1 @container text-xs">
       <Table variant="inline">
-        <TableCaption className="sr-only">Détail par équipe</TableCaption>
+        <TableCaption className="sr-only">{MATCHES_TEXTS.sideDetailCaption}</TableCaption>
         <TableHeader>
           <TableRow>
             {/* Colonne d'identité SANS en-tête de colonne (un simple td) : les 4 en-têtes
                 nommés correspondent aux 4 colonnes horaires. */}
             <td className="w-full px-1.5 py-0.5" />
-            <TableHead className="px-1.5 py-0.5 normal-case">Départ</TableHead>
-            <TableHead className="px-1.5 py-0.5 normal-case">Coup d'envoi</TableHead>
-            <TableHead className="px-1.5 py-0.5 normal-case">Fin / retour</TableHead>
-            <TableHead className="hidden px-1.5 py-0.5 normal-case @sm:table-cell">Durée</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.departureHeader}</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.kickoffHeader}</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.endReturnHeader}</TableHead>
+            <TableHead className="hidden px-1.5 py-0.5 normal-case @sm:table-cell">{MATCHES_TEXTS.durationHeader}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -356,15 +357,15 @@ function ConflictVenueDetail({ model }: { model: ConflictSideModel }) {
   return (
     <div className="mt-1 @container text-xs">
       <Table variant="inline">
-        <TableCaption className="sr-only">Détail par équipe</TableCaption>
+        <TableCaption className="sr-only">{MATCHES_TEXTS.sideDetailCaption}</TableCaption>
         <TableHeader>
           <TableRow>
             {/* Colonne d'identité SANS en-tête nommé (ni `w-full` : le vide se répartit sur les
                 3 colonnes plutôt que de gonfler l'identité) — les 3 en-têtes suivent les 3 colonnes. */}
             <td className="px-1.5 py-0.5" />
-            <TableHead className="px-1.5 py-0.5 normal-case">Gymnase</TableHead>
-            <TableHead className="px-1.5 py-0.5 normal-case">Date</TableHead>
-            <TableHead className="px-1.5 py-0.5 normal-case">Créneau</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.venueHeader}</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.dateHeader}</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.slotHeader}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -425,14 +426,14 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         {conflictTitle(conflict, coaches)}
         {isNew ? (
           <StatusPill variant="accent" className="border-accent/30 px-1.5 text-[0.65rem] uppercase tracking-wide" icon={<Sparkles className="size-3 text-accent" aria-hidden="true" />}>
-            Nouveau
+            {MATCHES_TEXTS.newChip}
           </StatusPill>
         ) : null}
       </p>
       <p className="text-muted-foreground">
         {conflictSummary(conflict, teams, venues, coachGender)}
         {/* La pastille GLOBALE « heure estimée » disparaît pour les familles à détail par côté. */}
-        {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
+        {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">{MATCHES_TEXTS.estimatedTimeTag}</span> : null}
       </p>
       {null !== sideModel ? (
         "venue" === sideModel.kind ? (

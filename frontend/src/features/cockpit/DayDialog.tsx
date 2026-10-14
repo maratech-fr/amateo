@@ -26,6 +26,7 @@ import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
 import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useRedatePreview, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
 import { WeekPickerDialog } from "./WeekPickerDialog";
+import { COCKPIT_TEXTS } from "./texts";
 
 type Mode = "list" | "event" | "closure" | "cutoff" | "redate";
 
@@ -181,7 +182,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
           icon={<CalendarOff className="size-4 text-destructive" />}
           message={
             <span>
-              <span className="font-medium">Jour férié</span> — {publicHoliday.label}
+              <span className="font-medium">{COCKPIT_TEXTS.publicHolidayTitle}</span> — {publicHoliday.label}
             </span>
           }
         />
@@ -218,16 +219,16 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
                   {null !== plan ? (
                     null !== chosen ? (
                       <Button variant="ghost" size="sm" onClick={() => consult(chosen)}>
-                        Consulter
+                        {COCKPIT_TEXTS.consult}
                       </Button>
                     ) : (
                       <Button variant="outline" size="sm" disabled={adjustLocked || createPeriodPlan.isPending} disabledReason={adjustLocked ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
-                        Ajuster
+                        {COCKPIT_TEXTS.adjust}
                       </Button>
                     )
                   ) : adaptable ? (
                     <Button variant="outline" size="sm" disabled={!socleValidated || createPeriodPlan.isPending} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
-                      Adapter
+                      {COCKPIT_TEXTS.adapt}
                     </Button>
                   ) : null}
                   {/* « Modifier les dates » : rendu SEULEMENT si le serveur dit la période
@@ -265,7 +266,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
           `deletable` peut être vide alors que le bloc vacances ci-dessus tient la
           journée — dire « la semaine type tourne normalement » se contredirait. */}
       {deletable.length === 0 && !holiday ? (
-        <EmptyHint>Rien ce jour-là — la semaine type tourne normalement.</EmptyHint>
+        <EmptyHint>{COCKPIT_TEXTS.nothingThisDay}</EmptyHint>
       ) : null}
 
       <ConfirmDialog
@@ -284,22 +285,22 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
 
       <div className="grid grid-cols-1 gap-2">
         <Button variant="outline" onClick={() => onCreate("event")}>
-          Événement
+          {COCKPIT_TEXTS.eventCta}
         </Button>
         <Button variant="outline" onClick={() => onCreate("closure")}>
-          Signaler une indisponibilité
+          {COCKPIT_TEXTS.reportUnavailabilityCta}
         </Button>
         <Button variant="outline" onClick={() => onCreate("cutoff")}>
           Coupure (pas d'entraînement)
         </Button>
-        <Button variant="ghost" disabled title="Créer une période libre : à venir. En attendant, utilisez « Signaler une indisponibilité » ou le radar vacances.">
-          Créer une période…
+        <Button variant="ghost" disabled title={COCKPIT_TEXTS.createFreePeriodSoon}>
+          {COCKPIT_TEXTS.createPeriodCta}
         </Button>
       </div>
 
       <div className="flex justify-end">
         <Button variant="ghost" onClick={onClose}>
-          Fermer
+          {COCKPIT_TEXTS.close}
         </Button>
       </div>
 
@@ -440,7 +441,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
       icon={<span className="text-base">{holidayIcon(holiday)}</span>}
       message={
         <>
-          <span className="font-medium">Vacances</span> — {holiday.label}
+          <span className="font-medium">{COCKPIT_TEXTS.holidayTag}</span> — {holiday.label}
         </>
       }
     >
@@ -519,13 +520,13 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
       ) : null !== activeId ? (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={() => viewOverlay(activeId)}>
-            Voir le planning
+            {COCKPIT_TEXTS.viewPlanning}
           </Button>
         </div>
       ) : entry ? (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
-            Adapter
+            {COCKPIT_TEXTS.adapt}
           </Button>
         </div>
       ) : null !== workingSeason && null === clamped ? (
@@ -533,7 +534,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
         // chargée) : un bouton mort sans explication serait pire que l'ancien
         // message (revue #260 round 2). Saison encore en vol → bouton désactivé
         // bref, ci-dessous.
-        <EmptyHint className="text-xs">Hors de la saison en cours — rien à adapter.</EmptyHint>
+        <EmptyHint className="text-xs">{COCKPIT_TEXTS.outsideSeasonNothingToAdapt}</EmptyHint>
       ) : (
         <div className="flex justify-end">
           <Button
@@ -566,7 +567,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
               }
             }}
           >
-            Adapter
+            {COCKPIT_TEXTS.adapt}
           </Button>
         </div>
       )}
@@ -711,14 +712,14 @@ function EventForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; o
   return (
     <FormShell onBack={onBack}>
       {/* eslint-disable-next-line jsx-a11y/no-autofocus -- inside a Modal: focusing the first field on step change is intentional, better than the neutral panel */}
-      <Input aria-label="Titre de l'événement" placeholder="Titre (AG, tournoi…)" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      <Input aria-label={COCKPIT_TEXTS.eventTitleLabel} placeholder={COCKPIT_TEXTS.eventTitlePlaceholder} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={isDisruptive} onChange={(e) => setDisruptive(e.target.checked)} />
         Perturbant (pas d'entraînement ce jour)
       </label>
       <Button className="w-full" onClick={submit} disabled={createEvent.isPending || title.trim() === "" || !valid}>
-        Enregistrer
+        {COCKPIT_TEXTS.save}
       </Button>
     </FormShell>
   );
@@ -753,18 +754,18 @@ function ClosureForm({ iso, onBack, onDone }: { iso: string; onBack: () => void;
       {/* autoFocus (dans une Modal : focaliser le premier champ au changement d'étape est voulu) —
           le trigger du Listbox est focusable ; la primitive porte déjà le disable en interne. */}
       <VenueSelect
-        aria-label="Gymnase indisponible"
-        placeholder="Gymnase indisponible…"
+        aria-label={COCKPIT_TEXTS.unavailableVenueLabel}
+        placeholder={COCKPIT_TEXTS.unavailableVenuePlaceholder}
         // eslint-disable-next-line jsx-a11y/no-autofocus
         autoFocus
         venues={(venues ?? []).map((v) => ({ id: v.id, name: v.name, color: v.color }))}
         value={venueId}
         onValueChange={setVenueId}
       />
-      <Input aria-label="Intitulé de l'indisponibilité (optionnel)" placeholder="Intitulé (optionnel)" maxLength={140} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Input aria-label={COCKPIT_TEXTS.unavailabilityTitleLabel} placeholder={COCKPIT_TEXTS.optionalTitlePlaceholder} maxLength={140} value={title} onChange={(e) => setTitle(e.target.value)} />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
       <Button className="w-full" onClick={submit} disabled={createClosure.isPending || venueId === "" || !valid}>
-        Enregistrer
+        {COCKPIT_TEXTS.save}
       </Button>
     </FormShell>
   );
@@ -787,11 +788,11 @@ function CutoffForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; 
   return (
     <FormShell onBack={onBack}>
       {/* eslint-disable-next-line jsx-a11y/no-autofocus -- inside a Modal: focusing the first field on step change is intentional */}
-      <Input aria-label="Intitulé de la coupure (optionnel)" placeholder="Intitulé (optionnel, ex. Coupure de Noël)" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      <Input aria-label={COCKPIT_TEXTS.cutoffTitleLabel} placeholder={COCKPIT_TEXTS.cutoffTitlePlaceholder} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
-      <p className="text-xs text-muted-foreground">Rappel affiché au calendrier (🛑) et au radar — le planning de saison reste inchangé, rien à générer.</p>
+      <p className="text-xs text-muted-foreground">{COCKPIT_TEXTS.cutoffReminderHint}</p>
       <Button className="w-full" onClick={submit} disabled={createCutoff.isPending || !valid}>
-        Enregistrer
+        {COCKPIT_TEXTS.save}
       </Button>
     </FormShell>
   );
@@ -858,7 +859,7 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
 
   return (
     <FormShell onBack={onBack}>
-      <p className="text-xs text-muted-foreground">Déplacez la fenêtre de cette fermeture. Son planning devra être régénéré.</p>
+      <p className="text-xs text-muted-foreground">{COCKPIT_TEXTS.redateClosureHint}</p>
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} minStart={minStart} max={workingSeason?.endDate} />
       {null !== windowConflict ? (
         <div ref={conflictRef}>
@@ -866,7 +867,7 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
         </div>
       ) : null}
       <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} disabledReason={disabledReason}>
-        Enregistrer
+        {COCKPIT_TEXTS.save}
       </Button>
     </FormShell>
   );
@@ -912,7 +913,7 @@ function RedateEffectsList({ effects }: { effects: RedateEffect[] }) {
     </ul>
   );
   return hasDeletion ? (
-    <NoticeBanner message={<span className="font-medium">Effets de ce re-datage</span>}>{list}</NoticeBanner>
+    <NoticeBanner message={<span className="font-medium">{COCKPIT_TEXTS.redateEffectsTitle}</span>}>{list}</NoticeBanner>
   ) : (
     <div className="rounded-md border border-border bg-muted/40 px-3 py-2">{list}</div>
   );
@@ -1031,7 +1032,7 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
 
   return (
     <FormShell onBack={onBack}>
-      <p className="text-xs text-muted-foreground">Déplacez la fenêtre de cette indisponibilité découpée. Voyez d'abord les effets, puis confirmez.</p>
+      <p className="text-xs text-muted-foreground">{COCKPIT_TEXTS.redateSplitHint}</p>
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={changeStart} onEnd={changeEnd} minStart={minStart} max={workingSeason?.endDate} />
       {null !== staleWarning ? <NoticeBanner message={staleWarning} /> : null}
       {/* Région live PRÉSENTE dès le montage (vide au départ), aria-busy pendant le chargement ; jamais role="alert". */}

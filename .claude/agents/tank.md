@@ -33,7 +33,7 @@ You are handed **a promise a user relies on** (« une contrainte saisie est hono
 
 ## Sélecteurs front (règle fondateur)
 
-- **Pour tout NOUVEAU test vitest/e2e, viser le RÔLE + le nom accessible** (`getByRole('button', { name: … })`, `getByRole('heading', { name: … })`) **plutôt que la phrase exacte** (`getByText("…")`) quand c'est possible — plus robuste au changement de libellé et porteur de sens a11y. La vérification d'un TEXTE précis passera par les **clés de textes centralisées** (chantier PR7, à venir) : un test vérifie la CLÉ, jamais la phrase recopiée. En attendant les clés, un libellé en dur recopié reste toléré là où le rôle ne discrimine pas, mais n'en ajoute pas sans nécessité.
+- **Pour tout NOUVEAU test vitest/e2e, viser le RÔLE + le nom accessible** (`getByRole('button', { name: … })`, `getByRole('heading', { name: … })`) **plutôt que la phrase exacte** (`getByText("…")`) quand c'est possible — plus robuste au changement de libellé et porteur de sens a11y. La vérification d'un TEXTE précis passe par les **clés de textes centralisées** (`features/<feature>/texts.ts`, fondation PR7 2026-10-14) : **un test vérifie la CLÉ** (`getByText(PLANNING_TEXTS.evictTitle)`), **jamais la phrase recopiée**. Un écran listé dans `MIGRATED_FILES` (garde `frontend/src/test/hardcodedTextGuard.test.ts`) a ses textes dans son `texts.ts` — y recopier un littéral dans un nouveau test est une régression. Sur un écran PAS encore migré, un libellé en dur recopié reste toléré là où le rôle ne discrimine pas (on n'en ajoute pas sans nécessité), ET migrer l'écran est le bon réflexe.
 
 ## Tu ne fais JAMAIS
 

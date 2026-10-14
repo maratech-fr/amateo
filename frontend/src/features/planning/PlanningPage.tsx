@@ -25,6 +25,7 @@ import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 
 import { type Slot } from "./api";
+import { PLANNING_TEXTS } from "./texts";
 import { CompromiseList } from "./CompromiseList";
 import { PlacedConflictsNotice } from "./PlacedConflictsNotice";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
@@ -708,7 +709,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           <Input
             // eslint-disable-next-line jsx-a11y/no-autofocus -- inline rename field revealed on demand
             autoFocus
-            aria-label="Nom du planning"
+            aria-label={PLANNING_TEXTS.planningNameLabel}
             value={editingPlanningName}
             onChange={(e) => setEditingPlanningName(e.target.value)}
             onKeyDown={(e) => {
@@ -753,14 +754,14 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                   version de saison — bug fondateur 2026-08-19). */}
               {!scoped && null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType) ? (
                 <StatusPill variant="accent-solid" icon={<Star className="size-3" />}>
-                  principal
+                  {PLANNING_TEXTS.seasonPlanBadge}
                 </StatusPill>
               ) : null}
               {/* Pas de plan résolu = rien à renommer : proposer le geste enverrait
                   l'écriture sur un id qu'on n'a pas (c'est ce qui la faisait retomber
                   sur le plan de saison). */}
               {null !== displayedPlan && workingSeason && !workingSeason.isReadonly ? (
-                <Button size="sm" variant="ghost" className="px-2" aria-label="Renommer le planning" title="Renommer le planning" onClick={() => setEditingPlanningName(displayedPlan.name)}>
+                <Button size="sm" variant="ghost" className="px-2" aria-label={PLANNING_TEXTS.renamePlanning} title={PLANNING_TEXTS.renamePlanning} onClick={() => setEditingPlanningName(displayedPlan.name)}>
                   <Pencil className="size-4" />
                 </Button>
               ) : null}
@@ -797,7 +798,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           (aucune écriture, aucune redirection). Muet pendant une génération (showGenerationWaiting).
           role="status" : il apparaît de façon asynchrone au changement de version, annoncé poliment. */}
       {!showGenerationWaiting && null !== laterVersionId ? (
-        <NoticeBanner tone="muted" role="status" className="mb-4" message="Vous regardez une version antérieure du planning.">
+        <NoticeBanner tone="muted" role="status" className="mb-4" message={PLANNING_TEXTS.earlierVersionNotice}>
           <Button
             size="sm"
             variant="outline"
@@ -806,7 +807,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               setSelectedScheduleId(laterVersionId);
             }}
           >
-            Ouvrir la dernière version
+            {PLANNING_TEXTS.openLatestVersion}
           </Button>
         </NoticeBanner>
       ) : null}
@@ -821,9 +822,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         // Portée sans aucune version : état vide EXPLICITE, jamais un repli sur une version
         // de saison (fail-closed — bug fondateur 2026-08-19). Le lanceur vit à l'étape
         // Génération ; ici on nomme l'absence plutôt que de montrer autre chose.
-        <EmptyState title="Aucune version pour cette période" description="Générez le planning de cette période pour le voir apparaître ici." />
+        <EmptyState title={PLANNING_TEXTS.noPeriodVersionTitle} description={PLANNING_TEXTS.noPeriodVersionDescription} />
       ) : 0 === schedules.length ? (
-        <EmptyState title="Aucun planning" description="Passez par l'assistant pour saisir vos données et générer un premier planning." />
+        <EmptyState title={PLANNING_TEXTS.noPlanning} description={PLANNING_TEXTS.noPlanningDescription} />
       ) : (
         <>
           <div className="mb-4">
@@ -968,9 +969,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 }}
               >
                 <Sparkles className="size-4" />
-                Combler automatiquement
+                {PLANNING_TEXTS.fillAutomatically}
               </Button>
-              <span className="text-xs text-muted-foreground">Place les séances à replacer sans toucher au reste du planning.</span>
+              <span className="text-xs text-muted-foreground">{PLANNING_TEXTS.fillHint}</span>
             </div>
           ) : null}
 
@@ -1001,7 +1002,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                     setEvictionNotice(null);
                     setCompromiseNotice(null);
                   }}
-                  aria-label="Ignorer"
+                  aria-label={PLANNING_TEXTS.ignore}
                   className="ml-auto rounded p-1 text-muted-foreground hover:text-foreground"
                 >
                   <X className="size-4" />
@@ -1024,7 +1025,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 <button
                   type="button"
                   onClick={() => setPresenceNotice(null)}
-                  aria-label="Ignorer"
+                  aria-label={PLANNING_TEXTS.ignore}
                   className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
                 >
                   <X className="size-4" />
@@ -1051,7 +1052,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             <NoticeBanner
               tone="destructive"
               className="mb-3"
-              message="La génération a échoué : aucun créneau n'a été placé. Seuls vos créneaux réservés sont affichés — ils restent acquis quoi qu'il arrive. Les exports sont vides pour ce planning."
+              message={PLANNING_TEXTS.generationFailedNoSlots}
             />
           ) : null}
 
@@ -1059,7 +1060,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             <GenerationWaiting />
           ) : 0 === slots.length ? (
             isFailed ? (
-              <EmptyState title="Génération en échec" description="Aucun créneau n'a été placé, et ce planning n'a aucune réservation à afficher. Corrigez les contraintes signalées puis régénérez." />
+              <EmptyState title={PLANNING_TEXTS.generationFailed} description={PLANNING_TEXTS.generationFailedDescription} />
             ) : readFailed(slotsQuery) ? (
               // UXS-09 — la lecture des créneaux a échoué SANS cache : « Réessayer », jamais le
               // « Planning vide » menteur (doctrine readState — `isFetching` retombe à false sur erreur).
@@ -1078,7 +1079,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 </span>
               </div>
             ) : (
-              <EmptyState title="Planning vide" description="Ce planning ne contient aucun créneau placé pour le moment." />
+              <EmptyState title={PLANNING_TEXTS.emptyPlanningTitle} description={PLANNING_TEXTS.emptyPlanningDescription} />
             )
           ) : (
             // grid-rows-[minmax(0,1fr)] gives the single row a DEFINITE size (the
@@ -1123,7 +1124,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm hover:bg-muted"
                         >
                           <AlertTriangle className={`size-4 ${diagnostics.length > 0 ? "text-warning" : "text-muted-foreground"}`} />
-                          <span>Diagnostics du système{diagnostics.length > 0 ? ` (${diagnostics.length})` : ""}</span>
+                          <span>{PLANNING_TEXTS.diagnosticsSystemTitle}{diagnostics.length > 0 ? ` (${diagnostics.length})` : ""}</span>
                           {null !== topSummary ? <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">{topSummary}</span> : null}
                         </button>
                       ) : null}
@@ -1131,7 +1132,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                         <button
                           type="button"
                           onClick={() => setLocksPanelOpen(true)}
-                          title="Voir les verrous posés à la main"
+                          title={PLANNING_TEXTS.seeManualLocks}
                           className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm hover:bg-muted"
                         >
                           <Lock className="size-4 text-accent" />
@@ -1147,7 +1148,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm hover:bg-muted disabled:opacity-60"
                         >
                           <Undo2 className="size-4 text-muted-foreground" />
-                          <span>Annuler le dernier geste</span>
+                          <span>{PLANNING_TEXTS.undoLastGesture}</span>
                         </button>
                       ) : null}
                     </div>
@@ -1330,8 +1331,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
       <ConfirmDialog
         open={null !== pendingUnlockSlotId}
-        title="Déverrouiller ce créneau réservé ?"
-        description="Ce créneau vient d'une réservation de gymnase. En le déverrouillant, la prochaine génération pourra le déplacer ou le libérer — vérifiez auprès du gymnase avant de continuer."
+        title={PLANNING_TEXTS.unlockReservedTitle}
+        description={PLANNING_TEXTS.unlockReservedDescription}
         confirmLabel="Déverrouiller"
         onConfirm={() => {
           if (null !== pendingUnlockSlotId) {
@@ -1419,7 +1420,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 Retirer <span className="font-medium text-foreground">{teamNameOf(removeConfirm.removed.teamId)}</span> de{" "}
                 {DAY_ABBR.get(removeConfirm.removed.dayOfWeek) ?? "?"} {removeConfirm.removed.startTime} ? Cette séance sera à replacer.
               </p>
-              {"NONE" !== removeConfirm.lockLevel ? <p>Elle est verrouillée — le verrou sera perdu.</p> : null}
+              {"NONE" !== removeConfirm.lockLevel ? <p>{PLANNING_TEXTS.lockWillBeLost}</p> : null}
               {removeConfirm.unmetPresence.map((p) => (
                 <p key={p.teamId}>{p.message}</p>
               ))}
@@ -1452,7 +1453,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
       <ConfirmDialog
         open={regenerateFromOpen}
-        title="Charger cette version ?"
+        title={PLANNING_TEXTS.loadVersionTitle}
         description={
           "number" === typeof selectedSchedule?.generatedTeamCount ? (
             <>
@@ -1477,7 +1478,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           le défaut du composant étant true. */}
       <ConfirmDialog
         open={null !== overlayRegenConfirm}
-        title="Régénérer à partir des données en cours ?"
+        title={PLANNING_TEXTS.regenerateFromCurrentTitle}
         destructive={false}
         description={
           null === overlayRegenConfirm ? null : (
@@ -1503,7 +1504,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           n'est détruite (destructive={false} EXPLICITE, le défaut du composant étant true). */}
       <ConfirmDialog
         open={null !== loadLocksConfirm}
-        title="Charger cette version ?"
+        title={PLANNING_TEXTS.loadVersionTitle}
         destructive={false}
         description={
           null === loadLocksConfirm ? null : (

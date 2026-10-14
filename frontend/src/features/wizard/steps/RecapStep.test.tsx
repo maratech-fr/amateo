@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
+import { WIZARD_TEXTS } from "../texts";
 
 import type { SharedTrainingBlock } from "../api";
 
@@ -129,13 +130,13 @@ describe("RecapStep — read-only summary", () => {
     it("sans aucune alerte : pas d'accordéon, et le bas dit « Tout est prêt »", async () => {
       renderWithProviders(<RecapStep />);
       expect(await screen.findByText(/Tout est prêt/)).toBeInTheDocument();
-      expect(screen.queryByText("À corriger avant de générer")).toBeNull();
+      expect(screen.queryByText(WIZARD_TEXTS.toFixBeforeGenerating)).toBeNull();
     });
 
     it("avec un blocage : l'accordéon le montre en haut et le bas renvoie au détail", async () => {
       validationState.value = { errors: ["Ajoutez au moins une équipe."], warnings: [], notices: [] };
       renderWithProviders(<RecapStep />);
-      expect(await screen.findByText("À corriger avant de générer")).toBeInTheDocument();
+      expect(await screen.findByText(WIZARD_TEXTS.toFixBeforeGenerating)).toBeInTheDocument();
       expect(screen.getByText("Ajoutez au moins une équipe.")).toBeInTheDocument();
       expect(screen.getByText(/détail en haut de page/)).toBeInTheDocument();
       expect(screen.queryByText(/Tout est prêt/)).toBeNull();
@@ -161,7 +162,7 @@ describe("RecapStep — read-only summary", () => {
     renderWithProviders(<RecapStep />);
 
     // La carte compteur du haut : sa valeur est le nombre qui sera GÉNÉRÉ.
-    const card = (await screen.findAllByText("Équipes"))[0];
+    const card = (await screen.findAllByText(WIZARD_TEXTS.teams))[0];
     expect(card.previousElementSibling).toHaveTextContent("1");
   });
 
@@ -172,7 +173,7 @@ describe("RecapStep — read-only summary", () => {
     recapLayer.pausedIds = ["t2"];
     renderWithProviders(<RecapStep />);
 
-    const card = (await screen.findAllByText("Équipes"))[0];
+    const card = (await screen.findAllByText(WIZARD_TEXTS.teams))[0];
     expect(card.previousElementSibling).toHaveTextContent("1");
     // Le détail est dans un accordéon FERMÉ par défaut : on l'ouvre pour lire la liste.
     await userEvent.click(screen.getAllByRole("button", { name: /Équipes/ })[0]);
@@ -403,7 +404,7 @@ describe("RecapStep — créneaux partagés (notices du verdict, D2/D3)", () => 
     validationState.value = { errors: [], warnings: [], notices: [{ key: "sl1", tone: "muted", place: "Gymnase A · Sam 14:00", message: "créneau partagé (2 places) sans réservation." }] };
     renderWithProviders(<RecapStep />);
     const notice = screen.getByText(/Gymnase A · Sam 14:00/);
-    const counters = screen.getAllByText("Équipes")[0];
+    const counters = screen.getAllByText(WIZARD_TEXTS.teams)[0];
     // PRECEDING = l'accordéon vient AVANT les compteurs dans le DOM (il est en haut de page).
     expect(counters.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });

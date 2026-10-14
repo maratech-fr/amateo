@@ -26,6 +26,7 @@ import { RadarCoachWishBadge } from "@/features/coach-wishes/RadarCoachWishBadge
 import { useCoachWishCampaigns } from "@/features/coach-wishes/campaignQueries";
 import { useState } from "react";
 import { isoDayOf } from "@/shared/lib/days";
+import { COCKPIT_TEXTS } from "./texts";
 
 /** Public holidays further out than this are noise, not a to-do. */
 export const PUBLIC_HOLIDAY_HORIZON_DAYS = 30;
@@ -449,7 +450,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-4">
-      <h2 className="text-sm font-semibold">À traiter</h2>
+      <h2 className="text-sm font-semibold">{COCKPIT_TEXTS.toHandle}</h2>
 
       {/* Refus de chevauchement (P2-38) hors picker (adapter un bloc / créer une semaine depuis
           une carte) : la proposition vit en tête du radar. Picker ouvert → elle vit DANS le
@@ -465,22 +466,22 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-destructive">Planning de saison à valider</p>
-              <p className="text-xs text-muted-foreground">Validez le planning de saison pour débloquer les ajustements.</p>
+              <p className="text-sm font-medium text-destructive">{COCKPIT_TEXTS.seasonPlanToValidate}</p>
+              <p className="text-xs text-muted-foreground">{COCKPIT_TEXTS.validateSeasonPlanHint}</p>
             </div>
           </div>
           <div className="flex justify-end">
             <Button variant="outline" size="sm" asChild>
-              <Link to="/wizard">Valider le planning</Link>
+              <Link to="/wizard">{COCKPIT_TEXTS.validateSeasonPlanCta}</Link>
             </Button>
           </div>
         </NoticeBanner>
       ) : null}
 
       {zone === null && !zoneLoading ? (
-        <RadarCard icon={<MapPin className="size-4" />} title="Zone scolaire à renseigner" detail="Renseignez la zone pour voir les vacances.">
+        <RadarCard icon={<MapPin className="size-4" />} title={COCKPIT_TEXTS.schoolZoneToSet} detail={COCKPIT_TEXTS.setZoneHint}>
           <Button variant="outline" size="sm" asChild>
-            <Link to="/club">Renseigner</Link>
+            <Link to="/club">{COCKPIT_TEXTS.setZoneCta}</Link>
           </Button>
         </RadarCard>
       ) : null}
@@ -493,9 +494,9 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       {inProgressEntries.map((e) => {
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
-          <RadarCard key={`wip-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail="Planning en cours — à finaliser">
+          <RadarCard key={`wip-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail={COCKPIT_TEXTS.resumePlanning}>
             <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
-              Reprendre
+              {COCKPIT_TEXTS.resume}
             </Button>
           </RadarCard>
         );
@@ -505,9 +506,9 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       {orphanWeekChildren.map((e) => {
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
-          <RadarCard key={`orphan-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail="Planning de semaine à finaliser">
+          <RadarCard key={`orphan-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail={COCKPIT_TEXTS.weekPlanningToFinalize}>
             <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
-              Reprendre
+              {COCKPIT_TEXTS.resume}
             </Button>
           </RadarCard>
         );
@@ -629,11 +630,11 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
             {undefined !== entry ? <RadarCoachWishBadge campaign={campaignByEntry.get(entry.id) ?? null} /> : null}
             {stateUnknown ? null : null !== activeId ? (
               <Button variant="outline" size="sm" onClick={() => viewOverlay(activeId)}>
-                Voir le planning
+                {COCKPIT_TEXTS.viewPlanning}
               </Button>
             ) : entry ? (
               <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
-                Adapter
+                {COCKPIT_TEXTS.adapt}
               </Button>
             ) : (
               <Button
@@ -656,7 +657,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                   createHoliday.mutate(payload, { onSuccess: (created) => adapt(created.id) });
                 }}
               >
-                Adapter
+                {COCKPIT_TEXTS.adapt}
               </Button>
             )}
           </RadarCard>
@@ -726,7 +727,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                 createClosureFromUnavailability.mutate(params, { onSuccess: (entry) => void adaptBlock(entry.id) });
               }}
             >
-              Adapter
+              {COCKPIT_TEXTS.adapt}
             </Button>
           </RadarCard>
         );
@@ -748,7 +749,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           {/* Une région live annonce son CONTENU, jamais son `aria-label` : sans ce texte,
               le lecteur d'écran passait du titre « À traiter » au silence, ce qui se lit
               « rien à faire » (revue #344). */}
-          <span className="sr-only">Chargement des éléments à traiter…</span>
+          <span className="sr-only">{COCKPIT_TEXTS.loadingItemsToHandle}</span>
           {[0, 1].map((i) => (
             <div key={i} className="animate-pulse rounded-md border border-border p-3 motion-reduce:animate-none">
               <div className="h-3 w-2/5 rounded bg-muted" />
@@ -761,10 +762,10 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       {/* Une lecture ratée n'est ni « ça charge » ni « tout roule » : on le dit, sinon
           l'écran renonce en silence (doctrine `readState`). */}
       {readsFailed ? (
-        <NoticeBanner tone="warning" role="alert" message="Impossible de charger les éléments à traiter — cette liste est peut-être incomplète." />
+        <NoticeBanner tone="warning" role="alert" message={COCKPIT_TEXTS.cannotLoadItemsToHandle} />
       ) : null}
 
-      {isEmpty ? <EmptyHint>Rien à l'horizon. Tout roule.</EmptyHint> : null}
+      {isEmpty ? <EmptyHint>{COCKPIT_TEXTS.allClear}</EmptyHint> : null}
 
       {/* Vacance PAS encore matérialisée : picker sur une mère synthétique (aucune
           création tant que non confirmé — annuler ne laisse aucun fantôme). */}
@@ -872,12 +873,12 @@ function ClosureRadarItem({ entry, activeScheduleId, inProgress = false, seasonU
       {hasOverlay ? (
         <>
           <Button variant="outline" size="sm" onClick={onView}>
-            Voir le planning
+            {COCKPIT_TEXTS.viewPlanning}
           </Button>
           {/* Overlay validé → « Ajuster » retouche un secondaire existant (pas une
               création) : jamais bloqué par le gating saison. */}
           <Button variant="ghost" size="sm" onClick={onAdapt}>
-            Ajuster
+            {COCKPIT_TEXTS.adjust}
           </Button>
         </>
       ) : (

@@ -229,6 +229,23 @@ paths:
   triplet de libellés de jours consécutifs littéraux hors `shared/lib/days.ts` rougit, exemptions
   nominatives motivées) — hors portée délibérée : les lettres seules d'un en-tête de calendrier
   (`MonthCalendar`, pas une table de libellés).
+- 🔴 **Un écran MIGRÉ affiche ses textes depuis le `texts.ts` de sa feature — jamais un littéral FR
+  en dur** (textes centralisés, fondation PR7, 2026-10-14) : maison unique
+  `features/<feature>/texts.ts` (scission `texts/<écran>.ts` au-delà de ~300 lignes),
+  `export const <FEATURE>_TEXTS = { … } as const satisfies Record<string, string | ((...args:
+  never[]) => string)>`, clés camelCase par INTENTION, interpolation par fonctions typées (pluriels
+  compris). **JAMAIS comme valeur** : un libellé de jour (→ `shared/lib/days.ts`), une heure/durée
+  (→ `shared/lib/time.ts`/`duration.ts`), la marque (→ `shared/lib/product.ts`), un identifiant
+  interne — ni une DONNÉE (titre d'entrée, label servi) qui vient du serveur. Pas de lib i18n (une
+  typo de clé = erreur `tsc`). Gardé par `frontend/src/test/hardcodedTextGuard.test.ts` (liste
+  nominative `MIGRATED_FILES` : dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres, ou un
+  littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=`, rougit ; largeur
+  documentée, exemptions ≤ 5 motivées ; `texts.ts` hors portée). **Chaque PR qui touche un écran le
+  MIGRE et l'ajoute à `MIGRATED_FILES`** — la migration ne recule jamais. Côté test : un test vérifie
+  la CLÉ (`getByText(PLANNING_TEXTS.evictTitle)`), jamais la phrase recopiée ; nouvelle assertion →
+  viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
+  `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`, matchs `ConflictLine`, assistant
+  `SlotReservationModal`/`ConstraintsStep`/`RecapStep`.
 - 🔴 **Un changement d'apparence VOULU sur un des 9 écrans de `visual-reference.spec.ts`
   (login, register, planning semaine, matchs calendrier/semaine type/contraintes club, club,
   wizard coachs/contraintes) exige une re-baseline** — procédure et commande unique :
