@@ -111,20 +111,25 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * NR — les noms des contraintes semées SONT ceux que le wizard produirait (décision fondateur
-     * 2026-08-15 : « on doit croire que la donnée vient de l'app »). Test de FORME, pas de contenu :
-     * chaque nom suit « <cible> · <prédicat> », et une contrainte ciblant un TAG commence par
-     * « Groupe » (le sélecteur de cible du wizard préfixe ainsi les groupes). La convention ne se
-     * perd donc pas au fil des éditions du seed.
+     * La transcription de SAISON du seed dev est cohérente — un seul seed suffit à prouver trois
+     * facettes read-only (P5-17) :
+     *  1. les NOMS des contraintes semées sont ceux que le wizard produirait (décision fondateur
+     *     2026-08-15 : « on doit croire que la donnée vient de l'app ») ;
+     *  2. le plan SEASON POINTE (chosen) une version COMPLETED `seed-transcription` de 90 créneaux,
+     *     empreinte de structure posée (base fraîche « Régénérer » honnêtement grisé, P4-266) ;
+     *  3. chaque RÉSERVATION de base (plan NULL) retrouve son créneau transcrit, verrouillé HARD.
      *
-     * EXCEPTION (P5-13 « incident Matéo ») : une fermeture datée `venue_closed` est app-générée
-     * aussi, mais par une AUTRE règle — `useCreateVenueClosure` nomme la contrainte comme le TITRE
-     * de son entrée de fermeture, pas « <cible> · <prédicat> ». On l'exclut donc du motif « · » et
-     * on vérifie à la place sa convention propre : son nom == le titre de l'entrée qu'elle porte.
+     * (Que ce planning transcrit SATISFASSE les règles dures d'équipe est prouvé à part par
+     * {@see self::testDevSeedStructuralInvariantsAreCoherent}, qui partage le même profil dev.)
+     *
+     * Facette 1 — FORME, pas contenu : chaque nom suit « <cible> · <prédicat> », une contrainte
+     * ciblant un TAG commence par « Groupe ». EXCEPTION (P5-13 « incident Matéo ») : une fermeture
+     * datée `venue_closed` est app-générée par `useCreateVenueClosure`, qui la nomme comme le TITRE
+     * de son entrée de fermeture — on vérifie alors son nom == le titre de son entrée.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testSeededConstraintNamesLookAppGenerated(): void
+    public function testDevSeedSeasonTranscriptionIsCoherent(): void
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
 
@@ -152,20 +157,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
                 self::assertStringStartsWith('Groupe ', $name, \sprintf('« %s » cible un tag : le nom doit commencer par « Groupe »', $name));
             }
         }
-    }
 
-    /**
-     * P5-17 — après le seed dev, le plan SEASON du club POINTE (chosen) une version
-     * COMPLETED : la transcription littérale du planning réel (90 créneaux), marquée
-     * `seed-transcription`. Le club dev n'est donc plus « avant première génération » —
-     * il ouvre sur le planning réel, sans jamais appeler le solveur.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedPointsSeasonPlanAtCompletedTranscription(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
+        // ── Facette 2 — le plan SEASON POINTE une version COMPLETED : transcription littérale du
+        // planning réel (90 créneaux, `seed-transcription`), le club dev ouvre dessus sans solveur. ──
         $row = $this->connection->fetchAssociative(
             'SELECT s.status, s.solver_version, '
             . '(SELECT COUNT(*) FROM schedule_slot_template t WHERE t.schedule_id = s.id) AS slot_count '
@@ -194,23 +188,11 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         );
         self::assertIsString($snapshotHash, 'la version de saison pointée porte une empreinte de structure (base fraîche cohérente)');
         self::assertNotSame('', $snapshotHash, 'l\'empreinte de structure n\'est pas vide');
-    }
 
-    /**
-     * P5-17 — chaque RÉSERVATION DE BASE seedée (pin durable HARD, plan NULL) retrouve son
-     * créneau dans la transcription de SAISON pointée, verrouillé HARD (exactement ce qu'un
-     * import de résultat solveur produirait). Une réservation ORPHELINE — sans créneau transcrit
-     * apparié — trahit une transcription incomplète, et ce test la nomme.
-     *
-     * P5-13 : la clause `schedule_plan_id IS NULL` cible les seules réservations de BASE ; celles
-     * des reprises sont portées par leur plan de période et vérifiées par leur propre test.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testEverySeededReservationHasMatchingTranscribedSlot(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
+        // ── Facette 3 — chaque RÉSERVATION de base (pin durable HARD, plan NULL) retrouve son
+        // créneau transcrit verrouillé HARD ; une réservation orpheline trahit une transcription
+        // incomplète (P5-13 : `schedule_plan_id IS NULL` cible les seules réservations de base —
+        // celles des reprises sont portées par leur plan et vérifiées par leur propre test). ──
         $orphans = $this->connection->fetchAllAssociative(
             'SELECT r.team_id, r.venue_id, r.day_of_week, r.start_time FROM reservation r '
             . 'WHERE r.club_id = ? AND r.schedule_plan_id IS NULL AND NOT EXISTS ( '
@@ -227,60 +209,52 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * P5-17 — la transcription ne vise QUE le profil dev : le club de DÉMONSTRATION reste
-     * « avant première génération » (plan SEASON sans pointeur), l'écran de démo part sur le
-     * wizard/Récap comme avant.
+     * Le club de DÉMONSTRATION est cohérent sur deux fronts qu'un seul seed démo suffit à prouver :
+     *  - P5-17 : la transcription ne vise QUE le profil dev — la démo reste « avant première
+     *    génération » (plan SEASON sans pointeur), l'écran de démo part sur le wizard/Récap ;
+     *  - zone scolaire : son code FFBB synthétique (ARA9999999) ne livre aucun département au
+     *    résolveur de zone, donc le seed pose la zone A (Rhône) par repli — sans quoi `school_zone`
+     *    resterait NULL et le radar afficherait « zone scolaire à renseigner » au lieu du compte à
+     *    rebours des vacances.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testDemoSeedLeavesSeasonPlanUnpointed(): void
+    public function testDemoSeedBaselineIsCoherent(): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-transcription'));
+        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-baseline'));
 
+        // P5-17 — la démo ne pointe aucun planning de saison.
         $chosen = $this->connection->fetchOne(
             'SELECT chosen_schedule_id FROM schedule_plan WHERE club_id = ? AND type = \'SEASON\'',
             [$club->getId()],
         );
-
         self::assertNull(false === $chosen ? null : $chosen, 'le club de démonstration ne pointe aucun planning');
-    }
 
-    /**
-     * Le code FFBB de la démo est synthétique (ARA9999999) → le résolveur de zone n'y lit aucun
-     * département : sans repli, `school_zone` resterait NULL et le radar afficherait « zone scolaire
-     * à renseigner » au lieu du compte à rebours des vacances. Le seed démo pose la zone A (Rhône).
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDemoSeedGivesTheClubTheRhoneSchoolZone(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-zone'));
-
+        // Zone scolaire A (Rhône), posée par repli du seed (code FFBB synthétique).
         self::assertSame('A', $club->getSchoolZone(), 'le club démo vit en zone A (Rhône)');
     }
 
     /**
-     * NR — LE PLANNING RÉEL TRANSCRIT RESPECTE LES RÈGLES DURES QUE LE SEED DÉCLARE.
+     * Les invariants STRUCTURELS du seed dev tiennent — un seul seed prouve trois facettes
+     * read-only :
+     *  1. le planning de SAISON transcrit respecte chaque règle DURE d'équipe que le seed déclare
+     *     (NR) — ajouter une règle HARD qui interdit ce que le réel fait rendrait la génération
+     *     infaisable, et on ne le verrait qu'au premier seed suivi d'un solve, des jours plus tard ;
+     *  2. les 8 mutualisations SOCLE adossent les capacités redescendues (P2-51, cap 1 + ensemble
+     *     réservé == membres d'un bloc socle) ;
+     *  3. les 10 passerelles réelles sont déclarées (P5-23, NOT_SIMULTANEOUS, intensité PREFERRED).
      *
-     * Le seed fait deux choses qui peuvent se contredire : il transcrit le planning RÉEL du club
-     * (P5-17, 90 créneaux relevés sur le terrain) et il déclare les contraintes du club. Ajouter
-     * une règle DURE qui interdit ce que le planning réel fait rendrait la génération infaisable
-     * — et on ne s'en apercevrait qu'au premier seed suivi d'une génération, donc
-     * potentiellement des jours plus tard, sur une base neuve.
-     *
-     * Ce test le dit tout de suite, sans moteur ni solve : pour chaque contrainte HARD de portée
-     * ÉQUIPE (jour ou horaire), chaque séance transcrite de cette équipe doit la satisfaire.
-     *
-     * PORTÉE ASSUMÉE : les contraintes de portée CLUB (par tag) ne sont pas couvertes ici — leur
-     * résolution en équipes vit dans le builder, pas dans le seed, et la garder ici dupliquerait
-     * cette algèbre. Le risque que ce test cible est celui qui s'est présenté : une règle TEAM
-     * ajoutée au seed d'après ce que le gestionnaire a saisi dans l'app.
+     * Facette 1 — sans moteur ni solve : pour chaque contrainte HARD de portée ÉQUIPE (jour ou
+     * horaire), chaque séance transcrite de cette équipe doit la satisfaire. PORTÉE ASSUMÉE : les
+     * contraintes de portée CLUB (par tag) ne sont pas couvertes ici — leur résolution en équipes
+     * vit dans le builder, pas dans le seed, et la garder ici dupliquerait cette algèbre. Le risque
+     * ciblé est celui qui s'est présenté : une règle TEAM ajoutée au seed d'après la saisie app.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testTheTranscribedRealScheduleSatisfiesEveryHardTeamRule(): void
+    public function testDevSeedStructuralInvariantsAreCoherent(): void
     {
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
 
         /** @var list<array{team: string, day: int, start: string, name: string, family: string, config: string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
@@ -322,28 +296,14 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         self::assertSame([], array_values(array_unique($violations)), 'une règle dure du seed contredit le planning réel qu\'il transcrit');
-    }
 
-    /**
-     * NR — LES 8 MUTUALISATIONS SOCLE ADOSSENT LES CAPACITÉS REDESCENDUES (P2-51, recalage
-     * 2026-09-01).
-     *
-     * Les 8 partages réels du club (paires jeunes + 3 CEC du mercredi) portaient des capacités
-     * 2/3 posées comme PALLIATIF à la mutualisation. Elles sont redescendues à 1 : le partage se
-     * dit désormais par un bloc de mutualisation SOCLE (schedulePlanId NULL), un groupe complet
-     * comptant pour UN occupant. L'invariant qui rend cette descente sûre : sur CHAQUE case
-     * partagée, (a) le créneau socle est en capacité 1, (b) l'ensemble des équipes RÉSERVÉES y est
-     * EXACTEMENT les membres d'un bloc socle (`reservedSetMatchesABlock`) — sans quoi une
-     * génération verrait N pins HARD sur une case cap 1 SANS exemption de bloc, donc INFEASIBLE.
-     *
-     * Falsifiable dans les deux sens : remonter une capacité à 2 (palliatif ressuscité) OU retirer
-     * un bloc / en changer un membre rend ce test ROUGE en nommant la case fautive.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testSocleSharedBlocksBackTheDescendedCapacities(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        // ── Facette 2 — LES 8 MUTUALISATIONS SOCLE ADOSSENT LES CAPACITÉS REDESCENDUES (P2-51).
+        // Les 8 partages (paires jeunes + 3 CEC du mercredi) portaient des capacités 2/3 palliatives,
+        // redescendues à 1 : le partage se dit par un bloc SOCLE (schedulePlanId NULL), un groupe
+        // comptant pour UN occupant. Invariant : sur chaque case partagée, (a) le créneau socle est
+        // en capacité 1, (b) l'ensemble réservé == EXACTEMENT les membres d'un bloc socle — sans quoi
+        // une génération verrait N pins HARD sur une case cap 1 sans exemption de bloc → INFEASIBLE.
+        // Falsifiable deux sens : remonter une capacité à 2, ou changer un bloc/membre → ROUGE. ──
 
         // [gymnase, jour ISO, HH:MM, membres attendus] — les 8 cases partagées.
         /** @var list<array{string, int, string, list<string>}> $cases */
@@ -406,19 +366,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             // (c) un bloc socle porte EXACTEMENT cet ensemble (reservedSetMatchesABlock).
             self::assertContains($expected, $normalizedBlockSets, \sprintf('%s %d %s : un bloc socle couvre exactement %s', $venueName, $day, $start, implode('/', $expected)));
         }
-    }
 
-    /**
-     * NR — LES 10 PASSERELLES RÉELLES SONT SEMÉES (P5-23). « partagent des joueurs » ⇒
-     * NOT_SIMULTANEOUS, intensité côté entraînement au défaut PREFERRED (fondateur non précisé).
-     * Idempotent : le find-or-create sur le couple normalisé ne double pas au second passage.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testSeedDeclaresTheTenRealTeamLinks(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
+        // ── Facette 3 — LES 10 PASSERELLES RÉELLES SONT SEMÉES (P5-23) : « partagent des joueurs »
+        // ⇒ NOT_SIMULTANEOUS, intensité entraînement au défaut PREFERRED ; find-or-create idempotent. ──
         /** @var list<array{a: string, b: string, link_type: string, training_intensity: string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT ta.name AS a, tb.name AS b, l.link_type, l.training_intensity '
@@ -449,17 +399,24 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * P5-13 — chaque plan de REPRISE pointe (chosen) une version COMPLETED transcrivant sa
-     * semaine au bon nombre de créneaux (25 pour le 17 août, 40 pour le 24 août), et porte ses
-     * groupes de mutualisation ANCRÉS au plan : {SM1,SM2}+{SF1,SF2} le 17 ; {SM1,SM2}+{U18F1,U18F2}
-     * le 24 (SF1/SF2 s'y entraînent séparément).
+     * Les plans de REPRISE du seed dev sont cohérents — un seul seed prouve deux facettes read-only
+     * (P5-13) :
+     *  1. chaque plan de reprise POINTE (chosen) une version COMPLETED transcrivant sa semaine au
+     *     bon nombre de créneaux (25 le 17 août, 40 le 24), et porte ses groupes de mutualisation
+     *     ANCRÉS au plan : {SM1,SM2}+{SF1,SF2} le 17 ; {SM1,SM2}+{U18F1,U18F2} le 24 (SF1/SF2 s'y
+     *     entraînent séparément) ;
+     *  2. post-modèle bloc (fondateur 2026-09-01) — les grilles comptent un groupe mutualisé pour UN
+     *     occupant (plus aucune case cap 2), et la semaine du 17 décoche les indispos coach héritées
+     *     que son réel contredit (U18M1 jeudi de Coach PoivreSel, U15M1 vendredi de Coach Tho) ainsi
+     *     que « SM2 · pas vendredi » (le bloc est figé lun/mar/jeu par réservation).
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testEachRepriseWeekPlanPointsCompletedTranscriptionWithItsGroups(): void
+    public function testDevSeedRepriseWeekPlansAndGridsAreCoherent(): void
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
 
+        // ── Facette 1 — chaque plan de reprise pointe une version COMPLETED avec ses groupes. ──
         foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 40, 2]] as [$planName, $expectedSlots, $expectedGroups]) {
             $row = $this->connection->fetchAssociative(
                 'SELECT s.status, (SELECT COUNT(*) FROM schedule_slot_template t WHERE t.schedule_id = s.id) AS slot_count '
@@ -516,23 +473,10 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         self::assertNotFalse($u18fBlock, 'la semaine du 24 mutualise U18F1 et U18F2');
         self::assertSame(2, (int) $u18fBlock['members'], 'le bloc U18F du 24 couvre exactement U18F1 et U18F2');
         self::assertSame(2, (int) $u18fBlock['common_sessions'], 'le bloc U18F du 24 porte k=2 séances communes');
-    }
 
-    /**
-     * Post-modèle bloc (arbitrage fondateur 2026-09-01) — les grilles des semaines de REPRISE
-     * comptent un groupe mutualisé pour UN occupant : plus aucune case en capacité 2 (le
-     * palliatif d'avant les blocs laissait le solveur y glisser une équipe de plus). Et la
-     * semaine du 17 décoche AUSSI les deux indisponibilités coach héritées de la saison que le
-     * réel de la semaine contredit (U18M1 s'entraîne le jeudi de Coach PoivreSel, U15M1 le
-     * vendredi de Coach Tho) — sans quoi la génération ne peut pas atteindre le planning
-     * transcrit. Falsifiable : remettre `++capacity` par séance, ou retirer un des deux noms de
-     * `deactivatedConstraints`, rend ce test ROUGE en nommant l'invariant.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testRepriseGridsCountBlockAsOneOccupantAndDeactivateInheritedIndispos(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        // ── Facette 2 — les grilles comptent un groupe mutualisé pour UN occupant (plus aucune case
+        // cap 2) et la semaine du 17 décoche les indispos coach héritées que son réel contredit.
+        // Falsifiable : remettre `++capacity` par séance, ou retirer un nom de `deactivatedConstraints`. ──
 
         // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 40 − 5 = 35 le 24.
         foreach ([['Reprise du 17 août', 20], ['Reprise du 24 août', 35]] as [$planName, $expectedSlots]) {
@@ -1399,22 +1343,27 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * P2-60 — L'INVARIANT « unité de placement = le bloc » TIENT SUR LA DONNÉE SEMÉE : sur le socle
-     * ET sur CHAQUE plan de période, pour chaque équipe, ses réservations INDIVIDUELLES (hors cases
-     * bloc-complètes) ≤ son résidu solo R(T) = S(T) − B(T) ({@see SoloReservationBudget}, maison
-     * unique de R). Sinon une génération sur cette portée rendrait le solveur INFEASIBLE — le geste
-     * même que P2-60 interdit désormais aux deux portes d'écriture.
+     * Deux invariants transverses tiennent sur TOUTE la donnée semée — un seul seed dev suffit :
      *
-     * ⚠ Si ce test rougit, le seed BCCL (club RÉEL du fondateur) viole déjà l'invariant : le message
-     * nomme la portée, l'équipe et son S/B/R/individualUsed — à RAPPORTER, pas à corriger d'office.
+     *  1. P2-60 — « unité de placement = le bloc » : sur le socle ET sur chaque plan de période,
+     *     pour chaque équipe, ses réservations INDIVIDUELLES (hors cases bloc-complètes) ≤ son résidu
+     *     solo R(T) = S(T) − B(T) ({@see SoloReservationBudget}). Sinon une génération sur cette
+     *     portée serait INFEASIBLE — le geste que P2-60 interdit aux deux portes d'écriture.
+     *  2. décision fondateur 2026-09-04 — toute SEMAINE-ENFANT de vacances semée est « de vacances » :
+     *     son lundi→vendredi est entièrement couvert par sa mère ({@see HolidayWorkweekRule::covers},
+     *     celle que garde le POST), sinon le seed livrerait une reprise que l'app refuserait de recréer.
+     *
+     * ⚠ Si la facette 1 rougit, le seed BCCL (club RÉEL du fondateur) viole déjà l'invariant : le
+     * message nomme la portée, l'équipe et son S/B/R/individualUsed — à RAPPORTER, pas à corriger.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testEverySeededScopeSatisfiesTheSoloBudgetInvariant(): void
+    public function testSeededInvariantsHoldAcrossEveryScope(): void
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         $clubId = $club->getId();
 
+        // ── Facette 1 — invariant solo (réservations individuelles ≤ résidu) sur chaque portée. ──
         $seasonId = (string) $this->connection->fetchOne(
             'SELECT id FROM season WHERE club_id = ? AND name = \'2026-2027\'',
             [$clubId],
@@ -1458,20 +1407,11 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         self::assertSame([], $violations, "le seed BCCL viole l'invariant solo (réservations individuelles > résidu) — RAPPORTER au fondateur, ne pas corriger le seed :\n  - " . implode("\n  - ", $violations));
-    }
 
-    /**
-     * NR (décision fondateur 2026-09-04) — TOUTE SEMAINE-ENFANT DE VACANCES SEMÉE EST « DE
-     * VACANCES » : son lundi→vendredi est entièrement couvert par sa mère (règle
-     * {@see HolidayWorkweekRule::covers}, celle-là même que garde le POST). Sans quoi le seed
-     * livrerait une semaine de reprise que l'app refuserait de recréer — une donnée qui « ne vient
-     * pas de l'app ». Falsifiable : décaler une reprise d'un jour hors de sa mère rend ce test ROUGE.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testEverySeededHolidayWeekChildCoversItsMotherWorkweek(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        // ── Facette 2 — toute SEMAINE-ENFANT de vacances semée est « de vacances » : son lundi→vendredi
+        // est entièrement couvert par sa mère (`HolidayWorkweekRule::covers`, celle que garde le POST),
+        // sinon le seed livrerait une reprise que l'app refuserait de recréer. Falsifiable : décaler
+        // une reprise d'un jour hors de sa mère → ROUGE. ──
 
         /** @var list<array{title: string, cs: string, ce: string, ms: string, me: string, ss: string, se: string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
