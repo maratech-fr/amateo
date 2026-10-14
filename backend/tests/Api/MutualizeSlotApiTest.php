@@ -614,6 +614,12 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertNull($block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
     }
 
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
     /** La case SOURCE d'un dépôt (jour 3, 18h) — distincte de la case cible `$ctx['case']` (jour 2). */
     private function sourceCase(array $ctx): array
     {
@@ -625,8 +631,8 @@ final class MutualizeSlotApiTest extends WebTestCase
      * co-localisées à `$case`, reliées au bloc — exactement ce que le geste de mutualisation produit.
      *
      * @param array{clubId: string, seasonId: string, scheduleId: string, planId?: ?string} $ctx
-     * @param list<string>                                                                   $teamIds
-     * @param array{venueId: string, dayOfWeek: int, startTime: string}                      $case
+     * @param list<string>                                                                  $teamIds
+     * @param array{venueId: string, dayOfWeek: int, startTime: string}                     $case
      *
      * @return array{block: SharedTrainingBlock, slots: array<string, ScheduleSlotTemplate>}
      */
@@ -670,12 +676,6 @@ final class MutualizeSlotApiTest extends WebTestCase
             $body['label'] = $label;
         }
         $this->client->request('POST', '/api/schedule-slots/mutualize-at-case', [], [], $this->managerHeaders($ctx), json_encode($body, \JSON_THROW_ON_ERROR));
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
     /**
