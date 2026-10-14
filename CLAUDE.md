@@ -122,7 +122,10 @@ Agents/skills = **manuels, déclenchés par le user** (exception : hook `code-re
 première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
 branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready » ;
 **une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas
-l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; les autres branches attendent.
+l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; **on n'ouvre JAMAIS une PR dont
+la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'ouvrir, comparer
+`git diff --name-only origin/main...HEAD` aux fichiers des PR ouvertes (`gh pr diff <n> --name-only`),
+intersection non vide = la branche attend le merge ; les autres branches attendent.
 **Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
 déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
 (`docs/ops/deploy.md`).
