@@ -34,7 +34,7 @@ use Symfony\Component\Console\Tester\CommandTester;
  * la transaction statique de DAMA ne couvre pas nos écritures sur cette connexion
  * reconstruite, le seed massif ne doit laisser aucune trace).
  *
- * NON gatant (pas un axe §7.1) : tourne dans `unit-tests`, ni dans `ci.yml`
+ * NON gatant (pas un axe §7.1) : tourne dans `backend-tests`, ni dans `ci.yml`
  * (job `blocking-tests`) ni dans `docs/testing/blocking-tests.md`. Ce qu'il garde :
  * le contrat create-only de la commande (seede si absent, no-op sinon, zéro
  * écriture au second passage) — la propriété non destructrice sur laquelle

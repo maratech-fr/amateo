@@ -32,7 +32,7 @@ use Symfony\Component\Console\Tester\CommandTester;
  * en tearDown car la transaction statique de DAMA ne couvre pas cette connexion
  * admin reconstruite).
  *
- * NON gatant (pas un axe §7.1) : tourne dans `unit-tests`, ni dans `ci.yml`
+ * NON gatant (pas un axe §7.1) : tourne dans `backend-tests`, ni dans `ci.yml`
  * (job `blocking-tests`) ni dans `docs/testing/blocking-tests.md`.
  */
 #[Group('integration')]

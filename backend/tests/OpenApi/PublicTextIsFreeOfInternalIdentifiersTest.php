@@ -31,8 +31,8 @@ use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
  * prouve que le motif MORD sur des exemples réels avant de conclure « rien ne
  * fuit » — un motif cassé passerait vert sur tout, sinon.
  *
- * Gating : `tests/OpenApi/` tourne dans le job `unit-tests` (`phpunit tests/`), donc
- * bloque le merge via « Unit Tests », PAS `build-docker`. Aucun axe structurant
+ * Gating : `tests/OpenApi/` tourne dans le job `backend-tests` (`phpunit tests/`), donc
+ * bloque le merge via « Backend Tests (suite + couverture) », PAS `build-docker`. Aucun axe structurant
  * (§7.1) n'est touché → pas de step `blocking-tests`.
  */
 #[Group('phase1')]

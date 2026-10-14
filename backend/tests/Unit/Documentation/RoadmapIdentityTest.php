@@ -109,7 +109,7 @@ final class RoadmapIdentityTest extends TestCase
      * aucun id présent ne doit y figurer.
      *
      * ⚠ Sur un clone SHALLOW l'histoire est tronquée : le rejeu serait un mensonge rassurant, on
-     * SKIPPE en le disant. Le job CI `unit-tests` clone en `fetch-depth: 0` (comme l'exige déjà
+     * SKIPPE en le disant. Le job CI `backend-tests` clone en `fetch-depth: 0` (comme l'exige déjà
      * `DocStampFreshnessTest`) : là où le gate compte, l'histoire est entière.
      */
     public function testNoRetiredIdentifierIsResurrected(): void

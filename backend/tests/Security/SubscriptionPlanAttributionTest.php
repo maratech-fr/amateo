@@ -27,7 +27,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * Découverte ; démo → droits pleins) et le bloc `entitlements` de /api/me.
  *
  * ⚠ Groupe phase1 mais PAS un step du gate `blocking-tests` (§4) : tourne dans
- * `unit-tests` (dossier entier). L'enforcement (débit crédits, cap équipes) est la
+ * `backend-tests` (dossier entier). L'enforcement (débit crédits, cap équipes) est la
  * PR B — ce test ne vérifie QUE le socle.
  */
 #[Group('phase1')]

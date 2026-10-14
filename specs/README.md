@@ -1,6 +1,8 @@
 # Living Specs System
 
-Last verified @ 2026-10-13 (ajout de `mutualisation.md`, doc canonique de la mutualisation créée
+Last verified @ 2026-10-14 (refonte CI : les trois renvois au job `unit-tests` recalés sur
+`backend-tests`, le job fusionné qui joue désormais la suite complète — statut posé ce jour ;
+contenu recalé le 2026-10-13 par l'ajout de `mutualisation.md`, doc canonique de la mutualisation créée
 par `documentation-update`) : `ls specs/courantes/*.md` rend désormais **15 fichiers** (+1 depuis
 la passe précédente), et la liste du § « Files Overview » ci-dessous les nomme bien tous. Les six
 gardes `{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
@@ -48,7 +50,7 @@ for f in specs/courantes/*.md docs/project-map.md docs/testing/testing-strategy.
 done
 ```
 
-**Tolérance J+1 (2026-09-04).** La date git d'un fichier est celle du commit qui le pose sur `main` : sur une squash-merge, c'est l'heure du merge. La PR #840 mergée à 00:23 a fait « mentir » quatre stamps du 03 pourtant justes, et `unit-tests` a rougi sur `main` sans qu'un contenu ait bougé. Le garde tolère donc une édition datée du **lendemain** du stamp — rien de ce qu'il vise (des stamps en retard de semaines) ne passe par ce trou.
+**Tolérance J+1 (2026-09-04).** La date git d'un fichier est celle du commit qui le pose sur `main` : sur une squash-merge, c'est l'heure du merge. La PR #840 mergée à 00:23 a fait « mentir » quatre stamps du 03 pourtant justes, et `unit-tests` (aujourd'hui `backend-tests`) a rougi sur `main` sans qu'un contenu ait bougé. Le garde tolère donc une édition datée du **lendemain** du stamp — rien de ce qu'il vise (des stamps en retard de semaines) ne passe par ce trou.
 
 Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié le jour même sans bump. Aucun n'avait un contenu périmé : chacun avait été correctement recalé **par la PR qui livrait la feature**. Seul le stamp était resté figé. C'est exactement pour ça que le motif a survécu à six éditions d'audit (`AUD-DOC-04`) : personne ne voyait le mensonge, parce qu'il ne portait pas sur le fond.
 
@@ -61,7 +63,7 @@ Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié
 
 **La date est celle du STATUT, pas celle de la dernière édition de fond.** On date le jour où l'on statue sur le fichier ; ce qui a été recalé, et quand, se dit dans la parenthèse (« statut posé ce jour ; contenu recalé jusqu'au JJ par … »). Dater de la dernière édition de fond paraît plus fidèle mais se mord la queue : le commit qui pose le stamp est lui-même une édition, donc le stamp naîtrait déjà en retard sur son propre fichier.
 
-> **Ce n'est plus une promesse : c'est un test.** `backend/tests/Unit/Documentation/DocStampFreshnessTest.php` exécute la règle ci-dessus (groupe `phase1`, donc joué par `unit-tests` — un contexte requis de `main`). Son voisin `BlockingTestsListMatchesCiTest.php` fait le même travail pour la liste canonique des blocking-tests (`docs/testing/blocking-tests.md`, ex-`CLAUDE.md` §4) contre les steps réels de `ci.yml`, dans les deux sens. `RoadmapIdentityTest.php` (2026-08-22) tient la roadmap elle-même : **un identifiant désigne un item et un seul** — il est cité depuis le code, les commits et les PR, donc le réattribuer casse ces références en silence — et le compteur du titre « Roadmap (N) » dit la vérité. Il est né d'une récidive : `P4-119` et `P5-19` désignaient chacun deux items, alors que `P4-119` est cité dans une vingtaine d'endroits de `frontend/src/features/planning/`. Les deux sont nés du même constat : dans ce dépôt, **le seul document qui cesse de mentir est celui qu'un test surveille** — le premier de la série étant `engine/tests/test_contract_version_doc_sync.py`.
+> **Ce n'est plus une promesse : c'est un test.** `backend/tests/Unit/Documentation/DocStampFreshnessTest.php` exécute la règle ci-dessus (groupe `phase1`, donc joué par `backend-tests` — un contexte requis de `main`). Son voisin `BlockingTestsListMatchesCiTest.php` fait le même travail pour la liste canonique des blocking-tests (`docs/testing/blocking-tests.md`, ex-`CLAUDE.md` §4) contre les steps réels de `ci.yml`, dans les deux sens. `RoadmapIdentityTest.php` (2026-08-22) tient la roadmap elle-même : **un identifiant désigne un item et un seul** — il est cité depuis le code, les commits et les PR, donc le réattribuer casse ces références en silence — et le compteur du titre « Roadmap (N) » dit la vérité. Il est né d'une récidive : `P4-119` et `P5-19` désignaient chacun deux items, alors que `P4-119` est cité dans une vingtaine d'endroits de `frontend/src/features/planning/`. Les deux sont nés du même constat : dans ce dépôt, **le seul document qui cesse de mentir est celui qu'un test surveille** — le premier de la série étant `engine/tests/test_contract_version_doc_sync.py`.
 
 ## Files Overview
 
@@ -77,6 +79,6 @@ This README documents the maintenance obligations for the living specs system.
 ⚠ **Ce fichier a longtemps fini par « does not promise automated drift checks or CI enforcement ».**
 C'était faux depuis le 2026-08-08, et contredit dix lignes plus haut par son propre encadré : quatre
 tests du dossier `backend/tests/Unit/Documentation/` exécutent ces règles, et ils tournent dans
-`unit-tests` — un contexte requis de `main`. Ce qui reste **manuel**, et qu'aucun test ne remplace :
+`backend-tests` — un contexte requis de `main`. Ce qui reste **manuel**, et qu'aucun test ne remplace :
 juger si le contenu d'une spec dit encore la vérité. Une machine tient les invariants de FORME
 (placement, fraîcheur d'un stamp, unicité d'un identifiant, décompte) ; elle ne sait pas lire.

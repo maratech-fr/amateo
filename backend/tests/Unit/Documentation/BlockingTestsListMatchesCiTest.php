@@ -20,7 +20,7 @@ use Symfony\Component\Yaml\Yaml;
  *
  * ⚠ Ce que ce test défend, au-delà de la liste : **`#[Group('phase1')]` ne fait pas un gate.**
  * 143 fichiers portent l'annotation, ~24 sont des steps. Un NR d'axe structurant (§7.1) annoté
- * mais non ajouté au job tourne dans `unit-tests` — après le gate, sans bloquer `build-docker`.
+ * mais non ajouté au job tourne dans `backend-tests` — après le gate, sans bloquer `build-docker`.
  * Le piège a mordu deux fois (P2-9ter, puis DOC-26) ; ce garde est ce qui l'empêche de mordre
  * une troisième.
  *
@@ -64,7 +64,7 @@ final class BlockingTestsListMatchesCiTest extends TestCase
 
         self::assertSame([], array_values($phantom), \sprintf(
             "docs/testing/blocking-tests.md annonce ces tests comme bloquants, mais AUCUN step du job « %s » ne les lance :\n  - %s\n"
-            . "Ils tournent probablement dans `unit-tests` — donc après le gate et sans bloquer `build-docker`.\n"
+            . "Ils tournent probablement dans `backend-tests` — donc après le gate et sans bloquer `build-docker`.\n"
             . "Deux issues, jamais le silence : (a) ajouter le step à ci.yml si le test doit gater,\n"
             . '(b) le retirer de la liste s\'il ne doit pas — et l\'écrire là où on le présentait comme bloquant.',
             self::JOB,

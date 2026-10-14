@@ -19,7 +19,7 @@ use PHPUnit\Framework\TestCase;
  * (silencieuse sur amateo_dev/*_test, refus sec sur la prod, question sur
  * amateo_local). Ce test rougit si l'une d'elles perd cette protection.
  *
- * NON gatant (pas un axe §7.1) : tourne dans `unit-tests`, ni dans `ci.yml`
+ * NON gatant (pas un axe §7.1) : tourne dans `backend-tests`, ni dans `ci.yml`
  * (job `blocking-tests`) ni dans `docs/testing/blocking-tests.md` — même statut
  * que SandboxGuardCoverageTest et PlayTargetIsNonDestructiveTest.
  */

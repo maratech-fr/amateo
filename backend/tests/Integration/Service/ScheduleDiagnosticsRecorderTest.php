@@ -35,7 +35,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * que le builder ajoute est coupé au premier deux-points, l'UUID nu reste intact) pour que le
  * deep-link wizard `?edit=<id>` résolve. `openCandidates` distingue NULL (non mesuré) de 0.
  *
- * Additive display data → pas de step `blocking-tests` : tourne dans `unit-tests` (phpunit tests/).
+ * Additive display data → pas de step `blocking-tests` : tourne dans `backend-tests` (phpunit tests/).
  */
 #[Group('phase1')]
 #[Group('integration')]

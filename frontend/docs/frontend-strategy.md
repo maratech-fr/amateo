@@ -1,6 +1,8 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-10-14 (renommage des sous-agents Matrix — `coder`/`planner` → `neo`/`morpheus`,
+Last verified @ 2026-10-14 (refonte CI : la ligne `@vitest/coverage-v8` renvoie au step de couverture
+du job `frontend` — ex-job `frontend-coverage`, fondu le 2026-10-14 —, confronté à `.github/workflows/ci.yml` ;
+même jour : renommage des sous-agents Matrix — `coder`/`planner` → `neo`/`morpheus`,
 nom seul, aucun fait re-confronté cette passe ; précédemment 2026-10-11 : `documentation-update`, rotation de fraîcheur — sujet de la PR sans
 rapport, lot 3B PR B'). Re-confronté : `testTimeout: 15_000` (`vitest.config.ts:49`)
 et `asyncUtilTimeout: 5_000` (`src/test/setup.ts:28`) toujours les valeurs posées ✓ ; `lint:deps`
@@ -194,7 +196,7 @@ au-delà de 3 s est colorié dans le rapport : c'est là qu'on regarde si le sc�
 | Outil | Version (`frontend/package.json`) | Rôle |
 |------|---------|------|
 | Vitest | 4.x | Runner de test (config `vitest.config.ts` : jsdom, `globals`, setup `src/test/setup.ts`, exclut `tests/e2e/`) |
-| @vitest/coverage-v8 | 4.x | Couverture (`vitest run --coverage`, `make coverage`, job CI `frontend-coverage` — mesure et cliquet détaillés dans `docs/testing/test-coverage-map.md`) |
+| @vitest/coverage-v8 | 4.x | Couverture (`vitest run --coverage`, `make coverage`, step de couverture du job CI `frontend` — mesure et cliquet détaillés dans `docs/testing/test-coverage-map.md`) |
 | @testing-library/react | 16.x | Rendu et queries DOM |
 | @testing-library/user-event | 14.x | Simulation d'interaction |
 | @testing-library/jest-dom | 7.x | Matchers DOM |

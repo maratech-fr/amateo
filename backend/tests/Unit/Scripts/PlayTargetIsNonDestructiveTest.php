@@ -22,7 +22,7 @@ use PHPUnit\Framework\TestCase;
  * Avec un `seed-demo` nu, l'assertion à lookbehind ROUGIT — le test falsifie bien
  * la régression.
  *
- * NON gatant (pas un axe §7.1) : tourne dans `unit-tests`, ni dans `ci.yml`
+ * NON gatant (pas un axe §7.1) : tourne dans `backend-tests`, ni dans `ci.yml`
  * (job `blocking-tests`) ni dans `docs/testing/blocking-tests.md`.
  */
 #[Group('phase1')]

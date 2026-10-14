@@ -156,7 +156,7 @@ final class DocStampFreshnessTest extends TestCase
      * l'a posé sur `main`, et sur une squash-merge c'est l'heure du merge, pas celle de
      * l'édition. La PR #840 a été mergée le 2026-09-04 à 00:23 : quatre fichiers stampés
      * « 2026-09-03 » (vérifiés et datés le 03, à raison) sont devenus des « menteurs » à
-     * minuit, et `unit-tests` a rougi sur `main` sans qu'aucun contenu n'ait bougé. Un jour
+     * minuit, et `unit-tests` (aujourd'hui `backend-tests`) a rougi sur `main` sans qu'aucun contenu n'ait bougé. Un jour
      * de tolérance ne cache rien de ce que ce garde vise (des stamps en retard de semaines) ;
      * il retire seulement le faux rouge de bord de journée.
      */
