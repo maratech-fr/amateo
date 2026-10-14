@@ -12,14 +12,14 @@ use PHPUnit\Framework\TestCase;
  *
  * Le plancher de couverture par zone vit dans un fichier UNIQUE versionné à la racine
  * du dépôt, `coverage-floor.json` — une seule maison, lue par le job CI
- * `backend-coverage` (via `scripts/coverage-gate.php`) et remontée dans la MÊME PR
+ * `backend-tests` (via `scripts/coverage-gate.php`) et remontée dans la MÊME PR
  * quand une mesure s'améliore. Ce test garde la maison côté backend : le fichier
  * existe, est du JSON, et la clé `backend` est un entier 0-100 (jamais `null` : le
  * backend EST mesuré). Les clés `engine`/`frontend` sont gardées par leurs zones
  * (`test_coverage_floor.py`, `coverageFloor.test.ts`).
  *
  * NON gatant (ce n'est pas un axe structurant §7.1) : ce test tourne dans
- * `unit-tests`, il n'est listé NI dans `.github/workflows/ci.yml` (job
+ * `backend-tests`, il n'est listé NI dans `.github/workflows/ci.yml` (job
  * `blocking-tests`) NI dans `docs/testing/blocking-tests.md`.
  */
 #[Group('phase1')]

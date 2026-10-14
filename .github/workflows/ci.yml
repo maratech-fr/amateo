@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+# Un push qui remplace un autre sur la MÊME réf annule le run précédent — sauf sur `main`, où
+# chaque commit mérite son verdict complet (file de merge, historique du gate). Économise des
+# exécutants sur les PR qui repoussent vite, sans jamais couper un run de `main`.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 
 jobs:
   lint:
@@ -71,36 +78,13 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Unit tests (Vitest)
-        working-directory: frontend
-        run: npx vitest run
-
-  # P4-166 (B5) — la couverture frontend est un required check À PART : elle rougit
-  # seule si la couverture de lignes descend sous le plancher versionné
-  # (`coverage-floor.json`, lu par `vitest.config.ts` → `thresholds.lines`), sans jamais
-  # entrer dans les `needs` de `build-docker` (une perte de 1 % ne bloque pas une image de
-  # prod urgente). Même patron/SHA que le job `frontend` (setup-node + npm ci sur l'hôte).
-  frontend-coverage:
-    name: Frontend Coverage (cliquet)
-    runs-on: ubuntu-latest
-    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
-    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
-    timeout-minutes: 15
-    needs: frontend
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install deps
-        working-directory: frontend
-        run: npm ci
-
-      - name: Coverage (frontend) + cliquet
+      # Unitaires Vitest AVEC couverture + cliquet (ex-job `frontend-coverage` fondu ici,
+      # 2026-10-14 : un seul passage de la suite au lieu de deux). Le cliquet rougit si la
+      # couverture de lignes descend sous le plancher versionné (`coverage-floor.json`, lu par
+      # `vitest.config.ts` → `thresholds.lines`) — un required check de `main` (job `frontend`),
+      # donc BLOQUANT AU MERGE, mais `frontend` n'est pas dans les `needs` de `build-docker`
+      # (une perte de 1 % ne bloque pas une image de prod urgente).
+      - name: Unit tests + coverage (Vitest, cliquet)
         working-directory: frontend
         run: npm run test:coverage
 
@@ -458,7 +442,7 @@ jobs:
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Unit/NoMergeConflictMarkerTest.php --group phase1'
 
       # NOTE : `SymfonyStackAlignmentTest` (dérive du stack hors LTS 7.4) tourne
-      # dans `unit-tests`, PAS ici. Une chaîne de version n'a pas sa place dans
+      # dans `backend-tests`, PAS ici. Une chaîne de version n'a pas sa place dans
       # le job qui gate `build-docker` : un bump dependabot remontant un split
       # Symfony ferait rougir `blocking-tests` AVANT même que
       # TenantIsolationTest/RlsIsolationTest ne s'exécutent (étapes suivantes du
@@ -699,8 +683,8 @@ jobs:
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Api/MutualizeSlotApiTest.php --group phase1'
 
       # P2-9ter — le fichier portait déjà #[Group('phase1')] sans qu'AUCUN step de CE job
-      # ne le lance : il tournait bien, mais dans `unit-tests` (qui exécute `phpunit
-      # tests/`) — c'est-à-dire APRÈS `blocking-tests` et sans gater `build-docker`. Il ne
+      # ne le lance : il tournait bien, mais dans la suite complète `backend-tests` (qui exécute
+      # `phpunit tests/`) — c'est-à-dire sans gater `build-docker`. Il ne
       # jouait donc pas le rôle de gate bloquant que son groupe annonçait. Il porte les NR
       # « le build n'écrit pas », « le write-path écrit vraiment », « ordre des tags
       # déterministe », « un seul chemin de calcul » et « cache scopé par saison ».
@@ -748,7 +732,7 @@ jobs:
 
       # DOC-3, tranché le 2026-08-11 (option (a) : en faire un step). Le fichier se
       # sous-titrait « NR BLOQUANT — SÉMANTIQUE DE CONTRAINTE » depuis P4-42 sans qu'aucun
-      # step ne le lance : il bloquait le merge via `unit-tests` (contexte requis de main),
+      # step ne le lance : il bloquait le merge via `backend-tests` (contexte requis de main),
       # mais PAS `build-docker` — l'image se construisait sur une base rouge, et le verdict
       # arrivait tard. Même écart que P2-9ter, même correctif.
       # Ce qu'il garde : la PORTÉE d'un tag, c'est-à-dire ce que le solveur applique
@@ -1070,7 +1054,7 @@ jobs:
       # la rétention/reset de saison ET pour l'effacement RGPD (art. 17). Le test DÉRIVE des
       # constantes des deux purgers — une entité tenant nouvelle tombe en échec par défaut.
       # Falsifié : une table tenant NI purgée NI exclue (comme opponent_travel au 2026-09-18)
-      # fait rougir. Non bloquant jusqu'ici (tournait dans unit-tests, après le gate) : promu
+      # fait rougir. Non bloquant jusqu'ici (tournait dans backend-tests, après le gate) : promu
       # step NOMMÉ car il garde une promesse LÉGALE (une donnée personnelle promise détruite).
       - name: PurgeCompletenessTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PurgeCompletenessTest.php --group phase1'
@@ -1104,13 +1088,30 @@ jobs:
       - name: CoachWishTransferTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/CoachWishTransferTest.php --group phase1'
 
-  unit-tests:
-    name: Unit Tests
+  # Backend : UN SEUL passage de la suite PHPUnit COMPLÈTE (`phpunit tests/ --exclude-group
+  # contract`), instrumenté par pcov, avec le cliquet de couverture — remplace les ex-jobs
+  # `unit-tests` ET `backend-coverage` qui jouaient DEUX FOIS la même suite (P4-166 ; fusion
+  # 2026-10-14). SANS `needs` : aucun job ne consomme son artefact, le `needs: blocking-tests`
+  # d'`unit-tests` n'était que de l'ordonnancement — ce job démarre donc à t=0, en parallèle du
+  # gate, et le verdict backend tombe plus tôt.
+  #
+  # Cliquet : `scripts/coverage-gate.php` lit le plancher `backend` de `coverage-floor.json`
+  # (racine, une seule maison, remontée dans la MÊME PR quand la mesure s'améliore ; jamais un
+  # chiffre en dur) et sort 1 sous le plancher — PHPUnit 11 n'a pas de `--fail-under` natif. Le
+  # cliquet rougit CE job, un required check de `main` (« Backend Tests (suite + couverture) »,
+  # ex-« Unit Tests ») : il BLOQUE LE MERGE. Mais ce job n'est PAS dans les `needs` de
+  # `build-docker` — une perte de 1 % ne prend jamais en otage une image de prod urgente.
+  #
+  # pcov : driver présent UNIQUEMENT dans l'image dev/test (build-php-cached, WITH_PCOV=1) et
+  # INERTE par défaut (pcov.enabled=0) ; ce job seul l'active via `-d pcov.enabled=1`. L'image de
+  # PROD ne reçoit jamais cet arg et n'embarque jamais pcov. Restitution (B2) : artefact
+  # `coverage-backend` (clover + résumé texte), écrit AVANT le gate (`if: always()` plus bas).
+  backend-tests:
+    name: Backend Tests (suite + couverture)
     runs-on: ubuntu-latest
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 45
-    needs: blocking-tests
     steps:
       # fetch-depth: 0 — DocStampFreshnessTest compare chaque « Last verified » à la date du
       # dernier commit ayant touché le fichier. Un clone superficiel ne connaît qu'un commit :
@@ -1152,12 +1153,20 @@ jobs:
       - name: Init test database
         run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:database:create --if-not-exists --connection admin --env=test && php bin/console doctrine:migrations:migrate --no-interaction --env=test'
 
-      - name: Run unit tests
-        # SEC-13 : le groupe `contract` a QUITTÉ ce job pour « Engine semantics »
-        # (dédié, sans needs). Ce sont les tests qui interrogent le VRAI moteur —
-        # une autre question que « le code unitaire tient-il ? », noyée ici parmi
-        # plus d'un millier de tests, donc invisible quand elle tombait.
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/ --exclude-group contract'
+      # SEC-13 : le groupe `contract` reste EXCLU — il interroge le VRAI moteur (job dédié
+      # « Engine semantics »), une autre question que « le code unitaire tient-il ? ». pcov
+      # instrumente la suite ; le clover est écrit AVANT le gate pour que l'artefact parte même
+      # si le cliquet (ou un test) rougit (`if: always()` plus bas).
+      - name: Run full suite + coverage + cliquet
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php -d pcov.enabled=1 vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml && php scripts/coverage-gate.php'
+
+      - name: Upload coverage report (backend)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-backend
+          path: backend/coverage/
+          retention-days: 7
 
   engine-tests:
     name: Engine Tests
@@ -1186,8 +1195,24 @@ jobs:
       - name: Build engine
         run: docker compose build engine
 
-      - name: Run pytest
-        run: docker compose run --rm engine pytest
+      # pytest AVEC couverture + cliquet (ex-job `engine-coverage` fondu ici, 2026-10-14 :
+      # un seul passage au lieu de deux). ⚠ CONSÉQUENCE ACTÉE (décision fondateur 2026-10-14) :
+      # `engine-tests` EST dans les `needs` de `build-docker`, donc le cliquet engine gate
+      # DÉSORMAIS `build-docker` — contrairement aux cliquets backend/frontend qui restent hors
+      # de ce chemin (ils bloquent le merge via leur required check, pas l'image). Plancher lu de
+      # `coverage-floor.json` (racine, clé `engine`) — jamais un seuil en dur. `set -euo pipefail`
+      # pour que le `| tee` ne masque pas l'échec du seuil. `-u` mappe l'uid du runner : l'engine
+      # tourne sinon en uid 1000 (SEC-15) et ne pourrait pas écrire le rapport dans le bind-mount.
+      - name: Run pytest + coverage + cliquet
+        run: |
+          set -euo pipefail
+          FLOOR=$(python3 -c "import json; print(json.load(open('coverage-floor.json'))['engine'])")
+          echo "Plancher engine (coverage-floor.json) : ${FLOOR}%"
+          mkdir -p engine/coverage
+          docker compose run --rm -u "$(id -u):$(id -g)" engine \
+            pytest --cov=app --cov-report=term-missing \
+              --cov-report=xml:coverage/engine.xml \
+              --cov-fail-under="${FLOOR}" | tee engine/coverage/engine.txt
 
       - name: Run ruff
         run: docker compose run --rm engine ruff check .
@@ -1211,6 +1236,14 @@ jobs:
       # outils CLI/plugins pytest ignorés en DEP002).
       - name: Run deptry
         run: docker compose run --rm engine deptry .
+
+      - name: Upload coverage report (engine)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-engine
+          path: engine/coverage/
+          retention-days: 7
 
   engine-perf:
     name: Engine Perf Gate (main only)
@@ -1330,140 +1363,16 @@ jobs:
         if: steps.engine_changed.outputs.changed == 'true'
         run: docker compose run --rm -e PERF_BUDGET_SECONDS=${{ env.PERF_PR_BUDGET }} engine pytest -m perf -k dense_club --durations=0 -rA
 
-  # Couverture de code de l'engine + cliquet (P4-166, décisions B2/B3/B5).
-  #
-  # `needs: engine-tests` mais PAS dans les `needs` de `build-docker` : le cliquet
-  # (« on a perdu 1 % ») ne doit JAMAIS bloquer une image de prod sans décision
-  # humaine (B5). Le plancher est lu de `coverage-floor.json` à la racine — une seule
-  # maison, remontée dans la MÊME PR quand la mesure s'améliore ; jamais un chiffre
-  # magique en dur. `--cov-fail-under` fait rougir CE job (et lui seul).
-  #
-  # Restitution (B2) : artefact `coverage-engine` (xml + résumé texte), aucun service
-  # tiers. `set -euo pipefail` pour que le `| tee` ne masque pas l'échec du seuil.
-  # `-u` mappe l'uid du runner : l'engine tourne sinon en uid 1000 (SEC-15) et ne
-  # pourrait pas écrire le rapport dans le bind-mount possédé par le runner.
-  engine-coverage:
-    name: Engine Coverage (cliquet)
-    runs-on: ubuntu-latest
-    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
-    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
-    timeout-minutes: 15
-    needs: engine-tests
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
-      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
-      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
-      - name: Login to Docker Hub (anti-429)
-        if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Prepare .env
-        run: |
-          cp .env.dist .env
-          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
-
-      - name: Build engine
-        run: docker compose build engine
-
-      - name: Coverage (engine) + cliquet
-        run: |
-          set -euo pipefail
-          FLOOR=$(python3 -c "import json; print(json.load(open('coverage-floor.json'))['engine'])")
-          echo "Plancher engine (coverage-floor.json) : ${FLOOR}%"
-          mkdir -p engine/coverage
-          docker compose run --rm -u "$(id -u):$(id -g)" engine \
-            pytest --cov=app --cov-report=term-missing \
-              --cov-report=xml:coverage/engine.xml \
-              --cov-fail-under="${FLOOR}" | tee engine/coverage/engine.txt
-
-      - name: Upload coverage report (engine)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: coverage-engine
-          path: engine/coverage/
-          retention-days: 7
-
-  # Couverture de code du backend + cliquet (P4-166, décisions B1/B2/B3/B5).
-  #
-  # `needs: blocking-tests` (comme `unit-tests`) mais PAS dans les `needs` de
-  # `build-docker` : le cliquet (« on a perdu 1 % ») ne doit JAMAIS bloquer une image
-  # de prod sans décision humaine (B5). Job SÉPARÉ d'`unit-tests` : pcov instrumente,
-  # donc coûte — la boucle courte reste sans couverture. Le driver pcov est présent
-  # UNIQUEMENT dans l'image dev/test (build-php-cached, WITH_PCOV=1) et INERTE par
-  # défaut (pcov.enabled=0) : ce job seul l'active via `-d pcov.enabled=1`.
-  #
-  # Le plancher est lu de `coverage-floor.json` (racine) par scripts/coverage-gate.php
-  # (PHPUnit 11 n'a pas de --fail-under natif). Restitution (B2) : artefact
-  # `coverage-backend` (clover + résumé texte), aucun service tiers.
-  backend-coverage:
-    name: Backend Coverage (cliquet)
-    runs-on: ubuntu-latest
-    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
-    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
-    timeout-minutes: 45
-    needs: blocking-tests
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
-      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
-      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
-      - name: Login to Docker Hub (anti-429)
-        if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Prepare .env
-        run: |
-          cp .env.dist .env
-          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
-
-      # P4-90 — la couche chère de l'image php vient du cache GHA (pcov compris,
-      # WITH_PCOV=1 dans l'action : image dev/test).
-      - name: Pre-build php image (GHA cache)
-        uses: ./.github/actions/build-php-cached
-
-      - name: Start services
-        run: docker compose up -d --wait php-fpm engine
-
-      - name: Install PHP deps (cached + retried)
-        uses: ./.github/actions/composer-install-cached
-
-      - name: Generate JWT keys
-        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction'
-
-      - name: Init test database
-        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:database:create --if-not-exists --connection admin --env=test && php bin/console doctrine:migrations:migrate --no-interaction --env=test'
-
-      # Couverture sur la MÊME suite que `unit-tests` (`phpunit tests/ --exclude-group
-      # contract`), instrumentée par pcov. Le clover est écrit AVANT le gate : l'artefact
-      # part même si le cliquet (ou un test) rougit (`if: always()` plus bas).
-      - name: Coverage (backend) + cliquet
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php -d pcov.enabled=1 vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml && php scripts/coverage-gate.php'
-
-      - name: Upload coverage report (backend)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: coverage-backend
-          path: backend/coverage/
-          retention-days: 7
-
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 40
-    needs: blocking-tests
+    # SANS `needs` (2026-10-14) : l'e2e ne consommait aucun artefact de `blocking-tests`, ce
+    # `needs` n'était que de l'ordonnancement — il faisait attendre ~6 min un verdict navigateur
+    # qui peut tomber à t=0 (comme Behat, déjà sans needs). Prix assumé : un runner e2e dépensé
+    # même sur une PR déjà rouge au gate.
     env:
       # BuildKit « bake » démarre un builder et peut se figer sur « waiting for BuildKit:
       # DeadlineExceeded » quand compose délègue un build local (engine) — run e2e rouge du

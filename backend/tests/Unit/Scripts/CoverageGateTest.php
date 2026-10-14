@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
  * `coverage-floor.json`. Ce test vérifie la LECTURE (fixture clover minimale) et la
  * DÉCISION (au-dessus / au-dessous du plancher) — sans conteneur ni base.
  *
- * NON gatant (pas un axe §7.1) : tourne dans `unit-tests`.
+ * NON gatant (pas un axe §7.1) : tourne dans la suite `backend-tests` (ex-`unit-tests` + `backend-coverage`, fusionnés 2026-10-14).
  */
 #[Group('phase1')]
 final class CoverageGateTest extends TestCase
