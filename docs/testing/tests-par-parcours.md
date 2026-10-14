@@ -144,7 +144,9 @@ La mairie prévient, je déclare la fermeture, je vois qui est touché, j'échan
 je génère, j'exporte en PDF. **Réussite** : les équipes majeures gardent leurs jours ; jusqu'au rang
 B ≥ 80 % des séances ; aucune prioritaire ne perd.
 - Déclarer → plan de fermeture en copie, séances « à replacer » : bloquants `PeriodCopyBirthTest`,
-  `PeriodPlanBirthTest` ; Behat `plan-de-periode-en-overlay`, `une-indisponibilite-se-decoupe`.
+  `PeriodPlanBirthTest` ; Behat `plan-de-periode-en-overlay` ; le découpage début·milieu·fin d'une
+  indisponibilité est replié au plus bas sur `SplitMotherRedateTest` / `WeekSegmentationMirrorParityTest`
+  (feature `une-indisponibilite-se-decoupe` retirée, PR4a).
 - 3→2 / mutualiser / diviser : overrides de période, gates `SharedBlock*`, capacité
   `VenueTrainingSlot`.
 - Bilan par rang : **manque produit** (ligne de roadmap). Aperçu « qui est touché » dès la
@@ -213,8 +215,10 @@ d'invitation ; replier le reste sur `ClubInvitationTest`, `RegisterClubLookupTes
 `LoginFailureCopyTest`.
 
 ### Parcours « oubliés » — GARDÉS
-- **Démo prospect** : fondre `la-demo-ne-s-ouvre-que-pendant-sa-fenetre` +
-  `le-club-demo-d-un-prospect-se-conserve` en UN enchaînement démo → conservation → reprise.
+- **Démo prospect** : la fenêtre de connexion et la capture du code FFBB sont repliées au plus bas
+  sur `DemoWindowTest` / `DemoClubCaptureTest` (feature `la-demo-ne-s-ouvre-que-pendant-sa-fenetre`
+  retirée, PR4a) ; l'enchaînement démo → conservation → reprise reste porté par
+  `le-club-demo-d-un-prospect-se-conserve` (à étoffer en PR4b si besoin).
 - **Transition de saison** : E2E `season-transition.spec.ts`, fusionné en 1 parcours.
 - **Démarrage en cours de saison** : `un-club-en-cours-de-saison-valide-ses-matchs-en-lot`, en
   l'état.
