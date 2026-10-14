@@ -713,13 +713,21 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     await expect(exterieurs).toHaveAttribute("aria-checked", "false");
     await exterieurs.click();
     await expect(exterieurs).toHaveAttribute("aria-checked", "true");
-    await expect(page).toHaveURL(/[?&]exterieurs=1/);
+    // ⚑ 15 s : l'interrupteur (aria-checked) reflète le store IMMÉDIATEMENT, mais l'écriture du
+    // param dans l'URL est portée par `useCalendarUrlSync` (useCalendarUrlSync.ts:75-78), dont
+    // la re-synchro est GARDÉE tant que teams/coaches/venues/fixtures ne sont pas chargés. Juste
+    // après le montage du Calendrier, ces quatre lectures peuvent dépasser 5 s sous charge CI.
+    await expect(page).toHaveURL(/[?&]exterieurs=1/, { timeout: 15_000 });
     await matchesNav.getByRole("link", { name: "Conflits" }).click();
     await expect(page).toHaveURL(/\/matchs\/conflits/);
     await matchesNav.getByRole("link", { name: "Calendrier" }).click();
     await expect(page).toHaveURL(/\/matchs(\?|$)/);
     await expect(exterieurs).toHaveAttribute("aria-checked", "true");
-    await expect(page).toHaveURL(/[?&]exterieurs=1/);
+    // Même témoin réseau (15 s) : le Calendrier VIENT d'être re-monté par l'aller-retour
+    // Conflits → Calendrier, donc ses quatre lectures re-chargent et la re-synchro de l'URL
+    // (useCalendarUrlSync.ts:78) ne réécrit `exterieurs=1` qu'une fois les données prêtes —
+    // c'est précisément ce point qui a rougi (run 38591293403 tentative 1, URL restée « /matchs »).
+    await expect(page).toHaveURL(/[?&]exterieurs=1/, { timeout: 15_000 });
     await exterieurs.click();
     await expect(exterieurs).toHaveAttribute("aria-checked", "false");
 
