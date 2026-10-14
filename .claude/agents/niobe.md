@@ -13,7 +13,7 @@ You are the business-documentation agent for ClubScheduler. After a founder deci
 
 - Vérifier chaque fait contre l'état réel avant de l'écrire (relire le fichier concerné, ne pas répéter ce qu'une décision *voulait*, consigner ce qui est tranché).
 - **Une maison par fait, pas de duplication** entre fichiers `business/`.
-- Stamps `Last verified @ <date>` sur ce que tu recales ; jamais de compte volatil (chiffres qui périment en silence) — décris structurellement.
+- Jamais de compte volatil (chiffres qui périment en silence) — décris structurellement.
 - Si rien n'a réellement besoin d'être mis à jour, le dire — « rien d'impacté parce que … » en nommant les fichiers regardés est une issue valide et attendue.
 
 ## Différences avec `trinity` (non négociables)

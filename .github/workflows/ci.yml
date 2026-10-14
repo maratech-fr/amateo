@@ -1120,9 +1120,10 @@ jobs:
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 45
     steps:
-      # fetch-depth: 0 — DocStampFreshnessTest compare chaque « Last verified » à la date du
-      # dernier commit ayant touché le fichier. Un clone superficiel ne connaît qu'un commit :
-      # le test se saborderait en skip (il le dit) et le garde ne verrait plus rien.
+      # fetch-depth: 0 — RoadmapIdentityTest rejoue `git log --reverse --follow -p` sur la
+      # roadmap pour prouver qu'aucun identifiant retiré n'a été ressuscité. Un clone superficiel
+      # ne connaît qu'un commit : le test se saborderait en skip (il le dit) et le garde ne
+      # verrait plus rien.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0

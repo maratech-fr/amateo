@@ -1,20 +1,5 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur verrous V1/V1bis) : `CONTRACT_VERSION` =
-`'1.5'` (bump 1.4 → 1.5, `ScheduleConstraintBuilder::CONTRACT_VERSION` ⇄ `engine/CONTRACT_VERSION`,
-lot 8 « garder ses créneaux de saison ») ✓ ; §3b corrigée — elle disait encore que le handler
-bascule sur `buildForOverlay` quand `Schedule.calendarEntryId` est renseigné, un champ DROPPÉ
-depuis ADR-0002 C4 ; la branche se dérive en fait du **plan** de la version
-(`SchedulePlanProvisioner::periodEntryIdOf`, confronté à `GenerateScheduleHandler::generate`),
-avec la greffe des verrous hérités notée au passage (lot verrous, §3b) ; re-confrontés aussi le TTL
-du verrou (`GenerateScheduleHandler::LOCK_TTL_MARGIN_SECONDS = 60`,
-`acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ✓, `RedeliveredGenerationTest`
-toujours listé bloquant dans `docs/testing/blocking-tests.md` ✓, le payload Mercure porte toujours
-exactement les mêmes champs (`ScheduleProgressPublisher::publish` — `scheduleId`, `status`, `score`,
-`unplaced`, `warnings`) ✓, et l'empreinte PAR PLAN servie par `GET /api/schedule_plans/{id}/structure-hash`
-(`SchedulePlanProvisioner::structureHashOfPlan`, recalée le 2026-10-08, P4-266) ✓. Reste du fichier
-non re-contrôlé cette passe — historique : `git log -p --follow` sur ce fichier.
-
 > Amateo — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
 ---

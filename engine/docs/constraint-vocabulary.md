@@ -1,18 +1,5 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-13 (P4-322 — diagnostic de bloc mutualisé, deux causes de plus) : ligne
-« Diagnostic post-solve (`_diagnose_shared_blocks`) » de la table §Bloc de mutualisation complétée
-des causes `hard_lock` (verrou HARD d'une équipe non membre sur les seules cases libres) et
-`time_window` (fenêtre horaire dure d'un membre qui les exclut), confrontée à
-`engine/app/solver/result_builder/diagnostics/shared_blocks.py::
-_diagnose_blocks_blocked_by_nonmember_lock`/`_diagnose_blocks_blocked_by_time_window` — kinds
-EXISTANTS, aucun bump de contrat (`engine/CONTRACT_VERSION` reste `1.5`). Reste du vocabulaire non
-re-sondé cette passe (dernière relecture 2026-10-11) : section « Référence socle » (second régime
-KEEP, `SOCLE_KEEP_FULL_TIER_WEIGHTS`/`SOCLE_KEEP_PARTIAL_TIER_WEIGHTS`, `SCORE_FORMULA_VERSION` V14),
-§Bloc de mutualisation (règle moteur + MIROIR pré-solve « un coach suffit »), §COACH_AVAILABILITY
-(Q4B, fondateur 2026-10-10), découpe en paquets `constraints/structural/`, `constraints/wellness/`,
-`match_placement/` (P4-295 C3-C6), `preferredDays` (P4-312) — un stamp REMPLACE, il ne s'empile pas.
-
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
 > Chaque entrée donne le **mécanisme** (dur/soft), le **ruleType** qui l'active, et un **exemple BCCL**.

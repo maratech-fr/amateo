@@ -21,7 +21,7 @@ use Doctrine\Migrations\AbstractMigration;
  *
  * Écrite À LA MAIN : `make migration-diff` reste inopérant tant que `doctrine/dbal` < 4.5
  * (backend.md). Exécutée par l'owner (amateo_owner, hors RLS) : le DELETE balaie bien toutes les
- * lignes, tous clubs confondus. Gardée par `MigrationUniqueCaseIndexTest` (purge + index UNIQUE).
+ * lignes, tous clubs confondus.
  */
 final class Version20261011130000 extends AbstractMigration
 {

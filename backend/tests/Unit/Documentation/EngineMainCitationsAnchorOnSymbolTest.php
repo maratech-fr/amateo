@@ -18,7 +18,7 @@ use PHPUnit\Framework\TestCase;
  * une ligne est insérée ailleurs ; un commentaire mort sans symbole propre se cite par un
  * marqueur textuel stable (`commentaire FACILITY_CAPACITY, app/main.py`).
  *
- * Ce garde tient deux propriétés sur les docs vivants (le périmètre de `DocStampFreshnessTest`,
+ * Ce garde tient deux propriétés sur les docs vivants (les globs de zone de self::WATCHED,
  * hors `etat-des-lieux.md` dont le §3 porte des traces datées exemptées) :
  *
  *   (a) AUCUNE occurrence du motif `main.py:<chiffre>` — l'ancrage par ligne est banni ;
@@ -36,9 +36,9 @@ final class EngineMainCitationsAnchorOnSymbolTest extends TestCase
     private const string ROOT = __DIR__ . '/../../../..';
 
     /**
-     * Les docs vivants balayés — miroir de `DocStampFreshnessTest::WATCHED`, hors le journal
-     * `etat-des-lieux.md` (son §3 garde des traces datées où un `main.py:NNN` historique est
-     * légitime, figé dans le temps).
+     * Les docs vivants balayés — les mêmes globs de zone que les autres gardes doc
+     * (`DocSizeCeilingTest`), hors le journal `etat-des-lieux.md` (son §3 garde des traces datées
+     * où un `main.py:NNN` historique est légitime, figé dans le temps).
      */
     private const array WATCHED = [
         'specs/courantes/*.md',

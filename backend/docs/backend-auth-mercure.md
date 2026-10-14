@@ -2,8 +2,6 @@
 
 > La couche sécurité/authentification du backend (JWT, access control, résolution du tenant) et le canal temps réel Mercure (config, souscription frontend, topics & publication). Découpé mécaniquement de `backend-inventory.md` (DOC-59).
 
-Last verified @ 2026-10-10 (rotation de fraîcheur) : `TenantFilterListener::getSubscribedEvents` confirme la priorité **7** (`backend/src/EventListener/TenantFilterListener.php:56`) et `ApiRateLimitSubscriber::getSubscribedEvents` la priorité **6** (`backend/src/EventListener/ApiRateLimitSubscriber.php:38`) — l'ordre firewall(8) > tenant(7) > rate-limit(6) tient ; `SeasonResolver::currentAmong` existe et est le point d'entrée utilisé par la résolution de saison (`backend/src/Service/SeasonResolver.php:67`) ; le cookie Mercure `mercureAuthorization` est bien posé par `MercureAuthController` (`:108`). Reste du fichier non re-confronté cette passe — historique de vérification : `git log -p --follow` ce fichier.
-
 ## 4. Security / Auth
 
 ### JWT (LexikJWTAuthenticationBundle)

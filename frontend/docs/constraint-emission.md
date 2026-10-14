@@ -1,10 +1,5 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-10-10 (lot 3b PR C, `documentation-update`) : la ligne `ConstraintPeriodOverride`
-recalée contre `PeriodConstraintSelector::selectForPeriodPlan` — le défaut vacances ne garde plus
-que le scope CLUB (TEAM/COACH/FACILITY off, décision fondateur 2026-10-10). Reste de la table non
-rejoué ligne à ligne cette passe.
-
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
 > « ce que le front veut » n'est **pas** écrit par le backend ou **pas** compris par l'engine.

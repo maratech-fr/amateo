@@ -21,8 +21,6 @@ use Doctrine\Migrations\AbstractMigration;
  * (backend.md). RLS : `schedule_plan` porte DÉJÀ sa policy tenant (ENABLE+FORCE ROW LEVEL
  * SECURITY, Version20260712150000) — on n'ajoute qu'une colonne, la policy par ligne
  * (sur `club_id`) la couvre sans changement.
- *
- * Gardé par `MigrationLockSourcePointerTest` (aller-retour DDL, FK SET NULL sur suppression).
  */
 final class Version20261010170000 extends AbstractMigration
 {

@@ -2,24 +2,6 @@
 
 > Inventaire des contrôleurs Symfony custom (hors module démo) : OpenAPI des routes custom, authentification, génération & cycle de vie du planning, groupes, membres, contraintes, radar de conflits, calendriers, géo, exports, édition manuelle, import, module matchs, transition de saison, health check. Découpé mécaniquement de `backend-inventory.md` (DOC-59) ; le module démo et l'horloge simulée vivent dans `backend-demo.md`.
 
-Last verified @ 2026-10-14 (lot 2 « la séance de groupe est une séance », chemin DÉPLACEMENT) :
-NOUVELLE ligne `POST /api/schedule-slots/mutualize-at-case` recalée contre
-`MutualizeSlotService::mutualizeAtCase()` — « mutualiser depuis le dépôt » (équipe→équipe,
-rejoindre, fusion), règle « on répartit, on ne crée rien », ensembles DISJOINTS, « +1 séance
-commune » si l'ensemble égale un bloc existant, FK CASCADE reliée AVANT suppression. Q2 : la ligne
-`/swap` est recalée — CHAQUE côté peut être équipe OU groupe (échange **N↔M**), le refus
-`evict_target_is_group` y est RETIRÉ (un occupant groupe s'échange) ; la ligne `/move` est recalée —
-un occupant évincé peut être un GROUPE, ses N séances partent ensemble (réponse `evictedGroup`, bloc
-survit). `MutualizeSlotApiTest` est désormais **step de `blocking-tests`** (promu, ci.yml +
-`docs/testing/blocking-tests.md`) et `SharedBlockAnchoredCaseGateTest` étend un cas de bloc FUSIONNÉ
-à 4 équipes + comblement. Échange atomique `/swap` (P4-327), éviction `/move-group` (P4-329) et
-mutualisation au socle re-vérifiés les 2026-10-13/14 : portée `NULL` au socle, activation d'une
-équipe à 0 séance propre à la période (refus 422 nommé au socle), `/move-group` continue de refuser
-un occupant GROUPE (`evict_target_is_group` — deux groupes se gèrent par `/swap` ou
-`/mutualize-at-case`). Détail du modèle et des décisions fondateur :
-[`mutualisation.md`](../../specs/courantes/mutualisation.md). Reste du fichier non re-confronté
-cette passe — historique des vérifications précédentes : `git log -p --follow`.
-
 ## 3. Custom Controllers
 
 Les contrôleurs personnalisés vivent dans `backend/src/Controller/`. Certains sont déclarés

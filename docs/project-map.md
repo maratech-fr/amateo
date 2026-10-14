@@ -1,7 +1,5 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : §Engine, le contrat unique `/generate` · `/place-matches` · `/validate-assignments` confronté à `engine/CONTRACT_VERSION` = `1.5` (bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne `venueId`/`keep`). Le tableau Engine §3 (découpe en paquets `validate_assignments/`, `match_placement/`, `objective/terms/`, P4-295 C2-C4, 2026-10-09) et la ligne « Doléances coachs » (`CoachWishMutualization`, `CoachWishCampaignPreviewController`, #10 D2, 2026-10-09) non reconfrontés cette passe.
-
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
 ---

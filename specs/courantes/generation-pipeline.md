@@ -1,19 +1,5 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur lot P2-63 PR 5) : `CONTRACT_VERSION`
-**`'1.5'`** confirmé aux trois foyers (`ScheduleConstraintBuilder::CONTRACT_VERSION`,
-`MoveSlotService::CONTRACT_VERSION`, `MatchPlacementPayloadBuilder::CONTRACT_VERSION`) et
-`engine/CONTRACT_VERSION` (`1.5`) ✓ — bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne
-`venueId`/`keep` (« garder ses créneaux de saison », PR 6 / lot 8) ; « Transférer au planning »
-(P2-63 PR 5) n'écrit que des overrides/contraintes, aucun changement de contrat. Re-confrontés au
-passage : la mention de `currentStructureHash` (§ greffe de convergence, le garde « structure
-inchangée » compare au `snapshotHash` l'empreinte de structure PAR PLAN,
-`SchedulePlanProvisioner::structureHashOfPlan`) ✓ ; la garde de redélivrance
-(`GenerateScheduleHandler`, SEUL `COMPLETED` bloque) et la persistance de la greffe de convergence
-(`Schedule::payloadGraft`/`engineInput()`, recalée le 2026-10-08, P4-266) toujours en place ✓ ;
-aucun écran frontend n'affiche `score` (`frontend/src/features/planning/api.ts`) ✓.
-*(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
-
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
 > gestionnaire lance une génération : ce que fait le frontend, ce que fait le
 > backend, ce que répond le moteur, comment le résultat est importé puis affiché.
@@ -125,7 +111,7 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
 ## 4. Engine — ce qu'il répond
 
 - Solveur CP-SAT, **pas de fallback de relaxation** (toutes les contraintes HARD à
-  chaque tentative). Réponse conforme au contrat Pydantic (`engine/CONTRACT_VERSION`,
+  chaque tentative). Réponse conforme au contrat Pydantic (`engine/CONTRACT_VERSION` = `1.5`,
   gardé par `ContractSchemaTest`) : `status`, `slots[]` (placements), `diagnostics[]`.
 - INFEASIBLE → `status="failed"` + diagnostics. COMPLETED possible **avec** des
   warnings (un plan sous-optimal reste un plan).

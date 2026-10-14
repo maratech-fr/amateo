@@ -67,6 +67,16 @@ dépôt**.
   intestable — falsifier, pas lire).
 - **Exemple** : `MatchConflictDetectorTest` (les vérités géométriques des conflits de matchs).
 
+#### Patron — NR de migration de données (obligatoire JUSQU'À l'application en prod)
+Un test qui rejoue le SQL d'une migration de données (`backend/tests/Integration/Migration*Test`,
+purge/backfill/rename/DDL round-trip) est un NR **obligatoire tant que la migration n'a pas tourné
+en prod** : il protège le run réel qui va modifier des données. Une fois la migration appliquée en
+prod, elle ne rejouera jamais (une migration est jouée une seule fois) — le test ne garde alors plus
+rien d'actionnable et part à la passe de réduction. La RÈGLE que la migration posait (l'invariant
+d'état qu'elle établit, p. ex. « une équipe ne siège jamais deux fois à la même case ») doit, elle,
+vivre dans un test de code VIVANT (garde API/service), jamais dépendre du test de migration pour sa
+preuve.
+
 ### Vitest (`frontend/src/**`, jsdom + RTL)
 - **Doit** : prouver un comportement de composant / un état (rendu, branche, redérivation interdite)
   en mutant la PROD, pas le mock.

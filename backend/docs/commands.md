@@ -1,15 +1,5 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-10-14 (refonte CI : les renvois aux jobs CI de `tests-complete`,
-`tests-engine-semantics` et `coverage` recalés sur le job fusionné `backend-tests` — ex-`unit-tests`
-+ `backend-coverage` — confrontés à `.github/workflows/ci.yml` ; statut posé ce jour. Contenu
-reconfronté le 2026-10-10, passe P2-63 lot 5) : `make tests-complete` dépend
-bien de `purge-test-cache` (`rm -rf var/cache/test/pools` puis `cache:clear --env=test`) + warmup
-`var/cache/dev` conditionnel, et `make behat` fait son `cache:clear --env=dev` — reconfrontés contre
-`backend/Makefile` (cibles `purge-test-cache`, `tests-complete`, `behat`). Le reste de la page
-(autres commandes, garde-fou, modes play/sandbox, `with-sandbox.sh`) non re-sondé cette passe — un
-stamp REMPLACE, l'historique vit dans git.
-
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
 > La base : `make help` affiche cette liste côté Makefile.

@@ -1,12 +1,5 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-10-11 (P2-63 PR 5) : § Collecte des doléances coachs (E5) recalé contre
-`WishesTab.tsx`/`CoachWishesHub.tsx` — l'onglet Doléances porte la case de sélection + le bouton
-« Transférer au planning » au pied de la fenêtre (la coche directe « traité » de la todo-list a
-disparu, remplacée par une pastille + le crayon) ; UN bouton « Doléances » ouvre toujours une
-fenêtre à trois onglets (Doléances · Sollicitation · Réglages). Reste du fichier non rejoué ligne
-à ligne cette passe.
-
 > **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
 > à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
 > manipule, quel besoin il comble.

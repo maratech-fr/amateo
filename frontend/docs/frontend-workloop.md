@@ -2,21 +2,6 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-14 (lot 2 « la séance de groupe est une séance », chemin DÉPLACEMENT) :
-§6.7 recalé contre `useRetouchGestures.ts`/`PlanningPage.tsx`/`DropActionMenu.tsx`/
-`MutualizeAtCaseDialog.tsx`/`EvictConfirmDialog.tsx` — déposer une séance sur une case OCCUPÉE ouvre
-désormais un **menu à 3 choix** (`DropActionMenu` : Prendre sa place / Échanger / Mutualiser, un
-choix impossible désactivé AVEC motif via `disabledReason`, A11Y-30) au lieu d'ouvrir d'emblée la
-modale d'éviction. « Échanger » (`useSwapSlot`/`useSwapDryRun` → `EvictConfirmDialog kind="swap"`) et
-« Mutualiser » depuis le dépôt (`useMutualizeAtCase` → `MutualizeAtCaseDialog`) sont câblés ; une
-éviction d'un occupant de GROUPE (`evictedGroup`) toaste « groupe de N séances à replacer » (pas de
-un-clic). §6.7 ter (mutualisation au socle, 2026-10-13) et « Déplacer le GROUPE » (P4-329) inchangés.
-Modèle et décisions fondateur : [`mutualisation.md`](../../specs/courantes/mutualisation.md) §2.4.
-Recalage e2e (PR5 « tests », 2026-10-14) : le parcours navigateur de mutualisation vit désormais
-dans `mutualize.spec.ts` (renommage de fichier, parcours et comportement INCHANGÉS).
-Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans
-`git log -p --follow` ce fichier.
-
 ### 6.7 Retouche manuelle — mode cible, éviction, dérive, verrouiller (rail read-only + verdict moteur, 2026-08-16)
 
 `schedule_slot_templates` est **read-only côté API** (`GetCollection`/`Get` seulement — POST/PUT/

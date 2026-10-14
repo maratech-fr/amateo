@@ -1,7 +1,5 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-10-09 (P4-295 C5 — citation `MIN_SESSIONS` ré-ancrée sur le symbole `add_min_sessions_constraints` du sous-paquet `constraints/structural/`, numéros de ligne retirés ; + rotation de fraîcheur `documentation-update`, D2 PR B). `ConstraintFamily` porte toujours exactement 4 cas (`TIME`/`DAY`/`FACILITY`/`COACH_AVAILABILITY`, `FACILITY_CAPACITY` absent, `backend/src/Enum/ConstraintFamily.php`) ✓ ; `MIN_SESSIONS` toujours « soft par décision » (`add_min_sessions_constraints` dans `engine/app/solver/constraints/structural/min_sessions.py`, soft TARGET seul — production passe 0 comme plancher dur, confronté) ✓ ; « Réserver un gymnase à un groupe » toujours ❌ (`forcedVenueId` ne réserve rien aux autres). Non re-sondé cette passe : les poids.
-
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
 > (🟡) et **non couverts** (❌). Le vocabulaire moteur correspondant est détaillé dans

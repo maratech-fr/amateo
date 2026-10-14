@@ -1,17 +1,5 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-10-11 (rotation `documentation-update`, lot B). Re-confronté au code : la
-route `/doleances/:token` toujours servie par `frontend/src/app/routes.tsx`, mais la citation de
-ligne avait dérivé — **corrigée `:125`** (pas `:119`, qui pointe `/confidentialite`) ; l'export
-planning PDF/Excel a été EXTRAIT depuis l'écriture de ce fichier — il ne vit plus dans
-`queries.ts` mais dans `frontend/src/features/planning/ExportMenu.tsx` (`api.ts:167,175` pour les
-deux routes `export-pdf`/`export-xlsx`) — **citation corrigée** ; le wizard à 6 étapes toujours
-exact (`frontend/src/features/wizard/lib/steps.ts:9-16`) ; rappels J-14/J-7/J-3 toujours à
-`backend/src/Command/PeriodReminderCommand.php:31,40` ; échéance RMM-6 toujours portée par
-`backend/src/Service/EntryDeadlineOutlook.php` (règle `REMINDER_WINDOW_DAYS`, ligne `:40`, pas
-`:39-40`). `FfbbClubPopulator.php`/`FfbbTeamImporter.php` toujours dans
-`backend/src/Service/Basketball/` ✓. Reste des claims non re-sondées cette passe.
-
 > **Rôle de ce fichier.** `etat-des-lieux.md` §1 est la carte technique (entités, PR, pointeurs) —
 > ce fichier est sa **couche en langage club** : ce que le produit fait, dit à qui le vit sur le
 > terrain, pour nourrir la page de vente, la FAQ et les scripts de démo. Une entrée = un point

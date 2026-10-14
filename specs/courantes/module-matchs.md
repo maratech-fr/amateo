@@ -1,12 +1,5 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-13 (couverture « Import/réconciliation » recalée : les 2 features Behat dépendant de l'API FFBB réelle retirées, promesses renvoyées vers `OpponentVenueAutoLocatorTest` et `OpponentVenueSuggestionShareTest`) : `CONTRACT_VERSION` 1.5
-(bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne `venueId`/`keep` — bloc sans effet sur
-`/place-matches`, qui ne réutilise pas les schémas hebdomadaires de `/generate`) confronté à
-`engine/CONTRACT_VERSION`. Le reste du module (découpe en paquet `match_placement/`, citations
-P4-295 C3-C4, P4-96/P4-300/BCK-19, vocabulaire `/place-matches`, P4-271/P4-272 et §7 « Engagements
-FFBB ») non réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
-
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
 > [`etat-des-lieux.md`](etat-des-lieux.md) §1.5 (carte) et §3 (traces datées) ; les **décisions

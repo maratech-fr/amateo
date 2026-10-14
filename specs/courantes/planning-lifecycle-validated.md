@@ -1,16 +1,5 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-14 (renommage des sous-agents Matrix — `contrarian-review` → `smith`, nom
-seul, aucun fait re-confronté cette passe ; précédemment 2026-10-11, lot verrous V1/V1bis) : nouveau §3.1bis (verrous d'une période
-survivant à « Régénérer », « Charger » pour une période) confronté à
-`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`/`pointLockSource`, `LoadLocksController` et
-`ScheduleConstraintBuilder::buildForPeriodPlan` ; §3.5 et §4 gagnent `canLoadLocks`/
-`isLockSource`/`hardLockCount` ; §6 gagne `LoadLocksTest`, l'extension de
-`ScheduleConstraintBuilderOverlayTest`/`LockOriginProvenanceTest`/`SchedulePlanStructureHashTest`
-et les 3 scénarios Behat de `un-verrou-est-souverain.feature`. Reste non re-sondé cette passe : le
-reste du fichier. Historique des passes vit dans git :
-`git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
-
 Le plan de type **SEASON** (`schedule_plan`) et **la version qu'il pointe**
 (`chosen_schedule_id`, `App\Entity\SchedulePlan`) SONT le calendrier de la saison
 ([ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)).
@@ -262,8 +251,7 @@ de son plan, et combien elle en porte ; consommés par la confirmation de régé
   (un verrou MANUAL hérité ne dégrade jamais en UNKNOWN) ; `SchedulePlanStructureHashTest` étendu
   (le hash tient le round-trip après une régénération qui fait survivre des verrous) ;
   `OverlayVersionsTest` (parité `isLockSource`/`hardLockCount` de la collection, batch, sans fuite
-  inter-club) ; `MigrationLockSourcePointerTest` (aller-retour DDL, FK `SET NULL` sur suppression de
-  la version pointée). Feature Behat `un-verrou-est-souverain.feature` : 3 scénarios dédiés — deux
+  inter-club). Feature Behat `un-verrou-est-souverain.feature` : 3 scénarios dédiés — deux
   séances d'un plan de période reviennent verrouillées après régénération ; « Charger » une version
   plus ancienne puis régénérer repart de SES verrous (pas de la plus récente) ; deux régénérations
   successives transportent les verrous de l'une à l'autre.

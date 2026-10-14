@@ -1,16 +1,5 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-10-14 (deux changements ce jour : (1) ajout du pointeur vers la charte
-`tests-par-parcours.md` ; (2) §1 : refonte CI « un seul passage couvert par suite » — `unit-tests` +
-`backend-coverage` fusionnés en `backend-tests` ; `engine-coverage`/`frontend-coverage` fondus dans
-`engine-tests`/`frontend` ; `e2e` sans `needs` ; bloc `concurrency:` racine ; le cliquet engine gate
-désormais `build-docker`. Graphe, tableau des jobs et paragraphes de couverture confrontés à
-`.github/workflows/ci.yml` ; renvois `unit-tests` du reste du fichier recalés, et le renvoi de
-lignes volatil `ci.yml:NNNN` (install chromium) remplacé par le nom du step. Reste du fichier non re-confronté cette passe — dernier balayage complet
-du graphe CI §1 avant celui-ci : 2026-10-06, voir `git log -p --follow docs/testing/testing-strategy.md`).
-Ce fichier ne couvre que backend+engine (« Scope » ci-dessous), sauf le graphe CI §1 qui est
-cross-zone par nature.
-
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts), [`tests-par-parcours.md`](tests-par-parcours.md) (ce que chaque niveau doit prouver, par parcours — la charte de l'agent `tank`) and [`../project-map.md`](../project-map.md).
 
 ---
@@ -54,7 +43,7 @@ hors de ce chemin (`backend-tests` et `frontend` ne sont pas des `needs` de `bui
 `coverage-floor.json` ; PHPUnit 11 n'a pas de `--fail-under` natif). **SANS `needs`** : aucun job ne
 consomme son artefact (le `needs: blocking-tests` de l'ex-`unit-tests` n'était que de
 l'ordonnancement), il démarre donc à t=0. `timeout-minutes: 45`, `fetch-depth: 0` (pour
-`DocStampFreshnessTest`). Required check de `main` (« Backend Tests (suite + couverture) »,
+`RoadmapIdentityTest`, qui rejoue l'histoire git de la roadmap). Required check de `main` (« Backend Tests (suite + couverture) »,
 ex-« Unit Tests ») → **bloque le merge** ; **absent des `needs` de `build-docker`** — une perte de
 1 % ne prend jamais en otage une image de prod. `pcov` est **chargé mais INERTE**
 (`pcov.enabled = 0` par défaut) et n'existe QUE dans l'image dev/test (`ARG WITH_PCOV=0` par défaut,

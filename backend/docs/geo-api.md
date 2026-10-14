@@ -1,7 +1,5 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : le § solveur d'entraînement cite `CONTRACT_VERSION` **1.5** — confronté à `engine/CONTRACT_VERSION` (= 1.5, bump 1.4 → 1.5), à jour. Le reste du fichier (hosts en liste blanche, `VenueGeoCheck`/`FfbbSalleAddressResolver`/`BanGeocodingClient`/`VenueGeoCheckController` au § 5) non re-sondé ligne à ligne cette passe. Historique des passes : `git log -p --follow backend/docs/geo-api.md`.
-
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
 > confinés). Ces deux fournisseurs sont **publics, gratuits, sans clé, et 🇫🇷** (cohérence RGPD).

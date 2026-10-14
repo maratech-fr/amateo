@@ -2,8 +2,6 @@
 
 > Endpoints consommés par le frontend (par route), radar de conflits et invalidations, headers obligatoires, authentification, génération asynchrone, pagination, formats. Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-12 (« Retirer une séance placée » + rotation de fraîcheur `documentation-update`). Ligne `/planning` et le tableau détaillé ManualEditController gagnent `POST /api/schedule-slots/{id}/remove`/`remove-group` (confronté à `api.ts::removeSlot`/`removeSlotGroup`, `queries.ts::useDeleteSlot`/`useDeleteSlotGroup` — aucun appel moteur, `dryRun`, paquet d'invalidation `slots`/`schedules`/`diagnostics`/`socle-deviation` sur le réel seulement). ⚠ Signal de drift constaté (pas corrigé cette passe, hors scope) : les routes `/move-group` et `/mutualize` du même contrôleur ne sont déjà pas listées ici — gap antérieur à cette PR. Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
-
 ## 9. Contrat API Frontend ↔ Backend
 
 > Ce section référence le contrat API. L'inventaire complet des ressources, contrôleurs, et

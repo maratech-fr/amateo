@@ -1,7 +1,5 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : ligne `SEASON_SLOTS` ajoutée — AUCUNE clé de config, refus confronté à `ConstraintConfigValidator::SPEC['SEASON_SLOTS']` (tableau vide) et `ConstraintValidationService` (HARD refusé, scope TEAM exigé). Le reste de la liste blanche et les citations engine (P4-295 C4, 2026-10-09) non ré-audités cette passe. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
-
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
 
