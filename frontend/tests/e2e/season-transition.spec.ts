@@ -43,10 +43,10 @@ test.beforeEach(async ({ page }) => {
  * témoins déterministes (le toast du 409, puis l'absence de l'étape de reconduction).
  */
 test("la transition de saison : refus impayé → payer → préparer + reconduire → re-préparer (409), un seul brouillon", async ({ page }) => {
-  // La fusion 4→1 enchaîne une inscription (polling Mailpit ~15 s) PUIS quatre tranches de parcours :
-  // le budget PAR DÉFAUT de 30 s que chaque ancien test tenait seul ne suffit plus (pas de solve ici,
-  // d'où 120 s et non les 300 s de journey). Confirmé en CI #1179 : timeout à 31 s sur la 1ʳᵉ tranche.
-  test.setTimeout(120_000);
+  // Une inscription (polling Mailpit ~15 s) + ~3-4 cycles de menu, sans solve : 60 s suffisent
+  // (l'ancien test « re-dater » tenait déjà inscription + 2 cycles en 30 s). PAS 120 s : le timeout
+  // de CI #1179 n'était pas un manque de budget mais un menu laissé ouvert (cf. l'Échap plus bas).
+  test.setTimeout(60_000);
   await registerClub(page);
 
   const selectorTrigger = page.getByRole("button", { name: "Saison de travail" });
@@ -77,6 +77,10 @@ test("la transition de saison : refus impayé → payer → préparer + recondui
   await expect(page.getByRole("menuitem", { name: /· en cours/i })).toHaveCount(1);
   await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: /Préparer la saison suivante/i })).toBeVisible();
+  // On REFERME le menu : sans ça, le `openMenu()` (click) d'`attemptPrepare` rouvrirait le toggle
+  // DÉJÀ ouvert → il le fermerait, le menuitem disparaîtrait et le click pendrait jusqu'au timeout
+  // (vraie cause du rouge CI #1179). Chaque tranche doit PARTIR d'un menu fermé, comme les 4 ex-tests.
+  await page.keyboard.press("Escape");
 
   // --- Refus impayé : le motif s'affiche TEL QUEL (P1-5), pas le toast générique « a échoué ».
   await attemptPrepare();
