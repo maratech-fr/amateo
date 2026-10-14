@@ -427,6 +427,49 @@ final readonly class ManualEditPaths implements CustomPathContributor
                     ],
                 ]),
             )),
+            '/api/schedule-slots/mutualize-at-case' => new PathItem(post: new Operation(
+                operationId: 'postScheduleSlotMutualizeAtCase',
+                tags: ['ManualEdit'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The two sessions were merged into ONE common session on the target\'s case (schedule flagged manually edited). No solver verdict (the HARD anchoring is one the solver already honors). Each team keeps its total number of sessions. OR a dryRun essai (guards ran, nothing written)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'message' => ['type' => 'string'],
+                            'dryRun' => $dryRunProperty,
+                            'blockId' => ['type' => 'string', 'description' => 'Id of the resulting block C (a brand-new block, or an existing block fed +1 common session)'],
+                            'teamIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'The resulting block\'s teams (dryRun only)'],
+                            'movedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Source-side member slots moved onto the target case'],
+                            'lockedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Target-side member slots locked in place on the case'],
+                            'removedBlockIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Origin blocks that fell to zero common sessions and died'],
+                            'freedSourceCase' => ['type' => 'object', 'description' => 'The source case freed by the gesture', 'properties' => [
+                                'venueId' => ['type' => 'string'],
+                                'dayOfWeek' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7],
+                                'startTime' => ['type' => 'string', 'example' => '18:00'],
+                            ]],
+                        ],
+                    ]),
+                    '400' => new Response('Missing or invalid field (sourceSlotId, targetSlotId, label over 40 chars)'),
+                    '404' => new Response('One of the two slots was not found'),
+                    '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
+                    '422' => $this->schemas->jsonResponse('Refused with NOTHING written (transaction rolled back): the two slots are not in the same schedule, a team sits on BOTH sides (sets are not disjoint), a slot is hand-locked by the manager, the resulting block exceeds 10 teams, the case capacity is exceeded, a team is inactive or unknown, or a team already sits at the target case by another session', [
+                        'type' => 'object',
+                        'properties' => [
+                            'error' => ['type' => 'string', 'description' => 'Ready-to-display reason for the refusal (no internal identifier)'],
+                        ],
+                    ]),
+                ],
+                summary: 'Mutualise from a DROP (lot 2): drop a SOURCE session onto an OCCUPIED case (TARGET) and merge them into ONE common session on the target\'s case — "we redistribute, we create nothing". Team→team (new block), join (team↔group), fusion (group↔group). Source/target team sets must be DISJOINT; each team keeps its total sessions; an origin block that falls to zero dies; a set equal to an existing block feeds it +1 common session instead of a duplicate. Positions and members are resolved SERVER-SIDE. No solver verdict',
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'required' => ['sourceSlotId', 'targetSlotId'],
+                    'properties' => [
+                        'sourceSlotId' => ['type' => 'string', 'description' => 'The dropped session (may be a team session or a group session — its whole session at that case joins)'],
+                        'targetSlotId' => ['type' => 'string', 'description' => 'The occupied session dropped onto — its case is the anchor where the merged block sits'],
+                        'label' => ['type' => 'string', 'nullable' => true, 'maxLength' => 40, 'description' => 'Optional name for a brand-new block (ignored when the set feeds an existing block)'],
+                        'dryRun' => $dryRunProperty,
+                    ],
+                ]),
+            )),
         ];
     }
 }
