@@ -5,11 +5,6 @@
 > temporel. Découpé mécaniquement de `accueil-cockpit-temporel.md` §9ter (plafond de 800 lignes,
 > `DocSizeCeilingTest`) — contenu déplacé VERBATIM, non réédité.
 
-Last verified @ 2026-10-11 (découpe mécanique depuis `accueil-cockpit-temporel.md` §9ter —
-la dernière vérification de fond de ce contenu est celle portée par le stamp de ce fichier avant
-le déplacement, P2-63 PR 5 : modèle FAIT/GENÈSE, overlay propriétaire de sa grille, `OrphanPinGuard`
-— rien de ce qui suit n'a été réédité par cette passe).
-
 ---
 
 En creusant, la taxonomie à 3 objets (§4 de

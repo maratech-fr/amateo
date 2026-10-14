@@ -1,16 +1,5 @@
 # Living Specs System
 
-Last verified @ 2026-10-14 (refonte CI : les trois renvois au job `unit-tests` recalés sur
-`backend-tests`, le job fusionné qui joue désormais la suite complète — statut posé ce jour ;
-contenu recalé le 2026-10-13 par l'ajout de `mutualisation.md`, doc canonique de la mutualisation créée
-par `documentation-update`) : `ls specs/courantes/*.md` rend désormais **15 fichiers** (+1 depuis
-la passe précédente), et la liste du § « Files Overview » ci-dessous les nomme bien tous. Les six
-gardes `{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
-BlockingTestsListMatchesCiTest, SpecsCarryNoHistoryTest, WorkflowPermissionsDeclaredTest}.php`
-existent toujours (`ls backend/tests/Unit/Documentation/`) ; `docs/testing/blocking-tests.md`
-existe. Rien d'autre re-sondé cette passe (zone non touchée par ce fichier) : `ls specs/evolution/`
-et `ls specs/audit/` non re-vérifiés.
-
 ## 3-Tier Structure
 
 - `specs/initiales/` : besoin d'origine (v2/v3), **figé — jamais modifié**. L'évolution se lit dans le delta `initiales` → `courantes` (+ git). Pas de dossier `archive/`. ⚠ **« Figé » interdit de MODIFIER, pas d'ARCHIVER** : une pièce source reçue du terrain peut être déposée ici (ex. `rechercherRencontre.xlsx`, export FBI joint au cadrage P1-4 le 2026-08-02) — elle entre telle quelle et ne bouge plus. Un dépôt n'est légitime que s'il s'agit d'une **pièce d'origine** ; toute production de l'équipe va dans `courantes/` ou `evolution/`.
@@ -36,35 +25,6 @@ et `ls specs/audit/` non re-vérifiés.
 - `evolution` : on **retire** un item quand il est livré (graduation vers courantes) ; on **ajoute** un item quand un gap/bug/feature futur est identifié — avec sa preuve `fichier:ligne` vérifiée dans le code.
 - `initiales` : jamais modifié.
 
-### La règle du stamp — « Last verified » doit être VÉRIFIABLE, pas déclaratif
-
-**Un fichier édité après la date de son stamp a un stamp qui ment.** C'est mécanique, ça se contrôle en une commande, et ça n'a rien à voir avec la qualité du contenu :
-
-```bash
-# Liste les stamps antérieurs au dernier commit qui a touché le fichier.
-for f in specs/courantes/*.md docs/project-map.md docs/testing/testing-strategy.md specs/README.md; do
-  s=$(grep -m1 -o 'Last verified @ [0-9-]*' "$f" | grep -o '[0-9-]*$'); [ -z "$s" ] && continue
-  last=$(git log -1 --format=%ad --date=short -- "$f")
-  # Tolérance d'UN jour : sur une squash-merge, la date git est celle du merge, pas de l'édition.
-  [[ "$last" > "$(date -d "$s + 1 day" +%F)" ]] && echo "STAMP MENTEUR: $f (stamp=$s commit=$last)"
-done
-```
-
-**Tolérance J+1 (2026-09-04).** La date git d'un fichier est celle du commit qui le pose sur `main` : sur une squash-merge, c'est l'heure du merge. La PR #840 mergée à 00:23 a fait « mentir » quatre stamps du 03 pourtant justes, et `unit-tests` (aujourd'hui `backend-tests`) a rougi sur `main` sans qu'un contenu ait bougé. Le garde tolère donc une édition datée du **lendemain** du stamp — rien de ce qu'il vise (des stamps en retard de semaines) ne passe par ce trou.
-
-Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié le jour même sans bump. Aucun n'avait un contenu périmé : chacun avait été correctement recalé **par la PR qui livrait la feature**. Seul le stamp était resté figé. C'est exactement pour ça que le motif a survécu à six éditions d'audit (`AUD-DOC-04`) : personne ne voyait le mensonge, parce qu'il ne portait pas sur le fond.
-
-**Deux formulations, deux sens — ne pas les confondre :**
-
-- *« Last verified @ D (X re-vérifié contre `<fichier de code>` »* — quelqu'un a **relu le code**. C'est la forme forte, la seule qui autorise à faire confiance au fichier sans re-vérifier.
-- *« Last verified @ D (contenu recalé par les livraisons : … »* — le fichier a été **maintenu au fil des PR**, sans relecture d'ensemble. Honnête et utile, mais plus faible : un oubli de PR n'y serait pas vu.
-
-**Bumper sans avoir rien vérifié est pire que ne pas bumper** : ça transforme une promesse vague en fausse garantie. Si la commande ci-dessus signale un fichier, l'ordre est : regarder ce que les commits ont changé (`git log --since=<stamp> -- <fichier>`), vérifier ce point, **puis** dater — en disant laquelle des deux formes s'applique.
-
-**La date est celle du STATUT, pas celle de la dernière édition de fond.** On date le jour où l'on statue sur le fichier ; ce qui a été recalé, et quand, se dit dans la parenthèse (« statut posé ce jour ; contenu recalé jusqu'au JJ par … »). Dater de la dernière édition de fond paraît plus fidèle mais se mord la queue : le commit qui pose le stamp est lui-même une édition, donc le stamp naîtrait déjà en retard sur son propre fichier.
-
-> **Ce n'est plus une promesse : c'est un test.** `backend/tests/Unit/Documentation/DocStampFreshnessTest.php` exécute la règle ci-dessus (groupe `phase1`, donc joué par `backend-tests` — un contexte requis de `main`). Son voisin `BlockingTestsListMatchesCiTest.php` fait le même travail pour la liste canonique des blocking-tests (`docs/testing/blocking-tests.md`, ex-`CLAUDE.md` §4) contre les steps réels de `ci.yml`, dans les deux sens. `RoadmapIdentityTest.php` (2026-08-22) tient la roadmap elle-même : **un identifiant désigne un item et un seul** — il est cité depuis le code, les commits et les PR, donc le réattribuer casse ces références en silence — et le compteur du titre « Roadmap (N) » dit la vérité. Il est né d'une récidive : `P4-119` et `P5-19` désignaient chacun deux items, alors que `P4-119` est cité dans une vingtaine d'endroits de `frontend/src/features/planning/`. Les deux sont nés du même constat : dans ce dépôt, **le seul document qui cesse de mentir est celui qu'un test surveille** — le premier de la série étant `engine/tests/test_contract_version_doc_sync.py`.
-
 ## Files Overview
 
 - `specs/initiales/` — `ClubScheduler_v3.md` (spec produit consolidée, figée) · `ClubScheduler_Specification_des_contraintes_v2.md` (modèle de contraintes d'origine) · prompt orchestrateur v3.
@@ -77,8 +37,9 @@ Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié
 This README documents the maintenance obligations for the living specs system.
 
 ⚠ **Ce fichier a longtemps fini par « does not promise automated drift checks or CI enforcement ».**
-C'était faux depuis le 2026-08-08, et contredit dix lignes plus haut par son propre encadré : quatre
-tests du dossier `backend/tests/Unit/Documentation/` exécutent ces règles, et ils tournent dans
-`backend-tests` — un contexte requis de `main`. Ce qui reste **manuel**, et qu'aucun test ne remplace :
-juger si le contenu d'une spec dit encore la vérité. Une machine tient les invariants de FORME
-(placement, fraîcheur d'un stamp, unicité d'un identifiant, décompte) ; elle ne sait pas lire.
+C'était faux depuis le 2026-08-08 : plusieurs tests du dossier `backend/tests/Unit/Documentation/`
+(placement, taille, liste bloquante ⇄ `ci.yml`, unicité d'un identifiant, absence d'historique…)
+exécutent ces règles de FORME, et ils tournent dans `backend-tests` — un contexte requis de `main`.
+Ce qui reste **manuel**, et qu'aucun test ne remplace : juger si le contenu d'une spec dit encore
+la vérité. Une machine tient les invariants de FORME (placement, unicité d'un identifiant,
+décompte) ; elle ne sait pas lire.

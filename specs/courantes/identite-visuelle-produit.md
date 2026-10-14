@@ -1,24 +1,5 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-10-09 (fusion fenêtre doléances #10 : l'aperçu e-mail du lien coach est désormais affiché par `SollicitationTab`, ex-`CampaignDialog` ; reste inchangé). Passe lot D1, PR 1 + PR 2 — gabarit commun, fond recalibré à 85 %, lien coach personnalisé
-+ aperçu). Re-confronté au code : fond de carte dérivé de `BrandAssets::MARK_TINTS` à
-`EmailTemplateRenderer::WHITE_MIX_RATIO` 0.85 (`#F4DDED`/`#F9EBD9`/`#E3F3F3`, uni `#F0E9E8`) ; le gabarit de carte (§ Ce qui reste à venir) gagne un bouton CTA HTML optionnel
-(`EmailTemplateRenderer::ctaButton`, en-têtes internes `X-Amateo-Cta-Url`/`-Label` posés à la
-SOURCE par `CoachWishMailBuilder::buildCoachLink`, lus/retirés par `EmailSignatureListener`, href
-rendu seulement s'il est `http(s)`) et le lien coach (envoi initial + relance) porte un
-expéditeur personnalisé — « {Prénom du gestionnaire qui déclenche} ({libellé club}) via
-{produit} » (`MailFrom::addressAs()`, MÊME adresse, seul le nom affiché varie). Nouveau
-`GET /api/coach_wish_campaigns/{id}/email-preview` (`CoachWishEmailPreviewController`,
-gestionnaires) rend ce MÊME gabarit avec un jeton factice constant et les logos en `data:` URI
-(un `cid:` ne résout pas dans l'iframe d'aperçu du front). Reste du fichier non re-vérifié cette
-passe : le balisage JSON-LD de la vitrine (2026-10-06), le logo signature des pages système
-(P4-302, 2026-10-05), le volet PDF/OG image/doléances (P5-24, 2026-09-29 — inchangé), les jetons
-`--surface-*` (P4-265, 2026-09-27),
-`color.ts`/`ClubPage.tsx`/`brand-icon.tsx`/`favicon.svg`/`brand-mark.tsx`/`system-screen.tsx`/
-`AdminAuthLayout.tsx` (2026-09-26) — historique des vérifications précédentes :
-`git log -p --follow`. Les ratios de contraste des jetons `--surface-*` sont ceux consignés en
-commentaire dans `index.css` (non recalculés indépendamment cette passe).
-
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).
 > Celui-ci décrit la couche qui existe **avant** et **sous** tout habillage de club : les surfaces

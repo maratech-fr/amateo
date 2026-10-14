@@ -1,18 +1,5 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-13 (P4-322 — `shared_block_not_honored` nomme deux causes de plus) : §4.5
-complétée d'une ligne sur `time_window_excludes_slot` (`constraints/targeting.py`, helper extrait,
-source unique partagée entre `add_time_window_constraints` et le diagnostic de bloc mutualisé) ;
-confronté à `result_builder/diagnostics/shared_blocks.py::_diagnose_blocks_blocked_by_nonmember_lock`/
-`_diagnose_blocks_blocked_by_time_window`. Reste non re-sondé cette passe (dernière relecture
-2026-10-11) : `CONTRACT_VERSION` = `1.5` (bump 1.4 → 1.5, §3 `SocleReferenceAssignmentSchema`) ;
-`ScheduleCpModel`/`app/solver/objective/weights.py` pour
-`SOCLE_KEEP_FULL_TIER_WEIGHTS`/`SOCLE_KEEP_PARTIAL_TIER_WEIGHTS` (§3, `SCORE_FORMULA_VERSION` V14) ;
-§4.4 ligne 7 (`coach_unavailability`) — « un coach suffit » (Q4B, fondateur 2026-10-10) ; la découpe
-en paquets `constraints/structural/`, `constraints/wellness/`, `match_placement/`, `objective/terms/`,
-`validate_assignments/` (§1, P4-295 C2-C6, 2026-10-09) — historique des bumps de contrat dans
-`git log -p --follow engine/CONTRACT_VERSION` / `specs/courantes/etat-des-lieux.md` §3.
-
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
 

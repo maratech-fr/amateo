@@ -22,8 +22,8 @@ use PHPUnit\Framework\TestCase;
  * Ranger un doc trop gros est une migration relue pour elle-même (skill `documentation-update`,
  * « ranger est une migration one-shot »), jamais un dégraissage à l'aveugle.
  *
- * Même grain que `DocStampFreshnessTest::WATCHED` (globs de zone + specs produit courantes) : un
- * doc de zone créé demain est surveillé d'office. Les exceptions sont NOMMÉES et justifiées —
+ * Grain par globs de zone + specs produit courantes (comme les autres gardes doc de ce dossier) :
+ * un doc de zone créé demain est surveillé d'office. Les exceptions sont NOMMÉES et justifiées —
  * jamais un motif large (patron `DocPlacementTest::ALLOWED`).
  */
 #[Group('phase1')]

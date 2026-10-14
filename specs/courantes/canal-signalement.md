@@ -1,9 +1,3 @@
-Last verified @ 2026-10-11 (lot B). Re-confronté au code : `POST /api/feedback`
-(`FeedbackController.php:68`) ✓ ; `FeedbackButton`/`FeedbackDialog`/`api.ts`/`queries.ts` vivent
-toujours dans `frontend/src/shared/feedback/` ✓ ; `Schedule::$snapshotData`
-(`backend/src/Entity/Schedule.php:96`) ✓ ; D1 porte (a) : `PageHeader`,
-`frontend/docs/frontend-components.md`, désormais masquable en embarqué wizard (lot B).
-
 # Canal signalement, support & reproduction
 
 > Le canal par lequel un gestionnaire signale un bug, une contrainte manquante ou une idée — et

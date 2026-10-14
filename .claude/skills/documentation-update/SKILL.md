@@ -1,6 +1,6 @@
 ---
 name: documentation-update
-description: Refresh the living docs before opening a PR — general + per-subproject READMEs, CLAUDE.md index, per-zone docs/, ADRs, and specs/ reconciliation (roadmap = open only, etat-des-lieux = delivered). Enforces WHERE a doc lives (one zone → that zone ; the seam between zones → root ; specs/ = the product's time axis), verifies claims against code (no drift) on the PR's docs PLUS a bounded rotation of the oldest stamps, bans volatile counts, enforces evolution→courantes graduation. Flags misplaced and duplicated docs — never moves them itself. No filler.
+description: Refresh the living docs before opening a PR — general + per-subproject READMEs, CLAUDE.md index, per-zone docs/, ADRs, and specs/ reconciliation (roadmap = open only, etat-des-lieux = delivered). Enforces WHERE a doc lives (one zone → that zone ; the seam between zones → root ; specs/ = the product's time axis), verifies claims against code (no drift) on the PR's docs, bans volatile counts, enforces evolution→courantes graduation. Flags misplaced and duplicated docs — never moves them itself. No filler.
 ---
 
 ## Documentation Update
@@ -88,27 +88,13 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
    ⚑ **Exception `engine/app/main.py` :** une citation vers CE fichier dans un doc vivant s'ancre sur le SYMBOLE (`app/main.py::nom`), jamais sur un numéro de ligne — DOC-46→50, deux récidives sur le même fichier (une ligne ajoutée décale tous les numéros). Un commentaire sans symbole propre se cite par un marqueur textuel stable (`commentaire FACILITY_CAPACITY, app/main.py`). Gardé par `EngineMainCitationsAnchorOnSymbolTest`.
 4. **Claimed ≠ implemented.** Docs must state what the code *does*, not what is planned. If a mechanism is prepared but inactive (e.g. an RLS template never executed), the doc must say "prepared, NOT active" explicitly. Aspirational statements go to `specs/evolution/`, nowhere else.
 5. **Cross-file consistency.** When you change a fact, grep for its other occurrences (`grep -rn` on the key term across `CLAUDE.md`, `docs/`, `*/AGENTS.md`, `specs/courantes/`) and fix or remove them all — half-updated facts created the priority-7/8 contradiction (DOC-01).
-6. **Stamp what you verified.** Files carrying `Last verified @ <sha|date>`: bump the stamp **only for files whose claims you actually re-checked this pass** — a stamp is a proof of verification, not a courtesy.
-   ⚑ **Un stamp REMPLACE, il ne s'empile pas** (audit DOC-33, 2026-08-19). Écris la vérification
-   COURANTE — la date, et ce que tu as confronté — puis **efface celle d'avant** : pas de chaîne
-   de « ; précédemment : … ». La pile avait atteint **49 entrées et 24 Ko sur UNE ligne** dans
-   `backend/docs/backend-inventory.md` : un agent traversait 24 Ko d'historique avant le premier
-   fait utile, et l'info la plus précieuse (« vérifié quand, contre quoi ») s'y noyait.
-   L'historique des passes vit dans **git** (`git log -p --follow <fichier>`), et une décision
-   prise en chemin vit dans `etat-des-lieux.md` — jamais dans un stamp.
-   ⚠ **Toucher la ligne de stamp EST une édition du fichier** : `DocStampFreshnessTest` compare
-   le stamp à la dernière édition du fichier en git, sans distinguer l'en-tête du contenu. Donc
-   si tu aplatis ou réécris un stamp, tu dois **re-vérifier les affirmations du fichier dans la
-   même passe et redater** — sinon le garde rougit, et il a raison. (Constaté le 2026-08-19 :
-   la passe DOC-33 a fait rougir 3 fichiers exactement comme ça.) Et il ne rougit qu'APRÈS
-   commit, puisqu'il lit une date git : le lancer avant ne prouve rien.
-7. **Le présent seulement — l'historique vit dans git** (décision fondateur 2026-09-25). Un doc
+6. **Le présent seulement — l'historique vit dans git** (décision fondateur 2026-09-25). Un doc
    décrit ce que le code fait AUJOURD'HUI. Les blocs « Historique / superseded », les `<details>`
    de spec d'origine, les « précédemment… » / « avant le JJ-MM il faisait X », les chronologies
    de passes et les listes de PR n'ont pas leur place dans un doc : `git log -p --follow <fichier>`
    tient l'historique, et une décision prise en chemin vit dans `etat-des-lieux.md` (§2/§3) —
-   jamais dans le corps. Même mécanique que la règle 6 étendue au CORPS : quand un fait change, on
-   ÉCRASE l'ancien énoncé, on n'empile pas un correctif daté par-dessus. Seule exception : la
+   jamais dans le corps. Quand un fait change, on ÉCRASE l'ancien énoncé, on n'empile pas un
+   correctif daté par-dessus. Seule exception : la
    mention datée qui est la RAISON D'ÊTRE d'un garde-fou encore actif — une phrase, jamais une
    chronologie. Précédent : passe frontend du 2026-09-26 (4 640 → ~2 700 lignes ; le §4.2
    « sidebar » fiction vivait sous un stamp du jour, et §3 « Shared Components » vivant était
@@ -131,36 +117,7 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
 
    **Exception distincte : `docs/archive/`.** Un instantané daté (compte-rendu de cadrage,
    snapshot d'audit), cité depuis le code ou une décision comme référence historique, échappe à
-   la règle 7 — ce n'est jamais une source de vérité sur l'état courant, seulement une trace.
-
-### Fraîcheur — le balayage TOUCHÉ, plus une ROTATION bornée
-
-Deux passes, et la seconde est ce qui empêche le corpus de pourrir en silence.
-
-**(a) Les docs que ta PR touche** — obligatoire, décrit ci-dessous.
-
-**(b) Une rotation de 2 ou 3 fichiers**, choisis par leur stamp le plus ANCIEN, quel que soit le
-sujet de ta PR. Tu vérifies leurs 3-6 affirmations les plus fortes contre le code, tu corriges ce
-qui est faux, tu redates. Si tout est juste : tu redates quand même **en nommant ce que tu as
-re-vérifié** — un stamp est une preuve de vérification, pas une politesse.
-
-```bash
-# Les stamps les plus anciens du dépôt, tous dossiers confondus.
-grep -rl "Last verified @" --include="*.md" . | grep -v node_modules | while read -r f; do
-  printf '%s\t%s\n' "$(grep -m1 -oE 'Last verified @ [0-9-]+' "$f" | grep -oE '[0-9-]+$')" "$f"
-done | sort | head -5
-```
-
-⚑ **Pourquoi une rotation et pas tout le corpus** : ~70 fichiers vérifiés à chaque PR, c'est un
-skill si lent qu'on finit par le sauter — et un skill sauté ne protège rien. Deux fichiers par PR,
-c'est indolore, et le corpus entier est couvert en quelques semaines. Le coût est **réparti**, pas
-supprimé. ⚠ Une rotation qui trouve du faux **le dit dans le résumé** : c'est le signal que la
-zone concernée dérive, et il vaut souvent une ligne de roadmap.
-
-⚑ La rotation vérifie des PHRASES, jamais la STRUCTURE. Elle SIGNALE donc en plus, sans le
-traiter : tout fichier balayé contenant un `<details>`, un bloc « Historique »/« superseded », un
-stamp empilé ou des « précédemment / avant le … » en série est un CANDIDAT à une passe « présent »
-(règle 7) — une ligne au résumé de changement. Critère structurel, jamais un compteur de lignes.
+   la règle 6 — ce n'est jamais une source de vérité sur l'état courant, seulement une trace.
 
 ### Drift sweep (mandatory, cheap)
 

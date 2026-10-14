@@ -1,12 +1,5 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-10-10 (rotation, lot 3B PR A) : deux dérives corrigées — l'exemple BCCL
-`COACH_AVAILABILITY` portait encore `config.coachId` (clé retirée de la liste blanche par
-`Version20260807190000`, `ConstraintConfigValidator`) ; la clé `preferredDays` était dite « jamais
-émise par le wizard », alors que `ConstraintsStep.tsx` l'émet depuis P4-312 (mode « à privilégier »,
-toujours `PREFERRED`). `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT, `LOCK`
-absent (`backend/src/Enum/ConstraintRuleType.php`) ✓. Reste non re-sondé cette passe.
-
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
 ---

@@ -4,12 +4,6 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-10-11 (lot A-2, « une équipe ne siège jamais deux fois à la même case »).
-Nouveau code machine `team_already_at_case` ajouté à la liste d'exemples (§Intouchables) : son
-message (`App\Service\TeamCaseOccupancyGuard::sentence`) est français, nomme l'équipe/jour/
-gymnase réels, lu par un gestionnaire — conforme à la règle. Reste du fichier non re-sondé ligne
-à ligne cette passe.
-
 ## La règle
 
 Un corps d'erreur `4xx` (`< 500`) revient TEL QUEL dans le toast du frontend :

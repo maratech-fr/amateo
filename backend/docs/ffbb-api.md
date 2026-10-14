@@ -1,15 +1,5 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-10-10 (rotation de fraîcheur, `documentation-update`, sujet sans rapport — lot
-9 B2). Re-confronté : liste blanche de hosts codée en dur dans `FfbbApiClient` (`api.ffbb.com`,
-`meilisearch-prod.ffbb.app`, `FfbbApiClient.php:24-25`) ✓ ; `EngagementLevelDeducer` mappe toujours
-`D`/`R`/`N`→`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, `default => null` (jamais `ELITE`,
-`EngagementLevelDeducer.php:46-49`) ✓ ; `app.ffbb_register_existence_check` toujours le flag qui
-gate `RegisterClubLookupController` (`services.yaml:82`) ✓ ; `FfbbClubDirectory` porte toujours ses
-trois lecteurs `exists()`/`lookupClubEmail()`/`lookupIdentity()` ✓. Reste du fichier hérité des
-passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes précédentes vit
-dans git : `git log -p --follow backend/docs/ffbb-api.md`.
-
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
 > données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit
 > rester dans la **liste blanche de hosts** du client (SSRF, A12).

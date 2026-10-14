@@ -2,8 +2,6 @@
 
 > Les besoins produit identifiés par l'expérience (onboarding, grille `WeekGrid`, tri des équipes, diagnostics, export, multi-tenant, cycle de vie côté UI, fiche club, stats gymnases), les écrans système (loading/erreur/503) et les largeurs d'écran. Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : liste des familles décrites par `describeConstraint` recalée contre `constraintPredicateParts` (`frontend/src/features/planning/lib/describeConstraint.ts`) — gagne `SEASON_SLOTS`. Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
-
 ## 6. Besoins identifiés par l'expérience (forward)
 
 Cette section capture les besoins frontend qui émergent de l'expérience produit, pas du

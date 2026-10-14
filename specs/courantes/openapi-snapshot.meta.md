@@ -1,33 +1,3 @@
-Last verified @ 2026-10-14 (lot 2 « mutualiser depuis le dépôt » ; puis refonte CI : le job qui joue
-la garde de méta s'appelle désormais `backend-tests` — compte et SHA inchangés) : nouveau path custom
-`POST /api/schedule-slots/mutualize-at-case` (déposer une séance sur une case occupée et les
-fusionner en UNE séance commune sur la case de la cible — équipe→équipe, rejoindre, fusion ;
-règle « on répartit, on ne crée rien » ; corps `{sourceSlotId, targetSlotId, label?, dryRun?}` ;
-retour `{blockId, movedSlotIds, lockedSlotIds, removedBlockIds, freedSourceCase}` ou dryRun
-`{dryRun, teamIds, movedSlotIds, freedSourceCase}` ; 422 nommé par refus, SANS verdict moteur ;
-schémas inline, aucun nouveau composant), déclaré dans `ManualEditPaths`. Acquis 2026-10-14
-(« Échange atomique de deux séances », P4-327) : path custom
-`POST /api/schedule-slots/swap` (deux séances qui troquent leurs cases sous UN verdict apparié,
-tout-ou-rien, RIEN supprimé ; corps `{slotId, otherSlotId, dryRun?}` ; retour `{valid, dryRun?,
-indeterminate?, compromises, movedSlotIds}` ; 422 avec `code` nommé par refus pré-moteur ; schémas
-inline, aucun nouveau composant), déclaré dans `ManualEditPaths`. Acquis 2026-10-12 (« Retirer une
-séance placée ») : deux paths custom
-`POST /api/schedule-slots/{id}/remove` et `POST /api/schedule-slots/remove-group` (retrait d'une
-séance placée / d'une séance de groupe, SANS verdict moteur ; corps `{dryRun?}` et
-`{scheduleId, blockId, source{venueId,dayOfWeek,startTime}, dryRun?}` ; retour `{removed, lockLevel,
-unmetPresence, dryRun?}` / `{removedSlotIds, removed[], unmetPresence, dryRun?}` ; schémas inline),
-déclarés dans `ManualEditPaths`. Acquis antérieur : nouveau path
-`POST /api/coach-wishes/transfer` (geste gestionnaire ; corps `{wishIds}`, récap
-`{converted, ignored, ignoredReasons}` ; schémas inline, aucun nouveau composant), déclaré dans
-`CoachWishPaths`. Acquis V1bis : `POST /api/schedules/{id}/load-locks` (fait des verrous d'une
-version de PÉRIODE les données en cours de son plan — pose le pointeur, ne génère pas) et
-`ScheduleCapabilities.canLoadLocks`. Acquis V1 : `Schedule.isLockSource` et `Schedule.hardLockCount`.
-Acquis antérieurs : `SharedTrainingBlock.sessions` (schéma `SharedTrainingBlockSession` :
-`teamId`/`teamName`/`dayOfWeek`/`startTime`/`endTime`/`venueName`, lot 9 F3),
-`ScheduleSlotTemplate.sharedTrainingBlockId` + `TeamPeriodOverride.source` (lot 9 F3), route
-`POST /api/schedule-slots/{id}/mutualize` + `SharedTrainingBlock.label` (lot 9 B1),
-`CoachWish.keepSeasonSlots` (P2-63 PR 3).
-
 **245 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
 `4517b5ae9eb9cdc02bee2091420375843f8ea7ac068855cd2d93355cd010d52c` (`sha256sum` sur le fichier).
 

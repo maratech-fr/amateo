@@ -3,21 +3,6 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-13 (mutualisation au socle) : ligne `SharedTrainingBlock` recalée contre
-`MutualizeSlotService::mutualize()` — le geste écrit désormais une portée NULL au socle (plus
-seulement un bloc de PÉRIODE), modèle et décisions fondateur pointés vers
-[`mutualisation.md`](../../specs/courantes/mutualisation.md). Acquis antérieur (rebase lot 8 PR 6
-sur P2-63 PR 5) : ligne `TeamPeriodOverride` gagne la valeur `'coach_wish'` de `source`
-(`CoachWishTransferService::SOURCE`) ; ligne `CoachWish` enrichie — `keepSeasonSlots` converti au
-transfert en contrainte `SEASON_SLOTS` (`CoachWishTransferService::createSeasonSlotsConstraint`),
-confronté au code. Acquis antérieurs (lot 9 F3) : lignes `ScheduleSlotTemplate`/
-`TeamPeriodOverride`/`SharedTrainingBlock` recalées
-contre `ApiResource/ScheduleSlotTemplateResource.php` (`sharedTrainingBlockId` dans
-`Groups(['read'])`), `ApiResource/TeamPeriodOverrideResource.php` (`source` dans
-`Groups(['read'])`) et `State/Provider/SharedTrainingBlockStateProvider.php::sessionsOfMany`.
-Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans
-`git log -p --follow` ce fichier.
-
 ---
 
 ## 1. Architecture Backend

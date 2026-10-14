@@ -1,13 +1,5 @@
 # Mutualisation — un ensemble d'équipes qui se comporte comme UNE équipe
 
-Last verified @ 2026-10-14 (lot 2 : §2.4 NEUF — menu à 3 choix au dépôt + « mutualiser depuis le
-dépôt » `POST /api/schedule-slots/mutualize-at-case`, règle « on répartit, on ne crée rien » ; §2.3
-recalé — `move()` évince un occupant de GROUPE [`evictedGroup`] et `swap()` échange N↔M [Q2] ; §5
-réduit à ce qui reste ouvert). Reste du fichier re-vérifié le 2026-10-13 (`SharedTrainingBlock` :
-entité, service de mutualisation depuis le planning, processeur API, provisioning, prune de
-suppression d'équipe, panneau du wizard, planning (`SlotDetail`/`MutualizeDialog`/`PlanningPage`) et
-sémantique moteur).
-
 > **But** : permettre à des équipes de s'entraîner ENSEMBLE sur une même case de gymnase, sans que
 > le solveur les compte comme deux occupations séparées (ce qui créerait un faux conflit de
 > capacité) et sans dupliquer la notion de disponibilité coach. **Source de vérité : le code.**

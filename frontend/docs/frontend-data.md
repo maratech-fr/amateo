@@ -2,11 +2,6 @@
 
 > Gestion d'état et flux de données du frontend : frontière Zustand ⇄ TanStack Query, client HTTP ky, suivi temps réel de la génération (Mercure/SSE). Découpé mécaniquement de `frontend-spec.md` (DOC-59) ; le contrat d'endpoints vit dans `frontend-api-contract.md`.
 
-Last verified @ 2026-10-10 (rotation `documentation-update`) : versions `@tanstack/react-query` 5 /
-`zustand` 5 confirmées dans `frontend/package.json` ; `authStore.ts` ne porte toujours que
-`isAuthenticated`/`setAuthenticated` (aucun jeton, SEC-16). Reste du fichier non re-sondé ligne à
-ligne cette passe — historique dans `git log -p --follow` ce fichier.
-
 ## 3. State Management Strategy
 
 Deux couches distinctes, responsabilités non chevauchantes.

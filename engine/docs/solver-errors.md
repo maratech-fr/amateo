@@ -1,22 +1,5 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-10-13 (P4-322 — `shared_block_not_honored` nomme deux causes de plus) :
-re-confronté à `engine/app/solver/result_builder/diagnostics/shared_blocks.py::
-_diagnose_blocks_blocked_by_nonmember_lock`/`_diagnose_blocks_blocked_by_time_window` (kinds
-EXISTANTS `hard_lock`/`time_window`, même patron de preuve par compte que `coach_unavailability` ;
-algèbre de fenêtre partagée avec la pose via `constraints/targeting.py::time_window_excludes_slot`)
-et à `backend/src/Service/DiagnosticMessageBuilder.php::buildSharedBlockNotHonored` (qui saute
-désormais les causes `hard_lock`) ; aucun bump de contrat. Reste non re-sondé cette passe (dernière
-relecture 2026-10-11) : `engine/CONTRACT_VERSION` = `1.5` (bump 1.4 → 1.5) ; diagnostic
-`season_slots_kept` (`result_builder/diagnostics/season_slots.py::_diagnose_season_slots`) ;
-`SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V14` (V13 → V14, le régime KEEP du bonus de
-référence socle) ; propriétaire du texte `message` de `unused_slot` (ré-ancré le 2026-10-08, P4-295
-C1) toujours dans `result_builder/diagnostics/placement.py` (ré-exporté par
-`result_builder/__init__.py` et `diagnostics/__init__.py`) ; `VenueTrainingSlotSchema.day_of_week`
-reste un `int` sans borne (`engine/app/schemas/input_schema.py:47`, contrairement à
-`capacity: int = Field(default=1, ge=1)` juste en dessous) ; `lock_level` reste une `str` libre,
-pas un enum (`input_schema.py:298`).
-
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
 ---

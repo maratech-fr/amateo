@@ -1,7 +1,5 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : `engine/CONTRACT_VERSION` = `1.5` ✓ (bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne `venueId`/`keep`) ; `ConstraintFamily` gagne `SEASON_SLOTS` (`backend/src/Enum/ConstraintFamily.php`) — famille FILTRÉE du payload moteur (`ScheduleConstraintBuilder::serializeUnifiedConstraints`), donc `constraints[]` ne porte TOUJOURS que TIME/DAY/FACILITY/COACH_AVAILABILITY ; FACILITY_CAPACITY absent. Reste non re-parcouru ligne à ligne cette passe (dernière passe ligne à ligne : `_adaptive_timeout`/`_adaptive_workers`, `lockLevel`, 2026-10-10).
-
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
 ---

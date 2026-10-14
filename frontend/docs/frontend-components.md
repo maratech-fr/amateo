@@ -1,13 +1,5 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-10-11 (lot B) : `PageHeader.showFeedback` recalé contre `page-header.tsx` et
-`pageHeaderGuard.test.ts` — deux exemptions motivées seulement (page publique déconnectée,
-en-tête imbriqué dans le wizard). Reste de la table non rejoué ligne à ligne cette passe —
-historique : `git log -p --follow` sur ce fichier. **§3 est la
-maison unique des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées
-déménagées depuis `frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
-`frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités existent).
-
 > **Où est la vérité :**
 >
 > | Sujet | Doc canonique |

@@ -1,7 +1,5 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-10-12 (rotation de fraîcheur `documentation-update`, PR « Retirer une séance placée » — sujet sans rapport). Re-confronté au code, toujours vrai : priorité 7 (`TenantFilterListener.php:56`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` en `str_starts_with` sur le path (`TenantFilterListener.php:79`) ✓ · `App\Service\TenantConnectionContext::setClubId` pose `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:29-31`) ✓ · `App\State\Processor\AbstractStateProcessor::requiresManagementRole()` retourne `true` par défaut (`AbstractStateProcessor.php:130`) ✓ · `UserResource` n'a toujours que `Get` (`UserResource.php:21-23`) ✓.
-
 ## Overview
 
 Amateo is a **multi-tenant** application where every business entity belongs to exactly one club. Tenant isolation has **two layers, both active today**:

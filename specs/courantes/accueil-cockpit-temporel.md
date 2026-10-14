@@ -1,14 +1,5 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning »). Re-confronté : le geste de
-transfert (§5.1 — `POST /api/coach-wishes/transfer`, `CoachWishTransferService`) et les acquis
-antérieurs P2-63 PR 2/3/4/7 + lot 5 (collecte dérivée des plannings, ajout manuel semaine-d'abord,
-« garder mes créneaux habituels », mutualisation « un coach suffit », purge à la
-validation/réouverture du socle). §9ter (modèle de données `CalendarEntry`) a quitté ce fichier
-pour [`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md) — plafond de 800
-lignes, `DocSizeCeilingTest`. §5bis (P4-266, signal « à régénérer » sur `/planning` seul) non
-re-confronté cette passe.
-
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
 > secondaires**. **Vision d'origine** : `initiales/ClubScheduler_v3.md` §3.5, §3.6, §8 — ce doc

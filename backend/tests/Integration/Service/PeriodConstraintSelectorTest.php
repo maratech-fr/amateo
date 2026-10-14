@@ -36,12 +36,12 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * effectif des gymnases via Doctrine (aucune version pure sans base possible).
  *
  * Filet CITÉ — désormais SEUL — du scénario 2 de l'ancienne `la-semaine-de-reprise.feature`
- * (« une contrainte d'équipe de saison n'est pas partie au solveur en vacances ») : écrit AVANT la
- * refonte Behat par parcours, qui a depuis SUPPRIMÉ cette feature (PR4 du lot Tests & CI). Angle voisin, cross-référencé :
- * `Integration/MigrationHolidaySeasonConstraintsOffTest` prouve l'état APRÈS la migration de gel
- * (overrides is_active=true posés → TEAM/COACH gardées) — l'inverse de CE test, qui prouve le
- * DÉFAUT nu, sans aucun override ; et cette migration est destinée au retrait (passe de
- * réduction), ce défaut doit donc vivre dans son propre test.
+ * (« une contrainte d'équipe de saison n'est pas partie au solveur en vacances ») : écrit AVANT
+ * la refonte Behat par parcours, qui a depuis SUPPRIMÉ cette feature (PR4 du lot Tests & CI).
+ * Ce test prouve le DÉFAUT nu (TEAM/COACH/FACILITY de saison écartées sans aucun override) de
+ * façon autonome : c'est volontaire, car l'ex-test de migration qui prouvait l'état APRÈS le gel
+ * d'overrides a été retiré à la passe de réduction (migration déjà appliquée en prod) ; la
+ * politique de sélection vit désormais dans son propre test.
  *
  * NON bloquant (pas de step `blocking-tests` ni de ligne `docs/testing/blocking-tests.md`) : c'est
  * une politique de SÉLECTION (correction), pas une frontière de sécurité/tenant ni une perte de
