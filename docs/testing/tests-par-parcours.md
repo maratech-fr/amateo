@@ -192,7 +192,7 @@ Déclarée à l'étape Équipes (5a) ou en cours de route (5b, « on répartit, 
 Toujours : total de séances par équipe conservé, **un coach du groupe suffit**, déplacement d'un
 bloc, régénération en fin de travaux.
 - **Cible** : solide — `l-unite-de-placement-est-le-bloc` + les 5 gates bloquants `SharedBlock*`.
-  E2E : `lot9-mutualize-reachability` (mutualiser en cours de route).
+  E2E : `mutualize` (mutualiser en cours de route).
 
 ### P6 — Retouche
 Le plus fréquent : gymnase mal choisi → déplacement manuel ; geste coûteux → avertissement
@@ -244,8 +244,9 @@ ne part jamais sans remplaçant cité.
   `frontend` :8081 sert un `dist` CUIT (rebuild + recreate avant un e2e qui doit voir la modif).
 
 ### Les 10 parcours navigateur cibles
-1. Naissance d'un club (journey) · 2. Autres portes de l'entrée (auth fusionné) · 3. Import des
-équipes FBI · 4. Incident consulté (club-life) · 5. Incident re-daté · 6. Mutualiser en cours de
-route · 7. Matchs : placer et traiter · 8. Matchs : consulter et filtrer (+ FBI) · 9. Matchs : file
-d'import · 10. Transition de saison. P2 / P6 / P7 n'ont pas d'E2E (aucun geste que seul le navigateur
-prouve).
+1. Naissance d'un club — 10 équipes importées par fichier FBI (journey ; **absorbe** l'ex-import des
+équipes, `teams-import` retiré) · 2. Autres portes de l'entrée (auth fusionné) · 3. *(fondu dans 1 —
+l'import des équipes FBI est le premier geste de journey)* · 4. Incident consulté (club-life) ·
+5. Incident re-daté · 6. Mutualiser en cours de route (`mutualize`) · 7-8-9. Matchs : placer/traiter,
+consulter/filtrer (+ FBI à faire), file d'import — réunis dans `matches.spec.ts` · 10. Transition de
+saison. P2 / P6 / P7 n'ont pas d'E2E (aucun geste que seul le navigateur prouve).

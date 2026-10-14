@@ -12,6 +12,8 @@ modale d'éviction. « Échanger » (`useSwapSlot`/`useSwapDryRun` → `EvictCon
 éviction d'un occupant de GROUPE (`evictedGroup`) toaste « groupe de N séances à replacer » (pas de
 un-clic). §6.7 ter (mutualisation au socle, 2026-10-13) et « Déplacer le GROUPE » (P4-329) inchangés.
 Modèle et décisions fondateur : [`mutualisation.md`](../../specs/courantes/mutualisation.md) §2.4.
+Recalage e2e (PR5 « tests », 2026-10-14) : le parcours navigateur de mutualisation vit désormais
+dans `mutualize.spec.ts` (renommage de fichier, parcours et comportement INCHANGÉS).
 Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans
 `git log -p --follow` ce fichier.
 
@@ -489,7 +491,7 @@ déjà partie d'un groupe de mutualisation. »).
   voit QUE via le wizard (cockpit → « Ajuster » la période → étape **Génération**, grille EMBARQUÉE —
   `PlanningPage embedded scopePlanId=…`). `/planning` en autonome ne rend qu'un **overlay validé**,
   lecture seule, où le bouton resterait toujours désactivé — preuve de bout en bout dans
-  `frontend/tests/e2e/lot9-mutualize-reachability.spec.ts`. Pour le **socle** (saison), le même
+  `frontend/tests/e2e/mutualize.spec.ts`. Pour le **socle** (saison), le même
   écran de génération (`GenerateStep`, `scopePlanId={null}`) et `/planning` en autonome tant que la
   version n'est pas encore **choisie** (`isChosen=false` ⇒ `isReadOnly=false`, §0) l'offrent de la
   même façon.

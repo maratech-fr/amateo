@@ -1,134 +1,71 @@
-import { expect, test } from "./fixtures";
-import { landOnMatchesCalendar } from "./support";
+import { expect, test, type Locator } from "./fixtures";
+import { ensureValidated, landOnMatchesCalendar, loginSeededClub } from "./support";
 
-/** Seeded dev club (BasketballInit) — full data, but INCOMPLETE onboarding
- * (cockpit state 1: no plan generated yet). Matches are locked until the main
- * plan is validated, so this spec onboards the club first (idempotent). */
-const EMAIL = "dev-bccl@amateo.local";
-const PASSWORD = "charge-load-test-pwd";
+// ── Le login + la validation du socle du club seedé vivent dans support.ts (maison unique) : ce
+//    fichier (et les ex-specs matches-consulter / matches-fbi-todo / matches-importer, fusionnés
+//    ici) les importent au lieu d'en porter chacun une copie. Restent ci-dessous les petits
+//    utilitaires de date/texte propres aux parcours matchs. ─────────────────────────────────────
 
-type Page = import("@playwright/test").Page;
+/** Y-m-d LOCAL (jamais toISOString, qui bascule en UTC et peut changer le jour). */
+function ymd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
-async function login(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Mot de passe", { exact: true }).fill(PASSWORD);
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByRole("button", { name: "Saison de travail" })).toBeVisible({ timeout: 15_000 });
+function addDays(ymdStr: string, n: number): string {
+  const d = new Date(`${ymdStr}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+}
+
+/** Le prochain samedi (Y-m-d) à au moins `minAhead` jours d'aujourd'hui. */
+function nextSaturdayAtLeast(minAhead: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + minAhead);
+  while (6 !== d.getDay()) {
+    d.setDate(d.getDate() + 1); // 6 = samedi
+  }
+  return ymd(d);
+}
+
+/** Un nom d'équipe devient un motif littéral (« U11M1 (bis) » ne doit pas casser la RegExp). */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Lit une collection API Platform quelle que soit sa forme (tableau nu, `member`, `hydra:member`). */
+function membersOf(body: unknown): Record<string, unknown>[] {
+  if (Array.isArray(body)) return body as Record<string, unknown>[];
+  const obj = body as Record<string, unknown>;
+  return (obj.member ?? obj["hydra:member"] ?? []) as Record<string, unknown>[];
 }
 
 /**
- * Bring the seeded club to cockpit state 3 (main plan validated) so matches are
- * unlocked. Idempotent across runs (the dev DB is not reset): if the Matchs nav
- * is already an enabled link, the socle is validated → nothing to do. Otherwise
- * drive the wizard's génération step: launch a generation if needed, then
- * validate the resulting plan.
+ * Amène la semaine affichée sur celle qui contient `target`, en cliquant `btn` (‹ ou ›) au plus
+ * `max` fois. Un locator qui résout PLUSIEURS éléments ÉCHOUE en le disant (jamais avalé en `false`,
+ * sinon la boucle traverse toutes les semaines sans « voir » sa cible — témoin muet).
  */
-async function ensureValidated(page: Page): Promise<void> {
-  await page.goto("/");
-  // State 3 → the Matchs nav is a real link. State 1/2 → a disabled span / redirect.
-  // isVisible() does NOT wait (its timeout is ignored), so use waitFor to actually
-  // give the SPA time to render before deciding the club still needs onboarding.
-  const validated = await page
-    .getByRole("link", { name: "Matchs" })
-    .waitFor({ state: "visible", timeout: 5_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (validated) {
-    return;
-  }
-
-  await page.goto("/wizard");
-  await page.waitForLoadState("networkidle");
-
-  // P4-71 — DIAGNOSTIQUER VITE, ne pas attendre 3 minutes dans le noir.
-  //
-  // Ce helper SUPPOSAIT l'atterrissage sur Récap (le wizard y mène quand toutes les
-  // données sont là). Sur une base de dev qui a dérivé — une étape redevenue
-  // incomplète au fil des tests du jour — `WizardLayout` ramène de force sur cette
-  // étape (`jumpTo(gap)`), les deux boutons ci-dessous n'existent pas, et l'attente
-  // de « Valider » expirait après 180 s sur un message qui n'apprenait rien.
-  //
-  // ⚠ Naviguer directement vers Génération ne marcherait PAS : le rail n'est ouvert
-  // que pour un club ayant DÉJÀ une version finie (`guided` dans WizardLayout) — or
-  // un club en état 1/2 n'en a par définition aucune. La bonne réponse n'est donc pas
-  // de contourner l'atterrissage, mais de NOMMER la dérive qui l'a provoqué.
-  // Deux mondes, et le helper n'en gérait AUCUN :
-  //  - club SANS version terminée → wizard « guidé » : atterrissage sur le premier
-  //    trou de données, rail VERROUILLÉ (on ne peut que suivre le flux) ;
-  //  - club AVEC une version terminée → `guided` faux : aucun atterrissage, on reste
-  //    sur l'étape par défaut du store (Équipes) mais le rail est OUVERT.
-  // Mesuré le 2026-08-07 : le club seedé tombe dans le SECOND cas dès qu'un
-  // la feature Behat de génération a tourné (2 plannings COMPLETED) — d'où l'échec, qui n'était donc
-  // pas la « dérive de données » annoncée. On emprunte le rail quand il est ouvert.
-  // ⚠ Le nom accessible du bouton d'étape n'est PAS son libellé : la pastille de
-  // progression y entre (« 6 Génération »), et une étape terminée devient
-  // « Génération — étape terminée ». Matcher la chaîne exacte — ou même son début —
-  // ne trouve rien. On cherche donc le libellé N'IMPORTE OÙ dans le nom, scopé au
-  // rail pour ne pas attraper un homonyme du contenu.
-  const railGenerate = page.locator("nav").getByRole("button", { name: /Génération/ });
-  if (await railGenerate.isEnabled({ timeout: 3_000 }).catch(() => false)) {
-    await railGenerate.click();
-  }
-
-  const cont = page.getByRole("button", { name: "Continuer vers la génération" });
-  const launch = page.getByRole("button", { name: "Lancer la génération" });
-  const onGenerationPath = await Promise.race([
-    cont.waitFor({ state: "visible", timeout: 10_000 }).then(() => true),
-    launch.waitFor({ state: "visible", timeout: 10_000 }).then(() => true),
-  ]).catch(() => false);
-
-  if (!onGenerationPath) {
-    // L'étape atteinte EST le diagnostic : le wizard nous a ramenés sur le premier
-    // trou de données. On le lit dans le rail (l'entrée courante porte aria-current).
-    const landed = await page
-      .locator("[aria-current]")
-      .first()
-      .textContent()
-      .then((t) => t?.trim() ?? "inconnue")
-      .catch(() => "inconnue");
-    throw new Error(
-      `ensureValidated: le wizard a atterri sur « ${landed} » au lieu du chemin de génération. `
-      + "La base de DEV a dérivé (une étape est redevenue incomplète — souvent un gymnase sans créneau, "
-      + "laissé par un autre spec). Rejouez `make -C backend fixtures`, puis relancez. "
-      + "En CI (base fraîche) ce cas ne se produit pas.",
-    );
-  }
-
-  if (await cont.isVisible().catch(() => false)) {
-    // ⚠ `isVisible()` rend VRAI pour un bouton désactivé — cliquer dessus attend
-    // alors le timeout ENTIER du test (240 s), × 3 tentatives = 12,6 min de CI
-    // pour un échec qui ne dit rien (mesuré sur #432). Même défaut que P4-71 avait
-    // corrigé sur le bouton « Lancer » juste en dessous, laissé sur celui-ci.
-    // On échoue en 5 s, en NOMMANT ce qu'un « Continuer » grisé veut dire : le
-    // gate du récap refuse — une contrainte invalide, ou un bloqueur non résolu.
-    if (!(await cont.isEnabled({ timeout: 5_000 }).catch(() => false))) {
-      throw new Error(
-        "ensureValidated: « Continuer vers la génération » est DÉSACTIVÉ. Le gate du récap refuse : "
-        + "une contrainte du club est invalide (config hors liste blanche, SEC-13) ou un bloqueur "
-        + "subsiste (réservation orpheline, sur-capacité). Ouvrir /wizard → Récap pour lire le motif, "
-        + "ou auditer les contraintes du club seedé.",
-      );
+async function stepUntilVisible(btn: Locator, target: Locator, max: number): Promise<boolean> {
+  const seen = async (): Promise<boolean> => {
+    const n = await target.count();
+    if (n > 1) {
+      throw new Error(`stepUntilVisible: locator ambigu (${n} éléments) — scoper au conteneur (grille/table)`);
     }
-    await cont.click();
+    return 1 === n && (await target.first().isVisible());
+  };
+  if (await seen()) {
+    return true;
   }
-  // On ne LANCE une génération que s'il n'y a rien à valider : le club seedé a
-  // souvent déjà des versions COMPLETED (la feature Behat de génération a tourné). Cliquer
-  // « Lancer » dans ce cas attendait un bouton DÉSACTIVÉ jusqu'au timeout — le gate
-  // pré-solve refuse à juste titre tant qu'un diagnostic d'erreur subsiste, alors
-  // qu'une version parfaitement validable était déjà à l'écran.
-  const validate = page.getByRole("button", { name: "Valider" });
-  const alreadyGenerated = await validate.isVisible({ timeout: 3_000 }).catch(() => false);
-  if (!alreadyGenerated && (await launch.isEnabled({ timeout: 5_000 }).catch(() => false))) {
-    await launch.click();
+  for (let i = 0; i < max; i++) {
+    if (!(await btn.isEnabled())) {
+      break;
+    }
+    await btn.click();
+    if (await seen()) {
+      return true;
+    }
   }
-  // COMPLETED → le bouton « Valider » apparaît ; on valide via la confirmation.
-  await expect(validate).toBeVisible({ timeout: 180_000 });
-  await validate.click();
-  const dialog = page.getByRole("dialog", { name: "Valider le planning" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Valider", exact: true }).click();
-  await expect(page.getByRole("link", { name: "Matchs" })).toBeVisible({ timeout: 15_000 });
+  return false;
 }
 
 /**
@@ -138,7 +75,7 @@ async function ensureValidated(page: Page): Promise<void> {
  */
 test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   test.setTimeout(240_000); // onboarding runs a real CP-SAT generation
-  await login(page);
+  await loginSeededClub(page);
   await ensureValidated(page);
 
   // A unique opponent so the assertions target THIS run's fixture (dev DB is not reset).
@@ -489,7 +426,7 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
  */
 test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ page }) => {
   test.setTimeout(240_000); // onboarding may run a real CP-SAT generation
-  await login(page);
+  await loginSeededClub(page);
   await ensureValidated(page);
 
   await page.getByRole("link", { name: "Matchs" }).click();
@@ -524,137 +461,6 @@ test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ 
 });
 
 /**
- * PR 2a « Configuration & navigation » — la barre d'espaces réordonnée + défilable, la Semaine
- * type sœur (redirection des anciens deep-links), et la section « Accès match » un gymnase à la
- * fois. Écrit sous la stack réelle (socle validé par `ensureValidated`).
- */
-test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès match, recherche adversaires", async ({ page }) => {
-  test.setTimeout(240_000); // l'onboarding lance une vraie génération CP-SAT
-  await login(page);
-  await ensureValidated(page);
-
-  await page.goto("/matchs");
-  const nav = page.getByRole("navigation", { name: "Espaces matchs" });
-  const links = nav.getByRole("link");
-  // SEPT onglets : Conflits · Calendrier · Importer · Configuration · Adversaires · Semaine type · Contraintes.
-  await expect(links).toHaveCount(7);
-  await expect(links.nth(0)).toContainText("Conflits");
-  await expect(links.nth(1)).toHaveText("Calendrier");
-  await expect(links.nth(2)).toContainText("Importer");
-  await expect(links.nth(3)).toHaveText("Configuration");
-  await expect(links.nth(4)).toHaveText("Adversaires");
-  await expect(links.nth(5)).toHaveText("Semaine type");
-  await expect(links.nth(6)).toHaveText("Contraintes");
-
-  // À 400 px la nav déborde : l'onglet actif (« Calendrier », l'index /matchs) est ramené en vue.
-  await page.setViewportSize({ width: 400, height: 800 });
-  await page.goto("/matchs");
-  // UXS-07 — `goto` recharge la page : le store est vierge, l'atterrissage conditionnel peut
-  // renvoyer sur Conflits si le bac à sable porte des conflits. On attend la décision RENDUE puis
-  // on rejoint le Calendrier (maison unique — Playwright fait défiler la nav débordée avant le clic).
-  await landOnMatchesCalendar(page);
-  const active = nav.locator('[aria-current="page"]');
-  await expect(active).toHaveText("Calendrier");
-  await expect(active).toBeInViewport();
-  await page.setViewportSize({ width: 1280, height: 900 });
-
-  // Anciens deep-links du gabarit/créneaux → la Semaine type.
-  await page.goto("/matchs/configuration?section=gabarit");
-  await expect(page).toHaveURL(/\/matchs\/semaine-type$/);
-  await expect(page.getByRole("heading", { name: "Semaine type", level: 2 })).toBeVisible();
-
-  // ── Accès match : ajouter un créneau à un gymnase SANS accès, un gymnase à la fois ──
-  await page.goto("/matchs/configuration?section=reglages");
-  const header = page.getByRole("button", { name: /^Accès match/ });
-  await expect(header).toBeVisible();
-  // ⚠ `accessSummary` (lib/configSummaries.ts) rend `null` tant que les fenêtres ne sont pas
-  //    chargées → l'en-tête vaut « Accès match » SANS compte. Lire `before` à cet instant donnait
-  //    0 (faux) et faisait échouer `before + 1`. On attend donc que le résumé soit là : « N
-  //    gymnase(s) » ou « aucun gymnase avec accès match ».
-  await expect(header).toHaveText(/·\s*(\d+\s*gymnases?|aucun gymnase)/);
-  const readCount = async (): Promise<number> => {
-    const text = (await header.innerText()).trim();
-    if (/·\s*aucun gymnase/.test(text)) {
-      return 0;
-    }
-    const m = text.match(/·\s*(\d+)\s*gymnase/);
-    if (null === m) {
-      throw new Error(`en-tête « Accès match » sans compte (résumé non chargé) : « ${text} »`);
-    }
-    return Number(m[1]);
-  };
-  const before = await readCount();
-
-  // Témoin de vacuité : le scénario n'a de sens que s'il existe un gymnase sans accès.
-  const disclosure = page.getByRole("button", { name: /\d+ gymnases? sans accès match$/ });
-  await expect(disclosure, "témoin: le seed doit avoir au moins un gymnase sans accès match").toBeVisible();
-  await disclosure.click();
-
-  // ⚠ Scoper à la LISTE DÉPLIÉE de la disclosure (frère `<ul>` du bouton, `ConfigurationPage.tsx`
-  //    L174-181) : un `.first()` sur toute la page attraperait le premier gymnase de la liste
-  //    principale (qui a DÉJÀ des accès), et l'ajout d'une 2ᵉ plage rendrait « sam. …, 14:00–22:00 »
-  //    (introuvable). On prend donc un gymnase SANS accès, garanti d'avoir une seule fenêtre après.
-  const withoutList = disclosure.locator("xpath=following-sibling::ul[1]");
-  const firstEdit = withoutList.getByRole("button", { name: /^Modifier les accès match de / }).first();
-  const editLabel = (await firstEdit.getAttribute("aria-label")) ?? "";
-  const venueName = editLabel.replace("Modifier les accès match de ", "");
-  const modifierAfter = page.getByRole("button", { name: `Modifier les accès match de ${venueName}` });
-
-  // Ajout → vérifs → nettoyage : le `finally` retire la fenêtre AJOUTÉE même si une vérif échoue,
-  // pour ne pas laisser de créneau parasite dans la base dev CI (non réinitialisée entre runs).
-  try {
-    await firstEdit.click();
-    // Le nom accessible de la modale vient de son `label` (« Accès match ») ; le gymnase est dans le titre (h2).
-    const dialog = page.getByRole("dialog", { name: "Accès match" });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("heading", { name: `Accès match · ${venueName}` })).toBeVisible();
-    await dialog.getByLabel("Jour de la fenêtre match").selectOption("6");
-    await dialog.getByLabel("Début de la fenêtre match").fill("14:00");
-    await dialog.getByLabel("Fin de la fenêtre match").fill("22:00");
-    await dialog.getByRole("button", { name: "Ajouter la fenêtre match" }).click();
-    await expect(dialog.getByText(/Samedi 14:00/)).toBeVisible();
-    // Deux « Fermer » (la croix d'en-tête + le pied) : on ferme par le bouton du pied.
-    await dialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
-
-    // Le gymnase a rejoint la liste principale : SA ligne (le <li> de son nom exact) porte la plage
-    // formatée « sam. 14:00–22:00 » (une seule fenêtre → pas de virgule) ; le focus revient à son
-    // « Modifier » ; et l'en-tête compte un gymnase de plus.
-    const venueRow = page.getByText(venueName, { exact: true }).locator("xpath=ancestor::li[1]");
-    await expect(venueRow).toContainText("sam. 14:00–22:00");
-    await expect(modifierAfter).toBeFocused();
-    await expect.poll(readCount).toBe(before + 1);
-  } finally {
-    // Nettoyage robuste : rouvre le gymnase et supprime la fenêtre Samedi 14:00 SI elle existe.
-    if ("" !== venueName && (await modifierAfter.count()) > 0) {
-      await modifierAfter.first().click();
-      // `exact` : le titre de la confirmation N2 (« …fenêtre d'accès match ? ») CONTIENT « accès
-      // match » — sans `exact`, le locator matcherait DEUX dialogs et l'assertion compterait 2.
-      const cleanupDialog = page.getByRole("dialog", { name: "Accès match", exact: true });
-      await expect(cleanupDialog).toBeVisible();
-      const del = cleanupDialog.getByRole("button", { name: "Supprimer la fenêtre Samedi 14:00" });
-      if ((await del.count()) > 0) {
-        await del.first().click();
-        // N2 : la suppression passe désormais par une confirmation (ConfirmDialog portalé).
-        await page.getByRole("button", { name: "Supprimer", exact: true }).last().click();
-        await expect(cleanupDialog.getByText(/Samedi 14:00/)).toHaveCount(0);
-      }
-      await cleanupDialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
-    }
-  }
-  // Après nettoyage, l'en-tête est revenu à son compte initial.
-  await expect.poll(readCount).toBe(before);
-
-  // ── Recherche adversaires : « xyz » n'a aucun résultat, Escape vide la requête ──
-  await page.goto("/matchs/adversaires");
-  const search = page.getByRole("searchbox", { name: "Rechercher un club ou un gymnase" });
-  await expect(search).toBeVisible();
-  await search.fill("xyznonexistant");
-  await expect(page.getByText(/Aucun adversaire pour/)).toBeVisible();
-  await search.press("Escape");
-  await expect(search).toHaveValue("");
-});
-
-/**
  * Gymnases adverses (2026-09-20) — REFLOW mobile du TABLEAU Adversaires (WCAG 1.4.10). Le tableau
  * par club adverse (`OpponentsPage`) est un `@container` : sous `@md`, les colonnes « Trajet » et
  * « Rencontres » DISPARAISSENT (`hidden @md:table-cell`) et le trajet redescend dans une ligne
@@ -677,7 +483,7 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
  */
 test("gymnases adverses: le tableau Adversaires reflow sans défilement horizontal à 360 px", async ({ page }) => {
   test.setTimeout(240_000); // l'onboarding peut lancer une génération CP-SAT réelle
-  await login(page);
+  await loginSeededClub(page);
   await ensureValidated(page);
 
   // e2e crée ce qu'il vérifie : un extérieur → ≥1 adversaire → le tableau (et sa searchbox) sont
@@ -726,7 +532,7 @@ test("gymnases adverses: le tableau Adversaires reflow sans défilement horizont
  */
 test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async ({ page }) => {
   test.setTimeout(240_000);
-  await login(page);
+  await loginSeededClub(page);
   await ensureValidated(page);
 
   const opponent = `E2E3B-${Date.now().toString(36).toUpperCase()}`;
@@ -742,6 +548,9 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   // « Amical » pour qu'il pèse dans les compteurs, la liste « À placer », la grille et le Mois.
   await page.getByRole("button", { name: "Amical", exact: true }).click();
 
+  // Dette e2e : nettoyage par DELETE API en `finally` (plus de nettoyage « navigant » par la grille).
+  let createdFixtureId: string | undefined;
+
   try {
     // ── Créer un domicile daté LOIN (samedi 2027-03-13) ──────────────────────────
     await page.getByRole("button", { name: /Nouveau match/i }).click();
@@ -752,6 +561,9 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     await page.getByLabel("Adversaire").fill(opponent);
     await page.getByRole("button", { name: "Créer" }).click();
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeHidden({ timeout: 15_000 });
+    // Capture l'id de la rencontre créée (par son adversaire unique) pour le DELETE du `finally`.
+    createdFixtureId = membersOf(await (await page.request.get("/api/fixtures?itemsPerPage=200")).json())
+      .find((f) => f.opponentLabel === opponent)?.id as string | undefined;
 
     // ── La barre « Semaine affichée » : trois compteurs (dont « conflits » = lien) ─
     const counters = page.getByRole("group", { name: "Semaine affichée" });
@@ -829,31 +641,292 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     await expect(page.getByRole("button", { name: "Semaine", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page).toHaveURL(/[?&]semaine=\d{4}-\d{2}-\d{2}/);
   } finally {
-    // Nettoyage : supprimer le match créé (grille si placé) — best-effort.
-    // Même correctif P4-197 : on navigue sur la semaine AFFICHÉE (clé matchDate), pas sur
-    // la liste « À placer » (qui montre le match dès la 1re semaine → boucle figée).
-    // Lot A — l'URL force types + extérieurs pour que l'amical créé soit visible au nettoyage.
-    await page.goto("/matchs?type=amical,championnat,coupe,brassage&exterieurs=1");
-    // Best-effort : attendre que la page soit chargée avant de sonder les flèches (sinon
-    // `isEnabled()` lève sur un bouton encore absent). Tout est enveloppé pour ne jamais
-    // faire échouer le nettoyage.
-    await expect(page.getByRole("group", { name: "Semaine affichée" }))
-      .toBeVisible({ timeout: 15_000 })
-      .catch(() => {});
-    const cell = page.getByRole("button", { name: new RegExp(`\\d\\d:\\d\\d · ${opponent}`) });
+    // Nettoyage par l'API (dette e2e) : un DELETE ciblé sur l'id capturé, jamais une navigation de
+    // grille qui dépend de l'état d'affichage. Base dev CI non réinitialisée → on retire NOTRE rencontre.
+    if (undefined !== createdFixtureId) {
+      await page.request.delete(`/api/fixtures/${createdFixtureId}`).catch(() => undefined);
+    }
+  }
+});
+
+/**
+ * PR-2a — « Consulter » (lecture seule, temporalité Semaine), FUSIONNÉ ici (ex-`matches-consulter.spec.ts`).
+ * Le test S'AUTO-PROVISIONNE : il crée ses rencontres via l'API et les nettoie en `finally`, donc il ne
+ * suppose RIEN du seed. On éprouve les chips (type de compétition), la mémoire de session d'un filtre, la
+ * Semaine type, le filtre par famille de conflit (collision de gymnase, bornée à la semaine), et les
+ * temporalités Mois / Phase.
+ */
+test("consulter: chips, semaine type, et filtre par famille de conflit", async ({ page }) => {
+  test.setTimeout(240_000); // l'onboarding peut lancer une vraie génération CP-SAT
+
+  await loginSeededClub(page);
+  await ensureValidated(page);
+
+  // ── Auto-provisionnement (le club CI n'a AUCUNE rencontre) : 1ʳᵉ équipe + 1ᵉʳ gymnase, puis nos
+  //    propres rencontres sur DEUX semaines FUTURES vides — nettoyées en `finally`. Le détecteur émet
+  //    VENUE_OVERLAP dès qu'un gymnase + un coup d'envoi sont posés (statut UNPLACED compris).
+  const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+  expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+  const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
+  expect(venuesRes.ok(), "GET /api/venues").toBeTruthy();
+  const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+  expect(venueId, "le club seedé a au moins un gymnase").toBeTruthy();
+
+  const ts = Date.now();
+  const cleanSat = nextSaturdayAtLeast(7);
+  const overlapSat = addDays(cleanSat, 7);
+  const cleanOpp = `E2E-CONSULTER-${ts}-CLEAN`;
+  const overlapA = `E2E-CONSULTER-${ts}-A`;
+  const overlapB = `E2E-CONSULTER-${ts}-B`;
+
+  const createFixture = async (matchDate: string, opponentLabel: string): Promise<string> => {
+    const res = await page.request.post("/api/fixtures", {
+      data: { teamId, matchDate, homeAway: "HOME", opponentLabel, venueId, kickoffTime: "15:00", competitionId: null },
+    });
+    expect(res.ok(), `POST /api/fixtures ${opponentLabel}`).toBeTruthy();
+    return (await res.json()).id as string;
+  };
+
+  const createdIds: string[] = [];
+  try {
+    createdIds.push(await createFixture(cleanSat, cleanOpp));
+    createdIds.push(await createFixture(overlapSat, overlapA));
+    createdIds.push(await createFixture(overlapSat, overlapB));
+
+    // PR 3b — « Consulter » a FUSIONNÉ dans « Calendrier » : /matchs/consulter REDIRIGE vers /matchs.
+    await page.goto("/matchs/consulter");
+    await expect(page).toHaveURL(/\/matchs(\/conflits)?(\?|$)/);
+    await landOnMatchesCalendar(page);
+    await expect(page).toHaveURL(/\/matchs(\?|$)/);
+    await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" })).toHaveAttribute("aria-current", "page");
+
+    // Chips type de compétition — STATIQUES (les 4 `KINDS`). Défauts lot A : « Amical » DÉCOCHÉ, les 3 autres cochés.
+    await expect(page.getByRole("button", { name: "Amical", exact: true })).toHaveAttribute("aria-pressed", "false");
+    for (const label of ["Championnat", "Coupe", "Brassage"]) {
+      await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
+    }
+    // Mémoire de session : un filtre allumé SURVIT à un aller-retour Conflits → Calendrier.
+    const matchesNav = page.getByRole("navigation", { name: "Espaces matchs" });
+    const exterieurs = page.getByRole("switch", { name: "Extérieurs" });
+    await expect(exterieurs).toHaveAttribute("aria-checked", "false");
+    await exterieurs.click();
+    await expect(exterieurs).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/[?&]exterieurs=1/);
+    await matchesNav.getByRole("link", { name: "Conflits" }).click();
+    await expect(page).toHaveURL(/\/matchs\/conflits/);
+    await matchesNav.getByRole("link", { name: "Calendrier" }).click();
+    await expect(page).toHaveURL(/\/matchs(\?|$)/);
+    await expect(exterieurs).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/[?&]exterieurs=1/);
+    await exterieurs.click();
+    await expect(exterieurs).toHaveAttribute("aria-checked", "false");
+
+    // Nos rencontres sont des AMICAUX : on coche « Amical » pour qu'elles pèsent (cases, puce, Mois).
+    await page.getByRole("button", { name: "Amical", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Amical", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+    // Interrupteur « Semaine type » (role switch), MASQUÉ par défaut (lot A) ; on l'allume.
+    const semaineType = page.getByRole("switch", { name: /Semaine type/ });
+    await expect(semaineType).toHaveAttribute("aria-checked", "false");
+    await semaineType.click();
+    await expect(semaineType).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/[?&]type_semaine=1/);
+
+    // Va sur la semaine de la collision (repérée par notre rencontre). On cherche › puis ‹.
     const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
-    for (let hops = 0; hops < 60 && !page.url().includes(`semaine=${matchDate}`) && (await nextWeek.isEnabled().catch(() => false)); hops += 1) {
-      await nextWeek.click().catch(() => {});
-      await page.waitForTimeout(120);
+    const prevWeek = page.getByRole("button", { name: "Semaine précédente" });
+    const grid = page.getByTestId("weekend-grid");
+    const overlapCell = grid.getByText(overlapA, { exact: false });
+    const found = (await stepUntilVisible(nextWeek, overlapCell, 12)) || (await stepUntilVisible(prevWeek, overlapCell, 24));
+    expect(found, "la semaine de la collision créée est atteignable").toBeTruthy();
+    await expect(overlapCell).toBeVisible();
+
+    // Puce « Collision de gymnase » présente, compteur ≥ 1.
+    const familiesGroup = page.getByRole("group", { name: "Familles de conflits" });
+    const collisionChip = familiesGroup.getByRole("button", { name: /^Collision de gymnase/ });
+    await expect(collisionChip).toBeVisible();
+    await expect(collisionChip).toHaveAttribute("aria-pressed", "true");
+    const chipCount = (await collisionChip.innerText()).match(/\d+/)?.[0] ?? "";
+    expect(Number(chipCount), "compteur de collisions ≥ 1").toBeGreaterThanOrEqual(1);
+
+    // Radar : le groupe « Collision de gymnase ». Décocher la puce le retire ; recocher le fait revenir.
+    const radarGroup = page.getByRole("heading", { level: 3, name: "Collision de gymnase" });
+    await expect(radarGroup).toBeVisible();
+    await collisionChip.click();
+    await expect(collisionChip).toHaveAttribute("aria-pressed", "false");
+    await expect(collisionChip).toContainText(chipCount);
+    await expect(radarGroup).toHaveCount(0);
+    await expect(page).toHaveURL(/[?&]conflits=/);
+    await collisionChip.click();
+    await expect(collisionChip).toHaveAttribute("aria-pressed", "true");
+    await expect(radarGroup).toBeVisible();
+
+    // Bornage à la SEMAINE : sur la semaine de la rencontre ISOLÉE (W_clean), aucune collision.
+    const cleanCell = grid.getByText(cleanOpp, { exact: false });
+    expect(await stepUntilVisible(prevWeek, cleanCell, 24), "la semaine de la rencontre isolée est atteignable").toBeTruthy();
+    await expect(cleanCell).toBeVisible();
+    await expect(familiesGroup.getByRole("button", { name: /^Collision de gymnase/ })).toHaveCount(0);
+
+    // ── Temporalité MOIS : les deux rencontres en collision y apparaissent, puce sur le mois. ──
+    await page.getByRole("button", { name: "Mois", exact: true }).click();
+    const monthTable = page.getByRole("table");
+    await expect(monthTable).toBeVisible();
+    const nextMonth = page.getByRole("button", { name: "Mois suivant" });
+    const prevMonth = page.getByRole("button", { name: "Mois précédent" });
+    const overlapMonthCell = page.getByText(overlapA, { exact: false });
+    const foundMonth = (await stepUntilVisible(nextMonth, overlapMonthCell, 6)) || (await stepUntilVisible(prevMonth, overlapMonthCell, 12));
+    expect(foundMonth, "le mois de la collision est atteignable en vue Mois").toBeTruthy();
+    await expect(overlapMonthCell).toBeVisible();
+    await expect(page.getByText(overlapB, { exact: false })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Familles de conflits" }).getByRole("button", { name: /^Collision de gymnase/ })).toBeVisible();
+
+    // ── Temporalité PHASE : empty state « Aucune compétition appariée » OU le sélecteur de phase. ──
+    await page.getByRole("button", { name: "Phase", exact: true }).click();
+    const emptyPhase = page.getByText("Aucune compétition appariée");
+    const phaseSelect = page.getByRole("combobox", { name: /Phase|compétition/i });
+    await expect(emptyPhase.or(phaseSelect).first()).toBeVisible();
+  } finally {
+    for (const id of createdIds) {
+      await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
     }
-    if (await cell.isVisible().catch(() => false)) {
-      await cell.click();
-      const del = page.getByRole("button", { name: "Supprimer" });
-      if ((await del.count()) > 0) {
-        await del.first().click();
-        const confirm = page.getByRole("button", { name: "Supprimer", exact: true }).last();
-        await confirm.click().catch(() => {});
-      }
+  }
+});
+
+/**
+ * La liste « FBI — à faire » du Calendrier, FUSIONNÉE ici (ex-`matches-fbi-todo.spec.ts`). Le test
+ * S'AUTO-PROVISIONNE (crée SA rencontre — un domicile PLACÉ — via l'API, nettoyée en `finally`), ouvre
+ * la liste, coche « saisi », éprouve le toast. Un geste qui n'exerce rien laisserait le toast absent.
+ */
+test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque saisi dans FBI", async ({ page }) => {
+  test.setTimeout(240_000);
+
+  await loginSeededClub(page);
+
+  const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+  expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+  const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
+  expect(venuesRes.ok(), "GET /api/venues").toBeTruthy();
+  const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+  expect(venueId, "le club seedé a au moins un gymnase").toBeTruthy();
+
+  // NOTRE domicile PLACÉ (amical) compte dans « à saisir dans FBI » (domiciles PLACED).
+  const opp = `E2E-FBI-${Date.now()}`;
+  const created = await page.request.post("/api/fixtures", {
+    data: { teamId, matchDate: nextSaturdayAtLeast(7), homeAway: "HOME", opponentLabel: opp, venueId, kickoffTime: "15:00", status: "PLACED", competitionId: null },
+  });
+  expect(created.ok(), "POST /api/fixtures").toBeTruthy();
+  const id = (await created.json()).id as string;
+
+  try {
+    await page.goto("/matchs");
+    await landOnMatchesCalendar(page);
+
+    const counter = page.getByRole("button", { name: /FBI à faire/ });
+    await expect(counter).toBeVisible({ timeout: 20_000 });
+    await counter.click();
+
+    const dialog = page.getByRole("dialog", { name: "FBI — à faire" });
+    await expect(dialog).toBeVisible();
+    const submitBtn = dialog.getByRole("button", { name: new RegExp(`Marquer saisi.*${opp}`) });
+    await expect(submitBtn).toBeVisible();
+    await submitBtn.click();
+
+    await expect(page.getByText("Match marqué saisi dans FBI")).toBeVisible();
+  } finally {
+    await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
+  }
+});
+
+/**
+ * L'onglet « Importer » — entrées de données (dépôt FBI, canal FFBB, engagements) et FILE de traitement
+ * par équipe, FUSIONNÉ ici (ex-`matches-importer.spec.ts`). Auto-provisionné : présence de l'onglet,
+ * absence de badge quand rien n'est à traiter, Configuration allégée (données FBI/FFBB migrées), et la
+ * rencontre créée (= traitée) INVISIBLE avant l'interrupteur « Afficher les traitées », VISIBLE après.
+ */
+test("importer: onglet, badge absent, configuration allégée, file de traitement", async ({ page }) => {
+  test.setTimeout(240_000);
+
+  await loginSeededClub(page);
+  await ensureValidated(page);
+
+  // L'onglet Importer, sans badge si rien à traiter ; un badge EXACTEMENT égal au compte serveur sinon.
+  const fixturesRes = await page.request.get("/api/fixtures?itemsPerPage=100");
+  expect(fixturesRes.ok(), "GET /api/fixtures").toBeTruthy();
+  const existing = ((await fixturesRes.json()).member ?? []) as { reviewState: string }[];
+  const openBefore = existing.filter((f) => "NEW" === f.reviewState || "OUT_OF_SYNC" === f.reviewState).length;
+  const tabLabel = 0 === openBefore ? "Importer" : `Importer · ${openBefore}`;
+
+  await page.goto("/matchs");
+  await landOnMatchesCalendar(page);
+  const importerTab = page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Importer/ });
+  await expect(importerTab).toBeVisible();
+  await expect(importerTab).toHaveText(tabLabel);
+  await importerTab.click();
+  await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Importer/ })).toHaveAttribute("aria-current", "page");
+
+  // Les entrées de données de match sont là.
+  await expect(page.getByRole("button", { name: /Importer FBI/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Vérifier via le Canal FFBB/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Engagements FFBB/ })).toBeVisible();
+  if (0 === openBefore) {
+    await expect(page.getByText("Rien à traiter")).toBeVisible();
+  } else {
+    await expect(page.getByRole("button", { name: /à valider/ }).first()).toBeVisible();
+  }
+
+  // Configuration : « une section = un écran », gabarit parti en Semaine type, données FBI/FFBB migrées.
+  await page.goto("/matchs/configuration");
+  await expect(page.getByRole("button", { name: /Le gabarit idéal/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Accès match/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText(/Les créneaux que la mairie accorde/)).toHaveCount(0);
+  await page.goto("/matchs/configuration?section=reglages");
+  await expect(page.getByText(/Les créneaux que la mairie accorde/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Modifier les accès match de / }).first()).toBeVisible();
+  await expect(page.getByText("Dépôt saisonnier FBI")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Engagements FFBB" })).toHaveCount(0);
+
+  // Auto-provisionnement : une rencontre créée (= traitée par la saisie).
+  const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+  expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+  const firstTeam = (await teamsRes.json()).member?.[0] as { id?: string; name?: string } | undefined;
+  const teamId = firstTeam?.id;
+  const teamName = firstTeam?.name ?? "";
+  const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
+  expect(venuesRes.ok(), "GET /api/venues").toBeTruthy();
+  const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+
+  const opp = `E2E-IMPORTER-${Date.now()}`;
+  const createRes = await page.request.post("/api/fixtures", {
+    data: { teamId, matchDate: nextSaturdayAtLeast(7), homeAway: "HOME", opponentLabel: opp, venueId, kickoffTime: "15:00", competitionId: null },
+  });
+  expect(createRes.ok(), "POST /api/fixtures").toBeTruthy();
+  const id = (await createRes.json()).id as string;
+
+  try {
+    await page.goto("/matchs/importer");
+    const oppCell = page.getByText(opp, { exact: false });
+
+    // TÉMOIN — la rencontre créée est TRAITÉE : masquée par défaut, badge inchangé.
+    await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Importer/ })).toHaveText(tabLabel);
+    if (0 === openBefore) {
+      await expect(page.getByText("Rien à traiter")).toBeVisible();
     }
+    await expect(oppCell).toHaveCount(0);
+
+    // Révéler les traitées → l'équipe apparaît ; on l'ouvre → la rencontre est là.
+    await page.getByRole("checkbox", { name: "Afficher les traitées" }).check();
+    const teamHeader = page.getByRole("button", { name: new RegExp(`^${escapeRegExp(teamName)} · `) });
+    await expect(teamHeader).toBeVisible();
+    if ("true" !== (await teamHeader.getAttribute("aria-expanded"))) {
+      await teamHeader.click();
+    }
+    await expect(oppCell).toBeVisible();
+  } finally {
+    await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
   }
 });

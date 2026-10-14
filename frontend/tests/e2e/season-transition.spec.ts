@@ -29,134 +29,97 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date(Date.UTC(seasonYear + 1, 5, 1, 12, 0, 0)));
 });
 
-test("just subscribed: one season, no next-season draft yet, work-loop gate", async ({ page }) => {
-  await registerClub(page);
-
-  // A brand-new club lands in the work-loop (no validated socle) and the
-  // season selector shows its single current season.
-  const selectorTrigger = page.getByRole("button", { name: "Saison de travail" });
-  await expect(selectorTrigger).toBeVisible({ timeout: 15_000 });
-
-  await selectorTrigger.click();
-  // Exactly one season, marked "en cours", and no draft yet.
-  await expect(page.getByRole("menuitem", { name: /· en cours/i })).toHaveCount(1);
-  await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toHaveCount(0);
-  // Dans la fenêtre de préparation (horloge figée par le beforeEach), l'action est proposée.
-  await expect(page.getByRole("menuitem", { name: /Préparer la saison suivante/i })).toBeVisible();
-});
-
 /**
- * End-to-end of the season-transition workflow (transition-de-saison P1):
- * a fresh club has one season; "Préparer la saison suivante" copies it into a
- * draft N+1 and the selector then lists both, working on the new draft.
+ * **La transition de saison, de bout en bout (parcours « transition-de-saison » gardé, fusion 4→1).**
+ *
+ * Un seul enchaînement rejoue le geste réel : un club neuf n'a qu'UNE saison → la bascule est
+ * REFUSÉE tant que N+1 n'est pas réglée → une fois payée, « Préparer » copie la structure en
+ * brouillon ET propose de reconduire les événements de N (+364 j) → re-préparer retombe sur le
+ * 409 « existe déjà » SANS rouvrir l'étape de reconduction, et il n'y a JAMAIS qu'UN brouillon.
+ *
+ * Fusionne les quatre ex-tests (état initial · refus impayé/liste des deux · reconduction · anti-
+ * doublon) : chaque promesse est gardée, le décor (inscription + horloge dans la fenêtre) n'est
+ * monté qu'une fois. Les deux `waitForTimeout(1500)` d'attente molle ont été remplacés par des
+ * témoins déterministes (le toast du 409, puis l'absence de l'étape de reconduction).
  */
-test("prepare next season: the selector lists both and switches to the draft", async ({ page }) => {
-  await registerClub(page);
-
-  // The header season selector is present with the single (current) season.
-  const selectorTrigger = page.getByRole("button", { name: "Saison de travail" });
-  await expect(selectorTrigger).toBeVisible({ timeout: 15_000 });
-
-  // P1-5 — SANS paiement de la saison suivante, la bascule est refusée et le
-  // motif s'affiche TEL QUEL (pas le toast générique « a échoué ») : le
-  // gestionnaire doit comprendre que c'est une affaire d'abonnement.
-  await selectorTrigger.click();
-  await page.getByRole("menuitem", { name: /Préparer la saison suivante/i }).click();
-  await expect(page.getByText("Préparer la saison suivante ?")).toBeVisible();
-  await page.getByRole("button", { name: "Préparer", exact: true }).click();
-  await expect(page.getByText(/n'est pas réglée/i)).toBeVisible({ timeout: 15_000 });
-
-  // Le paiement enregistré (relais dev du geste support), la bascule passe.
-  await markNextSeasonPaid(page);
-
-  // Trigger the transition from the selector menu.
-  await selectorTrigger.click();
-  await page.getByRole("menuitem", { name: /Préparer la saison suivante/i }).click();
-
-  // Confirmation dialog (structural action).
-  await expect(page.getByText("Préparer la saison suivante ?")).toBeVisible();
-  await page.getByRole("button", { name: "Préparer", exact: true }).click();
-
-  // Success toast, then the selector lists the current season AND the new draft.
-  await expect(page.getByText(/structure copiée/i)).toBeVisible({ timeout: 15_000 });
-
-  await selectorTrigger.click();
-  await expect(page.getByRole("menuitem", { name: /· en cours/i })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toBeVisible();
-});
-
-/**
- * P2-PR1 — re-dating step: after "Préparer la saison suivante", the club events
- * of N are offered for re-dating (+364 days suggested); re-dating creates them
- * in the draft and the step does not reopen once the draft has events.
- */
-test("transition offers to re-date N's events into the draft, once", async ({ page }) => {
+test("la transition de saison : refus impayé → payer → préparer + reconduire → re-préparer (409), un seul brouillon", async ({ page }) => {
+  // Une inscription (polling Mailpit ~15 s) + ~3-4 cycles de menu, sans solve : 60 s suffisent
+  // (l'ancien test « re-dater » tenait déjà inscription + 2 cycles en 30 s).
+  test.setTimeout(60_000);
   await registerClub(page);
 
   const selectorTrigger = page.getByRole("button", { name: "Saison de travail" });
   await expect(selectorTrigger).toBeVisible({ timeout: 15_000 });
 
-  // Create a club event in N via the API (the cockpit calendar is gated on a
-  // validated baseline — out of this test's scope). Authentification par le
-  // cookie httpOnly partagé avec le contexte (SEC-16) ; season = server-derived
-  // current (no header).
+  // Un événement de club dans N (API) — la matière de la reconduction. Le calendrier du cockpit est
+  // gaté sur un socle validé (hors périmètre) : on crée via l'API, authentifié par le cookie partagé.
   const created = await page.request.post("/api/calendar_entries", {
     headers: { "Content-Type": "application/ld+json" },
     data: { kind: "event", title: "AG e2e", startDate: "2026-10-03", endDate: "2026-10-03", isDisruptive: true, status: "active" },
   });
   expect(created.status()).toBe(201);
 
-  // P1-5 : gate de paiement ouvert d'entrée — ce test couvre la reconduction.
-  await markNextSeasonPaid(page);
-
-  // Prepare N+1 → the re-dating dialog opens with the event, date shifted +364.
-  await selectorTrigger.click();
-  await page.getByRole("menuitem", { name: /Préparer la saison suivante/i }).click();
-  await page.getByRole("button", { name: "Préparer", exact: true }).click();
-  await expect(page.getByText(/structure copiée/i)).toBeVisible({ timeout: 15_000 });
-
-  await expect(page.getByRole("heading", { name: "Reconduire les événements" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("AG e2e")).toBeVisible();
-  await expect(page.getByLabel("Nouvelle date de début de AG e2e")).toHaveValue("2027-10-02"); // same weekday next year
-
-  await page.getByRole("button", { name: /Reconduire 1 événement/ }).click();
-  await expect(page.getByText(/reconduit/)).toBeVisible({ timeout: 15_000 });
-
-  // Relaunch "Préparer" → 409 existing successor → the step must NOT reopen
-  // (the draft now has an event).
-  await selectorTrigger.click();
-  await page.getByRole("menuitem", { name: /Préparer la saison suivante/i }).click();
-  await page.getByRole("button", { name: "Préparer", exact: true }).click();
-  await expect(page.getByText(/existe déjà/i)).toBeVisible({ timeout: 15_000 });
-  await page.waitForTimeout(1500);
-  await expect(page.getByRole("heading", { name: "Reconduire les événements" })).toHaveCount(0);
-});
-
-test("preparing twice reuses the existing next season (no duplicate)", async ({ page }) => {
-  await registerClub(page);
-
-  const selectorTrigger = page.getByRole("button", { name: "Saison de travail" });
-  await expect(selectorTrigger).toBeVisible({ timeout: 15_000 });
-
-  // P1-5 : gate de paiement ouvert d'entrée — ce test couvre l'anti-doublon.
-  await markNextSeasonPaid(page);
-
-  const prepare = async () => {
-    await selectorTrigger.click();
-    await page.getByRole("menuitem", { name: /Préparer la saison suivante/i }).click();
+  const prepareItem = page.getByRole("menuitem", { name: /Préparer la saison suivante/i });
+  // openMenu IDEMPOTENT. Le trigger du Menu APG est un TOGGLE (`menu.tsx:122`) : recliquer un menu
+  // OUVERT le referme. Et à l'ouverture le focus vise le 1er item, qui est la saison COURANTE
+  // `disabled` (`SeasonSelector.tsx:149`) → un `<button disabled>` n'est pas focalisable, le focus
+  // reste sur le trigger, donc un `Escape` n'atteint jamais le panneau (`menu.tsx:91`) et ne ferme
+  // rien (VRAIE cause du rouge CI #1179 : le menu laissé ouvert par l'état initial était ensuite
+  // REFERMÉ par le clic de `openMenu`). On ne clique donc QUE si le menu est fermé, en se calant sur
+  // le menuitem « Préparer » (toujours offert dans la fenêtre de préparation) comme témoin, puis on
+  // attend qu'il soit visible avant d'agir.
+  const openMenu = async (): Promise<void> => {
+    if (!(await prepareItem.isVisible().catch(() => false))) {
+      await selectorTrigger.click();
+    }
+    await expect(prepareItem).toBeVisible();
+  };
+  const attemptPrepare = async (): Promise<void> => {
+    await openMenu();
+    await prepareItem.click();
+    await expect(page.getByText("Préparer la saison suivante ?")).toBeVisible();
     await page.getByRole("button", { name: "Préparer", exact: true }).click();
   };
+  const reconduireHeading = page.getByRole("heading", { name: "Reconduire les événements" });
 
-  await prepare();
+  // --- État initial : exactement UNE saison « en cours », aucun brouillon, et « Préparer » offert
+  //     (horloge figée dans la fenêtre par le beforeEach).
+  await openMenu();
+  await expect(page.getByRole("menuitem", { name: /· en cours/i })).toHaveCount(1);
+  await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toHaveCount(0);
+  await expect(prepareItem).toBeVisible();
+
+  // --- Refus impayé : le motif s'affiche TEL QUEL (P1-5), pas le toast générique « a échoué ».
+  await attemptPrepare();
+  await expect(page.getByText(/n'est pas réglée/i)).toBeVisible({ timeout: 15_000 });
+
+  // --- Paiement enregistré (relais dev du geste support) → la bascule passe.
+  await markNextSeasonPaid(page);
+  await attemptPrepare();
   await expect(page.getByText(/structure copiée/i)).toBeVisible({ timeout: 15_000 });
-  // Wait for the switch to settle (query cache cleared + me refetched).
-  await expect(selectorTrigger).toContainText(/\d{4}/);
 
-  // Second attempt → backend 409 with the existing successor → the UI reuses it,
-  // never creating a second draft. The invariant that matters: still ONE draft.
-  await prepare();
-  await page.waitForTimeout(1500);
+  // --- Reconduction : l'étape s'ouvre avec l'événement de N, date décalée au même jour +1 an.
+  await expect(reconduireHeading).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("AG e2e")).toBeVisible();
+  await expect(page.getByLabel("Nouvelle date de début de AG e2e")).toHaveValue("2027-10-02");
+  await page.getByRole("button", { name: /Reconduire 1 événement/ }).click();
+  await expect(page.getByText(/reconduit/)).toBeVisible({ timeout: 15_000 });
+  // L'étape se referme sur le succès — témoin déterministe (remplace un waitForTimeout mou).
+  await expect(reconduireHeading).toHaveCount(0);
 
-  await selectorTrigger.click();
+  // --- Les deux saisons sont listées, exactement UN brouillon.
+  await openMenu();
+  await expect(page.getByRole("menuitem", { name: /· en cours/i })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toHaveCount(1);
+
+  // --- Re-préparer : 409 « existe déjà », et l'étape de reconduction NE rouvre PAS (le brouillon a
+  //     déjà des événements). Le toast du 409 est le témoin déterministe qui remplace waitForTimeout.
+  await attemptPrepare();
+  await expect(page.getByText(/existe déjà/i)).toBeVisible({ timeout: 15_000 });
+  await expect(reconduireHeading).toHaveCount(0);
+
+  // --- Anti-doublon : toujours exactement UN brouillon après la seconde tentative.
+  await openMenu();
   await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toHaveCount(1);
 });
+

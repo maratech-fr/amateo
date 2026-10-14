@@ -176,7 +176,9 @@ export async function ensureValidated(page: Page): Promise<void> {
   }
 
   await page.goto("/wizard");
-  await page.waitForLoadState("networkidle");
+  // Jamais `networkidle` (le hub Mercure garde un flux ouvert → l'attente ne retombe pas) : on
+  // draine le voile de navigation du wizard, signal déterministe que l'écran est posé.
+  await settleVeil(page);
 
   const railGenerate = page.locator("nav").getByRole("button", { name: /Génération/ });
   if (await railGenerate.isEnabled({ timeout: 3_000 }).catch(() => false)) {
