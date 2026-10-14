@@ -57,7 +57,7 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
 - **Bloquant = step NOMMÉ du job `blocking-tests` dans `.github/workflows/ci.yml`** — jamais
   l'annotation `#[Group('phase1')]` (bien plus de fichiers la portent que le job n'a de steps).
-  Un test annoté mais non listé tourne dans `unit-tests` : après le gate, sans bloquer
+  Un test annoté mais non listé tourne dans `backend-tests` : après le gate, sans bloquer
   `build-docker`. « X est bloquant » se vérifie dans `ci.yml`.
 - La liste de « quels tests gatent » vit dans **`docs/testing/blocking-tests.md`** — maison
   unique, gardée par `BlockingTestsListMatchesCiTest` (⇄ `ci.yml`, les deux sens). Ce que chaque
@@ -198,7 +198,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 ## 10. Gotchas (top)
 
 1. ⚠ **`make phpunit` = `--group phase1` seul · `make test` = testsuite `Unit` seule** — or la CI
-   `unit-tests` lance `phpunit tests/` ENTIER. **Avant de pousser :
+   `backend-tests` lance `phpunit tests/` ENTIER. **Avant de pousser :
    `make -C backend tests-complete`** (miroir CI — détail : `backend/docs/commands.md`). Chaque
    dossier de `tests/` est dans une testsuite (garde `TestsuitesCoverEveryTestDirectoryTest`).
 2. Pas de `contracts/` ni `tests/` à la racine du dépôt — les tests cross-stack vivent dans
