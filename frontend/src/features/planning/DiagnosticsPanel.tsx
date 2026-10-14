@@ -9,6 +9,7 @@ import { cn } from "@/shared/lib/utils";
 import type { Diagnostic, DiagnosticCause, DiagnosticCauseKind, DiagnosticSeverity, Slot } from "./api";
 import { SEVERITY_ORDER } from "./lib/diagnosticsSummary";
 import { concernedSlots, type Lookups } from "./lib/grid";
+import { PLANNING_TEXTS } from "./texts";
 
 const SEVERITY: Record<DiagnosticSeverity, { icon: typeof Info; className: string; label: string }> = {
   ERROR: { icon: XCircle, className: "text-destructive", label: "Erreurs" },
@@ -205,9 +206,9 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
   return (
     <Card className="flex h-full min-h-0 flex-col">
       <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 pb-3">
-        <CardTitle className="text-base">Diagnostics du système</CardTitle>
+        <CardTitle className="text-base">{PLANNING_TEXTS.diagnosticsSystemTitle}</CardTitle>
         {onCollapse ? (
-          <button type="button" onClick={onCollapse} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Réduire les diagnostics" title="Réduire (plus de place pour la grille)">
+          <button type="button" onClick={onCollapse} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={PLANNING_TEXTS.collapseDiagnosticsLabel} title={PLANNING_TEXTS.collapseDiagnosticsTitle}>
             <PanelRightClose className="size-4" />
           </button>
         ) : null}
@@ -218,7 +219,7 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
           // sortir du wizard, cet état vide est ce qu'on lit pendant le chargement d'une
           // version — annoncer « le planning est propre » y serait une affirmation fausse,
           // et rassurante (revue #350).
-          <EmptyHint>{pending ? "Lecture des diagnostics…" : "Aucun diagnostic — le planning est propre."}</EmptyHint>
+          <EmptyHint>{pending ? PLANNING_TEXTS.diagnosticsLoading : PLANNING_TEXTS.diagnosticsClean}</EmptyHint>
         ) : (
           <div className="flex flex-col gap-1">
             {groups.map((group) => {
@@ -257,7 +258,7 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                               from="planning"
                               className="self-start px-3 pb-1.5 text-xs font-medium text-accent underline underline-offset-2 hover:text-accent hover:underline"
                             >
-                              Ajuster cette règle
+                              {PLANNING_TEXTS.adjustRuleLink}
                             </WizardStepLink>
                           ) : null}
                           {/* P4-99 — la CAUSE mesurée d'une séance manquante, et P4-96 la CARTE
@@ -279,7 +280,7 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                                       from="planning"
                                       className="self-start text-xs font-medium text-accent underline underline-offset-2 hover:text-accent hover:underline"
                                     >
-                                      Corriger cette règle
+                                      {PLANNING_TEXTS.fixRuleLink}
                                     </WizardStepLink>
                                   ) : null}
                                 </div>

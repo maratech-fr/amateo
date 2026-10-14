@@ -1,15 +1,56 @@
 // Textes centralisés de la feature planning (PR7 — fondation des textes centralisés).
-// Valeurs = copie BYTE-IDENTIQUE des littéraux rendus par les écrans (PlanningPage, SlotDetail).
-// Convention : clé camelCase par intention ; interpolation par fonctions typées. Pas de lib i18n.
+// Valeurs = copie BYTE-IDENTIQUE des littéraux rendus par les écrans (PlanningPage, SlotDetail,
+// DiagnosticsPanel). Convention : clé camelCase par intention ; interpolation par fonctions typées.
+// Pas de lib i18n. JAMAIS en valeur : jour (→ shared/lib/days), heure/durée (→ time/duration),
+// marque (→ product), identifiant interne.
 export const PLANNING_TEXTS = {
   lockWillBeLost: "Elle est verrouillée — le verrou sera perdu.",
   emptyPlanningTitle: "Planning vide",
+  emptyPlanningDescription: "Ce planning ne contient aucun créneau placé pour le moment.",
   noPlanning: "Aucun planning",
+  noPlanningDescription: "Passez par l'assistant pour saisir vos données et générer un premier planning.",
+  noPeriodVersionTitle: "Aucune version pour cette période",
+  noPeriodVersionDescription: "Générez le planning de cette période pour le voir apparaître ici.",
   generationFailed: "Génération en échec",
+  generationFailedDescription: "Aucun créneau n'a été placé, et ce planning n'a aucune réservation à afficher. Corrigez les contraintes signalées puis régénérez.",
+  generationFailedNoSlots:
+    "La génération a échoué : aucun créneau n'a été placé. Seuls vos créneaux réservés sont affichés — ils restent acquis quoi qu'il arrive. Les exports sont vides pour ce planning.",
   scopeThisTeam: "Cette équipe",
   scopeWholeClub: "Tout le club",
   verifyTimeout: "La vérification a pris trop de temps, réessayez.",
   viaMutualization: "via mutualisation",
   mutualizedBadge: "Mutualisé",
   seasonPlanBadge: "principal",
+  planningNameLabel: "Nom du planning",
+  renamePlanning: "Renommer le planning",
+  earlierVersionNotice: "Vous regardez une version antérieure du planning.",
+  openLatestVersion: "Ouvrir la dernière version",
+  fillAutomatically: "Combler automatiquement",
+  fillHint: "Place les séances à replacer sans toucher au reste du planning.",
+  ignore: "Ignorer",
+  diagnosticsSystemTitle: "Diagnostics du système",
+  seeManualLocks: "Voir les verrous posés à la main",
+  undoLastGesture: "Annuler le dernier geste",
+  unlockReservedTitle: "Déverrouiller ce créneau réservé ?",
+  unlockReservedDescription:
+    "Ce créneau vient d'une réservation de gymnase. En le déverrouillant, la prochaine génération pourra le déplacer ou le libérer — vérifiez auprès du gymnase avant de continuer.",
+  loadVersionTitle: "Charger cette version ?",
+  regenerateFromCurrentTitle: "Régénérer à partir des données en cours ?",
+  // SlotDetail
+  closeLabel: "Fermer",
+  fixConstraintLink: "Corriger cette contrainte",
+  noSlotConstraints: "Aucune contrainte spécifique à ce créneau.",
+  readOnlyPlanningSlot: "Planning validé (lecture seule). Rouvrez-le pour modifier ce créneau.",
+  escKey: "Échap",
+  moveRejected: "Déplacement refusé — le créneau n’a pas bougé.",
+  moveBlocked: "Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée.",
+  moveInterrupted: "La vérification a été interrompue avant la réponse — rien n’a été modifié, réessayez.",
+  moveError: "Le moteur n’a pas répondu — rien n’a été modifié, réessayez.",
+  // DiagnosticsPanel
+  collapseDiagnosticsLabel: "Réduire les diagnostics",
+  collapseDiagnosticsTitle: "Réduire (plus de place pour la grille)",
+  adjustRuleLink: "Ajuster cette règle",
+  fixRuleLink: "Corriger cette règle",
+  diagnosticsLoading: "Lecture des diagnostics…",
+  diagnosticsClean: "Aucun diagnostic — le planning est propre.",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

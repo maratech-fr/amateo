@@ -20,6 +20,7 @@ import { groupConstraints, orderedTagNames } from "../lib/constraintOrder";
 import { groupedCoaches } from "../lib/ranking";
 import { constraintPredicateParts, constraintTarget } from "@/features/planning/lib/describeConstraint";
 import { groupTagsByAxis, tagLabel } from "../lib/tagLabels";
+import { WIZARD_TEXTS } from "../texts";
 import { excludeTagNames, targetTagNames } from "@/shared/lib/tagTeamIds";
 import { cn } from "@/shared/lib/utils";
 
@@ -608,8 +609,8 @@ export function ConstraintsStep() {
   }, [editTarget, genesisConstraints]);
 
   const teamPicker = (
-    <Select aria-label="Cible" title="Qui est concerné : tout le club, un groupe (tag), ou une équipe précise" wrapperClassName="w-48" value={target} onChange={(e) => changeTarget(e.target.value)}>
-      <option value="">Toutes les équipes</option>
+    <Select aria-label={WIZARD_TEXTS.targetLabel} title={WIZARD_TEXTS.targetHelp} wrapperClassName="w-48" value={target} onChange={(e) => changeTarget(e.target.value)}>
+      <option value="">{WIZARD_TEXTS.allTeamsOption}</option>
       {/* Groups by axis: Genre, Niveau, Âge (Lot B) — then the teams by tier below. */}
       {groupTagsByAxis(visibleTags).map((group) => (
         <optgroup key={group.label} label={group.label}>
@@ -655,7 +656,7 @@ export function ConstraintsStep() {
       {refineOpen ? (
         <div className="mt-2 flex flex-wrap gap-x-6 gap-y-3">
           <fieldset className="min-w-0 border-0 p-0">
-            <legend className="mb-1 text-xs font-semibold text-muted-foreground">Et aussi (l'équipe doit porter les deux)</legend>
+            <legend className="mb-1 text-xs font-semibold text-muted-foreground">{WIZARD_TEXTS.refineAndLegend}</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {refineTags.map((t) => (
                 <label key={t.id} className="flex items-center gap-1 text-xs">
@@ -666,7 +667,7 @@ export function ConstraintsStep() {
             </div>
           </fieldset>
           <fieldset className="min-w-0 border-0 p-0">
-            <legend className="mb-1 text-xs font-semibold text-muted-foreground">Sauf (retirer ces groupes)</legend>
+            <legend className="mb-1 text-xs font-semibold text-muted-foreground">{WIZARD_TEXTS.refineExceptLegend}</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {refineTags.map((t) => (
                 <label key={t.id} className="flex items-center gap-1 text-xs">
@@ -714,8 +715,8 @@ export function ConstraintsStep() {
           désormais dans l'onglet « Base », gardé contre la dérive du moteur. */}
       <p className="mb-3 text-sm text-muted-foreground">
         Ici, ajoutez vos préférences et restrictions : ciblez
-        <strong> tout le club</strong>, un <strong>groupe</strong> (ex. les jeunes → pas de créneau après 19h50) ou une <strong>équipe</strong> précise. La capacité d'un gymnase se règle
-        sur l'écran <strong>Gymnases</strong> (1, 2 ou 3 équipes par créneau). L'onglet <strong>Base</strong> montre ce que le système applique d'office ; <strong>Bien-être</strong> laisse régler les règles de confort.
+        <strong> {WIZARD_TEXTS.scopeClub}</strong>, un <strong>{WIZARD_TEXTS.scopeGroup}</strong> (ex. les jeunes → pas de créneau après 19h50) ou une <strong>{WIZARD_TEXTS.scopeTeam}</strong> précise. La capacité d'un gymnase se règle
+        sur l'écran <strong>{WIZARD_TEXTS.venues}</strong> (1, 2 ou 3 équipes par créneau). L'onglet <strong>{WIZARD_TEXTS.tabBase}</strong> montre ce que le système applique d'office ; <strong>{WIZARD_TEXTS.tabWellbeing}</strong> laisse régler les règles de confort.
       </p>
 
       {/* Même règle qu'au récap : quand les réglages de la période ne sont pas lus, on ne
@@ -859,27 +860,27 @@ export function ConstraintsStep() {
         {"TIME" === family && (
           <>
             <label className="text-xs text-muted-foreground">
-              Pas avant
-              <Input aria-label="Pas avant" type="time" className="mt-0.5 w-28" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
+              {WIZARD_TEXTS.timeNotBefore}
+              <Input aria-label={WIZARD_TEXTS.timeNotBefore} type="time" className="mt-0.5 w-28" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
             </label>
             <label className="text-xs text-muted-foreground">
-              Pas après
-              <Input aria-label="Pas après" type="time" className="mt-0.5 w-28" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
+              {WIZARD_TEXTS.timeNotAfter}
+              <Input aria-label={WIZARD_TEXTS.timeNotAfter} type="time" className="mt-0.5 w-28" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
             </label>
             <label className="text-xs text-muted-foreground">
-              Fini avant
-              <Input aria-label="Fini avant" type="time" className="mt-0.5 w-28" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              {WIZARD_TEXTS.timeFinishedBefore}
+              <Input aria-label={WIZARD_TEXTS.timeFinishedBefore} type="time" className="mt-0.5 w-28" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
             </label>
           </>
         )}
 
         {"DAY" === family && (
           <>
-            <Select aria-label="Type de jour" wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "preferred" | "only" | "atLeast")}>
-              <option value="forbidden">à éviter</option>
-              <option value="preferred">à privilégier</option>
-              <option value="only">uniquement</option>
-              <option value="atLeast">au moins une</option>
+            <Select aria-label={WIZARD_TEXTS.dayTypeLabel} wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "preferred" | "only" | "atLeast")}>
+              <option value="forbidden">{WIZARD_TEXTS.dayModeAvoid}</option>
+              <option value="preferred">{WIZARD_TEXTS.dayModePreferred}</option>
+              <option value="only">{WIZARD_TEXTS.dayModeOnly}</option>
+              <option value="atLeast">{WIZARD_TEXTS.dayModeAtLeast}</option>
             </Select>
             <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"preferred" === dayMode ? "Jours à privilégier" : "only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
           </>
@@ -887,10 +888,10 @@ export function ConstraintsStep() {
 
         {"FACILITY" === family && (
           <>
-            <Select aria-label="Préférence" wrapperClassName="w-28" value={effectiveVenueMode} onChange={(e) => setVenueMode(e.target.value as "preferred" | "forbidden" | "forced" | "min")}>
-              <option value="preferred">préfère</option>
-              <option value="forbidden">évite</option>
-              <option value="forced">impose</option>
+            <Select aria-label={WIZARD_TEXTS.preferenceLabel} wrapperClassName="w-28" value={effectiveVenueMode} onChange={(e) => setVenueMode(e.target.value as "preferred" | "forbidden" | "forced" | "min")}>
+              <option value="preferred">{WIZARD_TEXTS.venueModePreferred}</option>
+              <option value="forbidden">{WIZARD_TEXTS.venueModeForbidden}</option>
+              <option value="forced">{WIZARD_TEXTS.venueModeForced}</option>
               {/* « Au moins N ici » = un compte PAR ÉQUIPE. Une équipe précise ou un
                   GROUPE conviennent (l'éclatement par tag produit N contraintes par
                   équipe) ; seul « Toutes les équipes » se ferme — avant, la contrainte
@@ -901,14 +902,14 @@ export function ConstraintsStep() {
             </Select>
             {"min" === effectiveVenueMode && (
               <label className="text-xs text-muted-foreground">
-                Combien
-                <Input aria-label="Nombre de séances" type="number" min={1} className="mt-0.5 w-16" value={venueMinCount} onChange={(e) => setVenueMinCount(Math.max(1, Number(e.target.value) || 1))} />
+                {WIZARD_TEXTS.countLabel}
+                <Input aria-label={WIZARD_TEXTS.sessionsCountLabel} type="number" min={1} className="mt-0.5 w-16" value={venueMinCount} onChange={(e) => setVenueMinCount(Math.max(1, Number(e.target.value) || 1))} />
               </label>
             )}
             <VenueSelect
-              aria-label="Gymnase"
+              aria-label={WIZARD_TEXTS.venueSelectLabel}
               wrapperClassName="w-48"
-              placeholder="— gymnase —"
+              placeholder={WIZARD_TEXTS.venuePlaceholder}
               venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name, color: v.color, sub: disabledIds.has(v.id) ? "désactivé pour cette période" : undefined }))}
               value={venueId}
               onValueChange={setVenueId}
@@ -918,8 +919,8 @@ export function ConstraintsStep() {
 
         {"COACH_AVAILABILITY" === family && (
           <>
-            <Select aria-label="Coach" wrapperClassName="w-44" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
-              <option value="">— coach —</option>
+            <Select aria-label={WIZARD_TEXTS.coachLabel} wrapperClassName="w-44" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
+              <option value="">{WIZARD_TEXTS.coachOptionNone}</option>
               {(
                 [
                   ["Salariés", coachGroups.salaried],
@@ -938,19 +939,19 @@ export function ConstraintsStep() {
                 ) : null,
               )}
             </Select>
-            <Select aria-label="Disponibilité" wrapperClassName="w-44" value={coachMode} onChange={(e) => setCoachMode(e.target.value as "unavailable" | "available")}>
-              <option value="unavailable">indisponible</option>
-              <option value="available">disponible uniquement</option>
+            <Select aria-label={WIZARD_TEXTS.availabilityLabel} wrapperClassName="w-44" value={coachMode} onChange={(e) => setCoachMode(e.target.value as "unavailable" | "available")}>
+              <option value="unavailable">{WIZARD_TEXTS.coachUnavailable}</option>
+              <option value="available">{WIZARD_TEXTS.coachAvailableOnly}</option>
             </Select>
             <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"available" === coachMode ? "Jours de disponibilité exclusive" : "Jours d'indisponibilité"} />
             {/* Lot C: optional time window on the selected days (empty = whole day). */}
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
               de
-              <Input type="time" aria-label="Heure de début" className="w-28" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
+              <Input type="time" aria-label={WIZARD_TEXTS.timeStartLabel} className="w-28" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
             </label>
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
               à
-              <Input type="time" aria-label="Heure de fin" className="w-28" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
+              <Input type="time" aria-label={WIZARD_TEXTS.timeEndLabel} className="w-28" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
             </label>
           </>
         )}
@@ -960,8 +961,8 @@ export function ConstraintsStep() {
           // l'indisponibilité : elle est INDICATIVE, pas obligatoire. Pastille « Indicatif » + la
           // phrase qui le dit, au lieu de laisser croire qu'elle bloquera une séance.
           <div className="flex flex-col gap-1">
-            <RuleBadge label="Indicatif" />
-            <span className="text-xs text-muted-foreground">un adjoint indisponible ne bloque jamais une séance</span>
+            <RuleBadge label={WIZARD_TEXTS.ruleIndicative} />
+            <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.assistantNeverBlocks}</span>
           </div>
         ) : "COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode && "preferred" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
           // Coach availability + "impose"/"uniquement"/"au moins une" + "Fini avant" are
@@ -976,7 +977,7 @@ export function ConstraintsStep() {
           // — une pastille figée « Préféré », comme « Obligatoire » l'est pour les règles dures.
           <RuleBadge label={RULE_LABEL.PREFERRED} />
         ) : (
-          <Select aria-label="Règle" wrapperClassName="w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
+          <Select aria-label={WIZARD_TEXTS.ruleLabel} wrapperClassName="w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
             {RULES.map((r) => (
               <option key={r} value={r}>
                 {RULE_LABEL[r]}
@@ -986,24 +987,24 @@ export function ConstraintsStep() {
         )}
         {null !== editingId ? (
           <>
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm} title="Annuler la modification">
-              Annuler
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm} title={WIZARD_TEXTS.cancelEditTitle}>
+              {WIZARD_TEXTS.cancel}
             </Button>
-            <Button size="sm" onClick={submit} disabled={create.isPending || update.isPending} title="Enregistrer la contrainte" aria-label="Enregistrer la contrainte">
-              Enregistrer
+            <Button size="sm" onClick={submit} disabled={create.isPending || update.isPending} title={WIZARD_TEXTS.saveConstraintTitle} aria-label={WIZARD_TEXTS.saveConstraintTitle}>
+              {WIZARD_TEXTS.save}
             </Button>
           </>
         ) : (
           <Button size="sm" className="ml-auto" onClick={submit} disabled={create.isPending || update.isPending}>
             <Plus className="size-3.5" />
-            Ajouter la contrainte
+            {WIZARD_TEXTS.addConstraint}
           </Button>
         )}
       </div>
 
       {/* List for the active family — grouped by group (tag) then team (ranked). */}
       {0 === list.length ? (
-        <EmptyHint>Aucune contrainte dans cette famille.</EmptyHint>
+        <EmptyHint>{WIZARD_TEXTS.noConstraintsInFamily}</EmptyHint>
       ) : (
         // P4-107 (4ᵉ tranche) — un vrai `<table>` avec `<thead>`/`<tbody>`, pas une grille de
         // `<div>` : c'est la seule règle de sévérité HAUTE rendue par la passe de design sur ce
@@ -1017,12 +1018,12 @@ export function ConstraintsStep() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th scope="col" className="px-3 py-2 font-semibold">Cible</th>
-                <th scope="col" className="px-3 py-2 font-semibold">Règle</th>
-                <th scope="col" className="px-3 py-2 font-semibold">Valeur</th>
-                <th scope="col" className="px-3 py-2 font-semibold">Niveau</th>
+                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.targetLabel}</th>
+                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.ruleLabel}</th>
+                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.colValue}</th>
+                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.colLevel}</th>
                 {/* Colonne d'actions : nommée pour le lecteur d'écran, muette à l'œil. */}
-                <th scope="col" className="px-3 py-2 font-semibold"><span className="sr-only">Actions</span></th>
+                <th scope="col" className="px-3 py-2 font-semibold"><span className="sr-only">{WIZARD_TEXTS.colActions}</span></th>
               </tr>
             </thead>
             {sections.map((section) => (
@@ -1055,7 +1056,7 @@ export function ConstraintsStep() {
                       <td className="px-3 py-2 align-top">
                         {target ?? "—"}
                         {isAdjointOnlyCoachAvailability ? (
-                          <div className="mt-1 text-xs text-muted-foreground">un adjoint indisponible ne bloque jamais une séance</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{WIZARD_TEXTS.assistantNeverBlocks}</div>
                         ) : null}
                       </td>
                       {0 === parts.length ? (
@@ -1078,7 +1079,7 @@ export function ConstraintsStep() {
                         </>
                       )}
                       <td className="px-3 py-2 align-top">
-                        <StatusPill>{isAdjointOnlyCoachAvailability ? "Indicatif" : RULE_LABEL[c.ruleType]}</StatusPill>
+                        <StatusPill>{isAdjointOnlyCoachAvailability ? WIZARD_TEXTS.ruleIndicative : RULE_LABEL[c.ruleType]}</StatusPill>
                       </td>
                       <td className="px-3 py-2 align-top">
                         {isFact ? (
@@ -1115,7 +1116,7 @@ export function ConstraintsStep() {
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Supprimer cette contrainte ?"
+        title={WIZARD_TEXTS.deleteConstraintTitle}
         description={pendingDelete ? <>« {pendingDelete.name} » sera définitivement supprimée.</> : null}
         confirmLabel="Supprimer"
         onCancel={() => setPendingDelete(null)}

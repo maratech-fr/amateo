@@ -16,6 +16,7 @@ import { applicableConstraints, isClubWide } from "./lib/applicableConstraints";
 import { tagLabel } from "@/features/wizard/lib/tagLabels";
 import { describeConstraint } from "./lib/describeConstraint";
 import { type GridCell, NO_COACH_LABEL } from "./lib/grid";
+import { PLANNING_TEXTS } from "./texts";
 
 /** Map vide partagée : une CLUB+tag ne s'affiche nulle part tant que la résolution n'est pas fournie. */
 const NO_TAGS: ReadonlyMap<string, ReadonlySet<string>> = new Map();
@@ -126,7 +127,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
                 from="planning"
                 className="self-start text-xs font-medium text-accent underline underline-offset-2 hover:text-accent"
               >
-                Corriger cette contrainte
+                {PLANNING_TEXTS.fixConstraintLink}
               </WizardStepLink>
             </li>
           );
@@ -170,7 +171,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           {cell.teamLabel}
           {cell.locked ? <Lock className="size-4 text-muted-foreground" /> : null}
         </CardTitle>
-        <button type="button" onClick={onClose} aria-label="Fermer" className="rounded p-1 text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onClose} aria-label={PLANNING_TEXTS.closeLabel} className="rounded p-1 text-muted-foreground hover:text-foreground">
           <X className="size-4" />
         </button>
       </CardHeader>
@@ -199,7 +200,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
                 {null !== blockLabel && "" !== blockLabel ? `Groupe « ${blockLabel} »` : "Mutualisé"}
               </StatusPill>
             ) : null}
-            {viaMutualisation ? <StatusPill>via mutualisation</StatusPill> : null}
+            {viaMutualisation ? <StatusPill>{PLANNING_TEXTS.viaMutualization}</StatusPill> : null}
           </div>
         ) : null}
 
@@ -228,17 +229,17 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
               // Plus de `max-h`/`overflow` ici : c'est désormais TOUT le panneau (`CardContent`)
               // qui est borné et défile (cf. la Card ci-dessus), donc pas de double ascenseur.
               <div className="mt-2">
-                {teamConstraints.length > 0 ? <ConstraintList label="Cette équipe" items={teamConstraints} describe={describe} /> : null}
-                {clubConstraints.length > 0 ? <ConstraintList label="Tout le club" items={clubConstraints} describe={describe} /> : null}
+                {teamConstraints.length > 0 ? <ConstraintList label={PLANNING_TEXTS.scopeThisTeam} items={teamConstraints} describe={describe} /> : null}
+                {clubConstraints.length > 0 ? <ConstraintList label={PLANNING_TEXTS.scopeWholeClub} items={clubConstraints} describe={describe} /> : null}
               </div>
             ) : (
-              <EmptyHint className="mt-1 text-xs">Aucune contrainte spécifique à ce créneau.</EmptyHint>
+              <EmptyHint className="mt-1 text-xs">{PLANNING_TEXTS.noSlotConstraints}</EmptyHint>
             )
           ) : null}
         </div>
 
         {readOnly ? (
-          <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">Planning validé (lecture seule). Rouvrez-le pour modifier ce créneau.</p>
+          <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{PLANNING_TEXTS.readOnlyPlanningSlot}</p>
         ) : (
         <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
           {/* P2-30 (D11) : plus de formulaire jour/heure/gymnase — « Déplacer » ARME le mode
@@ -316,7 +317,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
                   {null !== groupSession
                     ? "Cliquez la case cible de la grille pour y déplacer tout le groupe."
                     : "Cliquez une case libre de la grille pour y déplacer ce créneau, ou une séance à évincer."}{" "}
-                  <span className="font-medium">Échap</span> pour annuler.
+                  <span className="font-medium">{PLANNING_TEXTS.escKey}</span> pour annuler.
                 </>
               }
             />
@@ -328,7 +329,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
             <NoticeBanner tone="destructive" role="alert">
               <div className="flex items-center gap-2 font-medium text-destructive">
                 <AlertTriangle className="size-4" aria-hidden="true" />
-                <span>Déplacement refusé — le créneau n’a pas bougé.</span>
+                <span>{PLANNING_TEXTS.moveRejected}</span>
               </div>
               <ul className="flex list-disc flex-col gap-1 pl-6 text-muted-foreground">
                 {moveState.violations.map((v, i) => (
@@ -339,21 +340,21 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           ) : null}
 
           {"blocked" === moveState.status ? (
-            <NoticeBanner tone="warning" role="alert" message="Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée." />
+            <NoticeBanner tone="warning" role="alert" message={PLANNING_TEXTS.moveBlocked} />
           ) : null}
 
           {"interrupted" === moveState.status ? (
-            <NoticeBanner tone="warning" role="alert" message="La vérification a été interrompue avant la réponse — rien n’a été modifié, réessayez." />
+            <NoticeBanner tone="warning" role="alert" message={PLANNING_TEXTS.moveInterrupted} />
           ) : null}
 
           {/* ENG-51 : verdict indéterminé — le solveur n'a pas tranché à temps. Ton NEUTRE (`muted`),
               jamais un style conflit : ce n'est pas un refus, rien n'a bougé, on invite à réessayer. */}
           {"indeterminate" === moveState.status ? (
-            <NoticeBanner tone="muted" role="status" message="La vérification a pris trop de temps, réessayez." />
+            <NoticeBanner tone="muted" role="status" message={PLANNING_TEXTS.verifyTimeout} />
           ) : null}
 
           {"error" === moveState.status ? (
-            <NoticeBanner tone="warning" role="alert" message="Le moteur n’a pas répondu — rien n’a été modifié, réessayez." />
+            <NoticeBanner tone="warning" role="alert" message={PLANNING_TEXTS.moveError} />
           ) : null}
         </div>
         )}
