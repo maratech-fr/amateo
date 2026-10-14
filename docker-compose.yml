@@ -48,7 +48,7 @@ services:
   # binaires natifs potentiellement incompatibles).
   e2e:
     profiles: ["tools"]
-    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    image: mcr.microsoft.com/playwright:v1.64.1-noble
     working_dir: /app/frontend
     # UID hôte (patron php-fpm) : en root, les artefacts test-results/ devenaient
     # intouchables depuis l'hôte. HOME inscriptible requis par Chromium.
@@ -138,7 +138,7 @@ services:
 
   nginx:
     restart: unless-stopped
-    image: nginx:1.27-alpine
+    image: nginx:1.31-alpine
     container_name: amateo-nginx
     depends_on:
       php-fpm:
