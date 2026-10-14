@@ -2,43 +2,35 @@ import { expect, test } from "./fixtures";
 
 import { registerAndVerify, submitRegister, uniqueAra } from "./support";
 
-test("register then verify by email lands a new club in the wizard", async ({ page }) => {
-  const ara = uniqueAra("E2EN");
-  await registerAndVerify(page, { email: `new-${ara}@e2e.fr`, ara, clubName: "E2E Club" });
-
-  // A fresh club is routed to the onboarding wizard (AuthGuard) with the
-  // season selector mounted in the header — the app shell is alive.
-  await expect(page.getByRole("heading", { name: /Étape 1\/6/ })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: "Saison de travail" })).toBeVisible();
-});
-
-test("register shows the check-your-email state and never authenticates immediately", async ({ page }) => {
-  const ara = uniqueAra("E2EC");
-  // A3: submitting register does NOT create a session — it shows the confirmation
-  // state and stays on /register (no redirect into the app shell).
-  await submitRegister(page, { email: `pending-${ara}@e2e.fr`, ara, clubName: "E2E Pending" });
+/**
+ * **Les autres portes de l'entrée (P8).** La porte NOMINALE « inscription → vérification → wizard »
+ * est prouvée bout en bout par `journey.spec.ts` (ex-`auth.spec.ts:5`, retiré ici comme doublon
+ * reconnu) ; ce parcours garde les TROIS portes restantes, enchaînées, chacune avec sa promesse :
+ *  1. inscrire N'AUTHENTIFIE pas (A3) — on reste sur /register, « check your email », pas de shell ;
+ *  2. rejoindre un club EXISTANT mène à l'écran d'attente d'approbation (jamais directement dedans) ;
+ *  3. un login erroné est refusé SANS boucle de redirection, focus rendu au champ e-mail (P4-252).
+ */
+test("les autres portes de l'entrée : check-email, attente d'approbation, login refusé", async ({ page }) => {
+  // --- Porte 1 · inscrire montre « vérifiez votre e-mail » et n'ouvre AUCUNE session (A3).
+  const pendingAra = uniqueAra("E2EC");
+  await submitRegister(page, { email: `pending-${pendingAra}@e2e.fr`, ara: pendingAra, clubName: "E2E Pending" });
   await expect(page).toHaveURL(/\/register$/);
   await expect(page.getByRole("button", { name: "Saison de travail" })).toBeHidden();
-});
 
-test("joining an existing club shows the waiting-for-approval screen", async ({ page }) => {
-  const ara = uniqueAra("E2EJ");
-
-  // Owner creates + verifies the club (becomes active admin -> wizard).
-  await registerAndVerify(page, { email: `owner-${ara}@e2e.fr`, ara, firstName: "Owner", lastName: "Admin", clubName: "E2E Existing" });
+  // --- Porte 2 · rejoindre un club EXISTANT → écran d'attente d'approbation.
+  const joinAra = uniqueAra("E2EJ");
+  // Le propriétaire crée + vérifie le club (devient admin actif → wizard).
+  await registerAndVerify(page, { email: `owner-${joinAra}@e2e.fr`, ara: joinAra, firstName: "Owner", lastName: "Admin", clubName: "E2E Existing" });
   await expect(page.getByRole("heading", { name: /Étape 1\/6/ })).toBeVisible({ timeout: 15_000 });
-
-  // A second person on the same ARA -> pending -> waiting screen (after verifying).
-  await registerAndVerify(page, { email: `joiner-${ara}@e2e.fr`, ara, firstName: "Joiner", lastName: "Two" });
+  // Une 2ᵉ personne sur le même ARA → en attente → écran « demande en attente » (après vérification).
+  await registerAndVerify(page, { email: `joiner-${joinAra}@e2e.fr`, ara: joinAra, firstName: "Joiner", lastName: "Two" });
   await expect(page.getByText(/demande en attente/i)).toBeVisible();
-});
 
-test("login rejects invalid credentials without redirect loop", async ({ page }) => {
+  // --- Porte 3 · login erroné refusé, sans boucle, focus rendu au champ e-mail.
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill("nobody@e2e.fr");
   await page.getByLabel("Mot de passe", { exact: true }).fill("wrongpassword");
   await page.getByRole("button", { name: /se connecter/i }).click();
-
   await expect(page.getByText(/erreur|invalid|identifiants|credentials/i)).toBeVisible();
   await expect(page).toHaveURL(/\/login$/);
   // P4-252 — le splash « Signature » lancé au clic s'efface à l'échec et rend le focus au champ

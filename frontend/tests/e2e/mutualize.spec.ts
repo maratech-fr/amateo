@@ -177,9 +177,6 @@ test("lot 9 F3 — « Mutualiser… » est atteignable et actif sur un plan de p
     await expect(mutualizeBtn, "le bouton « Mutualiser… » doit être présent sur la fiche de séance").toBeVisible({ timeout: 10_000 });
     await expect(mutualizeBtn, "il doit être ACTIF (plan de période non validé)").toBeEnabled();
 
-    // CAPTURE 1 — la fiche d'une séance avec le bouton « Mutualiser… » actif.
-    await page.screenshot({ path: "test-results/lot9-1-fiche-seance-bouton-mutualiser.png" });
-
     // --- La fenêtre Mutualiser : rattacher la 2ᵉ équipe, nommer le groupe « U11 ». ---
     await mutualizeBtn.click();
     const mutualizeDialog = page.getByRole("dialog", { name: /Mutualiser des équipes sur ce créneau/ });
@@ -195,16 +192,10 @@ test("lot 9 F3 — « Mutualiser… » est atteignable et actif sur un plan de p
     await expect(mutualizeDialog.getByText(joinerName)).toBeVisible();
     await mutualizeDialog.getByLabel(/Nom du groupe/).fill("U11");
 
-    // CAPTURE 2 — la fenêtre Mutualiser remplie (2ᵉ équipe + nom « U11 »).
-    await page.screenshot({ path: "test-results/lot9-2-fenetre-mutualiser-remplie.png" });
-
     // --- Confirmer : le backend crée le bloc et la grille affiche le nom du groupe. ---
     await mutualizeDialog.getByRole("button", { name: "Mutualiser", exact: true }).click();
     await expect(mutualizeDialog, `la modale doit se fermer sur un succès${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`).toBeHidden({ timeout: 30_000 });
     await expect(page.getByText(/Groupe « U11 »|U11/).first(), "le nom du groupe doit apparaître sur la grille").toBeVisible({ timeout: 20_000 });
-
-    // CAPTURE 3 — la grille après confirmation, avec le nom du groupe.
-    await page.screenshot({ path: "test-results/lot9-3-grille-apres-mutualisation-nom-groupe.png" });
   } finally {
     if ("" !== entryId) {
       await page.request.delete(`/api/calendar_entries/${entryId}`);

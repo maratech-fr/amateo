@@ -239,51 +239,41 @@ async function openSplitPreview(page: import("./fixtures").Page): Promise<void> 
   await expect(page.getByRole("button", { name: "Confirmer" })).toBeVisible({ timeout: 10_000 });
 }
 
-test("re-dater une indisponibilité découpée : aperçu des effets puis confirmation aboutit", async ({ page }) => {
-  test.setTimeout(150_000);
+test("re-dater une indisponibilité découpée : aperçu (contraste clair ET sombre) puis confirmation aboutit", async ({ page }) => {
+  test.setTimeout(180_000);
   const failed = watchFailedApiCalls(page);
 
+  // Le décor (mère découpée + 3 enfants) n'est monté qu'UNE fois : on scanne le contraste de
+  // l'aperçu dans les DEUX thèmes AVANT de confirmer (fusion de l'ex-scan sombre dédié). On part en
+  // SOMBRE (forceTheme avant le boot), puis on bascule en CLAIR — le dernier addInitScript gagne à la
+  // navigation suivante, openCockpit faisant un goto('/') qui re-boote l'app sur le thème clair.
+  await forceTheme(page, "dark");
   await login(page);
   let ids: string[] = [];
   try {
     ids = await createSplitClosure(page);
 
+    // --- Thème SOMBRE : la liste d'effets (dont le WarningPanel destructif) reste AA une fois RENDUE.
     await openCockpit(page);
     await openSplitPreview(page);
+    await expectNoPreviewContrastViolations(page, "cockpit · aperçu de re-datage (thème sombre)");
 
-    // Le contraste de l'aperçu (liste + bouton d'action) une fois RENDU à l'utilisateur.
+    // --- Bascule en thème CLAIR puis ré-ouverture du même aperçu (données non encore confirmées).
+    await forceTheme(page, "light");
+    await openCockpit(page);
+    await openSplitPreview(page);
     await expectNoPreviewContrastViolations(page, "cockpit · aperçu de re-datage (thème clair)");
 
-    // Confirmer : la semaine 3 tombe → effet destructif → toast « plans de période ajustés ».
+    // --- Confirmer : la semaine 3 tombe → effet destructif → toast « plans de période ajustés ».
+    // P4-266 — plus de pastille « à régénérer » au cockpit (signal déplacé sur /planning) : le succès
+    // de la confirmation suffit comme témoin.
     await page.getByRole("button", { name: "Confirmer" }).click();
     await expect(
       page.getByText(/plans de période ajustés\./),
       `la confirmation doit réussir et l'annoncer${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`,
     ).toBeVisible({ timeout: 30_000 });
-
-    // P4-266 — plus de pastille « à régénérer » au cockpit (signal déplacé sur /planning, dérivé de
-    // l'empreinte de structure). Le succès de la confirmation suffit comme témoin ici.
   } finally {
     // Idempotence : on retire la mère (cascade son plan/ses enfants) ET chaque enfant, dans l'ordre inverse.
-    for (const id of ids.reverse()) {
-      await page.request.delete(`/api/calendar_entries/${id}`);
-    }
-  }
-});
-
-test("aperçu de re-datage découpé : le contraste tient en thème sombre", async ({ page }) => {
-  test.setTimeout(150_000);
-  await forceTheme(page, "dark");
-
-  await login(page);
-  let ids: string[] = [];
-  try {
-    ids = await createSplitClosure(page);
-    await openCockpit(page);
-    await openSplitPreview(page);
-    // La liste d'effets (dont le WarningPanel des effets destructifs) reste AA en sombre.
-    await expectNoPreviewContrastViolations(page, "cockpit · aperçu de re-datage (thème sombre)");
-  } finally {
     for (const id of ids.reverse()) {
       await page.request.delete(`/api/calendar_entries/${id}`);
     }
