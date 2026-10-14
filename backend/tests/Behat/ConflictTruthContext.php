@@ -380,29 +380,6 @@ final class ConflictTruthContext extends BaseContext
         ), admin: true);
     }
 
-    /**
-     * P4-272 ① — variante « corrigée par le club » : le gestionnaire pose la MÊME
-     * fenêtre étroite mais par l'API CRUD (`POST club_league_windows`), pas par un
-     * INSERT SQL. Prouve le chemin réel écriture gestionnaire → copie → radar : une
-     * fenêtre corrigée par le club est honorée par le radar (et le placement, qui lit
-     * la même copie).
-     */
-    #[Given('le club corrige au samedi matin sa fenêtre de ligue pour cette équipe, via l\'API gestionnaire')]
-    public function leClubCorrigeSaFenetreDeLigueViaLApi(): void
-    {
-        $this->prepareCupTeamAndCategory();
-
-        $created = $this->apiPost('club_league_windows', [
-            'category' => self::CUP_CATEGORY_NAME,
-            'level' => 'REGIONAL',
-            'gender' => null,
-            'dayOfWeek' => 6,
-            'kickoffMin' => '10:00',
-            'kickoffMax' => '10:30',
-        ], $this->token);
-        $this->cupWindowId = $this->idOf($created, 'fenêtre de ligue corrigée');
-    }
-
     #[Given('une rencontre de coupe à domicile ce samedi, coup d\'envoi le soir hors de la fenêtre')]
     public function uneRencontreDeCoupeADomicileHorsFenetre(): void
     {
