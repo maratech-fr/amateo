@@ -44,8 +44,7 @@ test.beforeEach(async ({ page }) => {
  */
 test("la transition de saison : refus impayé → payer → préparer + reconduire → re-préparer (409), un seul brouillon", async ({ page }) => {
   // Une inscription (polling Mailpit ~15 s) + ~3-4 cycles de menu, sans solve : 60 s suffisent
-  // (l'ancien test « re-dater » tenait déjà inscription + 2 cycles en 30 s). PAS 120 s : le timeout
-  // de CI #1179 n'était pas un manque de budget mais un menu laissé ouvert (cf. l'Échap plus bas).
+  // (l'ancien test « re-dater » tenait déjà inscription + 2 cycles en 30 s).
   test.setTimeout(60_000);
   await registerClub(page);
 
@@ -60,12 +59,24 @@ test("la transition de saison : refus impayé → payer → préparer + recondui
   });
   expect(created.status()).toBe(201);
 
+  const prepareItem = page.getByRole("menuitem", { name: /Préparer la saison suivante/i });
+  // openMenu IDEMPOTENT. Le trigger du Menu APG est un TOGGLE (`menu.tsx:122`) : recliquer un menu
+  // OUVERT le referme. Et à l'ouverture le focus vise le 1er item, qui est la saison COURANTE
+  // `disabled` (`SeasonSelector.tsx:149`) → un `<button disabled>` n'est pas focalisable, le focus
+  // reste sur le trigger, donc un `Escape` n'atteint jamais le panneau (`menu.tsx:91`) et ne ferme
+  // rien (VRAIE cause du rouge CI #1179 : le menu laissé ouvert par l'état initial était ensuite
+  // REFERMÉ par le clic de `openMenu`). On ne clique donc QUE si le menu est fermé, en se calant sur
+  // le menuitem « Préparer » (toujours offert dans la fenêtre de préparation) comme témoin, puis on
+  // attend qu'il soit visible avant d'agir.
   const openMenu = async (): Promise<void> => {
-    await selectorTrigger.click();
+    if (!(await prepareItem.isVisible().catch(() => false))) {
+      await selectorTrigger.click();
+    }
+    await expect(prepareItem).toBeVisible();
   };
   const attemptPrepare = async (): Promise<void> => {
     await openMenu();
-    await page.getByRole("menuitem", { name: /Préparer la saison suivante/i }).click();
+    await prepareItem.click();
     await expect(page.getByText("Préparer la saison suivante ?")).toBeVisible();
     await page.getByRole("button", { name: "Préparer", exact: true }).click();
   };
@@ -76,11 +87,7 @@ test("la transition de saison : refus impayé → payer → préparer + recondui
   await openMenu();
   await expect(page.getByRole("menuitem", { name: /· en cours/i })).toHaveCount(1);
   await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toHaveCount(0);
-  await expect(page.getByRole("menuitem", { name: /Préparer la saison suivante/i })).toBeVisible();
-  // On REFERME le menu : sans ça, le `openMenu()` (click) d'`attemptPrepare` rouvrirait le toggle
-  // DÉJÀ ouvert → il le fermerait, le menuitem disparaîtrait et le click pendrait jusqu'au timeout
-  // (vraie cause du rouge CI #1179). Chaque tranche doit PARTIR d'un menu fermé, comme les 4 ex-tests.
-  await page.keyboard.press("Escape");
+  await expect(prepareItem).toBeVisible();
 
   // --- Refus impayé : le motif s'affiche TEL QUEL (P1-5), pas le toast générique « a échoué ».
   await attemptPrepare();
@@ -104,7 +111,6 @@ test("la transition de saison : refus impayé → payer → préparer + recondui
   await openMenu();
   await expect(page.getByRole("menuitem", { name: /· en cours/i })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: /· brouillon/i })).toHaveCount(1);
-  await page.keyboard.press("Escape");
 
   // --- Re-préparer : 409 « existe déjà », et l'étape de reconduction NE rouvre PAS (le brouillon a
   //     déjà des événements). Le toast du 409 est le témoin déterministe qui remplace waitForTimeout.
