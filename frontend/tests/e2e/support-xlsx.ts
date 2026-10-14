@@ -111,28 +111,37 @@ function zip(entries: ZipEntry[]): Buffer {
   return Buffer.concat([...locals, centralBuf, eocd]);
 }
 
-const COLUMNS = ["A", "B", "C", "D"] as const;
+/** Lettre de colonne A1 (A, B, …, Z, AA…) pour l'index 0-based — assez pour nos 4 à 7 colonnes. */
+function colLetter(index: number): string {
+  let i = index;
+  let out = "";
+  do {
+    out = String.fromCharCode(65 + (i % 26)) + out;
+    i = Math.floor(i / 26) - 1;
+  } while (i >= 0);
+  return out;
+}
 
-/** Une `<row>` de chaînes en ligne, réf. cellules A{n}…D{n}. */
+/** Une `<row>` de chaînes en ligne, réf. cellules {Col}{n} — nombre de colonnes libre. */
 function sheetRow(index: number, values: string[]): string {
   const cells = values
-    .map((value, i) => `<c r="${COLUMNS[i]}${index}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`)
+    .map((value, i) => `<c r="${colLetter(i)}${index}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`)
     .join("");
   return `<row r="${index}">${cells}</row>`;
 }
 
 /**
- * Construit le buffer .xlsx : en-tête « Nom | Catégorie | Numéro | Organisme » puis une
- * ligne par équipe. À passer à `locator.setInputFiles({ name, mimeType, buffer })`.
+ * Empaquette UN onglet (en-tête + lignes) en .xlsx lisible par PhpSpreadsheet. Foyer commun des
+ * deux constructeurs (équipes, rencontres FBI) — un seul endroit pour la plomberie OOXML/ZIP.
  */
-export function buildTeamsXlsx(rows: TeamXlsxRow[]): Buffer {
-  const header = sheetRow(1, ["Nom", "Catégorie", "Numéro", "Organisme"]);
-  const body = rows.map((r, i) => sheetRow(i + 2, [r.nom, r.categorie, r.numero, r.organisme])).join("");
+function buildSingleSheetXlsx(sheetName: string, header: string[], rows: string[][]): Buffer {
+  const headerRow = sheetRow(1, header);
+  const body = rows.map((cells, i) => sheetRow(i + 2, cells)).join("");
 
   const sheet =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-    `<sheetData>${header}${body}</sheetData></worksheet>`;
+    `<sheetData>${headerRow}${body}</sheetData></worksheet>`;
 
   const contentTypes =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -152,7 +161,7 @@ export function buildTeamsXlsx(rows: TeamXlsxRow[]): Buffer {
   const workbook =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-    `<sheets><sheet name="Equipes" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+    `<sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
 
   const workbookRels =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -167,4 +176,104 @@ export function buildTeamsXlsx(rows: TeamXlsxRow[]): Buffer {
     { name: "xl/_rels/workbook.xml.rels", data: Buffer.from(workbookRels, "utf8") },
     { name: "xl/worksheets/sheet1.xml", data: Buffer.from(sheet, "utf8") },
   ]);
+}
+
+/**
+ * Construit le buffer .xlsx d'un export FBI d'ÉQUIPES : en-tête « Nom | Catégorie | Numéro |
+ * Organisme » puis une ligne par équipe. À passer à `locator.setInputFiles({ name, mimeType, buffer })`.
+ */
+export function buildTeamsXlsx(rows: TeamXlsxRow[]): Buffer {
+  return buildSingleSheetXlsx(
+    "Equipes",
+    ["Nom", "Catégorie", "Numéro", "Organisme"],
+    rows.map((r) => [r.nom, r.categorie, r.numero, r.organisme]),
+  );
+}
+
+// ── Export FBI des RENCONTRES (distinct de l'export des ÉQUIPES ci-dessus) ────────────────────
+
+/**
+ * Une ligne de rencontre du fichier FBI — colonnes attendues par `FbiFixtureImporter`
+ * (ordre : Division · N° de match · Equipe 1 (domicile) · Equipe 2 (extérieur) · Date · Heure · Salle).
+ *
+ * ⚠ Le DOMICILE/EXTÉRIEUR se déduit du NOM DU CLUB (pas d'un code organisme, contrairement à
+ * l'import d'équipes) : le nom du club doit apparaître dans EXACTEMENT UN des deux côtés
+ * (`FbiFixtureImporter::containsClub`). `equipe1` = côté domicile, `equipe2` = côté extérieur.
+ */
+export interface FixtureXlsxRow {
+  division: string;
+  numero: string;
+  equipe1: string;
+  equipe2: string;
+  /** Format jj/mm/aaaa (ou vide). */
+  date: string;
+  /** Format HH:MM ; « 00:00 » = sentinelle FBI « heure non posée ». Optionnel. */
+  heure?: string;
+  /** Libellé de salle FFBB. Optionnel. */
+  salle?: string;
+}
+
+/**
+ * Construit le buffer .xlsx d'un export FBI de RENCONTRES. En-tête EXACT de l'export réel —
+ * « N° de match » porte une espace finale, reproduite ici (cf. `FbiFixtureImporter`).
+ */
+export function buildFixturesXlsx(rows: FixtureXlsxRow[]): Buffer {
+  return buildSingleSheetXlsx(
+    "Rencontres",
+    ["Division", "N° de match ", "Equipe 1", "Equipe 2", "Date de rencontre", "Heure", "Salle"],
+    rows.map((r) => [r.division, r.numero, r.equipe1, r.equipe2, r.date, r.heure ?? "", r.salle ?? ""]),
+  );
+}
+
+/** Une équipe du club et le libellé de division sous lequel ses rencontres arrivent dans le fichier. */
+export interface CanonicalTeamFixtures {
+  /** Le nom d'équipe (= libellé de division FBI dans le fichier, pour un mappage division→équipe 1-pour-1). */
+  division: string;
+  /** Nombre de journées (rencontres) de l'équipe. */
+  journees: number;
+}
+
+/**
+ * Le décor FBI CANONIQUE (charte des tests, §4) : un club de 10 équipes, import =
+ * 6 équipes × 5 journées + 3 × 10 + 1 × 22 ≈ 82 rencontres, domicile/extérieur alternés.
+ *
+ * `clubName` est posé dans le côté domicile ou extérieur selon la parité de la journée, de sorte
+ * que `FbiFixtureImporter` reconnaisse le club et en déduise le sens. Les adversaires sont des
+ * libellés distincts qui ne contiennent jamais le nom du club. Les dates sont des samedis
+ * successifs à partir de `firstSaturday` (jj/mm/aaaa) ; l'heure est fixée à 20:00.
+ */
+export function buildCanonicalFbiFixtures(opts: {
+  clubName: string;
+  teams: CanonicalTeamFixtures[];
+  /** Premier samedi (Date) d'où partent les journées. */
+  firstSaturday: Date;
+  venueLabel?: string;
+}): FixtureXlsxRow[] {
+  const { clubName, teams, firstSaturday, venueLabel = "Gymnase FBI e2e" } = opts;
+  const fmt = (d: Date): string => {
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}/${d.getUTCFullYear()}`;
+  };
+  const rows: FixtureXlsxRow[] = [];
+  let matchNo = 1;
+  for (const team of teams) {
+    for (let j = 0; j < team.journees; j += 1) {
+      const date = new Date(firstSaturday.getTime());
+      date.setUTCDate(firstSaturday.getUTCDate() + j * 7);
+      const opponent = `ADVERSAIRE ${String((j % 20) + 1).padStart(2, "0")}`;
+      const home = 0 === j % 2; // journées paires = domicile
+      rows.push({
+        division: team.division,
+        numero: String(matchNo).padStart(5, "0"),
+        equipe1: home ? clubName : opponent,
+        equipe2: home ? opponent : clubName,
+        date: fmt(date),
+        heure: "20:00",
+        salle: venueLabel,
+      });
+      matchNo += 1;
+    }
+  }
+  return rows;
 }
