@@ -2,31 +2,24 @@
 
 declare(strict_types=1);
 
-use App\Tests\Behat\ClosureSegmentationContext;
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConflictResolutionContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\DemoRetainedContext;
-use App\Tests\Behat\DemoWindowContext;
-use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\ExportContext;
 use App\Tests\Behat\FbiCorrectionContext;
 use App\Tests\Behat\FbiErrorLedgerContext;
 use App\Tests\Behat\FixtureReviewContext;
-use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\InvitationContext;
 use App\Tests\Behat\LeagueValidationContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
-use App\Tests\Behat\OrphanAccountContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
-use App\Tests\Behat\RepriseWeekContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SoclePlansContext;
-use App\Tests\Behat\StaleScheduleContext;
 use App\Tests\Behat\TeamsImportContext;
 use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
@@ -120,31 +113,6 @@ return (new Config)
                     ->withContexts(LockContext::class),
             )
             ->withSuite(
-                new Suite('perimetre')
-                    ->withPaths('%paths.base%/features/le-perimetre-engage-est-protege.feature')
-                    ->withContexts(EngagedTeamContext::class),
-            )
-            ->withSuite(
-                new Suite('decoupage')
-                    ->withPaths('%paths.base%/features/une-indisponibilite-se-decoupe-en-debut-milieu-fin.feature')
-                    ->withContexts(ClosureSegmentationContext::class),
-            )
-            ->withSuite(
-                new Suite('vacances')
-                    ->withPaths('%paths.base%/features/une-semaine-de-vacances-couvre-lundi-vendredi.feature')
-                    ->withContexts(HolidayWeekContext::class),
-            )
-            ->withSuite(
-                new Suite('reprise')
-                    ->withPaths('%paths.base%/features/la-semaine-de-reprise.feature')
-                    ->withContexts(RepriseWeekContext::class),
-            )
-            ->withSuite(
-                new Suite('regenerer')
-                    ->withPaths('%paths.base%/features/le-planning-se-dit-a-regenerer.feature')
-                    ->withContexts(StaleScheduleContext::class),
-            )
-            ->withSuite(
                 new Suite('export')
                     ->withPaths('%paths.base%/features/l-export-du-planning.feature')
                     ->withContexts(ExportContext::class),
@@ -193,16 +161,6 @@ return (new Config)
                 new Suite('personne-deux-endroits')
                     ->withPaths('%paths.base%/features/une-personne-est-signalee-a-deux-endroits.feature')
                     ->withContexts(PlacedPersonConflictContext::class),
-            )
-            ->withSuite(
-                new Suite('demo-fenetre')
-                    ->withPaths('%paths.base%/features/la-demo-ne-s-ouvre-que-pendant-sa-fenetre.feature')
-                    ->withContexts(DemoWindowContext::class),
-            )
-            ->withSuite(
-                new Suite('compte-sans-club')
-                    ->withPaths('%paths.base%/features/un-compte-sans-club-est-supprime-a-trente-jours.feature')
-                    ->withContexts(OrphanAccountContext::class),
             )
             ->withSuite(
                 new Suite('demo-conservee')

@@ -17,8 +17,8 @@ use RuntimeException;
  *
  * On matérialise un vrai club (register + verify + approbation du propriétaire), on le marque
  * démo CONSERVÉ comme le fait la console superadmin (`is_demo`, `demo_retained_until` à J+14,
- * animateur DÉTACHÉ) — par SQL admin, façon {@see DemoWindowContext} qui pose la fenêtre de la
- * même manière. Puis le contact officiel s'inscrit RÉELLEMENT avec le même code et approuve
+ * animateur DÉTACHÉ) — par SQL admin, le temps du scénario. Puis le contact officiel s'inscrit
+ * RÉELLEMENT avec le même code et approuve
  * (relais dev) : son /api/me doit pointer le MÊME club (jamais un 2e), redevenu un vrai club
  * (`is_demo` false) dont il est gestionnaire. Le contexte crée ET nettoie ses propres comptes
  * et le club (le bac à sable dev n'est pas ré-initialisé entre deux runs), donc il rejoue.
