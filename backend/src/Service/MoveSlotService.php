@@ -19,6 +19,8 @@ use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
+use App\Exception\SwapCrossScheduleException;
+use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -565,6 +567,227 @@ final class MoveSlotService
     }
 
     /**
+     * ÉCHANGER DEUX SÉANCES ATOMIQUEMENT (P4-327) — deux créneaux qui prennent chacun la case de
+     * l'autre, SOUS UN SEUL VERDICT (un payload `/validate-assignments` apparié) et en UNE
+     * transaction (tout-ou-rien). C'est le pendant « sans perte » de l'éviction : personne n'est
+     * retiré, les deux côtés restent placés, ils troquent simplement leurs cases.
+     *
+     * PÉRIMÈTRE (décision fondateur lot 2) : la SOURCE peut être une séance d'ÉQUIPE ou une séance
+     * de GROUPE (ses N membres à la case source partent ENSEMBLE, patron {@see moveGroup()}) ;
+     * l'OCCUPANT doit être une séance d'ÉQUIPE non verrouillée. Un occupant de GROUPE est refusé
+     * NOMMÉMENT ({@see EvictTargetIsGroupException}) — l'échange de deux groupes (N+M) arrive dans un
+     * lot ultérieur.
+     *
+     * ⚠ Les POSITIONS viennent du SERVEUR, jamais du client : chaque côté troque la case RÉELLE
+     * qu'il occupe. La durée écrite de chaque côté est celle de la FENÊTRE d'arrivée (LA RÈGLE),
+     * jamais celle qu'il portait — la source prend la durée de la fenêtre de l'occupant, l'occupant
+     * celle de la fenêtre de la source.
+     *
+     * Ordre des refus, TOUS avant le moteur : deux plannings ≠ ({@see SwapCrossScheduleException}),
+     * même créneau / équipe commune aux deux côtés ({@see SwapWithSelfException}), occupant de groupe
+     * ({@see EvictTargetIsGroupException}), occupant verrouillé (D4 souverain,
+     * {@see EvictTargetLockedException}), fenêtre absente d'un côté ({@see SlotUnavailableException}),
+     * doublon d'équipe ailleurs ({@see TeamAlreadyAtCaseException}).
+     *
+     * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
+     * @throws SwapCrossScheduleException            les deux créneaux ne sont pas du même planning (→ 422)
+     * @throws SwapWithSelfException                 l'occupant est la source / une équipe déjà engagée côté source (→ 422)
+     * @throws EvictTargetIsGroupException           l'occupant est lui-même une séance de groupe (→ 422)
+     * @throws EvictTargetLockedException            l'occupant (équipe) est verrouillé, D4 (→ 422)
+     * @throws SlotUnavailableException              aucune fenêtre de gymnase à l'une des deux cases (→ 422)
+     * @throws TeamAlreadyAtCaseException            un côté déplacé siège déjà à la case d'arrivée (→ 422)
+     * @throws EngineTimeoutException                le moteur a été trop lent (→ 504)
+     * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
+     * @throws InvalidArgumentException              un créneau source de groupe sans bloc résoluble (état incohérent)
+     *
+     * `$dryRun` (patron {@see move()}) : même chemin JUSQU'AU VERDICT INCLUS (gardes pré-moteur
+     * comprises), puis retour AVANT toute écriture — la réponse porte `dryRun => true`
+     *
+     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, dryRun?: bool, movedSlotIds?: list<string>}
+     */
+    public function swap(ScheduleSlotTemplate $source, ScheduleSlotTemplate $target, bool $dryRun = false): array
+    {
+        // (0) Les deux côtés doivent vivre dans LE MÊME planning (sinon l'appariement n'a pas de
+        //     sens et casserait la baseline figée par planning), et ne pas être le même créneau.
+        if ($source->getScheduleId() !== $target->getScheduleId()) {
+            throw new SwapCrossScheduleException;
+        }
+        if ($source->getId() === $target->getId()) {
+            throw new SwapWithSelfException;
+        }
+
+        $schedule = $this->entityManager->getRepository(Schedule::class)->find($source->getScheduleId());
+        if (!$schedule instanceof Schedule) {
+            throw new InvalidArgumentException('The slot has no parent schedule.');
+        }
+
+        // (1) Une génération réécrit le planning : échanger maintenant écraserait un résultat en vol.
+        if ($this->clubGenerationLock->isGenerating($schedule->getClubId())) {
+            throw new ScheduleGenerationInProgressException;
+        }
+
+        // (2) Le côté SOURCE : une séance d'équipe (le seul créneau) OU une séance de groupe (les N
+        //     membres du bloc qui siègent À LA CASE SOURCE partent ensemble, patron moveGroup()).
+        $sources = $this->swapSourceSessions($schedule, $source);
+        $sourceIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $sources);
+        $sourceTeamIds = array_fill_keys(array_map(static fn (ScheduleSlotTemplate $s): string => $s->getTeamId(), $sources), true);
+
+        // (3) L'OCCUPANT doit être une séance d'ÉQUIPE non verrouillée. Une séance de GROUPE est
+        //     refusée AVANT le contrôle de verrou (son verrou d'ancrage la ferait tomber en
+        //     target_locked, message trompeur) — l'échange de deux groupes arrive dans un lot ultérieur.
+        if (null !== $target->getSharedTrainingBlockId()) {
+            throw new EvictTargetIsGroupException;
+        }
+        // L'occupant ne doit pas être l'une des séances source (même créneau), ni porter une équipe
+        // DÉJÀ engagée côté source : l'échange formerait un cycle d'écriture sur l'index UNIQUE
+        // (une même équipe des deux côtés), et serait de toute façon un non-geste.
+        if (\in_array($target->getId(), $sourceIds, true) || isset($sourceTeamIds[$target->getTeamId()])) {
+            throw new SwapWithSelfException;
+        }
+        // D4 — un verrou gestionnaire est souverain : on n'échange jamais un occupant verrouillé
+        // sans le déverrouiller d'abord (l'occupant est une équipe, pas un groupe : toute valeur
+        // ≠ NONE est un verrou posé, pas un ancrage).
+        if (LockLevel::NONE !== $target->getLockLevel()) {
+            throw new EvictTargetLockedException;
+        }
+
+        // (4) Baseline figée SANS les deux côtés (sinon chacun entrerait en conflit avec lui-même) +
+        //     la grille de gymnase, d'où l'on tire les durées des DEUX fenêtres d'arrivée.
+        $payload = $this->buildBasePayloadExcluding($schedule, [...$sourceIds, $target->getId()]);
+
+        // Chaque côté prend la durée de la FENÊTRE où il atterrit (LA RÈGLE) : la source → la fenêtre
+        // de l'occupant, l'occupant → la fenêtre de la source. Fenêtre absente d'un côté → le créneau
+        // n'existe pas, on tranche avant le moteur.
+        $sourceWindowDuration = $this->resolveWindowDurationMinutes($payload, $source->getVenueId(), $source->getDayOfWeek(), $source->getStartTime());
+        $targetWindowDuration = $this->resolveWindowDurationMinutes($payload, $target->getVenueId(), $target->getDayOfWeek(), $target->getStartTime());
+        if (null === $sourceWindowDuration || null === $targetWindowDuration) {
+            throw new SlotUnavailableException;
+        }
+
+        // (5) Aucun côté déplacé ne doit DÉJÀ siéger à sa case d'arrivée par une AUTRE séance (hors
+        //     les deux côtés eux-mêmes, qui SONT le geste). La source atterrit à la case de l'occupant,
+        //     l'occupant à la case de la source. Un doublon résiduel refuse AVANT le moteur, NOMMÉ.
+        $guardExcluded = [...$sourceIds, $target->getId()];
+        foreach ($sources as $sourceSlot) {
+            $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
+                $schedule->getId(),
+                $sourceSlot->getTeamId(),
+                $target->getVenueId(),
+                $target->getDayOfWeek(),
+                $target->getStartTime(),
+                $guardExcluded,
+            );
+        }
+        $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
+            $schedule->getId(),
+            $target->getTeamId(),
+            $source->getVenueId(),
+            $source->getDayOfWeek(),
+            $source->getStartTime(),
+            $guardExcluded,
+        );
+
+        // Les DEUX cases, CAPTURÉES avant toute mutation : la source EST l'un des `$sources`, donc
+        // la lire après coup dans le closure d'écriture rendrait la case de l'occupant déjà écrite
+        // (chacun prendrait sa propre case au lieu de celle de l'autre).
+        $sourceCaseDay = $source->getDayOfWeek();
+        $sourceCaseStart = $source->getStartTime();
+        $sourceCaseVenue = $source->getVenueId();
+        $targetCaseDay = $target->getDayOfWeek();
+        $targetCaseStart = $target->getStartTime();
+        $targetCaseVenue = $target->getVenueId();
+
+        // (6) UN verdict apparié : chaque séance source posée à la case de l'occupant, l'occupant posé
+        //     à la case de la source ; chaque référence = sa case d'origine (contrat 2.18, candidates
+        //     et references appariés par index). Le solveur ne lit pas `durationMinutes` du candidat.
+        $candidates = [];
+        $references = [];
+        foreach ($sources as $sourceSlot) {
+            $candidates[] = [
+                'teamId' => $sourceSlot->getTeamId(),
+                'venueId' => $target->getVenueId(),
+                'dayOfWeek' => $target->getDayOfWeek(),
+                'startTime' => $target->getStartTime()->format('H:i'),
+                'durationMinutes' => $targetWindowDuration,
+            ];
+            $references[] = [
+                'teamId' => $sourceSlot->getTeamId(),
+                'venueId' => $sourceSlot->getVenueId(),
+                'dayOfWeek' => $sourceSlot->getDayOfWeek(),
+                'startTime' => $sourceSlot->getStartTime()->format('H:i'),
+                'durationMinutes' => $sourceSlot->getDurationMinutes(),
+            ];
+        }
+        $candidates[] = [
+            'teamId' => $target->getTeamId(),
+            'venueId' => $source->getVenueId(),
+            'dayOfWeek' => $source->getDayOfWeek(),
+            'startTime' => $source->getStartTime()->format('H:i'),
+            'durationMinutes' => $sourceWindowDuration,
+        ];
+        $references[] = [
+            'teamId' => $target->getTeamId(),
+            'venueId' => $target->getVenueId(),
+            'dayOfWeek' => $target->getDayOfWeek(),
+            'startTime' => $target->getStartTime()->format('H:i'),
+            'durationMinutes' => $target->getDurationMinutes(),
+        ];
+        $payload['candidates'] = $candidates;
+        $payload['references'] = $references;
+
+        $result = $this->validateUnderTimeout($payload);
+
+        if (true !== ($result['valid'] ?? false)) {
+            // (7a) L'échange N'A PAS LIEU — aucun des deux côtés ne bouge (atomicité par le refus).
+            $refused = ['valid' => false, 'violations' => $this->namedViolations($result), 'compromises' => []];
+            if (true === ($result['indeterminate'] ?? false)) {
+                $refused['indeterminate'] = true;
+            }
+            if ($dryRun) {
+                $refused['dryRun'] = true;
+            }
+
+            return $refused;
+        }
+
+        $compromises = $this->namedCompromises($result);
+        $movedSlotIds = [...$sourceIds, $target->getId()];
+
+        // (dryRun) Le verdict est rendu, MAIS rien n'est écrit : ni l'échange, ni le marqueur, ni Mercure.
+        if ($dryRun) {
+            return ['valid' => true, 'violations' => [], 'compromises' => $compromises, 'dryRun' => true, 'movedSlotIds' => $movedSlotIds];
+        }
+
+        // (7b) Écrire les deux côtés, poser le marqueur, publier — le tout en UNE transaction
+        //      (tout-ou-rien). Aucune suppression : contrairement à l'éviction, l'occupant n'est pas
+        //      retiré, il prend la case de la source. Les deux côtés portent des ÉQUIPES DISTINCTES
+        //      (garde (3) « équipe commune »), donc l'index UNIQUE (schedule, équipe, gymnase, jour,
+        //      heure) ne se heurte jamais entre les deux UPDATE : chacun écrit une clé d'équipe différente.
+        $response = ['valid' => true, 'violations' => [], 'compromises' => $compromises, 'movedSlotIds' => $movedSlotIds];
+
+        return $this->entityManager->wrapInTransaction(function () use ($sources, $target, $schedule, $sourceCaseDay, $sourceCaseStart, $sourceCaseVenue, $targetCaseDay, $targetCaseStart, $targetCaseVenue, $sourceWindowDuration, $targetWindowDuration, $response): array {
+            foreach ($sources as $sourceSlot) {
+                $sourceSlot
+                    ->setDayOfWeek($targetCaseDay)
+                    ->setStartTime($targetCaseStart)
+                    ->setVenueId($targetCaseVenue)
+                    ->setDurationMinutes($targetWindowDuration);
+            }
+            $target
+                ->setDayOfWeek($sourceCaseDay)
+                ->setStartTime($sourceCaseStart)
+                ->setVenueId($sourceCaseVenue)
+                ->setDurationMinutes($sourceWindowDuration);
+            $schedule->setManuallyEditedSinceGeneration(true);
+            $this->entityManager->flush();
+
+            $this->progressPublisher->publishSafely($schedule, []);
+
+            return $response;
+        });
+    }
+
+    /**
      * RETIRER une séance placée (« vider un créneau ») — la ligne {@see ScheduleSlotTemplate}
      * DISPARAÎT, son éventuel verrou part avec elle, et la séance passe « non placée » (un ÉCART
      * calculé — rien n'est stocké pour ça). AUCUN appel moteur : un retrait ne crée pas de conflit,
@@ -671,6 +894,38 @@ final class MoveSlotService
 
             return ['removedSlotIds' => $removedSlotIds, 'removed' => $removed, 'unmetPresence' => $unmetPresence];
         });
+    }
+
+    /**
+     * Les séances du côté SOURCE d'un échange : le seul créneau si la source est une séance d'équipe,
+     * ou les N créneaux des membres du bloc qui siègent À LA CASE SOURCE si c'est une séance de groupe
+     * (patron {@see moveGroup()} — le serveur résout lui-même les membres, jamais des slotIds client).
+     *
+     * @return list<ScheduleSlotTemplate>
+     */
+    private function swapSourceSessions(Schedule $schedule, ScheduleSlotTemplate $source): array
+    {
+        $blockId = $source->getSharedTrainingBlockId();
+        if (null === $blockId) {
+            return [$source];
+        }
+
+        $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($blockId);
+        if (!$block instanceof SharedTrainingBlock) {
+            // Un créneau porte un blockId dont le bloc n'existe plus : état incohérent, on ne devine pas.
+            throw new InvalidArgumentException('The source slot references a missing shared training block.');
+        }
+
+        $sources = $this->sourceSlotsAtCase(
+            $schedule,
+            $this->blockMemberTeamIds($block),
+            $source->getVenueId(),
+            $source->getDayOfWeek(),
+            $source->getStartTime(),
+        );
+
+        // Le créneau source EST membre de ce bloc à cette case : la liste n'est jamais vide.
+        return [] === $sources ? [$source] : $sources;
     }
 
     /**

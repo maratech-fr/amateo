@@ -283,6 +283,53 @@ final readonly class ManualEditPaths implements CustomPathContributor
                     ],
                 ]),
             )),
+            '/api/schedule-slots/swap' => new PathItem(post: new Operation(
+                operationId: 'postScheduleSlotSwap',
+                tags: ['ManualEdit'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The two sessions were accepted by the solver and swapped cases together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs and the ids that moved — OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, nothing moved, retry) — OR a dryRun essai (same verdict, nothing written)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'message' => ['type' => 'string'],
+                            'valid' => ['type' => 'boolean'],
+                            'dryRun' => $dryRunProperty,
+                            'indeterminate' => $indeterminateProperty,
+                            'compromises' => $compromises,
+                            'movedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Ids of the slots that swapped cases (the source session — one slot, or the N member slots of a group — plus the occupant); absent on an indeterminate verdict'],
+                        ],
+                    ]),
+                    '400' => new Response('Missing or invalid field (slotId, otherSlotId)'),
+                    '404' => new Response('One of the two slots was not found'),
+                    '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
+                    '422' => $this->schemas->jsonResponse('Refused with NOTHING moved (all-or-nothing): the solver refused the swap (broken rules named for display), OR a server pre-check refused before any engine call — the two slots are not in the same schedule (code=swap_cross_schedule), the same slot or a team shared between both sides (code=swap_with_self), the occupant is itself a group session (code=evict_target_is_group), the occupant is locked (code=target_locked), a window is missing at one case (code=slot_unavailable), or a moved side already sits at its destination case (code=team_already_at_case)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'valid' => ['type' => 'boolean', 'enum' => [false]],
+                            'code' => ['type' => 'string', 'nullable' => true, 'description' => 'The machine code of a server pre-check refusal (no engine call)'],
+                            'error' => ['type' => 'string', 'nullable' => true],
+                            'violations' => $dryViolations,
+                        ],
+                    ]),
+                    '502' => new Response('Engine unreachable — nothing was moved, retry'),
+                    '504' => $this->schemas->jsonResponse('The engine answered too slowly and the verdict was dropped — nothing was moved. Distinct from 502: the engine works, it merely exceeded the transport ceiling. Retrying is the right move (body carries code=engine_timeout)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'code' => ['type' => 'string', 'enum' => ['engine_timeout']],
+                            'error' => ['type' => 'string', 'description' => 'Human message naming the timeout'],
+                        ],
+                    ]),
+                ],
+                summary: 'Swap two sessions atomically: each slot takes the other\'s case, under ONE solver verdict and in one transaction (all-or-nothing). Nothing is removed — unlike eviction, both sides stay placed. Positions are resolved SERVER-SIDE (each slot\'s real case). The source (slotId) may be a team OR a group session (its member slots move together); the occupant (otherSlotId) must be an unlocked team session — a group occupant is refused (reserved for a later lot)',
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'required' => ['slotId', 'otherSlotId'],
+                    'properties' => [
+                        'slotId' => ['type' => 'string', 'description' => 'The source slot being swapped (may belong to a mutualisation block — its whole session at that case moves)'],
+                        'otherSlotId' => ['type' => 'string', 'description' => 'The occupant slot it swaps cases with (must be an unlocked team session)'],
+                        'dryRun' => $dryRunProperty,
+                    ],
+                ]),
+            )),
             '/api/schedule-slots/{id}/remove' => new PathItem(post: new Operation(
                 operationId: 'postScheduleSlotRemove',
                 tags: ['ManualEdit'],

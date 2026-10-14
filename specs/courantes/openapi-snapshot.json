@@ -12537,6 +12537,242 @@
                 }
             }
         },
+        "/api/schedule-slots/swap": {
+            "post": {
+                "operationId": "postScheduleSlotSwap",
+                "tags": [
+                    "ManualEdit"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The two sessions were accepted by the solver and swapped cases together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs and the ids that moved \u2014 OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, nothing moved, retry) \u2014 OR a dryRun essai (same verdict, nothing written)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "valid": {
+                                            "type": "boolean"
+                                        },
+                                        "dryRun": {
+                                            "type": "boolean",
+                                            "nullable": true,
+                                            "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
+                                        },
+                                        "indeterminate": {
+                                            "type": "boolean",
+                                            "nullable": true,
+                                            "description": "True when the solver could not decide within its time budget \u2014 neither accepted nor refused (no rule named); nothing was written, retry"
+                                        },
+                                        "compromises": {
+                                            "type": "array",
+                                            "description": "Named comfort trade-offs of an ACCEPTED candidate (empty on refusal): what the move BREAKS or GAINS, ready to display",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "family": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "chaining",
+                                                            "venue_preference",
+                                                            "day_preference",
+                                                            "time_preference",
+                                                            "match_rest",
+                                                            "spacing",
+                                                            "coach_day_cap",
+                                                            "implicit_rule"
+                                                        ],
+                                                        "description": "Which comfort family the trade-off belongs to"
+                                                    },
+                                                    "effect": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "broken",
+                                                            "gained"
+                                                        ],
+                                                        "description": "broken = a preference honored before no longer is; gained = the reverse"
+                                                    },
+                                                    "message": {
+                                                        "type": "string",
+                                                        "description": "Ready-to-display sentence naming the team/coach/venue (no internal identifier)"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Team the trade-off is about (grid highlighting)"
+                                                    },
+                                                    "coachId": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Coach involved, when the family concerns one"
+                                                    },
+                                                    "venueId": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Venue involved, when the family concerns one"
+                                                    },
+                                                    "dayOfWeek": {
+                                                        "type": "integer",
+                                                        "nullable": true,
+                                                        "description": "ISO day (1-7) involved, when relevant"
+                                                    },
+                                                    "startTime": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Start time (HH:MM) involved, when relevant"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "movedSlotIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Ids of the slots that swapped cases (the source session \u2014 one slot, or the N member slots of a group \u2014 plus the occupant); absent on an indeterminate verdict"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or invalid field (slotId, otherSlotId)"
+                    },
+                    "404": {
+                        "description": "One of the two slots was not found"
+                    },
+                    "409": {
+                        "description": "Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)"
+                    },
+                    "422": {
+                        "description": "Refused with NOTHING moved (all-or-nothing): the solver refused the swap (broken rules named for display), OR a server pre-check refused before any engine call \u2014 the two slots are not in the same schedule (code=swap_cross_schedule), the same slot or a team shared between both sides (code=swap_with_self), the occupant is itself a group session (code=evict_target_is_group), the occupant is locked (code=target_locked), a window is missing at one case (code=slot_unavailable), or a moved side already sits at its destination case (code=team_already_at_case)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "valid": {
+                                            "type": "boolean",
+                                            "enum": [
+                                                false
+                                            ]
+                                        },
+                                        "code": {
+                                            "type": "string",
+                                            "nullable": true,
+                                            "description": "The machine code of a server pre-check refusal (no engine call)"
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "nullable": true
+                                        },
+                                        "violations": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "rule": {
+                                                        "type": "string",
+                                                        "description": "Machine code of the broken rule (UI branches on it)"
+                                                    },
+                                                    "message": {
+                                                        "type": "string",
+                                                        "description": "Human sentence naming the coach/venue/time in conflict"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "coachId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "venueId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "dayOfWeek": {
+                                                        "type": "integer",
+                                                        "nullable": true
+                                                    },
+                                                    "startTime": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "conflictingTeamId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Engine unreachable \u2014 nothing was moved, retry"
+                    },
+                    "504": {
+                        "description": "The engine answered too slowly and the verdict was dropped \u2014 nothing was moved. Distinct from 502: the engine works, it merely exceeded the transport ceiling. Retrying is the right move (body carries code=engine_timeout)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string",
+                                            "enum": [
+                                                "engine_timeout"
+                                            ]
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "description": "Human message naming the timeout"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Swap two sessions atomically: each slot takes the other's case, under ONE solver verdict and in one transaction (all-or-nothing). Nothing is removed \u2014 unlike eviction, both sides stay placed. Positions are resolved SERVER-SIDE (each slot's real case). The source (slotId) may be a team OR a group session (its member slots move together); the occupant (otherSlotId) must be an unlocked team session \u2014 a group occupant is refused (reserved for a later lot)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "slotId",
+                                    "otherSlotId"
+                                ],
+                                "properties": {
+                                    "slotId": {
+                                        "type": "string",
+                                        "description": "The source slot being swapped (may belong to a mutualisation block \u2014 its whole session at that case moves)"
+                                    },
+                                    "otherSlotId": {
+                                        "type": "string",
+                                        "description": "The occupant slot it swaps cases with (must be an unlocked team session)"
+                                    },
+                                    "dryRun": {
+                                        "type": "boolean",
+                                        "nullable": true,
+                                        "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/schedule-slots/{id}/manual-edit/lock": {
             "post": {
                 "operationId": "postManualEditLock",

@@ -663,6 +663,16 @@ jobs:
       - name: SlotMoveGroupVerdictTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotMoveGroupVerdictTest.php --group phase1'
 
+      # P4-327 (axes planning lifecycle + constraint semantics) : l'ÉCHANGE ATOMIQUE de deux séances
+      # (chacune prend la case de l'autre) passe sous UN SEUL verdict apparié et s'écrit tout-ou-rien ;
+      # rien n'est supprimé (pendant « sans perte » de l'éviction). Source équipe OU groupe (ses N
+      # membres partent ensemble), occupant équipe non verrouillée ; refus NOMMÉS avant le moteur
+      # (cross-tenant/deux plannings, occupant verrouillé D4, échange avec soi-même, occupant groupe).
+      # Moteur moqué : on garde que le BACKEND honore le verdict et l'atomicité (contrat cross-stack
+      # garde le reste).
+      - name: SlotSwapVerdictTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotSwapVerdictTest.php --group phase1'
+
       # Résidu de P2-43 — la garde PRÉCOCE de move() sur la grille : ce que l'écran Gymnases
       # OFFRE, le serveur l'accepte ; ce qu'il n'offre pas (triplet inexistant, jour fermé), il le
       # refuse sans appeler le moteur ; la durée écrite est TOUJOURS celle de l'emplacement, jamais
