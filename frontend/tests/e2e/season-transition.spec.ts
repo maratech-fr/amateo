@@ -43,6 +43,10 @@ test.beforeEach(async ({ page }) => {
  * témoins déterministes (le toast du 409, puis l'absence de l'étape de reconduction).
  */
 test("la transition de saison : refus impayé → payer → préparer + reconduire → re-préparer (409), un seul brouillon", async ({ page }) => {
+  // La fusion 4→1 enchaîne une inscription (polling Mailpit ~15 s) PUIS quatre tranches de parcours :
+  // le budget PAR DÉFAUT de 30 s que chaque ancien test tenait seul ne suffit plus (pas de solve ici,
+  // d'où 120 s et non les 300 s de journey). Confirmé en CI #1179 : timeout à 31 s sur la 1ʳᵉ tranche.
+  test.setTimeout(120_000);
   await registerClub(page);
 
   const selectorTrigger = page.getByRole("button", { name: "Saison de travail" });
