@@ -275,8 +275,8 @@ elle a renversé un choix déjà arbitré par le fondateur (voir ci-dessous). Pa
 l'implémentation, elle aurait coûté une réécriture.
 
 **Dans un agent**, pas dans le fil principal : une passe sur plusieurs écrans consomme beaucoup
-de contexte et ne doit remonter que ses findings. Les agents `general-purpose` et `coder` portent
-l'outil `Skill` ; `Explore`, `planner` et les `cavecrew-*` ne l'ont pas.
+de contexte et ne doit remonter que ses findings. Les agents `general-purpose` et `neo` portent
+l'outil `Skill` ; `Explore`, `morpheus` et les `cavecrew-*` ne l'ont pas.
 
 ⚠ **Le skill ne MESURE rien, et l'écrire ici évite de le croire.** Il lit du code et des décisions
 de design ; il ne rend aucune page, ne calcule aucun contraste, ne mesure aucun débordement. Ce

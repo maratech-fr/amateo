@@ -135,11 +135,11 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
 **Cycle full lane** :
 0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
    `fichier:ligne`, jamais de mémoire ni depuis un doc ; jamais « vérifié » sur balayage partiel.
-1. **Need validation** (agent `cadreur`, lecture seule) : besoin reformulé, constats cités
+1. **Need validation** (agent `oracle`, lecture seule) : besoin reformulé, constats cités
    `fichier:ligne`, scénario UI réel, décisions avec exemple, ambiguïtés, hors-périmètre.
    **User valide — pas de `/plan` avant.**
-2. `/plan` (agent `planner`, porte la checklist §9) ; optionnel `contrarian-review`. User valide.
-3. Implémenter **strictement dans le scope** (agent `coder`, zéro refactor opportuniste).
+2. `/plan` (agent `morpheus`, porte la checklist §9) ; optionnel `smith`. User valide.
+3. Implémenter **strictement dans le scope** (agent `neo`, zéro refactor opportuniste).
 4. **NR obligatoire si axe §7.1 touché — même PR.** ⚠ `phase1` ne gate pas (§4) : un NR qui doit
    gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
 5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
@@ -174,9 +174,9 @@ auth & memberships.
 `AGENTS.md` pointe ici ; `<zone>/AGENTS.md` = détail de zone. Mise à jour via le skill
 `documentation-update` avant chaque PR. Décisions structurantes → ADR
 (`docs/architecture/adr-index.md`). Décision business prise en session (positionnement, marque,
-prix, juridique, terrain) → l'agent `business-writer` met `business/` à jour (hors dépôt, hors PR,
+prix, juridique, terrain) → l'agent `niobe` met `business/` à jour (hors dépôt, hors PR,
 jamais exigé en CI ; ce qui doit être opposable au code est recopié en substance dans
-`specs/courantes/` par `docs-writer`).
+`specs/courantes/` par `trinity`).
 
 **Les deux fichiers de suivi — ne jamais les confondre** : `specs/evolution/roadmap.md` =
 **l'ouvert seulement** ; `specs/courantes/etat-des-lieux.md` = **le livré + les décisions fermées**.
@@ -187,7 +187,7 @@ l'état des lieux.
 
 La checklist de cadrage (zone, dossiers autorisés/interdits, fichiers probables, doc à mettre à
 jour, axes §7.1 → NR, feature Behat qui prouve la zone si backend/engine touché — info de
-couverture, pas un run local obligatoire, §7 étape 5) **vit dans `.claude/agents/planner.md`** —
+couverture, pas un run local obligatoire, §7 étape 5) **vit dans `.claude/agents/morpheus.md`** —
 maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir littéralement.
 
 ## 10. Gotchas (top)
@@ -206,7 +206,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 5. ⚠ **Worktree + `docker compose exec` = code du dépôt PRINCIPAL** : les cibles Docker (make test,
    vitest tooling) montent/copient le dépôt principal — depuis un worktree elles valident du code
    qui n'est pas le tien ; `tests-complete`/e2e/Behat se jouent sur le dépôt principal, sérialisés
-   (`.claude/agents/coder.md` §Worktree).
+   (`.claude/agents/neo.md` §Worktree).
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
 `docs/glossary.md` · `docs/testing/testing-strategy.md` · `specs/evolution/roadmap.md`

@@ -21,4 +21,4 @@ Concrete, **proof-backed** removal/simplification candidates surfaced by the onb
 - The `phase1` blocking tests — keep (guardrails). `TenantCacheIsolationTest` is **implemented and runs in CI** (part of the blocking-tests gate — `CLAUDE.md` §4 is the canonical list). ⚠ Ne pas figer un compte ici (la liste bloquante s'allonge).
 
 ## Process reminder
-Any deletion goes through the normal feature cycle: `/plan` with the scope checklist → optional `contrarian-review` → your validation → implement → `validation-runner` → `/code-review`. No opportunistic removal.
+Any deletion goes through the normal feature cycle: `/plan` with the scope checklist → optional `smith` → your validation → implement → `validation-runner` → `/code-review`. No opportunistic removal.

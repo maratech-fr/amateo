@@ -129,7 +129,7 @@ Le verrou se dérive du **pointeur** : « verrouillé » = **le plan pointe cett
 > provider, aucun processor) : aucun rail d'écriture à garder sur ce verrou.
 - `ScheduleStateProcessor` DELETE : la **version choisie ne se supprime pas** (409 — la rouvrir d'abord) et une version en cours de génération non plus (409). Gardé par `ScheduleLifecycleGuardTest` (phase1).
 
-> Le verrou front seul serait une illusion (contrarian-review) : l'enforcement est **serveur**.
+> Le verrou front seul serait une illusion (smith) : l'enforcement est **serveur**.
 
 ### 3.2bis Unicité du socle en vigueur
 
