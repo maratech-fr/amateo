@@ -2,7 +2,11 @@
 
 > Le module démo (seed, création de club de démonstration), la boîte aux lettres d'un club à horloge simulée et le cockpit temporel (overlays période/événement). Découpé mécaniquement de `backend-inventory.md` (DOC-59).
 
-Last verified @ 2026-10-11 (rotation `documentation-update`, lot B). Re-confronté au code :
+Last verified @ 2026-10-14 (refonte Behat par parcours, PR4 lot Tests & CI) : la feature Behat
+`la-demo-ne-s-ouvre-que-pendant-sa-fenetre` a été repliée sur les gardes bloquantes `DemoWindowTest`
++ `DemoClubCaptureTest` (ci-dessous) ; `le-club-demo-d-un-prospect-se-conserve` reste l'enchaînement
+démo gardé en Behat. Reste du doc inchangé depuis le 2026-10-11 (rotation `documentation-update`,
+lot B) — re-confronté au code à cette date :
 `Club::$simulatedToday` toujours à `src/Entity/Club.php`, mais la citation de ligne avait dérivé —
 **corrigée `:139`** (pas `:127`, qui pointe le commentaire d'`isDemo` juste au-dessus) ; la
 contrainte CHECK `club_simulated_today_demo_only` toujours posée par `Version20261004140000` ✓ ;
@@ -174,7 +178,10 @@ la connexion des deux comptes démo hors fenêtre d'une manière **byte-identiqu
 de passe (`Invalid credentials.`, aucun oracle « fenêtre fermée ») ; tout autre compte est
 insensible à la colonne. Le seed (`app:demo:seed`) n'ouvre jamais la fenêtre lui-même : c'est la
 **console superadmin** qui pose/retire l'activation (`AdminDemoController`, ci-dessous). NR
-bloquant `DemoWindowTest` + feature Behat `la-demo-ne-s-ouvre-que-pendant-sa-fenetre`.
+bloquant `DemoWindowTest` (fenêtre de connexion) + `DemoClubCaptureTest` (vraie inscription sur le
+code FFBB d'une démo) ; l'enchaînement démo gardé en Behat est `le-club-demo-d-un-prospect-se-conserve`
+(la feature `la-demo-ne-s-ouvre-que-pendant-sa-fenetre` a été repliée sur ces deux gardes bloquantes,
+refonte Behat par parcours).
 
 **Console démo** (`AdminDemoController`, `/api/admin/demos*`, PR B — mêmes gardes que les
 actions de support SA4, connexion `admin`, **aucun `club_id` posé**) : `GET /demos` lit l'état
