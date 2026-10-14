@@ -206,6 +206,12 @@ B ≥ 80 % des séances ; aucune prioritaire ne perd.
   gymnases, fermer le plus occupé exige la MUTUALISATION pour rester faisable — le décor de fermeture
   (mutualisation + plus de gymnases) est à cadrer. `plan-de-periode-en-overlay:45` (re-datage découpé avec
   aperçu) gardé.
+- **État PR4c** : NON livré dans PR4c. Fondations POSÉES (le trait porte désormais période de fermeture,
+  plan de période, overlay, transcription, et le réglage `maxConsecutiveDays` qui lève le 422 de plan de
+  période d'un club neuf — cf. P3 « manque produit »). Reste à cadrer : le décor de fermeture (venue_closed
+  daté + mutualisation) et la convergence du solveur. **À noter** : la fermeture ajoute des solves (≈ +40 s)
+  et dépasse alors le budget de 15 min que la réduction de `verrou` vient de rendre — arbitrage vitesse/couverture
+  à trancher par le fondateur, ou porter aussi `overlay` au petit club pour regagner du budget (gain marginal mesuré).
 - **Cible E2E** : `club-life.spec.ts` (incident consulté), `redate-closure.spec.ts` (incident
   re-daté + contraste).
 
@@ -221,6 +227,10 @@ gymnases laissés.
   PR4c (décision fondateur) — demande un mode ~20 équipes du `SmallClubFixtureTrait` et le flux doléances
   → transfert. Le filet PHPUnit `PeriodConstraintSelector` est écrit AVANT de retirer le scénario
   « contrainte d'équipe ignorée en vacances ».
+- **État PR4c** : NON livré. Filet `PeriodConstraintSelectorTest` VÉRIFIÉ VERT (4 tests, dont
+  `testHolidayDropsTeamCoachAndFacilityByDefaultButKeepsClub`). Le mode ~20 équipes du trait reste à bâtir ; le
+  flux doléances → transfert est outillé par `CoachWishesContext` (patron réutilisable). Comme P1, dépend du
+  réglage `maxConsecutiveDays` (plan de vacances = overlay) et ajoute ~90 s au-delà du budget 15 min — à arbitrer.
 
 ### P3 — Planning de saison
 Smoke A→Z, puis nominal : équipes + passerelles, gymnases, coachs, règles de club, préférences,
@@ -232,9 +242,19 @@ créneaux S réservés, indispos → génération → corrections (**verrouiller
   `une-contrainte-saisie:15` (impossible → FAILED diagnostiqué) gardée ; `un-verrou:15` (déplacer vers une
   case fermée) repliée au plus bas sur `SlotMoveVerdictTest::testMoveToCaseWithNoOpenSlotIsRejectedWithoutCallingEngine`
   (jumeau MOVE de `SlotPlacementVerdictTest::testPlacementWithNoWindowIsRejectedBeforeEngine`) ; `un-verrou:21/:40`
-  (jour imposé satisfait par verrou, règle contraire signalée) et `:47/:57/:69` (régénérations de PLAN DE PÉRIODE)
-  GARDÉS — promesses distinctes du cycle de vie des plans de période, sans filet plus bas. `une-personne-est-signalee-a-deux-endroits`
+  (jour imposé satisfait par verrou, règle contraire signalée) GARDÉS en saison. `une-personne-est-signalee-a-deux-endroits`
   et `l-import-des-equipes` gardés. Passerelles / repos / ≤ 3 séances à la suite = niveau engine, pas de Behat.
+- **Fait (PR4c)** : les trois régénérations de PLAN DE PÉRIODE d'`un-verrou-est-souverain` (ex-`:47/:57/:69` — verrou
+  de période qui survit à « Régénérer », deuxième régénération, « Charger » une version plus ancienne) sont RÉ-EXPRIMÉES
+  sur `SmallClubFixtureTrait` (palier 60 s) dans `un-verrou-de-periode-survit-a-la-regeneration.feature` — mêmes promesses,
+  mêmes assertions (les deux séances reviennent HARD aux mêmes cases), et l'aboutissement overlay prouvé par le décor. Le
+  smoke `plan-de-periode-en-overlay:9` reste sur le BCCL (second angle, point sensible). Mesuré : suite `verrou` 182 s → 17 s
+  (2 scénarios de saison) + nouvelle suite `verrou-periode` 78 s (3 scénarios) = 95 s (−87 s). ⚠ **Manque produit découvert**
+  par le décor réaliste : un club NEUF ne peut pas générer un plan de PÉRIODE — sa règle opt-in `maxConsecutiveDays` naît OFF
+  sur le plan, et le moteur REFUSE `intensity:"OFF"` (422), là où le payload de SAISON l'omet (`ImplicitRuleResolver::
+  resolveFromIndexed` sérialise une opt-in STOCKÉE à OFF au lieu de la sauter comme une opt-in ABSENTE). Le décor règle la
+  règle à PREFERRED (geste réel) pour éprouver la promesse de verrou ; le correctif (la copie de plan devrait sauter une opt-in OFF)
+  vit en roadmap.
 
 ### P4 — Matchs
 Erreurs de recopie FBI signalées (4a) ; conflits de coach remontés et traités (4b) ; puzzle par

@@ -281,6 +281,209 @@ trait SmallClubFixtureTrait
     }
 
     /**
+     * Le lundi (Y-m-d) d'une fenêtre de `$spanDays` jours sans vacances scolaires de la zone du
+     * club, à partir de « next monday +$offsetDays », en glissant de semaine en semaine. Un décor
+     * relatif à aujourd'hui traverserait sinon les vacances au fil de l'année (patron des contexts
+     * BCCL) ; un club sans zone scolaire n'intersecte aucune période → la première fenêtre convient.
+     */
+    private function smallClubFutureMonday(int $offsetDays, int $spanDays = 4): string
+    {
+        $monday = (int) strtotime(\sprintf('next monday +%d days', $offsetDays));
+        for ($attempt = 0; $attempt < 30; ++$attempt) {
+            $start = date('Y-m-d', $monday);
+            $end = date('Y-m-d', (int) strtotime(\sprintf('+%d days', $spanDays), $monday));
+            $hits = $this->dbalScalar(\sprintf(
+                'SELECT count(*) AS behatval FROM school_holiday_period h JOIN club c ON c.school_zone = h.zone WHERE c.id=\'%s\' AND h.start_date <= \'%s\' AND h.end_date >= \'%s\'',
+                $this->smallClubId,
+                $end,
+                $start,
+            ), admin: true);
+            if ('0' === $hits) {
+                return $start;
+            }
+            $monday = (int) strtotime('+7 days', $monday);
+        }
+
+        throw new RuntimeException(\sprintf('aucune fenêtre de %d jours sans vacances scolaires pour le petit club', $spanDays));
+    }
+
+    /**
+     * Déclare une période de fermeture (le vrai geste « Adapter » : POST /calendar_entries closure)
+     * et rend l'identifiant de l'entrée de calendrier.
+     */
+    private function createSmallClubClosureEntry(string $start, string $end, string $title): string
+    {
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'closure',
+            'title' => $title,
+            'startDate' => $start,
+            'endDate' => $end,
+        ], $this->smallClubToken);
+        if (!\in_array($entry['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('déclaration de la fermeture refusée (HTTP %d)', $entry['status']));
+        }
+
+        return $this->smallClubStringField($entry['json'], 'id');
+    }
+
+    /**
+     * Règle la règle de bien-être « jours consécutifs d'entraînement » (maxConsecutiveDays) à une
+     * intensité ACTIVE (PREFERRED par défaut, soft : sans effet sur la faisabilité) au niveau SAISON,
+     * via le vrai geste gestionnaire (PUT /implicit_rule_settings/maxConsecutiveDays).
+     *
+     * ⚠ NÉCESSAIRE pour générer un plan de PÉRIODE : cette règle est opt-in → un club NEUF la laisse
+     * à OFF, et la copie matérialisée à la naissance du plan ({@see ImplicitRuleSettingRepository::
+     * materializeForPlan}) la porte alors à OFF. Or le moteur REFUSE `maxConsecutiveDays.intensity:
+     * "OFF"` (422 Pydantic : « Input should be 'HARD' or 'PREFERRED' ») — là où le payload de SAISON
+     * l'OMET quand elle est OFF (`ImplicitRuleResolver::resolveFromIndexed` saute les opt-in ABSENTES,
+     * mais SÉRIALISE les opt-in STOCKÉES à OFF que le plan matérialise). Le club de démonstration (BCCL)
+     * aboutit son overlay parce que ses règles résolvent à une intensité valide ; le petit club neuf, non.
+     *
+     * Ce réglage ALIGNE le petit club sur un club réaliste qui utilise cette règle de bien-être — la
+     * promesse éprouvée ici (un verrou de période survit à la régénération) est indépendante de son
+     * intensité. L'écart « un club neuf ne peut pas générer un plan de période » est un MANQUE PRODUIT
+     * à instruire (la copie de plan devrait sauter une opt-in OFF, comme le fait la saison).
+     */
+    private function configureSmallClubMaxConsecutiveDaysRule(string $intensity = 'PREFERRED'): void
+    {
+        $put = $this->apiPut('implicit_rule_settings/maxConsecutiveDays', [
+            'schedulePlanId' => null,
+            'intensity' => $intensity,
+        ], $this->smallClubToken);
+        if (200 !== $put['status']) {
+            throw new RuntimeException(\sprintf('le réglage de la règle « jours consécutifs » a répondu %d (200 attendu)', $put['status']));
+        }
+    }
+
+    /** Ouvre le plan de période (POST /schedule_plans, geste « Adapter ») et rend son identifiant. */
+    private function openSmallClubPeriodPlan(string $entryId): string
+    {
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $entryId], $this->smallClubToken);
+        if (!\in_array($plan['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('ouverture du plan de période refusée (HTTP %d) — %s', $plan['status'], json_encode($plan['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES)));
+        }
+
+        return $this->smallClubStringField($plan['json'], 'id');
+    }
+
+    /**
+     * Crée une version overlay DRAFT sous le plan de période, la génère et attend le verdict
+     * (rail `useRegenerateOverlay` : créer + generate). La version repart des DONNÉES EN COURS du
+     * plan et en réépingle les verrous HARD. `$this->smallClubLastSolveSeconds` est posé.
+     *
+     * @return array{id: string, status: string}
+     */
+    private function generateSmallClubPeriodVersion(string $planId): array
+    {
+        $created = $this->apiPost('schedules', ['schedulePlanId' => $planId, 'status' => 'DRAFT'], $this->smallClubToken);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('création de la version de période refusée (HTTP %d)', $created['status']));
+        }
+        $id = $this->smallClubStringField($created['json'], 'id');
+
+        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $id), [], $this->smallClubToken);
+        if (!\in_array($launched['status'], [200, 202], true)) {
+            throw new RuntimeException(\sprintf('déclenchement de la génération de période refusé (HTTP %d)', $launched['status']));
+        }
+
+        $start = microtime(true);
+        $status = $this->pollSmallClubUntilTerminal($id);
+        $this->smallClubLastSolveSeconds = microtime(true) - $start;
+
+        return ['id' => $id, 'status' => $status];
+    }
+
+    /**
+     * Transcrit le socle en vigueur dans le plan de période (POST /transcribe-from-socle) : chaque
+     * séance recopiée est verrouillée HARD, sans solve. Rend l'identifiant de la version V1
+     * (attendue COMPLETED).
+     */
+    private function transcribeSmallClubSocleToPlan(string $planId): string
+    {
+        $transcribed = $this->apiPost(\sprintf('schedule_plans/%s/transcribe-from-socle', $planId), [], $this->smallClubToken);
+        if (!\in_array($transcribed['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('transcription du socle refusée (HTTP %d)', $transcribed['status']));
+        }
+        $id = $this->smallClubStringField($transcribed['json'], 'id');
+        $status = $this->pollSmallClubUntilTerminal($id);
+        if ('COMPLETED' !== $status) {
+            throw new RuntimeException(\sprintf('la transcription du socle aurait dû aboutir (COMPLETED), obtenu « %s »', $status));
+        }
+
+        return $id;
+    }
+
+    /**
+     * Verrouille (HARD, via l'API manual-edit/lock) les `$count` premières séances LIBRES (lock_level
+     * NONE) de la version donnée, triées par id (déterministe). Rend la liste de leurs cases.
+     *
+     * @return list<array{teamId: string, venueId: string, day: int, start: string}>
+     */
+    private function lockFreeSmallClubSessions(string $scheduleId, int $count): array
+    {
+        $raw = $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(row, \';\') AS behatval FROM ('
+                . ' SELECT id || \'|\' || team_id || \'|\' || venue_id || \'|\' || day_of_week || \'|\' || to_char(start_time, \'HH24:MI\') AS row'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND lock_level=\'NONE\' ORDER BY id LIMIT %d'
+                . ') q',
+                $scheduleId,
+                $count,
+            ),
+            admin: true,
+        );
+        $rows = '' === $raw ? [] : explode(';', $raw);
+        if ($count !== \count($rows)) {
+            throw new RuntimeException(\sprintf('la version devait porter %d séances libres à verrouiller (trouvées : %d)', $count, \count($rows)));
+        }
+
+        $cells = [];
+        foreach ($rows as $encoded) {
+            $cols = explode('|', $encoded);
+            if (5 !== \count($cols)) {
+                throw new RuntimeException('format de séance inattendu au verrouillage');
+            }
+            [$slotId, $teamId, $venueId, $day, $start] = $cols;
+            $locked = $this->apiPost(\sprintf('schedule-slots/%s/manual-edit/lock', $slotId), ['lockLevel' => 'HARD'], $this->smallClubToken);
+            if (200 !== $locked['status']) {
+                throw new RuntimeException(\sprintf('le verrouillage d\'une séance a répondu %d (200 attendu)', $locked['status']));
+            }
+            $cells[] = ['teamId' => $teamId, 'venueId' => $venueId, 'day' => (int) $day, 'start' => $start];
+        }
+
+        return $cells;
+    }
+
+    /**
+     * Vrai si CHAQUE case donnée porte, dans la version donnée, une séance HARD de la même équipe au
+     * même gymnase/jour/heure (le verrou est revenu à l'identique).
+     *
+     * @param list<array{teamId: string, venueId: string, day: int, start: string}> $cells
+     */
+    private function smallClubSessionsStillLockedAt(string $scheduleId, array $cells): bool
+    {
+        foreach ($cells as $cell) {
+            $count = (int) $this->dbalScalar(
+                \sprintf(
+                    'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\' AND lock_level=\'HARD\'',
+                    $scheduleId,
+                    $cell['teamId'],
+                    $cell['venueId'],
+                    $cell['day'],
+                    $cell['start'],
+                ),
+                admin: true,
+            );
+            if ($count < 1) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Nettoyage : purge canonique du workspace (maison unique `app:clubs:purge-erased`,
      * gardée par PurgeCompletenessTest), puis retrait du compte et de la coquille FFBB
      * résiduelle. Tolérant : un échec de teardown ne doit pas faire rougir un scénario vert.
