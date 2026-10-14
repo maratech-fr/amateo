@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 
-import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type LockLevel, type MoveViolation, MoveRejectedError, type RemovedSession, type Slot, SlotEditError, TargetLockedError, type UnmetPresence, VerdictAbandonedError } from "../api";
+import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type LockLevel, type MoveViolation, MoveRejectedError, MutualizationRefusedError, type RemovedSession, type Slot, SlotEditError, TargetLockedError, type UnmetPresence, VerdictAbandonedError } from "../api";
 import type { EvictFailureKind } from "../EvictConfirmDialog";
 import type { MoveFeedback } from "../SlotDetail";
 import type { ViewMode } from "../store";
 import { toast } from "@/shared/stores/toastStore";
-import { useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveGroupDryRun, useMoveSlot, usePlaceSlot } from "../queries";
+import { useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveGroupDryRun, useMoveSlot, useMutualizeAtCase, usePlaceSlot, useSwapDryRun, useSwapSlot } from "../queries";
 import type { DriftEntry } from "./drift";
 import { isEmptySlotId } from "./emptySlots";
 import { toHourMinute } from "./grid";
@@ -107,6 +107,28 @@ export function useRetouchGestures(
   // que le serveur les compose, jamais redérivées côté front. Null = aucune. Purgées au geste suivant
   // / changement de version / fermeture du bandeau.
   const [presenceNotice, setPresenceNotice] = useState<UnmetPresence[] | null>(null);
+  // Lot 2 — le MENU à 3 choix qui s'interpose sur un DÉPÔT vers une case OCCUPÉE (D1/D9). Il porte le
+  // contexte du geste (source simple ou groupe), l'occupant, son nom résolu et les motifs de
+  // désactivation d'IDENTITÉ (verrou gestionnaire, deux groupes, chevauchement d'équipes, > 10). Null
+  // = pas de menu. Choisir une action le ferme et ouvre la modale correspondante.
+  const [dropMenu, setDropMenu] = useState<
+    | { sourceSlotId: string; targetSlot: Slot; group?: EvictGroupContext; occupantName: string; sourceName: string; teamCount: number; disabled: { takePlace?: string; swap?: string; mutualize?: string } }
+    | null
+  >(null);
+  // Le dialogue de VERDICT d'un ÉCHANGE (« Échanger » du menu), mêmes phases que l'éviction — rendu
+  // par `EvictConfirmDialog kind="swap"`. Le serveur résout les deux côtés depuis les deux slotIds.
+  const [swapDialog, setSwapDialog] = useState<
+    | { phase: "checking"; sourceSlotId: string; targetSlot: Slot }
+    | { phase: "accepted"; sourceSlotId: string; targetSlot: Slot; compromises: Compromise[] }
+    | { phase: "refused"; sourceSlotId: string; targetSlot: Slot; violations: MoveViolation[] }
+    | { phase: "failed"; sourceSlotId: string; targetSlot: Slot; failureKind: EvictFailureKind }
+    | { phase: "indeterminate"; sourceSlotId: string; targetSlot: Slot }
+    | null
+  >(null);
+  // La modale « Mutualiser » du menu (rejoindre / fusion) : le nombre d'équipes regroupées est ANNONCÉ,
+  // le serveur reste seul juge. Null = fermée. `mutualizeAtCaseError` porte le refus 422 serveur VERBATIM.
+  const [mutualizeAtCaseDialog, setMutualizeAtCaseDialog] = useState<{ sourceSlotId: string; targetSlot: Slot; sourceName: string; occupantName: string; teamCount: number } | null>(null);
+  const [mutualizeAtCaseError, setMutualizeAtCaseError] = useState<string | null>(null);
 
   const moveMutation = useMoveSlot();
   const moveGroupMutation = useMoveGroup();
@@ -115,6 +137,9 @@ export function useRetouchGestures(
   const placeMutation = usePlaceSlot();
   const removeMutation = useDeleteSlot();
   const removeGroupMutation = useDeleteSlotGroup();
+  const swapMutation = useSwapSlot();
+  const swapDryRunMutation = useSwapDryRun();
+  const mutualizeAtCaseMutation = useMutualizeAtCase();
 
   // F2b — le retour du dernier déplacement, dérivé de la mutation (verdict moteur). Un refus
   // (422) arrive en MoveRejectedError avec ses motifs ; une génération en cours en
@@ -212,6 +237,10 @@ export function useRetouchGestures(
     setCompromiseNotice(null);
     setRemoveConfirm(null);
     setPresenceNotice(null);
+    setDropMenu(null);
+    setSwapDialog(null);
+    setMutualizeAtCaseDialog(null);
+    setMutualizeAtCaseError(null);
   }
 
   // P4-119 (d) — l'armement d'un geste cible SUIT son ancre et tombe dès qu'elle disparaît, sinon
@@ -307,6 +336,14 @@ export function useRetouchGestures(
             setUndo({ kind: "move-evict", slotId: sourceSlotId, sourceTeamId, from, evicted: result.evicted });
             setEvictionNotice({ evicted: result.evicted, freed: from });
             toast.success(`${teamNameOf(sourceTeamId)} déplacée — ${teamNameOf(result.evicted.teamId)} est à replacer${compromises.length > 0 ? suffix : "."}`);
+          } else if (undefined !== result.evictedGroup) {
+            // Q2 — l'occupant était un GROUPE : ses N séances partent ensemble (le bloc survit, elles
+            // passent « à replacer »). Pas de un-clic « Remettre » pour un groupe (décision fondateur,
+            // cohérent avec removeGroup) ni d'undo (replacement multi-séances) : le trou se lit dans la dérive.
+            const count = result.evictedGroup.slots.length;
+            setUndo(null);
+            setEvictionNotice(null);
+            toast.success(`${teamNameOf(sourceTeamId)} déplacée — groupe de ${count} séance${count > 1 ? "s" : ""} à replacer${compromises.length > 0 ? suffix : "."}`);
           } else {
             setUndo({ kind: "move", slotId: sourceSlotId, sourceTeamId, from });
             setEvictionNotice(null);
@@ -532,6 +569,213 @@ export function useRetouchGestures(
     }
   };
 
+  // ───────────── Lot 2 — MENU DE DÉPÔT (3 choix) + ÉCHANGE + MUTUALISATION AU DÉPÔT ─────────────
+
+  // Les équipes qui siègent à une case via un bloc (ou l'équipe seule sans bloc). Sert UNIQUEMENT à
+  // calculer les impossibilités d'IDENTITÉ du menu (chevauchement d'équipes, > 10) — une affordance,
+  // JAMAIS une autorité : le serveur reste seul juge (il re-vérifie tout) et un refus 422 est affiché.
+  const teamSetAtCase = (blockId: string | null, venueId: string, dayOfWeek: number, startHhmm: string, fallbackTeamId: string): string[] => {
+    if (null === blockId) {
+      return "" === fallbackTeamId ? [] : [fallbackTeamId];
+    }
+    const set = new Set<string>();
+    for (const s of slots) {
+      if (s.sharedTrainingBlockId === blockId && s.venueId === venueId && s.dayOfWeek === dayOfWeek && toHourMinute(s.startTime) === startHhmm) {
+        set.add(s.teamId);
+      }
+    }
+    return [...set];
+  };
+
+  // Ouvrir le menu à 3 choix pour un DÉPÔT sur une case occupée : résout l'occupant (équipe ou
+  // groupe), le côté source, et les motifs de désactivation d'identité (A11Y-30 côté composant).
+  const openDropMenu = (sourceSlotId: string, targetSlot: Slot, group?: EvictGroupContext) => {
+    const occupantTeams = teamSetAtCase(targetSlot.sharedTrainingBlockId, targetSlot.venueId, targetSlot.dayOfWeek, toHourMinute(targetSlot.startTime), targetSlot.teamId);
+    const sourceSlot = slots.find((s) => s.id === sourceSlotId);
+    const sourceTeams =
+      undefined !== group
+        ? teamSetAtCase(group.blockId, group.source.venueId, group.source.dayOfWeek, toHourMinute(group.source.startTime), "")
+        : undefined === sourceSlot
+          ? []
+          : teamSetAtCase(sourceSlot.sharedTrainingBlockId, sourceSlot.venueId, sourceSlot.dayOfWeek, toHourMinute(sourceSlot.startTime), sourceSlot.teamId);
+
+    const occupantIsGroup = null !== targetSlot.sharedTrainingBlockId;
+    // Verrou GESTIONNAIRE = verrouillé ET sans bloc (un verrou d'ANCRAGE de groupe n'en est pas un).
+    const occupantManagerLocked = "NONE" !== targetSlot.lockLevel && null === targetSlot.sharedTrainingBlockId;
+    const sourceIsGroup = undefined !== group;
+    const overlap = sourceTeams.some((t) => occupantTeams.includes(t));
+    const cCount = new Set([...sourceTeams, ...occupantTeams]).size;
+    const occupantName = occupantIsGroup ? `le groupe (${occupantTeams.length} équipe${occupantTeams.length > 1 ? "s" : ""})` : teamNameOf(targetSlot.teamId);
+    const sourceName = sourceIsGroup ? `le groupe (${sourceTeams.length} équipe${sourceTeams.length > 1 ? "s" : ""})` : teamNameOf(sourceTeams[0] ?? "");
+    const LOCK = "Ce créneau est verrouillé — déverrouillez-le d'abord.";
+
+    setDropMenu({
+      sourceSlotId,
+      targetSlot,
+      group,
+      occupantName,
+      sourceName,
+      teamCount: cCount,
+      disabled: {
+        // « Prendre sa place » : moveGroup n'évince pas un groupe (groupe→groupe passe par Échanger/Mutualiser).
+        takePlace: occupantManagerLocked ? LOCK : sourceIsGroup && occupantIsGroup ? "Pour deux groupes, utilisez Échanger ou Mutualiser." : undefined,
+        // « Échanger » : un occupant ÉQUIPE verrouillé est souverain (D4) ; un groupe (ancrage) s'échange.
+        swap: occupantManagerLocked ? LOCK : undefined,
+        // « Mutualiser » : impossibilités d'identité seulement (le reste — capacité, Σ — refusé serveur).
+        mutualize: overlap ? "Une équipe est déjà présente des deux côtés." : cCount > 10 ? "Plus de 10 équipes au total." : undefined,
+      },
+    });
+  };
+
+  // « Prendre sa place » : rejoue le chemin d'éviction existant (essai + EvictConfirmDialog).
+  const chooseTakePlace = () => {
+    if (null === dropMenu) {
+      return;
+    }
+    const { sourceSlotId, targetSlot, group } = dropMenu;
+    setDropMenu(null);
+    setEvictDialog({ phase: "checking", sourceSlotId, targetSlot, group });
+    runEvictDryRun(sourceSlotId, targetSlot, group);
+  };
+
+  // « Échanger » : ouvre le dialogue de verdict d'échange, un essai part (dry-run swap).
+  const chooseSwap = () => {
+    if (null === dropMenu) {
+      return;
+    }
+    const { sourceSlotId, targetSlot } = dropMenu;
+    setDropMenu(null);
+    setSwapDialog({ phase: "checking", sourceSlotId, targetSlot });
+    runSwapDryRun(sourceSlotId, targetSlot);
+  };
+
+  // « Mutualiser » : ouvre la modale rejoindre/fusion (pas de verdict moteur — gardes serveur).
+  const chooseMutualize = () => {
+    if (null === dropMenu) {
+      return;
+    }
+    const { sourceSlotId, targetSlot, sourceName, occupantName, teamCount } = dropMenu;
+    setDropMenu(null);
+    setMutualizeAtCaseError(null);
+    setMutualizeAtCaseDialog({ sourceSlotId, targetSlot, sourceName, occupantName, teamCount });
+  };
+
+  const closeDropMenu = () => setDropMenu(null);
+
+  // L'ESSAI (dry-run) d'un ÉCHANGE qui remplit `swapDialog` — patron {@link runEvictDryRun}. Un essai
+  // REFUSÉ arrive en 200 {valid:false} → onSuccess (phase refused) ; verrou/génération/transport → onError.
+  const runSwapDryRun = (sourceSlotId: string, targetSlot: Slot) => {
+    const onSuccess = (result: { indeterminate?: boolean; valid: boolean; compromises?: Compromise[]; violations?: MoveViolation[] }) => {
+      if (true === result.indeterminate) {
+        setSwapDialog({ phase: "indeterminate", sourceSlotId, targetSlot });
+        return;
+      }
+      if (result.valid) {
+        setSwapDialog({ phase: "accepted", sourceSlotId, targetSlot, compromises: result.compromises ?? [] });
+      } else {
+        const violations = result.violations ?? [];
+        setSwapDialog({ phase: "refused", sourceSlotId, targetSlot, violations });
+        highlightViolations(violations);
+      }
+    };
+    const onError = (error: unknown) => {
+      if (error instanceof TargetLockedError || error instanceof SlotEditError) {
+        setSwapDialog(null);
+        toast.error(error.message);
+        return;
+      }
+      if (error instanceof GenerationInProgressError) {
+        setSwapDialog(null);
+        toast.error("Une génération est en cours pour ce club — réessayez ensuite.");
+        return;
+      }
+      const failureKind = error instanceof EngineTimeoutError ? "timeout" : error instanceof EngineVerificationInterruptedError ? "interrupted" : "unreachable";
+      setSwapDialog({ phase: "failed", sourceSlotId, targetSlot, failureKind });
+    };
+    swapDryRunMutation.mutate({ slotId: sourceSlotId, otherSlotId: targetSlot.id }, { onSuccess, onError });
+  };
+
+  const retrySwapDryRun = () => {
+    if (null === swapDialog) {
+      return;
+    }
+    const { sourceSlotId, targetSlot } = swapDialog;
+    setSwapDialog({ phase: "checking", sourceSlotId, targetSlot });
+    runSwapDryRun(sourceSlotId, targetSlot);
+  };
+
+  const confirmSwap = () => {
+    if (null === swapDialog) {
+      return;
+    }
+    const { sourceSlotId, targetSlot } = swapDialog;
+    swapMutation.mutate(
+      { slotId: sourceSlotId, otherSlotId: targetSlot.id },
+      {
+        onSuccess: (result) => {
+          setSwapDialog(null);
+          setTargetMode(null);
+          setUndo(null); // un échange n'a pas d'inverse d'un clic (il faudrait rejouer swap)
+          setEvictionNotice(null);
+          clearHighlight();
+          if (true === result.indeterminate) {
+            setCompromiseNotice(null);
+            return;
+          }
+          const compromises = result.compromises ?? [];
+          setCompromiseNotice(compromises.length > 0 ? compromises : null);
+          const suffix = compromises.length > 0 ? ` — ${compromises.length} compromis` : "";
+          toast.success(compromises.length > 0 ? `Séances échangées${suffix}` : "Séances échangées.");
+        },
+        onError: (error) => {
+          setSwapDialog(null);
+          if (error instanceof VerdictAbandonedError) {
+            return; // déjà nommé + resynchronisé par le hook
+          }
+          if (error instanceof MoveRejectedError) {
+            toast.error(error.violations[0]?.message ?? "Échange refusé par le moteur.");
+            highlightViolations(error.violations);
+          } else if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
+            toast.error(error.message);
+          }
+        },
+      },
+    );
+  };
+
+  // « Mutualiser » confirmé : le geste RÉEL part (pas de verdict moteur). Un refus NOMMÉ s'affiche
+  // dans la modale (`mutualizeAtCaseError`) ; un vrai transport est toasté par le hook, on ferme alors.
+  const doMutualizeAtCase = (label: string | undefined) => {
+    if (null === mutualizeAtCaseDialog) {
+      return;
+    }
+    const { sourceSlotId, targetSlot } = mutualizeAtCaseDialog;
+    setMutualizeAtCaseError(null);
+    mutualizeAtCaseMutation.mutate(
+      { sourceSlotId, targetSlotId: targetSlot.id, ...(undefined === label ? {} : { label }) },
+      {
+        onSuccess: () => {
+          setMutualizeAtCaseDialog(null);
+          setTargetMode(null);
+          setUndo(null);
+          setEvictionNotice(null);
+          setCompromiseNotice(null);
+          clearHighlight();
+          toast.success("Séances mutualisées.");
+        },
+        onError: (error) => {
+          if (error instanceof MutualizationRefusedError) {
+            setMutualizeAtCaseError(error.message);
+          } else if (error instanceof GenerationInProgressError) {
+            setMutualizeAtCaseError("Une génération est en cours pour ce club — réessayez une fois qu'elle est terminée.");
+          } else {
+            setMutualizeAtCaseDialog(null);
+          }
+        },
+      },
+    );
+  };
+
   // P2-43 volet (v) — la CEINTURE de l'offre (défense en profondeur) : un couple (gymnase, jour)
   // fermé n'est jamais une cible, même si un bouton fuyait. La grille filtre déjà l'offre ; ceci
   // garde le geste côté page.
@@ -573,10 +817,9 @@ export function useRetouchGestures(
         return;
       }
       if (null !== occupant) {
-        // Case OCCUPÉE : la modale s'ouvre en VÉRIFICATION, un ESSAI part (dry-run + evictSlotId).
-        // Le verdict (accepté + occupant nommé / refusé) la remplit avant toute écriture.
-        setEvictDialog({ phase: "checking", sourceSlotId, targetSlot: occupant, group: { blockId, source } });
-        runEvictDryRun(sourceSlotId, occupant, { blockId, source });
+        // Case OCCUPÉE (lot 2) : le MENU à 3 choix s'interpose (Prendre sa place / Échanger /
+        // Mutualiser) — rien n'est écrit tant que le gestionnaire n'a pas choisi puis confirmé.
+        openDropMenu(sourceSlotId, occupant, { blockId, source });
         return;
       }
       doMoveGroup(blockId, source, targetCase);
@@ -605,10 +848,9 @@ export function useRetouchGestures(
       return;
     }
     if (targetMode.kind === "move") {
-      // D6 + P2-32 : la modale s'ouvre en VÉRIFICATION et un ESSAI (dry-run) part — rien n'est
-      // écrit. Le verdict (accepté avec compromis / refusé) remplira la modale.
-      setEvictDialog({ phase: "checking", sourceSlotId: targetMode.sourceSlotId, targetSlot });
-      runEvictDryRun(targetMode.sourceSlotId, targetSlot);
+      // Case OCCUPÉE (lot 2) : le MENU à 3 choix s'interpose (Prendre sa place / Échanger /
+      // Mutualiser) — rien n'est écrit tant que le gestionnaire n'a pas choisi puis confirmé.
+      openDropMenu(targetMode.sourceSlotId, targetSlot);
     } else {
       // Placement sur une case occupée : le moteur tranche (capacité). Pas d'éviction ici — le
       // rail /place-slot n'en porte pas (PR A) ; un refus se lit et on réessaie.
@@ -818,6 +1060,22 @@ export function useRetouchGestures(
     requestRemoveGroup,
     confirmRemove,
     cancelRemove,
+    // Lot 2 — menu de dépôt + échange + mutualisation au dépôt.
+    dropMenu,
+    swapDialog,
+    mutualizeAtCaseDialog,
+    mutualizeAtCaseError,
+    chooseTakePlace,
+    chooseSwap,
+    chooseMutualize,
+    closeDropMenu,
+    confirmSwap,
+    retrySwapDryRun,
+    setSwapDialog,
+    doMutualizeAtCase,
+    setMutualizeAtCaseDialog,
+    swapMutation,
+    mutualizeAtCaseMutation,
     moveMutation,
     dryRunMutation,
     placeMutation,

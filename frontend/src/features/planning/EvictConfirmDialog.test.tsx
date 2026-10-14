@@ -35,4 +35,15 @@ describe("EvictConfirmDialog", () => {
     expect(screen.queryByText(/casse une règle/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("variante kind=\"swap\" — titre, texte d'acceptation et bouton parlent d'ÉCHANGE (pas d'éviction)", () => {
+    render(<EvictConfirmDialog {...baseProps} kind="swap" phase="accepted" />);
+
+    expect(screen.getByRole("heading", { name: "Échanger les deux créneaux ?" })).toBeInTheDocument();
+    expect(screen.getByText(/troqueront leurs créneaux, sans perte/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Échanger" })).toBeInTheDocument();
+    // Jamais le vocabulaire d'éviction dans cette variante.
+    expect(screen.queryByRole("button", { name: "Déplacer et évincer" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/séances à replacer/)).not.toBeInTheDocument();
+  });
 });

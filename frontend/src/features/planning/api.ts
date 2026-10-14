@@ -412,6 +412,16 @@ export interface EvictedSlot {
 }
 
 /**
+ * Q2 — un occupant de GROUPE évincé : ses N séances membres partent ENSEMBLE (le bloc SURVIT, elles
+ * passent « à replacer »). Distinct d'`evicted` (occupant équipe, un seul état + replacement un-clic) :
+ * un groupe se replace comme un groupe (pas de un-clic, décision fondateur — cohérent avec removeGroup).
+ */
+export interface EvictedGroup {
+  blockId: string;
+  slots: EvictedSlot[];
+}
+
+/**
  * Réponse d'un déplacement. Un déplacement RÉEL accepté arrive `valid: true` (+ `compromises`,
  * + `evicted` si une cible occupée a été libérée) ; un refus RÉEL est un 422 → {@link MoveRejectedError}.
  *
@@ -426,6 +436,8 @@ export interface SlotMoveResult {
   compromises: Compromise[];
   violations?: MoveViolation[];
   evicted?: EvictedSlot;
+  /** Q2 — l'occupant évincé était une séance de GROUPE : ses N séances « à replacer » (bloc survit). */
+  evictedGroup?: EvictedGroup;
   dryRun?: boolean;
   /**
    * ENG-51 — verdict « indéterminé » : le solveur n'a pas tranché dans le temps imparti. Un 200
@@ -786,6 +798,109 @@ export async function moveGroup(body: MoveGroupBody, signal?: AbortSignal): Prom
       if (504 === error.response.status && "engine_timeout" === data.code) {
         throw new EngineTimeoutError(data.error ?? "Le moteur n'a pas répondu à temps — réessayez.");
       }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Corps d'un ÉCHANGE de deux séances (P4-327). Les positions sont résolues CÔTÉ SERVEUR : on ne
+ * donne que les deux identifiants de créneau (chaque côté peut être une séance d'équipe ou de groupe
+ * — ses membres partent ensemble, échange N↔M, Q2). `dryRun` : verdict rendu SANS rien écrire.
+ */
+export interface SwapBody {
+  slotId: string;
+  otherSlotId: string;
+  dryRun?: true;
+}
+
+/**
+ * Réponse d'un échange. Accepté → `valid: true` + `compromises` + `movedSlotIds` (les N+M créneaux
+ * déplacés). Refus RÉEL → 422 → {@link MoveRejectedError} (mêmes clés que /move) ; refus NOMMÉ
+ * (cross-schedule, verrou D4, soi-même, fenêtre absente) → 422 code → {@link SlotEditError}.
+ */
+export interface SwapResult {
+  valid: boolean;
+  compromises: Compromise[];
+  violations?: MoveViolation[];
+  movedSlotIds?: string[];
+  dryRun?: boolean;
+  /** ENG-51 — verdict « indéterminé » (solveur non tranché) : 200 `{valid:false, indeterminate:true}`. */
+  indeterminate?: boolean;
+}
+
+/**
+ * Échanger deux séances ATOMIQUEMENT, sous le verdict du moteur (P4-327 + Q2). Même modèle d'erreurs
+ * que {@link moveGroup} : 422 `violations` → verdict refusé, 422 `code` → {@link SlotEditError}
+ * (`swap_cross_schedule` / `swap_with_self` / `target_locked` / `slot_unavailable` / `team_already_at_case`),
+ * 409 → {@link GenerationInProgressError}, 504 `engine_timeout` → {@link EngineTimeoutError}, abandon
+ * client → {@link VerdictAbandonedError}.
+ */
+export async function swapSlots(body: SwapBody, signal?: AbortSignal): Promise<SwapResult> {
+  try {
+    const result = await api.post("schedule-slots/swap", { json: body, timeout: MOVE_VERDICT_TIMEOUT_MS, signal }).json<SwapResult>();
+    return { ...result, compromises: result.compromises ?? [] };
+  } catch (error) {
+    if (isClientInterruption(error)) {
+      throw true === signal?.aborted ? new VerdictAbandonedError() : new EngineVerificationInterruptedError();
+    }
+    if (error instanceof HTTPError) {
+      const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string; violations?: MoveViolation[] };
+      if (422 === error.response.status) {
+        if (undefined !== data.code) {
+          throw new SlotEditError(data.code, data.error ?? "L'échange n'a pas pu être appliqué.");
+        }
+        throw new MoveRejectedError(data.violations ?? []);
+      }
+      if (409 === error.response.status && "generation_in_progress" === data.code) {
+        throw new GenerationInProgressError();
+      }
+      if (504 === error.response.status && "engine_timeout" === data.code) {
+        throw new EngineTimeoutError(data.error ?? "Le moteur n'a pas répondu à temps — réessayez.");
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Corps de « mutualiser depuis le dépôt » (lot 2) : déposer `sourceSlotId` sur `targetSlotId` (la
+ * case d'ancrage où le bloc fusionné siège). Positions et membres résolus CÔTÉ SERVEUR. `label` =
+ * nom optionnel du bloc neuf (≤ 40 ; ignoré si l'ensemble alimente un bloc existant). `dryRun` : les
+ * gardes passent mais RIEN n'est écrit.
+ */
+export interface MutualizeAtCaseBody {
+  sourceSlotId: string;
+  targetSlotId: string;
+  label?: string;
+  dryRun?: true;
+}
+
+export interface MutualizeAtCaseResult {
+  blockId: string;
+  movedSlotIds: string[];
+  lockedSlotIds: string[];
+  removedBlockIds: string[];
+  freedSourceCase: { venueId: string; dayOfWeek: number; startTime: string };
+  dryRun?: boolean;
+  teamIds?: string[];
+}
+
+/**
+ * Mutualiser deux séances au dépôt (« on répartit, on ne crée rien »). Pas de verdict moteur
+ * (l'ancrage HARD suffit). Un refus 422/409/404 porte un message serveur humain → {@link
+ * MutualizationRefusedError} (422/404) ou {@link GenerationInProgressError} (409 génération).
+ */
+export async function mutualizeAtCase(body: MutualizeAtCaseBody): Promise<MutualizeAtCaseResult> {
+  try {
+    return await api.post("schedule-slots/mutualize-at-case", { json: body }).json<MutualizeAtCaseResult>();
+  } catch (error) {
+    if (error instanceof HTTPError) {
+      const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string };
+      if (409 === error.response.status && "generation_in_progress" === data.code) {
+        throw new GenerationInProgressError();
+      }
+      throw new MutualizationRefusedError(data.error ?? "La mutualisation n'a pas pu être appliquée.");
     }
     throw error;
   }

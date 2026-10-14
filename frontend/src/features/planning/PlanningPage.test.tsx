@@ -17,6 +17,18 @@ import { useWizardStore } from "@/features/wizard/store";
 // logic, the grid + all its panels — with fixture data.
 const SID = "sched-1";
 
+/**
+ * Lot 2 — déposer une séance sur la case OCCUPÉE de U13 ouvre désormais le MENU à 3 choix (Prendre sa
+ * place / Échanger / Mutualiser). Ce helper franchit le menu par « Prendre sa place » pour rejoindre
+ * le chemin d'ÉVICTION historique que ces tests exercent (l'occupant U13 est une équipe non
+ * verrouillée → le choix est toujours actif).
+ */
+async function takePlaceOnU13(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  const occupied = screen.getByTitle(/U13 · Gymnase Alpha/);
+  await user.click(occupied);
+  await user.click(await screen.findByRole("button", { name: "Prendre sa place" }));
+}
+
 vi.mock("./api", () => {
   // A real error class so PlanningPage's `error instanceof OverlaysExistError`
   // escalation branch fires from the mocked reopen/validate rejections.
@@ -1389,7 +1401,7 @@ describe("PlanningPage (integration)", () => {
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
 
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
       // D6 : une modale s'interpose (VÉRIFICATION → verdict), NOMMANT l'occupant. Seul l'ESSAI
       // (dryRun) part avant la confirmation.
       const dialog = await screen.findByRole("dialog");
@@ -1412,7 +1424,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(placeSlot).mockResolvedValue({ valid: true, slotId: "new", compromises: [] });
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
       await user.click(await within(await screen.findByRole("dialog")).findByRole("button", { name: /Déplacer et évincer/ }));
 
       // Le raccourci propose de remettre U13 sur l'ANCIENNE case de la source (lundi 18:00, venue-1).
@@ -1430,7 +1442,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(moveSlot).mockRejectedValue(new TargetLockedError("Ce créneau est verrouillé — déverrouillez-le d'abord."));
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       await vi.waitFor(() => expect(useToastStore.getState().toasts.some((t) => "error" === t.variant && /verrouill/i.test(t.message))).toBe(true));
       // La modale s'est fermée, aucun move réel, et le mode reste armé pour réessayer ailleurs.
@@ -1541,7 +1553,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(placeSlot).mockRejectedValue(new MoveRejectedError([{ rule: "coach_double_booking", message: "conflit." }]));
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
       await user.click(await within(await screen.findByRole("dialog")).findByRole("button", { name: /Déplacer et évincer/ }));
 
       await user.click(await screen.findByRole("button", { name: /Annuler le dernier geste/ }));
@@ -1685,7 +1697,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(moveSlot).mockRejectedValueOnce(new EngineVerificationInterruptedError());
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       const dialog = await screen.findByRole("dialog");
       expect(await within(dialog).findByText(/interrompue avant la réponse/i)).toBeInTheDocument();
@@ -1758,7 +1770,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(moveSlot).mockReturnValueOnce(new Promise((r) => (resolveDry = r)) as never);
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       const dialog = await screen.findByRole("dialog");
       expect(within(dialog).getByText(/Vérification/)).toBeInTheDocument();
@@ -1777,7 +1789,7 @@ describe("PlanningPage (integration)", () => {
         .mockResolvedValueOnce({ valid: true, compromises: brokenGained, evicted: evictedBlock });
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       // L'essai part AUSSITÔT, en dryRun.
       await vi.waitFor(() =>
@@ -1804,7 +1816,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(moveSlot).mockResolvedValue({ valid: true, dryRun: true, compromises: [], evicted: evictedBlock });
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       const dialog = await screen.findByRole("dialog");
       expect(await within(dialog).findByText(/Aucun compromis détecté/)).toBeInTheDocument();
@@ -1822,7 +1834,7 @@ describe("PlanningPage (integration)", () => {
       });
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       const dialog = await screen.findByRole("dialog");
       expect(await within(dialog).findByText(/le coach Dupont a déjà les U13/)).toBeInTheDocument();
@@ -1844,7 +1856,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(moveSlot).mockRejectedValueOnce(new EngineTimeoutError("Le moteur n'a pas répondu à temps — réessayez."));
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       // La modale NE se ferme PAS : elle dit ce qui s'est passé (demande fondateur).
       const dialog = await screen.findByRole("dialog");
@@ -1865,7 +1877,7 @@ describe("PlanningPage (integration)", () => {
         .mockResolvedValueOnce({ valid: true, dryRun: true, compromises: [], evicted: evictedBlock });
       renderWithProviders(<PlanningPage />);
       await armMoveFrom(user, "U11");
-      await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+      await takePlaceOnU13(user);
 
       const dialog = await screen.findByRole("dialog");
       await user.click(await within(dialog).findByRole("button", { name: /Réessayer/ }));
@@ -2438,7 +2450,7 @@ describe("PlanningPage — filet du surlignage (P4-255 PR 2)", () => {
     vi.mocked(moveSlot).mockResolvedValueOnce({ valid: false, dryRun: true, violations: [{ rule: "coach_double_booking", message: "le coach a déjà les U13.", conflictingTeamId: "team-2" }], compromises: [] });
     const { container } = renderWithProviders(<PlanningPage />);
     await armMoveFrom(user, "U11");
-    await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+    await takePlaceOnU13(user);
 
     // La modale de refus s'ouvre ET la grille surligne le conflit (derrière la modale).
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
