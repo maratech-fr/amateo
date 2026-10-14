@@ -427,6 +427,13 @@ jobs:
       - name: DemoRetainedClubReclaimTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/DemoRetainedClubReclaimTest.php --group phase1'
 
+      # Axe auth & memberships — chemin d'abus « export anonyme » : les DEUX routes d'export d'un
+      # planning (export-pdf async ET export-xlsx sync) sont derrière le firewall JWT (401 sans
+      # session) et rien n'est enfilé. Sans ce gate, ouvrir une route d'export en anonyme (un
+      # planning PDF/XLSX divulgué) passerait tous les checks requis de `main`.
+      - name: ExportAuthenticationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ExportAuthenticationTest.php --group phase1'
+
       # Axe auth & memberships — le seed BCCL de PROD pose des gestionnaires PRÉ-VÉRIFIÉS,
       # rattachés au bon club, avec des mots de passe pilotés par options (les mots de passe
       # dev du dépôt n'ouvrent pas les comptes prod), refuse sans credentials, create-only.

@@ -62,6 +62,12 @@ la purge nocturne `teardownExpiredRetainedDemos` détruit un conservé expiré, 
 un repris [membre actif]. Falsifié dans les deux sens [refus 409 neutralisé, priorité du club réel
 neutralisée]. Sans ce gate, un club conservé serait immortel, ou l'approbation créerait un club neuf
 au lieu de reprendre l'espace de la démo) ·
+`Security/ExportAuthenticationTest` (axe *auth & memberships*, chemin d'abus « export anonyme » : les
+DEUX routes d'export d'un planning — `export-pdf` (async) ET `export-xlsx` (sync) — sont derrière le
+firewall JWT, refus 401 sans session, ET rien n'est enfilé (le `pdfExportStatus` du planning visé ne
+passe JAMAIS à « pending », effet lu APRÈS la requête). Témoin de falsification : le 401 — ouvrir une
+route d'export en PUBLIC_ACCESS le fait tomber. Sans ce gate, un planning PDF/XLSX divulgué à un
+anonyme passerait tous les checks requis de `main`) ·
 `Integration/Command/BcclProdSeedCommandTest` (axe *auth & memberships* : le seed BCCL de PROD
 [`app:bccl:seed-prod`] pose des gestionnaires PRÉ-VÉRIFIÉS [le rail /register est mort en prod],
 rattachés au bon club [ARA0069036, jamais la démo], avec des mots de passe pilotés par options —
