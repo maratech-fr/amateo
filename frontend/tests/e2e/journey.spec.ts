@@ -112,7 +112,13 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
   await expect(page.getByRole("heading", { name: /Étape 2\/6/ })).toBeVisible();
   await page.getByLabel("Nom du gymnase").fill("Gymnase A");
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
-  await expect(page.getByLabel("Gymnase", { exact: true })).toContainText("Gymnase A");
+  // ⚑ 15 s (pas 5 s) : le sélecteur n'affiche le gymnase créé qu'APRÈS le refetch de
+  // `/api/venues` (invalidé dans `useCreateVenue`, queries.ts:201) — `VenuesStep.tsx:402`
+  // fait `setSelectedId(created.id)`, mais `selected` (VenuesStep.tsx:312) le résout contre
+  // la liste `venues` ENCORE en cache tant que le GET n'est pas revenu. C'est un témoin lié au
+  // réseau, comme tous les autres de ce fichier (import 15 s, listes 20 s) ; sous charge CI le
+  // GET dépasse 5 s (run 38591293403 tentative 1, les 3 essais rouges au même endroit).
+  await expect(page.getByLabel("Gymnase", { exact: true })).toContainText("Gymnase A", { timeout: 15_000 });
   await expect(page.getByText(/cliquez la grille pour ajouter un créneau/i)).toBeVisible();
   // Refus « finirait après minuit » (150 min à 22:45) — la grille reste intacte, aucun créneau posé.
   await page.getByLabel("Durée à poser").selectOption("150");
@@ -125,7 +131,11 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
   // Second gymnase + un créneau à la grille (Mar 18:00 sur B).
   await page.getByLabel("Nom du gymnase").fill("Gymnase B");
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
-  await expect(page.getByLabel("Gymnase", { exact: true })).toContainText("Gymnase B");
+  // Même témoin réseau qu'au Gymnase A ci-dessus (15 s). ⚠ Ici le sélecteur n'est PAS vide en
+  // attendant : le repli `?? venues[0]` (VenuesStep.tsx:312) le laisse sur le gymnase
+  // PRÉCÉDENT (« Gymnase A ») jusqu'à ce que le refetch ramène B — donc on ATTEND que B soit
+  // bien le courant AVANT de poser le créneau à la grille (sinon « Mar 18:00 » tomberait sur A).
+  await expect(page.getByLabel("Gymnase", { exact: true })).toContainText("Gymnase B", { timeout: 15_000 });
   await page.getByRole("button", { name: "Mar 18:00", exact: true }).click();
 
   // Capacité par l'API : les deux gymnases du club, puis une grille lun→ven × {18:00, 19:30, 21:00}
