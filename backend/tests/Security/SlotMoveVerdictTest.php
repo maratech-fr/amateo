@@ -9,6 +9,8 @@ use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
@@ -382,6 +384,57 @@ final class SlotMoveVerdictTest extends KernelTestCase
         self::assertTrue($schedule->isManuallyEditedSinceGeneration());
     }
 
+    /**
+     * Q2 (lot 2) — l'occupant est une SÉANCE DE GROUPE : ses N séances membres partent ENSEMBLE, le
+     * BLOC survit (il passe « à replacer »), et la réponse porte `evictedGroup` (bloc + N états) au
+     * lieu d'`evicted`. Le verrou d'ANCRAGE du groupe n'est PAS un verrou gestionnaire → pas de D3.
+     * Falsification : si seul le créneau cliqué partait (au lieu des N membres), le compte ferait rougir ;
+     * si le bloc disparaissait (cascade mal ordonnée), l'assertion de survie ferait rougir.
+     */
+    public function testEvictionOfGroupOccupantRemovesAllMembersAndBlockSurvives(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        $group = $this->seedGroupOccupant($ctx, 4, '20:00', $ctx['venue2']);
+        $allIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $group['slots']);
+        $clickedId = $allIds[0];
+
+        $captured = null;
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use (&$captured): MockResponse {
+            $captured = json_decode((string) $options['body'], true, 512, \JSON_THROW_ON_ERROR);
+
+            return new MockResponse(self::ACCEPT, ['http_code' => 200]);
+        });
+
+        $result = $this->service($client)->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2'], $clickedId);
+
+        self::assertTrue($result['valid']);
+        self::assertArrayNotHasKey('evicted', $result, 'un occupant groupe est rendu via evictedGroup, jamais evicted');
+        self::assertIsArray($result['evictedGroup']);
+        self::assertSame($group['block']->getId(), $result['evictedGroup']['blockId']);
+        self::assertCount(2, $result['evictedGroup']['slots'], 'les N séances membres sont toutes décrites');
+        $evictedSlotIds = array_map(static fn (array $e): string => $e['slotId'], $result['evictedGroup']['slots']);
+        self::assertEqualsCanonicalizing($allIds, $evictedSlotIds);
+
+        // La baseline figée ne contient NI la source NI aucune des N séances du groupe évincé.
+        self::assertIsArray($captured);
+        $ids = array_map(static fn (array $t): string => (string) ($t['id'] ?? ''), $captured['slotTemplates']);
+        self::assertNotContains($slot->getId(), $ids, 'la SOURCE est retirée de la baseline');
+        foreach ($allIds as $id) {
+            self::assertNotContains($id, $ids, 'chaque membre du groupe évincé est retiré de la baseline');
+        }
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        foreach ($allIds as $id) {
+            self::assertNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($id), 'les N séances du groupe évincé sont supprimées');
+        }
+        self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($group['block']->getId()), 'le bloc occupant SURVIT (il passe « à replacer »)');
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertSame(4, $reloaded?->getDayOfWeek(), 'la source a bien pris la case');
+        self::assertSame($ctx['venue2'], $reloaded?->getVenueId());
+    }
+
     /** D3 : un occupant VERROUILLÉ ne peut être évincé — refus avant tout appel moteur, rien touché. */
     public function testEvictionOfLockedOccupantIsRefusedWithoutCallingEngine(): void
     {
@@ -678,6 +731,50 @@ final class SlotMoveVerdictTest extends KernelTestCase
         $this->em->flush();
 
         return $occupant;
+    }
+
+    /**
+     * Un occupant de GROUPE à une case : un bloc (socle, schedulePlanId null) de 2 équipes et leurs 2
+     * séances HARD/MANUAL liées au bloc, co-localisées à la case. Le chemin d'éviction de groupe ne
+     * consulte pas l'entité Team (il résout par adhésion de bloc), donc des teamIds opaques suffisent.
+     *
+     * @param array{clubId: string, seasonId: string, scheduleId: string} $ctx
+     *
+     * @return array{block: SharedTrainingBlock, slots: list<ScheduleSlotTemplate>}
+     */
+    private function seedGroupOccupant(array $ctx, int $day, string $startHi, string $venueId): array
+    {
+        $teamIds = ['88888888-8888-4888-8888-888888888881', '88888888-8888-4888-8888-888888888882'];
+
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $this->em->persist($block);
+        $this->em->flush();
+        foreach ($teamIds as $teamId) {
+            $membership = (new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId);
+            $this->em->persist($membership);
+        }
+        $this->em->flush();
+
+        $slots = [];
+        foreach ($teamIds as $teamId) {
+            $slot = (new ScheduleSlotTemplate)
+                ->setClubId($ctx['clubId'])
+                ->setSeasonId($ctx['seasonId'])
+                ->setScheduleId($ctx['scheduleId'])
+                ->setTeamId($teamId)
+                ->setVenueId($venueId)
+                ->setDayOfWeek($day)
+                ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $startHi))
+                ->setDurationMinutes(90)
+                ->setLockLevel(LockLevel::HARD)
+                ->setLockOrigin(LockOrigin::MANUAL)
+                ->setSharedTrainingBlockId($block->getId());
+            $this->em->persist($slot);
+            $slots[] = $slot;
+        }
+        $this->em->flush();
+
+        return ['block' => $block, 'slots' => $slots];
     }
 
     private function service(MockHttpClient $client): MoveSlotService

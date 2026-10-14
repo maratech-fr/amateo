@@ -48,6 +48,8 @@ import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
 import { MutualizeDialog } from "./MutualizeDialog";
+import { DropActionMenu } from "./DropActionMenu";
+import { MutualizeAtCaseDialog } from "./MutualizeAtCaseDialog";
 import { GenerationInProgressError, MutualizationRefusedError } from "./api";
 
 import { stalenessMessage } from "./lib/staleness";
@@ -497,10 +499,13 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     moveState, moveGroupState, removeState, removePending, gridTargetMode,
     armMove, armMoveGroup, armPlace, cancelTarget, onPickTarget, runUndo, placeEvictedShortcut, confirmEvict, retryEvictDryRun,
     requestRemoveSlot, requestRemoveGroup, confirmRemove, cancelRemove,
+    dropMenu, swapDialog, mutualizeAtCaseDialog, mutualizeAtCaseError,
+    chooseTakePlace, chooseSwap, chooseMutualize, closeDropMenu, confirmSwap, retrySwapDryRun, setSwapDialog, doMutualizeAtCase, setMutualizeAtCaseDialog,
+    swapMutation, mutualizeAtCaseMutation,
     moveMutation, dryRunMutation, placeMutation,
   } = useRetouchGestures(slots, validScheduleId, selectedSlotId, viewMode, isReadOnly, isFailed, closuresResolved, closedWindows, gridSlots, driftEntries, teamNameOf, setSelectedSlotId, highlightViolations, clearHighlight);
   // `busy` DESCEND ici (P4-255 PR 2) : il lit les mutations retournées par le hook, plus le verrou.
-  const busy = lockMutation.isPending || moveMutation.isPending || dryRunMutation.isPending || placeMutation.isPending || removePending;
+  const busy = lockMutation.isPending || moveMutation.isPending || dryRunMutation.isPending || placeMutation.isPending || removePending || swapMutation.isPending;
 
   // Les séances de cette version que la période ne servirait plus : elles restent à
   // l'écran (et dans l'export), mais le gestionnaire doit savoir qu'elles sont périmées.
@@ -1343,7 +1348,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       <EvictConfirmDialog
         open={null !== evictDialog}
         phase={(evictDialog?.phase ?? "checking") as EvictDialogPhase}
-        occupantName={null !== evictDialog ? teamNameOf(evictDialog.targetSlot.teamId) : ""}
+        occupantName={null !== evictDialog ? (null !== evictDialog.targetSlot.sharedTrainingBlockId ? "le groupe" : teamNameOf(evictDialog.targetSlot.teamId)) : ""}
         compromises={null !== evictDialog && "accepted" === evictDialog.phase ? evictDialog.compromises : []}
         violations={null !== evictDialog && "refused" === evictDialog.phase ? evictDialog.violations : []}
         failureKind={null !== evictDialog && "failed" === evictDialog.phase ? evictDialog.failureKind : "timeout"}
@@ -1352,6 +1357,48 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         onRetry={retryEvictDryRun}
         onClose={() => setEvictDialog(null)}
       />
+
+      {/* Lot 2 — MENU À 3 CHOIX sur un dépôt vers une case occupée (chemin déplacement) : Prendre sa
+          place (éviction) / Échanger / Mutualiser. Un choix impossible est désactivé AVEC son motif. */}
+      <DropActionMenu
+        open={null !== dropMenu}
+        occupantName={dropMenu?.occupantName ?? ""}
+        disabled={dropMenu?.disabled ?? {}}
+        onTakePlace={chooseTakePlace}
+        onSwap={chooseSwap}
+        onMutualize={chooseMutualize}
+        onClose={closeDropMenu}
+      />
+
+      {/* Lot 2 — VERDICT d'un ÉCHANGE (« Échanger » du menu) : même dialogue que l'éviction, variante
+          `swap` (titre/texte/bouton), alimenté par un essai (dry-run) qui NOMME le verdict avant d'écrire. */}
+      <EvictConfirmDialog
+        open={null !== swapDialog}
+        kind="swap"
+        phase={(swapDialog?.phase ?? "checking") as EvictDialogPhase}
+        occupantName={null !== swapDialog ? (null !== swapDialog.targetSlot.sharedTrainingBlockId ? "le groupe" : teamNameOf(swapDialog.targetSlot.teamId)) : ""}
+        compromises={null !== swapDialog && "accepted" === swapDialog.phase ? swapDialog.compromises : []}
+        violations={null !== swapDialog && "refused" === swapDialog.phase ? swapDialog.violations : []}
+        failureKind={null !== swapDialog && "failed" === swapDialog.phase ? swapDialog.failureKind : "timeout"}
+        busy={busy}
+        onConfirm={confirmSwap}
+        onRetry={retrySwapDryRun}
+        onClose={() => setSwapDialog(null)}
+      />
+
+      {/* Lot 2 — MUTUALISER depuis le dépôt (rejoindre / fusion) : confirmer que les deux côtés
+          forment une séance commune ; le serveur reste seul juge (refus 422 affiché tel quel). */}
+      {null !== mutualizeAtCaseDialog ? (
+        <MutualizeAtCaseDialog
+          sourceName={mutualizeAtCaseDialog.sourceName}
+          occupantName={mutualizeAtCaseDialog.occupantName}
+          teamCount={mutualizeAtCaseDialog.teamCount}
+          busy={mutualizeAtCaseMutation.isPending}
+          error={mutualizeAtCaseError}
+          onClose={() => setMutualizeAtCaseDialog(null)}
+          onConfirm={doMutualizeAtCase}
+        />
+      ) : null}
 
       {/* F4 — « Vider un créneau » : ConfirmDialog OBLIGATOIRE, alimenté par l'essai (dryRun) qui a
           NOMMÉ les conséquences. Le texte dit la/les séance(s) à replacer, le verrou perdu si la

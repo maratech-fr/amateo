@@ -20,7 +20,6 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Exception\EvictTargetIsGroupException;
 use App\Exception\EvictTargetLockedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SwapCrossScheduleException;
@@ -56,12 +55,14 @@ use Symfony\Component\Mercure\HubInterface;
  *  1. verdict « oui », équipe↔équipe → les deux créneaux échangent leurs cases, marqueur posé ;
  *  2. verdict « oui », groupe-source↔équipe → les N membres du bloc prennent la case de l'occupant,
  *     l'occupant prend la case du groupe, le BLOC survit, marqueur posé ;
+ *  2bis. Q2 — verdict « oui », équipe↔GROUPE-occupant et GROUPE↔GROUPE (N↔M) → tous les membres de
+ *     chaque côté troquent la case, les blocs survivent (geste que l'ancien lot refusait) ;
  *  3. verdict « non » → AUCUN des deux côtés ne bouge (atomicité), marqueur à false ;
  *  4. le payload porte des candidates/references APPARIÉS et exclut LES DEUX côtés de la baseline ;
  *  5. `dryRun` → verdict rendu, RIEN écrit ;
  *  6. une génération en cours → 409 (exception), le moteur n'est JAMAIS appelé ;
  *  7. les refus NOMMÉS avant le moteur (abus) : cross-tenant (slot d'un autre club), deux plannings
- *     différents, occupant verrouillé (D4), échange avec soi-même, occupant lui-même un groupe.
+ *     différents, occupant ÉQUIPE verrouillé (D4), échange avec soi-même.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -289,21 +290,76 @@ final class SlotSwapVerdictTest extends KernelTestCase
     }
 
     /**
-     * Abus — l'occupant est lui-même une SÉANCE DE GROUPE (sharedTrainingBlockId posé) →
-     * `evict_target_is_group` AVANT le moteur, et AVANT le contrôle de verrou (la séance de groupe
-     * porte un verrou d'ancrage HARD, mais c'est le refus « groupe » qui doit tomber, pas target_locked).
+     * Q2 (lot 2) — verdict « oui », ÉQUIPE-source ↔ GROUPE-occupant : la source prend la case du
+     * groupe, les M membres du groupe prennent ENSEMBLE la case de la source, le BLOC survit. Le verrou
+     * d'ANCRAGE de l'occupant n'est PAS un verrou gestionnaire → l'échange n'est pas refusé sur ce verrou.
      */
-    public function testSwapWithGroupOccupantRefusedBeforeEngineAndBeforeLock(): void
+    public function testAcceptedSwapTeamSourceWithGroupOccupantMovesAllMembers(): void
     {
         $ctx = $this->seed();
         $source = $this->makeSlot($ctx, $this->makeTeam($ctx, 'Alpha')->getId(), $ctx['venueS'], 2, '18:00');
+        $o1 = $this->makeTeam($ctx, 'Occ-U1');
+        $o2 = $this->makeTeam($ctx, 'Occ-U2');
+        $block = $this->makeBlock($ctx, [$o1->getId(), $o2->getId()]);
+        $om1 = $this->makeSlot($ctx, $o1->getId(), $ctx['venueT'], 4, '20:00', LockLevel::HARD, $block->getId());
+        $om2 = $this->makeSlot($ctx, $o2->getId(), $ctx['venueT'], 4, '20:00', LockLevel::HARD, $block->getId());
 
-        $g1 = $this->makeTeam($ctx, 'Groupe-U1');
-        $block = $this->makeBlock($ctx, [$g1->getId()]);
-        $groupOccupant = $this->makeSlot($ctx, $g1->getId(), $ctx['venueT'], 4, '20:00', LockLevel::HARD, $block->getId());
+        $result = $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])))->swap($source, $om1);
 
-        $this->expectException(EvictTargetIsGroupException::class);
-        $this->service($this->engineMustNotBeCalled())->swap($source, $groupOccupant);
+        self::assertTrue($result['valid']);
+        self::assertEqualsCanonicalizing([$source->getId(), $om1->getId(), $om2->getId()], $result['movedSlotIds'] ?? []);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $movedSource = $this->em->getRepository(ScheduleSlotTemplate::class)->find($source->getId());
+        self::assertSame(4, $movedSource?->getDayOfWeek(), 'la source a pris la case du groupe occupant');
+        self::assertSame($ctx['venueT'], $movedSource?->getVenueId());
+        foreach ([$om1->getId(), $om2->getId()] as $id) {
+            $moved = $this->em->getRepository(ScheduleSlotTemplate::class)->find($id);
+            self::assertSame(2, $moved?->getDayOfWeek(), 'chaque membre du groupe occupant a pris la case de la source');
+            self::assertSame($ctx['venueS'], $moved?->getVenueId());
+        }
+        self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($block->getId()), 'le bloc occupant survit à l\'échange');
+    }
+
+    /**
+     * Q2 (lot 2) — verdict « oui », GROUPE ↔ GROUPE (N↔M) : les N membres de la source prennent la case
+     * de l'occupant, les M membres de l'occupant prennent la case de la source, les DEUX blocs survivent.
+     * C'est le geste que l'ancien lot refusait (`evict_target_is_group`) — désormais accepté.
+     */
+    public function testAcceptedGroupToGroupSwapMovesAllMembersBothBlocksSurvive(): void
+    {
+        $ctx = $this->seed();
+        $s1 = $this->makeTeam($ctx, 'Src-U1');
+        $s2 = $this->makeTeam($ctx, 'Src-U2');
+        $srcBlock = $this->makeBlock($ctx, [$s1->getId(), $s2->getId()]);
+        $sm1 = $this->makeSlot($ctx, $s1->getId(), $ctx['venueS'], 2, '18:00', LockLevel::HARD, $srcBlock->getId());
+        $sm2 = $this->makeSlot($ctx, $s2->getId(), $ctx['venueS'], 2, '18:00', LockLevel::HARD, $srcBlock->getId());
+        $t1 = $this->makeTeam($ctx, 'Occ-U1');
+        $t2 = $this->makeTeam($ctx, 'Occ-U2');
+        $tgtBlock = $this->makeBlock($ctx, [$t1->getId(), $t2->getId()]);
+        $tm1 = $this->makeSlot($ctx, $t1->getId(), $ctx['venueT'], 4, '20:00', LockLevel::HARD, $tgtBlock->getId());
+        $tm2 = $this->makeSlot($ctx, $t2->getId(), $ctx['venueT'], 4, '20:00', LockLevel::HARD, $tgtBlock->getId());
+
+        $result = $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])))->swap($sm1, $tm1);
+
+        self::assertTrue($result['valid']);
+        self::assertEqualsCanonicalizing([$sm1->getId(), $sm2->getId(), $tm1->getId(), $tm2->getId()], $result['movedSlotIds'] ?? []);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        foreach ([$sm1->getId(), $sm2->getId()] as $id) {
+            $moved = $this->em->getRepository(ScheduleSlotTemplate::class)->find($id);
+            self::assertSame(4, $moved?->getDayOfWeek(), 'les membres de la source prennent la case de l\'occupant');
+            self::assertSame($ctx['venueT'], $moved?->getVenueId());
+        }
+        foreach ([$tm1->getId(), $tm2->getId()] as $id) {
+            $moved = $this->em->getRepository(ScheduleSlotTemplate::class)->find($id);
+            self::assertSame(2, $moved?->getDayOfWeek(), 'les membres de l\'occupant prennent la case de la source');
+            self::assertSame($ctx['venueS'], $moved?->getVenueId());
+        }
+        self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($srcBlock->getId()), 'le bloc source survit');
+        self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($tgtBlock->getId()), 'le bloc occupant survit');
     }
 
     protected function setUp(): void

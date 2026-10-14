@@ -1,10 +1,12 @@
 # Mutualisation — un ensemble d'équipes qui se comporte comme UNE équipe
 
-Last verified @ 2026-10-14 (§2.3 recalé contre `MoveSlotService::moveGroup` : éviction optionnelle
-d'un occupant ÉQUIPE non verrouillé, `evictSlotId`+`dryRun`, P4-329 — §5 mis à jour en conséquence).
-Reste du fichier re-vérifié le 2026-10-13 (`SharedTrainingBlock` : entité, service de mutualisation
-depuis le planning, processeur API, provisioning, prune de suppression d'équipe, panneau du
-wizard, planning (`SlotDetail`/`MutualizeDialog`/`PlanningPage`) et sémantique moteur).
+Last verified @ 2026-10-14 (lot 2 : §2.4 NEUF — menu à 3 choix au dépôt + « mutualiser depuis le
+dépôt » `POST /api/schedule-slots/mutualize-at-case`, règle « on répartit, on ne crée rien » ; §2.3
+recalé — `move()` évince un occupant de GROUPE [`evictedGroup`] et `swap()` échange N↔M [Q2] ; §5
+réduit à ce qui reste ouvert). Reste du fichier re-vérifié le 2026-10-13 (`SharedTrainingBlock` :
+entité, service de mutualisation depuis le planning, processeur API, provisioning, prune de
+suppression d'équipe, panneau du wizard, planning (`SlotDetail`/`MutualizeDialog`/`PlanningPage`) et
+sémantique moteur).
 
 > **But** : permettre à des équipes de s'entraîner ENSEMBLE sur une même case de gymnase, sans que
 > le solveur les compte comme deux occupations séparées (ce qui créerait un faux conflit de
@@ -113,17 +115,55 @@ AUTRE séance (une équipe ne siège jamais deux fois à la même case — `Team
   (`evicted`) ; un `dryRun` rend le même verdict (+ l'état qui SERAIT évincé) sans rien écrire.
   Refus 422 NOMMÉS avant le moteur : cible d'éviction introuvable/d'un autre planning/source du
   groupe ou hors case cible (`evict_target_mismatch`), occupant verrouillé (`target_locked`,
-  D3 souverain), occupant lui-même une séance de GROUPE (`evict_target_is_group` — l'échange de
-  deux groupes reste à livrer, §5) ; un membre déplacé siégeant DÉJÀ à la case cible par une AUTRE
-  séance que l'éviction ne libère pas reste un refus `team_already_at_case`, aucun des N créneaux
-  ne bouge.
+  D3 souverain), occupant lui-même une séance de GROUPE (`evict_target_is_group` — deux groupes se
+  gèrent par Échanger/Mutualiser, §2.4) ; un membre déplacé siégeant DÉJÀ à la case cible par une
+  AUTRE séance que l'éviction ne libère pas reste un refus `team_already_at_case`, aucun des N
+  créneaux ne bouge.
 - **Retirer la séance de la case courante** : `POST /api/schedule-slots/remove-group` — retire la
   séance de groupe SANS toucher au bloc ni à ses adhésions (distinct de la suppression du bloc).
 - **Défaire le groupe** : `DELETE /api/shared_training_blocks/{id}` (CRUD API Platform standard)
   détruit le bloc ET ses séances de groupe.
 
-Détail des réponses/codes d'erreur de ces trois rails : [`backend-controllers.md`](../../backend/docs/backend-controllers.md)
-(table des contrôleurs, lignes `/move-group`, `/remove-group`, `/mutualize`).
+Détail des réponses/codes d'erreur de ces rails : [`backend-controllers.md`](../../backend/docs/backend-controllers.md)
+(table des contrôleurs, lignes `/move-group`, `/remove-group`, `/mutualize`, `/swap`, `/mutualize-at-case`).
+
+### 2.4 Menu à 3 choix au DÉPÔT sur une case occupée (lot 2 — « la séance de groupe est une séance »)
+
+Déposer une séance (équipe OU groupe) sur une case **déjà occupée** n'ouvre plus d'emblée la modale
+d'éviction : un **menu à 3 choix** s'interpose (`DropActionMenu`,
+`frontend/src/features/planning/DropActionMenu.tsx`, câblé par
+`useRetouchGestures.openDropMenu`) — **Prendre sa place / Échanger / Mutualiser** (chemin
+DÉPLACEMENT seulement). Un choix impossible est **désactivé AVEC son motif** (A11Y-30, prop
+`disabledReason`) pour les seules impossibilités d'IDENTITÉ que le front connaît (verrou
+gestionnaire de l'occupant, deux groupes pour « Prendre sa place », équipe des deux côtés ou > 10
+pour « Mutualiser ») ; le reste (capacité, Σ…) reste ACTIF et remonte un refus serveur NOMMÉ.
+
+- **Prendre sa place (ÉVICTION)** — l'occupant part « à replacer ». Q2 : l'occupant peut être une
+  séance de GROUPE ; `move()` (`resolveEvictionTarget`) retire alors ses **N séances membres
+  ENSEMBLE** (le bloc SURVIT), la réponse portant **`evictedGroup`** (bloc + N états) au lieu
+  d'`evicted`. L'ancrage d'un groupe n'est pas un verrou gestionnaire souverain ; un occupant
+  ÉQUIPE verrouillé le reste (D3). (`moveGroup` n'évince pas un groupe occupant — deux groupes se
+  gèrent par Échanger/Mutualiser.)
+- **Échanger** — `POST /api/schedule-slots/swap` (`MoveSlotService::swap`) : les deux séances
+  troquent leurs cases sous UN verdict apparié, tout-ou-rien, RIEN supprimé. Q2 : **chaque côté
+  peut être une équipe OU un groupe** (échange N↔M, les membres de chaque bloc partent ensemble,
+  les blocs survivent). Un occupant ÉQUIPE verrouillé reste souverain (D4).
+- **Mutualiser** — `POST /api/schedule-slots/mutualize-at-case`
+  (`MutualizeSlotService::mutualizeAtCase`, `MutualizeAtCaseDialog`) : les deux séances deviennent
+  UNE séance commune sur la case de la CIBLE (l'ancre). Quatre combinaisons, une règle **« on
+  répartit, on ne crée rien »** (décision fondateur 2026-10-13, §4) :
+  - équipe → équipe : bloc NEUF {source, cible}, 1 séance commune ;
+  - équipe → groupe / groupe → équipe : REJOINDRE — C = groupe ∪ équipe ;
+  - groupe → groupe : FUSION — C = union des deux groupes.
+
+  Les ensembles d'équipes source/cible doivent être **DISJOINTS** (une équipe déjà présente en face
+  est déjà mutualisée — refus 422) ; chaque équipe garde son **total** de séances (Σ inchangée par
+  construction, pas de garde Σ sur ce chemin) ; chaque bloc d'origine perd 1 séance commune et
+  **meurt** s'il tombe à 0 ; si l'ensemble obtenu égale un bloc existant, ce bloc gagne **+1 séance
+  commune** au lieu d'un doublon (remplace le refus « ensemble déjà déclaré » sur ce chemin). ⚠ **FK
+  ON DELETE CASCADE** (`ScheduleSlotTemplate.sharedTrainingBlockId`) : les séances sont RELIÉES au
+  bloc résultant AVANT la suppression des anciens blocs — sinon la cascade les emporterait. Gardes
+  restantes : ≤ 10 équipes, capacité de la case, verrou gestionnaire, tenant (refus 422 NOMMÉS).
 
 ## 3. Le moteur — « un coach suffit »
 
@@ -147,27 +187,14 @@ sans duplication, dans [`engine/docs/constraint-vocabulary.md`](../../engine/doc
 
 ## 5. À venir (décidé, pas encore livré)
 
-Ces décisions sont tranchées par le fondateur (2026-10-13) mais **le code ne les fait pas encore** —
-elles ne doivent pas être lues comme un comportement actuel :
+Le menu à 3 choix, l'échange (équipe↔équipe, N↔M), la mutualisation au dépôt (rejoindre/fusion) et
+l'éviction d'un groupe occupant sont **livrés** (§2.4). Restent ouverts, tranchés mais pas codés :
 
-- **Menu à 3 choix au dépôt sur une case occupée** : déposer une séance (équipe ou groupe) sur une
-  case déjà occupée proposera **Prendre sa place / Échanger / Mutualiser**, au lieu du seul choix
-  actuel. Livré : `move()` ET `moveGroup()` savent évincer un occupant ÉQUIPE non verrouillé
-  (§2.3, P4-329). Restent à livrer : il n'existe toujours pas d'endpoint d'échange atomique, et un
-  occupant de GROUPE reste un refus nommé sur les deux rails (point suivant).
-- **Équipe sur groupe ⇒ rejoindre ; groupe sur groupe ⇒ fusionner.** Dans les deux cas, Amateo
-  AVERTIT des risques et CONTRÔLE la faisabilité (≤ 10 équipes, Σ des séances communes, capacité de
-  la case) — jamais un refus de principe. Le gestionnaire assume le geste.
-- **Un groupe occupant sera évinçable/échangeable comme une équipe** : son ancrage (verrou posé par
-  le geste de mutualisation lui-même) n'est pas un verrou gestionnaire souverain. Évincé, le groupe
-  passera « à replacer ». Seul un verrou POSÉ explicitement par le gestionnaire restera souverain.
-- **Règle de fusion « on répartit, on ne crée rien »** : fusionner deux groupes (ou une équipe et un
-  groupe) sur UNE case ne créera jamais de séance supplémentaire — chaque équipe garde son nombre
-  total de séances initial, seuls les groupes se répartissent leurs séances communes. Exemple
-  cadré : un groupe A {U11M1, U11M2} à 2 séances communes + un groupe B {SF1, SF2} à 1 séance ⇒ un
-  groupe C {U11M1, U11M2, SF1, SF2} à 1 séance commune ; A garde 1 séance commune (2 − 1) ; B, tombé
-  à 0, disparaît. Si l'ensemble d'équipes obtenu est identique à un groupe déjà existant, c'est CE
-  groupe qui gagne +1 séance commune (jamais un doublon).
+- **Défaire l'échange en un clic** (D10, hors V1) — un échange se défait aujourd'hui en
+  ré-échangeant à la main. Suivi : roadmap `P4-334`.
+- **Replacement un-clic d'un GROUPE évincé** : un groupe évincé passe « à replacer » sans raccourci
+  « Remettre » (un-clic réservé à une séance d'ÉQUIPE, décision fondateur — cohérent avec
+  `remove-group`). Un un-clic de groupe deviendrait une ligne de roadmap si le fondateur le demande.
 
-L'état d'avancement de ces chantiers (ce qui reste ouvert, ce qui est en cours) se lit dans
+L'état d'avancement de ces chantiers se lit dans
 [`specs/evolution/roadmap.md`](../evolution/roadmap.md), jamais ici — ce fichier décrit le présent.

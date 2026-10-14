@@ -9,7 +9,7 @@ import { registerLongAction, unregisterLongAction } from "@/shared/lib/longActio
 import { isScheduleStreamConnected, useScheduleStream } from "./lib/scheduleStream";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { LockLevel, MutualizeBody, PlaceSlotBody, SlotMovePatch } from "./api";
+import type { LockLevel, MutualizeAtCaseBody, MutualizeBody, PlaceSlotBody, SlotMovePatch, SwapBody } from "./api";
 import { EngineTimeoutError, GenerationInProgressError, MoveRejectedError, MutualizationRefusedError, OverlaysExistError, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
 import * as planningApi from "./api";
 
@@ -358,6 +358,62 @@ export function useMoveGroupDryRun() {
     meta: { veil: "long" },
     mutationFn: (body: planningApi.MoveGroupBody) => runLongAction((signal) => planningApi.moveGroup({ ...body, dryRun: true }, signal)),
     onError: () => {},
+  });
+}
+
+/**
+ * P4-327 + Q2 — ÉCHANGER deux séances sous le verdict moteur (le menu du dépôt « Échanger »). MÊME
+ * paquet d'invalidation que {@link useMoveSlot} (slots, schedules, diagnostics, socle-deviation). Le
+ * hook POSSÈDE son feedback (le filet global ne double pas les refus métier) ; un ABANDON
+ * resynchronise et se NOMME. Le toast contextuel vit côté page (noms d'équipes).
+ */
+export function useSwapSlot() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { veil: "long" },
+    mutationFn: (body: SwapBody) => runLongAction((signal) => planningApi.swapSlots(body, signal)),
+    onSuccess: () => invalidateMovePacket(queryClient),
+    onError: (error) => onSlotEditError(queryClient, error),
+  });
+}
+
+/**
+ * Un ESSAI (dry-run) d'un échange : le moteur juge SANS rien écrire — remplit le dialogue de verdict
+ * avant la confirmation. AUCUNE invalidation. Le hook se tait (la page affiche verrou/refus/échec)
+ * mais désarme le filet global, patron {@link useMoveDryRun}.
+ */
+export function useSwapDryRun() {
+  return useMutation({
+    meta: { veil: "long" },
+    mutationFn: (body: SwapBody) => runLongAction((signal) => planningApi.swapSlots({ ...body, dryRun: true }, signal)),
+    onError: () => {},
+  });
+}
+
+/**
+ * Lot 2 — MUTUALISER DEPUIS LE DÉPÔT (rejoindre / fusion). SANS verdict moteur (l'ancrage HARD
+ * suffit). MÊMES invalidations que {@link useMutualizeSlot} (le placement change, un bloc naît/meurt,
+ * un override peut bouger). Le hook TAIT le refus NOMMÉ (la modale l'affiche) et ne toaste qu'un vrai
+ * transport (patron FRT-38).
+ */
+export function useMutualizeAtCase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: MutualizeAtCaseBody) => planningApi.mutualizeAtCase(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["slots"] });
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["diagnostics"] });
+      void queryClient.invalidateQueries({ queryKey: ["socle-deviation"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides"] });
+    },
+    onError: (error) => {
+      if (error instanceof MutualizationRefusedError || error instanceof GenerationInProgressError) {
+        return; // refus NOMMÉ affiché par la modale, jamais un second toast
+      }
+      void errorMessage(error).then((message) => toast.error(message));
+    },
   });
 }
 

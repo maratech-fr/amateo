@@ -55,6 +55,12 @@ const FAILURE_MESSAGE: Record<EvictFailureKind, string> = {
 interface EvictConfirmDialogProps {
   open: boolean;
   phase: EvictDialogPhase;
+  /**
+   * Le geste jugé : `evict` (« Prendre sa place » — la source évince l'occupant, qui passe à
+   * replacer) ou `swap` (« Échanger » — les deux séances troquent leurs cases, sans perte). Seuls
+   * le titre, le texte d'acceptation et le libellé du bouton changent ; les phases sont identiques.
+   */
+  kind?: "evict" | "swap";
   /** Nom de l'équipe occupant la cible (déjà résolu par la page). */
   occupantName: string;
   /** Compromis du verdict accepté (peut être vide → « Aucun compromis détecté. »). */
@@ -71,7 +77,7 @@ interface EvictConfirmDialogProps {
   onClose: () => void;
 }
 
-export function EvictConfirmDialog({ open, phase, occupantName, compromises, violations, failureKind, busy, onConfirm, onRetry, onClose }: EvictConfirmDialogProps) {
+export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, compromises, violations, failureKind, busy, onConfirm, onRetry, onClose }: EvictConfirmDialogProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   useModalA11y({ ref: panelRef, onClose, active: open });
@@ -80,14 +86,19 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
     return null;
   }
 
+  const isSwap = "swap" === kind;
   const title =
     "refused" === phase
-      ? "Déplacement impossible"
+      ? isSwap
+        ? "Échange impossible"
+        : "Déplacement impossible"
       : "failed" === phase
         ? "La vérification n'a pas abouti"
         : "indeterminate" === phase
           ? "La vérification a pris trop de temps"
-          : "Déplacer vers un créneau occupé ?";
+          : isSwap
+            ? "Échanger les deux créneaux ?"
+            : "Déplacer vers un créneau occupé ?";
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -119,7 +130,15 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
           {"accepted" === phase ? (
             <div className="flex flex-col gap-3">
               <p className="text-muted-foreground">
-                Ce créneau est occupé par <span className="font-medium text-foreground">{occupantName}</span>. La déplacer d'ici ? Elle passera dans les séances à replacer.
+                {isSwap ? (
+                  <>
+                    Échanger avec <span className="font-medium text-foreground">{occupantName}</span> ? Les deux séances troqueront leurs créneaux, sans perte.
+                  </>
+                ) : (
+                  <>
+                    Ce créneau est occupé par <span className="font-medium text-foreground">{occupantName}</span>. La déplacer d'ici ? Elle passera dans les séances à replacer.
+                  </>
+                )}
               </p>
               {compromises.length > 0 ? <CompromiseList compromises={compromises} /> : <EmptyHint>Aucun compromis détecté.</EmptyHint>}
             </div>
@@ -161,8 +180,8 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
             {"refused" === phase ? "Fermer" : "Annuler"}
           </Button>
           {"accepted" === phase ? (
-            <Button variant="destructive" disabled={busy} onClick={onConfirm}>
-              Déplacer et évincer
+            <Button variant={isSwap ? "default" : "destructive"} disabled={busy} onClick={onConfirm}>
+              {isSwap ? "Échanger" : "Déplacer et évincer"}
             </Button>
           ) : null}
           {"failed" === phase || "indeterminate" === phase ? (

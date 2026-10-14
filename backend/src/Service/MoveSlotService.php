@@ -104,7 +104,13 @@ final class MoveSlotService
      * réponse porte alors `dryRun => true` et, si une éviction était demandée, l'état qui SERAIT
      * évincé (`evicted`, sans suppression).
      *
-     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, dryRun?: bool, evicted?: array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}}
+     * Q2 (lot 2) — l'occupant évincé peut être une SÉANCE DE GROUPE : ses N séances membres à la case
+     * partent alors ENSEMBLE (le bloc SURVIT, elles passent « à replacer »), et la réponse porte
+     * `evictedGroup` (bloc + N états) au lieu d'`evicted` (un seul état, occupant équipe). Un verrou
+     * d'ANCRAGE de groupe n'est PAS un verrou gestionnaire (pas de D3 ici) ; un occupant ÉQUIPE
+     * verrouillé reste souverain (D3, `EvictTargetLockedException`).
+     *
+     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, dryRun?: bool, evicted?: array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}, evictedGroup?: array{blockId: string, slots: list<array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}>}}
      */
     public function move(ScheduleSlotTemplate $slot, int $dayOfWeek, DateTimeImmutable $startTime, string $venueId, ?string $evictSlotId = null, bool $dryRun = false): array
     {
@@ -142,15 +148,17 @@ final class MoveSlotService
         //        la durée de la source, qui ne s'applique plus (LA RÈGLE). D3 : un occupant verrouillé
         //        fait échouer ici sans jamais consulter le moteur. L'évincé est alors retiré de la
         //        baseline (sinon le candidat se heurterait à l'occupant qu'il libère).
-        $evicted = null === $evictSlotId
+        $eviction = null === $evictSlotId
             ? null
             : $this->resolveEvictionTarget($slot, $schedule, $evictSlotId, $dayOfWeek, $startTime, $venueId, $durationMinutes);
-        if ($evicted instanceof ScheduleSlotTemplate) {
-            $evictedId = $evicted->getId();
+        $evictedSlots = null === $eviction ? [] : $eviction['slots'];
+        $evictedBlockId = null === $eviction ? null : $eviction['blockId'];
+        if ([] !== $evictedSlots) {
+            $evictedIds = array_fill_keys(array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $evictedSlots), true);
             $currentTemplates = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
             $payload['slotTemplates'] = array_values(array_filter(
                 $currentTemplates,
-                static fn (mixed $entry): bool => !\is_array($entry) || (string) ($entry['id'] ?? '') !== $evictedId,
+                static fn (mixed $entry): bool => !\is_array($entry) || !isset($evictedIds[(string) ($entry['id'] ?? '')]),
             ));
         }
 
@@ -159,10 +167,7 @@ final class MoveSlotService
         //           le déplacement est refusé AVANT le moteur (qui fusionne par case et ne verrait pas
         //           le doublon) — rien n'est écrit. Évincer SA propre autre séance reste un échange
         //           légal : l'évincé est exclu, la garde ne le compte pas.
-        $excludedSlotIds = [$slot->getId()];
-        if ($evicted instanceof ScheduleSlotTemplate) {
-            $excludedSlotIds[] = $evicted->getId();
-        }
+        $excludedSlotIds = [$slot->getId(), ...array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $evictedSlots)];
         $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
             $schedule->getId(),
             $slot->getTeamId(),
@@ -215,15 +220,12 @@ final class MoveSlotService
         $compromises = $this->namedCompromises($result);
 
         // (dryRun) Le verdict est rendu (compromis compris), MAIS rien n'est écrit : ni le
-        // déplacement, ni la suppression de l'occupant, ni le marqueur, ni Mercure. L'`evicted`
-        // décrit l'état qui SERAIT évincé (sans le supprimer).
+        // déplacement, ni la suppression de l'occupant, ni le marqueur, ni Mercure. `evicted` /
+        // `evictedGroup` décrit l'état qui SERAIT évincé (sans le supprimer).
         if ($dryRun) {
             $dryResponse = ['valid' => true, 'violations' => [], 'compromises' => $compromises, 'dryRun' => true];
-            if ($evicted instanceof ScheduleSlotTemplate) {
-                $dryResponse['evicted'] = $this->describeEvicted($evicted);
-            }
 
-            return $dryResponse;
+            return [...$dryResponse, ...$this->evictedPayload($evictedSlots, $evictedBlockId)];
         }
 
         // (5) Écrire le déplacement, supprimer l'occupant évincé, poser le marqueur (score désormais
@@ -235,11 +237,15 @@ final class MoveSlotService
         //     lève l'ambiguïté sans affaiblir l'atomicité.
         $response = ['valid' => true, 'violations' => [], 'compromises' => $compromises];
 
-        return $this->entityManager->wrapInTransaction(function () use ($slot, $schedule, $dayOfWeek, $startTime, $venueId, $durationMinutes, $evicted, $response): array {
-            if ($evicted instanceof ScheduleSlotTemplate) {
-                // Capturer l'état d'AVANT suppression : le front s'en sert pour proposer de replacer.
-                $response['evicted'] = $this->describeEvicted($evicted);
-                $this->entityManager->remove($evicted);
+        return $this->entityManager->wrapInTransaction(function () use ($slot, $schedule, $dayOfWeek, $startTime, $venueId, $durationMinutes, $evictedSlots, $evictedBlockId, $response): array {
+            if ([] !== $evictedSlots) {
+                // Capturer l'état d'AVANT suppression : le front s'en sert pour proposer de replacer
+                // (`evicted` pour un occupant équipe ; `evictedGroup` — bloc + N états — pour un groupe,
+                // dont les N séances membres partent ensemble ; le bloc lui-même SURVIT, Q2).
+                $response = [...$response, ...$this->evictedPayload($evictedSlots, $evictedBlockId)];
+                foreach ($evictedSlots as $evictedSlot) {
+                    $this->entityManager->remove($evictedSlot);
+                }
                 $this->entityManager->flush();
             }
             $slot
@@ -572,11 +578,12 @@ final class MoveSlotService
      * transaction (tout-ou-rien). C'est le pendant « sans perte » de l'éviction : personne n'est
      * retiré, les deux côtés restent placés, ils troquent simplement leurs cases.
      *
-     * PÉRIMÈTRE (décision fondateur lot 2) : la SOURCE peut être une séance d'ÉQUIPE ou une séance
-     * de GROUPE (ses N membres à la case source partent ENSEMBLE, patron {@see moveGroup()}) ;
-     * l'OCCUPANT doit être une séance d'ÉQUIPE non verrouillée. Un occupant de GROUPE est refusé
-     * NOMMÉMENT ({@see EvictTargetIsGroupException}) — l'échange de deux groupes (N+M) arrive dans un
-     * lot ultérieur.
+     * PÉRIMÈTRE (décision fondateur lot 2, Q2) : CHAQUE côté peut être une séance d'ÉQUIPE (le seul
+     * créneau) ou une séance de GROUPE (ses N / M membres à la case partent ENSEMBLE, patron
+     * {@see swapSourceSessions()}). L'échange est donc N↔M : les N membres de la source atterrissent à
+     * la case de l'occupant, les M membres de l'occupant à la case de la source. Un occupant ÉQUIPE
+     * verrouillé (gestionnaire) reste souverain (D4) ; un occupant GROUPE porte un verrou d'ANCRAGE
+     * (pas gestionnaire) et s'échange.
      *
      * ⚠ Les POSITIONS viennent du SERVEUR, jamais du client : chaque côté troque la case RÉELLE
      * qu'il occupe. La durée écrite de chaque côté est celle de la FENÊTRE d'arrivée (LA RÈGLE),
@@ -584,16 +591,14 @@ final class MoveSlotService
      * celle de la fenêtre de la source.
      *
      * Ordre des refus, TOUS avant le moteur : deux plannings ≠ ({@see SwapCrossScheduleException}),
-     * même créneau / équipe commune aux deux côtés ({@see SwapWithSelfException}), occupant de groupe
-     * ({@see EvictTargetIsGroupException}), occupant verrouillé (D4 souverain,
-     * {@see EvictTargetLockedException}), fenêtre absente d'un côté ({@see SlotUnavailableException}),
-     * doublon d'équipe ailleurs ({@see TeamAlreadyAtCaseException}).
+     * même créneau / équipe commune aux deux côtés ({@see SwapWithSelfException}), occupant ÉQUIPE
+     * verrouillé (D4 souverain, {@see EvictTargetLockedException}), fenêtre absente d'un côté
+     * ({@see SlotUnavailableException}), doublon d'équipe ailleurs ({@see TeamAlreadyAtCaseException}).
      *
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SwapCrossScheduleException            les deux créneaux ne sont pas du même planning (→ 422)
      * @throws SwapWithSelfException                 l'occupant est la source / une équipe déjà engagée côté source (→ 422)
-     * @throws EvictTargetIsGroupException           l'occupant est lui-même une séance de groupe (→ 422)
-     * @throws EvictTargetLockedException            l'occupant (équipe) est verrouillé, D4 (→ 422)
+     * @throws EvictTargetLockedException            l'occupant ÉQUIPE est verrouillé, D4 (→ 422)
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à l'une des deux cases (→ 422)
      * @throws TeamAlreadyAtCaseException            un côté déplacé siège déjà à la case d'arrivée (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504)
@@ -632,28 +637,27 @@ final class MoveSlotService
         $sourceIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $sources);
         $sourceTeamIds = array_fill_keys(array_map(static fn (ScheduleSlotTemplate $s): string => $s->getTeamId(), $sources), true);
 
-        // (3) L'OCCUPANT doit être une séance d'ÉQUIPE non verrouillée. Une séance de GROUPE est
-        //     refusée AVANT le contrôle de verrou (son verrou d'ancrage la ferait tomber en
-        //     target_locked, message trompeur) — l'échange de deux groupes arrive dans un lot ultérieur.
-        if (null !== $target->getSharedTrainingBlockId()) {
-            throw new EvictTargetIsGroupException;
+        // (3) L'OCCUPANT : une séance d'ÉQUIPE (le seul créneau) OU une séance de GROUPE (ses M membres
+        //     à la case occupant partent ENSEMBLE, patron swapSourceSessions — Q2). L'échange est N↔M.
+        $targets = $this->swapSourceSessions($schedule, $target);
+        $targetIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $targets);
+        // Aucun créneau des deux côtés, ni équipe engagée des DEUX côtés : l'échange formerait un cycle
+        // d'écriture sur l'index UNIQUE (une même équipe des deux côtés), et serait un non-geste.
+        foreach ($targets as $targetSlot) {
+            if (\in_array($targetSlot->getId(), $sourceIds, true) || isset($sourceTeamIds[$targetSlot->getTeamId()])) {
+                throw new SwapWithSelfException;
+            }
         }
-        // L'occupant ne doit pas être l'une des séances source (même créneau), ni porter une équipe
-        // DÉJÀ engagée côté source : l'échange formerait un cycle d'écriture sur l'index UNIQUE
-        // (une même équipe des deux côtés), et serait de toute façon un non-geste.
-        if (\in_array($target->getId(), $sourceIds, true) || isset($sourceTeamIds[$target->getTeamId()])) {
-            throw new SwapWithSelfException;
-        }
-        // D4 — un verrou gestionnaire est souverain : on n'échange jamais un occupant verrouillé
-        // sans le déverrouiller d'abord (l'occupant est une équipe, pas un groupe : toute valeur
-        // ≠ NONE est un verrou posé, pas un ancrage).
-        if (LockLevel::NONE !== $target->getLockLevel()) {
+        // D4 — un verrou gestionnaire est souverain : on n'échange jamais un occupant ÉQUIPE verrouillé
+        // sans le déverrouiller d'abord. Un occupant GROUPE porte un verrou d'ANCRAGE (pas gestionnaire)
+        // → on ne le refuse PAS sur son verrou (Q2) ; il s'échange comme la source groupe.
+        if (null === $target->getSharedTrainingBlockId() && LockLevel::NONE !== $target->getLockLevel()) {
             throw new EvictTargetLockedException;
         }
 
         // (4) Baseline figée SANS les deux côtés (sinon chacun entrerait en conflit avec lui-même) +
         //     la grille de gymnase, d'où l'on tire les durées des DEUX fenêtres d'arrivée.
-        $payload = $this->buildBasePayloadExcluding($schedule, [...$sourceIds, $target->getId()]);
+        $payload = $this->buildBasePayloadExcluding($schedule, [...$sourceIds, ...$targetIds]);
 
         // Chaque côté prend la durée de la FENÊTRE où il atterrit (LA RÈGLE) : la source → la fenêtre
         // de l'occupant, l'occupant → la fenêtre de la source. Fenêtre absente d'un côté → le créneau
@@ -667,7 +671,7 @@ final class MoveSlotService
         // (5) Aucun côté déplacé ne doit DÉJÀ siéger à sa case d'arrivée par une AUTRE séance (hors
         //     les deux côtés eux-mêmes, qui SONT le geste). La source atterrit à la case de l'occupant,
         //     l'occupant à la case de la source. Un doublon résiduel refuse AVANT le moteur, NOMMÉ.
-        $guardExcluded = [...$sourceIds, $target->getId()];
+        $guardExcluded = [...$sourceIds, ...$targetIds];
         foreach ($sources as $sourceSlot) {
             $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
                 $schedule->getId(),
@@ -678,14 +682,16 @@ final class MoveSlotService
                 $guardExcluded,
             );
         }
-        $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
-            $schedule->getId(),
-            $target->getTeamId(),
-            $source->getVenueId(),
-            $source->getDayOfWeek(),
-            $source->getStartTime(),
-            $guardExcluded,
-        );
+        foreach ($targets as $targetSlot) {
+            $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
+                $schedule->getId(),
+                $targetSlot->getTeamId(),
+                $source->getVenueId(),
+                $source->getDayOfWeek(),
+                $source->getStartTime(),
+                $guardExcluded,
+            );
+        }
 
         // Les DEUX cases, CAPTURÉES avant toute mutation : la source EST l'un des `$sources`, donc
         // la lire après coup dans le closure d'écriture rendrait la case de l'occupant déjà écrite
@@ -718,20 +724,22 @@ final class MoveSlotService
                 'durationMinutes' => $sourceSlot->getDurationMinutes(),
             ];
         }
-        $candidates[] = [
-            'teamId' => $target->getTeamId(),
-            'venueId' => $source->getVenueId(),
-            'dayOfWeek' => $source->getDayOfWeek(),
-            'startTime' => $source->getStartTime()->format('H:i'),
-            'durationMinutes' => $sourceWindowDuration,
-        ];
-        $references[] = [
-            'teamId' => $target->getTeamId(),
-            'venueId' => $target->getVenueId(),
-            'dayOfWeek' => $target->getDayOfWeek(),
-            'startTime' => $target->getStartTime()->format('H:i'),
-            'durationMinutes' => $target->getDurationMinutes(),
-        ];
+        foreach ($targets as $targetSlot) {
+            $candidates[] = [
+                'teamId' => $targetSlot->getTeamId(),
+                'venueId' => $source->getVenueId(),
+                'dayOfWeek' => $source->getDayOfWeek(),
+                'startTime' => $source->getStartTime()->format('H:i'),
+                'durationMinutes' => $sourceWindowDuration,
+            ];
+            $references[] = [
+                'teamId' => $targetSlot->getTeamId(),
+                'venueId' => $targetSlot->getVenueId(),
+                'dayOfWeek' => $targetSlot->getDayOfWeek(),
+                'startTime' => $targetSlot->getStartTime()->format('H:i'),
+                'durationMinutes' => $targetSlot->getDurationMinutes(),
+            ];
+        }
         $payload['candidates'] = $candidates;
         $payload['references'] = $references;
 
@@ -751,7 +759,7 @@ final class MoveSlotService
         }
 
         $compromises = $this->namedCompromises($result);
-        $movedSlotIds = [...$sourceIds, $target->getId()];
+        $movedSlotIds = [...$sourceIds, ...$targetIds];
 
         // (dryRun) Le verdict est rendu, MAIS rien n'est écrit : ni l'échange, ni le marqueur, ni Mercure.
         if ($dryRun) {
@@ -762,10 +770,10 @@ final class MoveSlotService
         //      (tout-ou-rien). Aucune suppression : contrairement à l'éviction, l'occupant n'est pas
         //      retiré, il prend la case de la source. Les deux côtés portent des ÉQUIPES DISTINCTES
         //      (garde (3) « équipe commune »), donc l'index UNIQUE (schedule, équipe, gymnase, jour,
-        //      heure) ne se heurte jamais entre les deux UPDATE : chacun écrit une clé d'équipe différente.
+        //      heure) ne se heurte jamais entre les UPDATE : chacun écrit une clé d'équipe différente.
         $response = ['valid' => true, 'violations' => [], 'compromises' => $compromises, 'movedSlotIds' => $movedSlotIds];
 
-        return $this->entityManager->wrapInTransaction(function () use ($sources, $target, $schedule, $sourceCaseDay, $sourceCaseStart, $sourceCaseVenue, $targetCaseDay, $targetCaseStart, $targetCaseVenue, $sourceWindowDuration, $targetWindowDuration, $response): array {
+        return $this->entityManager->wrapInTransaction(function () use ($sources, $targets, $schedule, $sourceCaseDay, $sourceCaseStart, $sourceCaseVenue, $targetCaseDay, $targetCaseStart, $targetCaseVenue, $sourceWindowDuration, $targetWindowDuration, $response): array {
             foreach ($sources as $sourceSlot) {
                 $sourceSlot
                     ->setDayOfWeek($targetCaseDay)
@@ -773,11 +781,13 @@ final class MoveSlotService
                     ->setVenueId($targetCaseVenue)
                     ->setDurationMinutes($targetWindowDuration);
             }
-            $target
-                ->setDayOfWeek($sourceCaseDay)
-                ->setStartTime($sourceCaseStart)
-                ->setVenueId($sourceCaseVenue)
-                ->setDurationMinutes($sourceWindowDuration);
+            foreach ($targets as $targetSlot) {
+                $targetSlot
+                    ->setDayOfWeek($sourceCaseDay)
+                    ->setStartTime($sourceCaseStart)
+                    ->setVenueId($sourceCaseVenue)
+                    ->setDurationMinutes($sourceWindowDuration);
+            }
             $schedule->setManuallyEditedSinceGeneration(true);
             $this->entityManager->flush();
 
@@ -1070,8 +1080,15 @@ final class MoveSlotService
      * cette occupation-là qui décide s'il chevauche l'occupant. Juger sur la durée source raterait
      * un occupant que la fenêtre (plus longue) recouvre, ou en accuserait un que la fenêtre (plus
      * courte) laisse tranquille.
+     *
+     * Q2 (lot 2) — l'occupant peut être une SÉANCE DE GROUPE (`sharedTrainingBlockId` non NULL) : on
+     * renvoie alors les N séances membres qui siègent à SA case (elles partent ensemble, le bloc
+     * survit), sans contrôle de verrou (son verrou d'ANCRAGE n'est pas un verrou gestionnaire). Un
+     * occupant ÉQUIPE verrouillé reste souverain (D3). Le drapeau `blockId` distingue les deux cas.
+     *
+     * @return array{slots: list<ScheduleSlotTemplate>, blockId: ?string}
      */
-    private function resolveEvictionTarget(ScheduleSlotTemplate $source, Schedule $schedule, string $evictSlotId, int $dayOfWeek, DateTimeImmutable $startTime, string $venueId, int $candidateDurationMinutes): ScheduleSlotTemplate
+    private function resolveEvictionTarget(ScheduleSlotTemplate $source, Schedule $schedule, string $evictSlotId, int $dayOfWeek, DateTimeImmutable $startTime, string $venueId, int $candidateDurationMinutes): array
     {
         $evicted = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->find($evictSlotId);
         if (!$evicted instanceof ScheduleSlotTemplate
@@ -1088,13 +1105,54 @@ final class MoveSlotService
             throw new EvictTargetMismatchException;
         }
 
-        // D3 — un verrou est souverain, quelle que soit son origine : on n'évince jamais un
-        // créneau verrouillé sans qu'il soit déverrouillé d'abord.
-        if (LockLevel::NONE !== $evicted->getLockLevel()) {
-            throw new EvictTargetLockedException;
+        $blockId = $evicted->getSharedTrainingBlockId();
+        if (null === $blockId) {
+            // Occupant ÉQUIPE — D3 : un verrou gestionnaire est souverain, on ne l'évince pas.
+            if (LockLevel::NONE !== $evicted->getLockLevel()) {
+                throw new EvictTargetLockedException;
+            }
+
+            return ['slots' => [$evicted], 'blockId' => null];
         }
 
-        return $evicted;
+        // Occupant GROUPE (Q2) — les N séances membres à la case partent ENSEMBLE (bloc survit). Le
+        // verrou d'ANCRAGE n'est pas un verrou gestionnaire, donc pas de D3 ici.
+        $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($blockId);
+        if (!$block instanceof SharedTrainingBlock) {
+            // blockId orphelin (ne devrait pas survenir, FK) : on traite comme une séance simple (D3).
+            if (LockLevel::NONE !== $evicted->getLockLevel()) {
+                throw new EvictTargetLockedException;
+            }
+
+            return ['slots' => [$evicted], 'blockId' => null];
+        }
+        $members = $this->sourceSlotsAtCase($schedule, $this->blockMemberTeamIds($block), $evicted->getVenueId(), $evicted->getDayOfWeek(), $evicted->getStartTime());
+
+        return ['slots' => [] === $members ? [$evicted] : $members, 'blockId' => $blockId];
+    }
+
+    /**
+     * Le fragment de réponse décrivant l'occupant évincé : `evicted` (un seul état) pour un occupant
+     * ÉQUIPE, `evictedGroup` (bloc + N états) pour un occupant GROUPE (Q2). Vide s'il n'y a pas
+     * d'éviction. Fusionné dans la réponse par l'appelant.
+     *
+     * @param list<ScheduleSlotTemplate> $slots
+     *
+     * @return array{}|array{evicted: array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}}|array{evictedGroup: array{blockId: string, slots: list<array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}>}}
+     */
+    private function evictedPayload(array $slots, ?string $blockId): array
+    {
+        if ([] === $slots) {
+            return [];
+        }
+        if (null === $blockId) {
+            return ['evicted' => $this->describeEvicted($slots[0])];
+        }
+
+        return ['evictedGroup' => [
+            'blockId' => $blockId,
+            'slots' => array_map(fn (ScheduleSlotTemplate $s): array => $this->describeEvicted($s), $slots),
+        ]];
     }
 
     /**
