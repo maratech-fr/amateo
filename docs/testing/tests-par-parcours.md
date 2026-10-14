@@ -134,6 +134,13 @@ preuve.
   `texts.ts` est hors portée (il DÉTIENT les littéraux). **Chaque PR qui touche un écran le migre et
   l'ajoute à `MIGRATED_FILES`** ; la migration ne recule jamais.
 - **Les E2E gardent leurs littéraux** (`tests/e2e/` hors portée) : témoin indépendant des clés.
+- **Suite progressive (reliquat de la vague 1, à ne pas perdre)** : deux clés de `COCKPIT_TEXTS` —
+  `weeksCoveredCount` et `venueUnavailableTitle` — sont des **oracles de TEST simplifiés** (pluriel /
+  format approchés) que la SOURCE ne consomme pas (NEO a gardé le gabarit inline réel) : à
+  réconcilier quand le pluriel/format source sera figé, sans jamais toucher la valeur d'une clé que
+  les tests référencent déjà. Le **reliquat NON policé** relevé par NEO (libellés retournés par un
+  `switch` d'aide, texte mêlé à `{…}` sur une même ligne — hors de la largeur de la garde) peut
+  rester en dur sur un écran migré sans rougir : il part au fil des PR, pas d'un coup.
 
 ## 3. Règle anti-doublon opérationnelle (les 4 étages)
 
