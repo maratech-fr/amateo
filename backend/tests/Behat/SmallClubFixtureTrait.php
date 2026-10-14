@@ -252,6 +252,19 @@ trait SmallClubFixtureTrait
         }
     }
 
+    /**
+     * Rouvre le socle : on DÉPOINTE la version en vigueur (pointage SQL — une version choisie est
+     * en lecture seule et non régénérable). C'est le geste « je rouvre mon planning pour y
+     * retravailler » ; le socle sera repointé à la version régénérée par le parcours lui-même.
+     */
+    private function reopenSmallClubSocle(): void
+    {
+        $this->dbalExec(
+            \sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->smallClubId),
+            admin: true,
+        );
+    }
+
     /** Vrai si le socle de saison pointe bien la version donnée (socle en vigueur). */
     private function smallClubSocleIsChosen(string $scheduleId): bool
     {
