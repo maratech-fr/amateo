@@ -16,6 +16,7 @@ use App\Tests\Behat\LeagueValidationContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
+use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
 use App\Tests\Behat\SeasonGenerationContext;
@@ -123,6 +124,11 @@ return (new Config)
                 new Suite('verrou')
                     ->withPaths('%paths.base%/features/un-verrou-est-souverain.feature')
                     ->withContexts(LockContext::class),
+            )
+            ->withSuite(
+                new Suite('verrou-periode')
+                    ->withPaths('%paths.base%/features/un-verrou-de-periode-survit-a-la-regeneration.feature')
+                    ->withContexts(PeriodLockSmallClubContext::class),
             )
             ->withSuite(
                 new Suite('export')
