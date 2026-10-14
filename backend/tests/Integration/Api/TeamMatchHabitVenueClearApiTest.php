@@ -25,7 +25,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * gestionnaire ne pouvait que remplacer le gymnase, jamais le vider — il fallait supprimer +
  * recréer. On prouve de bout en bout que le PUT à `venueId: null` ressort un `venueId` null.
  *
- * Non-bloquant (groupe `integration`, tourne dans `unit-tests`).
+ * Non-bloquant (groupe `integration`, tourne dans `backend-tests`).
  */
 #[Group('integration')]
 final class TeamMatchHabitVenueClearApiTest extends WebTestCase

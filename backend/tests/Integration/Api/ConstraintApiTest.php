@@ -101,8 +101,8 @@ final class ConstraintApiTest extends WebTestCase
      * obtiendrait une règle d'HEURE — honorée, cohérente, et fausse. C'est le motif
      * « déclaré ≠ effectif » que SEC-13 a tué sur `config`.
      *
-     * ⚠ Ce test tourne dans `unit-tests`, PAS dans le job `blocking-tests` (§4) : il
-     * bloque le merge via le contexte requis « Unit Tests », mais ne gate pas
+     * ⚠ Ce test tourne dans `backend-tests`, PAS dans le job `blocking-tests` (§4) : il
+     * bloque le merge via le contexte requis « Backend Tests (suite + couverture) », mais ne gate pas
      * `build-docker` et son verdict tombe après celui du gate.
      */
     #[DataProvider('invalidEnumValues')]
@@ -148,7 +148,7 @@ final class ConstraintApiTest extends WebTestCase
      * en 201 (le `Assert\Choice` dérivé de `values()` l'admet de nouveau) — le test rougit ; le
      * retirer le rend vert.
      *
-     * ⚠ Comme sa sœur ci-dessus, ce test tourne dans `unit-tests`, PAS dans `blocking-tests` (§4).
+     * ⚠ Comme sa sœur ci-dessus, ce test tourne dans `backend-tests`, PAS dans `blocking-tests` (§4).
      */
     public function testBonusRuleTypeIsRefusedSinceItWasRemovedFromTheProduct(): void
     {

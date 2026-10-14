@@ -21,7 +21,7 @@ use SplFileInfo;
  * comme un mutateur) : elle est exclue du balayage.
  *
  * NON gatant (ce n'est pas un axe structurant §7.1) : ce test tourne dans
- * `unit-tests`, il n'est volontairement listé NI dans `.github/workflows/ci.yml`
+ * `backend-tests`, il n'est volontairement listé NI dans `.github/workflows/ci.yml`
  * (job `blocking-tests`) NI dans `docs/testing/blocking-tests.md`.
  */
 #[Group('phase1')]

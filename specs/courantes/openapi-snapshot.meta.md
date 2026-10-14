@@ -1,4 +1,5 @@
-Last verified @ 2026-10-14 (lot 2 « mutualiser depuis le dépôt ») : nouveau path custom
+Last verified @ 2026-10-14 (lot 2 « mutualiser depuis le dépôt » ; puis refonte CI : le job qui joue
+la garde de méta s'appelle désormais `backend-tests` — compte et SHA inchangés) : nouveau path custom
 `POST /api/schedule-slots/mutualize-at-case` (déposer une séance sur une case occupée et les
 fusionner en UNE séance commune sur la case de la cible — équipe→équipe, rejoindre, fusion ;
 règle « on répartit, on ne crée rien » ; corps `{sourceSlotId, targetSlotId, label?, dryRun?}` ;
@@ -34,7 +35,7 @@ Règle (skill `documentation-update`) : régénérer ce snapshot à chaque chang
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
 sont pas une promesse sur l'honneur** : `OpenApiSnapshotMetaMatchesSnapshotTest`
 (`backend/tests/Unit/Documentation/`) les recalcule contre le snapshot réel à chaque run et rougit
-si l'un des deux ment — non bloquant, `phase1`, `unit-tests` seul ; le bumper à la main reste
+si l'un des deux ment — non bloquant, `phase1`, `backend-tests` seul ; le bumper à la main reste
 nécessaire (le test ne régénère rien, il compare).
 
 Piège : une route custom n'apparaît dans l'export que si elle est déclarée dans le

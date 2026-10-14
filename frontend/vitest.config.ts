@@ -12,7 +12,7 @@ const actWarningsCeiling = readCeiling(new URL('./act-warnings-ceiling.json', im
 
 // P4-166 (B3) — le plancher de couverture vit dans la maison UNIQUE `coverage-floor.json`
 // (racine du dépôt), jamais en dur ici. La couverture ne se collecte que sous `--coverage`
-// (script `test:coverage` / job CI `frontend-coverage`) ; `npm run test` reste sans.
+// (script `test:coverage` / step de couverture du job CI `frontend`) ; `npm run test` reste sans.
 const coverageFloorUrl = new URL('../coverage-floor.json', import.meta.url)
 const frontendFloor = (
   JSON.parse(readFileSync(coverageFloorUrl, 'utf-8')) as { frontend: number | null }
@@ -53,7 +53,7 @@ export default mergeConfig(viteConfig, defineConfig({
     // regarde si le scénario a dérivé, avant qu'il n'atteigne le plafond.
     slowTestThreshold: 3_000,
     // P4-166 (B2/B3/B4) — mesure de couverture. Ne s'active que sous `--coverage`
-    // (script `test:coverage`, job CI `frontend-coverage`) ; `npm run test` reste sans.
+    // (script `test:coverage`, step de couverture du job CI `frontend`) ; `npm run test` reste sans.
     coverage: {
       provider: 'v8',
       include: ['src/**'],

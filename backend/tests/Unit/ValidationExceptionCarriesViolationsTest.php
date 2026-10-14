@@ -23,10 +23,10 @@ use Symfony\Component\Process\Process;
  * On interroge `git grep` plutôt que de parcourir le disque : il ne voit QUE les fichiers
  * suivis, il est rapide, et la portée `src/` exclut ce test (qui cite l'idiome dans sa prose).
  *
- * Non-bloquant à dessein (tourne dans `unit-tests`, pas un step de `blocking-tests`) : le tier
+ * Non-bloquant à dessein (tourne dans `backend-tests`, pas un step de `blocking-tests`) : le tier
  * bloquant est réservé aux invariants que le pipeline aval CONSOMME (contrat moteur, isolation
  * tenant, verrous). Ceci garde une DISCIPLINE de copie côté sortie 422 — un faux vert ici ne
- * corrompt aucun étage suivant, il rend juste un toast muet, rattrapé au gate `unit-tests`.
+ * corrompt aucun étage suivant, il rend juste un toast muet, rattrapé au gate `backend-tests`.
  */
 #[Group('phase1')]
 final class ValidationExceptionCarriesViolationsTest extends TestCase

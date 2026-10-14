@@ -33,7 +33,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * le fait qu'elle voyage. ⚠ On n'assortit PAS ces messages à `MatchTenantIsolationTest` (step
  * bloquant) : une garde de COPIE ne se couple pas à une garde de sécurité.
  *
- * Non-bloquant (groupe `integration`, tourne dans `unit-tests`) : garde une discipline de sortie
+ * Non-bloquant (groupe `integration`, tourne dans `backend-tests`) : garde une discipline de sortie
  * 422, aucun étage aval ne la consomme.
  */
 #[Group('integration')]

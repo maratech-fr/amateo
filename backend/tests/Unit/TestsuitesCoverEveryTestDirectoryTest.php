@@ -16,7 +16,7 @@ use SplFileInfo;
  * Chaque sous-dossier direct de `tests/` qui porte au moins un `*Test.php` doit appartenir à
  * EXACTEMENT une testsuite de `phpunit.xml.dist` — sinon `--testsuite` (et donc `make test`,
  * qui lance la suite `Unit` seule, gotcha §10.1 de `CLAUDE.md`) le saute EN SILENCE. La CI
- * `unit-tests` lance `phpunit tests/` entier et couvre tout ; le trou n'est visible que par
+ * `backend-tests` lance `phpunit tests/` entier et couvre tout ; le trou n'est visible que par
  * testsuite, jamais en local sur la suite rapide.
  *
  * Relevé du 2026-09-03 : huit dossiers étaient hors de toute testsuite (`Api`, `Command`,

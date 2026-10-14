@@ -43,7 +43,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * d'activation garde désormais la route en prod ; couverture complète dans
  * DemoWindowTest). Et le rail register n'a fait qu'AJOUTER un champ à sa config.
  *
- * ⚠ N'est PAS un step bloquant (arbitrage fondateur) : tourne dans `unit-tests`.
+ * ⚠ N'est PAS un step bloquant (arbitrage fondateur) : tourne dans `backend-tests`.
  */
 #[Group('integration')]
 final class DevDemoRegisterTest extends WebTestCase
