@@ -347,6 +347,21 @@ export function useMoveGroup() {
 }
 
 /**
+ * P4-329 — un ESSAI (dry-run) d'un déplacement de GROUPE vers une case OCCUPÉE : le moteur juge
+ * (verdict + compromis + l'évincé qui SERAIT retiré) SANS rien écrire. Remplit la modale d'éviction
+ * avant la confirmation. AUCUNE invalidation (rien n'a bougé). Le hook POSSÈDE son feedback (même
+ * règle que {@link useMoveDryRun}) : il se tait (la page affiche verrou/refus/échec) mais désarme le
+ * filet global, qui sinon toasterait « Problème de connexion » par-dessus la modale.
+ */
+export function useMoveGroupDryRun() {
+  return useMutation({
+    meta: { veil: "long" },
+    mutationFn: (body: planningApi.MoveGroupBody) => runLongAction((signal) => planningApi.moveGroup({ ...body, dryRun: true }, signal)),
+    onError: () => {},
+  });
+}
+
+/**
  * « Vider un créneau » — RETIRER une séance placée (geste F4). SANS verdict moteur. Préfixe
  * `useDelete…` (norme N2, couvert par `deleteConfirmGuard` quand consommé dans un `.tsx`) : le
  * ConfirmDialog OBLIGATOIRE vit côté page, alimenté par un essai `dryRun` (zéro écriture). Un essai

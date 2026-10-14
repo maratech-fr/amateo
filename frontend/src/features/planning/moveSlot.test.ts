@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/shared/api/client";
 
-import { GenerationInProgressError, MoveRejectedError, moveSlot, placeSlot, removeSlot, removeSlotGroup, SlotEditError, TargetLockedError } from "./api";
+import { GenerationInProgressError, MoveRejectedError, moveGroup, moveSlot, placeSlot, removeSlot, removeSlotGroup, SlotEditError, TargetLockedError } from "./api";
 
 // F2b — le déplacement passe désormais par POST /move (verdict moteur), plus par
 // manual-edit/one-time (chevauchements bruts). Ce test garde le CHEMIN d'appel et la
@@ -187,6 +187,58 @@ describe("dry-run — essai sans écriture (P2-32)", () => {
     expect(mockPost.mock.calls[0][1]).toMatchObject({ json: { dryRun: true } });
     expect(result.dryRun).toBe(true);
     expect(result.compromises).toHaveLength(1);
+  });
+});
+
+// P4-329 — déplacer un GROUPE sur une case OCCUPÉE peut évincer l'occupant (séance d'équipe), comme
+// le move simple : le corps porte `evictSlotId`, et le geste se fait en DEUX temps — un ESSAI
+// (dryRun, pour la modale) puis la confirmation RÉELLE. La réponse NOMME l'évincé (« à replacer »).
+describe("moveGroup — éviction d'un groupe vers une case occupée (P4-329)", () => {
+  afterEach(() => mockPost.mockReset());
+
+  const source = { venueId: "v1", dayOfWeek: 2, startTime: "18:00" };
+  const target = { venueId: "v2", dayOfWeek: 4, startTime: "20:00" };
+
+  it("ESSAI : porte evictSlotId + dryRun:true et rend un verdict accepté avec l'évincé qui SERAIT retiré", async () => {
+    const evicted = { slotId: "occ", teamId: "team-occ", dayOfWeek: 4, startTime: "20:00", venueId: "v2", durationMinutes: 90 };
+    mockPost.mockReturnValueOnce({ json: async () => ({ valid: true, dryRun: true, violations: [], compromises: [], evicted }) } as never);
+
+    const result = await moveGroup({ scheduleId: "sch1", blockId: "b1", source, target, evictSlotId: "occ", dryRun: true });
+
+    expect(mockPost.mock.calls[0][0]).toBe("schedule-slots/move-group");
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ json: { evictSlotId: "occ", dryRun: true } });
+    expect(result.valid).toBe(true);
+    expect(result.dryRun).toBe(true);
+    expect(result.evicted).toEqual(evicted);
+  });
+
+  it("CONFIRMATION : porte evictSlotId (sans dryRun) et rend movedSlotIds + l'évincé réellement retiré", async () => {
+    const evicted = { slotId: "occ", teamId: "team-occ", dayOfWeek: 4, startTime: "20:00", venueId: "v2", durationMinutes: 90 };
+    mockPost.mockReturnValueOnce({ json: async () => ({ valid: true, message: "Group slot moved.", compromises: [], movedSlotIds: ["m1", "m2"], evicted }) } as never);
+
+    const result = await moveGroup({ scheduleId: "sch1", blockId: "b1", source, target, evictSlotId: "occ" });
+
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ json: { evictSlotId: "occ" } });
+    expect(mockPost.mock.calls[0][1]).not.toHaveProperty("json.dryRun");
+    expect(result.movedSlotIds).toEqual(["m1", "m2"]);
+    expect(result.evicted).toEqual(evicted);
+  });
+
+  it("un occupant lui-même de GROUPE (422 evict_target_is_group) devient SlotEditError typée", async () => {
+    mockPost.mockReturnValue({ json: () => Promise.reject(httpError(422, { code: "evict_target_is_group", error: "Cette case est occupée par un autre groupe — videz-la d'abord." })) } as never);
+    const caught = (await moveGroup({ scheduleId: "sch1", blockId: "b1", source, target, evictSlotId: "grp" }).catch((e: unknown) => e)) as SlotEditError;
+    expect(caught).toBeInstanceOf(SlotEditError);
+    expect(caught.code).toBe("evict_target_is_group");
+  });
+
+  it("un occupant verrouillé (422 target_locked) devient SlotEditError PORTANT le message propre", async () => {
+    // Le rail move-group traduit TOUT 422 à code en SlotEditError (il ne distingue pas
+    // target_locked comme /move) — la page la TOASTE (message serveur) et reste en mode cible.
+    mockPost.mockReturnValue({ json: () => Promise.reject(httpError(422, { code: "target_locked", error: "Ce créneau est verrouillé — déverrouillez-le d'abord." })) } as never);
+    const caught = (await moveGroup({ scheduleId: "sch1", blockId: "b1", source, target, evictSlotId: "lck" }).catch((e: unknown) => e)) as SlotEditError;
+    expect(caught).toBeInstanceOf(SlotEditError);
+    expect(caught.code).toBe("target_locked");
+    expect(caught.message).toMatch(/verrouill/i);
   });
 });
 

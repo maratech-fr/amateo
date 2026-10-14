@@ -14,6 +14,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\LockLevel;
 use App\Exception\DurationMismatchException;
 use App\Exception\EngineTimeoutException;
+use App\Exception\EvictTargetIsGroupException;
 use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
@@ -384,13 +385,25 @@ final class MoveSlotService
      * → 422, RIEN déplacé. Accepté → les N créneaux mutés puis UN flush (atomicité Doctrine), le
      * marqueur « retouché » et la publication Mercure.
      *
+     * P4-329 — comme {@see move()}, ce rail accepte désormais une ÉVICTION (`evictSlotId`) : déposer
+     * le groupe sur une case OCCUPÉE en retire l'occupant (qui passe « à replacer »), dans la MÊME
+     * transaction que le déplacement des N membres. L'occupant évincable en PR courante est une
+     * séance d'ÉQUIPE non verrouillée SEULEMENT — une séance de GROUPE occupante (son verrou
+     * d'ancrage n'est pas un verrou gestionnaire, cf. Q2) sera échangeable dans un lot ultérieur,
+     * ici elle est refusée NOMMÉMENT avant le moteur. `$dryRun` : même chemin JUSQU'AU VERDICT
+     * INCLUS (gardes pré-moteur comprises), puis retour AVANT toute écriture — la réponse porte
+     * `dryRun => true` et, si une éviction était demandée, l'état qui SERAIT évincé (`evicted`).
+     *
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SlotUnavailableException              aucune séance de bloc à la source, ou fenêtre cible absente (→ 422)
      * @throws TeamAlreadyAtCaseException            un membre déplacé siège déjà à la case cible (→ 422)
+     * @throws EvictTargetMismatchException          l'occupant à évincer ne siège pas à la cible, ou est une source du groupe (→ 422)
+     * @throws EvictTargetIsGroupException           l'occupant à évincer est lui-même une séance de groupe (→ 422)
+     * @throws EvictTargetLockedException            l'occupant à évincer (équipe) est verrouillé, D3 (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504)
      * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
      *
-     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, movedSlotIds?: list<string>}
+     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, dryRun?: bool, movedSlotIds?: list<string>, evicted?: array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}}
      */
     public function moveGroup(
         Schedule $schedule,
@@ -401,6 +414,8 @@ final class MoveSlotService
         int $dayOfWeek,
         DateTimeImmutable $startTime,
         string $venueId,
+        ?string $evictSlotId = null,
+        bool $dryRun = false,
     ): array {
         // (1) Une génération réécrit le planning : déplacer maintenant écraserait un résultat en vol.
         if ($this->clubGenerationLock->isGenerating($schedule->getClubId())) {
@@ -426,10 +441,31 @@ final class MoveSlotService
             throw new SlotUnavailableException;
         }
 
-        // (3bis) Règle fondateur : aucun membre déplacé ne doit déjà siéger à la case cible par une
-        //        AUTRE séance (ce rail n'a PAS d'éviction — on ne peut pas évincer ici). On exclut les
-        //        sources elles-mêmes (elles SONT ce qui bouge). Un conflit refuse AVANT le moteur,
-        //        NOMMÉ, et aucun des N créneaux ne bouge.
+        // (3bis) Éviction éventuelle, RÉSOLUE APRÈS la durée de fenêtre (patron move()) : l'occupant à
+        //        évincer est jugé sur l'occupation RÉELLE du groupe [début, début + durée de la FENÊTRE[.
+        //        Seule une séance d'ÉQUIPE non verrouillée est évincable ici (une séance de groupe
+        //        occupante est refusée NOMMÉMENT ; un verrou est souverain, D3). L'évincé est retiré de
+        //        la baseline (sinon le groupe se heurterait à l'occupant qu'il libère).
+        $evicted = null === $evictSlotId
+            ? null
+            : $this->resolveGroupEvictionTarget($sourceIds, $schedule, $evictSlotId, $dayOfWeek, $startTime, $venueId, $durationMinutes);
+        if ($evicted instanceof ScheduleSlotTemplate) {
+            $evictedId = $evicted->getId();
+            $currentTemplates = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
+            $payload['slotTemplates'] = array_values(array_filter(
+                $currentTemplates,
+                static fn (mixed $entry): bool => !\is_array($entry) || (string) ($entry['id'] ?? '') !== $evictedId,
+            ));
+        }
+
+        // (3ter) Règle fondateur : aucun membre déplacé ne doit déjà siéger à la case cible par une
+        //        AUTRE séance (hors les sources — elles SONT ce qui bouge — et hors l'évincé, qui va
+        //        partir : évincer SA propre autre séance reste un échange légal). Un conflit résiduel
+        //        refuse AVANT le moteur, NOMMÉ, et aucun des N créneaux ne bouge.
+        $guardExcluded = $sourceIds;
+        if ($evicted instanceof ScheduleSlotTemplate) {
+            $guardExcluded[] = $evicted->getId();
+        }
         foreach ($sources as $source) {
             $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
                 $schedule->getId(),
@@ -437,7 +473,7 @@ final class MoveSlotService
                 $venueId,
                 $dayOfWeek,
                 $startTime,
-                $sourceIds,
+                $guardExcluded,
                 ' — déplacez-la ou retirez-la d\'abord.',
             );
         }
@@ -469,36 +505,63 @@ final class MoveSlotService
         $result = $this->validateUnderTimeout($payload);
 
         if (true !== ($result['valid'] ?? false)) {
-            // (5a) Le déplacement N'A PAS LIEU — aucun des N créneaux ne bouge (atomicité par le refus).
+            // (5a) Le déplacement N'A PAS LIEU (ni l'éviction) — aucun des N créneaux ne bouge
+            //      (atomicité par le refus).
             $refused = ['valid' => false, 'violations' => $this->namedViolations($result), 'compromises' => []];
             // ENG-51 — verdict indéterminé (solveur expiré) propagé pour le bandeau NEUTRE ; rien écrit.
             if (true === ($result['indeterminate'] ?? false)) {
                 $refused['indeterminate'] = true;
             }
+            if ($dryRun) {
+                $refused['dryRun'] = true;
+            }
 
             return $refused;
         }
 
-        // (5b) Écrire les N déplacements puis UN SEUL flush : Doctrine les enveloppe dans UNE
-        //      transaction (tout-ou-rien). La durée écrite est TOUJOURS celle de la fenêtre cible.
-        foreach ($sources as $source) {
-            $source
-                ->setDayOfWeek($dayOfWeek)
-                ->setStartTime($startTime)
-                ->setVenueId($venueId)
-                ->setDurationMinutes($durationMinutes);
+        $compromises = $this->namedCompromises($result);
+
+        // (dryRun) Le verdict est rendu (compromis compris), MAIS rien n'est écrit : ni les
+        // déplacements, ni la suppression de l'occupant, ni le marqueur, ni Mercure. L'`evicted`
+        // décrit l'état qui SERAIT évincé (sans le supprimer).
+        if ($dryRun) {
+            $dryResponse = ['valid' => true, 'violations' => [], 'compromises' => $compromises, 'dryRun' => true];
+            if ($evicted instanceof ScheduleSlotTemplate) {
+                $dryResponse['evicted'] = $this->describeEvicted($evicted);
+            }
+
+            return $dryResponse;
         }
-        $schedule->setManuallyEditedSinceGeneration(true);
-        $this->entityManager->flush();
 
-        $this->progressPublisher->publishSafely($schedule, []);
+        // (5b) Écrire les N déplacements, supprimer l'occupant évincé, poser le marqueur, publier —
+        //      le tout en UNE transaction (tout-ou-rien). L'ORDRE compte quand on évince : on SUPPRIME
+        //      l'occupant et on flush AVANT de déplacer les membres, sinon l'index UNIQUE (schedule,
+        //      équipe, gymnase, jour, heure) rejetterait l'UPDATE d'un membre qui échange avec sa
+        //      PROPRE autre séance (l'évincé) — Doctrine ordonnant les UPDATE avant les DELETE.
+        $response = ['valid' => true, 'violations' => [], 'compromises' => $compromises, 'movedSlotIds' => $sourceIds];
 
-        return [
-            'valid' => true,
-            'violations' => [],
-            'compromises' => $this->namedCompromises($result),
-            'movedSlotIds' => $sourceIds,
-        ];
+        return $this->entityManager->wrapInTransaction(function () use ($sources, $schedule, $dayOfWeek, $startTime, $venueId, $durationMinutes, $evicted, $response): array {
+            if ($evicted instanceof ScheduleSlotTemplate) {
+                // Capturer l'état d'AVANT suppression : le front s'en sert pour proposer de replacer.
+                $response['evicted'] = $this->describeEvicted($evicted);
+                $this->entityManager->remove($evicted);
+                $this->entityManager->flush();
+            }
+            // La durée écrite est TOUJOURS celle de la fenêtre cible.
+            foreach ($sources as $source) {
+                $source
+                    ->setDayOfWeek($dayOfWeek)
+                    ->setStartTime($startTime)
+                    ->setVenueId($venueId)
+                    ->setDurationMinutes($durationMinutes);
+            }
+            $schedule->setManuallyEditedSinceGeneration(true);
+            $this->entityManager->flush();
+
+            $this->progressPublisher->publishSafely($schedule, []);
+
+            return $response;
+        });
     }
 
     /**
@@ -772,6 +835,58 @@ final class MoveSlotService
 
         // D3 — un verrou est souverain, quelle que soit son origine : on n'évince jamais un
         // créneau verrouillé sans qu'il soit déverrouillé d'abord.
+        if (LockLevel::NONE !== $evicted->getLockLevel()) {
+            throw new EvictTargetLockedException;
+        }
+
+        return $evicted;
+    }
+
+    /**
+     * Valide et retourne la séance OCCUPANT désignée par `evictSlotId` sur un déplacement de GROUPE,
+     * ou lève — toute la validation AVANT le moteur (patron {@see resolveEvictionTarget}, adapté aux
+     * N sources du groupe) :
+     *  - introuvable / d'un autre planning / ÉGALE À L'UNE DES SOURCES du groupe → {@see EvictTargetMismatchException} ;
+     *  - ne siégeant pas à la cible (même gymnase + même jour + chevauchement avec la fenêtre) → idem ;
+     *  - séance de GROUPE (`sharedTrainingBlockId` non NULL) → {@see EvictTargetIsGroupException}
+     *    (son verrou d'ancrage n'est pas un verrou gestionnaire ; l'échange de deux groupes est un
+     *    geste d'un lot ultérieur — refusé NOMMÉMENT ici, AVANT le contrôle de verrou qui la verrait
+     *    verrouillée par son ancrage) ;
+     *  - verrouillée (équipe, lockLevel ≠ NONE) → {@see EvictTargetLockedException} (D3).
+     *
+     * ⚠ `$candidateDurationMinutes` est la durée de la FENÊTRE cible (LA RÈGLE), pas celle des
+     * sources : le groupe occupera `[startTime, startTime + durée de la fenêtre[`, et c'est cette
+     * occupation-là qui décide s'il chevauche l'occupant.
+     *
+     * @param list<string> $sourceIds les ids des N créneaux membres du groupe qui bougent (une séance
+     *                                du groupe n'est jamais sa propre cible d'éviction)
+     */
+    private function resolveGroupEvictionTarget(array $sourceIds, Schedule $schedule, string $evictSlotId, int $dayOfWeek, DateTimeImmutable $startTime, string $venueId, int $candidateDurationMinutes): ScheduleSlotTemplate
+    {
+        $evicted = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->find($evictSlotId);
+        if (!$evicted instanceof ScheduleSlotTemplate
+            || $evicted->getScheduleId() !== $schedule->getId()
+            || \in_array($evicted->getId(), $sourceIds, true)) {
+            throw new EvictTargetMismatchException;
+        }
+
+        // L'occupant doit SIÉGER à la cible : même gymnase + même jour + chevauchement horaire
+        // avec la fenêtre du groupe [startTime, startTime + durée de la FENÊTRE de destination[.
+        if ($evicted->getVenueId() !== $venueId
+            || $evicted->getDayOfWeek() !== $dayOfWeek
+            || !$this->overlaps($startTime, $candidateDurationMinutes, $evicted->getStartTime(), $evicted->getDurationMinutes())) {
+            throw new EvictTargetMismatchException;
+        }
+
+        // L'occupant évincable en PR courante est une séance d'ÉQUIPE seulement : une séance de
+        // GROUPE porte un `sharedTrainingBlockId` — on la refuse AVANT le contrôle de verrou (son
+        // verrou d'ancrage la ferait tomber en `target_locked`, message trompeur).
+        if (null !== $evicted->getSharedTrainingBlockId()) {
+            throw new EvictTargetIsGroupException;
+        }
+
+        // D3 — un verrou gestionnaire est souverain : on n'évince jamais une séance d'équipe
+        // verrouillée sans la déverrouiller d'abord.
         if (LockLevel::NONE !== $evicted->getLockLevel()) {
             throw new EvictTargetLockedException;
         }

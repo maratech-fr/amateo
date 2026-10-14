@@ -11,6 +11,7 @@ use App\Entity\Team;
 use App\Enum\LockLevel;
 use App\Exception\DurationMismatchException;
 use App\Exception\EngineTimeoutException;
+use App\Exception\EvictTargetIsGroupException;
 use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\MutualizationRefusedException;
@@ -431,6 +432,17 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'Missing or invalid field: target (venueId, dayOfWeek, startTime).'], Response::HTTP_BAD_REQUEST);
         }
 
+        // Éviction OPTIONNELLE (P4-329) : déposer le groupe sur une case occupée peut demander d'en
+        // retirer l'occupant (séance d'équipe non verrouillée). Le service valide la cible AVANT le
+        // moteur (D3 : verrou souverain ; une séance de groupe occupante est refusée nommément).
+        $evictSlotId = isset($data['evictSlotId']) && \is_string($data['evictSlotId']) && '' !== $data['evictSlotId']
+            ? $data['evictSlotId']
+            : null;
+
+        // P2-32 — `dryRun` : un ESSAI. Même chemin jusqu'au verdict (gardes pré-moteur comprises),
+        // puis retour SANS rien écrire. La réponse porte le verdict, ses compromis et l'état évincé.
+        $dryRun = isset($data['dryRun']) && true === $data['dryRun'];
+
         try {
             $result = $this->moveSlotService->moveGroup(
                 $schedule,
@@ -441,15 +453,29 @@ final class ManualEditController extends AbstractController implements SeasonSco
                 $target['dayOfWeek'],
                 $target['startTime'],
                 $target['venueId'],
+                $evictSlotId,
+                $dryRun,
             );
         } catch (ScheduleGenerationInProgressException) {
             return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
         } catch (SlotUnavailableException) {
             return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucune séance de bloc à déplacer à cet horaire, ou créneau cible fermé.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (TeamAlreadyAtCaseException $e) {
-            // Règle fondateur : un membre déplacé siège déjà à la case cible et ce rail n'évince pas —
-            // 422 NOMMÉ (consigne « déplacez-la ou retirez-la d'abord »), aucun des N créneaux ne bouge.
+            // Règle fondateur : un membre déplacé siège déjà à la case cible par une AUTRE séance que
+            // l'éviction ne libère pas — 422 NOMMÉ (consigne « déplacez-la ou retirez-la d'abord »),
+            // aucun des N créneaux ne bouge.
             return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (EvictTargetMismatchException) {
+            // La cible d'éviction est incohérente (introuvable, autre planning, une source du groupe,
+            // ne siège pas là) : rien n'est écrit, le moteur n'est pas appelé.
+            return $this->json(['code' => 'evict_target_mismatch', 'error' => 'Le créneau à libérer ne correspond pas à la cible du déplacement.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (EvictTargetIsGroupException) {
+            // L'occupant à évincer est lui-même une séance de GROUPE : l'échange de deux groupes
+            // arrive dans un lot ultérieur — ici on refuse NOMMÉMENT, rien n'est écrit.
+            return $this->json(['code' => 'evict_target_is_group', 'error' => 'Cette case est occupée par un autre groupe — videz-la d\'abord.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (EvictTargetLockedException) {
+            // D3 : un verrou est souverain — on ne libère pas un créneau verrouillé.
+            return $this->json(['code' => 'target_locked', 'error' => 'Ce créneau est verrouillé — déverrouillez-le d\'abord.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EngineTimeoutException $e) {
             $this->logger->error('Group move validation timed out on the engine.', ['exception' => $e]);
 
@@ -464,6 +490,26 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
         }
 
+        if (isset($result['dryRun'])) {
+            // Un essai : 200, le verdict complet (valid + règles violées + compromis), AUCUNE
+            // écriture. Le front l'affiche avant de confirmer l'éviction (EvictConfirmDialog).
+            $body = [
+                'valid' => $result['valid'],
+                'dryRun' => true,
+                'violations' => $result['violations'],
+                'compromises' => $result['compromises'],
+            ];
+            if (true === ($result['indeterminate'] ?? false)) {
+                $body['indeterminate'] = true;
+            }
+            if (isset($result['evicted'])) {
+                // L'état qui SERAIT évincé (sans suppression).
+                $body['evicted'] = $result['evicted'];
+            }
+
+            return $this->json($body, Response::HTTP_OK);
+        }
+
         if (true === ($result['indeterminate'] ?? false)) {
             // ENG-51 — le solveur n'a pas tranché dans le temps imparti : 200 + drapeau NEUTRE,
             // AUCUN des N créneaux n'a bougé ; l'UI invite à réessayer.
@@ -475,12 +521,18 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['valid' => false, 'violations' => $result['violations']], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        return $this->json([
+        $body = [
             'message' => 'Group slot moved.',
             'valid' => true,
             'compromises' => $result['compromises'],
             'movedSlotIds' => $result['movedSlotIds'] ?? [],
-        ], Response::HTTP_OK);
+        ];
+        if (isset($result['evicted'])) {
+            // État de l'occupant AVANT sa suppression — le front propose de le replacer (« à replacer »).
+            $body['evicted'] = $result['evicted'];
+        }
+
+        return $this->json($body, Response::HTTP_OK);
     }
 
     /**

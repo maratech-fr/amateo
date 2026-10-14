@@ -728,6 +728,12 @@ export interface MoveGroupBody {
   blockId: string;
   source: MoveGroupCase;
   target: MoveGroupCase;
+  /** P4-329 : éviction OPTIONNELLE — l'id de la séance d'ÉQUIPE occupant la case cible, à retirer
+   *  pour laisser la place au groupe. Absent = dépôt sur une case libre. */
+  evictSlotId?: string;
+  /** P2-32 : un ESSAI — le moteur juge (verdict + compromis) SANS rien écrire ; la réponse porte
+   *  `dryRun: true` et, si une éviction était demandée, l'état qui SERAIT évincé. */
+  dryRun?: true;
 }
 
 /**
@@ -741,6 +747,11 @@ export interface MoveGroupResult {
   compromises: Compromise[];
   violations?: MoveViolation[];
   movedSlotIds?: string[];
+  /** P4-329 — l'occupant ÉVINCÉ quand le groupe a pris une case occupée (ou l'état qui SERAIT
+   *  évincé en `dryRun`). Même forme que {@link EvictedSlot} : le front propose de le replacer. */
+  evicted?: EvictedSlot;
+  /** P2-32 — un ESSAI : le verdict est rendu (+ `evicted` si éviction), RIEN n'est écrit. */
+  dryRun?: boolean;
   /** ENG-51 — verdict « indéterminé » (solveur non tranché) : 200 `{valid:false, indeterminate:true}`,
    *  aucun des N créneaux ne bouge, bandeau NEUTRE « réessayez ». */
   indeterminate?: boolean;

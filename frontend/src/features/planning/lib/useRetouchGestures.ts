@@ -5,10 +5,17 @@ import type { EvictFailureKind } from "../EvictConfirmDialog";
 import type { MoveFeedback } from "../SlotDetail";
 import type { ViewMode } from "../store";
 import { toast } from "@/shared/stores/toastStore";
-import { useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot } from "../queries";
+import { useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveGroupDryRun, useMoveSlot, usePlaceSlot } from "../queries";
 import type { DriftEntry } from "./drift";
 import { isEmptySlotId } from "./emptySlots";
 import { toHourMinute } from "./grid";
+
+/**
+ * P4-329 — le contexte d'un déplacement de GROUPE porté par la modale d'éviction : le bloc et sa
+ * case source (le serveur résout les créneaux membres depuis la case, jamais des slotIds client).
+ * `startTime` reste au format du créneau source (normalisé par `toHourMinute` à l'envoi).
+ */
+type EvictGroupContext = { blockId: string; source: { venueId: string; dayOfWeek: number; startTime: string } };
 
 /**
  * Le sujet RETOUCHE / ÉVICTION / ANNULATION (P4-255 PR 2) : c'est UN sujet — la preuve est dans le
@@ -62,13 +69,16 @@ export function useRetouchGestures(
   // P2-32 (D6) — la modale d'éviction, désormais alimentée par un ESSAI (dry-run). `checking`
   // pendant que le moteur juge, `accepted` (compromis nommés) ou `refused` (motifs) ensuite.
   // Rien n'est ÉCRIT tant qu'on n'a pas confirmé un état `accepted`.
+  // P4-329 — la MÊME modale sert le déplacement d'un GROUPE vers une case occupée : `group` porte
+  // alors le bloc et sa case source (absent = déplacement d'un créneau simple). L'essai, la
+  // confirmation et le réessai routent sur le rail move-group plutôt que /move.
   const [evictDialog, setEvictDialog] = useState<
-    | { phase: "checking"; sourceSlotId: string; targetSlot: Slot }
-    | { phase: "accepted"; sourceSlotId: string; targetSlot: Slot; compromises: Compromise[] }
-    | { phase: "refused"; sourceSlotId: string; targetSlot: Slot; violations: MoveViolation[] }
-    | { phase: "failed"; sourceSlotId: string; targetSlot: Slot; failureKind: EvictFailureKind }
+    | { phase: "checking"; sourceSlotId: string; targetSlot: Slot; group?: EvictGroupContext }
+    | { phase: "accepted"; sourceSlotId: string; targetSlot: Slot; compromises: Compromise[]; group?: EvictGroupContext }
+    | { phase: "refused"; sourceSlotId: string; targetSlot: Slot; violations: MoveViolation[]; group?: EvictGroupContext }
+    | { phase: "failed"; sourceSlotId: string; targetSlot: Slot; failureKind: EvictFailureKind; group?: EvictGroupContext }
     // ENG-51 — le solveur n'a pas tranché dans le temps imparti (ni accepté ni refusé).
-    | { phase: "indeterminate"; sourceSlotId: string; targetSlot: Slot }
+    | { phase: "indeterminate"; sourceSlotId: string; targetSlot: Slot; group?: EvictGroupContext }
     | null
   >(null);
   // P2-32 (geste 3) — les compromis NOMMÉS du dernier geste ÉCRIT accepté (N>0), pour le bandeau
@@ -101,6 +111,7 @@ export function useRetouchGestures(
   const moveMutation = useMoveSlot();
   const moveGroupMutation = useMoveGroup();
   const dryRunMutation = useMoveDryRun();
+  const groupDryRunMutation = useMoveGroupDryRun();
   const placeMutation = usePlaceSlot();
   const removeMutation = useDeleteSlot();
   const removeGroupMutation = useDeleteSlotGroup();
@@ -320,36 +331,51 @@ export function useRetouchGestures(
   // verdict moteur. Le serveur résout les créneaux membres depuis la case source (jamais de slotIds
   // client). Un refus de légalité s'affiche dans le panneau (`moveGroupState`) + surligne le conflit ;
   // verrou de cible / cible incohérente / moteur trop lent sont toastés (message serveur), mode armé.
-  const doMoveGroup = (blockId: string, source: { venueId: string; dayOfWeek: number; startTime: string }, target: { venueId: string; dayOfWeek: number; startTime: string }) => {
+  const doMoveGroup = (blockId: string, source: { venueId: string; dayOfWeek: number; startTime: string }, target: { venueId: string; dayOfWeek: number; startTime: string }, evictSlotId?: string) => {
     if (null === validScheduleId) {
       return;
     }
+    const freed = { venueId: source.venueId, dayOfWeek: source.dayOfWeek, startTime: toHourMinute(source.startTime) };
     moveGroupMutation.mutate(
       {
         scheduleId: validScheduleId,
         blockId,
-        source: { venueId: source.venueId, dayOfWeek: source.dayOfWeek, startTime: toHourMinute(source.startTime) },
+        source: freed,
         target: { venueId: target.venueId, dayOfWeek: target.dayOfWeek, startTime: toHourMinute(target.startTime) },
+        ...(undefined === evictSlotId ? {} : { evictSlotId }),
       },
       {
         onSuccess: (result) => {
+          setEvictDialog(null);
           setTargetMode(null);
           // Un déplacement de groupe n'a pas d'inverse d'un clic (il faudrait rejouer move-group) :
           // on n'arme aucun undo, et on invalide un éventuel undo d'un geste simple précédent.
           setUndo(null);
-          setEvictionNotice(null);
           clearHighlight();
           // ENG-51 — verdict indéterminé : aucun des N créneaux n'a bougé. Pas de toast de succès,
           // pas de compromis — le bandeau NEUTRE (moveGroupState) invite à réessayer.
           if (true === result.indeterminate) {
+            setEvictionNotice(null);
             setCompromiseNotice(null);
             return;
           }
           const compromises = result.compromises ?? [];
           setCompromiseNotice(compromises.length > 0 ? compromises : null);
-          toast.success(compromises.length > 0 ? `Groupe déplacé — ${compromises.length} compromis` : "Groupe déplacé.");
+          const suffix = compromises.length > 0 ? ` — ${compromises.length} compromis` : "";
+          // P4-329 — le groupe a pris une case occupée : l'évincée passe « à replacer » (raccourci
+          // un-clic « Remettre » sur la case que le groupe vient de libérer), MÊME UX que le move simple.
+          if (undefined !== result.evicted) {
+            setEvictionNotice({ evicted: result.evicted, freed });
+            toast.success(`Groupe déplacé — ${teamNameOf(result.evicted.teamId)} est à replacer${compromises.length > 0 ? suffix : "."}`);
+          } else {
+            setEvictionNotice(null);
+            toast.success(compromises.length > 0 ? `Groupe déplacé${suffix}` : "Groupe déplacé.");
+          }
         },
         onError: (error) => {
+          // P4-329 — une confirmation d'éviction a pu ouvrir la modale : on la ferme (le verdict se
+          // lit alors dans le panneau / le toast), comme le move simple.
+          setEvictDialog(null);
           if (error instanceof VerdictAbandonedError) {
             return; // déjà nommé + resynchronisé par le hook
           }
@@ -416,48 +442,66 @@ export function useRetouchGestures(
   // P2-32 — l'ESSAI (dry-run) qui remplit la modale d'éviction : le moteur juge SANS écrire. Un
   // essai REFUSÉ arrive en 200 {valid:false} → onSuccess (pas onError) ; seuls verrou/génération/
   // transport passent par onError (la modale se ferme alors, le mode cible reste armé).
-  const runEvictDryRun = (sourceSlotId: string, targetSlot: Slot) => {
+  // P4-329 — `group` présent ⇒ l'essai (et, plus tard, la confirmation) route sur le rail move-group ;
+  // absent ⇒ le rail /move d'un créneau simple. Le TRAITEMENT du verdict est identique.
+  const runEvictDryRun = (sourceSlotId: string, targetSlot: Slot, group?: EvictGroupContext) => {
+    const onSuccess = (result: { indeterminate?: boolean; valid: boolean; compromises?: Compromise[]; violations?: MoveViolation[] }) => {
+      // ENG-51 — le moteur n'a pas tranché l'essai dans le temps imparti : ni accepté ni refusé.
+      // Phase NEUTRE (bandeau muted + [Réessayer]), jamais « refusé » (aucune règle en cause).
+      if (true === result.indeterminate) {
+        setEvictDialog({ phase: "indeterminate", sourceSlotId, targetSlot, group });
+        return;
+      }
+      if (result.valid) {
+        setEvictDialog({ phase: "accepted", sourceSlotId, targetSlot, compromises: result.compromises ?? [], group });
+      } else {
+        const violations = result.violations ?? [];
+        setEvictDialog({ phase: "refused", sourceSlotId, targetSlot, violations, group });
+        // Surligner le conflit nommé (présentation pure, même chemin qu'un placement refusé).
+        highlightViolations(violations);
+      }
+    };
+    const onError = (error: unknown) => {
+      // Refus MÉTIER (verrou D3, cible incohérente/occupée par un groupe, génération en cours) :
+      // la modale se ferme, le motif est toasté, le mode cible reste armé.
+      if (error instanceof TargetLockedError || error instanceof SlotEditError) {
+        setEvictDialog(null);
+        toast.error(error.message);
+        return;
+      }
+      if (error instanceof GenerationInProgressError) {
+        setEvictDialog(null);
+        toast.error("Une génération est en cours pour ce club — réessayez ensuite.");
+        return;
+      }
+      // ÉCHEC de l'essai lui-même : la modale RESTE ouverte et NOMME la cause, avec [Réessayer].
+      // Rien n'est tranché — demande fondateur : ne jamais se fermer en silence. Trois causes
+      // DISTINCTES (P4-119 b) : le serveur a jugé le moteur trop lent (504 → `timeout`), l'attente
+      // a été coupée CÔTÉ CLIENT (`interrupted`, surtout pas « indisponible » : rien ne le prouve),
+      // ou une vraie panne réseau/5xx (`unreachable`).
+      const failureKind = error instanceof EngineTimeoutError ? "timeout" : error instanceof EngineVerificationInterruptedError ? "interrupted" : "unreachable";
+      setEvictDialog({ phase: "failed", sourceSlotId, targetSlot, failureKind, group });
+    };
+
+    if (undefined !== group) {
+      if (null === validScheduleId) {
+        return;
+      }
+      groupDryRunMutation.mutate(
+        {
+          scheduleId: validScheduleId,
+          blockId: group.blockId,
+          source: { venueId: group.source.venueId, dayOfWeek: group.source.dayOfWeek, startTime: toHourMinute(group.source.startTime) },
+          target: { venueId: targetSlot.venueId, dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime) },
+          evictSlotId: targetSlot.id,
+        },
+        { onSuccess, onError },
+      );
+      return;
+    }
     dryRunMutation.mutate(
       { id: sourceSlotId, patch: { dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime), venueId: targetSlot.venueId, evictSlotId: targetSlot.id } },
-      {
-        onSuccess: (result) => {
-          // ENG-51 — le moteur n'a pas tranché l'essai dans le temps imparti : ni accepté ni refusé.
-          // Phase NEUTRE (bandeau muted + [Réessayer]), jamais « refusé » (aucune règle en cause).
-          if (true === result.indeterminate) {
-            setEvictDialog({ phase: "indeterminate", sourceSlotId, targetSlot });
-            return;
-          }
-          if (result.valid) {
-            setEvictDialog({ phase: "accepted", sourceSlotId, targetSlot, compromises: result.compromises ?? [] });
-          } else {
-            const violations = result.violations ?? [];
-            setEvictDialog({ phase: "refused", sourceSlotId, targetSlot, violations });
-            // Surligner le conflit nommé (présentation pure, même chemin qu'un placement refusé).
-            highlightViolations(violations);
-          }
-        },
-        onError: (error) => {
-          // Refus MÉTIER (verrou D3, cible incohérente, génération en cours) : comportement
-          // inchangé — la modale se ferme, le motif est toasté, le mode cible reste armé.
-          if (error instanceof TargetLockedError || error instanceof SlotEditError) {
-            setEvictDialog(null);
-            toast.error(error.message);
-            return;
-          }
-          if (error instanceof GenerationInProgressError) {
-            setEvictDialog(null);
-            toast.error("Une génération est en cours pour ce club — réessayez ensuite.");
-            return;
-          }
-          // ÉCHEC de l'essai lui-même : la modale RESTE ouverte et NOMME la cause, avec [Réessayer].
-          // Rien n'est tranché — demande fondateur : ne jamais se fermer en silence. Trois causes
-          // DISTINCTES (P4-119 b) : le serveur a jugé le moteur trop lent (504 → `timeout`), l'attente
-          // a été coupée CÔTÉ CLIENT (`interrupted`, surtout pas « indisponible » : rien ne le prouve),
-          // ou une vraie panne réseau/5xx (`unreachable`).
-          const failureKind = error instanceof EngineTimeoutError ? "timeout" : error instanceof EngineVerificationInterruptedError ? "interrupted" : "unreachable";
-          setEvictDialog({ phase: "failed", sourceSlotId, targetSlot, failureKind });
-        },
-      },
+      { onSuccess, onError },
     );
   };
 
@@ -467,18 +511,25 @@ export function useRetouchGestures(
     if (null === evictDialog) {
       return;
     }
-    const { sourceSlotId, targetSlot } = evictDialog;
-    setEvictDialog({ phase: "checking", sourceSlotId, targetSlot });
-    runEvictDryRun(sourceSlotId, targetSlot);
+    const { sourceSlotId, targetSlot, group } = evictDialog;
+    setEvictDialog({ phase: "checking", sourceSlotId, targetSlot, group });
+    runEvictDryRun(sourceSlotId, targetSlot, group);
   };
 
-  // Confirmer l'éviction depuis la modale (état `accepted`) : le move RÉEL part (sans dryRun).
+  // Confirmer l'éviction depuis la modale (état `accepted`) : le geste RÉEL part (sans dryRun).
+  // P4-329 — un déplacement de GROUPE route sur move-group (le serveur résout les créneaux membres) ;
+  // un créneau simple sur /move.
   const confirmEvict = () => {
     if (null === evictDialog) {
       return;
     }
-    const { sourceSlotId, targetSlot } = evictDialog;
-    doMove(sourceSlotId, { dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime), venueId: targetSlot.venueId }, targetSlot.id);
+    const { sourceSlotId, targetSlot, group } = evictDialog;
+    const target = { dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime), venueId: targetSlot.venueId };
+    if (undefined !== group) {
+      doMoveGroup(group.blockId, group.source, target, targetSlot.id);
+    } else {
+      doMove(sourceSlotId, target, targetSlot.id);
+    }
   };
 
   // P2-43 volet (v) — la CEINTURE de l'offre (défense en profondeur) : un couple (gymnase, jour)
@@ -492,12 +543,14 @@ export function useRetouchGestures(
     if (null === targetMode) {
       return;
     }
-    // P2-51 PR-6 (D11) — déplacement de GROUPE : la case cible (fenêtre libre OU occupée) part au
-    // rail move-group. Pas d'éviction ici (le rail n'en porte pas) : le moteur tranche, violations
-    // affichées telles quelles. Cliquer la case SOURCE (une de ses séances membres) annule.
+    // P2-51 PR-6 (D11) · P4-329 — déplacement de GROUPE : une case LIBRE part directement au rail
+    // move-group ; une case OCCUPÉE ouvre la MÊME modale d'éviction que le move simple, alimentée par
+    // un ESSAI (dry-run + evictSlotId) — rien n'est écrit tant qu'on n'a pas confirmé. Cliquer la case
+    // SOURCE (une de ses séances membres) annule.
     if (targetMode.kind === "move-group") {
-      const { blockId, source } = targetMode;
+      const { blockId, source, sourceSlotId } = targetMode;
       let targetCase: { venueId: string; dayOfWeek: number; startTime: string } | null = null;
+      let occupant: Slot | null = null;
       if (isEmptySlotId(cellSlotId)) {
         const win = gridSlots.find((s) => s.id === cellSlotId);
         if (undefined !== win && !isClosedTarget(win.venueId, win.dayOfWeek)) {
@@ -507,6 +560,7 @@ export function useRetouchGestures(
         const targetSlot = slots.find((s) => s.id === cellSlotId);
         if (undefined !== targetSlot && !isClosedTarget(targetSlot.venueId, targetSlot.dayOfWeek)) {
           targetCase = { venueId: targetSlot.venueId, dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime) };
+          occupant = targetSlot;
         }
       }
       if (null === targetCase) {
@@ -516,6 +570,13 @@ export function useRetouchGestures(
       const tgtKey = `${targetCase.venueId}|${targetCase.dayOfWeek}|${targetCase.startTime}`;
       if (srcKey === tgtKey) {
         cancelTarget();
+        return;
+      }
+      if (null !== occupant) {
+        // Case OCCUPÉE : la modale s'ouvre en VÉRIFICATION, un ESSAI part (dry-run + evictSlotId).
+        // Le verdict (accepté + occupant nommé / refusé) la remplit avant toute écriture.
+        setEvictDialog({ phase: "checking", sourceSlotId, targetSlot: occupant, group: { blockId, source } });
+        runEvictDryRun(sourceSlotId, occupant, { blockId, source });
         return;
       }
       doMoveGroup(blockId, source, targetCase);
