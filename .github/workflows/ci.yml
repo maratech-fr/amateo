@@ -663,11 +663,11 @@ jobs:
       - name: SlotMoveGroupVerdictTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotMoveGroupVerdictTest.php --group phase1'
 
-      # P4-327 (axes planning lifecycle + constraint semantics) : l'ÉCHANGE ATOMIQUE de deux séances
-      # (chacune prend la case de l'autre) passe sous UN SEUL verdict apparié et s'écrit tout-ou-rien ;
-      # rien n'est supprimé (pendant « sans perte » de l'éviction). Source équipe OU groupe (ses N
-      # membres partent ensemble), occupant équipe non verrouillée ; refus NOMMÉS avant le moteur
-      # (cross-tenant/deux plannings, occupant verrouillé D4, échange avec soi-même, occupant groupe).
+      # P4-327 + Q2 (axes planning lifecycle + constraint semantics) : l'ÉCHANGE ATOMIQUE de deux
+      # séances (chacune prend la case de l'autre) passe sous UN SEUL verdict apparié et s'écrit
+      # tout-ou-rien ; rien n'est supprimé (pendant « sans perte » de l'éviction). CHAQUE côté peut
+      # être une équipe OU un groupe (échange N↔M, ses membres partent ensemble) ; refus NOMMÉS avant
+      # le moteur (cross-tenant/deux plannings, occupant ÉQUIPE verrouillé D4, échange avec soi-même).
       # Moteur moqué : on garde que le BACKEND honore le verdict et l'atomicité (contrat cross-stack
       # garde le reste).
       - name: SlotSwapVerdictTest
@@ -687,6 +687,16 @@ jobs:
       # rien ; 409 lecture seule / génération, 404 autre club, 403 SEC-07 falsifiée.
       - name: SlotRemovalTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotRemovalTest.php --group phase1'
+
+      # Lot 9 + Lot 2 (axes planning lifecycle + constraint semantics) — les deux rails « mutualiser » :
+      # depuis la fiche d'une séance (`/mutualize`, déclarer un bloc ancré) ET depuis le DÉPÔT
+      # (`/mutualize-at-case`, « on répartit, on ne crée rien » : équipe→équipe, rejoindre, fusion).
+      # Géré management (403), lecture seule / génération (409), 404 cross-tenant, chaque refus 422
+      # NOMMÉ. ⚠ FK ON DELETE CASCADE : à la fusion, les séances sont reliées au bloc C AVANT la
+      # suppression des anciens blocs — le test COMPTE les lignes (aucune emportée). Promu bloquant
+      # (lot 2) : un dépôt de mutualisation corrompu effacerait des séances en silence.
+      - name: MutualizeSlotApiTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Api/MutualizeSlotApiTest.php --group phase1'
 
       # P2-9ter — le fichier portait déjà #[Group('phase1')] sans qu'AUCUN step de CE job
       # ne le lance : il tournait bien, mais dans `unit-tests` (qui exécute `phpunit

@@ -254,6 +254,295 @@ final class MutualizeSlotService
     }
 
     /**
+     * Lot 2 — MUTUALISER DEPUIS LE DÉPÔT (« on répartit, on ne crée rien », décision fondateur
+     * 2026-10-13). Le gestionnaire DÉPOSE une séance (SOURCE) sur une case OCCUPÉE (TARGET) et choisit
+     * « Mutualiser » : les deux séances deviennent UNE séance commune sur la case de la CIBLE (l'ancre).
+     * Le geste porte sur UNE séance de chaque côté ; chaque équipe garde son total de séances.
+     *
+     * Quatre combinaisons, UNE règle (la cible EST l'ancre, où C siège) :
+     *  - équipe → équipe   : C = {source, cible}, séance neuve ;
+     *  - équipe → groupe   : rejoindre — C = groupe ∪ {source} ;
+     *  - groupe → équipe   : rejoindre symétrique — C = groupe ∪ {cible} ;
+     *  - groupe → groupe   : fusion — C = groupeA ∪ groupeB.
+     *
+     * Les deux côtés doivent être DISJOINTS (aucune équipe des deux côtés) : une équipe déjà présente
+     * en face est déjà mutualisée avec l'autre — rien à répartir. Cette disjonction subsume « même
+     * équipe déjà dans la cible » ET « déjà le même groupe », et garantit que l'ensemble C est
+     * STRICTEMENT plus grand que chacun des deux — donc le bloc destination D ne peut jamais être l'un
+     * des deux blocs d'origine (leurs décomptes de séances communes ne se télescopent pas).
+     *
+     * Écriture (UNE transaction, tout-ou-rien) :
+     *  - D = le bloc existant portant EXACTEMENT l'ensemble C (il passe alors à +1 séance commune, ce
+     *    qui remplace le refus « ensemble déjà déclaré » sur ce chemin) OU un bloc NEUF (1 séance) ;
+     *  - les séances de la SOURCE sont DÉPLACÉES sur la case de l'ancre, verrouillées HARD/MANUAL, et
+     *    LIÉES à D ; les séances de la CIBLE sont verrouillées HARD/MANUAL et liées à D (sur place) ;
+     *  - chaque bloc d'origine (source, cible) perd 1 séance commune ; tombé à 0, il MEURT.
+     *
+     * ⚠ FK `ON DELETE CASCADE` ({@see ScheduleSlotTemplate} shared_training_block_id) : on RELIE les
+     * séances à D AVANT de supprimer un ancien bloc, sinon la cascade emporterait les séances qu'on
+     * vient de répartir. Σ est INCHANGÉE par construction (chaque équipe garde son total) — pas de
+     * garde Σ sur ce chemin ; seules ≤ 10 équipes et la capacité de la case restent.
+     *
+     * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
+     * @throws MutualizationRefusedException         un refus nommé (→ 422), rien n'est écrit
+     * @throws InvalidArgumentException              la séance source n'a pas de planning parent
+     *
+     * `$dryRun` : mêmes gardes (un refus de garde lève comme en vrai), puis retour AVANT toute
+     * écriture — la réponse porte `dryRun => true` et la case source qui SERAIT libérée
+     *
+     * @return array{blockId: string, movedSlotIds: list<string>, lockedSlotIds: list<string>, removedBlockIds: list<string>, teamIds: list<string>, freedSourceCase: array{venueId: string, dayOfWeek: int, startTime: string}, dryRun?: bool}
+     */
+    public function mutualizeAtCase(ScheduleSlotTemplate $source, ScheduleSlotTemplate $target, ?string $label, bool $dryRun = false): array
+    {
+        if ($source->getScheduleId() !== $target->getScheduleId()) {
+            throw new MutualizationRefusedException('Les deux séances n\'appartiennent pas au même planning.');
+        }
+        if ($source->getId() === $target->getId()) {
+            throw new MutualizationRefusedException('On ne peut pas mutualiser une séance avec elle-même.');
+        }
+
+        $schedule = $this->entityManager->getRepository(Schedule::class)->find($source->getScheduleId());
+        if (!$schedule instanceof Schedule) {
+            throw new InvalidArgumentException('The source slot has no parent schedule.');
+        }
+
+        // Une génération réécrit le planning : mutualiser maintenant écraserait son résultat.
+        if ($this->clubGenerationLock->isGenerating($source->getClubId())) {
+            throw new ScheduleGenerationInProgressException;
+        }
+
+        // Portée du bloc = l'écran (NULL au socle, le plan de période sinon — patron mutualize()).
+        $isSocle = $this->schedulePlanProvisioner->isSeasonSchedule($schedule);
+        $clubId = $source->getClubId();
+        $seasonId = $source->getSeasonId();
+        $planId = $isSocle ? null : $schedule->getSchedulePlanId();
+        $normalizedLabel = null === $label || '' === trim($label) ? null : trim($label);
+
+        $sourceBlockId = $source->getSharedTrainingBlockId();
+        $targetBlockId = $target->getSharedTrainingBlockId();
+
+        // Les séances de CHAQUE côté : le seul créneau pour une équipe simple, ou les N membres du
+        // bloc qui siègent À LA CASE pour une séance de groupe (le serveur les résout, jamais le client).
+        $sourceSlots = $this->sessionSlotsAtCase($schedule, $source);
+        $targetSlots = $this->sessionSlotsAtCase($schedule, $target);
+
+        // Verrou GESTIONNAIRE souverain (D4) : un créneau simple verrouillé à la main (lockLevel ≠ NONE
+        // ET sans bloc) n'entre pas dans une mutualisation. Un verrou d'ANCRAGE (avec bloc) est au
+        // contraire attendu — c'est une séance de groupe qu'on re-mutualise.
+        foreach ([...$sourceSlots, ...$targetSlots] as $slot) {
+            if (LockLevel::NONE !== $slot->getLockLevel() && null === $slot->getSharedTrainingBlockId()) {
+                throw new MutualizationRefusedException('Une des séances est verrouillée à la main — déverrouillez-la d\'abord.');
+            }
+        }
+
+        $sourceTeamIds = $this->teamIdsOf($sourceSlots);
+        $targetTeamIds = $this->teamIdsOf($targetSlots);
+
+        // DISJONCTION : aucune équipe des deux côtés. Subsume « déjà dans la cible » / « déjà le même
+        // groupe » et garantit C ⊋ chaque côté (donc D ≠ bloc d'origine).
+        foreach ($sourceTeamIds as $teamId) {
+            if (\in_array($teamId, $targetTeamIds, true)) {
+                throw new MutualizationRefusedException('Une équipe est déjà présente dans la séance d\'arrivée : elle est déjà mutualisée avec celle-ci.');
+            }
+        }
+
+        $members = [...$sourceTeamIds, ...$targetTeamIds]; // disjoints ⇒ déjà sans doublon
+        if (\count($members) < 2) {
+            throw new MutualizationRefusedException('Un bloc de mutualisation compte au moins 2 équipes.');
+        }
+        if (\count($members) > 10) {
+            throw new MutualizationRefusedException('Un bloc de mutualisation compte au plus 10 équipes.');
+        }
+
+        // Chaque membre connu du club+saison ET actif (parité mutualize() / SharedTrainingBlockStateProcessor).
+        $teamRepository = $this->entityManager->getRepository(Team::class);
+        foreach ($members as $teamId) {
+            $team = $teamRepository->findOneBy(['id' => $teamId, 'clubId' => $clubId, 'seasonId' => $seasonId]);
+            if (!$team instanceof Team) {
+                throw new MutualizationRefusedException('Une équipe du bloc est inconnue de cette saison.');
+            }
+            if (!$team->getIsActive()) {
+                throw new MutualizationRefusedException('Une équipe du bloc est inactive et ne peut pas être mutualisée.');
+            }
+        }
+
+        // La case d'ANCRAGE est celle de la CIBLE : le bloc fusionné y siège, la source vient l'y rejoindre.
+        $venueId = $target->getVenueId();
+        $dayOfWeek = $target->getDayOfWeek();
+        $startTime = $target->getStartTime();
+        $durationMinutes = $target->getDurationMinutes();
+
+        // Aucune équipe du bloc ne doit déjà siéger à la case d'arrivée par une AUTRE séance (hors les
+        // créneaux impliqués, qui SONT le geste) — règle fondateur « jamais deux fois à la même case ».
+        $involvedIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), [...$sourceSlots, ...$targetSlots]);
+        foreach ($members as $teamId) {
+            $conflict = $this->teamCaseOccupancyGuard->conflictSentence($schedule->getId(), $teamId, $venueId, $dayOfWeek, $startTime, $involvedIds);
+            if (null !== $conflict) {
+                throw new MutualizationRefusedException($conflict . '.');
+            }
+        }
+
+        // CAPACITÉ : après le geste, le bloc tient la case en UNE occupation + les séances des équipes
+        // non-membres déjà posées (patron assertCaseHasRoom).
+        $this->assertCaseHasRoom($schedule, $members, $venueId, $dayOfWeek, $startTime, $planId, $clubId, $seasonId);
+
+        // La case SOURCE qui sera libérée (bandeau côté UI) — celle du créneau source.
+        $freedSourceCase = [
+            'venueId' => $source->getVenueId(),
+            'dayOfWeek' => $source->getDayOfWeek(),
+            'startTime' => $source->getStartTime()->format('H:i'),
+        ];
+
+        if ($dryRun) {
+            // Gardes passées, RIEN écrit : le front confirme avant de committer.
+            return [
+                'blockId' => '',
+                'movedSlotIds' => array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $sourceSlots),
+                'lockedSlotIds' => array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $targetSlots),
+                'removedBlockIds' => [],
+                'teamIds' => $members,
+                'freedSourceCase' => $freedSourceCase,
+                'dryRun' => true,
+            ];
+        }
+
+        return $this->entityManager->wrapInTransaction(function () use ($schedule, $clubId, $seasonId, $planId, $members, $normalizedLabel, $sourceSlots, $targetSlots, $sourceBlockId, $targetBlockId, $venueId, $dayOfWeek, $startTime, $durationMinutes, $freedSourceCase): array {
+            // D = le bloc existant portant EXACTEMENT C (+1 séance commune) OU un bloc neuf (1 séance).
+            $existingBlockId = $this->findBlockIdWithExactTeamSet($clubId, $seasonId, $planId, $members);
+            if (null !== $existingBlockId) {
+                $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($existingBlockId);
+                if (!$block instanceof SharedTrainingBlock) {
+                    throw new MutualizationRefusedException('Le bloc de mutualisation ciblé est introuvable.');
+                }
+                $block->setCommonSessions($block->getCommonSessions() + 1);
+            } else {
+                $block = new SharedTrainingBlock;
+                $block->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1)->setLabel($normalizedLabel);
+                $this->entityManager->persist($block);
+                foreach ($members as $teamId) {
+                    $member = (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamId);
+                    $this->entityManager->persist($member);
+                }
+            }
+            // Le bloc doit EXISTER en base avant que les séances le référencent (FK, patron mutualize()).
+            $this->entityManager->flush();
+
+            // ⚠ RELIER les séances à D AVANT toute suppression d'ancien bloc (FK ON DELETE CASCADE).
+            $movedSlotIds = [];
+            foreach ($sourceSlots as $slot) {
+                $slot->setVenueId($venueId)->setDayOfWeek($dayOfWeek)->setStartTime($startTime)->setDurationMinutes($durationMinutes);
+                $this->lockOnCase($slot, $block->getId());
+                $movedSlotIds[] = $slot->getId();
+            }
+            $lockedSlotIds = [];
+            foreach ($targetSlots as $slot) {
+                $this->lockOnCase($slot, $block->getId());
+                $lockedSlotIds[] = $slot->getId();
+            }
+            $this->entityManager->flush();
+
+            // Les anciens blocs perdent 1 séance commune ; tombés à 0, ils meurent (leurs séances de
+            // CETTE case sont déjà reliées à D, la cascade ne les emporte pas).
+            $removedBlockIds = [];
+            foreach ([$sourceBlockId, $targetBlockId] as $oldBlockId) {
+                if (null === $oldBlockId || $oldBlockId === $block->getId()) {
+                    continue;
+                }
+                $old = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($oldBlockId);
+                if (!$old instanceof SharedTrainingBlock) {
+                    continue;
+                }
+                $old->setCommonSessions($old->getCommonSessions() - 1);
+                if ($old->getCommonSessions() <= 0) {
+                    foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $old->getId()]) as $row) {
+                        $this->entityManager->remove($row);
+                    }
+                    $this->entityManager->remove($old);
+                    $removedBlockIds[] = $oldBlockId;
+                }
+            }
+
+            $schedule->setManuallyEditedSinceGeneration(true);
+            $this->entityManager->flush();
+
+            // Les autres gestionnaires voient le planning bouger (best-effort, comme la génération).
+            $this->progressPublisher->publishSafely($schedule, []);
+
+            return [
+                'blockId' => $block->getId(),
+                'movedSlotIds' => $movedSlotIds,
+                'lockedSlotIds' => $lockedSlotIds,
+                'removedBlockIds' => $removedBlockIds,
+                'teamIds' => $members,
+                'freedSourceCase' => $freedSourceCase,
+            ];
+        });
+    }
+
+    /**
+     * Les séances d'un côté du geste de mutualisation au dépôt : le seul créneau si c'est une équipe
+     * simple (`sharedTrainingBlockId` NULL), ou les N membres du bloc qui siègent EXACTEMENT à la case
+     * de ce créneau si c'est une séance de groupe (le serveur résout, jamais des slotIds client).
+     *
+     * @return list<ScheduleSlotTemplate>
+     */
+    private function sessionSlotsAtCase(Schedule $schedule, ScheduleSlotTemplate $slot): array
+    {
+        $blockId = $slot->getSharedTrainingBlockId();
+        if (null === $blockId) {
+            return [$slot];
+        }
+
+        $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($blockId);
+        if (!$block instanceof SharedTrainingBlock) {
+            // Un créneau porte un blockId dont le bloc n'existe plus : on retombe sur le seul créneau.
+            return [$slot];
+        }
+
+        $teamIds = array_map(
+            static fn (SharedTrainingBlockTeam $row): string => $row->getTeamId(),
+            $this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()], ['teamId' => 'ASC']),
+        );
+        if ([] === $teamIds) {
+            return [$slot];
+        }
+
+        $slots = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy([
+            'scheduleId' => $schedule->getId(),
+            'venueId' => $slot->getVenueId(),
+            'dayOfWeek' => $slot->getDayOfWeek(),
+            'startTime' => $slot->getStartTime(),
+            'teamId' => $teamIds,
+        ]);
+
+        return [] === $slots ? [$slot] : $slots;
+    }
+
+    /**
+     * Les ids d'équipe DISTINCTS d'une liste de créneaux (une équipe ne siège jamais deux fois à la
+     * même case, mais on dédoublonne par sûreté), ordre préservé.
+     *
+     * @param list<ScheduleSlotTemplate> $slots
+     *
+     * @return list<string>
+     */
+    private function teamIdsOf(array $slots): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($slots as $slot) {
+            $teamId = $slot->getTeamId();
+            if (isset($seen[$teamId])) {
+                continue;
+            }
+            $seen[$teamId] = true;
+            $out[] = $teamId;
+        }
+
+        return $out;
+    }
+
+    /**
      * Les membres, SOURCE comprise (ajoutée si le client l'a omise — elle est pré-cochée côté UI),
      * dédupliqués en préservant l'ordre.
      *
@@ -404,6 +693,18 @@ final class MutualizeSlotService
      */
     private function sameTeamSetAlreadyDeclared(string $clubId, string $seasonId, ?string $planId, array $teamIds): bool
     {
+        return null !== $this->findBlockIdWithExactTeamSet($clubId, $seasonId, $planId, $teamIds);
+    }
+
+    /**
+     * L'id du bloc de la portée donnée dont l'ensemble d'équipes est EXACTEMENT celui demandé, ou null.
+     * Fondation de {@see sameTeamSetAlreadyDeclared} ET du chemin « +1 séance commune » de
+     * {@see mutualizeAtCase} (un dépôt dont C égale un bloc existant alimente ce bloc au lieu d'un doublon).
+     *
+     * @param list<string> $teamIds
+     */
+    private function findBlockIdWithExactTeamSet(string $clubId, string $seasonId, ?string $planId, array $teamIds): ?string
+    {
         $wanted = $teamIds;
         sort($wanted);
 
@@ -428,13 +729,13 @@ final class MutualizeSlotService
             $byBlock[$row['blockId']][] = $row['teamId'];
         }
 
-        foreach ($byBlock as $teams) {
+        foreach ($byBlock as $blockId => $teams) {
             sort($teams);
             if ($teams === $wanted) {
-                return true;
+                return $blockId;
             }
         }
 
-        return false;
+        return null;
     }
 }

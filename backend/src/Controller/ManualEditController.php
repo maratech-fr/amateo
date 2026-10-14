@@ -238,8 +238,12 @@ final class ManualEditController extends AbstractController implements SeasonSco
                 $body['indeterminate'] = true;
             }
             if (isset($result['evicted'])) {
-                // L'état qui SERAIT évincé (sans suppression).
+                // L'état qui SERAIT évincé (sans suppression) — occupant ÉQUIPE.
                 $body['evicted'] = $result['evicted'];
+            }
+            if (isset($result['evictedGroup'])) {
+                // Q2 — l'occupant est une séance de GROUPE : bloc + N états qui SERAIENT évincés.
+                $body['evictedGroup'] = $result['evictedGroup'];
             }
 
             return $this->json($body, Response::HTTP_OK);
@@ -260,6 +264,10 @@ final class ManualEditController extends AbstractController implements SeasonSco
         if (isset($result['evicted'])) {
             // État de l'occupant AVANT sa suppression — le front s'en sert pour proposer un replacement.
             $body['evicted'] = $result['evicted'];
+        }
+        if (isset($result['evictedGroup'])) {
+            // Q2 — occupant GROUPE évincé : bloc + N états « à replacer » (pas de replacement un-clic).
+            $body['evictedGroup'] = $result['evictedGroup'];
         }
 
         return $this->json($body, Response::HTTP_OK);
@@ -551,9 +559,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
      * ÉCHANGER DEUX SÉANCES ATOMIQUEMENT (P4-327) — chaque créneau prend la case de l'autre, SOUS UN
      * SEUL VERDICT et en une transaction (tout-ou-rien). Pendant « sans perte » de l'éviction : rien
      * n'est supprimé, les deux côtés restent placés. Le corps ne porte que `{slotId, otherSlotId,
-     * dryRun?}` — les positions sont résolues CÔTÉ SERVEUR (la case réelle de chaque créneau). La
-     * source (`slotId`) peut être une séance d'équipe OU de groupe ; l'occupant (`otherSlotId`) doit
-     * être une séance d'équipe non verrouillée (occupant de groupe refusé, lot ultérieur).
+     * dryRun?}` — les positions sont résolues CÔTÉ SERVEUR (la case réelle de chaque créneau). CHAQUE
+     * côté peut être une séance d'équipe OU de groupe (échange N↔M, Q2) ; un occupant ÉQUIPE verrouillé
+     * reste souverain (D4).
      */
     #[Route('/api/schedule-slots/swap', name: 'api_schedule_slot_swap', methods: ['POST'])]
     public function swap(Request $request): JsonResponse
@@ -602,10 +610,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
         } catch (SwapWithSelfException) {
             // Même créneau, ou une équipe commune aux deux côtés : l'échange n'a pas de sens.
             return $this->json(['code' => 'swap_with_self', 'error' => 'On ne peut pas échanger un créneau avec lui-même ou avec un autre créneau de la même équipe.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-        } catch (EvictTargetIsGroupException) {
-            // L'occupant est lui-même une séance de GROUPE : l'échange de deux groupes arrive dans un
-            // lot ultérieur — ici on refuse NOMMÉMENT, rien n'est écrit.
-            return $this->json(['code' => 'evict_target_is_group', 'error' => 'Cette case est occupée par un autre groupe — l\'échange de deux groupes n\'est pas encore possible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EvictTargetLockedException) {
             // D4 : un verrou est souverain — on n'échange pas un créneau verrouillé.
             return $this->json(['code' => 'target_locked', 'error' => 'Ce créneau est verrouillé — déverrouillez-le d\'abord.'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -838,6 +842,91 @@ final class ManualEditController extends AbstractController implements SeasonSco
             'movedSlotIds' => $result['movedSlotIds'],
             'createdSlotIds' => $result['createdSlotIds'],
             'activatedTeamIds' => $result['activatedTeamIds'],
+        ], Response::HTTP_OK);
+    }
+
+    /**
+     * MUTUALISER DEPUIS LE DÉPÔT (Lot 2) — déposer une séance SOURCE sur une case OCCUPÉE (TARGET) et
+     * les fusionner en une séance commune sur la case de la cible (« on répartit, on ne crée rien »).
+     * Corps SERVEUR-RÉSOLU `{sourceSlotId, targetSlotId, label?, dryRun?}` : les positions et les
+     * membres d'un bloc viennent du serveur, jamais du client (patron /swap). Management (403), 404 si
+     * une séance a disparu, 409 si la version est validée (lecture seule) ou si une génération tourne,
+     * 422 pour chaque refus NOMMÉ. Pas de verdict moteur (l'ancrage HARD que le solveur comprend déjà).
+     */
+    #[Route('/api/schedule-slots/mutualize-at-case', name: 'api_schedule_slot_mutualize_at_case', methods: ['POST'])]
+    public function mutualizeAtCase(Request $request): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+
+        $data = json_decode($request->getContent(), true);
+        if (!\is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $sourceSlotId = isset($data['sourceSlotId']) && \is_string($data['sourceSlotId']) ? $data['sourceSlotId'] : '';
+        if ('' === $sourceSlotId) {
+            return $this->json(['error' => 'Missing required field: sourceSlotId.'], Response::HTTP_BAD_REQUEST);
+        }
+        $targetSlotId = isset($data['targetSlotId']) && \is_string($data['targetSlotId']) ? $data['targetSlotId'] : '';
+        if ('' === $targetSlotId) {
+            return $this->json(['error' => 'Missing required field: targetSlotId.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $source = $this->findSlot($sourceSlotId);
+        if (!$source instanceof ScheduleSlotTemplate) {
+            return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
+        }
+        $target = $this->findSlot($targetSlotId);
+        if (!$target instanceof ScheduleSlotTemplate) {
+            return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($this->scheduleIsLocked($source)) {
+            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        }
+
+        $label = null;
+        if (isset($data['label']) && \is_string($data['label'])) {
+            $label = $data['label'];
+            if (mb_strlen($label) > 40) {
+                return $this->json(['error' => 'Invalid field: label (40 characters max).'], Response::HTTP_BAD_REQUEST);
+            }
+        }
+
+        $dryRun = isset($data['dryRun']) && true === $data['dryRun'];
+
+        try {
+            $result = $this->mutualizeSlotService->mutualizeAtCase($source, $target, $label, $dryRun);
+        } catch (ScheduleGenerationInProgressException) {
+            return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
+        } catch (MutualizationRefusedException $e) {
+            // Refus NOMMÉ (disjonction, capacité, > 10, verrou à la main, planning…) : 422, message
+            // humain, RIEN n'est écrit (la transaction a été annulée).
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (Throwable $e) {
+            // SEC-08 : on journalise le détail, jamais getMessage() au client.
+            $this->logger->error('At-case mutualization failed.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (isset($result['dryRun'])) {
+            // Un essai : 200, les gardes ont passé, RIEN n'est écrit. Le front confirme avant d'écrire.
+            return $this->json([
+                'dryRun' => true,
+                'teamIds' => $result['teamIds'],
+                'movedSlotIds' => $result['movedSlotIds'],
+                'freedSourceCase' => $result['freedSourceCase'],
+            ], Response::HTTP_OK);
+        }
+
+        return $this->json([
+            'message' => 'Block mutualized at case.',
+            'blockId' => $result['blockId'],
+            'movedSlotIds' => $result['movedSlotIds'],
+            'lockedSlotIds' => $result['lockedSlotIds'],
+            'removedBlockIds' => $result['removedBlockIds'],
+            'freedSourceCase' => $result['freedSourceCase'],
         ], Response::HTTP_OK);
     }
 

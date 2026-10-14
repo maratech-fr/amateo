@@ -120,6 +120,41 @@ final class SharedBlockAnchoredCaseGateTest extends TestCase
     }
 
     /**
+     * Lot 2 — FUSION : « Mutualiser depuis le dépôt » peut FUSIONNER deux groupes en un bloc C portant
+     * l'UNION de leurs équipes (p.ex. {t1,t2} + {t3,t4} ⇒ C {t1,t2,t3,t4}, 1 séance commune sur la
+     * case). Côté moteur, C n'est qu'un `sharedBlocks` à N équipes de plus : ce gate prouve qu'un bloc
+     * de QUATRE équipes ancré sur une case capacité 1 tient en UNE occupation à la RÉGÉNÉRATION comme
+     * au COMBLEMENT (une 5ᵉ équipe comble un trou ailleurs sans déloger C), honoré et sans conflit de
+     * sur-capacité. TÉMOIN frère : SANS la déclaration de bloc, les quatre verrous HARD co-localisés
+     * sur une case capacité 1 sur-occupent.
+     */
+    public function testFusedFourTeamBlockFoldsToOneOccupationAtRegenerateAndFill(): void
+    {
+        // (1) RÉGÉNÉRER — les 4 membres du bloc fusionné restent sur la case d'ancrage, honorés.
+        $regenerate = $this->solve($this->fusedFourTeamPayload(withBlock: true, withFill: false));
+        self::assertSame('completed', $regenerate['status'], 'le scénario doit rester résoluble');
+        foreach (['t1', 't2', 't3', 't4'] as $teamId) {
+            self::assertSame(self::ANCHOR_CASE, $this->caseOf($regenerate, $teamId), 'chaque membre du bloc fusionné de 4 reste sur la case d\'ancrage');
+        }
+        self::assertSame([], $this->venueConflicts($regenerate), 'un bloc fusionné de 4 ancré ne sur-occupe pas sa case (dé-comptage)');
+        self::assertSame([], $this->notHonoured($regenerate), 'le bloc fusionné de 4 ne doit jamais être signalé non honoré');
+
+        // (2) COMBLER — une 5ᵉ équipe comble un trou ailleurs sans déloger le bloc fusionné de sa case.
+        $fill = $this->solve($this->fusedFourTeamPayload(withBlock: true, withFill: true));
+        self::assertSame('completed', $fill['status'], 'le comblement doit rester résoluble');
+        foreach (['t1', 't2', 't3', 't4'] as $teamId) {
+            self::assertSame(self::ANCHOR_CASE, $this->caseOf($fill, $teamId), 'combler un trou ne déplace pas le bloc fusionné');
+        }
+        self::assertNotNull($this->caseOf($fill, 't5'), 'l\'équipe du trou doit être placée');
+        self::assertSame([], $this->venueConflicts($fill), 'le bloc fusionné ne sur-occupe pas sa case après comblement');
+        self::assertSame([], $this->notHonoured($fill), 'le bloc fusionné reste honoré après comblement');
+
+        // TÉMOIN — sans le bloc, quatre verrous HARD co-localisés sur une case capacité 1 sur-occupent.
+        $withoutBlock = $this->solve($this->fusedFourTeamPayload(withBlock: false, withFill: false));
+        self::assertNotSame([], $this->venueConflicts($withoutBlock), 'témoin cassé : 4 séances HARD co-localisées cap. 1 passent sans conflit même SANS bloc');
+    }
+
+    /**
      * Le payload que le geste LAISSE : t1 et t2 verrouillés HARD sur la case d'ancrage (capacité 1),
      * et — avec le bloc — la déclaration `sharedBlocks` {t1,t2} 1 séance commune qui fait tenir leur
      * co-présence en UNE occupation.
@@ -177,6 +212,45 @@ final class SharedBlockAnchoredCaseGateTest extends TestCase
 
         if ($withBlock) {
             $payload['sharedBlocks'] = [['id' => 'b', 'teamIds' => ['t1', 't2', 't3'], 'commonSessions' => 1]];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Le payload d'un bloc FUSIONNÉ de QUATRE équipes toutes verrouillées HARD sur la case d'ancrage
+     * (cap. 1) — avec le bloc, la déclaration `sharedBlocks` {t1..t4} 1 séance commune les tient en UNE
+     * occupation ; sans lui, quatre verrous HARD co-localisés sur une case cap. 1 sur-occupent.
+     * `$withFill` ajoute une 5ᵉ équipe t5 + un gymnase libre V2 pour prouver le COMBLEMENT.
+     *
+     * @return array<string, mixed>
+     */
+    private function fusedFourTeamPayload(bool $withBlock, bool $withFill): array
+    {
+        $payload = [
+            'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-fused-block-gate-4',
+            'seasonId' => 'season-fused-block-gate-4',
+            'solverSeed' => 42,
+            'teams' => [$this->team('t1'), $this->team('t2'), $this->team('t3'), $this->team('t4')],
+            'venues' => [$this->venue(self::V1, [[1, '18:00', 1]])],
+            'coaches' => [],
+            'constraints' => [],
+            'slotTemplates' => [
+                $this->hardLock('lock-t1', 't1', self::V1, 1, '18:00'),
+                $this->hardLock('lock-t2', 't2', self::V1, 1, '18:00'),
+                $this->hardLock('lock-t3', 't3', self::V1, 1, '18:00'),
+                $this->hardLock('lock-t4', 't4', self::V1, 1, '18:00'),
+            ],
+        ];
+
+        if ($withBlock) {
+            $payload['sharedBlocks'] = [['id' => 'c', 'teamIds' => ['t1', 't2', 't3', 't4'], 'commonSessions' => 1]];
+        }
+
+        if ($withFill) {
+            $payload['teams'][] = $this->team('t5');
+            $payload['venues'][] = $this->venue(self::V2, [[1, '18:00', 1]]);
         }
 
         return $payload;
