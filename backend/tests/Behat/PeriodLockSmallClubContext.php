@@ -52,9 +52,6 @@ final class PeriodLockSmallClubContext extends BaseContext
     public function unPetitClubAvecPlanDePeriodeOverlay(): void
     {
         $this->buildSmallClub();
-        // Règle de bien-être active (soft) AVANT la naissance du plan : sans elle, le plan matérialise
-        // maxConsecutiveDays à OFF et le moteur refuse l'overlay (422) — cf. le docblock du trait.
-        $this->configureSmallClubMaxConsecutiveDaysRule();
         $this->generateAndValidateSmallClubSocle();
 
         $start = $this->smallClubFutureMonday(49);
@@ -75,7 +72,6 @@ final class PeriodLockSmallClubContext extends BaseContext
     public function unPetitClubAvecPlanDePeriodeJetableAncienne(): void
     {
         $this->buildSmallClub();
-        $this->configureSmallClubMaxConsecutiveDaysRule();
         $this->generateAndValidateSmallClubSocle();
 
         $start = $this->smallClubFutureMonday(49);

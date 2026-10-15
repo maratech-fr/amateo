@@ -14,9 +14,11 @@
  * ⚠ `engine_failed` en est EXCLU À DESSEIN : il signifie que le MOTEUR A RÉPONDU « failed »
  *   (backend/src/Service/ScheduleDiagnosticsRecorder.php:63-66,75,85) — un planning INFAISABLE, pas
  *   une panne. Sont de même exclus, car « réessayez dans quelques minutes » ne les corrige pas :
- *   `overlay_entry_missing` (:196, échec DOMAINE — période supprimée) et `club_mismatch` (:109,
- *   garde de défense en profondeur, injoignable sous RLS). Ces exclusions sont NOMMÉES et gardées
- *   côté handler par le test de parité.
+ *   `overlay_entry_missing` (échec DOMAINE — période supprimée), `club_mismatch` (garde de défense
+ *   en profondeur, injoignable sous RLS) et `engine_rejected` (refus de CONTRAT du moteur — un 422
+ *   Pydantic sur un champ du payload hors contrat : déterministe, il route vers l'affichage du
+ *   champ en cause, pas vers l'écran de panne de service, P4-340). Ces exclusions sont NOMMÉES et
+ *   gardées côté handler par le test de parité.
  *
  * Parité gardée DANS LES DEUX SENS par `backend/tests/CrossStack/EngineFailureTypeMirrorTest.php`
  * (garde de frontière statique dédiée) : un type ajouté au handler et absent d'ici rougit, un type

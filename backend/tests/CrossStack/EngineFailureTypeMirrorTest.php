@@ -57,6 +57,7 @@ final class EngineFailureTypeMirrorTest extends TestCase
     private const array EXCLUSIONS = [
         'overlay_entry_missing' => 'échec DOMAINE : la période a été supprimée entre la mise en file et le run — pas une panne du service, et « réessayez dans quelques minutes » ne la recréerait pas ; route vers l\'affichage de causes existant',
         'club_mismatch' => 'garde de défense en profondeur (message club_id ≠ schedule club_id, INJOIGNABLE sous RLS, GenerateScheduleHandler:109) : un mixup d\'identité déterministe, pas une indisponibilité transitoire — « réessayez » ne le corrigerait pas ; hors écran B',
+        'engine_rejected' => 'refus de CONTRAT du moteur (HTTP 422 Pydantic : un champ du payload hors contrat) : déterministe, « réessayez dans quelques minutes » ne corrige rien — il route vers l\'affichage du champ en cause, pas vers l\'écran de panne de service (P4-340)',
     ];
 
     public function testFrontListMirrorsHandlerServiceFailureTypesBothWays(): void

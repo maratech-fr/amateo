@@ -327,35 +327,6 @@ trait SmallClubFixtureTrait
         return $this->smallClubStringField($entry['json'], 'id');
     }
 
-    /**
-     * Règle la règle de bien-être « jours consécutifs d'entraînement » (maxConsecutiveDays) à une
-     * intensité ACTIVE (PREFERRED par défaut, soft : sans effet sur la faisabilité) au niveau SAISON,
-     * via le vrai geste gestionnaire (PUT /implicit_rule_settings/maxConsecutiveDays).
-     *
-     * ⚠ NÉCESSAIRE pour générer un plan de PÉRIODE : cette règle est opt-in → un club NEUF la laisse
-     * à OFF, et la copie matérialisée à la naissance du plan ({@see ImplicitRuleSettingRepository::
-     * materializeForPlan}) la porte alors à OFF. Or le moteur REFUSE `maxConsecutiveDays.intensity:
-     * "OFF"` (422 Pydantic : « Input should be 'HARD' or 'PREFERRED' ») — là où le payload de SAISON
-     * l'OMET quand elle est OFF (`ImplicitRuleResolver::resolveFromIndexed` saute les opt-in ABSENTES,
-     * mais SÉRIALISE les opt-in STOCKÉES à OFF que le plan matérialise). Le club de démonstration (BCCL)
-     * aboutit son overlay parce que ses règles résolvent à une intensité valide ; le petit club neuf, non.
-     *
-     * Ce réglage ALIGNE le petit club sur un club réaliste qui utilise cette règle de bien-être — la
-     * promesse éprouvée ici (un verrou de période survit à la régénération) est indépendante de son
-     * intensité. L'écart « un club neuf ne peut pas générer un plan de période » est un MANQUE PRODUIT
-     * à instruire (la copie de plan devrait sauter une opt-in OFF, comme le fait la saison).
-     */
-    private function configureSmallClubMaxConsecutiveDaysRule(string $intensity = 'PREFERRED'): void
-    {
-        $put = $this->apiPut('implicit_rule_settings/maxConsecutiveDays', [
-            'schedulePlanId' => null,
-            'intensity' => $intensity,
-        ], $this->smallClubToken);
-        if (200 !== $put['status']) {
-            throw new RuntimeException(\sprintf('le réglage de la règle « jours consécutifs » a répondu %d (200 attendu)', $put['status']));
-        }
-    }
-
     /** Ouvre le plan de période (POST /schedule_plans, geste « Adapter ») et rend son identifiant. */
     private function openSmallClubPeriodPlan(string $entryId): string
     {

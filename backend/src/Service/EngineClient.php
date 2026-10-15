@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Exception\EngineRequestRejectedException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -11,6 +12,12 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * GenerateScheduleHandler). Exceptions propagate unchanged — the handler owns
  * the failure→status mapping (a TransportExceptionInterface = timeout, any other
  * throw = engine error).
+ *
+ * P4-340 — un REFUS DE CONTRAT du moteur (HTTP 422 Pydantic : un champ du payload hors contrat)
+ * est traduit ici en {@see EngineRequestRejectedException}, que le handler mappe en échec terminal
+ * LISIBLE (`engine_rejected`). Sans cette détection, `toArray(false)` rendrait le corps d'erreur
+ * comme un résultat ordinaire (`status` absent → « failed » opaque). Limité à `solve()` : les rails
+ * place-matches / validate-assignments gardent leur propagation inchangée (hors périmètre).
  */
 final class EngineClient
 {
@@ -35,6 +42,12 @@ final class EngineClient
             'timeout' => $timeoutSeconds,
             'headers' => $this->correlationHeaders(),
         ]);
+
+        // getStatusCode() ne jette PAS sur un code HTTP (seul un échec TRANSPORT le fait, et le
+        // handler le traite déjà en timeout) : un 422 de contrat Pydantic est détecté ici.
+        if (422 === $response->getStatusCode()) {
+            throw EngineRequestRejectedException::fromPydanticDetail($response->toArray(false));
+        }
 
         return $response->toArray(false);
     }

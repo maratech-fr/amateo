@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Tests\CrossStack\ImplicitRulePayloadParityTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -181,6 +182,53 @@ final class ImplicitRuleSettingApiTest extends WebTestCase
         $unknownPlanId = '11111111-1111-4111-8111-111111111111';
         $this->client->request('PUT', '/api/implicit_rule_settings/ageAscending', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode(['schedulePlanId' => $unknownPlanId, 'intensity' => 'PREFERRED'], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
+    }
+
+    /**
+     * P4-340 — CHEMIN D'ABUS : désactiver (OFF) une règle qui n'est PAS opt-in est refusé (422,
+     * message français).
+     *
+     * Seule `maxConsecutiveDays` est optionnelle ({@see ImplicitRuleKey::isOptIn}). Accepter OFF
+     * sur une règle historique (ici `coachRestDay`) serait un piège : le résolveur l'omettrait du
+     * payload et le moteur appliquerait alors son DÉFAUT HARD — le gestionnaire croirait l'avoir
+     * éteinte alors qu'elle s'imposerait quand même. Le refus garde cette porte fermée.
+     */
+    public function testPutOffOnANonOptInRuleIsRefused(): void
+    {
+        [$user] = $this->seed();
+
+        $this->client->request('PUT', '/api/implicit_rule_settings/coachRestDay', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'OFF'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'OFF sur une règle non opt-in doit être refusé');
+
+        // Décoder le JSON (API Platform échappe l'unicode : lire le CORPS BRUT manquerait « é ») ;
+        // le refus doit PARLER en français (le champ exact du message reste ajustable côté impl).
+        $haystack = json_encode(json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR), \JSON_UNESCAPED_UNICODE);
+        self::assertMatchesRegularExpression('/désactiv|optionnelle|ne peut pas/iu', (string) $haystack, 'le 422 doit expliquer EN FRANÇAIS qu\'on ne peut pas désactiver cette règle');
+    }
+
+    /**
+     * P4-340 — l'opt-in `maxConsecutiveDays`, ELLE, s'éteint (OFF) : en portée PLAN le PUT répond
+     * 200 et sert une entrée INACTIVE bien formée (intensité OFF + seuil au défaut).
+     *
+     * Garde du repli `inactiveEntry()` au retour du PUT : quand le résolveur SAUTE l'opt-in
+     * résolue OFF (correctif P4-340), `$resolved[ruleKey]` disparaît — le processor doit retomber
+     * sur l'entrée d'affichage inactive, sinon il sert du vide. Reste donc VERT avant ET après le
+     * correctif (jumeau payload : {@see ImplicitRulePayloadParityTest::
+     * testPeriodPlanOfAFreshClubOmitsTheOptInRuleMaterializedOff}, qui prouve l'OMISSION côté moteur).
+     */
+    public function testPutOffOnTheOptInRuleInPlanScopeServesAnInactiveEntry(): void
+    {
+        [$user] = $this->seed();
+        $auth = $this->authHeaders($user);
+        $planId = $this->adaptHolidayPlan($user);
+
+        $this->client->request('PUT', '/api/implicit_rule_settings/maxConsecutiveDays', [], [], $auth + ['CONTENT_TYPE' => 'application/json'], json_encode(['schedulePlanId' => $planId, 'intensity' => 'OFF'], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $resource = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($resource);
+        self::assertSame('OFF', $resource['intensity'] ?? null, 'l\'opt-in éteinte est servie INACTIVE (intensité OFF)');
+        self::assertSame(3, $resource['maxConsecutiveDays'] ?? null, 'l\'entrée inactive porte le seuil au défaut, jamais un vide');
     }
 
     protected function setUp(): void

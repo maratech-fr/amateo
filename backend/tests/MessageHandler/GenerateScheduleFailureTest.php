@@ -28,6 +28,7 @@ use App\Service\SolverMetricsMapper;
 use App\Service\SolverMetricsRecorder;
 use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
+use App\Tests\CrossStack\EngineFailureTypeMirrorTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -149,6 +150,65 @@ final class GenerateScheduleFailureTest extends KernelTestCase
         );
         self::assertContains('internal_error', $types, 'a failure diagnostic must be recorded');
         self::assertSame(1, $em->getRepository(SolverMetric::class)->count(['scheduleId' => $scheduleId]));
+    }
+
+    /**
+     * P4-340 (axe pipeline de génération) — un refus de CONTRAT du moteur (HTTP 422 Pydantic, un
+     * champ du payload hors contrat) laisse un échec terminal LISIBLE, jamais l'opaque « Schedule
+     * generation failed. » ni l'exception brute. Le diagnostic est de type `engine_rejected`, NOMME
+     * le(s) champ(s) en cause (le `loc` Pydantic, débarrassé de `body`) et NE FAIT FUIR AUCUNE
+     * cuisine interne : ni la valeur d'input refusée, ni le message anglais de Pydantic, ni l'URL
+     * du moteur. Le texte final reste ajustable — on fige seulement le champ, les fuites interdites,
+     * et l'absence de « relancez » (un refus de contrat ne se corrige pas en réessayant — c'est
+     * aussi pourquoi `engine_rejected` est exclu de SERVICE_FAILURE_TYPES, cf.
+     * {@see EngineFailureTypeMirrorTest}).
+     *
+     * Le 422 est simulé au niveau HTTP (MockResponse status 422) pour prouver la DÉTECTION dans
+     * `EngineClient::solve()` — et non un `status:"failed"` renvoyé dans le corps.
+     */
+    public function testEngineContractRefusalProducesALeakFreeFrenchDiagnostic(): void
+    {
+        [$em, $club, $schedule] = $this->seedScheduleReadyToGenerate('engine-422');
+        $scheduleId = $schedule->getId();
+
+        // Corps d'erreur Pydantic typique d'un `intensity:"OFF"` refusé par le contrat moteur.
+        $pydanticError = json_encode([
+            'detail' => [[
+                'type' => 'literal_error',
+                'loc' => ['body', 'implicitRules', 'maxConsecutiveDays', 'intensity'],
+                'msg' => 'Input should be \'HARD\' or \'PREFERRED\'',
+                'input' => 'OFF',
+                'ctx' => ['expected' => '\'HARD\' or \'PREFERRED\''],
+            ]],
+        ], \JSON_THROW_ON_ERROR);
+
+        $hub = $this->createMock(HubInterface::class);
+        $hub->method('publish')->willReturn('id');
+
+        $this->runHandler($em, $club->getId(), $scheduleId, new MockHttpClient(new MockResponse($pydanticError, ['http_code' => 422])), $hub);
+
+        $this->scopeGucToClub($club->getId());
+        $em->clear();
+
+        $reloaded = $em->getRepository(Schedule::class)->find($scheduleId);
+        self::assertInstanceOf(Schedule::class, $reloaded);
+        self::assertSame(ScheduleStatus::FAILED, $reloaded->getStatus(), 'un refus de contrat moteur laisse un échec terminal, jamais un gel GENERATING');
+
+        $rejected = null;
+        foreach ($em->getRepository(ScheduleDiagnostic::class)->findBy(['scheduleId' => $scheduleId]) as $diagnostic) {
+            if ('engine_rejected' === $diagnostic->getType()) {
+                $rejected = $diagnostic;
+            }
+        }
+        self::assertInstanceOf(ScheduleDiagnostic::class, $rejected, 'un 422 de contrat doit produire un diagnostic engine_rejected (ni engine_failed opaque, ni engine_error brut)');
+
+        $message = $rejected->getMessage();
+        self::assertStringContainsString('implicitRules.maxConsecutiveDays.intensity', $message, 'le diagnostic NOMME le champ en cause (loc Pydantic sans « body »)');
+        self::assertStringNotContainsString('OFF', $message, 'la valeur d\'input refusée ne doit jamais fuir à l\'écran');
+        self::assertStringNotContainsString('Input should be', $message, 'le message anglais de Pydantic ne doit pas fuir');
+        self::assertStringNotContainsString('engine:8000', $message, 'l\'URL interne du moteur ne doit pas fuir');
+        self::assertStringNotContainsString('http://engine', $message, 'l\'URL interne du moteur ne doit pas fuir');
+        self::assertStringNotContainsStringIgnoringCase('relancez', $message, 'un refus de contrat ne se corrige pas en réessayant — pas de « relancez »');
     }
 
     /**
