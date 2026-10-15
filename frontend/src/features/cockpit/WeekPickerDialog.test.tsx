@@ -433,3 +433,83 @@ describe("WeekPickerDialog — prévention semaines déjà planifiées (P2-38)",
     expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeEnabled();
   });
 });
+
+// P2-64 — POUR UNE VACANCE SEULEMENT (`periodType === "holiday"`), les semaines PLEINES contiguës
+// sont proposées UNE PAR SEMAINE : chaque segment « milieu » multi-semaines est éclaté en semaines
+// individuelles, toutes précochées, à l'init ET à la ré-init. « Fusionner » reste offert et
+// reconstruit le bloc. Les autres types (closure/custom/cutoff/mutualisation) gardent le bloc
+// groupé historique. La règle vit dans le dialogue (`WeekPickerDialog.tsx:105-118`) ; `segmentsFromOffer`
+// / `weekSegmentation.ts` (miroir backend, parité) restent inchangés.
+describe("WeekPickerDialog — vacances éclatées en semaines (P2-64)", () => {
+  // Vacances de Noël : deux semaines PLEINES contiguës (lun→dim) ENTIÈREMENT couvertes par
+  // l'événement → `segmentsFromOffer` en fait UN seul segment « milieu » (2 semaines). P2-64 veut
+  // deux segments d'une semaine, précochés, POUR CE SEUL periodType.
+  const holiday = { title: "Vacances de Noël", startDate: "2026-12-19", endDate: "2027-01-04" };
+  const fullWeeks = [
+    { startDate: "2026-12-21", endDate: "2026-12-27", monday: "2026-12-21" },
+    { startDate: "2026-12-28", endDate: "2027-01-03", monday: "2026-12-28" },
+  ];
+
+  it("vacances : deux semaines pleines contiguës sont proposées UNE PAR SEMAINE, chacune précochée", () => {
+    render(<WeekPickerDialog title={holiday.title} startDate={holiday.startDate} endDate={holiday.endDate} weeks={fullWeeks} periodType="holiday" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+
+    // Deux coches (une par semaine), pas une seule coche de bloc.
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes).toHaveLength(2);
+    boxes.forEach((b) => expect(b).toBeChecked());
+    expect(screen.getByText("Semaine du 21 déc. 2026")).toBeInTheDocument();
+    expect(screen.getByText("Semaine du 28 déc. 2026")).toBeInTheDocument();
+    // Le bloc groupé « d'un bloc (2 semaines) » n'est plus proposé : c'est tout l'enjeu de P2-64.
+    expect(screen.queryByText(/d'un bloc \(2 semaines\)/)).not.toBeInTheDocument();
+  });
+
+  // Témoin de PÉRIMÈTRE : l'éclatement est RÉSERVÉ aux vacances. Une fermeture garde le bloc
+  // (contraste avec le test holiday ci-dessus et avec le découpage closure prouvé en P2-41 l.306).
+  it("fermeture : les mêmes semaines pleines restent UN bloc groupé (hors périmètre P2-64)", () => {
+    render(<WeekPickerDialog title={holiday.title} startDate={holiday.startDate} endDate={holiday.endDate} weeks={fullWeeks} periodType="closure" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(screen.getByText("Semaines du 21 déc. 2026 au 3 janv. 2027 — d'un bloc (2 semaines)")).toBeInTheDocument();
+  });
+
+  // Témoin de PÉRIMÈTRE : un type « custom » (comme cutoff/mutualisation) garde aussi le bloc.
+  it("custom : les mêmes semaines pleines restent UN bloc groupé (hors périmètre P2-64)", () => {
+    render(<WeekPickerDialog title={holiday.title} startDate={holiday.startDate} endDate={holiday.endDate} weeks={fullWeeks} periodType="custom" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(screen.getByText("Semaines du 21 déc. 2026 au 3 janv. 2027 — d'un bloc (2 semaines)")).toBeInTheDocument();
+  });
+
+  // La RÉ-INIT (l'offre arrive APRÈS l'ouverture : la signature des semaines change) doit elle aussi
+  // éclater — sinon une vacance ouverte en chargement puis peuplée resterait en bloc.
+  it("vacances : la ré-init (offre arrivée après ouverture) éclate aussi en semaines", () => {
+    const { rerender } = render(<WeekPickerDialog title={holiday.title} startDate={holiday.startDate} endDate={holiday.endDate} weeks={[]} periodType="holiday" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    // Rien tant que l'offre est vide.
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+
+    // L'offre arrive : la signature change, segments + coches sont ré-initialisés (et donc éclatés).
+    rerender(<WeekPickerDialog title={holiday.title} startDate={holiday.startDate} endDate={holiday.endDate} weeks={fullWeeks} periodType="holiday" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes).toHaveLength(2);
+    boxes.forEach((b) => expect(b).toBeChecked());
+  });
+
+  // « Fusionner » reste offert sur une vacance éclatée et RECONSTRUIT le bloc des deux semaines
+  // (le geste existant n'est pas perdu par l'éclatement).
+  it("vacances : « Fusionner » reste offert et reconstruit le bloc des deux semaines", async () => {
+    const user = userEvent.setup();
+    const onPickSegments = vi.fn();
+    render(<WeekPickerDialog title={holiday.title} startDate={holiday.startDate} endDate={holiday.endDate} weeks={fullWeeks} periodType="holiday" busy={false} onPickSegments={onPickSegments} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+
+    // Les deux semaines sont éclatées : la seconde porte « Fusionner » (index > 0).
+    await user.click(screen.getByRole("button", { name: /Fusionner .* avec le segment précédent/i }));
+
+    // Un seul segment reconstruit, couvrant les deux semaines.
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(screen.getByText("Semaines du 21 déc. 2026 au 3 janv. 2027 — d'un bloc (2 semaines)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^créer le planning$/i }));
+    const segs = onPickSegments.mock.calls[0][0];
+    expect(segs).toHaveLength(1);
+    expect(segs[0].weeks).toHaveLength(2);
+  });
+});
