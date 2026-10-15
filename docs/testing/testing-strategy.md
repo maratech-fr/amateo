@@ -163,8 +163,9 @@ références. **Re-baseline — une procédure, un workflow dédié**
 doivent naître dans l'environnement EXACT de la CI, même image/polices que le job `e2e`) :
 `gh workflow run visual-baselines.yml --ref <branche> -f update=true` → `gh run download <run-id>
 -n visual-baselines` → committer le dossier `-snapshots/`, re-pousser. Déclenche une re-baseline :
-un changement d'apparence VOULU, un changement d'image runner (`ubuntu-latest`), ou une dérive du
-seed BCCL. Hors périmètre, délibérément : la page publique des vœux (token non forgeable sans base
+un changement d'apparence VOULU, un changement d'image runner (épinglée `ubuntu-24.04` dans tous
+les workflows depuis la passe « versions figées » — un bump futur est un choix manuel, pas une
+dérive silencieuse), ou une dérive du seed BCCL. Hors périmètre, délibérément : la page publique des vœux (token non forgeable sans base
 réelle) et le thème sombre.
 
 All PHP test jobs first **create + migrate the test DB** (`doctrine:database:create --if-not-exists` + `migrations:migrate`, `--env=test`) and run phpunit with `-e APP_ENV=test` on the `docker compose exec` — the containers default to `APP_ENV=dev` (root `.env` env_file) and `phpunit.xml.dist`'s `<server APP_ENV=test>` is not `force`d, so the real env var must be set explicitly.
