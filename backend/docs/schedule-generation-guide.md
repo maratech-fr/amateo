@@ -373,10 +373,20 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | | Détail |
 |---|---|
 | **Symptôme** | Le statut passe à `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de type `engine_validation_error`. |
-| **Cause** | Le moteur a retourné une réponse JSON **sans clé `status`** (par exemple un corps d'erreur 422 de Pydantic). `EngineClient` lit la réponse avec `toArray(false)` (aucune exception sur un statut HTTP d'erreur) et le handler traite toute réponse sans `status` comme `failed`. Un 422 est improbable en pratique : le payload est construit par `ScheduleConstraintBuilder`, pas saisi à la main. |
+| **Cause** | Le moteur a retourné une réponse JSON **sans clé `status`** (par exemple un 500, ou un 422 sur `/place-matches`/`/validate-assignments` — hors `/generate`, cf. Cas 6b). `EngineClient` lit la réponse avec `toArray(false)` (aucune exception sur un statut HTTP d'erreur) et le handler traite toute réponse sans `status` comme `failed`. |
 | **Vérification** | `make logs SERVICE=engine` + inspecte le champ `snapshot_data` de la table `schedule` (payload exact envoyé). |
 | **Correction** | Compare le `snapshot_data` au schéma du contrat engine (v1.5, `extra="forbid"`) ; corrige la donnée source incriminée. |
 | **Prévention** | `ContractSchemaTest` garde la synchronisation backend ⇄ engine ; le gate `POST /api/constraints/validate` attrape les configs incohérentes avant le solve. |
+
+### Cas 6b : FAILED + diagnostic "engine_rejected" (refus de contrat sur `/generate`, P4-340)
+
+| | Détail |
+|---|---|
+| **Symptôme** | Le statut passe à `FAILED` avec un diagnostic `engine_rejected`, qui NOMME le(s) champ(s) en cause (ex. `implicitRules.maxConsecutiveDays.intensity`). |
+| **Cause** | Le moteur a répondu **422** à `POST /generate` (refus de CONTRAT Pydantic : un champ du payload hors contrat, p.ex. une intensité `OFF` sur une règle qui n'accepte que `HARD`/`PREFERRED`). `EngineClient::solve()` détecte ce 422 avant `toArray()` et lève `EngineRequestRejectedException` ; le handler pose un diagnostic lisible (champ nommé, jamais la valeur refusée, le message anglais de Pydantic ni l'URL du moteur). Déterministe : relancer la génération sans corriger la donnée source échoue à nouveau. |
+| **Vérification** | Le message du diagnostic nomme déjà le(s) champ(s) (`loc` Pydantic). |
+| **Correction** | Corriger la donnée source du champ nommé (ex. une opt-in résolue dans un état que le moteur refuse). |
+| **Prévention** | `ImplicitRulePayloadParityTest` (règles implicites) garde l'omission d'une opt-in résolue OFF du payload ; limité à `/generate` — un 422 sur `/place-matches`/`/validate-assignments` retombe en Cas 6 (`engine_failed`, roadmap P4-341). |
 
 ### Cas 7 : COMPLETED mais 0 créneau généré
 

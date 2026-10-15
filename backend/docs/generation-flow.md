@@ -250,13 +250,16 @@ Points d'attention sur ce format :
 
 Le timeout de l'appel HTTP côté backend est de **650 secondes** par défaut (`GenerateScheduleMessage.timeoutSeconds`). Côté engine, le budget du solveur CP-SAT est **adaptatif** selon la taille du problème (`n_teams × n_venues`) : 60 s (≤ 50), 180 s (≤ 200) ou 600 s au-delà — le `solverTimeoutSeconds` du payload (650 par défaut) n'est qu'un **plafond**, jamais le budget effectif.
 
-Note importante sur les réponses HTTP : `EngineClient` lit la réponse avec `toArray(false)` — il ne lève **pas** d'exception sur un statut HTTP d'erreur. Toute réponse JSON sans clé `status` (par exemple un corps d'erreur 422 de Pydantic) est traitée comme `status: "failed"`, donc planning `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de diagnostic `engine_validation_error`.
+Note importante sur les réponses HTTP : `EngineClient` lit la réponse avec `toArray(false)` — il ne lève **pas** d'exception sur un statut HTTP d'erreur générique. Toute réponse JSON sans clé `status` (par exemple un corps d'erreur Pydantic qui ne serait pas un 422, improbable en pratique) est traitée comme `status: "failed"`, donc planning `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de diagnostic `engine_validation_error`.
+
+⚠ **Exception pour `/generate` (P4-340)** : `EngineClient::solve()` détecte spécifiquement un **422** (refus de CONTRAT Pydantic — un champ du payload hors contrat, p.ex. `implicitRules.maxConsecutiveDays.intensity:"OFF"`, le moteur n'acceptant que `HARD`/`PREFERRED`) et lève `EngineRequestRejectedException` **avant** d'appeler `toArray()` ; `GenerateScheduleHandler` la rattrape pour poser un diagnostic `engine_rejected` **LISIBLE**, nommant le(s) champ(s) en cause (le `loc` Pydantic sans `body`, déduplié, borné à 5) sans jamais faire fuir la valeur refusée, le message anglais de Pydantic ni l'URL interne du moteur. `engine_rejected` est un refus **déterministe** (pas de « relancez »), exclu de `SERVICE_FAILURE_TYPES` côté front (`frontend/src/features/planning/lib/serviceFailure.ts`, gardé par `EngineFailureTypeMirrorTest`). **Cette détection est limitée à `solve()`** : `placeMatches()` et `validateAssignment()` gardent leur propagation inchangée — un 422 sur ces deux rails retombe sur le traitement générique ci-dessous (roadmap P4-341).
 
 | Réponse engine | Traitement backend | Diagnostic créé |
 |----------------|-------------------|-----------------|
 | `200 OK` + `status: "completed"` | Import des créneaux | Aucun (ou diagnostics métier) |
 | `200 OK` + `status: "failed"` | Import diagnostics, statut `FAILED` | `conflict` + liste équipes non placées |
-| `422 Unprocessable Entity` (corps sans `status`) | Traité comme `failed`, statut `FAILED` | `engine_failed` |
+| `422 Unprocessable Entity` sur `/generate` (refus de contrat Pydantic) | Détecté par `EngineClient::solve()`, statut `FAILED` | `engine_rejected` (lisible, champ nommé) |
+| `422 Unprocessable Entity` sur `/place-matches` ou `/validate-assignments` (corps sans `status`) | Traité comme `failed`, statut `FAILED` | `engine_failed` |
 | `500 Internal Server Error` (corps sans `status`) | Traité comme `failed`, statut `FAILED` | `engine_failed` |
 | Timeout HTTP (> 650 s) | Statut `FAILED` | `engine_timeout` |
 | Host unreachable | Statut `FAILED` | `engine_error` |
