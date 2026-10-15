@@ -11,6 +11,7 @@ import { LEVEL_LABEL } from "@/shared/lib/teamIdentity";
 
 import type { FfbbEngagement, FfbbPairing, PriorityTier, Team } from "./api";
 import { useConfirmFfbbPairings, useFfbbEngagements } from "./queries";
+import { MATCHES_TEXTS } from "./texts";
 
 interface FfbbEngagementsDialogProps {
   teams: Team[];
@@ -80,34 +81,41 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
   // La phrase d'origine FBI ne s'affiche qu'une fois, et SEULEMENT s'il existe au moins une
   // suggestion issue d'un import FBI (une chip par ligne le rappelle ensuite).
   const hasFbiSuggestion = rows.some((row) => "fbi" === row.suggestionSource && null !== row.suggestedTeamId);
+  // P4-289 — la bascule d'alignement acceptée ne vit plus QUE dans une pastille visuelle : une
+  // région live POLIE au niveau du dialogue l'annonce au lecteur d'écran. Silencieuse au repos.
+  const acceptedAlignCount = Object.values(alignChoices).filter(Boolean).length;
 
   return (
     <Modal
-      label="Engagements FFBB"
-      title="Engagements FFBB"
+      label={MATCHES_TEXTS.ffbbDialogTitle}
+      title={MATCHES_TEXTS.ffbbDialogTitle}
       onClose={onClose}
       size="xl"
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>
-            Fermer
+            {MATCHES_TEXTS.ffbbClose}
           </Button>
           <Button
             size="sm"
             disabled={0 === pairings.length || confirm.isPending}
             onClick={() => confirm.mutate(pairings, { onSuccess: onClose })}
           >
-            {confirm.isPending ? "Enregistrement…" : `Confirmer ${pairings.length} appariement${pairings.length > 1 ? "s" : ""}`}
+            {confirm.isPending ? MATCHES_TEXTS.ffbbSaving : MATCHES_TEXTS.ffbbConfirm(pairings.length)}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
+        {/* P4-289 — région live POLIE au niveau du dialogue : vide au repos, annonce la bascule
+            d'alignement acceptée au lecteur d'écran (patron `OpponentsPage.tsx` statut de trajets). */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {acceptedAlignCount > 0 ? MATCHES_TEXTS.levelAlignLiveAnnounce(acceptedAlignCount) : ""}
+        </p>
         <p className="text-xs text-muted-foreground">
-          Les équipes engagées telles que la ligue les connaît — rattachez chacune à votre équipe puis
-          confirmez en bloc. À chaque nouvelle phase, ré-ouvrez : tout est pré-rempli.{" "}
-          {hasFbiSuggestion ? "Les rattachements marqués proviennent de votre dernier import FBI. " : null}
-          <strong>Données de la ligue — un écart se corrige auprès d'elle.</strong>
+          {MATCHES_TEXTS.ffbbIntroLead}{" "}
+          {hasFbiSuggestion ? MATCHES_TEXTS.ffbbIntroFbiSuggestion : null}
+          <strong>{MATCHES_TEXTS.ffbbIntroLeagueData}</strong>
         </p>
 
         {engagements.isLoading ? (
@@ -115,16 +123,12 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
             <Spinner />
           </div>
         ) : engagements.isError ? (
-          <NoticeBanner tone="destructive" message="FFBB indisponible — réessayez plus tard." />
+          <NoticeBanner tone="destructive" message={MATCHES_TEXTS.ffbbUnavailable} />
         ) : 0 === rows.length ? (
-          <p className="text-sm text-muted-foreground">
-            Aucun engagement trouvé pour cette saison (les poules sortent généralement après le 20 juillet).
-          </p>
+          <p className="text-sm text-muted-foreground">{MATCHES_TEXTS.ffbbNoEngagement}</p>
         ) : (
           <>
-            <p className="text-xs font-medium text-foreground">
-              {`${attachedCount} rattachée${attachedCount > 1 ? "s" : ""} sur ${rows.length}`}
-            </p>
+            <p className="text-xs font-medium text-foreground">{MATCHES_TEXTS.ffbbAttachedCount(attachedCount, rows.length)}</p>
             <ul className="flex flex-col gap-2">
             {rows.map((row) => {
               // Le chiffre discriminant (« …Division 2 » vs « …Division 3 ») est en QUEUE de
@@ -149,20 +153,20 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1">
                     <TeamSelect
-                      aria-label={`Équipe pour ${row.competitionName}`}
+                      aria-label={MATCHES_TEXTS.ffbbTeamForCompetition(row.competitionName)}
                       // La valeur sélectionnée se lit sans ouvrir le select (§6bis B4) : élargi,
                       // et un `title` en secours pour le nom d'équipe qui déborderait encore.
-                      title={"" !== chosen ? teamName(chosen) : "Non rattachée"}
+                      title={"" !== chosen ? teamName(chosen) : MATCHES_TEXTS.ffbbNotPaired}
                       wrapperClassName="w-52 shrink-0"
                       teams={teams}
                       tiers={tiers}
-                      placeholder="Non rattachée"
+                      placeholder={MATCHES_TEXTS.ffbbNotPaired}
                       value={chosen}
                       onValueChange={(v) => onTeamChange(row.ffbbCompetitionId, v)}
                     />
                     {showFbiChip ? (
                       <StatusPill variant="neutral" icon={<Sparkles className="size-3.5 shrink-0" aria-hidden="true" />}>
-                        suggéré depuis l'import FBI
+                        {MATCHES_TEXTS.ffbbSuggestedFromImport}
                       </StatusPill>
                     ) : null}
                     {/* Niveau jeune déduit de l'engagement (D1/D5) : proposé, jamais pré-coché ni comblé
@@ -172,29 +176,27 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
                       true === alignChoices[row.ffbbCompetitionId] ? (
                         <span className="flex items-center gap-1.5">
                           <StatusPill variant="neutral" icon={<Check className="size-3.5 shrink-0" aria-hidden="true" />}>
-                            Sera aligné à la confirmation
+                            {MATCHES_TEXTS.levelWillAlignOnConfirm}
                           </StatusPill>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setAlignChoices({ ...alignChoices, [row.ffbbCompetitionId]: false })}
                           >
-                            Annuler
+                            {MATCHES_TEXTS.cancel}
                           </Button>
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5">
                           <StatusPill variant="warning" icon={<TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />}>
-                            {"MISSING" === row.alignment ? "Niveau non renseigné" : `Fiche : ${teamLevelLabel(chosen) ?? "—"}`}
+                            {"MISSING" === row.alignment ? MATCHES_TEXTS.levelMissing : MATCHES_TEXTS.levelOnFile(teamLevelLabel(chosen) ?? "—")}
                           </StatusPill>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setAlignChoices({ ...alignChoices, [row.ffbbCompetitionId]: true })}
                           >
-                            {"MISSING" === row.alignment
-                              ? `Renseigner : ${LEVEL_LABEL[row.deducedLevel]}`
-                              : `Aligner sur ${LEVEL_LABEL[row.deducedLevel]}`}
+                            {"MISSING" === row.alignment ? MATCHES_TEXTS.levelFillAction(LEVEL_LABEL[row.deducedLevel]) : MATCHES_TEXTS.levelAlignAction(LEVEL_LABEL[row.deducedLevel])}
                           </Button>
                         </span>
                       )
