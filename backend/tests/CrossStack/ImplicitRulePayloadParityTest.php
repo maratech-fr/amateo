@@ -179,6 +179,85 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         self::assertSame(ImplicitRuleResolver::defaults(), $payload['implicitRules']);
     }
 
+    /**
+     * P4-340 — axe sémantique de contrainte + contrat backend↔engine (§7.1).
+     *
+     * Promesse : un club NEUF génère un plan de PÉRIODE. Sa règle opt-in `maxConsecutiveDays`
+     * naît OFF — la copie matérialisée à la naissance du plan ({@see ImplicitRuleSettingRepository::
+     * materializeForPlan}) la porte à OFF —, et le payload overlay doit alors l'OMETTRE, EXACTEMENT
+     * comme il omet une opt-in ABSENTE (`testNoStoredSettingsEmitsAllDefaults`) : le moteur
+     * n'accepte que HARD/PREFERRED (`engine/app/schemas/input_schema.py`) et refuse
+     * `intensity:"OFF"` (422 Pydantic). Sans cette omission, un club neuf ne peut pas générer
+     * un plan de période.
+     *
+     * Falsifié : un résolveur qui SÉRIALISE l'opt-in stockée OFF (via `entryFrom`) au lieu de la
+     * SAUTER émet la clé — c'est l'état d'avant le correctif, et le test rougit.
+     */
+    public function testPeriodPlanOfAFreshClubOmitsTheOptInRuleMaterializedOff(): void
+    {
+        [$club, $season] = $this->seed();
+
+        // Club NEUF, zéro réglage : à la naissance du plan, les 4 règles sont matérialisées —
+        // l'opt-in maxConsecutiveDays à OFF (les autres au défaut HARD).
+        $entry = $this->holidayPeriod($club, $season);
+        $planId = $this->planIdOf($entry);
+
+        // Précondition EXPLICITE : la copie de plan porte bien l'opt-in à OFF (sinon le test
+        // serait vacant — il faut que le foyer ait quelque chose d'OFF à sauter).
+        $planRow = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
+            'schedulePlanId' => $planId,
+            'ruleKey' => ImplicitRuleKey::MAX_CONSECUTIVE_DAYS,
+        ]);
+        self::assertInstanceOf(ImplicitRuleSetting::class, $planRow);
+        self::assertSame(ImplicitRuleIntensity::OFF, $planRow->getIntensity(), 'précondition : le plan d\'un club neuf matérialise l\'opt-in à OFF');
+
+        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+
+        self::assertArrayNotHasKey(
+            'maxConsecutiveDays',
+            $payload['implicitRules'],
+            'une opt-in matérialisée OFF sur le plan NE DOIT PAS entrer dans le payload overlay (le moteur refuse OFF)',
+        );
+        // Témoin anti-vide : les règles non opt-in restent présentes.
+        self::assertArrayHasKey('maxConsecutiveSessions', $payload['implicitRules']);
+        self::assertArrayHasKey('ageAscending', $payload['implicitRules']);
+        // Parité maison unique : le payload émet EXACTEMENT ce que le résolveur de plan résout.
+        self::assertSame(
+            $this->resolver->resolveForPlan($club->getId(), $season->getId(), $planId),
+            $payload['implicitRules'],
+            'le payload de période émet EXACTEMENT la copie résolue de son plan',
+        );
+    }
+
+    /**
+     * P4-340 — même promesse côté SAISON : une opt-in STOCKÉE OFF (le gestionnaire active
+     * « jours consécutifs » au wizard puis la repasse à « Inactive ») doit être OMISE du payload
+     * de saison, sinon la génération de SAISON part en 422 moteur.
+     *
+     * Falsifié : un résolveur qui sérialise l'opt-in stockée OFF émet la clé → rouge.
+     */
+    public function testSeasonPayloadOmitsAnOptInRuleStoredOff(): void
+    {
+        [$club, $season] = $this->seed();
+
+        $this->store($club, $season, ImplicitRuleKey::MAX_CONSECUTIVE_DAYS, ImplicitRuleIntensity::OFF, null);
+        $this->em->flush();
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertArrayNotHasKey(
+            'maxConsecutiveDays',
+            $payload['implicitRules'],
+            'une opt-in STOCKÉE OFF en saison NE DOIT PAS entrer dans le payload (comme une opt-in absente)',
+        );
+        self::assertArrayHasKey('ageAscending', $payload['implicitRules']);
+        self::assertSame(
+            $this->resolver->resolve($club->getId(), $season->getId()),
+            $payload['implicitRules'],
+            'le bloc implicitRules émis doit être EXACTEMENT le bloc résolu',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
