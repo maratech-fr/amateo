@@ -52,6 +52,7 @@ const SRC_ROOT = join(import.meta.dirname, "..");
 const MIGRATED_FILES = [
   "features/cockpit/RadarPanel.tsx",
   "features/cockpit/DayDialog.tsx",
+  "features/cockpit/WeekPickerDialog.tsx",
   "features/planning/PlanningPage.tsx",
   "features/planning/SlotDetail.tsx",
   "features/planning/DiagnosticsPanel.tsx",
