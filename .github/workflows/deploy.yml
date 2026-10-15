@@ -43,7 +43,7 @@ permissions:
 jobs:
   build-push:
     name: Build & push prod images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
       owner: ${{ steps.meta.outputs.owner }}
@@ -242,7 +242,7 @@ jobs:
 
   deploy:
     name: Roll the VM to ${{ needs.build-push.outputs.version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-push
     # Armed the day the VM exists: repo variable DEPLOY_ENABLED='true' +
     # secrets DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY (see docs/ops/deploy.md).
@@ -370,7 +370,7 @@ jobs:
   #     hotfix tagué sur `release`) ET workflow_dispatch (hotfix/manuel/rollback).
   update-release-branch:
     name: Fast-forward `release` to the deployed commit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [build-push, deploy]
     # Moindre privilège : ce job est le SEUL à écrire dans le dépôt (pousser la
     # ref `release`). Un bloc `permissions:` par job REMPLACE le régime racine

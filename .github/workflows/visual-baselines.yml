@@ -2,7 +2,7 @@ name: Visual Baselines
 
 # Génération / vérification des CAPTURES DE RÉFÉRENCE de `tests/e2e/visual-reference.spec.ts`
 # (PR 8/8 série « uniformité des écrans »). Les PNG de référence doivent être produits dans
-# l'environnement EXACT de la CI (runner `ubuntu-latest` + `npx playwright install chromium`
+# l'environnement EXACT de la CI (runner `ubuntu-24.04` + `npx playwright install chromium`
 # épinglé par le lock) — mêmes polices que le job `e2e` de `ci.yml` qui les COMPARE. On ne les
 # génère donc jamais en local.
 #
@@ -32,7 +32,7 @@ permissions:
 jobs:
   visual-baselines:
     name: Visual Baselines
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 40

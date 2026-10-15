@@ -20,7 +20,7 @@ concurrency:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 10
@@ -44,7 +44,7 @@ jobs:
   # that gap: typecheck + production build + unit tests on every PR.
   frontend:
     name: Frontend (build + unit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 20
@@ -107,7 +107,7 @@ jobs:
   # analysés vivent dans .gitleaks.toml, jamais d'élargissement « pour passer ».
   secrets-scan:
     name: Secrets Scan (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # docker login ghcr — image miroir gitleaks, P4-92 (contents:read répété : un bloc de job REMPLACE la racine)
     permissions:
       contents: read
@@ -135,7 +135,7 @@ jobs:
   # cycle. Un nouveau finding = --error → rouge.
   semgrep:
     name: Semgrep (security gate)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 20
@@ -161,7 +161,7 @@ jobs:
 
   dependency-audit:
     name: Dependency Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 15
@@ -228,7 +228,7 @@ jobs:
   # merged red on it twice (PRs #241 and #244).
   phpstan:
     name: PHPStan & CS-Fixer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 20
@@ -290,7 +290,7 @@ jobs:
   # empêcher quoi que ce soit — c'est le piège de sortir une étape d'un job requis.
   rector:
     name: Rector (style gate)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 20
@@ -332,7 +332,7 @@ jobs:
 
   blocking-tests:
     name: Blocking Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 45
@@ -1115,7 +1115,7 @@ jobs:
   # `coverage-backend` (clover + résumé texte), écrit AVANT le gate (`if: always()` plus bas).
   backend-tests:
     name: Backend Tests (suite + couverture)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 45
@@ -1178,7 +1178,7 @@ jobs:
 
   engine-tests:
     name: Engine Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 25
@@ -1255,7 +1255,7 @@ jobs:
 
   engine-perf:
     name: Engine Perf Gate (main only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 30
@@ -1292,7 +1292,7 @@ jobs:
 
   engine-perf-pr:
     name: Engine Perf (PR, dense only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 15
@@ -1373,7 +1373,7 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 40
@@ -1493,7 +1493,7 @@ jobs:
       # ⚠ PAS de `--with-deps` : il lance `apt-get`, et le runner Ubuntu tient le verrou apt
       # au démarrage (mises à jour automatiques) — `apt-get` attend alors ce verrou SANS
       # limite. Constaté le 2026-08-18 : 5 h de step figé, sans un mot. L'image
-      # `ubuntu-latest` embarque déjà les bibliothèques dont Chromium a besoin ; si un jour
+      # `ubuntu-24.04` embarque déjà les bibliothèques dont Chromium a besoin ; si un jour
       # elles manquent, on ajoute un step apt DÉDIÉ, non interactif et borné, plutôt que de
       # rendre l'installation du navigateur dépendante d'un verrou système.
       - name: Install Playwright chromium
@@ -1645,7 +1645,7 @@ jobs:
   # sur lequel les features placement/overlay s'appuient.
   engine-semantics:
     name: Engine semantics
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 25
@@ -1710,7 +1710,7 @@ jobs:
   # naguère le smoke « season solver », vit ici désormais.
   functional-tests:
     name: Functional Tests (Behat)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 40
@@ -1780,7 +1780,7 @@ jobs:
 
   build-docker:
     name: Build Docker Images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # docker login ghcr — image miroir trivy, P4-92 (contents:read répété : un bloc de job REMPLACE la racine)
     permissions:
       contents: read
