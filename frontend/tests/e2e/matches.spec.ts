@@ -518,6 +518,14 @@ test("gymnases adverses: le tableau Adversaires reflow sans défilement horizont
 
     // Preuve directe du `@container` : l'en-tête « Trajet » (`@md:table-cell`) est masqué à 360 px.
     await expect(page.getByRole("columnheader", { name: "Trajet" })).toBeHidden();
+
+    // P4-293 — le 4ᵉ segment « Trajet indisponible » existe, et le contrôle segmenté (flex-wrap)
+    // ne déborde JAMAIS horizontalement à 360 px (il s'enroule, pas de défilement) : un 4ᵉ segment
+    // ajouté sans soin déborderait sa boîte à largeur téléphone.
+    const filterGroup = page.getByRole("group", { name: "Filtrer les adversaires" });
+    await expect(filterGroup.getByRole("button", { name: /Trajet indisponible/ })).toBeVisible();
+    const groupOverflow = await filterGroup.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(groupOverflow, "le contrôle segmenté des adversaires déborde horizontalement à 360 px (4ᵉ segment)").toBeLessThanOrEqual(1);
   } finally {
     // Base dev CI non remise à zéro : on nettoie NOTRE rencontre.
     await page.request.delete(`/api/fixtures/${fixtureId}`).catch(() => undefined);

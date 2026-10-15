@@ -6,6 +6,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { OpponentClub, OpponentTravelPayload, OpponentVenue } from "./api";
 import { OpponentsPage } from "./OpponentsPage";
+import { MATCHES_TEXTS } from "./texts";
 
 const retryMutate = vi.fn();
 const updateRun = vi.fn();
@@ -303,5 +304,61 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
     renderWithProviders(<OpponentsPage />);
     expect(screen.getByText(/l'adresse du siège du club n'est pas localisée/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Renseigner le siège" })).toBeInTheDocument();
+  });
+});
+
+// ── P4-293 — le 4ᵉ segment « Trajet indisponible » (OpponentsPage non encore migré : la CLÉ
+//    `MATCHES_TEXTS.opponentFilterTravelUnavailable` porte le libellé — assertion par rôle + nom). ──
+describe("OpponentsPage — segment « Trajet indisponible » (P4-293)", () => {
+  it("compte les SALLES en échec (travelStatus « unavailable »), unité « salles » dans le nom accessible", () => {
+    // Deux salles en échec, réparties sur deux clubs ; une salle « done » ne doit PAS compter.
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [
+        club({ code: "A", name: "Club A", venues: [venue({ id: "a1", label: "Gym Echec", travelStatus: "unavailable", travelMinutes: null }), venue({ id: "a2", label: "Gym Ok", travelStatus: "done", travelMinutes: 10 })] }),
+        club({ code: "B", name: "Club B", venues: [venue({ id: "b1", label: "Autre Echec", travelStatus: "unavailable", travelMinutes: null })] }),
+      ],
+    };
+    renderWithProviders(<OpponentsPage />);
+    expect(screen.getByRole("button", { name: `${MATCHES_TEXTS.opponentFilterTravelUnavailable} — 2 salles` })).toBeInTheDocument();
+  });
+
+  it("sous le filtre : SEULS les clubs à ≥ 1 salle en échec, et SEULEMENT leurs salles en échec (piège showVenues)", async () => {
+    const user = userEvent.setup();
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [
+        club({ code: "A", name: "Club Echec", venues: [venue({ id: "a1", label: "Gym Echec", travelStatus: "unavailable", travelMinutes: null }), venue({ id: "a2", label: "Gym Ok", travelStatus: "done", travelMinutes: 10 })] }),
+        club({ code: "B", name: "Club Tout Bon", venues: [venue({ id: "b1", label: "Gym Bon", travelStatus: "done", travelMinutes: 5 })] }),
+      ],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    await user.click(screen.getByRole("button", { name: `${MATCHES_TEXTS.opponentFilterTravelUnavailable} — 1 salles` }));
+    // Le club en échec reste, avec SA salle en échec — mais pas sa salle « done » (piège showVenues = null === filter).
+    expect(screen.getByRole("rowheader", { name: /Club Echec/ })).toBeInTheDocument();
+    expect(screen.getByText("Gym Echec")).toBeInTheDocument();
+    expect(screen.queryByText("Gym Ok")).not.toBeInTheDocument();
+    // Le club sans aucune salle en échec disparaît entièrement.
+    expect(screen.queryByRole("rowheader", { name: /Club Tout Bon/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Gym Bon")).not.toBeInTheDocument();
+  });
+
+  it("le « N indisponibles » du bandeau de progression pose le filtre « Trajet indisponible »", async () => {
+    const user = userEvent.setup();
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [
+        club({ code: "A", name: "Club Echec", venues: [venue({ id: "a1", label: "Gym Echec", travelStatus: "unavailable", travelMinutes: null })] }),
+        club({ code: "B", name: "Club Tout Bon", venues: [venue({ id: "b1", label: "Gym Bon", travelStatus: "done", travelMinutes: 5 })] }),
+      ],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    // Le « N indisponibles » est un bouton (pluriel « indisponibles » → ne matche pas le segment
+    // « Trajet indisponible » au singulier). Un clic pose le filtre et recadre la liste.
+    await user.click(screen.getByRole("button", { name: /indisponibles/ }));
+    expect(screen.getByText("Gym Echec")).toBeInTheDocument();
+    expect(screen.queryByRole("rowheader", { name: /Club Tout Bon/ })).not.toBeInTheDocument();
   });
 });

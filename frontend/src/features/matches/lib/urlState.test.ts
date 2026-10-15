@@ -394,6 +394,18 @@ describe("decodeOpponentFilter / applyOpponentFilterToParams (C8 — filtre de l
     expect(decodeOpponentFilter(new URLSearchParams("filtre=a-apparier"))).toBe("a-apparier");
   });
 
+  // P4-293 — le 4ᵉ segment « Trajet indisponible » est porté par la MÊME clé `?filtre=`.
+  it("« trajet-indisponible » (4ᵉ segment P4-293) est reconnu", () => {
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=trajet-indisponible"))).toBe("trajet-indisponible");
+  });
+
+  it("round-trip de « trajet-indisponible » : écrit, puis relu tel quel", () => {
+    const out = applyOpponentFilterToParams(new URLSearchParams("autre=1"), "trajet-indisponible");
+    expect(out.get("filtre")).toBe("trajet-indisponible");
+    expect(out.get("autre")).toBe("1");
+    expect(decodeOpponentFilter(out)).toBe("trajet-indisponible");
+  });
+
   it("null (défaut « Tous ») ⇒ param supprimé", () => {
     expect(applyOpponentFilterToParams(new URLSearchParams("filtre=a-apparier"), null).toString()).toBe("");
   });
