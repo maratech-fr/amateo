@@ -123,6 +123,14 @@ final class ImplicitRuleSettingStateProcessor implements ProcessorInterface
         $intensity = ImplicitRuleIntensity::tryFrom($input->intensity ?? '')
             ?? throw new UnprocessableEntityHttpException(\sprintf('« %s » n\'est pas une intensité connue. Valeurs acceptées : %s.', $input->intensity ?? '(absente)', implode(', ', ImplicitRuleIntensity::values())));
 
+        // P4-340 — OFF n'a de sens que pour une règle OPT-IN. Désactiver une règle historique
+        // serait un piège : le résolveur l'omettrait du payload et le moteur appliquerait alors son
+        // DÉFAUT HARD — le gestionnaire croirait l'avoir éteinte alors qu'elle s'imposerait quand
+        // même. On ferme la porte ici (422 français actionnable), seule maison backend du contrat.
+        if (ImplicitRuleIntensity::OFF === $intensity && !$ruleKey->isOptIn()) {
+            throw new UnprocessableEntityHttpException('Cette règle ne peut pas être désactivée : seule la règle « jours consécutifs d\'entraînement » est optionnelle.');
+        }
+
         $params = $this->validateAndBuildParams($ruleKey, $input);
 
         // Portée PLAN : matérialiser la copie totale au PREMIER réglage (un plan legacy passe de
@@ -149,7 +157,11 @@ final class ImplicitRuleSettingStateProcessor implements ProcessorInterface
             ? $this->resolver->resolve($clubId, $seasonId)
             : $this->resolver->resolveForPlan($clubId, $seasonId, $planId);
 
-        return ImplicitRuleSettingResource::fromResolved($ruleKey, $resolved[$ruleKey->value], false);
+        // P4-340 — quand on vient d'éteindre l'opt-in (OFF), le résolveur la SAUTE (elle sort du
+        // payload moteur) : `$resolved[ruleKey]` disparaît. On retombe alors sur l'entrée
+        // d'AFFICHAGE inactive (intensité OFF + seuil au défaut), jamais sur du vide — l'écran doit
+        // la montrer pour que le gestionnaire puisse la ré-activer.
+        return ImplicitRuleSettingResource::fromResolved($ruleKey, $resolved[$ruleKey->value] ?? ImplicitRuleResolver::inactiveEntry($ruleKey), false);
     }
 
     /**

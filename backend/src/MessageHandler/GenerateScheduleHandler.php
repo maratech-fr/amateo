@@ -11,6 +11,7 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
+use App\Exception\EngineRequestRejectedException;
 use App\Message\GenerateScheduleMessage;
 use App\Service\ClubGenerationLock;
 use App\Service\DevScheduleReportWriter;
@@ -361,6 +362,23 @@ final class GenerateScheduleHandler
             $this->metricsRecorder?->record($schedule, null, $payloadBytes);
             $this->entityManager->flush();
             $this->progressPublisher->publishSafely($schedule, ['warnings' => ['Schedule generation timed out.']]);
+            $this->writeResultFilesIfEnabled($schedule, $lotDir);
+
+            return;
+        } catch (EngineRequestRejectedException $rejected) {
+            // P4-340 — refus de CONTRAT (422 Pydantic) : échec terminal LISIBLE, jamais l'opaque
+            // « Schedule generation failed. » ni l'exception brute. Le message NOMME le(s) champ(s)
+            // en cause (le `loc` sans « body ») et ne fait fuir NI la valeur d'input refusée, NI le
+            // message anglais de Pydantic, NI l'URL interne du moteur. Patron de l'engine_timeout.
+            // Pas de « relancez » : un refus de contrat est déterministe (c'est aussi pourquoi
+            // `engine_rejected` est exclu de SERVICE_FAILURE_TYPES côté front).
+            $this->failSchedule($schedule, 'engine_rejected', \sprintf(
+                'Le moteur de calcul a refusé la demande de génération (contenu invalide). Champ(s) en cause : %s. Ce refus ne vient pas de votre saisie : signalez le problème.',
+                implode(', ', $rejected->getFields()),
+            ));
+            $this->metricsRecorder?->record($schedule, null, $payloadBytes);
+            $this->entityManager->flush();
+            $this->progressPublisher->publishSafely($schedule, ['warnings' => ['Le moteur de calcul a refusé la demande de génération.']]);
             $this->writeResultFilesIfEnabled($schedule, $lotDir);
 
             return;

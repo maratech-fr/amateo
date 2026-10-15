@@ -143,6 +143,14 @@ final class ImplicitRuleResolver
                 $resolved[$ruleKey->value] = self::defaultEntry($ruleKey);
                 continue;
             }
+            // P4-340 — une opt-in RÉSOLUE OFF (copie de plan matérialisée OFF pour un club neuf,
+            // ou opt-in stockée OFF en saison) est SAUTÉE, tout comme une opt-in absente : la
+            // sérialiser émettrait `intensity:"OFF"`, que le moteur refuse (422 Pydantic — il
+            // n'accepte que HARD/PREFERRED et lit l'absence comme « inactive »). Le PUT garde
+            // l'affichage inactif via le repli `inactiveEntry()`.
+            if ($ruleKey->isOptIn() && ImplicitRuleIntensity::OFF === $setting->getIntensity()) {
+                continue;
+            }
             $resolved[$ruleKey->value] = self::entryFrom($ruleKey, $setting->getIntensity(), $setting->getParams());
         }
 
