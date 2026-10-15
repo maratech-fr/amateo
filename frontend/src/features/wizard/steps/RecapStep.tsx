@@ -9,7 +9,7 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { cn } from "@/shared/lib/utils";
 
 import { FAMILY_LABEL, FAMILY_ORDER, groupConstraints } from "../lib/constraintOrder";
-import { LEVEL_LABEL } from "../lib/labels";
+import { LEVEL_LABEL } from "@/shared/lib/teamIdentity";
 import { coachMeta, groupedCoaches } from "../lib/ranking";
 import type { Reservation } from "../api";
 import { slotKey } from "../lib/reservationSlots";
