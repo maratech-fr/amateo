@@ -666,6 +666,7 @@
                                                         "enum": [
                                                             "every_10_minutes",
                                                             "daily",
+                                                            "weekly",
                                                             "quarterly"
                                                         ]
                                                     },

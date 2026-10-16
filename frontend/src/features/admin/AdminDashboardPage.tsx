@@ -921,6 +921,7 @@ function formatCadence(cadence: AdminJob["cadence"]): string {
   return {
     every_10_minutes: "Toutes les 10 minutes",
     daily: "Quotidien",
+    weekly: "Hebdomadaire",
     quarterly: "Trimestriel",
   }[cadence];
 }

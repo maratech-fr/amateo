@@ -7,12 +7,13 @@ namespace App\Tests\OpenApi;
 use ApiPlatform\OpenApi\Factory\OpenApiFactoryInterface;
 use App\AdminJob\AdminJobCatalog;
 use App\AdminJob\AdminJobDefinition;
+use App\OpenApi\PathContributor\AdminJobPaths;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * Promesse : l'enum `cadence` du catalogue des jobs exposé par l'OpenAPI
- * (`/api/admin/jobs`, {@see \App\OpenApi\PathContributor\AdminJobPaths}) couvre
+ * (`/api/admin/jobs`, {@see AdminJobPaths}) couvre
  * EXACTEMENT les cadences réellement servies par {@see AdminJobCatalog} — ni une
  * cadence documentée que le catalogue ne sert plus, ni (le trou qui a motivé ce
  * test) une cadence servie — `weekly`, posée par `db-restore-check` — absente du

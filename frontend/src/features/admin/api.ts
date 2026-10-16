@@ -186,7 +186,7 @@ export interface AdminJob {
   key: string;
   label: string;
   command: string;
-  cadence: "every_10_minutes" | "daily" | "quarterly";
+  cadence: "every_10_minutes" | "daily" | "weekly" | "quarterly";
   manualTriggerAllowed: boolean;
   nextRunAt: string;
   latestRun: {
