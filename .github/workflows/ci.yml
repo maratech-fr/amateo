@@ -185,7 +185,7 @@ jobs:
 
       # PHP — reads composer.lock, no vendor install needed. --abandoned=ignore: an
       # abandoned package is not a vulnerability (Composer 2.7+ would fail on it by default).
-      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: '8.4'
           tools: composer:v2
