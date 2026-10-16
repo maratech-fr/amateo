@@ -6,7 +6,9 @@ namespace App\State\Processor;
 
 use App\ApiResource\VenuePeriodOverrideResource;
 use App\Dto\VenuePeriodOverrideInput;
+use App\Entity\User;
 use App\Entity\VenuePeriodOverride;
+use App\Enum\AuditAction;
 use App\Enum\VenuePeriodMode;
 use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
@@ -72,7 +74,7 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
         // relevé en revue sécurité (2026-08-18).
         $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
 
-        return $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): object {
+        $output = $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): object {
             /** @var VenuePeriodOverrideResource $output */
             // P4-34 — filet de la COURSE : le contrôle d'existence est un
             // check-then-insert ; entre lui et le flush, le plan peut disparaître
@@ -84,6 +86,11 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
 
             return $output;
         });
+
+        // RGPD — réglage d'un gymnase de période : trace `grid.changed`, pas de mode antérieur.
+        $this->recordGridChanged($clubId, $output, before: null);
+
+        return $output;
     }
 
     /**
@@ -96,7 +103,7 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
         $existing = \is_string($id) ? $this->entityManager->getRepository(VenuePeriodOverride::class)->find($id) : null;
         $before = $existing?->getMode();
 
-        return $this->entityManager->wrapInTransaction(function () use ($input, $uriVariables, $clubId, $seasonId, $before): object {
+        $output = $this->entityManager->wrapInTransaction(function () use ($input, $uriVariables, $clubId, $seasonId, $before): object {
             /** @var VenuePeriodOverrideResource $output */
             $output = $this->rejectingConcurrentPlanDeletion(fn (): object => parent::processPut($input, $uriVariables, $clubId, $seasonId));
             // Seul un CHANGEMENT de mode agit sur la grille. Re-enregistrer le mode déjà
@@ -109,6 +116,12 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
 
             return $output;
         });
+
+        // RGPD — changement de réglage d'un gymnase de période : trace `grid.changed` avec le
+        // mode AVANT (relevé pré-écriture) et APRÈS (la ressource de sortie).
+        $this->recordGridChanged($clubId, $output, before: $before?->value);
+
+        return $output;
     }
 
     /**
@@ -205,6 +218,28 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
     protected function mapEntityToOutput(object $entity): VenuePeriodOverrideResource
     {
         return VenuePeriodOverrideResource::fromEntity($entity);
+    }
+
+    /**
+     * RGPD — écrit UNE ligne `grid.changed` pour un réglage de gymnase de période (pose ou
+     * changement). Details sans PII : id du gymnase, plan de période, mode avant/après.
+     */
+    private function recordGridChanged(?string $clubId, VenuePeriodOverrideResource $output, ?string $before): void
+    {
+        $actor = $this->actorSecurity?->getUser();
+        $this->auditTrail?->record(
+            AuditAction::GRID_CHANGED,
+            $actor instanceof User ? $actor->getId() : null,
+            $clubId,
+            'VenuePeriodOverride',
+            $output->id,
+            [
+                'venueId' => $output->venueId,
+                'schedulePlanId' => $output->schedulePlanId,
+                'before' => $before,
+                'after' => $output->mode,
+            ],
+        );
     }
 
     /**

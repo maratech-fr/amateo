@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Schedule;
+use App\Entity\User;
+use App\Enum\AuditAction;
+use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
+use App\Service\AuditTrail;
 use App\Service\ClubGenerationLock;
 use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
@@ -45,6 +49,7 @@ final class LoadLocksController extends AbstractController implements SeasonScop
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ClubGenerationLock $clubGenerationLock,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly AuditTrail $auditTrail,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -100,6 +105,34 @@ final class LoadLocksController extends AbstractController implements SeasonScop
         // Pose le pointeur (ne génère pas). Idempotent si déjà source.
         $this->schedulePlanProvisioner->pointLockSource($source->getSchedulePlanId(), $source->getId());
 
+        // RGPD — « Charger » adopte en bloc les verrous d'une version : UN SEUL événement agrégé
+        // portant un COMPTEUR (jamais une ligne par verrou). Le foyer est ICI, l'unique maison du
+        // geste « charger les verrous d'une période » : `pointLockSource` est aussi re-pointé à la
+        // complétion d'une génération (worker, système, sans acteur), un re-datage automatique qui
+        // n'est PAS le geste utilisateur que cette trace protège — l'auditer là brouillerait le
+        // journal et toucherait le rail de génération, hors de ce périmètre.
+        $actor = $this->getUser();
+        $this->auditTrail->record(
+            AuditAction::LOCK_CHANGED,
+            $actor instanceof User ? $actor->getId() : null,
+            $source->getClubId(),
+            'Schedule',
+            $source->getId(),
+            ['count' => $this->countHardLocks($source->getId())],
+        );
+
         return $this->json(['id' => $source->getId(), 'status' => $source->getStatus()->value], Response::HTTP_OK);
+    }
+
+    /**
+     * Le nombre de créneaux HARD de la version chargée — le COMPTEUR que porte la trace agrégée.
+     * SQL brut, lu sous le GUC tenant du club (RLS scope déjà la version à son club).
+     */
+    private function countHardLocks(string $scheduleId): int
+    {
+        return (int) $this->entityManager->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM schedule_slot_template WHERE schedule_id = :sid AND lock_level = :lvl',
+            ['sid' => $scheduleId, 'lvl' => LockLevel::HARD->value],
+        );
     }
 }
