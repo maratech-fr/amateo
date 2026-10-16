@@ -17,6 +17,7 @@ import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { nextVenueColor } from "@/shared/lib/color";
 import { useSocleValidated } from "@/shared/lib/socle";
+import { useTravelStream } from "@/shared/lib/travelStream";
 import { toast } from "@/shared/stores/toastStore";
 
 import { MatchWindowsEditor } from "@/features/matches/MatchWindowsEditor";
@@ -28,10 +29,11 @@ import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
 import { DAYS, hhmm } from "../lib/days";
 import { filterSalles } from "../lib/salleSuggestions";
 import { slotPlacementError } from "../lib/slotOverlap";
-import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardVenues } from "../queries";
+import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardVenues } from "../queries";
 import { venueGeoAlertMessage } from "../lib/venueGeoAlert";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
+import { WIZARD_TEXTS } from "../texts";
 import { PeriodVenues } from "./PeriodVenues";
 import { TravelMatrixModal } from "./TravelMatrixModal";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
@@ -96,13 +98,13 @@ export function ColorField({ venue, onApply }: { venue: Venue; onApply: (color: 
   return (
     <div className="flex items-center gap-1">
       <input
-        aria-label="Couleur"
+        aria-label={WIZARD_TEXTS.venueColorLabel}
         type="color"
         className="size-9 shrink-0 rounded border border-input bg-background"
         value={HEX_RE.test(hex) ? hex : current}
         onChange={(e) => commit(e.target.value)}
       />
-      <Input aria-label="Couleur (code)" className="h-9 w-24 font-mono text-xs" value={hex} placeholder="#3498DB" onChange={(e) => commit(e.target.value)} />
+      <Input aria-label={WIZARD_TEXTS.venueColorHexLabel} className="h-9 w-24 font-mono text-xs" value={hex} placeholder="#3498DB" onChange={(e) => commit(e.target.value)} />
     </div>
   );
 }
@@ -146,25 +148,25 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
 
   return (
     <Modal
-      label="Modifier le créneau"
-      title="Modifier le créneau"
+      label={WIZARD_TEXTS.editSlotTitle}
+      title={WIZARD_TEXTS.editSlotTitle}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" className="text-destructive" onClick={() => setConfirmDelete(true)}>
             <Trash2 className="size-4" />
-            Supprimer
+            {WIZARD_TEXTS.deleteLabel}
           </Button>
           <Button onClick={save} disabled={update.isPending}>
-            Enregistrer
+            {WIZARD_TEXTS.save}
           </Button>
         </>
       }
     >
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-xs text-muted-foreground">
-          Jour
-          <Select aria-label="Jour" className="mt-0.5 h-9" wrapperClassName="w-28" value={day} onChange={(e) => (setDay(Number(e.target.value)), setError(null))}>
+          {WIZARD_TEXTS.slotDayLabel}
+          <Select aria-label={WIZARD_TEXTS.slotDayLabel} className="mt-0.5 h-9" wrapperClassName="w-28" value={day} onChange={(e) => (setDay(Number(e.target.value)), setError(null))}>
             {/* Les SEPT jours, lus de la géométrie partagée. Ce select portait sa PROPRE
                 copie amputée du dimanche : un créneau du dimanche — désormais posable —
                 s'y ouvrait sur un champ VIDE, et le jour n'était pas rattrapable (P4-37). */}
@@ -176,18 +178,18 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
           </Select>
         </label>
         <label className="text-xs text-muted-foreground">
-          Début
-          <Input aria-label="Début" type="time" className="mt-0.5 h-9 w-28" value={time} onChange={(e) => (setTime(e.target.value), setError(null))} />
+          {WIZARD_TEXTS.slotStartLabel}
+          <Input aria-label={WIZARD_TEXTS.slotStartLabel} type="time" className="mt-0.5 h-9 w-28" value={time} onChange={(e) => (setTime(e.target.value), setError(null))} />
         </label>
         <label className="text-xs text-muted-foreground">
-          Durée
+          {WIZARD_TEXTS.slotDurationLabel}
           {/* D8 — « Autre… » ouvre une saisie libre (pas de 15, min 15, fin ≤ minuit vu le début). */}
-          <DurationSelect aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} present={[slot.durationMinutes]} startTime={time} onChange={(d) => (setDuration(d), setError(null))} />
+          <DurationSelect aria-label={WIZARD_TEXTS.slotDurationLabel} className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} present={[slot.durationMinutes]} startTime={time} onChange={(d) => (setDuration(d), setError(null))} />
         </label>
         {canSplit ? (
           <div className="text-xs text-muted-foreground">
-            {/* CapacitySelect's inner <select> carries aria-label="Capacité". */}
-            <span>Capacité</span>
+            {/* CapacitySelect's inner select carries the Capacité accessible name. */}
+            <span>{WIZARD_TEXTS.capacityLabel}</span>
             <CapacitySelect value={capacity} onChange={setCapacity} canSplit={canSplit} className="mt-0.5 block h-9 w-52" />
           </div>
         ) : null}
@@ -204,7 +206,7 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
 
       <DeleteConfirm
         open={confirmDelete}
-        entityName={`créneau ${DAYS.find((d) => d.n === slot.dayOfWeek)?.label ?? ""} ${hhmm(slot.startTime)}`.trim()}
+        entityName={WIZARD_TEXTS.slotEntityName(`${DAYS.find((d) => d.n === slot.dayOfWeek)?.label ?? ""} ${hhmm(slot.startTime)}`).trim()}
         affectsPeriodPlans
         // P4-108 : le serveur compte — l'écran ignorait les verrous HARD que la réservation
         // avait matérialisés, or ils partent avec le créneau.
@@ -227,7 +229,7 @@ export function VenuesStep() {
   const { mode, calendarEntryId } = useWizardStore();
   // Period mode never renders the seasonal editor (base-plan writes) — see TeamsStep.
   if ("period" === mode) {
-    return calendarEntryId ? <PeriodVenues calendarEntryId={calendarEntryId} /> : <EmptyHint>Période introuvable — revenez au cockpit pour l'ouvrir.</EmptyHint>;
+    return calendarEntryId ? <PeriodVenues calendarEntryId={calendarEntryId} /> : <EmptyHint>{WIZARD_TEXTS.periodNotFound}</EmptyHint>;
   }
   return <VenuesEditor />;
 }
@@ -258,6 +260,9 @@ function VenuesEditor() {
   const geoAlertById = new Map(geoAlerts.map((a) => [a.venueId, a] as const));
   const create = useCreateVenue();
   const update = useUpdateVenue();
+  // P4-279 — le PUT géo passe par son hook dédié : il confirme « Position enregistrée » au niveau
+  // hook (toast de succès), là où `useUpdateVenue` (renommage, couleur, divisible) reste muet.
+  const locate = useLocateVenue();
   const delVenue = useDeleteVenue();
   const addSlot = useCreateSlot();
 
@@ -322,12 +327,35 @@ function VenuesEditor() {
       venues.length >= 2 ? (
         <Button size="sm" variant="outline" onClick={() => setMatrixOpen(true)}>
           <Route className="size-4" />
-          Trajets entre gymnases
+          {WIZARD_TEXTS.venueTravelButton}
         </Button>
       ) : null,
     );
     return () => setFooterExtra(null);
   }, [venues.length, setFooterExtra]);
+
+  // P4-279 — tant que l'écran « Gymnases » est ouvert, il écoute le flux des trajets (décision
+  // fondateur : toast LOCAL, aucune écoute globale dans AppLayout). Le recalcul tourne dans le
+  // worker après une écriture géo : à la TRANSITION vers un terminal `VENUE_MATRIX`, on confirme
+  // « Trajets recalculés. ». On COMPARE au dernier événement vu (ref initialisée au montage) pour
+  // ne PAS toaster sur un terminal DÉJÀ passé (rouvrir l'écran ne rejoue pas un vieux recalcul), et
+  // on se tait si `TravelMatrixModal` est ouverte — elle montre déjà sa propre jauge/verdict.
+  // Double abonnement Mercure sans souci : `useTravelStream` est un singleton ref-compté
+  // (`shared/lib/travelStream.ts`) — modale + écran partagent une seule connexion.
+  const travelStream = useTravelStream(true);
+  const lastTravelRef = useRef(travelStream.latest);
+  useEffect(() => {
+    const previous = lastTravelRef.current;
+    const current = travelStream.latest;
+    lastTravelRef.current = current;
+    if (current === previous || matrixOpen) {
+      return;
+    }
+    if (null !== current && "VENUE_MATRIX" === current.scope && current.terminal) {
+      toast.success(WIZARD_TEXTS.travelRecomputed);
+    }
+  }, [travelStream.latest, matrixOpen]);
+
   const venueSlots = null === selected ? [] : slots.filter((s) => s.venueId === selected.id);
   // Les fenêtres match du gymnase affiché : la grille les rend en fantôme, la légende
   // n'apparaît que s'il y en a. Une seule dérivation pour les deux — sinon la légende
@@ -372,7 +400,7 @@ function VenuesEditor() {
     event.preventDefault();
     if ("" === name.trim()) {
       // Silent no-op was frustrating: surface why + jump to the empty field.
-      setAddError("Donnez un nom au gymnase avant de l'ajouter.");
+      setAddError(WIZARD_TEXTS.venueNameRequired);
       nameRef.current?.focus();
       return;
     }
@@ -380,11 +408,11 @@ function VenuesEditor() {
     // nouveau, c'est pas logique ») — une salle FFBB déjà LIÉE à un gymnase ne se
     // ré-ajoute pas, et un nom déjà pris non plus (l'existant se renomme/associe).
     if (null !== pendingSalle && null !== pendingSalle.externalRef && importedRefs.has(pendingSalle.externalRef)) {
-      setAddError("Cette salle FFBB est déjà liée à un de vos gymnases.");
+      setAddError(WIZARD_TEXTS.salleAlreadyLinked);
       return;
     }
     if (venues.some((v) => norm(v.name) === norm(name.trim()))) {
-      setAddError("Un gymnase porte déjà ce nom — utilisez l'existant, ou choisissez un autre nom.");
+      setAddError(WIZARD_TEXTS.venueNameTaken);
       return;
     }
     setAddError(null);
@@ -399,7 +427,7 @@ function VenuesEditor() {
     const anchor = null !== pendingSalle ? { externalRef: pendingSalle.externalRef, latitude: pendingSalle.latitude, longitude: pendingSalle.longitude } : {};
     create.mutate(
       { name: name.trim(), color, canSplit: false, ...anchor },
-      { onSuccess: (created) => (setSelectedId(created.id), toast.success(`Gymnase « ${created.name} » ajouté.`)) },
+      { onSuccess: (created) => (setSelectedId(created.id), toast.success(WIZARD_TEXTS.venueAdded(created.name))) },
     );
     setName("");
     setPendingSalle(null);
@@ -416,13 +444,11 @@ function VenuesEditor() {
 
   return (
     <div>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Ajoutez vos gymnases, puis cliquez dans la grille pour poser les créneaux de disponibilité (jour + heure). Un gymnase sans créneau ne peut pas être utilisé.
-      </p>
+      <p className="mb-4 text-sm text-muted-foreground">{WIZARD_TEXTS.venuesIntro}</p>
 
       {venuesLoaded ? (
       <AccordionSection
-        title="Ajouter des gymnases"
+        title={WIZARD_TEXTS.addVenuesSectionTitle}
         defaultOpen={0 === venues.length}
         className="mb-3"
       >
@@ -430,10 +456,10 @@ function VenuesEditor() {
         <div className="flex items-end gap-2">
           <Input
             ref={nameRef}
-            aria-label="Nom du gymnase"
+            aria-label={WIZARD_TEXTS.venueNameLabel}
             aria-invalid={null !== addError}
             aria-describedby={null !== addError ? "venue-add-error" : undefined}
-            placeholder="Nom du gymnase"
+            placeholder={WIZARD_TEXTS.venueNameLabel}
             className={`flex-1 ${null !== addError ? "border-destructive focus-visible:ring-destructive" : ""}`}
             value={name}
             onFocus={() => setNameFocused(true)}
@@ -449,9 +475,9 @@ function VenuesEditor() {
             }}
           />
           <Input
-            aria-label="Commune (code postal)"
-            title="Les salles proposées sont celles de cette commune — changez le code postal pour une salle voisine."
-            placeholder="CP"
+            aria-label={WIZARD_TEXTS.communeCodeLabel}
+            title={WIZARD_TEXTS.communeCodeHelp}
+            placeholder={WIZARD_TEXTS.cpPlaceholder}
             inputMode="numeric"
             maxLength={5}
             className="w-20"
@@ -460,14 +486,14 @@ function VenuesEditor() {
           />
           <Button type="submit" size="sm" disabled={create.isPending}>
             <Plus className="size-3.5" />
-            Ajouter un gymnase
+            {WIZARD_TEXTS.addVenueButton}
           </Button>
         </div>
         {/* Suggestions FFBB (P2-20) — la liste PROPOSE, n'impose jamais : la
             saisie libre au-dessus marche comme avant. onMouseDown (pas onClick) :
             le blur du champ retirerait la liste avant que le clic n'aboutisse. */}
         {suggestions.length > 0 ? (
-          <ul aria-label={`Salles FFBB à ${cp}`} className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border bg-background py-1 text-sm">
+          <ul aria-label={WIZARD_TEXTS.sallesAtLabel(cp)} className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border bg-background py-1 text-sm">
             {suggestions.map((salle) => {
               // Déjà lié à un gymnase du club : la ligne reste LISIBLE (nommer)
               // mais fermée au geste fautif — re-choisir referait un doublon.
@@ -487,7 +513,7 @@ function VenuesEditor() {
                   >
                     <span className="font-medium">{salle.name}</span>
                     {salle.address ? <span className="truncate text-xs text-muted-foreground">{salle.address}</span> : null}
-                    {linked ? <span className="ml-auto shrink-0 text-xs text-muted-foreground">déjà lié ✓</span> : null}
+                    {linked ? <span className="ml-auto shrink-0 text-xs text-muted-foreground">{WIZARD_TEXTS.alreadyLinkedTag}</span> : null}
                   </button>
                 </li>
               );
@@ -512,21 +538,19 @@ function VenuesEditor() {
       {(nearbyQuery.data?.salles.length ?? 0) > 0 ? (
         <div className="rounded-lg border border-border bg-card p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Gymnases à proximité (FFBB{null != nearbyQuery.data?.radiusKm ? `, ${nearbyQuery.data.radiusKm} km` : ""}) — cliquez pour ajouter, renommez ensuite à votre main :
-            </span>
-            <Select aria-label="Rayon de recherche" className="ml-auto text-xs" wrapperClassName="w-28" value={nearbyRadius ?? "auto"} onChange={(e) => setNearbyRadius("auto" === e.target.value ? null : Number(e.target.value))}>
-              <option value="auto">Auto</option>
+            <span className="text-xs font-medium text-muted-foreground">{WIZARD_TEXTS.nearbyVenuesTitle(nearbyQuery.data?.radiusKm ?? null)}</span>
+            <Select aria-label={WIZARD_TEXTS.searchRadiusLabel} className="ml-auto text-xs" wrapperClassName="w-28" value={nearbyRadius ?? "auto"} onChange={(e) => setNearbyRadius("auto" === e.target.value ? null : Number(e.target.value))}>
+              <option value="auto">{WIZARD_TEXTS.radiusAuto}</option>
               {[3, 5, 10, 20].map((km) => (
                 <option key={km} value={km}>
-                  {km} km
+                  {WIZARD_TEXTS.kmOption(km)}
                 </option>
               ))}
             </Select>
           </div>
           <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto">
             {0 === filteredNearby.length ? (
-              <li className="text-xs text-muted-foreground">Aucune salle FFBB ne correspond à « {name.trim()} » — ajoutez-le comme gymnase avec le bouton +.</li>
+              <li className="text-xs text-muted-foreground">{WIZARD_TEXTS.noSalleMatches(name.trim())}</li>
             ) : null}
             {filteredNearby.map((salle) => {
               const added = null !== salle.externalRef && importedRefs.has(salle.externalRef);
@@ -542,11 +566,11 @@ function VenuesEditor() {
                       pendingColorsRef.current.push(color);
                       create.mutate(
                         { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, latitude: salle.latitude, longitude: salle.longitude },
-                        { onSuccess: (created) => (setSelectedId(created.id), toast.success(`Gymnase « ${created.name} » ajouté.`)) },
+                        { onSuccess: (created) => (setSelectedId(created.id), toast.success(WIZARD_TEXTS.venueAdded(created.name))) },
                       );
                     }}
                   >
-                    {added ? "✓ Ajouté" : "+ Ajouter"}
+                    {added ? WIZARD_TEXTS.addedTag : WIZARD_TEXTS.addTag}
                   </Button>
                   {/* « Associer à… » (demande fondateur 2026-08-05) : cette salle EST un
                       gymnase déjà saisi à la main — on pose numéro fédéral + GPS sur LE
@@ -555,8 +579,8 @@ function VenuesEditor() {
                       liste (menu custom — le natif ne sait pas les rendre). */}
                   {!added && null !== salle.externalRef && venues.some((v) => null == v.externalRef) ? (
                     <Menu
-                      label={`Associer ${salle.name} à un gymnase existant`}
-                      trigger={<span className="text-xs">Associer à…</span>}
+                      label={WIZARD_TEXTS.associateMenuLabel(salle.name)}
+                      trigger={<span className="text-xs">{WIZARD_TEXTS.associateTrigger}</span>}
                       triggerClassName="w-auto shrink-0 rounded-md border border-input px-2 text-xs"
                     >
                       {venues.filter((v) => null == v.externalRef).map((v) => (
@@ -569,7 +593,7 @@ function VenuesEditor() {
                                 id: v.id,
                                 body: { name: v.name, color: v.color, canSplit: v.canSplit, isActive: v.isActive, externalRef: salle.externalRef, latitude: salle.latitude, longitude: salle.longitude },
                               },
-                              { onSuccess: () => toast.success(`« ${salle.name} » associé à « ${v.name} ».`) },
+                              { onSuccess: () => toast.success(WIZARD_TEXTS.salleLinkedToVenue(salle.name, v.name)) },
                             )
                           }
                         >
@@ -591,27 +615,25 @@ function VenuesEditor() {
 
       {emptyVenues.length > 0 ? (
         <p role="alert" className="mb-3 text-sm text-destructive">
-          {emptyVenues.length > 1
-            ? "Ces gymnases doivent avoir au moins un créneau d'entraînement ou une fenêtre match"
-            : "Ce gymnase doit avoir au moins un créneau d'entraînement ou une fenêtre match"}{" "}
+          {emptyVenues.length > 1 ? WIZARD_TEXTS.emptyVenuesPlural : WIZARD_TEXTS.emptyVenuesSingular}{" "}
           : {emptyVenues.map((v) => v.name).join(", ")}.
         </p>
       ) : null}
 
       {null === selected ? (
-        <EmptyHint>Aucun gymnase pour le moment.</EmptyHint>
+        <EmptyHint>{WIZARD_TEXTS.noVenuesYet}</EmptyHint>
       ) : (
         <>
           {/* Selection row — pick WHICH gym to work on (kept visually separate
               from the edit card below so the two intents don't blur together). */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <label className="text-sm font-medium" htmlFor="venue-picker">
-              Gymnase :
+              {WIZARD_TEXTS.venuePickerLabel}
             </label>
             {/* Pastille couleur dans chaque option ET le trigger — VenueSelect partagé (Listbox). */}
             <VenueSelect
               id="venue-picker"
-              aria-label="Gymnase"
+              aria-label={WIZARD_TEXTS.venueSelectAria}
               className="h-9"
               wrapperClassName="w-60"
               venues={venues.map((v) => ({
@@ -622,7 +644,7 @@ function VenuesEditor() {
                 // (verdict serveur) — texte + icône, jamais la couleur seule.
                 badge: geoAlertById.has(v.id) ? (
                   <StatusPill variant="warning" icon={<AlertTriangle className="size-3 text-warning" />}>
-                    À vérifier
+                    {WIZARD_TEXTS.toCheckTag}
                   </StatusPill>
                 ) : undefined,
               }))}
@@ -639,18 +661,18 @@ function VenuesEditor() {
 
           {/* Edit card — properties of the SELECTED gym (distinct block). */}
           <div className="mb-3 rounded-lg border border-border bg-card p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">Édition du gymnase « {selected.name} »</div>
+            <div className="mb-2 text-xs font-medium text-muted-foreground">{WIZARD_TEXTS.venueEditHeading(selected.name)}</div>
             <div className="flex flex-wrap items-center gap-3">
               <ColorField key={`color-${selected.id}`} venue={selected} onApply={(color) => update.mutate({ id: selected.id, body: { name: selected.name, color, canSplit: selected.canSplit } })} />
               <Input
-                aria-label="Renommer le gymnase"
+                aria-label={WIZARD_TEXTS.renameVenueLabel}
                 className="h-9 w-56"
                 defaultValue={selected.name}
                 key={`name-${selected.id}`}
                 onChange={(e) => setVenueName(e.target.value)}
                 onBlur={() => venueName.trim() && venueName !== selected.name && update.mutate({ id: selected.id, body: { name: venueName.trim(), color: selected.color, canSplit: selected.canSplit } })}
               />
-              <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Un gymnase divisible peut accueillir 2 équipes en même temps (terrain coupé en deux).">
+              <label className="flex items-center gap-1 text-xs text-muted-foreground" title={WIZARD_TEXTS.splitVenueHelp}>
                 <input
                   type="checkbox"
                   checked={selected.canSplit}
@@ -669,9 +691,9 @@ function VenuesEditor() {
                     update.mutate({ id: selected.id, body: { name: selected.name, color: selected.color, canSplit: next } });
                   }}
                 />
-                Terrain divisible
+                {WIZARD_TEXTS.splitVenueLabel}
               </label>
-              <Button size="icon" variant="ghost" className="ml-auto size-8 text-destructive" onClick={() => setPendingDeleteVenue(selected)} title="Supprimer ce gymnase" aria-label="Supprimer ce gymnase">
+              <Button size="icon" variant="ghost" className="ml-auto size-8 text-destructive" onClick={() => setPendingDeleteVenue(selected)} title={WIZARD_TEXTS.deleteVenueLabel} aria-label={WIZARD_TEXTS.deleteVenueLabel}>
                 <Trash2 className="size-4" />
               </Button>
             </div>
@@ -695,7 +717,7 @@ function VenuesEditor() {
               <VenueGeocodeField
                 key={`geo-${selected.id}`}
                 venue={selected}
-                onLocate={({ address, latitude, longitude }) => update.mutate({ id: selected.id, body: { name: selected.name, address, latitude, longitude } })}
+                onLocate={({ address, latitude, longitude }) => locate.mutate({ id: selected.id, body: { name: selected.name, address, latitude, longitude } })}
               />
             </div>
           </div>
@@ -708,22 +730,22 @@ function VenuesEditor() {
               role="status"
               className="mb-3"
               icon={<Lock className="size-4 text-muted-foreground" />}
-              message="Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de saison pour les modifier."
+              message={WIZARD_TEXTS.slotsReadOnlyNotice}
             />
           ) : (
           /* Slot-placement toolbar — only the duration of the next dropped slot.
               Capacity is set per-slot in the edit panel (a new slot is always 1). */
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">À poser :</span>
+            <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toPlaceLabel}</span>
             {/* D8 — même sélecteur partagé ; pas d'heure connue ici (le début vient du clic
                 sur la grille) : la borne de minuit est vérifiée à la pose (`slotPlacementError`). */}
-            <DurationSelect aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={duration} onChange={setDuration} />
+            <DurationSelect aria-label={WIZARD_TEXTS.durationToPlaceLabel} className="h-9" wrapperClassName="w-24" value={duration} onChange={setDuration} />
             {/* L'indice manquait : la barre annonçait une durée sans dire ce qu'on en fait
                 (retour terrain). Il vit ICI, là où le regard est déjà au moment où la
                 question se pose. */}
             {/* « un créneau » tout court devenait ambigu dès qu'une plage match s'affiche
                 dans la même grille : on dit ce que le clic pose. */}
-            <span className="text-xs text-muted-foreground">— cliquez la grille pour ajouter un créneau d'entraînement</span>
+            <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.clickGridHint}</span>
             {/* La hachure est un motif MUET sans ce mot : elle apparaît dans la grille sans
                 que rien n'en dise le sens. La légende ne s'affiche que s'il y a quelque
                 chose à légender. */}
@@ -734,7 +756,7 @@ function VenuesEditor() {
                   className="inline-block size-3 rounded-sm border border-dashed border-accent/60"
                   style={{ backgroundImage: "repeating-linear-gradient(45deg, color-mix(in oklch, var(--accent) 18%, transparent) 0 4px, transparent 4px 9px)" }}
                 />
-                accès match modifiable en bas de l'écran uniquement
+                {WIZARD_TEXTS.matchAccessHint}
               </span>
             ) : null}
           </div>
@@ -781,9 +803,7 @@ function VenuesEditor() {
               c'est le cas du BCCL, pas de tous les clubs — certains dépendent
               d'un conseil départemental, d'un lycée ou d'une salle privée. */}
           <div className="mt-3 rounded-lg border border-border bg-card p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">
-              Accès match de « {selected.name} » (créneaux accordés les jours de match)
-            </div>
+            <div className="mb-2 text-xs font-medium text-muted-foreground">{WIZARD_TEXTS.matchAccessHeading(selected.name)}</div>
             <MatchWindowsEditor venueId={selected.id} />
           </div>
         </>
@@ -811,12 +831,12 @@ function VenuesEditor() {
           Le 422 backend reste le filet si cette modale est contournée. */}
       <ConfirmDialog
         open={pendingSplitOff !== null}
-        title={pendingSplitOff ? `Rendre « ${pendingSplitOff.venue.name} » indivisible ?` : ""}
-        confirmLabel="Rendre indivisible"
+        title={pendingSplitOff ? WIZARD_TEXTS.makeIndivisibleTitle(pendingSplitOff.venue.name) : ""}
+        confirmLabel={WIZARD_TEXTS.makeIndivisibleConfirm}
         description={
           pendingSplitOff ? (
             <>
-              Ces créneaux repasseront à 1 équipe et leurs réservations seront vidées — vous devrez re-réserver&nbsp;:
+              {WIZARD_TEXTS.splitCascadeDescription}
               <ul className="mt-2 list-disc space-y-0.5 pl-5">
                 {pendingSplitOff.preview.slots.map((s) => (
                   <li key={s.id}>
@@ -825,10 +845,7 @@ function VenuesEditor() {
                 ))}
               </ul>
               {pendingSplitOff.preview.reservationCount > 0 ? (
-                <p className="mt-3 font-medium text-foreground">
-                  {pendingSplitOff.preview.reservationCount}{" "}
-                  {pendingSplitOff.preview.reservationCount > 1 ? "réservations seront vidées" : "réservation sera vidée"}.
-                </p>
+                <p className="mt-3 font-medium text-foreground">{WIZARD_TEXTS.reservationsEmptied(pendingSplitOff.preview.reservationCount)}</p>
               ) : null}
             </>
           ) : undefined
