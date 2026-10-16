@@ -2,7 +2,7 @@
 # base — runtime commun : système, code applicatif, dépendances de PROD SEULES
 # (`pip install "."`, sans l'extra [dev]). L'étage `prod` ci-dessous s'arrête ici ;
 # l'étage `dev` (le dernier, défaut des builds sans --target) ajoute les outils.
-FROM python:3.12-slim AS base
+FROM python:3.14-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
