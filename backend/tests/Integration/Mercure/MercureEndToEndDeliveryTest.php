@@ -113,6 +113,44 @@ final class MercureEndToEndDeliveryTest extends WebTestCase
         self::assertNull($leaked, 'le hub ne doit JAMAIS délivrer une update privée d’un club à l’abonné d’un autre club (SEC-05/06)');
     }
 
+    /**
+     * Chemin d'abus NOMMÉ — frontière tenant sur le SEUL sélecteur à MOTIF (génération,
+     * `match_urlpattern`) : un abonné d'un AUTRE club, muni d'un jeton VALIDE, qui s'abonne EXPRÈS
+     * au GABARIT de génération d'un premier club — voire à un motif LARGE couvrant tous les clubs —
+     * ne reçoit RIEN de l'update PRIVÉE publiée sur un planning de ce club. Le hub accepte
+     * l'abonnement au motif, mais n'honore une update privée qu'aux porteurs d'un jeton qui autorise
+     * CE topic (SEC-05/06) : c'est le `clubId` LITTÉRAL interpolé dans
+     * {@see MercureTopic::selectorForClub()} qui fait la frontière, jamais le groupe URLPattern `:id`.
+     * Le jumeau {@see self::testASubscriberOfAnotherClubNeverReceivesAClubsPrivateUpdates()} prouve la
+     * même étanchéité sur un topic EXACT (trajets) ; ici c'est le sélecteur à MOTIF qui est verrouillé.
+     *
+     * Contrôle POSITIF (le même gabarit DÉLIVRE bien au bon club) déjà couvert par la promesse
+     * nominale {@see self::testEachOfTheThreeClubTopicsIsDeliveredToAnAuthenticatedSubscriberOfThatClub()}
+     * (génération, `match_urlpattern` sur `topicTemplate`).
+     */
+    public function testASubscriberOfAnotherClubNeverReceivesAClubsPrivateGenerationUpdatesViaUrlPattern(): void
+    {
+        [, $clubA] = $this->memberOfAFreshClub('owner-gen');
+        [$tokenB] = $this->memberOfAFreshClub('intruder-gen');
+        $intruder = $this->fetchSubscriberToken($tokenB);
+        $hub = $this->hub();
+
+        $scheduleId = Uuid::v4()->toRfc4122();
+        $privateTopic = MercureTopic::for($clubA, $scheduleId);
+        $publishPrivateToA = fn (): string => $hub->publish(ClubTopicUpdate::private($privateTopic, json_encode(['scheduleId' => $scheduleId, 'status' => 'COMPLETED'], \JSON_THROW_ON_ERROR)));
+
+        // B s'abonne EXPRÈS au GABARIT de génération de A (match_urlpattern) : le hub accepte
+        // l'abonnement au motif, mais l'update privée de A ne lui est jamais délivrée.
+        $leakedViaTemplate = $this->firstSsePayload($intruder['hubToken'], 'match_urlpattern', MercureTopic::selectorForClub($clubA), $publishPrivateToA);
+        self::assertNull($leakedViaTemplate, 'le hub ne doit JAMAIS délivrer une update privée de génération d’un club à l’abonné d’un autre club, fût-il abonné à son gabarit (SEC-05/06)');
+
+        // B tente un motif LARGE couvrant tous les clubs : soit le hub refuse l'abonnement
+        // (400/401 — motif hors autorisation), soit il l'accepte mais filtre la délivrance ; les
+        // deux sont des refus acceptables — B ne reçoit rien dans un cas comme dans l'autre.
+        $leakedViaWildcard = $this->firstSsePayload($intruder['hubToken'], 'match_urlpattern', '/clubs/:c/schedules/:id', $publishPrivateToA, requireAccepted: false);
+        self::assertNull($leakedViaWildcard, 'un motif large ne contourne pas l’autorisation par topic : aucune update privée d’un autre club n’est délivrée (SEC-05/06)');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -133,8 +171,13 @@ final class MercureEndToEndDeliveryTest extends WebTestCase
      *
      * La séquence compte : on force l'ouverture de la connexion (lecture du code HTTP) AVANT de
      * publier — un abonné SSE ne reçoit que ce qui est émis APRÈS sa connexion, jamais l'historique.
+     *
+     * `$requireAccepted` (défaut vrai) exige que le hub accepte l'abonnement (200) : c'est le cas
+     * nominal et le cas d'abus sur un sélecteur bien formé. Le passer à FAUX pour un motif large,
+     * où un refus d'abonnement (400/401) est une NON-délivrance tout aussi acceptable : on rend
+     * alors `null` sans assertion sur le code HTTP.
      */
-    private function firstSsePayload(string $hubToken, string $matchParam, string $selector, callable $publish): ?string
+    private function firstSsePayload(string $hubToken, string $matchParam, string $selector, callable $publish, bool $requireAccepted = true): ?string
     {
         $base = (string) (getenv('MERCURE_URL') ?: $_ENV['MERCURE_URL'] ?? $_SERVER['MERCURE_URL'] ?? '');
         self::assertNotSame('', $base, 'MERCURE_URL doit pointer le hub dans l’environnement de test');
@@ -148,7 +191,14 @@ final class MercureEndToEndDeliveryTest extends WebTestCase
         ]);
 
         // Force l'envoi de la requête et la réception des en-têtes : la connexion SSE est ouverte.
-        self::assertSame(200, $response->getStatusCode(), 'le hub doit accepter l’abonnement (jeton 1.0 valide, protocole commun)');
+        $status = $response->getStatusCode();
+        if (!$requireAccepted && 200 !== $status) {
+            // Le hub refuse l'abonnement au motif (hors autorisation) : aucune délivrance possible.
+            $response->cancel();
+
+            return null;
+        }
+        self::assertSame(200, $status, 'le hub doit accepter l’abonnement (jeton 1.0 valide, protocole commun)');
 
         $publish();
 
