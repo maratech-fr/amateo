@@ -519,6 +519,16 @@ par `MatchConflictDetector::competitionIncompleteItems` (type `COMPETITION_INCOM
 `ConflictRadarLoader` joint l'échéance effective de chaque compétition (club gagne, sinon le défaut
 communautaire — § « Échéances de saisie ligue/comité » ci-dessous).
 
+**Équipe sans niveau** (`TEAM_LEVEL_MISSING`, P4-288, décision fondateur 2026-10-16) : une équipe
+ABSENTE de la table niveau (`levelByTeam`) ayant ≥ 1 rencontre RETENUE (même filtre « matchs
+actifs », non jouée, que les autres familles) lève une info UNIQUE — **une entrée par ÉQUIPE,
+jamais par rencontre** (`MatchConflictDetector::teamLevelMissingItems`), jeune OU senior
+(`Team.level` nullable pour toutes). Sans niveau, `LeagueEnvelopeResolver::matches` ne rattache
+aucun créneau de ligue : ses matchs sont posés sans fenêtre de division, aussi bien au radar qu'au
+solveur de placement (§3, diagnostic `league_envelope_unresolved` déjà existant côté engine). Une
+équipe qui A un niveau ne la lève jamais, fenêtre de ligue déclarée ou pas. Empreinte
+`TEAM_LEVEL_MISSING:{teamId}` (`ConflictFingerprinter`).
+
 **Échelle de sévérité (1..7, émise par le serveur)** : 1 `VENUE_OVERLAP` · 2
 `LEAGUE_WINDOW_VIOLATION` (équipe mappée seulement) · 3 clash dur `MATCH_MATCH`/`MATCH_TRAINING` +
 `CLUB_RULE_VIOLATION` (P4-272 ③ — un domicile placé dont le coup d'envoi viole une règle CLUB
@@ -535,8 +545,10 @@ aucune) · 5 clash adouci +
 `COMPETITION_INCOMPLETE` reason `OVER`/`INCOHERENT` (alerte, § « Cohérence de complétude »
 ci-dessus) · 7 `COMPETITION_INCOMPLETE` reason `PENDING` (info, repliée) + `AWAY_NO_FOOTPRINT`
 (angle mort nommé : extérieur sans heure ni habitude du bon jour — JAMAIS émis pour une équipe
-LOISIR_ADULTE/LOISIR_JEUNE, qui n'a ni calendrier ligue ni habitude à déclarer). Réponse : bornes
-datées en heure MURALE du club (jamais un offset).
+LOISIR_ADULTE/LOISIR_JEUNE, qui n'a ni calendrier ligue ni habitude à déclarer) + `TEAM_LEVEL_MISSING`
+(§ « Équipe sans niveau » ci-dessus, info repliée, ajoutée EN FIN de liste pour ne jamais changer
+l'item en tête des familles plus graves). Réponse : bornes datées en heure MURALE du club (jamais un
+offset).
 
 **Détail par côté** : `ConflictMoments::fixtureView` sert quatre champs additifs par côté
 (`estimatedKickoffTime`, `travelOneWayMinutes` — `null` = trajet non modélisé,
@@ -948,7 +960,7 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
 - **Chips familles et puces « Traitement »** rendues par la primitive partagée `FilterChip`
   (`shared/components/ui/filter-chip.tsx`, sœur de `FilterToggle`) — maison unique du motif puce
   `aria-pressed` bordée à compteur, aussi consommée par la chip « Familles » du Calendrier (§5).
-- **Chips familles** (9 `ConflictType`, backend et frontend ALIGNÉS — la famille
+- **Chips familles** (`ConflictType`, backend et frontend ALIGNÉS — la famille
   `TEAM_LINK_OVERLAP`/« Passerelle » n'est plus dans le contrat public ni dans le frontend
   (`conflictLabels.ts`/`api.ts`) ; un ancien lien profond qui la citerait est ignoré proprement,
   comme une famille fictive. Toutes cochées par défaut, compteur SAISON, à
