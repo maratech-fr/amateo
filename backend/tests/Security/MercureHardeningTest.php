@@ -14,6 +14,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * SEC-05/06 non-regression: the Mercure hub must stay hardened. Static guard on
@@ -35,6 +36,17 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * le hub est épinglé à une version 1.x EXACTE (jamais `latest`, jamais une 0.x), et la MÊME
  * version dans `docker-compose.yml` et `docker-compose.prod.yml` — un jeton 1.0 (`authorization_
  * details`, `at+jwt`) parle au hub, un décalage de version casse le temps réel en silence.
+ *
+ * Mercure 1.0 — AUDIENCE DU JETON PUBLIEUR (axe *generation pipeline*). Le hub 1.0 ENFORCE
+ * l'audience (`resource_identifier`, RFC 9068 `aud`) : TOUT service qui exécute le code backend
+ * (image/build `docker/php/Dockerfile`) publie sur le hub — php-fpm en synchrone, messenger-worker
+ * la progression de génération et les trajets, cron-runner le placement — et son jeton publieur
+ * porte en `aud` la valeur de `MERCURE_PUBLIC_URL`. Si un seul de ces services ne reçoit pas
+ * `MERCURE_PUBLIC_URL` aligné sur le `resource_identifier` du hub, il retombe sur le fallback de
+ * `backend/.env` (`http://localhost:3000/…`), le hub rejette (« invalid JWT: token has invalid
+ * audience ») et sa publication est perdue EN SILENCE — invisible en CI (port 3000 par défaut),
+ * cassé sur le poste du fondateur (`MERCURE_PORT=13009`) et en PROD. Gardé par
+ * `testEveryBackendServiceCarriesTheHubAudienceAsMercurePublicUrl`.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -159,6 +171,48 @@ final class MercureHardeningTest extends WebTestCase
         );
     }
 
+    /**
+     * TOUT service backend (image/build `docker/php/Dockerfile`, hors cible nginx) reçoit
+     * `MERCURE_PUBLIC_URL` — l'`aud` de son jeton publieur — avec la MÊME URL que le
+     * `resource_identifier` du hub. Rouge aujourd'hui pour messenger-worker et cron-runner, dans les
+     * DEUX compose : sans cette ligne, ces publieurs sont rejetés par le hub 1.0 et le temps réel
+     * (progression de génération, trajets, placement) meurt en silence hors CI et en prod.
+     *
+     * ⚠ FALSIFICATION : retirer la ligne `MERCURE_PUBLIC_URL` d'un service backend d'un des deux
+     * fichiers → ce test rougit en NOMMANT le service fautif et son fichier.
+     */
+    public function testEveryBackendServiceCarriesTheHubAudienceAsMercurePublicUrl(): void
+    {
+        foreach (['docker-compose.yml' => $this->compose, 'docker-compose.prod.yml' => $this->composeProd] as $file => $contents) {
+            $services = $this->parseServices($contents);
+            $hubAudience = $this->normalizeInterpolation($this->mercureResourceIdentifier($services, $file));
+
+            $backendServices = $this->backendServiceNames($services);
+            self::assertNotEmpty($backendServices, \sprintf('%s doit déclarer au moins un service backend (image/build docker/php/Dockerfile).', $file));
+
+            foreach ($backendServices as $name) {
+                $publicUrl = $this->serviceEnv($services, $name, 'MERCURE_PUBLIC_URL');
+                self::assertNotNull(
+                    $publicUrl,
+                    \sprintf(
+                        '%s : le service « %s » exécute le code backend et PUBLIE sur Mercure, mais ne reçoit pas MERCURE_PUBLIC_URL — son jeton publieur retombe sur le fallback backend/.env et le hub 1.0 rejette l\'audience (temps réel perdu en silence).',
+                        $file,
+                        $name,
+                    ),
+                );
+                self::assertSame(
+                    $hubAudience,
+                    $this->normalizeInterpolation($publicUrl),
+                    \sprintf(
+                        '%s : MERCURE_PUBLIC_URL de « %s » doit valoir l\'URL du resource_identifier du hub (même audience RFC 9068, même expression d\'interpolation).',
+                        $file,
+                        $name,
+                    ),
+                );
+            }
+        }
+    }
+
     protected function setUp(): void
     {
         // Repo root is mounted at /app (./:/app); tests run in /app/backend.
@@ -187,6 +241,100 @@ final class MercureHardeningTest extends WebTestCase
     private function readCompose(): string
     {
         return $this->compose;
+    }
+
+    /**
+     * @return array<string, mixed> les services déclarés dans un fichier compose, par nom
+     */
+    private function parseServices(string $contents): array
+    {
+        $parsed = Yaml::parse($contents);
+        self::assertIsArray($parsed);
+        $services = $parsed['services'] ?? null;
+        self::assertIsArray($services, 'le fichier compose doit déclarer des services');
+
+        return $services;
+    }
+
+    /**
+     * Services qui exécutent le code backend : image/build `docker/php/Dockerfile`, hors cible
+     * `nginx*` (le serveur web partage le Dockerfile mais ne lance aucun code PHP → il ne publie
+     * jamais sur le hub). Attrape donc php-fpm, messenger-worker, cron-runner, et tout futur service
+     * du même image/build.
+     *
+     * @param array<string, mixed> $services
+     *
+     * @return list<string>
+     */
+    private function backendServiceNames(array $services): array
+    {
+        $names = [];
+        foreach ($services as $name => $svc) {
+            if (!\is_array($svc)) {
+                continue;
+            }
+            $build = $svc['build'] ?? null;
+            if (!\is_array($build)) {
+                continue;
+            }
+            $dockerfile = $build['dockerfile'] ?? null;
+            if (!\is_string($dockerfile) || !str_ends_with($dockerfile, 'docker/php/Dockerfile')) {
+                continue;
+            }
+            $target = $build['target'] ?? null;
+            if (\is_string($target) && str_contains($target, 'nginx')) {
+                continue;
+            }
+            $names[] = (string) $name;
+        }
+
+        return $names;
+    }
+
+    /**
+     * L'URL (expression d'interpolation) du `resource_identifier` déclaré par le hub mercure — c'est
+     * l'audience RFC 9068 que le hub EXIGE de chaque jeton publieur.
+     *
+     * @param array<string, mixed> $services
+     */
+    private function mercureResourceIdentifier(array $services, string $file): string
+    {
+        $directives = $this->serviceEnv($services, 'mercure', 'MERCURE_EXTRA_DIRECTIVES');
+        if (null === $directives || 1 !== preg_match('/resource_identifier\s+(\S+)/', $directives, $m)) {
+            self::fail(\sprintf('%s : le hub mercure doit déclarer un resource_identifier (audience RFC 9068).', $file));
+        }
+
+        return $m[1];
+    }
+
+    /**
+     * La valeur (chaîne) d'une variable d'environnement d'un service, ou null si absente.
+     *
+     * @param array<string, mixed> $services
+     */
+    private function serviceEnv(array $services, string $service, string $key): ?string
+    {
+        $svc = $services[$service] ?? null;
+        if (!\is_array($svc)) {
+            return null;
+        }
+        $env = $svc['environment'] ?? null;
+        if (!\is_array($env)) {
+            return null;
+        }
+        $value = $env[$key] ?? null;
+
+        return \is_string($value) ? $value : null;
+    }
+
+    /**
+     * Efface l'annotation de MESSAGE d'erreur d'interpolation `${VAR:?msg}` → `${VAR}` : le message
+     * est cosmétique, la valeur résolue est identique. Permet de comparer l'URL du publieur et celle
+     * du hub même quand l'un porte `${PUBLIC_BASE_URL:?set …}` et l'autre `${PUBLIC_BASE_URL:?}`.
+     */
+    private function normalizeInterpolation(string $expr): string
+    {
+        return preg_replace('/(\$\{[A-Za-z_][A-Za-z0-9_]*):\?[^}]*\}/', '$1}', $expr) ?? $expr;
     }
 
     /** Club DÉMO (is_demo) à `simulated_today` posé + gestionnaire actif ; rend son JWT. */
