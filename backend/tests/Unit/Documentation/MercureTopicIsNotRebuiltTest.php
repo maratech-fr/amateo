@@ -10,8 +10,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * D-10 — le topic Mercure ne se reconstruit pas à la main.
  *
- * Le format `club:{id}:schedule:{id}` était bâti par SIX `sprintf` dispersés face à UN
- * sélecteur d'abonnement. Extraire `MercureTopic` supprime les six copies — mais n'empêche
+ * Le format `/clubs/{id}/schedules/{id}` (ex-`club:{id}:schedule:{id}` avant le cutover
+ * Mercure 1.0, lot 4 PR C) était bâti par SIX `sprintf` dispersés face à UN sélecteur
+ * d'abonnement. Extraire `MercureTopic` supprime les six copies — mais n'empêche
  * pas d'en réécrire une septième, et c'est ce que ce test ferme.
  *
  * ⚠ **La divergence est parfaitement silencieuse** : un publieur qui dérive émet sur un topic
@@ -38,7 +39,7 @@ final class MercureTopicIsNotRebuiltTest extends TestCase
             }
 
             // Le format littéral, sous ses deux formes : `sprintf` et concaténation.
-            if (1 === preg_match('/\'club:%s:schedule|\'club:\' \\. /', $source)) {
+            if (1 === preg_match('#\'/clubs/%s/schedules|\'/clubs/\' \\. #', $source)) {
                 $offenders[] = basename($file);
             }
         }

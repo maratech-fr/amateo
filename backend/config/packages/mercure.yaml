@@ -1,11 +1,20 @@
 mercure:
     hubs:
         default:
-            # Épinglé tant que le hub parle 0.x (dev v0.24.2, prod v0.19) : mercure-bundle 0.6 passe le
-            # défaut à "1.0" (claims RFC 9068, cookie renommé). Retiré par la PR Mercure 1.0 du lot 4.
-            protocol_version: '0.x'
+            # Mercure 1.0 (cutover direct dev+prod, lot 4 PR C) : le jeton publieur devient un
+            # access token RFC 9068 (claim `authorization_details`, en-tête `at+jwt`), le cookie
+            # d'abonnement est renommé et l'abonnement passe en `match`/`match_urlpattern`.
+            protocol_version: '1.0'
             url: '%env(default::MERCURE_URL)%'
             public_url: '%env(default::MERCURE_PUBLIC_URL)%'
             jwt:
                 secret: '%env(MERCURE_JWT_SECRET)%'
                 publish: '*'
+                # RFC 9068 — claims exigés par un access token 1.0. `aud` n'est PAS listé ici : la
+                # fabrique le déduit du `public_url` du hub (= l'identifiant de ressource épinglé par
+                # `resource_identifier` côté hub). `iss` DOIT valoir l'émetteur de confiance du hub
+                # (`MERCURE_TRUSTED_ISSUERS`, même source d'env des deux côtés).
+                claims:
+                    iss: '%env(MERCURE_TRUSTED_ISSUERS)%'
+                    sub: 'amateo-backend'
+                    client_id: 'amateo-backend'

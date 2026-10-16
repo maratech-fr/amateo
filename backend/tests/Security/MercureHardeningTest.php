@@ -101,7 +101,9 @@ final class MercureHardeningTest extends WebTestCase
 
         $cookie = null;
         foreach ($client->getResponse()->headers->getCookies() as $candidate) {
-            if ('mercureAuthorization' === $candidate->getName()) {
+            // Mercure 1.0 (C1) : cookie `mercure_access_token` sans préfixe en test (JWT_COOKIE_SECURE
+            // = false) — le préfixe `__Secure-` n'apparaît qu'en prod HTTPS (cookie Secure).
+            if ('/.well-known/mercure' === $candidate->getPath()) {
                 $cookie = $candidate;
                 break;
             }

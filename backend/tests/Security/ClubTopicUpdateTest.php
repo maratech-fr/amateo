@@ -20,10 +20,10 @@ final class ClubTopicUpdateTest extends TestCase
 {
     public function testBuildsAPrivateUpdateOnAClubTopic(): void
     {
-        $update = ClubTopicUpdate::private('club:abc:schedule:def', '{"status":"COMPLETED"}');
+        $update = ClubTopicUpdate::private('/clubs/abc/schedules/def', '{"status":"COMPLETED"}');
 
         self::assertTrue($update->isPrivate(), 'Club-scoped updates must be Mercure-private.');
-        self::assertSame(['club:abc:schedule:def'], $update->getTopics());
+        self::assertSame(['/clubs/abc/schedules/def'], $update->getTopics());
     }
 
     public function testRefusesANonClubTopic(): void
