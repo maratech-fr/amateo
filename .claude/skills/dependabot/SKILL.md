@@ -1,13 +1,14 @@
 ---
 name: dependabot
-description: Traite toutes les PRs Dependabot ouvertes — vérifie que chaque upgrade ne casse rien, répare si besoin, lance les tests, merge et pousse le correctif. Invoquer ce skill vaut GO de merge pour les PRs Dependabot uniquement.
+description: Traite toutes les PRs Dependabot ouvertes — vérifie que chaque upgrade ne casse rien, répare si besoin, lance les tests, merge et pousse le correctif. Invoquer ce skill vaut GO de merge pour les PRs Dependabot uniquement (sauf les majeures : fiche au fondateur d'abord).
 ---
 
 # Dependabot — traitement des PRs de dépendances
 
 Tu traites **toutes les PRs Dependabot ouvertes** du dépôt, de bout en bout. L'invocation de ce
 skill par l'utilisateur **vaut autorisation de merger ces PRs-là** (et uniquement celles-là — la
-règle « jamais merger sans go » reste en vigueur pour tout le reste).
+règle « jamais merger sans go » reste en vigueur pour tout le reste). **Exception : une montée de
+version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point 2).
 
 ## Étape 0 — Inventaire & tri
 
@@ -34,6 +35,19 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
    S'il en change un ⇒ poser un **verrou d'options + test** dans la MÊME PR, patron
    `frontend/src/test/sentryOptions.test.ts` (il fige chaque catégorie de collecte, défaut v11
    « non défini = tout collecter »).
+   **Fiche majeure (consigne fondateur 2026-10-16)** — pour CHAQUE montée de version majeure,
+   rédiger une fiche courte en langage simple, preuves à l'appui (notes de version + code cité
+   `fichier:ligne`), qui répond à quatre questions :
+   1. **Qu'est-ce que ça apporte de plus ?** (fonctionnalités, correctifs de sécurité, fin de
+      support de l'ancienne version)
+   2. **Qu'est-ce que ça change pour nous ?** (config, code, image, contrat — concrètement dans
+      NOTRE dépôt, prod comme dev)
+   3. **Quel risque ça engendre ?** (ce qui peut casser, où, comment on le détecte, retour arrière)
+   4. **Qui va être impacté ?** (gestionnaires et coachs des clubs, fondateur en exploitation
+      prod, dev local, CI — ce que chacun verrait concrètement)
+   La fiche est présentée au fondateur **avant** le merge de la majeure : il décide sur la valeur
+   et le risque, pas parce que Dependabot la propose. Une image/service présent en dev ET en prod
+   (Mercure, Redis, nginx…) monte **des deux côtés à la même version** — jamais d'écart dev/prod.
 3. Installer et lancer la **suite de la zone** :
    - `frontend/` : **dans le container**, jamais sur l'hôte — `make -C frontend test` (qui enchaîne
      `lint` = eslint + `tsc -b --force`, puis vitest). ⚠️ **Rebuilder l'image tooling d'abord**
@@ -80,7 +94,8 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
 
 ## Étape 3 — Par PR : merger
 
-1. Suite de zone verte → `gh pr merge <n> --squash --delete-branch`. **Behat** : le merge attend
+1. Suite de zone verte (et, pour une majeure, GO du fondateur sur sa fiche) →
+   `gh pr merge <n> --squash --delete-branch`. **Behat** : le merge attend
    en plus le job CI `functional-tests` vert (required check de `main`, CLAUDE.md §7 étape 5) —
    cohérent avec « Dependabot : merge autorisé si CI verte ».
 2. `git checkout main && git pull` avant la PR suivante (chaque verdict se rend sur main à jour).
@@ -117,6 +132,8 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
 ## Gardes-fous
 
 - **Jamais** merger une PR dont la suite de zone est rouge.
+- **Jamais** merger une montée de version majeure sans avoir présenté sa fiche (apport · changement
+  pour nous · risque · qui est impacté) et reçu le GO du fondateur.
 - **Jamais** downgrader une dépendance de sécurité (les PRs `security` de Dependabot sont prioritaires — les traiter en premier, toutes zones confondues).
 - Backend/engine : tout se lance **dans les containers** (PHPUnit avec `APP_ENV=test`).
 - **Tout se lance dans les containers, frontend compris.** L'hôte n'a que Docker, Docker Compose et
