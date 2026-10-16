@@ -421,9 +421,12 @@ saison en cours.
     même règle partout où le geste existe. Un **segment** est un bloc de semaines calendaires
     pleines et contiguës (lundi→dimanche, clamp saison), la semaine simple étant le segment de
     taille 1 ([ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)). Les segments sont
-    précochés aux ruptures géométriques de l'offre (`segmentsFromOffer`, `lib/date.ts`), avec deux
-    gestes : **scinder** (déplier un segment en semaines) et **fusionner** (assembler deux
-    segments adjacents — le serveur ne borne que contiguïté + enveloppe). Un segment
+    précochés aux ruptures géométriques de l'offre (`segmentsFromOffer`, `lib/date.ts`) — **sauf
+    pour les VACANCES (P2-64)**, où chaque semaine PLEINE contiguë est précochée SEULE par défaut,
+    « Fusionner » reconstruisant le bloc (détail : [`types-de-planning.md`](types-de-planning.md)
+    § Règle transverse) — avec deux gestes : **scinder** (déplier un segment en semaines) et
+    **fusionner** (assembler deux segments adjacents — le serveur ne borne que contiguïté +
+    enveloppe). Un segment
     multi-semaines porte une phrase pédagogique sur le sur-ferme du solveur si ses semaines
     diffèrent. La carte de couverture (radar, `DayDialog`) regroupe les créneaux par enfant
     (`groupCoverageSlots`) — une puce par segment ; la puce « + créer » d'une semaine manquante

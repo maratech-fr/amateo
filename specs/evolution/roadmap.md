@@ -1,4 +1,4 @@
-# Roadmap (50) — ce qui reste à faire
+# Roadmap (49) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -51,9 +51,8 @@
 
 ## P2 — Différenciateurs & correctifs terrain
 
-| # | Sujet | Impact | Effort | Note |
-|---|-------|:---:|:---:|---|
-| P2-64 | **Plannings de vacances scindés par défaut, fusion à la demande** | 🟡 | S | Demande fondateur : « par défaut j'aurais aimé que le planning de vacances soit toujours scindé et que l'on puisse selon les cas dire que cette semaine fusionne avec une autre. Alors que là c'est en bloc de base et après on scinde, c'est pas logique. » Aujourd'hui la fenêtre « Quelles semaines ajuster ? » (cockpit → carte des vacances → « Adapter », `frontend/src/features/cockpit/WeekPickerDialog.tsx`) regroupe d'office les semaines pleines contiguës en UN segment précoché (« Semaines du … au … — d'un bloc (N semaines) », `frontend/src/features/cockpit/lib/date.ts:253`, découpage `cockpit/lib/weekSegmentation.ts` en miroir de `App\Service\WeekSegmentationRule`) : « Créer le planning » donne un seul planning pour toute la période, « Scinder » est le geste d'exception. Inverser pour les VACANCES : une semaine = un segment précoché, « Fusionner » devient le geste d'exception (les fermetures gardent leur découpage début·milieu·fin imposé). Lié à P2-63 : la doléance suit le découpage du planning (décision Q1) et la collecte ne se lance qu'après la naissance des plannings (Q8) — cette ligne fixe donc le découpage que la collecte reprend. Changement strictement FRONT, limité aux vacances : `App\Service\WeekSegmentationRule` (backend) ne sert qu'aux FERMETURES (`ClosureSegmentation.php`) — aucune parité `WeekSegmentationMirrorParityTest` à recaler |
+> Section vide : la numérotation `P2-x` est réservée à un futur différenciateur/correctif terrain
+> qui s'y rangera.
 
 ---
 

@@ -10,6 +10,7 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import type { CalendarEntryPeriodType, PlannedWindow } from "./api";
 import { frDateShort, mergeSegments, segmentLabel, segmentsFromOffer, segmentWeekCount, splitSegment, type ExcludedWeekRange, type WeekSegment, type WeekWindow } from "./lib/date";
 import type { WeekPickerState, WindowConflict } from "./lib/useWeekAdapt";
+import { COCKPIT_TEXTS } from "./texts";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 
 /** Ce que le picker doit dire de l'état « bloc déjà généré » + la découpe destructive à câbler. */
@@ -97,12 +98,28 @@ interface WeekPickerDialogProps {
  * P2-36 : le dialogue s'OUVRE toujours et NOMME sa raison (`state`) — « en chargement » ≠ « déjà
  * générée d'un bloc » — au lieu de basculer en bloc sans un mot.
  */
+
+/**
+ * P2-64 — POUR UNE VACANCE SEULEMENT (`periodType === "holiday"`), les semaines PLEINES contiguës
+ * sont offertes UNE PAR SEMAINE : chaque segment « milieu » multi-semaines (non partiel) est éclaté
+ * en ses semaines individuelles (`splitSegment`), toutes précochées. Les segments d'entame/fin
+ * (partial) restent tels quels ; « Fusionner » reconstruit le bloc (geste existant). Les autres
+ * types (closure/custom/cutoff/mutualisation) gardent le bloc groupé historique. PRÉSENTATION pure :
+ * aucune règle backend redérivée (`segmentsFromOffer` / `weekSegmentation.ts` miroir inchangés).
+ */
+function offeredSegments(weeks: WeekWindow[], eventStart: string, eventEnd: string, periodType?: CalendarEntryPeriodType | null): WeekSegment[] {
+  const segments = segmentsFromOffer(weeks, eventStart, eventEnd);
+  if ("holiday" !== periodType) {
+    return segments;
+  }
+  return segments.flatMap((seg) => (!seg.partial && segmentWeekCount(seg) > 1 ? splitSegment(seg) : [seg]));
+}
 export function WeekPickerDialog({ title, startDate, endDate, weeks, season, periodType, busy, state = "weeks", block, excludedRanges = [], plannedRanges = [], onPickSegments, onAdaptWhole, onRecordOnly, onClose, conflict, onOpenConflict }: WeekPickerDialogProps) {
   // FERMETURE : le découpage début·milieu·fin est IMPOSÉ, Scinder/Fusionner n'ont pas lieu d'être
   // (le serveur ne validerait pas une frontière libre). Les VACANCES gardent l'édition manuelle.
   const allowSegmentEditing = "closure" !== periodType;
   // Segments dérivés de l'offre + fenêtre, PUIS mutés localement par scinder/fusionner.
-  const [segments, setSegments] = useState<WeekSegment[]>(() => segmentsFromOffer(weeks, startDate, endDate));
+  const [segments, setSegments] = useState<WeekSegment[]>(() => offeredSegments(weeks, startDate, endDate, periodType));
   const [checked, setChecked] = useState<Set<string>>(() => new Set(segments.map((s) => s.monday)));
   // L'offre change (loading → weeks : de [] à peuplée) : on ré-initialise segments + coches. Motif
   // « ajuster un state quand une prop change » (setState pendant le rendu) plutôt qu'un effet — les
@@ -111,7 +128,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
   const signature = weeks.map((w) => w.monday).join("|");
   const [sig, setSig] = useState(signature);
   if (sig !== signature) {
-    const fresh = segmentsFromOffer(weeks, startDate, endDate);
+    const fresh = offeredSegments(weeks, startDate, endDate, periodType);
     setSegments(fresh);
     setChecked(new Set(fresh.map((s) => s.monday)));
     setSig(signature);
@@ -167,8 +184,8 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
 
   const picked = segments.filter((s) => checked.has(s.monday));
   const versionCount = block?.versionCount ?? 0;
-  const versionLabel = `${versionCount} version${versionCount > 1 ? "s" : ""}`;
-  const createLabel = picked.length > 1 ? `Créer les ${picked.length} plannings` : "Créer le planning";
+  const versionLabel = COCKPIT_TEXTS.versionsLabel(versionCount);
+  const createLabel = COCKPIT_TEXTS.createPlannings(picked.length);
 
   // P2-38 (prévention) — le chemin « d'un bloc » est INTERDIT dès qu'une partie de la fenêtre est
   // gouvernée : par des vacances (état `holiday`, aligné sur ce patron par décision fondateur) OU
@@ -184,10 +201,10 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
   const blockPathBlocked = !isBlockState && ("holiday" === state || plannedRanges.length > 0 || closureMultiSegment);
   const blockPathReason =
     plannedRanges.length > 0
-      ? "Une partie de ces dates est déjà planifiée par ailleurs — adaptez les semaines restantes une à une."
+      ? COCKPIT_TEXTS.alreadyPlannedElsewhere
       : "holiday" === state
-        ? "Des vacances couvrent une partie de cette période — adaptez les semaines restantes une à une."
-        : "Cette indisponibilité a une semaine entamée — adaptez-la par début, milieu, fin.";
+        ? COCKPIT_TEXTS.holidayCoversPart
+        : COCKPIT_TEXTS.startedWeekSplitByParts;
   // Le choix des semaines et le bloc « à consigner » ne sont offerts qu'en états DÉCIDÉS
   // (weeks / holiday), jamais en chargement ni en bloc.
   const decided = "weeks" === state || "holiday" === state;
@@ -214,13 +231,13 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
               </label>
               <div className="flex shrink-0 gap-1">
                 {allowSegmentEditing && index > 0 ? (
-                  <Button variant="ghost" size="sm" disabled={busy} aria-label={`Fusionner « ${label} » avec le segment précédent`} onClick={() => mergeWithPrevious(index)}>
-                    Fusionner
+                  <Button variant="ghost" size="sm" disabled={busy} aria-label={COCKPIT_TEXTS.mergeSegmentLabel(label)} onClick={() => mergeWithPrevious(index)}>
+                    {COCKPIT_TEXTS.mergeCta}
                   </Button>
                 ) : null}
                 {allowSegmentEditing && multi ? (
-                  <Button variant="ghost" size="sm" disabled={busy} aria-label={`Scinder « ${label} » en semaines`} onClick={() => splitAt(index)}>
-                    Scinder
+                  <Button variant="ghost" size="sm" disabled={busy} aria-label={COCKPIT_TEXTS.splitSegmentLabel(label)} onClick={() => splitAt(index)}>
+                    {COCKPIT_TEXTS.splitCta}
                   </Button>
                 ) : null}
               </div>
@@ -228,7 +245,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
             {/* Pédagogie (présentation, pas décision) sur un segment multi-semaines : comment le
                 solveur traite N semaines en UN plan. */}
             {multi ? (
-              <p className="mt-1 text-xs text-muted-foreground">Des semaines identiques donnent un planning exact ; si elles diffèrent, la fermeture la plus large s'applique à toutes.</p>
+              <p className="mt-1 text-xs text-muted-foreground">{COCKPIT_TEXTS.multiWeekPedagogy}</p>
             ) : null}
           </li>
         );
@@ -238,8 +255,8 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
 
   return (
     <Modal
-      label="Choisir les semaines"
-      title="Quelles semaines ajuster ?"
+      label={COCKPIT_TEXTS.chooseWeeks}
+      title={COCKPIT_TEXTS.whichWeeksToAdjust}
       onClose={onClose}
       footer={
         <>
@@ -249,7 +266,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
               La raison QUALIFIE le bouton : elle voyage AVEC lui dans le pied (règle de migration P4-127 d). */}
           <div>
             <Button variant="ghost" size="sm" onClick={onAdaptWhole} disabled={busy || block?.deleting || blockPathBlocked}>
-              {isBlockState ? "Continuer d'un bloc" : "Adapter toute la période d'un bloc"}
+              {isBlockState ? COCKPIT_TEXTS.continueBlock : COCKPIT_TEXTS.adaptWholePeriodBlock}
             </Button>
             {blockPathBlocked ? <p className="mt-1 text-xs text-muted-foreground">{blockPathReason}</p> : null}
           </div>
@@ -265,7 +282,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
           {noneOfferable && undefined !== onRecordOnly ? (
             <Button size="sm" onClick={onRecordOnly} disabled={busy}>
               {busy ? <Spinner className="size-4" /> : null}
-              Consigner l'indisponibilité
+              {COCKPIT_TEXTS.recordUnavailability}
             </Button>
           ) : null}
         </>
@@ -289,13 +306,13 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
       {"weeks" === state ? (
         segments.length > 0 ? (
           <>
-            <p className="mt-2 text-sm text-muted-foreground">« {title} » couvre plusieurs semaines. Chaque segment coché devient un planning indépendant — scindez-le en semaines ou fusionnez des segments voisins à votre main.</p>
+            <p className="mt-2 text-sm text-muted-foreground">{COCKPIT_TEXTS.multiWeekIntro(title)}</p>
             {segmentList}
           </>
         ) : (
           // Fenêtre 100 % gouvernée (déjà planifiée) : les encarts ci-dessus disent par qui, il ne
           // reste rien à cocher ici.
-          <EmptyHint className="mt-2">Aucune semaine de cette indisponibilité ne reste à ajuster ici.</EmptyHint>
+          <EmptyHint className="mt-2">{COCKPIT_TEXTS.nothingLeftToAdjustHere}</EmptyHint>
         )
       ) : null}
 
@@ -308,16 +325,16 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
           {excludedRanges.map((range) => (
             <NoticeBanner
               key={range.startDate}
-              message={`Semaines du ${frDateShort(range.startDate)} au ${frDateShort(range.endDate)} couvertes par ${range.labels.join(", ")} — le rappel vous attend dans son planning.`}
+              message={COCKPIT_TEXTS.holidayExcludedRange(frDateShort(range.startDate), frDateShort(range.endDate), range.labels.join(", "))}
             />
           ))}
           {segments.length > 0 ? (
             <>
-              <p className="text-muted-foreground">Choisissez les semaines à ajuster, hors vacances. Chaque segment coché devient un planning indépendant.</p>
+              <p className="text-muted-foreground">{COCKPIT_TEXTS.chooseWeeksOutsideHoliday}</p>
               {segmentList}
             </>
           ) : (
-            <EmptyHint>Toutes les semaines de cette indisponibilité sont couvertes par des vacances — il n'y a rien à ajuster en dehors.</EmptyHint>
+            <EmptyHint>{COCKPIT_TEXTS.allWeeksUnderHoliday}</EmptyHint>
           )}
         </div>
       ) : null}
@@ -328,7 +345,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
       {"loading" === state ? (
         <div className="mt-2 flex items-start gap-2 text-sm text-muted-foreground">
           <Spinner className="mt-0.5 size-4 shrink-0" />
-          <p>On vérifie l'état de « {title} »… Le choix « semaine par semaine ou d'un bloc » s'affiche dès que c'est chargé.</p>
+          <p>{COCKPIT_TEXTS.checkingState(title)}</p>
         </div>
       ) : null}
 
@@ -337,20 +354,16 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
           perd jamais ; la découpe destructive n'apparaît QUE si le bloc n'est pas validé. */}
       {"block" === state ? (
         <div className="mt-2 space-y-3 text-sm">
-          <p className="text-muted-foreground">
-            « {title} » a déjà été adaptée d'un bloc — {versionLabel}. Continuez sur ce planning, ou repartez de zéro en le découpant en semaines.
-          </p>
+          <p className="text-muted-foreground">{COCKPIT_TEXTS.blockAlreadyAdapted(title, versionLabel)}</p>
           {block?.validated ? (
             // Décision fondateur : bloc VALIDÉ → pas de découpe destructive ici (la chaîne
             // rouvrir→supprimer n'est pas atomique, un échec après réouverture laisserait un
             // planning validé dépointé). On renvoie vers les gestes qui existent.
-            <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-muted-foreground">
-              Ce planning de bloc est validé. Pour le découper en semaines, rouvrez-le puis supprimez-le d'abord (depuis « Voir le planning »), puis revenez adapter.
-            </p>
+            <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-muted-foreground">{COCKPIT_TEXTS.blockValidatedHint}</p>
           ) : (
             <>
               {block?.deleteFailed ? (
-                <NoticeBanner tone="destructive" role="alert" message="Certaines versions n'ont pas pu être supprimées — réessayez." />
+                <NoticeBanner tone="destructive" role="alert" message={COCKPIT_TEXTS.someVersionsNotDeleted} />
               ) : null}
               <div>
                 <Button
@@ -360,9 +373,9 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
                   onClick={() => setConfirmingSplit(true)}
                 >
                   {block?.deleting ? <Spinner className="size-4" /> : null}
-                  Supprimer les versions et découper en semaines
+                  {COCKPIT_TEXTS.deleteVersionsAndSplit}
                 </Button>
-                {block?.generationInFlight ? <p className="mt-1 text-xs text-muted-foreground">Une génération est en cours — la découpe sera possible ensuite.</p> : null}
+                {block?.generationInFlight ? <p className="mt-1 text-xs text-muted-foreground">{COCKPIT_TEXTS.generationInFlightHint}</p> : null}
               </div>
             </>
           )}
@@ -380,13 +393,9 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
       {block ? (
         <ConfirmDialog
           open={confirmingSplit}
-          title="Découper cette période en semaines ?"
-          description={
-            <>
-              Cela supprime {versionLabel} déjà générée{versionCount > 1 ? "s" : ""} d'un bloc pour « {title} », puis permet de la découper. Les réglages de cette période repartiront de la saison. Action définitive.
-            </>
-          }
-          confirmLabel="Supprimer et découper"
+          title={COCKPIT_TEXTS.splitPeriodConfirmTitle}
+          description={COCKPIT_TEXTS.splitPeriodConfirmDescription(versionLabel, versionCount, title)}
+          confirmLabel={COCKPIT_TEXTS.confirmDeleteAndSplit}
           destructive
           onConfirm={() => {
             setConfirmingSplit(false);
