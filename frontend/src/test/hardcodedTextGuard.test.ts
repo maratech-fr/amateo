@@ -62,6 +62,8 @@ const MIGRATED_FILES = [
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",
+  // PR F (P4-279) — migré en même temps que la PR qui pose les toasts trajets ; la migration ne recule jamais.
+  "features/wizard/steps/VenuesStep.tsx",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.
