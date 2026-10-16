@@ -86,7 +86,7 @@ def add_coach_rest_day_constraints(
         day_str = str(slot_id).split(":")[0]
         try:
             day = int(day_str)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if day < 1 or day > 5:
             continue

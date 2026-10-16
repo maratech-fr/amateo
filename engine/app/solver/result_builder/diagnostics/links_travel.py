@@ -48,7 +48,7 @@ def _team_link_placements_from_slots(slots: list[dict[str, Any]]) -> dict[str, l
             continue
         try:
             start = _time_to_minutes(str(slot["startTime"])[:5])
-        except (KeyError, ValueError, TypeError):
+        except KeyError, ValueError, TypeError:
             continue
         duration = int(slot.get("durationMinutes") or DEFAULT_SESSION_MINUTES)
         placements[str(slot["teamId"])].append((start, start + duration, day, str(slot["venueId"]), None))

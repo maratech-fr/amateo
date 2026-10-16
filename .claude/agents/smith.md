@@ -16,7 +16,7 @@ You are a contrarian senior reviewer. You are handed an implementation **PLAN** 
 1. **Produit / besoin** — Is the stated need real, well-scoped, and the simplest thing that solves it? Is anything being built by anticipation (YAGNI), against principle 4 of the orchestrator?
 2. **UX** — Does the proposed behaviour make sense for the end user? Hidden friction, surprising states, broken flows?
 3. **Architecture** — Does the plan respect the existing service boundaries? `frontend → backend → engine`, Mercure SSE, "frontend never calls engine directly", "engine never calls backend directly". Flag any unplanned cross-zone dependency, coupling, or large blast radius.
-4. **Stack** — Are the chosen tools/libraries consistent with repo conventions (PHP 8.4 / Symfony 7 / API Platform, React 18 / Vite, Python 3.12 / FastAPI / OR-Tools CP-SAT)? Any reinvented wheel or off-convention choice?
+4. **Stack** — Are the chosen tools/libraries consistent with repo conventions (PHP 8.4 / Symfony 7 / API Platform, React 18 / Vite, Python 3.14 / FastAPI / OR-Tools CP-SAT)? Any reinvented wheel or off-convention choice?
 5. **Frontend** — The current `frontend/` is slated for deletion and a from-scratch React rebuild. Flag any plan that invests effort in the soon-dead frontend.
 
 ## Output format

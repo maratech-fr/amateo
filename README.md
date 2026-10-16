@@ -46,7 +46,7 @@ The manager stays in control; the solver does the combinatorial heavy lifting.
 - **`backend/`** — Symfony 7.4 · API Platform 4.4 · Doctrine ORM. The API + source of truth:
   persists data, enforces **multi-tenant isolation** (one club never sees another's data),
   freezes an input snapshot, calls the engine, imports results, publishes progress.
-- **`engine/`** — Python 3.12 · FastAPI · OR-Tools CP-SAT. A stateless solver exposed as
+- **`engine/`** — Python 3.14 · FastAPI · OR-Tools CP-SAT. A stateless solver exposed as
   `POST /generate`. It is **reactive**: it never calls the backend.
 - **`frontend/`** — React 19 · Vite · Tailwind 4. The UI: authentication, the **wizard**
   (data entry) and the **work-loop** (view/adjust/regenerate the schedule).
@@ -59,7 +59,7 @@ The manager stays in control; the solver does the combinatorial heavy lifting.
 | Zone | Runtime | Entry point |
 |------|---------|-------------|
 | `backend/` | PHP 8.4 · Symfony 7.4 · API Platform · Doctrine ORM 3.7 | `public/index.php` |
-| `engine/`  | Python 3.12 · FastAPI · OR-Tools CP-SAT | `app/main.py` |
+| `engine/`  | Python 3.14 · FastAPI · OR-Tools CP-SAT | `app/main.py` |
 | `frontend/`| TypeScript · React 19 · Vite · Tailwind 4 | `src/main.tsx` |
 
 ## Getting started

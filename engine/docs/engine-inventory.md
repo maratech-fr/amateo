@@ -7,7 +7,7 @@
 
 ## 1. Architecture Engine
 
-- **Runtime** : Python 3.12.
+- **Runtime** : Python 3.14.
 - **Framework HTTP** : FastAPI (app construite dans `engine/app/main.py` via `get_settings()` → `app_name`/`app_version`).
 - **Solver** : Google OR-Tools CP-SAT (`from ortools.sat.python import cp_model`).
 - **Validation** : Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `populate_by_name=True`).

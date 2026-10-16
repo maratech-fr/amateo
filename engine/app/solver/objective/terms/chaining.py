@@ -144,7 +144,7 @@ def add_chaining_bonus(
                     if info_out is not None:
                         try:
                             day_int: int | None = int(day)
-                        except (TypeError, ValueError):
+                        except TypeError, ValueError:
                             day_int = None
                         info_out.append(
                             CompromiseTermInfo(

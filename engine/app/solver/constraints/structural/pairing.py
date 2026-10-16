@@ -129,7 +129,7 @@ def _add_free_vs_locked_interval_conflicts(
         for start, end, var, day, venue, role, team in entries:
             try:
                 day_int = int(day)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             for l_start, l_end, l_venue, l_role, l_team in locked_days.get(day_int, ()):
                 if not _intervals_overlap(start, end, l_start, l_end):

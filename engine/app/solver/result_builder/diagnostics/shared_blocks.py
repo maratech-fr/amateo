@@ -247,7 +247,7 @@ def _block_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[tuple[in
             try:
                 day = int(raw_day)
                 start = _time_to_minutes(str(raw_start))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             cases.append((day, start))
     return cases
@@ -272,7 +272,7 @@ def _concrete_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[_Conc
             try:
                 day = int(raw_day)
                 start_minutes = _time_to_minutes(str(raw_start))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             duration = int(_get(slot, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES) or 0)
             cases.append(

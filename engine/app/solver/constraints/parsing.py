@@ -76,7 +76,7 @@ def resolve_implicit_rules(raw: Mapping[str, Any] | None) -> ResolvedImplicitRul
             if value is not None:
                 try:
                     return int(value)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     return default
         return default
 
@@ -121,7 +121,7 @@ def _coach_window_minutes(config: Mapping[str, Any]) -> tuple[int, int]:
             return default
         try:
             return _time_to_minutes(raw)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     from_min = _bound("fromTime", 0)

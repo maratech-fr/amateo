@@ -98,7 +98,7 @@ def add_one_session_per_day_constraints(
         if team_locks:
             try:
                 locked_count = team_locks.get(int(day), 0)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 locked_count = 0
         if locked_count >= 1:
             # Un verrou occupe déjà l'unique séance du jour → aucun créneau libre ce jour-là.

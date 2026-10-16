@@ -63,7 +63,7 @@ def _diagnose_season_slots(
         team_id = str(slot["teamId"])
         try:
             key = (int(slot["dayOfWeek"]), _time_to_minutes(str(slot["startTime"])))
-        except (KeyError, TypeError, ValueError):
+        except KeyError, TypeError, ValueError:
             continue
         placed_by_team.setdefault(team_id, set()).add(key)
 
@@ -80,7 +80,7 @@ def _diagnose_season_slots(
             try:
                 start_min = _time_to_minutes(str(start))
                 day_int = int(day)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             end_min = start_min + (int(duration) if duration is not None else 0)
             windows_by_day.setdefault(day_int, []).append((start_min, end_min))
@@ -99,7 +99,7 @@ def _diagnose_season_slots(
             continue
         try:
             key = (int(day), _time_to_minutes(str(start)))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         refs_by_team.setdefault(str(team_id), {})[key] = None
 

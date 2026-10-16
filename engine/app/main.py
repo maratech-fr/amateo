@@ -206,7 +206,7 @@ def _resolve_malloc_trim() -> Callable[[int], int] | None:
     try:
         libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
         trim = libc.malloc_trim  # AttributeError sur une libc sans ce symbole (musl)
-    except (OSError, AttributeError):
+    except OSError, AttributeError:
         return None
     trim.argtypes = [ctypes.c_size_t]
     trim.restype = ctypes.c_int

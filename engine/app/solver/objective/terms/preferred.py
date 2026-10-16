@@ -28,7 +28,7 @@ def _group_team_slots(
             continue
         try:
             day: int | None = int(_scalar_id(slot_key[2]))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             day = None
         grouped.setdefault(str(_scalar_id(slot_key[0])), []).append(
             (slot_key, day, _safe_minutes(slot_key[3]), variable)
@@ -136,7 +136,7 @@ def add_preferred_day_bonus(
         for value in config.get(key) or ():
             try:
                 days.add(int(_scalar_id(value)))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
         return days
 
@@ -262,5 +262,5 @@ def _safe_minutes(value: Any) -> int | None:
         return None
     try:
         return _time_to_minutes(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None

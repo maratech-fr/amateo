@@ -1,6 +1,6 @@
 # Amateo — Engine Agent Context
 
-> Python 3.12 + FastAPI + OR-Tools CP-SAT. Reactive solver microservice.
+> Python 3.14 + FastAPI + OR-Tools CP-SAT. Reactive solver microservice.
 > **Pointer file** — commands, CI, boundaries, solver principles: see root [`CLAUDE.md`](../CLAUDE.md), [`docs/project-map.md`](../docs/project-map.md) §3 and [`docs/architecture/adr-0001-single-pass-solve.md`](../docs/architecture/adr-0001-single-pass-solve.md). Do not duplicate them here.
 
 ## Where things live (no counts — they rot)

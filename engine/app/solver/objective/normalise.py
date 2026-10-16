@@ -201,7 +201,7 @@ def _parse_time_minutes(time_str: str) -> int | None:
         if len(parts) < 2:
             return None
         return int(parts[0]) * 60 + int(parts[1])
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 

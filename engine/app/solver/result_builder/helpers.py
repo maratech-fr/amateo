@@ -18,7 +18,7 @@ def _slot_day(slot: Mapping[str, Any]) -> int | None:
         return None
     try:
         return int(raw)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -41,7 +41,7 @@ def _day_label(day_of_week: Any) -> str:
     """Human day name (French). Falls back to 'jour N' for unknown values."""
     try:
         return _FR_DAYS.get(int(day_of_week), f"jour {int(day_of_week)}")
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return f"jour {day_of_week}"
 
 
@@ -52,7 +52,7 @@ def _time_range(start_time: str, duration_minutes: int | None) -> str:
         return start
     try:
         end = _format_time(_time_to_minutes(start) + int(duration_minutes))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return start
     return f"{start}–{end}"
 

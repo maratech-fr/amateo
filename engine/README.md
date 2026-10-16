@@ -196,7 +196,7 @@ Contrat backend↔engine : version dans `engine/CONTRACT_VERSION`, synchronisé 
 
 ## Environnement
 
-- **Python** : 3.12
+- **Python** : 3.14
 - **Framework** : FastAPI
 - **Solver** : Google OR-Tools CP-SAT
 - **Port** : 8000 (exposé via docker-compose)

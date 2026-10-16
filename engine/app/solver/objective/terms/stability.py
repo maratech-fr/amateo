@@ -50,7 +50,7 @@ def build_stability_terms(
             continue
         try:
             slot_key = (str(team_id), str(venue_id), int(_scalar_id(day)), _format_time(_time_to_minutes(start)))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if slot_key in seen:
             continue
@@ -108,7 +108,7 @@ def add_socle_reference_bonus(
             continue
         try:
             ref_key = (str(team_id), int(_scalar_id(day)), _format_time(_time_to_minutes(start)))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if ref_key in ref_by_key:
             continue

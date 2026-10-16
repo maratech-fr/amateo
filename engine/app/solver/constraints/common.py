@@ -135,7 +135,7 @@ def _record_closure(model: Any, var: BoolVarLike, cause: dict[str, Any]) -> None
         return
     try:
         index = int(var.Index())
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         return
     closures.setdefault(index, []).append(cause)
 
@@ -183,7 +183,7 @@ def _assume(model: Any, source_key: str, cause: dict[str, Any]) -> BoolVarLike |
     try:
         literal = model.NewBoolVar(f"assume[{source_key}]")
         model.AddAssumption(literal)
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         return None
     registry[source_key] = literal
     sources = getattr(model, "assumption_sources", None)
@@ -380,7 +380,7 @@ def _locked_person_day_intervals(
             continue
         try:
             day = int(day_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         start = _time_to_minutes(start_raw)
         duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
@@ -423,7 +423,7 @@ def _locked_person_day_occupations(
             continue
         try:
             day = int(day_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         start = _time_to_minutes(start_raw)
         duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
@@ -454,7 +454,7 @@ def _locked_team_days(model: Any) -> dict[str, dict[int, int]]:
             continue
         try:
             day = int(day_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         result[team_id][day] += 1
     return result
@@ -476,7 +476,7 @@ def _locked_venue_substart_counts(model: Any) -> dict[tuple[str, int, int], int]
             continue
         try:
             day = int(day_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         start = _time_to_minutes(start_raw)
         duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
@@ -503,7 +503,7 @@ def _assignment_day_start(assignment: AssignmentVariable) -> tuple[int | None, i
         day = None
     try:
         start: int | None = _time_to_minutes(rest)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         start = None
     return day, start
 
@@ -728,7 +728,7 @@ def _to_day_int(value: Any) -> int | None:
     non-numeric values are skipped, never crash the whole solve (audit review)."""
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

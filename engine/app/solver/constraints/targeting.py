@@ -37,7 +37,7 @@ def _closure_index(var: BoolVarLike) -> int | None:
     que ``_record_closure``."""
     try:
         return int(var.Index())
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         return None
 
 
@@ -193,7 +193,7 @@ def add_time_window_constraints(
         day = slot_key[2]
         try:
             day_value = int(day)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         team_day_vars[team_id_text][day_value].append(var)
 
@@ -418,7 +418,7 @@ def add_venue_minimum_constraints(
             continue
         try:
             locked_days_by_team_venue[(locked_team, locked_venue)].add(int(locked_day))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
 
     for rule in venue_minimums or []:
