@@ -64,6 +64,10 @@ const MIGRATED_FILES = [
   "features/wizard/steps/RecapStep.tsx",
   // PR F (P4-279) — migré en même temps que la PR qui pose les toasts trajets ; la migration ne recule jamais.
   "features/wizard/steps/VenuesStep.tsx",
+  // Lot 5 PR E (P4-284) : les 3 écrans dont le `<table>` passe à la primitive sont migrés en même temps.
+  "features/wizard/steps/TravelMatrixModal.tsx",
+  "features/club/ClubPage.tsx",
+  "features/planning/ClubViewTable.tsx",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.

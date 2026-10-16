@@ -18,6 +18,7 @@ import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { useCredits } from "@/shared/credits/useCredits";
 import { readableForeground } from "@/shared/lib/color";
 import { dayLabelLongCap, dayLabelShort } from "@/shared/lib/days";
@@ -30,6 +31,7 @@ import type { SubscriptionPlan, UsageDayHours } from "./api";
 import { LogoCropper } from "./LogoCropper";
 import { formatHours } from "./lib/venueStats";
 import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUpdateShortName, useUpdateSiege, useUploadLogo, useVenueUsageStats } from "./queries";
+import { CLUB_TEXTS } from "./texts";
 import { isManagementRole } from "@/shared/lib/roles";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -131,7 +133,7 @@ function IdentitySection({
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">Logo et couleur d'accent du club. La couleur personnalise les boutons, liens et éléments actifs de toute l'interface.</p>
+      <p className="text-sm text-muted-foreground">{CLUB_TEXTS.brandingIntro}</p>
       {/* Logo — cropper when a new file is being framed, else preview + actions */}
         {null !== cropFile ? (
           <LogoCropper file={cropFile} onCropped={onCropped} onCancel={() => setCropFile(null)} />
@@ -141,7 +143,7 @@ function IdentitySection({
               type="button"
               onClick={() => void recrop()}
               disabled={null === preview}
-              title={null !== preview ? "Recadrer le logo" : undefined}
+              title={null !== preview ? CLUB_TEXTS.recropLogoTitle : undefined}
               className="flex size-16 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-lg font-bold text-muted-foreground enabled:cursor-pointer enabled:hover:opacity-90"
             >
               {null !== preview ? <img src={preview} alt="Logo" className="size-full object-cover" /> : clubName.trim().charAt(0).toUpperCase() || "C"}
@@ -149,7 +151,7 @@ function IdentitySection({
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-muted">
                 <ImagePlus className="size-4" />
-                Choisir un logo
+                {CLUB_TEXTS.chooseLogo}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
@@ -166,16 +168,16 @@ function IdentitySection({
               {null !== preview ? (
                 <Button size="sm" variant="outline" onClick={() => void recrop()} disabled={busy}>
                   <Crop className="size-4" />
-                  Recadrer
+                  {CLUB_TEXTS.recrop}
                 </Button>
               ) : null}
               {null !== logoUrl ? (
                 <Button size="sm" variant="ghost" className="text-destructive" onClick={removeLogo} disabled={busy}>
                   <Trash2 className="size-4" />
-                  Retirer
+                  {CLUB_TEXTS.removeLogoLabel}
                 </Button>
               ) : null}
-              <span className="text-xs text-muted-foreground">PNG / JPEG / WebP, ≤ 500 Ko.</span>
+              <span className="text-xs text-muted-foreground">{CLUB_TEXTS.logoFormatHint}</span>
             </div>
           </div>
         )}
@@ -183,7 +185,7 @@ function IdentitySection({
         {/* Suggested palette from the logo */}
         {palette.length > 0 ? (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Couleurs du logo :</span>
+            <span className="text-xs text-muted-foreground">{CLUB_TEXTS.logoColorsLabel}</span>
             {palette.map((hex) => (
               <button
                 key={hex}
@@ -200,17 +202,17 @@ function IdentitySection({
 
         {/* Accent — one colour per theme (light + dark), applied by useApplyClubTheme. */}
         <div>
-          <p className="mb-2 text-xs text-muted-foreground">Couleur d'accent — une pour le thème clair, une pour le sombre. Elle habille boutons, liens et éléments actifs de toute l'interface.</p>
+          <p className="mb-2 text-xs text-muted-foreground">{CLUB_TEXTS.accentHint}</p>
           <div className="flex flex-wrap gap-4">
-            <AccentField id="accent-light" label="Thème clair" value={color} onChange={setColor} />
-            <AccentField id="accent-dark" label="Thème sombre" value={colorDark} onChange={setColorDark} />
+            <AccentField id="accent-light" label={CLUB_TEXTS.accentLight} value={color} onChange={setColor} />
+            <AccentField id="accent-dark" label={CLUB_TEXTS.accentDark} value={colorDark} onChange={setColorDark} />
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Button onClick={save} disabled={!valid || busy}>
             {busy ? <Spinner className="size-4" /> : null}
-            Enregistrer
+            {CLUB_TEXTS.save}
           </Button>
           {(null !== accentColor || null !== accentColorDark) ? (
             <Button
@@ -224,7 +226,7 @@ function IdentitySection({
               }}
               disabled={busy}
             >
-              Réinitialiser les couleurs
+              {CLUB_TEXTS.resetColors}
             </Button>
           ) : null}
         </div>
@@ -239,20 +241,17 @@ function DangerSection() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Supprime définitivement toutes les données saisies (équipes, gymnases, coachs, contraintes, plannings) pour repartir de zéro. Le club et les
-        comptes membres sont conservés.
-      </p>
+      <p className="text-sm text-muted-foreground">{CLUB_TEXTS.dangerIntro}</p>
       <Button variant="destructive" onClick={() => setConfirm(true)} disabled={reset.isPending}>
         {reset.isPending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
-        Réinitialiser le club
+        {CLUB_TEXTS.resetClubButton}
       </Button>
 
       <ConfirmDialog
         open={confirm}
-        title="Réinitialiser le club ?"
-        description="Toutes les équipes, gymnases, coachs, contraintes et plannings seront définitivement supprimés. Cette action est irréversible."
-        confirmLabel="Tout supprimer"
+        title={CLUB_TEXTS.resetClubConfirmTitle}
+        description={CLUB_TEXTS.resetClubConfirmDescription}
+        confirmLabel={CLUB_TEXTS.deleteAllConfirmLabel}
         onCancel={() => setConfirm(false)}
         onConfirm={() => {
           setConfirm(false);
@@ -277,7 +276,7 @@ function ClubShortNameField({ shortName }: { shortName: string | null }) {
   return (
     <div>
       <label htmlFor="club-short-name" className="mb-1 block text-xs text-muted-foreground">
-        Nom court
+        {CLUB_TEXTS.shortNameLabel}
       </label>
       <div className="flex flex-wrap items-center gap-2">
         <Input
@@ -285,7 +284,7 @@ function ClubShortNameField({ shortName }: { shortName: string | null }) {
           className="w-56"
           value={value}
           maxLength={20}
-          placeholder="Ex. BC Vallée"
+          placeholder={CLUB_TEXTS.shortNamePlaceholder}
           onChange={(e) => setValue(e.target.value)}
           disabled={update.isPending}
         />
@@ -293,15 +292,15 @@ function ClubShortNameField({ shortName }: { shortName: string | null }) {
           <>
             <Button size="sm" onClick={() => update.mutate(value.trim())} disabled={update.isPending}>
               {update.isPending ? <Spinner className="size-4" /> : null}
-              Enregistrer
+              {CLUB_TEXTS.save}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setValue(saved)} disabled={update.isPending}>
-              Annuler
+              {CLUB_TEXTS.cancel}
             </Button>
           </>
         ) : null}
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">Utilisé dans les e-mails envoyés aux coachs. Vide = le nom complet.</p>
+      <p className="mt-1 text-xs text-muted-foreground">{CLUB_TEXTS.shortNameHint}</p>
     </div>
   );
 }
@@ -326,17 +325,17 @@ function ClubSiegeSubsection({ club }: { club: NonNullable<MeResponse["club"]> }
   const located = null != club.latitude && null != club.longitude;
   return (
     <div>
-      <h3 className="mb-2 text-sm font-semibold">Siège du club</h3>
-      <p className="mb-2 text-xs text-muted-foreground">L'adresse du siège sert à estimer les trajets de vos coachs vers les adversaires.</p>
+      <h3 className="mb-2 text-sm font-semibold">{CLUB_TEXTS.siegeTitle}</h3>
+      <p className="mb-2 text-xs text-muted-foreground">{CLUB_TEXTS.siegeHint}</p>
       <AddressGeocodeField
         address={club.address}
         located={located}
         latitude={club.latitude}
         longitude={club.longitude}
-        placeholder="Adresse du siège"
-        label="Adresse du siège"
-        statusWord="Siège localisé"
-        unlocatedStatus="Siège non localisé — les trajets vers les adversaires ne sont pas estimés."
+        placeholder={CLUB_TEXTS.siegeAddressPlaceholder}
+        label={CLUB_TEXTS.siegeAddressLabel}
+        statusWord={CLUB_TEXTS.siegeLocated}
+        unlocatedStatus={CLUB_TEXTS.siegeUnlocated}
         onPick={(candidate) => updateSiege.mutate(candidate.label)}
       />
     </div>
@@ -361,20 +360,20 @@ function ClubInfoSection({ club }: { club: NonNullable<MeResponse["club"]> }) {
     <div className="space-y-5">
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">Identité</h3>
+          <h3 className="text-sm font-semibold">{CLUB_TEXTS.identityTitle}</h3>
           <Button size="sm" variant="outline" onClick={() => ffbbImport.mutate()} disabled={ffbbImport.isPending}>
             {ffbbImport.isPending ? <Spinner className="size-4" /> : null}
-            Actualiser depuis la FFBB
+            {CLUB_TEXTS.refreshFromFfbb}
           </Button>
         </div>
         <div className="space-y-3 text-sm">
-          <ReadOnlyField label="Nom officiel (FFBB)" value={club.name} />
+          <ReadOnlyField label={CLUB_TEXTS.officialNameLabel} value={club.name} />
           <ClubShortNameField shortName={club.shortName} />
           <div className="grid grid-cols-2 gap-3">
-            <ReadOnlyField label="Code FFBB" value={club.ffbbClubCode} mono />
-            <ReadOnlyField label="Ligue" value={club.league} />
-            <ReadOnlyField label="Zone de vacances" value={club.schoolZone} />
-            <ReadOnlyField label="Comité" value={club.committeeCode} mono />
+            <ReadOnlyField label={CLUB_TEXTS.ffbbCodeLabel} value={club.ffbbClubCode} mono />
+            <ReadOnlyField label={CLUB_TEXTS.leagueLabel} value={club.league} />
+            <ReadOnlyField label={CLUB_TEXTS.schoolZoneLabel} value={club.schoolZone} />
+            <ReadOnlyField label={CLUB_TEXTS.committeeLabel} value={club.committeeCode} mono />
           </div>
         </div>
       </div>
@@ -382,7 +381,7 @@ function ClubInfoSection({ club }: { club: NonNullable<MeResponse["club"]> }) {
       <ClubSiegeSubsection club={club} />
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">Contact du club</h3>
+        <h3 className="mb-2 text-sm font-semibold">{CLUB_TEXTS.contactTitle}</h3>
         {contactLines.length > 0 || null !== club.contactEmail || null !== website ? (
           <dl className="space-y-0.5 text-sm">
             {contactLines.map((line) => (
@@ -404,7 +403,7 @@ function ClubInfoSection({ club }: { club: NonNullable<MeResponse["club"]> }) {
             ) : null}
           </dl>
         ) : (
-          <p className="text-xs text-muted-foreground">Données FFBB non disponibles — essayez « Actualiser depuis la FFBB ».</p>
+          <p className="text-xs text-muted-foreground">{CLUB_TEXTS.ffbbUnavailableWithHint}</p>
         )}
       </div>
     </div>
@@ -456,7 +455,7 @@ function ContactBlock({ data, fallbackName }: { data: FfbbOrganisme | null; fall
           ) : null}
         </dl>
       ) : (
-        <p className="text-xs text-muted-foreground">Données FFBB non disponibles.</p>
+        <p className="text-xs text-muted-foreground">{CLUB_TEXTS.ffbbUnavailable}</p>
       )}
     </div>
   );
@@ -488,9 +487,9 @@ function frDate(iso: string): string {
 /** Une cellule d'heures : « — » à zéro, pour que l'œil accroche l'usage réel. */
 function HoursCell({ hours, strong, className }: { hours: number; strong?: boolean; className?: string }) {
   return (
-    <td className={cn("py-1.5 text-right tabular-nums", strong ? "font-semibold" : "", className)}>
+    <TableCell className={cn("py-1.5 px-0 text-right tabular-nums", strong ? "font-semibold" : "", className)}>
       {hours > 0 ? formatHours(hours) : <span className="text-muted-foreground">—</span>}
-    </td>
+    </TableCell>
   );
 }
 
@@ -522,39 +521,41 @@ function UsageTable({ caption, firstColHeader, rows, totalByDay, grandTotal, day
   return (
     <div className="space-y-2">
       <h3 className="text-sm font-semibold">{caption}</h3>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="py-1.5 font-medium">{firstColHeader}</th>
-              {days.map((d) => (
-                <th key={d} className={cn("py-1.5 text-right font-medium", 7 === d ? SEPARATOR : "")} title={dayLabelLongCap(d)}>{dayLabelShort(d)}</th>
-              ))}
-              <th className="py-1.5 pl-3 text-right font-medium">Réalisé</th>
-              <th className="py-1.5 text-right font-medium">À venir</th>
-              <th className="py-1.5 text-right font-medium">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.key} className="border-b border-border/50">
-                <td className="py-1.5">{r.label}</td>
-                {days.map((d) => <HoursCell key={d} hours={dayTotal(r.byDay, d)} className={7 === d ? SEPARATOR : ""} />)}
-                <HoursCell hours={r.real} className="pl-3" />
-                <HoursCell hours={r.projected} />
-                <HoursCell hours={r.total} strong />
-              </tr>
+      {/* Primitive partagée `Table` variant `inline` (lot 5 PR E) — conteneur NU (overflow-x-auto),
+          neutralisation `px-0`/`normal-case`/`tracking-normal` des défauts de la primitive pour un
+          rendu IDENTIQUE au tableau fait main (preflight Tailwind met déjà les cellules à padding 0). */}
+      <Table variant="inline" className="min-w-[36rem] text-sm">
+        <TableHeader>
+          <TableRow className="border-b border-border text-left text-xs text-muted-foreground">
+            <TableHead className="py-1.5 px-0 font-medium normal-case tracking-normal">{firstColHeader}</TableHead>
+            {days.map((d) => (
+              <TableHead key={d} className={cn("py-1.5 px-0 text-right font-medium normal-case tracking-normal", 7 === d ? SEPARATOR : "")} title={dayLabelLongCap(d)}>{dayLabelShort(d)}</TableHead>
             ))}
-            <tr className="border-t-2 border-border font-semibold">
-              <td className="py-1.5">TOTAL</td>
-              {days.map((d) => <HoursCell key={d} hours={dayTotal(totalByDay, d)} strong className={7 === d ? SEPARATOR : ""} />)}
-              <HoursCell hours={grandTotal.real} strong className="pl-3" />
-              <HoursCell hours={grandTotal.projected} strong />
-              <HoursCell hours={grandTotal.total} strong />
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            <TableHead className="py-1.5 px-0 pl-3 text-right font-medium normal-case tracking-normal">{CLUB_TEXTS.usageReal}</TableHead>
+            <TableHead className="py-1.5 px-0 text-right font-medium normal-case tracking-normal">{CLUB_TEXTS.usageProjected}</TableHead>
+            <TableHead className="py-1.5 px-0 text-right font-medium normal-case tracking-normal">{CLUB_TEXTS.usageTotal}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.key} className="border-b border-border/50">
+              <TableCell className="py-1.5 px-0">{r.label}</TableCell>
+              {days.map((d) => <HoursCell key={d} hours={dayTotal(r.byDay, d)} className={7 === d ? SEPARATOR : ""} />)}
+              <HoursCell hours={r.real} className="pl-3" />
+              <HoursCell hours={r.projected} />
+              <HoursCell hours={r.total} strong />
+            </TableRow>
+          ))}
+          {/* `last:border-t-2` : le `last:border-0` de `TableRow` effacerait sinon le trait de 2 px au-dessus du TOTAL. */}
+          <TableRow className="border-t-2 border-border font-semibold last:border-t-2">
+            <TableCell className="py-1.5 px-0">TOTAL</TableCell>
+            {days.map((d) => <HoursCell key={d} hours={dayTotal(totalByDay, d)} strong className={7 === d ? SEPARATOR : ""} />)}
+            <HoursCell hours={grandTotal.real} strong className="pl-3" />
+            <HoursCell hours={grandTotal.projected} strong />
+            <HoursCell hours={grandTotal.total} strong />
+          </TableRow>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -574,13 +575,13 @@ function VenueStatsSection({ me }: { me: MeResponse }) {
   const statsQuery = useVenueUsageStats(from || undefined, to || undefined, null !== chosenId);
 
   if (null === chosenId) {
-    return <p className="text-sm text-muted-foreground">Les statistiques se calculent sur le planning en vigueur — validez d'abord le planning de saison.</p>;
+    return <p className="text-sm text-muted-foreground">{CLUB_TEXTS.statsNoPlan}</p>;
   }
   if (statsQuery.isLoading) {
-    return <p className="text-sm text-muted-foreground">Chargement des statistiques…</p>;
+    return <p className="text-sm text-muted-foreground">{CLUB_TEXTS.statsLoading}</p>;
   }
   if (statsQuery.isError || undefined === statsQuery.data) {
-    return <p className="text-sm text-destructive">Les statistiques n'ont pas pu être chargées.</p>;
+    return <p className="text-sm text-destructive">{CLUB_TEXTS.statsLoadError}</p>;
   }
 
   const data = statsQuery.data;
@@ -606,11 +607,11 @@ function VenueStatsSection({ me }: { me: MeResponse }) {
       </div>
 
       {0 === venueRows.length ? (
-        <EmptyHint>Le planning en vigueur ne place aucune séance sur cette plage.</EmptyHint>
+        <EmptyHint>{CLUB_TEXTS.statsEmptyRange}</EmptyHint>
       ) : (
         <>
-          <UsageTable caption="Par gymnase" firstColHeader="Gymnase" rows={venueRows} totalByDay={data.totalByDay} grandTotal={data.grandTotal} days={days} />
-          <UsageTable caption="Par niveau" firstColHeader="Niveau" rows={levelRows} totalByDay={data.totalByDay} grandTotal={data.grandTotal} days={days} />
+          <UsageTable caption={CLUB_TEXTS.usageByVenue} firstColHeader={CLUB_TEXTS.usageVenueCol} rows={venueRows} totalByDay={data.totalByDay} grandTotal={data.grandTotal} days={days} />
+          <UsageTable caption={CLUB_TEXTS.usageByLevel} firstColHeader={CLUB_TEXTS.usageLevelCol} rows={levelRows} totalByDay={data.totalByDay} grandTotal={data.grandTotal} days={days} />
         </>
       )}
     </div>
@@ -622,10 +623,7 @@ function ExportClubSection() {
   const exportDownload = useDownloadClubExport();
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Téléchargez une copie complète des données du club (saisons, équipes, coachs, gymnases, contraintes,
-        plannings, matchs…) au format JSON — conformité RGPD (portabilité).
-      </p>
+      <p className="text-sm text-muted-foreground">{CLUB_TEXTS.exportIntro}</p>
       <Button
         type="button"
         variant="outline"
@@ -633,7 +631,7 @@ function ExportClubSection() {
         onClick={() => exportDownload.mutate()}
       >
         {exportDownload.isPending ? <Spinner className="size-4" /> : null}
-        Exporter les données du club
+        {CLUB_TEXTS.exportClubData}
       </Button>
     </div>
   );
@@ -670,7 +668,7 @@ function OfferSection({ me }: { me: MeResponse }) {
     <div className="space-y-4">
       {undefined !== entitlements ? (
         <div className="rounded-lg border border-accent/40 bg-surface-accent p-3">
-          <p className="text-xs text-muted-foreground">Votre offre</p>
+          <p className="text-xs text-muted-foreground">{CLUB_TEXTS.yourOffer}</p>
           <p className="text-base font-semibold">{entitlements.planName}</p>
           {null !== entitlements.maxTeams ? (
             <p className="text-sm text-muted-foreground">
@@ -686,9 +684,9 @@ function OfferSection({ me }: { me: MeResponse }) {
       ) : null}
 
       {readFailed(plansQuery) ? (
-        <LoadErrorHint>Les offres n'ont pas pu être chargées.</LoadErrorHint>
+        <LoadErrorHint>{CLUB_TEXTS.offersLoadError}</LoadErrorHint>
       ) : readLoading(plansQuery) ? (
-        <p className="text-sm text-muted-foreground">Chargement des offres…</p>
+        <p className="text-sm text-muted-foreground">{CLUB_TEXTS.offersLoading}</p>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
           {sortPlans(plansQuery.data ?? []).map((plan) => {
@@ -697,7 +695,7 @@ function OfferSection({ me }: { me: MeResponse }) {
               <div key={plan.id} className={cn("rounded-lg border p-3", current ? "border-accent bg-surface-accent" : "border-border bg-card")}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium">{plan.name}</p>
-                  {current ? <StatusPill variant="accent-solid">Votre offre</StatusPill> : null}
+                  {current ? <StatusPill variant="accent-solid">{CLUB_TEXTS.yourOffer}</StatusPill> : null}
                 </div>
                 <p className="text-sm text-muted-foreground">{planCapacityLabel(plan)}</p>
                 {/* Aucun montant dans l'app (décision fondateur) : « sur demande » partout,
@@ -723,33 +721,33 @@ function ClubHub({ me }: { me: MeResponse }) {
   const openInformations = "informations" === new URLSearchParams(window.location.search).get("section");
   return (
     <FichePage>
-      <PageHeader className="mb-4" title="Gestion du club" screen="/club" subtitle={me.club?.name ?? "—"} />
+      <PageHeader className="mb-4" title={CLUB_TEXTS.clubManagementTitle} screen="/club" subtitle={me.club?.name ?? "—"} />
       <div className="space-y-3">
         {isManagement ? (
-          <AccordionSection title="Offre" defaultOpen>
-            <p className="mb-3 text-sm text-muted-foreground">Votre offre actuelle et les paliers disponibles.</p>
+          <AccordionSection title={CLUB_TEXTS.sectionOffer} defaultOpen>
+            <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.offerSectionHint}</p>
             <OfferSection me={me} />
           </AccordionSection>
         ) : null}
         {isAdmin ? (
-          <AccordionSection title="Demandes d'adhésion" defaultOpen>
-            <p className="mb-3 text-sm text-muted-foreground">Approuvez ou refusez les personnes qui souhaitent rejoindre votre club.</p>
+          <AccordionSection title={CLUB_TEXTS.sectionMembershipRequests} defaultOpen>
+            <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.membershipRequestsHint}</p>
             <PendingMembersSection />
           </AccordionSection>
         ) : null}
         {isAdmin ? (
-          <AccordionSection title="Invitations">
-            <p className="mb-3 text-sm text-muted-foreground">Invitez une adresse e-mail à rejoindre votre club. L'invité crée son compte (ou se connecte) et devient membre, sans passer par la file d'approbation.</p>
+          <AccordionSection title={CLUB_TEXTS.sectionInvitations}>
+            <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.invitationsHint}</p>
             <InvitationsSection />
           </AccordionSection>
         ) : null}
         {isManagement ? (
-          <AccordionSection title="Membres">
-            <p className="mb-3 text-sm text-muted-foreground">Gérez les rôles de vos membres, désactivez ou réactivez un accès. Un club garde toujours au moins un gestionnaire.</p>
+          <AccordionSection title={CLUB_TEXTS.sectionMembers}>
+            <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.membersHint}</p>
             <MembersSection />
           </AccordionSection>
         ) : null}
-        <AccordionSection title="Visuel">
+        <AccordionSection title={CLUB_TEXTS.sectionVisual}>
           <IdentitySection
             accentColor={me.club?.accentColor ?? null}
             accentColorDark={me.club?.accentColorDark ?? null}
@@ -759,31 +757,29 @@ function ClubHub({ me }: { me: MeResponse }) {
           />
         </AccordionSection>
         {isAdmin && me.club ? (
-          <AccordionSection title="Informations du club" defaultOpen={openInformations}>
+          <AccordionSection title={CLUB_TEXTS.sectionClubInfo} defaultOpen={openInformations}>
             {/* Rendu pur des props (plus aucun formulaire) — pas de key de resync nécessaire. */}
             <ClubInfoSection club={me.club} />
           </AccordionSection>
         ) : null}
         {isAdmin && me.club ? (
-          <AccordionSection title="Contacts FFBB">
-            <p className="mb-3 text-sm text-muted-foreground">
-              Coordonnées récupérées automatiquement depuis la FFBB (lecture seule).
-            </p>
+          <AccordionSection title={CLUB_TEXTS.sectionFfbbContacts}>
+            <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.ffbbContactsIntro}</p>
             <ContactsFfbbSection club={me.club} />
           </AccordionSection>
         ) : null}
         {isAdmin ? (
-          <AccordionSection title="Statistiques des gymnases">
+          <AccordionSection title={CLUB_TEXTS.sectionVenueStats}>
             <VenueStatsSection me={me} />
           </AccordionSection>
         ) : null}
         {isManagement ? (
-          <AccordionSection title="Exporter les données">
+          <AccordionSection title={CLUB_TEXTS.sectionExport}>
             <ExportClubSection />
           </AccordionSection>
         ) : null}
         {isAdmin ? (
-          <AccordionSection title="Réinitialiser le club">
+          <AccordionSection title={CLUB_TEXTS.sectionReset}>
             <DangerSection />
           </AccordionSection>
         ) : null}

@@ -53,4 +53,9 @@ export const PLANNING_TEXTS = {
   fixRuleLink: "Corriger cette règle",
   diagnosticsLoading: "Lecture des diagnostics…",
   diagnosticsClean: "Aucun diagnostic — le planning est propre.",
+  // ClubViewTable (lot 5 PR E — migration texts + primitive Table)
+  clubViewEmpty: "Aucun créneau à afficher pour cette sélection.",
+  clubViewFreeSlotWord: "créneau libre",
+  clubViewTeamColumn: "Équipe",
+  clubViewNoSession: "aucune séance",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

@@ -9,6 +9,7 @@ import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Modal } from "@/shared/components/ui/modal";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { cn } from "@/shared/lib/utils";
 import { readState } from "@/shared/lib/readState";
 import { useTravelStream } from "@/shared/lib/travelStream";
@@ -16,6 +17,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { AutofillUnresolvedReason, Venue, VenueTravelTime, VenueTravelTimeAutofillResult, VenueTravelTimePayload } from "../api";
 import { useAutofillVenueTravelTimes, useCreateVenueTravelTime, useUpdateVenueTravelTime, useVenueTravelTimes, useWizardVenues } from "../queries";
+import { WIZARD_TEXTS } from "../texts";
 
 /**
  * P2-53 RMM-8 — la matrice de temps de trajet entre gymnases (patron TeamLinksModal : « ça
@@ -198,7 +200,7 @@ function TravelEditModal({
             value={value}
             onChange={(e) => setValue(e.target.value)}
           />
-          <span className="text-xs text-muted-foreground">min</span>
+          <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.travelMinUnit}</span>
         </div>
         <span className="text-xs text-muted-foreground">
           {null !== origin ? `Origine : ${origin}.` : null !== reason ? `Non calculé — ${reasonLabel(reason)}.` : "Aucune valeur — à saisir."}
@@ -210,16 +212,16 @@ function TravelEditModal({
   const footer = (
     <>
       <Button variant="ghost" onClick={onClose}>
-        Annuler
+        {WIZARD_TEXTS.cancel}
       </Button>
-      <Button onClick={save}>Enregistrer</Button>
+      <Button onClick={save}>{WIZARD_TEXTS.save}</Button>
     </>
   );
 
   return (
     <Modal label={`Trajet ${from.name} ↔ ${dest.name}`} title={`${from.name} ↔ ${dest.name}`} onClose={onClose} size="sm" footer={footer}>
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">Le temps de trajet dans les deux sens. Ce que vous saisissez est conservé lors d'un recalcul automatique.</p>
+        <p className="text-sm text-muted-foreground">{WIZARD_TEXTS.travelEditDescription}</p>
         <div className="flex flex-wrap gap-6">
           {field("driving", Car, driving, setDriving, row?.drivingSource ?? null)}
           {field("walking", Bike, walking, setWalking, row?.walkingSource ?? null)}
@@ -234,7 +236,7 @@ function AutofillConsent({ onRun, onClose, running, error }: { onRun: () => void
   return (
     <div className="flex flex-col items-center gap-4 py-6 text-center">
       <Wand2 className="size-8 text-accent" aria-hidden="true" />
-      <h3 className="text-base font-semibold text-foreground">Calculer les trajets entre vos gymnases ?</h3>
+      <h3 className="text-base font-semibold text-foreground">{WIZARD_TEXTS.travelConsentHeading}</h3>
       <p className="max-w-md text-sm text-muted-foreground">
         L'application peut estimer les temps de trajet entre chaque gymnase, en voiture et à vélo. Vous pourrez corriger n'importe quelle valeur à la main.
       </p>
@@ -249,7 +251,7 @@ function AutofillConsent({ onRun, onClose, running, error }: { onRun: () => void
           Calculer les trajets
         </Button>
         <Button variant="ghost" onClick={onClose} disabled={running}>
-          Plus tard
+          {WIZARD_TEXTS.travelLater}
         </Button>
       </div>
     </div>
@@ -344,10 +346,10 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
             {progressLabel}
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">Vos valeurs saisies à la main sont conservées.</span>
+          <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.travelManualValuesKept}</span>
         )}
       </div>
-      <Button onClick={onClose}>Terminé</Button>
+      <Button onClick={onClose}>{WIZARD_TEXTS.travelDone}</Button>
     </>
   );
 
@@ -355,11 +357,11 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
   const editReason = null !== editing ? (reasonByPair.get(pairKey(editing.from.id, editing.dest.id)) ?? null) : null;
 
   return (
-    <Modal label="Trajets entre gymnases" title="Trajets entre gymnases" onClose={onClose} size="xl" footer={footer}>
+    <Modal label={WIZARD_TEXTS.venueTravelButton} title={WIZARD_TEXTS.venueTravelButton} onClose={onClose} size="xl" footer={footer}>
       {"failed" === matrixState ? (
-        <LoadErrorHint onRetry={() => void matrixQuery.refetch()}>Impossible de lire la matrice de trajet.</LoadErrorHint>
+        <LoadErrorHint onRetry={() => void matrixQuery.refetch()}>{WIZARD_TEXTS.travelMatrixReadError}</LoadErrorHint>
       ) : venues.length < 2 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">Ajoutez au moins deux gymnases pour définir des temps de trajet entre eux.</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">{WIZARD_TEXTS.travelNeedTwoVenues}</p>
       ) : showConsent ? (
         <AutofillConsent onRun={runAutofill} onClose={onClose} running={busy} error={autofillError} />
       ) : (
@@ -376,7 +378,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <Input aria-label="Filtrer par gymnase" placeholder="Filtrer par gymnase…" className="h-9" value={filter} onChange={(e) => setFilter(e.target.value)} />
+              <Input aria-label={WIZARD_TEXTS.travelFilterLabel} placeholder={WIZARD_TEXTS.travelFilterPlaceholder} className="h-9" value={filter} onChange={(e) => setFilter(e.target.value)} />
             </div>
             {/* Légende — mêmes styles que les cases : pictogrammes du mode + code d'origine (couleur + gras). */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -386,8 +388,8 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
               <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <Bike className="size-3.5" aria-hidden="true" /> À vélo
               </span>
-              <span className="text-muted-foreground">Calculé automatiquement</span>
-              <span className="font-semibold text-accent">Saisi à la main</span>
+              <span className="text-muted-foreground">{WIZARD_TEXTS.travelLegendAuto}</span>
+              <span className="font-semibold text-accent">{WIZARD_TEXTS.travelLegendManual}</span>
               <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <span aria-hidden="true">—</span> non calculé
               </span>
@@ -424,50 +426,51 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
             <EmptyHint className="py-4 text-center">Aucun gymnase ne correspond à « {filter.trim()} ».</EmptyHint>
           ) : (
             // Défilement horizontal accepté sous 360 px (garde-fou existant, bureau d'abord).
-            <div className="max-h-[24rem] overflow-auto rounded-md border border-border">
-              <table className="border-collapse text-sm">
-                <caption className="sr-only">Temps de trajet entre gymnases, en voiture et à vélo, du gymnase de la ligne vers celui de la colonne. Cliquez une case pour la modifier.</caption>
-                <thead>
-                  <tr>
-                    <th scope="col" className="sticky left-0 top-0 z-20 border-b border-r border-border bg-card px-2 py-1.5 text-left text-xs font-medium text-muted-foreground">Depuis \ vers</th>
-                    {cols.map((col) => (
-                      <th key={col.id} scope="col" className="sticky top-0 z-10 whitespace-nowrap border-b border-border bg-card px-2 py-1.5 text-left font-medium text-foreground">
-                        {col.name}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((from) => (
-                    <tr key={from.id}>
-                      <th scope="row" className="sticky left-0 z-10 whitespace-nowrap border-r border-border bg-card px-2 py-1.5 text-left font-medium text-foreground">
-                        {from.name}
-                      </th>
-                      {cols.map((dest) => {
-                        if (from.id === dest.id) {
-                          return (
-                            <td key={dest.id} className="border-b border-l border-border/50 bg-muted px-2 py-1.5 text-center text-muted-foreground" aria-label={`${from.name} — même gymnase`}>
-                              —
-                            </td>
-                          );
-                        }
-                        return (
-                          <td key={dest.id} className="border-b border-l border-border/50 p-0.5 align-middle">
-                            <MatrixCell
-                              from={from}
-                              dest={dest}
-                              row={rowByPair.get(pairKey(from.id, dest.id))}
-                              reason={reasonByPair.get(pairKey(from.id, dest.id)) ?? null}
-                              onEdit={() => setEditing({ from, dest })}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
+            // Primitive partagée `Table` (lot 5 PR E) — `wrapperClassName` porte le corps défilant
+            // borné à en-têtes figés ; neutralisation des défauts de la primitive (fond/arrondi/
+            // largeur, casse/graisse/taille des en-têtes) pour un rendu IDENTIQUE à la matrice faite main.
+            <Table wrapperClassName="max-h-[24rem] overflow-auto rounded-md bg-transparent" className="w-auto">
+              <TableCaption className="sr-only">{WIZARD_TEXTS.travelMatrixCaption}</TableCaption>
+              <TableHeader>
+                <TableRow className="border-0">
+                  <TableHead className="sticky left-0 top-0 z-20 border-b border-r border-border bg-card px-2 py-1.5 text-left text-xs font-medium text-muted-foreground normal-case tracking-normal">{WIZARD_TEXTS.travelMatrixCorner}</TableHead>
+                  {cols.map((col) => (
+                    <TableHead key={col.id} className="sticky top-0 z-10 whitespace-nowrap border-b border-border bg-card px-2 py-1.5 text-left text-sm font-medium text-foreground normal-case tracking-normal">
+                      {col.name}
+                    </TableHead>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((from) => (
+                  <TableRow key={from.id} className="border-0">
+                    <TableHead scope="row" className="sticky left-0 z-10 whitespace-nowrap border-r border-border bg-card px-2 py-1.5 text-left text-sm font-medium text-foreground normal-case tracking-normal">
+                      {from.name}
+                    </TableHead>
+                    {cols.map((dest) => {
+                      if (from.id === dest.id) {
+                        return (
+                          <TableCell key={dest.id} className="border-b border-l border-border/50 bg-muted px-2 py-1.5 text-center text-muted-foreground" aria-label={`${from.name} — même gymnase`}>
+                            —
+                          </TableCell>
+                        );
+                      }
+                      return (
+                        <TableCell key={dest.id} className="border-b border-l border-border/50 p-0.5 align-middle">
+                          <MatrixCell
+                            from={from}
+                            dest={dest}
+                            row={rowByPair.get(pairKey(from.id, dest.id))}
+                            reason={reasonByPair.get(pairKey(from.id, dest.id)) ?? null}
+                            onEdit={() => setEditing({ from, dest })}
+                          />
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </div>
       )}
