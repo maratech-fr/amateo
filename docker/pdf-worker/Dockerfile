@@ -4,7 +4,7 @@
 # Mise à jour : Dependabot (écosystème `docker`, dossier docker/pdf-worker) propose
 # désormais les bumps — relever le tag ET le digest ensemble, jamais l'un sans l'autre
 # (le digest est la vérité immuable, le tag n'est qu'un libellé lisible).
-FROM ghcr.io/puppeteer/puppeteer:25.12.0@sha256:60ad89b1d8ca14877120250b9c96694dd19a4eda5890fdbad64f4740c6a27361
+FROM ghcr.io/puppeteer/puppeteer:25.14.0@sha256:ced0f7e1b416fafb4166f9f9d26109ea7bbd7cb04b8a38ae8c14b61f364c3d6f
 
 WORKDIR /app/frontend
 
