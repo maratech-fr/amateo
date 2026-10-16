@@ -89,6 +89,28 @@ final class HealthAlertEvaluatorTest extends TestCase
         self::assertStringNotContainsString('import automatique', $alerts[0]['message']);
     }
 
+    public function testFailedJobRunFiresADedicatedAlertWithoutWaitingForStaleness(): void
+    {
+        // Promesse (Q2) : un run de job en ÉCHEC déclenche une alerte dédiée dès le tick
+        // suivant, sans attendre le seuil de fraîcheur de 8 jours ; un run réussi n'en lève
+        // aucune — c'est ce retour au vert que l'anti-spam (AdminAlertStateStore) traduit en « rétabli ».
+        $failed = [['key' => 'db-restore-check', 'label' => 'Contrôle de restauration', 'command' => 'app:db:restore-check', 'lastStatus' => 'failed']];
+
+        $alerts = $this->evaluator->evaluate($this->healthyHealth(), $this->freshFreshness(), ['generations24h' => 0, 'infeasible24h' => 0], $failed);
+        self::assertSame(['job:db-restore-check'], array_column($alerts, 'key'));
+        self::assertStringContainsString('Contrôle de restauration', $alerts[0]['message']);
+        self::assertStringContainsString('app:db:restore-check', $alerts[0]['message']);
+
+        // Dernier run RÉUSSI → aucune alerte d'échec.
+        $succeeded = [['key' => 'db-restore-check', 'label' => 'Contrôle de restauration', 'command' => 'app:db:restore-check', 'lastStatus' => 'succeeded']];
+        self::assertSame([], $this->evaluator->evaluate($this->healthyHealth(), $this->freshFreshness(), ['generations24h' => 0, 'infeasible24h' => 0], $succeeded));
+
+        // Jamais exécuté (null) → pas d'alerte d'ÉCHEC : l'absence prolongée est l'affaire de
+        // la ligne de fraîcheur (seuil 8 j), pas de ce signal d'échec immédiat.
+        $never = [['key' => 'db-restore-check', 'label' => 'Contrôle de restauration', 'command' => 'app:db:restore-check', 'lastStatus' => null]];
+        self::assertSame([], $this->evaluator->evaluate($this->healthyHealth(), $this->freshFreshness(), ['generations24h' => 0, 'infeasible24h' => 0], $never));
+    }
+
     protected function setUp(): void
     {
         $this->evaluator = new HealthAlertEvaluator;
