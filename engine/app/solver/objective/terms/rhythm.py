@@ -48,7 +48,7 @@ def add_match_day_rest_bonus(
         team_id = _scalar_id(slot_key[0])
         try:
             day = int(_scalar_id(slot_key[2]))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         team_day_vars.setdefault(str(team_id), {}).setdefault(day, []).append(variable)
 
@@ -60,7 +60,7 @@ def add_match_day_rest_bonus(
             continue
         try:
             match_day_int = int(_scalar_id(match_day))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
 
         rest_day = match_day_int % 7 + 1
@@ -107,7 +107,7 @@ def add_spacing_penalty(
         team_id = _scalar_id(slot_key[0])
         try:
             day = int(_scalar_id(slot_key[2]))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         team_day_vars.setdefault(str(team_id), {}).setdefault(day, []).append(variable)
 

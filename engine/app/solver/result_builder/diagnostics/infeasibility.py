@@ -34,7 +34,7 @@ def _closure_var_index(var: Any) -> int | None:
     """Index OR-Tools stable d'une variable, ou None pour un double de test sans ``.Index()``."""
     try:
         return int(var.Index())
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         return None
 
 
@@ -55,7 +55,7 @@ def _collect_infeasibility_causes(
         return [], []
     try:
         core_indices = list(solver.SufficientAssumptionsForInfeasibility())
-    except (RuntimeError, AttributeError, TypeError, ValueError):
+    except RuntimeError, AttributeError, TypeError, ValueError:
         return [], []
 
     causes: list[dict[str, Any]] = []
@@ -156,7 +156,7 @@ def _slot_capacity_by_key(model_data: Mapping[str, Any] | Any) -> dict[tuple[str
             raw_capacity = _get(slot, "capacity", default=1)
             try:
                 capacity = int(raw_capacity) if raw_capacity is not None else 1
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 capacity = 1
             capacities[(venue_id, day, start)] = max(1, capacity)
     return capacities
@@ -227,7 +227,7 @@ def _infeasible_message(model_data: Mapping[str, Any] | Any) -> str:
         spw = _get(team, "sessions_per_week", "sessionsPerWeek", default=None)
         try:
             demand += int(spw) if spw is not None else 0
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
     # P2-51 — une séance de bloc réunit N membres sur UNE place de gymnase : les N séances des
     # membres se replient en 1 occupation. La DEMANDE de places retranche donc (n_membres − 1) ×

@@ -74,7 +74,7 @@ def _compute_effective_min_sessions(teams: Iterable[Any], priority_tiers: Mappin
         if tier_id_raw is not None:
             try:
                 tier_key = int(tier_id_raw)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 tier_key = None
             if tier_key is not None and tier_key in priority_tiers:
                 minimums[team_id] = min(sessions_per_week, priority_tiers[tier_key])

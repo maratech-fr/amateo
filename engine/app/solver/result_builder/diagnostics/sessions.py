@@ -127,7 +127,7 @@ def _diagnose_session_below_effective_min(
         if tier_id_raw is not None and tier_min:
             try:
                 tier_key = int(tier_id_raw)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 tier_key = None
             if tier_key is not None and tier_key in tier_min:
                 effective_min = min(spw, tier_min[tier_key])

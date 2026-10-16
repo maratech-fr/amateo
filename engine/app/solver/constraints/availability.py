@@ -82,6 +82,6 @@ def case_day_start(slot_id: str | None) -> tuple[int | None, int | None]:
         day = None
     try:
         start: int | None = _time_to_minutes(rest)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         start = None
     return day, start
