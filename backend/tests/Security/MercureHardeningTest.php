@@ -30,6 +30,11 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * ⚠ FALSIFICATION : réinjecter l'horloge DÉCORÉE (`clock`) dans MercureAuthController
  * cale l'`iat`/`exp` sur l'année simulée (2099) → l'assertion « iat ≈ maintenant »
  * rougit.
+ *
+ * Mercure 1.0 (lot 4 PR C) — la bascule est un CUTOVER DIRECT, dev = prod, sans mode compat :
+ * le hub est épinglé à une version 1.x EXACTE (jamais `latest`, jamais une 0.x), et la MÊME
+ * version dans `docker-compose.yml` et `docker-compose.prod.yml` — un jeton 1.0 (`authorization_
+ * details`, `at+jwt`) parle au hub, un décalage de version casse le temps réel en silence.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -38,6 +43,8 @@ final class MercureHardeningTest extends WebTestCase
     use TenantGucTrait;
 
     private string $compose;
+
+    private string $composeProd;
 
     public function testNoAnonymousSubscribers(): void
     {
@@ -112,13 +119,67 @@ final class MercureHardeningTest extends WebTestCase
         self::assertEqualsWithDelta(3600, $exp - $iat, 1.0, 'TTL d\'une heure, réel');
     }
 
+    /**
+     * Le hub de PROD n'ouvre pas non plus l'anonyme, et son CORS reste une liste explicite
+     * (`${PUBLIC_BASE_URL}`), jamais le joker — même garde que le dev, sur l'autre fichier.
+     */
+    public function testProdHubIsHardenedToo(): void
+    {
+        self::assertDoesNotMatchRegularExpression('/^\s*anonymous\s*$/m', $this->composeProd, 'Le hub de prod ne doit JAMAIS autoriser les abonnés anonymes (SEC-05).');
+        self::assertDoesNotMatchRegularExpression('/cors_origins\s+\*/', $this->composeProd, 'Le CORS du hub de prod doit rester une liste explicite, jamais "*" (SEC-05).');
+    }
+
+    /**
+     * Mercure 1.0 — le hub est épinglé à une version 1.x EXACTE (MAJOR.MINOR.PATCH), jamais
+     * `latest` (une `docker compose pull` de routine ne doit pas échanger la version du hub en
+     * silence), jamais une 0.x (le protocole legacy est retiré au cutover).
+     */
+    public function testBothComposeFilesPinAnExactMercure1xTagNeverLatestNor0x(): void
+    {
+        foreach (['docker-compose.yml' => $this->compose, 'docker-compose.prod.yml' => $this->composeProd] as $file => $contents) {
+            $tag = self::mercureImageTag($contents);
+            self::assertMatchesRegularExpression('/^v1\.\d+\.\d+$/', $tag, \sprintf('%s doit épingler dunglas/mercure à une 1.x exacte (vMAJOR.MINOR.PATCH), pas "%s".', $file, $tag));
+            self::assertStringNotContainsString('latest', $tag, \sprintf('%s ne doit jamais utiliser le tag "latest" pour le hub.', $file));
+        }
+    }
+
+    /**
+     * Cutover DIRECT, dev = prod : les deux fichiers doivent épingler EXACTEMENT la même version
+     * du hub — une génération réelle qui parle à un hub d'une autre version que celle testée en CI
+     * casse le temps réel sans qu'aucun test ne le voie.
+     */
+    public function testDevAndProdPinTheSameMercureVersion(): void
+    {
+        self::assertSame(
+            self::mercureImageTag($this->compose),
+            self::mercureImageTag($this->composeProd),
+            'docker-compose.yml et docker-compose.prod.yml doivent épingler la MÊME version du hub Mercure (cutover direct, dev = prod).',
+        );
+    }
+
     protected function setUp(): void
     {
         // Repo root is mounted at /app (./:/app); tests run in /app/backend.
-        $path = \dirname(__DIR__, 3) . '/docker-compose.yml';
+        $this->compose = self::readComposeFile(\dirname(__DIR__, 3) . '/docker-compose.yml');
+        $this->composeProd = self::readComposeFile(\dirname(__DIR__, 3) . '/docker-compose.prod.yml');
+    }
+
+    private static function readComposeFile(string $path): string
+    {
         $contents = is_file($path) ? file_get_contents($path) : false;
-        self::assertIsString($contents, "docker-compose.yml not found at {$path}");
-        $this->compose = $contents;
+        self::assertIsString($contents, "compose file not found at {$path}");
+
+        return $contents;
+    }
+
+    /** Le tag de l'image `dunglas/mercure:<tag>` déclarée dans un fichier compose. */
+    private static function mercureImageTag(string $compose): string
+    {
+        if (1 !== preg_match('#image:\s*dunglas/mercure:(\S+)#', $compose, $m)) {
+            self::fail('un service dunglas/mercure doit déclarer une image épinglée');
+        }
+
+        return $m[1];
     }
 
     private function readCompose(): string

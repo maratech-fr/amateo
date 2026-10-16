@@ -80,7 +80,8 @@ describe("acquireTravelStream — abonnement + invalidation debouncée", () => {
     const release = acquireTravelStream(queryClient);
     await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = FakeEventSource.instances[0];
-    expect(source.url).toContain(encodeURIComponent(TRAVEL_TOPIC));
+    // Mercure 1.0 : topic EXACT (pas de gabarit) → paramètre `match` (le `topic=` de 0.x a disparu).
+    expect(source.url).toContain(`match=${encodeURIComponent(TRAVEL_TOPIC)}`);
 
     // Une rafale d'événements (paliers) → UN seul refetch (debounce 500 ms).
     source.onmessage?.({ data: JSON.stringify({ scope: "OPPONENTS", done: 5, total: 20, terminal: false }) } as MessageEvent<string>);

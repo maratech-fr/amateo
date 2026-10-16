@@ -101,7 +101,16 @@ une garde du futur : toute table portant `club_id` doit porter EXACTEMENT une po
 pour `amateo_read` — sinon l'opérateur la verrait à 0 ligne, ou cross-club si posée à la main) ·
 `Security/LeagueWindowSuggestionShareTest` (P4-272 ② : la suggestion de plages de ligue lit à travers la frontière tenant via une fonction SQL SECURITY DEFINER — seuil ≥ 3 ET majorité, groupement d'instance comité/ligue/fédération, demandeur exclu, saisons non actives exclues, aucune donnée club-identifiante, repli fédéral ARA/rien pour GUY, apply recalculé serveur) ·
 `Security/ClubAccessTest` + `Security/UserSelfOnlyTest` + `Security/ImportAuthorizationTest` (lockdown API tenant) ·
-`Security/MercureHardeningTest` (Mercure durci) ·
+`Security/MercureHardeningTest` (Mercure durci ; depuis lot 4 PR C : hub épinglé à une 1.x
+EXACTE, MÊME version dans `docker-compose.yml` et `.prod.yml`, jamais `latest` ni 0.x, anonyme/CORS
+interdits dev ET prod) ·
+`Integration/Mercure/MercureEndToEndDeliveryTest` (axe *generation pipeline* — le dernier maillon :
+une update PRIVÉE sur chacun des 3 topics d'un club [génération, trajets, placement] est RÉELLEMENT
+délivrée par le HUB RÉEL à un abonné authentifié du club [protocole 1.0, `match`/`match_urlpattern`,
+jeton en en-tête Authorization], et JAMAIS à un abonné d'un AUTRE club [frontière tenant prouvée AU
+HUB, pas seulement dans la forme du claim — la forme est gardée ailleurs, celui-ci la DÉLIVRANCE].
+Config-agnostique : jeton de la vraie route `/api/mercure/auth`, publication par le vrai hub.
+Sans ce gate, un cutover 1.0 désynchronisé couperait le temps réel en silence) ·
 `Security/ManagementRoleTest` (écriture = management par défaut) ·
 `Security/ApiRateLimitTest` (throttle par user) ·
 `Security/ClubQuotaTest` (caps métier PAR CLUB, les 4 routes de solve — dont `/fill`, le comblement de période P2-44) ·

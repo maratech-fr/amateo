@@ -69,7 +69,8 @@ describe("acquirePlacementStream — abonnement + invalidation à la bascule", (
     const release = acquirePlacementStream(queryClient);
     await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = FakeEventSource.instances[0];
-    expect(source.url).toContain(encodeURIComponent(PLACEMENT_TOPIC));
+    // Mercure 1.0 : topic EXACT (pas de gabarit) → paramètre `match` (le `topic=` de 0.x a disparu).
+    expect(source.url).toContain(`match=${encodeURIComponent(PLACEMENT_TOPIC)}`);
 
     source.onmessage?.({ data: JSON.stringify({ runId: "run-1", status: "COMPLETED" }) } as MessageEvent<string>);
     expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(PLACEMENT_INVALIDATION_KEYS.length);
