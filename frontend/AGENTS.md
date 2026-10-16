@@ -195,12 +195,16 @@ Full mechanics (topic, auth via `GET /api/mercure/auth`, cache invalidation, pol
 **Second stream, `shared/lib/travelStream.ts` (C6, 2026-09-19) — the ONE exception to "an SSE
 consumer lives in the feature that uses it" (`P4-123`, `specs/courantes/etat-des-lieux.md` §2
 closed decision).** Async travel-time computation (opponents + venue matrix) is consumed by
-**two** features — matchs' `OpponentsPage` and the wizard's `TravelMatrixModal` — so the stream
+**two** features — matchs' `OpponentsPage` and the wizard — so the stream
 sits in `shared/` instead of `features/planning/lib/` where `scheduleStream.ts` was deliberately
 pulled DOWN to. Same ref-counted `EventSource` singleton pattern, same `GET /api/mercure/auth`
 call (now returns an additive `travelTopic` alongside `topicTemplate`), subscribed to the fixed
 topic `club:{clubId}:travel`. Debounced (500 ms) invalidation of opponents/conflicts/venue-travel
-caches on message — the GET response (`travelStatus` per row) stays the truth.
+caches on message — the GET response (`travelStatus` per row) stays the truth. Within the wizard,
+**two** screens hold a reference: `TravelMatrixModal` (progress gauge + verdict) and, since
+P4-279 (2026-10-16), `VenuesStep` — it toasts "Trajets recalculés." on a terminal `VENUE_MATRIX`
+event while mounted, deliberately WITHOUT a global listener in `AppLayout`, and stays silent when
+`TravelMatrixModal` is already open (it shows its own gauge).
 
 ### Wizard store = UI only
 

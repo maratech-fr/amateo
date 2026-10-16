@@ -6,6 +6,7 @@ import { toast } from "@/shared/stores/toastStore";
 import { isScheduleStreamConnected, useScheduleStream } from "@/features/planning/lib/scheduleStream";
 
 import { activeTeams, pausedTeamIds } from "./lib/activeLayer";
+import { WIZARD_TEXTS } from "./texts";
 
 import type { CoachPayload, ConstraintPayload, SlotPayload, Team, TeamCoachRole, TeamPayload, Venue, VenuePayload, VenueTravelTimePayload } from "./api";
 import * as wizardApi from "./api";
@@ -207,6 +208,27 @@ export function useUpdateVenue() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: VenuePayload }) => wizardApi.updateVenue(id, body),
     onSuccess: () => Promise.all([invalidateEverywhere(queryClient, "venues"), invalidateVenueGeoCheck(queryClient)]).then(() => undefined),
+  });
+}
+
+/**
+ * P4-279 — géolocaliser un gymnase à l'étape « Gymnases » : même PUT partiel que `useUpdateVenue`
+ * (mêmes invalidations), mais AU SUCCÈS un toast « Position enregistrée » confirme l'écriture.
+ * Le toast vit AU NIVEAU HOOK (FRT-38 / `mutateOnErrorToastGuard`), jamais passé à
+ * `mutate(vars, { onSuccess })`. Il ne redérive PAS « recalcul lancé » : le recalcul des trajets,
+ * déclenché côté serveur par l'écriture géo, se signale par son flux Mercure (VenuesStep écoute
+ * `useTravelStream` et toaste « Trajets recalculés. » au terminal). Les erreurs ont le même
+ * traitement que `useUpdateVenue` : aucune `onError` locale, le filet global `MutationCache.onError`
+ * les toaste une fois.
+ */
+export function useLocateVenue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: VenuePayload }) => wizardApi.updateVenue(id, body),
+    onSuccess: () => {
+      toast.success(WIZARD_TEXTS.venuePositionSaved);
+      return Promise.all([invalidateEverywhere(queryClient, "venues"), invalidateVenueGeoCheck(queryClient)]).then(() => undefined);
+    },
   });
 }
 

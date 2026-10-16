@@ -223,8 +223,10 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   — un simple déplacement ne fait jamais naître une matrice) et verrou non tenu. Les `AUTO` du
   couple impliquant ce gymnase se recalculent (nouvelles coordonnées ⇒ MISS du cache, indexé par
   coordonnées, ⇒ appel IGN) ; les `MANUAL` ne bougent jamais ; les autres couples retombent sur le
-  cache. **Aucun toast front dédié** (volontaire : pas d'écoute globale du flux `club:{id}:travel`
-  hors la modale déjà ouverte — la matrice se rafraîchit d'elle-même à la prochaine ouverture).
+  cache. **Toast front dédié depuis P4-279 (2026-10-16)** : tant que l'écran Gymnases du wizard
+  reste ouvert, il écoute le même flux `club:{id}:travel` (pas d'écoute globale ailleurs dans
+  l'app) et toaste « Trajets recalculés. » à la transition terminale — sauf si la matrice
+  (`TravelMatrixModal`) est déjà ouverte, qui montre sa propre jauge (`frontend/AGENTS.md`).
   ⚠ **Les trois dispatchers contrôleur (hors le siège) ne dispatchent PAS si un calcul est déjà en
   cours** : `App\Service\TravelComputeLock::isHeld($clubId)` lu
   AVANT le `dispatch` — un second message contre un verrou déjà tenu finirait en
