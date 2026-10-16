@@ -6,8 +6,10 @@ namespace App\State\Processor;
 
 use App\ApiResource\VenueTrainingSlotResource;
 use App\Dto\VenueTrainingSlotInput;
+use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\AuditAction;
 use DateTimeImmutable;
 
 /**
@@ -41,7 +43,13 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
      */
     protected function processPost(object $input, ?string $clubId, ?string $seasonId): object
     {
-        return $this->rejectingConcurrentPlanDeletion(fn (): object => parent::processPost($input, $clubId, $seasonId));
+        /** @var VenueTrainingSlotResource $output */
+        $output = $this->rejectingConcurrentPlanDeletion(fn (): object => parent::processPost($input, $clubId, $seasonId));
+
+        // RGPD — création d'un créneau de grille : trace `grid.changed`, pas d'état antérieur.
+        $this->recordGridChanged($clubId, $output, before: null);
+
+        return $output;
     }
 
     /**
@@ -72,6 +80,16 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
             // déjà le nouveau triplet. C'est bien (avant → après) qu'on passe.
             $this->cascadeDeleter?->moveChildrenOfSlot($snapshot, $before);
         }
+
+        // RGPD — édition d'un créneau de grille : trace `grid.changed` avec le jour/heure
+        // AVANT (relevé dans le snapshot pré-mutation) et APRÈS (la ressource de sortie).
+        $this->recordGridChanged(
+            $clubId,
+            $output,
+            before: $snapshot instanceof VenueTrainingSlot
+                ? ['dayOfWeek' => $snapshot->getDayOfWeek(), 'startTime' => $snapshot->getStartTime()->format('H:i')]
+                : null,
+        );
 
         return $output;
     }
@@ -150,6 +168,30 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
     protected function mapEntityToOutput(object $entity): VenueTrainingSlotResource
     {
         return VenueTrainingSlotResource::fromEntity($entity);
+    }
+
+    /**
+     * RGPD — écrit UNE ligne `grid.changed` pour un créneau de grille (création ou édition). Details
+     * sans PII : id du gymnase, plan de période (ou null = créneau de saison), jour/heure avant/après.
+     *
+     * @param array{dayOfWeek: int, startTime: string}|null $before
+     */
+    private function recordGridChanged(?string $clubId, VenueTrainingSlotResource $output, ?array $before): void
+    {
+        $actor = $this->actorSecurity?->getUser();
+        $this->auditTrail?->record(
+            AuditAction::GRID_CHANGED,
+            $actor instanceof User ? $actor->getId() : null,
+            $clubId,
+            'VenueTrainingSlot',
+            $output->id,
+            [
+                'venueId' => $output->venueId,
+                'schedulePlanId' => $output->schedulePlanId,
+                'before' => $before,
+                'after' => ['dayOfWeek' => $output->dayOfWeek, 'startTime' => $output->startTime->format('H:i')],
+            ],
+        );
     }
 
     /**
