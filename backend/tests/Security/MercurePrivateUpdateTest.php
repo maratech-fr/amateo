@@ -14,7 +14,7 @@ use Symfony\Component\Mercure\Update;
 
 /**
  * SEC-06 (A14): schedule-generation progress is published on a club-scoped topic
- * (club:{clubId}:schedule:{id}). Those updates MUST be Mercure-private so the
+ * (/clubs/{clubId}/schedules/{id}). Those updates MUST be Mercure-private so the
  * subscriber JWT's topic authorization is enforced — a public update bypasses
  * per-topic scoping and would leak one club's status to any holder of a valid
  * subscriber token. MercureHardeningTest guards the hub config; this guards the
@@ -41,7 +41,7 @@ final class MercurePrivateUpdateTest extends TestCase
 
         self::assertInstanceOf(Update::class, $captured);
         self::assertTrue($captured->isPrivate(), 'Schedule progress updates must be Mercure-private (SEC-06).');
-        self::assertStringStartsWith('club:', $captured->getTopics()[0]);
+        self::assertStringStartsWith('/clubs/', $captured->getTopics()[0]);
     }
 
     public function testTerminalFailureIsAlsoPrivate(): void

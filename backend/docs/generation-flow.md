@@ -327,13 +327,14 @@ Quel que soit le résultat (succès ou échec), le handler publie un événement
 Le publieur émet toujours sur le topic **exact** d'un planning (`MercureTopic::for`, foyer unique — D-10) :
 
 ```
-club:{clubId}:schedule:{scheduleId}
+/clubs/{clubId}/schedules/{scheduleId}
 ```
 
-> Exemple pour le BCCL : `club:bccl-uuid:schedule:550e8400-e29b-41d4-a716-446655440000`
+> Exemple pour le BCCL : `/clubs/bccl-uuid/schedules/550e8400-e29b-41d4-a716-446655440000`
 
 Le frontend ouvre **UN seul** `EventSource` par session, abonné au **sélecteur TEMPLATE du club**
-(`club:{clubId}:schedule:{id}`, le joker Mercure `{id}` — `MercureTopic::selectorForClub`) obtenu
+(`/clubs/{clubId}/schedules/:id`, le groupe nommé URLPattern 1.0 `:id` —
+`MercureTopic::selectorForClub`) obtenu
 via `GET /api/mercure/auth` (champ `topicTemplate`) — toutes les générations du club arrivent sur
 la même connexion, sans en connaître les ids à l'avance (`frontend/src/features/planning/lib/scheduleStream.ts`).
 

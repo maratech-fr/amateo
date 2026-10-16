@@ -941,3 +941,31 @@ Au premier déploiement qui embarque ce changement :
 
 NR : `MessengerTransportSeparationTest` (phase1) refuse tout retour à un stream partagé.
 
+## Mercure 1.0 — cutover du hub (déployé le 2026-10-16)
+
+Le hub Mercure passe de `v0.19` (OAuth 2.0 encore absent) à `v1.1.2` — jeton de souscription/
+publication en access token RFC 9068, topics en URLPattern. Détail protocole : `docs/security/
+mercure.md`. **Les trois pièces (hub, backend émetteur de jetons, frontend consommateur)
+basculent dans la MÊME release** — un hub 1.0 refuse (401) un jeton 0.x, et réciproquement un hub
+resté en 0.x ignorerait un jeton 1.0 : pas de déploiement partiel possible.
+
+Avant de déployer :
+
+1. ajouter `MERCURE_TRUSTED_ISSUERS` au `.env.prod` (= `PUBLIC_BASE_URL`) **et** au secret
+   GitHub `ENV_PROD` (§ Secret `ENV_PROD` ci-dessus) — le compose prod refuse de démarrer sans
+   elle (`${MERCURE_TRUSTED_ISSUERS:?}`) ;
+2. vérifier que rien d'autre ne surcharge `MERCURE_PUBLIC_URL` sur la VM avec une valeur qui ne
+   correspondrait pas au `resource_identifier` du hub — sinon chaque service backend publieur
+   (php-fpm, `messenger-worker`, `cron-runner`) perd ses publications **en silence** (`aud`
+   invalide, `MercureHardeningTest` le garde côté CI, pas en prod).
+
+Pendant le déploiement, les abonnements SSE existants (générations en cours, calcul de trajets,
+placement) **coupent quelques minutes** — l'EventSource se reconnecte, mais le hub change de
+protocole sous lui : prévenir d'une interruption brève du temps réel, pas des écritures (le
+polling de secours couvre la fenêtre).
+
+**Retour arrière** : revert du commit de cutover (hub + backend + frontend ensemble) puis
+re-épingler `dunglas/mercure:v0.19` dans `docker-compose.prod.yml` — jamais l'un sans l'autre, par
+le même raisonnement qu'au déploiement (un hub et un jeton de générations différentes ne se
+parlent pas).
+

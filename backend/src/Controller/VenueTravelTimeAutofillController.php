@@ -65,7 +65,7 @@ final class VenueTravelTimeAutofillController extends AbstractController
 
         // C6 — cap dur vérifié SYNCHRONEMENT (422 immédiat, aucun réseau : lecture base seule),
         // puis le calcul est DISPATCHÉ au worker (rafale IGN pacée > plafond HTTP) ; la
-        // progression et le verdict `{filled, unresolved}` arrivent par `club:{clubId}:travel`.
+        // progression et le verdict `{filled, unresolved}` arrivent par `/clubs/{clubId}/travel`.
         $pairs = $this->autofiller->geolocatedPairCount($clubId, $seasonId);
         if ($pairs > VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS) {
             return $this->json([

@@ -128,7 +128,9 @@ describe("acquireScheduleStream — FRT-04", () => {
 
     expect(api.get).toHaveBeenCalledExactlyOnceWith("mercure/auth");
     expect(FakeEventSource.instances).toHaveLength(1);
-    expect(FakeEventSource.instances[0]!.url).toBe(`/.well-known/mercure?topic=${encodeURIComponent(TEMPLATE)}`);
+    // Mercure 1.0 : le GABARIT de génération est un topic URLPattern → paramètre `match_urlpattern`
+    // (le `topic=` de 0.x a disparu). Le front transmet tel quel le sélecteur servi par l'auth.
+    expect(FakeEventSource.instances[0]!.url).toBe(`/.well-known/mercure?match_urlpattern=${encodeURIComponent(TEMPLATE)}`);
 
     expect(isScheduleStreamConnected()).toBe(false);
     FakeEventSource.instances[0]!.onopen?.();

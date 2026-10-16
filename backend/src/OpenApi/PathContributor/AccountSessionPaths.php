@@ -338,15 +338,15 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                     'type' => 'object',
                     'properties' => [
                         'expiresIn' => ['type' => 'integer', 'description' => 'Cookie/JWT TTL in seconds'],
-                        'topicTemplate' => ['type' => 'string', 'description' => 'URI template club:{clubId}:schedule:{id} — subscribe to it as-is'],
-                        'travelTopic' => ['type' => 'string', 'description' => 'Fixed topic club:{clubId}:travel for the async travel-computation progress — subscribe to it as-is'],
+                        'topicTemplate' => ['type' => 'string', 'description' => 'URLPattern selector /clubs/{clubId}/schedules/:id — subscribe to it as-is (match_urlpattern)'],
+                        'travelTopic' => ['type' => 'string', 'description' => 'Fixed topic /clubs/{clubId}/travel for the async travel-computation progress — subscribe to it as-is (match)'],
                     ],
                 ]),
                 '400' => new Response('No club resolved for the authenticated user'),
                 '401' => new Response('Unauthorized'),
                 '503' => new Response('Mercure secret not configured'),
             ],
-            summary: 'FRT-04: mint the hub subscriber JWT (scoped to the member own club generation topics), delivered as the mercureAuthorization cookie',
+            summary: 'FRT-04: mint the hub subscriber JWT (scoped to the member own club generation topics), delivered as an httpOnly cookie on /.well-known/mercure',
         )));
 
         $paths->addPath('/api/me/export', new PathItem(get: new Operation(

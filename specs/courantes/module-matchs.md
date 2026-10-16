@@ -300,7 +300,7 @@ matrice de gymnases, résolution simple) passent d'abord par ce cache. Détail m
 Le calcul lui-même (rafale IGN pacée ~1 req/s) quitte le rail synchrone : `POST
 /api/opponents/travel/resolve` **dispatche** au worker (réponse `{queued: true}`, plus
 `{resolved: N}`) et répond immédiatement — la progression se lit via `travelStatus` (rafraîchi par
-Mercure, topic `club:{clubId}:travel`, `docs/security/mercure.md`), jamais un spinner par ligne.
+Mercure, topic `/clubs/{clubId}/travel`, `docs/security/mercure.md`), jamais un spinner par ligne.
 `resolve()` ne route que les PAIRES siège→gymnase MANQUANTES du cache (`OpponentTravelResolver::
 pairsToRoute` : un point par lien apparié + un point VILLE pour un code sans lien — aucune notion
 d'équipe ni de ligne saison) : une paire déjà résolue n'est plus jamais retouchée, « Réessayer les
@@ -588,7 +588,7 @@ exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (ma
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
 `{runId, status}` ; `PlaceMatchesHandler` (transport `async` partagé avec la génération) solve,
 applique, décompte le crédit Découverte au SUCCÈS et publie la bascule terminale (COMPLETED/FAILED)
-sur le 3ᵉ topic Mercure fixe `club:{clubId}:placement`. `GET /api/fixtures/placement-run` rend le
+sur le 3ᵉ topic Mercure fixe `/clubs/{clubId}/placement`. `GET /api/fixtures/placement-run` rend le
 dernier run du club+saison (lecture seule, ouvert à tout membre). Anti-double-clic PAR CLUB
 `MatchPlacementLock` (Redis dédié — pris par le contrôleur, relâché par le worker ; ne protège pas
 deux clubs l'un de l'autre : ils partagent le sémaphore GLOBAL `max_concurrent_placements=1` de
@@ -705,7 +705,7 @@ désactivé avec une explication en offre Découverte ; bouton dédié « Placer
 l'établi Semaine (P4-240 ④, §5), même rail (`runPlacement`, maison unique), fenêtre posée sur la
 semaine lundi→dimanche affichée. L'**état** « en cours » est un bandeau visible de TOUS les membres
 (un autre onglet, un autre membre voit aussi « en cours ») — relu au GET `/api/fixtures/placement-run`
-et rafraîchi par la bascule Mercure (`club:{clubId}:placement`) ; à 2 min, le bandeau invite à quitter
+et rafraîchi par la bascule Mercure (`/clubs/{clubId}/placement`) ; à 2 min, le bandeau invite à quitter
 la page (« vous recevrez un e-mail à la fin ») puisque le run tourne sur le worker Messenger, pas sur
 la requête du navigateur. Fin de run : toast « N placés · M non plaçables » (raisons par match) + le
 GET relu derrière l'invalidation.

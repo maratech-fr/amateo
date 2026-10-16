@@ -98,7 +98,7 @@ Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverS
 | **RLS** | Row-Level Security PostgreSQL, policies `FORCE` sur `club_id`, clé = GUC `app.club_id`. Runtime `amateo_app` (restreint) / migrations-ops `amateo_owner` (connexion `admin`, **bypasse RLS**). CLI sans GUC → 0 ligne (attendu). |
 | **GUC** | Variable de session PostgreSQL (`app.club_id`) posée par `TenantConnectionContext` (workers : depuis le message). |
 | **season_filter** | Filtre Doctrine intra-club : scope saison (X-Season-Id validé, sinon saison calendaire courante). |
-| **Mercure** | Hub SSE ; topic `club:{clubId}:schedule:{scheduleId}` ; publication **best-effort** (le front polle en secours). |
+| **Mercure** | Hub SSE (protocole 1.0) ; topic `/clubs/{clubId}/schedules/{scheduleId}` ; publication **best-effort** (le front polle en secours). |
 | **ClubGenerationLock** | Verrou Redis (`SETEX NX` + token) : une génération à la fois par club. |
 | **phase1** | Groupe PHPUnit bloquant (tests structurants tenant/RLS/contrat/vie du planning). |
 | **Gestionnaire / Membre** | Les deux rôles assignables d'une adhésion (`ClubRole`, P1-1) : Gestionnaire (`admin`) pilote tout ; Membre (`member`) lit tout, n'écrit rien — toute écriture API est management par défaut. `owner` : legacy, toléré en lecture comme management, jamais assignable. |

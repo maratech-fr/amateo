@@ -13,7 +13,7 @@ use Symfony\Component\Mercure\Update;
 
 /**
  * C6 — le publieur de progression du calcul des trajets : sur le topic FIXE
- * `club:{clubId}:travel`, PRIVÉ (le claim d'abonnement est la frontière), avec la
+ * `/clubs/{clubId}/travel`, PRIVÉ (le claim d'abonnement est la frontière), avec la
  * charge `{scope, done, total, terminal, verdict?}`.
  */
 #[Group('unit')]
@@ -37,7 +37,7 @@ final class TravelProgressPublisherTest extends TestCase
         self::assertCount(2, $captured);
 
         // Progression : topic fixe, privé, terminal false, pas de verdict.
-        self::assertSame(['club:club-1:travel'], $captured[0]->getTopics());
+        self::assertSame(['/clubs/club-1/travel'], $captured[0]->getTopics());
         self::assertTrue($captured[0]->isPrivate(), 'un update de trajet est TOUJOURS privé');
         $progress = json_decode($captured[0]->getData(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertSame(['scope' => 'OPPONENTS', 'done' => 5, 'total' => 20, 'terminal' => false], $progress);

@@ -13,7 +13,7 @@ use Throwable;
 
 /**
  * C6 — publie l'avancement du CALCUL DES TRAJETS asynchrone sur le topic PRIVÉ
- * `club:{clubId}:travel` (patron {@see ScheduleProgressPublisher}). Mercure est
+ * `/clubs/{clubId}/travel` (patron {@see ScheduleProgressPublisher}). Mercure est
  * best-effort — le front dégrade en refetch (le GET reste la vérité, `travelStatus`) —
  * donc un échec de publication est journalisé et avalé, jamais propagé : il ne casse
  * jamais un calcul déjà persisté.

@@ -132,23 +132,27 @@ superadmin n'a pas de tenant, §3 :
 ### Souscription frontend (`MercureAuthController`, FRT-04)
 
 `GET /api/mercure/auth` signe un JWT hub subscriber (même secret `MERCURE_JWT_SECRET` que le
-publieur) dont l'autorisation `subscribe` est un **URI template borné au club résolu par le
-tenant** — `club:{clubId}:schedule:{id}`, où seul `{id}` varie ; `clubId` revalidé en forme
+publieur). Depuis Mercure 1.0 (lot 4 PR C, 2026-10-16) c'est un ACCESS TOKEN RFC 9068 (en-tête
+`typ: at+jwt`, claims `iss`/`aud`/`sub`/`client_id`) dont l'autorisation `authorization_details`
+porte un `subscribe` **borné au club résolu par le tenant** — URLPattern
+`/clubs/{clubId}/schedules/:id`, où seul `:id` varie ; `clubId` revalidé en forme
 UUID canonique (défense en profondeur : le sélecteur EST la frontière de sécurité). Le jeton
-part en **cookie httpOnly** `mercureAuthorization` (`path: /.well-known/mercure`, `SameSite=Strict`,
-`secure` piloté par la MÊME variable `JWT_COOKIE_SECURE` que le cookie JWT applicatif — jamais
-`$request->isSecure()`, TTL 3600 s), jamais rendu au JS (même raisonnement que SEC-16 : pas de
-second jeton lisible en plus du JWT applicatif). Le frontend consomme
-(`frontend/src/features/planning/lib/scheduleStream.ts`) : un seul `EventSource` par session sur
-`/.well-known/mercure?topic={topicTemplate}`, reçoit ainsi les mises à jour de TOUTES ses
-générations.
+part en **cookie httpOnly**, NOMMÉ selon l'environnement (décision C1-A) —
+`__Secure-mercure_access_token` en prod HTTPS, `mercure_access_token` en dev HTTP/tests —
+(`path: /.well-known/mercure`, `SameSite=Strict`, `secure` piloté par la MÊME variable
+`JWT_COOKIE_SECURE` que le cookie JWT applicatif — jamais `$request->isSecure()`, TTL 3600 s),
+jamais rendu au JS (même raisonnement que SEC-16 : pas de second jeton lisible en plus du JWT
+applicatif). Le frontend consomme (`frontend/src/features/planning/lib/scheduleStream.ts`) : un
+seul `EventSource` par session sur `/.well-known/mercure?match_urlpattern={topicTemplate}`, reçoit
+ainsi les mises à jour de TOUTES ses générations. Détail protocole 1.0 (audience `aud` =
+`MERCURE_PUBLIC_URL`, émetteur `iss` = `MERCURE_TRUSTED_ISSUERS`) : `docs/security/mercure.md`.
 
 ### Topic et publication
 
 Le topic Mercure suit le format :
 
 ```
-club:{clubId}:schedule:{scheduleId}
+/clubs/{clubId}/schedules/{scheduleId}
 ```
 
 La publication est effectuée par les handlers asynchrones, toujours via l'enveloppe

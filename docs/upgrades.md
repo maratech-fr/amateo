@@ -12,6 +12,34 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-10-16 — Mercure 0.19/0.24 → 1.0 (lot 4 PR C, hors Dependabot)
+
+**C'est quoi** : le hub **Mercure**, le canal temps réel qui pousse l'avancement d'une génération
+de planning, le calcul des trajets et le placement automatique des matchs vers le navigateur
+(SSE) — sans lui le front retombe sur du polling. Jusqu'ici dev/CI (`v0.24.2`) et prod (`v0.19`)
+tournaient sur deux versions 0.x différentes, épinglées d'urgence depuis la sortie cassante de la
+1.0 le 2026-09-16.
+
+**Ça apporte** : la **même version partout** (`dunglas/mercure:v1.1.2`, dev = prod, cutover direct
+sans mode compatibilité) et un protocole d'autorisation rebâti sur OAuth 2.0 / RFC 9068 — jeton
+d'abonnement en « access token » (`typ: at+jwt`, claims `iss`/`aud`/`sub`/`client_id`), topics
+matchés par URL Pattern au lieu de l'ancien URI Template.
+
+**Adapté chez nous** : trois pièces bougées ensemble (hub, émetteur de jetons, consommateur front) —
+jamais l'une sans les autres, sous peine de casser le temps réel en silence. Les topics passent de
+la forme URN `club:{clubId}:…` au chemin web `/clubs/{clubId}/…` (un topic à deux-points n'est pas
+une URLPattern valide pour le hub 1.0). Deux nouvelles variables d'environnement à synchroniser
+hub↔backend : `MERCURE_TRUSTED_ISSUERS` (émetteur de confiance, claim `iss`) et `MERCURE_PUBLIC_URL`
+désormais exigée sur **chaque service qui publie** (php-fpm, `messenger-worker`, `cron-runner`),
+qui porte aussi le claim `aud` — un service oublié perd ses publications sans erreur visible,
+gardé par `MercureHardeningTest`. Le cookie d'abonnement change de nom selon l'environnement
+(`__Secure-mercure_access_token` en prod HTTPS, `mercure_access_token` en dev HTTP/tests) puisqu'un
+préfixe `__Secure-` exige le flag `Secure`. NR bloquant ajouté :
+`Integration/Mercure/MercureEndToEndDeliveryTest`, le seul test qui boote le vrai hub et prouve la
+délivrance (et la frontière tenant) bout en bout plutôt que la seule forme d'un jeton ou d'un
+fichier compose. Dependabot n'ignore plus que la prochaine majeure (`>=2.0.0`). Détail :
+[`docs/security/mercure.md`](security/mercure.md).
+
 ## 2026-10-16 — Redis 8 (lot 4 PR D, hors Dependabot)
 
 **C'est quoi** : l'image Redis — la file des générations (transport Messenger), les verrous
@@ -26,8 +54,9 @@ MODIFIÉE de Redis, or nous utilisons l'image officielle non modifiée, en inter
 Trois changements : les deux lignes d'image compose, le retrait de l'exception majeure dans
 `.github/dependabot.yml` (Redis n'a plus de raison d'être ignoré), et une procédure de snapshot
 du volume `redis_data` avant tout déploiement (`docs/ops/backup-restore.md` §7) — un retour
-arrière 8 → 7 n'étant pas garanti sur le format AOF/RDB. Couvre le volet Redis de la ligne
-**P4-310** de la roadmap ; reste le volet Mercure 1.0 de cette même ligne.
+arrière 8 → 7 n'étant pas garanti sur le format AOF/RDB. Couvrait le volet Redis de l'ancienne
+ligne de roadmap P4-310 ; le volet Mercure est livré le même jour (entrée ci-dessus) — la ligne
+est close et a quitté la roadmap.
 
 ## 2026-10-16 — lot Dependabot (5 PRs mergées dont 2 réparées, 2 fermées)
 
