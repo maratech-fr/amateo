@@ -462,6 +462,30 @@ describe("AdminDashboardPage", () => {
     await waitFor(() => expect(mockJobs).toHaveBeenCalledTimes(2));
   });
 
+  it("renders a readable cadence label for a weekly job (db-restore-check)", async () => {
+    // La console superadmin sert désormais un job hebdomadaire (contrôle de restauration,
+    // dimanche 04:00). La colonne « Cadence » doit en afficher un libellé lisible, jamais
+    // `undefined` (map de formatCadence incomplète = cellule vide).
+    const weeklyJobs: AdminJobsResponse = {
+      items: [
+        {
+          key: "db-restore-check",
+          label: "Contrôle de restauration",
+          command: "app:db:restore-check",
+          cadence: "weekly",
+          manualTriggerAllowed: false,
+          nextRunAt: "2099-07-19T04:00:00+02:00",
+          latestRun: null,
+        },
+      ],
+    };
+    mockJobs.mockReset().mockResolvedValue(weeklyJobs);
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=jobs" });
+
+    expect(await screen.findByText("Contrôle de restauration")).toBeInTheDocument();
+    expect(screen.getByText("Hebdomadaire")).toBeInTheDocument();
+  });
+
   it("keeps the other monitoring panels visible when health fails", async () => {
     mockHealth.mockRejectedValue(new Error("health unavailable"));
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
