@@ -108,55 +108,52 @@ test("matrice des trajets (wizard · gymnases) : en-têtes figés (coin + 1ʳᵉ
   await loginSeededClub(page);
 
   // La matrice n'affiche son tableau que si AU MOINS un temps de trajet existe (sinon écran de
-  // consentement « Calculer les trajets » → worker IGN, flaky). Le scénario CRÉE la donnée qu'il
-  // vérifie (charte § E2E) : un seul couple suffit à sortir du consentement. Nettoyé en `finally`.
-  const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
-  const venues = ((await venuesRes.json()).member ?? []) as { id: string; name: string }[];
-  expect(
-    venues.length,
-    "le club seedé doit avoir ≥ 2 gymnases pour que la matrice ait des lignes/colonnes (sinon rien à figer)",
-  ).toBeGreaterThanOrEqual(2);
-
-  let travelId: string | null = null;
-  try {
+  // consentement « Calculer les trajets » → worker IGN, flaky). Le scénario ASSURE la donnée qu'il
+  // vérifie (charte § E2E) : un seul couple suffit à sortir du consentement. L'API n'expose AUCUNE
+  // suppression de temps de trajet (Post/Put seulement) : on réutilise un couple déjà saisi plutôt
+  // que d'en recréer un (le couple est unique par club+saison → un 2ᵉ POST rendrait 422 au rejeu).
+  const existingRes = await page.request.get("/api/venue_travel_times?itemsPerPage=1");
+  const existing = ((await existingRes.json()).member ?? []) as unknown[];
+  if (0 === existing.length) {
+    const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
+    const venues = ((await venuesRes.json()).member ?? []) as { id: string; name: string }[];
+    expect(
+      venues.length,
+      "le club seedé doit avoir ≥ 2 gymnases pour que la matrice ait des lignes/colonnes (sinon rien à figer)",
+    ).toBeGreaterThanOrEqual(2);
     const created = await page.request.post("/api/venue_travel_times", {
       data: { venueAId: venues[0].id, venueBId: venues[1].id, drivingMinutes: 12 },
     });
     expect(created.ok(), `la création d'un temps de trajet doit réussir (HTTP ${created.status()})`).toBe(true);
-    travelId = ((await created.json()) as { id: string }).id;
-
-    await page.goto("/wizard?step=venues");
-    await settleVeil(page);
-    await page.getByRole("button", { name: "Trajets entre gymnases" }).click();
-
-    const dialog = page.getByRole("dialog", { name: "Trajets entre gymnases" });
-    await expect(dialog).toBeVisible({ timeout: 15_000 });
-
-    // Coin figé : l'en-tête « Depuis \ vers » est collé en haut ET à gauche.
-    const corner = dialog.getByRole("columnheader", { name: /Depuis/ });
-    await expect(corner).toBeVisible({ timeout: 15_000 });
-    const cornerSticky = await stickiness(corner);
-    expect(cornerSticky.position, "le coin « Depuis \\ vers » doit être position:sticky").toBe("sticky");
-    expect(cornerSticky.top).toBe("0px");
-    expect(cornerSticky.left).toBe("0px");
-
-    // 1ʳᵉ colonne figée : l'en-tête de LIGNE (nom du gymnase) reste collé à gauche au défilement horizontal.
-    const rowHeader = dialog.locator('th[scope="row"]').first();
-    await expect(rowHeader).toBeVisible();
-    const rowSticky = await stickiness(rowHeader);
-    expect(rowSticky.position, "l'en-tête de ligne (gymnase) doit être position:sticky").toBe("sticky");
-    expect(rowSticky.left).toBe("0px");
-
-    // Le conteneur de la matrice reste défilant (`overflow` auto) — ancêtre défilant du `sticky`.
-    const overflowY = await corner.evaluate((el) => {
-      const table = el.closest("table");
-      const wrapper = table?.parentElement ?? null;
-      return null === wrapper ? "" : getComputedStyle(wrapper).overflowY;
-    });
-    expect(["auto", "scroll"]).toContain(overflowY);
-  } finally {
-    if (null !== travelId) {
-      await page.request.delete(`/api/venue_travel_times/${travelId}`).catch(() => undefined);
-    }
   }
+
+  await page.goto("/wizard?step=venues");
+  await settleVeil(page);
+  await page.getByRole("button", { name: "Trajets entre gymnases" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Trajets entre gymnases" });
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+
+  // Coin figé : l'en-tête « Depuis \ vers » est collé en haut ET à gauche.
+  const corner = dialog.getByRole("columnheader", { name: /Depuis/ });
+  await expect(corner).toBeVisible({ timeout: 15_000 });
+  const cornerSticky = await stickiness(corner);
+  expect(cornerSticky.position, "le coin « Depuis \\ vers » doit être position:sticky").toBe("sticky");
+  expect(cornerSticky.top).toBe("0px");
+  expect(cornerSticky.left).toBe("0px");
+
+  // 1ʳᵉ colonne figée : l'en-tête de LIGNE (nom du gymnase) reste collé à gauche au défilement horizontal.
+  const rowHeader = dialog.locator('th[scope="row"]').first();
+  await expect(rowHeader).toBeVisible();
+  const rowSticky = await stickiness(rowHeader);
+  expect(rowSticky.position, "l'en-tête de ligne (gymnase) doit être position:sticky").toBe("sticky");
+  expect(rowSticky.left).toBe("0px");
+
+  // Le conteneur de la matrice reste défilant (`overflow` auto) — ancêtre défilant du `sticky`.
+  const overflowY = await corner.evaluate((el) => {
+    const table = el.closest("table");
+    const wrapper = table?.parentElement ?? null;
+    return null === wrapper ? "" : getComputedStyle(wrapper).overflowY;
+  });
+  expect(["auto", "scroll"]).toContain(overflowY);
 });
