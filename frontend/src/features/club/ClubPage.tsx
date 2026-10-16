@@ -546,7 +546,8 @@ function UsageTable({ caption, firstColHeader, rows, totalByDay, grandTotal, day
               <HoursCell hours={r.total} strong />
             </TableRow>
           ))}
-          <TableRow className="border-t-2 border-border font-semibold">
+          {/* `last:border-t-2` : le `last:border-0` de `TableRow` effacerait sinon le trait de 2 px au-dessus du TOTAL. */}
+          <TableRow className="border-t-2 border-border font-semibold last:border-t-2">
             <TableCell className="py-1.5 px-0">TOTAL</TableCell>
             {days.map((d) => <HoursCell key={d} hours={dayTotal(totalByDay, d)} strong className={7 === d ? SEPARATOR : ""} />)}
             <HoursCell hours={grandTotal.real} strong className="pl-3" />
