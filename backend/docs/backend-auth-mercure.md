@@ -67,9 +67,10 @@ partagé entre envoi initial, relance et renvoi ciblé (même clé club). Un clu
 refusé 403 avant toute résolution de destinataires (patron des autres gestes de compte interdits
 aux démos). **Tous les limiteurs `rate_limiter` sont désormais ATOMIQUES** : `backend/config/
 packages/lock.yaml` câble `framework.lock` sur un store Redis PARTAGÉ (`%env(REDIS_URL)%`, même
-DSN que le cache) — jusque-là `lock_factory: auto` résolvait un store local (flock), non partagé
-entre les workers php-fpm ni avec `messenger-worker`, et `SlidingWindowLimiter::reserve()` faisait
-une lecture-puis-écriture non atomique contournable par requêtes parallèles.
+DSN que le cache) — jusque-là `symfony/lock` était absent, `lock_factory: auto` se résolvait à
+`null` : AUCUN verrou, et `SlidingWindowLimiter::reserve()` faisait une lecture-puis-écriture non
+atomique contournable par requêtes parallèles. Redis indisponible ⇒ les routes à limiteur
+répondent 500 (fermé, jamais ouvert) au lieu de laisser passer.
 
 ### Résolution du tenant (`TenantFilterListener`)
 

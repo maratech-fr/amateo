@@ -102,10 +102,11 @@ l'image `puppeteer` 25.14.0 du worker qui fabrique les PDF. Rien à adapter.
 passaient par un usage direct de Redis, pas par ce composant.
 
 **Ça apporte** : un store de verrous PARTAGÉ et configurable (`framework.lock`), que Symfony
-câble automatiquement derrière `rate_limiter` (`lock_factory: auto`) — jusqu'ici, sans
-`framework.lock` configuré, ce câblage résolvait un store LOCAL au système de fichiers d'un
-conteneur (non partagé entre les workers php-fpm, ni avec `messenger-worker`) : un plafond
-d'envoi par club (ex. `coach_wish_send`) restait contournable par des requêtes parallèles.
+câble automatiquement derrière `rate_limiter` (`lock_factory: auto`) — jusqu'ici, le composant
+étant absent, ce câblage ne trouvait aucun verrou : nos limiteurs comptaient sans verrou, et un
+plafond (ex. `coach_wish_send`, mais aussi les tentatives de connexion) restait contournable par
+des requêtes parallèles. Contrepartie : si Redis tombe, les routes à limiteur répondent une erreur
+au lieu de laisser passer.
 
 **Adapté chez nous** : `backend/config/packages/lock.yaml` pose `framework.lock:
 '%env(REDIS_URL)%'` — même DSN que le cache. Conséquence immédiate et volontaire : **tous** les
