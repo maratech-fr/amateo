@@ -166,7 +166,7 @@ updates:
   # un `FROM` de Dockerfile : l'écosystème `docker` ci-dessus ne les voit pas).
   # Ajouté pour suivre l'image Umami de `docker-compose.prod.yml` (P4-276) ; il
   # couvre DU MÊME COUP les autres pins compose encore non suivis — `dunglas/
-  # mercure` et `redis:7-alpine` (dev ET prod) : chaque bump reste une PR que le
+  # mercure` et `redis:8-alpine` (dev ET prod) : chaque bump reste une PR que le
   # fondateur merge ou ferme (effet de bord assumé, 2026-10-06).
   - package-ecosystem: "docker-compose"
     directory: "/"
@@ -191,10 +191,6 @@ updates:
       # PostgreSQL (dev `postgres:16-alpine`) : une majeure impose une migration
       # de données. La prod est déjà couverte par le bloc docker /docker/postgres.
       - dependency-name: "postgres"
-        update-types: ["version-update:semver-major"]
-      # Redis (dev+prod `redis:7-alpine`) : Redis 8 pose une question de licence,
-      # à trancher à part (roadmap P4-310).
-      - dependency-name: "redis"
         update-types: ["version-update:semver-major"]
       # Mercure (dev `v0.24.2`, prod `v0.19`) : en 0.x `semver-major` ne capte
       # pas le saut 0.x → 1.0, on borne donc par version. On laisse passer les

@@ -653,7 +653,7 @@ noms de classes exacts : [`generation-flow.md`](generation-flow.md) §1 « Vue d
 | **Engine** | Python 3.12 + FastAPI + OR-Tools | Solveur CP-SAT qui calcule le planning optimal |
 | **Messenger Worker** | PHP CLI + Symfony Messenger | Consommateur de file Redis, appelle l'engine et importe le résultat |
 | **Mercure** | Go (hub SSE) | Diffusion temps réel des changements de statut |
-| **Redis** | Redis 7 | File d'attente des messages + verrous distribués |
+| **Redis** | Redis 8 | File d'attente des messages + verrous distribués |
 | **PostgreSQL** | PostgreSQL 16 | Stockage des entités (schedules, créneaux, diagnostics) |
 
 ### Injection du placement précédent (après le hash de snapshot)

@@ -12,6 +12,23 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-10-16 — Redis 8 (lot 4 PR D, hors Dependabot)
+
+**C'est quoi** : l'image Redis — la file des générations (transport Messenger), les verrous
+distribués (génération, placement de matchs) et les limiteurs anti-abus, en dev comme en prod
+(`redis:8-alpine` dans les deux fichiers compose).
+
+**Ça apporte** : une version maintenue (la 7 sort de support) et le retour d'une licence open
+source AGPLv3 — la 7.4 était passée « source-available » (RSALv2/SSPLv1).
+
+**Adapté chez nous** : verdict licence OK — l'AGPLv3 n'oblige qu'en distribuant une version
+MODIFIÉE de Redis, or nous utilisons l'image officielle non modifiée, en interne uniquement.
+Trois changements : les deux lignes d'image compose, le retrait de l'exception majeure dans
+`.github/dependabot.yml` (Redis n'a plus de raison d'être ignoré), et une procédure de snapshot
+du volume `redis_data` avant tout déploiement (`docs/ops/backup-restore.md` §7) — un retour
+arrière 8 → 7 n'étant pas garanti sur le format AOF/RDB. Couvre le volet Redis de la ligne
+**P4-310** de la roadmap ; reste le volet Mercure 1.0 de cette même ligne.
+
 ## 2026-10-16 — lot Dependabot (5 PRs mergées dont 2 réparées, 2 fermées)
 
 ### Paquets du moteur (engine, PR #1196 — 9 montées mineures)
@@ -310,56 +327,3 @@ importe désormais, comme CS-Fixer — **borné à `removeUnusedImports: false`*
 les deux outils, pas déclencher un ménage d'imports sur 8 fichiers étrangers à la montée (supprimer
 un import n'est jamais anodin quand un docblock le référence encore). Effet réel : 2 fichiers, un
 import de fonction Sentry.
-
-## 2026-08-15 — lot Dependabot
-
-### Groupe frontend-npm — Vite, Storybook, Lucide (PR #550)
-
-**C'est quoi** : trois outils de la partie visible. **Vite** est la machine qui assemble le code de
-l'interface en fichiers que le navigateur sait lire — c'est lui qui tourne quand tu lances le mode
-développement, et c'est lui qui fabrique la version de production. **Storybook** est l'atelier où
-l'on regarde un composant seul, hors de l'application, pratique pour travailler un bouton ou une
-carte sans devoir naviguer jusqu'à son écran. **Lucide** est la bibliothèque d'icônes.
-
-**Ça apporte** : trois correctifs et un lot d'icônes — Vite 8.2.0 → **8.2.1**, Storybook 10.5.6 →
-**10.5.7**, Lucide 1.28 → **1.29**. Aucune rupture, aucune nouveauté à apprendre. Sur Vite, prendre
-les correctifs vite est utile : c'est la brique qui fabrique ce que les clubs téléchargent, un bug
-d'assemblage s'y voit en production, pas chez nous.
-
-**Adapté chez nous** : rien. Suite complète verte (1328 tests) et **build de production vérifié en
-plus des tests** — Vite touchant justement la fabrication, un test vert ne prouve pas qu'on sait
-encore livrer : 2511 modules assemblés sans erreur.
-
-### Groupe backend-composer — Doctrine, Sentry, Symfony (PR #549)
-
-**C'est quoi** : quatre briques de la partie serveur. **Doctrine ORM** est le traducteur entre les
-objets PHP de l'application et les tables de la base de données — c'est lui qui écrit et relit
-chaque équipe, chaque créneau. **Sentry** est le mouchard d'erreurs : quand quelque chose casse en
-production, c'est lui qui te prévient avec la pile d'appels, au lieu que tu l'apprennes par un club
-mécontent. **symfony/mime** fabrique les emails (pièces jointes, encodages), **symfony/yaml** lit
-les fichiers de configuration.
-
-**Ça apporte** : que des correctifs d'entretien — Doctrine 3.6.7 → **3.6.8**, Sentry 5.11 →
-**5.12**, mime 7.4.15 → **7.4.16**, yaml 7.4.13 → **7.4.15**. Rien de spectaculaire, et c'est le
-but : les prendre au fil de l'eau évite le saut coûteux qu'on subit quand on a six mois de retard.
-Les deux paquets Symfony restent sur la branche **LTS 7.4**, celle qu'on tient jusqu'à la 8.4
-(fin 2027).
-
-**Adapté chez nous** : rien dans le code applicatif. Mais **deux interventions sur la PR
-elle-même**, toutes deux prévisibles :
-
-1. **Rector 2.6.1 refusé** — Dependabot avait forcé notre garde-fou (`~2.5.9` réécrit en `~2.6.1`).
-   Vérifié en le testant plutôt qu'en lisant nos notes : la 2.6.1 **réintroduit** le défaut connu,
-   elle réécrit `Cookie::SAMESITE_STRICT` en nom complet dans `JwtCookieFactory` et
-   `MercureAuthController`, que PHP-CS-Fixer raccourcit aussitôt. Les deux outils se contrediraient
-   sans fin et **plus aucune fusion backend ne passerait**. Garde-fou restauré, les quatre autres
-   montées conservées.
-2. **Symfony ramené sur la LTS** — Dependabot calcule les versions **hors de notre conteneur**,
-   donc sans le mécanisme qui force toute la famille Symfony à rester en 7.4. Il avait fait passer
-   neuf briques internes en 8.0. Corrigé en recalculant dans le conteneur ; c'est le réflexe
-   attendu à chaque lot backend, jamais un blocage de version.
-
-⚠ À noter pour plus tard : Rector 2.6 apporte une règle intéressante (`ParamAndEnvAttributeRector`,
-qui modernise l'écriture des variables d'environnement dans le code — 10 fichiers concernés chez
-nous). Elle attend que le défaut ci-dessus soit corrigé en amont. Suivi : ligne **P4-80** de la
-roadmap.
