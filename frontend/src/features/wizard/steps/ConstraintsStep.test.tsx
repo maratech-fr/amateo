@@ -646,6 +646,56 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 });
 
 /**
+ * PR A (lot 5) — P4-283 : la STRUCTURE (lisible par rôles) du formulaire d'ajout du builder.
+ * jsdom ne MESURE aucune mise en page (`boundingBox` y vaut 0) : le reflow « deux rangées à
+ * 36 px » se prouve en Playwright (`tests/e2e/layout-inline-rows.spec.ts`, jumeau wizard
+ * « builder de contraintes »). Ici on prouve la STRUCTURE DOM que ce reflow suppose — le bouton
+ * d'action quitte la rangée de la cible pour rejoindre celle des valeurs.
+ * NB : l'ISO-RENDU du tableau sur la primitive `Table` (P4-284) est DÉJÀ gardé, au même niveau,
+ * par `describe("le tableau des contraintes")` plus bas (five `columnheader`, séparation
+ * verbe/valeur, trois bornes, repli sur le nom) — pas de doublon ici.
+ */
+describe("ConstraintsStep — PR A : structure du formulaire d'ajout (deux rangées)", () => {
+  beforeEach(() => {
+    h.createMut.mockClear();
+    h.updateMut.mockClear();
+    h.list = [];
+    h.teamCoaches = [];
+    h.tags = [];
+    h.tagAssignments = [];
+    h.implicitRules = RESOLVED_IMPLICIT_RULES;
+    activeVenuesState.venues = [{ id: "v1", name: "Gymnase A", isActive: true }, { id: "v2", name: "Gymnase B", isActive: true }];
+    activeVenuesState.disabledIds = new Set();
+    activeVenuesState.layerRead = "ready";
+    activeTeamsState.pausedIds = new Set();
+    activeTeamsState.layerRead = "ready";
+    h.reservations = [];
+  });
+
+  // P4-283 — le bouton « Ajouter la contrainte » appartient à la rangée des VALEURS (avec
+  // « Pas avant »), jamais à celle de la CIBLE. Aujourd'hui tout partage un unique conteneur
+  // flex-wrap : le bouton `ml-auto` tombe en orphelin dès que la ligne déborde à 1280 px. Le
+  // patron visé : `matches/ConstraintsPage.tsx` RuleFields (rangée 1 = sélection, rangée 2 =
+  // valeurs + bouton d'action). jsdom ne voit pas le reflow, mais il voit à quel parent le
+  // bouton appartient — c'est ce que la refonte en deux rangées change. Le MESURAGE (36 px,
+  // deux rangées, 0 débordement) vit dans le spec e2e jumeau.
+  it("P4-283 — le bouton d'ajout partage la rangée des valeurs, pas celle de la cible (TIME)", () => {
+    renderWithProviders(<ConstraintsStep />);
+
+    const addButton = screen.getByRole("button", { name: WIZARD_TEXTS.addConstraint });
+    const target = screen.getByRole("combobox", { name: WIZARD_TEXTS.targetLabel });
+    const valueInput = screen.getByLabelText(WIZARD_TEXTS.timeNotBefore);
+    const valueRow = addButton.parentElement;
+
+    expect(valueRow).not.toBeNull();
+    // Rangée 2 = valeurs + bouton d'action.
+    expect(valueRow).toContainElement(valueInput);
+    // La cible (rangée 1) ne descend JAMAIS dans la rangée du bouton d'action.
+    expect(valueRow).not.toContainElement(target);
+  });
+});
+
+/**
  * Editing an EXISTING constraint reuses the same form (PUT). The critical
  * guard: loading a forced-venue/day rule back into the form and saving must
  * NOT downgrade forcedVenueId→preferredVenueId (a silent §7.1 semantics break).

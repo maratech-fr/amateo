@@ -5,7 +5,9 @@
 # (activé au niveau du repo : Settings → Code security → Dependabot).
 version: 2
 updates:
-  # Engine — Python (pip, lit engine/pyproject.toml [project] + [dev])
+  # Engine — Python (pip, lit engine/pyproject.toml [project] + [dev] ET recompile
+  # les verrous pip-compile engine/requirements.txt + engine/requirements-dev.txt —
+  # Dependabot reconnaît l'en-tête pip-compile et régénère les pins + hashes).
   - package-ecosystem: "pip"
     directory: "/engine"
     schedule:

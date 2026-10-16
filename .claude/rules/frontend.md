@@ -200,7 +200,7 @@ paths:
   `CoachFields` de `features/matches/ConstraintsPage.tsx` (règle de club, indisponibilité coach),
   décision fondateur 2026-10-01. NR e2e `tests/e2e/layout-inline-rows.spec.ts` (deux rangées à
   36 px, `Type` au-dessus, 0 débordement horizontal) ; le builder de contraintes du wizard
-  (`ConstraintsStep`) partage le même risque et n'a pas encore été repris (P4-283).
+  (`ConstraintsStep`) partage le même risque et a été rallié au même patron.
 - 🔴 **La raison d'une désactivation doit être DÉCOUVRABLE au clavier/lecteur d'écran, pas qu'au
   survol** (A11Y-30, audit 2026-10-03) : un `<button disabled>` natif sort de l'ordre de tabulation,
   son `title`/`aria-describedby` ne sont jamais annoncés. Quand un bouton est désactivé POUR UN

@@ -19,22 +19,16 @@ permissions:
 jobs:
   trivy-published-images:
     name: Trivy (published prod images)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Connexion ghcr : couvre ET le pull des images prod scannées ci-dessous ET le pull de
+      # `ghcr.io/maratech-fr/mirror-trivy` (notre miroir interne de Trivy — même infra que les
+      # runners, un incident Docker Hub ne casse plus ce scan). Plus de login Docker Hub : rien
+      # n'y est tiré depuis que Trivy vient du miroir ghcr.
       - name: Log in to ghcr
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      # Connexion Docker Hub avant le pull de `aquasec/trivy:latest` : les runners partagés
-      # épuisent le quota ANONYME (429 Too Many Requests — incident 2026-10-09). Conditionnelle :
-      # sans les secrets la CI tire en anonyme, comme avant.
-      - name: Login to Docker Hub (anti-429)
-        if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Scan published images
         run: |
@@ -54,11 +48,11 @@ jobs:
             fi
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$PWD/.trivyignore:/.trivyignore" \
-              aquasec/trivy:latest image --ignorefile /.trivyignore --severity HIGH,CRITICAL --ignore-unfixed \
+              ghcr.io/maratech-fr/mirror-trivy:0.69.1 image --ignorefile /.trivyignore --severity HIGH,CRITICAL --ignore-unfixed \
               --scanners vuln "$img" || true
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$PWD/.trivyignore:/.trivyignore" \
-              aquasec/trivy:latest image --ignorefile /.trivyignore --severity CRITICAL --ignore-unfixed \
+              ghcr.io/maratech-fr/mirror-trivy:0.69.1 image --ignorefile /.trivyignore --severity CRITICAL --ignore-unfixed \
               --exit-code 1 --quiet --scanners vuln "$img" || FAILED=1
           done
           exit $FAILED

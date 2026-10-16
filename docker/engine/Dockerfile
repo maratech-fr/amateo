@@ -13,13 +13,19 @@ WORKDIR /app/engine
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgomp1 && rm -rf /var/lib/apt/lists/*
 
 COPY engine/pyproject.toml ./pyproject.toml
+COPY engine/requirements.txt ./requirements.txt
 COPY engine/CONTRACT_VERSION ./CONTRACT_VERSION
 COPY engine/app ./app
 
-# Dépendances de PROD UNIQUEMENT : `.` SANS l'extra [dev] — l'image de prod
-# n'embarque donc NI pytest, NI ruff, NI mypy, NI bandit, NI deptry. Ces outils
-# vivent dans l'étage `dev` ci-dessous (dev + CI), pas dans l'image déployée.
-RUN pip install --upgrade pip && pip install "."
+# Dépendances de PROD UNIQUEMENT, verrouillées : versions exactes + hashes depuis
+# `requirements.txt` (pip-compile depuis pyproject.toml, maintenu par Dependabot pip
+# /engine) installées en `--require-hashes` (toute dérive de hash casse le build),
+# PUIS le paquet applicatif seul (`--no-deps`, ses dépendances viennent du verrou).
+# L'image de prod n'embarque donc NI pytest, NI ruff, NI mypy, NI bandit, NI deptry :
+# ces outils vivent dans l'étage `dev` ci-dessous (dev + CI), pas dans l'image déployée.
+RUN pip install --upgrade pip \
+    && pip install --require-hashes -r requirements.txt \
+    && pip install --no-deps .
 
 # SEC-15 — le solveur n'a AUCUNE raison de tourner root : il ne lit que son code
 # et n'écrit rien (stateless, port 8000 > 1024). uid/gid 1000 délibérément :
@@ -51,8 +57,13 @@ FROM base AS prod
 # puis repart non-root.
 FROM base AS dev
 USER root
+COPY engine/requirements-dev.txt ./requirements-dev.txt
 COPY engine/tests ./tests
-RUN pip install ".[dev]" && chown -R engine:engine /app
+# Verrou dev : `requirements-dev.txt` est le SUR-ENSEMBLE prod + outils (pip-compile
+# --extra=dev). Les deps de prod sont déjà posées par `base` (satisfaites, non
+# retéléchargées) ; cet appel ajoute les outils dev, toujours en `--require-hashes`.
+# Le paquet applicatif est déjà installé par `base` (pas de ré-install ici).
+RUN pip install --require-hashes -r requirements-dev.txt && chown -R engine:engine /app
 USER engine
 
 # Les caches des outils SORTENT du bind-mount : en CI le checkout appartient au

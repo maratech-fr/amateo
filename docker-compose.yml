@@ -138,7 +138,7 @@ services:
 
   nginx:
     restart: unless-stopped
-    image: nginx:1.27-alpine
+    image: nginx:1.31-alpine
     container_name: amateo-nginx
     depends_on:
       php-fpm:
@@ -369,7 +369,7 @@ services:
 
   mailpit:
     restart: unless-stopped
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.31.6
     container_name: amateo-mailpit
     ports:
       - "127.0.0.1:${MAILPIT_SMTP_PORT}:1025"

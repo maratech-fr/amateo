@@ -13,6 +13,7 @@ import { isWellbeingKey } from "../lib/implicitRules";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 
@@ -852,155 +853,178 @@ export function ConstraintsStep() {
         )
       ) : (
         <>
-          {/* Per-family add form */}
-          <div ref={formRef} className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-3">
-        {("TIME" === family || "DAY" === family || "FACILITY" === family) && teamPicker}
-        {("TIME" === family || "DAY" === family || "FACILITY" === family) && refinePanel}
+          {/* Formulaire d'ajout par famille — DEUX rangées explicites (P4-283, patron
+              `matches/ConstraintsPage.tsx` RuleFields/CoachFields, décision fondateur 2026-10-01) :
+              rangée 1 = la sélection (cible/coach · mode · type de règle), rangée 2 = les valeurs
+              concrètes + le bouton d'action à droite (`ml-auto`). Plus de `flex-wrap` unique où le
+              bouton tombe en orphelin dès que la ligne déborde à 1280 px (P4-283). */}
+          <div ref={formRef} className="mb-4 flex w-full flex-col gap-2 rounded-lg border border-border bg-card p-3">
+            {/* Rangée 1 — la sélection (cible/coach · mode · type de règle). */}
+            <div className="flex flex-wrap items-center gap-2">
+              {("TIME" === family || "DAY" === family || "FACILITY" === family) && teamPicker}
 
-        {"TIME" === family && (
-          <>
-            <label className="text-xs text-muted-foreground">
-              {WIZARD_TEXTS.timeNotBefore}
-              <Input aria-label={WIZARD_TEXTS.timeNotBefore} type="time" className="mt-0.5 w-28" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
-            </label>
-            <label className="text-xs text-muted-foreground">
-              {WIZARD_TEXTS.timeNotAfter}
-              <Input aria-label={WIZARD_TEXTS.timeNotAfter} type="time" className="mt-0.5 w-28" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
-            </label>
-            <label className="text-xs text-muted-foreground">
-              {WIZARD_TEXTS.timeFinishedBefore}
-              <Input aria-label={WIZARD_TEXTS.timeFinishedBefore} type="time" className="mt-0.5 w-28" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-            </label>
-          </>
-        )}
-
-        {"DAY" === family && (
-          <>
-            <Select aria-label={WIZARD_TEXTS.dayTypeLabel} wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "preferred" | "only" | "atLeast")}>
-              <option value="forbidden">{WIZARD_TEXTS.dayModeAvoid}</option>
-              <option value="preferred">{WIZARD_TEXTS.dayModePreferred}</option>
-              <option value="only">{WIZARD_TEXTS.dayModeOnly}</option>
-              <option value="atLeast">{WIZARD_TEXTS.dayModeAtLeast}</option>
-            </Select>
-            <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"preferred" === dayMode ? "Jours à privilégier" : "only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
-          </>
-        )}
-
-        {"FACILITY" === family && (
-          <>
-            <Select aria-label={WIZARD_TEXTS.preferenceLabel} wrapperClassName="w-28" value={effectiveVenueMode} onChange={(e) => setVenueMode(e.target.value as "preferred" | "forbidden" | "forced" | "min")}>
-              <option value="preferred">{WIZARD_TEXTS.venueModePreferred}</option>
-              <option value="forbidden">{WIZARD_TEXTS.venueModeForbidden}</option>
-              <option value="forced">{WIZARD_TEXTS.venueModeForced}</option>
-              {/* « Au moins N ici » = un compte PAR ÉQUIPE. Une équipe précise ou un
-                  GROUPE conviennent (l'éclatement par tag produit N contraintes par
-                  équipe) ; seul « Toutes les équipes » se ferme — avant, la contrainte
-                  se créait puis bloquait le récap (BCCL 2026-08-05, en anglais brut). */}
-              <option value="min" disabled={!minAllowed} title={!minAllowed ? "Choisissez une équipe ou un groupe dans « Cible »" : undefined}>
-                au moins{!minAllowed ? " (équipe ou groupe requis)" : ""}
-              </option>
-            </Select>
-            {"min" === effectiveVenueMode && (
-              <label className="text-xs text-muted-foreground">
-                {WIZARD_TEXTS.countLabel}
-                <Input aria-label={WIZARD_TEXTS.sessionsCountLabel} type="number" min={1} className="mt-0.5 w-16" value={venueMinCount} onChange={(e) => setVenueMinCount(Math.max(1, Number(e.target.value) || 1))} />
-              </label>
-            )}
-            <VenueSelect
-              aria-label={WIZARD_TEXTS.venueSelectLabel}
-              wrapperClassName="w-48"
-              placeholder={WIZARD_TEXTS.venuePlaceholder}
-              venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name, color: v.color, sub: disabledIds.has(v.id) ? "désactivé pour cette période" : undefined }))}
-              value={venueId}
-              onValueChange={setVenueId}
-            />
-          </>
-        )}
-
-        {"COACH_AVAILABILITY" === family && (
-          <>
-            <Select aria-label={WIZARD_TEXTS.coachLabel} wrapperClassName="w-44" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
-              <option value="">{WIZARD_TEXTS.coachOptionNone}</option>
-              {(
-                [
-                  ["Salariés", coachGroups.salaried],
-                  ["Coachs-joueurs", coachGroups.player],
-                  ["Bénévoles", coachGroups.other],
-                ] as const
-              ).map(([label, group]) =>
-                group.length > 0 ? (
-                  <optgroup key={label} label={label}>
-                    {group.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {coachName.get(c.id)}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null,
+              {"DAY" === family && (
+                <Select aria-label={WIZARD_TEXTS.dayTypeLabel} wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "preferred" | "only" | "atLeast")}>
+                  <option value="forbidden">{WIZARD_TEXTS.dayModeAvoid}</option>
+                  <option value="preferred">{WIZARD_TEXTS.dayModePreferred}</option>
+                  <option value="only">{WIZARD_TEXTS.dayModeOnly}</option>
+                  <option value="atLeast">{WIZARD_TEXTS.dayModeAtLeast}</option>
+                </Select>
               )}
-            </Select>
-            <Select aria-label={WIZARD_TEXTS.availabilityLabel} wrapperClassName="w-44" value={coachMode} onChange={(e) => setCoachMode(e.target.value as "unavailable" | "available")}>
-              <option value="unavailable">{WIZARD_TEXTS.coachUnavailable}</option>
-              <option value="available">{WIZARD_TEXTS.coachAvailableOnly}</option>
-            </Select>
-            <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"available" === coachMode ? "Jours de disponibilité exclusive" : "Jours d'indisponibilité"} />
-            {/* Lot C: optional time window on the selected days (empty = whole day). */}
-            <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              de
-              <Input type="time" aria-label={WIZARD_TEXTS.timeStartLabel} className="w-28" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
-            </label>
-            <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              à
-              <Input type="time" aria-label={WIZARD_TEXTS.timeEndLabel} className="w-28" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
-            </label>
-          </>
-        )}
 
-        {"COACH_AVAILABILITY" === family && "" !== coachId && adjointOnlyCoachIds.has(coachId) ? (
-          // ALIGN-19 — pour un coach ADJOINT sur toutes ses équipes, le moteur ne lit pas
-          // l'indisponibilité : elle est INDICATIVE, pas obligatoire. Pastille « Indicatif » + la
-          // phrase qui le dit, au lieu de laisser croire qu'elle bloquera une séance.
-          <div className="flex flex-col gap-1">
-            <RuleBadge label={WIZARD_TEXTS.ruleIndicative} />
-            <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.assistantNeverBlocks}</span>
+              {"FACILITY" === family && (
+                <Select aria-label={WIZARD_TEXTS.preferenceLabel} wrapperClassName="w-28" value={effectiveVenueMode} onChange={(e) => setVenueMode(e.target.value as "preferred" | "forbidden" | "forced" | "min")}>
+                  <option value="preferred">{WIZARD_TEXTS.venueModePreferred}</option>
+                  <option value="forbidden">{WIZARD_TEXTS.venueModeForbidden}</option>
+                  <option value="forced">{WIZARD_TEXTS.venueModeForced}</option>
+                  {/* « Au moins N ici » = un compte PAR ÉQUIPE. Une équipe précise ou un
+                      GROUPE conviennent (l'éclatement par tag produit N contraintes par
+                      équipe) ; seul « Toutes les équipes » se ferme — avant, la contrainte
+                      se créait puis bloquait le récap (BCCL 2026-08-05, en anglais brut). */}
+                  <option value="min" disabled={!minAllowed} title={!minAllowed ? "Choisissez une équipe ou un groupe dans « Cible »" : undefined}>
+                    au moins{!minAllowed ? " (équipe ou groupe requis)" : ""}
+                  </option>
+                </Select>
+              )}
+
+              {"COACH_AVAILABILITY" === family && (
+                <>
+                  <Select aria-label={WIZARD_TEXTS.coachLabel} wrapperClassName="w-44" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
+                    <option value="">{WIZARD_TEXTS.coachOptionNone}</option>
+                    {(
+                      [
+                        ["Salariés", coachGroups.salaried],
+                        ["Coachs-joueurs", coachGroups.player],
+                        ["Bénévoles", coachGroups.other],
+                      ] as const
+                    ).map(([label, group]) =>
+                      group.length > 0 ? (
+                        <optgroup key={label} label={label}>
+                          {group.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {coachName.get(c.id)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null,
+                    )}
+                  </Select>
+                  <Select aria-label={WIZARD_TEXTS.availabilityLabel} wrapperClassName="w-44" value={coachMode} onChange={(e) => setCoachMode(e.target.value as "unavailable" | "available")}>
+                    <option value="unavailable">{WIZARD_TEXTS.coachUnavailable}</option>
+                    <option value="available">{WIZARD_TEXTS.coachAvailableOnly}</option>
+                  </Select>
+                </>
+              )}
+
+              {/* Le TYPE de règle (pastille figée ou sélecteur) appartient à la SÉLECTION —
+                  patron RuleFields, « Type » en rangée 1. */}
+              {"COACH_AVAILABILITY" === family && "" !== coachId && adjointOnlyCoachIds.has(coachId) ? (
+                // ALIGN-19 — pour un coach ADJOINT sur toutes ses équipes, le moteur ne lit pas
+                // l'indisponibilité : elle est INDICATIVE, pas obligatoire. Pastille « Indicatif » + la
+                // phrase qui le dit, au lieu de laisser croire qu'elle bloquera une séance.
+                <div className="flex flex-col gap-1">
+                  <RuleBadge label={WIZARD_TEXTS.ruleIndicative} />
+                  <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.assistantNeverBlocks}</span>
+                </div>
+              ) : "COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode && "preferred" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
+                // Coach availability + "impose"/"uniquement"/"au moins une" + "Fini avant" are
+                // ALWAYS hard (a person can't be in two places; a forced venue, a whitelist/at-least
+                // day rule, and a gym-closing end-bound are musts, not nudges) — the payload pins
+                // HARD, so a rule selector here would be a lie.
+                <RuleBadge label={RULE_LABEL.HARD} />
+              ) : ("FACILITY" === family && "preferred" === effectiveVenueMode) || ("DAY" === family && "preferred" === dayMode) ? (
+                // D1 — « préfère ce gymnase » / « à privilégier ces jours » (P4-312) sont TOUJOURS
+                // une préférence (PREFERRED) : jamais un must. L'obligatoire, c'est « impose »
+                // (forcedVenueId) / « uniquement »/« au moins une » côté jours. Pas de sélecteur ici
+                // — une pastille figée « Préféré », comme « Obligatoire » l'est pour les règles dures.
+                <RuleBadge label={RULE_LABEL.PREFERRED} />
+              ) : (
+                <Select aria-label={WIZARD_TEXTS.ruleLabel} wrapperClassName="w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
+                  {RULES.map((r) => (
+                    <option key={r} value={r}>
+                      {RULE_LABEL[r]}
+                    </option>
+                  ))}
+                </Select>
+              )}
+
+              {("TIME" === family || "DAY" === family || "FACILITY" === family) && refinePanel}
+            </div>
+
+            {/* Rangée 2 — les valeurs concrètes + le bouton d'action (`ml-auto`). */}
+            <div className="flex flex-wrap items-center gap-2">
+              {"TIME" === family && (
+                <>
+                  <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+                    {WIZARD_TEXTS.timeNotBefore}
+                    <Input aria-label={WIZARD_TEXTS.timeNotBefore} type="time" className="w-28" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
+                  </label>
+                  <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+                    {WIZARD_TEXTS.timeNotAfter}
+                    <Input aria-label={WIZARD_TEXTS.timeNotAfter} type="time" className="w-28" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
+                  </label>
+                  <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+                    {WIZARD_TEXTS.timeFinishedBefore}
+                    <Input aria-label={WIZARD_TEXTS.timeFinishedBefore} type="time" className="w-28" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                  </label>
+                </>
+              )}
+
+              {"DAY" === family && (
+                <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"preferred" === dayMode ? "Jours à privilégier" : "only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
+              )}
+
+              {"FACILITY" === family && (
+                <>
+                  {"min" === effectiveVenueMode && (
+                    <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+                      {WIZARD_TEXTS.countLabel}
+                      <Input aria-label={WIZARD_TEXTS.sessionsCountLabel} type="number" min={1} className="w-16" value={venueMinCount} onChange={(e) => setVenueMinCount(Math.max(1, Number(e.target.value) || 1))} />
+                    </label>
+                  )}
+                  <VenueSelect
+                    aria-label={WIZARD_TEXTS.venueSelectLabel}
+                    wrapperClassName="w-48"
+                    placeholder={WIZARD_TEXTS.venuePlaceholder}
+                    venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name, color: v.color, sub: disabledIds.has(v.id) ? "désactivé pour cette période" : undefined }))}
+                    value={venueId}
+                    onValueChange={setVenueId}
+                  />
+                </>
+              )}
+
+              {"COACH_AVAILABILITY" === family && (
+                <>
+                  <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"available" === coachMode ? "Jours de disponibilité exclusive" : "Jours d'indisponibilité"} />
+                  {/* Lot C: optional time window on the selected days (empty = whole day). */}
+                  <label className="flex items-center gap-1 text-sm text-muted-foreground">
+                    de
+                    <Input type="time" aria-label={WIZARD_TEXTS.timeStartLabel} className="w-28" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
+                  </label>
+                  <label className="flex items-center gap-1 text-sm text-muted-foreground">
+                    à
+                    <Input type="time" aria-label={WIZARD_TEXTS.timeEndLabel} className="w-28" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
+                  </label>
+                </>
+              )}
+
+              {null !== editingId ? (
+                <>
+                  <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm} title={WIZARD_TEXTS.cancelEditTitle}>
+                    {WIZARD_TEXTS.cancel}
+                  </Button>
+                  <Button size="sm" onClick={submit} disabled={create.isPending || update.isPending} title={WIZARD_TEXTS.saveConstraintTitle} aria-label={WIZARD_TEXTS.saveConstraintTitle}>
+                    {WIZARD_TEXTS.save}
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" className="ml-auto" onClick={submit} disabled={create.isPending || update.isPending}>
+                  <Plus className="size-3.5" />
+                  {WIZARD_TEXTS.addConstraint}
+                </Button>
+              )}
+            </div>
           </div>
-        ) : "COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode && "preferred" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
-          // Coach availability + "impose"/"uniquement"/"au moins une" + "Fini avant" are
-          // ALWAYS hard (a person can't be in two places; a forced venue, a whitelist/at-least
-          // day rule, and a gym-closing end-bound are musts, not nudges) — the payload pins
-          // HARD, so a rule selector here would be a lie.
-          <RuleBadge label={RULE_LABEL.HARD} />
-        ) : ("FACILITY" === family && "preferred" === effectiveVenueMode) || ("DAY" === family && "preferred" === dayMode) ? (
-          // D1 — « préfère ce gymnase » / « à privilégier ces jours » (P4-312) sont TOUJOURS
-          // une préférence (PREFERRED) : jamais un must. L'obligatoire, c'est « impose »
-          // (forcedVenueId) / « uniquement »/« au moins une » côté jours. Pas de sélecteur ici
-          // — une pastille figée « Préféré », comme « Obligatoire » l'est pour les règles dures.
-          <RuleBadge label={RULE_LABEL.PREFERRED} />
-        ) : (
-          <Select aria-label={WIZARD_TEXTS.ruleLabel} wrapperClassName="w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
-            {RULES.map((r) => (
-              <option key={r} value={r}>
-                {RULE_LABEL[r]}
-              </option>
-            ))}
-          </Select>
-        )}
-        {null !== editingId ? (
-          <>
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm} title={WIZARD_TEXTS.cancelEditTitle}>
-              {WIZARD_TEXTS.cancel}
-            </Button>
-            <Button size="sm" onClick={submit} disabled={create.isPending || update.isPending} title={WIZARD_TEXTS.saveConstraintTitle} aria-label={WIZARD_TEXTS.saveConstraintTitle}>
-              {WIZARD_TEXTS.save}
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" className="ml-auto" onClick={submit} disabled={create.isPending || update.isPending}>
-            <Plus className="size-3.5" />
-            {WIZARD_TEXTS.addConstraint}
-          </Button>
-        )}
-      </div>
 
       {/* List for the active family — grouped by group (tag) then team (ranked). */}
       {0 === list.length ? (
@@ -1009,25 +1033,26 @@ export function ConstraintsStep() {
         // P4-107 (4ᵉ tranche) — un vrai `<table>` avec `<thead>`/`<tbody>`, pas une grille de
         // `<div>` : c'est la seule règle de sévérité HAUTE rendue par la passe de design sur ce
         // lot, et c'est ce qui fait annoncer « Règle : pas après » par un lecteur d'écran au
-        // lieu d'une bouillie de cellules. `overflow-x-auto` garde la promesse sur petit écran.
+        // lieu d'une bouillie de cellules. Depuis P4-284 (lot 5), rendu par la primitive PARTAGÉE
+        // `Table` (maison unique du `<table>` stylé, `overflow-x-auto` inclus — défile dans sa
+        // boîte, jamais la page) : passe mécanique iso-rendu, un `<tbody>` par groupe conservé.
         // Le tableau prend la PLEINE LARGEUR de l'étape (plus de `max-w-5xl`) : décision fondateur
         // 2026-10-12, « pas grave que les boutons partent loin des libellés » — les panneaux de
         // contraintes de période respirent, au prix assumé d'une ligne plus étalée
         // (cf. `frontend-features.md` §6.9).
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.targetLabel}</th>
-                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.ruleLabel}</th>
-                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.colValue}</th>
-                <th scope="col" className="px-3 py-2 font-semibold">{WIZARD_TEXTS.colLevel}</th>
+        <Table>
+            <TableHeader>
+              <tr>
+                <TableHead>{WIZARD_TEXTS.targetLabel}</TableHead>
+                <TableHead>{WIZARD_TEXTS.ruleLabel}</TableHead>
+                <TableHead>{WIZARD_TEXTS.colValue}</TableHead>
+                <TableHead>{WIZARD_TEXTS.colLevel}</TableHead>
                 {/* Colonne d'actions : nommée pour le lecteur d'écran, muette à l'œil. */}
-                <th scope="col" className="px-3 py-2 font-semibold"><span className="sr-only">{WIZARD_TEXTS.colActions}</span></th>
+                <TableHead><span className="sr-only">{WIZARD_TEXTS.colActions}</span></TableHead>
               </tr>
-            </thead>
+            </TableHeader>
             {sections.map((section) => (
-              <tbody key={section.key}>
+              <TableBody key={section.key}>
                 <tr>
                   {/* `rowgroup` : cette cellule TITRE un groupe de lignes, elle n'est pas un
                       en-tête de colonne — sans quoi elle se glisserait parmi les cinq. */}
@@ -1052,36 +1077,36 @@ export function ConstraintsStep() {
                     "COACH_AVAILABILITY" === c.family && null !== c.scopeTargetId && adjointOnlyCoachIds.has(c.scopeTargetId);
 
                   return (
-                    <tr key={c.id} data-constraint-id={c.id} className={cn("border-b border-border/60 last:border-0", editingId === c.id ? "bg-accent/10 ring-1 ring-inset ring-accent" : "")}>
-                      <td className="px-3 py-2 align-top">
+                    <TableRow key={c.id} data-constraint-id={c.id} className={cn("border-border/60", editingId === c.id ? "bg-accent/10 ring-1 ring-inset ring-accent" : "")}>
+                      <TableCell className="align-top">
                         {target ?? "—"}
                         {isAdjointOnlyCoachAvailability ? (
                           <div className="mt-1 text-xs text-muted-foreground">{WIZARD_TEXTS.assistantNeverBlocks}</div>
                         ) : null}
-                      </td>
+                      </TableCell>
                       {0 === parts.length ? (
                         // Règle non descriptible fidèlement (clé inconnue, gymnase supprimé) : on
                         // rend le NOM en entier plutôt qu'une cellule vide, qui laisserait croire
                         // qu'il n'y a rien à appliquer.
-                        <td className="px-3 py-2 align-top text-muted-foreground" colSpan={2}>{c.name}</td>
+                        <TableCell className="align-top text-muted-foreground" colSpan={2}>{c.name}</TableCell>
                       ) : (
                         <>
-                          <td className="px-3 py-2 align-top">
+                          <TableCell className="align-top">
                             {parts.map((part, i) => (
                               <div key={`v${i}`}>{part.verb}</div>
                             ))}
-                          </td>
-                          <td className="px-3 py-2 align-top font-medium">
+                          </TableCell>
+                          <TableCell className="align-top font-medium">
                             {parts.map((part, i) => (
                               <div key={`w${i}`}>{part.value}</div>
                             ))}
-                          </td>
+                          </TableCell>
                         </>
                       )}
-                      <td className="px-3 py-2 align-top">
+                      <TableCell className="align-top">
                         <StatusPill>{isAdjointOnlyCoachAvailability ? WIZARD_TEXTS.ruleIndicative : RULE_LABEL[c.ruleType]}</StatusPill>
-                      </td>
-                      <td className="px-3 py-2 align-top">
+                      </TableCell>
+                      <TableCell className="align-top">
                         {isFact ? (
                           // Fait de la mère : lecture seule ici. Le badge DIT pourquoi (texte
                           // lisible, pas qu'une couleur) et où le régler — même idiome de badge
@@ -1102,14 +1127,13 @@ export function ConstraintsStep() {
                             </button>
                           </div>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
+              </TableBody>
             ))}
-          </table>
-        </div>
+        </Table>
       )}
         </>
       )}

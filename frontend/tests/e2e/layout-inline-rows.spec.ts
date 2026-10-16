@@ -180,3 +180,57 @@ test("contraintes équipes : équipe, gymnase et « Interdire » sur la même li
   expect(Math.abs(teamTop - venueTop)).toBeLessThanOrEqual(4);
   expect(Math.abs(teamTop - interdireTop)).toBeLessThanOrEqual(4);
 });
+
+test("builder wizard (contraintes) : la ligne d'ajout est sur DEUX rangées, contrôles à 36 px (1280 px)", async ({ page }) => {
+  test.setTimeout(240_000);
+
+  await loginSeededClub(page);
+  await ensureValidated(page);
+
+  // Le builder de contraintes du WIZARD (étape 4/6, famille « Horaires » par défaut) partage le
+  // risque de `matches/ConstraintsPage` que P4-283 vient de reprendre : un unique conteneur
+  // flex-wrap où le bouton `ml-auto` tombe en orphelin dès que la ligne déborde à 1280 px. La
+  // reprise impose DEUX rangées (patron RuleFields/CoachFields) : rangée 1 = la sélection
+  // (« Cible »…), rangée 2 = les valeurs (heures) + « Ajouter la contrainte » à droite. Le
+  // jumeau jsdom (`steps/ConstraintsStep.test.tsx`) prouve la STRUCTURE DOM ; ici on MESURE ce
+  // que seul le navigateur voit (36 px, deux rangées, 0 débordement).
+  await page.goto("/wizard?step=constraints");
+  await expect(page.getByRole("heading", { name: /Étape 4\/6/ })).toBeVisible({ timeout: 30_000 });
+
+  // Le bouton « Ajouter la contrainte » ancre la rangée 2 (son parent direct) ; le parent de
+  // celle-ci est le bloc à deux rangées, qui porte « Cible » dans sa rangée 1.
+  const ajouter = page.getByRole("button", { name: "Ajouter la contrainte" });
+  await expect(ajouter).toBeVisible({ timeout: 30_000 });
+  const row2 = ajouter.locator("xpath=..");
+  const block = row2.locator("xpath=..");
+
+  const cible = block.getByRole("combobox", { name: "Cible" });
+  const avant = row2.getByLabel("Pas avant", { exact: true });
+  const apres = row2.getByLabel("Pas après", { exact: true });
+  await expect(cible).toBeVisible();
+  await expect(avant).toBeVisible();
+  await expect(apres).toBeVisible();
+
+  const [cibleBox, avantBox, apresBox, ajouterBox] = await Promise.all([cible, avant, apres, ajouter].map((c) => c.boundingBox()));
+  const height = (b: Awaited<ReturnType<Locator["boundingBox"]>>): number => b?.height ?? -1;
+  const topY = (b: Awaited<ReturnType<Locator["boundingBox"]>>): number => b?.y ?? -1;
+
+  // Décision fondateur B : tout contrôle fait 36 px (= h-9).
+  for (const b of [cibleBox, avantBox, apresBox, ajouterBox]) {
+    expect(height(b)).toBeGreaterThanOrEqual(35);
+    expect(height(b)).toBeLessThanOrEqual(37);
+  }
+
+  // Rangée 2 : Pas avant, Pas après et « Ajouter la contrainte » sur la MÊME ligne (±4) — jamais
+  // un bouton d'action orphelin tombé seul sous la ligne.
+  const row2Tops = [topY(avantBox), topY(apresBox), topY(ajouterBox)];
+  expect(Math.max(...row2Tops) - Math.min(...row2Tops)).toBeLessThanOrEqual(4);
+
+  // Structure en DEUX rangées voulue : « Cible » (rangée 1) est AU-DESSUS de la rangée 2.
+  expect(topY(cibleBox)).toBeGreaterThan(0);
+  expect(topY(cibleBox)).toBeLessThan(Math.min(...row2Tops) - 4);
+
+  // Aucun débordement horizontal, ni sur la rangée 2 ni sur le bloc (à 1280 px).
+  expect(await row2.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await block.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+});

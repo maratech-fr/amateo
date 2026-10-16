@@ -19,7 +19,8 @@ install: ## Install Python dependencies — they live in the IMAGE (rebuild), ne
 	# Since SEC-15 the container runs as `engine` (uid 1000, no home, site-packages root-only):
 	# a `pip install` from inside falls back to a user-site under /home/engine that does not
 	# exist → « Permission denied » — and it was pointless anyway: the Dockerfile already
-	# installs ".[dev]" and the code comes from the bind-mount (`app` resolves to /app/engine).
+	# installs the locked deps (requirements-dev.txt, --require-hashes) and the code comes
+	# from the bind-mount (`app` resolves to /app/engine).
 	# New or changed dependencies in pyproject.toml → rebuild the image, then recreate.
 	$(FIG) build engine
 	$(FIG) up -d engine

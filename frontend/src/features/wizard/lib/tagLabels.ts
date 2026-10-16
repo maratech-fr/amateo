@@ -1,5 +1,5 @@
 import type { TeamTag, TeamTagAxis } from "../api";
-import { LEVEL_LABEL } from "./labels";
+import { LEVEL_LABEL } from "@/shared/lib/teamIdentity";
 
 /**
  * GENRE + ÂGE display labels. The NIVEAU tags reuse LEVEL_LABEL (single source of
