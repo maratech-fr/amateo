@@ -57,7 +57,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
 
         $data = $this->responseData();
-        $conflicts = $data['conflicts'];
+        $conflicts = $this->withoutTeamLevelMissing($data['conflicts']);
         self::assertCount(1, $conflicts);
         self::assertSame('MATCH_MATCH', $conflicts[0]['type']);
         self::assertSame($coachAId, $conflicts[0]['coachId']);
@@ -77,7 +77,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($userA));
         self::assertResponseStatusCodeSame(200);
 
-        $coachIds = array_map(static fn (array $c): string => $c['coachId'], $this->responseData()['conflicts']);
+        $coachIds = array_map(static fn (array $c): string => $c['coachId'], $this->withoutTeamLevelMissing($this->responseData()['conflicts']));
         self::assertSame([$coachAId], array_values(array_unique($coachIds)));
         self::assertNotContains($coachBId, $coachIds);
     }
@@ -131,7 +131,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($userA));
         self::assertResponseStatusCodeSame(200);
 
-        $conflicts = $this->responseData()['conflicts'];
+        $conflicts = $this->withoutTeamLevelMissing($this->responseData()['conflicts']);
         self::assertCount(1, $conflicts);
         self::assertArrayHasKey('fingerprint', $conflicts[0], 'chaque item porte son empreinte');
         $fingerprint = $conflicts[0]['fingerprint'];
@@ -797,7 +797,24 @@ final class FixtureConflictsApiTest extends WebTestCase
         /** @var list<array<string, mixed>> $conflicts */
         $conflicts = $this->responseData()['conflicts'];
 
-        return $conflicts;
+        return $this->withoutTeamLevelMissing($conflicts);
+    }
+
+    /**
+     * P4-288 — ce décor référence des teamId SYNTHÉTIQUES (aucune entité Team persistée,
+     * donc aucun niveau) : le radar lève alors CORRECTEMENT un TEAM_LEVEL_MISSING par équipe.
+     * C'est du bruit pour les promesses MATCH_MATCH / VENUE_OVERLAP / coach de CE fichier, qui
+     * portent chacune sur une AUTRE famille — on isole la famille sous test. L'empreinte et la
+     * détection de TEAM_LEVEL_MISSING ont leur propre preuve (ConflictFingerprinterTest,
+     * MatchConflictDetectorTest), les tenant restent prouvés à l'identique sur la famille gardée.
+     *
+     * @param list<array<string, mixed>> $conflicts
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function withoutTeamLevelMissing(array $conflicts): array
+    {
+        return array_values(array_filter($conflicts, static fn (array $c): bool => 'TEAM_LEVEL_MISSING' !== $c['type']));
     }
 
     /**
