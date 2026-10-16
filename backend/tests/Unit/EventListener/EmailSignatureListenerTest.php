@@ -165,6 +165,41 @@ final class EmailSignatureListenerTest extends TestCase
         self::assertTrue($email->getHeaders()->has(ClubMailMetadata::CLUB_ID_HEADER));
     }
 
+    public function testClubEmailCarriesTheFixedAntiSpoofFooterInItsTextPart(): void
+    {
+        // P4-316 anti-hameçonnage — un e-mail à club connu part vers une adresse TIERCE (un coach).
+        // Le pied d'usurpation FIXE doit vivre dans la partie TEXTE, pas seulement le HTML : un
+        // lecteur text/plain doit lire la même attribution et le même avertissement. Rouge
+        // aujourd'hui — le listener ne pose le pied que dans le HTML (via EmailTemplateRenderer).
+        $email = $this->emailWithText('Corps métier.');
+        $email->getHeaders()->addTextHeader(ClubMailMetadata::CLUB_ID_HEADER, 'club-123');
+        $email->getHeaders()->addTextHeader(ClubMailMetadata::CLUB_LABEL_HEADER, 'BC Lyon');
+
+        $this->listener()->onMessage($this->enqueueEvent($email));
+
+        self::assertStringContainsString(
+            'Envoyé via TestProd à la demande du club BC Lyon. Vous ne connaissez pas ce club ? Ignorez ce message.',
+            (string) $email->getTextBody(),
+            'le pied anti-usurpation FIXE doit être dans la partie texte, pas seulement le HTML',
+        );
+    }
+
+    public function testAnEmailWithoutClubHasNoAntiSpoofFooterInItsTextPart(): void
+    {
+        // Symétrie : un e-mail SANS club (digest/récap superadmin, libellé null) ne porte PAS le
+        // pied d'usurpation. Vert aujourd'hui, et DOIT le rester quand le pied sera ajouté pour les
+        // seuls e-mails à club connu.
+        $email = $this->emailWithText(self::ORIGINAL_TEXT);
+
+        $this->listener()->onMessage($this->enqueueEvent($email));
+
+        self::assertStringNotContainsString(
+            'Vous ne connaissez pas ce club',
+            (string) $email->getTextBody(),
+            'un e-mail sans club ne doit jamais porter le pied d\'usurpation dans sa partie texte',
+        );
+    }
+
     /** @param array<string, string> $logos clubId => octets du logo */
     private function listener(array $logos = []): EmailSignatureListener
     {
