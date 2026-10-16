@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service;
 
+use App\Entity\TeamCoach;
+use App\Enum\TeamCoachRole;
 use App\Service\PreSolvePreventionWarnings;
+use App\Service\ScheduleConstraintBuilder;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * P4-57 / ALIGN-09 — les préventions AVANT génération : des AVERTISSEMENTS ({@see detect}) et,
@@ -422,6 +427,36 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertNotSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1') && str_contains($w, 'aucun créneau')));
     }
 
+    /**
+     * NR (axe constraint semantics) — JUMEAU de {@see testForcedDayEmptiedByMainCoachFullDayUnavailabilityIsFlagged}
+     * dont le lien TEAM_COACH est SÉRIALISÉ PAR LE VRAI builder ({@see ScheduleConstraintBuilder::serializeTeamCoachConstraints}),
+     * pas par le helper {@see teamCoach()} qui écrit 'MAIN' en dur. Le jumeau reste vert quel que soit le bug
+     * (chaîne à la main) ; celui-ci attrape la divergence réelle : le builder émettait `metadata.role` en
+     * OBJET enum {@see TeamCoachRole}, et `'MAIN' !== $role` ({@see PreSolvePreventionWarnings::mainCoachFullDayUnavailableDays},
+     * ligne ~881) est alors TOUJOURS vrai → l'entraîneur principal est ignoré → le jour imposé fermé par
+     * son indisponibilité n'est plus détecté → la prévention est muette. La promesse : une prévention qui
+     * filtre sur le rôle MAIN se déclenche réellement sur ce que reçoit le solveur.
+     */
+    public function testMainCoachClosureFiresFromBuilderSerializedTeamCoach(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [3])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna', 'B')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [3]]),
+                $this->builderTeamCoach('t1', 'c1', TeamCoachRole::MAIN),
+                $this->coachUnavailable('c1', [3]),
+            ],
+        ));
+
+        self::assertNotSame(
+            [],
+            array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1') && str_contains($w, 'aucun créneau'))),
+            'le rôle MAIN sérialisé par le builder doit fermer le jour imposé — en objet enum la prévention reste muette',
+        );
+    }
+
     public function testForcedDayEmptiedByTimeWindowIsFlagged(): void
     {
         // Créneau mercredi 18:00, mais une fenêtre HARD « pas avant 20:00 » ne laisse aucun créneau.
@@ -700,6 +735,28 @@ final class PreSolvePreventionWarningsTest extends TestCase
     private function teamCoach(string $teamId, string $coachId, string $role = 'MAIN'): array
     {
         return ['type' => 'TEAM_COACH', 'teamId' => $teamId, 'metadata' => ['coachId' => $coachId, 'role' => $role]];
+    }
+
+    /**
+     * Le lien équipe⇄coach TEL QUE LE VRAI BUILDER LE SÉRIALISE — on invoque la méthode privée
+     * {@see ScheduleConstraintBuilder::serializeTeamCoachConstraints} (pure, sans dépendance : instance
+     * sans constructeur) plutôt que de recopier la forme à la main. C'est ce qui attrape l'objet enum
+     * que le helper {@see teamCoach()} masque par sa chaîne littérale.
+     *
+     * @return array<string, mixed>
+     */
+    private function builderTeamCoach(string $teamId, string $coachId, TeamCoachRole $role): array
+    {
+        $teamCoach = (new TeamCoach)->setTeamId($teamId)->setCoachId($coachId)->setRole($role)->setIsRequired(true);
+
+        $builder = (new ReflectionClass(ScheduleConstraintBuilder::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod($builder, 'serializeTeamCoachConstraints');
+        $method->setAccessible(true);
+
+        /** @var array<int, array<string, mixed>> $serialized */
+        $serialized = $method->invoke($builder, [$teamCoach]);
+
+        return $serialized[0];
     }
 
     /** Un entraîneur, tel que le payload le porte. @return array<string, mixed> */
