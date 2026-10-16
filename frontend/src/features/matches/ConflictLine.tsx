@@ -71,6 +71,8 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
       return MATCHES_TEXTS.awayNoFootprintTitle;
     case "FRIENDLY_ON_MATCH_SLOT":
       return MATCHES_TEXTS.friendlyOnMatchSlotTitle;
+    case "TEAM_LEVEL_MISSING":
+      return MATCHES_TEXTS.teamLevelMissingTitle;
     default:
       return MATCHES_TEXTS.venueUnavailableConflictTitle(conflict.label);
   }
@@ -156,6 +158,9 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     }
     const why = bits.length > 0 ? ` (${bits.join(", ")})` : "";
     return `Amical ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)}${why} — placement libre, à surveiller`;
+  }
+  if ("TEAM_LEVEL_MISSING" === conflict.type && undefined !== conflict.teamId) {
+    return MATCHES_TEXTS.teamLevelMissingSummary(teamName(teams, conflict.teamId));
   }
   return "Conflit";
 }

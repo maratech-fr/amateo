@@ -520,6 +520,73 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame([], $conflicts, 'a loisir team is mute for AWAY_NO_FOOTPRINT');
     }
 
+    // ── TEAM_LEVEL_MISSING (P4-288) : niveau non renseigné ────────────────────
+    // Une équipe SANS niveau (absente de $levelByTeam) ayant ≥ 1 rencontre RETENUE
+    // (non jouée) est signalée UNE fois, sévérité 7 (repliée) : ses matchs sont posés
+    // sans les créneaux de sa ligue (le niveau conditionne l'enveloppe). Décision
+    // fondateur 2026-10-16 (cadrage lot 5, décision 2-3).
+
+    public function testTeamWithoutLevelButWithARetainedFixtureRaisesTeamLevelMissing(): void
+    {
+        // TEAM_1 a une rencontre future retenue et n'est PAS dans $levelByTeam → UNE entrée
+        // TEAM_LEVEL_MISSING, sévérité 7, portant le teamId (seule identité du litige).
+        $home = $this->fixture('fx-1', self::TEAM_1, '2027-01-10', '16:00');
+
+        $items = array_values(array_filter(
+            $this->detect([$home], [], levelByTeam: []),
+            static fn (array $c): bool => 'TEAM_LEVEL_MISSING' === $c['type'],
+        ));
+
+        self::assertCount(1, $items, 'une équipe sans niveau avec une rencontre retenue est signalée une fois');
+        self::assertSame(self::TEAM_1, $items[0]['teamId']);
+        self::assertSame(7, $items[0]['severity']);
+    }
+
+    public function testOnlyOneTeamLevelMissingEntryPerTeamWhateverTheFixtureCount(): void
+    {
+        // Deux rencontres retenues de la MÊME équipe sans niveau → UNE seule entrée
+        // (une par ÉQUIPE, jamais une par rencontre).
+        $a = $this->fixture('fx-1', self::TEAM_1, '2027-01-10', '16:00');
+        $b = $this->fixture('fx-2', self::TEAM_1, '2027-01-17', '16:00');
+
+        $items = array_values(array_filter(
+            $this->detect([$a, $b], [], levelByTeam: []),
+            static fn (array $c): bool => 'TEAM_LEVEL_MISSING' === $c['type'],
+        ));
+
+        self::assertCount(1, $items);
+        self::assertSame(self::TEAM_1, $items[0]['teamId']);
+    }
+
+    public function testTeamWithALevelNeverRaisesTeamLevelMissingEvenWithoutALeagueWindow(): void
+    {
+        // Niveau renseigné (ici DEPARTEMENTAL), aucune enveloppe de ligue fournie → RIEN :
+        // avoir un niveau suffit à taire ce litige, fenêtre de ligue ou pas.
+        $home = $this->fixture('fx-1', self::TEAM_1, '2027-01-10', '16:00');
+
+        $items = array_filter(
+            $this->detect([$home], [], levelByTeam: [self::TEAM_1 => TeamLevel::DEPARTEMENTAL]),
+            static fn (array $c): bool => 'TEAM_LEVEL_MISSING' === $c['type'],
+        );
+
+        self::assertSame([], $items, 'une équipe avec un niveau n\'est jamais signalée (fenêtre de ligue indifférente)');
+    }
+
+    public function testTeamLevelMissingUsesRetainedFixturesOnlySoAPlayedMatchAloneIsSilent(): void
+    {
+        // Rencontre DÉJÀ JOUÉE (date < aujourd'hui) seule : le filtre « retenues » la retire,
+        // l'équipe sans niveau n'a plus aucune rencontre retenue → AUCUN TEAM_LEVEL_MISSING.
+        $played = $this->fixture('fx-1', self::TEAM_1, '2026-08-01', '16:00');
+        $clubToday = new DateTimeImmutable('2026-09-01');
+
+        $items = array_filter(
+            $this->detect([$played], [], clubToday: $clubToday, levelByTeam: []),
+            static fn (array $c): bool => 'TEAM_LEVEL_MISSING' === $c['type'],
+        );
+
+        self::assertSame([], $items, 'un match déjà joué ne retient aucune rencontre → aucune équipe signalée');
+    }
+
     // ── Graded diagnostic (P1-4 PR E2, cadrage §8) ───────────────────────────
 
     public function testVenueOverlapIsTheLoudestFinding(): void
@@ -1763,13 +1830,21 @@ final class MatchConflictDetectorTest extends TestCase
      *
      * @return list<array<string, mixed>>
      */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], array $levelByTeam = [], array $deadlineByCompetition = []): array
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], ?array $levelByTeam = null, array $deadlineByCompetition = []): array
     {
         // Lot M — the TEAM_LINK family left the radar; the detector no longer takes
         // team links. `$teamLinks` is kept in THIS helper's positional shape only so
         // the many callers that pass later args positionally do not all shift; it is
         // never forwarded.
         unset($teamLinks);
+
+        // P4-288 — le détecteur émet désormais TEAM_LEVEL_MISSING pour une équipe ABSENTE de
+        // $levelByTeam ayant ≥ 1 rencontre retenue. Les cas qui exercent les AUTRES familles
+        // posent des rencontres de TEAM_1/TEAM_2 sans se soucier du niveau : on leur donne par
+        // défaut un niveau RÉEL (non loisir — AWAY_NO_FOOTPRINT ne mute que le loisir) pour qu'ils
+        // restent focalisés sur leur famille. Seuls les tests qui passent EXPLICITEMENT un
+        // $levelByTeam SANS une équipe (p.ex. `[]`) exercent TEAM_LEVEL_MISSING.
+        $levelByTeam ??= [self::TEAM_1 => TeamLevel::DEPARTEMENTAL, self::TEAM_2 => TeamLevel::DEPARTEMENTAL];
 
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
             ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam, $deadlineByCompetition);

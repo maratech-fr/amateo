@@ -212,19 +212,19 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         // Deux F5 dans la grâce : même référence R0, mêmes badges.
         $a = $this->stamp($admin);
         $b = $this->stamp($admin);
-        self::assertSame([$fingerprint], $a['newConflictFingerprints']);
-        self::assertSame([$fingerprint], $b['newConflictFingerprints'], 'F5 dans la grâce re-sert le même badge');
+        self::assertSame([$fingerprint], $this->withoutTeamLevelMissing($a['newConflictFingerprints']));
+        self::assertSame([$fingerprint], $this->withoutTeamLevelMissing($b['newConflictFingerprints']), 'F5 dans la grâce re-sert le même badge');
         self::assertSame($reference, $a['referenceTakenAt'], 'la référence n\'a pas tourné');
         self::assertSame($reference, $b['referenceTakenAt']);
 
         // Hors grâce : NOUVELLE visite → la référence tourne sur l'état courant.
         $this->expireGrace($admin, $season->getId());
         $rotated = $this->stamp($admin);
-        self::assertSame([$fingerprint], $rotated['newConflictFingerprints'], 'la visite neuve voit encore le badge, puis rotationne');
+        self::assertSame([$fingerprint], $this->withoutTeamLevelMissing($rotated['newConflictFingerprints']), 'la visite neuve voit encore le badge, puis rotationne');
 
         // Le passage suivant (dans la grâce de la visite neuve) : le badge est éteint.
         $after = $this->stamp($admin);
-        self::assertSame([], $after['newConflictFingerprints'], 'après rotation, le badge ne revient pas');
+        self::assertSame([], $this->withoutTeamLevelMissing($after['newConflictFingerprints']), 'après rotation, le badge ne revient pas');
     }
 
     /** Isolation USER : le stamp d'Anna n'éteint pas le delta de Mateo (chacun sa référence). */
@@ -245,12 +245,12 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         // Anna passe (hors grâce) et rotationne SA référence.
         $this->expireGrace($anna, $season->getId());
         $annaOut = $this->stamp($anna);
-        self::assertSame([$fingerprint], $annaOut['newConflictFingerprints']);
+        self::assertSame([$fingerprint], $this->withoutTeamLevelMissing($annaOut['newConflictFingerprints']));
 
         // Mateo, lui, voit toujours le conflit neuf : le stamp d'Anna n'a pas touché sa référence.
         $this->expireGrace($mateo, $season->getId());
         $mateoOut = $this->stamp($mateo);
-        self::assertSame([$fingerprint], $mateoOut['newConflictFingerprints'], 'la visite d\'Anna n\'éteint pas le delta de Mateo');
+        self::assertSame([$fingerprint], $this->withoutTeamLevelMissing($mateoOut['newConflictFingerprints']), 'la visite d\'Anna n\'éteint pas le delta de Mateo');
     }
 
     /** Isolation CLUB : un conflit d'un autre club ne fuit pas dans le delta. */
@@ -530,6 +530,23 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $this->em->flush();
 
         return [$club, $season, $user];
+    }
+
+    /**
+     * P4-288 — ce décor référence des teamId SYNTHÉTIQUES (aucune entité Team persistée, donc
+     * aucun niveau) : à la naissance des fixtures, le radar lève aussi un TEAM_LEVEL_MISSING par
+     * équipe, qui entre lui-même dans le delta « nouveaux conflits ». Ces tests gardent le CYCLE
+     * DE VIE DU BADGE du MATCH_MATCH (grâce, rotation, isolation par user) : on isole la famille
+     * sous test. L'empreinte TEAM_LEVEL_MISSING a sa propre preuve (ConflictFingerprinterTest) ;
+     * l'isolation reste prouvée à l'identique sur l'empreinte MATCH_MATCH gardée.
+     *
+     * @param list<string> $fingerprints
+     *
+     * @return list<string>
+     */
+    private function withoutTeamLevelMissing(array $fingerprints): array
+    {
+        return array_values(array_filter($fingerprints, static fn (string $f): bool => !str_starts_with($f, 'TEAM_LEVEL_MISSING:')));
     }
 
     /**

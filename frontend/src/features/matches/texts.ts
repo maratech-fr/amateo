@@ -20,6 +20,7 @@ export const MATCHES_TEXTS = {
   teamVenueForbiddenTitle: "Gymnase interdit à l'équipe",
   awayNoFootprintTitle: "Extérieur sans heure ni habitude",
   friendlyOnMatchSlotTitle: "Amical sur un créneau de match",
+  teamLevelMissingTitle: "Niveau non renseigné",
   newChip: "Nouveau",
   homeSide: "domicile",
   estimated: "estimé",
@@ -35,6 +36,7 @@ export const MATCHES_TEXTS = {
   versus: (opponent: string) => `vs ${opponent}`,
   awayAt: (city: string) => `extérieur à ${city}`,
   matchVsTrainingSummary: (match: string, training: string) => `Match ${match} × entraînement ${training}`,
+  teamLevelMissingSummary: (team: string) => `${team} — ses matchs sont placés sans les créneaux de sa ligue`,
   accessWindowLostPhrase: (venue: string, windows: string) => `Placé hors des accès match de ${venue} (${windows}) — déplacez le match ou ajustez l'accès dans Configuration.`,
   venueUnavailableConflictTitle: (label: string | null | undefined) => `Gymnase indisponible${null != label && "" !== label ? ` (${label})` : ""}`,
 

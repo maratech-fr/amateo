@@ -103,7 +103,9 @@ use DateTimeImmutable;
  *   collision (founder decision), the diagnostic screams instead.
  * - LEAGUE_WINDOW_VIOLATION (2): a placed HOME fixture of a MAPPED team whose
  *   day/kickoff sit outside every resolved league window (same
- *   LeagueEnvelopeResolver join as the solver — unmapped team = silent).
+ *   LeagueEnvelopeResolver join as the solver). A team unmapped FOR LACK OF A
+ *   LEVEL is no longer silent — it is named by TEAM_LEVEL_MISSING (P4-288); a team
+ *   that HAS a level but no declared window still stays silent here.
  * - CLUB_RULE_VIOLATION (3, P4-272 ③): a placed HOME fixture whose kickoff violates
  *   a HARD club match rule covering the match day. HARD rules ONLY (a PREFERRED rule
  *   never makes a violation); friendlies exempt (like the league envelope). Manual
@@ -122,6 +124,11 @@ use DateTimeImmutable;
  *   on its weekday — the residual blind spot is now NAMED (info; the UI folds
  *   the group). JAMAIS émis pour une équipe LOISIR (ni calendrier ligue ni habitude
  *   à déclarer — décision fondateur 2026-10-01).
+ * - TEAM_LEVEL_MISSING (7, P4-288): a team with ≥ 1 RETAINED fixture (same past
+ *   filter as the other families) but ABSENT from the level map — its matches are
+ *   placed without its league windows (the level drives the envelope). ONE item
+ *   per TEAM (never per fixture; info, the UI folds the group). A team that HAS a
+ *   level never raises it, declared league window or not. Décision fondateur 2026-10-16.
  * - FRIENDLY_ON_MATCH_SLOT (5, « À surveiller », P4-193): a placed HOME FRIENDLY
  *   (competitionId null, venue+kickoff) sitting on a match slot — its footprint
  *   overlaps a match access window of its gym (reason MATCH_SLOT_WINDOW) and/or
@@ -286,7 +293,8 @@ final class MatchConflictDetector
      *                                                                                                                                      scope TEAM HARD rules). A HOME fixture posed in one is TEAM_VENUE_FORBIDDEN.
      * @param array<string, TeamLevel>                                                                               $levelByTeam
      *                                                                                                                                      teamId → niveau de l'équipe ; une équipe LOISIR est muette pour AWAY_NO_FOOTPRINT
-     *                                                                                                                                      (décision fondateur 2026-10-01)
+     *                                                                                                                                      (décision fondateur 2026-10-01). Une équipe ABSENTE de cette table ayant une
+     *                                                                                                                                      rencontre retenue est signalée TEAM_LEVEL_MISSING (P4-288)
      * @param array<string, DateTimeImmutable>                                                                       $deadlineByCompetition
      *                                                                                                                                      competitionId → échéance de saisie effective (club gagne, sinon défaut
      *                                                                                                                                      communautaire) ; gradue la cohérence de complétude (info vs alerte)
@@ -446,7 +454,43 @@ final class MatchConflictDetector
             ...$this->competitionIncompleteItems($fixtures, $competitions, $deadlineByCompetition, $clubToday),
             ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay, $levelByTeam),
             ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows),
+            // P4-288 — ajouté EN FIN pour que le $conflicts[0] des familles plus graves
+            // reste inchangé : une info repliée (sévérité 7), jamais une alerte en tête.
+            ...$this->teamLevelMissingItems($activeFixtures, $levelByTeam),
         ];
+    }
+
+    /**
+     * Severity 7 (P4-288, info — repliée) — une équipe SANS niveau (ABSENTE de
+     * $levelByTeam) ayant ≥ 1 rencontre RETENUE (non jouée, même filtre « matchs
+     * actifs » que les autres familles) : ses matchs sont posés sans les créneaux
+     * de sa ligue (le niveau conditionne l'enveloppe de ligue). UNE entrée par
+     * ÉQUIPE, jamais par rencontre. Une équipe qui A un niveau ne la lève jamais,
+     * fenêtre de ligue déclarée ou pas. Décision fondateur 2026-10-16.
+     *
+     * @param list<Fixture>            $fixtures    les rencontres RETENUES (déjà filtrées des matchs joués)
+     * @param array<string, TeamLevel> $levelByTeam teamId → niveau ; une équipe absente est signalée
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function teamLevelMissingItems(array $fixtures, array $levelByTeam): array
+    {
+        $seen = [];
+        $items = [];
+        foreach ($fixtures as $fixture) {
+            $teamId = $fixture->getTeamId();
+            if (isset($levelByTeam[$teamId]) || isset($seen[$teamId])) {
+                continue;
+            }
+            $seen[$teamId] = true;
+            $items[] = [
+                'type' => 'TEAM_LEVEL_MISSING',
+                'severity' => 7,
+                'teamId' => $teamId,
+            ];
+        }
+
+        return $items;
     }
 
     /**

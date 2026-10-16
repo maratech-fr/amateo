@@ -89,6 +89,14 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     expect(screen.getByText(/pose libre, à surveiller/)).toBeInTheDocument();
   });
 
+  it("TEAM_LEVEL_MISSING : titre « Niveau non renseigné » et résumé nommant l'équipe (clés MATCHES_TEXTS, P4-288)", () => {
+    const missing: Conflict = { type: "TEAM_LEVEL_MISSING", severity: 7, resolution: null, teamId: "team-1" };
+    renderLine({ conflict: missing, tone: "muted" });
+    expect(screen.getByText(MATCHES_TEXTS.teamLevelMissingTitle)).toBeInTheDocument();
+    // Le résumé passe par la CLÉ interpolée (jamais la phrase recopiée) ; team-1 → « U13 » (map).
+    expect(screen.getByText(MATCHES_TEXTS.teamLevelMissingSummary("U13"))).toBeInTheDocument();
+  });
+
   it("ACCESS_WINDOW_LOST : sans aucun accès match sur le gymnase → « (aucun accès match ce jour-là) »", () => {
     const access: Conflict = {
       type: "ACCESS_WINDOW_LOST",
