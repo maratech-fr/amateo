@@ -1032,7 +1032,10 @@ l'équipe SUGGÉRÉE pour cette ligne, un écart s'affiche — pastille d'état 
 si l'équipe n'a aucun niveau, « Fiche : <niveau actuel> » sinon) + bouton d'action (« Renseigner :
 <déduit> » / « Aligner sur <déduit> ») — **jamais pré-coché**. Un clic bascule la pastille en neutre
 (« Sera aligné à la confirmation » + « Annuler ») ; l'écriture ne part qu'au « Confirmer » global,
-en bloc avec les autres appariements. **La proposition ne tient que sur l'équipe suggérée** : changer
+en bloc avec les autres appariements. **Annonce lecteur d'écran** (P4-289) : une région
+`role="status" aria-live="polite"` au niveau de la modale (vide au repos) annonce le nombre
+d'alignements de niveau en attente de confirmation — jusque-là la bascule de la pastille n'était
+que visuelle, muette pour un lecteur d'écran. **La proposition ne tient que sur l'équipe suggérée** : changer
 l'équipe d'une ligne la fait tomber jusqu'à réouverture de la modale — un écart calculé contre une
 équipe n'a plus de sens si une autre équipe a été choisie depuis. Quand les lignes jeunes d'une même
 équipe divergent de niveau, le serveur arbitre par la date du dernier match importé de chaque
@@ -1469,18 +1472,24 @@ par nom active prend la main sur le code postal. Même repli côté **auto-appar
 commune/rayon ne rend pas un match unique — le comptage `ambiguous`/`unmatched` de la voie commune
 ne bouge pas pour ce repli.
 
-**Filtre segmenté** `role="group"` `aria-pressed` — **Sans gymnase · À apparier · Tous** — état URL
-`?filtre=` (`lib/urlState.ts`), deux unités de compte distinctes (clubs pour « Sans gymnase »,
-salles pour « À apparier », nommées par l'`aria-label`, jamais par le seul chiffre visible).
-Recherche instantanée (club, gymnase, libellé non apparié) combinée au filtre. **Progression** :
-région `aria-live="polite"` à deux phrases stables + compteur chiffré frère, dérivée de
-`travelStatus` (rafraîchi par Mercure via `useTravelStream`, § Cache de trajets et calcul
-asynchrone) ; bouton « Mettre à jour » désactivé pendant le calcul, aucun spinner par ligne.
-**Échec partiel** : `NoticeBanner` « n trajets n'ont pas pu être calculés » + bouton « Réessayer
-les manquants » (`POST /api/opponents/travel/resolve`, qui ne route déjà que les paires siège→
-gymnase manquantes). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet AUTO) réutilisé tel
-quel. **Garde anti-double-dispatch** : si un calcul de trajets tourne déjà pour le club (verrou
-tenu), « Réessayer les manquants »/« Mettre à jour » ne redispatche rien — toast « Un calcul de
+**Filtre segmenté** `role="group"` `aria-pressed` — **Sans gymnase · À apparier · Trajet
+indisponible · Tous** — état URL `?filtre=` (`lib/urlState.ts`, type `OpponentFilter`), trois
+unités de compte distinctes (clubs pour « Sans gymnase », salles pour « À apparier » et « Trajet
+indisponible », nommées par l'`aria-label`, jamais par le seul chiffre visible). **« Trajet
+indisponible »** (P4-293) ne garde que les clubs ayant ≥ 1 gymnase dont `travelStatus ===
+"unavailable"`, et — à la différence de « Sans gymnase »/« À apparier », qui n'affichent aucune
+ligne gymnase — affiche les lignes gymnase, filtrées aux seules salles en échec (sinon le club
+réapparaît sans montrer la ligne à réparer). Recherche instantanée (club, gymnase, libellé non
+apparié) combinée au filtre. **Progression** : région `aria-live="polite"` à deux phrases stables +
+compteur chiffré frère, dérivée de `travelStatus` (rafraîchi par Mercure via `useTravelStream`, §
+Cache de trajets et calcul asynchrone) ; bouton « Mettre à jour » désactivé pendant le calcul,
+aucun spinner par ligne. Le compte « N indisponibles » de la phrase d'échec partiel est un bouton
+qui pose directement le filtre « Trajet indisponible » (P4-293) — du constat au recadrage de la
+liste en un clic. **Échec partiel** : `NoticeBanner` « n trajets n'ont pas pu être calculés » +
+bouton « Réessayer les manquants » (`POST /api/opponents/travel/resolve`, qui ne route déjà que
+les paires siège→gymnase manquantes). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet
+AUTO) réutilisé tel quel. **Garde anti-double-dispatch** : si un calcul de trajets tourne déjà pour
+le club (verrou tenu), « Réessayer les manquants »/« Mettre à jour » ne redispatche rien — toast « Un calcul de
 trajets est déjà en cours. » (`alreadyRunning` servi par la route, § Cache de trajets et calcul
 asynchrone).
 

@@ -245,7 +245,8 @@ paths:
   la CLÉ (`getByText(PLANNING_TEXTS.evictTitle)`), jamais la phrase recopiée ; nouvelle assertion →
   viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
   `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`, matchs `ConflictLine`, assistant
-  `SlotReservationModal`/`ConstraintsStep`/`RecapStep`.
+  `SlotReservationModal`/`ConstraintsStep`/`RecapStep`. Depuis (progressif, lot 5) : matchs
+  `OpponentsPage`/`FfbbEngagementsDialog`.
 - 🔴 **Un changement d'apparence VOULU sur un des 9 écrans de `visual-reference.spec.ts`
   (login, register, planning semaine, matchs calendrier/semaine type/contraintes club, club,
   wizard coachs/contraintes) exige une re-baseline** — procédure et commande unique :

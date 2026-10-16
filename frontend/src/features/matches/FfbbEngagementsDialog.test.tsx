@@ -7,6 +7,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { FfbbEngagement, PriorityTier, Team } from "./api";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
+import { MATCHES_TEXTS } from "./texts";
 
 const { getFfbbEngagements, confirmFfbbPairings } = vi.hoisted(() => ({
   getFfbbEngagements: vi.fn(),
@@ -277,5 +278,32 @@ describe("alignement du niveau jeune", () => {
 
     await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
     expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm2" }]);
+  });
+});
+
+// ── P4-289 — la bascule d'alignement ne vit plus QUE dans une pastille visuelle : une région live
+//    POLIE au niveau du DIALOGUE l'annonce au lecteur d'écran (patron `OpponentsPage.tsx:147`). ──
+describe("P4-289 — l'alignement accepté s'annonce dans la région live du dialogue", () => {
+  const missing = (): FfbbEngagement =>
+    engagement({ competitionName: "Départementale masculine U13", suggestionSource: "fbi", suggestedTeamId: "team-sm1", deducedLevel: "DEPARTEMENTAL", alignment: "MISSING" });
+
+  it("le dialogue porte une région live POLIE (role=status aria-live=polite), silencieuse au repos", async () => {
+    getFfbbEngagements.mockResolvedValue({ engagements: [missing()] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByRole("button", { name: "Renseigner : Départemental" });
+    const live = screen.getByRole("status");
+    expect(live).toHaveAttribute("aria-live", "polite");
+    // Au repos (aucune bascule acceptée), la région n'annonce aucun alignement.
+    expect(live).not.toHaveTextContent(/aligné/i);
+  });
+
+  it("accepter l'alignement ANNONCE la bascule dans la région live du dialogue", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({ engagements: [missing()] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Renseigner : Départemental" }));
+    expect(screen.getByRole("status")).toHaveTextContent(MATCHES_TEXTS.levelWillAlignOnConfirm);
   });
 });
