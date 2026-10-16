@@ -3,11 +3,13 @@ import { useEffect } from "react";
 
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { tint } from "@/shared/lib/color";
 import { cn } from "@/shared/lib/utils";
 
 import type { ClubViewEntry, ClubViewModel } from "./lib/clubView";
 import { LOCK_LENS_META } from "./lib/lockLens";
+import { PLANNING_TEXTS } from "./texts";
 import type { TargetMode } from "./WeekGrid";
 
 interface ClubViewTableProps {
@@ -64,7 +66,7 @@ export function ClubViewTable({ model, selectedSlotId, onSelectSlot, highlightSl
   }, [targetActive, onCancelTarget]);
 
   if (0 === model.dayColumns.length) {
-    return <EmptyBlock>Aucun créneau à afficher pour cette sélection.</EmptyBlock>;
+    return <EmptyBlock>{PLANNING_TEXTS.clubViewEmpty}</EmptyBlock>;
   }
 
   const allEntries = model.groups.flatMap((g) => g.rows.flatMap((r) => r.cells.flatMap((c) => c.entries)));
@@ -148,54 +150,55 @@ export function ClubViewTable({ model, selectedSlotId, onSelectSlot, highlightSl
           className="shrink-0"
           message={
             <>
-              Désignez une séance existante pour {isMoveVariant ? "l'évincer" : "la remplacer"}. Pour poser sur un <strong>créneau libre</strong>, repassez en vue « Par gymnase » ou « Par jour » — un couple équipe/jour ne désigne ni gymnase ni horaire.
+              Désignez une séance existante pour {isMoveVariant ? "l'évincer" : "la remplacer"}. Pour poser sur un <strong>{PLANNING_TEXTS.clubViewFreeSlotWord}</strong>, repassez en vue « Par gymnase » ou « Par jour » — un couple équipe/jour ne désigne ni gymnase ni horaire.
             </>
           }
         />
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card">
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr>
-              {/* En-tête gelée : la colonne d'équipes reste lisible sur une semaine large. */}
-              <th scope="col" className="sticky left-0 top-0 z-30 w-40 border-b border-r border-border bg-muted px-2 py-1 text-left font-semibold">
-                Équipe
-              </th>
-              {model.dayColumns.map((column) => (
-                <th key={column.day} scope="col" className="sticky top-0 z-20 border-b border-l border-border bg-muted px-2 py-1 text-center font-semibold">
-                  {column.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          {model.groups.map((group, gi) => (
-            <tbody key={group.label ?? `flat-${gi}`}>
-              {null !== group.label ? (
-                <tr>
-                  {/* AUD-FRT-26 — rowgroup, pas colgroup : cet en-tête ouvre un <tbody> et chapeaute
-                      les LIGNES qui suivent (les équipes du rang), pas des colonnes. */}
-                  <th scope="rowgroup" colSpan={1 + model.dayColumns.length} className="border-b border-border bg-muted/40 px-2 py-0.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {group.label}
-                  </th>
-                </tr>
-              ) : null}
-              {group.rows.map((row) => (
-                <tr key={row.teamId} className="align-top">
-                  <th scope="row" className="sticky left-0 z-10 border-b border-r border-border bg-card px-2 py-1 text-left font-medium">
-                    <span className="block truncate">{row.teamLabel}</span>
-                    {0 === row.sessionCount ? <span className="block text-[10px] font-normal text-warning">aucune séance</span> : null}
-                  </th>
-                  {row.cells.map((cell) => (
-                    <td key={cell.day} className="border-b border-l border-border p-0.5">
-                      <div className="flex flex-col gap-0.5">{cell.entries.map((entry) => renderEntry(entry, row.teamLabel))}</div>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          ))}
-        </table>
-      </div>
+      {/* Primitive partagée `Table` (lot 5 PR E) — `wrapperClassName` porte le défilement borné à
+          en-tête figé ; les classes de cellules sont conservées À L'IDENTIQUE (neutralisation
+          `normal-case`/`tracking-normal`/`text-foreground`/`align-top` des défauts de la primitive). */}
+      <Table wrapperClassName="min-h-0 flex-1 overflow-auto" className="text-xs">
+        <TableHeader>
+          <TableRow>
+            {/* En-tête gelée : la colonne d'équipes reste lisible sur une semaine large. */}
+            <TableHead className="sticky left-0 top-0 z-30 w-40 border-b border-r border-border bg-muted px-2 py-1 text-left font-semibold normal-case tracking-normal text-foreground">
+              {PLANNING_TEXTS.clubViewTeamColumn}
+            </TableHead>
+            {model.dayColumns.map((column) => (
+              <TableHead key={column.day} className="sticky top-0 z-20 border-b border-l border-border bg-muted px-2 py-1 text-center font-semibold normal-case tracking-normal text-foreground">
+                {column.label}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        {model.groups.map((group, gi) => (
+          <TableBody key={group.label ?? `flat-${gi}`}>
+            {null !== group.label ? (
+              <TableRow>
+                {/* AUD-FRT-26 — rowgroup, pas colgroup : cet en-tête ouvre un corps et chapeaute
+                    les LIGNES qui suivent (les équipes du rang), pas des colonnes. */}
+                <TableHead scope="rowgroup" colSpan={1 + model.dayColumns.length} className="border-b border-border bg-muted/40 px-2 py-0.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group.label}
+                </TableHead>
+              </TableRow>
+            ) : null}
+            {group.rows.map((row) => (
+              <TableRow key={row.teamId} className="align-top">
+                <TableHead scope="row" className="sticky left-0 z-10 border-b border-r border-border bg-card px-2 py-1 text-left font-medium normal-case tracking-normal text-foreground align-top">
+                  <span className="block truncate">{row.teamLabel}</span>
+                  {0 === row.sessionCount ? <span className="block text-[10px] font-normal text-warning">{PLANNING_TEXTS.clubViewNoSession}</span> : null}
+                </TableHead>
+                {row.cells.map((cell) => (
+                  <TableCell key={cell.day} className="border-b border-l border-border p-0.5 align-top">
+                    <div className="flex flex-col gap-0.5">{cell.entries.map((entry) => renderEntry(entry, row.teamLabel))}</div>
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        ))}
+      </Table>
     </div>
   );
 }

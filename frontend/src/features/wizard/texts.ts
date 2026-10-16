@@ -155,4 +155,20 @@ export const WIZARD_TEXTS = {
   // VenuesStep — PR F (P4-279), toasts trajets
   venuePositionSaved: "Position enregistrée",
   travelRecomputed: "Trajets recalculés.",
+
+  // TravelMatrixModal (lot 5 PR E — migration texts + primitive Table)
+  travelMinUnit: "min",
+  travelEditDescription: "Le temps de trajet dans les deux sens. Ce que vous saisissez est conservé lors d'un recalcul automatique.",
+  travelConsentHeading: "Calculer les trajets entre vos gymnases ?",
+  travelLater: "Plus tard",
+  travelManualValuesKept: "Vos valeurs saisies à la main sont conservées.",
+  travelDone: "Terminé",
+  travelMatrixReadError: "Impossible de lire la matrice de trajet.",
+  travelNeedTwoVenues: "Ajoutez au moins deux gymnases pour définir des temps de trajet entre eux.",
+  travelFilterLabel: "Filtrer par gymnase",
+  travelFilterPlaceholder: "Filtrer par gymnase…",
+  travelLegendAuto: "Calculé automatiquement",
+  travelLegendManual: "Saisi à la main",
+  travelMatrixCaption: "Temps de trajet entre gymnases, en voiture et à vélo, du gymnase de la ligne vers celui de la colonne. Cliquez une case pour la modifier.",
+  travelMatrixCorner: "Depuis \\ vers",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

@@ -17,12 +17,19 @@ import { cn } from "@/shared/lib/utils";
  * s'imbriquer dans un encart déjà cadré (le détail par côté d'un conflit) ; il garde son
  * `overflow-x-auto`. `TableHead`/`TableCell` acceptent un `className` pour resserrer les cellules
  * (`px-1.5 py-0.5`) et laisser les en-têtes en `normal-case`.
+ *
+ * `wrapperClassName` — RÉGLAGE du conteneur de défilement (fusionné par `cn`/twMerge sur la div
+ * conteneur, à côté de `className` qui vise le `<table>`). Pour un écran dont le tableau a un corps
+ * DÉFILANT BORNÉ à en-tête figé (`min-h-0 flex-1 overflow-auto`, `max-h-[24rem] overflow-auto`) :
+ * `overflow-auto` remplace alors le `overflow-x-auto` figé du défaut, et l'ancêtre défilant rend le
+ * `position: sticky` des en-têtes effectif (lot 5 PR E / P4-284). Le DÉFAUT (sans réglage) et
+ * `variant="inline"` restent STRICTEMENT inchangés.
  */
-export function Table({ className, variant = "default", ...props }: HTMLAttributes<HTMLTableElement> & { variant?: "default" | "inline" }) {
+export function Table({ className, wrapperClassName, variant = "default", ...props }: HTMLAttributes<HTMLTableElement> & { variant?: "default" | "inline"; wrapperClassName?: string }) {
   const wrapper = "inline" === variant ? "w-full overflow-x-auto" : "w-full overflow-x-auto rounded-lg border border-border bg-card";
   const table = "inline" === variant ? "w-full border-collapse text-xs text-foreground" : "w-full border-collapse text-sm text-foreground";
   return (
-    <div className={wrapper}>
+    <div className={cn(wrapper, wrapperClassName)}>
       <table className={cn(table, className)} {...props} />
     </div>
   );
