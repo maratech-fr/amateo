@@ -32,7 +32,8 @@ le segment de taille 1.** Vrai côté API (`CalendarEntryStateProcessor::assertV
 (`WeekPickerDialog`) propose des SEGMENTS aux ruptures GÉOMÉTRIQUES de l'offre
 (`segmentsFromOffer`, `frontend/src/features/cockpit/lib/date.ts`) — semaine d'entame/fin
 partielle de l'événement, discontinuité de l'offre (exclusion vacances, filtre temporel) —
-**précochés**, avec deux gestes nommés : **SCISSION** (déplier un segment en ses semaines) et
+**précochés** (pour les VACANCES, le défaut est INVERSÉ — P2-64, détail au point « Reprise (écran
+actuel) » ci-dessous), avec deux gestes nommés : **SCISSION** (déplier un segment en ses semaines) et
 **FUSION** (assembler des segments adjacents dans l'offre, y compris par-dessus une rupture — le
 serveur ne borne que contiguïté + enveloppe). Un segment multi-semaines porte une phrase
 pédagogique de présentation (le sur-ferme du solveur sur des semaines qui diffèrent), jamais une
@@ -59,11 +60,16 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   semaine englobée). On gère le premier ; l'outil **notifie qu'un second planning est
   ouvert à compléter**. Semaine 1 : jeudi–vendredi indisponibles ; semaine 2 : lundi–jeudi
   indisponibles — le vendredi de la semaine 2 **garde ses créneaux du socle**.
-- **Reprise (écran actuel)** : le gestionnaire coche des SEGMENTS parmi ceux proposés (précochés
-  par défaut, éditables par scission/fusion) — un segment coché devient un enfant, avec son plan.
-  **N semaines cochées EN UN SEGMENT = N semaines IDENTIQUES** (un planning répliqué, exact si les
-  semaines du segment sont réellement identiques, sur-ferme sinon) ; deux segments distincts =
-  deux plannings.
+- **Reprise (écran actuel)** : le gestionnaire coche des SEGMENTS parmi ceux proposés, éditables
+  par scission/fusion — un segment coché devient un enfant, avec son plan. **Le précochage par
+  défaut est INVERSÉ pour les VACANCES (P2-64)** : chaque semaine PLEINE contiguë est offerte
+  SEULE, précochée — plus de bloc par défaut — et « Fusionner » est le geste qui en reconstruit un
+  (« Scinder » réapparaît alors sur ce bloc) ; les semaines ENTAMÉES (début/fin partielles de
+  l'événement) restent précochées telles que l'offre les rend, inchangé. Présentation FRONT pure
+  (`WeekPickerDialog::offeredSegments`) : `segmentsFromOffer`/`weekSegmentation.ts` (miroir
+  backend, FERMETURES seulement) ne bougent pas. **N semaines cochées EN UN SEGMENT = N semaines
+  IDENTIQUES** (un planning répliqué, exact si les semaines du segment sont réellement identiques,
+  sur-ferme sinon) ; deux segments distincts = deux plannings.
 
 ## 1. Planning principal (socle)
 
