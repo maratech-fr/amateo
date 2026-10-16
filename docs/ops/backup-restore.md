@@ -202,3 +202,37 @@ production. Ce que le `down()` d'une migration promet peut néanmoins être FAUX
 révèle avant un incident : `backend/scripts/migration-rollback-drill.sh` le prouve à froid, sur une
 base jetable. Détail (déroulé, garde fail-closed, pourquoi hors CI) :
 [`migration-rollback-drill.md`](migration-rollback-drill.md).
+
+## 7. Redis — snapshot du volume avant une montée de version MAJEURE
+
+Même règle d'or que §2, appliquée au store Redis (file Messenger + rate-limiters + verrous) :
+**une montée de version majeure de l'image `redis` (ex. 7 → 8) se joue avec un snapshot du
+volume `redis_data` pris AVANT** — Redis peut réécrire le format AOF/RDB, et le retour arrière
+8 → 7 n'est **pas garanti** (une version plus ancienne peut refuser de relire les fichiers d'une
+plus récente). Concerne la **prod uniquement** : le dev n'a volontairement pas de volume Redis
+(données éphémères, cf. `docker-compose.yml`).
+
+Avant de déployer la nouvelle image (toujours sur la VM, depuis le dossier de la stack) :
+
+```bash
+# 1. Forcer l'écriture durable sur disque (compacte l'AOF puis pose un RDB).
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec redis redis-cli BGREWRITEAOF
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec redis redis-cli SAVE
+
+# 2. Copier tout le volume /data hors du conteneur (--volumes-from = pas besoin
+#    de résoudre le nom préfixé du volume).
+docker run --rm --volumes-from amateo-redis -v "$PWD":/backup alpine \
+    tar czf /backup/redis_data-$(date +%Y%m%d-%H%M%S).tgz -C /data .
+```
+
+Déployer ensuite normalement (tag `v*`, cf. [`deploy.md`](deploy.md) § Déployer une release).
+
+Retour arrière si Redis 8 refuse de démarrer ou qu'il faut revenir à 7 : remettre `redis:7-alpine`
+dans les deux fichiers compose, puis restaurer le volume depuis le tar :
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod stop redis
+docker run --rm --volumes-from amateo-redis -v "$PWD":/backup alpine \
+    sh -c 'rm -rf /data/* && tar xzf /backup/redis_data-<stamp>.tgz -C /data'
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d redis
+```
