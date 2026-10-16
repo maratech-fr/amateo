@@ -1,0 +1,9 @@
+framework:
+    # P4-316 anti-hameçonnage — store de verrous PARTAGÉ sur Redis (pas `flock`, qui est local au
+    # système de fichiers d'un conteneur et ne couvrirait donc ni les workers php-fpm entre eux ni
+    # php-fpm ↔ messenger-worker). C'est ce store que `rate_limiter.*.lock_factory: auto` câble à tous
+    # les limiteurs : sans lui, `SlidingWindowLimiter::reserve()` fait une lecture-puis-écriture non
+    # atomique et un plafond par club (coach_wish_send) se contourne par requêtes parallèles.
+    # Même DSN que le cache (`%env(REDIS_URL)%`, backend/.env) → résolu partout : prod (service
+    # `redis`), test/CI (Redis déjà requis par le cache).
+    lock: '%env(REDIS_URL)%'
