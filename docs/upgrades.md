@@ -12,6 +12,35 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-10-16 (soir) — lot Dependabot (3 PRs mergées dont 1 réparée, 2 fermées)
+
+### Doctrine ORM 3.7.4 → 3.7.5 (backend, PR #1208, réparée)
+
+**C'est quoi** : Doctrine ORM, la couche qui lit et écrit nos données en base (entités ⇄ tables).
+
+**Ça apporte** : correctifs de routine.
+
+**Adapté chez nous** : comme à chaque lot backend, Dependabot avait tiré des composants Symfony en
+8.0 (il résout hors de notre conteneur, sans la règle « rester sur la 7.4 ») : verrou de dépendances
+régénéré dans le conteneur, seule Doctrine monte.
+
+### Paquets du frontend (PR #1210) et du moteur (PR #1211)
+
+`ky` 2.2 (appels HTTP du front), `lucide-react` 1.54 (icônes), `knip` 6.41 (outil qui repère le
+code et les dépendances inutilisés) ; `absl-py` 2.5.1 côté moteur (utilitaire tiré par le solveur).
+Correctifs de routine, rien à adapter.
+
+### Fermées : PHP 8.5 (#1207), image Playwright 1.64.1 (#1215)
+
+**PHP 8.4 → 8.5** : le fondateur a décidé de rester en 8.4 pour le moment (sécurité assurée
+jusqu'à fin 2028). La montée telle que proposée ne construisait même pas l'image : OPcache est
+intégré d'office en 8.5, notre Dockerfile essayait encore de l'installer. Elle se fera en PR
+dédiée (P4-345) ; Dependabot ignore désormais PHP ≥ 8.5.
+
+**Image Playwright** : son numéro doit être celui du paquet `@playwright/test` (sinon les tests
+navigateur ne trouvent plus leur navigateur en local). Elle monte désormais AVEC le paquet npm,
+jamais seule : Dependabot ne la propose plus.
+
 ## 2026-10-16 — Mercure 0.19/0.24 → 1.0 (lot 4 PR C, hors Dependabot)
 
 **C'est quoi** : le hub **Mercure**, le canal temps réel qui pousse l'avancement d'une génération
@@ -234,60 +263,3 @@ Library, ESLint et ses greffons, TypeScript-ESLint, `@types/node`, `@types/react
 la suite de tests complète de chaque zone (backend : miroir exact de la CI, PHPStan + CS-Fixer +
 tests + Rector à vide ; frontend : lint + build + tests, image de test reconstruite pour ne pas
 valider une version périmée).
-
-## 2026-09-04 — behat/behat 3.32 (backend, hors Dependabot — P4-165 palier 1)
-
-**C'est quoi** : `behat/behat` (^3, v3.32.0 installée), le runner de tests fonctionnels Gherkin —
-un scénario `Étant donné / Quand / Alors` écrit en français devient un test PHP exécutable. Ajouté
-en `require-dev` du backend, pas par Dependabot : décision produit (le fondateur veut relire des
-scénarios métier avant le code).
-
-**Ça apporte** : la première couche de tests fonctionnels **lisible par un non-développeur**. La
-config vit dans `backend/behat.dist.php` (Gherkin `# language: fr`, une seule suite `generation`
-pour l'instant), les features dans `backend/features/`, les contexts dans `backend/tests/Behat/`.
-
-**Adapté chez nous** : les contexts (`BaseContext`, `SeasonGenerationContext`) parlent **HTTP à la
-stack qui tourne** (`http://nginx/api`) plutôt que d'ouvrir un noyau Symfony en mémoire — choix
-délibéré, pas une contrainte de la librairie : ni `FriendsOfBehat/SymfonyExtension`, ni
-`BrowserKit`, ni transaction DAMA. Le jeton JWT est minté via `bin/console lexik:jwt:generate-token`,
-la garde bac-à-sable (`BaseContext::guardSandbox`) est une jumelle de
-`backend/scripts/lib/sandbox-guard.sh`. Nouvelle cible `make -C backend behat` (redémarre
-`messenger-worker`, garde sandbox) et nouveau job CI `functional-tests` (sans `needs`, même
-préambule que `smoke-tests`). Le smoke `backend/scripts/smoke-solver.sh` est **supprimé** : la
-première feature (`generation-du-planning-de-saison.feature`) le remplace à parité prouvée (même
-verdict `COMPLETED`).
-
-## 2026-09-01 — lot Dependabot
-
-### Groupe frontend-npm — 20 montées + browserslist 4.28.8 (PR #813)
-
-**C'est quoi** : vingt briques de la partie visible (mineurs/correctifs), plus `browserslist`
-(la table « quels navigateurs supporter » utilisée par la chaîne de build), poussée à la main
-dans le même lot.
-
-**Ça apporte** : deux failles publiées LE JOUR MÊME sur browserslist (dont une « high » —
-croissance mémoire non bornée) faisaient rougir l'audit de sécurité de TOUTES les PRs du dépôt ;
-corrigées en 4.28.7, on embarque la 4.28.8. Le reste : suivi de routine.
-
-**Adapté chez nous** : rien — 2299 tests frontend verts, build Vite vert, audit à zéro.
-
-### Groupe backend-composer — 6 montées (PR #812)
-
-**C'est quoi** : le pont temps réel Mercure (`symfony/mercure-bundle` 0.4→0.5, qui pousse les
-mises à jour de génération à l'écran) et trois outils de qualité de code (php-cs-fixer, phpstan,
-rector).
-
-**Ça apporte** : suivi de routine ; mercure-bundle 0.5 = la branche maintenue.
-
-**Adapté chez nous** : le piège Flex documenté a mordu comme prévu — Dependabot résout hors de
-notre conteneur et 9 briques Symfony avaient sauté en 8.0.x ; ramenées sur la LTS 7.4 par le
-correctif canonique (`composer update` ciblé dans le conteneur, jamais de pin). Miroir CI complet
-vert (1962 tests), rector vert, smoke solveur vert.
-
-### github-actions — docker/setup-buildx-action 4.2 → 4.3 (PR #746)
-
-**C'est quoi** : l'action qui prépare le constructeur d'images Docker du déploiement.
-
-**Ça apporte** : mineure de routine, épinglée par empreinte (vérifiée en amont).
-
-**Adapté chez nous** : rien.
