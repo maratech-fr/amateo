@@ -153,7 +153,7 @@ final class VenueTravelTimeAutofillService
                 $unresolved[] = ['venueAId' => $a->getId(), 'venueBId' => $b->getId(), 'reason' => $reason];
             }
 
-            if ($wrote && null !== $row) {
+            if ($wrote) {
                 // A freshly created row (absent from the pre-read map) is persisted;
                 // a managed row flushes on its own.
                 if (!isset($existing[$key])) {

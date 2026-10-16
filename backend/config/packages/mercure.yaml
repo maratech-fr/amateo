@@ -1,6 +1,9 @@
 mercure:
     hubs:
         default:
+            # Épinglé tant que le hub parle 0.x (dev v0.24.2, prod v0.19) : mercure-bundle 0.6 passe le
+            # défaut à "1.0" (claims RFC 9068, cookie renommé). Retiré par la PR Mercure 1.0 du lot 4.
+            protocol_version: '0.x'
             url: '%env(default::MERCURE_URL)%'
             public_url: '%env(default::MERCURE_PUBLIC_URL)%'
             jwt:
