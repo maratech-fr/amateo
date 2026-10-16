@@ -1,4 +1,4 @@
-FROM php:8.4-fpm AS base
+FROM php:8.5-fpm AS base
 
 ARG UID=1000
 ARG GID=1000
