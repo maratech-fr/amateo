@@ -98,6 +98,11 @@ updates:
       docker-php:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # PHP 8.5 : décision fondateur 2026-10-16 — on reste en 8.4 pour le moment (#1207 fermée ;
+    # la montée est une PR dédiée, ligne de roadmap). Les correctifs 8.4.x passent toujours.
+    ignore:
+      - dependency-name: "php"
+        versions: [">=8.5"]
     labels: ["dependencies", "docker"]
 
   - package-ecosystem: "docker"
@@ -198,4 +203,9 @@ updates:
       # 1.x, on borne donc par version.
       - dependency-name: "dunglas/mercure"
         versions: [">=2.0.0"]
+      # Image e2e Playwright : son tag DOIT égaler la version de `@playwright/test` du
+      # package-lock (garde `PlaywrightImageMatchesLockTest`). Elle monte AVEC le paquet npm,
+      # à la main dans la même PR — jamais seule (#1209, #1215 fermées). Nom SANS registre
+      # (`mcr.microsoft.com/`), comme le titre de #1215 « Bump playwright … ».
+      - dependency-name: "playwright"
     labels: ["dependencies", "docker"]
