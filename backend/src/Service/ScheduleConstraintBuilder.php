@@ -1467,7 +1467,7 @@ final class ScheduleConstraintBuilder
             'value' => $teamCoach->getCoachId(),
             'metadata' => [
                 'coachId' => $teamCoach->getCoachId(),
-                'role' => $teamCoach->getRole(),
+                'role' => $teamCoach->getRole()->value,
                 'isRequired' => $teamCoach->getIsRequired(),
             ],
         ], $teamCoaches);

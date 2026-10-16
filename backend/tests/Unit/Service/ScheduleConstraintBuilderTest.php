@@ -8,12 +8,15 @@ use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\TeamCoachRole;
+use App\Service\PreSolvePreventionWarnings;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TeamTagResolver;
 use DateTimeImmutable;
@@ -136,6 +139,32 @@ final class ScheduleConstraintBuilderTest extends TestCase
         self::assertNull($result[0]['value']);
         self::assertArrayNotHasKey('orToolsWeight', $result[0]['metadata']);
         self::assertSame(2, $result[0]['metadata']['defaultMinSessions']);
+    }
+
+    /**
+     * NR (axes constraint semantics / auth & memberships) — le lien équipe⇄coach part au moteur ET
+     * aux préventions pré-solve avec `metadata.role` en CHAÎNE adossée ('MAIN'/'ASSISTANT'), JAMAIS
+     * l'objet enum {@see TeamCoachRole}. Un objet enum casse `strtoupper((string) $metadata['role'])`
+     * ({@see PreSolvePreventionWarnings::teamMainCoaches}) — le récap de saison perd alors
+     * sa capacité (warning « La capacité des gymnases n'a pas pu être vérifiée », `capacity` null) — et
+     * les comparaisons `'MAIN' === $metadata['role']` deviennent toujours fausses, muselant les
+     * préventions de rôle. Jumeau CONSOMMATEUR qui éprouve la conséquence sur un payload réellement bâti :
+     * {@see PreSolvePreventionWarningsTest::testMainCoachClosureFiresFromBuilderSerializedTeamCoach}.
+     */
+    public function testTeamCoachRoleIsSerializedAsBackedStringNotEnumObject(): void
+    {
+        $main = (new TeamCoach)->setTeamId('team-sm1')->setCoachId('coach-anna')->setRole(TeamCoachRole::MAIN)->setIsRequired(true);
+        $assistant = (new TeamCoach)->setTeamId('team-sm1')->setCoachId('coach-bea')->setRole(TeamCoachRole::ASSISTANT)->setIsRequired(false);
+
+        $method = new ReflectionMethod($this->builder, 'serializeTeamCoachConstraints');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{metadata: array<string, mixed>}> $result */
+        $result = $method->invoke($this->builder, [$main, $assistant]);
+
+        self::assertIsString($result[0]['metadata']['role'], 'metadata.role doit être une chaîne adossée, pas un objet enum TeamCoachRole');
+        self::assertSame('MAIN', $result[0]['metadata']['role']);
+        self::assertSame('ASSISTANT', $result[1]['metadata']['role']);
     }
 
     public function testClubWideConstraintExpandsToEveryTeam(): void
