@@ -89,6 +89,7 @@ final readonly class EmailTemplateRenderer
         [$pageBackground, $pageGradient] = $this->derivedBackground();
         $clubHeaderHtml = $this->clubHeader($clubLabel, $hasClubLogo, $clubLogoSrc, $flags);
         $ctaHtml = $this->ctaButton($ctaUrl, $ctaLabel, $flags);
+        $antiSpoofHtml = $this->antiSpoofFooter($clubLabel, $productName, $flags);
 
         // Quand un bouton CTA est rendu, la ligne du corps qui ne porte QUE l'URL du CTA ferait
         // doublon disgracieux (URL brute juste au-dessus du bouton). On la retire du HTML — la
@@ -113,10 +114,33 @@ final readonly class EmailTemplateRenderer
             <div><a href="{$hrefHtml}" style="color:#2563eb;text-decoration:underline;">{$labelHtml}</a></div>
             </td>
             </tr></table>
+            {$antiSpoofHtml}
             </td></tr>
             </table>
             </td></tr>
             </table>
+            HTML;
+    }
+
+    /**
+     * Le PIED anti-usurpation (P4-316 anti-hameçonnage) : un e-mail de collecte part vers une
+     * adresse TIERCE (un coach, pas un membre), c'est une surface d'hameçonnage. Tout e-mail à
+     * club connu porte donc une attribution FIXE « Envoyé via {produit} à la demande du club … »
+     * suivie d'un avertissement d'usurpation — hors de tout contrôle du club. Le club n'influe
+     * que sur son propre libellé (ÉCHAPPÉ, donnée non fiable) ; il ne peut ni retirer ni réécrire
+     * la phrase. Un e-mail SANS club (libellé null) n'en porte pas (digest/récap superadmin).
+     */
+    private function antiSpoofFooter(?string $clubLabel, string $productName, int $flags): string
+    {
+        if (null === $clubLabel) {
+            return '';
+        }
+
+        $nameHtml = htmlspecialchars($productName, $flags, 'UTF-8');
+        $labelHtml = htmlspecialchars($clubLabel, $flags, 'UTF-8');
+
+        return <<<HTML
+            <div style="margin-top:16px;color:#9ca3af;font-size:12px;line-height:1.4;">Envoyé via {$nameHtml} à la demande du club {$labelHtml}. Vous ne connaissez pas ce club ? Ignorez ce message.</div>
             HTML;
     }
 

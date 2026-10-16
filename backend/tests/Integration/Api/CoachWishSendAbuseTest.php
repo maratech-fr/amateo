@@ -18,7 +18,9 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Mail\EmailTemplateRenderer;
 use App\Tests\TenantGucTrait;
+use App\Tests\Unit\Mail\EmailTemplateRendererTest;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -36,7 +38,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  2. l'envoi réel est INTERDIT en démonstration (un compte démo ne doit jamais e-mailer un
  *     tiers — aujourd'hui le trou existe, prouvé par le rouge d'assertion) ;
  *  3. un PIED anti-usurpation FIXE, hors contrôle du club (le pied lui-même est prouvé au plus
- *     bas sur le gabarit — {@see \App\Tests\Unit\Mail\EmailTemplateRendererTest::testAntiSpoofFooterIsFixedAndImmuneToClubData} ;
+ *     bas sur le gabarit — {@see EmailTemplateRendererTest::testAntiSpoofFooterIsFixedAndImmuneToClubData} ;
  *     ici on prouve qu'il ATTEINT l'e-mail réellement émis, à l'envoi comme à la relance).
  *
  * Les e-mails sont capturés par le collecteur de mail (clone signé par EmailSignatureListener à
@@ -232,7 +234,7 @@ final class CoachWishSendAbuseTest extends WebTestCase
      * un littéral). Le club ne peut ni le retirer ni le réécrire (injection prouvée au plus bas).
      *
      * On vérifie sur le corps rendu COMPLET (HTML + texte) : le pied vit dans le gabarit HTML
-     * ({@see \App\Mail\EmailTemplateRenderer}, foyer unique, cf. le jumeau unitaire) ; concaténer
+     * ({@see EmailTemplateRenderer}, foyer unique, cf. le jumeau unitaire) ; concaténer
      * le texte rend l'assertion robuste à la part retenue, sans rien affaiblir (le pied DOIT être
      * dans l'e-mail émis — si absent des deux, c'est rouge).
      */
