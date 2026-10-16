@@ -11,7 +11,7 @@ import { api } from "@/shared/api/client";
  *
  * Le backend calcule les trajets dans le WORKER (rafale IGN pacée > plafond HTTP) et publie
  * l'avancement `{scope, done, total, terminal, verdict?}` sur le topic PRIVÉ FIXE
- * `club:{clubId}:travel`. Auth : le cookie httpOnly de `GET /api/mercure/auth`, dont la
+ * `/clubs/{clubId}/travel`. Auth : le cookie httpOnly de `GET /api/mercure/auth`, dont la
  * réponse porte `travelTopic` (le front ne connaît pas son clubId — tenant résolu serveur).
  *
  * Mercure reste BEST-EFFORT : à réception, on INVALIDE (débounce ~500 ms) les caches
@@ -153,7 +153,8 @@ async function open(queryClient: QueryClient): Promise<void> {
     if (0 === refs || null !== source) {
       return; // relâché (ou rouvert) pendant l'aller-retour d'auth
     }
-    const stream = new EventSource(`/.well-known/mercure?topic=${encodeURIComponent(travelTopic)}`);
+    // Mercure 1.0 : topic EXACT (pas de gabarit) → `match` (le `topic=` de 0.x a disparu).
+    const stream = new EventSource(`/.well-known/mercure?match=${encodeURIComponent(travelTopic)}`);
     source = stream;
     stream.onopen = () => setConnected(true);
     stream.onmessage = (event: MessageEvent<string>) => {

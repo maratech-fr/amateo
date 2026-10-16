@@ -10,7 +10,7 @@ import { api } from "@/shared/api/client";
  *
  * Le worker ({@link PlaceMatchesHandler}, backend) solve dans un conteneur à part puis publie la
  * bascule TERMINALE `{runId, status}` (COMPLETED / FAILED) sur le topic PRIVÉ FIXE
- * `club:{clubId}:placement`. Auth : le cookie httpOnly de `GET /api/mercure/auth`, dont la réponse
+ * `/clubs/{clubId}/placement`. Auth : le cookie httpOnly de `GET /api/mercure/auth`, dont la réponse
  * porte `placementTopic` (le front ne connaît pas son clubId — tenant résolu serveur).
  *
  * Mercure reste BEST-EFFORT : à réception on INVALIDE les caches react-query — le GET
@@ -92,7 +92,8 @@ async function open(queryClient: QueryClient): Promise<void> {
     if (0 === refs || null !== source) {
       return; // relâché (ou rouvert) pendant l'aller-retour d'auth
     }
-    const stream = new EventSource(`/.well-known/mercure?topic=${encodeURIComponent(placementTopic)}`);
+    // Mercure 1.0 : topic EXACT (pas de gabarit) → `match` (le `topic=` de 0.x a disparu).
+    const stream = new EventSource(`/.well-known/mercure?match=${encodeURIComponent(placementTopic)}`);
     source = stream;
     stream.onmessage = (event: MessageEvent<string>) => {
       // Tout événement du hub (terminal, le seul publié) rend le run et les rencontres périmés :

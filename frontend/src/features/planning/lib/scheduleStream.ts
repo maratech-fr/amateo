@@ -12,11 +12,11 @@ import { api } from "@/shared/api/client";
  * Le temps réel appartient au PLANNING — remonté de `shared/` le 2026-08-22 (P4-123) :
  * seuls planning et wizard l'écoutent, ce n'est pas du socle partagé.
  *
- * Le backend publie l'avancement des générations sur `club:{clubId}:schedule:{id}`
+ * Le backend publie l'avancement des générations sur `/clubs/{clubId}/schedules/{id}`
  * (topics privés, SEC-05/06) ; jusqu'ici personne n'écoutait — le front pollait à
  * 2,5 s. Ce module ouvre UN EventSource par session, abonné au TEMPLATE du club
- * (`club:X:schedule:{id}` tel quel — le hub matche chaque topic exact contre lui,
- * délivrance prouvée) : toutes les générations du club arrivent sur la même
+ * (`/clubs/X/schedules/:id` en URLPattern 1.0 — le hub matche chaque topic exact contre
+ * lui, délivrance prouvée) : toutes les générations du club arrivent sur la même
  * connexion, sans connaître leurs ids à l'avance.
  *
  * L'authentification est un cookie httpOnly posé par `GET /api/mercure/auth`
@@ -181,7 +181,9 @@ async function open(queryClient: QueryClient): Promise<void> {
     if (0 === refs || null !== source) {
       return; // relâché (ou rouvert) pendant l'aller-retour d'auth
     }
-    const stream = new EventSource(`/.well-known/mercure?topic=${encodeURIComponent(topicTemplate)}`);
+    // Mercure 1.0 : le gabarit de génération est un sélecteur URLPattern → `match_urlpattern`
+    // (le `topic=` de 0.x a disparu). Le front transmet tel quel le sélecteur servi par l'auth.
+    const stream = new EventSource(`/.well-known/mercure?match_urlpattern=${encodeURIComponent(topicTemplate)}`);
     source = stream;
     stream.onopen = () => setConnected(true);
     stream.onmessage = (event: MessageEvent<string>) => {
