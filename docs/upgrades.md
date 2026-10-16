@@ -95,6 +95,23 @@ de 0.19 à 1.0, même version en dev et en prod, dans une PR dédiée du lot 4.
 `shivammathur/setup-php` 2.40.0 (installe PHP dans la CI, empreinte vérifiée sur le tag) et
 l'image `puppeteer` 25.14.0 du worker qui fabrique les PDF. Rien à adapter.
 
+## 2026-10-16 — symfony/lock (nouvelle dépendance, lot 4 PR E, hors Dependabot — P4-316)
+
+**C'est quoi** : `symfony/lock`, le composant Symfony de verrous — jusqu'ici absent du
+`composer.json` backend, les quelques verrous du produit (génération, placement de matchs)
+passaient par un usage direct de Redis, pas par ce composant.
+
+**Ça apporte** : un store de verrous PARTAGÉ et configurable (`framework.lock`), que Symfony
+câble automatiquement derrière `rate_limiter` (`lock_factory: auto`) — jusqu'ici, sans
+`framework.lock` configuré, ce câblage résolvait un store LOCAL au système de fichiers d'un
+conteneur (non partagé entre les workers php-fpm, ni avec `messenger-worker`) : un plafond
+d'envoi par club (ex. `coach_wish_send`) restait contournable par des requêtes parallèles.
+
+**Adapté chez nous** : `backend/config/packages/lock.yaml` pose `framework.lock:
+'%env(REDIS_URL)%'` — même DSN que le cache. Conséquence immédiate et volontaire : **tous** les
+limiteurs `rate_limiter` (pas seulement le nouveau `coach_wish_send`, P4-316) deviennent
+atomiques, du fait de ce seul fichier de config, sans toucher à `rate_limiter.yaml`.
+
 ## 2026-09-17 — lot Dependabot (2 PRs mergées, dont 1 réparée)
 
 ### API Platform 4.3 → 4.4 (backend, PR #900)
@@ -244,86 +261,3 @@ vert (1962 tests), rector vert, smoke solveur vert.
 **Ça apporte** : mineure de routine, épinglée par empreinte (vérifiée en amont).
 
 **Adapté chez nous** : rien.
-
-## 2026-08-18 — lot Dependabot
-
-### Groupe frontend-npm — 7 montées (PR #617)
-
-**C'est quoi** : sept briques de la partie visible, toutes en version mineure ou corrective.
-**Sentry** est le mouchard qui nous prévient quand un écran plante chez un club, avec la trace de
-ce qui s'est passé. **Lucide** est la bibliothèque d'icônes. **ESLint** et **typescript-eslint**
-sont les relecteurs automatiques qui refusent le code douteux avant qu'il n'arrive en production.
-**jest-dom**, **@types/node** et **eslint-plugin-react-refresh** sont de l'outillage d'atelier :
-ils n'existent que chez nous, jamais chez les clubs.
-
-**Ça apporte** : des correctifs, pas des nouveautés — Sentry 10.69 → **10.70**, Lucide 1.29 →
-**1.31**, ESLint 10.8.0 → **10.8.1**, typescript-eslint 8.66 → **8.67**, plus trois patchs
-d'outillage. Aucune rupture, rien à réapprendre. L'intérêt de les prendre au fil de l'eau est
-précisément d'éviter le saut de version douloureux qu'on subit quand on laisse traîner.
-
-**Adapté chez nous** : **rien**. Suite complète verte (176 fichiers, 1538 tests) **et build de
-production vérifié en plus des tests** — Sentry et Lucide finissent tous deux dans le fichier que
-les navigateurs téléchargent, or un test vert ne prouve pas qu'on sait encore fabriquer ce fichier.
-
-### actions/cache 4.3.0 → 6.1.0 (PR #616)
-
-**C'est quoi** : une brique de notre chaîne d'intégration — celle qui **met en cache** des choses
-lourdes entre deux exécutions, pour ne pas les retélécharger à chaque fois. On s'en sert à deux
-endroits : le navigateur Chromium des tests de bout en bout, et la base de données de failles de
-sécurité du scanner. Elle ne tourne que sur GitHub, jamais chez les clubs.
-
-**Ça apporte** : deux versions majeures d'un coup, mais dont les ruptures sont **internes** —
-réécriture du module en ESM, mise à jour des dépendances, meilleure gestion d'un cache en lecture
-seule. Les réglages qu'on utilise (`path`, `key`, `restore-keys`) et le signal qu'on lit
-(`cache-hit`, qui nous dit s'il faut retélécharger Chromium) sont l'interface stable : ils n'ont
-pas bougé. Rester sur une majeure abandonnée d'une action GitHub, c'est prendre le risque qu'elle
-cesse un jour de fonctionner sans préavis.
-
-**Adapté chez nous** : **rien** — deux lignes de version épinglée. ⚠ Une montée d'action ne se
-teste pas en local : **c'est la CI de la PR qui EST le test**, et elle exerce bien les deux usages
-(cache Chromium dans les tests de bout en bout, cache du scanner dans le job sécurité). Les 14
-contrôles sont passés.
-
-### Rector 2.5.9 → 2.6.1 (PR #615)
-
-**C'est quoi** : **Rector** est un outil qui relit le code PHP et le réécrit tout seul pour le
-mettre au goût du jour — passer d'une vieille façon d'écrire à celle que recommande la version
-actuelle de PHP ou de Symfony. Chez nous il ne se contente pas de proposer : **son style FAIT
-convention** et la CI refuse de passer si le code s'en écarte. Il ne tourne jamais chez les
-clubs — c'est un outil d'atelier, pas une brique du produit.
-
-**Ça apporte** : une version mineure, mais qui embarque une **nouvelle règle** — et une nouvelle
-règle Rector, chez nous, veut dire du travail immédiat : le gardien de style se met à refuser du
-code qui passait la veille. Mieux vaut le prendre maintenant, sur dix fichiers connus, que dans six
-mois sur cinquante.
-
-**Adapté chez nous** : **10 fichiers**. La règle `ParamAndEnvAttributeRector` remplace l'écriture
-par gabarit de texte par une écriture nommée, pour les valeurs que Symfony injecte dans nos
-services :
-
-```php
-#[Autowire('%env(REDIS_URL)%')]   →   #[Autowire(env: 'REDIS_URL')]
-#[Autowire('%kernel.debug%')]     →   #[Autowire(param: 'kernel.debug')]
-```
-
-Le comportement est **identique** — c'est la même valeur, injectée au même endroit. Ce qui change,
-c'est que l'intention est dite explicitement (« ceci est une variable d'environnement », « ceci est
-un paramètre »), donc lisible et vérifiable par l'outillage, au lieu d'être devinée dans une
-chaîne de caractères. Deux fichiers ont ensuite demandé un passage de CS-Fixer, Rector ayant écrit
-des noms de classes en entier là où le dépôt veut un import.
-
-⚠ **Le correctif touche du code de production**, dont `JwtCookieFactory` et `MercureAuthController`
-— deux fichiers sensibles (cookie JWT, authentification Mercure). La modification n'y change que la
-FAÇON dont une valeur de configuration arrive, jamais ce qu'on en fait. Vérifié par le miroir
-complet de la CI : **1591 tests, 9223 assertions**, dont les tests bloquants de sécurité.
-
-**Et un réglage d'outillage, qui est le vrai enseignement du lot.** Nos deux gardiens de style se
-sont mis à se contredire : Rector réécrit en noms de classes ENTIERS
-(`\Symfony\Component\HttpFoundation\Cookie::…`), CS-Fixer les IMPORTE (`Cookie::…`) — chacun
-défaisant l'autre, chacun rouge dans son propre contrôle. Ce n'est pas nouveau : c'est que jusqu'ici
-Rector n'avait **rien à réécrire**, donc les deux ne se croisaient jamais. La première règle qui le
-fait travailler a révélé le désaccord. `backend/rector.php` gagne donc `withImportNames()` — Rector
-importe désormais, comme CS-Fixer — **borné à `removeUnusedImports: false`** : on voulait aligner
-les deux outils, pas déclencher un ménage d'imports sur 8 fichiers étrangers à la montée (supprimer
-un import n'est jamais anodin quand un docblock le référence encore). Effet réel : 2 fichiers, un
-import de fonction Sentry.
