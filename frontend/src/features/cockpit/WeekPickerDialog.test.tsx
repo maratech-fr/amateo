@@ -64,13 +64,21 @@ describe("WeekPickerDialog (P2-5 E1)", () => {
     expect(screen.queryByRole("button", { name: /fusionner/i })).toBeNull();
   });
 
-  it("vacances : Scinder et Fusionner restent offerts", () => {
-    // Milieu aligné → Scinder offert.
+  // P2-64 amende ce témoin : pour une VACANCE, un milieu aligné est désormais ÉCLATÉ en semaines
+  // (plus de bloc par défaut, donc pas de « Scinder » d'emblée). L'édition manuelle reste néanmoins
+  // OFFERTE — contraste closure qui n'offre aucun geste : « Fusionner » est là, et une fois fusionné
+  // « Scinder » réapparaît sur le bloc reconstruit. Les deux gestes restent atteignables.
+  it("vacances : l'édition manuelle (Fusionner puis Scinder) reste offerte, même après l'éclatement P2-64", async () => {
+    const user = userEvent.setup();
+    // Milieu aligné holiday : éclaté en deux semaines → « Fusionner » sur la seconde, pas de « Scinder » d'emblée.
     const aligned = render(<WeekPickerDialog title={mother.title} startDate="2026-11-09" endDate="2026-11-22" weeks={weeks} periodType="holiday" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /scinder/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /fusionner/i }));
+    // Fusionné → un bloc multi-semaines → « Scinder » redevient offert.
     expect(screen.getByRole("button", { name: /scinder/i })).toBeInTheDocument();
     aligned.unmount();
 
-    // Deux segments → Fusionner offert sur le second.
+    // Deux segments entamés (partiels, hors périmètre P2-64) → Fusionner offert sur le second.
     render(<WeekPickerDialog title={mother.title} startDate="2026-11-12" endDate="2026-11-18" weeks={weeks} periodType="holiday" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole("button", { name: /fusionner/i })).toBeInTheDocument();
   });

@@ -656,9 +656,10 @@ describe("RadarPanel", () => {
     await user.click(screen.getByRole("button", { name: "Adapter" }));
     expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     expect(screen.queryByText(new RegExp(`du ${frDateShort(w1s)} `))).toBeNull();
-    // P2-41 — les deux semaines restantes (la révolue écartée) forment UN segment débutant au
-    // lundi de la 2ᵉ semaine. A2 — la fenêtre tient dans la saison → le libellé omet l'année.
-    expect(screen.getByText(new RegExp(`Semaines du ${frDateShortNoYear(addDays(w1s, 7))} `))).toBeInTheDocument();
+    // P2-64 — pour une VACANCE, les deux semaines restantes (la révolue écartée) sont ÉCLATÉES en
+    // semaines individuelles. A2 — la fenêtre tient dans la saison → le libellé omet l'année.
+    expect(screen.getByText(`Semaine du ${frDateShortNoYear(addDays(w1s, 7))}`)).toBeInTheDocument();
+    expect(screen.getByText(`Semaine du ${frDateShortNoYear(addDays(w1s, 14))}`)).toBeInTheDocument();
   });
 
   // P2-38 (prévention) — une semaine qu'un AUTRE plan gouverne déjà (fenêtre SERVIE par le backend)

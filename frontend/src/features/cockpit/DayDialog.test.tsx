@@ -490,10 +490,11 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
     // La semaine partielle du 11–17 mai (contenant le vendredi) n'est pas proposée.
     expect(screen.queryByText(/11 mai/)).not.toBeInTheDocument();
-    // P2-41 — les deux semaines pleines restantes (18–24 + 25–31) sont un SEGMENT unique,
-    // proposé d'un bloc à partir du lundi suivant (18 mai). A2 — la fenêtre tient dans la
-    // saison affichée → le libellé omet l'année.
-    expect(screen.getByText(/Semaines du 18 mai au 31 mai — d'un bloc/)).toBeInTheDocument();
+    // P2-64 — pour une VACANCE, les deux semaines pleines restantes (18–24 + 25–31) sont ÉCLATÉES
+    // en semaines individuelles (plus le bloc historique). A2 — la fenêtre tient dans la saison
+    // affichée → le libellé omet l'année.
+    expect(screen.getByText("Semaine du 18 mai")).toBeInTheDocument();
+    expect(screen.getByText("Semaine du 25 mai")).toBeInTheDocument();
   });
 
   // Revue C F2 : une vacance démarrant vendredi qui, une fois la semaine partielle
