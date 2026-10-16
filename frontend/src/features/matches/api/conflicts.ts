@@ -81,7 +81,10 @@ export type ConflictType =
   | "ACCESS_WINDOW_LOST"
   | "COMPETITION_INCOMPLETE"
   | "AWAY_NO_FOOTPRINT"
-  | "FRIENDLY_ON_MATCH_SLOT";
+  | "FRIENDLY_ON_MATCH_SLOT"
+  // P4-288 — une équipe sans niveau ayant au moins une rencontre retenue : ses matchs
+  // sont posés sans les créneaux de sa ligue (le niveau conditionne l'enveloppe).
+  | "TEAM_LEVEL_MISSING";
 
 /**
  * P4-207 — l'axe TRAITEMENT d'un conflit (où en est sa RÉSOLUTION), distinct de la

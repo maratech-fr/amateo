@@ -82,6 +82,8 @@ final class ConflictFingerprinter
             ),
             // La compétition SEULE — jamais imported/expected (chaque import les bouge).
             'COMPETITION_INCOMPLETE' => \sprintf('%s:%s', $type, $this->str($conflict, 'competitionId')),
+            // L'ÉQUIPE seule porte le litige (P4-288) : son niveau n'est pas renseigné.
+            'TEAM_LEVEL_MISSING' => \sprintf('%s:%s', $type, $this->str($conflict, 'teamId')),
             default => throw new InvalidArgumentException(\sprintf('Type de conflit inconnu pour l\'empreinte : « %s ».', $type)),
         };
     }
