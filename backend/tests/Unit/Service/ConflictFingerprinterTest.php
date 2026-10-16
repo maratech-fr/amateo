@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * RMM-3 — la maison unique de l'empreinte d'un conflit. Pure : elle prend un item
  * du tableau de MatchConflictDetector et en rend l'IDENTITÉ stable. Ce test épingle
- * les 9 types (les champs d'identité, tels que le détecteur les émet), la STABILITÉ
+ * les 10 types (les champs d'identité, tels que le détecteur les émet), la STABILITÉ
  * (même empreinte quand sévérité / segment / rôle / reasons bougent) et le changement de
  * NATURE (autre paire, ou autre type → autre empreinte).
  */
@@ -102,6 +102,17 @@ final class ConflictFingerprinterTest extends TestCase
             'fixture' => ['fixtureId' => 'fix-5'],
         ];
         self::assertSame('VENUE_UNAVAILABLE:fix-5:unavail-8', $this->fingerprinter->fingerprint($conflict));
+    }
+
+    /** TEAM_LEVEL_MISSING (P4-288) : l'équipe SEULE porte le litige — empreinte TYPE:teamId, stable. */
+    public function testTeamLevelMissingIsTeamIdAlone(): void
+    {
+        $conflict = [
+            'type' => 'TEAM_LEVEL_MISSING',
+            'severity' => 7,
+            'teamId' => 'team-42',
+        ];
+        self::assertSame('TEAM_LEVEL_MISSING:team-42', $this->fingerprinter->fingerprint($conflict));
     }
 
     public function testCompetitionIncompleteIsCompetitionIdAlone(): void

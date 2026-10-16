@@ -18,6 +18,7 @@ const ALL_FAMILIES: ConflictType[] = [
   "COMPETITION_INCOMPLETE",
   "AWAY_NO_FOOTPRINT",
   "FRIENDLY_ON_MATCH_SLOT",
+  "TEAM_LEVEL_MISSING",
 ];
 
 describe("CONFLICT_FAMILY_LABEL", () => {
@@ -40,6 +41,7 @@ describe("CONFLICT_FAMILY_LABEL", () => {
     expect(CONFLICT_FAMILY_LABEL.VENUE_UNAVAILABLE).toBe("Gymnase indisponible");
     expect(CONFLICT_FAMILY_LABEL.AWAY_NO_FOOTPRINT).toBe("Extérieur sans heure");
     expect(CONFLICT_FAMILY_LABEL.FRIENDLY_ON_MATCH_SLOT).toBe("Amical sur créneau match");
+    expect(CONFLICT_FAMILY_LABEL.TEAM_LEVEL_MISSING).toBe("Niveau non renseigné");
   });
 });
 
