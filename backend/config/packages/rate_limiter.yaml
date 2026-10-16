@@ -118,6 +118,18 @@ framework:
             policy: 'sliding_window'
             limit: 20
             interval: '15 minutes'
+        # P4-316 anti-hameçonnage — l'ENVOI réel des liens de collecte (POST
+        # /api/coach_wish_campaigns/{id}/send-links et /remind) e-maille des adresses TIERCES (des
+        # coachs, pas des membres) : une surface d'hameçonnage. Keyé PAR CLUB (clubId, pas par
+        # utilisateur — trois gestionnaires ne triplent pas le budget) : un club ne peut pas
+        # arroser des milliers d'adresses. On consomme AVANT l'envoi le nombre EXACT de
+        # destinataires de la requête ; refusé → 429 et rien n'est envoyé. 200/24 h couvre très
+        # largement un gros club (envoi initial + relances + renvois ciblés) et borne un abus.
+        # Plafond PARTAGÉ entre send-links, relance et renvoi ciblé (même clé club).
+        coach_wish_send:
+            policy: 'sliding_window'
+            limit: 200
+            interval: '1 day'
         # P4-298 — le lookup public du NOM de club à l'inscription (GET /api/register/club-lookup),
         # par IP : surface anonyme énumérable (on y jette un code FFBB), même famille que
         # coach_wish_public. 30/15min — large pour une saisie debouncée (le front ne déclenche
@@ -319,3 +331,11 @@ when@test:
                 policy: 'sliding_window'
                 limit: 5
                 interval: '15 minutes'
+            # P4-316 : petit plafond PAR CLUB pour que CoachWishSendAbuseTest tripe le 429 en
+            # quelques destinataires. Keyé par clubId : il ne fuit pas entre suites (chaque test
+            # crée son propre club, aucun n'e-maille 2 destinataires sous le même club hors ce
+            # test). Prod garde 200/24 h.
+            coach_wish_send:
+                policy: 'sliding_window'
+                limit: 2
+                interval: '1 day'

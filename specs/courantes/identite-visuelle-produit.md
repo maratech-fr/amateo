@@ -297,6 +297,19 @@ FIGÉ**.
   `sandbox=""` (patron `MailboxPage` : du HTML non fiable ne s'injecte jamais
   autrement). Détail API/contrôleur : `backend/docs/backend-controllers.md` §
   « Aperçu de l'e-mail coach ».
+- **Pied anti-usurpation (anti-hameçonnage, P4-316, 2026-10-16)** : un e-mail à club connu part
+  parfois vers une adresse TIERCE (le coach, pas un membre du club) — marque + logo du club
+  pourraient prêter à confusion. Le gabarit CARTE ajoute donc une phrase FIXE, hors de tout
+  contrôle du club, sous le pied de carte existant : « Envoyé via {produit} à la demande du club
+  {club}. Vous ne connaissez pas ce club ? Ignorez ce message. » — le club n'influe que sur son
+  propre libellé (ÉCHAPPÉ), jamais sur la phrase elle-même. SOURCE UNIQUE
+  (`EmailTemplateRenderer::ANTI_SPOOF_FOOTER_SENTENCE`), posée dans le HTML
+  (`EmailTemplateRenderer::antiSpoofFooter`) ET dans la partie TEXTE
+  (`App\EventListener\EmailSignatureListener`, même phrase via
+  `EmailTemplateRenderer::antiSpoofFooterText`) — un e-mail SANS club connu n'en porte pas (digest/
+  récap superadmin). Volet distinct du même lot : l'envoi des liens de collecte est désormais
+  plafonné PAR CLUB (`coach_wish_send`, 200/24 h, partagé envoi initial/relance/renvoi ciblé) et
+  refusé pour un club de démonstration — `backend/docs/backend-auth-mercure.md` §4 Access control.
 - **Image OG — posée (P5-24 PR-3, 2026-09-29)** : une image de partage Open Graph **UNIQUE** (1200×630,
   fond CLAIR `#faf9f7`, logotype + accroche de la vitrine), servie en deux copies octet-identiques
   — `landing/assets/brand/og.png` et `frontend/public/brand/og.png`, chacune sur son propre

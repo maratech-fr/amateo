@@ -59,6 +59,19 @@ jamais les tailles déclarées ni le `<dimension ref>` (qui peut mentir). Un fic
 un zip lisible n'est pas refusé ici (rien à inflater) : il part au parseur en aval, dont un filet
 générique rend 422 sans fuite.
 
+**P4-316** : l'envoi réel des liens de collecte de doléances (`POST
+/api/coach_wish_campaigns/{id}/send-links` et `/remind`, `CoachWishCampaignActionController`)
+porte le limiteur `coach_wish_send` **par club** (clubId, pas par utilisateur) — 200/24 h en prod,
+`sliding_window`, consommé pour le nombre EXACT de destinataires de la requête AVANT l'envoi ;
+partagé entre envoi initial, relance et renvoi ciblé (même clé club). Un club de DÉMONSTRATION est
+refusé 403 avant toute résolution de destinataires (patron des autres gestes de compte interdits
+aux démos). **Tous les limiteurs `rate_limiter` sont désormais ATOMIQUES** : `backend/config/
+packages/lock.yaml` câble `framework.lock` sur un store Redis PARTAGÉ (`%env(REDIS_URL)%`, même
+DSN que le cache) — jusque-là `symfony/lock` était absent, `lock_factory: auto` se résolvait à
+`null` : AUCUN verrou, et `SlidingWindowLimiter::reserve()` faisait une lecture-puis-écriture non
+atomique contournable par requêtes parallèles. Redis indisponible ⇒ les routes à limiteur
+répondent 500 (fermé, jamais ouvert) au lieu de laisser passer.
+
 ### Résolution du tenant (`TenantFilterListener`)
 
 Le `TenantFilterListener` (event `KernelEvents::REQUEST`, **priorité 7 — APRÈS le firewall
