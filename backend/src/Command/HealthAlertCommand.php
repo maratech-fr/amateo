@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\AdminJob\AdminJobCatalog;
+use App\AdminJob\AdminJobDefinition;
 use App\Service\AdminAlertStateStore;
 use App\Service\AdminDataFreshnessService;
 use App\Service\AdminHealthService;
@@ -38,6 +40,8 @@ final class HealthAlertCommand extends Command
         private readonly AdminHealthService $healthService,
         private readonly AdminDataFreshnessService $freshnessService,
         private readonly HealthAlertEvaluator $evaluator,
+        // Catalogue fermé : label/command du job surveillé, jamais une chaîne libre.
+        private readonly AdminJobCatalog $catalog,
         private readonly AdminAlertStateStore $stateStore,
         private readonly MailerInterface $mailer,
         private readonly ManagerRegistry $registry,
@@ -57,7 +61,7 @@ final class HealthAlertCommand extends Command
         $freshness = $this->freshnessService->referentials();
         $solver = $this->solverLast24h();
 
-        $alerts = $this->evaluator->evaluate($health, $freshness, $solver);
+        $alerts = $this->evaluator->evaluate($health, $freshness, $solver, $this->jobSignals());
         // DEUX temps (revue #257) : preview (aucune écriture) → ENVOI → commit. Si le
         // mailer lève, rien n'est commité : le job est marqué failed (visible au panneau)
         // et le prochain tick RE-TENTE l'envoi — une panne SMTP transitoire ne peut pas
@@ -96,6 +100,38 @@ final class HealthAlertCommand extends Command
         $this->stateStore->commit($alerts);
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Dernier statut connu des jobs dont un ÉCHEC doit alerter immédiatement (Q2) :
+     * aujourd'hui le contrôle de restauration hebdomadaire. Statut = dernier run
+     * (admin_job_run) ; label/command viennent du catalogue fermé, jamais d'une chaîne
+     * libre. Liste vide si le job n'est pas au catalogue — jamais un `$jobs` vide passé
+     * par oubli de câblage.
+     *
+     * @return list<array{key: string, label: string, command: string, lastStatus: ?string}>
+     */
+    private function jobSignals(): array
+    {
+        $signals = [];
+        foreach (['db-restore-check'] as $jobKey) {
+            $definition = $this->catalog->find($jobKey);
+            if (!$definition instanceof AdminJobDefinition) {
+                continue;
+            }
+            $lastStatus = $this->admin()->fetchOne(
+                'SELECT status FROM admin_job_run WHERE job_key = :job_key ORDER BY started_at DESC, id DESC LIMIT 1',
+                ['job_key' => $definition->key],
+            );
+            $signals[] = [
+                'key' => $definition->key,
+                'label' => $definition->label,
+                'command' => $definition->command,
+                'lastStatus' => \is_string($lastStatus) ? $lastStatus : null,
+            ];
+        }
+
+        return $signals;
     }
 
     /** @return array{generations24h: int, infeasible24h: int} */

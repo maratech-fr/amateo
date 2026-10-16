@@ -25,6 +25,9 @@ final readonly class AdminDataFreshnessService
     /** Référentiel FFBB : rafraîchi au fil des créations de clubs — une saison + marge. */
     private const FFBB_STALE_AFTER_DAYS = 400;
 
+    /** Contrôle de restauration hebdomadaire (dimanche) : périmé au-delà d'une semaine + marge. */
+    private const RESTORE_CHECK_STALE_AFTER_DAYS = 8;
+
     public function __construct(
         private ManagerRegistry $registry,
         private ClockInterface $clock,
@@ -42,6 +45,7 @@ final readonly class AdminDataFreshnessService
             $this->fromImport('school-holidays', 'Vacances scolaires', 'import-school-holidays', 'school_holiday_period'),
             $this->fromImport('public-holidays', 'Jours fériés', 'import-public-holidays', 'public_holiday'),
             $this->fromTables('ffbb-directory', 'Ligues & comités FFBB', 'fetched_at', ['ffbb_league', 'ffbb_committee']),
+            $this->fromJobRun('db-restore-check', 'Contrôle de restauration', 'db-restore-check', self::RESTORE_CHECK_STALE_AFTER_DAYS),
             $this->backupRow(),
         ];
     }
@@ -101,6 +105,24 @@ final readonly class AdminDataFreshnessService
         $candidates = array_filter([$lastRun, $lastData], static fn (mixed $value): bool => \is_string($value));
 
         return $this->row($key, $label, [] === $candidates ? null : max($candidates), self::IMPORT_STALE_AFTER_DAYS);
+    }
+
+    /**
+     * SANS table de données (patron fromImport amputé du second signal) : la seule
+     * preuve qu'un dump reste restaurable est le dernier run RÉUSSI de app:db:restore-check
+     * (admin_job_run). Un run en ÉCHEC ne rafraîchit jamais la ligne — c'est précisément
+     * la panne qu'on veut rendre visible ; jamais exécuté → périmé (fail-visible).
+     *
+     * @return array{key: string, label: string, lastUpdatedAt: ?string, staleAfterDays: int, stale: bool}
+     */
+    private function fromJobRun(string $key, string $label, string $jobKey, int $staleAfterDays): array
+    {
+        $lastRun = $this->connection()->fetchOne(
+            'SELECT MAX(finished_at) FROM admin_job_run WHERE job_key = :job_key AND status = \'succeeded\'',
+            ['job_key' => $jobKey],
+        );
+
+        return $this->row($key, $label, \is_string($lastRun) ? $lastRun : null, $staleAfterDays);
     }
 
     /** @param list<string> $tables

@@ -30,6 +30,11 @@ final readonly class AdminJobSchedule
         return new self('daily', $hour, $minute);
     }
 
+    public static function weekly(int $hour, int $minute = 0): self
+    {
+        return new self('weekly', $hour, $minute);
+    }
+
     public static function quarterly(int $hour, int $minute = 0): self
     {
         return new self('quarterly', $hour, $minute);
@@ -59,6 +64,7 @@ final readonly class AdminJobSchedule
         return match ($this->cadence) {
             'every_10_minutes' => $due->modify('+10 minutes'),
             'daily' => $due->modify('+1 day'),
+            'weekly' => $due->modify('+7 days'),
             'quarterly' => $due->modify('+3 months'),
             default => throw new LogicException(\sprintf('Unsupported admin job cadence "%s".', $this->cadence)),
         };
@@ -75,6 +81,14 @@ final readonly class AdminJobSchedule
             $candidate = $local->setTime($this->hour, $this->minute);
 
             return $candidate <= $local ? $candidate : $candidate->modify('-1 day');
+        }
+
+        if ('weekly' === $this->cadence) {
+            // Dimanche = 0 (w) : recule jusqu'au dimanche de la semaine courante à
+            // l'heure voulue, puis d'une semaine de plus si ce créneau n'a pas encore eu lieu.
+            $candidate = $local->modify(\sprintf('-%d days', (int) $local->format('w')))->setTime($this->hour, $this->minute);
+
+            return $candidate <= $local ? $candidate : $candidate->modify('-7 days');
         }
 
         $year = (int) $local->format('Y');
