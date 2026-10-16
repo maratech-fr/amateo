@@ -19,7 +19,7 @@
 | Real-time | Mercure (SSE) |
 | Message bus | Symfony Messenger (transport Redis, worker dédié) |
 | DB | PostgreSQL 16 |
-| Cache / Lock | Redis 7 (appendonly) |
+| Cache / Lock | Redis 8 (appendonly) |
 
 ### Structure des dossiers
 
