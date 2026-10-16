@@ -28,7 +28,7 @@ The database starts empty; demo data is opt-in (`make -C backend seed-demo` / `s
 Amateo is a monorepo with three main stacks:
 
 - **backend/** — Symfony 7 + API Platform 4 (PHP 8.4)
-- **engine/** — Python 3.12 + FastAPI + OR-Tools CP-SAT
+- **engine/** — Python 3.14 + FastAPI + OR-Tools CP-SAT
 - **frontend/** — React 19 + Vite + Tailwind 4
 
 ## Services

@@ -19,7 +19,7 @@ It rewrites ``engine/tests/fixtures/bccl_home_matches_2026.json`` deterministica
 (stable sort, no timestamps) so a re-run produces a byte-identical file.
 
 Stdlib only (``zipfile`` + ``xml.etree``): no openpyxl/pandas dependency, so the
-derivation is reproducible from any Python 3.12 without the engine venv.
+derivation is reproducible from any Python 3.14 without the engine venv.
 """
 
 from __future__ import annotations

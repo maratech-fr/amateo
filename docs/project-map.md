@@ -8,7 +8,7 @@ Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend 
 
 ```
 backend/   PHP 8.4 · Symfony 7.4 · API Platform 4.4 · Doctrine ORM 3.7 · Messenger · Mercure · JWT
-engine/    Python 3.12 · FastAPI · OR-Tools CP-SAT
+engine/    Python 3.14 · FastAPI · OR-Tools CP-SAT
 frontend/  TS · React 19 · Vite · TW4  (active: auth · planning work-loop · wizard)
 landing/   Page de vente publique — HTML/CSS statique PUR (zéro build, AUCUN lien avec frontend/) ;
            marque + liens dans landing/config.js (une source) ; en prod : servie par CADDY sur la VM
@@ -158,7 +158,7 @@ parse `ScheduleInputSchema` → `build_model()` → `parse_v2_constraints()` →
 `engine/CONTRACT_VERSION` holds the single contract version shared by the three engine endpoints (`/generate`, `/place-matches`, `/validate-assignments`), currently `1.5` (bumped `1.4` → `1.5`: `SocleReferenceAssignmentSchema` gains `venueId` (optional) and `keep` (bool) — the "keep season slots" bonus regime, PR 6 / lot 8, next to the existing fill-gap regime. Earlier `1.3` → `1.4` added three dedicated diagnostic-cause kinds — `day_forced` (a forced training day), `session_floor` (an "at least N sessions at this venue" floor), `shared_block` (a shared training block) — and `causes[]` officialised on the `conflict` diagnostic, so the infeasibility core names the conflicting rules; P4-96. Earlier `1.2` → `1.3` dropped the dead wire fields — coach PII `email`/`phone`, entity `isActive`/`tags`/`minSessionsOverride`, the dead `priorityTiers` schema, placement `kickoffEstimated`/`roundTripMinutes`; ENG-53/RGPD-03/ALIGN-20). The handshake guard is MAJOR-only — a major mismatch between backend and engine fails loud rather than producing a subtly wrong plan. No codegen: the Pydantic schemas (engine) ⇄ the payload (backend) are kept in sync MANUALLY, and the backend reads the live version via `GET /`; `ContractSchemaTest` + `MatchPlacementContractSchemaTest` + `ValidateAssignmentsContractSchemaTest` (backend) are the guardrails. The history of the shape bumps that led here lives in git (`git log -p -- engine/CONTRACT_VERSION`), not in this line.
 
 ### 3.4 Tooling (verified) — see `pyproject.toml`
-ruff (line 120, py312, double quotes, LF) · mypy `strict` + `pydantic.mypy` (`ortools.*` ignored) · pytest `-ra` + pytest-timeout + pytest-cov + hypothesis · bandit (excludes `tests`). Runtime deps: `fastapi`, `pydantic`, `pydantic-settings`, `ortools 9.11.x`, `uvicorn[standard]`.
+ruff (line 120, py314, double quotes, LF) · mypy `strict` + `pydantic.mypy` (`ortools.*` ignored) · pytest `-ra` + pytest-timeout + pytest-cov + hypothesis · bandit (excludes `tests`). Runtime deps: `fastapi`, `pydantic`, `pydantic-settings`, `ortools 9.11.x`, `uvicorn[standard]`.
 
 ---
 

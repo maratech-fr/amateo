@@ -650,7 +650,7 @@ noms de classes exacts : [`generation-flow.md`](generation-flow.md) §1 « Vue d
 |---------|-------------|------|
 | **Frontend** | React 19 + Vite | Interface utilisateur, calendrier, formulaires de contraintes |
 | **Backend** | Symfony 7 + API Platform | API REST, authentification, orchestration, persistence |
-| **Engine** | Python 3.12 + FastAPI + OR-Tools | Solveur CP-SAT qui calcule le planning optimal |
+| **Engine** | Python 3.14 + FastAPI + OR-Tools | Solveur CP-SAT qui calcule le planning optimal |
 | **Messenger Worker** | PHP CLI + Symfony Messenger | Consommateur de file Redis, appelle l'engine et importe le résultat |
 | **Mercure** | Go (hub SSE) | Diffusion temps réel des changements de statut |
 | **Redis** | Redis 8 | File d'attente des messages + verrous distribués |

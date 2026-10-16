@@ -5,7 +5,7 @@ paths:
 
 # Engine — conventions & pièges (chargé quand engine/ est touché)
 
-- **ruff** : line 120, py312, double quotes, LF. **`ruff format` fait convention et est GARDÉ**
+- **ruff** : line 120, py314, double quotes, LF. **`ruff format` fait convention et est GARDÉ**
   (`ruff format --check` dans `make lint`/`make test` et le job CI Engine Tests, P4-64) —
   `make format` est donc sans danger, il ne churne rien.
 - **mypy `strict`** + plugin `pydantic.mypy` (`ortools.*` ignoré).
