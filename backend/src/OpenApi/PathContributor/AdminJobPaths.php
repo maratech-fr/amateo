@@ -56,7 +56,7 @@ final readonly class AdminJobPaths implements CustomPathContributor
                                 'key' => ['type' => 'string'],
                                 'label' => ['type' => 'string'],
                                 'command' => ['type' => 'string'],
-                                'cadence' => ['type' => 'string', 'enum' => ['every_10_minutes', 'daily', 'quarterly']],
+                                'cadence' => ['type' => 'string', 'enum' => ['every_10_minutes', 'daily', 'weekly', 'quarterly']],
                                 'manualTriggerAllowed' => ['type' => 'boolean'],
                                 'nextRunAt' => ['type' => 'string', 'format' => 'date-time'],
                                 'latestRun' => $latestRun,

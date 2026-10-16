@@ -12,6 +12,72 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-10-16 — lot Dependabot (5 PRs mergées dont 2 réparées, 2 fermées)
+
+### Paquets du moteur (engine, PR #1196 — 9 montées mineures)
+
+**C'est quoi** : les bibliothèques Python du moteur de calcul des plannings — `fastapi` (le
+serveur web qui reçoit les demandes du backend), `pydantic` (qui vérifie la forme des données
+reçues), et des outils de test.
+
+**Ça apporte** : correctifs et suivi de routine. Seul changement de comportement notable :
+FastAPI 0.143 ne configure plus automatiquement la télémétrie OpenTelemetry — nous ne
+l'utilisons pas, donc aucun effet.
+
+**Adapté chez nous** : rien.
+
+### protobuf 6 → 7 (engine, PR #1197 — FERMÉE)
+
+**C'est quoi** : un format d'échange de données utilisé en interne par le solveur `ortools`.
+Notre code ne s'en sert jamais directement.
+
+**Ça apporte** : rien pour nous — et c'est **incompatible** : `ortools` 9.15 exige une version
+de protobuf inférieure à 6.34. Mergée, plus aucune génération de planning n'aurait fonctionné.
+
+**Adapté chez nous** : PR fermée et version majeure ignorée par Dependabot ; protobuf montera
+quand une future version d'`ortools` l'acceptera.
+
+### Paquets du frontend (PR #1195 — 15 montées mineures, réparée)
+
+**C'est quoi** : les bibliothèques de l'interface, dont `@playwright/test` (le robot qui joue
+les parcours dans un vrai navigateur) et Sentry (remontée des erreurs).
+
+**Ça apporte** : correctifs de routine.
+
+**Adapté chez nous** : l'image Docker qui lance Playwright en local doit porter la MÊME version
+que le paquet — passée de 1.63.0 à 1.64.0 (`docker-compose.yml`, service `e2e`). C'était aussi
+la moitié utile de la PR #1193, fermée.
+
+### Paquets du backend (PR #1194 — 21 montées, réparée)
+
+**C'est quoi** : les correctifs de la version 7.4 de Symfony, Sentry, et les outils d'analyse
+(PHPStan, Rector) ; plus `symfony/mercure-bundle`, qui envoie les mises à jour en direct à l'écran.
+
+**Ça apporte** : correctifs de routine ; PHPStan 2.3 détecte des cas qu'il laissait passer.
+
+**Adapté chez nous** : trois choses.
+- Dependabot avait tiré plusieurs composants Symfony en 8.0 (il résout sans notre règle « rester
+  sur la 7.4 ») : ramenés en 7.4 par `composer update` dans le conteneur.
+- `mercure-bundle` 0.6 parle par défaut la langue de **Mercure 1.0**, alors que notre serveur
+  Mercure est encore en 0.x : épinglé à `protocol_version: '0.x'` dans
+  `backend/config/packages/mercure.yaml`, en attendant la montée vers Mercure 1.0 du lot 4.
+- PHPStan 2.3 a signalé une vérification inutile dans `VenueTravelTimeAutofillService` : retirée.
+
+### Mercure 0.24 en production (PR #1193 — FERMÉE)
+
+**C'est quoi** : le serveur qui pousse les mises à jour en direct (progression d'une génération,
+calcul des trajets, placement des matchs).
+
+**Ça apporte** : une étape intermédiaire que le fondateur a refusée : Mercure passe directement
+de 0.19 à 1.0, même version en dev et en prod, dans une PR dédiée du lot 4.
+
+**Adapté chez nous** : rien ici.
+
+### Mineurs sans impact (#1192, #1183)
+
+`shivammathur/setup-php` 2.40.0 (installe PHP dans la CI, empreinte vérifiée sur le tag) et
+l'image `puppeteer` 25.14.0 du worker qui fabrique les PDF. Rien à adapter.
+
 ## 2026-09-17 — lot Dependabot (2 PRs mergées, dont 1 réparée)
 
 ### API Platform 4.3 → 4.4 (backend, PR #900)
@@ -297,69 +363,3 @@ elle-même**, toutes deux prévisibles :
 qui modernise l'écriture des variables d'environnement dans le code — 10 fichiers concernés chez
 nous). Elle attend que le défaut ci-dessus soit corrigé en amont. Suivi : ligne **P4-80** de la
 roadmap.
-
-## 2026-08-11 — lot Dependabot
-
-### Groupe backend-composer — PHP-CS-Fixer, PHPStan, Rector (outils de dev, PR #504)
-
-**C'est quoi** : les trois outils qui relisent le code PHP automatiquement. **PHP-CS-Fixer** met le
-code en forme (indentation, ordre des imports…), **PHPStan** cherche les erreurs de logique sans
-exécuter le programme, **Rector** modernise le code vers les tournures de PHP 8.4. Aucun des trois
-ne part en production : ils tournent chez nous et dans la CI. Chacun est un verrou qui bloque une
-fusion s'il n'est pas content.
-
-**Ça apporte** : PHP-CS-Fixer 3.95.17 → **3.95.18** et PHPStan 2.2.6 → **2.2.8** sont des correctifs
-d'entretien, sans effet visible — on les prend au fil de l'eau pour ne pas accumuler du retard qui
-devient un jour un saut coûteux. Rector 2.5.8 → **2.5.9** apporte une règle de plus.
-
-**Adapté chez nous** : **un fichier**, `FfbbEngagementsController`. Rector 2.5.9 y demande d'écrire
-« si cette variable EST une réponse d'erreur » plutôt que « si elle n'est pas vide » — c'est
-exactement la convention que le projet s'est donnée (P4-24), et elle dit plus précisément ce que le
-code vérifie.
-
-**⚠ Et une version a été volontairement REFUSÉE : Rector 2.6.** Dependabot proposait 2.6.1. Testée,
-elle réécrit deux fichiers de sécurité (le cookie qui porte la connexion, l'authentification
-Mercure) en remplaçant les noms courts par des chemins complets — et **PHP-CS-Fixer les remet
-aussitôt en noms courts**. Les deux outils se contredisent, chacun défaisant le travail de l'autre :
-comme les deux bloquent la fusion, **plus aucune modification ne pourrait passer**. Vérifié que la
-faute vient bien de l'outil et pas de notre code : Rector déclare lui-même n'appliquer **aucune
-règle** sur ces fichiers (`applied_rectors: []`) — c'est son moteur d'écriture qui déraille, pas une
-convention nouvelle qu'il faudrait suivre. 2.6.0 a le même défaut, 2.5.9 est saine. La version est
-donc bornée à la série 2.5 (`~2.5.9` : les correctifs 2.5.x continuent d'arriver, la série 2.6 est
-tenue dehors) jusqu'à ce que l'outil soit réparé — suivi en **P4-80**.
-
-### Groupe frontend-npm — 13 paquets (PR #505)
-
-**C'est quoi** : treize briques de l'interface web. Trois seulement partent chez l'utilisateur —
-**Sentry** (le mouchard qui nous remonte les erreurs rencontrées par un vrai gestionnaire),
-**lucide-react** (les icônes) et **Vite** (l'outil qui assemble l'application livrée). Les dix
-autres ne servent qu'à nous : compilateur TypeScript, moteur de tests, navigateur simulé,
-Storybook, Playwright.
-
-**Ça apporte** : que des mises à jour d'entretien, aucune rupture. La plus notable est **Vite
-8.1 → 8.2**, qui touche la fabrication du paquet livré — c'est celle qu'on surveille, parce qu'un
-défaut là se voit chez tous les clubs à la fois et nulle part avant. Prendre ces mises à jour au fil
-de l'eau évite le saut coûteux : c'est exactement ce qui bloque TypeScript 7 chez nous depuis des
-mois, faute d'un écosystème qui suit.
-
-**Adapté chez nous** : **rien**. Vérifié dans le conteneur d'outillage, jamais sur le poste — et
-l'image a été **reconstruite avant** de tester, sans quoi on aurait validé une version périmée du
-code (le piège de 2026-07-29). ESLint, la compilation TypeScript et les **1038 tests** passent ; le
-paquet de production se construit et **ne grossit pas** (le fichier principal passe même de 274 à
-271 ko).
-
-### ⚠ Découvert pendant le lot, sans rapport avec les dépendances : un test qui rougit au hasard
-
-`Engine Tests` — l'un des contrôles qui bloquent les fusions — est tombé sur la PR #504, **qui ne
-touche pourtant pas le moteur**. Ce n'est ni un caprice ni la faute de la mise à jour : l'un de nos
-tests se trompe.
-
-Ce test vérifie qu'un gymnase n'accueille jamais deux équipes en même temps. Il travaille sur des
-situations **tirées au hasard**, et il est tombé sur celle-ci : le gestionnaire a **épinglé
-lui-même** deux équipes sur le même créneau, alors que ce créneau ne peut en accueillir qu'une. Le
-moteur a fait ce qu'on lui a demandé — c'est une règle assumée du produit, l'épingle prime sur tout
-(« il a le droit d'épingler, il a le droit de savoir »). Le test, lui, crie à l'erreur.
-
-Conséquence concrète : **une fusion sur deux peut se retrouver bloquée sans raison**, selon les
-situations tirées au sort ce jour-là. Suivi en **P4-81**, avec le correctif identifié (le patron
-existe déjà dans le même fichier pour un test voisin).

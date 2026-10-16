@@ -38,7 +38,7 @@ Commandes utiles :
 ```bash
 php bin/console app:db:backup            # dump si activité (le job nocturne fait pareil)
 php bin/console app:db:backup --force    # dump inconditionnel (avant une migration risquée !)
-php bin/console app:db:restore-check     # PREUVE que le dernier dump est restaurable
+php bin/console app:db:restore-check     # PREUVE que le dernier dump est restaurable (auto chaque dimanche, §3)
 ```
 
 **Règle d'or : `app:db:backup --force` AVANT toute migration/manipulation risquée en prod.**
@@ -49,9 +49,14 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 > 2026 : à la mise en production (~2026-10-03) et lors de la rotation des secrets (2026-10-04/05).
 > Le chemin n'est donc pas théorique.
 >
-> ⚠ **`app:db:restore-check` n'est PAS planifié** (aucun tick ne le joue) : la preuve que le
-> dernier dump est restaurable reste un geste **manuel**. Le planifier chaque semaine est un item
-> de roadmap (P4-308) — « non testé = inexistant » (§4) vaut aussi pour les dumps.
+> `app:db:restore-check` est **planifié chaque dimanche à 04:00 Europe/Paris** (job
+> `db-restore-check`, catalogue fermé `AdminJobCatalog` — après le dump nocturne de 01:00 et les
+> purges, avant les imports du matin) : la preuve que le dernier dump est restaurable n'est plus
+> un geste manuel isolé. Le board fraîcheur superadmin porte une ligne « Contrôle de
+> restauration » qui passe au rouge si aucun run n'a **réussi** depuis 8 jours ; un run en
+> **échec** alerte en plus IMMÉDIATEMENT par e-mail, sans attendre ce seuil (détail du mécanisme :
+> `specs/courantes/superadmin-auth.md` §Planification fiable des jobs SA3-C et §Fraîcheur des
+> données et alerting).
 
 ### 3a. Restauration FINE (le cas fréquent : une table/un club abîmé)
 

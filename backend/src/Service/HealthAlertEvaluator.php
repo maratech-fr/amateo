@@ -25,10 +25,11 @@ final readonly class HealthAlertEvaluator
      * @param array<string, mixed>                                                                              $health    sortie d'AdminHealthService::health()
      * @param list<array{key: string, label: string, lastUpdatedAt: ?string, staleAfterDays: int, stale: bool}> $freshness
      * @param array{generations24h: int, infeasible24h: int}                                                    $solver
+     * @param list<array{key: string, label: string, command: string, lastStatus: ?string}>                     $jobs      dernier statut connu des jobs surveillés
      *
      * @return list<array{key: string, message: string}>
      */
-    public function evaluate(array $health, array $freshness, array $solver): array
+    public function evaluate(array $health, array $freshness, array $solver, array $jobs = []): array
     {
         $alerts = [];
 
@@ -81,6 +82,16 @@ final readonly class HealthAlertEvaluator
             $alerts[] = 'db-backup' === $referential['key']
                 ? ['key' => 'freshness:db-backup', 'message' => \sprintf('Sauvegarde base de données : des données ne sont couvertes par aucun dump (dernier dump : %s, seuil %d h) — vérifier le job db-backup (app:db:backup).', $referential['lastUpdatedAt'] ?? 'jamais', BackupCoverage::STALE_AFTER_HOURS)]
                 : ['key' => 'freshness:' . $referential['key'], 'message' => \sprintf('Référentiel « %s » périmé (dernière mise à jour : %s, seuil %d j) — l\'import automatique est peut-être mort en silence.', $referential['label'], $referential['lastUpdatedAt'] ?? 'jamais', $referential['staleAfterDays'])];
+        }
+
+        // Dernier run d'un job surveillé en ÉCHEC : alerte dédiée et IMMÉDIATE, sans
+        // attendre le seuil de fraîcheur (un backup qui ne se restaure plus est une
+        // panne active, pas un référentiel qui vieillit). succeeded/null → silence :
+        // l'absence prolongée est l'affaire de la ligne de fraîcheur (seuil propre).
+        foreach ($jobs as $job) {
+            if ('failed' === $job['lastStatus']) {
+                $alerts[] = ['key' => 'job:' . $job['key'], 'message' => \sprintf('Le job « %s » (%s) a échoué à sa dernière exécution — à vérifier dans la console superadmin.', $job['label'], $job['command'])];
+            }
         }
 
         return $alerts;

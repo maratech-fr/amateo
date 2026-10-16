@@ -211,7 +211,11 @@ fermée calculée en `Europe/Paris` :
   saisons à 03:00, **démos prospect périmées à 03:15** (`app:demo:purge-stale`, ci-dessous) et
   audit à 03:30, rendus d'export à 03:45 ;
 - imports des vacances scolaires à 04:00 et des jours fériés à 04:30, le 1er janvier,
-  avril, juillet et octobre.
+  avril, juillet et octobre ;
+- **contrôle de restauration chaque dimanche à 04:00** (`app:db:restore-check`, clé
+  `db-restore-check`) — après le dump nocturne et les purges, avant les imports du matin :
+  restaure le dernier dump dans une base jetable et la détruit (runbook
+  `docs/ops/backup-restore.md` §3).
 
 Après un arrêt, le tick rattrape uniquement le dernier créneau dû. `scheduled_for`
 identifie ce créneau dans `admin_job_run` et un index PostgreSQL unique sur
@@ -243,10 +247,12 @@ réconciliations et purges ne sont pas déclenchables depuis cette route.
 données de référence sont-elles à jour ? ». Chaque ligne porte une clé, un libellé, la
 date de dernière mise à jour, le seuil de péremption en jours et un booléen `stale` :
 les deux référentiels calendaires (`school-holidays`, `public-holidays`, rapprochés de
-leur job d'import et de leur table) et la **couverture de sauvegarde** (`db-backup`,
+leur job d'import et de leur table), la **couverture de sauvegarde** (`db-backup`,
 via `BackupCoverage` : le dernier dump du répertoire de backups confronté à la dernière
 activité réelle — un parc sans activité n'est pas « en retard », un parc actif sans dump
-l'est).
+l'est) et le **contrôle de restauration** (`db-restore-check` : périmé au-delà de 8 jours
+sans run **réussi** de `app:db:restore-check` dans `admin_job_run` — un run en échec ne la
+rafraîchit jamais, fail-visible par construction).
 
 Le job `health-alerts` (`app:health:alert`, toutes les 10 minutes) croise la santé
 technique, ces lignes de fraîcheur et les compteurs solveur sur 24 h via
@@ -260,7 +266,12 @@ pas fabriquer de faux rouges :
   seuil de backlog est **lu du payload santé** (`backlogWarningThreshold`), pour que le
   dashboard et l'alerte ne puissent pas diverger ;
 - taux `INFEASIBLE` : au-delà de 50 % sur 24 h, avec un **plancher de volume** — jamais
-  d'alerte sur deux générations.
+  d'alerte sur deux générations ;
+- **job surveillé en échec** : indépendamment du seuil de fraîcheur ci-dessus, le dernier
+  run connu d'un job de la liste surveillée (aujourd'hui `db-restore-check` seul,
+  `HealthAlertCommand::jobSignals`, lu depuis `AdminJobCatalog`) qui vaut `failed` alerte
+  IMMÉDIATEMENT (clé `job:db-restore-check`) — une panne active de restauration n'attend
+  pas 8 jours pour se signaler.
 
 `AdminAlertStateStore` mémorise l'état (`preview` / `commit`) : on notifie sur
 **transition**, pas sur état stable — sinon un incident non résolu enverrait un mail
