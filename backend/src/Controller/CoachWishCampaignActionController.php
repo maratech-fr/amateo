@@ -17,6 +17,7 @@ use App\Service\CoachWishSeasonGuard;
 use App\Service\ManagementAccessGuard;
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
+use InvalidArgumentException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -160,7 +161,15 @@ final class CoachWishCampaignActionController extends AbstractController
         // rien quand il refuse). Clé = clubId → send-links, relance et renvoi ciblé partagent le
         // même budget de 24 h.
         $limiter = $this->coachWishSendLimiter->create((string) $campaign->getClubId());
-        if (!$limiter->consume(\count($recipients))->isAccepted()) {
+        try {
+            $accepted = $limiter->consume(\count($recipients))->isAccepted();
+        } catch (InvalidArgumentException) {
+            // Un lot de destinataires PLUS GRAND que le plafond lui-même : le limiteur refuse de
+            // réserver plus de jetons que sa taille (il lève). C'est le MÊME dépassement métier
+            // qu'un budget épuisé → même refus 429, rien d'enfilé (jamais un 500 opaque).
+            $accepted = false;
+        }
+        if (!$accepted) {
             return $this->json(['error' => 'Limite d\'envoi atteinte (200 e-mails / 24 h), réessayez demain.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
