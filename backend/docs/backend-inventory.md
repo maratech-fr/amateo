@@ -45,7 +45,7 @@ backend/
 │   ├── Storage/              # LogoStorage (interface) + LocalLogoStorage
 │   ├── Security/             # JwtCookieFactory (SEC-16), AdminSessionCsrf/SuperAdminProvider/TotpService (SA0), UserChecker
 │   ├── Message/ · MessageHandler/  # GenerateSchedule(Message|Handler), ExportPdf(Message|Handler)
-│   ├── Mercure/              # ClubTopicUpdate (payload publié sur le topic club:{clubId}:schedule:{id})
+│   ├── Mercure/              # ClubTopicUpdate (payload publié sur le topic /clubs/{clubId}/schedules/:id)
 │   ├── AdminJob/             # Catalogue + exécution des jobs planifiés de la console superadmin (SA3)
 │   ├── Clock/                # ClubClock (horloge PAR CLUB, décore `clock`) + DevClockStore (Redis)/SimulatedClock — horloge dev globale (§3 Module démo)
 │   ├── Seed/                 # BcclSeeder + BcclSeedProfile (club de démo permanent)

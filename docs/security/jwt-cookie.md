@@ -144,7 +144,8 @@ tout fichier, d'où la vérification au runbook (`docs/ops/deploy.md`).
 ## Le cookie Mercure suit la même règle
 
 `MercureAuthController` pose un second cookie (le jeton de souscription du hub,
-`mercureAuthorization`, path `/.well-known/mercure` — voir
+NOMMÉ selon l'environnement depuis Mercure 1.0 — `__Secure-mercure_access_token` en prod HTTPS,
+`mercure_access_token` en dev HTTP/tests —, path `/.well-known/mercure` — voir
 [`mercure.md`](mercure.md)). Il lit **le même `JWT_COOKIE_SECURE`** : c'est un
 jeton signé lui aussi, exposé au même mensonge de `isSecure()` derrière le nginx
 de prod. Une seule question, une seule réponse — deux sources auraient dérivé.

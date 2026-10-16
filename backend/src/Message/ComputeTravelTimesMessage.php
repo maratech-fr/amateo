@@ -13,7 +13,7 @@ use App\MessageHandler\ComputeTravelTimesHandler;
  * `/opponents/travel/resolve`, `/venue-travel-times/autofill`, `PATCH /club/siege`) et
  * jouée par {@see ComputeTravelTimesHandler} dans le worker : le calcul
  * quitte le rail synchrone (soumis au plafond HTTP de 60 s) pour un budget de worker large,
- * la progression étant poussée par Mercure sur `club:{clubId}:travel`.
+ * la progression étant poussée par Mercure sur `/clubs/{clubId}/travel`.
  *
  * `readonly` — porté par le transport `async` (PhpSerializer natif) ; la portée est un enum
  * sérialisable.

@@ -14,7 +14,7 @@ use Throwable;
 
 /**
  * Publishes schedule-generation progress on the Mercure topic
- * `club:{clubId}:schedule:{scheduleId}` (BCK-04: extracted from
+ * `/clubs/{clubId}/schedules/{scheduleId}` (BCK-04: extracted from
  * GenerateScheduleHandler). Mercure is best-effort — the frontend polls as a
  * fallback — so publishSafely() never lets a publish failure abort or undo a
  * persisted result.

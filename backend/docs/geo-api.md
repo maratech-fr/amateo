@@ -244,7 +244,7 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   d'attendre), l'erreur elle-même est seulement journalisée.
 - **Progression** : `App\Service\TravelProgressPublisher` pousse `{scope, done, total, terminal,
   verdict?}` par paliers de **5** trajets + le terminal, sur le topic Mercure FIXE
-  `club:{clubId}:travel` (`docs/security/mercure.md` § async travel-time computation).
+  `/clubs/{clubId}/travel` (`docs/security/mercure.md` § async travel-time computation).
 - **`travelStatus` servi par `GET /api/opponents/travel`** (par entrée) : `done` (minutes
   présentes) · `pending` (`TravelComputeLock::isHeld($clubId)` — un calcul tourne pour ce club) ·
   `unavailable` (tenté sans résultat, ou pas de lieu à router).

@@ -24,7 +24,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `result_data` = ce que la réponse synchrone renvoyait autrefois (placés, ignorés,
  * non placés nommés, diagnostics, métriques) OU, en cas d'échec, le message d'erreur.
  * L'écran de matchs le relit à l'ouverture (endpoint GET) pour afficher le résultat
- * d'un run déjà terminé, et l'événement Mercure `club:{clubId}:placement` le réveille
+ * d'un run déjà terminé, et l'événement Mercure `/clubs/{clubId}/placement` le réveille
  * à la bascule terminale.
  */
 #[ORM\Entity(repositoryClass: MatchPlacementRunRepository::class)]

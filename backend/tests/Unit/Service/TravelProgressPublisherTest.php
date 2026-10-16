@@ -13,7 +13,7 @@ use Symfony\Component\Mercure\Update;
 
 /**
  * C6 — le publieur de progression du calcul des trajets : sur le topic FIXE
- * `club:{clubId}:travel`, PRIVÉ (le claim d'abonnement est la frontière), avec la
+ * `/clubs/{clubId}/travel`, PRIVÉ (le claim d'abonnement est la frontière), avec la
  * charge `{scope, done, total, terminal, verdict?}`.
  */
 #[Group('unit')]

@@ -27,7 +27,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * FRT-04 — le jeton de souscription Mercure (`GET /api/mercure/auth`).
  *
  * Le SCOPE de ce jeton est une frontière tenant : signé du secret du hub, il
- * autorise `subscribe` sur `club:{clubId}:schedule:{id}` — le club du MEMBRE
+ * autorise `subscribe` sur `/clubs/{clubId}/schedules/:id` — le club du MEMBRE
  * AUTHENTIFIÉ, jamais un paramètre client. Un jeton mal borné ouvrirait les
  * événements de génération d'un autre club (statuts, scores, warnings) à
  * n'importe quel compte : c'est l'axe tenant, donc phase1.
@@ -37,8 +37,8 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * du claim `mercure.subscribe` legacy. Chaque entrée porte `type`, `actions` (`subscribe`) et
  * `topics` (objets `{match: …}` / `{match: …, match_type: "urlpattern"}`). Le SCOPE reste la
  * frontière tenant : exactement les trois sélecteurs du club du porteur, jamais ceux d'un autre.
- * Le NOM du cookie (prod `__Secure-…` vs dev prefix-less sur HTTP) est une décision encore
- * OUVERTE (cf. rapport TANK) : ce test lit le cookie par son CHEMIN, pas par son nom.
+ * Le NOM du cookie suit l'environnement (décision C1-A) : `__Secure-…` en prod HTTPS,
+ * prefix-less en dev HTTP/tests — ce test lit le cookie par son CHEMIN, pas par son nom.
  */
 #[Group('phase1')]
 #[Group('integration')]

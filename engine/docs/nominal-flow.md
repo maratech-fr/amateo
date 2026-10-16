@@ -329,7 +329,7 @@ Le backend met a jour le statut du `Schedule` :
 Le backend publie un evenement sur le hub Mercure (conteneur `amateo-mercure`) sur le topic :
 
 ```
-club:{clubId}:schedule:{scheduleId}
+/clubs/{clubId}/schedules/{scheduleId}
 ```
 
 Le frontend ecoute ce topic via `EventSource`. Des que l'evenement arrive, le frontend rafraichit l'affichage de l'emploi du temps. L'utilisateur voit le resultat apparaitre en temps reel, sans avoir a recharger la page.

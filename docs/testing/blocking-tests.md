@@ -103,7 +103,9 @@ pour `amateo_read` — sinon l'opérateur la verrait à 0 ligne, ou cross-club s
 `Security/ClubAccessTest` + `Security/UserSelfOnlyTest` + `Security/ImportAuthorizationTest` (lockdown API tenant) ·
 `Security/MercureHardeningTest` (Mercure durci ; depuis lot 4 PR C : hub épinglé à une 1.x
 EXACTE, MÊME version dans `docker-compose.yml` et `.prod.yml`, jamais `latest` ni 0.x, anonyme/CORS
-interdits dev ET prod) ·
+interdits dev ET prod ; ET chaque service backend PUBLIEUR — php-fpm, messenger-worker,
+cron-runner — porte `MERCURE_PUBLIC_URL` aligné sur le `resource_identifier`/`aud` du hub, sinon
+sa publication est rejetée en silence) ·
 `Integration/Mercure/MercureEndToEndDeliveryTest` (axe *generation pipeline* — le dernier maillon :
 une update PRIVÉE sur chacun des 3 topics d'un club [génération, trajets, placement] est RÉELLEMENT
 délivrée par le HUB RÉEL à un abonné authentifié du club [protocole 1.0, `match`/`match_urlpattern`,

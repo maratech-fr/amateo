@@ -20,7 +20,7 @@ use Throwable;
 /**
  * C6 — le CALCUL ASYNCHRONE des trajets (patron {@see GenerateScheduleHandler}). Le calcul
  * quitte le rail synchrone (plafond HTTP 60 s) pour le worker, avec un budget large ; la
- * progression est poussée par Mercure sur `club:{clubId}:travel`.
+ * progression est poussée par Mercure sur `/clubs/{clubId}/travel`.
  *
  * Trois garanties du patron :
  *  - **RLS** : aucune requête HTTP dans le worker → aucun GUC posé par le listener. On scope

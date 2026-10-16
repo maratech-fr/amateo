@@ -12,7 +12,7 @@ use Throwable;
 
 /**
  * Publie la bascule TERMINALE d'un run de placement des matchs sur le topic PRIVÉ
- * `club:{clubId}:placement` (patron {@see TravelProgressPublisher}). Mercure est
+ * `/clubs/{clubId}/placement` (patron {@see TravelProgressPublisher}). Mercure est
  * best-effort — le front dégrade en relecture du GET (le run en base reste la vérité) —
  * donc un échec de publication est journalisé et avalé, jamais propagé : il ne casse
  * jamais un placement déjà persisté.

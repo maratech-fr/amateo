@@ -38,7 +38,7 @@ use Throwable;
  * (SEC-07 → socle 409 → saison archivée 409 → fenêtre Découverte 403), prend le verrou
  * anti-double-demande, ENFILE un {@see PlaceMatchesMessage} et répond 202 avec l'id du
  * run. Le worker ({@see PlaceMatchesHandler}) solve, applique, décompte
- * le crédit au SUCCÈS et pousse la bascule terminale sur `club:{clubId}:placement`.
+ * le crédit au SUCCÈS et pousse la bascule terminale sur `/clubs/{clubId}/placement`.
  *
  * Verrou : pris ICI (TTL = budget du run = nb de semaines ISO × budget/semaine + marge),
  * tenu pendant tout le run, RELÂCHÉ par le worker (token porté par le message). Une seconde

@@ -166,7 +166,7 @@ export const getVenueSuggestions = async (code: string): Promise<VenueSuggestion
 /**
  * C6 — le recalcul quitte le rail synchrone : `POST /api/opponents/travel/resolve` DISPATCHE au
  * worker (rafale IGN pacée > plafond HTTP) et répond `{queued}` immédiatement. La progression et
- * les trajets arrivent ensuite par Mercure (`club:{clubId}:travel`), `travelStatus` par ligne au
+ * les trajets arrivent ensuite par Mercure (`/clubs/{clubId}/travel`), `travelStatus` par ligne au
  * prochain GET. `resolve()` ne route QUE les trajets manquants (C5) — c'est le « Réessayer les
  * manquants ».
  */

@@ -27,7 +27,7 @@ gardé MAJOR-only côté engine (`engine/CONTRACT_VERSION`) — un bump ajout re
 `POST /api/fixtures/place` enfile désormais un `PlaceMatchesMessage` et répond **202** avec
 `{runId, status}` ; `PlaceMatchesHandler` (transport `async` partagé avec la génération) solve,
 applique le résultat, décompte le crédit Découverte au SUCCÈS et publie la bascule terminale
-(COMPLETED/FAILED) sur le 3ᵉ topic Mercure fixe par club `club:{clubId}:placement`
+(COMPLETED/FAILED) sur le 3ᵉ topic Mercure fixe par club `/clubs/{clubId}/placement`
 (`App\Mercure\MercureTopic::forPlacement`). `GET /api/fixtures/placement-run` rend le dernier run
 du club+saison courants (lecture seule, ouverte à tout membre). Anti-double-clic PAR CLUB inchangé
 (`MatchPlacementLock`, Redis, préfixe dédié) — **pris par le contrôleur**, tenu pendant tout le run,

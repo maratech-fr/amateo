@@ -226,7 +226,7 @@ eventSource.onmessage = (event) => {
 Le topic suit le format exact :
 
 ```
-club:{clubId}:schedule:{scheduleId}
+/clubs/{clubId}/schedules/{scheduleId}
 ```
 
 ---
@@ -405,7 +405,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Symptôme** | Le frontend ne se met pas à jour automatiquement quand la génération finit. |
 | **Cause** | Le hub Mercure n'est pas démarré, ou le topic dans le JavaScript ne correspond pas exactement à celui publié par le backend. |
 | **Vérification** | `docker ps \| grep mercure` + onglet Network des outils de développement du navigateur. |
-| **Correction** | Relis les logs du conteneur Mercure et vérifie que le topic JS respecte le format `club:{clubId}:schedule:{scheduleId}`. |
+| **Correction** | Relis les logs du conteneur Mercure et vérifie que le topic JS respecte le format `/clubs/{clubId}/schedules/{scheduleId}`. |
 | **Prévention** | Ajoute un healthcheck Mercure dans le `docker-compose.yml`. |
 
 ---

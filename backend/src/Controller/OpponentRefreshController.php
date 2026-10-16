@@ -141,7 +141,7 @@ final class OpponentRefreshController extends AbstractController
 
         // C6 — la 3ᵉ passe (recalcul des TRAJETS) quitte le rail synchrone : elle ferait à
         // elle seule une rafale d'appels IGN pacés (~1 req/s) au-delà du plafond HTTP. On la
-        // DISPATCHE au worker (`club:{clubId}:travel` pousse la progression) ; la réponse dit
+        // DISPATCHE au worker (`/clubs/{clubId}/travel` pousse la progression) ; la réponse dit
         // qu'un calcul est LANCÉ et combien d'adversaires distincts sont concernés (`pending`).
         // Si un calcul est DÉJÀ en cours (verrou tenu), on ne dispatche pas — un second message
         // finirait en `failed` : les passes (a)/(b) restent utiles, seule la passe (c) est différée.

@@ -93,10 +93,10 @@ final class MercureAuthController extends AbstractController
 
         // Défense en profondeur (revue sécu FRT-04) : le sélecteur EST la frontière,
         // donc ce qu'on y interpole se revalide ici. Une forme non canonique
-        // (`{32hex}` — que Postgres accepte, mais qui est un varname URI-template
-        // valide) ferait matcher les topics de tous les clubs. Le listener la
-        // refuse déjà en 403 ; si un jour un autre chemin pose `_club_id`, cette
-        // route ne signera toujours qu'un UUID canonique.
+        // (`{32hex}` — que Postgres accepte, mais `{`/`}` sont de la syntaxe de groupe
+        // URLPattern, Mercure 1.0) ferait matcher les topics de tous les clubs. Le
+        // listener la refuse déjà en 403 ; si un jour un autre chemin pose `_club_id`,
+        // cette route ne signera toujours qu'un UUID canonique.
         if (1 !== preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $clubId)) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }

@@ -28,7 +28,7 @@ Planning : GET /api/schedules (collection)
 ```
 
 **Frontières (jamais franchies) :** frontend → backend via `/api/*` ; backend → engine
-via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:schedule:{scheduleId}`.
+via `POST /generate` ; backend → frontend via Mercure SSE `/clubs/{clubId}/schedules/{scheduleId}`.
 **Le moteur ne rappelle jamais le backend. Le frontend n'appelle jamais le moteur.**
 
 ## 2. Frontend — ce qu'il fait
@@ -44,9 +44,9 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
 - **Attente** (`features/wizard/steps/GenerateStep.tsx` + `useScheduleStatus`) : poll
   `GET /api/schedules/{id}` tant que le statut ∈ `{PENDING, GENERATING}`. Garde-fou
   client `TIMEOUT_MS = 20 min` (`GenerateStep.tsx:37`) → sinon écran d'échec + réessai.
-- **Le frontend CONSOMME Mercure** (FRT-04) — `features/planning/lib/scheduleStream.ts` ouvre
-  **UN EventSource par session**, abonné au TEMPLATE du club (`club:{clubId}:schedule:{id}` tel
-  quel : le hub matche chaque topic exact contre lui), donc toutes les générations du club
+- **Le frontend CONSOMME Mercure** (FRT-04, protocole 1.0) — `features/planning/lib/scheduleStream.ts`
+  ouvre **UN EventSource par session**, abonné au TEMPLATE du club (`/clubs/{clubId}/schedules/:id`,
+  URLPattern 1.0 — le hub matche chaque topic exact contre lui via `match_urlpattern=`), donc toutes les générations du club
   arrivent sur la même connexion sans connaître leurs ids à l'avance. L'authentification est un
   **cookie httpOnly** posé par `GET /api/mercure/auth` — le JS ne voit jamais le jeton hub — et la
   réponse porte le `topicTemplate`, seule source du clubId côté front (le tenant est résolu

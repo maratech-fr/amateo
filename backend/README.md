@@ -22,7 +22,7 @@ Le **backend** est le point central du système. Il expose l'API REST, gère les
 
 ### Backend → Frontend
 - **API REST** : Toutes les requêtes passent par `/api/*` via nginx (port 8080)
-- **Mercure (SSE)** : Le backend publie des événements en temps réel sur le topic `club:{clubId}:schedule:{scheduleId}` pour notifier de l'avancement de la génération de planning
+- **Mercure (SSE)** : Le backend publie des événements en temps réel sur le topic `/clubs/{clubId}/schedules/{scheduleId}` pour notifier de l'avancement de la génération de planning
 
 ### Backend → Engine
 - Le backend envoie un **POST** à `http://engine:8000/generate` avec le contexte complet du club (équipes, salles, entraîneurs, contraintes)
@@ -121,7 +121,7 @@ backend/
 5. Handler         POST http://engine:8000/generate
 6. Engine          Résout CP-SAT + retourne slots
 7. Handler         Importe résultat via ScheduleResultImporter
-8. Handler         Publie Mercure: club:{clubId}:schedule:{scheduleId}
+8. Handler         Publie Mercure: /clubs/{clubId}/schedules/{scheduleId}
 9. Frontend        Reçoit SSE → rafraîchit le calendrier
 ```
 

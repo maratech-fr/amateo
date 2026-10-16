@@ -199,7 +199,7 @@ closed decision).** Async travel-time computation (opponents + venue matrix) is 
 sits in `shared/` instead of `features/planning/lib/` where `scheduleStream.ts` was deliberately
 pulled DOWN to. Same ref-counted `EventSource` singleton pattern, same `GET /api/mercure/auth`
 call (now returns an additive `travelTopic` alongside `topicTemplate`), subscribed to the fixed
-topic `club:{clubId}:travel`. Debounced (500 ms) invalidation of opponents/conflicts/venue-travel
+topic `/clubs/{clubId}/travel`. Debounced (500 ms) invalidation of opponents/conflicts/venue-travel
 caches on message — the GET response (`travelStatus` per row) stays the truth. Within the wizard,
 **two** screens hold a reference: `TravelMatrixModal` (progress gauge + verdict) and, since
 P4-279 (2026-10-16), `VenuesStep` — it toasts "Trajets recalculés." on a terminal `VENUE_MATRIX`
