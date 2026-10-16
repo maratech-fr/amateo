@@ -139,7 +139,7 @@ final class MercureHardeningTest extends WebTestCase
     public function testBothComposeFilesPinAnExactMercure1xTagNeverLatestNor0x(): void
     {
         foreach (['docker-compose.yml' => $this->compose, 'docker-compose.prod.yml' => $this->composeProd] as $file => $contents) {
-            $tag = self::mercureImageTag($contents);
+            $tag = $this->mercureImageTag($contents);
             self::assertMatchesRegularExpression('/^v1\.\d+\.\d+$/', $tag, \sprintf('%s doit épingler dunglas/mercure à une 1.x exacte (vMAJOR.MINOR.PATCH), pas "%s".', $file, $tag));
             self::assertStringNotContainsString('latest', $tag, \sprintf('%s ne doit jamais utiliser le tag "latest" pour le hub.', $file));
         }
@@ -153,8 +153,8 @@ final class MercureHardeningTest extends WebTestCase
     public function testDevAndProdPinTheSameMercureVersion(): void
     {
         self::assertSame(
-            self::mercureImageTag($this->compose),
-            self::mercureImageTag($this->composeProd),
+            $this->mercureImageTag($this->compose),
+            $this->mercureImageTag($this->composeProd),
             'docker-compose.yml et docker-compose.prod.yml doivent épingler la MÊME version du hub Mercure (cutover direct, dev = prod).',
         );
     }
@@ -162,11 +162,11 @@ final class MercureHardeningTest extends WebTestCase
     protected function setUp(): void
     {
         // Repo root is mounted at /app (./:/app); tests run in /app/backend.
-        $this->compose = self::readComposeFile(\dirname(__DIR__, 3) . '/docker-compose.yml');
-        $this->composeProd = self::readComposeFile(\dirname(__DIR__, 3) . '/docker-compose.prod.yml');
+        $this->compose = $this->readComposeFile(\dirname(__DIR__, 3) . '/docker-compose.yml');
+        $this->composeProd = $this->readComposeFile(\dirname(__DIR__, 3) . '/docker-compose.prod.yml');
     }
 
-    private static function readComposeFile(string $path): string
+    private function readComposeFile(string $path): string
     {
         $contents = is_file($path) ? file_get_contents($path) : false;
         self::assertIsString($contents, "compose file not found at {$path}");
@@ -175,7 +175,7 @@ final class MercureHardeningTest extends WebTestCase
     }
 
     /** Le tag de l'image `dunglas/mercure:<tag>` déclarée dans un fichier compose. */
-    private static function mercureImageTag(string $compose): string
+    private function mercureImageTag(string $compose): string
     {
         if (1 !== preg_match('#image:\s*dunglas/mercure:(\S+)#', $compose, $m)) {
             self::fail('un service dunglas/mercure doit déclarer une image épinglée');

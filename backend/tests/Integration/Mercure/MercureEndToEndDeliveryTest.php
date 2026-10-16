@@ -74,35 +74,20 @@ final class MercureEndToEndDeliveryTest extends WebTestCase
         $selectors = $this->fetchSubscriberToken($token);
         $hub = $this->hub();
 
-        // Génération — topic EXACT publié (`club:X:schedule:<id>`), abonnement au GABARIT du club.
+        // Génération — topic EXACT publié (`/clubs/X/schedules/<id>`), abonnement au GABARIT du club.
         $scheduleId = Uuid::v4()->toRfc4122();
         $scheduleTopic = MercureTopic::for($clubId, $scheduleId);
-        $schedulePayload = self::firstSsePayload(
-            $selectors['hubToken'],
-            'match_urlpattern',
-            $selectors['topicTemplate'],
-            fn () => $hub->publish(ClubTopicUpdate::private($scheduleTopic, json_encode(['scheduleId' => $scheduleId, 'status' => 'COMPLETED'], \JSON_THROW_ON_ERROR))),
-        );
+        $schedulePayload = $this->firstSsePayload($selectors['hubToken'], 'match_urlpattern', $selectors['topicTemplate'], fn (): string => $hub->publish(ClubTopicUpdate::private($scheduleTopic, json_encode(['scheduleId' => $scheduleId, 'status' => 'COMPLETED'], \JSON_THROW_ON_ERROR))));
         self::assertNotNull($schedulePayload, 'une update de génération publiée sur le topic du club doit être délivrée à son abonné');
         self::assertStringContainsString('COMPLETED', $schedulePayload);
 
         // Calcul des trajets — topic EXACT.
-        $travelPayload = self::firstSsePayload(
-            $selectors['hubToken'],
-            'match',
-            $selectors['travelTopic'],
-            fn () => $hub->publish(ClubTopicUpdate::private(MercureTopic::forTravel($clubId), json_encode(['scope' => 'OPPONENTS', 'done' => 1, 'total' => 1, 'terminal' => true], \JSON_THROW_ON_ERROR))),
-        );
+        $travelPayload = $this->firstSsePayload($selectors['hubToken'], 'match', $selectors['travelTopic'], fn (): string => $hub->publish(ClubTopicUpdate::private(MercureTopic::forTravel($clubId), json_encode(['scope' => 'OPPONENTS', 'done' => 1, 'total' => 1, 'terminal' => true], \JSON_THROW_ON_ERROR))));
         self::assertNotNull($travelPayload, 'une update de calcul des trajets doit être délivrée à l’abonné du club');
         self::assertStringContainsString('OPPONENTS', $travelPayload);
 
         // Placement async — topic EXACT.
-        $placementPayload = self::firstSsePayload(
-            $selectors['hubToken'],
-            'match',
-            $selectors['placementTopic'],
-            fn () => $hub->publish(ClubTopicUpdate::private(MercureTopic::forPlacement($clubId), json_encode(['runId' => 'run-e2e', 'status' => 'COMPLETED'], \JSON_THROW_ON_ERROR))),
-        );
+        $placementPayload = $this->firstSsePayload($selectors['hubToken'], 'match', $selectors['placementTopic'], fn (): string => $hub->publish(ClubTopicUpdate::private(MercureTopic::forPlacement($clubId), json_encode(['runId' => 'run-e2e', 'status' => 'COMPLETED'], \JSON_THROW_ON_ERROR))));
         self::assertNotNull($placementPayload, 'une update de placement async doit être délivrée à l’abonné du club');
         self::assertStringContainsString('run-e2e', $placementPayload);
     }
@@ -123,12 +108,7 @@ final class MercureEndToEndDeliveryTest extends WebTestCase
 
         // B s'abonne EXPRÈS au topic de trajets de A (le hub autorise l'abonnement ; seule la
         // délivrance d'une update PRIVÉE est filtrée par l'autorisation du jeton).
-        $leaked = self::firstSsePayload(
-            $intruder['hubToken'],
-            'match',
-            MercureTopic::forTravel($clubA),
-            fn () => $hub->publish(ClubTopicUpdate::private(MercureTopic::forTravel($clubA), json_encode(['scope' => 'OPPONENTS', 'done' => 1, 'total' => 1, 'terminal' => true], \JSON_THROW_ON_ERROR))),
-        );
+        $leaked = $this->firstSsePayload($intruder['hubToken'], 'match', MercureTopic::forTravel($clubA), fn (): string => $hub->publish(ClubTopicUpdate::private(MercureTopic::forTravel($clubA), json_encode(['scope' => 'OPPONENTS', 'done' => 1, 'total' => 1, 'terminal' => true], \JSON_THROW_ON_ERROR))));
 
         self::assertNull($leaked, 'le hub ne doit JAMAIS délivrer une update privée d’un club à l’abonné d’un autre club (SEC-05/06)');
     }
@@ -154,7 +134,7 @@ final class MercureEndToEndDeliveryTest extends WebTestCase
      * La séquence compte : on force l'ouverture de la connexion (lecture du code HTTP) AVANT de
      * publier — un abonné SSE ne reçoit que ce qui est émis APRÈS sa connexion, jamais l'historique.
      */
-    private static function firstSsePayload(string $hubToken, string $matchParam, string $selector, callable $publish): ?string
+    private function firstSsePayload(string $hubToken, string $matchParam, string $selector, callable $publish): ?string
     {
         $base = (string) (getenv('MERCURE_URL') ?: $_ENV['MERCURE_URL'] ?? $_SERVER['MERCURE_URL'] ?? '');
         self::assertNotSame('', $base, 'MERCURE_URL doit pointer le hub dans l’environnement de test');
