@@ -91,6 +91,28 @@ final class CoachWishSendAbuseTest extends WebTestCase
         self::assertQueuedEmailCount(0);
     }
 
+    public function testABatchLargerThanTheCapIsRefusedWithTheExplicitMessageNotA500(): void
+    {
+        // Promesse : quand le NOMBRE de destinataires éligibles d'UNE SEULE requête DÉPASSE le
+        // plafond (en test : plafond 2, voir `when@test` coach_wish_send), le club reçoit le 429
+        // explicite « Limite d'envoi atteinte (200 e-mails / 24 h), réessayez demain. » et AUCUN
+        // e-mail n'est enfilé — surtout PAS un 500 opaque. Le limiteur lève une InvalidArgumentException
+        // dès qu'on lui demande PLUS de jetons que sa taille (réserver 3 dans un limiteur de 2) : le
+        // contrôleur doit traduire ce dépassement en refus métier, pas le laisser remonter en 500.
+        // Décor : la campagne porte 3 coachs éligibles (1 du setUp + 2 ici) → le send-links global en
+        // demande 3 d'un coup, soit un de plus que le plafond, dès le PREMIER appel (budget du club intact).
+        $this->seedExtraEligibleCoachOnCampaign('alex');
+        $this->seedExtraEligibleCoachOnCampaign('sofia');
+
+        $this->client->enableProfiler();
+        $this->client->request('POST', $this->sendLinksUrl(), [], [], $this->headers(), '{}');
+        self::assertResponseStatusCodeSame(429);
+        $error = (string) ($this->lastJson()['error'] ?? '');
+        self::assertStringContainsString('Limite d\'envoi atteinte', $error);
+        self::assertStringContainsString('réessayez demain', $error);
+        self::assertQueuedEmailCount(0);
+    }
+
     public function testDemoClubCannotSendRealCoachEmails(): void
     {
         // Falsification du TROU : aujourd'hui aucun garde démo ne protège l'envoi — un club de
@@ -245,6 +267,22 @@ final class CoachWishSendAbuseTest extends WebTestCase
         $rendered = (string) $email->getHtmlBody() . "\n" . (string) $email->getTextBody();
         self::assertStringContainsString('Vous ne connaissez pas ce club ? Ignorez ce message.', $rendered);
         self::assertStringContainsString('Envoyé via Amateo à la demande du club', $rendered);
+    }
+
+    /**
+     * Ajoute à la campagne du décor un coach de PLUS, porteur d'un token et d'un email de forme
+     * valide (donc éligible à l'envoi global) — pour qu'une SEULE requête compte plus de
+     * destinataires que le plafond de test.
+     */
+    private function seedExtraEligibleCoachOnCampaign(string $emailLocal): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setFirstName(ucfirst($emailLocal))->setLastName('Extra')->setEmail($emailLocal . '@test.com');
+        $this->em->persist($coach);
+        $this->em->flush();
+        $this->em->persist((new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($coach->getId())->setClubId($this->club->getId()));
+        $this->em->flush();
     }
 
     /** Une 2ᵉ campagne du MÊME club, avec son propre coach à email — pour éprouver le plafond par club. */
