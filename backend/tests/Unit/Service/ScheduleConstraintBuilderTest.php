@@ -16,6 +16,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\TeamCoachRole;
+use App\Service\PreSolvePreventionWarnings;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TeamTagResolver;
 use DateTimeImmutable;
@@ -144,11 +145,11 @@ final class ScheduleConstraintBuilderTest extends TestCase
      * NR (axes constraint semantics / auth & memberships) — le lien équipe⇄coach part au moteur ET
      * aux préventions pré-solve avec `metadata.role` en CHAÎNE adossée ('MAIN'/'ASSISTANT'), JAMAIS
      * l'objet enum {@see TeamCoachRole}. Un objet enum casse `strtoupper((string) $metadata['role'])`
-     * ({@see \App\Service\PreSolvePreventionWarnings::teamMainCoaches}) — le récap de saison perd alors
+     * ({@see PreSolvePreventionWarnings::teamMainCoaches}) — le récap de saison perd alors
      * sa capacité (warning « La capacité des gymnases n'a pas pu être vérifiée », `capacity` null) — et
      * les comparaisons `'MAIN' === $metadata['role']` deviennent toujours fausses, muselant les
      * préventions de rôle. Jumeau CONSOMMATEUR qui éprouve la conséquence sur un payload réellement bâti :
-     * {@see \App\Tests\Unit\Service\PreSolvePreventionWarningsTest::testMainCoachClosureFiresFromBuilderSerializedTeamCoach}.
+     * {@see PreSolvePreventionWarningsTest::testMainCoachClosureFiresFromBuilderSerializedTeamCoach}.
      */
     public function testTeamCoachRoleIsSerializedAsBackedStringNotEnumObject(): void
     {

@@ -430,7 +430,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
     /**
      * NR (axe constraint semantics) — JUMEAU de {@see testForcedDayEmptiedByMainCoachFullDayUnavailabilityIsFlagged}
      * dont le lien TEAM_COACH est SÉRIALISÉ PAR LE VRAI builder ({@see ScheduleConstraintBuilder::serializeTeamCoachConstraints}),
-     * pas par le helper {@see teamCoach()} qui écrit 'MAIN' en dur. Le jumeau reste vert quel que soit le bug
+     * pas par le helper {@see self::teamCoach()} qui écrit 'MAIN' en dur. Le jumeau reste vert quel que soit le bug
      * (chaîne à la main) ; celui-ci attrape la divergence réelle : le builder émettait `metadata.role` en
      * OBJET enum {@see TeamCoachRole}, et `'MAIN' !== $role` ({@see PreSolvePreventionWarnings::mainCoachFullDayUnavailableDays},
      * ligne ~881) est alors TOUJOURS vrai → l'entraîneur principal est ignoré → le jour imposé fermé par
@@ -741,7 +741,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
      * Le lien équipe⇄coach TEL QUE LE VRAI BUILDER LE SÉRIALISE — on invoque la méthode privée
      * {@see ScheduleConstraintBuilder::serializeTeamCoachConstraints} (pure, sans dépendance : instance
      * sans constructeur) plutôt que de recopier la forme à la main. C'est ce qui attrape l'objet enum
-     * que le helper {@see teamCoach()} masque par sa chaîne littérale.
+     * que le helper {@see self::teamCoach()} masque par sa chaîne littérale.
      *
      * @return array<string, mixed>
      */
@@ -749,7 +749,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
     {
         $teamCoach = (new TeamCoach)->setTeamId($teamId)->setCoachId($coachId)->setRole($role)->setIsRequired(true);
 
-        $builder = (new ReflectionClass(ScheduleConstraintBuilder::class))->newInstanceWithoutConstructor();
+        $builder = new ReflectionClass(ScheduleConstraintBuilder::class)->newInstanceWithoutConstructor();
         $method = new ReflectionMethod($builder, 'serializeTeamCoachConstraints');
         $method->setAccessible(true);
 
