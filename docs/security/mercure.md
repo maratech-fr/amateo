@@ -122,12 +122,16 @@ wildcard: at most one travel computation in flight per club, guarded by `TravelC
   `topicTemplate` (`MercureAuthController.php`). No second auth round-trip, no second cookie.
 - **Client**: `frontend/src/shared/lib/travelStream.ts` — deliberately in `shared/`, not
   `features/planning/`, because **two** features consume it (matchs' `OpponentsPage`/Conflicts
-  radar and the wizard's `TravelMatrixModal`) — this is the one exception to the "SSE consumer
+  radar and the wizard) — this is the one exception to the "SSE consumer
   lives in the feature that uses it" placement decided for `scheduleStream.ts` (`P4-123`,
   `specs/courantes/etat-des-lieux.md` §2). Same ref-counted `EventSource` singleton pattern; on
   message, invalidates react-query caches (opponents, conflicts, venue-travel-times) debounced
   500 ms — the GET response stays the source of truth (`travelStatus` per row), Mercure is only a
-  refetch trigger.
+  refetch trigger. Within the wizard, **two** screens hold a reference: `TravelMatrixModal`
+  (progress gauge + verdict) and, since P4-279 (2026-10-16), `VenuesStep` — the venue-editing
+  screen toasts "Trajets recalculés." on a terminal `VENUE_MATRIX` event while it is mounted
+  (deliberate decision: no global listener in `AppLayout`; `VenuesStep` stays silent when
+  `TravelMatrixModal` is open to avoid a double signal).
 - **Payload**: `{scope: "OPPONENTS"|"VENUE_MATRIX", done, total, terminal, verdict?}`, pushed every
   5 items plus a terminal event (even on failure — best-effort, so the front never waits forever).
 
