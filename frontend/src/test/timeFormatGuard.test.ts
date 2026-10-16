@@ -45,6 +45,10 @@ const EXEMPTIONS: { file: string; reason: string }[] = [];
 const MIN_PATTERN = "durée de créneau collée à « min » (`} min`)";
 const MIN_FAMILY_EXEMPT = [
   "features/matches/OpponentsPage.tsx",
+  // La sous-ligne de TRAJET d'OpponentsPage (« N rencontres · ~45 min ») a migré dans
+  // `MATCHES_TEXTS.venueSubline` (centralisation des textes, PR7) — même durée de trajet légitime,
+  // l'exemption suit le texte déplacé (changer « 45 min » de trajet en « 45min »/« 0h45 » = sens).
+  "features/matches/texts.ts",
   "features/matches/AwayTravelChip.tsx",
   "features/matches/AwayFixtureCard.tsx",
   "features/matches/lib/awayColumn.ts",
