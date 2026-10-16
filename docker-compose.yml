@@ -212,6 +212,10 @@ services:
       - ./:/app:cached
     env_file:
       - ./.env
+    environment:
+      # L'`aud` du jeton publieur doit égaler le `resource_identifier` du hub 1.0,
+      # sinon la publication est refusée (invalid audience) — même valeur que php-fpm.
+      MERCURE_PUBLIC_URL: "http://localhost:${MERCURE_PORT}/.well-known/mercure"
     command: >-
       sh -lc 'if [ -f bin/console ]; then
         exec php bin/console messenger:consume async --time-limit=3600 --memory-limit=256M --no-interaction;
@@ -258,6 +262,10 @@ services:
       - ./:/app:cached
     env_file:
       - ./.env
+    environment:
+      # L'`aud` du jeton publieur doit égaler le `resource_identifier` du hub 1.0,
+      # sinon la publication est refusée (invalid audience) — même valeur que php-fpm.
+      MERCURE_PUBLIC_URL: "http://localhost:${MERCURE_PORT}/.well-known/mercure"
     command: >-
       sh -lc 'while true; do
         if [ -f bin/console ]; then

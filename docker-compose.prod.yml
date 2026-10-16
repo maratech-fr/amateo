@@ -197,6 +197,9 @@ services:
       - ./.env.prod
     environment:
       APP_ENV: prod
+      # L'`aud` du jeton publieur doit égaler le `resource_identifier` du hub 1.0,
+      # sinon la publication est refusée (invalid audience) — même valeur que php-fpm.
+      MERCURE_PUBLIC_URL: "${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env.prod}/.well-known/mercure"
     volumes:
       - ./jwt:/app/backend/config/jwt:ro
       - backups:/app/backend/var/backups
@@ -238,6 +241,9 @@ services:
       - ./.env.prod
     environment:
       APP_ENV: prod
+      # L'`aud` du jeton publieur doit égaler le `resource_identifier` du hub 1.0,
+      # sinon la publication est refusée (invalid audience) — même valeur que php-fpm.
+      MERCURE_PUBLIC_URL: "${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env.prod}/.well-known/mercure"
     volumes:
       - ./jwt:/app/backend/config/jwt:ro
       - backups:/app/backend/var/backups
