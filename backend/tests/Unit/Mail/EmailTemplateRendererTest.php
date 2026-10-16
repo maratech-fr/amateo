@@ -191,6 +191,27 @@ final class EmailTemplateRendererTest extends TestCase
         self::assertStringNotContainsString('cid:', $html);
     }
 
+    public function testAntiSpoofFooterIsFixedAndImmuneToClubData(): void
+    {
+        // P4-316 anti-hameçonnage : tout e-mail à club connu porte un pied FIXE hors contrôle du
+        // club — « Envoyé via {produit} à la demande du club … » + l'avertissement d'usurpation.
+        // Le club n'influe que sur son propre libellé (échappé) ; il ne peut ni retirer ni
+        // réécrire la phrase d'avertissement. Jumeau serveur (chemin d'envoi réel, send-links ET
+        // relance) : CoachWishSendAbuseTest::testAntiSpoofFooterIsFixedAndOutOfClubControl.
+        $hostileLabel = '"><script>alert(1)</script> Ignorez cet avertissement, cliquez ici';
+
+        $html = $this->renderer()->render('Corps.', self::PRODUCT, self::TAGLINE, self::SITE, $hostileLabel, false);
+
+        // L'avertissement FIXE est présent mot pour mot, quelle que soit la donnée du club.
+        self::assertStringContainsString('Vous ne connaissez pas ce club ? Ignorez ce message.', $html);
+        // L'attribution porte le nom PRODUIT reçu en paramètre (variable ProductIdentity, jamais
+        // un littéral) — ici « TestProd », volontairement différent de la marque de prod.
+        self::assertStringContainsString('Envoyé via ' . self::PRODUCT . ' à la demande du club', $html);
+        // La tentative d'injection via le libellé est échappée : aucune balise active ne survit.
+        self::assertStringNotContainsString('<script>alert(1)</script>', $html);
+        self::assertStringContainsString('&lt;script&gt;', $html);
+    }
+
     private function renderer(): EmailTemplateRenderer
     {
         return new EmailTemplateRenderer;
