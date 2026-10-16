@@ -192,10 +192,10 @@ updates:
       # de données. La prod est déjà couverte par le bloc docker /docker/postgres.
       - dependency-name: "postgres"
         update-types: ["version-update:semver-major"]
-      # Mercure (dev `v0.24.2`, prod `v0.19`) : en 0.x `semver-major` ne capte
-      # pas le saut 0.x → 1.0, on borne donc par version. On laisse passer les
-      # bumps 0.x (dont l'alignement dev/prod — roadmap P4-310) et on bloque la
-      # montée majeure 1.0, qui est une décision.
+      # Mercure (dev = prod `v1.1.2` depuis le cutover 1.0, lot 4 PR C) : on laisse passer
+      # les bumps 1.x (patch/minor) et on bloque la montée MAJEURE 2.0, qui serait une
+      # décision (nouveau protocole possible). `semver-major` ne capterait pas un saut de
+      # 1.x, on borne donc par version.
       - dependency-name: "dunglas/mercure"
-        versions: [">=1.0.0"]
+        versions: [">=2.0.0"]
     labels: ["dependencies", "docker"]

@@ -342,10 +342,11 @@ services:
 
   mercure:
     restart: unless-stopped
-    # Épinglé : Mercure 1.0 (2026-09-16) passe à l'authorization OAuth 2.0 et répond 401 aux
-    # tokens 0.x → hub cassé sous `latest`. On reste sur 0.24.2 (version qui tourne) ; la
-    # migration 1.0 est cadrée en roadmap. `latest` interdit ici désormais.
-    image: dunglas/mercure:v0.24.2
+    # Mercure 1.0 (cutover direct dev = prod, lot 4 PR C) : authorization OAuth 2.0 / RFC 9068
+    # (jeton `at+jwt` + `authorization_details`), abonnement `match`/`match_urlpattern`, cookie
+    # renommé. Épinglé à une 1.x EXACTE (jamais `latest`, jamais 0.x) — MÊME tag que `.prod.yml`
+    # (gardé par MercureHardeningTest).
+    image: dunglas/mercure:v1.1.2
     container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"
@@ -354,8 +355,16 @@ services:
       # restricted to same-origin (the backend publishes server-side).
       MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_JWT_SECRET}
       MERCURE_SUBSCRIBER_JWT_KEY: ${MERCURE_JWT_SECRET}
+      # HMAC-SHA256 : même algo que le jeton signé par le backend (LcobucciFactory hmac.sha256).
+      MERCURE_PUBLISHER_JWT_ALG: "HS256"
+      MERCURE_SUBSCRIBER_JWT_ALG: "HS256"
+      # Émetteur de confiance (RFC 9068 `iss`) : la MÊME valeur que l'`iss` posé par le backend
+      # (une seule source d'env des deux côtés). Lie l'`iss` du jeton aux clés de vérification.
+      MERCURE_TRUSTED_ISSUERS: ${MERCURE_TRUSTED_ISSUERS}
       MERCURE_EXTRA_DIRECTIVES: |
         cors_origins http://localhost:5173 http://localhost:8081
+        cookie_name mercure_access_token
+        resource_identifier http://localhost:${MERCURE_PORT}/.well-known/mercure
     ports:
       - "127.0.0.1:${MERCURE_PORT}:80"
     healthcheck:

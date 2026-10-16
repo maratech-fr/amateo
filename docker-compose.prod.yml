@@ -340,18 +340,29 @@ services:
       - amateo_network
 
   mercure:
-    # Pinned (dev uses :latest): same immutability contract as our own images —
-    # a routine `docker compose pull` must never silently swap the hub version.
-    image: dunglas/mercure:v0.19
+    # Pinned to an EXACT 1.x tag — same immutability contract as our own images: a routine
+    # `docker compose pull` must never silently swap the hub version. MÊME tag que
+    # `docker-compose.yml` (cutover direct dev = prod, Mercure 1.0 — gardé par MercureHardeningTest).
+    image: dunglas/mercure:v1.1.2
     container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"
       MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_JWT_SECRET:?}
       MERCURE_SUBSCRIBER_JWT_KEY: ${MERCURE_JWT_SECRET:?}
+      # HMAC-SHA256 : même algo que le jeton signé par le backend (LcobucciFactory hmac.sha256).
+      MERCURE_PUBLISHER_JWT_ALG: "HS256"
+      MERCURE_SUBSCRIBER_JWT_ALG: "HS256"
+      # Émetteur de confiance (RFC 9068 `iss`) : MÊME valeur que l'`iss` posé par le backend.
+      MERCURE_TRUSTED_ISSUERS: ${MERCURE_TRUSTED_ISSUERS:?set MERCURE_TRUSTED_ISSUERS in .env.prod}
       # Browser subscribers connect through the frontend proxy on the public
       # origin — that origin is the only one allowed (no dev localhost list).
+      # `cookie_name` prend le préfixe `__Secure-` (prod HTTPS, cookie Secure) ;
+      # `resource_identifier` ÉPINGLE l'audience (RFC 9068 `aud`) à l'URL publique du hub,
+      # celle que le backend pose en `aud` — un décalage = 401 à l'abonnement.
       MERCURE_EXTRA_DIRECTIVES: |
         cors_origins ${PUBLIC_BASE_URL:?}
+        cookie_name __Secure-mercure_access_token
+        resource_identifier ${PUBLIC_BASE_URL:?}/.well-known/mercure
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null"]
       interval: 20s
