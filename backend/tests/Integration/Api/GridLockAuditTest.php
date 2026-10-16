@@ -146,7 +146,8 @@ final class GridLockAuditTest extends WebTestCase
 
         $details = $this->details($rows[0]);
         self::assertSame($venue->getId(), $details['venueId'] ?? null, 'id du gymnase tracé');
-        self::assertNull($details['before'] ?? 'absent', 'à la création, pas d\'état antérieur');
+        self::assertArrayHasKey('before', $details);
+        self::assertNull($details['before'], 'à la création, pas d\'état antérieur');
         self::assertSame(1, $details['after']['dayOfWeek'] ?? null, 'jour posé tracé');
         self::assertSame('18:00', $details['after']['startTime'] ?? null, 'heure posée tracée');
     }
