@@ -93,8 +93,17 @@ final readonly class EmailSignatureListener implements EventSubscriberInterface
         $tagline = $this->productIdentity->tagline();
         $siteUrl = $this->productIdentity->siteUrl();
 
+        // Pied anti-usurpation (P4-316) dans la partie TEXTE : un e-mail à club connu part vers une
+        // adresse tierce (coach), le lecteur text/plain doit lire la même attribution/avertissement
+        // que le HTML. Même SOURCE que le pied HTML ({@see EmailTemplateRenderer::antiSpoofFooter}).
+        // Un e-mail SANS club (libellé null) n'en porte pas.
+        $clubLabel = $this->headerValue($message, ClubMailMetadata::CLUB_LABEL_HEADER);
+        $antiSpoofText = null !== $clubLabel
+            ? "\n\n" . EmailTemplateRenderer::antiSpoofFooterText($name, $clubLabel)
+            : '';
+
         $message->text(
-            $originalText . "\n\n-- \n" . $name . "\n" . $tagline . "\n" . $siteUrl,
+            $originalText . "\n\n-- \n" . $name . "\n" . $tagline . "\n" . $siteUrl . $antiSpoofText,
             $charset,
         );
 
@@ -102,7 +111,6 @@ final readonly class EmailSignatureListener implements EventSubscriberInterface
 
         // En-tête club : libellé + logo (si le club en a un). L'id vient de l'en-tête interne, les
         // octets du logo de LogoStorage (filesystem, pas de DB → OK au worker sans GUC).
-        $clubLabel = $this->headerValue($message, ClubMailMetadata::CLUB_LABEL_HEADER);
         $clubId = $this->headerValue($message, ClubMailMetadata::CLUB_ID_HEADER);
         $clubLogoBytes = null !== $clubId ? $this->logoStorage->read($clubId) : null;
         if (null !== $clubLogoBytes) {

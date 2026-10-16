@@ -56,6 +56,24 @@ final readonly class EmailTemplateRenderer
     public const float WHITE_MIX_RATIO = 0.85;
 
     /**
+     * La phrase FIXE du pied anti-usurpation (P4-316), SOURCE UNIQUE : `%1$s` = nom produit,
+     * `%2$s` = libellé club. Partagée par le pied HTML ({@see antiSpoofFooter}) et la partie TEXTE
+     * ({@see App\EventListener\EmailSignatureListener}) — jamais recopiée en littéral. Le texte
+     * statique ne porte aucun caractère HTML-spécial : échapper le tout après substitution n'altère
+     * que les deux valeurs interpolées.
+     */
+    private const string ANTI_SPOOF_FOOTER_SENTENCE = 'Envoyé via %1$s à la demande du club %2$s. Vous ne connaissez pas ce club ? Ignorez ce message.';
+
+    /**
+     * La phrase BRUTE (non échappée) du pied anti-usurpation, pour la partie TEXTE d'un e-mail à
+     * club connu. Même SOURCE que le pied HTML — seul l'échappement diffère (le texte n'en a pas).
+     */
+    public static function antiSpoofFooterText(string $productName, string $clubLabel): string
+    {
+        return \sprintf(self::ANTI_SPOOF_FOOTER_SENTENCE, $productName, $clubLabel);
+    }
+
+    /**
      * `$ctaUrl`/`$ctaLabel` : bouton d'action optionnel (lien coach D1). `$productLogoSrc`/
      * `$clubLogoSrc` : la SOURCE des images — `cid:` pour le mail réel (défaut), un `data:` URI
      * pour un aperçu rendu en iframe (les `cid:` n'y résolvent pas). Le MÊME renderer sert les
@@ -136,11 +154,12 @@ final readonly class EmailTemplateRenderer
             return '';
         }
 
-        $nameHtml = htmlspecialchars($productName, $flags, 'UTF-8');
-        $labelHtml = htmlspecialchars($clubLabel, $flags, 'UTF-8');
+        // Phrase construite depuis la SOURCE UNIQUE puis échappée EN BLOC : le texte statique n'a
+        // aucun caractère HTML-spécial, seules les deux valeurs interpolées (nom, libellé) le sont.
+        $sentenceHtml = htmlspecialchars(self::antiSpoofFooterText($productName, $clubLabel), $flags, 'UTF-8');
 
         return <<<HTML
-            <div style="margin-top:16px;color:#9ca3af;font-size:12px;line-height:1.4;">Envoyé via {$nameHtml} à la demande du club {$labelHtml}. Vous ne connaissez pas ce club ? Ignorez ce message.</div>
+            <div style="margin-top:16px;color:#9ca3af;font-size:12px;line-height:1.4;">{$sentenceHtml}</div>
             HTML;
     }
 
