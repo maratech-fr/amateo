@@ -247,6 +247,51 @@ describe("Tabs", () => {
     expect(active.className).not.toContain("border-accent");
   });
 
+  // PR1 console superadmin — la pastille d'alerte d'un onglet est rendue par la primitive
+  // PARTAGÉE, via la prop optionnelle `badge` sur l'item d'onglet : un point visuel
+  // (aria-hidden, non annoncé deux fois) PLUS un nom accessible (sr-only) qui ENRICHIT le
+  // nom de l'onglet, pour que « Santé — à vérifier » parvienne au lecteur d'écran.
+  it("rend une pastille accessible quand l'item porte `badge`, et rien sans elle", () => {
+    render(
+      <Tabs
+        variant="console"
+        tabs={[
+          { id: "sante", label: "Santé", badge: "à vérifier" },
+          { id: "clubs", label: "Clubs" },
+        ]}
+        activeTab="clubs"
+        onTabChange={() => {}}
+        ariaLabel="Avec pastille"
+        idPrefix="badge"
+      />,
+    );
+
+    // L'onglet badgé enrichit son nom accessible ; l'onglet sans badge garde le sien nu.
+    const sante = screen.getByRole("tab", { name: /Santé/ });
+    expect(sante).toHaveAccessibleName(/à vérifier/i);
+    const clubs = screen.getByRole("tab", { name: /Clubs/ });
+    expect(clubs.textContent).not.toMatch(/à vérifier/i);
+  });
+
+  it("le marqueur visuel de la pastille est aria-hidden (jamais annoncé deux fois)", () => {
+    const { container } = render(
+      <Tabs
+        variant="console"
+        tabs={[{ id: "incidents", label: "Incidents", badge: "à vérifier" }]}
+        activeTab="incidents"
+        onTabChange={() => {}}
+        ariaLabel="Pastille masquée"
+        idPrefix="badge2"
+      />,
+    );
+
+    // Le texte accessible « à vérifier » vit dans un nœud sr-only ; le POINT décoratif
+    // qui l'accompagne est aria-hidden pour ne pas doubler l'annonce.
+    const tab = screen.getByRole("tab", { name: /Incidents/ });
+    expect(tab).toHaveAccessibleName(/à vérifier/i);
+    expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
+  });
+
   // P4-265 — la peau `app` pose une BARRE OPAQUE (bg-card) sur le tablist pour ne plus laisser
   // traverser le fond à motifs ; la peau `console` garde son simple filet `border-b`, sans fond.
   it("peau app : barre opaque bg-card sur le tablist ; peau console : filet border-b sans fond", () => {
