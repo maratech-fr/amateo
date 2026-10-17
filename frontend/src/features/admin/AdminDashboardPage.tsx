@@ -26,11 +26,12 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyBlock, EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { useTodayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { AdminAction, AdminActionArgumentSpec, AdminClub, AdminFreshnessResponse, AdminHealthResponse, AdminJob, AdminJobStatus, AdminJobsResponse, AdminOverviewResponse } from "./api";
-import { useAdminActions, useAdminClubs, useAdminFreshness, useAdminHealth, useAdminJobs, useAdminOverview, useRunAdminClubAction, useRunAdminJob } from "./queries";
+import { useAdminActions, useAdminClubs, useAdminFeedback, useAdminFreshness, useAdminHealth, useAdminJobs, useAdminOverview, useAdminSystemErrors, useRunAdminClubAction, useRunAdminJob } from "./queries";
 import { CapacitySection } from "./sections/CapacitySection";
 import { ClubRequestsSection } from "./sections/ClubRequestsSection";
 import { ContainersSection } from "./sections/ContainersSection";
@@ -59,11 +60,53 @@ export function AdminDashboardPage() {
   const jobs = useAdminJobs();
   const freshness = useAdminFreshness();
   const clubs = useAdminClubs(page, CLUBS_PER_PAGE, query);
-  const refreshing = overview.isFetching || health.isFetching || jobs.isFetching || clubs.isFetching || freshness.isFetching;
+  // PR1 — « silence quand tout va bien » : deux signaux POLLÉS AU NIVEAU PAGE pour les
+  // pastilles d'alerte des onglets Santé/Incidents. Le feedback réutilise la requête déjà
+  // hissée (QoS) ; le SEUL ajout réseau est le comptage des erreurs système des 7 derniers
+  // jours (limit=1, fenêtre `since`), distinct du sous-onglet paginé.
+  const feedback = useAdminFeedback();
+  // Fenêtre de 7 jours pour le comptage de la pastille Incidents. L'« aujourd'hui » passe par
+  // l'horloge partagée (jamais `new Date()` en rendu) ; la console n'a pas de club, donc c'est
+  // la date réelle. On recule de 7 jours au format YYYY-MM-DD attendu par le backend.
+  const todayIso = useTodayISO();
+  const sinceDate = new Date(`${todayIso}T00:00:00Z`);
+  sinceDate.setUTCDate(sinceDate.getUTCDate() - 7);
+  const sevenDaysAgo = sinceDate.toISOString().slice(0, 10);
+  const recentSystemErrors = useAdminSystemErrors(1, 1, sevenDaysAgo);
+  const refreshing =
+    overview.isFetching || health.isFetching || jobs.isFetching || clubs.isFetching || freshness.isFetching || feedback.isFetching || recentSystemErrors.isFetching;
+
+  // Santé = une défaillance d'infrastructure : état global dégradé, un conteneur À L'ARRÊT
+  // (jamais « inconnu »), un job en échec/interrompu, un référentiel périmé, ou une lecture
+  // qui échoue. Les dépendances externes N'allument PAS (décision fondateur PR1).
+  const santeAlert =
+    health.isError ||
+    jobs.isError ||
+    freshness.isError ||
+    health.data?.status === "degraded" ||
+    (health.data?.containers.some((c) => c.status === "down") ?? false) ||
+    (jobs.data?.items.some((j) => j.latestRun?.status === "failed" || j.latestRun?.status === "interrupted") ?? false) ||
+    (freshness.data?.items.some((item) => item.stale) ?? false);
+
+  // Incidents = quelque chose à traiter : un signalement non traité (QoS), un message async
+  // en échec, une erreur système des 7 derniers jours, ou une lecture qui échoue. Le journal
+  // d'audit (diagnostic) n'allume JAMAIS.
+  const incidentsAlert =
+    recentSystemErrors.isError ||
+    feedback.isError ||
+    (feedback.data?.qos.oldestUntreatedAgeHours ?? null) !== null ||
+    (health.data?.messenger.failed ?? 0) > 0 ||
+    (recentSystemErrors.data ? recentSystemErrors.data.pagination.total > 0 : false);
+
+  const tabs = ADMIN_TABS.map((tab) => ({
+    ...tab,
+    badge:
+      (tab.id === "sante" && santeAlert) || (tab.id === "incidents" && incidentsAlert) ? "à vérifier" : undefined,
+  }));
 
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = resolveActiveTab(searchParams.get("tab"), localStorage.getItem(STORAGE_KEY));
-  const activeSubTab = resolveActiveSubTab(activeTab === "journaux" ? searchParams.get("sub") : null);
+  const activeSubTab = resolveActiveSubTab(activeTab, activeTab === "incidents" ? searchParams.get("sub") : null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, activeTab);
@@ -76,7 +119,7 @@ export function AdminDashboardPage() {
       setSearchParams(
         (prev) => {
           prev.set("tab", activeTab);
-          if (activeTab === "journaux") prev.set("sub", activeSubTab);
+          if (activeTab === "incidents") prev.set("sub", activeSubTab);
           else prev.delete("sub");
           return prev;
         },
@@ -90,7 +133,7 @@ export function AdminDashboardPage() {
   function handleTabChange(id: string) {
     setSearchParams((prev) => {
       prev.set("tab", id);
-      if (id === "journaux") prev.set("sub", DEFAULT_SUBTAB);
+      if (id === "incidents") prev.set("sub", DEFAULT_SUBTAB);
       else prev.delete("sub");
       return prev;
     });
@@ -110,11 +153,11 @@ export function AdminDashboardPage() {
   }
 
   function refreshAll() {
-    void Promise.all([overview.refetch(), health.refetch(), jobs.refetch(), clubs.refetch(), freshness.refetch()]);
+    void Promise.all([overview.refetch(), health.refetch(), jobs.refetch(), clubs.refetch(), freshness.refetch(), feedback.refetch(), recentSystemErrors.refetch()]);
   }
 
-  const journauxSubTabs =
-    ADMIN_TABS.find((t) => t.id === "journaux")?.subTabs?.map((s) => ({ id: s.id, label: s.label })) ?? [];
+  const incidentsSubTabs =
+    ADMIN_TABS.find((t) => t.id === "incidents")?.subTabs?.map((s) => ({ id: s.id, label: s.label })) ?? [];
 
   return (
     <div className="space-y-8">
@@ -140,28 +183,7 @@ export function AdminDashboardPage() {
         </Button>
       </section>
 
-      <Tabs tabs={ADMIN_TABS} activeTab={activeTab} onTabChange={handleTabChange} ariaLabel="Sections admin" idPrefix="admin" variant="console" />
-
-      <TabPanel variant="console" tabId="vue-densemble" idPrefix="admin" active={activeTab === "vue-densemble"} className="space-y-8 pt-6">
-        <OverviewSection data={overview.data} loading={overview.isPending} error={overview.isError} retry={() => void overview.refetch()} />
-        <UsageSection data={overview.data} loading={overview.isPending} error={overview.isError} retry={() => void overview.refetch()} />
-      </TabPanel>
-
-      <TabPanel variant="console" tabId="infrastructure" idPrefix="admin" active={activeTab === "infrastructure"} className="space-y-8 pt-6">
-        <HealthSection data={health.data} loading={health.isPending} error={health.isError} retry={() => void health.refetch()} />
-        <ContainersSection />
-        <ExternalDepsSection />
-        <CapacitySection />
-      </TabPanel>
-
-      <TabPanel variant="console" tabId="jobs" idPrefix="admin" active={activeTab === "jobs"} className="space-y-8 pt-6">
-        <JobsSection data={jobs.data} loading={jobs.isPending} error={jobs.isError} retry={() => void jobs.refetch()} />
-      </TabPanel>
-
-      <TabPanel variant="console" tabId="referentiels" idPrefix="admin" active={activeTab === "referentiels"} className="space-y-8 pt-6">
-        <FreshnessSection data={freshness.data} loading={freshness.isPending} error={freshness.isError} retry={() => void freshness.refetch()} />
-        <ReleaseNotesSection />
-      </TabPanel>
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} ariaLabel="Sections admin" idPrefix="admin" variant="console" />
 
       <TabPanel variant="console" tabId="clubs" idPrefix="admin" active={activeTab === "clubs"} className="space-y-8 pt-6">
         {/* P3-4 PR B : les arbitrages (créations + adhésions) vivent avec le parc. */}
@@ -204,27 +226,42 @@ export function AdminDashboardPage() {
             />
           ) : null}
         </section>
-      </TabPanel>
-
-      <TabPanel variant="console" tabId="demos" idPrefix="admin" active={activeTab === "demos"} className="space-y-8 pt-6">
+        {/* PR1 — les comptes de démonstration vivent désormais en bas de l'onglet Clubs. */}
         <DemosSection />
       </TabPanel>
 
-      <TabPanel variant="console" tabId="signalements" idPrefix="admin" active={activeTab === "signalements"} className="space-y-8 pt-6">
-        <FeedbackSection />
+      <TabPanel variant="console" tabId="statistiques" idPrefix="admin" active={activeTab === "statistiques"} className="space-y-8 pt-6">
+        <OverviewSection data={overview.data} loading={overview.isPending} error={overview.isError} retry={() => void overview.refetch()} />
+        <UsageSection data={overview.data} loading={overview.isPending} error={overview.isError} retry={() => void overview.refetch()} />
+        <CapacitySection />
       </TabPanel>
 
-      <TabPanel variant="console" tabId="journaux" idPrefix="admin" active={activeTab === "journaux"} className="space-y-6 pt-6">
-        <Tabs variant="console" tabs={journauxSubTabs} activeTab={activeSubTab} onTabChange={handleSubTabChange} ariaLabel="Journaux" idPrefix="admin-journaux" />
-        <TabPanel variant="console" tabId="audit" idPrefix="admin-journaux" active={activeSubTab === "audit"}>
-          <AuditSubtab />
+      <TabPanel variant="console" tabId="sante" idPrefix="admin" active={activeTab === "sante"} className="space-y-8 pt-6">
+        <HealthSection data={health.data} loading={health.isPending} error={health.isError} retry={() => void health.refetch()} />
+        <ContainersSection />
+        <ExternalDepsSection />
+        <JobsSection data={jobs.data} loading={jobs.isPending} error={jobs.isError} retry={() => void jobs.refetch()} />
+        <FreshnessSection data={freshness.data} loading={freshness.isPending} error={freshness.isError} retry={() => void freshness.refetch()} />
+      </TabPanel>
+
+      <TabPanel variant="console" tabId="incidents" idPrefix="admin" active={activeTab === "incidents"} className="space-y-6 pt-6">
+        <Tabs variant="console" tabs={incidentsSubTabs} activeTab={activeSubTab} onTabChange={handleSubTabChange} ariaLabel="Incidents" idPrefix="admin-incidents" />
+        <TabPanel variant="console" tabId="signalements" idPrefix="admin-incidents" active={activeSubTab === "signalements"}>
+          <FeedbackSection />
         </TabPanel>
-        <TabPanel variant="console" tabId="messenger" idPrefix="admin-journaux" active={activeSubTab === "messenger"}>
-          <MessengerFailedSubtab />
-        </TabPanel>
-        <TabPanel variant="console" tabId="errors" idPrefix="admin-journaux" active={activeSubTab === "errors"}>
+        <TabPanel variant="console" tabId="errors" idPrefix="admin-incidents" active={activeSubTab === "errors"}>
           <SystemErrorsSubtab />
         </TabPanel>
+        <TabPanel variant="console" tabId="messenger" idPrefix="admin-incidents" active={activeSubTab === "messenger"}>
+          <MessengerFailedSubtab />
+        </TabPanel>
+        <TabPanel variant="console" tabId="audit" idPrefix="admin-incidents" active={activeSubTab === "audit"}>
+          <AuditSubtab />
+        </TabPanel>
+      </TabPanel>
+
+      <TabPanel variant="console" tabId="exploitation" idPrefix="admin" active={activeTab === "exploitation"} className="space-y-8 pt-6">
+        <ReleaseNotesSection />
       </TabPanel>
     </div>
   );

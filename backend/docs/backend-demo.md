@@ -196,7 +196,11 @@ n'enlise jamais le verrou au-delà de son TTL (900 s, au-dessus du budget max du
 (`running`/`succeeded`/`failed` + horodatage) est exposé par `GET /api/admin/demos` (clé `reset`)
 et dérivé du VERROU pour `running` (un `running` sans verrou vivant — crash non relâché — est
 rendu comme absent, jamais figé à l'écran) ; la console affiche « Réinitialisation en cours… » et
-bloque le bouton pendant l'exécution. `POST /demos/{target}/clock` pose (`date`) ou relâche
+bloque le bouton pendant l'exécution. `GET /api/admin/demos` expose aussi `lastResetAt`
+(`AdminDemoController::lastDemoResetAt`) — distinct de `reset` : c'est la date (ISO 8601) du
+dernier reset BCCL **lancé**, lue sur la dernière ligne `admin_audit_log` à `status_code=202` et
+`details.demoAction="reset"` (zéro table dédiée), `null` si aucun n'a jamais eu lieu ; survit au
+rechargement de la page, contrairement à `reset` qui ne porte que l'exécution en cours. `POST /demos/{target}/clock` pose (`date`) ou relâche
 (`clear`) `simulated_today` du club démo COURANT de `bccl` ou `prospect`, résolu SERVEUR depuis le
 compte, gardé `is_demo = TRUE` — même garde de calendrier que `ClubClockCommand` (`2026-02-31`
 refusé), jamais de confirmation (un compte démo a les droits pleins, aucun e-mail réel en jeu).
@@ -224,9 +228,11 @@ de la console ne porte plus de bouton d'horloge ni de champ `simulatedToday`
 (`AdminMonitoringService`/`AdminMonitoringPaths`). Un gestionnaire démo pose désormais l'horloge
 **depuis l'app** : `POST /api/club/clock` (`ClubClockController`, ci-dessous).
 
-Front des deux cartes démo : 8ᵉ onglet « Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts`),
-`DemosSection.tsx` — carte « Date simulée » (`ClockCard`, maison unique factorisée) rendue sur les
-**deux** comptes (BCCL ET prospect), heures de fenêtre rendues à l'heure de Paris. NR bloquant
+Front des deux cartes démo : `DemosSection.tsx`, rendue en bas de l'onglet **Clubs** de la
+console (organisation des onglets : [`superadmin-auth.md`](../../specs/courantes/superadmin-auth.md)
+§Organisation de la console) — carte « Date simulée » (`ClockCard`, maison unique factorisée)
+rendue sur les **deux** comptes (BCCL ET prospect), heures de fenêtre rendues à l'heure de Paris.
+NR bloquant
 `Integration/Admin/AdminDemoResetTest` (401/403, 400 sur date malformée, `clear` →
 `simulatedToday` NULL + boîte vidée + autre club intact).
 

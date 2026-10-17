@@ -35,6 +35,9 @@ function demos(overrides: Partial<AdminDemosResponse> = {}): AdminDemosResponse 
     prospect: { email: "demo@amateo.fr", activeUntil: null, clubName: null, simulatedToday: null },
     retained: [],
     reset: null,
+    // PR1 console — date de la DERNIÈRE réinitialisation BCCL (ISO 8601) lue du journal
+    // d'audit (202 + demoAction=reset) ; null quand aucune n'a jamais eu lieu.
+    lastResetAt: null,
     ...overrides,
   };
 }
@@ -157,6 +160,23 @@ describe("DemosSection", () => {
 
     expect(await screen.findByText("Club Conservé")).toBeInTheDocument();
     expect(screen.getByText(/jusqu’au 19\/10\/2026/)).toBeInTheDocument();
+  });
+
+  it("affiche la date de la dernière réinitialisation BCCL quand le journal en porte une", async () => {
+    mockGet.mockResolvedValue(demos({ lastResetAt: "2026-10-05T08:30:00+00:00" }));
+    renderWithProviders(<DemosSection />);
+
+    const card = (await screen.findByText("Démo BCCL")).closest("article") as HTMLElement;
+    expect(within(card).getByText(/Dernière réinitialisation lancée le/i)).toBeInTheDocument();
+    expect(within(card).queryByText(/Jamais réinitialisée/i)).not.toBeInTheDocument();
+  });
+
+  it("indique « Jamais réinitialisée » quand le journal n'en porte aucune", async () => {
+    mockGet.mockResolvedValue(demos({ lastResetAt: null }));
+    renderWithProviders(<DemosSection />);
+
+    const card = (await screen.findByText("Démo BCCL")).closest("article") as HTMLElement;
+    expect(within(card).getByText(/Jamais réinitialisée/i)).toBeInTheDocument();
   });
 
   it("affiche l'indisponibilité quand la lecture échoue", async () => {

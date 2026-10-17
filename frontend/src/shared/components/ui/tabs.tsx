@@ -7,6 +7,9 @@ export interface TabItem {
   id: string;
   label: string;
   icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  /** Pastille d'alerte : un point décoratif (aria-hidden) + ce texte en sr-only, appendu
+   *  au nom accessible de l'onglet (« Santé — à vérifier »). Absent = aucune pastille. */
+  badge?: string;
 }
 
 /**
@@ -134,6 +137,12 @@ export function Tabs({ tabs, activeTab, onTabChange, ariaLabel, idPrefix, varian
           >
             {Icon ? <Icon className="size-4" aria-hidden={true} /> : null}
             {tab.label}
+            {tab.badge ? (
+              <>
+                <span aria-hidden="true" className="ml-0.5 inline-block size-2 rounded-full bg-console-warning" />
+                <span className="sr-only">{tab.badge}</span>
+              </>
+            ) : null}
           </button>
         );
       })}

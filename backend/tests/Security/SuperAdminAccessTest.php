@@ -84,6 +84,16 @@ final class SuperAdminAccessTest extends WebTestCase
         $this->client->request('POST', '/api/admin/feedback/' . Uuid::v4()->toRfc4122() . '/treat', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(401);
 
+        // Démos — surface cross-tenant la plus sensible (contrat SA0) : un JWT club ne la
+        // franchit pas, en lecture comme en écriture. L'énumération du firewall la liste
+        // explicitement ici (angle de défense en plus d'AdminDemoResetTest::
+        // testTheDemosSurfaceRejectsAClubJwtAndAnonymousCallers, qui l'éprouve de bout en bout).
+        $this->client->request('GET', '/api/admin/demos', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('POST', '/api/admin/demos/bccl/activate', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
         // Anonyme (aucune identité) : même refus.
         $this->startFreshBrowserSession($this->client);
         $this->client->request('GET', '/api/admin/release-notes');

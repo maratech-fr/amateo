@@ -489,8 +489,12 @@ export function getAdminMessengerFailed(page: number, limit: number): Promise<Ad
   return adminApi.get("messenger/failed", { searchParams: { page, limit } }).json();
 }
 
-export function getAdminSystemErrors(page: number, limit: number): Promise<AdminSystemErrorsResponse> {
-  return adminApi.get("system-errors", { searchParams: { page, limit } }).json();
+export function getAdminSystemErrors(page: number, limit: number, since?: string): Promise<AdminSystemErrorsResponse> {
+  // `since` (YYYY-MM-DD) borne la fenêtre — le comptage de la pastille Incidents (7 j, limit=1)
+  // le passe, le sous-onglet paginé ne le passe pas (toute la table).
+  const searchParams: Record<string, string | number> = { page, limit };
+  if (since) searchParams.since = since;
+  return adminApi.get("system-errors", { searchParams }).json();
 }
 
 export function getAdminClubRequests(): Promise<AdminClubRequestsResponse> {
@@ -587,6 +591,9 @@ export interface AdminDemosResponse {
   retained: AdminRetainedDemoClub[];
   /** L'état du reset asynchrone de la démo BCCL (null quand aucun reset récent). */
   reset: AdminDemoResetState | null;
+  /** Date (ISO 8601) de la DERNIÈRE réinitialisation BCCL lancée, lue du journal d'audit
+   *  (202 + demoAction=reset) ; null quand aucune n'a jamais eu lieu. */
+  lastResetAt: string | null;
 }
 
 export function getAdminDemos(): Promise<AdminDemosResponse> {

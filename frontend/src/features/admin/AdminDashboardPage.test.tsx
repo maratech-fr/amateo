@@ -5,8 +5,8 @@ import { axe } from "vitest-axe";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { AdminActionsResponse, AdminClubsResponse, AdminFreshnessResponse, AdminHealthResponse, AdminJobsResponse, AdminOverviewResponse } from "./api";
-import { getAdminActions, getAdminClubs, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminOverview, runAdminClubAction, runAdminJob } from "./api";
+import type { AdminActionsResponse, AdminClubsResponse, AdminFeedbackResponse, AdminFreshnessResponse, AdminHealthResponse, AdminJobsResponse, AdminOverviewResponse, AdminSystemErrorsResponse } from "./api";
+import { getAdminActions, getAdminClubs, getAdminFeedback, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminOverview, getAdminSystemErrors, runAdminClubAction, runAdminJob } from "./api";
 import { AdminDashboardPage } from "./AdminDashboardPage";
 import { useAdminStore } from "./store";
 
@@ -22,6 +22,10 @@ vi.mock("./api", async (importOriginal) => {
     getAdminActions: vi.fn(),
     runAdminClubAction: vi.fn(),
     getAdminFreshness: vi.fn(),
+    // PR1 console — pollées au niveau page pour la pastille Incidents (signalements non
+    // traités + erreurs système ≤ 7 j), en plus de leurs sections.
+    getAdminFeedback: vi.fn(),
+    getAdminSystemErrors: vi.fn(),
   };
 });
 
@@ -203,6 +207,26 @@ const freshness: AdminFreshnessResponse = {
   ],
 };
 
+// PR1 — signaux de la pastille Incidents. Lignes de base SANS incident (aucun signalement
+// non traité, aucune erreur système récente), surchargées au cas par cas.
+function feedbackResponse(oldestUntreatedAgeHours: number | null): AdminFeedbackResponse {
+  return {
+    items: [],
+    pagination: { page: 1, limit: 50, total: 0, pages: 0 },
+    qos: { treatDelayByMonth: [], volumeByTopicMonth: [], treatedShare: 1, oldestUntreatedAgeHours },
+  };
+}
+
+function systemErrorsResponse(total: number): AdminSystemErrorsResponse {
+  return { items: [], pagination: { page: 1, limit: 1, total, pages: total > 0 ? 1 : 0 } };
+}
+
+// Fraîcheur TOUTE verte — la fixture `freshness` par défaut porte des périmés (allumerait
+// la pastille Santé) : les cas « tout au vert » la remplacent par celle-ci.
+const freshnessAllFresh: AdminFreshnessResponse = {
+  items: [{ key: "school-holidays", label: "Vacances scolaires", lastUpdatedAt: "2026-07-14T04:00:00+00:00", staleAfterDays: 100, stale: false }],
+};
+
 const mockOverview = vi.mocked(getAdminOverview);
 const mockHealth = vi.mocked(getAdminHealth);
 const mockJobs = vi.mocked(getAdminJobs);
@@ -211,6 +235,8 @@ const mockRunJob = vi.mocked(runAdminJob);
 const mockActions = vi.mocked(getAdminActions);
 const mockRunClubAction = vi.mocked(runAdminClubAction);
 const mockFreshness = vi.mocked(getAdminFreshness);
+const mockFeedback = vi.mocked(getAdminFeedback);
+const mockSystemErrors = vi.mocked(getAdminSystemErrors);
 
 describe("AdminDashboardPage", () => {
   beforeEach(() => {
@@ -223,6 +249,8 @@ describe("AdminDashboardPage", () => {
     mockActions.mockReset().mockResolvedValue(actions);
     mockRunClubAction.mockReset().mockResolvedValue({ key: "reset-credits", clubId: "club-1", status: "succeeded", exitCode: 0 });
     mockFreshness.mockReset().mockResolvedValue(freshness);
+    mockFeedback.mockReset().mockResolvedValue(feedbackResponse(null));
+    mockSystemErrors.mockReset().mockResolvedValue(systemErrorsResponse(0));
     useAdminStore.setState({ identity: { id: "admin-1", email: "ops@example.test" }, csrfToken: "csrf-123" });
   });
 
@@ -281,7 +309,7 @@ describe("AdminDashboardPage", () => {
   });
 
   it("renders the usage stats: plans by type, time-to-close and club sizes (SA2-stats)", async () => {
-    renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=statistiques" });
 
     expect(await screen.findByText("Plans, clôtures et tailles de clubs")).toBeInTheDocument();
     // Plans par type (libellés FR — « Saison » apparaît aussi dans la carte solveur) + « dont validés ».
@@ -531,7 +559,7 @@ describe("AdminDashboardPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
   
-    await user.click(await screen.findByRole("tab", { name: /Journaux/ }));
+    await user.click(await screen.findByRole("tab", { name: /Incidents/ }));
     for (const tab of screen.getAllByRole("tab")) {
       expect(tab.className).toMatch(/text-white|text-console-text-dim/);
       expect(tab.className).not.toContain("text-muted-foreground");
@@ -541,5 +569,140 @@ describe("AdminDashboardPage", () => {
     for (const panel of screen.getAllByRole("tabpanel", { hidden: true })) {
       expect(panel.className).toContain("ring-console-accent/20");
     }
+  });
+
+  // PR1 console superadmin — « silence quand tout va bien » : une pastille sur l'onglet
+  // Santé ou Incidents suffit à dire qu'il faut aller voir. Les signaux sont pollés au
+  // niveau page (les panneaux montent toujours leurs enfants). On prouve ici QUAND chaque
+  // pastille s'allume — à la source — et qu'elle reste ÉTEINTE au vert.
+  describe("pastilles d'alerte des onglets Santé et Incidents", () => {
+    // Attend que les lectures de la pastille aient répondu (sinon « éteint » serait juste
+    // « pas encore chargé » — faux négatif). Le résultat correct au vert ÉTANT éteint, ce
+    // settle rend l'assertion « éteint » fiable, et les cas positifs prouvent le mécanisme.
+    async function settleBadgeSignals() {
+      await screen.findByRole("tab", { name: /Santé/ });
+      await waitFor(() => {
+        expect(mockHealth).toHaveBeenCalled();
+        expect(mockJobs).toHaveBeenCalled();
+        expect(mockFreshness).toHaveBeenCalled();
+        expect(mockFeedback).toHaveBeenCalled();
+        expect(mockSystemErrors).toHaveBeenCalled();
+      });
+    }
+
+    function allGreen() {
+      mockHealth.mockReset().mockResolvedValue(health);
+      mockJobs.mockReset().mockResolvedValue(jobs);
+      mockFreshness.mockReset().mockResolvedValue(freshnessAllFresh);
+      mockFeedback.mockReset().mockResolvedValue(feedbackResponse(null));
+      mockSystemErrors.mockReset().mockResolvedValue(systemErrorsResponse(0));
+    }
+
+    it("n'allume AUCUNE pastille quand santé, jobs, fraîcheur, signalements et erreurs sont au vert (le journal d'audit n'allume jamais)", async () => {
+      allGreen();
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+      await settleBadgeSignals();
+
+      expect(screen.getByRole("tab", { name: /Santé/ }).textContent).not.toMatch(/à vérifier/i);
+      expect(screen.getByRole("tab", { name: /Incidents/ }).textContent).not.toMatch(/à vérifier/i);
+    });
+
+    it("allume Santé quand l'état de santé est dégradé", async () => {
+      allGreen();
+      mockHealth.mockReset().mockResolvedValue({ ...health, status: "degraded" });
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Santé.*à vérifier/i })).toBeInTheDocument();
+    });
+
+    it("allume Santé quand un conteneur est à l'arrêt", async () => {
+      allGreen();
+      mockHealth.mockReset().mockResolvedValue({
+        ...health,
+        containers: [{ key: "php-fpm", name: "php-fpm", status: "down" }],
+      });
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Santé.*à vérifier/i })).toBeInTheDocument();
+    });
+
+    it("n'allume PAS Santé pour un conteneur « inconnu » ni une dépendance externe à l'arrêt (décision fondateur)", async () => {
+      allGreen();
+      mockHealth.mockReset().mockResolvedValue({
+        ...health,
+        containers: [{ key: "worker", name: "worker", status: "unknown" }],
+        externalDependencies: [{ key: "ign", name: "IGN", status: "down" }],
+      });
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+      await settleBadgeSignals();
+
+      expect(screen.getByRole("tab", { name: /Santé/ }).textContent).not.toMatch(/à vérifier/i);
+    });
+
+    it("allume Santé quand un job a échoué ou a été interrompu", async () => {
+      allGreen();
+      mockJobs.mockReset().mockResolvedValue({
+        items: [{ ...jobs.items[0], key: "k", latestRun: { ...jobs.items[0].latestRun!, status: "failed" } }],
+      });
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Santé.*à vérifier/i })).toBeInTheDocument();
+    });
+
+    it("allume Santé quand un référentiel est périmé", async () => {
+      allGreen();
+      mockFreshness.mockReset().mockResolvedValue({
+        items: [{ key: "ffbb", label: "Ligues & comités FFBB", lastUpdatedAt: null, staleAfterDays: 400, stale: true }],
+      });
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Santé.*à vérifier/i })).toBeInTheDocument();
+    });
+
+    it("allume Santé quand une lecture de santé échoue (isError)", async () => {
+      allGreen();
+      mockHealth.mockReset().mockRejectedValue(new Error("health down"));
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Santé.*à vérifier/i })).toBeInTheDocument();
+    });
+
+    it("allume Incidents (pas Santé) quand un signalement n'est pas traité", async () => {
+      allGreen();
+      mockFeedback.mockReset().mockResolvedValue(feedbackResponse(12));
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Incidents.*à vérifier/i })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Santé/ }).textContent).not.toMatch(/à vérifier/i);
+    });
+
+    it("allume Incidents (pas Santé) quand des messages asynchrones ont échoué", async () => {
+      allGreen();
+      mockHealth.mockReset().mockResolvedValue({ ...health, messenger: { ...health.messenger, failed: 3 } });
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Incidents.*à vérifier/i })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Santé/ }).textContent).not.toMatch(/à vérifier/i);
+    });
+
+    it("allume Incidents pour une erreur système des 7 derniers jours, en passant la fenêtre `since` au backend", async () => {
+      allGreen();
+      mockSystemErrors.mockReset().mockResolvedValue(systemErrorsResponse(1));
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Incidents.*à vérifier/i })).toBeInTheDocument();
+      // Le comptage de la pastille borne la fenêtre à 7 j : au moins un appel porte un
+      // `since` (une date ISO), distinct du sous-onglet paginé qui n'en passe pas.
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+      expect(mockSystemErrors.mock.calls.some((args) => args[2] === sevenDaysAgo)).toBe(true);
+    });
+
+    it("allume Incidents quand la lecture des erreurs système échoue (isError)", async () => {
+      allGreen();
+      mockSystemErrors.mockReset().mockRejectedValue(new Error("errors down"));
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByRole("tab", { name: /Incidents.*à vérifier/i })).toBeInTheDocument();
+    });
   });
 });

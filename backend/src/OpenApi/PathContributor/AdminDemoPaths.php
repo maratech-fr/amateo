@@ -73,6 +73,7 @@ final readonly class AdminDemoPaths implements CustomPathContributor
                             'prospect' => $account,
                             'retained' => ['type' => 'array', 'items' => $retainedClub, 'description' => 'Demo clubs kept for 14 days, listed by the club table (never by membership).'],
                             'reset' => $resetState,
+                            'lastResetAt' => ['type' => ['string', 'null'], 'format' => 'date-time', 'description' => 'ISO 8601 timestamp of the last BCCL demo reset launched (read from the audit log), or null when none ever happened.'],
                         ],
                     ]),
                     '401' => new Response('No authenticated super-admin session'),

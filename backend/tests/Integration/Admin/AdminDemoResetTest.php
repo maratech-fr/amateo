@@ -378,6 +378,38 @@ final class AdminDemoResetTest extends WebTestCase
         self::assertNull($body['prospect']['simulatedToday']);
     }
 
+    public function testStateExposesLastDemoResetTimestampFromTheAuditLog(): void
+    {
+        // PR1 console — `GET /api/admin/demos` sert `lastResetAt` : l'`occurred_at` de la DERNIÈRE
+        // ligne `admin_audit_log` à la fois status_code=202 ET details.demoAction="reset". Zéro
+        // migration : la trace existe déjà (posée par AdminAuditSubscriber sur le 202 du reset).
+        [$secret] = $this->createSuperAdmin('lastreset@example.test', 'VeryStrongPassword!');
+        $this->authenticate('lastreset@example.test', 'VeryStrongPassword!', $secret);
+
+        // Déterminisme : on efface toute ligne reset-202 résiduelle (globale, le critère n'est
+        // pas scopé au superadmin) avant de poser des lignes contrôlées.
+        $this->admin()->executeStatement('DELETE FROM admin_audit_log WHERE status_code = 202 AND (details->>\'demoAction\') = \'reset\'');
+
+        // Aucun reset encore enregistré → lastResetAt null (clé présente, jamais absente).
+        $this->client->request('GET', '/api/admin/demos');
+        self::assertResponseIsSuccessful();
+        self::assertArrayHasKey('lastResetAt', $this->responseBody());
+        self::assertNull($this->responseBody()['lastResetAt'], 'sans historique de reset, lastResetAt est null');
+
+        // Trois lignes d'audit : un VRAI reset (il y a 3 h), puis deux LEURRES plus récents —
+        // un 202 qui n'est PAS un reset (activate), et un reset qui n'est PAS un 202 (échec 500).
+        $this->insertAuditRow(202, ['demoAction' => 'reset', 'target' => 'bccl'], '3 hours');
+        $this->insertAuditRow(202, ['demoAction' => 'activate', 'target' => 'bccl'], '2 hours');
+        $this->insertAuditRow(500, ['demoAction' => 'reset', 'target' => 'bccl'], '1 hour');
+
+        // lastResetAt = l'heure du VRAI reset (il y a 3 h), ni l'activate 202, ni le reset 500.
+        $this->client->request('GET', '/api/admin/demos');
+        self::assertResponseIsSuccessful();
+        $lastResetAt = $this->responseBody()['lastResetAt'];
+        self::assertIsString($lastResetAt, 'lastResetAt porte l\'ISO 8601 du dernier reset réussi');
+        self::assertEqualsWithDelta(time() - 3 * 3600, strtotime($lastResetAt), 120, 'lastResetAt pointe le reset-202 (3 h), pas un 202 non-reset ni un reset non-202');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -405,6 +437,22 @@ final class AdminDemoResetTest extends WebTestCase
             $this->admin()->executeStatement('DELETE FROM super_admin WHERE id = :id', ['id' => $this->adminId]);
         }
         parent::tearDown();
+    }
+
+    /**
+     * Pose une ligne `admin_audit_log` contrôlée (acteur NULL → nettoyée par le tearDown),
+     * à `NOW() - INTERVAL`, avec le `details` JSON donné.
+     *
+     * @param array<string, string> $details
+     */
+    private function insertAuditRow(int $statusCode, array $details, string $ago): void
+    {
+        $this->admin()->executeStatement(
+            'INSERT INTO admin_audit_log (id, occurred_at, super_admin_id, action, route, status_code, details)'
+            . " VALUES (:id, NOW() - INTERVAL '{$ago}', NULL, 'admin.http_access', '/api/admin/demos/bccl/reset', :status, :details)",
+            ['id' => Uuid::v4()->toRfc4122(), 'status' => $statusCode, 'details' => json_encode($details, \JSON_THROW_ON_ERROR)],
+            ['status' => ParameterType::INTEGER],
+        );
     }
 
     private function registerVerified(string $ara): string
