@@ -11,6 +11,9 @@ import { useActivateAdminDemo, useAdminDemos, useDeactivateAdminDemo, useResetAd
 // Fenêtre d'activation rendue à l'heure de PARIS (décision fondateur) : l'API renvoie l'ISO UTC.
 const parisTime = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
 
+// PR1 — date de la dernière réinitialisation BCCL, même forme FR que le reste de la console.
+const resetDateTime = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+
 function isWindowOpen(activeUntil: string | null): boolean {
   return null !== activeUntil && Date.parse(activeUntil) > Date.now();
 }
@@ -58,7 +61,7 @@ export function DemosSection() {
         <h2 id="demos-heading" className="mt-2 text-xl font-semibold text-white">Comptes de démonstration</h2>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <BcclCard account={demos.data.bccl} resetState={demos.data.reset} />
+        <BcclCard account={demos.data.bccl} resetState={demos.data.reset} lastResetAt={demos.data.lastResetAt} />
         <ProspectCard account={demos.data.prospect} />
       </div>
       <RetainedClubsList retained={demos.data.retained} />
@@ -90,7 +93,7 @@ function RetainedClubsList({ retained }: { retained: AdminRetainedDemoClub[] }) 
   );
 }
 
-function BcclCard({ account, resetState }: { account: AdminDemoAccount; resetState: AdminDemoResetState | null }) {
+function BcclCard({ account, resetState, lastResetAt }: { account: AdminDemoAccount; resetState: AdminDemoResetState | null; lastResetAt: string | null }) {
   const reset = useResetAdminDemoBccl();
   const [confirmingReset, setConfirmingReset] = useState(false);
   // BCK-35 — le reset est ASYNCHRONE : « en cours » tant que le serveur le signale (le worker
@@ -119,6 +122,9 @@ function BcclCard({ account, resetState }: { account: AdminDemoAccount; resetSta
           Réinitialiser
         </Button>
         {running ? <p className="mt-2 text-xs text-console-muted">Réinitialisation en cours…</p> : null}
+        <p className="mt-2 text-xs text-console-text-faint">
+          {lastResetAt ? `Dernière réinitialisation lancée le ${resetDateTime.format(new Date(lastResetAt))}` : "Jamais réinitialisée"}
+        </p>
       </div>
 
       <ConfirmDialog

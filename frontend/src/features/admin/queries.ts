@@ -140,11 +140,12 @@ export function useAdminMessengerFailed(page: number, limit: number) {
   });
 }
 
-/** Erreurs système agrégées — refetch 60s. */
-export function useAdminSystemErrors(page: number, limit: number) {
+/** Erreurs système agrégées — refetch 60s. `since` (YYYY-MM-DD) borne la fenêtre (comptage
+ *  de la pastille Incidents) ; sans lui, toute la table (sous-onglet paginé). */
+export function useAdminSystemErrors(page: number, limit: number, since?: string) {
   return useQuery({
-    queryKey: ["admin-system-errors", { page, limit }],
-    queryFn: () => getAdminSystemErrors(page, limit),
+    queryKey: ["admin-system-errors", { page, limit, since }],
+    queryFn: () => getAdminSystemErrors(page, limit, since),
     placeholderData: (previous) => previous,
     refetchInterval: 60_000,
   });

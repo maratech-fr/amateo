@@ -309,7 +309,7 @@ describe("AdminDashboardPage", () => {
   });
 
   it("renders the usage stats: plans by type, time-to-close and club sizes (SA2-stats)", async () => {
-    renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=statistiques" });
 
     expect(await screen.findByText("Plans, clôtures et tailles de clubs")).toBeInTheDocument();
     // Plans par type (libellés FR — « Saison » apparaît aussi dans la carte solveur) + « dont validés ».
@@ -559,7 +559,7 @@ describe("AdminDashboardPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
   
-    await user.click(await screen.findByRole("tab", { name: /Journaux/ }));
+    await user.click(await screen.findByRole("tab", { name: /Incidents/ }));
     for (const tab of screen.getAllByRole("tab")) {
       expect(tab.className).toMatch(/text-white|text-console-text-dim/);
       expect(tab.className).not.toContain("text-muted-foreground");
