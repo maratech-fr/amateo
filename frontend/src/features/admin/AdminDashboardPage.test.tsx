@@ -705,4 +705,116 @@ describe("AdminDashboardPage", () => {
       expect(await screen.findByRole("tab", { name: /Incidents.*à vérifier/i })).toBeInTheDocument();
     });
   });
+
+  // PR2 console superadmin — « stats par club » : la ligne club se DÉPLIE (aria-expanded)
+  // pour révéler membres / onboarding / crédits, porte un lien vers l'onglet Incidents, et
+  // affiche un signal « club qui coince » (1re raison repliée, toutes au détail). La ligne
+  // démo n'en porte jamais, et le bouton « Actions » reste présent dans tous les cas.
+  describe("ligne club dépliable (stats par club)", () => {
+    // La page monte TOUS ses panneaux d'onglets en même temps (pollés pour les pastilles) :
+    // des nombres identiques (14, 47…) vivent dans Statistiques/Santé. On borne donc chaque
+    // sonde à la TABLE des clubs, sinon un « 14 » venu d'ailleurs ferait un faux vert.
+    const clubsTable = (): HTMLElement => screen.getByText("Union Sportive de Test").closest("table") as HTMLElement;
+    // Compte les nœuds FEUILLES (sans enfant) dont le texte correspond, DANS la table clubs —
+    // évite qu'un parent qui agrège plusieurs cellules fasse matcher un nombre par accident.
+    const leafCount = (re: RegExp): number =>
+      within(clubsTable()).queryAllByText((_content, el) => (el?.children.length ?? 1) === 0 && re.test(el?.textContent ?? "")).length;
+
+    // Un club à détail riche : membres, onboarding, crédits, signalements et deux raisons
+    // de blocage. Les valeurs (14 / 47) sont choisies pour n'apparaître nulle part ailleurs
+    // dans la ligne repliée.
+    const clubWithDetail = {
+      ...clubs.items[0],
+      id: "club-detail",
+      name: "Union Sportive de Test",
+      members: { active: 14, pending: 6 },
+      onboarding: { completed: false, ffbbTeamsImportedAt: "2026-09-15T10:00:00+00:00", socleChosen: true },
+      creditsUsed: 47,
+      feedback: { untreated: 2 },
+      stuck: { reasons: ["Onboarding en cours depuis 6 jours sans génération", "Aucune activité depuis 15 jours"] },
+    };
+    const demoClub = {
+      ...clubs.items[0],
+      id: "club-demo",
+      name: "Club Démo Test",
+      isDemo: true,
+      members: { active: 3, pending: 0 },
+      onboarding: { completed: true, ffbbTeamsImportedAt: null, socleChosen: true },
+      creditsUsed: 0,
+      feedback: { untreated: 0 },
+      stuck: null,
+    };
+    const oneClub = (item: typeof clubWithDetail): AdminClubsResponse => ({
+      items: [item],
+      pagination: { page: 1, limit: 25, total: 1, pages: 1 },
+      metricsWindowDays: 30,
+    });
+
+    it("déplie la ligne (aria-expanded) et révèle membres, onboarding et crédits, le bouton Actions restant présent", async () => {
+      mockClubs.mockReset().mockResolvedValue(oneClub(clubWithDetail));
+      const user = userEvent.setup();
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+      await screen.findByText("Union Sportive de Test");
+
+      // Replié : ni crédits, ni compteur de membres dans la table.
+      expect(leafCount(/\b47\b/)).toBe(0);
+      expect(leafCount(/\b14\b/)).toBe(0);
+
+      const toggle = within(clubsTable()).getByRole("button", { expanded: false });
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+      // Déplié : les trois familles de données sont rendues.
+      expect(leafCount(/\b14\b/)).toBeGreaterThan(0); // membres actifs
+      expect(leafCount(/\b47\b/)).toBeGreaterThan(0); // crédits consommés
+      expect(leafCount(/membre/i)).toBeGreaterThan(0);
+      expect(leafCount(/crédit/i)).toBeGreaterThan(0);
+      expect(leafCount(/socle|onboarding|import/i)).toBeGreaterThan(0);
+
+      // Le bouton Actions reste accessible dans la ligne, dépliée.
+      const row = screen.getByText("Union Sportive de Test").closest("tr") as HTMLElement;
+      expect(within(row).getByRole("button", { name: "Actions" })).toBeInTheDocument();
+    });
+
+    it("montre la première raison du signal sur la ligne et toutes les raisons au détail", async () => {
+      mockClubs.mockReset().mockResolvedValue(oneClub(clubWithDetail));
+      const user = userEvent.setup();
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+      await screen.findByText("Union Sportive de Test");
+
+      // La première raison est visible sans déplier ; la seconde ne l'est pas encore.
+      expect(within(clubsTable()).getByText("Onboarding en cours depuis 6 jours sans génération")).toBeInTheDocument();
+      expect(screen.queryByText("Aucune activité depuis 15 jours")).not.toBeInTheDocument();
+
+      await user.click(within(clubsTable()).getByRole("button", { expanded: false }));
+      expect(within(clubsTable()).getByText("Aucune activité depuis 15 jours")).toBeInTheDocument();
+    });
+
+    it("offre un lien vers l'onglet Incidents depuis le détail du club", async () => {
+      mockClubs.mockReset().mockResolvedValue(oneClub(clubWithDetail));
+      const user = userEvent.setup();
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+      await screen.findByText("Union Sportive de Test");
+
+      await user.click(within(clubsTable()).getByRole("button", { expanded: false }));
+      const link = await within(clubsTable()).findByRole("link", { name: /signalement/i });
+      expect(link).toHaveAttribute("href", expect.stringContaining("tab=incidents"));
+    });
+
+    it("n'affiche aucun signal sur une ligne démo, qui garde son bouton Actions", async () => {
+      mockClubs.mockReset().mockResolvedValue({
+        items: [clubWithDetail, demoClub],
+        pagination: { page: 1, limit: 25, total: 2, pages: 1 },
+        metricsWindowDays: 30,
+      });
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+      await screen.findByText("Club Démo Test");
+
+      // Le signal n'appartient qu'au club qui coince (stuck non nul), jamais à la démo.
+      expect(within(clubsTable()).getAllByText("Onboarding en cours depuis 6 jours sans génération")).toHaveLength(1);
+
+      const demoRow = screen.getByText("Club Démo Test").closest("tr") as HTMLElement;
+      expect(within(demoRow).getByRole("button", { name: "Actions" })).toBeInTheDocument();
+    });
+  });
 });
