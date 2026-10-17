@@ -172,6 +172,14 @@ export interface AdminClub {
     latestStatus: string | null;
     latestAt: string | null;
   };
+  /** PR2 « stats par club » — compteurs par club, sans donnée personnelle. Optionnels :
+   *  un backend antérieur au lot (rollback, décalage de déploiement) ne les sert pas encore. */
+  members?: { active: number; pending: number };
+  onboarding?: { completed: boolean; ffbbTeamsImportedAt: string | null; socleChosen: boolean };
+  creditsUsed?: number;
+  feedback?: { untreated: number };
+  /** Signal « club qui coince » calculé côté backend ; null quand rien ne coince (ou démo/désabonné). */
+  stuck?: { reasons: string[] } | null;
 }
 
 export interface AdminClubsResponse {
