@@ -388,7 +388,7 @@ final class AdminDemoResetTest extends WebTestCase
 
         // Déterminisme : on efface toute ligne reset-202 résiduelle (globale, le critère n'est
         // pas scopé au superadmin) avant de poser des lignes contrôlées.
-        $this->admin()->executeStatement("DELETE FROM admin_audit_log WHERE status_code = 202 AND (details->>'demoAction') = 'reset'");
+        $this->admin()->executeStatement('DELETE FROM admin_audit_log WHERE status_code = 202 AND (details->>\'demoAction\') = \'reset\'');
 
         // Aucun reset encore enregistré → lastResetAt null (clé présente, jamais absente).
         $this->client->request('GET', '/api/admin/demos');
@@ -408,22 +408,6 @@ final class AdminDemoResetTest extends WebTestCase
         $lastResetAt = $this->responseBody()['lastResetAt'];
         self::assertIsString($lastResetAt, 'lastResetAt porte l\'ISO 8601 du dernier reset réussi');
         self::assertEqualsWithDelta(time() - 3 * 3600, strtotime($lastResetAt), 120, 'lastResetAt pointe le reset-202 (3 h), pas un 202 non-reset ni un reset non-202');
-    }
-
-    /**
-     * Pose une ligne `admin_audit_log` contrôlée (acteur NULL → nettoyée par le tearDown),
-     * à `NOW() - INTERVAL`, avec le `details` JSON donné.
-     *
-     * @param array<string, string> $details
-     */
-    private function insertAuditRow(int $statusCode, array $details, string $ago): void
-    {
-        $this->admin()->executeStatement(
-            "INSERT INTO admin_audit_log (id, occurred_at, super_admin_id, action, route, status_code, details)"
-            . " VALUES (:id, NOW() - INTERVAL '{$ago}', NULL, 'admin.http_access', '/api/admin/demos/bccl/reset', :status, :details)",
-            ['id' => Uuid::v4()->toRfc4122(), 'status' => $statusCode, 'details' => json_encode($details, \JSON_THROW_ON_ERROR)],
-            ['status' => ParameterType::INTEGER],
-        );
     }
 
     protected function setUp(): void
@@ -453,6 +437,22 @@ final class AdminDemoResetTest extends WebTestCase
             $this->admin()->executeStatement('DELETE FROM super_admin WHERE id = :id', ['id' => $this->adminId]);
         }
         parent::tearDown();
+    }
+
+    /**
+     * Pose une ligne `admin_audit_log` contrôlée (acteur NULL → nettoyée par le tearDown),
+     * à `NOW() - INTERVAL`, avec le `details` JSON donné.
+     *
+     * @param array<string, string> $details
+     */
+    private function insertAuditRow(int $statusCode, array $details, string $ago): void
+    {
+        $this->admin()->executeStatement(
+            'INSERT INTO admin_audit_log (id, occurred_at, super_admin_id, action, route, status_code, details)'
+            . " VALUES (:id, NOW() - INTERVAL '{$ago}', NULL, 'admin.http_access', '/api/admin/demos/bccl/reset', :status, :details)",
+            ['id' => Uuid::v4()->toRfc4122(), 'status' => $statusCode, 'details' => json_encode($details, \JSON_THROW_ON_ERROR)],
+            ['status' => ParameterType::INTEGER],
+        );
     }
 
     private function registerVerified(string $ara): string

@@ -80,6 +80,9 @@ final readonly class AdminDemoController
             // re-seed tourne (console bloque le bouton), puis `succeeded`/`failed` ; null si
             // aucun reset récent. Lu sur le verrou Redis + son statut, jamais sur une table.
             'reset' => $this->resetTracker->snapshot(),
+            // PR1 console — date de la DERNIÈRE réinitialisation BCCL lancée (console « Démos »),
+            // lue du journal d'audit ; null si aucune n'a jamais eu lieu. Zéro table dédiée.
+            'lastResetAt' => $this->lastDemoResetAt(),
         ]);
     }
 
@@ -263,6 +266,23 @@ final readonly class AdminDemoController
         $this->writeClock($club['id'], $parsed['date'], $parsed['clear']);
 
         return new JsonResponse(['simulatedToday' => $parsed['date']]);
+    }
+
+    /**
+     * L'`occurred_at` (ISO 8601) de la DERNIÈRE ligne `admin_audit_log` à la fois
+     * status_code=202 ET details.demoAction="reset" — la trace que l'AdminAuditSubscriber
+     * pose sur le 202 du reset BCCL. Null quand aucun reset n'a jamais été lancé. Lecture
+     * par la connexion `admin` (cross-tenant, aucun club_id posé — contrat SA0).
+     */
+    private function lastDemoResetAt(): ?string
+    {
+        $raw = $this->connection()->fetchOne(
+            'SELECT occurred_at FROM admin_audit_log'
+            . ' WHERE status_code = 202 AND (details->>\'demoAction\') = \'reset\''
+            . ' ORDER BY occurred_at DESC LIMIT 1',
+        );
+
+        return \is_string($raw) ? new DateTimeImmutable($raw)->format(\DATE_ATOM) : null;
     }
 
     /**
