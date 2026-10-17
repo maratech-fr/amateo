@@ -92,8 +92,8 @@ qui n'est pas la propre démo isolée de l'animateur (club réel, démo d'un aut
 partagée) refuse en 409 sans rien détruire ; **en production la route existe** mais n'agit que si
 la fenêtre d'activation du compte animateur (`app_user.demo_active_until`) est ouverte — fermée,
 elle rend le même 422 `not_demo_account` qu'une adresse quelconque, sans oracle. **La fenêtre se
-pose depuis la console superadmin** (`/admin` → onglet « Démos » → « Activer 4 h » sur la carte
-« Démo prospect » ; même geste sur « Démo BCCL » pour se connecter au compte gestionnaire
+pose depuis la console superadmin** (`/admin` → onglet « Clubs » → « Activer 4 h » sur la carte
+« Démo prospect », en bas de l'onglet ; même geste sur « Démo BCCL » pour se connecter au compte gestionnaire
 `demo-bccl@amateo.fr`) — à faire AVANT le rendez-vous, un club seedé n'ouvre aucune fenêtre par
 lui-même. Détail complet : [`superadmin-auth.md`](../../specs/courantes/superadmin-auth.md)
 §« Démos — console de pilotage », [`backend-demo.md`](../../backend/docs/backend-demo.md)

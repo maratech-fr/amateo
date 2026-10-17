@@ -556,8 +556,8 @@ Rien n'a été créé tant que ce refus s'affiche.
 ⬜ **Le club de démonstration** (`app:demo:seed`) — le compte naît **INACTIF** par défaut
 (`app_user.demo_active_until` NULL) : ce seed ne suffit pas pour jouer la démo en rendez-vous,
 **activer sa fenêtre depuis la console superadmin AVANT chaque rendez-vous** (`/admin` → onglet
-« Démos » → « Activer 4 h » — `specs/courantes/superadmin-auth.md` §« Démos — console de
-pilotage »). `--password` (min 12) est requis à la première création ; pour éviter de le laisser
+« Clubs », comptes de démonstration en bas → « Activer 4 h » — `specs/courantes/superadmin-auth.md`
+§« Démos — console de pilotage »). `--password` (min 12) est requis à la première création ; pour éviter de le laisser
 en clair dans l'historique, préfixer la ligne d'un espace (avec `HISTCONTROL=ignorespace`) ou
 passer par une variable non historisée :
 
@@ -664,8 +664,9 @@ puis, dans le navigateur local, `http://localhost:8082` → login par défaut `a
 mot de passe dans la fiche d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL
 d'admin en git). Fermer le tunnel. **Ce même tunnel SSH est le geste de consultation courante** :
 pour lire les chiffres plus tard, rouvrir `ssh -L 8082:127.0.0.1:8082 <hôte>` et aller sur
-`http://localhost:8082`. (Item roadmap P4-307 : un futur onglet « Statistiques » dans la console
-superadmin lira ces chiffres via l'API Umami, jeton côté serveur — alors plus besoin du tunnel.)
+`http://localhost:8082`. (Item roadmap P4-307 : l'onglet « Statistiques » existant de la console
+superadmin lira un jour ces chiffres via l'API Umami, jeton côté serveur — alors plus besoin du
+tunnel.)
 
 ⬜ **F6 — Caddy (exposition de la COLLECTE seule)** : SEULEMENT une fois F5 fait. Ajouter le 4ᵉ
 bloc `stats.amateo.app` du modèle ([`Caddyfile.example`](Caddyfile.example)) à

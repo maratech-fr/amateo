@@ -5,11 +5,11 @@
 > les relances d'imports SA3-D sont livrés — **plus SA2-stats (usage produit, §SA2 API),
 > le tableau de capacité solveur (§Capacité), SA4 v1 (catalogue d'actions support,
 > §Actions de support), l'alerting santé + data-freshness (§Fraîcheur des données et
-> alerting), et la console en
-> onglets avec monitoring conteneurs/dépendances externes + les journaux read-only
-> audit / échecs async / erreurs système (§Journaux read-only) + heartbeats
-> cron & pdf-worker, et le pilotage des deux comptes de démonstration (§Démos — console de
-> pilotage)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
+> alerting), la console réorganisée en **5 onglets** avec pastilles d'alerte « à vérifier »
+> sur Santé/Incidents (§Organisation de la console), monitoring conteneurs/dépendances
+> externes + les journaux read-only audit / échecs async / erreurs système
+> (§Journaux read-only) + heartbeats cron & pdf-worker, et le pilotage des deux comptes de
+> démonstration (§Démos — console de pilotage)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
 > (socle `docker.sock` non transposable en prod — voir console-superadmin.md). Les actions
 > cross-tenant restent dans [`../evolution/console-superadmin.md`](../evolution/console-superadmin.md).
 
@@ -355,6 +355,40 @@ muet) laisse `null`, rendu « — » côté écran. Consommé par `CapacitySecti
 (`frontend/src/features/admin/sections/`,
 `useAdminCapacity()`, refetch 5 min, lecture seule).
 
+## Organisation de la console — 5 onglets et pastilles d'alerte
+
+`ADMIN_TABS` (`frontend/src/features/admin/tabs/tabsConfig.ts`) fixe les **5 onglets** de
+`/admin`, dans cet ordre : **Clubs** (défaut — comptes, demandes, adhésions, actions ; les
+comptes de démonstration sont rendus en bas, §Démos) · **Statistiques** (vue d'ensemble, usage,
+capacité) · **Santé** (services, conteneurs, dépendances externes, jobs, fraîcheur) ·
+**Incidents** (sous-onglets : signalements par défaut, erreurs système, échecs async, audit) ·
+**Exploitation** (notes de nouveautés). Les anciens identifiants d'onglet (`vue-densemble`,
+`infrastructure`, `jobs`, `referentiels`, `demos`, `signalements`, `journaux`) sont reportés vers
+leur nouvel onglet par `LEGACY_TAB_MAP` — un lien ou un `localStorage` mémorisé avant la
+réorganisation continue d'ouvrir le bon onglet.
+
+Santé et Incidents portent une **pastille d'alerte** (« à vérifier » — un point décoratif +
+texte `sr-only` sur l'onglet, primitive `Tabs`/`TabItem.badge`,
+`frontend/src/shared/components/ui/tabs.tsx`) calculée **au niveau de la page**
+(`AdminDashboardPage.tsx`), jamais par l'onglet lui-même, pour rester visible même onglet fermé.
+Principe fondateur : **la console se tait quand tout va bien** — pas de pastille sur un simple
+`isFetching`, ni sur une dépendance externe dégradée, ni sur un conteneur `unknown`, ni sur
+l'audit (diagnostic, jamais un incident).
+
+- **Santé** s'allume sur : statut global `degraded`, un conteneur à l'arrêt (jamais
+  `unknown`), un job dont le dernier run est `failed`/`interrupted`, un référentiel périmé
+  (`freshness.items[].stale`), ou l'échec d'une de ces trois lectures.
+- **Incidents** s'allume sur : un signalement non traité (`feedback.qos.oldestUntreatedAgeHours`
+  non nul, lecture déjà posée pour le sous-onglet Signalements), un message Messenger en échec
+  (`health.messenger.failed > 0`), une erreur système des **7 derniers jours**
+  (`GET /api/admin/system-errors?since=…&limit=1`, fenêtre dédiée au comptage — distincte du
+  sous-onglet paginé qui lit toute la table), ou l'échec d'une de ces lectures.
+
+Aucune sonde backend n'a été ajoutée pour ce calcul : les deux onglets consomment des lectures
+déjà exposées (`/api/admin/health`, `/jobs`, `/freshness`, `/feedback`, `/system-errors`) ; le
+seul appel réseau neuf au niveau page est le comptage `system-errors` à 7 jours (`limit=1`), qui
+s'ajoute aux lectures déjà hissées en page (voir P4-28, sondes séquentielles).
+
 ## Journaux read-only
 
 Trois lectures paginées complètent la console, toutes protégées et auditées comme le
@@ -441,10 +475,12 @@ e-mails). L'horloge d'un compte démo se pose désormais aussi depuis l'app elle
 gestionnaire : `POST /api/club/clock` (widget d'en-tête, rôle MANAGER, 403 si le club n'est pas
 `is_demo`), détail `backend-demo.md` §Module démo.
 
-Front : 8ᵉ onglet « Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts`, icône
-`Presentation`) — deux cartes (`DemosSection.tsx`) : « Démo BCCL » (fenêtre + réinitialisation
-sous `ConfirmDialog` nominatif) et « Démo prospect » (fenêtre), chacune portant la carte
-« Date simulée » (`ClockCard`, maison factorisée : champ date, Appliquer, Revenir à aujourd'hui).
+Front : `DemosSection.tsx` est rendue en bas de l'onglet **Clubs** (réorganisation en 5 onglets,
+§Organisation de la console) — deux cartes : « Démo BCCL » (fenêtre + réinitialisation sous
+`ConfirmDialog` nominatif, et la date de sa **dernière réinitialisation lancée** —
+`lastResetAt`, lue du journal d'audit, `null` si aucune n'a jamais eu lieu) et « Démo prospect »
+(fenêtre), chacune portant la carte « Date simulée » (`ClockCard`, maison factorisée : champ
+date, Appliquer, Revenir à aujourd'hui).
 La liste des comptes clubs ne porte plus de bouton d'horloge (retiré avec la route générique). Les
 heures sont rendues à l'**heure de Paris** (`Intl.DateTimeFormat` dédié) — l'API répond en ISO UTC.
 
