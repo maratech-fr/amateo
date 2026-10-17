@@ -1478,6 +1478,56 @@
                                                                 "nullable": true
                                                             }
                                                         }
+                                                    },
+                                                    "members": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "active": {
+                                                                "type": "integer"
+                                                            },
+                                                            "pending": {
+                                                                "type": "integer"
+                                                            }
+                                                        }
+                                                    },
+                                                    "onboarding": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "completed": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "ffbbTeamsImportedAt": {
+                                                                "type": "string",
+                                                                "format": "date-time",
+                                                                "nullable": true
+                                                            },
+                                                            "socleChosen": {
+                                                                "type": "boolean"
+                                                            }
+                                                        }
+                                                    },
+                                                    "creditsUsed": {
+                                                        "type": "integer"
+                                                    },
+                                                    "feedback": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "untreated": {
+                                                                "type": "integer"
+                                                            }
+                                                        }
+                                                    },
+                                                    "stuck": {
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "properties": {
+                                                            "reasons": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -3533,11 +3583,11 @@
                                         },
                                         "topicTemplate": {
                                             "type": "string",
-                                            "description": "URI template club:{clubId}:schedule:{id} \u2014 subscribe to it as-is"
+                                            "description": "URLPattern selector /clubs/{clubId}/schedules/:id \u2014 subscribe to it as-is (match_urlpattern)"
                                         },
                                         "travelTopic": {
                                             "type": "string",
-                                            "description": "Fixed topic club:{clubId}:travel for the async travel-computation progress \u2014 subscribe to it as-is"
+                                            "description": "Fixed topic /clubs/{clubId}/travel for the async travel-computation progress \u2014 subscribe to it as-is (match)"
                                         }
                                     }
                                 }
@@ -3554,7 +3604,7 @@
                         "description": "Mercure secret not configured"
                     }
                 },
-                "summary": "FRT-04: mint the hub subscriber JWT (scoped to the member own club generation topics), delivered as the mercureAuthorization cookie"
+                "summary": "FRT-04: mint the hub subscriber JWT (scoped to the member own club generation topics), delivered as an httpOnly cookie on /.well-known/mercure"
             }
         },
         "/api/password/forgot": {

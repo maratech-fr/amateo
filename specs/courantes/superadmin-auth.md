@@ -9,7 +9,9 @@
 > sur Santé/Incidents (§Organisation de la console), monitoring conteneurs/dépendances
 > externes + les journaux read-only audit / échecs async / erreurs système
 > (§Journaux read-only) + heartbeats cron & pdf-worker, et le pilotage des deux comptes de
-> démonstration (§Démos — console de pilotage)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
+> démonstration (§Démos — console de pilotage), et les stats par club avec le signal
+> « club qui coince » sur la ligne dépliable de l'onglet Clubs (§Supervision read-only
+> SA2 — API parc et solveur, §Écran de supervision React SA2)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
 > (socle `docker.sock` non transposable en prod — voir console-superadmin.md). Les actions
 > cross-tenant restent dans [`../evolution/console-superadmin.md`](../evolution/console-superadmin.md).
 
@@ -125,6 +127,16 @@ réutilisent ni le firewall ni le JWT club :
   le badge console affiche l'effective, avec un sous-texte quand la stockée diverge
   (« Bêta posée — saison non réglée »). Un club démo n'a AUCUN cas spécial ici : badge =
   vérité comptable, le chip « Démo » porte déjà « droits pleins » (décision fondateur).
+  **Stats par club (PR2)** : chaque élément porte aussi `members` (`{active, pending}` — `pending`
+  = `is_active=false` et `deactivated_at` NULL), `onboarding` (`{completed, ffbbTeamsImportedAt,
+  socleChosen}` — `socleChosen` lit le plan SEASON de la saison courante), `creditsUsed` et
+  `feedback.untreated`. Zéro donnée personnelle, uniquement des compteurs. Un champ `stuck` —
+  `null` ou `{reasons: string[]}` — porte le signal « club qui coince », calculé en PHP par
+  `AdminMonitoringService::stuck()` via l'horloge injectée (jamais `NOW()` SQL) sur quatre
+  raisons indépendantes, cumulables : onboarding ouvert plus de 5 jours sans aucune génération ;
+  dernière génération `FAILED`/`INFEASIBLE` (lue sans la fenêtre de 30 jours) ; aucune activité
+  depuis plus de 14 jours ; des générations ont eu lieu mais le socle de saison n'a jamais été
+  validé (`first_chosen_at` NULL). Un club de démonstration ou désabonné n'est jamais signalé.
 
 La « saison courante » est la saison couvrant la date du jour ; en son absence, l'API
 retourne la saison la plus récente. Toutes les lectures sont auditées par la garantie
@@ -153,7 +165,11 @@ La route protégée `/admin` consomme les trois lectures SA2 sans réutiliser le
 store club. Elle présente les indicateurs du parc et du solveur, la série quotidienne,
 les sondes d'infrastructure, l'état Messenger/worker et la liste paginée des clubs.
 La recherche par nom, slug ou code FFBB est envoyée à l'API ; aucun filtrage cross-tenant
-n'est réalisé côté navigateur.
+n'est réalisé côté navigateur. Chaque ligne de club est **dépliable** (`aria-expanded`, PR2) :
+repliée, elle montre la première raison du signal « club qui coince » le cas échéant ; dépliée,
+elle détaille membres, onboarding, crédits consommés et signalements non traités (lien vers
+l'onglet Incidents), ainsi que **toutes** les raisons du signal. Aucune pastille d'onglet n'est
+posée pour ce signal — il reste visible seulement en dépliant la ligne.
 
 La santé est rafraîchie toutes les 30 secondes, l'overview toutes les 60 secondes, et un
 bouton permet de rafraîchir les trois panneaux. Chaque flux conserve ses propres états

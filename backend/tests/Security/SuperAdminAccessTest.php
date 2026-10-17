@@ -94,12 +94,23 @@ final class SuperAdminAccessTest extends WebTestCase
         $this->client->request('POST', '/api/admin/demos/bccl/activate', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(401);
 
+        // PR2 — la liste des comptes clubs (stats par club : membres, onboarding, crédits,
+        // signalements, signal « club qui coince ») est une surface cross-tenant la plus
+        // sensible : un JWT club ne franchit jamais le firewall admin pour la lire. L'angle
+        // positif (un SA authentifié la lit, 200) est éprouvé par
+        // testAuthenticatedAdminCanReadCrossTenantMonitoringAggregates.
+        $this->client->request('GET', '/api/admin/clubs', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
         // Anonyme (aucune identité) : même refus.
         $this->startFreshBrowserSession($this->client);
         $this->client->request('GET', '/api/admin/release-notes');
         self::assertResponseStatusCodeSame(401);
 
         $this->client->request('GET', '/api/admin/feedback');
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('GET', '/api/admin/clubs');
         self::assertResponseStatusCodeSame(401);
     }
 

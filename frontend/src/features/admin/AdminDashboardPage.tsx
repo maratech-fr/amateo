@@ -1,8 +1,8 @@
 import {
   Activity,
   AlertTriangle,
-  Building2,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cpu,
@@ -19,7 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
@@ -666,17 +666,67 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
 }
 
 function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  // Signal « club qui coince » calculé côté backend : la 1re raison est visible sur la ligne
+  // repliée, toutes au détail (null = rien ne coince, ou club démo/désabonné).
+  const firstReason = club.stuck?.reasons[0];
+
   return (
-    <tr className="align-top text-console-text hover:bg-white/[0.025]">
-      <td className="px-5 py-5"><div className="flex items-start gap-3"><div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted"><Building2 className="size-4" aria-hidden="true" /></div><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">Démo</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">Désabonné</span> : null}</div></div></td>
-      <td className="px-4 py-5"><p>{club.lastActivityAt ? formatDate(club.lastActivityAt) : "Jamais"}</p><p className="mt-1 text-xs text-console-text-faint">Créé le {formatDate(club.createdAt)}</p></td>
-      <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-console-warning">{club.plan.name} posée — saison non réglée</p> : null}<p className="mt-1 text-xs text-console-text-faint">{club.generationCountSeason} génération{club.generationCountSeason > 1 ? "s" : ""}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
-      <td className="px-4 py-5"><p>{club.currentSeason?.name ?? "Aucune saison"}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{club.volumes.teams} équipes · {club.volumes.coaches} coachs</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{club.volumes.venues} salles</span><span>{club.volumes.constraints} contraintes</span></p></td>
-      <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span> générations · {formatRate(club.solver.infeasibleRate)} inf.</p><p className="mt-1 text-xs text-console-text-faint">P50 {formatDuration(club.solver.p50WallTimeMs)} · P95 {formatDuration(club.solver.p95WallTimeMs)}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">Dernière : {club.solver.latestStatus}</p> : null}</td>
-      <td className="px-4 py-5">
-        <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" onClick={onActions}>
-          Actions
-        </Button>
+    <>
+      <tr className="align-top text-console-text hover:bg-white/[0.025]">
+        <td className="px-5 py-5"><div className="flex items-start gap-3"><button type="button" aria-expanded={expanded} aria-label={`${expanded ? "Masquer" : "Afficher"} le détail de ${club.name}`} onClick={() => setExpanded((value) => !value)} className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted hover:bg-white/10">{expanded ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronRight className="size-4" aria-hidden="true" />}</button><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">Démo</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">Désabonné</span> : null}{firstReason ? <p className="mt-2 flex items-center gap-1 text-xs font-medium text-console-warning"><AlertTriangle className="size-3 shrink-0" aria-hidden="true" />{firstReason}</p> : null}</div></div></td>
+        <td className="px-4 py-5"><p>{club.lastActivityAt ? formatDate(club.lastActivityAt) : "Jamais"}</p><p className="mt-1 text-xs text-console-text-faint">Créé le {formatDate(club.createdAt)}</p></td>
+        <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-console-warning">{club.plan.name} posée — saison non réglée</p> : null}<p className="mt-1 text-xs text-console-text-faint">{club.generationCountSeason} génération{club.generationCountSeason > 1 ? "s" : ""}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
+        <td className="px-4 py-5"><p>{club.currentSeason?.name ?? "Aucune saison"}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{club.volumes.teams} équipes · {club.volumes.coaches} coachs</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{club.volumes.venues} salles</span><span>{club.volumes.constraints} contraintes</span></p></td>
+        <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span> générations · {formatRate(club.solver.infeasibleRate)} inf.</p><p className="mt-1 text-xs text-console-text-faint">P50 {formatDuration(club.solver.p50WallTimeMs)} · P95 {formatDuration(club.solver.p95WallTimeMs)}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">Dernière : {club.solver.latestStatus}</p> : null}</td>
+        <td className="px-4 py-5">
+          <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" onClick={onActions}>
+            Actions
+          </Button>
+        </td>
+      </tr>
+      {expanded ? <ClubDetailRow club={club} /> : null}
+    </>
+  );
+}
+
+/** Détail déplié d'une ligne club (stats par club) : membres, onboarding, crédits,
+ *  signalements (lien vers l'onglet Incidents) et toutes les raisons du signal « coince ». */
+function ClubDetailRow({ club }: { club: AdminClub }) {
+  const untreated = club.feedback?.untreated ?? 0;
+
+  return (
+    <tr className="bg-white/[0.02] text-console-text">
+      <td colSpan={6} className="px-5 pb-6 pt-1">
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Membres</p>
+            <p className="mt-1 text-sm">{club.members?.active ?? 0} membres actifs</p>
+            <p className="mt-1 text-xs text-console-text-faint">{club.members?.pending ?? 0} en attente</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Onboarding</p>
+            <p className="mt-1 text-sm">{club.onboarding?.completed ? "Onboarding terminé" : "Onboarding non terminé"}</p>
+            <p className="mt-1 text-xs text-console-text-faint">Socle {club.onboarding?.socleChosen ? "choisi" : "non choisi"}</p>
+            <p className="mt-1 text-xs text-console-text-faint">{club.onboarding?.ffbbTeamsImportedAt ? `Équipes FFBB importées le ${formatDate(club.onboarding.ffbbTeamsImportedAt)}` : "Équipes FFBB non importées"}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Crédits</p>
+            <p className="mt-1 text-sm">Crédits de sortie consommés : {club.creditsUsed ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Signalements</p>
+            <Link to="/admin?tab=incidents" className="mt-1 inline-block text-sm text-console-accent underline-offset-2 hover:underline">{untreated} signalement{untreated > 1 ? "s" : ""} non traité{untreated > 1 ? "s" : ""}</Link>
+          </div>
+        </div>
+        {club.stuck ? (
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-warning">Ce club coince</p>
+            <ul className="mt-2 space-y-1 text-sm text-console-warning">
+              {club.stuck.reasons.map((reason) => <li key={reason} className="flex items-center gap-1"><AlertTriangle className="size-3 shrink-0" aria-hidden="true" />{reason}</li>)}
+            </ul>
+          </div>
+        ) : null}
       </td>
     </tr>
   );
