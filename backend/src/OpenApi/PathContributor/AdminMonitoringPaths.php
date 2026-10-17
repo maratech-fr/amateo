@@ -226,6 +226,22 @@ final readonly class AdminMonitoringPaths implements CustomPathContributor
                                     'latestStatus' => ['type' => 'string', 'nullable' => true],
                                     'latestAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
                                 ]],
+                                'members' => ['type' => 'object', 'properties' => [
+                                    'active' => ['type' => 'integer'],
+                                    'pending' => ['type' => 'integer'],
+                                ]],
+                                'onboarding' => ['type' => 'object', 'properties' => [
+                                    'completed' => ['type' => 'boolean'],
+                                    'ffbbTeamsImportedAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
+                                    'socleChosen' => ['type' => 'boolean'],
+                                ]],
+                                'creditsUsed' => ['type' => 'integer'],
+                                'feedback' => ['type' => 'object', 'properties' => [
+                                    'untreated' => ['type' => 'integer'],
+                                ]],
+                                'stuck' => ['type' => 'object', 'nullable' => true, 'properties' => [
+                                    'reasons' => ['type' => 'array', 'items' => ['type' => 'string']],
+                                ]],
                             ]]],
                             'pagination' => ['type' => 'object', 'properties' => [
                                 'page' => ['type' => 'integer'],

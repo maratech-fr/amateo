@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
+use App\Entity\ClubUser;
 use App\Service\AdminMonitoringService;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
@@ -74,70 +75,11 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         self::assertSame('decouverte', $noplan['effectivePlan']['code']);
     }
 
-    protected function setUp(): void
-    {
-        self::bootKernel();
-        $registry = self::getContainer()->get(ManagerRegistry::class);
-        \assert($registry instanceof ManagerRegistry);
-        $this->registry = $registry;
-        $connection = $registry->getConnection('admin');
-        \assert($connection instanceof Connection);
-        $this->admin = $connection;
-        $this->admin->beginTransaction();
-        $this->inTransaction = true;
-        $this->tag = 'A1PLAN' . strtoupper(bin2hex(random_bytes(4)));
-    }
-
-    protected function tearDown(): void
-    {
-        if ($this->inTransaction) {
-            $this->admin->rollBack();
-            $this->inTransaction = false;
-        }
-        parent::tearDown();
-    }
-
-    private function planId(string $code): string
-    {
-        $id = $this->admin->fetchOne('SELECT id FROM subscription_plan WHERE code = :code', ['code' => $code]);
-        \assert(\is_string($id), \sprintf('le plan « %s » doit exister dans les fixtures de test', $code));
-
-        return $id;
-    }
-
-    private function seedClub(string $suffix, ?string $planId, ?int $paidSeasonYear, int $year): void
-    {
-        $clubId = $this->admin->fetchOne('SELECT gen_random_uuid()');
-        \assert(\is_string($clubId));
-        $name = $this->tag . ' ' . $suffix;
-
-        $this->admin->executeStatement(<<<'SQL'
-            INSERT INTO club (id, created_at, updated_at, name, slug, plan_id, paid_season_year, generation_count_season, timezone, locale, onboarding_completed)
-            VALUES (:id, NOW(), NOW(), :name, :slug, :plan_id, :paid, 0, 'Europe/Paris', 'fr', TRUE)
-            SQL, [
-            'id' => $clubId,
-            'name' => $name,
-            'slug' => strtolower($this->tag . '-' . $suffix),
-            'plan_id' => $planId,
-            'paid' => $paidSeasonYear,
-        ]);
-
-        $this->admin->executeStatement(<<<'SQL'
-            INSERT INTO season (id, created_at, updated_at, club_id, name, start_date, end_date, status, transition_data)
-            VALUES (gen_random_uuid(), NOW(), NOW(), :club_id, :name, :start, :end, 'ACTIVE', '[]')
-            SQL, [
-            'club_id' => $clubId,
-            'name' => (string) $year,
-            'start' => $year . '-08-01',
-            'end' => ($year + 1) . '-07-15',
-        ]);
-    }
-
     /**
      * PR2 « stats par club » — chaque item porte des COMPTEURS par club (membres actifs /
      * en attente, crédits de sortie consommés, signalements non traités) et l'état
      * d'onboarding, SANS la moindre donnée personnelle. Le « en attente » n'est que
-     * `is_active = false AND deactivated_at IS NULL` ({@see \App\Entity\ClubUser} :48-56) :
+     * `is_active = false AND deactivated_at IS NULL` ({@see ClubUser} :48-56) :
      * une adhésion DÉSACTIVÉE (deactivated_at posé) n'est ni active ni en attente.
      */
     public function testClubItemsExposeMemberOnboardingCreditAndFeedbackCountsWithoutPii(): void
@@ -299,6 +241,65 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         $unsub = $byName[$this->tag . ' unsub'];
         self::assertArrayHasKey('stuck', $unsub);
         self::assertNull($unsub['stuck'], 'un club désabonné n\'est jamais signalé');
+    }
+
+    protected function setUp(): void
+    {
+        self::bootKernel();
+        $registry = self::getContainer()->get(ManagerRegistry::class);
+        \assert($registry instanceof ManagerRegistry);
+        $this->registry = $registry;
+        $connection = $registry->getConnection('admin');
+        \assert($connection instanceof Connection);
+        $this->admin = $connection;
+        $this->admin->beginTransaction();
+        $this->inTransaction = true;
+        $this->tag = 'A1PLAN' . strtoupper(bin2hex(random_bytes(4)));
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->inTransaction) {
+            $this->admin->rollBack();
+            $this->inTransaction = false;
+        }
+        parent::tearDown();
+    }
+
+    private function planId(string $code): string
+    {
+        $id = $this->admin->fetchOne('SELECT id FROM subscription_plan WHERE code = :code', ['code' => $code]);
+        \assert(\is_string($id), \sprintf('le plan « %s » doit exister dans les fixtures de test', $code));
+
+        return $id;
+    }
+
+    private function seedClub(string $suffix, ?string $planId, ?int $paidSeasonYear, int $year): void
+    {
+        $clubId = $this->admin->fetchOne('SELECT gen_random_uuid()');
+        \assert(\is_string($clubId));
+        $name = $this->tag . ' ' . $suffix;
+
+        $this->admin->executeStatement(<<<'SQL'
+            INSERT INTO club (id, created_at, updated_at, name, slug, plan_id, paid_season_year, generation_count_season, timezone, locale, onboarding_completed)
+            VALUES (:id, NOW(), NOW(), :name, :slug, :plan_id, :paid, 0, 'Europe/Paris', 'fr', TRUE)
+            SQL, [
+            'id' => $clubId,
+            'name' => $name,
+            'slug' => strtolower($this->tag . '-' . $suffix),
+            'plan_id' => $planId,
+            'paid' => $paidSeasonYear,
+        ]);
+
+        $this->admin->executeStatement(<<<'SQL'
+            INSERT INTO season (id, created_at, updated_at, club_id, name, start_date, end_date, status, transition_data)
+            VALUES (gen_random_uuid(), NOW(), NOW(), :club_id, :name, :start, :end, 'ACTIVE', '[]')
+            SQL, [
+            'club_id' => $clubId,
+            'name' => (string) $year,
+            'start' => $year . '-08-01',
+            'end' => ($year + 1) . '-07-15',
+        ]);
     }
 
     private function service(DateTimeImmutable $now): AdminMonitoringService

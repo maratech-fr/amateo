@@ -214,7 +214,7 @@ final readonly class AdminMonitoringService
     }
 
     /**
-     * @return array{items: list<array<string, bool|float|int|string|array<string, int|string|null>|null>>, pagination: array{page: int, limit: int, total: int, pages: int}, metricsWindowDays: int}
+     * @return array{items: list<array<string, mixed>>, pagination: array{page: int, limit: int, total: int, pages: int}, metricsWindowDays: int}
      */
     public function clubs(int $page, int $limit, ?string $query): array
     {
@@ -238,13 +238,16 @@ final readonly class AdminMonitoringService
                 c.name,
                 c.slug,
                 c.ffbb_club_code,
-                c.is_demo,
+                c.is_demo::int AS is_demo,
                 c.paid_season_year,
                 c.billing_cycle,
                 c.generation_count_season,
                 c.created_at,
                 c.last_activity_at,
                 c.unsubscribed_at,
+                c.onboarding_completed::int AS onboarding_completed,
+                c.ffbb_teams_imported_at,
+                c.output_credits_used,
                 stored_plan.code AS plan_code,
                 stored_plan.name AS plan_name,
                 current_season.id AS season_id,
@@ -260,7 +263,12 @@ final readonly class AdminMonitoringService
                 metric_agg.p50,
                 metric_agg.p95,
                 latest_metric.status AS latest_status,
-                latest_metric.created_at AS latest_created_at
+                latest_metric.created_at AS latest_created_at,
+                COALESCE(members.members_active, 0) AS members_active,
+                COALESCE(members.members_pending, 0) AS members_pending,
+                COALESCE(feedback_agg.untreated, 0) AS feedback_untreated,
+                (season_plan.chosen_schedule_id IS NOT NULL)::int AS socle_chosen,
+                season_plan.first_chosen_at AS season_first_chosen_at
             FROM selected_clubs c
             LEFT JOIN subscription_plan stored_plan ON stored_plan.id = c.plan_id
             LEFT JOIN LATERAL (
@@ -295,6 +303,27 @@ final readonly class AdminMonitoringService
                 ORDER BY sm.created_at DESC
                 LIMIT 1
             ) latest_metric ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*) FILTER (WHERE cu.is_active = TRUE AND cu.deactivated_at IS NULL) AS members_active,
+                    COUNT(*) FILTER (WHERE cu.is_active = FALSE AND cu.deactivated_at IS NULL) AS members_pending
+                FROM club_user cu
+                WHERE cu.club_id = c.id
+            ) members ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) FILTER (WHERE f.status = 'untreated') AS untreated
+                FROM feedback f
+                WHERE f.club_id = c.id
+            ) feedback_agg ON TRUE
+            LEFT JOIN LATERAL (
+                -- Plan SEASON de la saison courante : son chosen_schedule_id dit « socle choisi »,
+                -- son first_chosen_at (NULL = jamais validé) nourrit le signal « club qui coince ».
+                SELECT sp.chosen_schedule_id, sp.first_chosen_at
+                FROM schedule_plan sp
+                WHERE sp.club_id = c.id AND sp.season_id = current_season.id AND sp.type = 'SEASON'
+                ORDER BY sp.created_at DESC
+                LIMIT 1
+            ) season_plan ON current_season.id IS NOT NULL
             ORDER BY COALESCE(c.last_activity_at, c.created_at) DESC, c.id
             SQL, $parameters);
 
@@ -366,7 +395,79 @@ final readonly class AdminMonitoringService
                 'latestStatus' => $this->nullableString($row, 'latest_status'),
                 'latestAt' => $this->nullableString($row, 'latest_created_at'),
             ],
+            // PR2 « stats par club » — compteurs par club, SANS la moindre donnée personnelle.
+            'members' => [
+                'active' => $this->integer($row, 'members_active'),
+                'pending' => $this->integer($row, 'members_pending'),
+            ],
+            'onboarding' => [
+                'completed' => 1 === $this->integer($row, 'onboarding_completed'),
+                'ffbbTeamsImportedAt' => $this->nullableString($row, 'ffbb_teams_imported_at'),
+                'socleChosen' => 1 === $this->integer($row, 'socle_chosen'),
+            ],
+            'creditsUsed' => $this->integer($row, 'output_credits_used'),
+            'feedback' => [
+                'untreated' => $this->integer($row, 'feedback_untreated'),
+            ],
+            'stuck' => $this->stuck($row),
         ];
+    }
+
+    /**
+     * Signal « club qui coince » — raisons calculées EN PHP via l'horloge injectée (jamais en
+     * SQL `NOW()`) : phrases FR lisibles, aucun identifiant interne. Un club de démonstration
+     * (is_demo) ou désabonné (unsubscribed_at posé) n'est JAMAIS signalé. Toutes les raisons
+     * applicables sont listées ensemble ; le front n'affiche que la première sur la ligne repliée.
+     *
+     * @param array<string, mixed> $row
+     *
+     * @return array{reasons: list<string>}|null
+     */
+    private function stuck(array $row): ?array
+    {
+        if (1 === $this->integer($row, 'is_demo') || null !== ($row['unsubscribed_at'] ?? null)) {
+            return null;
+        }
+
+        $now = $this->clock->now();
+        $createdAt = new DateTimeImmutable((string) $row['created_at']);
+        $generationCount = $this->integer($row, 'generation_count_season');
+
+        /** @var list<string> $reasons */
+        $reasons = [];
+
+        // (1) Onboarding non complété, aucune génération, club né depuis plus de 5 jours (on
+        // laisse le club démarrer les premiers jours).
+        if (1 !== $this->integer($row, 'onboarding_completed') && 0 === $generationCount) {
+            $daysSinceCreation = (int) $now->diff($createdAt)->days;
+            if ($daysSinceCreation > 5) {
+                $reasons[] = \sprintf('Onboarding en cours depuis %d jours sans génération', $daysSinceCreation);
+            }
+        }
+
+        // (2) Le DERNIER solve a échoué — lu sur latest_metric, SANS la borne de 30 jours.
+        $latestStatus = $this->nullableString($row, 'latest_status');
+        if ('INFEASIBLE' === $latestStatus) {
+            $reasons[] = 'La dernière génération n’a trouvé aucune solution';
+        } elseif ('FAILED' === $latestStatus) {
+            $reasons[] = 'La dernière génération a échoué';
+        }
+
+        // (3) Aucune activité depuis plus de 14 jours.
+        $lastActivity = $this->nullableString($row, 'last_activity_at');
+        $activityDate = null === $lastActivity ? $createdAt : new DateTimeImmutable($lastActivity);
+        $daysSinceActivity = (int) $now->diff($activityDate)->days;
+        if ($daysSinceActivity > 14) {
+            $reasons[] = \sprintf('Aucune activité depuis %d jours', $daysSinceActivity);
+        }
+
+        // (4) Des générations ont eu lieu, mais le socle de la saison courante n'a jamais été
+        // validé (first_chosen_at NULL sur le plan SEASON de la saison en cours).
+        if ($generationCount > 0 && null !== ($row['season_id'] ?? null) && null === ($row['season_first_chosen_at'] ?? null)) {
+            $reasons[] = 'Générations lancées sans socle de saison validé';
+        }
+
+        return [] === $reasons ? null : ['reasons' => $reasons];
     }
 
     /**
