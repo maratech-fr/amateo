@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { toast } from "@/shared/stores/toastStore";
-import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, retainAdminDemoProspect, runAdminClubAction, runAdminJob, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
+import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, cancelAdminDeployment, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminDeployments, getAdminDeploymentTags, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, retainAdminDemoProspect, runAdminClubAction, runAdminJob, scheduleAdminDeployment, type ScheduleDeploymentPayload, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
 import { useAdminStore } from "./store";
 
 /** Lit le jeton CSRF de la session admin, ou rejette — patron des mutations admin. */
@@ -420,5 +420,63 @@ export function useRetainAdminDemoProspect() {
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
     onError: () => toast.error("Impossible de conserver le club de démonstration."),
+  });
+}
+
+// Mise en prod programmée — l'état (déploiement actif + historique) + les versions déployables,
+// et les deux gestes (programmer, annuler).
+
+/** Déploiement actif + historique récent. Refetch 30s pour voir l'état avancer (scheduled→dispatched→…). */
+export function useAdminDeployments() {
+  return useQuery({
+    queryKey: ["admin-deployments"],
+    queryFn: getAdminDeployments,
+    refetchInterval: 30_000,
+  });
+}
+
+/** Versions déployables (tags `^v`) — stables à l'échelle d'une session, une lecture suffit. */
+export function useAdminDeploymentTags() {
+  return useQuery({
+    queryKey: ["admin-deployment-tags"],
+    queryFn: getAdminDeploymentTags,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useScheduleAdminDeployment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: ScheduleDeploymentPayload) => {
+      const csrfToken = requireCsrf();
+      if (!csrfToken) {
+        return Promise.reject(new Error("Missing super-admin CSRF token."));
+      }
+
+      return scheduleAdminDeployment(body, csrfToken);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-deployments"] }),
+    // FRT-38 — le toast d'erreur vit au niveau HOOK (un onError de niveau mutate() que le filet
+    // global ne désarme pas en ferait deux). La section AFFICHE en plus le message serveur PRÉCIS
+    // inline (422/409), le toast reste le repli générique — même partage que FeedbackSection.
+    onError: () => toast.error("Impossible de programmer la mise en production."),
+  });
+}
+
+export function useCancelAdminDeployment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => {
+      const csrfToken = requireCsrf();
+      if (!csrfToken) {
+        return Promise.reject(new Error("Missing super-admin CSRF token."));
+      }
+
+      return cancelAdminDeployment(id, csrfToken);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-deployments"] }),
+    onError: () => toast.error("Impossible d’annuler la mise en production."),
   });
 }

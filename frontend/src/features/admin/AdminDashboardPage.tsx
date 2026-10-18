@@ -37,6 +37,7 @@ import { ClubRequestsSection } from "./sections/ClubRequestsSection";
 import { ContainersSection } from "./sections/ContainersSection";
 import { DemosSection } from "./sections/DemosSection";
 import { ExternalDepsSection } from "./sections/ExternalDepsSection";
+import { DeploymentSection } from "./sections/DeploymentSection";
 import { FeedbackSection } from "./sections/FeedbackSection";
 import { ReleaseNotesSection } from "./sections/ReleaseNotesSection";
 import { AuditSubtab } from "./Journaux/AuditSubtab";
@@ -261,6 +262,7 @@ export function AdminDashboardPage() {
       </TabPanel>
 
       <TabPanel variant="console" tabId="exploitation" idPrefix="admin" active={activeTab === "exploitation"} className="space-y-8 pt-6">
+        <DeploymentSection />
         <ReleaseNotesSection />
       </TabPanel>
     </div>
