@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Service;
 
 use App\Service\UmamiStatsClient;
 use App\Service\UmamiStatsException;
+use App\Tests\Integration\Admin\AdminAudienceTest;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -36,7 +37,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * JSON invalide.
  *
  * Doublon VOULU (point sensible « sécurité ») avec
- * {@see \App\Tests\Integration\Admin\AdminAudienceTest::testTheApiKeyNeverLeaksIntoTheResponse} :
+ * {@see AdminAudienceTest::testTheApiKeyNeverLeaksIntoTheResponse} :
  * ici la clé ne fuite pas dans l'EXCEPTION du client ; là-bas elle ne fuite pas dans le JSON de
  * la route. Deux foyers, deux angles.
  */

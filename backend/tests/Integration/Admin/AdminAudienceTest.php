@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Admin;
 use App\Entity\SuperAdmin;
 use App\Security\TotpService;
 use App\Tests\Double\UmamiHttpClientStub;
+use App\Tests\Security\SuperAdminAccessTest;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\Persistence\ManagerRegistry;
@@ -40,7 +41,7 @@ use Symfony\Component\Uid\Uuid;
  * de zéro et masquerait l'absence de cache côté implémentation.
  *
  * La frontière (JWT club / anonyme = 401) est éprouvée par
- * {@see \App\Tests\Security\SuperAdminAccessTest::testClubJwtCanNeverCrossTheAdminFirewall}
+ * {@see SuperAdminAccessTest::testClubJwtCanNeverCrossTheAdminFirewall}
  * (enumération bloquante du firewall) : pas de doublon ici.
  */
 #[Group('phase1')]

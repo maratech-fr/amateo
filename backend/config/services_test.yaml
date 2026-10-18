@@ -96,3 +96,13 @@ services:
             $httpClient: '@App\Tests\Double\GitHubDeployHttpClientStub'
             $deployToken: '%env(GITHUB_DEPLOY_TOKEN)%'
             $deployRepository: '%env(GITHUB_DEPLOY_REPOSITORY)%'
+
+    # Mesure d'audience (onglet « Statistiques », P4-307) — le client Umami roule sur un double
+    # HTTP déterministe : aucun test ne touche l'instance Umami. Mêmes binds reposés que ci-dessus
+    # (pas de `_defaults` autowire ici, %env% résolu au runtime, le test les pose avant boot).
+    App\Tests\Double\UmamiHttpClientStub: ~
+    App\Service\UmamiStatsClient:
+        arguments:
+            $httpClient: '@App\Tests\Double\UmamiHttpClientStub'
+            $apiKey: '%env(UMAMI_API_KEY)%'
+            $websiteId: '%env(UMAMI_WEBSITE_ID)%'

@@ -1420,6 +1420,105 @@
                 ]
             }
         },
+        "/api/admin/audience": {
+            "get": {
+                "operationId": "getAdminAudience",
+                "tags": [
+                    "AdminMonitoring"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Showcase audience measurement read from Umami; always 200 (never fails on a slow/absent third party)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "configured": {
+                                            "type": "boolean"
+                                        },
+                                        "available": {
+                                            "type": "boolean"
+                                        },
+                                        "windows": {
+                                            "type": "object",
+                                            "properties": {
+                                                "d7": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "visitors": {
+                                                            "type": "integer"
+                                                        },
+                                                        "visits": {
+                                                            "type": "integer"
+                                                        },
+                                                        "pageviews": {
+                                                            "type": "integer"
+                                                        },
+                                                        "trend": {
+                                                            "type": "integer"
+                                                        }
+                                                    }
+                                                },
+                                                "d30": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "visitors": {
+                                                            "type": "integer"
+                                                        },
+                                                        "visits": {
+                                                            "type": "integer"
+                                                        },
+                                                        "pageviews": {
+                                                            "type": "integer"
+                                                        },
+                                                        "trend": {
+                                                            "type": "integer"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "topPages": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "value": {
+                                                        "type": "string"
+                                                    },
+                                                    "count": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "topSources": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "value": {
+                                                        "type": "string"
+                                                    },
+                                                    "count": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    }
+                },
+                "summary": "Read the showcase audience measurement (two windows, top pages and sources)"
+            }
+        },
         "/api/admin/capacity": {
             "get": {
                 "operationId": "getAdminCapacity",
