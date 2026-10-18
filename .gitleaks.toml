@@ -27,11 +27,15 @@ paths = [
 #    generate-schedule.sh — signé par la paire JWT LOCALE (config/jwt/ est
 #    gitignoré, jamais publiée) donc invérifiable ailleurs ; le script lit
 #    désormais SCHEDULER_TOKEN/SCHEDULER_EMAIL (ce commit).
+#  - 201a3fc4 : fausse clé API Umami d'un test (P4-307, AdminAudienceTest) — canari
+#    entropique jamais valide, remplacé par « umami-test-key-not-a-real-secret » au
+#    commit suivant (historique non réécrit, pas de force-push).
 commits = [
   "83f706934de050c2d09b81660e4d5cc4242ea8cd",
   "5035f83fc5ecf5284002904a12d5fe96796c8a3e",
   "034c87f189aef71e6817b81a6923efe6043ce9c3",
   "b01954d960711d3321f2eac810e0c5fae0e38b9b",
+  "201a3fc4faf7aadc346d8f31b406eeca7bc85d66",
 ]
 
 # Le même JWT historique apparaît dans chaque commit qui a transporté le fichier

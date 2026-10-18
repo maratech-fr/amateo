@@ -56,7 +56,7 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class AdminAudienceTest extends WebTestCase
 {
-    private const string API_KEY = 'umami_api_SECRETKEY_integration_0000';
+    private const string API_KEY = 'umami-test-key-not-a-real-secret';
 
     private const string WEBSITE_ID = '11111111-2222-3333-4444-555555555555';
 
