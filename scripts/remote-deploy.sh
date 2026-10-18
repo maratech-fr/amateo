@@ -117,6 +117,20 @@ fi
 
 echo "==> Deploy $VERSION OK"
 
+# Nettoyage des images Docker inutilisées — SEULEMENT ici, après les sondes de
+# santé et la version persistée (deploy RÉUSSI). Sinon chaque release empile ses
+# 6 images et sature le disque de la VM (42 images → 9 Go récupérés à la main une
+# fois). `-a` : toute image qu'AUCUN conteneur n'utilise ; `until=168h` : et âgée
+# de plus de 7 jours. Les images des conteneurs EN PLACE et les volumes de données
+# ne sont JAMAIS touchés. Un rollback ne dépend pas des images locales — il les
+# re-pull depuis ghcr (docs/ops/deploy.md, « Revenir en arrière ») ; garder 7 j
+# rend juste un rollback récent plus rapide. ⚠ set -e + trap ERR : un échec du
+# prune ne DOIT PAS faire échouer un deploy déjà réussi → `|| echo …` neutralise.
+# `tail -1` : ne garder que « Total reclaimed space: … » (pipefail préserve un
+# échec du prune, que le `||` rattrape alors).
+docker image prune -af --filter "until=168h" | tail -1 \
+  || echo "==> ⚠ nettoyage des images échoué (sans effet sur le déploiement)" >&2
+
 # Anti-oubli : si l'interrupteur de MAINTENANCE (docs/ops/Caddyfile.example) est
 # encore armé, le dire fort. C'est un RAPPEL, pas une garantie — la vraie garantie
 # qu'une fenêtre de maintenance n'a pas été oubliée, c'est le 503 qu'une sonde voit.
