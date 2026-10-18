@@ -12,6 +12,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\Attributes\Group;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -35,10 +36,16 @@ use Symfony\Component\Uid\Uuid;
  * part vers l'instance réelle. Les env `UMAMI_API_KEY`/`UMAMI_WEBSITE_ID` sont posés AVANT chaque
  * boot (patron {@see ScheduledDeploymentTest}, résolution `%env%` au runtime).
  *
- * ⚠ `cache.app` est un `cache.adapter.array` en test (when@test/cache.yaml) : il est vidé à
- * chaque reboot du kernel. Le test de cache DOIT donc `disableReboot()` pour que les deux appels
- * partagent le MÊME kernel (et donc le même cache en mémoire) — sans quoi le 2ᵉ appel repartirait
- * de zéro et masquerait l'absence de cache côté implémentation.
+ * ⚠ `cache.app` est le pool Redis tag-aware MÊME en test (prouvé : `debug:container cache.app`
+ * → `TraceableTagAwareCacheAdapter`). Le dossier `config/packages/when@test/` qui prétend le
+ * basculer en `cache.adapter.array` n'est PAS chargé : le kernel (MicroKernelTrait) globe
+ * `packages/*.yaml` + `packages/test/*.yaml`, jamais un SOUS-dossier `when@test/` (constat latent
+ * noté en roadmap, hors de ce correctif). Deux conséquences portées par le test :
+ *  - Redis survit aux reboots ET d'une méthode à l'autre : un succès mis en cache par un test
+ *    POLLUERAIT les suivants → chaque {@see self::boot()} purge la clé {@see self::CACHE_KEY}
+ *    (DEL CIBLÉ de la seule clé du service, JAMAIS `FLUSHALL`), pour partir d'un cache FROID ;
+ *  - les deux tests de cache gardent `disableReboot()` (un seul kernel, lisibilité du geste) ; la
+ *    preuve « le 2ᵉ appel ne rappelle pas Umami » tient grâce à la clé froide au départ.
  *
  * La frontière (JWT club / anonyme = 401) est éprouvée par
  * {@see SuperAdminAccessTest::testClubJwtCanNeverCrossTheAdminFirewall}
@@ -51,6 +58,9 @@ final class AdminAudienceTest extends WebTestCase
     private const string API_KEY = 'umami_api_SECRETKEY_integration_0000';
 
     private const string WEBSITE_ID = '11111111-2222-3333-4444-555555555555';
+
+    /** La seule clé de cache du service ({@see \App\Service\AdminAudienceService}) — purgée (DEL ciblé) à chaque boot. */
+    private const string CACHE_KEY = 'admin.audience.v1';
 
     private KernelBrowser $client;
 
@@ -188,6 +198,14 @@ final class AdminAudienceTest extends WebTestCase
     private function boot(): string
     {
         $this->client = self::createClient();
+        // ⚠ cache.app = Redis en test (cf. docblock) : il survit entre méthodes. On part d'une clé
+        // FROIDE à chaque test — DEL CIBLÉ de la seule clé du service, JAMAIS FLUSHALL. APRÈS
+        // createClient() (qui boote déjà le kernel) : self::getContainer() réutilise ce kernel,
+        // il ne doit pas en booter un second (patron ScheduledDeploymentTest).
+        $cache = self::getContainer()->get('cache.app');
+        \assert($cache instanceof CacheItemPoolInterface);
+        $cache->deleteItem(self::CACHE_KEY);
+
         [$secret] = $this->createSuperAdmin('audience@example.test', 'VeryStrongPassword!');
 
         return $this->authenticate('audience@example.test', 'VeryStrongPassword!', $secret);
