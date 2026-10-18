@@ -33,6 +33,7 @@ vi.mock("./BetaBadge", () => ({ BetaBadge: ({ onReport }: { onReport: () => void
 vi.mock("./DemoBadge", () => ({ DemoBadge: () => <span data-testid="demo-badge" /> }));
 vi.mock("./DemoClockWidget", () => ({ DemoClockWidget: () => null }));
 vi.mock("@/shared/credits/CreditsBanner", () => ({ CreditsBanner: () => null }));
+vi.mock("@/shared/deployment/DeploymentNoticeBanner", () => ({ DeploymentNoticeBanner: () => null }));
 vi.mock("./SeasonSelector", () => ({ SeasonSelector: () => null }));
 vi.mock("./ReadonlySeasonBanner", () => ({ ReadonlySeasonBanner: () => null }));
 vi.mock("./SeasonTransitionBanner", () => ({ SeasonTransitionBanner: () => null }));

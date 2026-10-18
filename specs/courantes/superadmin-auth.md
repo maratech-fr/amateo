@@ -11,10 +11,10 @@
 > (§Journaux read-only) + heartbeats cron & pdf-worker, et le pilotage des deux comptes de
 > démonstration (§Démos — console de pilotage), et les stats par club avec le signal
 > « club qui coince » sur la ligne dépliable de l'onglet Clubs (§Supervision read-only
-> SA2 — API parc et solveur, §Écran de supervision React SA2), et le rail BACKEND de la
-> « mise en prod programmée » — API `/api/admin/deployments*` + `app:deployment:tick` +
-> bandeau `GET /api/deployment-notice` (§Mise en prod programmée) ; l'écran console et le
-> rendu du bandeau restent à livrer (roadmap P4-331)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
+> SA2 — API parc et solveur, §Écran de supervision React SA2), et la « mise en prod programmée »
+> — API `/api/admin/deployments*` + `app:deployment:tick`, écran console (onglet Exploitation) et
+> bandeau d'annonce côté clubs (§Mise en prod programmée ; le guichet « attendre la fin des
+> générations en cours », roadmap P4-348, reste ouvert)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
 > (socle `docker.sock` non transposable en prod — voir console-superadmin.md). Les actions
 > cross-tenant restent dans [`../evolution/console-superadmin.md`](../evolution/console-superadmin.md).
 
@@ -381,7 +381,7 @@ muet) laisse `null`, rendu « — » côté écran. Consommé par `CapacitySecti
 comptes de démonstration sont rendus en bas, §Démos) · **Statistiques** (vue d'ensemble, usage,
 capacité) · **Santé** (services, conteneurs, dépendances externes, jobs, fraîcheur) ·
 **Incidents** (sous-onglets : signalements par défaut, erreurs système, échecs async, audit) ·
-**Exploitation** (notes de nouveautés). Les anciens identifiants d'onglet (`vue-densemble`,
+**Exploitation** (mise en prod programmée, puis notes de nouveautés). Les anciens identifiants d'onglet (`vue-densemble`,
 `infrastructure`, `jobs`, `referentiels`, `demos`, `signalements`, `journaux`) sont reportés vers
 leur nouvel onglet par `LEGACY_TAB_MAP` — un lien ou un `localStorage` mémorisé avant la
 réorganisation continue d'ouvrir le bon onglet.
@@ -519,9 +519,9 @@ détaché, sinon il serait immortel ; sauté s'il porte un membre actif (repris 
 
 ## Mise en prod programmée
 
-**Rail BACKEND livré (PR b, roadmap P4-331) ; l'écran console (onglet Exploitation) et le
-rendu du bandeau d'annonce restent à livrer (PR c).** Programmer un déploiement est un geste de
-PROD **cross-tenant** : mêmes gardes que les actions de support (contexte d'audit posé AVANT
+**Rail backend, écran console (onglet Exploitation) et bandeau d'annonce côté clubs livrés
+(roadmap P4-331) ; reste le guichet « attendre la fin des générations en cours » avant de
+déclencher (roadmap P4-348).** Programmer un déploiement est un geste de PROD **cross-tenant** : mêmes gardes que les actions de support (contexte d'audit posé AVANT
 toute garde, CSRF de session doublé par `AdminCsrfListener`, identité `SuperAdmin`). Entité
 GLOBALE `scheduled_deployment` (pas de `club_id`, pas de RLS — un GRANT à `amateo_app`, même
 patron que `release_note`/`public_holiday`), écrite par la connexion `admin`.
@@ -559,6 +559,6 @@ gestes fondateur de configuration : [`../../docs/ops/deploy.md`](../../docs/ops/
 sert le bandeau d'annonce que verra tout club connecté dès qu'un déploiement est `scheduled` ou
 `dispatched` : **contrat fixé**, `{"scheduledAt": ISO-8601, "expectedReturnAt": ISO-8601}` et
 **rien d'autre** (ni version, ni acteur, ni jeton) — ou le littéral `null` (rien de programmé, ou
-annulé/terminé). Exemption temporaire de `ApiRoutesHaveAConsumerTest` : le rendu du bandeau
-(consommateur) est livré par la PR frontend (c) du même chantier — à retirer quand elle cable
-le bandeau.
+annulé/terminé). Consommateur frontend : `DeploymentNoticeBanner`
+(`frontend/src/shared/deployment/`), monté dans `AppLayout` — détail du rendu et de la fermeture
+par session : [`../../docs/ops/deploy.md`](../../docs/ops/deploy.md) §Mise en prod programmée.

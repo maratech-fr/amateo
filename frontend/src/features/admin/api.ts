@@ -630,3 +630,59 @@ export function setAdminDemoClock(target: AdminDemoTarget, body: { date: string 
 export function retainAdminDemoProspect(csrfToken: string): Promise<{ retainedUntil: string }> {
   return adminApi.post("demos/prospect/retain", { headers: { "X-CSRF-Token": csrfToken } }).json();
 }
+
+// Mise en prod programmée — planifier un déploiement (version + heure + fenêtre de maintenance),
+// l'annuler, et lister les versions déployables. Un geste de PROD cross-tenant (AdminDeploymentController).
+
+export type AdminDeploymentStatus = "scheduled" | "dispatched" | "succeeded" | "failed" | "cancelled";
+
+/**
+ * Un déploiement programmé, vu de la console. Seuls `id`/`version`/`status` sont toujours
+ * présents ; les horodatages et `failureReason` sont null tant que l'étape correspondante
+ * n'a pas eu lieu (jamais dispatché → `dispatchedAt` null ; pas d'échec → `failureReason` null).
+ */
+export interface AdminDeployment {
+  id: string;
+  version: string;
+  status: AdminDeploymentStatus;
+  scheduledAt: string | null;
+  expectedReturnAt: string | null;
+  dispatchedAt: string | null;
+  githubRunId: number | null;
+  failureReason: string | null;
+  createdAt: string | null;
+}
+
+export interface AdminDeploymentsResponse {
+  items: AdminDeployment[];
+  /** Jeton GitHub + dépôt présents côté serveur : sans eux, programmer est inerte (bouton désactivé). */
+  configured: boolean;
+}
+
+export interface AdminDeploymentTagsResponse {
+  items: string[];
+}
+
+export interface ScheduleDeploymentPayload {
+  version: string;
+  /** Instant ISO 8601 de la mise en production (≥ maintenant +10 min, gardé côté serveur). */
+  scheduledAt: string;
+  /** Durée annoncée de la maintenance, en minutes (1-240). */
+  windowMinutes: number;
+}
+
+export function getAdminDeployments(): Promise<AdminDeploymentsResponse> {
+  return adminApi.get("deployments").json();
+}
+
+export function getAdminDeploymentTags(): Promise<AdminDeploymentTagsResponse> {
+  return adminApi.get("deployments/tags").json();
+}
+
+export function scheduleAdminDeployment(body: ScheduleDeploymentPayload, csrfToken: string): Promise<AdminDeployment> {
+  return adminApi.post("deployments", { json: body, headers: { "X-CSRF-Token": csrfToken } }).json();
+}
+
+export function cancelAdminDeployment(id: string, csrfToken: string): Promise<{ id: string; status: AdminDeploymentStatus }> {
+  return adminApi.delete(`deployments/${encodeURIComponent(id)}`, { headers: { "X-CSRF-Token": csrfToken } }).json();
+}

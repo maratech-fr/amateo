@@ -12,6 +12,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { CreditBadge } from "@/shared/credits/CreditBadge";
 import { CreditsBanner } from "@/shared/credits/CreditsBanner";
+import { DeploymentNoticeBanner } from "@/shared/deployment/DeploymentNoticeBanner";
 import { useApplyClubTheme } from "@/shared/hooks/useApplyClubTheme";
 import { useApplySentryIdentity } from "@/shared/hooks/useApplySentryIdentity";
 import { useApplySimulatedClock } from "@/shared/hooks/useApplySimulatedClock";
@@ -161,6 +162,7 @@ export function AppLayout() {
         <ReadonlySeasonBanner />
         <SeasonTransitionBanner />
         <CreditsBanner />
+        <DeploymentNoticeBanner />
         <Outlet />
       </main>
       {/* P5-12 — la modale « quoi de neuf » se décide elle-même (rien si pas de

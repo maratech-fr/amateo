@@ -921,9 +921,27 @@ déploiement actif :
    **la maintenance reste posée** (décision fondateur v1 : pas de rollback automatique, un humain
    décide).
 
-Pendant qu'un déploiement est `scheduled` ou `dispatched`, `GET /api/deployment-notice` (JWT club)
-sert au bandeau d'annonce de l'app `{scheduledAt, expectedReturnAt}` — **rien d'autre** (ni
-version, ni acteur) — et `null` sinon (rien de programmé, annulé ou terminé).
+**Écran console** : `DeploymentSection` (`frontend/src/features/admin/sections/DeploymentSection.tsx`)
+vit dans l'onglet **Exploitation** de `/admin`, au-dessus des notes de nouveautés. Le formulaire
+expose trois champs — un `<select>` des tags déployables (`GET /api/admin/deployments/tags`), une
+date/heure (`datetime-local`, lue à l'heure LOCALE du navigateur puis convertie en instant ISO), et
+la durée de maintenance en minutes (1-240) — désactivés tant que `isConfigured` est faux. « Programmer »
+reste désactivé jusqu'à ce que les trois champs soient remplis ; une erreur serveur (422/409) s'affiche
+inline sous le formulaire, en plus du toast générique. Tant qu'un déploiement est `scheduled` ou
+`dispatched`, une carte « Déploiement en attente » l'affiche (version, statut, heure programmée) avec
+un bouton « Annuler la mise en production » (confirmation modale) visible seulement au stade
+`scheduled`. Un bloc « Historique récent » liste en dessous les déploiements terminés (version,
+statut, heure de dispatch, raison d'échec le cas échéant) depuis `GET /api/admin/deployments`
+(20 derniers, actifs et terminés, rafraîchi toutes les 30 s).
+
+**Bandeau côté clubs** : pendant qu'un déploiement est `scheduled` ou `dispatched`, `GET
+/api/deployment-notice` (JWT club) sert `{scheduledAt, expectedReturnAt}` — **rien d'autre** (ni
+version, ni acteur) — et `null` sinon (rien de programmé, annulé ou terminé). `DeploymentNoticeBanner`
+(`frontend/src/shared/deployment/DeploymentNoticeBanner.tsx`) le lit (sondé toutes les 5 min, lecture
+désactivée hors authentification) et, monté une fois dans `AppLayout` pour tout l'espace club
+authentifié, annonce l'heure de début et l'heure de retour prévue. Un bouton « Masquer » le ferme
+pour la session — la clé `sessionStorage` est liée à `scheduledAt` : fermer l'annonce d'UNE
+programmation ne masque pas celle d'une programmation suivante.
 
 **Geste fondateur pour activer** (sans lui la fonctionnalité reste **inerte** —
 `GitHubDeployClient::isConfigured()` faux, la console refuse toute programmation en 422) :
