@@ -890,6 +890,56 @@ la maintenance affichée continue, à l'opérateur de décider : rollback (`make
 précédent>`, § *Revenir en arrière*) ou retrait manuel (`ssh … rm -f .../maintenance.on`) une fois
 le problème compris.
 
+### Mise en prod programmée (console superadmin)
+
+Depuis `/admin`, un superadmin programme un déploiement sans toucher au terminal : version (un
+tag `^v` existant), heure H, durée de la fenêtre de maintenance annoncée. La console
+(`POST /api/admin/deployments`, `AdminDeploymentController`) écrit une ligne dans la table
+**globale** `scheduled_deployment` (pas de `club_id` — concerne toute la plateforme) et refuse
+(422) une version qui n'est pas un tag déployable, une CI non verte pour ce tag, ou une heure H à
+moins de **10 minutes** ; un second déploiement tant qu'un premier est **actif**
+(`scheduled`|`dispatched`, index unique partiel en base) est refusé en 409. `GET
+/api/admin/deployments/tags` liste les tags déployables ; `DELETE
+/api/admin/deployments/{id}` annule un `scheduled` (409 si déjà `dispatched` — le train est
+parti).
+
+La commande `app:deployment:tick` (`backend/src/Command/DeploymentTickCommand.php`) est battue
+**chaque minute** par la boucle `cron-runner` — en dehors du catalogue `AdminJobCatalog` (une
+cadence par minute y ferait 1440 lignes de journal par jour) — et fait avancer l'unique
+déploiement actif :
+
+1. avant H, rien ne bouge ;
+2. à H, les préconditions sont **re-vérifiées** (le tag a pu disparaître, la CI redevenir rouge
+   entre la programmation et maintenant) : l'une des deux a changé → échec **sans dispatch**
+   (programmer n'engageait rien) ;
+3. préconditions au vert → `GitHubDeployClient::dispatchDeploy()` déclenche le `workflow_dispatch`
+   de `deploy.yml` avec `version` et `maintenance_until` (l'heure de retour annoncée — c'est le
+   workflow qui pose/retire ensuite lui-même le témoin, § *Maintenance planifiée*) ; un dispatch en
+   échec est **réessayé** sur les ticks suivants jusqu'à **H + 10 minutes**, puis abandonné ;
+4. le run GitHub est ensuite **suivi** (ticks suivants) jusqu'à sa conclusion : `success` →
+   statut `succeeded` + e-mail aux superadmins actifs ; `failure` → statut `failed` + e-mail —
+   **la maintenance reste posée** (décision fondateur v1 : pas de rollback automatique, un humain
+   décide).
+
+Pendant qu'un déploiement est `scheduled` ou `dispatched`, `GET /api/deployment-notice` (JWT club)
+sert au bandeau d'annonce de l'app `{scheduledAt, expectedReturnAt}` — **rien d'autre** (ni
+version, ni acteur) — et `null` sinon (rien de programmé, annulé ou terminé).
+
+**Geste fondateur pour activer** (sans lui la fonctionnalité reste **inerte** —
+`GitHubDeployClient::isConfigured()` faux, la console refuse toute programmation en 422) :
+
+1. créer un jeton GitHub **fine-grained** sur `maratech-fr/amateo`, permissions **Actions:
+   read/write** + **Contents: read** ;
+2. le poser dans la copie de référence `.env.prod` : `GITHUB_DEPLOY_TOKEN=<jeton>` et
+   `GITHUB_DEPLOY_REPOSITORY=maratech-fr/amateo` (modèle commenté dans `.env.prod.dist`) ;
+3. `gh secret set ENV_PROD < .env.prod` (même procédure que tout secret, § *Changer un secret*) ;
+4. redéployer pour que la VM reçoive le `.env.prod` mis à jour.
+
+L'hôte GitHub est une constante (`GitHubDeployClient::API_HOST`, jamais dérivée d'une entrée) ; le
+jeton ne voyage qu'en en-tête `Authorization`, jamais dans une URL ni un corps, et n'est **ni
+logué ni sérialisé** — `GitHubDeployException` est expurgée par construction. Contrat couvert par
+`specs/courantes/superadmin-auth.md` § *Mise en prod programmée*.
+
 ### Changer un secret / une variable d'env
 
 1. En local : éditer la copie du `.env.prod` du gestionnaire de mots de passe

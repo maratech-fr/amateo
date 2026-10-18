@@ -26,8 +26,9 @@ use Symfony\Component\Uid\Uuid;
  *  - ZÉRO FUITE : la charge ne porte ni la version, ni l'acteur (`created_by`), ni le jeton —
  *    un gestionnaire de club n'a pas à connaître la cuisine de déploiement.
  *
- * La ligne est posée via la connexion admin (committée, hors DAMA) ; le club la lit via sa propre
- * connexion applicative (la table `scheduled_deployment` est GLOBALE, jamais scopée tenant).
+ * La ligne est posée via la connexion PAR DÉFAUT (enveloppée par DAMA comme la lecture — même
+ * transaction de test, voir `seedDeployment()`) ; le club la lit via cette même connexion
+ * applicative (la table `scheduled_deployment` est GLOBALE, jamais scopée tenant).
  *
  * Contrat FIXÉ pour NEO : route `GET /api/deployment-notice` (JWT club), corps `null` ou
  * `{"scheduledAt": ISO-8601, "expectedReturnAt": ISO-8601}` — aucune autre clé.
