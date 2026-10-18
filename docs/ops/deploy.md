@@ -23,6 +23,12 @@
 - Revenir en arrière = redéployer le tag précédent : le workflow détecte que
   ses images existent déjà sur ghcr et les **réutilise telles quelles** (jamais
   de rebuild qui écraserait l'artefact d'origine).
+- Après un déploiement **réussi** (sondes de santé passées, version persistée),
+  la VM **purge les images Docker inutilisées** de plus de 7 jours
+  (`docker image prune -af --filter "until=168h"` dans `remote-deploy.sh`) :
+  sinon chaque release empile ses 6 images et sature le disque. Seules les images
+  qu'**aucun conteneur n'utilise** partent ; les volumes de données ne sont jamais
+  touchés, et un échec de la purge ne fait pas échouer le déploiement.
 - Le workflow (`.github/workflows/deploy.yml`) a deux moitiés : *build-push*
   (toujours active) et *deploy SSH* (dormante tant que la variable repo
   `DEPLOY_ENABLED` n'est pas à `true` — donc rien ne casse tant que la VM
@@ -736,6 +742,10 @@ Les images v1.1.0 existent déjà sur ghcr → le workflow **saute le build** et
 redéploie **exactement les artefacts qui tournaient** (pas un rebuild aux
 couches de base dérivées). Marche aussi pour un hotfix sha :
 `make deploy VERSION=sha-abc1234`.
+
+Les images locales de plus de 7 jours ayant pu être purgées après un déploiement
+(voir *Comment ça marche*), un rollback plus ancien les **re-pull depuis ghcr** —
+quelques secondes de plus, aucun risque pour les données.
 
 ⚠ **Toujours `make deploy VERSION=<tag>`, jamais re-pousser un ancien tag.**
 `make deploy` fait un *dispatch* : le workflow qui s'exécute est celui de `main`
