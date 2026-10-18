@@ -374,12 +374,46 @@ muet) laisse `null`, rendu « — » côté écran. Consommé par `CapacitySecti
 (`frontend/src/features/admin/sections/`,
 `useAdminCapacity()`, refetch 5 min, lecture seule).
 
+## Mesure d'audience de la vitrine (Umami)
+
+`GET /api/admin/audience` (`AdminMonitoringController::audience`, session superadmin, même
+frontière que les autres routes `/api/admin/**` — un JWT club ou anonyme reçoit 401) répond
+**TOUJOURS 200**, sur **trois états** calculés par `AdminAudienceService` :
+
+- clé API ou identifiant de site Umami non configurés (`UmamiStatsClient::isConfigured()` faux)
+  → `{configured: false}` ;
+- configuré mais Umami injoignable ou en erreur → `{configured: true, available: false}` ;
+- sinon → `{configured: true, available: true, windows: {d7, d30}, topPages, topSources}` —
+  chaque fenêtre porte `visitors`/`visits`/`pageviews` et une `trend` (variation des visiteurs en
+  % face à la période de comparaison précédente, `compare=prev` côté Umami) ; `topPages`/
+  `topSources` sont les 5 lignes `{value, count}` les plus vues sur 30 jours.
+
+`UmamiStatsClient` (`backend/src/Service/UmamiStatsClient.php`) porte la COUTURE sortante, même
+durcissement que `GitHubDeployClient` : hôte `http://umami:3000` en **constante**
+(`UmamiStatsClient::API_HOST`, jamais dérivé d'une config ni d'une entrée), clé API en en-tête
+`Authorization: Bearer` **seul** (jamais une URL, une query ni un corps), timeout serré (3 s),
+redirections coupées (`max_redirects: 0`) — et **inerte** (`isConfigured()` faux, aucune requête
+émise) tant que `UMAMI_API_KEY`/`UMAMI_WEBSITE_ID` sont absents. La réponse est **mise en cache**
+(`cache.app`, clé stable `admin.audience.v1`) 300 s sur succès et 60 s sur échec — un tiers lent
+ou absent ne ralentit ni ne fait jamais tomber la console. La frontière (401 club/anonyme, 200
+superadmin) est éprouvée par `SuperAdminAccessTest` ; les trois états et le cache par
+`AdminAudienceTest`.
+
+Côté console, `AudienceSection.tsx` (`frontend/src/features/admin/sections/`) rend la mesure en
+tête de l'onglet **Statistiques** (`useAdminAudience()`, `staleTime` 5 min, pas de refetch auto) —
+un bandeau dédié pour chacun des deux états dégradés (non configurée / indisponible), sinon les
+deux fenêtres et les deux tops.
+
+**Gestes de configuration restants (fondateur) et la PR qui branche la collecte sur la landing** :
+[`deploy.md`](../../docs/ops/deploy.md) §1.11 (F5/F7) — sans eux la section reste inerte, en
+PROD comme ici.
+
 ## Organisation de la console — 5 onglets et pastilles d'alerte
 
 `ADMIN_TABS` (`frontend/src/features/admin/tabs/tabsConfig.ts`) fixe les **5 onglets** de
 `/admin`, dans cet ordre : **Clubs** (défaut — comptes, demandes, adhésions, actions ; les
 comptes de démonstration sont rendus en bas, §Démos) · **Statistiques** (vue d'ensemble, usage,
-capacité) · **Santé** (services, conteneurs, dépendances externes, jobs, fraîcheur) ·
+capacité, mesure d'audience de la vitrine) · **Santé** (services, conteneurs, dépendances externes, jobs, fraîcheur) ·
 **Incidents** (sous-onglets : signalements par défaut, erreurs système, échecs async, audit) ·
 **Exploitation** (mise en prod programmée, puis notes de nouveautés). Les anciens identifiants d'onglet (`vue-densemble`,
 `infrastructure`, `jobs`, `referentiels`, `demos`, `signalements`, `journaux`) sont reportés vers
