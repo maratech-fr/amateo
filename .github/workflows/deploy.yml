@@ -30,6 +30,14 @@ on:
         description: "Version to deploy (existing tag or sha-<short> = redeploy those images; empty = build this commit as its short sha)"
         required: false
         default: ""
+      # Scheduled-maintenance window (empty = deploy behaves EXACTLY as before).
+      # When set to an ISO-8601 instant, the deploy job raises the maintenance
+      # witness ($DEPLOY_PATH/maintenance.on, the ISO Caddy serves as "back at")
+      # BEFORE rolling the stack and clears it only after a successful roll.
+      maintenance_until:
+        description: "ISO-8601 return time (e.g. 2026-10-19T02:00:00+02:00); empty = no maintenance window, deploy unchanged"
+        required: false
+        default: ""
 
 concurrency:
   group: deploy
@@ -249,6 +257,25 @@ jobs:
     # Until then the job is skipped and a release only publishes images.
     if: vars.DEPLOY_ENABLED == 'true'
     steps:
+      # Validate the maintenance window FIRST — before any checkout or SSH, so a
+      # forged value aborts the run without ever touching the VM. Empty input =
+      # no window: this step is a no-op and the deploy is byte-for-byte unchanged.
+      # The value arrives as an env var (never interpolated into the shell) and
+      # is matched against a strict ISO-8601 instant with a timezone offset or Z.
+      - name: Validate the maintenance window
+        env:
+          MAINTENANCE_UNTIL: ${{ inputs.maintenance_until }}
+        run: |
+          if [ -z "$MAINTENANCE_UNTIL" ]; then
+            echo "No maintenance window requested — deploy proceeds unchanged."
+            exit 0
+          fi
+          if ! printf '%s' "$MAINTENANCE_UNTIL" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?([+-][0-9]{2}:[0-9]{2}|Z)$'; then
+            echo "::error::invalid maintenance_until '$MAINTENANCE_UNTIL' (expected ISO-8601 like 2026-10-19T02:00:00+02:00 or 2026-10-19T00:00:00Z)"
+            exit 1
+          fi
+          echo "Maintenance window valid — returning at $MAINTENANCE_UNTIL"
+
       # Same ref logic as build-push: the compose file shipped to the VM must
       # be the one matching the deployed version.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -304,6 +331,32 @@ jobs:
           "${SSH[@]}" "chmod 600 '$DEPLOY_PATH/.env.prod'"
           rm -f "$RUNNER_TEMP/.env.prod"
 
+      # Raise the maintenance witness BEFORE rolling the stack, but only for a
+      # scheduled window (empty input = skipped, deploy unchanged). Caddy serves
+      # the maintenance page while $DEPLOY_PATH/maintenance.on exists and prints
+      # its single line as the "back at" time. Same SSH rail as the steps around
+      # it (key under ~/.ssh, StrictHostKeyChecking=accept-new). The validated
+      # ISO is piped over stdin — never interpolated into the remote command —
+      # and is the ONLY content of the file.
+      - name: Raise the maintenance window
+        if: inputs.maintenance_until != ''
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/amateo' }}
+          MAINTENANCE_UNTIL: ${{ inputs.maintenance_until }}
+        run: |
+          if ! printf '%s' "$DEPLOY_PATH" | grep -Eq '^/[A-Za-z0-9._/-]+$'; then
+            echo "FATAL: invalid DEPLOY_PATH '$DEPLOY_PATH'" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH=(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST")
+          printf '%s\n' "$MAINTENANCE_UNTIL" | "${SSH[@]}" "cat > '$DEPLOY_PATH/maintenance.on'"
+
       - name: SSH deploy
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -354,6 +407,28 @@ jobs:
           # Executed as a FILE, never piped: `docker compose run` reads stdin
           # and would swallow the rest of a piped script (silent half-deploy).
           "${SSH[@]}" "DEPLOY_PATH='$DEPLOY_PATH' VERSION='$VERSION' bash '$DEPLOY_PATH/remote-deploy.sh'"
+
+      # Clear the maintenance witness ONLY after a successful roll (remote-deploy.sh
+      # already includes the /health + /api/health probes in its exit code). No
+      # always() here on purpose: if any prior step failed, the witness is LEFT in
+      # place — the app stays behind the maintenance page and an operator is alerted.
+      - name: Clear the maintenance window
+        if: success() && inputs.maintenance_until != ''
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/amateo' }}
+        run: |
+          if ! printf '%s' "$DEPLOY_PATH" | grep -Eq '^/[A-Za-z0-9._/-]+$'; then
+            echo "FATAL: invalid DEPLOY_PATH '$DEPLOY_PATH'" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH=(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST")
+          "${SSH[@]}" "rm -f '$DEPLOY_PATH/maintenance.on'"
 
   # Après un déploiement VM RÉUSSI, faire suivre la branche `release` au commit
   # RÉELLEMENT déployé : `release` reste ISO-prod, point de départ des correctifs
