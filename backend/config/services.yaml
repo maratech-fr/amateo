@@ -80,6 +80,13 @@ parameters:
     # des codes SYNTHÉTIQUES que la FFBB ignore. Patron Turnstile.
     env(FFBB_REGISTER_EXISTENCE_CHECK): 'true'
     app.ffbb_register_existence_check: '%env(bool:FFBB_REGISTER_EXISTENCE_CHECK)%'
+    # « Mise en prod programmée » — le jeton GitHub fine-grained (Actions RW + Contents R)
+    # que le backend utilise pour dispatcher `deploy.yml` à l'heure dite, et le dépôt visé
+    # (owner/repo). VIDES par défaut → la fonctionnalité est INERTE (la console refuse en 422) :
+    # l'app démarre sans eux. Seule la prod les pose (`.env.prod`, geste fondateur). Le jeton ne
+    # se COMMITE jamais, n'est jamais sérialisé, logué ni mis dans une exception.
+    env(GITHUB_DEPLOY_TOKEN): ''
+    env(GITHUB_DEPLOY_REPOSITORY): ''
 
 services:
     App\AdminJob\AdminJobExecutorInterface: '@App\AdminJob\ConsoleAdminJobExecutor'
@@ -126,6 +133,9 @@ services:
             $productTagline: 'Le planning de votre club, sans le casse-tête.'
             # L'URL de la vitrine VARIE par environnement → variable d'env dédiée.
             $productSiteUrl: '%env(PRODUCT_SITE_URL)%'
+            # « Mise en prod programmée » — consommés par le SEUL service `GitHubDeployClient`.
+            $deployToken: '%env(GITHUB_DEPLOY_TOKEN)%'
+            $deployRepository: '%env(GITHUB_DEPLOY_REPOSITORY)%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name

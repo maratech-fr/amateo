@@ -102,6 +102,23 @@ final class SuperAdminAccessTest extends WebTestCase
         $this->client->request('GET', '/api/admin/clubs', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(401);
 
+        // « Mise en prod programmée » — la surface /api/admin/deployments pilote un geste de PROD
+        // cross-tenant (programmer/annuler un déploiement) : un JWT club ne franchit jamais le
+        // firewall admin, en lecture comme en écriture. L'angle falsifiable (programmation refusée,
+        // 409/422, aucun dispatch) est éprouvé de bout en bout par
+        // ScheduledDeploymentTest::testAClubJwtAndAnonymousCallersNeverCrossTheAdminFirewall.
+        $this->client->request('GET', '/api/admin/deployments', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('GET', '/api/admin/deployments/tags', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('POST', '/api/admin/deployments', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('DELETE', '/api/admin/deployments/' . Uuid::v4()->toRfc4122(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
         // Anonyme (aucune identité) : même refus.
         $this->startFreshBrowserSession($this->client);
         $this->client->request('GET', '/api/admin/release-notes');
@@ -111,6 +128,12 @@ final class SuperAdminAccessTest extends WebTestCase
         self::assertResponseStatusCodeSame(401);
 
         $this->client->request('GET', '/api/admin/clubs');
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('GET', '/api/admin/deployments');
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('GET', '/api/admin/deployments/tags');
         self::assertResponseStatusCodeSame(401);
     }
 

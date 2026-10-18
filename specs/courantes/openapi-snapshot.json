@@ -641,6 +641,265 @@
                 ]
             }
         },
+        "/api/admin/deployments": {
+            "get": {
+                "operationId": "getAdminDeployments",
+                "tags": [
+                    "AdminDeployments"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Recent scheduled deployments (newest first)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "items": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "version": {
+                                                        "type": "string"
+                                                    },
+                                                    "status": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "scheduled",
+                                                            "dispatched",
+                                                            "succeeded",
+                                                            "failed",
+                                                            "cancelled"
+                                                        ]
+                                                    },
+                                                    "scheduledAt": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "expectedReturnAt": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "dispatchedAt": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "nullable": true
+                                                    },
+                                                    "githubRunId": {
+                                                        "type": "integer",
+                                                        "nullable": true
+                                                    },
+                                                    "failureReason": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "createdAt": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "configured": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    }
+                },
+                "summary": "List recent scheduled deployments"
+            },
+            "post": {
+                "operationId": "postAdminDeployment",
+                "tags": [
+                    "AdminDeployments"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Deployment scheduled",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "version": {
+                                            "type": "string"
+                                        },
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "scheduled"
+                                            ]
+                                        },
+                                        "scheduledAt": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        },
+                                        "expectedReturnAt": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Missing or invalid X-CSRF-Token header"
+                    },
+                    "409": {
+                        "description": "A deployment is already scheduled"
+                    },
+                    "422": {
+                        "description": "Feature not configured, unknown version, red CI, or invalid schedule"
+                    }
+                },
+                "summary": "Schedule a production deployment (does not dispatch \u2014 the tick does, at H)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "version",
+                                    "scheduledAt",
+                                    "windowMinutes"
+                                ],
+                                "properties": {
+                                    "version": {
+                                        "type": "string",
+                                        "description": "A deployable ^v tag"
+                                    },
+                                    "scheduledAt": {
+                                        "type": "string",
+                                        "format": "date-time"
+                                    },
+                                    "windowMinutes": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 240
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/admin/deployments/tags": {
+            "get": {
+                "operationId": "getAdminDeploymentTags",
+                "tags": [
+                    "AdminDeployments"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deployable ^v tags",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "items": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    }
+                },
+                "summary": "List deployable version tags"
+            }
+        },
+        "/api/admin/deployments/{id}": {
+            "delete": {
+                "operationId": "deleteAdminDeployment",
+                "tags": [
+                    "AdminDeployments"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deployment cancelled",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "cancelled"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Missing or invalid X-CSRF-Token header"
+                    },
+                    "404": {
+                        "description": "Unknown deployment"
+                    },
+                    "409": {
+                        "description": "A dispatched or finished deployment can no longer be cancelled"
+                    }
+                },
+                "summary": "Cancel a scheduled (not yet dispatched) deployment",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
         "/api/admin/jobs": {
             "get": {
                 "operationId": "getAdminJobs",
@@ -9329,6 +9588,41 @@
                     }
                 },
                 "summary": "Impact of deleting this venue, computed server-side"
+            }
+        },
+        "/api/deployment-notice": {
+            "get": {
+                "operationId": "getDeploymentNotice",
+                "tags": [
+                    "Deployment"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The scheduled-deployment banner, or null when none is active",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "nullable": true,
+                                    "properties": {
+                                        "scheduledAt": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        },
+                                        "expectedReturnAt": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated session"
+                    }
+                },
+                "summary": "Announce a programmed production deployment to every member"
             }
         },
         "/api/feedback": {

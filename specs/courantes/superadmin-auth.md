@@ -11,7 +11,10 @@
 > (§Journaux read-only) + heartbeats cron & pdf-worker, et le pilotage des deux comptes de
 > démonstration (§Démos — console de pilotage), et les stats par club avec le signal
 > « club qui coince » sur la ligne dépliable de l'onglet Clubs (§Supervision read-only
-> SA2 — API parc et solveur, §Écran de supervision React SA2)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
+> SA2 — API parc et solveur, §Écran de supervision React SA2), et le rail BACKEND de la
+> « mise en prod programmée » — API `/api/admin/deployments*` + `app:deployment:tick` +
+> bandeau `GET /api/deployment-notice` (§Mise en prod programmée) ; l'écran console et le
+> rendu du bandeau restent à livrer (roadmap P4-331)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
 > (socle `docker.sock` non transposable en prod — voir console-superadmin.md). Les actions
 > cross-tenant restent dans [`../evolution/console-superadmin.md`](../evolution/console-superadmin.md).
 
@@ -513,3 +516,49 @@ particulier du job. **Purge aussi les clubs démo CONSERVÉS expirés**
 sélection par la table `club` (`is_demo AND demo_retained_until < aujourd'hui`, un club conservé
 vivant jusqu'à la fin de son jour d'échéance), jamais par adhésion — un club conservé en est
 détaché, sinon il serait immortel ; sauté s'il porte un membre actif (repris entre-temps).
+
+## Mise en prod programmée
+
+**Rail BACKEND livré (PR b, roadmap P4-331) ; l'écran console (onglet Exploitation) et le
+rendu du bandeau d'annonce restent à livrer (PR c).** Programmer un déploiement est un geste de
+PROD **cross-tenant** : mêmes gardes que les actions de support (contexte d'audit posé AVANT
+toute garde, CSRF de session doublé par `AdminCsrfListener`, identité `SuperAdmin`). Entité
+GLOBALE `scheduled_deployment` (pas de `club_id`, pas de RLS — un GRANT à `amateo_app`, même
+patron que `release_note`/`public_holiday`), écrite par la connexion `admin`.
+
+- `GET /api/admin/deployments` liste les 20 derniers déploiements (actifs et terminés), et porte
+  `configured` (`GitHubDeployClient::isConfigured()` — jeton/dépôt absents → `false`, la console
+  sait afficher que la fonctionnalité est inerte sans jamais révéler le jeton, qui n'est de toute
+  façon jamais stocké en base).
+- `GET /api/admin/deployments/tags` liste les tags déployables (`^v`, les plus récents d'abord).
+- `POST /api/admin/deployments` programme : `{version, scheduledAt, windowMinutes}`. Refuse en
+  **422** — fonctionnalité non configurée ; corps invalide ; date invalide ; heure H à moins de
+  **10 minutes** de maintenant ; `windowMinutes` hors `[1, 240]` ; version absente des tags
+  déployables ; CI non verte pour ce tag — et en **409** un second déploiement tant qu'un premier
+  est **actif** (`scheduled`|`dispatched`, garanti ultimement par un index unique PARTIEL en
+  base). Répond `201` avec `{id, version, status, scheduledAt, expectedReturnAt}`
+  (`expectedReturnAt = scheduledAt + windowMinutes`).
+- `DELETE /api/admin/deployments/{id}` annule un `scheduled` (`404` si l'UUID ne matche pas le
+  motif ou la ligne n'existe pas) ; refuse en **409** un `dispatched` (le train est parti) ou un
+  déploiement déjà terminé.
+
+`App\Command\DeploymentTickCommand` (`app:deployment:tick`, cron-runner **chaque minute**, hors
+`AdminJobCatalog` — détail et machine à états : [`../../docs/ops/deploy.md`](../../docs/ops/deploy.md)
+§Mise en prod programmée) fait avancer l'unique déploiement actif : dispatch de `deploy.yml` à
+l'heure H (préconditions tag/CI **re-vérifiées**, réessai jusqu'à H+10 min), puis suivi du run
+GitHub jusqu'à conclusion. Chaque transition de statut envoie un e-mail aux superadmins **actifs**
+(même patron de destinataires que `HealthAlertCommand`). `App\Service\GitHubDeployClient`
+(`backend/src/Service/GitHubDeployClient.php`) porte la COUTURE sortante : hôte `api.github.com`
+en constante (jamais dérivé d'une entrée), jeton en en-tête `Authorization` seulement (jamais une
+URL, un corps ni un message), `GitHubDeployException` expurgée par construction ; inerte
+(`isConfigured()` faux) si `GITHUB_DEPLOY_TOKEN`/`GITHUB_DEPLOY_REPOSITORY` sont absents —
+gestes fondateur de configuration : [`../../docs/ops/deploy.md`](../../docs/ops/deploy.md)
+§Mise en prod programmée.
+
+`GET /api/deployment-notice` (JWT club, **aucune** garde superadmin — toute identité club connue)
+sert le bandeau d'annonce que verra tout club connecté dès qu'un déploiement est `scheduled` ou
+`dispatched` : **contrat fixé**, `{"scheduledAt": ISO-8601, "expectedReturnAt": ISO-8601}` et
+**rien d'autre** (ni version, ni acteur, ni jeton) — ou le littéral `null` (rien de programmé, ou
+annulé/terminé). Exemption temporaire de `ApiRoutesHaveAConsumerTest` : le rendu du bandeau
+(consommateur) est livré par la PR frontend (c) du même chantier — à retirer quand elle cable
+le bandeau.

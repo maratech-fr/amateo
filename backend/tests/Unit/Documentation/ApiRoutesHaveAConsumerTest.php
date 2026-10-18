@@ -61,6 +61,10 @@ final class ApiRoutesHaveAConsumerTest extends TestCase
         // P2-53 RMM-8 PR-1 : le géocodage BAN naît TESTÉ (CRUD + autofill de la matrice de
         // trajet livrés backend) mais son écran arrive à la PR-3 — le front le câblera alors.
         '/api/geocode' => 'route de géocodage née testée (P2-53 PR-1) — le front la câble à la PR écran (PR-3)',
+        // « Mise en prod programmée » : le bandeau d'annonce naît TESTÉ côté backend (PR b) mais
+        // son rendu (consommateur) est livré par la PR frontend du même chantier. Exemption
+        // TEMPORAIRE — à retirer quand la PR c câble le bandeau.
+        '/api/deployment-notice' => 'bandeau de mise en prod programmée — consommateur livré par la PR frontend du même chantier (exemption temporaire)',
     ];
 
     public function testEveryClubApiRouteHasAtLeastOneConsumer(): void
