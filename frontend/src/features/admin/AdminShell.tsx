@@ -37,7 +37,7 @@ export function AdminShell() {
   }
 
   return (
-    <div className="min-h-screen bg-console-surface text-console-text-strong">
+    <div className="min-h-screen scheme-dark bg-console-surface text-console-text-strong">
       <header className="border-b border-white/10 bg-console-surface/90">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">

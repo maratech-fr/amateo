@@ -891,7 +891,7 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
                     id={`action-arg-${arg.key}`}
                     value={argValues[arg.key] ?? ""}
                     onChange={(event) => setArgValues((previous) => ({ ...previous, [arg.key]: event.target.value }))}
-                    className="h-10 w-full rounded-md border border-border bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                    className="h-10 w-full scheme-dark rounded-md border border-border bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="">Choisir…</option>
                     {arg.choices.map((choice) => (
