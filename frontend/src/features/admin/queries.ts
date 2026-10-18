@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { toast } from "@/shared/stores/toastStore";
-import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, cancelAdminDeployment, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminDeployments, getAdminDeploymentTags, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, retainAdminDemoProspect, runAdminClubAction, runAdminJob, scheduleAdminDeployment, type ScheduleDeploymentPayload, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
+import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, cancelAdminDeployment, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAudience, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminDeployments, getAdminDeploymentTags, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, retainAdminDemoProspect, runAdminClubAction, runAdminJob, scheduleAdminDeployment, type ScheduleDeploymentPayload, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
 import { useAdminStore } from "./store";
 
 /** Lit le jeton CSRF de la session admin, ou rejette — patron des mutations admin. */
@@ -44,6 +44,15 @@ export function useAdminCapacity() {
     queryKey: ["admin-capacity"],
     queryFn: getAdminCapacity,
     refetchInterval: 5 * 60_000,
+  });
+}
+
+/** Audience Umami (P4-307) — la mesure bouge lentement : staleTime 5 min, pas de refetch auto. */
+export function useAdminAudience() {
+  return useQuery({
+    queryKey: ["admin-audience"],
+    queryFn: getAdminAudience,
+    staleTime: 5 * 60_000,
   });
 }
 
