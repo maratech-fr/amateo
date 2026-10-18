@@ -717,6 +717,15 @@ make deploy VERSION=v1.2.0     # re-déployer un tag existant
 
 (= `gh workflow run deploy.yml`, puis suit le run en direct.)
 
+Pour déployer derrière une fenêtre de maintenance (§ *Maintenance planifiée*), ajouter l'input
+`maintenance_until` au dispatch direct (`make deploy` ne le porte pas encore) :
+
+```bash
+gh workflow run deploy.yml -f version=vX.Y.Z -f maintenance_until=2026-10-22T23:30:00+02:00
+```
+
+Vide ou omis = déploiement inchangé, sans fenêtre.
+
 ### Revenir en arrière (rollback)
 
 ```bash
@@ -868,6 +877,18 @@ encore présent. C'est un **rappel**, pas une garantie — il ne le retire jamai
 fenêtre peut délibérément durer plus qu'un deploy) et n'échoue pas le deploy (le deploy, lui,
 a réussi). La vraie garantie qu'une fenêtre n'a pas été oubliée, c'est le **503 que voit la sonde
 externe** (Better Stack, § *Surveillance externe*).
+
+**Mise en prod programmée** : le workflow *Deploy* peut poser/retirer lui-même ce témoin, le temps
+d'un déploiement — zéro geste SSH manuel pour un déploiement planifié. `workflow_dispatch` porte
+un second input `maintenance_until` (voir § *Hotfix / déployer sans tag*) : vide = comportement
+inchangé (aucun des trois gestes ci-dessous ne s'exécute). Fourni, il doit être un horodatage ISO
+8601 **strict** (avec fuseau ou `Z`) — validé en tout premier step du job, **avant tout SSH** : une
+valeur mal formée échoue le run sans jamais toucher la VM. Le reste de la mécanique est identique
+au geste manuel : le témoin est écrit **avant** `remote-deploy.sh`, et retiré **seulement si le
+déploiement réussit** (sondes `/health`/`/api/health` comprises). **Sur échec, le témoin reste** —
+la maintenance affichée continue, à l'opérateur de décider : rollback (`make deploy VERSION=<tag
+précédent>`, § *Revenir en arrière*) ou retrait manuel (`ssh … rm -f .../maintenance.on`) une fois
+le problème compris.
 
 ### Changer un secret / une variable d'env
 
