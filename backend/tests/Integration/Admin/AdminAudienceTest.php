@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Admin;
 
 use App\Entity\SuperAdmin;
 use App\Security\TotpService;
+use App\Service\AdminAudienceService;
 use App\Tests\Double\UmamiHttpClientStub;
 use App\Tests\Security\SuperAdminAccessTest;
 use Doctrine\DBAL\Connection;
@@ -59,7 +60,7 @@ final class AdminAudienceTest extends WebTestCase
 
     private const string WEBSITE_ID = '11111111-2222-3333-4444-555555555555';
 
-    /** La seule clé de cache du service ({@see \App\Service\AdminAudienceService}) — purgée (DEL ciblé) à chaque boot. */
+    /** La seule clé de cache du service ({@see AdminAudienceService}) — purgée (DEL ciblé) à chaque boot. */
     private const string CACHE_KEY = 'admin.audience.v1';
 
     private KernelBrowser $client;
