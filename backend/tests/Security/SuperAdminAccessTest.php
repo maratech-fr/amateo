@@ -119,6 +119,14 @@ final class SuperAdminAccessTest extends WebTestCase
         $this->client->request('DELETE', '/api/admin/deployments/' . Uuid::v4()->toRfc4122(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(401);
 
+        // P4-307 — la mesure d'audience (onglet Statistiques, Umami) est une surface admin de
+        // SURVEILLANCE cross-tenant : un JWT club ne franchit jamais le firewall pour la lire.
+        // L'angle positif (un SA authentifié la lit, 200 dans tous les états Umami) est éprouvé
+        // par testAuthenticatedAdminCanReadCrossTenantMonitoringAggregates, et les trois états
+        // (non configuré / indisponible / données) + le cache par AdminAudienceTest.
+        $this->client->request('GET', '/api/admin/audience', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(401);
+
         // Anonyme (aucune identité) : même refus.
         $this->startFreshBrowserSession($this->client);
         $this->client->request('GET', '/api/admin/release-notes');
@@ -134,6 +142,9 @@ final class SuperAdminAccessTest extends WebTestCase
         self::assertResponseStatusCodeSame(401);
 
         $this->client->request('GET', '/api/admin/deployments/tags');
+        self::assertResponseStatusCodeSame(401);
+
+        $this->client->request('GET', '/api/admin/audience');
         self::assertResponseStatusCodeSame(401);
     }
 
@@ -203,6 +214,13 @@ final class SuperAdminAccessTest extends WebTestCase
         self::assertArrayHasKey('items', $feedback);
         self::assertArrayHasKey('pagination', $feedback);
         self::assertArrayHasKey('qos', $feedback);
+
+        // P4-307 — la mesure d'audience est lisible par le SA authentifié et répond TOUJOURS 200,
+        // même sans Umami configuré en test (→ configured:false). Le détail des états + le cache :
+        // AdminAudienceTest.
+        $this->client->request('GET', '/api/admin/audience');
+        self::assertResponseIsSuccessful();
+        self::assertArrayHasKey('configured', $this->responseBody());
     }
 
     public function testAuthenticatedAdminCanReadBoundedInfrastructureHealthWithoutInternalErrors(): void
