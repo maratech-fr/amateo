@@ -1,7 +1,8 @@
 # Stack de production — `docker-compose.prod.yml`
 
 > Livré 2026-07-25 (solde l'item P1 « config prod d'orchestration » + INF-03).
-> Le déploiement en une commande (tag `v*` → ghcr.io → SSH) et le runbook
+> Le déploiement — build/publication sur un tag `v*`, puis SSH vers la VM déclenché à la main
+> (console superadmin ou `make deploy`, « tag ≠ déploiement ») — et le runbook
 > première-mise-en-prod : [`deploy.md`](deploy.md).
 
 ## Principe

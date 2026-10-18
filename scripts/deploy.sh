@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Local wrapper behind `make deploy [VERSION=vX.Y.Z]` — dispatches the deploy
-# workflow and follows THE run it just created (not whatever ran last).
-# The normal release path stays `git tag vX.Y.Z && git push origin vX.Y.Z`.
+# workflow (workflow_dispatch) and follows THE run it just created (not whatever
+# ran last). This is what actually DEPLOYS: pushing a tag
+# (`git tag vX.Y.Z && git push origin vX.Y.Z`) only builds and publishes the
+# images (« tag ≠ déploiement »), it never rolls the VM.
 set -euo pipefail
 
 VERSION="${1:-}"

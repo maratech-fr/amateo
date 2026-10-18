@@ -140,9 +140,10 @@ reset-install: ## Force next make start to reinstall dependencies
 services: .env ## List Docker Compose services
 	$(DOCKER_COMPOSE) config --services
 
-# Release helper — the normal path is `git tag vX.Y.Z && git push origin vX.Y.Z`
-# (the tag push triggers .github/workflows/deploy.yml by itself). This target
-# is the manual/hotfix path: refuses an out-of-sync HEAD, dispatches, then
+# Release helper. Pushing a tag (`git tag vX.Y.Z && git push origin vX.Y.Z`) only
+# BUILDS and publishes the images via .github/workflows/deploy.yml — it never
+# rolls the VM (« tag ≠ déploiement »). THIS target is what actually DEPLOYS: it
+# dispatches deploy.yml (workflow_dispatch), refuses an out-of-sync HEAD, then
 # follows the run it just created (fails red if the run fails).
 deploy: ## Deploy VERSION=vX.Y.Z (or origin/main HEAD if omitted) via the deploy workflow
 	bash scripts/deploy.sh $(VERSION)

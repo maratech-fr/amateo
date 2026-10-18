@@ -8,7 +8,14 @@
 
 ## Comment ça marche (2 minutes de lecture)
 
-- Chaque release construit **6 images Docker complètes** (code inclus) et les
+- 🔴 **Tag ≠ déploiement** (décision fondateur 2026-10-18,
+  `specs/courantes/etat-des-lieux.md` §2). Pousser un tag `v*` **CONSTRUIT** les 6
+  images et les publie sur ghcr.io, **puis s'arrête** — aucune mutation de la VM.
+  Déployer est un geste manuel délibéré : la **console superadmin** (« mise en
+  prod programmée », onglet Exploitation) ou `make deploy VERSION=<tag>`. Un
+  `workflow_dispatch` (les deux chemins passent par lui) construit **et** déploie
+  dans la même exécution.
+- Chaque build produit **6 images Docker complètes** (code inclus) et les
   pousse sur **ghcr.io** (le registre d'images de GitHub, lié au repo, gratuit).
 - La VM ne contient QUE : `docker-compose.prod.yml`, `.env.prod` (les secrets),
   le dossier `jwt/`, et les volumes de données. **Jamais le code source.**
@@ -30,9 +37,10 @@
   qu'**aucun conteneur n'utilise** partent ; les volumes de données ne sont jamais
   touchés, et un échec de la purge ne fait pas échouer le déploiement.
 - Le workflow (`.github/workflows/deploy.yml`) a deux moitiés : *build-push*
-  (toujours active) et *deploy SSH* (dormante tant que la variable repo
-  `DEPLOY_ENABLED` n'est pas à `true` — donc rien ne casse tant que la VM
-  n'existe pas).
+  (toujours active, sur les deux déclencheurs) et *deploy SSH* — qui exige
+  **à la fois** `workflow_dispatch` (jamais un push de tag) **et** la variable
+  repo `DEPLOY_ENABLED` à `true` (donc rien ne casse tant que la VM n'existe
+  pas). `update-release-branch` porte la même ceinture `workflow_dispatch`.
 
 ---
 
@@ -184,10 +192,19 @@ et `sudo -u caddy cat /srv/amateo/system-pages/503.html | head -1`.
 
 ### 1.7 Premier déploiement
 
-⬜ Depuis ta machine :
+⬜ Depuis ta machine — taguer **construit et publie les images**, rien de
+plus (« tag ≠ déploiement », § *Comment ça marche*) :
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
+```
+
+⬜ Puis **déployer réellement** — la console superadmin n'existe pas encore
+(l'app n'est pas en ligne), donc ce premier déploiement passe forcément par
+`make deploy` :
+
+```bash
+make deploy VERSION=v1.0.0
 ```
 
 Suivre dans GitHub → *Actions → Deploy*. Le script distant saute le backup
@@ -600,7 +617,7 @@ Umami mesure l'audience de la **page de vente** (`landing/`) SEULE — pas l'app
 seuls snapshots disque — [`backup-restore.md`](backup-restore.md)). Détail de la stack :
 [`prod-stack.md`](prod-stack.md) § Mesure d'audience.
 
-⚠ **ORDRE OBLIGATOIRE** — ne JAMAIS taguer un deploy avant d'avoir fait **F1 ET F2** : le service
+⚠ **ORDRE OBLIGATOIRE** — ne JAMAIS déployer avant d'avoir fait **F1 ET F2** : le service
 porte `:?` sur ses trois variables, un deploy sans elles est **refusé au `compose config`**
 (fail-closed, avant toute mutation de la VM) ; et sans la base, le conteneur partirait en boucle
 d'échec — sans jamais toucher l'app (aucun service ne `depends_on` umami).
@@ -651,8 +668,9 @@ puis `gh secret set ENV_PROD < .env.prod` (§ Secret `ENV_PROD`).
 
 ⬜ **F3 — DNS** : enregistrement A `stats.amateo.app` → IP de la VM.
 
-⬜ **F4 — déployer** : taguer / `make deploy` quand tu veux (§ Partie 2). `umami` démarre, crée son
-schéma au premier boot, passe `healthy`. L'app n'est pas touchée.
+⬜ **F4 — déployer** : console superadmin ou `make deploy` quand tu veux (§ Partie 2 — taguer seul
+ne fait que construire, « tag ≠ déploiement »). `umami` démarre, crée son schéma au premier boot,
+passe `healthy`. L'app n'est pas touchée.
 
 ⬜ **F5 — UI Umami par tunnel SSH** (le SEUL accès à l'**administration** du tableau de bord —
 login, comptes, clés API —, maintenant et toujours ; lire les chiffres au jour le jour passe par
@@ -713,12 +731,22 @@ page trackée) — sa place en git est correcte. Prochain deploy → premiers hi
 
 ### Déployer une release
 
+Taguer **construit et publie** les images — rien de plus (« tag ≠ déploiement »,
+§ *Comment ça marche*) :
+
 ```bash
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-Rien d'autre. Le workflow build → push → déploie → migre → sonde. Vert dans
-*Actions* = en prod.
+Déployer ensuite est un geste séparé et délibéré, au choix :
+
+- **console superadmin** — `/admin` → onglet Exploitation → « Mise en prod
+  programmée » (le chemin normal : programme le dispatch à une heure H, pose/
+  retire la fenêtre de maintenance) ; ou
+- **`make deploy VERSION=v1.2.0`** — immédiat, sans fenêtre de maintenance
+  (§ *Hotfix / déployer sans tag*).
+
+Vert dans *Actions → Deploy* = en prod.
 
 ### Rituel sécurité post-déploiement (ZAP + Nuclei) — obligatoire à CHAQUE déploiement
 
@@ -729,6 +757,11 @@ du fondateur) ; un finding ouvre une ligne de roadmap (sévérité par le barèm
 qu'un correctif improvisé sur l'hôte.
 
 ### Hotfix / déployer sans tag
+
+`make deploy` est le déploiement **immédiat** (sans fenêtre de maintenance) — le
+seul chemin pour un hotfix sha, le seul avant que la console existe (premier
+déploiement, § 1.7), et une alternative valide à la console pour n'importe quel
+tag déjà publié :
 
 ```bash
 make deploy                    # commit courant de main, version = sha
@@ -761,11 +794,11 @@ Les images locales de plus de 7 jours ayant pu être purgées après un déploie
 (voir *Comment ça marche*), un rollback plus ancien les **re-pull depuis ghcr** —
 quelques secondes de plus, aucun risque pour les données.
 
-⚠ **Toujours `make deploy VERSION=<tag>`, jamais re-pousser un ancien tag.**
-`make deploy` fait un *dispatch* : le workflow qui s'exécute est celui de `main`
-(secrets courants, dont `ENV_PROD`). Re-pousser un ancien tag ferait tourner le
-**workflow d'alors**, qui attendait le rail chiffré disparu depuis SEC-23 et
-avorterait avant toute mutation de la VM.
+⚠ **Toujours `make deploy VERSION=<tag>` (ou la console), jamais re-pousser un
+ancien tag.** Un push de tag ne fait que CONSTRUIRE (« tag ≠ déploiement ») —
+re-pousser un ancien tag ne déploierait donc **rien du tout**, quel que soit le
+tag ; `make deploy`/la console restent le seul chemin qui dispatche réellement
+le déploiement.
 
 ⚠ Le rollback rejoue le code d'avant mais **ne dé-migre pas la base**. Si la
 release fautive contenait une migration destructive : restaurer le dump pris
@@ -777,7 +810,8 @@ de migrer sans ce dump, il est fail-closed).
 La branche **`release` est ISO-prod** : à **chaque déploiement VM réussi**, le
 workflow la recale (`git push --force`) sur le commit qui vient de partir en
 prod (job `update-release-branch` de `deploy.yml`, voir aussi *Comment ça
-marche*). Rien à faire à la main. Tant que la VM n'existe pas
+marche*). Rien à faire à la main. Ce job ne tourne que sur `workflow_dispatch`
+(jamais un push de tag — « tag ≠ déploiement ») et tant que la VM n'existe pas
 (`DEPLOY_ENABLED` ≠ `true`), le job de déploiement est sauté, donc `release` ne
 bouge pas — elle ne suit que de **vrais** déploiements.
 
@@ -796,15 +830,20 @@ git push -u origin hotfix/<sujet>
 
 1. Ouvrir une **PR vers `release`** (pas vers `main`) ; valider comme une PR
    normale (tests verts), **merge sur GO fondateur**.
-2. **Taguer la nouvelle version sur `release`** → le déploiement part, et
-   `release` est aussitôt recalée dessus (elle l'était déjà par le merge, le
-   déploiement la confirme) :
+2. **Taguer puis déployer** — taguer ne fait que construire (« tag ≠
+   déploiement ») :
    ```bash
    git switch release && git pull
    git tag vX.Y.Z+1 && git push origin vX.Y.Z+1
+   make deploy VERSION=vX.Y.Z+1
    ```
-   (Ou `make deploy` en *workflow_dispatch* si on déploie sans tag : même
-   résultat, `release` suit le commit déployé.)
+   ⚠ **La console superadmin refuse ce tag** : elle exige une CI verte
+   (`GitHubDeployClient::isCiGreen`, `GET …/actions/workflows/ci.yml/runs?head_sha=…`),
+   et `ci.yml` ne se déclenche que sur `push`/`pull_request` vers `main` — un
+   commit qui n'existe que sur `release` n'a **aucun** run `ci.yml`, donc
+   aucune CI verte à trouver. `make deploy VERSION=<tag>` reste le seul chemin
+   pour un hotfix tagué sur `release` (`make deploy` **sans** `VERSION` vise
+   toujours `origin/main`, jamais `release` — `scripts/deploy.sh`).
 3. **Reporter le correctif sur `main`** pour ne pas le perdre au prochain
    déploiement (qui repart de `main`) : PR `release` → `main`, ou cherry-pick du
    correctif dans une PR vers `main`. Sans ce report, le fix disparaît de la
@@ -915,6 +954,10 @@ précédent>`, § *Revenir en arrière*) ou retrait manuel (`ssh … rm -f .../m
 le problème compris.
 
 ### Mise en prod programmée (console superadmin)
+
+Depuis qu'un tag ne fait plus que construire (« tag ≠ déploiement »), cette console est le chemin
+**normal** pour programmer la mise en prod d'une nouvelle version — `make deploy VERSION=<tag>`
+(§ *Hotfix / déployer sans tag*) reste l'alternative immédiate, sans fenêtre de maintenance.
 
 Depuis `/admin`, un superadmin programme un déploiement sans toucher au terminal : version (un
 tag `^v` existant), heure H, durée de la fenêtre de maintenance annoncée. La console

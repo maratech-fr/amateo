@@ -1,9 +1,14 @@
 # Deploy — build the prod images, push them to ghcr.io, then (if the VM is
 # configured) roll the production stack to the new version over SSH.
 #
-# Two triggers, same pipeline (docs/ops/deploy.md):
-#   - push of a v* tag        → normal release   (VERSION = the tag)
-#   - workflow_dispatch       → hotfix/manual    (VERSION = input or short sha)
+# Two triggers, two different outcomes (docs/ops/deploy.md):
+#   - push of a v* tag  → BUILD ONLY: publishes the images to ghcr.io and stops.
+#                         Deployment is then a deliberate manual act (SuperAdmin
+#                         console or `make deploy VERSION=<tag>`) — a tag never
+#                         rolls the VM on its own (« tag ≠ déploiement »).
+#   - workflow_dispatch → BUILD + DEPLOY: publishes the images AND rolls the VM
+#                         (VERSION = input or short sha). This is the only event
+#                         that runs the `deploy` and `update-release-branch` jobs.
 #
 # Re-deploying an EXISTING version (rollback) never rebuilds: if the images
 # for that version are already in the registry they are reused as-is — the
@@ -15,9 +20,10 @@
 # (hotfix) without dragging all of `main` into prod. See the
 # update-release-branch job below and docs/ops/deploy.md §Branche `release`.
 #
-# The deploy job is gated on the repo variable DEPLOY_ENABLED == 'true' so the
-# whole workflow is mergeable and the image-publishing half works BEFORE any
-# VM exists; flipping the variable (plus the DEPLOY_* secrets) arms it.
+# The deploy job is gated on workflow_dispatch AND the repo variable
+# DEPLOY_ENABLED == 'true' so the whole workflow is mergeable and the
+# image-publishing half works BEFORE any VM exists; flipping the variable
+# (plus the DEPLOY_* secrets) arms it.
 
 name: Deploy
 
@@ -248,14 +254,34 @@ jobs:
           cache-from: type=gha,scope=pdf-worker
           cache-to: type=gha,scope=pdf-worker,mode=max
 
+      # Un push de tag ne fait que CONSTRUIRE : l'annoncer noir sur blanc (log +
+      # résumé du run) pour que l'opérateur qui pousse un tag voie que rien n'a été
+      # déployé et comment le faire ensuite (cadrage « tag ≠ déploiement »). Step
+      # limité à l'événement `push` : un workflow_dispatch, lui, enchaîne sur le job
+      # `deploy`. La version vient de l'output `meta` (jamais une interpolation brute
+      # d'une entrée du dispatch dans le shell).
+      - name: Announce that a tag push only builds
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          {
+            echo "Images publiées pour ${VERSION} — AUCUN déploiement."
+            echo "Déployer : console SuperAdmin (onglet Exploitation) ou make deploy VERSION=${VERSION}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Roll the VM to ${{ needs.build-push.outputs.version }}
     runs-on: ubuntu-24.04
     needs: build-push
-    # Armed the day the VM exists: repo variable DEPLOY_ENABLED='true' +
-    # secrets DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY (see docs/ops/deploy.md).
-    # Until then the job is skipped and a release only publishes images.
-    if: vars.DEPLOY_ENABLED == 'true'
+    # Two belts, both required — a tag push BUILDS but never DEPLOYS:
+    #   - github.event_name == 'workflow_dispatch' separates build from deploy:
+    #     a v* tag push only publishes images; deployment is a deliberate manual
+    #     act (SuperAdmin console or `make deploy VERSION=…`, docs/ops/deploy.md).
+    #   - vars.DEPLOY_ENABLED == 'true' arms the VM the day it exists (plus the
+    #     secrets DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY).
+    # Until both hold the job is skipped and a release only publishes images.
+    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_ENABLED == 'true'
     steps:
       # Validate the maintenance window FIRST — before any checkout or SSH, so a
       # forged value aborts the run without ever touching the VM. Empty input =
@@ -438,15 +464,18 @@ jobs:
   #     ce job ne tourne QUE si `deploy` a réussi ; tant que la VM n'existe pas
   #     (DEPLOY_ENABLED != 'true'), `deploy` est `skipped`, donc ce job aussi et
   #     `release` ne bouge pas — elle ne suit que de VRAIS déploiements.
+  #   - `if: github.event_name == 'workflow_dispatch'` → ceinture EXPLICITE en
+  #     plus de `needs: deploy` : recaler `release` est un geste de déploiement,
+  #     jamais de simple build de tag (cadrage « tag ≠ déploiement »). Un push de
+  #     tag `v*` ne fait que CONSTRUIRE : il ne recale donc pas `release`.
   #   - Le commit poussé est `deployed_sha` (résolu par build-push depuis la
   #     version : tag, `sha-…` ou commit courant), PAS le github.sha du dispatch →
   #     un rollback recale `release` sur l'artefact redéployé, pas sur `main`.
-  #   - Les deux déclencheurs y passent : push d'un tag `v*` (release normale ou
-  #     hotfix tagué sur `release`) ET workflow_dispatch (hotfix/manuel/rollback).
   update-release-branch:
     name: Fast-forward `release` to the deployed commit
     runs-on: ubuntu-24.04
     needs: [build-push, deploy]
+    if: github.event_name == 'workflow_dispatch'
     # Moindre privilège : ce job est le SEUL à écrire dans le dépôt (pousser la
     # ref `release`). Un bloc `permissions:` par job REMPLACE le régime racine
     # (`contents: read`) ; `packages:` est donc absent ici — inutile pour ce job.
