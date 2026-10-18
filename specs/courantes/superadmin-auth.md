@@ -28,7 +28,13 @@ et `AdminAuthLayout` sont câblés sur des jetons `--console-*` (`bg-console-sur
 d'aliasing dans [`frontend-components.md`](../../frontend/docs/frontend-components.md)), jamais
 sur `--background`/`--foreground` (`src/index.css`) qui varient avec le mode clair/sombre
 applicatif — c'est une esthétique assumée pour une surface à persona fondateur, pas une dérive
-(décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md) §2). Conséquence directe : une
+(décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md) §2). Les deux racines portent aussi
+`scheme-dark` (`color-scheme: dark`) pour que les contrôles NATIFS — popup d'un `<select>`,
+calendrier `date`/`datetime-local`, flèches d'un `number` — se dessinent en sombre (sans lui, la
+liste ouverte d'un `<select>` sortait blanche sur texte blanc, retour fondateur 2026-10-18) ; un
+contrôle rendu dans une modale portalée vers `document.body` n'hérite pas de la racine et porte
+`scheme-dark` lui-même (select de la modale d'actions, `AdminDashboardPage.tsx`) ; gardé par
+l'e2e `modal-reachability.spec.ts` (`colorScheme` calculé). Conséquence directe : une
 primitive partagée qui consomme les jetons de **thème** par défaut (ex. `EmptyHint`/`EmptyBlock`,
 `text-muted-foreground`) doit demander sa peau `console` explicitement (prop `variant`, foyer
 `shared/lib/surfaceSkin.ts::SurfaceSkin`, même patron que les onglets) pour rendre juste sur cette
