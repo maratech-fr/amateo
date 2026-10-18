@@ -85,3 +85,14 @@ services:
         arguments:
             $httpClient: '@App\Tests\Double\TurnstileHttpClientStub'
             $turnstileSecret: '%env(TURNSTILE_SECRET)%'
+
+    # « Mise en prod programmée » — le client GitHub roule sur un double HTTP déterministe :
+    # aucun test ne touche api.github.com. Comme ce bloc n'a pas de `_defaults` autowire, les
+    # binds $deployToken/$deployRepository de services.yaml ne s'appliquent pas ici — on les
+    # REpose (%env% résolu au runtime, le test les pose avant boot, patron TurnstileVerifier).
+    App\Tests\Double\GitHubDeployHttpClientStub: ~
+    App\Service\GitHubDeployClient:
+        arguments:
+            $httpClient: '@App\Tests\Double\GitHubDeployHttpClientStub'
+            $deployToken: '%env(GITHUB_DEPLOY_TOKEN)%'
+            $deployRepository: '%env(GITHUB_DEPLOY_REPOSITORY)%'

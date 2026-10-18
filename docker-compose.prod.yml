@@ -255,6 +255,7 @@ services:
     command: >-
       sh -lc 'while true; do
         (php bin/console app:jobs:run-due --no-interaction && date +%s > /tmp/last-tick-ok) || true;
+        php bin/console app:deployment:tick --no-interaction || true;
         sleep 60;
       done'
     depends_on:

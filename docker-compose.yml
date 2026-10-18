@@ -270,6 +270,7 @@ services:
       sh -lc 'while true; do
         if [ -f bin/console ]; then
           php bin/console app:jobs:run-due --no-interaction || true;
+          php bin/console app:deployment:tick --no-interaction || true;
         fi;
         sleep 60;
       done'

@@ -115,7 +115,7 @@ final class DeploymentNoticeTest extends WebTestCase
     protected function tearDown(): void
     {
         if ([] !== $this->deploymentIds) {
-            $this->admin()->executeStatement('DELETE FROM scheduled_deployment WHERE id IN (:ids)', ['ids' => $this->deploymentIds], ['ids' => ArrayParameterType::STRING]);
+            $this->db()->executeStatement('DELETE FROM scheduled_deployment WHERE id IN (:ids)', ['ids' => $this->deploymentIds], ['ids' => ArrayParameterType::STRING]);
         }
         parent::tearDown();
     }
@@ -124,7 +124,12 @@ final class DeploymentNoticeTest extends WebTestCase
     {
         $id = Uuid::v4()->toRfc4122();
         $this->deploymentIds[] = $id;
-        $this->admin()->executeStatement(
+        // ⚠ NEO (adaptation mécanique « connexion par défaut vs admin », signalée à TANK) :
+        // la graine passait par la connexion `admin`, mais DAMA enveloppe AUSSI cette connexion
+        // (enable_static_connection par défaut) — sa transaction n'est jamais committée en test,
+        // donc la requête club (connexion par défaut) ne voyait pas la ligne. On sème par la
+        // connexion par DÉFAUT : la graine partage alors la transaction DAMA de la lecture.
+        $this->db()->executeStatement(
             'INSERT INTO scheduled_deployment (id, version, scheduled_at, expected_return_at, status, created_by, created_at, updated_at)'
             . ' VALUES (:id, :version, :scheduled, :ret, :status, :by, NOW(), NOW())',
             [
@@ -186,9 +191,9 @@ final class DeploymentNoticeTest extends WebTestCase
         return $keys;
     }
 
-    private function admin(): Connection
+    private function db(): Connection
     {
-        $connection = self::getContainer()->get(ManagerRegistry::class)->getConnection('admin');
+        $connection = self::getContainer()->get(ManagerRegistry::class)->getConnection();
         \assert($connection instanceof Connection);
 
         return $connection;

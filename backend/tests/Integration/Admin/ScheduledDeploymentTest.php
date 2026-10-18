@@ -247,9 +247,11 @@ final class ScheduledDeploymentTest extends WebTestCase
         $this->requestIp = \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254));
         GitHubDeployHttpClientStub::reset();
         $this->setDeployEnv(self::TOKEN, self::REPOSITORY);
-        // Table GLOBALE (aucun tenant) : on part d'une base propre à chaque test, l'index
-        // unique partiel est partagé entre méthodes. Via la connexion admin (hors DAMA).
-        $this->admin()->executeStatement('DELETE FROM scheduled_deployment');
+        // ⚠ NEO (adaptation mécanique, signalée à TANK) : le nettoyage de table était ici, mais
+        // `admin()` passe par `self::getContainer()` qui BOOTE le kernel — or `boot()` appelle
+        // ensuite `self::createClient()`, interdit sur un kernel déjà démarré (« kernel should
+        // only be booted once »). Le DELETE est donc déplacé en tête de `boot()`, APRÈS
+        // `createClient()` ; tearDown et le test de firewall (client propre) restent inchangés.
     }
 
     protected function tearDown(): void
@@ -269,6 +271,9 @@ final class ScheduledDeploymentTest extends WebTestCase
     private function boot(): string
     {
         $this->client = self::createClient();
+        // Table GLOBALE (aucun tenant) : on part d'une base propre à chaque test, l'index unique
+        // partiel est partagé entre méthodes. Via la connexion admin (hors DAMA), APRÈS le boot.
+        $this->admin()->executeStatement('DELETE FROM scheduled_deployment');
         [$secret] = $this->createSuperAdmin('deploy@example.test', 'VeryStrongPassword!');
 
         return $this->authenticate('deploy@example.test', 'VeryStrongPassword!', $secret);

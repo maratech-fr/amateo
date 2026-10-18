@@ -67,6 +67,7 @@ final class ReadOnlyRoleTest extends KernelTestCase
         'priority_tier',
         'public_holiday',
         'release_note',
+        'scheduled_deployment',
         'school_holiday_period',
         'shared_competition_deadline',
         'sport',
