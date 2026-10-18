@@ -32,6 +32,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { AdminAction, AdminActionArgumentSpec, AdminClub, AdminFreshnessResponse, AdminHealthResponse, AdminJob, AdminJobStatus, AdminJobsResponse, AdminOverviewResponse } from "./api";
 import { useAdminActions, useAdminClubs, useAdminFeedback, useAdminFreshness, useAdminHealth, useAdminJobs, useAdminOverview, useAdminSystemErrors, useRunAdminClubAction, useRunAdminJob } from "./queries";
+import { AudienceSection } from "./sections/AudienceSection";
 import { CapacitySection } from "./sections/CapacitySection";
 import { ClubRequestsSection } from "./sections/ClubRequestsSection";
 import { ContainersSection } from "./sections/ContainersSection";
@@ -232,6 +233,7 @@ export function AdminDashboardPage() {
       </TabPanel>
 
       <TabPanel variant="console" tabId="statistiques" idPrefix="admin" active={activeTab === "statistiques"} className="space-y-8 pt-6">
+        <AudienceSection />
         <OverviewSection data={overview.data} loading={overview.isPending} error={overview.isError} retry={() => void overview.refetch()} />
         <UsageSection data={overview.data} loading={overview.isPending} error={overview.isError} retry={() => void overview.refetch()} />
         <CapacitySection />

@@ -101,6 +101,36 @@ export interface AdminCapacityResponse {
   };
 }
 
+/** P4-307 — compteurs d'une fenêtre d'audience (7 j / 30 j) + tendance en % vs période précédente. */
+export interface AdminAudienceWindow {
+  visitors: number;
+  visits: number;
+  pageviews: number;
+  /** Variation des visiteurs face à la période précédente, en % (positive = en hausse). */
+  trend: number;
+}
+
+/** Une ligne de top (page ou source) : le chemin / le référent et son compteur. */
+export interface AdminAudienceMetric {
+  value: string;
+  count: number;
+}
+
+/**
+ * P4-307 — mesure d'audience de la vitrine (Umami), union DISCRIMINÉE des trois états servis par
+ * la route (qui répond toujours 200) : non configuré · configuré mais Umami indisponible · données.
+ */
+export type AdminAudienceResponse =
+  | { configured: false }
+  | { configured: true; available: false }
+  | {
+      configured: true;
+      available: true;
+      windows: { d7: AdminAudienceWindow; d30: AdminAudienceWindow };
+      topPages: AdminAudienceMetric[];
+      topSources: AdminAudienceMetric[];
+    };
+
 type HealthStatus = "up" | "down" | "unknown";
 
 export interface AdminHealthContainer {
@@ -452,6 +482,10 @@ export function getAdminHealth(): Promise<AdminHealthResponse> {
 
 export function getAdminCapacity(): Promise<AdminCapacityResponse> {
   return adminApi.get("capacity").json();
+}
+
+export function getAdminAudience(): Promise<AdminAudienceResponse> {
+  return adminApi.get("audience").json();
 }
 
 export function getAdminClubs(page: number, limit: number, query: string): Promise<AdminClubsResponse> {

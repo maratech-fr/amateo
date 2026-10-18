@@ -87,6 +87,12 @@ parameters:
     # se COMMITE jamais, n'est jamais sérialisé, logué ni mis dans une exception.
     env(GITHUB_DEPLOY_TOKEN): ''
     env(GITHUB_DEPLOY_REPOSITORY): ''
+    # Mesure d'audience de la vitrine (onglet « Statistiques », P4-307) — la clé API Umami et
+    # l'identifiant du site mesuré. VIDES par défaut → le client Umami est INERTE et la console
+    # annonce « non configurée » : l'app démarre sans eux. Seule la prod les pose (environnement).
+    # La clé ne se COMMITE jamais, n'est jamais sérialisée, loguée ni mise dans une exception.
+    env(UMAMI_API_KEY): ''
+    env(UMAMI_WEBSITE_ID): ''
 
 services:
     App\AdminJob\AdminJobExecutorInterface: '@App\AdminJob\ConsoleAdminJobExecutor'
@@ -136,6 +142,9 @@ services:
             # « Mise en prod programmée » — consommés par le SEUL service `GitHubDeployClient`.
             $deployToken: '%env(GITHUB_DEPLOY_TOKEN)%'
             $deployRepository: '%env(GITHUB_DEPLOY_REPOSITORY)%'
+            # Mesure d'audience Umami — consommés par le SEUL service `UmamiStatsClient`.
+            $apiKey: '%env(UMAMI_API_KEY)%'
+            $websiteId: '%env(UMAMI_WEBSITE_ID)%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name

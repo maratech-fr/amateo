@@ -183,6 +183,29 @@ final readonly class AdminMonitoringPaths implements CustomPathContributor
                 ],
                 summary: 'Read the 90-day capacity board (volume, queue wait, durations by problem size, engine memory, issues)',
             )),
+            '/api/admin/audience' => new PathItem(get: new Operation(
+                operationId: 'getAdminAudience',
+                tags: ['AdminMonitoring'],
+                responses: [
+                    // Répond TOUJOURS 200 : clé/site absent → configured:false ; Umami KO →
+                    // available:false ; sinon les deux fenêtres + top pages/sources (≤ 5).
+                    '200' => $this->schemas->jsonResponse('Showcase audience measurement read from Umami; always 200 (never fails on a slow/absent third party)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'configured' => ['type' => 'boolean'],
+                            'available' => ['type' => 'boolean'],
+                            'windows' => ['type' => 'object', 'properties' => [
+                                'd7' => $this->audienceWindowSchema(),
+                                'd30' => $this->audienceWindowSchema(),
+                            ]],
+                            'topPages' => ['type' => 'array', 'items' => $this->audienceMetricSchema()],
+                            'topSources' => ['type' => 'array', 'items' => $this->audienceMetricSchema()],
+                        ],
+                    ]),
+                    '401' => new Response('No authenticated super-admin session'),
+                ],
+                summary: 'Read the showcase audience measurement (two windows, top pages and sources)',
+            )),
             '/api/admin/clubs' => new PathItem(get: new Operation(
                 operationId: 'getAdminClubs',
                 tags: ['AdminMonitoring'],
@@ -262,6 +285,32 @@ final readonly class AdminMonitoringPaths implements CustomPathContributor
                     ['name' => 'query', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string', 'maxLength' => 100]],
                 ],
             )),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function audienceWindowSchema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'visitors' => ['type' => 'integer'],
+                'visits' => ['type' => 'integer'],
+                'pageviews' => ['type' => 'integer'],
+                'trend' => ['type' => 'integer'],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function audienceMetricSchema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'value' => ['type' => 'string'],
+                'count' => ['type' => 'integer'],
+            ],
         ];
     }
 

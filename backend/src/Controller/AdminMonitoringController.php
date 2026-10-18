@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\AdminJob\AdminJobMonitoringService;
+use App\Service\AdminAudienceService;
 use App\Service\AdminCapacityService;
 use App\Service\AdminDataFreshnessService;
 use App\Service\AdminHealthService;
@@ -22,6 +23,7 @@ final readonly class AdminMonitoringController
         private AdminJobMonitoringService $jobs,
         private AdminDataFreshnessService $freshness,
         private AdminCapacityService $capacity,
+        private AdminAudienceService $audience,
     ) {}
 
     #[Route('/health', methods: ['GET'])]
@@ -48,6 +50,13 @@ final readonly class AdminMonitoringController
     public function capacity(): JsonResponse
     {
         return new JsonResponse($this->capacity->capacity());
+    }
+
+    /** Mesure d'audience de la vitrine (Umami) : répond TOUJOURS 200, même Umami absent/KO. */
+    #[Route('/audience', methods: ['GET'])]
+    public function audience(): JsonResponse
+    {
+        return new JsonResponse($this->audience->audience());
     }
 
     #[Route('/jobs', methods: ['GET'])]

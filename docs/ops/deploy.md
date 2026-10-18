@@ -654,10 +654,12 @@ puis `gh secret set ENV_PROD < .env.prod` (§ Secret `ENV_PROD`).
 ⬜ **F4 — déployer** : taguer / `make deploy` quand tu veux (§ Partie 2). `umami` démarre, crée son
 schéma au premier boot, passe `healthy`. L'app n'est pas touchée.
 
-⬜ **F5 — UI Umami par tunnel SSH** (le SEUL accès au tableau de bord, maintenant et toujours).
+⬜ **F5 — UI Umami par tunnel SSH** (le SEUL accès à l'**administration** du tableau de bord —
+login, comptes, clés API —, maintenant et toujours ; lire les chiffres au jour le jour passe par
+la console une fois ce geste fait, voir plus bas).
 🔵 **Décision fondateur 2026-10-06 (option A) : le tableau de bord Umami n'est JAMAIS exposé
 publiquement.** Caddy n'expose que les routes de COLLECTE (F6) ; le dashboard (login, listes de
-sites, lecture des chiffres, toute l'admin) se consulte UNIQUEMENT par tunnel SSH. Le conteneur
+sites, création de comptes/clés, toute l'admin) se consulte UNIQUEMENT par tunnel SSH. Le conteneur
 n'écoute que sur `127.0.0.1:8082` de la VM — on l'atteint sans passer par Caddy :
 
 ```bash
@@ -668,11 +670,22 @@ puis, dans le navigateur local, `http://localhost:8082` → login par défaut `a
 🔴 **CHANGER LE MOT DE PASSE IMMÉDIATEMENT** (dès cette première connexion) → créer le site
 « amateo.app » → copier le `websiteId`. Reporter l'URL interne, l'identifiant admin et où vit le
 mot de passe dans la fiche d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL
-d'admin en git). Fermer le tunnel. **Ce même tunnel SSH est le geste de consultation courante** :
-pour lire les chiffres plus tard, rouvrir `ssh -L 8082:127.0.0.1:8082 <hôte>` et aller sur
-`http://localhost:8082`. (Item roadmap P4-307 : l'onglet « Statistiques » existant de la console
-superadmin lira un jour ces chiffres via l'API Umami, jeton côté serveur — alors plus besoin du
-tunnel.)
+d'admin en git).
+
+**Puis, pour la console superadmin (onglet Statistiques, §Mesure d'audience,
+`specs/courantes/superadmin-auth.md`)** : créer un **second** compte Umami, dédié, en rôle
+**LECTURE SEULE** (jamais le compte admin créé ci-dessus — une clé qui fuite ne doit jamais
+donner la main sur la configuration des sites), puis générer sa clé API. Reporter cette clé dans
+`UMAMI_API_KEY` et le `websiteId` déjà copié plus haut dans `UMAMI_WEBSITE_ID` (copie de référence
+`.env.prod`, section commentée `# --- Audience (console « Statistiques »...` de
+`.env.prod.dist`), `gh secret set ENV_PROD < .env.prod`, puis redéployer. Les deux variables
+restent vides par défaut : tant qu'elles ne le sont pas, `UmamiStatsClient` reste INERTE et la
+console affiche « non configurée ».
+
+Fermer le tunnel. **Ce même tunnel SSH reste le geste pour toute administration ultérieure**
+(nouveau compte, rotation de clé, gestion des sites) — pour lire les CHIFFRES au jour le jour,
+l'onglet Statistiques de la console superadmin suffit désormais (rail livré, roadmap P4-307) ;
+il n'affichera des données que si la collecte est branchée (F7, ci-dessous).
 
 ⬜ **F6 — Caddy (exposition de la COLLECTE seule)** : SEULEMENT une fois F5 fait. Ajouter le 4ᵉ
 bloc `stats.amateo.app` du modèle ([`Caddyfile.example`](Caddyfile.example)) à
@@ -687,11 +700,12 @@ hygiène, mais n'est plus une fenêtre d'attaque : ce bloc n'expose plus aucune 
 (Avant que le DNS propage / le conteneur tourne, le bloc rend juste 502 sur la collecte, sans
 effet ailleurs.)
 
-⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
-`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une
-édition directe sur la VM** : le deploy réécrit `landing/` à chaque passage, elle serait écrasée.
-Un `websiteId` est public (visible dans toute page trackée) — sa place en git est correcte.
-Prochain deploy → premiers hits dans le dashboard.
+⬜ **F7 — brancher le script** (reste du chantier « mesure d'audience », roadmap P4-307) : ouvrir
+une **PR** qui remplit `analytics.scriptUrl` + `analytics.websiteId` dans `landing/config.js` (et
+bumpe le `?v=` des DEUX pages). **Jamais une édition directe sur la VM** : le deploy réécrit
+`landing/` à chaque passage, elle serait écrasée. Un `websiteId` est public (visible dans toute
+page trackée) — sa place en git est correcte. Prochain deploy → premiers hits dans le dashboard
+**et dans l'onglet Statistiques de la console** (une fois F5 posé).
 
 ---
 
