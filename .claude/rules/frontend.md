@@ -166,8 +166,8 @@ paths:
   `onError` qui ne fait que poser de l'état local, p.ex. `setError`, ou appelle un handler NOMMÉ
   n'est PAS attrapé). Exemptions nominatives motivées : `useRetouchGestures.ts` (patron
   split-feedback documenté `planning/queries.ts:51-74` — le hook TAIT les erreurs MÉTIER pour que la
-  page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; le reliquat de double
-  toast PARTIEL sur transport = P4-306) et `AdminDashboardPage.tsx` (messages contextuels runtime
+  page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; ses toasts mutate-level
+  sont CONDITIONNÉS au métier — sur transport le site se tait et laisse le hook toaster une seule fois) et `AdminDashboardPage.tsx` (messages contextuels runtime
   `job.label`/`club.name`). Les messages SERVEUR passent par `errorMessage()` (patron UXS-13).
 - 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
   `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
