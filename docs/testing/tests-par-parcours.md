@@ -196,22 +196,24 @@ B ≥ 80 % des séances ; aucune prioritaire ne perd.
   (feature `une-indisponibilite-se-decoupe` retirée, PR4a).
 - 3→2 / mutualiser / diviser : overrides de période, gates `SharedBlock*`, capacité
   `VenueTrainingSlot`.
-- Bilan par rang : **manque produit** (ligne de roadmap). Aperçu « qui est touché » dès la
-  déclaration : **manque produit** (patron `DeletionImpactParityTest`).
-- **Cible Behat → PR4c** (décor ~12 équipes / 3 gymnases, palier 60 s) : un enchaînement « une fermeture
-  se déclare, montre les touchés, et le planning s'adapte » (rang S garde son jour, aucune séance posée
-  au gymnase fermé). Reporté en PR4c (décision fondateur) car la fermeture d'UN gymnase est une contrainte
-  datée FACILITY `venue_closed` (elle alimente `effectiveClosedWeekdaysByVenue`, le transcripteur SAUTE le
-  couple gymnase/jour fermé en « à replacer », `OrphanPinGuard` interdit un épinglage orphelin) ET, à 3
-  gymnases, fermer le plus occupé exige la MUTUALISATION pour rester faisable — le décor de fermeture
-  (mutualisation + plus de gymnases) est à cadrer. `plan-de-periode-en-overlay:45` (re-datage découpé avec
-  aperçu) gardé.
-- **État PR4c** : NON livré dans PR4c. Fondations POSÉES (le trait porte désormais période de fermeture,
-  plan de période, overlay, transcription, et le réglage `maxConsecutiveDays` qui lève le 422 de plan de
-  période d'un club neuf — cf. P3 « manque produit »). Reste à cadrer : le décor de fermeture (venue_closed
-  daté + mutualisation) et la convergence du solveur. **À noter** : la fermeture ajoute des solves (≈ +40 s)
-  et dépasse alors le budget de 15 min que la réduction de `verrou` vient de rendre — arbitrage vitesse/couverture
-  à trancher par le fondateur, ou porter aussi `overlay` au petit club pour regagner du budget (gain marginal mesuré).
+- Bilan par rang : **manque produit** (ligne de roadmap P4-337). Aperçu « qui est touché » dès la
+  déclaration : **manque produit** (ligne de roadmap P4-338, patron `DeletionImpactParityTest`).
+- **LIVRÉ (P4-342, 2026-10-19)** : feature `une-fermeture-adapte-le-planning.feature`, suite
+  `fermeture-planning` (`backend/behat.dist.php`), context `VenueClosureSmallClubContext`
+  (`SmallClubFixtureTrait`, décor 11 équipes / 3 gymnases, palier 60 s). Le gestionnaire ferme deux
+  semaines PLEINES du gymnase le PLUS OCCUPÉ du socle par les DEUX gestes réels de l'application
+  (entrée calendrier `closure` + contrainte FACILITY `venue_closed` datée, attachée à l'entrée) ; les
+  deux équipes de Camille sont mutualisées AU PRÉALABLE (sans quoi fermer le plus chargé sur les 2
+  gymnases restants ne serait pas faisable) ; le flux P1 réel transcrit le socle (copie HARD des
+  séances, le couple gymnase/jour fermé sauté en « à replacer ») puis remplit. Assertions : la
+  version aboutit (`COMPLETED`) ; zéro séance au gymnase fermé ; au moins une séance ailleurs
+  (anti-vide — sinon « zéro au fermé » serait vrai d'un planning entièrement vide) ; aucune équipe de
+  rang S (SM1, SF1) ne perd de séance (compte de séances socle vs adapté jamais inférieur).
+  **Substitution assumée** : le critère founder « les équipes majeures gardent leurs JOURS » a été
+  mesuré INSTABLE sur ce scénario (~1 run sur 6 rouge — le jour exact d'une séance DÉPLACÉE du
+  gymnase fermé n'est qu'un objectif souple du moteur, jamais une garantie dure) et remplacé par
+  « aucune prioritaire ne perd de SÉANCE », le critère de réussite P1 réellement garanti par une
+  version `COMPLETED`. Mesuré : 2 solves ~5 s chacun, scénario ~21 s, +~1 min sur le budget Behat CI.
 - **Cible E2E** : `club-life.spec.ts` (incident consulté), `redate-closure.spec.ts` (incident
   re-daté + contraste).
 
@@ -227,10 +229,14 @@ gymnases laissés.
   PR4c (décision fondateur) — demande un mode ~20 équipes du `SmallClubFixtureTrait` et le flux doléances
   → transfert. Le filet PHPUnit `PeriodConstraintSelector` est écrit AVANT de retirer le scénario
   « contrainte d'équipe ignorée en vacances ».
-- **État PR4c** : NON livré. Filet `PeriodConstraintSelectorTest` VÉRIFIÉ VERT (4 tests, dont
-  `testHolidayDropsTeamCoachAndFacilityByDefaultButKeepsClub`). Le mode ~20 équipes du trait reste à bâtir ; le
-  flux doléances → transfert est outillé par `CoachWishesContext` (patron réutilisable). Comme P1, dépend du
-  réglage `maxConsecutiveDays` (plan de vacances = overlay) et ajoute ~90 s au-delà du budget 15 min — à arbitrer.
+- **État (2026-10-19, P4-342)** : toujours DIFFÉRÉ — le blocage `maxConsecutiveDays` levé par P4-340
+  n'a rechiffré que P1 (ci-dessus) ; P2 est raccroché au lot P2-63 (« Transférer au planning ») comme
+  **preuve de recette** plutôt qu'un scénario Behat à part — son plan (7 PR, §8) est déjà stocké sur
+  la branche NON mergée `feat/p4-297-video-promo` (commit `579a75d9`, en pause pour un autre motif) ;
+  on ne le code pas ici, on cite seulement où il vit. Filet `PeriodConstraintSelectorTest` VÉRIFIÉ VERT
+  (4 tests, dont `testHolidayDropsTeamCoachAndFacilityByDefaultButKeepsClub`). Le mode ~20 équipes du
+  trait reste à bâtir ; le flux doléances → transfert est outillé par `CoachWishesContext` (patron
+  réutilisable).
 
 ### P3 — Planning de saison
 Smoke A→Z, puis nominal : équipes + passerelles, gymnases, coachs, règles de club, préférences,
