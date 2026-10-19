@@ -205,3 +205,59 @@ test.describe("une modale longue reste atteignable", () => {
     expect(Math.round(box!.width)).toBeLessThanOrEqual(1153);
   });
 });
+
+/**
+ * La console superadmin assume un thème SOMBRE — mais un `<select>` natif rendait sa liste
+ * d'options en popup SYSTÈME clair (fond blanc, texte blanc hérité : illisible), retour
+ * fondateur 2026-10-19. Le navigateur ne rend un contrôle natif (et son popup système) en
+ * sombre que si l'élément — ou un ancêtre dont il hérite — porte `color-scheme: dark`. La
+ * correction (NEO) pose l'utilitaire `scheme-dark` sur la racine du shell (`AdminShell.tsx`),
+ * d'où TOUT contrôle natif de la console hérite (`color-scheme` est une propriété héritée).
+ *
+ * ⚠ **Ce que ce spec prouve et que jsdom ne peut pas** : la VALEUR CSS CALCULÉE de
+ * `color-scheme` sur du DOM réellement peint. jsdom n'a ni cascade ni valeur calculée
+ * fiable pour cette propriété ; seul un navigateur dit si l'héritage atteint vraiment le
+ * contrôle. On mesure donc `getComputedStyle(...).colorScheme` dans la page rendue.
+ *
+ * ⚠ **Pourquoi la BARRE DE RECHERCHE des clubs, et pas le `<select>` de la modale d'actions.**
+ * La modale (`modal.tsx`) se rend via `createPortal(..., document.body)` : son `<select>` vit
+ * HORS du sous-arbre d'`AdminShell` et n'hérite donc PAS du `color-scheme` de la racine du
+ * shell — il relève d'un autre correctif (document racine), hors du périmètre posé ici. Le
+ * champ de recherche des clubs (`#club-search`, rôle `searchbox`) est un contrôle natif RÉEL,
+ * présent au repos sur `?tab=clubs`, DANS le `<main>` d'`AdminShell`, sans aucune écriture de
+ * données : c'est le témoin fidèle de l'héritage que la correction installe. Le `<select>` de
+ * `DeploymentSection` serait fidèle aussi mais n'apparaît qu'une fois peuplé, sur un autre
+ * onglet — trop conditionnel pour un témoin stable.
+ */
+test.describe("la console superadmin force le schéma de couleurs sombre", () => {
+  test.skip(null === credentials, "préflight superadmin absent — lancez `make -C frontend e2e` (il sème le compte et exporte son secret TOTP).");
+
+  test("les contrôles natifs héritent de color-scheme: dark depuis la racine du shell", async ({ page }) => {
+    test.setTimeout(120_000);
+
+    // Session superadmin depuis le storageState partagé (projet `setup`) — pas de login ici.
+    await page.goto("/admin?tab=clubs");
+
+    // La racine du shell est la SOURCE de l'héritage (c'est là que `scheme-dark` doit vivre).
+    // Son `<main>` — un seul sur `/admin` — en est le descendant direct ; on le mesure comme
+    // preuve que la propriété est bien posée et héritable vers le contenu.
+    const shellMain = page.getByRole("main");
+    await expect(shellMain, "le shell superadmin doit être rendu").toBeVisible({ timeout: 20_000 });
+
+    // Témoin fidèle : un contrôle natif RÉEL de la console, au repos, sous `AdminShell`.
+    const clubSearch = page.getByRole("searchbox", { name: "Rechercher un club" });
+    await expect(clubSearch, "la barre de recherche des clubs doit être rendue").toBeVisible({ timeout: 20_000 });
+
+    const mainScheme = await shellMain.evaluate((el) => getComputedStyle(el).colorScheme);
+    expect(
+      mainScheme,
+      `la racine du shell superadmin ne force pas le schéma sombre (color-scheme calculé = « ${mainScheme} »). Sans \`color-scheme: dark\` sur AdminShell, aucun contrôle natif de la console ne peut en hériter — c'est le défaut du 2026-10-19 (popup \`<select>\` système en blanc).`,
+    ).toBe("dark");
+
+    const searchScheme = await clubSearch.evaluate((el) => getComputedStyle(el).colorScheme);
+    expect(
+      searchScheme,
+      `le champ de recherche des clubs n'hérite pas du schéma sombre (color-scheme calculé = « ${searchScheme} ») : un contrôle natif de la console rendrait son chrome système (popup, caret, ascenseur) en clair, illisible sur le fond ardoise.`,
+    ).toBe("dark");
+  });
+});

@@ -11,7 +11,7 @@ interface AdminAuthLayoutProps {
 
 export function AdminAuthLayout({ title, description, children }: AdminAuthLayoutProps) {
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-console-surface p-6 text-console-text-strong">
+    <main className="relative flex min-h-screen scheme-dark items-center justify-center overflow-hidden bg-console-surface p-6 text-console-text-strong">
       <div className="pointer-events-none absolute -left-24 -top-24 size-80 rounded-full bg-console-accent-glow/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-32 -right-24 size-96 rounded-full bg-console-glow/10 blur-3xl" />
       <div className="relative w-full max-w-md">
