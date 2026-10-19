@@ -57,9 +57,13 @@ final readonly class AdminSystemErrorsController
 
         $params = ['faulty' => AdminJobStatus::faultyValues()];
         $paramTypes = ['faulty' => ArrayParameterType::STRING];
-        $sinceSql = '';
+        // `created_at` est un alias de SELECT, invisible dans le WHERE : chaque branche doit filtrer
+        // sa colonne réelle (admin_job_run.started_at, audit_log.occurred_at), d'où deux fragments.
+        $sinceJobSql = '';
+        $sinceAuditSql = '';
         if (null !== $since) {
-            $sinceSql = 'AND created_at >= :since';
+            $sinceJobSql = 'AND started_at >= :since';
+            $sinceAuditSql = 'AND occurred_at >= :since';
             $params['since'] = $since . ' 00:00:00';
         }
 
@@ -73,7 +77,7 @@ final readonly class AdminSystemErrorsController
                 date_trunc('hour', started_at) AS hour_bucket
             FROM admin_job_run
             WHERE status IN (:faulty)
-                {$sinceSql}
+                {$sinceJobSql}
             UNION ALL
             SELECT
                 'audit' AS source,
@@ -84,7 +88,7 @@ final readonly class AdminSystemErrorsController
                 date_trunc('hour', occurred_at) AS hour_bucket
             FROM audit_log
             WHERE action = 'auth.login_failed'
-                {$sinceSql}
+                {$sinceAuditSql}
         ),
         deduped AS (
             SELECT
