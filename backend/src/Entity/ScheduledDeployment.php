@@ -56,6 +56,14 @@ class ScheduledDeployment
     #[ORM\Column(name: 'failure_reason', type: 'text', nullable: true)]
     private ?string $failureReason = null;
 
+    /**
+     * Note de DÉPART posée par le tick (retard d'attente, plafond forcé) — rendue en console
+     * (carte active + historique) et reportée dans les e-mails de succès/échec. Jamais servie au
+     * club (le bandeau d'annonce l'ignore).
+     */
+    #[ORM\Column(name: 'dispatch_note', type: 'text', nullable: true)]
+    private ?string $dispatchNote = null;
+
     #[ORM\Column(name: 'created_at', type: 'datetimetz_immutable')]
     private DateTimeImmutable $createdAt;
 
@@ -128,6 +136,28 @@ class ScheduledDeployment
     public function getFailureReason(): ?string
     {
         return $this->failureReason;
+    }
+
+    public function getDispatchNote(): ?string
+    {
+        return $this->dispatchNote;
+    }
+
+    public function setDispatchNote(?string $dispatchNote): void
+    {
+        $this->dispatchNote = $dispatchNote;
+    }
+
+    /**
+     * Re-date l'heure de retour sur le dispatch RÉEL : `expectedReturnAt ← now + fenêtre d'origine`
+     * (fenêtre = `expectedReturnAt − scheduledAt`, calculée AVANT l'écrasement). Le tick la passe
+     * ensuite en `maintenance_until` pour que le bandeau annonce un retour juste même si le départ
+     * a été retardé par une génération en cours.
+     */
+    public function redateExpectedReturn(DateTimeImmutable $now): void
+    {
+        $windowSeconds = $this->expectedReturnAt->getTimestamp() - $this->scheduledAt->getTimestamp();
+        $this->expectedReturnAt = $now->modify(\sprintf('+%d seconds', $windowSeconds));
     }
 
     public function getCreatedAt(): DateTimeImmutable

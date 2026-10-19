@@ -698,6 +698,10 @@
                                                         "type": "string",
                                                         "nullable": true
                                                     },
+                                                    "dispatchNote": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
                                                     "createdAt": {
                                                         "type": "string",
                                                         "format": "date-time"
@@ -769,6 +773,9 @@
                     },
                     "422": {
                         "description": "Feature not configured, unknown version, red CI, or invalid schedule"
+                    },
+                    "502": {
+                        "description": "GitHub was unreachable while validating the version/CI (nothing persisted)"
                     }
                 },
                 "summary": "Schedule a production deployment (does not dispatch \u2014 the tick does, at H)",
@@ -812,7 +819,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Deployable ^v tags",
+                        "description": "Deployable ^v tags (available:false when GitHub is unreachable)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -823,6 +830,9 @@
                                             "items": {
                                                 "type": "string"
                                             }
+                                        },
+                                        "available": {
+                                            "type": "boolean"
                                         }
                                     }
                                 }
