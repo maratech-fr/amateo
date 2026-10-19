@@ -8,6 +8,7 @@ import { Spinner } from "@/shared/components/ui/spinner";
 
 import { logoutAdmin } from "./api";
 import { useAdminStore } from "./store";
+import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
 
 export function AdminShell() {
   const navigate = useNavigate();
@@ -42,13 +43,13 @@ export function AdminShell() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-lg bg-console-accent/10 text-console-accent-hover"><ShieldCheck className="size-5" aria-hidden="true" /></div>
-            <div><p className="font-semibold text-white">Console superadmin</p><p className="text-xs text-console-muted">Surface d’exploitation transverse</p></div>
+            <div><p className="font-semibold text-white">{ADMIN_DASHBOARD_TEXTS.shellTitle}</p><p className="text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.shellSubtitle}</p></div>
           </div>
           <div className="flex items-center gap-4">
             <span className="hidden text-sm text-console-text-dim sm:inline">{identity?.email}</span>
             <Button variant="ghost" size="sm" className="text-console-text hover:bg-white/10 hover:text-white" onClick={logout} disabled={pending}>
               {pending ? <Spinner className="size-4" /> : <LogOut className="size-4" aria-hidden="true" />}
-              Sortir
+              {ADMIN_DASHBOARD_TEXTS.shellLogout}
             </Button>
           </div>
         </div>

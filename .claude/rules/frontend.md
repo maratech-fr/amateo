@@ -166,8 +166,8 @@ paths:
   `onError` qui ne fait que poser de l'état local, p.ex. `setError`, ou appelle un handler NOMMÉ
   n'est PAS attrapé). Exemptions nominatives motivées : `useRetouchGestures.ts` (patron
   split-feedback documenté `planning/queries.ts:51-74` — le hook TAIT les erreurs MÉTIER pour que la
-  page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; le reliquat de double
-  toast PARTIEL sur transport = P4-306) et `AdminDashboardPage.tsx` (messages contextuels runtime
+  page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; ses toasts mutate-level
+  sont CONDITIONNÉS au métier — sur transport le site se tait et laisse le hook toaster une seule fois) et `AdminDashboardPage.tsx` (messages contextuels runtime
   `job.label`/`club.name`). Les messages SERVEUR passent par `errorMessage()` (patron UXS-13).
 - 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
   `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
@@ -246,7 +246,13 @@ paths:
   viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
   `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`, matchs `ConflictLine`, assistant
   `SlotReservationModal`/`ConstraintsStep`/`RecapStep`. Depuis (progressif, lot 5) : matchs
-  `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`.
+  `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`. La
+  **console superadmin** (`features/admin/**`) a sa propre maison SCINDÉE par module —
+  `features/admin/texts/<module>.ts` (pas un `texts.ts` unique) — amorcée par la **coquille**
+  (P4-346 PR A, 2026-10-19) : `texts/dashboard.ts` (`ADMIN_DASHBOARD_TEXTS`) couvre
+  `AdminDashboardPage`/`AdminShell`/`AdminLoginPage`/`AdminAuthLayout`/`tabs/tabsConfig`/les
+  toasts de `queries.ts`. Restent en dur les sections (`features/admin/sections/*`) et les
+  journaux (`features/admin/Journaux/*`) — PR B.
 - 🔴 **Un changement d'apparence VOULU sur un des 9 écrans de `visual-reference.spec.ts`
   (login, register, planning semaine, matchs calendrier/semaine type/contraintes club, club,
   wizard coachs/contraintes) exige une re-baseline** — procédure et commande unique :
