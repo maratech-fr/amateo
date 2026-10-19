@@ -13,8 +13,10 @@
 > « club qui coince » sur la ligne dépliable de l'onglet Clubs (§Supervision read-only
 > SA2 — API parc et solveur, §Écran de supervision React SA2), et la « mise en prod programmée »
 > — API `/api/admin/deployments*` + `app:deployment:tick`, écran console (onglet Exploitation) et
-> bandeau d'annonce côté clubs (§Mise en prod programmée ; le guichet « attendre la fin des
-> générations en cours », roadmap P4-348, reste ouvert)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
+> bandeau d'annonce côté clubs, **complète depuis le 2026-10-19** : le tick attend la fin des
+> générations/placements en cours (plafonné 10 min), les quatre guichets de solve refusent 409 dès
+> l'heure H d'un déploiement actif, et GitHub injoignable se dégrade proprement côté console
+> (§Mise en prod programmée)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
 > (socle `docker.sock` non transposable en prod — voir console-superadmin.md). Les actions
 > cross-tenant restent dans [`../evolution/console-superadmin.md`](../evolution/console-superadmin.md).
 
@@ -561,9 +563,9 @@ détaché, sinon il serait immortel ; sauté s'il porte un membre actif (repris 
 
 ## Mise en prod programmée
 
-**Rail backend, écran console (onglet Exploitation) et bandeau d'annonce côté clubs livrés
-(roadmap P4-331) ; reste le guichet « attendre la fin des générations en cours » avant de
-déclencher (roadmap P4-348).** Programmer un déploiement est un geste de PROD **cross-tenant** : mêmes gardes que les actions de support (contexte d'audit posé AVANT
+**Rail backend, écran console (onglet Exploitation), bandeau d'annonce côté clubs, attente des
+générations/placements en cours et gel des guichets de solve, tous livrés (roadmap P4-331, puis
+P4-348/P4-350 le 2026-10-19).** Programmer un déploiement est un geste de PROD **cross-tenant** : mêmes gardes que les actions de support (contexte d'audit posé AVANT
 toute garde, CSRF de session doublé par `AdminCsrfListener`, identité `SuperAdmin`). Entité
 GLOBALE `scheduled_deployment` (pas de `club_id`, pas de RLS — un GRANT à `amateo_app`, même
 patron que `release_note`/`public_holiday`), écrite par la connexion `admin`.
@@ -572,30 +574,64 @@ patron que `release_note`/`public_holiday`), écrite par la connexion `admin`.
   `configured` (`GitHubDeployClient::isConfigured()` — jeton/dépôt absents → `false`, la console
   sait afficher que la fonctionnalité est inerte sans jamais révéler le jeton, qui n'est de toute
   façon jamais stocké en base).
-- `GET /api/admin/deployments/tags` liste les tags déployables (`^v`, les plus récents d'abord).
+- `GET /api/admin/deployments/tags` liste les tags déployables (`^v`, les plus récents d'abord) et
+  porte `available` : `true` normalement, `false` (liste vide) quand GitHub est injoignable (4xx ou
+  panne de transport) — jamais une 500, la console dégrade (message + « Réessayer », « Programmer »
+  désactivé).
 - `POST /api/admin/deployments` programme : `{version, scheduledAt, windowMinutes}`. Refuse en
   **422** — fonctionnalité non configurée ; corps invalide ; date invalide ; heure H à moins de
   **10 minutes** de maintenant ; `windowMinutes` hors `[1, 240]` ; version absente des tags
-  déployables ; CI non verte pour ce tag — et en **409** un second déploiement tant qu'un premier
+  déployables ; CI non verte pour ce tag — en **409** un second déploiement tant qu'un premier
   est **actif** (`scheduled`|`dispatched`, garanti ultimement par un index unique PARTIEL en
-  base). Répond `201` avec `{id, version, status, scheduledAt, expectedReturnAt}`
-  (`expectedReturnAt = scheduledAt + windowMinutes`).
+  base) — et en **502** si GitHub est injoignable pendant la validation du tag/CI (rien n'est
+  persisté). Répond `201` avec `{id, version, status, scheduledAt, expectedReturnAt}`
+  (`expectedReturnAt = scheduledAt + windowMinutes` — re-daté sur le dispatch RÉEL si le tick a dû
+  retarder le départ, voir ci-dessous).
 - `DELETE /api/admin/deployments/{id}` annule un `scheduled` (`404` si l'UUID ne matche pas le
   motif ou la ligne n'existe pas) ; refuse en **409** un `dispatched` (le train est parti) ou un
   déploiement déjà terminé.
 
 `App\Command\DeploymentTickCommand` (`app:deployment:tick`, cron-runner **chaque minute**, hors
 `AdminJobCatalog` — détail et machine à états : [`../../docs/ops/deploy.md`](../../docs/ops/deploy.md)
-§Mise en prod programmée) fait avancer l'unique déploiement actif : dispatch de `deploy.yml` à
-l'heure H (préconditions tag/CI **re-vérifiées**, réessai jusqu'à H+10 min), puis suivi du run
-GitHub jusqu'à conclusion. Chaque transition de statut envoie un e-mail aux superadmins **actifs**
-(même patron de destinataires que `HealthAlertCommand`). `App\Service\GitHubDeployClient`
-(`backend/src/Service/GitHubDeployClient.php`) porte la COUTURE sortante : hôte `api.github.com`
-en constante (jamais dérivé d'une entrée), jeton en en-tête `Authorization` seulement (jamais une
-URL, un corps ni un message), `GitHubDeployException` expurgée par construction ; inerte
-(`isConfigured()` faux) si `GITHUB_DEPLOY_TOKEN`/`GITHUB_DEPLOY_REPOSITORY` sont absents —
-gestes fondateur de configuration : [`../../docs/ops/deploy.md`](../../docs/ops/deploy.md)
-§Mise en prod programmée.
+§Mise en prod programmée) fait avancer l'unique déploiement actif :
+
+1. à H, s'il reste une **génération** (`schedule` en `GENERATING`) ou un **placement de matchs**
+   (`match_placement_run` en `RUNNING`) en cours — tous clubs confondus, comptés par la connexion
+   `admin` en LECTURE SEULE — le départ est **retardé** : statut `scheduled` inchangé, une note
+   (`dispatch_note`, texte libre FR, affichée en console et reportée dans l'e-mail final) dit le
+   retard. Plafonné à `scheduledAt` **+ 10 minutes** (`WAIT_CAP_MINUTES`) : au-delà, le départ est
+   **forcé malgré l'activité** (note dédiée) ;
+2. les préconditions tag/CI sont **re-vérifiées** (sans activité restante, ou plafond atteint) —
+   l'une a changé → échec **sans dispatch** ; une lecture qui **échoue** (GitHub injoignable) est un
+   cas distinct, réessayé (point 4) ;
+3. préconditions au vert → `expectedReturnAt` **re-daté** sur l'instant réel du dispatch (now + la
+   fenêtre d'origine), puis `GitHubDeployClient::dispatchDeploy()` déclenche `deploy.yml` avec ce
+   `maintenance_until` re-daté ;
+4. un dispatch qui échoue (GitHub injoignable, lectures du point 2 ou dispatch lui-même) est
+   **réessayé** jusqu'à `scheduledAt` **+ 10 (point 1) + 10 minutes** (`DISPATCH_RETRY_MINUTES`),
+   puis **abandonné** : statut `failed`, e-mail « GitHub est resté injoignable. La maintenance n'a
+   pas été posée. » ;
+5. le run GitHub est ensuite **suivi** jusqu'à conclusion. Chaque transition de statut envoie un
+   e-mail aux superadmins **actifs** (même patron de destinataires que `HealthAlertCommand`),
+   reportant la note de départ (point 1) le cas échéant.
+
+`App\Service\GitHubDeployClient` (`backend/src/Service/GitHubDeployClient.php`) porte la COUTURE
+sortante : hôte `api.github.com` en constante (jamais dérivé d'une entrée), jeton en en-tête
+`Authorization` seulement (jamais une URL, un corps ni un message), `GitHubDeployException`
+expurgée par construction — y compris une panne de **transport** (DNS, connexion refusée, timeout),
+réemballée sans le message brut qui pourrait porter l'hôte/le port ; inerte (`isConfigured()` faux)
+si `GITHUB_DEPLOY_TOKEN`/`GITHUB_DEPLOY_REPOSITORY` sont absents — gestes fondateur de
+configuration : [`../../docs/ops/deploy.md`](../../docs/ops/deploy.md) §Mise en prod programmée.
+
+**Gel des guichets de solve** (`App\Service\DeploymentGate`, `backend/src/Service/DeploymentGate.php`,
+axe *generation pipeline*) : dès que l'heure H d'un déploiement **actif** (`scheduled`|`dispatched`)
+est atteinte (lue sur l'horloge **réelle** `app.clock.real`, jamais l'horloge simulée d'un club
+démo), les quatre guichets qui enfilent un run moteur — `GenerateScheduleController`,
+`RegenerateController`, `FillPeriodPlanController`, `PlaceMatchesController` — refusent en **409**
+avec la constante `DeploymentGate::FREEZE_MESSAGE` (« Une mise en production est imminente —
+réessayez après la maintenance. »), **sans fuiter la version, l'acteur ni « GitHub »**. Un
+déploiement futur ou annulé ne gèle rien. NR bloquant : `DeploymentImminentFreezeTest`
+(`docs/testing/blocking-tests.md`).
 
 `GET /api/deployment-notice` (JWT club, **aucune** garde superadmin — toute identité club connue)
 sert le bandeau d'annonce que verra tout club connecté dès qu'un déploiement est `scheduled` ou

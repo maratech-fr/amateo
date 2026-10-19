@@ -6,6 +6,7 @@ namespace App\Service;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
@@ -197,7 +198,14 @@ final class GitHubDeployClient
         // getStatusCode() ne lève pas sur 4xx/5xx (contrairement à toArray()) : on vérifie
         // nous-mêmes et on lève notre propre exception EXPURGÉE, avant toute lecture du corps —
         // aucune exception du transport portant les options (donc le jeton) n'est créée.
-        $status = $response->getStatusCode();
+        // Une panne de TRANSPORT (DNS, connexion refusée, timeout) surface ICI, sur getStatusCode() :
+        // on la ré-emballe dans notre exception EXPURGÉE (le message brut du transport, qui pourrait
+        // porter l'hôte/port, ne ressort jamais) — « injoignable », pas « a répondu N ».
+        try {
+            $status = $response->getStatusCode();
+        } catch (TransportExceptionInterface) {
+            throw GitHubDeployException::fromTransport($method, $path);
+        }
         if ($status < 200 || $status >= 300) {
             throw GitHubDeployException::fromResponse($method, $path, $status);
         }

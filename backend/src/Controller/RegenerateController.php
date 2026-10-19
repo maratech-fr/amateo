@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\DeploymentGate;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
@@ -50,6 +51,7 @@ final class RegenerateController extends AbstractController implements SeasonSco
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly SocleGuard $socleGuard,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly DeploymentGate $deploymentGate,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -64,6 +66,12 @@ final class RegenerateController extends AbstractController implements SeasonSco
     public function __invoke(string $id): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
+
+        // P4-350 (axe generation pipeline) : gel des guichets pendant une mise en production
+        // imminente — refus AVANT tout lookup/état/socle.
+        if ($this->deploymentGate->isFrozen()) {
+            return $this->json(['error' => DeploymentGate::FREEZE_MESSAGE], Response::HTTP_CONFLICT);
+        }
 
         try {
             $source = $this->entityManager->getRepository(Schedule::class)->find($id);

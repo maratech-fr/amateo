@@ -43,6 +43,7 @@ final readonly class AdminDeploymentPaths implements CustomPathContributor
                 'dispatchedAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
                 'githubRunId' => ['type' => 'integer', 'nullable' => true],
                 'failureReason' => ['type' => 'string', 'nullable' => true],
+                'dispatchNote' => ['type' => 'string', 'nullable' => true],
                 'createdAt' => ['type' => 'string', 'format' => 'date-time'],
             ],
         ];
@@ -82,6 +83,7 @@ final readonly class AdminDeploymentPaths implements CustomPathContributor
                         '403' => new Response('Missing or invalid X-CSRF-Token header'),
                         '409' => new Response('A deployment is already scheduled'),
                         '422' => new Response('Feature not configured, unknown version, red CI, or invalid schedule'),
+                        '502' => new Response('GitHub was unreachable while validating the version/CI (nothing persisted)'),
                     ],
                     summary: 'Schedule a production deployment (does not dispatch — the tick does, at H)',
                     requestBody: $this->schemas->jsonBody([
@@ -99,10 +101,11 @@ final readonly class AdminDeploymentPaths implements CustomPathContributor
                 operationId: 'getAdminDeploymentTags',
                 tags: ['AdminDeployments'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('Deployable ^v tags', [
+                    '200' => $this->schemas->jsonResponse('Deployable ^v tags (available:false when GitHub is unreachable)', [
                         'type' => 'object',
                         'properties' => [
                             'items' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            'available' => ['type' => 'boolean'],
                         ],
                     ]),
                     '401' => new Response('No authenticated super-admin session'),

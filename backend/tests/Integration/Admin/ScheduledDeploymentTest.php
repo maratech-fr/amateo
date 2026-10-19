@@ -242,6 +242,106 @@ final class ScheduledDeploymentTest extends WebTestCase
         self::assertResponseStatusCodeSame(422, 'jeton absent → fonctionnalité inerte, 422 explicite');
     }
 
+    /**
+     * GitHub injoignable (réponse 4xx OU panne de transport) : la liste des versions reste 200 et
+     * signale `available:false` — le front dégrade sans planter (jamais une 500 qui casse l'écran).
+     */
+    public function testGitHubUnavailableTagsServeAnEmptyListWithAvailableFalse(): void
+    {
+        GitHubDeployHttpClientStub::$tagsFailStatus = 403; // jeton révoqué / dépôt renommé
+        $this->boot();
+
+        $this->client->request('GET', '/api/admin/deployments/tags', [], [], ['REMOTE_ADDR' => $this->requestIp]);
+        self::assertResponseStatusCodeSame(200, 'la liste des tags reste 200 même quand GitHub est injoignable');
+        self::assertSame([], $this->responseBody()['items'], 'aucune version servie quand GitHub est injoignable');
+        self::assertFalse($this->responseBody()['available'], 'available:false signale l\'indisponibilité au front');
+
+        // Même verdict par panne de TRANSPORT (réseau), pas seulement une réponse d'erreur.
+        GitHubDeployHttpClientStub::$tagsFailStatus = null;
+        GitHubDeployHttpClientStub::$transportFails = true;
+        $this->client->request('GET', '/api/admin/deployments/tags', [], [], ['REMOTE_ADDR' => $this->requestIp]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertFalse($this->responseBody()['available'], 'une panne de transport donne aussi available:false');
+    }
+
+    /** Nominal : GitHub joignable → la liste des tags rapporte `available:true`. */
+    public function testTheNominalTagsResponseReportsAvailableTrue(): void
+    {
+        GitHubDeployHttpClientStub::$tags = [['name' => 'v2.0.0', 'sha' => 'head2222']];
+        $this->boot();
+
+        $this->client->request('GET', '/api/admin/deployments/tags', [], [], ['REMOTE_ADDR' => $this->requestIp]);
+        self::assertResponseIsSuccessful();
+        self::assertTrue($this->responseBody()['available'], 'GitHub joignable → available:true');
+        self::assertContains('v2.0.0', $this->responseBody()['items']);
+    }
+
+    /**
+     * GitHub injoignable PENDANT la programmation (POST) → 502 avec un message d'attente clair, et
+     * AUCUNE ligne persistée (la programmation échoue proprement, jamais à moitié).
+     */
+    public function testAGitHubOutageDuringSchedulingReturns502AndInsertsNothing(): void
+    {
+        GitHubDeployHttpClientStub::$tags = [['name' => 'v1.0.0', 'sha' => 'head0000']];
+        GitHubDeployHttpClientStub::$transportFails = true;
+        $csrf = $this->boot();
+
+        $this->json('POST', '/api/admin/deployments', [
+            'version' => 'v1.0.0',
+            'scheduledAt' => new DateTimeImmutable('now')->modify('+30 minutes')->format(DateTimeInterface::ATOM),
+            'windowMinutes' => 60,
+        ], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+
+        self::assertResponseStatusCodeSame(502, 'GitHub injoignable pendant la programmation → 502');
+        self::assertSame('GitHub est injoignable — réessayez dans un instant.', $this->responseBody()['error']);
+        self::assertSame(0, (int) $this->admin()->fetchOne('SELECT COUNT(*) FROM scheduled_deployment'), 'rien persisté sur panne GitHub');
+    }
+
+    /**
+     * ABUS : une panne de transport ne RECOPIE jamais le message brut du transport (ni le jeton) —
+     * ni dans le 502 de la programmation, ni dans la liste des tags. L'exception est expurgée.
+     */
+    public function testATransportFailureNeverEchoesTheRawErrorNorTheToken(): void
+    {
+        GitHubDeployHttpClientStub::$tags = [['name' => 'v1.0.0', 'sha' => 'head0000']];
+        GitHubDeployHttpClientStub::$transportFails = true;
+        $csrf = $this->boot();
+
+        $this->json('POST', '/api/admin/deployments', [
+            'version' => 'v1.0.0',
+            'scheduledAt' => new DateTimeImmutable('now')->modify('+30 minutes')->format(DateTimeInterface::ATOM),
+            'windowMinutes' => 60,
+        ], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(502);
+        $post = (string) $this->client->getResponse()->getContent();
+        self::assertStringNotContainsString(GitHubDeployHttpClientStub::TRANSPORT_ERROR, $post, 'le détail brut du transport ne fuite jamais');
+        self::assertStringNotContainsString(self::TOKEN, $post, 'le jeton ne fuite jamais');
+
+        $this->client->request('GET', '/api/admin/deployments/tags', [], [], ['REMOTE_ADDR' => $this->requestIp]);
+        $tags = (string) $this->client->getResponse()->getContent();
+        self::assertStringNotContainsString(GitHubDeployHttpClientStub::TRANSPORT_ERROR, $tags);
+        self::assertStringNotContainsString(self::TOKEN, $tags);
+    }
+
+    /** La liste GET sérialise la NOTE de départ (`dispatchNote`) d'un déploiement — carte active + historique. */
+    public function testTheDeploymentsListSerializesTheDispatchNote(): void
+    {
+        $this->boot();
+        $note = 'Plafond d’attente atteint : déploiement déclenché malgré une activité encore en cours.';
+        $this->admin()->executeStatement(
+            'INSERT INTO scheduled_deployment (id, version, scheduled_at, expected_return_at, status, created_by, dispatch_note, created_at, updated_at)'
+            . ' VALUES (:id, \'v1.0.0\', NOW() - INTERVAL \'2 hours\', NOW() - INTERVAL \'1 hour\', \'succeeded\', :by, :note, NOW(), NOW())',
+            ['id' => Uuid::v4()->toRfc4122(), 'by' => $this->adminId, 'note' => $note],
+        );
+
+        $this->client->request('GET', '/api/admin/deployments', [], [], ['REMOTE_ADDR' => $this->requestIp]);
+        self::assertResponseIsSuccessful();
+        $items = $this->responseBody()['items'];
+        self::assertIsArray($items);
+        self::assertNotEmpty($items);
+        self::assertSame($note, $items[0]['dispatchNote'], 'la note de départ est sérialisée dans la liste');
+    }
+
     protected function setUp(): void
     {
         $this->requestIp = \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254));

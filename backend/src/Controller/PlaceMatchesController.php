@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\PlaceMatchesHandler;
+use App\Service\DeploymentGate;
 use App\Service\ManagementAccessGuard;
 use App\Service\MatchPlacementLock;
 use App\Service\MatchPlacementPayloadBuilder;
@@ -67,6 +68,7 @@ final class PlaceMatchesController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly ManagementAccessGuard $managementAccessGuard,
+        private readonly DeploymentGate $deploymentGate,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly MatchPlacementLock $lock,
@@ -88,6 +90,11 @@ final class PlaceMatchesController extends AbstractController
 
         // SEC-07 first so 403 wins over the 409s (import idiom).
         $this->managementAccessGuard->assertManager();
+        // P4-350 (axe generation pipeline) : gel des guichets pendant une mise en production
+        // imminente — AVANT la garde saison/socle, uniforme avec les trois autres portes de solve.
+        if ($this->deploymentGate->isFrozen()) {
+            return $this->json(['error' => DeploymentGate::FREEZE_MESSAGE], Response::HTTP_CONFLICT);
+        }
         $this->seasonAccessGuard->assertWritable($request);
         $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 

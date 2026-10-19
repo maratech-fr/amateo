@@ -983,17 +983,40 @@ cadence par minute y ferait 1440 lignes de journal par jour) — et fait avancer
 déploiement actif :
 
 1. avant H, rien ne bouge ;
-2. à H, les préconditions sont **re-vérifiées** (le tag a pu disparaître, la CI redevenir rouge
-   entre la programmation et maintenant) : l'une des deux a changé → échec **sans dispatch**
-   (programmer n'engageait rien) ;
-3. préconditions au vert → `GitHubDeployClient::dispatchDeploy()` déclenche le `workflow_dispatch`
-   de `deploy.yml` avec `version` et `maintenance_until` (l'heure de retour annoncée — c'est le
-   workflow qui pose/retire ensuite lui-même le témoin, § *Maintenance planifiée*) ; un dispatch en
-   échec est **réessayé** sur les ticks suivants jusqu'à **H + 10 minutes**, puis abandonné ;
-4. le run GitHub est ensuite **suivi** (ticks suivants) jusqu'à sa conclusion : `success` →
+2. à H, s'il reste une **activité en cours** — une génération (`schedule` en `GENERATING`) ou un
+   placement de matchs (`match_placement_run` en `RUNNING`), **tous clubs confondus** (comptée par
+   la connexion `admin`, en lecture seule, le tick n'écrit jamais une donnée tenant) — le départ est
+   **retardé** : le déploiement reste `scheduled`, une note (`dispatch_note`, affichée en console et
+   reportée dans l'e-mail final) dit le retard, et le tick retentera au prochain passage. Plafonné à
+   **H + 10 minutes** (`WAIT_CAP_MINUTES`) : au-delà, le départ est **forcé malgré l'activité
+   encore en cours** (la note le dit aussi) — un déploiement qui attendrait sans fin bloquerait le
+   train pour une génération qui peut durer ;
+3. les préconditions sont **re-vérifiées** (le tag a pu disparaître, la CI redevenir rouge entre la
+   programmation et maintenant) : l'une des deux a changé → échec **sans dispatch** (programmer
+   n'engageait rien). Une lecture qui **échoue** (GitHub injoignable, 4xx ou panne de transport) est
+   un cas **différent** : réessayée, jamais confondue avec un tag disparu (point 5) ;
+4. préconditions au vert → `expectedReturnAt` est **re-daté sur l'instant réel du dispatch** (now +
+   la fenêtre de maintenance d'origine, pour que l'heure de retour annoncée reste juste même si le
+   départ a été retardé par le point 2), puis `GitHubDeployClient::dispatchDeploy()` déclenche le
+   `workflow_dispatch` de `deploy.yml` avec `version` et ce `maintenance_until` re-daté (c'est le
+   workflow qui pose/retire ensuite lui-même le témoin, § *Maintenance planifiée*) ;
+5. un dispatch qui échoue (GitHub injoignable au moment des lectures du point 3 ou du dispatch
+   lui-même) est **réessayé** sur les ticks suivants jusqu'à **scheduledAt + 10 min (point 2) + 10
+   min** (`DISPATCH_RETRY_MINUTES`), puis **abandonné** : statut `failed`, e-mail « GitHub est resté
+   injoignable. La maintenance n'a pas été posée. » ;
+6. le run GitHub est ensuite **suivi** (ticks suivants) jusqu'à sa conclusion : `success` →
    statut `succeeded` + e-mail aux superadmins actifs ; `failure` → statut `failed` + e-mail —
    **la maintenance reste posée** (décision fondateur v1 : pas de rollback automatique, un humain
-   décide).
+   décide). Les e-mails de succès et d'échec reportent, en plus, la note de départ posée au point 2
+   le cas échéant.
+
+⚠ **Filet absent côté placement** : si le worker meurt pendant un placement (`match_placement_run`
+`RUNNING`), rien ne le reconcilie jamais — à l'inverse de `app:schedules:reconcile-stuck`
+(`backend/src/Command/ReconcileStuckSchedulesCommand.php`) qui fait ce travail pour les schedules
+`GENERATING`. Seul le TTL du verrou Redis (`MatchPlacementLock`,
+`backend/src/Service/MatchPlacementLock.php`) libère une relance ultérieure ; la ligne `RUNNING`
+elle-même reste figée. Un déploiement qui tuerait le worker pendant un placement laisserait donc ce
+run `RUNNING` pour toujours (roadmap).
 
 **Écran console** : `DeploymentSection` (`frontend/src/features/admin/sections/DeploymentSection.tsx`)
 vit dans l'onglet **Exploitation** de `/admin`, au-dessus des notes de nouveautés. Le formulaire
@@ -1004,9 +1027,28 @@ reste désactivé jusqu'à ce que les trois champs soient remplis ; une erreur s
 inline sous le formulaire, en plus du toast générique. Tant qu'un déploiement est `scheduled` ou
 `dispatched`, une carte « Déploiement en attente » l'affiche (version, statut, heure programmée) avec
 un bouton « Annuler la mise en production » (confirmation modale) visible seulement au stade
-`scheduled`. Un bloc « Historique récent » liste en dessous les déploiements terminés (version,
-statut, heure de dispatch, raison d'échec le cas échéant) depuis `GET /api/admin/deployments`
-(20 derniers, actifs et terminés, rafraîchi toutes les 30 s).
+`scheduled`. Si le tick a posé une `dispatch_note` (retard d'attente ou plafond forcé, point 2
+ci-dessus), elle s'affiche sous la carte. Un bloc « Historique récent » liste en dessous les
+déploiements terminés (version, statut, heure de dispatch, raison d'échec puis note de départ le
+cas échéant) depuis `GET /api/admin/deployments` (20 derniers, actifs et terminés, rafraîchi toutes
+les 30 s).
+
+**GitHub injoignable depuis la console** : `GET /api/admin/deployments/tags` ne rend jamais une
+500 — une erreur GitHub (4xx ou panne de transport) y répond `{items: [], available: false}` ; le
+formulaire affiche alors « GitHub est injoignable — la liste des versions n'a pas pu être chargée. »
+avec un bouton « Réessayer » et désactive « Programmer ». `POST /api/admin/deployments` répond
+**502** « GitHub est injoignable — réessayez dans un instant. » si la même panne survient pendant la
+validation du tag/CI — rien n'est persisté, la programmation échoue proprement plutôt qu'à moitié.
+
+**Gel des quatre guichets de solve pendant une mise en production imminente** (P4-350) : dès que
+l'heure H d'un déploiement `scheduled`|`dispatched` est atteinte, `DeploymentGate::isFrozen()`
+(`backend/src/Service/DeploymentGate.php`, lu sur l'horloge **réelle** `app.clock.real` — jamais
+l'horloge simulée d'un club démo) fait refuser en **409** « Une mise en production est imminente —
+réessayez après la maintenance. », **sans fuiter la version, l'acteur ni « GitHub »** : générer
+(`GenerateScheduleController`), régénérer (`RegenerateController`), combler un plan de période
+(`FillPeriodPlanController`) et placer des matchs (`PlaceMatchesController`). Un déploiement futur
+ou annulé ne gèle rien. NR bloquant : `DeploymentImminentFreezeTest`
+(`docs/testing/blocking-tests.md`).
 
 **Bandeau côté clubs** : pendant qu'un déploiement est `scheduled` ou `dispatched`, `GET
 /api/deployment-notice` (JWT club) sert `{scheduledAt, expectedReturnAt}` — **rien d'autre** (ni
