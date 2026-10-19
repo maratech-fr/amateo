@@ -7,6 +7,7 @@ import {
   resolveActiveSubTab,
   resolveActiveTab,
 } from "./tabsConfig";
+import { ADMIN_DASHBOARD_TEXTS } from "../texts/dashboard";
 
 /**
  * La charpente des 5 onglets de la console superadmin (réorganisation PR1) et le report
@@ -33,8 +34,8 @@ describe("tabsConfig — charpente des 5 onglets", () => {
 
   it("nomme Santé et Incidents (les deux onglets porteurs de pastille)", () => {
     const byId = (id: string) => ADMIN_TABS.find((t) => t.id === id);
-    expect(byId("sante")?.label).toBe("Santé");
-    expect(byId("incidents")?.label).toBe("Incidents");
+    expect(byId("sante")?.label).toBe(ADMIN_DASHBOARD_TEXTS.tabSante);
+    expect(byId("incidents")?.label).toBe(ADMIN_DASHBOARD_TEXTS.tabIncidents);
   });
 
   it("Incidents porte 4 sous-onglets : signalements (défaut) · errors · messenger · audit (dernier)", () => {

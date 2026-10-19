@@ -45,6 +45,7 @@ import { AuditSubtab } from "./Journaux/AuditSubtab";
 import { MessengerFailedSubtab } from "./Journaux/MessengerFailedSubtab";
 import { SystemErrorsSubtab } from "./Journaux/SystemErrorsSubtab";
 import { ADMIN_TABS, DEFAULT_SUBTAB, STORAGE_KEY, resolveActiveSubTab, resolveActiveTab } from "./tabs/tabsConfig";
+import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 
 const CLUBS_PER_PAGE = 25;
@@ -103,7 +104,7 @@ export function AdminDashboardPage() {
   const tabs = ADMIN_TABS.map((tab) => ({
     ...tab,
     badge:
-      (tab.id === "sante" && santeAlert) || (tab.id === "incidents" && incidentsAlert) ? "à vérifier" : undefined,
+      (tab.id === "sante" && santeAlert) || (tab.id === "incidents" && incidentsAlert) ? ADMIN_DASHBOARD_TEXTS.tabAlertBadge : undefined,
   }));
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -166,11 +167,11 @@ export function AdminDashboardPage() {
       <section className="flex flex-col justify-between gap-5 border-b border-white/10 pb-8 lg:flex-row lg:items-end">
         <div className="max-w-3xl">
           <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-console-accent">
-            <Activity className="size-4" aria-hidden="true" /> Supervision temps réel
+            <Activity className="size-4" aria-hidden="true" /> {ADMIN_DASHBOARD_TEXTS.headerEyebrow}
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">État de la plateforme</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">{ADMIN_DASHBOARD_TEXTS.headerTitle}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-console-text-dim">
-            Santé technique, activité du parc et comportement du solveur réunis dans une vue en lecture seule.
+            {ADMIN_DASHBOARD_TEXTS.headerDescription}
           </p>
         </div>
         <Button
@@ -181,11 +182,11 @@ export function AdminDashboardPage() {
           onClick={refreshAll}
         >
           {refreshing ? <Spinner className="size-4 text-console-text" /> : <RefreshCw aria-hidden="true" />}
-          Actualiser
+          {ADMIN_DASHBOARD_TEXTS.refresh}
         </Button>
       </section>
 
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} ariaLabel="Sections admin" idPrefix="admin" variant="console" />
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} ariaLabel={ADMIN_DASHBOARD_TEXTS.tabsAriaLabel} idPrefix="admin" variant="console" />
 
       <TabPanel variant="console" tabId="clubs" idPrefix="admin" active={activeTab === "clubs"} className="space-y-8 pt-6">
         {/* P3-4 PR B : les arbitrages (créations + adhésions) vivent avec le parc. */}
@@ -193,11 +194,11 @@ export function AdminDashboardPage() {
         <section aria-labelledby="clubs-heading" className="space-y-4">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Parc client</p>
-              <h2 id="clubs-heading" className="mt-2 text-xl font-semibold text-white">Comptes clubs</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubsEyebrow}</p>
+              <h2 id="clubs-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_DASHBOARD_TEXTS.clubsHeading}</h2>
             </div>
             <form className="flex w-full gap-2 md:max-w-md" role="search" onSubmit={submitSearch}>
-              <label className="sr-only" htmlFor="club-search">Rechercher un club</label>
+              <label className="sr-only" htmlFor="club-search">{ADMIN_DASHBOARD_TEXTS.clubSearchLabel}</label>
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-console-muted" aria-hidden="true" />
                 <input
@@ -206,16 +207,16 @@ export function AdminDashboardPage() {
                   value={queryDraft}
                   maxLength={100}
                   onChange={(event) => setQueryDraft(event.target.value)}
-                  placeholder="Nom, slug ou code FFBB"
+                  placeholder={ADMIN_DASHBOARD_TEXTS.clubSearchPlaceholder}
                   className="h-10 w-full rounded-md border border-white/15 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none placeholder:text-console-text-faint focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
                 />
               </div>
-              <Button type="submit" className="bg-console-accent text-console-surface hover:bg-console-accent-hover">Rechercher</Button>
+              <Button type="submit" className="bg-console-accent text-console-surface hover:bg-console-accent-hover">{ADMIN_DASHBOARD_TEXTS.clubSearchSubmit}</Button>
             </form>
           </div>
 
-          {clubs.isPending ? <PanelLoading label="Chargement des clubs" /> : null}
-          {clubs.isError ? <PanelError label="Les comptes clubs sont indisponibles." retry={() => void clubs.refetch()} /> : null}
+          {clubs.isPending ? <PanelLoading label={ADMIN_DASHBOARD_TEXTS.clubsLoading} /> : null}
+          {clubs.isError ? <PanelError label={ADMIN_DASHBOARD_TEXTS.clubsError} retry={() => void clubs.refetch()} /> : null}
           {clubs.data ? (
             <ClubsTable
               clubs={clubs.data.items}
@@ -248,7 +249,7 @@ export function AdminDashboardPage() {
       </TabPanel>
 
       <TabPanel variant="console" tabId="incidents" idPrefix="admin" active={activeTab === "incidents"} className="space-y-6 pt-6">
-        <Tabs variant="console" tabs={incidentsSubTabs} activeTab={activeSubTab} onTabChange={handleSubTabChange} ariaLabel="Incidents" idPrefix="admin-incidents" />
+        <Tabs variant="console" tabs={incidentsSubTabs} activeTab={activeSubTab} onTabChange={handleSubTabChange} ariaLabel={ADMIN_DASHBOARD_TEXTS.incidentsTabsAriaLabel} idPrefix="admin-incidents" />
         <TabPanel variant="console" tabId="signalements" idPrefix="admin-incidents" active={activeSubTab === "signalements"}>
           <FeedbackSection />
         </TabPanel>
@@ -272,21 +273,21 @@ export function AdminDashboardPage() {
 }
 
 function OverviewSection({ data, loading, error, retry }: DataSectionProps<AdminOverviewResponse>) {
-  if (loading) return <PanelLoading label="Chargement de l’activité" />;
-  if (error || !data) return <PanelError label="Les indicateurs d’activité sont indisponibles." retry={retry} />;
+  if (loading) return <PanelLoading label={ADMIN_DASHBOARD_TEXTS.overviewLoading} />;
+  if (error || !data) return <PanelError label={ADMIN_DASHBOARD_TEXTS.overviewError} retry={retry} />;
 
   const metrics = [
-    { label: "Clubs", value: data.clubs.total, detail: `${integerFormatter.format(data.clubs.new7d)} nouveaux sur 7 j` },
-    { label: "Actifs sur 7 j", value: data.clubs.active7d, detail: `${integerFormatter.format(data.clubs.active30d)} actifs sur 30 j` },
-    { label: "Générations", value: data.solver.generations, detail: `Fenêtre de ${data.solver.windowDays} jours` },
-    { label: "Taux infaisable", value: formatRate(data.solver.infeasibleRate), detail: `${integerFormatter.format(data.solver.infeasible)} générations` },
+    { label: ADMIN_DASHBOARD_TEXTS.metricClubs, value: data.clubs.total, detail: ADMIN_DASHBOARD_TEXTS.metricNew7d(integerFormatter.format(data.clubs.new7d)) },
+    { label: ADMIN_DASHBOARD_TEXTS.metricActive7d, value: data.clubs.active7d, detail: ADMIN_DASHBOARD_TEXTS.metricActive30d(integerFormatter.format(data.clubs.active30d)) },
+    { label: ADMIN_DASHBOARD_TEXTS.metricGenerations, value: data.solver.generations, detail: ADMIN_DASHBOARD_TEXTS.metricWindowDays(data.solver.windowDays) },
+    { label: ADMIN_DASHBOARD_TEXTS.metricInfeasibleRate, value: formatRate(data.solver.infeasibleRate), detail: ADMIN_DASHBOARD_TEXTS.metricInfeasibleCount(integerFormatter.format(data.solver.infeasible)) },
   ];
 
   return (
     <section aria-labelledby="activity-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Activité globale</p>
-        <h2 id="activity-heading" className="mt-2 text-xl font-semibold text-white">Parc et solveur</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_DASHBOARD_TEXTS.overviewEyebrow}</p>
+        <h2 id="activity-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_DASHBOARD_TEXTS.overviewHeading}</h2>
       </div>
       <div className="grid gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => <Metric key={metric.label} {...metric} />)}
@@ -294,26 +295,21 @@ function OverviewSection({ data, loading, error, retry }: DataSectionProps<Admin
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(18rem,1fr)]">
         <SolverChart solver={data.solver} />
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm font-medium text-white">Performance du solveur</p>
+          <p className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.solverPerformance}</p>
           <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-6">
-            <SmallMetric label="Terminées" value={data.solver.completed} />
-            <SmallMetric label="Échecs" value={data.solver.failed} tone={data.solver.failed > 0 ? "danger" : undefined} />
-            <SmallMetric label="Durée médiane" value={formatDuration(data.solver.p50WallTimeMs)} />
-            <SmallMetric label="P95" value={formatDuration(data.solver.p95WallTimeMs)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.solverCompleted} value={data.solver.completed} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.solverFailed} value={data.solver.failed} tone={data.solver.failed > 0 ? "danger" : undefined} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.solverMedianDuration} value={formatDuration(data.solver.p50WallTimeMs)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.solverP95} value={formatDuration(data.solver.p95WallTimeMs)} />
           </dl>
           <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
-            {integerFormatter.format(data.clubs.unsubscribed)} compte{data.clubs.unsubscribed > 1 ? "s" : ""} désabonné{data.clubs.unsubscribed > 1 ? "s" : ""}
+            {ADMIN_DASHBOARD_TEXTS.unsubscribedCount(data.clubs.unsubscribed)}
           </div>
         </article>
       </div>
     </section>
   );
 }
-
-/** Libellés FR des types de plan (ADR-0002) + le bucket télémétrie UNKNOWN (historique pré-dimension / plan disparu à la capture). */
-const PLAN_TYPE_LABELS: Record<string, string> = { SEASON: "Saison", CLOSURE: "Fermeture", HOLIDAY: "Vacances", UNKNOWN: "Inconnu (historique)" };
-
-const planTypeLabel = (type: string): string => PLAN_TYPE_LABELS[type] ?? type;
 
 const formatMinutes = (minutes: number | null): string => {
   if (null === minutes) return "—";
@@ -328,59 +324,59 @@ const formatMinutes = (minutes: number | null): string => {
  * Lecture seule — répond « l'app est-elle utilisée, à quel volume ? ».
  */
 function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOverviewResponse>) {
-  if (loading) return <PanelLoading label="Chargement de l’usage" />;
+  if (loading) return <PanelLoading label={ADMIN_DASHBOARD_TEXTS.usageLoading} />;
   // `usage` absent = backend antérieur au lot (rollback / décalage de déploiement) :
   // indisponibilité affichée, jamais un crash de rendu.
-  if (error || !data?.usage) return <PanelError label="Les statistiques d’usage sont indisponibles." retry={retry} />;
+  if (error || !data?.usage) return <PanelError label={ADMIN_DASHBOARD_TEXTS.usageError} retry={retry} />;
 
   const { usage } = data;
 
   return (
     <section aria-labelledby="usage-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Usage produit</p>
-        <h2 id="usage-heading" className="mt-2 text-xl font-semibold text-white">Plans, clôtures et tailles de clubs</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_DASHBOARD_TEXTS.usageEyebrow}</p>
+        <h2 id="usage-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_DASHBOARD_TEXTS.usageHeading}</h2>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm font-medium text-white">Plans par type</p>
-          <p className="mt-1 text-xs text-console-muted">Parc actuel — un reset ou un effacement retire ses plans</p>
+          <p className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.usagePlansByType}</p>
+          <p className="mt-1 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.usagePlansByTypeHint}</p>
           <dl className="mt-5 space-y-4">
-            {usage.plansByType.length === 0 ? <EmptyHint variant="console">Aucun plan.</EmptyHint> : null}
+            {usage.plansByType.length === 0 ? <EmptyHint variant="console">{ADMIN_DASHBOARD_TEXTS.usageNoPlan}</EmptyHint> : null}
             {usage.plansByType.map((row) => (
               <div key={row.type} className="flex items-baseline justify-between gap-3">
-                <dt className="text-sm text-console-text-dim">{planTypeLabel(row.type)}</dt>
+                <dt className="text-sm text-console-text-dim">{ADMIN_DASHBOARD_TEXTS.planTypeLabel(row.type)}</dt>
                 <dd className="text-sm text-white">
                   {integerFormatter.format(row.total)}
-                  <span className="ml-2 text-xs text-console-muted">dont {integerFormatter.format(row.validated)} validé{row.validated > 1 ? "s" : ""}</span>
+                  <span className="ml-2 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.usagePlansValidated(row.validated)}</span>
                 </dd>
               </div>
             ))}
           </dl>
         </article>
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm font-medium text-white">Temps de clôture</p>
-          <p className="mt-1 text-xs text-console-muted">Création du plan → première validation</p>
+          <p className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.usageCloseTime}</p>
+          <p className="mt-1 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.usageCloseTimeHint}</p>
           <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-6">
-            <SmallMetric label="Saison · médiane" value={formatMinutes(usage.timeToFirstValidation.season.p50Minutes)} />
-            <SmallMetric label="Saison · P95" value={formatMinutes(usage.timeToFirstValidation.season.p95Minutes)} />
-            <SmallMetric label="Périodes · médiane" value={formatMinutes(usage.timeToFirstValidation.period.p50Minutes)} />
-            <SmallMetric label="Périodes · P95" value={formatMinutes(usage.timeToFirstValidation.period.p95Minutes)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.usageSeasonMedian} value={formatMinutes(usage.timeToFirstValidation.season.p50Minutes)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.usageSeasonP95} value={formatMinutes(usage.timeToFirstValidation.season.p95Minutes)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.usagePeriodMedian} value={formatMinutes(usage.timeToFirstValidation.period.p50Minutes)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.usagePeriodP95} value={formatMinutes(usage.timeToFirstValidation.period.p95Minutes)} />
           </dl>
           <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
-            {integerFormatter.format(usage.timeToFirstValidation.season.count)} saison{usage.timeToFirstValidation.season.count > 1 ? "s" : ""} · {integerFormatter.format(usage.timeToFirstValidation.period.count)} période{usage.timeToFirstValidation.period.count > 1 ? "s" : ""} clôturée{usage.timeToFirstValidation.period.count > 1 ? "s" : ""}
+            {ADMIN_DASHBOARD_TEXTS.usageCloseCounts(usage.timeToFirstValidation.season.count, usage.timeToFirstValidation.period.count)}
           </div>
         </article>
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm font-medium text-white">Solveur par type · 30 j</p>
+          <p className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.usageSolverByType}</p>
           <dl className="mt-5 space-y-4">
-            {usage.solverByPlanType.length === 0 ? <EmptyHint variant="console">Aucune génération sur la fenêtre.</EmptyHint> : null}
+            {usage.solverByPlanType.length === 0 ? <EmptyHint variant="console">{ADMIN_DASHBOARD_TEXTS.usageNoGenerationWindow}</EmptyHint> : null}
             {usage.solverByPlanType.map((row) => (
               <div key={row.planType} className="flex items-baseline justify-between gap-3">
-                <dt className="text-sm text-console-text-dim">{planTypeLabel(row.planType)}</dt>
+                <dt className="text-sm text-console-text-dim">{ADMIN_DASHBOARD_TEXTS.planTypeLabel(row.planType)}</dt>
                 <dd className="text-sm text-white">
                   {integerFormatter.format(row.generations)}
-                  <span className="ml-2 text-xs text-console-muted">méd. {formatDuration(row.p50WallTimeMs)} · P95 {formatDuration(row.p95WallTimeMs)}</span>
+                  <span className="ml-2 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.usageSolverRowMeta(formatDuration(row.p50WallTimeMs), formatDuration(row.p95WallTimeMs))}</span>
                 </dd>
               </div>
             ))}
@@ -388,15 +384,15 @@ function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOve
         </article>
       </div>
       <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-        <p className="text-sm font-medium text-white">Tailles de clubs</p>
-        <p className="mt-1 text-xs text-console-muted">Équipes actives de la saison courante, parc non désabonné</p>
+        <p className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.usageClubSizes}</p>
+        <p className="mt-1 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.usageClubSizesHint}</p>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[24rem] text-left text-sm">
             <thead>
               <tr className="text-xs uppercase tracking-wide text-console-muted">
-                <th className="py-2 pr-4 font-medium">Équipes</th>
-                <th className="py-2 pr-4 font-medium">Clubs</th>
-                <th className="py-2 font-medium">Gymnases (médiane)</th>
+                <th className="py-2 pr-4 font-medium">{ADMIN_DASHBOARD_TEXTS.usageColTeams}</th>
+                <th className="py-2 pr-4 font-medium">{ADMIN_DASHBOARD_TEXTS.usageColClubs}</th>
+                <th className="py-2 font-medium">{ADMIN_DASHBOARD_TEXTS.usageColVenuesMedian}</th>
               </tr>
             </thead>
             <tbody>
@@ -422,10 +418,10 @@ function SolverChart({ solver }: { solver: AdminOverviewResponse["solver"] }) {
     <figure className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-white">Volume quotidien</p>
-          <p className="mt-1 text-xs text-console-muted">Générations sur les {solver.windowDays} derniers jours</p>
+          <p className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.solverDailyTitle}</p>
+          <p className="mt-1 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.solverDailyHint(solver.windowDays)}</p>
         </div>
-        <span className="flex items-center gap-2 text-xs text-console-muted"><span className="size-2 bg-console-accent" /> Générations</span>
+        <span className="flex items-center gap-2 text-xs text-console-muted"><span className="size-2 bg-console-accent" /> {ADMIN_DASHBOARD_TEXTS.solverDailyLegend}</span>
       </div>
       {solver.daily.length > 0 ? (
         <>
@@ -444,38 +440,38 @@ function SolverChart({ solver }: { solver: AdminOverviewResponse["solver"] }) {
             <span>{formatShortDate(solver.daily.at(-1)?.date)}</span>
           </div>
           <figcaption className="sr-only">
-            {solver.daily.map((day) => `${day.date} : ${day.generations} générations`).join(" ; ")}
+            {solver.daily.map((day) => ADMIN_DASHBOARD_TEXTS.solverDayCaption(day.date, day.generations)).join(" ; ")}
           </figcaption>
         </>
-      ) : <EmptyHint variant="console" className="mt-10">Aucune génération sur cette période.</EmptyHint>}
+      ) : <EmptyHint variant="console" className="mt-10">{ADMIN_DASHBOARD_TEXTS.solverNoGenerationPeriod}</EmptyHint>}
     </figure>
   );
 }
 
 function HealthSection({ data, loading, error, retry }: DataSectionProps<AdminHealthResponse>) {
-  if (loading) return <PanelLoading label="Chargement de la santé technique" />;
-  if (error || !data) return <PanelError label="La santé technique est indisponible." retry={retry} />;
+  if (loading) return <PanelLoading label={ADMIN_DASHBOARD_TEXTS.healthLoading} />;
+  if (error || !data) return <PanelError label={ADMIN_DASHBOARD_TEXTS.healthError} retry={retry} />;
 
   const services = [
-    { key: "database", label: "Base de données", icon: Database, ...data.services.database },
-    { key: "redis", label: "Redis", icon: Zap, ...data.services.redis },
-    { key: "engine", label: "Moteur", icon: Cpu, ...data.services.engine },
-    { key: "mercure", label: "Mercure", icon: Radio, ...data.services.mercure },
+    { key: "database", label: ADMIN_DASHBOARD_TEXTS.healthServiceDatabase, icon: Database, ...data.services.database },
+    { key: "redis", label: ADMIN_DASHBOARD_TEXTS.healthServiceRedis, icon: Zap, ...data.services.redis },
+    { key: "engine", label: ADMIN_DASHBOARD_TEXTS.healthServiceEngine, icon: Cpu, ...data.services.engine },
+    { key: "mercure", label: ADMIN_DASHBOARD_TEXTS.healthServiceMercure, icon: Radio, ...data.services.mercure },
   ];
 
   return (
     <section aria-labelledby="health-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Infrastructure</p>
-          <h2 id="health-heading" className="mt-2 text-xl font-semibold text-white">Santé technique</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_DASHBOARD_TEXTS.healthEyebrow}</p>
+          <h2 id="health-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_DASHBOARD_TEXTS.healthHeading}</h2>
         </div>
-        <p className="text-xs text-console-muted">Vérifié le {formatDateTime(data.checkedAt)}</p>
+        <p className="text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.healthCheckedAt(formatDateTime(data.checkedAt))}</p>
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,1fr)]">
         <article className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <div className="flex items-center gap-3"><Server className="size-4 text-console-muted" aria-hidden="true" /><span className="text-sm font-medium text-white">Dépendances</span></div>
+            <div className="flex items-center gap-3"><Server className="size-4 text-console-muted" aria-hidden="true" /><span className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.healthDependencies}</span></div>
             <StatusChip status={data.status === "healthy" ? "up" : "degraded"} />
           </div>
           <ul className="grid sm:grid-cols-2">
@@ -490,16 +486,16 @@ function HealthSection({ data, loading, error, retry }: DataSectionProps<AdminHe
 
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3"><Workflow className="size-4 text-console-muted" aria-hidden="true" /><span className="text-sm font-medium text-white">Traitements asynchrones</span></div>
+            <div className="flex items-center gap-3"><Workflow className="size-4 text-console-muted" aria-hidden="true" /><span className="text-sm font-medium text-white">{ADMIN_DASHBOARD_TEXTS.healthAsyncProcessing}</span></div>
             <StatusChip status={data.messenger.status} />
           </div>
           <dl className="mt-5 grid grid-cols-3 gap-3 border-b border-white/10 pb-5">
-            <SmallMetric label="En attente" value={nullableInteger(data.messenger.backlog)} />
-            <SmallMetric label="Échecs" value={nullableInteger(data.messenger.failed)} tone={(data.messenger.failed ?? 0) > 0 ? "danger" : undefined} />
-            <SmallMetric label="Retries" value={nullableInteger(data.messenger.retriesToday)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.healthBacklog} value={nullableInteger(data.messenger.backlog)} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.healthFailed} value={nullableInteger(data.messenger.failed)} tone={(data.messenger.failed ?? 0) > 0 ? "danger" : undefined} />
+            <SmallMetric label={ADMIN_DASHBOARD_TEXTS.healthRetries} value={nullableInteger(data.messenger.retriesToday)} />
           </dl>
           <div className="mt-5 flex items-start justify-between gap-4">
-            <div><p className="text-xs text-console-muted">Worker</p><p className="mt-1 text-sm text-console-text">{formatHeartbeat(data.services.worker)}</p></div>
+            <div><p className="text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.healthWorker}</p><p className="mt-1 text-sm text-console-text">{formatHeartbeat(data.services.worker)}</p></div>
             <StatusChip status={data.services.worker.status} />
           </div>
         </article>
@@ -518,32 +514,32 @@ function JobsSection({ data, loading, error, retry }: DataSectionProps<AdminJobs
     const job = jobToRun;
     setJobToRun(null);
     runJob.mutate(job.key, {
-      onSuccess: () => toast.success(`${job.label} terminé.`),
-      onError: () => toast.error(`Impossible d’exécuter « ${job.label} ».`),
+      onSuccess: () => toast.success(ADMIN_DASHBOARD_TEXTS.jobRunSuccess(job.label)),
+      onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.jobRunError(job.label)),
     });
   }
 
-  if (loading) return <PanelLoading label="Chargement des jobs opérationnels" />;
-  if (error || !data) return <PanelError label="Les jobs opérationnels sont indisponibles." retry={retry} />;
+  if (loading) return <PanelLoading label={ADMIN_DASHBOARD_TEXTS.jobsLoading} />;
+  if (error || !data) return <PanelError label={ADMIN_DASHBOARD_TEXTS.jobsError} retry={retry} />;
 
   return (
     <section aria-labelledby="jobs-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Exploitation</p>
-          <h2 id="jobs-heading" className="mt-2 text-xl font-semibold text-white">Jobs opérationnels</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_DASHBOARD_TEXTS.jobsEyebrow}</p>
+          <h2 id="jobs-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_DASHBOARD_TEXTS.jobsHeading}</h2>
         </div>
-        <p className="text-xs text-console-muted">Cadence, prochain passage et dernière exécution connue</p>
+        <p className="text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.jobsHint}</p>
       </div>
       {data.items.length === 0 ? (
-        <EmptyBlock variant="console">Aucun job opérationnel configuré.</EmptyBlock>
+        <EmptyBlock variant="console">{ADMIN_DASHBOARD_TEXTS.jobsEmpty}</EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1180px] text-left text-sm">
-              <caption className="sr-only">État des jobs opérationnels allowlistés</caption>
+              <caption className="sr-only">{ADMIN_DASHBOARD_TEXTS.jobsCaption}</caption>
               <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
-                <tr><th className="px-5 py-4 font-medium">Job</th><th className="px-4 py-4 font-medium">Cadence</th><th className="px-4 py-4 font-medium">Prochain passage</th><th className="px-4 py-4 font-medium">Dernière exécution</th><th className="px-4 py-4 font-medium">Durée</th><th className="px-4 py-4 font-medium">Résultat</th><th className="px-4 py-4 font-medium">Action</th></tr>
+                <tr><th className="px-5 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.jobColJob}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.jobColCadence}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.jobColNextRun}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.jobColLastRun}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.jobColDuration}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.jobColResult}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.jobColAction}</th></tr>
               </thead>
               <tbody className="divide-y divide-white/10">
                 {data.items.map((job) => <JobRow key={job.key} job={job} running={runJob.isPending && runJob.variables === job.key} onRun={() => setJobToRun(job)} />)}
@@ -554,9 +550,9 @@ function JobsSection({ data, loading, error, retry }: DataSectionProps<AdminJobs
       )}
       <ConfirmDialog
         open={jobToRun !== null}
-        title="Relancer cet import ?"
-        description={jobToRun ? `« ${jobToRun.label} » va interroger la source officielle et mettre à jour la référence globale. L’opération est idempotente.` : undefined}
-        confirmLabel="Relancer l’import"
+        title={ADMIN_DASHBOARD_TEXTS.jobConfirmTitle}
+        description={jobToRun ? ADMIN_DASHBOARD_TEXTS.jobConfirmDescription(jobToRun.label) : undefined}
+        confirmLabel={ADMIN_DASHBOARD_TEXTS.jobConfirmLabel}
         destructive={false}
         onConfirm={confirmRun}
         onCancel={() => setJobToRun(null)}
@@ -571,10 +567,10 @@ function JobRow({ job, running, onRun }: { job: AdminJob; running: boolean; onRu
       <td className="px-5 py-5"><div className="flex items-start gap-3"><div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted"><History className="size-4" aria-hidden="true" /></div><div><p className="font-medium text-white">{job.label}</p><p className="mt-1 font-mono text-xs text-console-text-faint">{job.command}</p></div></div></td>
       <td className="px-4 py-5">{formatCadence(job.cadence)}</td>
       <td className="px-4 py-5"><NextRun value={job.nextRunAt} /></td>
-      <td className="px-4 py-5">{job.latestRun ? <><p>{formatDateTime(job.latestRun.startedAt)}</p><p className="mt-1 text-xs text-console-text-faint">{formatJobSource(job.latestRun.source)}</p></> : <span className="text-console-muted">Jamais exécuté</span>}</td>
+      <td className="px-4 py-5">{job.latestRun ? <><p>{formatDateTime(job.latestRun.startedAt)}</p><p className="mt-1 text-xs text-console-text-faint">{formatJobSource(job.latestRun.source)}</p></> : <span className="text-console-muted">{ADMIN_DASHBOARD_TEXTS.jobNeverRun}</span>}</td>
       <td className="px-4 py-5 tabular-nums">{job.latestRun ? formatDuration(job.latestRun.durationMs) : "—"}</td>
-      <td className="px-4 py-5"><JobStatus status={job.latestRun?.status ?? null} />{job.latestRun?.exitCode !== null && job.latestRun?.exitCode !== undefined ? <p className="mt-1 text-xs text-console-text-faint">Code {job.latestRun.exitCode}</p> : null}</td>
-      <td className="px-4 py-5">{job.manualTriggerAllowed ? <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={running} onClick={onRun}>{running ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" aria-hidden="true" />} {running ? "Exécution…" : "Relancer"}</Button> : <span className="text-xs text-console-text-faint">Supervision seule</span>}</td>
+      <td className="px-4 py-5"><JobStatus status={job.latestRun?.status ?? null} />{job.latestRun?.exitCode !== null && job.latestRun?.exitCode !== undefined ? <p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.jobExitCode(job.latestRun.exitCode)}</p> : null}</td>
+      <td className="px-4 py-5">{job.manualTriggerAllowed ? <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={running} onClick={onRun}>{running ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" aria-hidden="true" />} {running ? ADMIN_DASHBOARD_TEXTS.jobRunning : ADMIN_DASHBOARD_TEXTS.jobRerun}</Button> : <span className="text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.jobSupervisionOnly}</span>}</td>
     </tr>
   );
 }
@@ -584,13 +580,12 @@ function NextRun({ value }: { value: string }) {
 }
 
 function JobStatus({ status }: { status: AdminJobStatus | null }) {
-  const labels: Record<AdminJobStatus, string> = { running: "En cours", succeeded: "Réussi", failed: "Échec", interrupted: "Interrompu" };
-  if (status === null) return <span className="text-xs font-medium text-console-muted">Sans historique</span>;
+  if (status === null) return <span className="text-xs font-medium text-console-muted">{ADMIN_DASHBOARD_TEXTS.jobNoHistory}</span>;
 
   const successful = status === "succeeded";
   const running = status === "running";
   const Icon = successful ? CheckCircle2 : status === "failed" ? AlertTriangle : History;
-  return <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", successful ? "text-console-success" : running ? "text-console-accent" : status === "failed" ? "text-console-warning" : "text-console-text-dim")}><Icon className="size-3.5" aria-hidden="true" />{labels[status]}</span>;
+  return <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", successful ? "text-console-success" : running ? "text-console-accent" : status === "failed" ? "text-console-warning" : "text-console-text-dim")}><Icon className="size-3.5" aria-hidden="true" />{ADMIN_DASHBOARD_TEXTS.jobStatusLabel(status)}</span>;
 }
 
 /**
@@ -599,14 +594,14 @@ function JobStatus({ status }: { status: AdminJobStatus | null }) {
  * trop vieux s'affiche « Périmé » (le job d'alerte emaile en parallèle).
  */
 function FreshnessSection({ data, loading, error, retry }: DataSectionProps<AdminFreshnessResponse>) {
-  if (loading) return <PanelLoading label="Chargement de la fraîcheur des données" />;
-  if (error || !data) return <PanelError label="La fraîcheur des données est indisponible." retry={retry} />;
+  if (loading) return <PanelLoading label={ADMIN_DASHBOARD_TEXTS.freshnessLoading} />;
+  if (error || !data) return <PanelError label={ADMIN_DASHBOARD_TEXTS.freshnessError} retry={retry} />;
 
   return (
     <section aria-labelledby="freshness-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Données de référence</p>
-        <h2 id="freshness-heading" className="mt-2 text-xl font-semibold text-white">Fraîcheur des données</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_DASHBOARD_TEXTS.freshnessEyebrow}</p>
+        <h2 id="freshness-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_DASHBOARD_TEXTS.freshnessHeading}</h2>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {data.items.map((item) => (
@@ -614,13 +609,13 @@ function FreshnessSection({ data, loading, error, retry }: DataSectionProps<Admi
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium text-white">{item.label}</p>
               <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold", item.stale ? "bg-console-warning-tint/15 text-console-warning" : "bg-console-success-tint/15 text-console-success")}>
-                {item.stale ? "Périmé" : "À jour"}
+                {item.stale ? ADMIN_DASHBOARD_TEXTS.freshnessStale : ADMIN_DASHBOARD_TEXTS.freshnessFresh}
               </span>
             </div>
             <p className="mt-3 text-xs text-console-muted">
-              {item.lastUpdatedAt ? `Dernière mise à jour : ${formatDate(item.lastUpdatedAt)}` : "Jamais importé"}
+              {item.lastUpdatedAt ? ADMIN_DASHBOARD_TEXTS.freshnessLastUpdated(formatDate(item.lastUpdatedAt)) : ADMIN_DASHBOARD_TEXTS.freshnessNeverImported}
             </p>
-            <p className="mt-1 text-xs text-console-text-faint">Seuil : {integerFormatter.format(item.staleAfterDays)} jours</p>
+            <p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.freshnessThreshold(integerFormatter.format(item.staleAfterDays))}</p>
           </article>
         ))}
       </div>
@@ -641,16 +636,16 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
   const [actionClub, setActionClub] = useState<AdminClub | null>(null);
 
   if (clubs.length === 0) {
-    return <EmptyBlock variant="console">{query ? `Aucun club ne correspond à « ${query} ».` : "Aucun club à afficher."}</EmptyBlock>;
+    return <EmptyBlock variant="console">{query ? ADMIN_DASHBOARD_TEXTS.clubsEmptySearch(query) : ADMIN_DASHBOARD_TEXTS.clubsEmpty}</EmptyBlock>;
   }
 
   return (
     <div className={cn("overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]", loading && "opacity-70")}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1120px] text-left text-sm">
-          <caption className="sr-only">Liste des comptes clubs et de leurs métriques</caption>
+          <caption className="sr-only">{ADMIN_DASHBOARD_TEXTS.clubsCaption}</caption>
           <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
-            <tr><th className="px-5 py-4 font-medium">Club</th><th className="px-4 py-4 font-medium">Activité</th><th className="px-4 py-4 font-medium">Offre</th><th className="px-4 py-4 font-medium">Saison / volume</th><th className="px-4 py-4 font-medium">Solveur · 30 j</th><th className="px-4 py-4 font-medium">Support</th></tr>
+            <tr><th className="px-5 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColClub}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColActivity}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColOffer}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSeasonVolume}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSolver}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSupport}</th></tr>
           </thead>
           <tbody className="divide-y divide-white/10">
             {clubs.map((club) => <ClubRow key={club.id} club={club} onActions={() => setActionClub(club)} />)}
@@ -659,10 +654,10 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
       </div>
       {actionClub ? <ClubActionsDialog club={actionClub} onClose={() => setActionClub(null)} /> : null}
       <div className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-4">
-        <p className="text-xs text-console-muted">{integerFormatter.format(total)} compte{total > 1 ? "s" : ""} · page {page} sur {Math.max(pages, 1)}</p>
+        <p className="text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubsPagination(total, page, pages)}</p>
         <div className="flex gap-2">
-          <Button type="button" size="sm" variant="ghost" className="text-console-text hover:bg-white/10" aria-label="Page précédente" disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)}><ChevronLeft aria-hidden="true" /></Button>
-          <Button type="button" size="sm" variant="ghost" className="text-console-text hover:bg-white/10" aria-label="Page suivante" disabled={page >= pages || loading} onClick={() => onPageChange(page + 1)}><ChevronRight aria-hidden="true" /></Button>
+          <Button type="button" size="sm" variant="ghost" className="text-console-text hover:bg-white/10" aria-label={ADMIN_DASHBOARD_TEXTS.clubPagePrev} disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)}><ChevronLeft aria-hidden="true" /></Button>
+          <Button type="button" size="sm" variant="ghost" className="text-console-text hover:bg-white/10" aria-label={ADMIN_DASHBOARD_TEXTS.clubPageNext} disabled={page >= pages || loading} onClick={() => onPageChange(page + 1)}><ChevronRight aria-hidden="true" /></Button>
         </div>
       </div>
     </div>
@@ -678,14 +673,14 @@ function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }
   return (
     <>
       <tr className="align-top text-console-text hover:bg-white/[0.025]">
-        <td className="px-5 py-5"><div className="flex items-start gap-3"><button type="button" aria-expanded={expanded} aria-label={`${expanded ? "Masquer" : "Afficher"} le détail de ${club.name}`} onClick={() => setExpanded((value) => !value)} className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted hover:bg-white/10">{expanded ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronRight className="size-4" aria-hidden="true" />}</button><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">Démo</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">Désabonné</span> : null}{firstReason ? <p className="mt-2 flex items-center gap-1 text-xs font-medium text-console-warning"><AlertTriangle className="size-3 shrink-0" aria-hidden="true" />{firstReason}</p> : null}</div></div></td>
-        <td className="px-4 py-5"><p>{club.lastActivityAt ? formatDate(club.lastActivityAt) : "Jamais"}</p><p className="mt-1 text-xs text-console-text-faint">Créé le {formatDate(club.createdAt)}</p></td>
-        <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-console-warning">{club.plan.name} posée — saison non réglée</p> : null}<p className="mt-1 text-xs text-console-text-faint">{club.generationCountSeason} génération{club.generationCountSeason > 1 ? "s" : ""}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
-        <td className="px-4 py-5"><p>{club.currentSeason?.name ?? "Aucune saison"}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{club.volumes.teams} équipes · {club.volumes.coaches} coachs</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{club.volumes.venues} salles</span><span>{club.volumes.constraints} contraintes</span></p></td>
-        <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span> générations · {formatRate(club.solver.infeasibleRate)} inf.</p><p className="mt-1 text-xs text-console-text-faint">P50 {formatDuration(club.solver.p50WallTimeMs)} · P95 {formatDuration(club.solver.p95WallTimeMs)}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">Dernière : {club.solver.latestStatus}</p> : null}</td>
+        <td className="px-5 py-5"><div className="flex items-start gap-3"><button type="button" aria-expanded={expanded} aria-label={ADMIN_DASHBOARD_TEXTS.clubToggleDetail(expanded, club.name)} onClick={() => setExpanded((value) => !value)} className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted hover:bg-white/10">{expanded ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronRight className="size-4" aria-hidden="true" />}</button><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">{ADMIN_DASHBOARD_TEXTS.clubDemo}</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">{ADMIN_DASHBOARD_TEXTS.clubUnsubscribed}</span> : null}{firstReason ? <p className="mt-2 flex items-center gap-1 text-xs font-medium text-console-warning"><AlertTriangle className="size-3 shrink-0" aria-hidden="true" />{firstReason}</p> : null}</div></div></td>
+        <td className="px-4 py-5"><p>{club.lastActivityAt ? formatDate(club.lastActivityAt) : ADMIN_DASHBOARD_TEXTS.clubNeverActive}</p><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubCreatedAt(formatDate(club.createdAt))}</p></td>
+        <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-console-warning">{ADMIN_DASHBOARD_TEXTS.clubPlanDiverges(club.plan.name)}</p> : null}<p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubGenerationCount(club.generationCountSeason)}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
+        <td className="px-4 py-5"><p>{club.currentSeason?.name ?? ADMIN_DASHBOARD_TEXTS.clubNoSeason}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{ADMIN_DASHBOARD_TEXTS.clubTeamsCoaches(club.volumes.teams, club.volumes.coaches)}</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{ADMIN_DASHBOARD_TEXTS.clubVenues(club.volumes.venues)}</span><span>{ADMIN_DASHBOARD_TEXTS.clubConstraints(club.volumes.constraints)}</span></p></td>
+        <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span>{ADMIN_DASHBOARD_TEXTS.clubSolverSummary(formatRate(club.solver.infeasibleRate))}</p><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubSolverPercentiles(formatDuration(club.solver.p50WallTimeMs), formatDuration(club.solver.p95WallTimeMs))}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubLatestStatus(club.solver.latestStatus)}</p> : null}</td>
         <td className="px-4 py-5">
           <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" onClick={onActions}>
-            Actions
+            {ADMIN_DASHBOARD_TEXTS.clubRowActions}
           </Button>
         </td>
       </tr>
@@ -704,28 +699,28 @@ function ClubDetailRow({ club }: { club: AdminClub }) {
       <td colSpan={6} className="px-5 pb-6 pt-1">
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Membres</p>
-            <p className="mt-1 text-sm">{club.members?.active ?? 0} membres actifs</p>
-            <p className="mt-1 text-xs text-console-text-faint">{club.members?.pending ?? 0} en attente</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubDetailMembers}</p>
+            <p className="mt-1 text-sm">{ADMIN_DASHBOARD_TEXTS.clubMembersActive(club.members?.active ?? 0)}</p>
+            <p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubMembersPending(club.members?.pending ?? 0)}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Onboarding</p>
-            <p className="mt-1 text-sm">{club.onboarding?.completed ? "Onboarding terminé" : "Onboarding non terminé"}</p>
-            <p className="mt-1 text-xs text-console-text-faint">Socle {club.onboarding?.socleChosen ? "choisi" : "non choisi"}</p>
-            <p className="mt-1 text-xs text-console-text-faint">{club.onboarding?.ffbbTeamsImportedAt ? `Équipes FFBB importées le ${formatDate(club.onboarding.ffbbTeamsImportedAt)}` : "Équipes FFBB non importées"}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubDetailOnboarding}</p>
+            <p className="mt-1 text-sm">{club.onboarding?.completed ? ADMIN_DASHBOARD_TEXTS.clubOnboardingDone : ADMIN_DASHBOARD_TEXTS.clubOnboardingNotDone}</p>
+            <p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubSocle(club.onboarding?.socleChosen ?? false)}</p>
+            <p className="mt-1 text-xs text-console-text-faint">{club.onboarding?.ffbbTeamsImportedAt ? ADMIN_DASHBOARD_TEXTS.clubFfbbImportedAt(formatDate(club.onboarding.ffbbTeamsImportedAt)) : ADMIN_DASHBOARD_TEXTS.clubFfbbNotImported}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Crédits</p>
-            <p className="mt-1 text-sm">Crédits de sortie consommés : {club.creditsUsed ?? 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubDetailCredits}</p>
+            <p className="mt-1 text-sm">{ADMIN_DASHBOARD_TEXTS.clubCreditsUsed(club.creditsUsed ?? 0)}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">Signalements</p>
-            <Link to="/admin?tab=incidents" className="mt-1 inline-block text-sm text-console-accent underline-offset-2 hover:underline">{untreated} signalement{untreated > 1 ? "s" : ""} non traité{untreated > 1 ? "s" : ""}</Link>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubDetailSignalements}</p>
+            <Link to="/admin?tab=incidents" className="mt-1 inline-block text-sm text-console-accent underline-offset-2 hover:underline">{ADMIN_DASHBOARD_TEXTS.clubSignalements(untreated)}</Link>
           </div>
         </div>
         {club.stuck ? (
           <div className="mt-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-console-warning">Ce club coince</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-console-warning">{ADMIN_DASHBOARD_TEXTS.clubDetailStuck}</p>
             <ul className="mt-2 space-y-1 text-sm text-console-warning">
               {club.stuck.reasons.map((reason) => <li key={reason} className="flex items-center gap-1"><AlertTriangle className="size-3 shrink-0" aria-hidden="true" />{reason}</li>)}
             </ul>
@@ -802,10 +797,10 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
       { clubId: club.id, key: action.key, args: hasSchema ? submitArgs() : undefined },
       {
         onSuccess: () => {
-          toast.success(`${action.label} — terminé pour ${club.name}.`);
+          toast.success(ADMIN_DASHBOARD_TEXTS.clubActionRunSuccess(action.label, club.name));
           onClose();
         },
-        onError: () => toast.error(`Impossible d’exécuter « ${action.label} » sur ${club.name}.`),
+        onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.clubActionRunError(action.label, club.name)),
       },
     );
   };
@@ -828,8 +823,8 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
 
   return (
     <Modal
-      label={`Actions support — ${club.name}`}
-      title={`Actions support — ${club.name}`}
+      label={ADMIN_DASHBOARD_TEXTS.clubActionsModalTitle(club.name)}
+      title={ADMIN_DASHBOARD_TEXTS.clubActionsModalTitle(club.name)}
       onClose={onClose}
       size="xl"
       // Pied ÉPINGLÉ seulement quand une action est SÉLECTIONNÉE — le catalogue (selected===null)
@@ -838,19 +833,19 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
         selected ? (
           <>
             <Button type="button" variant="ghost" onClick={reset} disabled={run.isPending}>
-              Retour
+              {ADMIN_DASHBOARD_TEXTS.clubActionBack}
             </Button>
             <Button type="button" variant={selected.dangerous ? "destructive" : "default"} disabled={primaryBlocked} onClick={onPrimary}>
               {run.isPending ? <Spinner className="size-4" /> : null}
-              Exécuter
+              {ADMIN_DASHBOARD_TEXTS.clubActionExecute}
             </Button>
           </>
         ) : undefined
       }
     >
       <div className="mt-4 space-y-4">
-        {actions.isPending ? <p className="text-sm text-muted-foreground">Chargement du catalogue…</p> : null}
-        {actions.isError ? <p className="text-sm text-destructive">Catalogue d’actions indisponible.</p> : null}
+        {actions.isPending ? <p className="text-sm text-muted-foreground">{ADMIN_DASHBOARD_TEXTS.clubActionCatalogLoading}</p> : null}
+        {actions.isError ? <p className="text-sm text-destructive">{ADMIN_DASHBOARD_TEXTS.clubActionCatalogError}</p> : null}
 
         {actions.data && null === selected ? (
           <ul className="space-y-2">
@@ -867,7 +862,7 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
                 >
                   <span className="flex items-center justify-between gap-3">
                     <span className="text-sm font-medium">{action.label}</span>
-                    {action.dangerous ? <span className="shrink-0 text-xs font-semibold uppercase text-destructive">Destructif</span> : null}
+                    {action.dangerous ? <span className="shrink-0 text-xs font-semibold uppercase text-destructive">{ADMIN_DASHBOARD_TEXTS.clubActionDangerous}</span> : null}
                   </span>
                   <span className="mt-1 block text-xs text-muted-foreground">{action.description}</span>
                 </button>
@@ -893,7 +888,7 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
                     onChange={(event) => setArgValues((previous) => ({ ...previous, [arg.key]: event.target.value }))}
                     className="h-10 w-full scheme-dark rounded-md border border-border bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
                   >
-                    <option value="">Choisir…</option>
+                    <option value="">{ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder}</option>
                     {arg.choices.map((choice) => (
                       <option key={choice.value} value={choice.value}>
                         {choice.label}
@@ -907,7 +902,7 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
             {selected.dangerous ? (
               <div className="space-y-2">
                 <label className="block text-xs text-muted-foreground" htmlFor="confirm-club-name">
-                  Action destructive — tapez le nom exact du club (« {club.name} ») pour confirmer :
+                  {ADMIN_DASHBOARD_TEXTS.clubActionDangerConfirmLabel(club.name)}
                 </label>
                 <input
                   id="confirm-club-name"
@@ -925,10 +920,10 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
 
       <ConfirmDialog
         open={confirmingOffer}
-        title={selected ? `Confirmer : ${selected.label}` : "Confirmer"}
+        title={selected ? ADMIN_DASHBOARD_TEXTS.clubActionConfirmTitle(selected.label) : ADMIN_DASHBOARD_TEXTS.clubActionConfirmFallbackTitle}
         description={
           <span className="block space-y-1">
-            <span className="block">Pour {club.name} :</span>
+            <span className="block">{ADMIN_DASHBOARD_TEXTS.clubActionConfirmFor(club.name)}</span>
             {chosenSummary.map((line) => (
               <span key={line.label} className="block font-medium">
                 {line.label} : {line.value}
@@ -936,7 +931,7 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
             ))}
           </span>
         }
-        confirmLabel="Confirmer l’attribution"
+        confirmLabel={ADMIN_DASHBOARD_TEXTS.clubActionConfirmAttribution}
         destructive={false}
         confirmDisabled={run.isPending}
         onConfirm={doRun}
@@ -955,7 +950,7 @@ function SmallMetric({ label, value, tone }: { label: string; value: number | st
 }
 
 function StatusChip({ status }: { status: "up" | "down" | "unknown" | "degraded" }) {
-  const labels = { up: "Opérationnel", down: "Indisponible", unknown: "Inconnu", degraded: "Dégradé" };
+  const labels = { up: ADMIN_DASHBOARD_TEXTS.statusUp, down: ADMIN_DASHBOARD_TEXTS.statusDown, unknown: ADMIN_DASHBOARD_TEXTS.statusUnknown, degraded: ADMIN_DASHBOARD_TEXTS.statusDegraded };
   const healthy = status === "up";
   const Icon = healthy ? CheckCircle2 : AlertTriangle;
   return <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", healthy ? "text-console-success" : status === "unknown" ? "text-console-text-dim" : "text-console-warning")}><Icon className="size-3.5" aria-hidden="true" />{labels[status]}</span>;
@@ -966,7 +961,7 @@ function PanelLoading({ label }: { label: string }) {
 }
 
 function PanelError({ label, retry }: { label: string; retry: () => void }) {
-  return <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert"><p className="text-sm text-console-warning-bright">{label}</p><Button type="button" size="sm" variant="outline" className="border-console-warning/20 text-console-warning-bright hover:bg-console-warning/10" onClick={retry}>Réessayer</Button></div>;
+  return <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert"><p className="text-sm text-console-warning-bright">{label}</p><Button type="button" size="sm" variant="outline" className="border-console-warning/20 text-console-warning-bright hover:bg-console-warning/10" onClick={retry}>{ADMIN_DASHBOARD_TEXTS.panelRetry}</Button></div>;
 }
 
 interface DataSectionProps<T> {
@@ -1003,20 +998,20 @@ function nullableInteger(value: number | null): string {
 }
 
 function formatHeartbeat(worker: AdminHealthResponse["services"]["worker"]): ReactNode {
-  if (worker.ageSeconds !== null) return `Heartbeat il y a ${worker.ageSeconds} s`;
-  if (worker.lastHeartbeatAt) return `Heartbeat ${formatDateTime(worker.lastHeartbeatAt)}`;
-  return "Aucun heartbeat reçu";
+  if (worker.ageSeconds !== null) return ADMIN_DASHBOARD_TEXTS.heartbeatAgo(worker.ageSeconds);
+  if (worker.lastHeartbeatAt) return ADMIN_DASHBOARD_TEXTS.heartbeatAt(formatDateTime(worker.lastHeartbeatAt));
+  return ADMIN_DASHBOARD_TEXTS.heartbeatNone;
 }
 
 function formatCadence(cadence: AdminJob["cadence"]): string {
   return {
-    every_10_minutes: "Toutes les 10 minutes",
-    daily: "Quotidien",
-    weekly: "Hebdomadaire",
-    quarterly: "Trimestriel",
+    every_10_minutes: ADMIN_DASHBOARD_TEXTS.cadenceEvery10Minutes,
+    daily: ADMIN_DASHBOARD_TEXTS.cadenceDaily,
+    weekly: ADMIN_DASHBOARD_TEXTS.cadenceWeekly,
+    quarterly: ADMIN_DASHBOARD_TEXTS.cadenceQuarterly,
   }[cadence];
 }
 
 function formatJobSource(source: NonNullable<AdminJob["latestRun"]>["source"]): string {
-  return { scheduled: "Planifié", cli: "CLI", superadmin: "Superadmin" }[source];
+  return { scheduled: ADMIN_DASHBOARD_TEXTS.jobSourceScheduled, cli: ADMIN_DASHBOARD_TEXTS.jobSourceCli, superadmin: ADMIN_DASHBOARD_TEXTS.jobSourceSuperadmin }[source];
 }
