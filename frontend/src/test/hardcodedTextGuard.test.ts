@@ -78,6 +78,21 @@ const MIGRATED_FILES = [
   "features/admin/AdminAuthLayout.tsx",
   "features/admin/tabs/tabsConfig.ts",
   "features/admin/queries.ts",
+  // P4-346 PR B — les 9 sections (features/admin/sections/*) migrées dans
+  // features/admin/texts/sections.ts, et les 3 journaux (features/admin/Journaux/*) dans
+  // features/admin/texts/journaux.ts. Chacun RED naturellement (texte JSX / attributs policés).
+  "features/admin/sections/AudienceSection.tsx",
+  "features/admin/sections/CapacitySection.tsx",
+  "features/admin/sections/ClubRequestsSection.tsx",
+  "features/admin/sections/ContainersSection.tsx",
+  "features/admin/sections/DemosSection.tsx",
+  "features/admin/sections/DeploymentSection.tsx",
+  "features/admin/sections/ExternalDepsSection.tsx",
+  "features/admin/sections/FeedbackSection.tsx",
+  "features/admin/sections/ReleaseNotesSection.tsx",
+  "features/admin/Journaux/AuditSubtab.tsx",
+  "features/admin/Journaux/MessengerFailedSubtab.tsx",
+  "features/admin/Journaux/SystemErrorsSubtab.tsx",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.

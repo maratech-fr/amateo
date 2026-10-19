@@ -5,6 +5,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { AdminAudienceResponse } from "../api";
 import { getAdminAudience } from "../api";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { AudienceSection } from "./AudienceSection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -58,14 +59,14 @@ describe("AudienceSection", () => {
     mockAudience.mockResolvedValue({ configured: false } as AdminAudienceResponse);
     renderWithProviders(<AudienceSection />);
 
-    expect(await screen.findByText(/mesure d.audience non configur/i)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.audienceNotConfigured)).toBeInTheDocument();
   });
 
   it("annonce « indisponible » quand Umami ne répond pas", async () => {
     mockAudience.mockResolvedValue({ configured: true, available: false } as AdminAudienceResponse);
     renderWithProviders(<AudienceSection />);
 
-    expect(await screen.findByText(/indisponible/i)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.audienceUnavailable)).toBeInTheDocument();
   });
 
   it("affiche les chiffres des deux fenêtres, le top pages et le top sources", async () => {

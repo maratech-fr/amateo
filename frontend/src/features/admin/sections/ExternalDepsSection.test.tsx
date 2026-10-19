@@ -5,6 +5,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { AdminHealthResponse } from "../api";
 import { getAdminHealth } from "../api";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { ExternalDepsSection } from "./ExternalDepsSection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -54,7 +55,7 @@ describe("ExternalDepsSection", () => {
     expect(screen.getByText("API Etalab Jours Fériés")).toBeInTheDocument();
     // 1 header row + 3 data rows.
     expect(screen.getAllByRole("row")).toHaveLength(4);
-    expect(screen.getAllByText("Opérationnel")).toHaveLength(3);
+    expect(screen.getAllByText(ADMIN_SECTIONS_TEXTS.statusUp)).toHaveLength(3);
     expect(screen.getByText("120 ms")).toBeInTheDocument();
     expect(screen.getByText("85 ms")).toBeInTheDocument();
     expect(screen.getByText("45 ms")).toBeInTheDocument();
@@ -73,7 +74,7 @@ describe("ExternalDepsSection", () => {
     renderWithProviders(<ExternalDepsSection />, { route: "/admin" });
 
     expect(await screen.findByText("API ODS Éducation")).toBeInTheDocument();
-    const downStatus = screen.getByText("Indisponible");
+    const downStatus = screen.getByText(ADMIN_SECTIONS_TEXTS.statusDown);
     expect(downStatus).toBeInTheDocument();
     expect(downStatus.closest("span")).toHaveClass("text-console-danger-deep");
     expect(screen.getByText("2000 ms")).toBeInTheDocument();
@@ -98,7 +99,7 @@ describe("ExternalDepsSection", () => {
 
     renderWithProviders(<ExternalDepsSection />, { route: "/admin" });
 
-    expect(await screen.findByText("Aucune dépendance externe configurée.")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.externalDepsEmpty)).toBeInTheDocument();
   });
 
   // P4-149 — l'état vide est rallié sur la primitive `EmptyBlock` en peau `console`. Ce test
@@ -110,7 +111,7 @@ describe("ExternalDepsSection", () => {
 
     renderWithProviders(<ExternalDepsSection />, { route: "/admin" });
 
-    const empty = await screen.findByText("Aucune dépendance externe configurée.");
+    const empty = await screen.findByText(ADMIN_SECTIONS_TEXTS.externalDepsEmpty);
     expect(empty.className).toContain("text-console-muted");
     expect(empty.className).not.toContain("text-muted-foreground");
   });

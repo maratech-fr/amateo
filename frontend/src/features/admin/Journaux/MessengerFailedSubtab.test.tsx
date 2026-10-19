@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AdminMessengerFailedResponse } from "../api";
+import { ADMIN_JOURNAUX_TEXTS } from "../texts/journaux";
 import { MessengerFailedSubtab } from "./MessengerFailedSubtab";
 
 // Mock the hook — tests drive the component through its props contract, not the
@@ -72,14 +73,14 @@ describe("MessengerFailedSubtab", () => {
     expect(screen.getByText("Engine unreachable")).toBeInTheDocument();
 
     // Pagination summary reflects the total.
-    expect(screen.getByText(/2 messages · page 1 sur 1/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.messengerPagination(2, 1, 1))).toBeInTheDocument();
   });
 
   it("renders the empty state when there are no failed messages", () => {
     mockEmpty();
     render(<MessengerFailedSubtab />);
 
-    expect(screen.getByText("Aucun message en échec — le système est sain")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.messengerEmpty)).toBeInTheDocument();
     // No table in the empty state.
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });

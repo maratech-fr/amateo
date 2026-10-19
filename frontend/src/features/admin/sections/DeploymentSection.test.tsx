@@ -8,6 +8,7 @@ import { renderWithProviders } from "@/test/utils";
 import type { AdminDeployment } from "../api";
 import { cancelAdminDeployment, getAdminDeployments, getAdminDeploymentTags, scheduleAdminDeployment } from "../api";
 import { useAdminStore } from "../store";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { DeploymentSection } from "./DeploymentSection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -91,7 +92,7 @@ describe("DeploymentSection", () => {
     mockList.mockResolvedValue({ items: [], configured: false });
     renderWithProviders(<DeploymentSection />, { route: "/admin" });
 
-    expect(await screen.findByText(/jeton github/i)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.deploymentNotConfigured)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /programmer/i })).toBeDisabled();
   });
 
@@ -164,7 +165,7 @@ describe("DeploymentSection", () => {
     mockTags.mockResolvedValue({ items: [], available: false });
     renderWithProviders(<DeploymentSection />, { route: "/admin" });
 
-    expect(await screen.findByText(/GitHub est injoignable — la liste des versions/)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.deploymentGithubUnreachableTags)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /réessayer/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /programmer/i })).toBeDisabled();
   });
@@ -182,7 +183,7 @@ describe("DeploymentSection", () => {
     fireEvent.change(screen.getByLabelText(/durée de la maintenance/i), { target: { value: "30" } });
     await user.click(screen.getByRole("button", { name: /programmer/i }));
 
-    expect(await screen.findByText(/GitHub est injoignable — réessayez dans un instant/)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.deploymentGithubUnreachableSchedule)).toBeInTheDocument();
   });
 
   // P4-350 D4 — la NOTE de départ (`dispatchNote`, retard/plafond) est RENDUE : sur la carte du

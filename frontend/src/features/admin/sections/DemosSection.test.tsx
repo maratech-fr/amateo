@@ -6,6 +6,7 @@ import { renderWithProviders } from "@/test/utils";
 import type { AdminDemosResponse } from "../api";
 import { activateAdminDemo, deactivateAdminDemo, getAdminDemos, resetAdminDemoBccl, retainAdminDemoProspect, setAdminDemoClock } from "../api";
 import { useAdminStore } from "../store";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { DemosSection } from "./DemosSection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -57,29 +58,29 @@ describe("DemosSection", () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
-    expect(await screen.findByText("Démo BCCL")).toBeInTheDocument();
-    expect(screen.getByText("Démo prospect")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.demosBcclTitle)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_SECTIONS_TEXTS.demosProspectTitle)).toBeInTheDocument();
     expect(screen.getByText("demo-bccl@amateo.fr")).toBeInTheDocument();
     expect(screen.getByText("Démo Basket Club")).toBeInTheDocument();
 
     // Fenêtre BCCL ouverte → rendue à l'heure de Paris (22:00) ; prospect fermé → Inactive.
     expect(screen.getByText(/22:00/)).toBeInTheDocument();
-    expect(screen.getByText("Inactive")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_SECTIONS_TEXTS.demosInactive)).toBeInTheDocument();
 
     // BCCL a « Réactiver » (ouvert) ; prospect a « Activer » (fermé).
-    expect(screen.getByRole("button", { name: /Réactiver 4 h/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Activer 4 h" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosReactivate })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosActivate })).toBeInTheDocument();
 
     // L'horloge est désormais sur les DEUX cartes (capacité générique factorisée).
-    expect((screen.getByLabelText(/Date simulée — Démo BCCL/) as HTMLInputElement).value).toBe("2026-01-15");
-    expect((screen.getByLabelText(/Date simulée — Démo prospect/) as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(ADMIN_SECTIONS_TEXTS.demosClockLabel(ADMIN_SECTIONS_TEXTS.demosBcclTitle)) as HTMLInputElement).value).toBe("2026-01-15");
+    expect((screen.getByLabelText(ADMIN_SECTIONS_TEXTS.demosClockLabel(ADMIN_SECTIONS_TEXTS.demosProspectTitle)) as HTMLInputElement).value).toBe("");
   });
 
   it("active le compte prospect", async () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Activer 4 h" }));
+    fireEvent.click(await screen.findByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosActivate }));
     await waitFor(() => expect(mockActivate).toHaveBeenCalledWith("prospect", "csrf-token"));
   });
 
@@ -87,12 +88,12 @@ describe("DemosSection", () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Réinitialiser" }));
+    fireEvent.click(await screen.findByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosReset }));
     // La confirmation nomme l'effet (données effacées + retour à aujourd'hui).
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/sera effacé et la date simulée revient à aujourd/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.demosResetConfirmDescription)).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Réinitialiser" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosReset }));
     await waitFor(() => expect(mockReset).toHaveBeenCalledWith("csrf-token"));
   });
 
@@ -100,7 +101,7 @@ describe("DemosSection", () => {
     mockGet.mockResolvedValue(demos({ reset: { state: "running", at: "2026-10-05T10:00:00+00:00" } }));
     renderWithProviders(<DemosSection />);
 
-    expect(await screen.findByText("Réinitialisation en cours…")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.demosResetRunning)).toBeInTheDocument();
     // Pendant le reset, le bouton porte aussi le Spinner (aria-label « Chargement ») : son nom
     // accessible contient « Réinitialiser » sans y être égal — d'où le match par regex.
     expect(screen.getByRole("button", { name: /Réinitialiser/ })).toBeDisabled();
@@ -110,13 +111,13 @@ describe("DemosSection", () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
-    const card = (await screen.findByText("Démo BCCL")).closest("article") as HTMLElement;
-    const input = within(card).getByLabelText(/Date simulée — Démo BCCL/);
+    const card = (await screen.findByText(ADMIN_SECTIONS_TEXTS.demosBcclTitle)).closest("article") as HTMLElement;
+    const input = within(card).getByLabelText(ADMIN_SECTIONS_TEXTS.demosClockLabel(ADMIN_SECTIONS_TEXTS.demosBcclTitle));
     fireEvent.change(input, { target: { value: "2026-03-03" } });
-    fireEvent.click(within(card).getByRole("button", { name: "Appliquer" }));
+    fireEvent.click(within(card).getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosApply }));
     await waitFor(() => expect(mockClock).toHaveBeenCalledWith("bccl", { date: "2026-03-03" }, "csrf-token"));
 
-    fireEvent.click(within(card).getByRole("button", { name: /Revenir à aujourd/ }));
+    fireEvent.click(within(card).getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosClockReset }));
     await waitFor(() => expect(mockClock).toHaveBeenCalledWith("bccl", { clear: true }, "csrf-token"));
   });
 
@@ -124,10 +125,10 @@ describe("DemosSection", () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
-    const card = (await screen.findByText("Démo prospect")).closest("article") as HTMLElement;
-    const input = within(card).getByLabelText(/Date simulée — Démo prospect/);
+    const card = (await screen.findByText(ADMIN_SECTIONS_TEXTS.demosProspectTitle)).closest("article") as HTMLElement;
+    const input = within(card).getByLabelText(ADMIN_SECTIONS_TEXTS.demosClockLabel(ADMIN_SECTIONS_TEXTS.demosProspectTitle));
     fireEvent.change(input, { target: { value: "2026-05-05" } });
-    fireEvent.click(within(card).getByRole("button", { name: "Appliquer" }));
+    fireEvent.click(within(card).getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosApply }));
     await waitFor(() => expect(mockClock).toHaveBeenCalledWith("prospect", { date: "2026-05-05" }, "csrf-token"));
   });
 
@@ -135,13 +136,13 @@ describe("DemosSection", () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
-    const card = (await screen.findByText("Démo prospect")).closest("article") as HTMLElement;
-    const button = within(card).getByRole("button", { name: /Conserver 14 jours/ });
+    const card = (await screen.findByText(ADMIN_SECTIONS_TEXTS.demosProspectTitle)).closest("article") as HTMLElement;
+    const button = within(card).getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosRetain });
     expect(button).toBeEnabled();
     fireEvent.click(button);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: /Conserver 14 jours/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosRetain }));
     await waitFor(() => expect(mockRetain).toHaveBeenCalledWith("csrf-token"));
   });
 
@@ -149,9 +150,9 @@ describe("DemosSection", () => {
     mockGet.mockResolvedValue(demos({ prospect: { email: "demo@amateo.fr", activeUntil: "2099-06-15T20:00:00+00:00", clubName: "Prospect FC", simulatedToday: null } }));
     renderWithProviders(<DemosSection />);
 
-    const card = (await screen.findByText("Démo prospect")).closest("article") as HTMLElement;
-    expect(within(card).getByRole("button", { name: /Conserver 14 jours/ })).toBeDisabled();
-    expect(within(card).getByText(/Fermez d’abord l’accès de la démonstration/i)).toBeInTheDocument();
+    const card = (await screen.findByText(ADMIN_SECTIONS_TEXTS.demosProspectTitle)).closest("article") as HTMLElement;
+    expect(within(card).getByRole("button", { name: ADMIN_SECTIONS_TEXTS.demosRetain })).toBeDisabled();
+    expect(within(card).getByText(ADMIN_SECTIONS_TEXTS.demosRetainBlocked)).toBeInTheDocument();
   });
 
   it("liste les clubs conservés avec leur échéance", async () => {
@@ -159,30 +160,30 @@ describe("DemosSection", () => {
     renderWithProviders(<DemosSection />);
 
     expect(await screen.findByText("Club Conservé")).toBeInTheDocument();
-    expect(screen.getByText(/jusqu’au 19\/10\/2026/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_SECTIONS_TEXTS.demosRetainedUntil("19/10/2026"))).toBeInTheDocument();
   });
 
   it("affiche la date de la dernière réinitialisation BCCL quand le journal en porte une", async () => {
     mockGet.mockResolvedValue(demos({ lastResetAt: "2026-10-05T08:30:00+00:00" }));
     renderWithProviders(<DemosSection />);
 
-    const card = (await screen.findByText("Démo BCCL")).closest("article") as HTMLElement;
+    const card = (await screen.findByText(ADMIN_SECTIONS_TEXTS.demosBcclTitle)).closest("article") as HTMLElement;
     expect(within(card).getByText(/Dernière réinitialisation lancée le/i)).toBeInTheDocument();
-    expect(within(card).queryByText(/Jamais réinitialisée/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(ADMIN_SECTIONS_TEXTS.demosNeverReset)).not.toBeInTheDocument();
   });
 
   it("indique « Jamais réinitialisée » quand le journal n'en porte aucune", async () => {
     mockGet.mockResolvedValue(demos({ lastResetAt: null }));
     renderWithProviders(<DemosSection />);
 
-    const card = (await screen.findByText("Démo BCCL")).closest("article") as HTMLElement;
-    expect(within(card).getByText(/Jamais réinitialisée/i)).toBeInTheDocument();
+    const card = (await screen.findByText(ADMIN_SECTIONS_TEXTS.demosBcclTitle)).closest("article") as HTMLElement;
+    expect(within(card).getByText(ADMIN_SECTIONS_TEXTS.demosNeverReset)).toBeInTheDocument();
   });
 
   it("affiche l'indisponibilité quand la lecture échoue", async () => {
     mockGet.mockRejectedValue(new Error("down"));
     renderWithProviders(<DemosSection />);
 
-    expect(await screen.findByText(/comptes de démonstration sont indisponibles/i)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.demosError)).toBeInTheDocument();
   });
 });

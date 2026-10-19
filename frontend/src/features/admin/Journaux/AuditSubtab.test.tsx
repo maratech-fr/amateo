@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AdminAuditLogResponse } from "../api";
+import { ADMIN_JOURNAUX_TEXTS } from "../texts/journaux";
 import { AuditSubtab } from "./AuditSubtab";
 
 // Mock the hook — tests drive the component through its props contract, not the
@@ -71,7 +72,7 @@ describe("AuditSubtab", () => {
     expect(screen.getByText("admin0@club.test")).toBeInTheDocument();
     expect(screen.getByText("admin49@club.test")).toBeInTheDocument();
     // Pagination summary reflects the full total, not just the page slice.
-    expect(screen.getByText(/120 entrées · page 1 sur 3/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.auditPagination(120, 1, 3))).toBeInTheDocument();
   });
 
   it("reflects the current page in the pagination summary and disables prev on page 1", () => {
@@ -80,10 +81,10 @@ describe("AuditSubtab", () => {
 
     render(<AuditSubtab />);
 
-    expect(screen.getByText(/120 entrées · page 2 sur 3/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.auditPagination(120, 2, 3))).toBeInTheDocument();
     // Prev enabled on page 2, next enabled (page 2 < 3).
-    expect(screen.getByRole("button", { name: "Page précédente" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Page suivante" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: ADMIN_JOURNAUX_TEXTS.pagePrev })).toBeEnabled();
+    expect(screen.getByRole("button", { name: ADMIN_JOURNAUX_TEXTS.pageNext })).toBeEnabled();
   });
 
   it("moves to the next page when the next button is clicked", async () => {
@@ -100,20 +101,20 @@ describe("AuditSubtab", () => {
     } as unknown as ReturnType<typeof useAdminAuditLog>));
 
     render(<AuditSubtab />);
-    expect(screen.getByText(/page 1 sur 2/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.auditPagination(100, 1, 2))).toBeInTheDocument();
 
     // Swap the mocked data, then click next — the component re-renders with page 2.
     current = page2;
-    await userEvent.click(screen.getByRole("button", { name: "Page suivante" }));
+    await userEvent.click(screen.getByRole("button", { name: ADMIN_JOURNAUX_TEXTS.pageNext }));
 
-    expect(screen.getByText(/page 2 sur 2/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.auditPagination(100, 2, 2))).toBeInTheDocument();
     expect(screen.getByText("page2-0@club.test")).toBeInTheDocument();
   });
 
   it("renders the empty state when there are no items", () => {
     mockEmpty();
     render(<AuditSubtab />);
-    expect(screen.getByText("Aucun SuperAdmin audité pour le moment")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.auditEmpty)).toBeInTheDocument();
     // No table in the empty state.
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
@@ -123,7 +124,7 @@ describe("AuditSubtab", () => {
 
     render(<AuditSubtab />);
 
-    const chip = screen.getByText("Erreur");
+    const chip = screen.getByText(ADMIN_JOURNAUX_TEXTS.auditStatusLabel("error"));
     expect(chip).toBeInTheDocument();
     // The red style is applied to the status chip (bg-console-danger-surface/15 text-console-danger).
     expect(chip.className).toContain("bg-console-danger-surface/15");
@@ -135,7 +136,7 @@ describe("AuditSubtab", () => {
 
     render(<AuditSubtab />);
 
-    const chip = screen.getByText("Succès");
+    const chip = screen.getByText(ADMIN_JOURNAUX_TEXTS.auditStatusLabel("success"));
     expect(chip).toBeInTheDocument();
     expect(chip.className).toContain("bg-console-success-surface/15");
     expect(chip.className).toContain("text-console-success");
@@ -144,16 +145,16 @@ describe("AuditSubtab", () => {
   it("maps a >=400 status code to Erreur and shows the code (never a false Succès)", () => {
     mockHook(makeResponse([makeItem({ id: "denied", status: 403 })], 1, 1));
     render(<AuditSubtab />);
-    expect(screen.getByText("Erreur")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.auditStatusLabel("error"))).toBeInTheDocument();
     expect(screen.getByText("403")).toBeInTheDocument();
-    expect(screen.queryByText("Succès")).not.toBeInTheDocument();
+    expect(screen.queryByText(ADMIN_JOURNAUX_TEXTS.auditStatusLabel("success"))).not.toBeInTheDocument();
   });
 
   it("maps a null status code to the neutral unknown chip, not Succès", () => {
     mockHook(makeResponse([makeItem({ id: "no-code", status: null })], 1, 1));
     render(<AuditSubtab />);
-    expect(screen.getByText("—")).toBeInTheDocument();
-    expect(screen.queryByText("Succès")).not.toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.auditStatusLabel("unknown"))).toBeInTheDocument();
+    expect(screen.queryByText(ADMIN_JOURNAUX_TEXTS.auditStatusLabel("success"))).not.toBeInTheDocument();
   });
 
   it("formats the createdAt date in fr-FR with the expected options", () => {
