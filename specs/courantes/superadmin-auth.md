@@ -410,9 +410,11 @@ tête de l'onglet **Statistiques** (`useAdminAudience()`, `staleTime` 5 min, pas
 un bandeau dédié pour chacun des deux états dégradés (non configurée / indisponible), sinon les
 deux fenêtres et les deux tops.
 
-**Gestes de configuration restants (fondateur) et la PR qui branche la collecte sur la landing** :
-[`deploy.md`](../../docs/ops/deploy.md) §1.11 (F5/F7) — sans eux la section reste inerte, en
-PROD comme ici.
+Gestes fondateur (site Umami créé, compte LECTURE SEULE + clé API posés, script de collecte
+branché sur la landing) : [`deploy.md`](../../docs/ops/deploy.md) §1.11 (F5/F7) —
+`specs/courantes/etat-des-lieux.md` §3 trace leur avancement ; tant que `UMAMI_API_KEY`/
+`UMAMI_WEBSITE_ID` ne sont pas posés sur une instance donnée, la section reste inerte
+(`{configured: false}`).
 
 ## Organisation de la console — 5 onglets et pastilles d'alerte
 

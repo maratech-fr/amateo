@@ -674,7 +674,10 @@ passe `healthy`. L'app n'est pas touchée.
 
 ⬜ **F5 — UI Umami par tunnel SSH** (le SEUL accès à l'**administration** du tableau de bord —
 login, comptes, clés API —, maintenant et toujours ; lire les chiffres au jour le jour passe par
-la console une fois ce geste fait, voir plus bas).
+la console une fois ce geste fait, voir plus bas). Fait pour l'instance de prod actuelle (site
+`amateo.app` créé, compte Umami LECTURE SEULE dédié + sa clé API posés avec le déploiement
+v1.2.2 du 2026-10-18) — la procédure ci-dessous reste la référence pour un futur compte/une
+rotation de clé ou une réinstallation de Umami.
 🔵 **Décision fondateur 2026-10-06 (option A) : le tableau de bord Umami n'est JAMAIS exposé
 publiquement.** Caddy n'expose que les routes de COLLECTE (F6) ; le dashboard (login, listes de
 sites, création de comptes/clés, toute l'admin) se consulte UNIQUEMENT par tunnel SSH. Le conteneur
@@ -702,8 +705,9 @@ console affiche « non configurée ».
 
 Fermer le tunnel. **Ce même tunnel SSH reste le geste pour toute administration ultérieure**
 (nouveau compte, rotation de clé, gestion des sites) — pour lire les CHIFFRES au jour le jour,
-l'onglet Statistiques de la console superadmin suffit désormais (rail livré, roadmap P4-307) ;
-il n'affichera des données que si la collecte est branchée (F7, ci-dessous).
+l'onglet Statistiques de la console superadmin suffit désormais (`specs/courantes/etat-des-lieux.md`
+§3, 2026-10-18/2026-10-19). Il n'affiche des données que si la collecte est branchée (F7,
+ci-dessous).
 
 ⬜ **F6 — Caddy (exposition de la COLLECTE seule)** : SEULEMENT une fois F5 fait. Ajouter le 4ᵉ
 bloc `stats.amateo.app` du modèle ([`Caddyfile.example`](Caddyfile.example)) à
@@ -718,12 +722,15 @@ hygiène, mais n'est plus une fenêtre d'attaque : ce bloc n'expose plus aucune 
 (Avant que le DNS propage / le conteneur tourne, le bloc rend juste 502 sur la collecte, sans
 effet ailleurs.)
 
-⬜ **F7 — brancher le script** (reste du chantier « mesure d'audience », roadmap P4-307) : ouvrir
-une **PR** qui remplit `analytics.scriptUrl` + `analytics.websiteId` dans `landing/config.js` (et
-bumpe le `?v=` des DEUX pages). **Jamais une édition directe sur la VM** : le deploy réécrit
-`landing/` à chaque passage, elle serait écrasée. Un `websiteId` est public (visible dans toute
-page trackée) — sa place en git est correcte. Prochain deploy → premiers hits dans le dashboard
-**et dans l'onglet Statistiques de la console** (une fois F5 posé).
+⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
+`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une
+édition directe sur la VM** : le deploy réécrit `landing/` à chaque passage, elle serait écrasée.
+Un `websiteId` est public (visible dans toute page trackée) — sa place en git est correcte.
+Prochain deploy → premiers hits dans le dashboard **et dans l'onglet Statistiques de la console**
+(une fois F5 posé). Fait le 2026-10-19 pour l'instance de prod actuelle
+(`specs/courantes/etat-des-lieux.md` §3) — la procédure ci-dessus reste la référence pour une
+future réinstallation de Umami (nouveau site → nouveau `websiteId` → à rebrancher de la même
+façon).
 
 ---
 
