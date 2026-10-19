@@ -10,9 +10,6 @@ import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 const integerFormatter = new Intl.NumberFormat("fr-FR");
 
-/** Libellés des deux fenêtres servies par le backend. */
-const WINDOW_LABELS: Record<string, string> = { d7: "7 derniers jours", d30: "30 derniers jours" };
-
 /**
  * Section « Mesure d'audience » (P4-307) : ce qu'Umami dit de la fréquentation de la vitrine —
  * deux fenêtres (7 j / 30 j) avec leur tendance, le top des pages et le top des sources.
@@ -48,8 +45,8 @@ export function AudienceSection() {
   return (
     <AudienceShell>
       <div className="grid gap-4 lg:grid-cols-2">
-        <WindowPanel label={WINDOW_LABELS.d7} window={data.windows.d7} />
-        <WindowPanel label={WINDOW_LABELS.d30} window={data.windows.d30} />
+        <WindowPanel label={ADMIN_SECTIONS_TEXTS.audienceWindow7d} window={data.windows.d7} />
+        <WindowPanel label={ADMIN_SECTIONS_TEXTS.audienceWindow30d} window={data.windows.d30} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <MetricsPanel title={ADMIN_SECTIONS_TEXTS.audienceTopPages} unit={ADMIN_SECTIONS_TEXTS.audienceUnitPageviews} metrics={data.topPages} />
