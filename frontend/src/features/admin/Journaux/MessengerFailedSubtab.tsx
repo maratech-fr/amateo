@@ -8,10 +8,10 @@ import { cn } from "@/shared/lib/utils";
 
 import type { AdminMessengerFailedResponse } from "../api";
 import { useAdminMessengerFailed } from "../queries";
+import { ADMIN_JOURNAUX_TEXTS } from "../texts/journaux";
 
 const FAILED_PER_PAGE = 50;
 
-const integerFormatter = new Intl.NumberFormat("fr-FR");
 const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
 
 /**
@@ -31,7 +31,7 @@ export function MessengerFailedSubtab() {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
         <Spinner className="text-console-accent" />
-        <span className="sr-only">Chargement des messages en échec</span>
+        <span className="sr-only">{ADMIN_JOURNAUX_TEXTS.messengerLoading}</span>
       </div>
     );
   }
@@ -39,7 +39,7 @@ export function MessengerFailedSubtab() {
   if (query.isError) {
     return (
       <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
-        <p className="text-sm text-console-warning-bright">Les messages en échec sont indisponibles.</p>
+        <p className="text-sm text-console-warning-bright">{ADMIN_JOURNAUX_TEXTS.messengerError}</p>
         <Button
           type="button"
           size="sm"
@@ -47,7 +47,7 @@ export function MessengerFailedSubtab() {
           className="border-console-warning/20 text-console-warning-bright hover:bg-console-warning/10"
           onClick={() => void query.refetch()}
         >
-          Réessayer
+          {ADMIN_JOURNAUX_TEXTS.retry}
         </Button>
       </div>
     );
@@ -59,10 +59,10 @@ export function MessengerFailedSubtab() {
     <section aria-labelledby="messenger-failed-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">File d’erreurs Messenger</p>
-          <h2 id="messenger-failed-heading" className="mt-2 text-xl font-semibold text-white">Messages en échec</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_JOURNAUX_TEXTS.messengerEyebrow}</p>
+          <h2 id="messenger-failed-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_JOURNAUX_TEXTS.messengerHeading}</h2>
         </div>
-        <p className="text-xs text-console-muted">Rafraîchi toutes les 60 s</p>
+        <p className="text-xs text-console-muted">{ADMIN_JOURNAUX_TEXTS.messengerRefreshHint}</p>
       </div>
 
       {data && data.items.length > 0 ? (
@@ -72,7 +72,7 @@ export function MessengerFailedSubtab() {
           onPageChange={setPage}
         />
       ) : (
-        <EmptyBlock variant="console">Aucun message en échec — le système est sain</EmptyBlock>
+        <EmptyBlock variant="console">{ADMIN_JOURNAUX_TEXTS.messengerEmpty}</EmptyBlock>
       )}
     </section>
   );
@@ -94,12 +94,12 @@ function FailedTable({
     <div className={cn("overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]", loading && "opacity-70")}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <caption className="sr-only">Messages Messenger en échec (retry épuisé)</caption>
+          <caption className="sr-only">{ADMIN_JOURNAUX_TEXTS.messengerCaption}</caption>
           <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
             <tr>
-              <th className="px-5 py-4 font-medium">Classe</th>
-              <th className="px-4 py-4 font-medium">Date d’échec</th>
-              <th className="px-4 py-4 font-medium">Erreur</th>
+              <th className="px-5 py-4 font-medium">{ADMIN_JOURNAUX_TEXTS.messengerColClass}</th>
+              <th className="px-4 py-4 font-medium">{ADMIN_JOURNAUX_TEXTS.messengerColFailedAt}</th>
+              <th className="px-4 py-4 font-medium">{ADMIN_JOURNAUX_TEXTS.messengerColError}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10">
@@ -119,7 +119,7 @@ function FailedTable({
       </div>
       <div className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-4">
         <p className="text-xs text-console-muted">
-          {integerFormatter.format(total)} message{total > 1 ? "s" : ""} · page {page} sur {Math.max(pages, 1)}
+          {ADMIN_JOURNAUX_TEXTS.messengerPagination(total, page, pages)}
         </p>
         <div className="flex gap-2">
           <Button
@@ -127,7 +127,7 @@ function FailedTable({
             size="sm"
             variant="ghost"
             className="text-console-text hover:bg-white/10"
-            aria-label="Page précédente"
+            aria-label={ADMIN_JOURNAUX_TEXTS.pagePrev}
             disabled={page <= 1 || loading}
             onClick={() => onPageChange(page - 1)}
           >
@@ -138,7 +138,7 @@ function FailedTable({
             size="sm"
             variant="ghost"
             className="text-console-text hover:bg-white/10"
-            aria-label="Page suivante"
+            aria-label={ADMIN_JOURNAUX_TEXTS.pageNext}
             disabled={page >= pages || loading}
             onClick={() => onPageChange(page + 1)}
           >

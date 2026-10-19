@@ -248,11 +248,18 @@ paths:
   `SlotReservationModal`/`ConstraintsStep`/`RecapStep`. Depuis (progressif, lot 5) : matchs
   `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`. La
   **console superadmin** (`features/admin/**`) a sa propre maison SCINDÉE par module —
-  `features/admin/texts/<module>.ts` (pas un `texts.ts` unique) — amorcée par la **coquille**
-  (P4-346 PR A, 2026-10-19) : `texts/dashboard.ts` (`ADMIN_DASHBOARD_TEXTS`) couvre
+  `features/admin/texts/<module>.ts` (pas un `texts.ts` unique), **entièrement migrée**
+  (P4-346, PR A + PR B, 2026-10-19) : `texts/dashboard.ts` (`ADMIN_DASHBOARD_TEXTS`) couvre
   `AdminDashboardPage`/`AdminShell`/`AdminLoginPage`/`AdminAuthLayout`/`tabs/tabsConfig`/les
-  toasts de `queries.ts`. Restent en dur les sections (`features/admin/sections/*`) et les
-  journaux (`features/admin/Journaux/*`) — PR B.
+  toasts de `queries.ts` ; `texts/sections.ts` (`ADMIN_SECTIONS_TEXTS`) les 9 sections
+  (`features/admin/sections/*`) ; `texts/journaux.ts` (`ADMIN_JOURNAUX_TEXTS`) les 3
+  sous-onglets de `features/admin/Journaux/*`. Un libellé dérivé d'un enum métier (statut
+  déploiement/conteneur, bucket de capacité, sujet/statut de signalement, sévérité d'erreur
+  système) passe par une fonction typée du module (`deploymentStatusLabel`,
+  `containerStatusLabel`, `capacityBucketLabel`, `feedbackTopicLabel`/`feedbackStatusLabel`,
+  `auditStatusLabel`, `systemErrorSeverityLabel`) — la table clé→libellé reste un littéral
+  `as const` INLINE dans la fonction, pas un module à part : plus aucun écran de la console
+  superadmin n'a de littéral FR en dur.
 - 🔴 **Un changement d'apparence VOULU sur un des 9 écrans de `visual-reference.spec.ts`
   (login, register, planning semaine, matchs calendrier/semaine type/contraintes club, club,
   wizard coachs/contraintes) exige une re-baseline** — procédure et commande unique :

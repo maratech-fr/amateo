@@ -6,6 +6,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { AdminHealthExternalDependency } from "../api";
 import { useAdminHealth } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 /**
  * Dépendances externes (API FFBB, ODS Éducation, Etalab…) — sous-section de
@@ -19,7 +20,7 @@ export function ExternalDepsSection() {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
         <Spinner className="text-console-accent" />
-        <span className="sr-only">Chargement des dépendances externes</span>
+        <span className="sr-only">{ADMIN_SECTIONS_TEXTS.externalDepsLoading}</span>
       </div>
     );
   }
@@ -27,7 +28,7 @@ export function ExternalDepsSection() {
   if (health.isError || !health.data) {
     return (
       <div className="rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
-        <p className="text-sm text-console-warning-bright">Les dépendances externes sont indisponibles.</p>
+        <p className="text-sm text-console-warning-bright">{ADMIN_SECTIONS_TEXTS.externalDepsError}</p>
       </div>
     );
   }
@@ -37,21 +38,21 @@ export function ExternalDepsSection() {
   return (
     <section aria-labelledby="external-deps-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Dépendances externes</p>
-        <h2 id="external-deps-heading" className="mt-2 text-xl font-semibold text-white">Services externes</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.externalDepsEyebrow}</p>
+        <h2 id="external-deps-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_SECTIONS_TEXTS.externalDepsHeading}</h2>
       </div>
       {deps.length === 0 ? (
-        <EmptyBlock variant="console">Aucune dépendance externe configurée.</EmptyBlock>
+        <EmptyBlock variant="console">{ADMIN_SECTIONS_TEXTS.externalDepsEmpty}</EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <caption className="sr-only">État des dépendances externes</caption>
+              <caption className="sr-only">{ADMIN_SECTIONS_TEXTS.externalDepsCaption}</caption>
               <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
                 <tr>
-                  <th className="px-5 py-4 font-medium">Service</th>
-                  <th className="px-4 py-4 font-medium">Statut</th>
-                  <th className="px-4 py-4 font-medium">Latence</th>
+                  <th className="px-5 py-4 font-medium">{ADMIN_SECTIONS_TEXTS.colService}</th>
+                  <th className="px-4 py-4 font-medium">{ADMIN_SECTIONS_TEXTS.colStatus}</th>
+                  <th className="px-4 py-4 font-medium">{ADMIN_SECTIONS_TEXTS.externalDepsColLatency}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -89,7 +90,7 @@ function ExternalDepRow({ dep }: { dep: AdminHealthExternalDependency }) {
           )}
         >
           <Icon className="size-3.5" aria-hidden="true" />
-          {isUp ? "Opérationnel" : "Indisponible"}
+          {isUp ? ADMIN_SECTIONS_TEXTS.statusUp : ADMIN_SECTIONS_TEXTS.statusDown}
         </span>
       </td>
       <td className="px-4 py-5 tabular-nums">

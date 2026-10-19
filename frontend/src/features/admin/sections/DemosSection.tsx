@@ -7,6 +7,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { AdminDemoAccount, AdminDemoResetState, AdminDemoTarget, AdminRetainedDemoClub } from "../api";
 import { useActivateAdminDemo, useAdminDemos, useDeactivateAdminDemo, useResetAdminDemoBccl, useRetainAdminDemoProspect, useSetAdminDemoClock } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 // Fenêtre d'activation rendue à l'heure de PARIS (décision fondateur) : l'API renvoie l'ISO UTC.
 const parisTime = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
@@ -38,7 +39,7 @@ export function DemosSection() {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
         <Spinner className="text-console-accent" />
-        <span className="sr-only">Chargement des comptes de démonstration</span>
+        <span className="sr-only">{ADMIN_SECTIONS_TEXTS.demosLoading}</span>
       </div>
     );
   }
@@ -46,9 +47,9 @@ export function DemosSection() {
   if (demos.isError || !demos.data) {
     return (
       <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
-        <p className="text-sm text-console-warning-bright">Les comptes de démonstration sont indisponibles.</p>
+        <p className="text-sm text-console-warning-bright">{ADMIN_SECTIONS_TEXTS.demosError}</p>
         <Button type="button" size="sm" variant="outline" className="border-console-warning/20 text-console-warning-bright hover:bg-console-warning/10" onClick={() => void demos.refetch()}>
-          Réessayer
+          {ADMIN_SECTIONS_TEXTS.retry}
         </Button>
       </div>
     );
@@ -57,8 +58,8 @@ export function DemosSection() {
   return (
     <section aria-labelledby="demos-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Démonstrations</p>
-        <h2 id="demos-heading" className="mt-2 text-xl font-semibold text-white">Comptes de démonstration</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.demosEyebrow}</p>
+        <h2 id="demos-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_SECTIONS_TEXTS.demosHeading}</h2>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <BcclCard account={demos.data.bccl} resetState={demos.data.reset} lastResetAt={demos.data.lastResetAt} />
@@ -80,12 +81,12 @@ function RetainedClubsList({ retained }: { retained: AdminRetainedDemoClub[] }) 
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
-      <p className="text-sm font-medium text-white">Clubs conservés</p>
+      <p className="text-sm font-medium text-white">{ADMIN_SECTIONS_TEXTS.demosRetainedHeading}</p>
       <ul className="mt-3 space-y-1">
         {retained.map((club) => (
           <li key={`${club.name}-${club.retainedUntil}`} className="flex items-center justify-between gap-3 text-xs">
             <span className="text-console-text-bright">{club.name}</span>
-            <span className="text-console-text-dim">jusqu’au {formatRetainedUntil(club.retainedUntil)}</span>
+            <span className="text-console-text-dim">{ADMIN_SECTIONS_TEXTS.demosRetainedUntil(formatRetainedUntil(club.retainedUntil))}</span>
           </li>
         ))}
       </ul>
@@ -103,12 +104,12 @@ function BcclCard({ account, resetState, lastResetAt }: { account: AdminDemoAcco
   const runReset = () => {
     setConfirmingReset(false);
     reset.mutate(undefined, {
-      onSuccess: () => toast.success("Réinitialisation de la démo BCCL lancée."),
+      onSuccess: () => toast.success(ADMIN_SECTIONS_TEXTS.demosToastResetStarted),
     });
   };
 
   return (
-    <DemoCard title="Démo BCCL" account={account} target="bccl">
+    <DemoCard title={ADMIN_SECTIONS_TEXTS.demosBcclTitle} account={account} target="bccl">
       <div className="mt-4">
         <Button
           type="button"
@@ -119,19 +120,19 @@ function BcclCard({ account, resetState, lastResetAt }: { account: AdminDemoAcco
           onClick={() => setConfirmingReset(true)}
         >
           {reset.isPending || running ? <Spinner className="size-3.5" /> : null}
-          Réinitialiser
+          {ADMIN_SECTIONS_TEXTS.demosReset}
         </Button>
-        {running ? <p className="mt-2 text-xs text-console-muted">Réinitialisation en cours…</p> : null}
+        {running ? <p className="mt-2 text-xs text-console-muted">{ADMIN_SECTIONS_TEXTS.demosResetRunning}</p> : null}
         <p className="mt-2 text-xs text-console-text-faint">
-          {lastResetAt ? `Dernière réinitialisation lancée le ${resetDateTime.format(new Date(lastResetAt))}` : "Jamais réinitialisée"}
+          {lastResetAt ? ADMIN_SECTIONS_TEXTS.demosLastResetAt(resetDateTime.format(new Date(lastResetAt))) : ADMIN_SECTIONS_TEXTS.demosNeverReset}
         </p>
       </div>
 
       <ConfirmDialog
         open={confirmingReset}
-        title="Réinitialiser la démo BCCL ?"
-        description="Tout ce qui a été modifié dans la démo sera effacé et la date simulée revient à aujourd’hui."
-        confirmLabel="Réinitialiser"
+        title={ADMIN_SECTIONS_TEXTS.demosResetConfirmTitle}
+        description={ADMIN_SECTIONS_TEXTS.demosResetConfirmDescription}
+        confirmLabel={ADMIN_SECTIONS_TEXTS.demosReset}
         destructive
         confirmDisabled={reset.isPending}
         onConfirm={runReset}
@@ -151,12 +152,12 @@ function ProspectCard({ account }: { account: AdminDemoAccount }) {
   const runRetain = () => {
     setConfirming(false);
     retain.mutate(undefined, {
-      onSuccess: () => toast.success("Le club de démonstration est conservé 14 jours."),
+      onSuccess: () => toast.success(ADMIN_SECTIONS_TEXTS.demosToastRetained),
     });
   };
 
   return (
-    <DemoCard title="Démo prospect" account={account} target="prospect">
+    <DemoCard title={ADMIN_SECTIONS_TEXTS.demosProspectTitle} account={account} target="prospect">
       <div className="mt-4">
         <Button
           type="button"
@@ -167,18 +168,18 @@ function ProspectCard({ account }: { account: AdminDemoAccount }) {
           onClick={() => setConfirming(true)}
         >
           {retain.isPending ? <Spinner className="size-3.5" /> : null}
-          Conserver 14 jours
+          {ADMIN_SECTIONS_TEXTS.demosRetain}
         </Button>
         {windowOpen ? (
-          <p className="mt-2 text-xs text-console-muted">Fermez d’abord l’accès de la démonstration pour conserver le club.</p>
+          <p className="mt-2 text-xs text-console-muted">{ADMIN_SECTIONS_TEXTS.demosRetainBlocked}</p>
         ) : null}
       </div>
 
       <ConfirmDialog
         open={confirming}
-        title="Conserver le club de démonstration ?"
-        description="Le club est détaché de la démonstration et conservé 14 jours : le contact officiel du club pourra ensuite le reprendre en s’inscrivant avec son code FFBB."
-        confirmLabel="Conserver 14 jours"
+        title={ADMIN_SECTIONS_TEXTS.demosRetainConfirmTitle}
+        description={ADMIN_SECTIONS_TEXTS.demosRetainConfirmDescription}
+        confirmLabel={ADMIN_SECTIONS_TEXTS.demosRetain}
         confirmDisabled={retain.isPending}
         onConfirm={runRetain}
         onCancel={() => setConfirming(false)}
@@ -211,7 +212,7 @@ function ClockCard({ account, target, label }: { account: AdminDemoAccount; targ
     clock.mutate(
       { target, body: { date: dateDraft } },
       {
-        onSuccess: () => toast.success("Date simulée appliquée."),
+        onSuccess: () => toast.success(ADMIN_SECTIONS_TEXTS.demosToastClockApplied),
       },
     );
   };
@@ -220,19 +221,19 @@ function ClockCard({ account, target, label }: { account: AdminDemoAccount; targ
     clock.mutate(
       { target, body: { clear: true } },
       {
-        onSuccess: () => toast.success("La démo est revenue à aujourd’hui."),
+        onSuccess: () => toast.success(ADMIN_SECTIONS_TEXTS.demosToastClockCleared),
       },
     );
   };
 
   return (
     <div className="mt-5 border-t border-white/10 pt-5">
-      <p className="text-sm font-medium text-white">Date simulée</p>
+      <p className="text-sm font-medium text-white">{ADMIN_SECTIONS_TEXTS.demosClockTitle}</p>
       <p className="mt-1 text-xs text-console-muted">
-        {account.simulatedToday ? `La démo vit au ${account.simulatedToday}.` : "La démo vit à la date du jour."}
+        {account.simulatedToday ? ADMIN_SECTIONS_TEXTS.demosClockLivesAt(account.simulatedToday) : ADMIN_SECTIONS_TEXTS.demosClockLivesToday}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <label className="sr-only" htmlFor={inputId}>Date simulée — {label}</label>
+        <label className="sr-only" htmlFor={inputId}>{ADMIN_SECTIONS_TEXTS.demosClockLabel(label)}</label>
         <input
           id={inputId}
           type="date"
@@ -241,10 +242,10 @@ function ClockCard({ account, target, label }: { account: AdminDemoAccount; targ
           className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
         />
         <Button type="button" size="sm" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={"" === dateDraft || clock.isPending} onClick={applyDate}>
-          Appliquer
+          {ADMIN_SECTIONS_TEXTS.demosApply}
         </Button>
         <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={null === (account.simulatedToday ?? null) || clock.isPending} onClick={clearDate}>
-          Revenir à aujourd’hui
+          {ADMIN_SECTIONS_TEXTS.demosClockReset}
         </Button>
       </div>
     </div>
@@ -258,13 +259,13 @@ function DemoCard({ title, account, target, children }: { title: string; account
 
   const doActivate = () => {
     activate.mutate(target, {
-      onSuccess: () => toast.success("Compte de démonstration activé pour 4 h."),
+      onSuccess: () => toast.success(ADMIN_SECTIONS_TEXTS.demosToastActivated),
     });
   };
 
   const doDeactivate = () => {
     deactivate.mutate(target, {
-      onSuccess: () => toast.success("Compte de démonstration désactivé."),
+      onSuccess: () => toast.success(ADMIN_SECTIONS_TEXTS.demosToastDeactivated),
     });
   };
 
@@ -279,17 +280,17 @@ function DemoCard({ title, account, target, children }: { title: string; account
           {account.clubName ? <p className="mt-1 text-xs text-console-text-dim">{account.clubName}</p> : null}
         </div>
         <span className={open ? "shrink-0 text-xs font-semibold text-console-success" : "shrink-0 text-xs font-semibold text-console-text-dim"}>
-          {open ? `Active jusqu’à ${parisTime.format(new Date(account.activeUntil as string))}` : "Inactive"}
+          {open ? ADMIN_SECTIONS_TEXTS.demosActiveUntil(parisTime.format(new Date(account.activeUntil as string))) : ADMIN_SECTIONS_TEXTS.demosInactive}
         </span>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button type="button" size="sm" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={busy} onClick={doActivate}>
           {activate.isPending ? <Spinner className="size-3.5" /> : null}
-          {open ? "Réactiver 4 h" : "Activer 4 h"}
+          {open ? ADMIN_SECTIONS_TEXTS.demosReactivate : ADMIN_SECTIONS_TEXTS.demosActivate}
         </Button>
         <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={busy || !open} onClick={doDeactivate}>
-          Désactiver
+          {ADMIN_SECTIONS_TEXTS.demosDeactivate}
         </Button>
       </div>
 

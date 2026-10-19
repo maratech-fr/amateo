@@ -8,6 +8,7 @@ import { renderWithProviders } from "@/test/utils";
 import type { AdminFeedbackDetail, AdminFeedbackItem, AdminFeedbackQos, AdminFeedbackResponse } from "../api";
 import { getAdminFeedback, getAdminFeedbackDetail, treatAdminFeedback, untreatAdminFeedback } from "../api";
 import { useAdminStore } from "../store";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { FeedbackSection } from "./FeedbackSection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -86,7 +87,7 @@ describe("FeedbackSection", () => {
     mockList.mockResolvedValue(listResponse());
     renderWithProviders(<FeedbackSection />, { route: "/admin" });
 
-    expect(await screen.findByText(/qualité de service/i)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.feedbackQos)).toBeInTheDocument();
     expect(screen.getByText("50 %")).toBeInTheDocument(); // part traitée
     expect(screen.getByText(/7[.,]5\s*h/)).toBeInTheDocument(); // âge du plus vieux non traité
   });
@@ -95,10 +96,10 @@ describe("FeedbackSection", () => {
     mockList.mockResolvedValue(listResponse());
     renderWithProviders(<FeedbackSection />, { route: "/admin" });
 
-    const list = await screen.findByRole("region", { name: /liste des signalements/i });
+    const list = await screen.findByRole("region", { name: ADMIN_SECTIONS_TEXTS.feedbackListLabel });
     expect(await within(list).findByText("Basket Club Lyon")).toBeInTheDocument();
-    expect(within(list).getByText("Bug")).toBeInTheDocument();
-    expect(within(list).getByText("Non traité")).toBeInTheDocument();
+    expect(within(list).getByText(ADMIN_SECTIONS_TEXTS.feedbackTopicLabel("bug"))).toBeInTheDocument();
+    expect(within(list).getByText(ADMIN_SECTIONS_TEXTS.feedbackStatusLabel("untreated"))).toBeInTheDocument();
   });
 
   it("filtre par statut — requête serveur ciblée", async () => {
@@ -106,7 +107,7 @@ describe("FeedbackSection", () => {
     renderWithProviders(<FeedbackSection />, { route: "/admin" });
 
     await screen.findByText("Basket Club Lyon");
-    await userEvent.click(screen.getByRole("button", { name: "Non traités" }));
+    await userEvent.click(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.feedbackFilterUntreated }));
 
     await waitFor(() => expect(mockList).toHaveBeenCalledWith({ status: "untreated" }));
   });
@@ -119,7 +120,7 @@ describe("FeedbackSection", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
     await screen.findByRole("dialog");
-    await userEvent.click(screen.getByRole("button", { name: "Traiter" }));
+    await userEvent.click(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.feedbackTreat }));
     await userEvent.click(screen.getByRole("button", { name: /confirmer/i }));
 
     await waitFor(() => expect(mockTreat).toHaveBeenCalledWith("fb1", "csrf-token"));
@@ -133,7 +134,7 @@ describe("FeedbackSection", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
     await screen.findByRole("dialog");
-    await userEvent.click(screen.getByRole("button", { name: "Traiter" }));
+    await userEvent.click(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.feedbackTreat }));
     await userEvent.click(screen.getByRole("button", { name: /confirmer/i }));
 
     expect(await screen.findByText("Ce signalement est déjà traité.")).toBeInTheDocument();
@@ -147,7 +148,7 @@ describe("FeedbackSection", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
     await screen.findByRole("dialog");
-    await userEvent.click(screen.getByRole("button", { name: "Rouvrir" }));
+    await userEvent.click(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.feedbackReopen }));
     await userEvent.click(screen.getByRole("button", { name: /confirmer/i }));
 
     await waitFor(() => expect(mockUntreat).toHaveBeenCalledWith("fb1", "csrf-token"));

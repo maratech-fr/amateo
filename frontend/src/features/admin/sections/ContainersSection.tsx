@@ -7,6 +7,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { AdminHealthContainer } from "../api";
 import { useAdminHealth } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 /**
  * Section « Conteneurs » : table des services Docker monitorés par le backend
@@ -16,29 +17,29 @@ import { useAdminHealth } from "../queries";
 export function ContainersSection() {
   const health = useAdminHealth();
 
-  if (health.isPending) return <PanelLoading label="Chargement des conteneurs" />;
-  if (health.isError || !health.data) return <PanelError label="Les conteneurs sont indisponibles." retry={() => void health.refetch()} />;
+  if (health.isPending) return <PanelLoading label={ADMIN_SECTIONS_TEXTS.containersLoading} />;
+  if (health.isError || !health.data) return <PanelError label={ADMIN_SECTIONS_TEXTS.containersError} retry={() => void health.refetch()} />;
 
   const containers = health.data.containers;
 
   return (
     <section aria-labelledby="containers-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Infrastructure</p>
-        <h2 id="containers-heading" className="mt-2 text-xl font-semibold text-white">Conteneurs</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.containersEyebrow}</p>
+        <h2 id="containers-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_SECTIONS_TEXTS.containersHeading}</h2>
       </div>
       {containers.length === 0 ? (
-        <EmptyBlock variant="console">Aucun conteneur à monitorer.</EmptyBlock>
+        <EmptyBlock variant="console">{ADMIN_SECTIONS_TEXTS.containersEmpty}</EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[36rem] text-left text-sm">
-              <caption className="sr-only">État des conteneurs monitorés</caption>
+              <caption className="sr-only">{ADMIN_SECTIONS_TEXTS.containersCaption}</caption>
               <thead className="border-b border-white/10 text-xs uppercase tracking-wider text-console-muted">
                 <tr>
-                  <th className="py-3 pr-4 font-medium">Service</th>
-                  <th className="py-3 pr-4 font-medium">Statut</th>
-                  <th className="py-3 font-medium">Dernier signal</th>
+                  <th className="py-3 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.colService}</th>
+                  <th className="py-3 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.colStatus}</th>
+                  <th className="py-3 font-medium">{ADMIN_SECTIONS_TEXTS.containersColSignal}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -65,7 +66,6 @@ function ContainerRow({ container }: { container: AdminHealthContainer }) {
 }
 
 function StatusChip({ status }: { status: "up" | "down" | "unknown" }) {
-  const labels = { up: "Opérationnel", down: "Indisponible", unknown: "Inconnu" };
   const healthy = status === "up";
   const Icon = healthy ? CheckCircle2 : AlertTriangle;
   return (
@@ -76,19 +76,19 @@ function StatusChip({ status }: { status: "up" | "down" | "unknown" }) {
       )}
     >
       <Icon className="size-3.5" aria-hidden="true" />
-      {labels[status]}
+      {ADMIN_SECTIONS_TEXTS.containerStatusLabel(status)}
     </span>
   );
 }
 
 function formatSignal(container: AdminHealthContainer): ReactNode {
   if (container.ageSeconds !== undefined && container.ageSeconds !== null) {
-    return `il y a ${container.ageSeconds} s`;
+    return ADMIN_SECTIONS_TEXTS.containerSignalAge(container.ageSeconds);
   }
   if (container.lastHeartbeatAt) {
     return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(container.lastHeartbeatAt));
   }
-  return "Aucun signal";
+  return ADMIN_SECTIONS_TEXTS.containersNoSignal;
 }
 
 function PanelLoading({ label }: { label: string }) {
@@ -109,7 +109,7 @@ function PanelError({ label, retry }: { label: string; retry: () => void }) {
         className="rounded-md border border-console-warning/20 px-3 py-1.5 text-sm text-console-warning-bright hover:bg-console-warning/10"
         onClick={retry}
       >
-        Réessayer
+        {ADMIN_SECTIONS_TEXTS.retry}
       </button>
     </div>
   );

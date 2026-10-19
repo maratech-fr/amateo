@@ -6,6 +6,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { AdminReleaseNote } from "../api";
 import { useAdminReleaseNotes, useCreateAdminReleaseNote, useDeleteAdminReleaseNote, usePublishAdminReleaseNote } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -38,7 +39,7 @@ export function ReleaseNotesSection() {
       { title: title.trim(), body: body.trim(), noteDate },
       {
         onSuccess: () => {
-          toast.success("Note enregistrée (brouillon).");
+          toast.success(ADMIN_SECTIONS_TEXTS.releaseNotesToastSaved);
           setTitle("");
           setBody("");
           setNoteDate(today());
@@ -52,15 +53,15 @@ export function ReleaseNotesSection() {
   return (
     <section aria-labelledby="release-notes-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Communication</p>
-        <h2 id="release-notes-heading" className="mt-2 text-xl font-semibold text-white">Journal de nouveautés</h2>
-        <p className="mt-1 text-sm text-console-text-dim">Ce que les membres voient dans « Nouveautés » et la modale « quoi de neuf ». Un brouillon reste invisible jusqu'à sa publication.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.releaseNotesEyebrow}</p>
+        <h2 id="release-notes-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_SECTIONS_TEXTS.releaseNotesHeading}</h2>
+        <p className="mt-1 text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesDescription}</p>
       </div>
 
       <form onSubmit={submit} className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_auto]">
           <div className="space-y-1">
-            <label htmlFor="release-note-title" className="block text-xs text-console-text-dim">Titre</label>
+            <label htmlFor="release-note-title" className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesTitleLabel}</label>
             <input
               id="release-note-title"
               type="text"
@@ -71,7 +72,7 @@ export function ReleaseNotesSection() {
             />
           </div>
           <div className="space-y-1">
-            <label htmlFor="release-note-date" className="block text-xs text-console-text-dim">Date</label>
+            <label htmlFor="release-note-date" className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesDateLabel}</label>
             <input
               id="release-note-date"
               type="date"
@@ -82,7 +83,7 @@ export function ReleaseNotesSection() {
           </div>
         </div>
         <div className="space-y-1">
-          <label htmlFor="release-note-body" className="block text-xs text-console-text-dim">Contenu</label>
+          <label htmlFor="release-note-body" className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesBodyLabel}</label>
           <textarea
             id="release-note-body"
             rows={4}
@@ -94,20 +95,20 @@ export function ReleaseNotesSection() {
         <div className="flex justify-end">
           <Button type="submit" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={!canSubmit}>
             {create.isPending ? <Spinner className="size-4" /> : null}
-            Enregistrer
+            {ADMIN_SECTIONS_TEXTS.releaseNotesSubmit}
           </Button>
         </div>
       </form>
 
       {notes.isPending ? (
-        <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
+        <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.loading}</p>
       ) : notes.isError ? (
         <p className="text-sm text-console-destructive">
-          La liste n'a pas pu être lue.{" "}
-          <button type="button" className="underline" onClick={() => void notes.refetch()}>Réessayer</button>
+          {ADMIN_SECTIONS_TEXTS.listReadError}{" "}
+          <button type="button" className="underline" onClick={() => void notes.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
         </p>
       ) : 0 === items.length ? (
-        <p className="text-sm text-console-text-dim">Aucune note pour le moment.</p>
+        <p className="text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesEmpty}</p>
       ) : (
         <ul className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/[0.03]">
           {items.map((note) => (
@@ -139,9 +140,9 @@ function ReleaseNoteRow({ note, publishing, removing, onPublish, onRemove }: {
         <p className="flex items-center gap-2 text-sm font-medium text-white">
           {note.title}
           {null === note.publishedAt ? (
-            <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">Brouillon</span>
+            <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{ADMIN_SECTIONS_TEXTS.releaseNotesBadgeDraft}</span>
           ) : (
-            <span className="rounded bg-console-success-tint/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-success">Publiée</span>
+            <span className="rounded bg-console-success-tint/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-success">{ADMIN_SECTIONS_TEXTS.releaseNotesBadgePublished}</span>
           )}
         </p>
         <p className="mt-0.5 text-xs text-console-muted">{formatDate(note.date)}</p>
@@ -151,11 +152,11 @@ function ReleaseNoteRow({ note, publishing, removing, onPublish, onRemove }: {
         {null === note.publishedAt ? (
           <Button type="button" size="sm" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={publishing} onClick={onPublish}>
             {publishing ? <Spinner className="size-3.5" /> : null}
-            Publier
+            {ADMIN_SECTIONS_TEXTS.releaseNotesPublish}
           </Button>
         ) : null}
         <Button type="button" size="sm" variant="outline" className="border-console-destructive-edge/40 text-console-destructive hover:bg-console-destructive-surface/10" disabled={removing} onClick={onRemove}>
-          Supprimer
+          {ADMIN_SECTIONS_TEXTS.releaseNotesDelete}
         </Button>
       </div>
     </li>

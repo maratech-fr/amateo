@@ -5,6 +5,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { AdminCapacityResponse } from "../api";
 import { getAdminCapacity } from "../api";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { CapacitySection } from "./CapacitySection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -55,12 +56,12 @@ describe("CapacitySection", () => {
     mockCapacity.mockResolvedValue(buildCapacity());
     renderWithProviders(<CapacitySection />);
 
-    // Header window + total.
-    expect(await screen.findByText(/90 derniers jours/i)).toBeInTheDocument();
+    // Header window (UI heading → clé) + total (donnée servie → littéral).
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.capacityHeading(90))).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
 
     // Size buckets rendered with human labels + their solve counts.
-    const bySize = screen.getByRole("table", { name: /durée par tranche/i });
+    const bySize = screen.getByRole("table", { name: ADMIN_SECTIONS_TEXTS.capacitySizeCaption });
     expect(within(bySize).getByText(/≤\s*50/)).toBeInTheDocument();
     expect(within(bySize).getByText(/>\s*200/)).toBeInTheDocument();
 
@@ -84,15 +85,15 @@ describe("CapacitySection", () => {
     );
     renderWithProviders(<CapacitySection />);
 
-    expect(await screen.findByText(/aucun solve sur la fenêtre/i)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.capacityEmpty(90))).toBeInTheDocument();
     // The empty state must NOT show a misleading table.
-    expect(screen.queryByRole("table", { name: /durée par tranche/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: ADMIN_SECTIONS_TEXTS.capacitySizeCaption })).not.toBeInTheDocument();
   });
 
   it("shows the panel error when the capacity request fails", async () => {
     mockCapacity.mockRejectedValue(new Error("capacity unavailable"));
     renderWithProviders(<CapacitySection />);
 
-    expect(await screen.findByText(/capacité.*indisponible/i)).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.capacityError)).toBeInTheDocument();
   });
 });

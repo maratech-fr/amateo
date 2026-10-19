@@ -6,18 +6,10 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { errorMessage } from "@/shared/lib/errorMessage";
 
-import type { AdminDeployment } from "../api";
 import { useAdminDeployments, useAdminDeploymentTags, useCancelAdminDeployment, useScheduleAdminDeployment } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-
-const STATUS_LABEL: Record<AdminDeployment["status"], string> = {
-  scheduled: "Programmée",
-  dispatched: "En cours",
-  succeeded: "Réussie",
-  failed: "Échec",
-  cancelled: "Annulée",
-};
 
 /**
  * Mise en prod programmée (onglet Exploitation) — choisir un tag déployable, une date/heure et
@@ -60,8 +52,8 @@ export function DeploymentSection() {
   if (deployments.isPending || tags.isPending) {
     return (
       <section aria-labelledby="deployment-heading" className="space-y-4">
-        <h2 id="deployment-heading" className="text-xl font-semibold text-white">Mise en production programmée</h2>
-        <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
+        <h2 id="deployment-heading" className="text-xl font-semibold text-white">{ADMIN_SECTIONS_TEXTS.deploymentHeading}</h2>
+        <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.loading}</p>
       </section>
     );
   }
@@ -86,7 +78,7 @@ export function DeploymentSection() {
         // un message d'attente CLAIR côté client (constante, keyée sur le 5xx).
         onError: (err) => {
           if (err instanceof HTTPError && err.response.status >= 500) {
-            setScheduleError("GitHub est injoignable — réessayez dans un instant.");
+            setScheduleError(ADMIN_SECTIONS_TEXTS.deploymentGithubUnreachableSchedule);
             return;
           }
           void errorMessage(err).then(setScheduleError);
@@ -98,32 +90,32 @@ export function DeploymentSection() {
   return (
     <section aria-labelledby="deployment-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Exploitation</p>
-        <h2 id="deployment-heading" className="mt-2 text-xl font-semibold text-white">Mise en production programmée</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.deploymentEyebrow}</p>
+        <h2 id="deployment-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_SECTIONS_TEXTS.deploymentHeading}</h2>
         <p className="mt-1 text-sm text-console-text-dim">
-          Planifiez un déploiement : à l'heure dite, la maintenance s'active, la version choisie part, puis la maintenance se retire — sans intervention manuelle.
+          {ADMIN_SECTIONS_TEXTS.deploymentDescription}
         </p>
       </div>
 
       {!configured && deployments.isSuccess ? (
         <p className="rounded-xl border border-console-destructive-edge/40 bg-console-destructive-surface/10 p-4 text-sm text-console-text">
-          La mise en production programmée n'est pas configurée : un jeton GitHub (et le dépôt cible) doit être posé côté serveur avant de pouvoir programmer un déploiement.
+          {ADMIN_SECTIONS_TEXTS.deploymentNotConfigured}
         </p>
       ) : null}
 
       {configured && !tagsAvailable ? (
         <div className="space-y-2 rounded-xl border border-console-destructive-edge/40 bg-console-destructive-surface/10 p-4 text-sm text-console-text">
-          <p>GitHub est injoignable — la liste des versions n'a pas pu être chargée.</p>
-          <button type="button" className="underline" onClick={() => void tags.refetch()}>Réessayer</button>
+          <p>{ADMIN_SECTIONS_TEXTS.deploymentGithubUnreachableTags}</p>
+          <button type="button" className="underline" onClick={() => void tags.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
         </div>
       ) : null}
 
       {active ? (
         <div className="space-y-2 rounded-xl border border-console-accent/30 bg-console-accent/5 p-4">
-          <p className="text-xs uppercase tracking-wide text-console-muted">Déploiement en attente</p>
+          <p className="text-xs uppercase tracking-wide text-console-muted">{ADMIN_SECTIONS_TEXTS.deploymentActiveLabel}</p>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-base font-semibold text-white">{active.version}</span>
-            <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{STATUS_LABEL[active.status]}</span>
+            <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{ADMIN_SECTIONS_TEXTS.deploymentStatusLabel(active.status)}</span>
             {active.scheduledAt ? <span className="text-sm text-console-text-dim">{formatDate(active.scheduledAt)}</span> : null}
           </div>
           {active.dispatchNote ? <p className="text-sm text-console-text-dim">{active.dispatchNote}</p> : null}
@@ -137,7 +129,7 @@ export function DeploymentSection() {
                 disabled={cancel.isPending}
                 onClick={() => setConfirmingCancel(true)}
               >
-                Annuler la mise en production
+                {ADMIN_SECTIONS_TEXTS.deploymentCancel}
               </Button>
             </div>
           ) : null}
@@ -147,7 +139,7 @@ export function DeploymentSection() {
       <form onSubmit={submit} className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1">
-            <label htmlFor={versionId} className="block text-xs text-console-text-dim">Version</label>
+            <label htmlFor={versionId} className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.deploymentVersionLabel}</label>
             <select
               id={versionId}
               value={version}
@@ -155,14 +147,14 @@ export function DeploymentSection() {
               disabled={!configured}
               className="h-10 w-full rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20 disabled:opacity-50"
             >
-              <option value="">— Choisir un tag —</option>
+              <option value="">{ADMIN_SECTIONS_TEXTS.deploymentVersionPlaceholder}</option>
               {tagOptions.map((tag) => (
                 <option key={tag} value={tag}>{tag}</option>
               ))}
             </select>
           </div>
           <div className="space-y-1">
-            <label htmlFor={dateId} className="block text-xs text-console-text-dim">Date et heure de la mise en production</label>
+            <label htmlFor={dateId} className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.deploymentDateLabel}</label>
             <input
               id={dateId}
               type="datetime-local"
@@ -173,7 +165,7 @@ export function DeploymentSection() {
             />
           </div>
           <div className="space-y-1">
-            <label htmlFor={windowId} className="block text-xs text-console-text-dim">Durée de la maintenance (minutes)</label>
+            <label htmlFor={windowId} className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.deploymentWindowLabel}</label>
             <input
               id={windowId}
               type="number"
@@ -190,29 +182,29 @@ export function DeploymentSection() {
         <div className="flex justify-end">
           <Button type="submit" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={!canSubmit}>
             {schedule.isPending ? <Spinner className="size-4" /> : null}
-            Programmer
+            {ADMIN_SECTIONS_TEXTS.deploymentSubmit}
           </Button>
         </div>
       </form>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-white">Historique récent</h3>
+        <h3 className="text-sm font-semibold text-white">{ADMIN_SECTIONS_TEXTS.deploymentHistoryHeading}</h3>
         {deployments.isPending ? (
-          <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
+          <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.loading}</p>
         ) : deployments.isError ? (
           <p className="text-sm text-console-destructive">
-            L'historique n'a pas pu être lu.{" "}
-            <button type="button" className="underline" onClick={() => void deployments.refetch()}>Réessayer</button>
+            {ADMIN_SECTIONS_TEXTS.deploymentHistoryError}{" "}
+            <button type="button" className="underline" onClick={() => void deployments.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
           </p>
         ) : 0 === history.length ? (
-          <p className="text-sm text-console-text-dim">Aucun déploiement passé.</p>
+          <p className="text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.deploymentHistoryEmpty}</p>
         ) : (
           <ul className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/[0.03]">
             {history.map((d) => (
               <li key={d.id} className="space-y-1 p-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-sm font-medium text-white">{d.version}</span>
-                  <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{STATUS_LABEL[d.status]}</span>
+                  <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{ADMIN_SECTIONS_TEXTS.deploymentStatusLabel(d.status)}</span>
                   {d.dispatchedAt ? <span className="text-xs text-console-muted">{formatDate(d.dispatchedAt)}</span> : null}
                 </div>
                 {d.failureReason ? <p className="text-sm text-console-destructive">{d.failureReason}</p> : null}
@@ -225,10 +217,10 @@ export function DeploymentSection() {
 
       <ConfirmDialog
         open={confirmingCancel}
-        title="Annuler la mise en production ?"
-        description="La mise en production programmée ne sera pas lancée. Vous pourrez en reprogrammer une autre."
-        confirmLabel="Confirmer"
-        cancelLabel="Revenir"
+        title={ADMIN_SECTIONS_TEXTS.deploymentCancelConfirmTitle}
+        description={ADMIN_SECTIONS_TEXTS.deploymentCancelConfirmDescription}
+        confirmLabel={ADMIN_SECTIONS_TEXTS.deploymentCancelConfirmLabel}
+        cancelLabel={ADMIN_SECTIONS_TEXTS.deploymentCancelConfirmCancel}
         onConfirm={() => {
           if (active) cancel.mutate(active.id);
           setConfirmingCancel(false);

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AdminSystemErrorsResponse } from "../api";
+import { ADMIN_JOURNAUX_TEXTS } from "../texts/journaux";
 import { SystemErrorsSubtab } from "./SystemErrorsSubtab";
 
 // Mock the hook — tests drive the component through its props contract, not the
@@ -73,14 +74,14 @@ describe("SystemErrorsSubtab", () => {
     expect(screen.getByText("Solver returned INFEASIBLE")).toBeInTheDocument();
 
     // Pagination summary reflects the total.
-    expect(screen.getByText(/2 erreurs · page 1 sur 1/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.systemErrorsPagination(2, 1, 1))).toBeInTheDocument();
   });
 
   it("renders the empty state when there are no system errors", () => {
     mockEmpty();
     render(<SystemErrorsSubtab />);
 
-    expect(screen.getByText("Aucune erreur système enregistrée")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_JOURNAUX_TEXTS.systemErrorsEmpty)).toBeInTheDocument();
     // No table in the empty state.
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
@@ -90,7 +91,7 @@ describe("SystemErrorsSubtab", () => {
 
     render(<SystemErrorsSubtab />);
 
-    const chip = screen.getByText("Erreur");
+    const chip = screen.getByText(ADMIN_JOURNAUX_TEXTS.systemErrorSeverityLabel("error"));
     expect(chip).toBeInTheDocument();
     // The red style is applied to the severity chip (bg-console-danger-surface/15 text-console-danger).
     expect(chip.className).toContain("bg-console-danger-surface/15");

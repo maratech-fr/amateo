@@ -5,16 +5,13 @@ import { cn } from "@/shared/lib/utils";
 
 import type { AdminCapacityResponse } from "../api";
 import { useAdminCapacity } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 const integerFormatter = new Intl.NumberFormat("fr-FR");
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 
 /** Limite mémoire du worker engine en prod (libellé statique — le repère, pas une mesure). */
 const PROD_MEMORY_LIMIT_MIB = 512;
-
-/** Libellés des tranches de taille (nb_teams × nb_venues), alignées aux tiers moteur. */
-const BUCKET_LABELS: Record<string, string> = { small: "≤ 50", medium: "51–200", large: "> 200" };
-const bucketLabel = (bucket: string): string => BUCKET_LABELS[bucket] ?? bucket;
 
 /**
  * Section « Capacité » (P5-10) : ce que la télémétrie `solver_metrics` dit de la
@@ -25,9 +22,9 @@ const bucketLabel = (bucket: string): string => BUCKET_LABELS[bucket] ?? bucket;
 export function CapacitySection() {
   const capacity = useAdminCapacity();
 
-  if (capacity.isPending) return <PanelLoading label="Chargement de la capacité" />;
+  if (capacity.isPending) return <PanelLoading label={ADMIN_SECTIONS_TEXTS.capacityLoading} />;
   if (capacity.isError || !capacity.data) {
-    return <PanelError label="Les indicateurs de capacité sont indisponibles." retry={() => void capacity.refetch()} />;
+    return <PanelError label={ADMIN_SECTIONS_TEXTS.capacityError} retry={() => void capacity.refetch()} />;
   }
 
   const data = capacity.data;
@@ -36,19 +33,19 @@ export function CapacitySection() {
     <section aria-labelledby="capacity-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Charge &amp; capacité</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.capacityEyebrow}</p>
           <h2 id="capacity-heading" className="mt-2 text-xl font-semibold text-white">
-            Capacité — {integerFormatter.format(data.windowDays)} derniers jours
+            {ADMIN_SECTIONS_TEXTS.capacityHeading(data.windowDays)}
           </h2>
         </div>
         <div className="text-right">
           <p className="text-2xl font-semibold tabular-nums text-white">{integerFormatter.format(data.totalSolves)}</p>
-          <p className="text-xs text-console-muted">solve{data.totalSolves > 1 ? "s" : ""} sur la fenêtre</p>
+          <p className="text-xs text-console-muted">{ADMIN_SECTIONS_TEXTS.capacitySolvesWindow(data.totalSolves)}</p>
         </div>
       </div>
 
       {data.totalSolves === 0 ? (
-        <EmptyBlock variant="console">Aucun solve sur la fenêtre de {integerFormatter.format(data.windowDays)} jours — rien à mesurer pour l’instant.</EmptyBlock>
+        <EmptyBlock variant="console">{ADMIN_SECTIONS_TEXTS.capacityEmpty(data.windowDays)}</EmptyBlock>
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -69,27 +66,27 @@ export function CapacitySection() {
 function VolumePanel({ volume }: { volume: AdminCapacityResponse["volume"] }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-      <p className="text-sm font-medium text-white">Volume</p>
+      <p className="text-sm font-medium text-white">{ADMIN_SECTIONS_TEXTS.capacityVolume}</p>
       <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-6">
-        <SmallMetric label="Solves/jour · médiane" value={nullableInteger(volume.perDay.p50)} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.capacitySolvesPerDayMedian} value={nullableInteger(volume.perDay.p50)} />
         <SmallMetric
-          label="Solves/jour · pic"
+          label={ADMIN_SECTIONS_TEXTS.capacitySolvesPerDayPeak}
           value={nullableInteger(volume.perDay.max)}
-          detail={volume.perDay.maxDate ? `le ${formatDate(volume.perDay.maxDate)}` : undefined}
+          detail={volume.perDay.maxDate ? ADMIN_SECTIONS_TEXTS.capacityPeakOn(formatDate(volume.perDay.maxDate)) : undefined}
         />
       </dl>
       <div className="mt-6 border-t border-white/10 pt-4">
-        <p className="text-xs font-medium text-console-text-dim">Profil horaire (heure locale)</p>
+        <p className="text-xs font-medium text-console-text-dim">{ADMIN_SECTIONS_TEXTS.capacityHourlyProfile}</p>
         {volume.hourly.length === 0 ? (
-          <EmptyHint variant="console" className="mt-2">Aucune heure de mise en file connue.</EmptyHint>
+          <EmptyHint variant="console" className="mt-2">{ADMIN_SECTIONS_TEXTS.capacityNoHour}</EmptyHint>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[16rem] text-left text-sm">
-              <caption className="sr-only">Nombre de solves par heure de mise en file</caption>
+              <caption className="sr-only">{ADMIN_SECTIONS_TEXTS.capacityHourlyCaption}</caption>
               <thead>
                 <tr className="text-xs uppercase tracking-wide text-console-muted">
-                  <th className="py-2 pr-4 font-medium">Heure</th>
-                  <th className="py-2 font-medium">Solves</th>
+                  <th className="py-2 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColHour}</th>
+                  <th className="py-2 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColSolves}</th>
                 </tr>
               </thead>
               <tbody>
@@ -111,15 +108,15 @@ function VolumePanel({ volume }: { volume: AdminCapacityResponse["volume"] }) {
 function WaitPanel({ wait }: { wait: AdminCapacityResponse["wait"] }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-      <p className="text-sm font-medium text-white">Attente en file</p>
-      <p className="mt-1 text-xs text-console-muted">De la mise en file au démarrage du solve</p>
+      <p className="text-sm font-medium text-white">{ADMIN_SECTIONS_TEXTS.capacityWait}</p>
+      <p className="mt-1 text-xs text-console-muted">{ADMIN_SECTIONS_TEXTS.capacityWaitHint}</p>
       <dl className="mt-5 grid grid-cols-3 gap-3">
-        <SmallMetric label="Médiane" value={formatDuration(wait.queueP50Ms)} />
-        <SmallMetric label="P95" value={formatDuration(wait.queueP95Ms)} />
-        <SmallMetric label="Max" value={formatDuration(wait.queueMaxMs)} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.capacityMedian} value={formatDuration(wait.queueP50Ms)} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.capacityP95} value={formatDuration(wait.queueP95Ms)} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.capacityMax} value={formatDuration(wait.queueMaxMs)} />
       </dl>
       <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
-        Côté engine (sémaphore) · P95 <span className="ml-1 font-medium text-console-text">{formatDuration(wait.engineWaitP95Ms)}</span>
+        {ADMIN_SECTIONS_TEXTS.capacityEngineWaitLabel} <span className="ml-1 font-medium text-console-text">{formatDuration(wait.engineWaitP95Ms)}</span>
       </div>
     </article>
   );
@@ -128,28 +125,28 @@ function WaitPanel({ wait }: { wait: AdminCapacityResponse["wait"] }) {
 function SizePanel({ bySize }: { bySize: AdminCapacityResponse["bySize"] }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-      <p className="text-sm font-medium text-white">Durée par tranche</p>
-      <p className="mt-1 text-xs text-console-muted">Tranches de taille = équipes × gymnases (tiers du moteur)</p>
+      <p className="text-sm font-medium text-white">{ADMIN_SECTIONS_TEXTS.capacitySize}</p>
+      <p className="mt-1 text-xs text-console-muted">{ADMIN_SECTIONS_TEXTS.capacitySizeHint}</p>
       {bySize.length === 0 ? (
-        <EmptyHint variant="console" className="mt-4">Aucune tentative dimensionnée sur la fenêtre.</EmptyHint>
+        <EmptyHint variant="console" className="mt-4">{ADMIN_SECTIONS_TEXTS.capacityNoSize}</EmptyHint>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[40rem] text-left text-sm">
-            <caption className="sr-only">Durée par tranche de taille de problème</caption>
+            <caption className="sr-only">{ADMIN_SECTIONS_TEXTS.capacitySizeCaption}</caption>
             <thead>
               <tr className="text-xs uppercase tracking-wide text-console-muted">
-                <th className="py-2 pr-4 font-medium">Tranche</th>
-                <th className="py-2 pr-4 font-medium">Solves</th>
-                <th className="py-2 pr-4 font-medium">P50 durée</th>
-                <th className="py-2 pr-4 font-medium">P95 durée</th>
-                <th className="py-2 pr-4 font-medium">P95 % budget</th>
-                <th className="py-2 font-medium">Preuve non fermée</th>
+                <th className="py-2 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColBucket}</th>
+                <th className="py-2 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColSolves}</th>
+                <th className="py-2 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColP50}</th>
+                <th className="py-2 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColP95Duration}</th>
+                <th className="py-2 pr-4 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColBudget}</th>
+                <th className="py-2 font-medium">{ADMIN_SECTIONS_TEXTS.capacityColUnclosed}</th>
               </tr>
             </thead>
             <tbody>
               {bySize.map((row) => (
                 <tr key={row.bucket} className="border-t border-white/10 text-console-text">
-                  <td className="py-2 pr-4 font-medium text-white">{bucketLabel(row.bucket)}</td>
+                  <td className="py-2 pr-4 font-medium text-white">{ADMIN_SECTIONS_TEXTS.capacityBucketLabel(row.bucket)}</td>
                   <td className="py-2 pr-4 tabular-nums">{integerFormatter.format(row.solves)}</td>
                   <td className="py-2 pr-4 tabular-nums">{formatDuration(row.p50WallTimeMs)}</td>
                   <td className="py-2 pr-4 tabular-nums">{formatDuration(row.p95WallTimeMs)}</td>
@@ -162,7 +159,7 @@ function SizePanel({ bySize }: { bySize: AdminCapacityResponse["bySize"] }) {
         </div>
       )}
       <p className="mt-4 text-xs text-console-text-faint">
-        Taille = celle du club (saison entière) ; un overlay ne résout qu’un sous-ensemble mais porte le compte saison.
+        {ADMIN_SECTIONS_TEXTS.capacitySizeFootnote}
       </p>
     </article>
   );
@@ -171,19 +168,19 @@ function SizePanel({ bySize }: { bySize: AdminCapacityResponse["bySize"] }) {
 function MemoryPanel({ memory }: { memory: AdminCapacityResponse["memory"] }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-      <p className="text-sm font-medium text-white">Mémoire engine</p>
-      <p className="mt-1 text-xs text-console-muted">Pic RSS du solve · limite prod {integerFormatter.format(PROD_MEMORY_LIMIT_MIB)} MiB</p>
+      <p className="text-sm font-medium text-white">{ADMIN_SECTIONS_TEXTS.capacityMemory}</p>
+      <p className="mt-1 text-xs text-console-muted">{ADMIN_SECTIONS_TEXTS.capacityMemoryHint(PROD_MEMORY_LIMIT_MIB)}</p>
       <dl className="mt-5 grid grid-cols-3 gap-3">
-        <SmallMetric label="Médiane" value={formatMib(memory.peakP50Mb)} />
-        <SmallMetric label="P95" value={formatMib(memory.peakP95Mb)} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.capacityMedian} value={formatMib(memory.peakP50Mb)} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.capacityP95} value={formatMib(memory.peakP95Mb)} />
         <SmallMetric
-          label="Max"
+          label={ADMIN_SECTIONS_TEXTS.capacityMax}
           value={formatMib(memory.peakMaxMb)}
           tone={memory.peakMaxMb !== null && memory.peakMaxMb > PROD_MEMORY_LIMIT_MIB ? "danger" : undefined}
         />
       </dl>
       <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
-        Baseline du process (avant solve) <span className="ml-1 font-medium text-console-text">{formatMib(memory.lastBaselineMb)}</span>
+        {ADMIN_SECTIONS_TEXTS.capacityBaselineLabel} <span className="ml-1 font-medium text-console-text">{formatMib(memory.lastBaselineMb)}</span>
       </div>
     </article>
   );
@@ -192,9 +189,9 @@ function MemoryPanel({ memory }: { memory: AdminCapacityResponse["memory"] }) {
 function IssuesPanel({ issues, totalSolves }: { issues: AdminCapacityResponse["issues"]; totalSolves: number }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-      <p className="text-sm font-medium text-white">Issues</p>
+      <p className="text-sm font-medium text-white">{ADMIN_SECTIONS_TEXTS.capacityIssues}</p>
       <dl className="mt-5 space-y-4">
-        {issues.byStatus.length === 0 ? <EmptyHint variant="console">Aucune issue enregistrée.</EmptyHint> : null}
+        {issues.byStatus.length === 0 ? <EmptyHint variant="console">{ADMIN_SECTIONS_TEXTS.capacityNoIssue}</EmptyHint> : null}
         {issues.byStatus.map((row) => (
           <div key={row.status} className="flex items-baseline justify-between gap-3">
             <dt className="text-sm text-console-text-dim">{row.status}</dt>
@@ -206,7 +203,7 @@ function IssuesPanel({ issues, totalSolves }: { issues: AdminCapacityResponse["i
         ))}
       </dl>
       <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
-        Payload engine · P95 <span className="ml-1 font-medium text-console-text">{formatBytes(issues.payloadP95Bytes)}</span>
+        {ADMIN_SECTIONS_TEXTS.capacityPayloadLabel} <span className="ml-1 font-medium text-console-text">{formatBytes(issues.payloadP95Bytes)}</span>
       </div>
     </article>
   );
@@ -242,7 +239,7 @@ function PanelError({ label, retry }: { label: string; retry: () => void }) {
         className="rounded-md border border-console-warning/20 px-3 py-1.5 text-sm text-console-warning-bright hover:bg-console-warning/10"
         onClick={retry}
       >
-        Réessayer
+        {ADMIN_SECTIONS_TEXTS.retry}
       </button>
     </div>
   );

@@ -5,6 +5,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { AdminHealthResponse } from "../api";
 import { getAdminHealth } from "../api";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { ContainersSection } from "./ContainersSection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -64,7 +65,7 @@ describe("ContainersSection", () => {
     mockHealth.mockResolvedValue(buildHealth([]));
     renderWithProviders(<ContainersSection />);
 
-    expect(await screen.findByText("Aucun conteneur à monitorer.")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.containersEmpty)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -76,7 +77,7 @@ describe("ContainersSection", () => {
     );
     renderWithProviders(<ContainersSection />);
 
-    const chip = await screen.findByText("Indisponible");
+    const chip = await screen.findByText(ADMIN_SECTIONS_TEXTS.statusDown);
     expect(chip).toBeInTheDocument();
     expect(chip.className).toContain("text-console-danger");
   });
@@ -87,7 +88,7 @@ describe("ContainersSection", () => {
     );
     renderWithProviders(<ContainersSection />);
 
-    const chip = await screen.findByText("Opérationnel");
+    const chip = await screen.findByText(ADMIN_SECTIONS_TEXTS.statusUp);
     expect(chip).toBeInTheDocument();
     expect(chip.className).toContain("text-console-success");
   });
@@ -96,6 +97,6 @@ describe("ContainersSection", () => {
     mockHealth.mockRejectedValue(new Error("health unavailable"));
     renderWithProviders(<ContainersSection />);
 
-    expect(await screen.findByText("Les conteneurs sont indisponibles.")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.containersError)).toBeInTheDocument();
   });
 });
