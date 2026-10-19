@@ -67,9 +67,9 @@ par `landing/config.js`, double garde clés + hostname).
 (`GET /script.js`, `POST /api/send`) — tout le reste répond 404. Le tableau de bord Umami (login,
 chiffres, admin) n'est JAMAIS joignable depuis Internet : le fondateur le consulte par tunnel SSH
 (`ssh -L 8082:127.0.0.1:8082 <hôte>` → `http://localhost:8082`, `deploy.md` §1.11). L'onglet
-« Statistiques » existant de la console superadmin (vue d'ensemble/usage/capacité) gagnera un
-jour (roadmap P4-307) la lecture de ces chiffres via l'API Umami (jeton côté serveur, jamais
-exposé au front).
+« Statistiques » de la console superadmin (vue d'ensemble/usage/capacité) lit ces chiffres via
+l'API Umami (jeton côté serveur, jamais exposé au front — `specs/courantes/etat-des-lieux.md`
+§3).
 
 - **Base `umami` SÉPARÉE** dans le postgres existant, rôle dédié `umami` propriétaire de SA base
   seule — **aucun GRANT sur `amateo`**, ne traverse jamais la RLS (posée table par table DANS
