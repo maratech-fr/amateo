@@ -35,7 +35,7 @@ const EXEMPTIONS: Exemption[] = [
   {
     path: "features/planning/lib/useRetouchGestures.ts",
     reason:
-      "patron split-feedback DOCUMENTÉ (planning/queries.ts:51-74) : les hooks move/place/dryRun/group TAISENT délibérément les erreurs métier (isBusinessSlotEditError) pour que la PAGE les toaste avec CONTEXTE (noms d'équipes, timeout NOMMÉ, surlignage des conflits) — pas de double toast (le hook ne toaste que le transport, que la page, elle, ne touche pas). 3 cas de double toast PARTIEL sur erreur transport (runUndo, place imbriqué, placeEvictedShortcut) → ligne roadmap P4-306, correctif non mécanique",
+      "patron split-feedback DOCUMENTÉ (planning/queries.ts:51-74) : les hooks move/place/dryRun/group TAISENT délibérément les erreurs métier (isBusinessSlotEditError) pour que la PAGE les toaste avec CONTEXTE (noms d'équipes, timeout NOMMÉ, surlignage des conflits) — pas de double toast (le hook ne toaste que le transport, que la page, elle, ne touche pas). Les toasts d'erreur de niveau mutate() de ce hook sont désormais CONDITIONNÉS au métier (isBusinessSlotEditError) : sur transport, le site se tait et laisse le hook toaster une seule fois, les états éphémères retombant inconditionnellement (P4-306)",
   },
   {
     path: "features/admin/AdminDashboardPage.tsx",

@@ -1,10 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LockLevel, Slot } from "../api";
+import { toast } from "@/shared/stores/toastStore";
+
+import * as planningApi from "../api";
+import { MoveRejectedError } from "../api";
+import type { EvictedSlot, LockLevel, Slot } from "../api";
 import { useRetouchGestures } from "./useRetouchGestures";
+
+// P4-306 — on MUTE la PROD (le vrai hook, ses vrais hooks de mutation), on ne mocke QUE les deux
+// fonctions RÉSEAU que ces tests exercent (`moveSlot`/`placeSlot`), en gardant les VRAIES classes
+// d'erreur : `MoveRejectedError` est consommée en `instanceof` par le `onError` de NIVEAU HOOK de
+// `queries.ts` (patron `queries.test.tsx`). Les autres fonctions `../api` restent réelles — aucun
+// test ne les appelle (le menu de dépôt ne touche pas le réseau).
+vi.mock("../api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api")>();
+  return { ...actual, moveSlot: vi.fn(), placeSlot: vi.fn() };
+});
 
 /**
  * Lot 2 — le MENU À 3 CHOIX du dépôt. On n'exerce QUE la logique du hook (aucun réseau : ouvrir le
@@ -102,5 +116,153 @@ describe("useRetouchGestures — menu de dépôt (lot 2)", () => {
     expect(result.current.dropMenu?.disabled.takePlace).toBe("Pour deux groupes, utilisez Échanger ou Mutualiser.");
     expect(result.current.dropMenu?.disabled.swap).toBeUndefined();
     expect(result.current.dropMenu?.disabled.mutualize).toBeUndefined();
+  });
+});
+
+/**
+ * P4-306 — le toast d'erreur d'un geste d'annulation / de raccourci vit UNE SEULE FOIS. Les mutations
+ * `move`/`place` toastent déjà un vrai TRANSPORT au NIVEAU HOOK (`queries.ts::onSlotEditError`, qui
+ * TAIT le métier). Les 3 sites `mutate()` de ce hook (annulation simple, replacement imbriqué de
+ * l'undo, raccourci « Remettre ») toastent AUSSI sur transport → DOUBLE toast. Promesse protégée :
+ *   • TRANSPORT → EXACTEMENT 1 toast (aujourd'hui 2) + les états éphémères (undo / evictionNotice)
+ *     sont remis à null INCONDITIONNELLEMENT ;
+ *   • MÉTIER → le toast CONTEXTUEL (noms d'équipes, message de la violation) SURVIT, seul (1 toast).
+ * On MUTE la PROD : l'API est mockée EN REJET (jamais le hook), et on compte `toast.error`. Le toast
+ * du HOOK est posé de façon ASYNCHRONE (`errorMessage(...).then`) — on vide la file de tâches avant
+ * de compter, pour que les DEUX toasts (site + hook) soient comptés en RED sans course.
+ */
+describe("useRetouchGestures — transport double toast (P4-306)", () => {
+  const V = { venue1: V1, venue2: V2 };
+  const EVICTED: EvictedSlot = { slotId: "occ", teamId: "b", dayOfWeek: 4, startTime: "20:00", venueId: V.venue2, durationMinutes: 90 };
+
+  function renderFull(slots: Slot[], gridSlots: Slot[], selectedSlotId: string | null) {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>{children}</QueryClientProvider>
+    );
+    return renderHook(
+      () => useRetouchGestures(slots, "sched-1", selectedSlotId, "gymnase", false, false, true, new Map<string, string>(), gridSlots, [], (id) => `T-${id}`, () => {}, () => {}, () => {}),
+      { wrapper },
+    );
+  }
+
+  // Le toast du hook est posé APRÈS la micro-tâche `errorMessage(...).then` ; un macro-tour de boucle
+  // garantit qu'il a bien été compté (sinon le RED verrait parfois 1, course avec l'async du hook).
+  const flushToasts = async () => {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  };
+
+  beforeEach(() => {
+    vi.mocked(planningApi.moveSlot).mockReset();
+    vi.mocked(planningApi.placeSlot).mockReset();
+  });
+
+  it("annulation (runUndo simple) : une panne TRANSPORT ne toaste qu'UNE fois et remet `undo` à null", async () => {
+    const source = slot({ id: "src", teamId: "a" });
+    const emptyWin = slot({ id: "empty:w1", teamId: "", venueId: V.venue2, dayOfWeek: 4, startTime: "20:00" });
+    // Déplacement réel ACCEPTÉ → arme l'undo simple (seule porte : aucun `setUndo` exposé).
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true } as never);
+    const { result } = renderFull([source], [emptyWin], "src");
+
+    act(() => result.current.armMove("src"));
+    act(() => result.current.onPickTarget("empty:w1"));
+    await waitFor(() => expect(result.current.undo?.kind).toBe("move"));
+
+    // L'annulation (move inverse) tombe en TRANSPORT (Error réseau nue → `errorMessage` → transport).
+    vi.mocked(planningApi.moveSlot).mockRejectedValueOnce(new Error("network down"));
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    act(() => result.current.runUndo());
+    await waitFor(() => expect(result.current.moveMutation.isError).toBe(true));
+    await flushToasts();
+
+    // Aujourd'hui 2 (site « Annulation impossible » + hook transport) ; promesse = 1.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    // Reset inconditionnel même sur transport (le site ne le faisait pas).
+    expect(result.current.undo).toBeNull();
+  });
+
+  it("annulation avec éviction (placement imbriqué de l'undo) : un échec TRANSPORT du replacement ne toaste qu'UNE fois et purge undo + evictionNotice", async () => {
+    const source = slot({ id: "src", teamId: "a" });
+    const occupant = slot({ id: "occ", teamId: "b", venueId: V.venue2, dayOfWeek: 4, startTime: "20:00" });
+    // Un déplacement avec éviction ACCEPTÉ arme l'undo `move-evict` (via la modale acceptée + confirm).
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true, evicted: EVICTED } as never);
+    const { result } = renderFull([source, occupant], [], "src");
+    act(() => result.current.setEvictDialog({ phase: "accepted", sourceSlotId: "src", targetSlot: occupant, compromises: [] }));
+    act(() => result.current.confirmEvict());
+    await waitFor(() => expect(result.current.undo?.kind).toBe("move-evict"));
+    expect(result.current.evictionNotice).not.toBeNull();
+
+    // runUndo : le move inverse RÉUSSIT, puis le replacement de l'évincée tombe en TRANSPORT.
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true } as never);
+    vi.mocked(planningApi.placeSlot).mockRejectedValueOnce(new Error("network down"));
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    act(() => result.current.runUndo());
+    await waitFor(() => expect(result.current.placeMutation.isError).toBe(true));
+    await flushToasts();
+
+    // Aujourd'hui 2 (site contextuel + hook transport) ; promesse = 1.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.undo).toBeNull();
+    expect(result.current.evictionNotice).toBeNull();
+  });
+
+  it("annulation avec éviction : un refus MÉTIER du replacement laisse SURVIVRE le toast contextuel (1 toast, nommé)", async () => {
+    const source = slot({ id: "src", teamId: "a" });
+    const occupant = slot({ id: "occ", teamId: "b", venueId: V.venue2, dayOfWeek: 4, startTime: "20:00" });
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true, evicted: EVICTED } as never);
+    const { result } = renderFull([source, occupant], [], "src");
+    act(() => result.current.setEvictDialog({ phase: "accepted", sourceSlotId: "src", targetSlot: occupant, compromises: [] }));
+    act(() => result.current.confirmEvict());
+    await waitFor(() => expect(result.current.undo?.kind).toBe("move-evict"));
+
+    // Le replacement est REFUSÉ (métier) : le hook TAIT, seul le toast CONTEXTUEL du site survit.
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true } as never);
+    vi.mocked(planningApi.placeSlot).mockRejectedValueOnce(new MoveRejectedError([{ rule: "capacity", message: "refusé" }]));
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    act(() => result.current.runUndo());
+    await waitFor(() => expect(result.current.placeMutation.isError).toBe(true));
+    await flushToasts();
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith("T-a est revenue, T-b reste à replacer.");
+  });
+
+  it("raccourci « Remettre » (placeEvictedShortcut) : une panne TRANSPORT ne toaste qu'UNE fois et purge evictionNotice", async () => {
+    const source = slot({ id: "src", teamId: "a" });
+    const { result } = renderFull([source], [], "src");
+    act(() => result.current.setEvictionNotice({ evicted: EVICTED, freed: { dayOfWeek: 4, startTime: "20:00", venueId: V.venue2 } }));
+
+    vi.mocked(planningApi.placeSlot).mockRejectedValueOnce(new Error("network down"));
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    act(() => result.current.placeEvictedShortcut());
+    await waitFor(() => expect(result.current.placeMutation.isError).toBe(true));
+    await flushToasts();
+
+    // Aujourd'hui 2 (site « Replacement impossible » + hook transport) ; promesse = 1.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    // Reset inconditionnel même sur transport (le site ne le faisait pas).
+    expect(result.current.evictionNotice).toBeNull();
+    expect(result.current.undo).toBeNull();
+  });
+
+  it("raccourci « Remettre » : un refus MÉTIER laisse SURVIVRE le message de la violation (1 toast, nommé)", async () => {
+    const source = slot({ id: "src", teamId: "a" });
+    const { result } = renderFull([source], [], "src");
+    act(() => result.current.setEvictionNotice({ evicted: EVICTED, freed: { dayOfWeek: 4, startTime: "20:00", venueId: V.venue2 } }));
+
+    vi.mocked(planningApi.placeSlot).mockRejectedValueOnce(new MoveRejectedError([{ rule: "capacity", message: "Case déjà occupée." }]));
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    act(() => result.current.placeEvictedShortcut());
+    await waitFor(() => expect(result.current.placeMutation.isError).toBe(true));
+    await flushToasts();
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith("Case déjà occupée.");
   });
 });
