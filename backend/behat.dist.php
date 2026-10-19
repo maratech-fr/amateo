@@ -28,6 +28,7 @@ use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
 use App\Tests\Behat\VenueAliasContext;
 use App\Tests\Behat\VenueAliasIdentityContext;
+use App\Tests\Behat\VenueClosureSmallClubContext;
 use App\Tests\Behat\VenueDeviationContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
@@ -129,6 +130,11 @@ return (new Config)
                 new Suite('verrou-periode')
                     ->withPaths('%paths.base%/features/un-verrou-de-periode-survit-a-la-regeneration.feature')
                     ->withContexts(PeriodLockSmallClubContext::class),
+            )
+            ->withSuite(
+                new Suite('fermeture-planning')
+                    ->withPaths('%paths.base%/features/une-fermeture-adapte-le-planning.feature')
+                    ->withContexts(VenueClosureSmallClubContext::class),
             )
             ->withSuite(
                 new Suite('export')
