@@ -1,3 +1,4 @@
+import { HTTPError } from "ky";
 import { type FormEvent, useId, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -43,12 +44,15 @@ export function DeploymentSection() {
   const items = deployments.data?.items ?? [];
   const configured = deployments.data?.configured ?? false;
   const tagOptions = tags.data?.items ?? [];
+  // GitHub injoignable : la liste des tags revient `available:false` (jamais une 500). On DIT
+  // l'indisponibilité au lieu de proposer « Programmer » sur une liste vide et muette.
+  const tagsAvailable = tags.data?.available ?? true;
 
   // Une seule mise en production vit à la fois : la première non terminale est « active ».
   const active = items.find((d) => "scheduled" === d.status || "dispatched" === d.status) ?? null;
   const history = items.filter((d) => "scheduled" !== d.status && "dispatched" !== d.status);
 
-  const canSubmit = configured && "" !== version && "" !== scheduledAtLocal && "" !== windowMinutes && !schedule.isPending;
+  const canSubmit = configured && tagsAvailable && "" !== version && "" !== scheduledAtLocal && "" !== windowMinutes && !schedule.isPending;
 
   // Tant que l'état (déploiement actif + configuration) ou les tags déployables chargent, on ne
   // montre NI le formulaire NI ses options : le `<select>` ne doit s'exposer qu'une fois peuplé
@@ -77,7 +81,16 @@ export function DeploymentSection() {
         },
         // Message serveur PRÉCIS inline (422 version refusée, 409 déjà programmée) — le toast
         // générique reste au niveau HOOK (FRT-38). `setScheduleError` n'arme pas le garde.
-        onError: (err) => void errorMessage(err).then(setScheduleError),
+        // SEC-08 : un 5xx ne doit PAS afficher son corps (errorMessage le tait → « Erreur serveur »
+        // générique) ; pour le 502 « GitHub injoignable » de la programmation, on AUTEUR nous-mêmes
+        // un message d'attente CLAIR côté client (constante, keyée sur le 5xx).
+        onError: (err) => {
+          if (err instanceof HTTPError && err.response.status >= 500) {
+            setScheduleError("GitHub est injoignable — réessayez dans un instant.");
+            return;
+          }
+          void errorMessage(err).then(setScheduleError);
+        },
       },
     );
   }
@@ -98,6 +111,13 @@ export function DeploymentSection() {
         </p>
       ) : null}
 
+      {configured && !tagsAvailable ? (
+        <div className="space-y-2 rounded-xl border border-console-destructive-edge/40 bg-console-destructive-surface/10 p-4 text-sm text-console-text">
+          <p>GitHub est injoignable — la liste des versions n'a pas pu être chargée.</p>
+          <button type="button" className="underline" onClick={() => void tags.refetch()}>Réessayer</button>
+        </div>
+      ) : null}
+
       {active ? (
         <div className="space-y-2 rounded-xl border border-console-accent/30 bg-console-accent/5 p-4">
           <p className="text-xs uppercase tracking-wide text-console-muted">Déploiement en attente</p>
@@ -106,6 +126,7 @@ export function DeploymentSection() {
             <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{STATUS_LABEL[active.status]}</span>
             {active.scheduledAt ? <span className="text-sm text-console-text-dim">{formatDate(active.scheduledAt)}</span> : null}
           </div>
+          {active.dispatchNote ? <p className="text-sm text-console-text-dim">{active.dispatchNote}</p> : null}
           {"scheduled" === active.status ? (
             <div className="pt-1">
               <Button
@@ -195,6 +216,7 @@ export function DeploymentSection() {
                   {d.dispatchedAt ? <span className="text-xs text-console-muted">{formatDate(d.dispatchedAt)}</span> : null}
                 </div>
                 {d.failureReason ? <p className="text-sm text-console-destructive">{d.failureReason}</p> : null}
+                {d.dispatchNote ? <p className="text-sm text-console-text-dim">{d.dispatchNote}</p> : null}
               </li>
             ))}
           </ul>

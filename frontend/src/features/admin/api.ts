@@ -684,6 +684,8 @@ export interface AdminDeployment {
   dispatchedAt: string | null;
   githubRunId: number | null;
   failureReason: string | null;
+  /** Note de DÉPART posée par le tick (retard d'attente, plafond forcé). Toujours sérialisée (null sinon). */
+  dispatchNote?: string | null;
   createdAt: string | null;
 }
 
@@ -695,6 +697,8 @@ export interface AdminDeploymentsResponse {
 
 export interface AdminDeploymentTagsResponse {
   items: string[];
+  /** GitHub joignable : `false` quand la lecture des tags a échoué (4xx/transport) — l'écran dégrade. */
+  available?: boolean;
 }
 
 export interface ScheduleDeploymentPayload {

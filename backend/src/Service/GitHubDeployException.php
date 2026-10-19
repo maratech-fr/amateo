@@ -22,4 +22,14 @@ final class GitHubDeployException extends RuntimeException
     {
         return new self(\sprintf('GitHub a répondu %d sur %s %s.', $statusCode, $method, $endpoint));
     }
+
+    /**
+     * Une panne de TRANSPORT (DNS, connexion refusée, timeout) : api.github.com est réellement
+     * injoignable, pas une réponse d'erreur. Le message BRUT du transport (qui peut porter l'hôte,
+     * le port, voire des détails internes) est EXPURGÉ — on ne garde que le verbe et le chemin.
+     */
+    public static function fromTransport(string $method, string $endpoint): self
+    {
+        return new self(\sprintf('GitHub est injoignable sur %s %s.', $method, $endpoint));
+    }
 }

@@ -9,6 +9,7 @@ use App\Enum\DeploymentStatus;
 use App\EventListener\AdminCsrfListener;
 use App\Security\AdminSessionCsrf;
 use App\Service\GitHubDeployClient;
+use App\Service\GitHubDeployException;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\DBAL\ArrayParameterType;
@@ -64,7 +65,7 @@ final readonly class AdminDeploymentController
         // Le firewall admin gate déjà la lecture. On ne sert jamais le jeton (il n'est pas stocké
         // en base de toute façon) ; on indique seulement si la fonctionnalité est configurée.
         $rows = $this->connection()->fetchAllAssociative(
-            'SELECT id, version, status, scheduled_at, expected_return_at, dispatched_at, github_run_id, failure_reason, created_at'
+            'SELECT id, version, status, scheduled_at, expected_return_at, dispatched_at, github_run_id, failure_reason, dispatch_note, created_at'
             . ' FROM scheduled_deployment ORDER BY created_at DESC LIMIT 20',
         );
 
@@ -77,7 +78,14 @@ final readonly class AdminDeploymentController
     #[Route('/tags', methods: ['GET'])]
     public function tags(): JsonResponse
     {
-        return new JsonResponse(['items' => $this->client->tags()]);
+        // GitHub injoignable (4xx, ou panne de transport) → `available:false` et une liste VIDE,
+        // jamais une 500 qui casse l'écran : le front dégrade (message + Réessayer, « Programmer »
+        // désactivé). L'exception est déjà EXPURGÉE (ni jeton ni détail brut).
+        try {
+            return new JsonResponse(['items' => $this->client->tags(), 'available' => true]);
+        } catch (GitHubDeployException) {
+            return new JsonResponse(['items' => [], 'available' => false]);
+        }
     }
 
     #[Route('', methods: ['POST'])]
@@ -115,12 +123,20 @@ final readonly class AdminDeploymentController
         }
 
         // La version DOIT être un tag déployable réel (`^v`) — une version forgée/inexistante
-        // n'atteint jamais le dispatch. Puis la CI de ce tag doit être verte.
-        if (!\in_array($version, $this->client->tags(), true)) {
-            return new JsonResponse(['error' => 'La version demandée n’est pas un tag déployable.'], 422);
-        }
-        if (!$this->client->isCiGreen($version)) {
-            return new JsonResponse(['error' => 'L’intégration continue de cette version n’est pas au vert.'], 422);
+        // n'atteint jamais le dispatch. Puis la CI de ce tag doit être verte. GitHub injoignable
+        // PENDANT ces lectures (4xx/transport) → 502 avec un message d'attente, et AUCUNE ligne
+        // persistée (la programmation échoue proprement, jamais à moitié) ; l'exception expurgée
+        // ne recopie ni le jeton ni le détail brut du transport.
+        try {
+            $deployableTags = $this->client->tags();
+            if (!\in_array($version, $deployableTags, true)) {
+                return new JsonResponse(['error' => 'La version demandée n’est pas un tag déployable.'], 422);
+            }
+            if (!$this->client->isCiGreen($version)) {
+                return new JsonResponse(['error' => 'L’intégration continue de cette version n’est pas au vert.'], 422);
+            }
+        } catch (GitHubDeployException) {
+            return new JsonResponse(['error' => 'GitHub est injoignable — réessayez dans un instant.'], 502);
         }
 
         // Un seul déploiement actif à la fois (l'index unique partiel est le garde-fou ultime).
@@ -225,6 +241,7 @@ final readonly class AdminDeploymentController
             'dispatchedAt' => $this->isoOrNull($row['dispatched_at'] ?? null),
             'githubRunId' => null === $runId ? null : (int) $runId,
             'failureReason' => \is_string($row['failure_reason'] ?? null) ? $row['failure_reason'] : null,
+            'dispatchNote' => \is_string($row['dispatch_note'] ?? null) ? $row['dispatch_note'] : null,
             'createdAt' => $this->isoOrNull($row['created_at'] ?? null),
         ];
     }
