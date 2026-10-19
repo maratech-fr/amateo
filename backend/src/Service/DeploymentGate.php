@@ -8,7 +8,8 @@ use App\Enum\DeploymentStatus;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
-use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Le GEL des guichets de solve pendant une mise en production imminente (P4-350, axe
@@ -28,6 +29,11 @@ final readonly class DeploymentGate
 
     public function __construct(
         private ManagerRegistry $registry,
+        // Horloge RÉELLE : le gel est une bascule de maintenance INFRASTRUCTURE, pas un « aujourd'hui »
+        // métier — l'horloge simulée d'un club démo ne doit jamais geler (ou dégeler) à tort (patron
+        // AuditTrail). Un club démo dont l'horloge pointe le futur/passé compare sa date simulée à un
+        // `scheduled_at` réel : seule l'horloge réelle donne le bon verdict.
+        #[Autowire(service: 'app.clock.real')]
         private ClockInterface $clock,
     ) {}
 
