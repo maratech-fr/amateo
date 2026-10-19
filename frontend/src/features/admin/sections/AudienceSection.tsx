@@ -6,6 +6,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { AdminAudienceMetric, AdminAudienceWindow } from "../api";
 import { useAdminAudience } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 const integerFormatter = new Intl.NumberFormat("fr-FR");
 
@@ -21,9 +22,9 @@ const WINDOW_LABELS: Record<string, string> = { d7: "7 derniers jours", d30: "30
 export function AudienceSection() {
   const audience = useAdminAudience();
 
-  if (audience.isPending) return <PanelLoading label="Chargement de la mesure d’audience" />;
+  if (audience.isPending) return <PanelLoading label={ADMIN_SECTIONS_TEXTS.audienceLoading} />;
   if (audience.isError || !audience.data) {
-    return <PanelError label="La mesure d’audience est indisponible." retry={() => void audience.refetch()} />;
+    return <PanelError label={ADMIN_SECTIONS_TEXTS.audienceError} retry={() => void audience.refetch()} />;
   }
 
   const data = audience.data;
@@ -31,9 +32,7 @@ export function AudienceSection() {
   if (!data.configured) {
     return (
       <AudienceShell>
-        <EmptyBlock variant="console">
-          Mesure d’audience non configurée — la clé Umami ou l’identifiant du site de la vitrine n’est pas renseigné.
-        </EmptyBlock>
+        <EmptyBlock variant="console">{ADMIN_SECTIONS_TEXTS.audienceNotConfigured}</EmptyBlock>
       </AudienceShell>
     );
   }
@@ -41,9 +40,7 @@ export function AudienceSection() {
   if (!data.available) {
     return (
       <AudienceShell>
-        <EmptyBlock variant="console">
-          Mesure d’audience momentanément indisponible — Umami ne répond pas. La console reste opérante.
-        </EmptyBlock>
+        <EmptyBlock variant="console">{ADMIN_SECTIONS_TEXTS.audienceUnavailable}</EmptyBlock>
       </AudienceShell>
     );
   }
@@ -55,8 +52,8 @@ export function AudienceSection() {
         <WindowPanel label={WINDOW_LABELS.d30} window={data.windows.d30} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <MetricsPanel title="Pages les plus vues" unit="vues" metrics={data.topPages} />
-        <MetricsPanel title="Principales sources" unit="visiteurs" metrics={data.topSources} />
+        <MetricsPanel title={ADMIN_SECTIONS_TEXTS.audienceTopPages} unit={ADMIN_SECTIONS_TEXTS.audienceUnitPageviews} metrics={data.topPages} />
+        <MetricsPanel title={ADMIN_SECTIONS_TEXTS.audienceTopSources} unit={ADMIN_SECTIONS_TEXTS.audienceUnitVisitors} metrics={data.topSources} />
       </div>
     </AudienceShell>
   );
@@ -66,9 +63,9 @@ function AudienceShell({ children }: { children: ReactNode }) {
   return (
     <section aria-labelledby="audience-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Vitrine</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.audienceEyebrow}</p>
         <h2 id="audience-heading" className="mt-2 text-xl font-semibold text-white">
-          Mesure d’audience
+          {ADMIN_SECTIONS_TEXTS.audienceHeading}
         </h2>
       </div>
       {children}
@@ -84,9 +81,9 @@ function WindowPanel({ label, window }: { label: string; window: AdminAudienceWi
         <TrendLine trend={window.trend} />
       </div>
       <dl className="mt-5 grid grid-cols-3 gap-3">
-        <BigMetric label="Visiteurs" value={window.visitors} />
-        <BigMetric label="Visites" value={window.visits} />
-        <BigMetric label="Pages vues" value={window.pageviews} />
+        <BigMetric label={ADMIN_SECTIONS_TEXTS.audienceMetricVisitors} value={window.visitors} />
+        <BigMetric label={ADMIN_SECTIONS_TEXTS.audienceMetricVisits} value={window.visits} />
+        <BigMetric label={ADMIN_SECTIONS_TEXTS.audienceMetricPageviews} value={window.pageviews} />
       </dl>
     </article>
   );
@@ -98,7 +95,7 @@ function MetricsPanel({ title, unit, metrics }: { title: string; unit: string; m
       <p className="text-sm font-medium text-white">{title}</p>
       {metrics.length === 0 ? (
         <EmptyBlock variant="console" className="mt-4">
-          Aucune donnée sur la fenêtre.
+          {ADMIN_SECTIONS_TEXTS.audienceNoData}
         </EmptyBlock>
       ) : (
         <ul className="mt-4 space-y-2">
@@ -118,12 +115,11 @@ function MetricsPanel({ title, unit, metrics }: { title: string; unit: string; m
 
 /** Tendance discrète (pas de pastille) : « + N % » / « − N % » / « stable ». */
 function TrendLine({ trend }: { trend: number }) {
-  if (trend === 0) return <span className="text-xs text-console-muted">stable</span>;
+  if (trend === 0) return <span className="text-xs text-console-muted">{ADMIN_SECTIONS_TEXTS.audienceTrendStable}</span>;
   const rising = trend > 0;
   return (
     <span className={cn("text-xs tabular-nums", rising ? "text-console-accent" : "text-console-muted")}>
-      {rising ? "+" : "−"}
-      {integerFormatter.format(Math.abs(trend))} % vs période précédente
+      {ADMIN_SECTIONS_TEXTS.audienceTrend(`${rising ? "+" : "−"}${integerFormatter.format(Math.abs(trend))}`)}
     </span>
   );
 }
@@ -155,7 +151,7 @@ function PanelError({ label, retry }: { label: string; retry: () => void }) {
         className="rounded-md border border-console-warning/20 px-3 py-1.5 text-sm text-console-warning-bright hover:bg-console-warning/10"
         onClick={retry}
       >
-        Réessayer
+        {ADMIN_SECTIONS_TEXTS.retry}
       </button>
     </div>
   );

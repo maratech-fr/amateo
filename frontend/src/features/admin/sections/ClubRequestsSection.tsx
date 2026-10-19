@@ -4,6 +4,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Spinner } from "@/shared/components/ui/spinner";
 
 import { useActivateAdminMembership, useAdminClubRequests, useAdminPendingMemberships, useDecideAdminClubRequest } from "../queries";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 /**
  * P3-4 PR B — l'arbitrage superadmin : demandes de création de club (sans mail
@@ -27,26 +28,26 @@ export function ClubRequestsSection() {
   return (
     <section aria-labelledby="club-requests-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Arbitrages</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.clubRequestsEyebrow}</p>
         <h2 id="club-requests-heading" className="mt-2 text-xl font-semibold text-white">
-          Demandes de création & adhésions en attente
+          {ADMIN_SECTIONS_TEXTS.clubRequestsHeading}
         </h2>
       </div>
 
       <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <h3 className="text-sm font-semibold text-white">Demandes de création de club</h3>
+        <h3 className="text-sm font-semibold text-white">{ADMIN_SECTIONS_TEXTS.clubRequestsCreationHeading}</h3>
         <p className="mt-1 text-xs text-console-text-dim">
-          Sans mail FFBB (aucun lien envoyé) ou expirées : la console est la seule voie. Approuver crée l'espace du club.
+          {ADMIN_SECTIONS_TEXTS.clubRequestsCreationHint}
         </p>
         {requests.isPending ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
+          <p className="mt-3 flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.loading}</p>
         ) : requests.isError ? (
           <p className="mt-3 text-sm text-console-destructive">
-            La liste n'a pas pu être lue.{" "}
-            <button type="button" className="underline" onClick={() => void requests.refetch()}>Réessayer</button>
+            {ADMIN_SECTIONS_TEXTS.listReadError}{" "}
+            <button type="button" className="underline" onClick={() => void requests.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
           </p>
         ) : 0 === requestItems.length ? (
-          <p className="mt-3 text-sm text-console-text-dim">Aucune demande en attente.</p>
+          <p className="mt-3 text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.clubRequestsCreationEmpty}</p>
         ) : (
           <ul className="mt-3 divide-y divide-white/10">
             {requestItems.map((item) => (
@@ -54,10 +55,10 @@ export function ClubRequestsSection() {
                 <div className="text-sm text-console-text-bright">
                   <span className="font-medium text-white">{item.clubName}</span>{" "}
                   <span className="text-console-text-dim">({item.ara})</span>
-                  {"expired" === item.status ? <span className="ml-2 rounded bg-console-warning-surface/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-warning">Expirée</span> : null}
-                  {null === item.clubEmail ? <span className="ml-2 rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">Sans mail FFBB</span> : null}
+                  {"expired" === item.status ? <span className="ml-2 rounded bg-console-warning-surface/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-warning">{ADMIN_SECTIONS_TEXTS.clubRequestsBadgeExpired}</span> : null}
+                  {null === item.clubEmail ? <span className="ml-2 rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{ADMIN_SECTIONS_TEXTS.clubRequestsBadgeNoEmail}</span> : null}
                   <div className="text-xs text-console-text-dim">
-                    Demandé par {item.requesterName} ({item.requesterEmail}) le {item.createdAt} — expire le {item.expiresAt}
+                    {ADMIN_SECTIONS_TEXTS.clubRequestsRequestedBy(item.requesterName, item.requesterEmail, item.createdAt, item.expiresAt)}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
@@ -67,7 +68,7 @@ export function ClubRequestsSection() {
                     disabled={decide.isPending}
                     onClick={() => decide.mutate({ id: item.id, decision: "approve" })}
                   >
-                    Approuver
+                    {ADMIN_SECTIONS_TEXTS.clubRequestsApprove}
                   </Button>
                   <Button
                     type="button"
@@ -84,7 +85,7 @@ export function ClubRequestsSection() {
                       }
                     }}
                   >
-                    {confirmRefuseId === item.id ? "Confirmer le refus" : "Refuser"}
+                    {confirmRefuseId === item.id ? ADMIN_SECTIONS_TEXTS.clubRequestsRefuseConfirm : ADMIN_SECTIONS_TEXTS.clubRequestsRefuse}
                   </Button>
                 </div>
               </li>
@@ -94,19 +95,19 @@ export function ClubRequestsSection() {
       </div>
 
       <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <h3 className="text-sm font-semibold text-white">Adhésions en attente</h3>
+        <h3 className="text-sm font-semibold text-white">{ADMIN_SECTIONS_TEXTS.clubRequestsMembershipsHeading}</h3>
         <p className="mt-1 text-xs text-console-text-dim">
-          Normalement approuvées par un gestionnaire du club — activer ici quand la passation n'a pas lieu.
+          {ADMIN_SECTIONS_TEXTS.clubRequestsMembershipsHint}
         </p>
         {memberships.isPending ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
+          <p className="mt-3 flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.loading}</p>
         ) : memberships.isError ? (
           <p className="mt-3 text-sm text-console-destructive">
-            La liste n'a pas pu être lue.{" "}
-            <button type="button" className="underline" onClick={() => void memberships.refetch()}>Réessayer</button>
+            {ADMIN_SECTIONS_TEXTS.listReadError}{" "}
+            <button type="button" className="underline" onClick={() => void memberships.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
           </p>
         ) : 0 === membershipItems.length ? (
-          <p className="mt-3 text-sm text-console-text-dim">Aucune adhésion en attente.</p>
+          <p className="mt-3 text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.clubRequestsMembershipsEmpty}</p>
         ) : (
           <ul className="mt-3 divide-y divide-white/10">
             {membershipItems.map((item) => (
@@ -115,11 +116,11 @@ export function ClubRequestsSection() {
                   <span className="font-medium text-white">{item.userName}</span>{" "}
                   <span className="text-console-text-dim">({item.userEmail})</span>
                   <div className="text-xs text-console-text-dim">
-                    → {item.clubName} ({item.ara}) — demandé le {item.createdAt}
+                    {ADMIN_SECTIONS_TEXTS.clubRequestsMembershipMeta(item.clubName, item.ara, item.createdAt)}
                   </div>
                 </div>
                 <Button type="button" size="sm" disabled={activate.isPending} onClick={() => activate.mutate(item.id)}>
-                  Activer l'adhésion
+                  {ADMIN_SECTIONS_TEXTS.clubRequestsActivateMembership}
                 </Button>
               </li>
             ))}

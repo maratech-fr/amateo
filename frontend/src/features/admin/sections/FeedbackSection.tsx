@@ -6,19 +6,9 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { cn } from "@/shared/lib/utils";
 
-import type { AdminFeedbackContext, AdminFeedbackItem, AdminFeedbackQos, AdminFeedbackStatus, AdminFeedbackTopic } from "../api";
+import type { AdminFeedbackContext, AdminFeedbackItem, AdminFeedbackQos, AdminFeedbackStatus } from "../api";
 import { useAdminFeedback, useAdminFeedbackDetail, useTreatAdminFeedback, useUntreatAdminFeedback } from "../queries";
-
-const TOPIC_LABELS: Record<AdminFeedbackTopic, string> = {
-  bug: "Bug",
-  missing_constraint: "Contrainte manquante",
-  idea: "Idée",
-};
-
-const STATUS_LABELS: Record<AdminFeedbackStatus, string> = {
-  untreated: "Non traité",
-  treated: "Traité",
-};
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -37,9 +27,9 @@ const fmtHours = (v: number | null): string => {
 type StatusFilter = "all" | AdminFeedbackStatus;
 
 const FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: "all", label: "Tous" },
-  { id: "untreated", label: "Non traités" },
-  { id: "treated", label: "Traités" },
+  { id: "all", label: ADMIN_SECTIONS_TEXTS.feedbackFilterAll },
+  { id: "untreated", label: ADMIN_SECTIONS_TEXTS.feedbackFilterUntreated },
+  { id: "treated", label: ADMIN_SECTIONS_TEXTS.feedbackFilterTreated },
 ];
 
 /**
@@ -56,14 +46,14 @@ export function FeedbackSection() {
   return (
     <section aria-labelledby="feedback-heading" className="space-y-6">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Retours terrain</p>
-        <h2 id="feedback-heading" className="mt-2 text-xl font-semibold text-white">Signalements</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">{ADMIN_SECTIONS_TEXTS.feedbackEyebrow}</p>
+        <h2 id="feedback-heading" className="mt-2 text-xl font-semibold text-white">{ADMIN_SECTIONS_TEXTS.feedbackHeading}</h2>
       </div>
 
       {feedback.data ? <QosPanel qos={feedback.data.qos} /> : null}
 
-      <section aria-label="Liste des signalements" className="space-y-4">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrer par statut">
+      <section aria-label={ADMIN_SECTIONS_TEXTS.feedbackListLabel} className="space-y-4">
+        <div className="flex flex-wrap gap-2" role="group" aria-label={ADMIN_SECTIONS_TEXTS.feedbackFilterGroupLabel}>
           {FILTERS.map((f) => (
             <Button
               key={f.id}
@@ -80,29 +70,29 @@ export function FeedbackSection() {
         </div>
 
         {feedback.isPending ? (
-          <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
+          <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.loading}</p>
         ) : feedback.isError ? (
           <p className="text-sm text-console-destructive">
-            La liste n'a pas pu être lue.{" "}
-            <button type="button" className="underline" onClick={() => void feedback.refetch()}>Réessayer</button>
+            {ADMIN_SECTIONS_TEXTS.listReadError}{" "}
+            <button type="button" className="underline" onClick={() => void feedback.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
           </p>
         ) : 0 === items.length ? (
-          <p className="text-sm text-console-text-dim">Aucun signalement.</p>
+          <p className="text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.feedbackEmpty}</p>
         ) : (
           <ul className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/[0.03]">
             {items.map((item) => (
               <li key={item.id}>
                 <button
                   type="button"
-                  aria-label={`Voir le signalement de ${item.clubName ?? "club inconnu"}`}
+                  aria-label={ADMIN_SECTIONS_TEXTS.feedbackViewSignalement(item.clubName ?? ADMIN_SECTIONS_TEXTS.feedbackClubUnknownLower)}
                   onClick={() => setOpenItem(item)}
                   className="flex w-full flex-col gap-1 p-4 text-left transition-colors hover:bg-white/[0.04] md:flex-row md:items-center md:gap-4"
                 >
                   <span className="shrink-0 text-xs text-console-muted md:w-40">{fmtDate(item.createdAt)}</span>
-                  <span className="shrink-0 font-medium text-white md:w-48 md:truncate">{item.clubName ?? "Club inconnu"}</span>
-                  <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-console-text-bright md:w-40 md:text-center">{TOPIC_LABELS[item.topic]}</span>
+                  <span className="shrink-0 font-medium text-white md:w-48 md:truncate">{item.clubName ?? ADMIN_SECTIONS_TEXTS.feedbackClubUnknown}</span>
+                  <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-console-text-bright md:w-40 md:text-center">{ADMIN_SECTIONS_TEXTS.feedbackTopicLabel(item.topic)}</span>
                   <span className="min-w-0 flex-1 truncate text-sm text-console-text">{item.message}</span>
-                  <span className={cn("shrink-0 text-xs font-medium", "untreated" === item.status ? "text-console-warning" : "text-console-success")}>{STATUS_LABELS[item.status]}</span>
+                  <span className={cn("shrink-0 text-xs font-medium", "untreated" === item.status ? "text-console-warning" : "text-console-success")}>{ADMIN_SECTIONS_TEXTS.feedbackStatusLabel(item.status)}</span>
                 </button>
               </li>
             ))}
@@ -118,24 +108,24 @@ export function FeedbackSection() {
 function QosPanel({ qos }: { qos: AdminFeedbackQos }) {
   return (
     <article aria-labelledby="qos-heading" className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
-      <h3 id="qos-heading" className="text-sm font-semibold text-white">Qualité de service</h3>
+      <h3 id="qos-heading" className="text-sm font-semibold text-white">{ADMIN_SECTIONS_TEXTS.feedbackQos}</h3>
       <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <SmallMetric label="Part traitée" value={fmtPct(qos.treatedShare)} />
-        <SmallMetric label="Plus vieux non traité" value={fmtHours(qos.oldestUntreatedAgeHours)} tone={null !== qos.oldestUntreatedAgeHours && qos.oldestUntreatedAgeHours > 72 ? "danger" : undefined} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.feedbackTreatedShare} value={fmtPct(qos.treatedShare)} />
+        <SmallMetric label={ADMIN_SECTIONS_TEXTS.feedbackOldestUntreated} value={fmtHours(qos.oldestUntreatedAgeHours)} tone={null !== qos.oldestUntreatedAgeHours && qos.oldestUntreatedAgeHours > 72 ? "danger" : undefined} />
       </dl>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-console-muted">Délai dépôt → traité (par mois)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-console-muted">{ADMIN_SECTIONS_TEXTS.feedbackDelayByMonth}</p>
           {0 === qos.treatDelayByMonth.length ? (
             <p className="mt-2 text-xs text-console-muted">—</p>
           ) : (
             <table className="mt-2 w-full text-left text-xs text-console-text">
               <thead className="text-console-muted">
                 <tr>
-                  <th className="py-1 font-medium">Mois</th>
-                  <th className="py-1 font-medium">Moyenne</th>
-                  <th className="py-1 font-medium">p95</th>
+                  <th className="py-1 font-medium">{ADMIN_SECTIONS_TEXTS.feedbackColMonth}</th>
+                  <th className="py-1 font-medium">{ADMIN_SECTIONS_TEXTS.feedbackColAvg}</th>
+                  <th className="py-1 font-medium">{ADMIN_SECTIONS_TEXTS.feedbackColP95}</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,23 +142,23 @@ function QosPanel({ qos }: { qos: AdminFeedbackQos }) {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-console-muted">Volume par type (par mois)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-console-muted">{ADMIN_SECTIONS_TEXTS.feedbackVolumeByTopic}</p>
           {0 === qos.volumeByTopicMonth.length ? (
             <p className="mt-2 text-xs text-console-muted">—</p>
           ) : (
             <table className="mt-2 w-full text-left text-xs text-console-text">
               <thead className="text-console-muted">
                 <tr>
-                  <th className="py-1 font-medium">Mois</th>
-                  <th className="py-1 font-medium">Type</th>
-                  <th className="py-1 font-medium">Volume</th>
+                  <th className="py-1 font-medium">{ADMIN_SECTIONS_TEXTS.feedbackColMonth}</th>
+                  <th className="py-1 font-medium">{ADMIN_SECTIONS_TEXTS.feedbackColType}</th>
+                  <th className="py-1 font-medium">{ADMIN_SECTIONS_TEXTS.feedbackColVolume}</th>
                 </tr>
               </thead>
               <tbody>
                 {qos.volumeByTopicMonth.map((row) => (
                   <tr key={`${row.month}-${row.topic}`}>
                     <td className="py-1 tabular-nums">{row.month}</td>
-                    <td className="py-1">{TOPIC_LABELS[row.topic]}</td>
+                    <td className="py-1">{ADMIN_SECTIONS_TEXTS.feedbackTopicLabel(row.topic)}</td>
                     <td className="py-1 tabular-nums">{row.count}</td>
                   </tr>
                 ))}
@@ -226,44 +216,44 @@ function FeedbackDetailDialog({ item, onClose }: { item: AdminFeedbackItem; onCl
 
   return (
     <Modal
-      label="Détail du signalement"
-      title="Signalement"
+      label={ADMIN_SECTIONS_TEXTS.feedbackModalLabel}
+      title={ADMIN_SECTIONS_TEXTS.feedbackModalTitle}
       onClose={onClose}
       size="xl"
       footer={
         confirming ? (
           <>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>Annuler</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>{ADMIN_SECTIONS_TEXTS.feedbackCancel}</Button>
             <Button type="button" size="sm" disabled={pending} onClick={runVerdict}>
               {pending ? <Spinner className="size-4" /> : null}
-              {"untreated" === status ? "Confirmer le traitement" : "Confirmer la réouverture"}
+              {"untreated" === status ? ADMIN_SECTIONS_TEXTS.feedbackConfirmTreat : ADMIN_SECTIONS_TEXTS.feedbackConfirmReopen}
             </Button>
           </>
         ) : (
           <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(true)}>
-            {"untreated" === status ? "Traiter" : "Rouvrir"}
+            {"untreated" === status ? ADMIN_SECTIONS_TEXTS.feedbackTreat : ADMIN_SECTIONS_TEXTS.feedbackReopen}
           </Button>
         )
       }
     >
       <div className="mt-4 space-y-5 text-sm">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-          <MetaRow label="Club" value={item.clubName ?? "Club inconnu"} />
-          <MetaRow label="Type" value={TOPIC_LABELS[item.topic]} />
-          <MetaRow label="Reçu le" value={fmtDate(item.createdAt)} />
-          <MetaRow label="Statut" value={STATUS_LABELS[status]} />
+          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaClub} value={item.clubName ?? ADMIN_SECTIONS_TEXTS.feedbackClubUnknown} />
+          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaType} value={ADMIN_SECTIONS_TEXTS.feedbackTopicLabel(item.topic)} />
+          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaReceivedAt} value={fmtDate(item.createdAt)} />
+          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaStatus} value={ADMIN_SECTIONS_TEXTS.feedbackStatusLabel(status)} />
         </dl>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Message</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{ADMIN_SECTIONS_TEXTS.feedbackMessage}</p>
           {/* TEXTE PUR : nœud texte React (échappé), retours à la ligne préservés. */}
           <p className="mt-1 whitespace-pre-line rounded-md border border-border bg-muted/40 p-3">{message}</p>
         </div>
 
         {detail.isPending ? (
-          <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner className="size-4" /> Chargement du contexte…</p>
+          <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.feedbackLoadingContext}</p>
         ) : detail.isError ? (
-          <p className="text-xs text-destructive">Le contexte n'a pas pu être lu.</p>
+          <p className="text-xs text-destructive">{ADMIN_SECTIONS_TEXTS.feedbackContextError}</p>
         ) : null}
 
         {null !== context ? <ContextBlock context={context} onCopy={copyJson} copied={copied} /> : null}
@@ -285,22 +275,22 @@ function ContextBlock({ context, onCopy, copied }: { context: AdminFeedbackConte
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contexte</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{ADMIN_SECTIONS_TEXTS.feedbackContext}</p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        {context.screen ? <MetaRow label="Écran" value={context.screen} /> : null}
+        {context.screen ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaScreen} value={context.screen} /> : null}
         {/* URL en TEXTE PUR — jamais un lien cliquable (consigne revue). */}
-        {context.url ? <MetaRow label="URL" value={context.url} /> : null}
-        {context.requestId ? <MetaRow label="Réf. incident" value={context.requestId} /> : null}
-        {context.userAgent ? <MetaRow label="Navigateur" value={context.userAgent} /> : null}
-        {context.seasonId ? <MetaRow label="Saison" value={context.seasonId} /> : null}
-        {context.scheduleId ? <MetaRow label="Planning" value={context.scheduleId} /> : null}
-        {context.scheduleStatus ? <MetaRow label="État planning" value={context.scheduleStatus} /> : null}
+        {context.url ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaUrl} value={context.url} /> : null}
+        {context.requestId ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaIncidentRef} value={context.requestId} /> : null}
+        {context.userAgent ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaBrowser} value={context.userAgent} /> : null}
+        {context.seasonId ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaSeason} value={context.seasonId} /> : null}
+        {context.scheduleId ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaSchedule} value={context.scheduleId} /> : null}
+        {context.scheduleStatus ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaScheduleStatus} value={context.scheduleStatus} /> : null}
       </dl>
       {hasHeavy ? (
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <span>Snapshot : {snapshotBytes.toLocaleString("fr-FR")} caractères · {diagnosticsCount} diagnostic{diagnosticsCount > 1 ? "s" : ""}</span>
+          <span>{ADMIN_SECTIONS_TEXTS.feedbackSnapshotMeta(snapshotBytes.toLocaleString("fr-FR"), diagnosticsCount)}</span>
           <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCopy}>
-            {copied ? "Copié" : "Copier le JSON"}
+            {copied ? ADMIN_SECTIONS_TEXTS.feedbackCopied : ADMIN_SECTIONS_TEXTS.feedbackCopyJson}
           </Button>
         </div>
       ) : null}
