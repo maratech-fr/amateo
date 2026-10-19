@@ -216,7 +216,9 @@ export const ADMIN_DASHBOARD_TEXTS = {
   clubTeamsCoaches: (teams: number, coaches: number) => `${teams} équipes · ${coaches} coachs`,
   clubVenues: (venues: number) => `${venues} salles`,
   clubConstraints: (constraints: number) => `${constraints} contraintes`,
-  clubSolverSummary: (generations: number, rate: string) => `${generations} générations · ${rate} inf.`,
+  // Le nombre de générations vit dans un <span> stylé (gras/blanc) à côté : pour garder ce DOM
+  // byte-identique, la fonction ne rend QUE le fragment qui SUIT le nombre (espace de tête compris).
+  clubSolverSummary: (rate: string) => ` générations · ${rate} inf.`,
   clubSolverPercentiles: (p50: string, p95: string) => `P50 ${p50} · P95 ${p95}`,
   clubLatestStatus: (status: string) => `Dernière : ${status}`,
 
