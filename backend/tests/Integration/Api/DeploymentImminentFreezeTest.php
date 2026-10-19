@@ -183,6 +183,39 @@ final class DeploymentImminentFreezeTest extends WebTestCase
         self::assertResponseStatusCodeSame(202, 'un déploiement annulé ne gèle aucun guichet');
     }
 
+    /**
+     * SÉCURITÉ (horloge simulée, liste fermée §7) — LE GEL SUIT L'HORLOGE RÉELLE, JAMAIS CELLE D'UN
+     * CLUB DÉMO. Un gestionnaire d'un club DÉMO daté LOIN dans le futur (`simulated_today` +30 j) ne
+     * doit PAS être gelé par un déploiement encore futur en temps RÉEL (+2 j) : la mise en prod est
+     * un fait PLATEFORME en temps réel, pas une date de club. Sans l'horloge réelle, `isFrozen()`
+     * comparerait la date SIMULÉE (+30 j) au `scheduled_at` réel (+2 j) → gel à tort.
+     */
+    public function testADemoClubFutureSimulatedClockNeverFreezesAgainstAFutureRealDeployment(): void
+    {
+        $this->seedDeployment('scheduled', '+2 days'); // pas encore à H en temps RÉEL
+        [$token, $versionId] = $this->bootDemoClub(new DateTimeImmutable('+30 days'));
+
+        $this->requestAs($token, 'POST', '/api/schedules/' . $versionId . '/generate');
+
+        self::assertResponseStatusCodeSame(202, 'le gel suit l\'horloge RÉELLE : l\'horloge simulée future d\'un club démo ne gèle pas un déploiement encore futur');
+    }
+
+    /**
+     * SÉCURITÉ (horloge simulée) — symétrique : un club DÉMO daté LOIN dans le passé
+     * (`simulated_today` −30 j) EST tout de même gelé par un déploiement DÉJÀ à H en temps RÉEL
+     * (−2 min). L'horloge simulée passée ne doit pas « déverrouiller » un gel réel.
+     */
+    public function testADemoClubPastSimulatedClockIsStillFrozenByADueRealDeployment(): void
+    {
+        $this->seedDeployment('scheduled', '-2 minutes'); // DÉJÀ à H en temps RÉEL
+        [$token, $versionId] = $this->bootDemoClub(new DateTimeImmutable('-30 days'));
+
+        $this->requestAs($token, 'POST', '/api/schedules/' . $versionId . '/generate');
+
+        self::assertResponseStatusCodeSame(409, 'le gel réel tient même pour un club démo daté dans le passé');
+        self::assertSame(self::FREEZE_MESSAGE, $this->responseError());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -297,8 +330,76 @@ final class DeploymentImminentFreezeTest extends WebTestCase
 
     private function request(string $method, string $uri): void
     {
+        $this->requestAs($this->token, $method, $uri);
+    }
+
+    private function requestAs(string $token, string $method, string $uri): void
+    {
         $this->client->request($method, $uri, [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
         ]);
+    }
+
+    /**
+     * Un club DÉMONSTRATION à horloge simulée + son gestionnaire + une version de travail COMPLETED,
+     * décor jetable (rollback DAMA). Renvoie [token JWT, id de la version].
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function bootDemoClub(DateTimeImmutable $simulatedToday): array
+    {
+        $container = self::getContainer();
+        $hasher = $container->get('security.user_password_hasher');
+        $uid = uniqid('', true);
+
+        // CHECK `simulated_today IS NULL OR is_demo` : is_demo AVANT (même INSERT) la date simulée.
+        $club = (new Club)
+            ->setName('Club démo gel')
+            ->setSlug('cdgd-' . $uid)
+            ->setTimezone('Europe/Paris')
+            ->setLocale('fr')
+            ->setOnboardingCompleted(true)
+            ->setIsDemo(true)
+            ->setSimulatedToday($simulatedToday);
+        $this->em->persist($club);
+
+        $user = new User;
+        $user->setEmail('cdgd-' . $uid . '@test.com');
+        $user->setFirstName('Demo');
+        $user->setLastName('Clock');
+        $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
+        $this->em->persist($user);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->persist((new ClubUser)
+            ->setClubId($club->getId())
+            ->setUserId($user->getId())
+            ->setRole('admin')
+            ->setIsActive(true));
+
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $season = (new Season)
+            ->setClubId($club->getId())
+            ->setName((string) $year)
+            ->setStartDate(new DateTimeImmutable($year . '-08-01'))
+            ->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'))
+            ->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+        $this->em->flush();
+        $this->provisionSeasonPlan($season);
+
+        $version = (new Schedule)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setName('V démo')
+            ->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($version);
+        $this->em->flush();
+
+        $token = $container->get(JWTTokenManagerInterface::class)->create($user);
+
+        return [$token, $version->getId()];
     }
 }
