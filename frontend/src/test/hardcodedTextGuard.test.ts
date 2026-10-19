@@ -68,6 +68,16 @@ const MIGRATED_FILES = [
   "features/wizard/steps/TravelMatrixModal.tsx",
   "features/club/ClubPage.tsx",
   "features/planning/ClubViewTable.tsx",
+  // P4-346 PR A — coquille de la console superadmin migrée dans features/admin/texts/dashboard.ts.
+  // Les 4 .tsx RED naturellement (texte JSX / attributs policés) ; tabsConfig.ts et queries.ts sont
+  // listés pour la complétude de la migration mais la garde y est AVEUGLE (labels `attr: "…"` et
+  // toasts `toast.error("…")`, hors des trois détecteurs) — leur migration relève de la revue.
+  "features/admin/AdminDashboardPage.tsx",
+  "features/admin/AdminShell.tsx",
+  "features/admin/AdminLoginPage.tsx",
+  "features/admin/AdminAuthLayout.tsx",
+  "features/admin/tabs/tabsConfig.ts",
+  "features/admin/queries.ts",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.

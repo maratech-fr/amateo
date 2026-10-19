@@ -7,6 +7,7 @@ import { expectNoA11yViolations, renderWithProviders } from "@/test/utils";
 import { logoutAdmin } from "./api";
 import { AdminShell } from "./AdminShell";
 import { useAdminStore } from "./store";
+import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
 
 vi.mock("./api", () => ({ logoutAdmin: vi.fn() }));
 
@@ -24,7 +25,7 @@ describe("AdminShell", () => {
     renderWithProviders(<AdminShell />);
 
     expect(screen.getByText("ops@example.test")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /sortir/i }));
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.shellLogout }));
 
     expect(logout).toHaveBeenCalledWith("csrf-123");
     expect(useAdminStore.getState().identity).toBeNull();

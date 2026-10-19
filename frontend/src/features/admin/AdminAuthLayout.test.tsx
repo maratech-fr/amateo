@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { PRODUCT_NAME } from "@/shared/lib/product";
 import { AdminAuthLayout } from "./AdminAuthLayout";
+import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
 
 describe("AdminAuthLayout — logo console", () => {
   it("porte le logotype produit (nommé PRODUCT_NAME), pas le nom en texte nu", () => {
@@ -14,6 +15,6 @@ describe("AdminAuthLayout — logo console", () => {
     expect(screen.getByRole("img", { name: PRODUCT_NAME })).toBeInTheDocument();
     expect(screen.queryByText(PRODUCT_NAME)).toBeNull();
     // La console garde son sous-titre.
-    expect(screen.getByText("Console sécurisée")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.authSecureConsole)).toBeInTheDocument();
   });
 });
