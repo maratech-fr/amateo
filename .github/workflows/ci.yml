@@ -1105,6 +1105,16 @@ jobs:
       - name: CoachWishTransferTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/CoachWishTransferTest.php --group phase1'
 
+      # NR d'axe GENERATION PIPELINE (P4-350) — quand une mise en production est IMMINENTE (un
+      # déploiement actif dont l'heure H est atteinte), les QUATRE guichets qui enfilent un solve
+      # (générer, régénérer, combler un plan de période, placer des matchs) refusent 409 avec un
+      # message EXACT, SANS rien enfiler et SANS fuiter la version/l'acteur/« GitHub ». Falsifié
+      # PAR GUICHET (quatre chemins d'écriture distincts). Un déploiement futur ou annulé ne gèle
+      # rien. Sans ce gate, un solve lancé pendant la bascule de maintenance corromprait un run
+      # au moment du déploiement, invisible aux autres checks.
+      - name: DeploymentImminentFreezeTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/DeploymentImminentFreezeTest.php --group phase1'
+
   # Backend : UN SEUL passage de la suite PHPUnit COMPLÈTE (`phpunit tests/ --exclude-group
   # contract`), instrumenté par pcov, avec le cliquet de couverture — remplace les ex-jobs
   # `unit-tests` ET `backend-coverage` qui jouaient DEUX FOIS la même suite (P4-166 ; fusion
