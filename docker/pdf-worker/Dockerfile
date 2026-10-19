@@ -28,6 +28,19 @@ COPY frontend/worker.js ./worker.js
 # Heartbeat admin (builtins uniquement — AUCUNE dépendance npm, voir worker-heartbeat.js).
 COPY frontend/worker-heartbeat.js ./worker-heartbeat.js
 
+# CVE-2026-13221 (2026-10-19) — 12 CRITICAL sur perl/perl-base/libperl5.36/
+# perl-modules-5.36 en 5.36.0-7+deb12u3, corrigé par Debian en 5.36.0-7+deb12u4 et
+# hérité de la base Debian 12 de l'image puppeteer. Le correctif existe déjà dans apt
+# mais la base puppeteer n'a pas encore été reconstruite dessus : on monte ces seuls
+# paquets sur place. L'image puppeteer tourne en pptruser (non-root), apt exige root
+# → USER root le temps du RUN, puis on redescend en pptruser juste après.
+# ⚠ À RETIRER quand Dependabot montera une base puppeteer embarquant deb12u4 (le FROM).
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+        perl perl-base libperl5.36 perl-modules-5.36 \
+    && rm -rf /var/lib/apt/lists/*
+
 # SEC-15 — défaut NON-ROOT : pptruser est l'utilisateur prévu par l'image
 # puppeteer (sandbox Chromium comprise). Les deux composes l'écrasent
 # explicitement (dev : uid hôte pour créer public/exports sur le bind-mount ;

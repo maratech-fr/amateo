@@ -5,7 +5,7 @@ import type { EvictFailureKind } from "../EvictConfirmDialog";
 import type { MoveFeedback } from "../SlotDetail";
 import type { ViewMode } from "../store";
 import { toast } from "@/shared/stores/toastStore";
-import { useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveGroupDryRun, useMoveSlot, useMutualizeAtCase, usePlaceSlot, useSwapDryRun, useSwapSlot } from "../queries";
+import { isBusinessSlotEditError, useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveGroupDryRun, useMoveSlot, useMutualizeAtCase, usePlaceSlot, useSwapDryRun, useSwapSlot } from "../queries";
 import type { DriftEntry } from "./drift";
 import { isEmptySlotId } from "./emptySlots";
 import { toHourMinute } from "./grid";
@@ -900,16 +900,28 @@ export function useRetouchGestures(
                 setEvictionNotice(null);
                 toast.success("Dernier geste annulé.");
               },
-              onError: () => {
-                // La source est revenue mais l'évincée n'a pas pu être replacée : on le dit sans mentir.
+              onError: (error) => {
+                // La source est revenue mais l'évincée n'a pas pu être replacée. Les états éphémères
+                // retombent INCONDITIONNELLEMENT ; le toast CONTEXTUEL ne vit que sur une erreur MÉTIER
+                // (le hook, lui, toaste le transport — ne jamais le doubler ici, P4-306).
                 setUndo(null);
                 setEvictionNotice(null);
-                toast.error(`${teamNameOf(current.sourceTeamId)} est revenue, ${teamNameOf(current.evicted.teamId)} reste à replacer.`);
+                if (isBusinessSlotEditError(error)) {
+                  toast.error(`${teamNameOf(current.sourceTeamId)} est revenue, ${teamNameOf(current.evicted.teamId)} reste à replacer.`);
+                }
               },
             },
           );
         },
-        onError: () => toast.error("Annulation impossible — réessayez."),
+        onError: (error) => {
+          // États éphémères remis à null INCONDITIONNELLEMENT ; le toast CONTEXTUEL ne vit que sur une
+          // erreur MÉTIER — le transport est déjà toasté par le hook (ne pas le doubler, P4-306).
+          setUndo(null);
+          setEvictionNotice(null);
+          if (isBusinessSlotEditError(error)) {
+            toast.error("Annulation impossible — réessayez.");
+          }
+        },
       },
     );
   };
@@ -930,7 +942,16 @@ export function useRetouchGestures(
           setCompromiseNotice(compromises.length > 0 ? compromises : null);
           toast.success(compromises.length > 0 ? `${teamNameOf(evicted.teamId)} replacée — ${compromises.length} compromis` : `${teamNameOf(evicted.teamId)} replacée.`);
         },
-        onError: (error) => toast.error(error instanceof MoveRejectedError ? (error.violations[0]?.message ?? "Replacement refusé par le moteur.") : "Replacement impossible — réessayez."),
+        onError: (error) => {
+          // États éphémères remis à null INCONDITIONNELLEMENT ; le toast ne vit que sur une erreur
+          // MÉTIER (message de la violation, sinon branche générique) — le transport est déjà toasté
+          // par le hook, ne pas le doubler (P4-306).
+          setEvictionNotice(null);
+          setUndo(null);
+          if (isBusinessSlotEditError(error)) {
+            toast.error(error instanceof MoveRejectedError ? (error.violations[0]?.message ?? "Replacement refusé par le moteur.") : "Replacement impossible — réessayez.");
+          }
+        },
       },
     );
   };

@@ -40,6 +40,34 @@ async function getJson(page: Page, path: string): Promise<unknown> {
 }
 
 /**
+ * Arme l'attente du refetch GET `/api/venues` déclenché par `useCreateVenue`
+ * (`invalidateEverywhere(queryClient, "venues")`, queries.ts:202). À APPELER juste AVANT
+ * le clic « Ajouter un gymnase », puis à `await` juste après : le témoin texte du sélecteur
+ * ne peut afficher le gymnase créé qu'une fois CE GET revenu, et son propre `timeout` ne doit
+ * donc partir que de là — pas du clic (sous charge CI le GET traîne au-delà d'une petite marge,
+ * ce qui faisait flaker le témoin direct, P4-343).
+ *
+ * Ne matche QUE le refetch navigateur : méthode GET (le POST de création partage le pathname),
+ * pathname exact `/api/venues` (le `?page=` de `collectionAll` est ignoré), statut 200. Les
+ * lectures ultérieures via `page.request` (`/api/venues?itemsPerPage=50`) ne lèvent pas
+ * d'événement de page, donc ne peuvent pas être prises pour ce refetch.
+ */
+function awaitVenuesRefetch(page: Page) {
+  return page
+    .waitForResponse(
+      (r) => {
+        try {
+          return "GET" === r.request().method() && "/api/venues" === new URL(r.url()).pathname && 200 === r.status();
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 30_000 },
+    )
+    .catch(() => null);
+}
+
+/**
  * **LE parcours de bout en bout (audit P0.2, FRT-05), sur un club RÉALISTE de 10 équipes.**
  *
  * « Travailler avec une équipe n'a aucun sens — un petit club c'est 10-12 équipes » (fondateur) :
@@ -111,13 +139,17 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
   //     2 séances = 20 placements, il faut de la marge. Le geste reste réel, le volume reste robuste.
   await expect(page.getByRole("heading", { name: /Étape 2\/6/ })).toBeVisible();
   await page.getByLabel("Nom du gymnase").fill("Gymnase A");
+  // Armé AVANT le clic : le sélecteur n'affiche le gymnase créé qu'APRÈS le refetch de
+  // `/api/venues` (invalidé dans `useCreateVenue`, queries.ts:202) — `VenuesStep.tsx:430`
+  // fait `setSelectedId(created.id)`, mais `selected` (VenuesStep.tsx:317) le résout contre
+  // la liste `venues` ENCORE en cache tant que le GET n'est pas revenu. On attend donc ce GET,
+  // puis seulement le témoin texte — dont les 15 s partent de la liste à jour, pas du clic.
+  const venuesRefetchA = awaitVenuesRefetch(page);
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
-  // ⚑ 15 s (pas 5 s) : le sélecteur n'affiche le gymnase créé qu'APRÈS le refetch de
-  // `/api/venues` (invalidé dans `useCreateVenue`, queries.ts:201) — `VenuesStep.tsx:402`
-  // fait `setSelectedId(created.id)`, mais `selected` (VenuesStep.tsx:312) le résout contre
-  // la liste `venues` ENCORE en cache tant que le GET n'est pas revenu. C'est un témoin lié au
-  // réseau, comme tous les autres de ce fichier (import 15 s, listes 20 s) ; sous charge CI le
-  // GET dépasse 5 s (run 38591293403 tentative 1, les 3 essais rouges au même endroit).
+  expect(
+    await venuesRefetchA,
+    "Gymnase A : le refetch GET /api/venues n'est jamais revenu après « Ajouter un gymnase » — la liste des gymnases ne peut pas s'actualiser.",
+  ).not.toBeNull();
   await expect(page.getByLabel("Gymnase", { exact: true })).toContainText("Gymnase A", { timeout: 15_000 });
   await expect(page.getByText(/cliquez la grille pour ajouter un créneau/i)).toBeVisible();
   // Refus « finirait après minuit » (150 min à 22:45) — la grille reste intacte, aucun créneau posé.
@@ -130,11 +162,16 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
 
   // Second gymnase + un créneau à la grille (Mar 18:00 sur B).
   await page.getByLabel("Nom du gymnase").fill("Gymnase B");
+  // Même attente de refetch qu'au Gymnase A. ⚠ Ici le sélecteur n'est PAS vide en attendant :
+  // le repli `?? venues[0]` (VenuesStep.tsx:317) le laisse sur le gymnase PRÉCÉDENT (« Gymnase A »)
+  // jusqu'à ce que le refetch ramène B — on ATTEND donc le GET puis que B soit bien le courant
+  // AVANT de poser le créneau à la grille (sinon « Mar 18:00 » tomberait sur A).
+  const venuesRefetchB = awaitVenuesRefetch(page);
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
-  // Même témoin réseau qu'au Gymnase A ci-dessus (15 s). ⚠ Ici le sélecteur n'est PAS vide en
-  // attendant : le repli `?? venues[0]` (VenuesStep.tsx:312) le laisse sur le gymnase
-  // PRÉCÉDENT (« Gymnase A ») jusqu'à ce que le refetch ramène B — donc on ATTEND que B soit
-  // bien le courant AVANT de poser le créneau à la grille (sinon « Mar 18:00 » tomberait sur A).
+  expect(
+    await venuesRefetchB,
+    "Gymnase B : le refetch GET /api/venues n'est jamais revenu après « Ajouter un gymnase » — la liste des gymnases ne peut pas s'actualiser.",
+  ).not.toBeNull();
   await expect(page.getByLabel("Gymnase", { exact: true })).toContainText("Gymnase B", { timeout: 15_000 });
   await page.getByRole("button", { name: "Mar 18:00", exact: true }).click();
 

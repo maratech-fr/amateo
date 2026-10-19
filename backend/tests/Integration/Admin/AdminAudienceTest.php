@@ -38,10 +38,9 @@ use Symfony\Component\Uid\Uuid;
  * boot (patron {@see ScheduledDeploymentTest}, résolution `%env%` au runtime).
  *
  * ⚠ `cache.app` est le pool Redis tag-aware MÊME en test (prouvé : `debug:container cache.app`
- * → `TraceableTagAwareCacheAdapter`). Le dossier `config/packages/when@test/` qui prétend le
- * basculer en `cache.adapter.array` n'est PAS chargé : le kernel (MicroKernelTrait) globe
- * `packages/*.yaml` + `packages/test/*.yaml`, jamais un SOUS-dossier `when@test/` (constat latent
- * noté en roadmap, hors de ce correctif). Deux conséquences portées par le test :
+ * → `TraceableTagAwareCacheAdapter`) : aucun réglage ne le bascule en `cache.adapter.array`, le
+ * kernel (MicroKernelTrait) ne globant que `packages/*.yaml` + `packages/test/*.yaml`. Deux
+ * conséquences portées par le test :
  *  - Redis survit aux reboots ET d'une méthode à l'autre : un succès mis en cache par un test
  *    POLLUERAIT les suivants → chaque {@see self::boot()} purge la clé {@see self::CACHE_KEY}
  *    (DEL CIBLÉ de la seule clé du service, JAMAIS `FLUSHALL`), pour partir d'un cache FROID ;

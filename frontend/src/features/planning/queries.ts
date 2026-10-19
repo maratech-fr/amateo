@@ -57,7 +57,7 @@ function onSlotEditError(queryClient: QueryClient, error: unknown): void {
  * réseau va bien). Ici le HOOK possède son feedback : il TAIT les erreurs métier (la page les
  * affiche) et ne parle que d'un vrai échec transport — remplaçant le filet, jamais le doublant.
  */
-const isBusinessSlotEditError = (error: unknown): boolean =>
+export const isBusinessSlotEditError = (error: unknown): boolean =>
   error instanceof MoveRejectedError ||
   error instanceof TargetLockedError ||
   error instanceof SlotEditError ||
