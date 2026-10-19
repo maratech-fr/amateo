@@ -9,6 +9,7 @@ import type { AdminActionsResponse, AdminClubsResponse, AdminFeedbackResponse, A
 import { getAdminActions, getAdminClubs, getAdminFeedback, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminOverview, getAdminSystemErrors, runAdminClubAction, runAdminJob } from "./api";
 import { AdminDashboardPage } from "./AdminDashboardPage";
 import { useAdminStore } from "./store";
+import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
 
 vi.mock("./api", async (importOriginal) => {
   const original = await importOriginal<typeof import("./api")>();
@@ -259,13 +260,13 @@ describe("AdminDashboardPage", () => {
 
     expect(await screen.findByText("Basket Club des Lacs")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
-    expect(screen.getByText("Base de données")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.healthServiceDatabase)).toBeInTheDocument();
     expect(screen.getByText("Découverte")).toBeInTheDocument();
     expect(screen.getByText("Rappels de périodes")).toBeInTheDocument();
-    expect(screen.getByText("Quotidien")).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Prochain passage", hidden: true })).toBeInTheDocument();
-    expect(screen.getByText("Réussi")).toBeInTheDocument();
-    expect(screen.getAllByText("Jamais exécuté")).toHaveLength(2);
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.cadenceDaily)).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: ADMIN_DASHBOARD_TEXTS.jobColNextRun, hidden: true })).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.jobStatusLabel("succeeded"))).toBeInTheDocument();
+    expect(screen.getAllByText(ADMIN_DASHBOARD_TEXTS.jobNeverRun)).toHaveLength(2);
     expect(mockOverview).toHaveBeenCalledOnce();
     expect(mockHealth).toHaveBeenCalledOnce();
     expect(mockJobs).toHaveBeenCalledOnce();
@@ -302,7 +303,7 @@ describe("AdminDashboardPage", () => {
     expect(await screen.findByText("BCCL (Bêta non réglée)")).toBeInTheDocument();
     // Le badge de l'offre non réglée dit l'EFFECTIVE (Découverte), jamais « Payant ».
     expect(screen.getByText("Découverte")).toBeInTheDocument();
-    expect(screen.getByText("Bêta posée — saison non réglée")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.clubPlanDiverges("Bêta"))).toBeInTheDocument();
     expect(screen.queryByText("Payant")).not.toBeInTheDocument();
     // L'offre réglée affiche « Bêta » (badge seul, aucun sous-texte de divergence).
     expect(screen.getByText("Bêta")).toBeInTheDocument();
@@ -311,19 +312,20 @@ describe("AdminDashboardPage", () => {
   it("renders the usage stats: plans by type, time-to-close and club sizes (SA2-stats)", async () => {
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=statistiques" });
 
-    expect(await screen.findByText("Plans, clôtures et tailles de clubs")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_DASHBOARD_TEXTS.usageHeading)).toBeInTheDocument();
     // Plans par type (libellés FR — « Saison » apparaît aussi dans la carte solveur) + « dont validés ».
-    expect(screen.getAllByText("Saison").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText("Vacances")).toBeInTheDocument();
-    expect(screen.getByText(/dont 11 validés/)).toBeInTheDocument();
+    expect(screen.getAllByText(ADMIN_DASHBOARD_TEXTS.planTypeLabel("SEASON")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.planTypeLabel("HOLIDAY"))).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.usagePlansValidated(11))).toBeInTheDocument();
     // Temps de clôture : création → 1re validation (36 h médiane saison ; P95 320 h → « 13 j » ;
     // une clôture de période en 25 min s'affiche en minutes, plus jamais « 0 h »).
+    // (36 h / 13 j / 25 min = sorties de formatMinutes — durées, hors texts centralisés.)
     expect(screen.getByText("36 h")).toBeInTheDocument();
     expect(screen.getByText("13 j")).toBeInTheDocument();
     expect(screen.getByText("25 min")).toBeInTheDocument();
-    expect(screen.getByText(/11 saisons · 9 périodes clôturées/)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.usageCloseCounts(11, 9))).toBeInTheDocument();
     // Tailles de clubs : tranches + médiane gymnases.
-    expect(screen.getByRole("columnheader", { name: "Gymnases (médiane)" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: ADMIN_DASHBOARD_TEXTS.usageColVenuesMedian })).toBeInTheDocument();
     expect(screen.getByText("11-20")).toBeInTheDocument();
   });
 
@@ -333,29 +335,29 @@ describe("AdminDashboardPage", () => {
     mockOverview.mockReset().mockResolvedValue(legacyOverview);
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
 
-    expect(await screen.findByText("Les statistiques d’usage sont indisponibles.")).toBeInTheDocument();
-    expect(screen.queryByText("Plans, clôtures et tailles de clubs")).not.toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_DASHBOARD_TEXTS.usageError)).toBeInTheDocument();
+    expect(screen.queryByText(ADMIN_DASHBOARD_TEXTS.usageHeading)).not.toBeInTheDocument();
   });
 
   it("renders the data-freshness board: up-to-date, stale and never-imported referentials", async () => {
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
 
-    expect(await screen.findByText("Fraîcheur des données")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_DASHBOARD_TEXTS.freshnessHeading)).toBeInTheDocument();
     expect(screen.getByText("Vacances scolaires")).toBeInTheDocument();
-    expect(screen.getByText("À jour")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.freshnessFresh)).toBeInTheDocument();
     // Deux référentiels périmés (dont un jamais importé — fail-visible).
-    expect(screen.getAllByText("Périmé")).toHaveLength(2);
-    expect(screen.getByText("Jamais importé")).toBeInTheDocument();
+    expect(screen.getAllByText(ADMIN_DASHBOARD_TEXTS.freshnessStale)).toHaveLength(2);
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.freshnessNeverImported)).toBeInTheDocument();
   });
 
   it("runs a non-dangerous support action from the club row after a simple confirm (SA4)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
 
-    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions }));
     await user.click(await screen.findByRole("button", { name: /Réinitialiser les crédits de sortie/ }));
     // Non-dangerous : pas de saisie nominative, exécution directe.
-    await user.click(screen.getByRole("button", { name: "Exécuter" }));
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute }));
 
     await waitFor(() => expect(mockRunClubAction).toHaveBeenCalledWith("club-1", "reset-credits", "csrf-123"));
   });
@@ -364,18 +366,18 @@ describe("AdminDashboardPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
 
-    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions }));
     await user.click(await screen.findByRole("button", { name: /Réinitialiser la saison courante/ }));
 
     // Tant que le nom exact n'est pas tapé, le bouton reste désactivé — le clic
     // réflexe ne détruit jamais une saison.
-    const execute = screen.getByRole("button", { name: "Exécuter" });
+    const execute = screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute });
     expect(execute).toBeDisabled();
-    await user.type(screen.getByLabelText(/tapez le nom exact du club/i), "Mauvais nom");
+    await user.type(screen.getByLabelText(ADMIN_DASHBOARD_TEXTS.clubActionDangerConfirmLabel("Basket Club des Lacs")), "Mauvais nom");
     expect(execute).toBeDisabled();
 
-    await user.clear(screen.getByLabelText(/tapez le nom exact du club/i));
-    await user.type(screen.getByLabelText(/tapez le nom exact du club/i), "Basket Club des Lacs");
+    await user.clear(screen.getByLabelText(ADMIN_DASHBOARD_TEXTS.clubActionDangerConfirmLabel("Basket Club des Lacs")));
+    await user.type(screen.getByLabelText(ADMIN_DASHBOARD_TEXTS.clubActionDangerConfirmLabel("Basket Club des Lacs")), "Basket Club des Lacs");
     expect(execute).toBeEnabled();
     await user.click(execute);
 
@@ -386,8 +388,8 @@ describe("AdminDashboardPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
 
-    await user.click(await screen.findByRole("button", { name: "Actions" }));
-    const dialog = await screen.findByRole("dialog", { name: /Actions support/ });
+    await user.click(await screen.findByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions }));
+    const dialog = await screen.findByRole("dialog", { name: ADMIN_DASHBOARD_TEXTS.clubActionsModalTitle("Basket Club des Lacs") });
     // Le catalogue est FERMÉ : exactement 6 entrées, dont l'unique bouton « Offre » (A3).
     expect(within(dialog).getAllByRole("listitem")).toHaveLength(6);
     expect(within(dialog).getByRole("button", { name: /^Offre/ })).toBeInTheDocument();
@@ -397,34 +399,34 @@ describe("AdminDashboardPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
 
-    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions }));
     await user.click(await screen.findByRole("button", { name: /^Offre/ }));
 
     // Le picker d'offre n'offre QUE les codes servis par le schéma (aucune liste en dur).
     const planPicker = screen.getByLabelText("Offre", { selector: "select" });
     const planOptions = within(planPicker).getAllByRole("option").map((option) => option.textContent);
-    expect(planOptions).toEqual(["Choisir…", "Découverte", "Essentiel", "Club", "Grand club", "Sans limite", "Bêta"]);
+    expect(planOptions).toEqual([ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder, "Découverte", "Essentiel", "Club", "Grand club", "Sans limite", "Bêta"]);
 
     // Tant que l'offre n'est pas choisie, pas de sélecteur de saison ; le bouton reste bloqué.
     expect(screen.queryByLabelText("Saison encaissée")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Exécuter" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeDisabled();
 
     await user.selectOptions(planPicker, "essentiel");
     // Offre payante → la saison encaissée APPARAÎT et devient exigée : soumission
     // impossible tant qu'elle n'est pas choisie.
     const seasonPicker = screen.getByLabelText("Saison encaissée", { selector: "select" });
-    expect(screen.getByRole("button", { name: "Exécuter" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeDisabled();
     await user.selectOptions(seasonPicker, "next");
-    expect(screen.getByRole("button", { name: "Exécuter" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeEnabled();
 
     // Popup de confirmation OBLIGATOIRE, nommant l'offre et la saison, avant tout envoi.
-    await user.click(screen.getByRole("button", { name: "Exécuter" }));
-    const confirm = await screen.findByRole("dialog", { name: /Confirmer : Offre/ });
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute }));
+    const confirm = await screen.findByRole("dialog", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmTitle("Offre") });
     expect(within(confirm).getByText(/Essentiel/)).toBeInTheDocument();
     expect(within(confirm).getByText(/Saison suivante/)).toBeInTheDocument();
     expect(mockRunClubAction).not.toHaveBeenCalled();
 
-    await user.click(within(confirm).getByRole("button", { name: "Confirmer l’attribution" }));
+    await user.click(within(confirm).getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmAttribution }));
     await waitFor(() => expect(mockRunClubAction).toHaveBeenCalledWith("club-1", "set-plan", "csrf-123", { plan: "essentiel", paidSeason: "next" }));
   });
 
@@ -432,17 +434,17 @@ describe("AdminDashboardPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
 
-    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions }));
     await user.click(await screen.findByRole("button", { name: /^Offre/ }));
 
     await user.selectOptions(screen.getByLabelText("Offre", { selector: "select" }), "decouverte");
     // Découverte : aucune saison à encaisser → pas de sélecteur, exécution possible directe.
     expect(screen.queryByLabelText("Saison encaissée")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Exécuter" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "Exécuter" }));
-    const confirm = await screen.findByRole("dialog", { name: /Confirmer : Offre/ });
-    await user.click(within(confirm).getByRole("button", { name: "Confirmer l’attribution" }));
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute }));
+    const confirm = await screen.findByRole("dialog", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmTitle("Offre") });
+    await user.click(within(confirm).getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmAttribution }));
     // Le corps envoyé ne porte QUE l'offre — jamais paidSeason sur Découverte.
     await waitFor(() => expect(mockRunClubAction).toHaveBeenCalledWith("club-1", "set-plan", "csrf-123", { plan: "decouverte" }));
   });
@@ -452,11 +454,11 @@ describe("AdminDashboardPage", () => {
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
     await screen.findByText("Basket Club des Lacs");
 
-    await user.type(screen.getByRole("searchbox", { name: /rechercher un club/i }), "  Lacs  ");
-    await user.click(screen.getByRole("button", { name: "Rechercher" }));
+    await user.type(screen.getByRole("searchbox", { name: ADMIN_DASHBOARD_TEXTS.clubSearchLabel }), "  Lacs  ");
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubSearchSubmit }));
     await waitFor(() => expect(mockClubs).toHaveBeenCalledWith(1, 25, "Lacs"));
 
-    await user.click(screen.getByRole("button", { name: "Page suivante" }));
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubPageNext }));
     await waitFor(() => expect(mockClubs).toHaveBeenCalledWith(2, 25, "Lacs"));
   }, 10_000);
 
@@ -465,7 +467,7 @@ describe("AdminDashboardPage", () => {
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
     await screen.findByText("Basket Club des Lacs");
 
-    await user.click(screen.getByRole("button", { name: "Actualiser" }));
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.refresh }));
 
     await waitFor(() => {
       expect(mockOverview).toHaveBeenCalledTimes(2);
@@ -480,12 +482,12 @@ describe("AdminDashboardPage", () => {
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=jobs" });
     await screen.findByText("Import des vacances scolaires");
 
-    expect(screen.getAllByText("Supervision seule")).toHaveLength(2);
-    await user.click(screen.getByRole("button", { name: "Relancer" }));
-    expect(screen.getByRole("dialog", { name: "Relancer cet import ?" })).toBeInTheDocument();
+    expect(screen.getAllByText(ADMIN_DASHBOARD_TEXTS.jobSupervisionOnly)).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.jobRerun }));
+    expect(screen.getByRole("dialog", { name: ADMIN_DASHBOARD_TEXTS.jobConfirmTitle })).toBeInTheDocument();
     expect(mockRunJob).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Relancer l’import" }));
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.jobConfirmLabel }));
     await waitFor(() => expect(mockRunJob).toHaveBeenCalledWith("import-school-holidays", "csrf-123"));
     await waitFor(() => expect(mockJobs).toHaveBeenCalledTimes(2));
   });
@@ -511,25 +513,25 @@ describe("AdminDashboardPage", () => {
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=jobs" });
 
     expect(await screen.findByText("Contrôle de restauration")).toBeInTheDocument();
-    expect(screen.getByText("Hebdomadaire")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.cadenceWeekly)).toBeInTheDocument();
   });
 
   it("keeps the other monitoring panels visible when health fails", async () => {
     mockHealth.mockRejectedValue(new Error("health unavailable"));
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
 
-    expect(await screen.findByText("La santé technique est indisponible.")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_DASHBOARD_TEXTS.healthError)).toBeInTheDocument();
     expect(screen.getByText("Basket Club des Lacs")).toBeInTheDocument();
-    expect(screen.getByText("Activité globale")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.overviewEyebrow)).toBeInTheDocument();
   });
 
   it("keeps the other monitoring panels visible when jobs fail", async () => {
     mockJobs.mockRejectedValue(new Error("jobs unavailable"));
     renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
 
-    expect(await screen.findByText("Les jobs opérationnels sont indisponibles.")).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_DASHBOARD_TEXTS.jobsError)).toBeInTheDocument();
     expect(screen.getByText("Basket Club des Lacs")).toBeInTheDocument();
-    expect(screen.getByText("Santé technique")).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.healthHeading)).toBeInTheDocument();
   });
 
   it("shows an explicit empty search result", async () => {
@@ -537,10 +539,10 @@ describe("AdminDashboardPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
 
-    await user.type(screen.getByRole("searchbox", { name: /rechercher un club/i }), "introuvable");
-    await user.click(screen.getByRole("button", { name: "Rechercher" }));
+    await user.type(screen.getByRole("searchbox", { name: ADMIN_DASHBOARD_TEXTS.clubSearchLabel }), "introuvable");
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubSearchSubmit }));
 
-    expect(await screen.findByText("Aucun club ne correspond à « introuvable »." )).toBeInTheDocument();
+    expect(await screen.findByText(ADMIN_DASHBOARD_TEXTS.clubsEmptySearch("introuvable"))).toBeInTheDocument();
   });
 
   it("has no structural accessibility violations with populated data", async () => {
@@ -773,7 +775,7 @@ describe("AdminDashboardPage", () => {
 
       // Le bouton Actions reste accessible dans la ligne, dépliée.
       const row = screen.getByText("Union Sportive de Test").closest("tr") as HTMLElement;
-      expect(within(row).getByRole("button", { name: "Actions" })).toBeInTheDocument();
+      expect(within(row).getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions })).toBeInTheDocument();
     });
 
     it("montre la première raison du signal sur la ligne et toutes les raisons au détail", async () => {
@@ -814,7 +816,7 @@ describe("AdminDashboardPage", () => {
       expect(within(clubsTable()).getAllByText("Onboarding en cours depuis 6 jours sans génération")).toHaveLength(1);
 
       const demoRow = screen.getByText("Club Démo Test").closest("tr") as HTMLElement;
-      expect(within(demoRow).getByRole("button", { name: "Actions" })).toBeInTheDocument();
+      expect(within(demoRow).getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions })).toBeInTheDocument();
     });
   });
 });

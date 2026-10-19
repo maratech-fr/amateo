@@ -8,6 +8,7 @@ use App\Tests\Integration\Admin\ScheduledDeploymentTest;
 use App\Tests\Integration\Command\DeploymentTickCommandTest;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 use Symfony\Contracts\HttpClient\ResponseStreamInterface;
@@ -33,6 +34,13 @@ use Symfony\Contracts\HttpClient\ResponseStreamInterface;
 final class GitHubDeployHttpClientStub implements HttpClientInterface
 {
     /**
+     * Message BRUT d'une panne de transport (DNS, connexion refusée) — distinctif exprès : les
+     * tests d'abus ({@see ScheduledDeploymentTest::testATransportFailureNeverEchoesTheRawErrorNorTheToken})
+     * prouvent qu'il ne ressort JAMAIS dans une réponse HTTP ni un e-mail.
+     */
+    public const string TRANSPORT_ERROR = 'cURL error 7: Failed to connect to api.github.com port 443 — raw transport detail that must never surface';
+
+    /**
      * Les tags servis par `GET /repos/{repo}/tags` : name + sha du commit pointé. Seuls les
      * `^v*` sont des versions déployables (le CLIENT filtre), mais le double peut servir du
      * bruit (`main`, `sha-abc`) pour prouver le filtre.
@@ -45,6 +53,20 @@ final class GitHubDeployHttpClientStub implements HttpClientInterface
 
     /** Conclusion du dernier run `ci.yml` du head_sha interrogé (CI verte = `success`). */
     public static string $ciConclusion = 'success';
+
+    /**
+     * Quand ≠ null, `GET .../tags` répond ce code HTTP NON-2xx (p. ex. 403/404 : jeton révoqué,
+     * dépôt renommé) — GitHub « injoignable » au sens d'une réponse d'erreur. Le client lève alors
+     * {@see GitHubDeployException} ; la route sert `{items:[], available:false}`, le tick réessaie.
+     */
+    public static ?int $tagsFailStatus = null;
+
+    /**
+     * Quand true, TOUTE requête échoue au niveau TRANSPORT (le `getStatusCode()`/`toArray()` lève
+     * {@see TransportExceptionInterface} via l'info `error`
+     * de la MockResponse) — GitHub réellement injoignable (réseau), pas une réponse d'erreur.
+     */
+    public static bool $transportFails = false;
 
     /** Quand true, le POST de dispatch `deploy.yml` répond 500 (échec de dispatch). */
     public static bool $dispatchFails = false;
@@ -70,6 +92,11 @@ final class GitHubDeployHttpClientStub implements HttpClientInterface
     public function __construct()
     {
         $this->inner = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
+            // Panne RÉSEAU (toute requête) : l'info `error` d'une MockResponse fait lever une
+            // TransportException dès que le client touche la réponse (getStatusCode/toArray).
+            if (self::$transportFails) {
+                return new MockResponse('', ['error' => self::TRANSPORT_ERROR]);
+            }
             if (str_contains($url, '/workflows/deploy.yml/dispatches')) {
                 ++self::$dispatchCount;
                 self::$lastDispatchInputs = $this->decodeInputs($options['body'] ?? null);
@@ -94,6 +121,11 @@ final class GitHubDeployHttpClientStub implements HttpClientInterface
                 ]);
             }
             if (str_contains($url, '/tags')) {
+                if (null !== self::$tagsFailStatus) {
+                    // Réponse d'ERREUR (non-2xx) : le client lève GitHubDeployException.
+                    return new MockResponse('', ['http_code' => self::$tagsFailStatus]);
+                }
+
                 return $this->json(array_map(
                     static fn (array $tag): array => ['name' => $tag['name'], 'commit' => ['sha' => $tag['sha']]],
                     self::$tags,
@@ -108,6 +140,8 @@ final class GitHubDeployHttpClientStub implements HttpClientInterface
     {
         self::$tags = [['name' => 'v1.0.0', 'sha' => 'a1b2c3d4e5f60718293a4b5c6d7e8f9001122334']];
         self::$ciConclusion = 'success';
+        self::$tagsFailStatus = null;
+        self::$transportFails = false;
         self::$dispatchFails = false;
         self::$dispatchCount = 0;
         self::$lastDispatchInputs = null;

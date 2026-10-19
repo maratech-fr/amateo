@@ -6,11 +6,14 @@ namespace App\Command;
 
 use App\Entity\ScheduledDeployment;
 use App\Enum\DeploymentStatus;
+use App\Enum\MatchPlacementRunStatus;
+use App\Enum\ScheduleStatus;
 use App\Repository\ScheduledDeploymentRepository;
 use App\Service\GitHubDeployClient;
 use App\Service\GitHubDeployException;
 use App\Service\MailFrom;
 use App\Service\ProductIdentity;
+use DateTimeZone;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -46,7 +49,13 @@ use Symfony\Component\Mime\Email;
 )]
 final class DeploymentTickCommand extends Command
 {
+    /** Plafond d'attente d'une activité en cours (génération/placement) avant de forcer le départ. */
+    private const int WAIT_CAP_MINUTES = 10;
+
     private const int DISPATCH_RETRY_MINUTES = 10;
+
+    /** Fuseau d'affichage de l'heure de plafond dans la note de retard (audience superadmin FR). */
+    private const string DISPLAY_TIMEZONE = 'Europe/Paris';
 
     public function __construct(
         private readonly ManagerRegistry $registry,
@@ -88,34 +97,60 @@ final class DeploymentTickCommand extends Command
             return;
         }
 
+        // P4-348 — à H, une GÉNÉRATION (schedule GENERATING) ou un PLACEMENT (match_placement_run
+        // RUNNING) en cours, PEU IMPORTE le club (lu cross-tenant par la connexion admin, EN LECTURE
+        // SEULE), retarde le départ : un déploiement pendant un solve corromprait le run. Plafonné à
+        // H + WAIT_CAP — au-delà, on déploie malgré l'activité (le train ne peut attendre sans fin).
+        $cap = $deployment->getScheduledAt()->modify(\sprintf('+%d minutes', self::WAIT_CAP_MINUTES));
+        if ($this->activeSolveCount() > 0) {
+            if ($now <= $cap) {
+                $capLabel = $cap->setTimezone(new DateTimeZone(self::DISPLAY_TIMEZONE))->format('H:i');
+                $deployment->setDispatchNote(\sprintf(
+                    'Départ retardé : une génération ou un placement est en cours — nouvel essai au prochain passage, au plus tard à %s.',
+                    $capLabel,
+                ));
+                $this->flush();
+                $io->writeln('Active solve in progress; departure delayed.');
+
+                return;
+            }
+            // Plafond atteint : on force le départ, en le DISANT (note de plafond, reportée en e-mail).
+            $deployment->setDispatchNote('Plafond d’attente atteint : déploiement déclenché malgré une activité encore en cours.');
+        }
+
         $version = $deployment->getVersion();
 
-        // Préconditions RE-vérifiées à H : entre la programmation et maintenant, le tag a pu
-        // disparaître ou la CI redevenir rouge. L'une ou l'autre → échec SANS dispatch.
-        if (!\in_array($version, $this->client->tags(), true)) {
-            $this->fail($deployment, 'La version à déployer n’est plus un tag publié : déploiement abandonné, rien n’a été déclenché.', $io);
-
-            return;
-        }
-        if (!$this->client->isCiGreen($version)) {
-            $this->fail($deployment, 'La CI de la version à déployer n’est plus verte : déploiement abandonné, rien n’a été déclenché.', $io);
-
-            return;
-        }
-
         try {
-            // `maintenance_until` = l'heure de retour annoncée : le workflow pose le témoin de
-            // maintenance avec cet instant pour que l'app dise « de retour à … ».
+            // Préconditions RE-vérifiées à H : entre la programmation et maintenant, le tag a pu
+            // disparaître ou la CI redevenir rouge → abandon SEC (tags VIDE-mais-réussi). Une lecture
+            // qui ÉCHOUE (4xx/transport) lève GitHubDeployException « injoignable » → RÉESSAYABLE
+            // (catch), jamais confondue avec un tag disparu.
+            if (!\in_array($version, $this->client->tags(), true)) {
+                $this->fail($deployment, 'La version à déployer n’est plus un tag publié : déploiement abandonné, rien n’a été déclenché.', $io);
+
+                return;
+            }
+            if (!$this->client->isCiGreen($version)) {
+                $this->fail($deployment, 'La CI de la version à déployer n’est plus verte : déploiement abandonné, rien n’a été déclenché.', $io);
+
+                return;
+            }
+
+            // Re-datage de l'heure de retour sur le dispatch RÉEL (now + fenêtre d'origine) ; c'est
+            // cette valeur qui part en `maintenance_until` (le workflow pose le témoin « de retour à … »).
+            $deployment->redateExpectedReturn($now);
             $this->client->dispatchDeploy($version, $deployment->getExpectedReturnAt());
         } catch (GitHubDeployException) {
-            $deadline = $deployment->getScheduledAt()->modify(\sprintf('+%d minutes', self::DISPATCH_RETRY_MINUTES));
+            // GitHub injoignable à H (tags/CI en 4xx ou transport) OU dispatch refusé : RÉESSAYÉ
+            // jusqu'à scheduledAt + WAIT_CAP + DISPATCH_RETRY, puis FAILED « injoignable », zéro dispatch.
+            $deadline = $deployment->getScheduledAt()->modify(\sprintf('+%d minutes', self::WAIT_CAP_MINUTES + self::DISPATCH_RETRY_MINUTES));
             if ($now > $deadline) {
-                $this->fail($deployment, 'Le déclenchement du déploiement a échoué de façon répétée : abandon. La maintenance n’a pas été posée.', $io);
+                $this->fail($deployment, 'Le déclenchement du déploiement a échoué : GitHub est resté injoignable. La maintenance n’a pas été posée.', $io);
 
                 return;
             }
             // Dans la fenêtre de réessai : on laisse « scheduled », le prochain tick retentera.
-            $io->writeln('Dispatch failed; will retry on the next tick.');
+            $io->writeln('GitHub unreachable; will retry on the next tick.');
 
             return;
         }
@@ -147,6 +182,7 @@ final class DeploymentTickCommand extends Command
                 '🟢 Mise en production réussie',
                 'La mise en production programmée a réussi : l’application est de nouveau en service.',
                 $io,
+                $deployment->getDispatchNote(),
             );
 
             return;
@@ -160,17 +196,38 @@ final class DeploymentTickCommand extends Command
             '🔴 Mise en production en échec',
             'La mise en production programmée a échoué. La maintenance reste posée : l’application est hors service tant qu’un rollback manuel n’a pas été fait.',
             $io,
+            $deployment->getDispatchNote(),
         );
+    }
+
+    /**
+     * Génération (schedule GENERATING) ou placement (match_placement_run RUNNING) en cours, TOUS
+     * clubs confondus — lu cross-tenant par la connexion `admin`, EN LECTURE SEULE (le tick ne mute
+     * jamais une donnée tenant). PENDING n'est PAS compté (TOCTOU accepté : l'enfilage n'est pas
+     * encore un run moteur).
+     */
+    private function activeSolveCount(): int
+    {
+        $generating = (int) $this->admin()->fetchOne(
+            'SELECT COUNT(*) FROM schedule WHERE status = :status',
+            ['status' => ScheduleStatus::GENERATING->value],
+        );
+        $running = (int) $this->admin()->fetchOne(
+            'SELECT COUNT(*) FROM match_placement_run WHERE status = :status',
+            ['status' => MatchPlacementRunStatus::RUNNING->value],
+        );
+
+        return $generating + $running;
     }
 
     private function fail(ScheduledDeployment $deployment, string $reason, SymfonyStyle $io): void
     {
         $deployment->markFailed($reason);
         $this->flush();
-        $this->notify('🔴 Mise en production en échec', $reason, $io);
+        $this->notify('🔴 Mise en production en échec', $reason, $io, $deployment->getDispatchNote());
     }
 
-    private function notify(string $subject, string $body, SymfonyStyle $io): void
+    private function notify(string $subject, string $body, SymfonyStyle $io, ?string $note = null): void
     {
         $recipients = $this->recipients();
         if ([] === $recipients) {
@@ -179,10 +236,15 @@ final class DeploymentTickCommand extends Command
             return;
         }
 
+        // La note de DÉPART (retard/plafond) est reportée dans l'e-mail (succès comme échec).
+        $text = $body;
+        if (null !== $note && '' !== $note) {
+            $text .= "\n\n" . $note;
+        }
         $email = (new Email)
             ->from($this->mailFrom->address())
             ->subject(\sprintf('%s — %s', $this->productIdentity->name(), $subject))
-            ->text($body . "\n\nConsole : /admin");
+            ->text($text . "\n\nConsole : /admin");
         foreach ($recipients as $recipient) {
             $email->addTo($recipient);
         }

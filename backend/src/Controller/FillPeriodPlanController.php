@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\DeploymentGate;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
 use App\Service\OrphanPinGuard;
@@ -62,6 +63,7 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         private readonly GenerationComplexityGuard $complexityGuard,
         private readonly OrphanPinGuard $orphanPinGuard,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly DeploymentGate $deploymentGate,
     ) {}
 
     // SEC-13 — la cible est le Schedule (version) nommé dans l'URL.
@@ -76,6 +78,12 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
     public function __invoke(string $id): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
+
+        // P4-350 (axe generation pipeline) : gel des guichets pendant une mise en production
+        // imminente — le refus de gel précède la garde « période » et tout le reste.
+        if ($this->deploymentGate->isFrozen()) {
+            return $this->json(['error' => DeploymentGate::FREEZE_MESSAGE], Response::HTTP_CONFLICT);
+        }
 
         try {
             $source = $this->entityManager->getRepository(Schedule::class)->find($id);

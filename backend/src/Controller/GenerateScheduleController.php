@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\DeploymentGate;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
 use App\Service\OrphanPinGuard;
@@ -42,6 +43,7 @@ final class GenerateScheduleController extends AbstractController implements Sea
         private readonly OrphanPinGuard $orphanPinGuard,
         private readonly ClockInterface $clock,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly DeploymentGate $deploymentGate,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -55,6 +57,12 @@ final class GenerateScheduleController extends AbstractController implements Sea
     public function __invoke(string $id): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
+
+        // P4-350 (axe generation pipeline) : une mise en production imminente GÈLE l'enfilage —
+        // refus AVANT tout lookup/état/socle, uniforme sur les quatre guichets.
+        if ($this->deploymentGate->isFrozen()) {
+            return $this->json(['error' => DeploymentGate::FREEZE_MESSAGE], Response::HTTP_CONFLICT);
+        }
 
         try {
             $schedule = $this->entityManager->getRepository(Schedule::class)->find($id);

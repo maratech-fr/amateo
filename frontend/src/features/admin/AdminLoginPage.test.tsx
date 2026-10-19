@@ -7,6 +7,7 @@ import { expectNoA11yViolations, renderWithProviders } from "@/test/utils";
 import { completeAdminTotp, startAdminPassword } from "./api";
 import { AdminLoginPage } from "./AdminLoginPage";
 import { useAdminStore } from "./store";
+import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
 
 vi.mock("./api", () => ({
   completeAdminTotp: vi.fn(),
@@ -28,11 +29,11 @@ describe("AdminLoginPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminLoginPage />);
 
-    await user.type(screen.getByLabelText("Email"), "ops@example.test");
-    await user.type(screen.getByLabelText("Mot de passe"), "secret");
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.type(screen.getByLabelText(ADMIN_DASHBOARD_TEXTS.loginEmailLabel), "ops@example.test");
+    await user.type(screen.getByLabelText(ADMIN_DASHBOARD_TEXTS.loginPasswordLabel), "secret");
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.loginSubmit }));
 
-    expect(await screen.findByLabelText("Code TOTP")).toBeInTheDocument();
+    expect(await screen.findByLabelText(ADMIN_DASHBOARD_TEXTS.loginTotpLabel)).toBeInTheDocument();
     expect(startPassword).toHaveBeenCalledWith({ email: "ops@example.test", password: "secret" });
   });
 
@@ -42,12 +43,12 @@ describe("AdminLoginPage", () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminLoginPage />);
 
-    await user.type(screen.getByLabelText("Email"), "ops@example.test");
-    await user.type(screen.getByLabelText("Mot de passe"), "secret");
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
-    const code = await screen.findByLabelText("Code TOTP");
+    await user.type(screen.getByLabelText(ADMIN_DASHBOARD_TEXTS.loginEmailLabel), "ops@example.test");
+    await user.type(screen.getByLabelText(ADMIN_DASHBOARD_TEXTS.loginPasswordLabel), "secret");
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.loginSubmit }));
+    const code = await screen.findByLabelText(ADMIN_DASHBOARD_TEXTS.loginTotpLabel);
     await user.type(code, "123456");
-    await user.click(screen.getByRole("button", { name: "Ouvrir la console" }));
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.loginTotpSubmit }));
 
     await waitFor(() => expect(useAdminStore.getState().csrfToken).toBe("csrf-123"));
     expect(completeTotp).toHaveBeenCalledWith("123456");

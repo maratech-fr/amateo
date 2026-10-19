@@ -157,4 +157,47 @@ describe("DeploymentSection", () => {
 
     expect(await screen.findByText(/le workflow github a échoué/i)).toBeInTheDocument();
   });
+
+  // P4-350 D9 — GitHub injoignable : la liste des tags revient `available:false`. L'écran le DIT
+  // (message + bouton Réessayer) au lieu de proposer « Programmer » sur une liste vide et muette.
+  it("GitHub injoignable (available:false) : message + Réessayer, et Programmer reste désactivé", async () => {
+    mockTags.mockResolvedValue({ items: [], available: false });
+    renderWithProviders(<DeploymentSection />, { route: "/admin" });
+
+    expect(await screen.findByText(/GitHub est injoignable — la liste des versions/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /réessayer/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /programmer/i })).toBeDisabled();
+  });
+
+  // P4-350 D10 — une panne GitHub pendant la programmation revient 502. SEC-08 interdit d'afficher
+  // le CORPS d'un 5xx (errorMessage le tait) : l'écran AUTEUR lui-même un message d'attente CLAIR
+  // (constante client, keyée sur le 5xx — surtout PAS « Erreur serveur » générique).
+  it("un 502 (GitHub injoignable) affiche un message d'attente clair, pas le générique 5xx", async () => {
+    const user = userEvent.setup();
+    mockSchedule.mockRejectedValue(httpError(502, { error: "GitHub est injoignable — réessayez dans un instant." }));
+    renderWithProviders(<DeploymentSection />, { route: "/admin" });
+
+    await user.selectOptions(await screen.findByRole("combobox", { name: /version/i }), "v1.4.0");
+    fireEvent.change(screen.getByLabelText(/date et heure/i), { target: { value: "2026-12-01T03:00" } });
+    fireEvent.change(screen.getByLabelText(/durée de la maintenance/i), { target: { value: "30" } });
+    await user.click(screen.getByRole("button", { name: /programmer/i }));
+
+    expect(await screen.findByText(/GitHub est injoignable — réessayez dans un instant/)).toBeInTheDocument();
+  });
+
+  // P4-350 D4 — la NOTE de départ (`dispatchNote`, retard/plafond) est RENDUE : sur la carte du
+  // déploiement actif ET dans l'historique.
+  it("la note de départ (dispatchNote) s'affiche sur la carte active et dans l'historique", async () => {
+    mockList.mockResolvedValue({
+      items: [
+        { ...SCHEDULED, dispatchNote: "Départ retardé : une génération ou un placement est en cours — nouvel essai au prochain passage, au plus tard à 01:09." },
+        { ...SCHEDULED, id: "h1", version: "v1.1.0", status: "succeeded", dispatchNote: "Plafond d'attente atteint : déploiement déclenché malgré une activité encore en cours." },
+      ],
+      configured: true,
+    });
+    renderWithProviders(<DeploymentSection />, { route: "/admin" });
+
+    expect(await screen.findByText(/Départ retardé/)).toBeInTheDocument();
+    expect(screen.getByText(/Plafond d'attente atteint/)).toBeInTheDocument();
+  });
 });

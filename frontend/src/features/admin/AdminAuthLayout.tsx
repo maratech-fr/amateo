@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 
 import { BrandMark } from "@/shared/components/ui/brand-mark";
 
+import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
+
 interface AdminAuthLayoutProps {
   title: string;
   description: string;
@@ -24,19 +26,19 @@ export function AdminAuthLayout({ title, description, children }: AdminAuthLayou
               {/* « amat » hérite du blanc de la console (20:1 sur le fond ardoise) ; « eo » teal
                   y tient 7,67:1 — au-dessus du seuil texte, et logotype de toute façon. */}
               <BrandMark size="md" className="text-white" />
-              <p className="text-xs uppercase tracking-[0.22em] text-console-text-dim">Console sécurisée</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-console-text-dim">{ADMIN_DASHBOARD_TEXTS.authSecureConsole}</p>
             </div>
           </div>
         </div>
         <section className="rounded-2xl border border-white/10 bg-white/[0.06] p-1 shadow-2xl shadow-black/30 backdrop-blur-xl">
           <div className="rounded-[0.85rem] border border-white/10 bg-console-surface/70 p-7">
-            <p className="mb-3 text-xs font-medium uppercase tracking-[0.22em] text-console-accent">Accès restreint</p>
+            <p className="mb-3 text-xs font-medium uppercase tracking-[0.22em] text-console-accent">{ADMIN_DASHBOARD_TEXTS.authRestrictedAccess}</p>
             <h1 className="text-2xl font-semibold tracking-tight text-white">{title}</h1>
             <p className="mt-2 text-sm leading-6 text-console-text-dim">{description}</p>
             <div className="mt-7">{children}</div>
           </div>
         </section>
-        <p className="mt-5 text-center text-xs text-console-muted">Chaque accès à cette console est journalisé.</p>
+        <p className="mt-5 text-center text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.authJournaled}</p>
       </div>
     </main>
   );
