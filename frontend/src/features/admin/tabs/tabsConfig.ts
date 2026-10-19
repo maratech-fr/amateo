@@ -1,5 +1,7 @@
 import { Activity, AlertTriangle, Building2, Presentation, Server, type LucideIcon } from "lucide-react";
 
+import { ADMIN_DASHBOARD_TEXTS } from "../texts/dashboard";
+
 export interface TabSubDef {
   id: string;
   label: string;
@@ -19,21 +21,21 @@ export interface TabDef {
  * Incidents regroupe les quatre journaux en sous-onglets (signalements par défaut).
  */
 export const ADMIN_TABS: TabDef[] = [
-  { id: "clubs", label: "Clubs", icon: Building2 },
-  { id: "statistiques", label: "Statistiques", icon: Activity },
-  { id: "sante", label: "Santé", icon: Server },
+  { id: "clubs", label: ADMIN_DASHBOARD_TEXTS.tabClubs, icon: Building2 },
+  { id: "statistiques", label: ADMIN_DASHBOARD_TEXTS.tabStatistiques, icon: Activity },
+  { id: "sante", label: ADMIN_DASHBOARD_TEXTS.tabSante, icon: Server },
   {
     id: "incidents",
-    label: "Incidents",
+    label: ADMIN_DASHBOARD_TEXTS.tabIncidents,
     icon: AlertTriangle,
     subTabs: [
-      { id: "signalements", label: "Signalements" },
-      { id: "errors", label: "Erreurs système" },
-      { id: "messenger", label: "Échecs async" },
-      { id: "audit", label: "Audit" },
+      { id: "signalements", label: ADMIN_DASHBOARD_TEXTS.subSignalements },
+      { id: "errors", label: ADMIN_DASHBOARD_TEXTS.subErrors },
+      { id: "messenger", label: ADMIN_DASHBOARD_TEXTS.subMessenger },
+      { id: "audit", label: ADMIN_DASHBOARD_TEXTS.subAudit },
     ],
   },
-  { id: "exploitation", label: "Exploitation", icon: Presentation },
+  { id: "exploitation", label: ADMIN_DASHBOARD_TEXTS.tabExploitation, icon: Presentation },
 ];
 
 export const DEFAULT_TAB = "clubs";
