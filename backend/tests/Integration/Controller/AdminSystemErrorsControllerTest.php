@@ -115,6 +115,52 @@ final class AdminSystemErrorsControllerTest extends WebTestCase
         self::assertSame('Invalid since date. Expected ISO date (YYYY-MM-DD).', $this->responseBody()['error']);
     }
 
+    /**
+     * Promesse : un `since` valide filtre RÉELLEMENT les DEUX sources par leur date réelle
+     * (admin_job_run.started_at et audit_log.occurred_at, pas l'alias created_at) et répond 200 —
+     * les occurrences antérieures à `since` sont exclues, une par source est conservée.
+     */
+    public function testValidSinceFiltersBothSourcesByTheirRealDateAndExcludesOlder(): void
+    {
+        [$secret] = $this->createSuperAdmin('valid-since@example.test', 'VeryStrongPassword!');
+        $this->authenticate('valid-since@example.test', 'VeryStrongPassword!', $secret);
+        $this->clearSystemErrors();
+
+        $this->seedJobRun('job_recent', 'failed', '2026-06-15 10:00:00+00');
+        $this->seedJobRun('job_old', 'failed', '2026-05-01 10:00:00+00');
+        $this->seedAuditLog('auth.login_failed', '2026-06-20 10:00:00+00');
+        $this->seedAuditLog('auth.login_failed', '2026-05-10 10:00:00+00');
+
+        $this->client->request('GET', '/api/admin/system-errors?since=2026-06-01');
+        self::assertResponseIsSuccessful();
+        $body = $this->responseBody();
+        self::assertSame(2, $body['pagination']['total']);
+        $messages = array_column($body['items'], 'message');
+        self::assertContains('job_recent', $messages);
+        self::assertContains('auth.login_failed', $messages);
+        self::assertNotContains('job_old', $messages);
+    }
+
+    /**
+     * Promesse : la borne `since` est incluse depuis minuit — un événement à 00:05 le jour de
+     * `since` est conservé, celui de la veille à 23:55 est exclu (source audit_log).
+     */
+    public function testSinceIsInclusiveFromMidnightSoAnEventAtFiveMinutesPastIsKept(): void
+    {
+        [$secret] = $this->createSuperAdmin('since-boundary@example.test', 'VeryStrongPassword!');
+        $this->authenticate('since-boundary@example.test', 'VeryStrongPassword!', $secret);
+        $this->clearSystemErrors();
+
+        $this->seedAuditLog('auth.login_failed', '2026-07-01 00:05:00+00');
+        $this->seedAuditLog('auth.login_failed', '2026-06-30 23:55:00+00');
+
+        $this->client->request('GET', '/api/admin/system-errors?since=2026-07-01');
+        self::assertResponseIsSuccessful();
+        $body = $this->responseBody();
+        self::assertSame(1, $body['pagination']['total']);
+        self::assertSame('auth.login_failed', $body['items'][0]['message']);
+    }
+
     public function testNegativePageReturns400(): void
     {
         [$secret] = $this->createSuperAdmin('bad-page@example.test', 'VeryStrongPassword!');
