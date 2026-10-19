@@ -33,6 +33,8 @@ export const ADMIN_SECTIONS_TEXTS = {
     "Mesure d’audience momentanément indisponible — Umami ne répond pas. La console reste opérante.",
   audienceEyebrow: "Vitrine",
   audienceHeading: "Mesure d’audience",
+  audienceWindow7d: "7 derniers jours",
+  audienceWindow30d: "30 derniers jours",
   audienceTopPages: "Pages les plus vues",
   audienceTopSources: "Principales sources",
   audienceUnitPageviews: "vues",
