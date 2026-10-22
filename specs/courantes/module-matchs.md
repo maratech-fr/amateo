@@ -39,13 +39,17 @@ vigueur, il n'a rien à comparer.
   `homeAway`, `opponentLabel`, `opponentOrganismeCode`/`opponentTeamKey` (résolus serveur),
   `status` (`FixtureStatus` : `UNPLACED → PLACED → SUBMITTED → VALIDATED`), `venueId`/`kickoffTime`
   nullables, `fbiVenueLabel` (salle brute source, HOME et AWAY), `placementSource`
-  (`MANUAL`/`SOLVER`/null legacy), `unplacedReason` (raison persistante, ex. `venue_lost`),
-  `keptVenueLabel` (idempotence d'arbitrage salle), `reviewState`/`reviewedAt`/`pendingDeviations`
-  (workflow de traitement, §5). L'import FBI crée **tout** en `UNPLACED` à la CRÉATION, domicile et
-  extérieur — mais le MÊME dépôt enchaîne, après le flush, une passe séparée qui bascule « validé
-  ligue » les domiciles validables des championnats déjà COMMENCÉS (chantier A, décision fondateur
-  2026-10-22, § « Validé ligue » en lot ci-dessous) ; hors ce cas, seul un geste du gestionnaire pose
-  un autre statut (`FixtureStatus` docblock). `awayTravel`
+  (`MANUAL`/`SOLVER`/null legacy), `unplacedReason` (raison persistante : `venue_lost` — le gymnase
+  n'est plus affilié au club — ou `NEUTRAL_GROUND` — domicile joué sur terrain neutre, § « Terrain
+  neutre » ci-dessous), `keptVenueLabel` (idempotence d'arbitrage salle),
+  `reviewState`/`reviewedAt`/`pendingDeviations` (workflow de traitement, §5). L'import FBI crée
+  **tout** en `UNPLACED` à la CRÉATION, domicile et extérieur — mais le MÊME dépôt enchaîne, après le
+  flush, une passe séparée qui bascule « validé ligue » les domiciles validables des championnats
+  déjà COMMENCÉS (chantier A, décision fondateur 2026-10-22, § « Validé ligue » en lot ci-dessous) ;
+  hors ce cas, seul un geste du gestionnaire pose un autre statut (`FixtureStatus` docblock).
+  `neutralGround` (champ additif en LECTURE seulement, `FixtureResource`, dérivé de
+  `unplacedReason === NEUTRAL_GROUND`) : le front l'affiche, jamais une seconde copie de la règle.
+  `awayTravel`
   (champ additif en LECTURE seulement, `FixtureResource`, jamais persisté sur l'entité) : le trajet
   d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre elle-même — voir « Table TENANT
   `OpponentVenueLink` » ci-dessous.
@@ -335,14 +339,22 @@ qui lit `GET /api/opponents/travel`, lui passe le booléen SERVEUR exact. **Pas 
 
 ### Alias de gymnase (`Venue.externalLabels`, `VenueAliasResolver`)
 
-Un domicile importé porte un libellé de salle fédéral (`fbiVenueLabel`) mais peut n'avoir aucun
-`venueId` — invisible des familles `VENUE_OVERLAP`/`VENUE_UNAVAILABLE`. `VenueAliasResolver::
-resolveConfirmed` (égalité STRICTE normalisée sur un alias confirmé) pose `venueId` automatiquement
-aux DEUX canaux d'intégration (xlsx `FbiFixtureImporter::attachConfirmedVenue`, API
-`FfbbRencontreReconciler::apply` — jamais un statut ni une date, jamais sur un AWAY) ;
-`::suggest` (fuzzy, ambiguïté ≥ 2 candidats → `null`) nourrit `FixtureResource.suggestedVenueId`
-en lecture seule. Normalisation : foyer unique `VenueLabelNormalizer` (translit ASCII, minuscule,
-non-alphanumérique → espace). Routes (`VenueExternalLabelController`) : `GET
+Un domicile importé porte un libellé de salle fédéral (`fbiVenueLabel`). Côté canal API
+(`FfbbRencontreReconciler::apply`) ou pour une rencontre déjà existante, il peut encore n'avoir
+aucun `venueId` — invisible des familles `VENUE_OVERLAP`/`VENUE_UNAVAILABLE` — tant que son libellé
+n'a pas d'alias confirmé ; côté canal xlsx, depuis « pas de salles appariées, pas d'import »
+(chantier A PR 2, § « Import FBI » ci-dessous), un domicile NOUVELLEMENT CRÉÉ ne peut plus naître
+sans gymnase (sauf terrain neutre, qui n'en veut pas). `VenueAliasResolver::resolveConfirmed`
+(égalité STRICTE normalisée sur un alias confirmé) pose `venueId` automatiquement aux DEUX canaux
+d'intégration (xlsx `FbiFixtureImporter::attachConfirmedVenue`, API `FfbbRencontreReconciler::apply`
+— jamais un statut ni une date, jamais sur un AWAY) ; `::suggest` (fuzzy, ambiguïté ≥ 2 candidats →
+`null`) nourrit `FixtureResource.suggestedVenueId` en lecture seule. Normalisation : foyer unique
+`VenueLabelNormalizer` (translit ASCII, minuscule, non-alphanumérique → espace). Le GESTE de
+rattachement (gardes vide/longueur/nombre d'alias, unicité, backfill) vit dans la MAISON UNIQUE
+`App\Service\Basketball\VenueExternalLabelAttacher` (extraite de `VenueExternalLabelController`,
+chantier A PR 2) — partagée par ce contrôleur (chemin manuel, §8) et par l'import xlsx, qui
+l'appelle pour chaque `venueMapping`/`venueChoice` reçu AVANT la vérification de couverture : un
+même geste d'appariement, jamais deux copies. Routes (`VenueExternalLabelController`) : `GET
 /api/venues/fbi-labels` (inventaire agrégé par libellé, tout membre) ; `POST
 …/{id}/external-labels {label}` (ajoute l'alias + backfille les domiciles du club encore sans
 salle) ; `POST …{label, reassign: true}` (réaffecte l'alias vers un AUTRE gymnase, re-pointe les
@@ -1084,6 +1096,56 @@ AWAY importé est auto-localisé (`OpponentVenueAutoLocator`, un des trois hooks
 TENANT `OpponentVenueLink` ») s'il matche UNE salle fédérale exacte ; sinon il reste « à apparier »
 (§9 « Écran Adversaires ») — jamais deviné à l'import.
 
+### « Pas de salles appariées, pas d'import » (chantier A PR 2)
+
+**Décision fondateur 2026-10-22** (retours Rillieux, chantier A, PR 2/5) : un domicile IMPORTABLE
+et CRÉÉ par ce dépôt ne peut plus entrer sans gymnase du club. `analyze()` rend, en plus des
+divisions, deux inventaires LECTURE SEULE pour la modale d'import : `venues[]` — les salles à
+DOMICILE du fichier agrégées par libellé normalisé (`FbiFixtureImporter::analyzeHomeVenues`),
+chacune avec son compte de lignes, son gymnase déjà CONFIRMÉ (alias), une suggestion floue (jamais
+le confirmé) et si elle est déjà mémorisée neutre — et `homesWithoutVenue[]` — les divisions dont
+des domiciles n'ont AUCUNE salle dans le fichier (`analyzeHomesWithoutVenue`), par division
+(`fbiTeamLabel` seulement si deux équipes du club la partagent). La modale (`ImportFbiDialog`, section
+« Salles à domicile ») propose un gymnase du club par ligne — pré-rempli (confirmé > suggestion >
+vide) — ou « Terrain neutre » ; « Importer » reste **grisé** (`disabledReason`, A11Y-30) tant qu'une
+ligne n'a pas de choix.
+
+`POST /api/fixtures/import` accepte deux champs multipart JSON en plus de `mappings`/`decisions` :
+`venueMappings` (`{label, venueId}[]`, un libellé → un gymnase OU la sentinelle `'NEUTRAL'`) et
+`venueChoices` (`{division, venueId}[]`, une division sans salle → un gymnase OU `'NEUTRAL'`) — le
+contrôleur borne la forme (liste JSON, uuid ou `NEUTRAL`, 400 sur un corps forgé, jamais relayé au
+service tel quel). `FbiFixtureImporter::applyVenueCoverage` les applique **avant** la vérification
+de couverture ET l'auto-validation « validé ligue » : un `venueId` uuid APPARIE le libellé (rejoue
+`VenueExternalLabelAttacher::attach` — alias + backfill, gardes 422 incluses, et un gymnase
+étranger/inconnu au club → 400) ou pose le gymnase choisi d'une division sans salle ; `'NEUTRAL'`
+mémorise le libellé (ou la division) comme terrain neutre pour CE dépôt — refusé (422) si le
+libellé est déjà un alias confirmé (on ne déclare pas neutre une salle qu'on a déjà). Puis
+`assertImportableHomesHaveVenue` (lecture seule, mêmes sauts que la boucle de création — division
+non mappée, mapping refusé, poule bloquante) refuse tout le dépôt (422 nommant les libellés/
+divisions manquants) **avant toute écriture** si un domicile IMPORTABLE créé par ce dépôt reste sans
+gymnase et n'est pas neutre. **Ne concerne que les CRÉATIONS** : un domicile déjà existant qui
+perdrait son gymnase par ailleurs (§11, fermetures à la source) n'est pas soumis à cette garde, et
+les divisions non appariées de l'écran principal n'exigent toujours rien (comportement inchangé).
+
+### Terrain neutre (coupe/playoff joué hors de nos murs)
+
+Un domicile dont le libellé (ou, sans salle, la division) est déclaré `'NEUTRAL'` naît `HOME`,
+`UNPLACED`, **sans** `venueId`, `unplacedReason = NEUTRAL_GROUND`, et déjà **TRAITÉ**
+(`markReviewed`) — garde son `fbiVenueLabel` (porte de sortie : apparier le libellé plus tard le
+rattache, le backfill d'alias efface le drapeau neutre via `Fixture::setVenueId`). C'est le SEUL
+chemin par lequel un domicile importé peut rester sans gymnase du club — un choix du gestionnaire,
+jamais un défaut. Exclu partout où « sans gymnase » voudrait dire « à corriger » : jamais « validé
+ligue » ni dans `toTreat` (`LeagueValidationOutlook::isCandidate`, sans quoi `NO_VENUE` le
+signalerait à tort), jamais dans les files « sans gymnase »/« à placer » de l'écran (`isUnattachedHome`,
+`isUnplacedHome`, `neutralGround` exclu des deux), jamais confié au solveur comme un match à placer
+(`MatchPlacementPayloadBuilder` le traite comme un extérieur — il ne porte que SA date, `team_dates`
+— le contrat engine ne bouge pas). Pastille dédiée « Terrain neutre » dans la file de traitement
+(`ReviewQueueRow`). **Mémoire dérivée** : un libellé déjà porté par une rencontre neutre de la
+saison (`FbiFixtureImporter::derivedNeutralLabels`) reste neutre aux dépôts suivants SANS nouveau
+`venueMapping` — pré-coché neutre dans la modale, appliqué sans geste si le gestionnaire ne touche
+rien. Champ additif `FixtureResource.neutralGround` (lecture seule, dérivé de `unplacedReason`) :
+le front l'affiche, il ne recalcule jamais la règle (miroir interdit, `.claude/rules/frontend.md`).
+
 ### « Validé ligue » : auto au dépôt FBI (chantier A) + rattrapage en lot (`LeagueValidatedFixturesController`)
 
 Un club qui démarre l'application EN COURS de saison importe un fichier FBI dont des domiciles sont
@@ -1637,13 +1699,22 @@ Périmètre engagé : `EngagedTeamGuardTest`,
 `Integration/Service/Geo/OpponentVenueAutoLocatorTest` (le gymnase du fichier localise l'adversaire
 tout seul) et `Security/OpponentVenueSuggestionShareTest` (les gymnases d'un adversaire se partagent
 en suggestions — promesses des deux features Behat FFBB réelles retirées 2026-10-13) + features Behat
-dédiées (`un-domicile-importe-retrouve-son-gymnase`, `un-conflit-traite-reste-visible-mais-decompte`,
-`une-rencontre-importee-dit-si-elle-est-traitee`). « Validé ligue », auto au dépôt (chantier A) +
+dédiées (`un-domicile-importe-retrouve-son-gymnase` — rebaptisée « pas de salle appariée, pas
+d'import — ou alors en terrain neutre » au chantier A PR 2 —, `un-conflit-traite-reste-visible-mais-decompte`,
+`une-rencontre-importee-dit-si-elle-est-traitee`). « Pas de salles appariées, pas d'import » +
+terrain neutre (chantier A PR 2) : `Integration/Service/ImportVenueRequiredTest` (dépôt refusé 422
+AVANT écriture si un domicile créé reste sans gymnase/neutre, nommant les libellés manquants ;
+appariement + backfill via `venueMappings`/`venueChoices` ; terrain neutre exclu du solveur et de
+« validé ligue » ; mémoire dérivée d'un libellé déjà neutre) et `Security/ImportVenueMappingAbuseTest`
+(le canal multipart ne peut jamais écrire un gymnase d'un autre club, un corps forgé, ou un neutre
+sur un alias déjà confirmé — zéro écriture sur refus). « Validé ligue », auto au dépôt (chantier A) +
 rattrapage en lot : **NR gatant** (step nommé `blocking-tests` de `ci.yml` +
 `docs/testing/blocking-tests.md`, axe *constraint semantics*) `Integration/Service/
 ImportLeagueAutoValidationTest` (domicile validable d'un championnat commencé basculé au dépôt,
-byte-identique à l'ancre du geste manuel ; championnat non commencé/sans heure/sans gymnase/dévié
-jamais validé ; `leagueValidated` exact ; re-dépôt idempotent). Rattrapage :
+byte-identique à l'ancre du geste manuel ; championnat non commencé/sans heure/dévié jamais validé ;
+un terrain neutre (seul chemin restant « sans gymnase » depuis « pas de salles appariées, pas
+d'import », chantier A PR 2) n'est jamais validé non plus ; `leagueValidated` exact ; re-dépôt
+idempotent). Rattrapage :
 `LeagueValidatedFixturesControllerTest` (prédicat, idempotence, guards, verrou
 optimiste, `testAnOutOfAccessWindowHomeFixtureStaysEligibleAndTheRadarSignalsIt` — la divergence
 ASSUMÉE avec le contrôle d'accès unitaire, figée — et

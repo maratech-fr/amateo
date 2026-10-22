@@ -211,10 +211,14 @@ d'un championnat commencé est VALIDATED + MANUAL à l'issue du dépôt, et son 
 placement [ancre FIXED] est BYTE-IDENTIQUE à celle du même match validé par le POST manuel [l'id mis à
 part] ; (b) un championnat NON commencé reste UNPLACED / TO_PLACE [on ne verrouille jamais en ancre fixe
 une vague provisoire qu'il faut pouvoir bouger] ; (c) un domicile sans heure n'est jamais validé
-[NO_KICKOFF] ; (d) un domicile portant un écart en attente n'est jamais validé ; (e) un domicile sans
-gymnase n'est jamais validé [NO_VENUE] ; (f) le compteur `leagueValidated` du rapport d'import est exact ;
-(g) un re-dépôt ne revalide pas [VALIDATED exclu, idempotent, on ne dévalide jamais]. Le geste chiffré en
+[NO_KICKOFF] ; (d) un domicile portant un écart en attente n'est jamais validé ; (e) un domicile en
+TERRAIN NEUTRE [`unplacedReason=NEUTRAL_GROUND`, chantier A PR 2 — « pas de salles appariées, pas
+d'import » : depuis cette PR, un domicile importable créé par le dépôt sans gymnase ET sans être neutre
+fait REFUSER tout le dépôt (422), donc le terrain neutre est devenu le SEUL chemin par lequel un domicile
+d'un championnat commencé peut rester sans gymnase du club] n'est jamais validé ; (f) le compteur
+`leagueValidated` du rapport d'import est exact ; (g) un re-dépôt ne revalide pas [VALIDATED exclu,
+idempotent, on ne dévalide jamais]. Le geste chiffré en
 lot reste le RATTRAPAGE [l'échéance qui tombe APRÈS le dépôt]. Sans ce gate, une régression qui cesserait
-de valider au dépôt, ou qui validerait à tort un championnat non commencé / un domicile sans heure / sans
-gymnase / dévié, passerait tous les checks requis).
+de valider au dépôt, ou qui validerait à tort un championnat non commencé / un domicile sans heure / en
+terrain neutre / dévié, passerait tous les checks requis).
 Detail: `docs/testing/testing-strategy.md`.
