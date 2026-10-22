@@ -41,8 +41,11 @@ vigueur, il n'a rien à comparer.
   nullables, `fbiVenueLabel` (salle brute source, HOME et AWAY), `placementSource`
   (`MANUAL`/`SOLVER`/null legacy), `unplacedReason` (raison persistante, ex. `venue_lost`),
   `keptVenueLabel` (idempotence d'arbitrage salle), `reviewState`/`reviewedAt`/`pendingDeviations`
-  (workflow de traitement, §5). L'import FBI crée **tout** en `UNPLACED`, domicile et extérieur —
-  seul un geste du gestionnaire pose un autre statut (`FixtureStatus` docblock). `awayTravel`
+  (workflow de traitement, §5). L'import FBI crée **tout** en `UNPLACED` à la CRÉATION, domicile et
+  extérieur — mais le MÊME dépôt enchaîne, après le flush, une passe séparée qui bascule « validé
+  ligue » les domiciles validables des championnats déjà COMMENCÉS (chantier A, décision fondateur
+  2026-10-22, § « Validé ligue » en lot ci-dessous) ; hors ce cas, seul un geste du gestionnaire pose
+  un autre statut (`FixtureStatus` docblock). `awayTravel`
   (champ additif en LECTURE seulement, `FixtureResource`, jamais persisté sur l'entité) : le trajet
   d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre elle-même — voir « Table TENANT
   `OpponentVenueLink` » ci-dessous.
@@ -1081,15 +1084,21 @@ AWAY importé est auto-localisé (`OpponentVenueAutoLocator`, un des trois hooks
 TENANT `OpponentVenueLink` ») s'il matche UNE salle fédérale exacte ; sinon il reste « à apparier »
 (§9 « Écran Adversaires ») — jamais deviné à l'import.
 
-### « Validé ligue » en lot, piloté par l'échéance du championnat (`LeagueValidatedFixturesController`)
+### « Validé ligue » : auto au dépôt FBI (chantier A) + rattrapage en lot (`LeagueValidatedFixturesController`)
 
 Un club qui démarre l'application EN COURS de saison importe un fichier FBI dont des domiciles sont
 déjà datés côté fédération : date, heure et gymnase déjà enregistrés. Confirmer chaque placement à la
-main n'a pas de sens — un geste SÉPARÉ, chiffré et confirmé les bascule d'un coup. **Exception
-consentie**, pas une contradiction, à « une rencontre naît AVEC son gymnase mais jamais placée
-d'office » (`FbiFixtureImporter::attachConfirmedVenue`) : le chemin de création de l'import ne change
-pas, continue de créer en `UNPLACED` — le statut n'est **jamais** posé pendant l'import. C'est CE
-geste, distinct, qui valide.
+main n'a pas de sens. **Décision fondateur 2026-10-22** (retours Rillieux, chantier A, PR 1/5) :
+le dépôt lui-même bascule maintenant ces domiciles en lot, SANS geste supplémentaire du
+gestionnaire. La doctrine antérieure (« le chemin de création de l'import ne pose jamais `VALIDATED`,
+une confirmation chiffrée séparée est seule à le faire ») est **amendée**, pas abrogée dans sa forme :
+le chemin de CRÉATION continue, lui, à créer tout en `UNPLACED` (`FbiFixtureImporter::
+attachConfirmedVenue` pose le gymnase, jamais le statut) ; c'est **après le flush de création**, dans
+une PASSE SÉPARÉE du même `FbiFixtureImporter::import`, que les domiciles validables d'un championnat
+déjà COMMENCÉ sont relus et basculés « validé ligue ». Le `POST /api/fixtures/league-validation`
+(ci-dessous) reste disponible mais devient un **RATTRAPAGE** : il ne traite plus que les championnats
+qui mûrissent ENTRE deux dépôts (l'échéance tombe, ou le premier match se joue, après le dernier
+import).
 
 **Le déclencheur est que le championnat ait COMMENCÉ, jamais une propriété du domicile
 lui-même** — décision fondateur : « la date d'échéance est de validation des dates pour un
@@ -1106,12 +1115,16 @@ match déjà joué — les proposer à la validation les verrouillerait en ancre
 au moment précis où il faut encore pouvoir les déplacer. Tant qu'aucune des deux conditions n'est
 remplie, **rien n'est proposé pour ce championnat**.
 
-Toute la LECTURE et le prédicat vivent désormais dans la **maison unique**
+Toute la LECTURE, le prédicat ET l'écriture vivent désormais dans la **maison unique**
 `App\Service\LeagueValidationOutlook` (extraite du contrôleur pour être consommée aussi par le
-cockpit, §4) : elle porte `compute()` (la lecture détaillée par championnat, avec `maturedBy`
-`deadline`/`firstMatchPlayed` et `firstMatchDate` quand c'est le premier match qui a fait mûrir)
-et `fixturesToConfirm()` (les domiciles à basculer au `POST`, recalculés au moment de
-l'application). L'échéance effective d'un championnat suit la règle « le club gagne, sinon le
+cockpit, §4, et par le dépôt FBI, chantier A) : elle porte `compute()` (la lecture détaillée par
+championnat, avec `maturedBy` `deadline`/`firstMatchPlayed` et `firstMatchDate` quand c'est le
+premier match qui a fait mûrir), `fixturesToConfirm()` (les domiciles à basculer, recalculés au
+moment de l'application — consommée à la fois par la passe post-flush du dépôt et par le `POST` de
+rattrapage) et `markLeagueValidated()` (l'écriture elle-même : ancre `MANUAL` puis statut
+`VALIDATED`, horodaté — foyer UNIQUE partagé par les deux appelants, jamais une seconde copie, ce
+qui rend les deux ancres byte-identiques). L'échéance effective d'un championnat suit la règle « le
+club gagne, sinon le
 défaut communautaire » — maison unique `App\Service\CompetitionDeadlineResolver`, consommée par
 `CompetitionResource::fromEntity` (la lecture des compétitions), `EntryDeadlineOutlook` (les
 fenêtres J-7 du cockpit, §4) et `LeagueValidationOutlook` (la maturité « validé ligue »).
@@ -1152,14 +1165,18 @@ ces deux écrans, ne fait jamais écrire la base.
 **`POST` reste SANS corps** : le serveur ne reçoit AUCUN championnat choisi par le client — il
 **recalcule les championnats commencés au moment de l'application** (`fixturesToConfirm`, l'horloge
 injectée + les échéances/premiers matchs du moment font foi, jamais ce que l'écran affichait à
-l'ouverture). Bascule en lot chaque domicile `UNPLACED` d'un championnat commencé qui passe le
-prédicat : statut `VALIDATED`
+l'ouverture). Bascule en lot, via `LeagueValidationOutlook::markLeagueValidated`, chaque domicile
+`UNPLACED` d'un championnat commencé qui passe le prédicat : statut `VALIDATED`
 (horodaté) + `placementSource` `MANUAL` — le `MANUAL` n'est pas cosmétique, la formule du cadenas de
 la grille et l'ancre `FIXED` du solveur de placement l'exigent (§3), sinon les rencontres basculées
 s'afficheraient déverrouillées alors que le solveur les traite déjà en ancres. **On ne dévalide
 jamais** : le prédicat ne regarde que les rencontres `UNPLACED`, donc rejouable sans effet sur une
-rencontre déjà `VALIDATED` par ce geste ou par la réconciliation D9 : aucune de ces rencontres n'est
-jamais reprise.
+rencontre déjà `VALIDATED` par ce geste, par l'auto-validation au dépôt (chantier A) ou par la
+réconciliation D9 : aucune de ces rencontres n'est jamais reprise. Depuis le chantier A, ce `POST`
+**ne couvre plus le cas nominal** (le dépôt l'a déjà fait) : il ne reste utile que pour un
+championnat qui mûrit ENTRE deux dépôts — le rapport de dépôt porte désormais `leagueValidated`
+(compte des domiciles basculés par la passe post-flush), distinct de `totalValidatable` (ce qu'il
+reste à rattraper, lu par le `GET`).
 
 **Un seul geste, détaillé par championnat (décision fondateur)** — le front a écarté les cases à
 cocher (choisir championnat par championnat) et les confirmations successives (une par championnat) :
@@ -1612,7 +1629,12 @@ Périmètre engagé : `EngagedTeamGuardTest`,
 tout seul) et `Security/OpponentVenueSuggestionShareTest` (les gymnases d'un adversaire se partagent
 en suggestions — promesses des deux features Behat FFBB réelles retirées 2026-10-13) + features Behat
 dédiées (`un-domicile-importe-retrouve-son-gymnase`, `un-conflit-traite-reste-visible-mais-decompte`,
-`une-rencontre-importee-dit-si-elle-est-traitee`). « Validé ligue » en lot, piloté par l'échéance :
+`une-rencontre-importee-dit-si-elle-est-traitee`). « Validé ligue », auto au dépôt (chantier A) +
+rattrapage en lot : **NR gatant** (step nommé `blocking-tests` de `ci.yml` +
+`docs/testing/blocking-tests.md`, axe *constraint semantics*) `Integration/Service/
+ImportLeagueAutoValidationTest` (domicile validable d'un championnat commencé basculé au dépôt,
+byte-identique à l'ancre du geste manuel ; championnat non commencé/sans heure/sans gymnase/dévié
+jamais validé ; `leagueValidated` exact ; re-dépôt idempotent). Rattrapage :
 `LeagueValidatedFixturesControllerTest` (prédicat, idempotence, guards, verrou
 optimiste, `testAnOutOfAccessWindowHomeFixtureStaysEligibleAndTheRadarSignalsIt` — la divergence
 ASSUMÉE avec le contrôle d'accès unitaire, figée — et
@@ -1620,8 +1642,10 @@ ASSUMÉE avec le contrôle d'accès unitaire, figée — et
 (un championnat à échéance future n'apparaît ni au GET ni au POST) et
 `testACompetitionWithoutDeadlineIsNamedNotValidated`), `MatchTenantIsolationTest` (étendu — club B
 éligible, club A lit 0 et bascule 0) + feature Behat
-`un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature` (`LeagueValidationContext`, deux
-scénarios — échéance passée, échéance non passée). Registre « à corriger dans FBI » :
+`un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature` (`LeagueValidationContext`, cinq
+scénarios — échéance passée bascule au `POST` de rattrapage, **championnat déjà commencé validé
+PAR LE DÉPÔT seul** [chantier A, sans aucun geste en lot], échéance non passée, premier match joué
+sans échéance, amical passé auto-validé). Registre « à corriger dans FBI » :
 `FbiCorrectionApiTest` (lecture/close/reopen, 404 cross-club, 403 membre sur close),
 `MatchTenantIsolationTest` (étendu) + feature Behat `ce-que-fbi-doit-refleter.feature`
 (`FbiCorrectionContext`, suite `fbi-a-corriger`). Front : suites Vitest sous
