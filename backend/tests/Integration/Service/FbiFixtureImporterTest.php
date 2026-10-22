@@ -168,11 +168,9 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     public function testMappingPersistsACompetitionAndInfersBrassage(): void
     {
-        $file = $this->xlsx([
+        $result = $this->importMapped([
             ['RMU18 Brassage', 'R2001', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '', ''],
-        ]);
-
-        $result = $this->importer->import($file, $this->club, [
+        ], [
             ['division' => 'RMU18 Brassage', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId()],
         ]);
 
@@ -188,10 +186,11 @@ final class FbiFixtureImporterTest extends KernelTestCase
     public function testTwoClubTeamsInOneDivisionResolveByLabel(): void
     {
         $teamTwo = $this->createTeam('U15-2');
-        $file = $this->xlsx([
+        $rows = [
             ['D2', 'A1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', ''],
             ['D2', 'A2', 'BC TESTVILLE - 2', 'AS Y', '03/10/2026', '', ''],
-        ]);
+        ];
+        $file = $this->xlsx($rows);
 
         // Analyze splits the division per club-team label (décision fondateur
         // 2026-08-02 : le suffixe « - 2 » appareille la 2ᵉ équipe).
@@ -200,7 +199,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         sort($labels);
         self::assertSame(['BC TESTVILLE - 1', 'BC TESTVILLE - 2'], $labels);
 
-        $result = $this->importer->import($file, $this->club, [
+        $result = $this->importMapped($rows, [
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 1', 'teamId' => $this->team->getId()],
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 2', 'teamId' => $teamTwo->getId()],
         ]);
@@ -224,14 +223,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
         // opponents are ALL foreign (> 50 %) → error NAMED, division SKIPPED,
         // the other division still imports (founder decision 2026-08-03).
         $paired = $this->pairedCompetition('D2', ['AS VOISINS', 'BC RIVAUX', 'ES AILLEURS'], 12);
-        $file = $this->xlsx([
+        $teamTwo = $this->createTeam('U15-2');
+
+        $result = $this->importMapped([
             ['D2', 'X1', 'BC TESTVILLE - 1', 'US INCONNU', '03/10/2026', '', ''],
             ['D2', 'X2', 'BC TESTVILLE - 1', 'CS MYSTERE', '10/10/2026', '', ''],
             ['D3', 'Y1', 'BC TESTVILLE - 1', 'AS Libre', '03/10/2026', '', ''],
-        ]);
-        $teamTwo = $this->createTeam('U15-2');
-
-        $result = $this->importer->import($file, $this->club, [
+        ], [
             ['division' => 'D3', 'fbiTeamLabel' => null, 'teamId' => $teamTwo->getId()],
         ]);
 
@@ -248,13 +246,12 @@ final class FbiFixtureImporterTest extends KernelTestCase
     {
         // 1 unknown out of 3 distinct (≤ 50 %) → POULE_MISMATCH warning, import passes.
         $this->pairedCompetition('D2', ['AS VOISINS', 'BC RIVAUX', 'ES AILLEURS'], 12);
-        $file = $this->xlsx([
+
+        $result = $this->importMapped([
             ['D2', 'X1', 'BC TESTVILLE - 1', 'AS VOISINS', '03/10/2026', '', ''],
             ['D2', 'X2', 'BC TESTVILLE - 1', 'BC RIVAUX', '10/10/2026', '', ''],
             ['D2', 'X3', 'BC TESTVILLE - 1', 'US INTRUS', '17/10/2026', '', ''],
-        ]);
-
-        $result = $this->importer->import($file, $this->club, []);
+        ], []);
 
         self::assertSame(3, $result['created']);
         $mismatch = array_values(array_filter($result['warnings'], static fn (array $w): bool => 'POULE_MISMATCH' === $w['type']));
@@ -265,10 +262,9 @@ final class FbiFixtureImporterTest extends KernelTestCase
     public function testDivisionWithoutPairingIsNeverChecked(): void
     {
         // No FFBB refs on the competition → today's behaviour, zero control.
-        $file = $this->xlsx([
+        $result = $this->importMapped([
             ['D2', 'X1', 'BC TESTVILLE - 1', 'N IMPORTE QUI', '03/10/2026', '', ''],
-        ]);
-        $result = $this->importer->import($file, $this->club, [
+        ], [
             ['division' => 'D2', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId()],
         ]);
 
@@ -280,12 +276,11 @@ final class FbiFixtureImporterTest extends KernelTestCase
     {
         // Expectation frozen at pairing: 22 matchdays; the file brings 2 → named.
         $this->pairedCompetition('D2', ['AS VOISINS', 'BC RIVAUX'], 22);
-        $file = $this->xlsx([
+
+        $result = $this->importMapped([
             ['D2', 'X1', 'BC TESTVILLE - 1', 'AS VOISINS', '03/10/2026', '', ''],
             ['D2', 'X2', 'BC TESTVILLE - 1', 'BC RIVAUX', '10/10/2026', '', ''],
-        ]);
-
-        $result = $this->importer->import($file, $this->club, []);
+        ], []);
 
         self::assertCount(1, $result['completeness']);
         self::assertSame(2, $result['completeness'][0]['imported']);
@@ -334,20 +329,18 @@ final class FbiFixtureImporterTest extends KernelTestCase
         // stored one — otherwise the division stays unmapped forever (the
         // manager re-maps, the import still says unmapped: a dead loop).
         $teamTwo = $this->createTeam('U15-2');
-        $old = $this->xlsx([
+        $this->importMapped([
             ['D2', 'B1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', ''],
             ['D2', 'B2', 'BC TESTVILLE - 2', 'AS Y', '03/10/2026', '', ''],
-        ]);
-        $this->importer->import($old, $this->club, [
+        ], [
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 1', 'teamId' => $this->team->getId()],
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 2', 'teamId' => $teamTwo->getId()],
         ]);
 
-        $drifted = $this->xlsx([
+        $result = $this->importMapped([
             ['D2', 'B3', 'BC TESTVILLE 1B', 'AS Z', '10/10/2026', '', ''],
             ['D2', 'B4', 'BC TESTVILLE - 2', 'AS W', '10/10/2026', '', ''],
-        ]);
-        $result = $this->importer->import($drifted, $this->club, [
+        ], [
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE 1B', 'teamId' => $this->team->getId()],
         ]);
 
@@ -1433,9 +1426,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
             ['D2', 'R7001', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '', ''],
         ], null, 'A1');
 
+        // Chantier A PR 2 — « pas de salles appariées, pas d'import » : le domicile sans salle
+        // de D2 prend un gymnase via venueChoices (en-tête legacy → fichier custom, hors helper
+        // importMapped qui écrit l'en-tête courant).
+        $venueId = $this->createVenue('Gymnase Legacy');
         $result = $this->importer->import($this->write($spreadsheet), $this->club, [
             ['division' => 'D2', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId()],
-        ]);
+        ], [], null, [], [['division' => 'D2', 'venueId' => $venueId]]);
 
         self::assertSame(1, $result['created']);
     }
@@ -1491,11 +1488,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
         // compétition appariée est RÉUTILISÉE (renommée vers le libellé FBI,
         // réfs/attendus/poule conservés), jamais dupliquée.
         $paired = $this->pairedCompetition('RM2', ['AS VOISINS'], 14, canonicalName: 'Pré régionale masculine');
-        $file = $this->xlsx([
-            ['PRE REGIONALE MASCULINE', 'X1', 'BC TESTVILLE - 1', 'AS VOISINS', '03/10/2026', '', ''],
-        ]);
 
-        $result = $this->importer->import($file, $this->club, [
+        $result = $this->importMapped([
+            ['PRE REGIONALE MASCULINE', 'X1', 'BC TESTVILLE - 1', 'AS VOISINS', '03/10/2026', '', ''],
+        ], [
             ['division' => 'PRE REGIONALE MASCULINE', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $paired->getId()],
         ]);
 
@@ -1512,12 +1508,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
     {
         // Revue F2 round 1 : le dedupe DB ne voit pas les frères non flushés —
         // garde en mémoire dans le lot.
-        $file = $this->xlsx([
+        $this->importMapped([
             ['D2', 'A1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', ''],
             ['D2', 'A2', 'BC TESTVILLE - 2', 'AS Y', '03/10/2026', '', ''],
-        ]);
-
-        $this->importer->import($file, $this->club, [
+        ], [
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 1', 'teamId' => $this->team->getId()],
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 2', 'teamId' => $this->team->getId()],
         ]);
@@ -2003,11 +1997,11 @@ final class FbiFixtureImporterTest extends KernelTestCase
      * veut piloter la couverture (refus, alias confirmé, écart salle, terrain neutre)
      * passe `venueMappings: []` / `venueChoices: []` (opt-out explicite).
      *
-     * @param list<list<string>>                                                             $rows
-     * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string}>|null  $mappings
-     * @param list<array{fixtureId: string, field: string, choice: string}>                  $decisions
-     * @param list<array{label: string, venueId: string}>|null                               $venueMappings null = auto-apparier les salles à domicile ; [] = opt-out
-     * @param list<array{division: string, venueId: string}>|null                            $venueChoices  null = auto-apparier les domiciles sans salle ; [] = opt-out
+     * @param list<list<string>>                                                            $rows
+     * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string}>|null $mappings
+     * @param list<array{fixtureId: string, field: string, choice: string}>                 $decisions
+     * @param list<array{label: string, venueId: string}>|null                              $venueMappings null = auto-apparier les salles à domicile ; [] = opt-out
+     * @param list<array{division: string, venueId: string}>|null                           $venueChoices  null = auto-apparier les domiciles sans salle ; [] = opt-out
      *
      * @return array{created: int, updated: int, unchanged: int, exempted: int, errors: list<string>, warnings: list<array{type: string, division: string, externalRef: string, message: string}>, unmappedDivisions: list<array{name: string, fbiTeamLabel: string|null, rowCount: int}>, unresolvedDeviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>, depositedAt: string}
      */

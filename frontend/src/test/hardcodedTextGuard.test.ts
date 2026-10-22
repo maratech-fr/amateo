@@ -59,6 +59,8 @@ const MIGRATED_FILES = [
   "features/matches/ConflictLine.tsx",
   "features/matches/OpponentsPage.tsx",
   "features/matches/FfbbEngagementsDialog.tsx",
+  // Chantier A PR 2 — la modale d'import FBI, migrée en même temps que la section « Salles à domicile ».
+  "features/matches/ImportFbiDialog.tsx",
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",

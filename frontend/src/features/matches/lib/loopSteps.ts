@@ -128,7 +128,9 @@ export interface WeekCounts {
 export function deriveWeekCounters(weekFixtures: Fixture[], conflicts: Conflict[]): WeekCounts {
   const weekFixtureIds = new Set(weekFixtures.map((f) => f.id));
   const home = weekFixtures.filter((f) => "HOME" === f.homeAway);
-  const homeUnplaced = home.filter((f) => "UNPLACED" === f.status);
+  // Chantier A — un domicile sur TERRAIN NEUTRE (« pas chez nous ») est UNPLACED mais n'est
+  // JAMAIS « à placer » : il n'a pas de créneau du club à poser, on l'exclut du compteur.
+  const homeUnplaced = home.filter((f) => "UNPLACED" === f.status && true !== f.neutralGround);
   return {
     unplaced: homeUnplaced.length,
     conflicts: weekConflictCount(conflicts, weekFixtureIds),

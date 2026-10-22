@@ -11,6 +11,9 @@ import type { Fixture } from "../api";
  */
 const UNPLACED_REASON_LABEL: Record<NonNullable<Fixture["unplacedReason"]>, string> = {
   venue_lost: "Le gymnase n'est plus affilié au club",
+  // Chantier A — un domicile joué sur terrain neutre (« pas chez nous ») : sans gymnase du club
+  // PAR CHOIX (jamais une salle à retrouver). L'écran l'affiche surtout via la pastille neutre.
+  neutral_ground: "Terrain neutre (pas chez nous)",
 };
 
 export function unplacedReasonLabel(reason: Fixture["unplacedReason"]): string | null {

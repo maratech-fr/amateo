@@ -11,7 +11,7 @@ const teams = new Map<string, Team>([
 ].map((t) => [t.id, t as Team]));
 const venues = new Map<string, Venue>([["v1", { id: "v1", name: "Gymnase Alpha", color: null, externalLabels: [] }]]);
 
-const base = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, placementSource: "MANUAL" as const, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null, fbiEcho: null };
+const base = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, placementSource: "MANUAL" as const, unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null, fbiEcho: null };
 
 function fx(over: Partial<Fixture>): Fixture {
   return { ...base, id: "fx", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Voisins", status: "PLACED", venueId: "v1", kickoffTime: "16:00", externalRef: "12", ...over };

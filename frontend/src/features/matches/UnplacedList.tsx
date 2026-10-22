@@ -18,9 +18,10 @@ interface UnplacedListProps {
   onSelect: (id: string) => void;
 }
 
-/** A home fixture still needing a venue + kickoff. Away fixtures are not placed here. */
+/** A home fixture still needing a venue + kickoff. Away fixtures are not placed here, and a
+ *  TERRAIN NEUTRE (« pas chez nous ») is a home without a club venue BY CHOICE — never placed. */
 function isUnplacedHome(fixture: Fixture): boolean {
-  return "HOME" === fixture.homeAway && (null === fixture.venueId || null === fixture.kickoffTime);
+  return "HOME" === fixture.homeAway && true !== fixture.neutralGround && (null === fixture.venueId || null === fixture.kickoffTime);
 }
 
 /** The to-do list of home matches to place — clicking one opens the placement panel. */

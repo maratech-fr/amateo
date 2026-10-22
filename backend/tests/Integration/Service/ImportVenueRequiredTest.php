@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Clock\DevClockStore;
+use App\Controller\VenueExternalLabelController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
@@ -59,7 +60,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *      division dont des domiciles n'ont PAS de salle dans le fichier → un gymnase
  *      (uuid) OU 'NEUTRAL'.
  *    Un venueMapping uuid APPARIE (attach alias + backfill, la MAISON de
- *    {@see \App\Controller\VenueExternalLabelController::attach}) AVANT la vérification
+ *    {@see VenueExternalLabelController::attach}) AVANT la vérification
  *    de couverture et AVANT la passe d'auto-validation. 'NEUTRAL' marque les domiciles
  *    UNPLACED du libellé/division en terrain neutre.
  *  - La vérification de couverture précède TOUTE écriture de rencontre : un domicile
@@ -213,7 +214,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $result = $this->deposit($clubId, $seasonId, [
             ['D MAPPÉE', 'DA-1', $needle . ' - 1', 'AS Voisins', $this->fbiDate(self::FUTURE_DATE), '15:30', 'SALLE IMPORTABLE'],
             ['D ORPHELINE', 'DA-2', $needle . ' - 2', 'AS Lointains', $this->fbiDate(self::FUTURE_DATE), '16:00', 'SALLE ORPHELINE'],
-        ], $team->getId(), onlyMapDivision: 'D MAPPÉE', venueMappings: [['label' => 'SALLE IMPORTABLE', 'venueId' => $venue->getId()]]);
+        ], $team->getId(), venueMappings: [['label' => 'SALLE IMPORTABLE', 'venueId' => $venue->getId()]], onlyMapDivision: 'D MAPPÉE');
 
         self::assertSame(1, $result['created'] ?? null, 'seule la division appariée crée sa rencontre');
         $unmapped = array_column($result['unmappedDivisions'] ?? [], 'name');
@@ -533,9 +534,9 @@ final class ImportVenueRequiredTest extends WebTestCase
     /**
      * Dépose un fichier FBI PAR LE SERVICE (le foyer où vit l'appariement de salles).
      *
-     * @param list<list<string>>                        $rows         lignes de données (sans en-tête)
-     * @param list<array{label: string, venueId: string}> $venueMappings libellé → gymnase (uuid) ou 'NEUTRAL'
-     * @param list<array{division: string, venueId: string}> $venueChoices division sans salle → gymnase ou 'NEUTRAL'
+     * @param list<list<string>>                                            $rows          lignes de données (sans en-tête)
+     * @param list<array{label: string, venueId: string}>                   $venueMappings libellé → gymnase (uuid) ou 'NEUTRAL'
+     * @param list<array{division: string, venueId: string}>                $venueChoices  division sans salle → gymnase ou 'NEUTRAL'
      * @param list<array{fixtureId: string, field: string, choice: string}> $decisions
      *
      * @return array<string, mixed>

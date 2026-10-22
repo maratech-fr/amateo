@@ -19,6 +19,7 @@ function fixture(over: Partial<Fixture> = {}): Fixture {
     fbiVenueLabel: null,
     placementSource: "MANUAL",
     unplacedReason: null,
+    neutralGround: false,
     reviewState: "NEW" as const,
     reviewedAt: null,
     pendingDeviations: [],

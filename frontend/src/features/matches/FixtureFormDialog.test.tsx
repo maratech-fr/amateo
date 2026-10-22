@@ -85,6 +85,7 @@ describe("FixtureFormDialog", () => {
     fbiVenueLabel: null,
     placementSource: "MANUAL" as const,
     unplacedReason: null,
+    neutralGround: false,
     reviewState: "NEW" as const,
     reviewedAt: null,
     pendingDeviations: [],

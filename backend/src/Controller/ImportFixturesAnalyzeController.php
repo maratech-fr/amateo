@@ -76,6 +76,10 @@ final class ImportFixturesAnalyzeController extends AbstractController
             // RMM-4 — the reconciliation écarts of home fixtures already placed
             // (state app VS state fichier), each to be decided per écart at import.
             'deviations' => $result['deviations'],
+            // Chantier A PR 2 — les salles à domicile du fichier (par libellé) et les
+            // domiciles sans salle : la modale les apparie avant l'import.
+            'venues' => $result['venues'],
+            'homesWithoutVenue' => $result['homesWithoutVenue'],
         ], Response::HTTP_OK);
     }
 }

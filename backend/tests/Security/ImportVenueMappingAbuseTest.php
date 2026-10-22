@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Controller\VenueExternalLabelController;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -12,8 +13,8 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
-use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\Integration\Service\ImportVenueRequiredTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -32,11 +33,11 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  * ne doit pas : un gymnase d'un autre club, un corps forgé, un neutre interdit — et
  * que RIEN n'est écrit quand c'est refusé (jamais une écriture partielle).
  *
- * CONTRAT (décidé en option A, cf. {@see \App\Tests\Integration\Service\ImportVenueRequiredTest}) :
+ * CONTRAT (décidé en option A, cf. {@see ImportVenueRequiredTest}) :
  * POST /api/fixtures/import accepte deux champs multipart JSON :
  *  - `venueMappings` : list<{label, venueId}> — venueId = uuid d'un gymnase du club OU 'NEUTRAL' ;
  *  - `venueChoices`  : list<{division, venueId}> — venueId = uuid OU 'NEUTRAL'.
- * L'appariement réutilise la MAISON de l'attach ({@see \App\Controller\VenueExternalLabelController})
+ * L'appariement réutilise la MAISON de l'attach ({@see VenueExternalLabelController})
  * : libellé > 120 car → 422 · > 30 alias → 422 · libellé déjà porté par un AUTRE gymnase → 422 ·
  * gymnase étranger invisible (filtre tenant) → 400.
  */
@@ -72,6 +73,9 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
 
         self::assertSame(400, $status, 'un gymnase étranger est invisible → 400, jamais une écriture cross-tenant');
         $this->assertNoFixture('AB1-1');
+        // La requête d'import (tokenA) a laissé le GUC sur le club A ; pour relire le gymnase
+        // du club B (vérifier qu'il n'a reçu aucun alias) on se rescope sur son tenant.
+        $this->scopeGucToClub($clubB);
         $this->assertVenueLabels($venueB->getId(), [], 'le gymnase étranger n\'a reçu aucun alias');
     }
 

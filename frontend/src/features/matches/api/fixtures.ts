@@ -50,7 +50,14 @@ export interface Fixture {
    * P2-52 — persistent reason it went back to « à placer »: `venue_lost` (its venue is no
    * longer affiliated to the club), else null. Distinct from the volatile auto-placement reason.
    */
-  unplacedReason: "venue_lost" | null;
+  unplacedReason: "venue_lost" | "neutral_ground" | null;
+  /**
+   * Chantier A — un domicile joué sur TERRAIN NEUTRE (« pas chez nous ») : HOME sans gymnase
+   * du club PAR CHOIX, jamais une salle à rattacher ni une rencontre à placer. Dérivé serveur
+   * de `unplacedReason`. Le front l'AFFICHE (pastille neutre) et l'exclut du compteur « sans
+   * gymnase » et des files à placer.
+   */
+  neutralGround: boolean;
   /** PR-3a — l'état de TRAITEMENT (a-t-elle été examinée), distinct de `status`. */
   reviewState: FixtureReviewState;
   /** PR-3a — dernier traitement (ISO), null = jamais examinée. */
@@ -151,6 +158,7 @@ function normalizeFixture(raw: Fixture): Fixture {
     fbiVenueLabel: raw.fbiVenueLabel ?? null,
     placementSource: raw.placementSource ?? null,
     unplacedReason: raw.unplacedReason ?? null,
+    neutralGround: raw.neutralGround ?? false,
     pendingDeviations: raw.pendingDeviations ?? [],
     reviewedAt: raw.reviewedAt ?? null,
     ffbbRencontreId: raw.ffbbRencontreId ?? null,

@@ -318,7 +318,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
      * Dépose un fichier FBI PAR LE SERVICE (le foyer où vit l'auto-validation, {@see FbiFixtureImporter::import}) :
      * mappings = chaque division des lignes → l'équipe donnée. Rend le rapport d'import.
      *
-     * @param list<list<string>>                           $rows          lignes de données (sans en-tête)
+     * @param list<list<string>>                          $rows          lignes de données (sans en-tête)
      * @param list<array{label: string, venueId: string}> $venueMappings libellé → gymnase (uuid) ou 'NEUTRAL'
      *
      * @return array<string, mixed>

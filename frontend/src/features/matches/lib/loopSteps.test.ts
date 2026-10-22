@@ -22,6 +22,7 @@ function fx(over: Partial<Fixture> = {}): Fixture {
     fbiVenueLabel: null,
     placementSource: over.placementSource ?? "MANUAL",
     unplacedReason: over.unplacedReason ?? null,
+    neutralGround: false,
     reviewState: over.reviewState ?? "NEW",
     reviewedAt: over.reviewedAt ?? null,
     pendingDeviations: over.pendingDeviations ?? [],

@@ -24,6 +24,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
 use DateInterval;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -394,7 +395,11 @@ final class MatchPlacementPayloadBuilder
         // d'où un payload à l'octet identique à l'ancien comportement.
         $inWindow = null === $window || ($base['date'] >= $window['from'] && $base['date'] <= $window['to']);
 
-        if (FixtureHomeAway::AWAY === $fixture->getHomeAway()) {
+        // Un domicile sur TERRAIN NEUTRE (« pas chez nous ») n'est jamais confié au solveur
+        // comme un match à placer : il voyage comme un extérieur (il ne porte que SA date,
+        // team_dates), jamais TO_PLACE ni FIXED. Le contrat engine reste inchangé (1.5).
+        if (FixtureHomeAway::AWAY === $fixture->getHomeAway()
+            || FixtureUnplacedReason::NEUTRAL_GROUND === $fixture->getUnplacedReason()) {
             // Depuis ③ le solveur IGNORE l'empreinte personne d'un extérieur ; il ne sert
             // plus qu'à porter SA date (team_dates : libérer la protection d'habitude le jour
             // où l'équipe est dehors). Hors fenêtre, cette date ne concerne aucun match à

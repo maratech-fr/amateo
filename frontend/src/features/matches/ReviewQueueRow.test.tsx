@@ -30,6 +30,7 @@ function fx(extra: Partial<Fixture> = {}): Fixture {
     fbiVenueLabel: "GYMNASE MATEO",
     placementSource: null,
     unplacedReason: null,
+    neutralGround: false,
     reviewState: "NEW",
     reviewedAt: null,
     pendingDeviations: [],

@@ -57,6 +57,7 @@ function fx(over: Partial<Fixture> & { id: string }): Fixture {
     fbiVenueLabel: null,
     placementSource: "MANUAL",
     unplacedReason: null,
+    neutralGround: false,
     reviewState: "NEW",
     reviewedAt: null,
     pendingDeviations: [],
