@@ -8,6 +8,7 @@ use App\Controller\AuthController;
 use App\Entity\Club;
 use App\Entity\User;
 use App\Enum\AuditAction;
+use App\Mail\EmailTemplateRenderer;
 use App\Repository\ClubRepository;
 use App\Security\TurnstileVerifier;
 use App\Service\AuditTrail;
@@ -276,13 +277,18 @@ final class RegisterService
         // failure (Redis down) would land here — swallowed: a 500 on this branch alone
         // would itself be an account-enumeration oracle (mirror PasswordController::forgot).
         try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($email)
-                    ->subject(\sprintf('Confirmez votre adresse e-mail %s', $product))
-                    ->text("Bienvenue sur {$product} !\n\nPour activer votre compte, ouvrez ce lien :\n{$link}\n\nCe lien expire dans 24 heures."),
-            );
+            $message = (new Email)
+                ->from($this->mailFrom->address())
+                ->to($email)
+                ->subject(\sprintf('Confirmez votre adresse e-mail %s', $product))
+                ->text("Bienvenue sur {$product} !\n\nPour activer votre compte, ouvrez ce lien :\n{$link}\n\nCe lien expire dans 24 heures.");
+            // Bouton CTA du HTML : en-têtes internes lus/retirés au worker par
+            // EmailSignatureListener, qui rend le bouton. L'URL EST le lien du texte (jamais
+            // dupliqué en clair sous le bouton) — même mécanisme que CoachWishMailBuilder.
+            $headers = $message->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Confirmer mon adresse');
+            $this->mailer->send($message);
         } catch (Throwable $e) {
             // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
             // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
