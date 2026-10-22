@@ -1,4 +1,5 @@
 import { addDays, mondayOf, type WeekWindow } from "@/features/cockpit/lib/date";
+import { isRealDate } from "@/shared/lib/clock";
 
 /** Le minimum d'une entrée calendrier pour rattacher un planning à sa période. */
 interface EntryLike {
@@ -35,9 +36,18 @@ export function planDerivedWeeks(motherId: string, entries: EntryLike[], plans: 
 
   const mondays = new Set<string>();
   for (const plan of plans) {
-    if (null !== plan.calendarEntryId && belongsToPeriod.has(plan.calendarEntryId)) {
-      mondays.add(mondayOf(plan.startDate));
+    if (null === plan.calendarEntryId || !belongsToPeriod.has(plan.calendarEntryId)) {
+      continue;
     }
+    // Le backend sert `startDate` en Y-m-d ; une forme RFC 3339 héritée
+    // (« 2026-12-28T00:00:00+00:00 ») ferait tomber `mondayOf` (split("-")) sur NaN.
+    // On garde le préfixe date (10 car.) et on écarte toute date non réelle — germe
+    // du bug « NaN » de l'onglet Réglages (retour terrain Rillieux, 2026-10-21).
+    const day = plan.startDate.slice(0, 10);
+    if (!isRealDate(day)) {
+      continue;
+    }
+    mondays.add(mondayOf(day));
   }
 
   return [...mondays].sort().map((monday) => ({ monday, startDate: monday, endDate: addDays(monday, 6) }));

@@ -66,10 +66,10 @@ class SchedulePlanResource
     public string $name = '';
 
     #[Groups(['read'])]
-    public DateTimeImmutable $startDate;
+    public string $startDate = '';
 
     #[Groups(['read'])]
-    public DateTimeImmutable $endDate;
+    public string $endDate = '';
 
     #[Groups(['read'])]
     public ?string $calendarEntryId = null;
@@ -96,8 +96,8 @@ class SchedulePlanResource
         $dto->seasonId = $entity->getSeasonId();
         $dto->type = $entity->getType();
         $dto->name = $entity->getName();
-        $dto->startDate = $entity->getStartDate();
-        $dto->endDate = $entity->getEndDate();
+        $dto->startDate = $entity->getStartDate()->format('Y-m-d');
+        $dto->endDate = $entity->getEndDate()->format('Y-m-d');
         $dto->calendarEntryId = $entity->getCalendarEntryId();
         $dto->chosenScheduleId = $entity->getChosenScheduleId();
         $dto->teamSelectionInitialized = $entity->isTeamSelectionInitialized();
