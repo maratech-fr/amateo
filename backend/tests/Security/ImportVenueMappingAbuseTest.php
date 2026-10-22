@@ -1,0 +1,409 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Security;
+
+use App\Entity\Fixture;
+use App\Entity\Season;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
+use App\Entity\Venue;
+use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
+use App\Service\SeasonResolver;
+use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\TenantGucTrait;
+use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PHPUnit\Framework\Attributes\Group;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+
+/**
+ * SEC — chemins d'ABUS de l'appariement de salles au dépôt FBI (chantier A PR 2),
+ * sur le patron {@see ImportFixturesAuthorizationTest}. Chaque cas prouve que le
+ * canal multipart `venueMappings` / `venueChoices` ne peut JAMAIS écrire ce qu'il
+ * ne doit pas : un gymnase d'un autre club, un corps forgé, un neutre interdit — et
+ * que RIEN n'est écrit quand c'est refusé (jamais une écriture partielle).
+ *
+ * CONTRAT (décidé en option A, cf. {@see \App\Tests\Integration\Service\ImportVenueRequiredTest}) :
+ * POST /api/fixtures/import accepte deux champs multipart JSON :
+ *  - `venueMappings` : list<{label, venueId}> — venueId = uuid d'un gymnase du club OU 'NEUTRAL' ;
+ *  - `venueChoices`  : list<{division, venueId}> — venueId = uuid OU 'NEUTRAL'.
+ * L'appariement réutilise la MAISON de l'attach ({@see \App\Controller\VenueExternalLabelController})
+ * : libellé > 120 car → 422 · > 30 alias → 422 · libellé déjà porté par un AUTRE gymnase → 422 ·
+ * gymnase étranger invisible (filtre tenant) → 400.
+ */
+#[Group('phase1')]
+#[Group('integration')]
+final class ImportVenueMappingAbuseTest extends WebTestCase
+{
+    use ChoosesPlanVersionTrait;
+    use TenantGucTrait;
+    use VerifiesRegistration;
+
+    private const string DIVISION = 'DABUSE';
+
+    private KernelBrowser $client;
+
+    private EntityManagerInterface $em;
+
+    /** @var list<string> */
+    private array $tempFiles = [];
+
+    /** A1 — un `venueMappings` vers le gymnase d'un AUTRE club est refusé, et rien n'est écrit chez personne. */
+    public function testVenueMappingToAForeignVenueIsRefusedAndWritesNothing(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A1');
+        $teamA = $this->createTeam($clubA);
+        [, , $clubB] = $this->register('B1');
+        $venueB = $this->createVenue($clubB, 'Gymnase Étranger');
+
+        $status = $this->import($tokenA, [$this->homeRow('AB1-1', $needleA, 'SALLE A1')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueMappings' => json_encode([['label' => 'SALLE A1', 'venueId' => $venueB->getId()]], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(400, $status, 'un gymnase étranger est invisible → 400, jamais une écriture cross-tenant');
+        $this->assertNoFixture('AB1-1');
+        $this->assertVenueLabels($venueB->getId(), [], 'le gymnase étranger n\'a reçu aucun alias');
+    }
+
+    /** A2 — un libellé de plus de 120 caractères est refusé (corps forgé, jamais stocké). */
+    public function testAnOverLongLabelIsRefused(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A2');
+        $teamA = $this->createTeam($clubA);
+        $venue = $this->createVenue($clubA, 'Gymnase A2');
+        $longLabel = str_repeat('X', 121);
+
+        $status = $this->import($tokenA, [$this->homeRow('AB2-1', $needleA, $longLabel)], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueMappings' => json_encode([['label' => $longLabel, 'venueId' => $venue->getId()]], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(422, $status, 'un libellé > 120 caractères est refusé');
+        $this->assertNoFixture('AB2-1');
+    }
+
+    /** A3 — au-delà de 30 alias sur un gymnase, un 31ᵉ est refusé (le json ne grossit pas sans fin). */
+    public function testMoreThanThirtyLabelsIsRefused(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A3');
+        $teamA = $this->createTeam($clubA);
+        $venue = $this->createVenue($clubA, 'Gymnase A3');
+        $this->scopeGucToClub($clubA);
+        $venue->setExternalLabels(array_map(static fn (int $i): string => 'alias ' . $i, range(1, 30)));
+        $this->em->flush();
+
+        $status = $this->import($tokenA, [$this->homeRow('AB3-1', $needleA, 'SALLE A3 EN TROP')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueMappings' => json_encode([['label' => 'SALLE A3 EN TROP', 'venueId' => $venue->getId()]], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(422, $status, 'un 31ᵉ alias est refusé');
+        $this->assertNoFixture('AB3-1');
+        $this->assertVenueLabelCount($venue->getId(), 30, 'le gymnase garde ses 30 alias, pas un de plus');
+    }
+
+    /** A4 — un libellé déjà porté par un AUTRE gymnase du club ne peut pas être ré-attribué à l'aveugle (422). */
+    public function testALabelAlreadyCarriedByAnotherVenueIsRefused(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A4');
+        $teamA = $this->createTeam($clubA);
+        $this->createVenue($clubA, 'Gymnase A4 Porteur', ['salle partagee']);
+        $other = $this->createVenue($clubA, 'Gymnase A4 Autre');
+
+        $status = $this->import($tokenA, [$this->homeRow('AB4-1', $needleA, 'SALLE PARTAGEE')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueMappings' => json_encode([['label' => 'SALLE PARTAGEE', 'venueId' => $other->getId()]], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(422, $status, 'un libellé déjà porté par un autre gymnase est refusé');
+        $this->assertNoFixture('AB4-1');
+        $this->assertVenueLabels($other->getId(), [], 'le second gymnase n\'a pas volé l\'alias');
+    }
+
+    /** A5 — un `venueChoices` (domicile sans salle) vers un gymnase étranger est refusé, rien n'est écrit. */
+    public function testVenueChoiceToAForeignVenueIsRefused(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A5');
+        $teamA = $this->createTeam($clubA);
+        [, , $clubB] = $this->register('B5');
+        $venueB = $this->createVenue($clubB, 'Gymnase Étranger A5');
+
+        // Un domicile SANS salle dans le fichier (colonne Salle vide) → venueChoices par division.
+        $status = $this->import($tokenA, [$this->homeRow('AB5-1', $needleA, '')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueChoices' => json_encode([['division' => self::DIVISION, 'venueId' => $venueB->getId()]], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(400, $status, 'un venueChoices vers un gymnase étranger est refusé');
+        $this->assertNoFixture('AB5-1');
+    }
+
+    /** A6 — un marquage neutre n'écrit JAMAIS chez un autre club (l'import reste scopé au club appelant). */
+    public function testNeutralMarkingNeverWritesIntoAnotherClub(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A6');
+        $teamA = $this->createTeam($clubA);
+        [, , $clubB] = $this->register('B6');
+
+        $status = $this->import($tokenA, [$this->homeRow('AB6-1', $needleA, 'GYMNASE ADVERSE A6')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueMappings' => json_encode([['label' => 'GYMNASE ADVERSE A6', 'venueId' => 'NEUTRAL']], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(200, $status, 'un terrain neutre du club appelant s\'importe');
+        $this->scopeGucToClub($clubB);
+        self::assertSame(0, $this->em->getRepository(Fixture::class)->count([]), 'aucune rencontre n\'a été écrite dans l\'autre club');
+    }
+
+    /** A7 — déclarer neutre un libellé qui est un alias CONFIRMÉ d'un gymnase est refusé (D-h), rien n'est écrit. */
+    public function testNeutralOnAConfirmedAliasIsRefused(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A7');
+        $teamA = $this->createTeam($clubA);
+        $this->createVenue($clubA, 'Gymnase A7 Confirmé', ['salle confirmee a7']);
+
+        $status = $this->import($tokenA, [$this->homeRow('AB7-1', $needleA, 'SALLE CONFIRMEE A7')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueMappings' => json_encode([['label' => 'SALLE CONFIRMEE A7', 'venueId' => 'NEUTRAL']], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(422, $status, 'un alias confirmé ne peut pas être déclaré terrain neutre');
+        $this->assertNoFixture('AB7-1');
+    }
+
+    /** A8 — un choix neutre FORGÉ (division absente du fichier) ne couvre rien : le domicile réel reste sans gymnase → 422, rien n'est écrit. */
+    public function testAForgedNeutralChoiceCoversNothing(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A8');
+        $teamA = $this->createTeam($clubA);
+
+        // Un domicile importable sans salle, et un venueChoices neutre pour une AUTRE
+        // division (absente du fichier) : le choix forgé ne couvre pas le vrai domicile.
+        $status = $this->import($tokenA, [$this->homeRow('AB8-1', $needleA, '')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueChoices' => json_encode([['division' => 'DIVISION FANTOME', 'venueId' => 'NEUTRAL']], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(422, $status, 'un choix neutre forgé ne couvre aucun domicile réel');
+        $this->assertNoFixture('AB8-1');
+    }
+
+    /** A9 — déclarer un libellé neutre ne touche JAMAIS une rencontre de ce libellé DÉJÀ placée. */
+    public function testNeutralMarkingLeavesPlacedFixturesOfTheLabelIntact(): void
+    {
+        [$tokenA, , $clubA, $needleA] = $this->register('A9');
+        $teamA = $this->createTeam($clubA);
+        $venue = $this->createVenue($clubA, 'Gymnase A9 Placé');
+        $placed = $this->seedPlacedHome($clubA, $teamA, $venue->getId(), 'GYMNASE ADVERSE A9');
+        $placedId = $placed->getId();
+
+        $status = $this->import($tokenA, [$this->homeRow('AB9-1', $needleA, 'GYMNASE ADVERSE A9')], [
+            'mappings' => $this->mapping($teamA->getId()),
+            'venueMappings' => json_encode([['label' => 'GYMNASE ADVERSE A9', 'venueId' => 'NEUTRAL']], \JSON_THROW_ON_ERROR),
+        ]);
+
+        self::assertSame(200, $status);
+        $this->scopeGucToClub($clubA);
+        $this->em->clear();
+        $still = $this->em->find(Fixture::class, $placedId);
+        self::assertInstanceOf(Fixture::class, $still);
+        self::assertSame(FixtureStatus::PLACED, $still->getStatus(), 'un domicile déjà placé reste placé');
+        self::assertSame($venue->getId(), $still->getVenueId(), 'un domicile déjà placé garde son gymnase');
+        self::assertNull($still->getUnplacedReason(), 'un placé ne devient jamais neutre');
+    }
+
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $this->client->disableReboot();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ($this->tempFiles as $file) {
+            @unlink($file);
+        }
+        parent::tearDown();
+    }
+
+    /**
+     * POST /api/fixtures/import en multipart (file + parts) ; rend le code HTTP.
+     *
+     * @param list<list<string>>    $rows  lignes de données (sans en-tête)
+     * @param array<string, string> $parts champs multipart additionnels (mappings, venueMappings, venueChoices)
+     */
+    private function import(string $token, array $rows, array $parts): int
+    {
+        $file = $this->xlsx($rows);
+        $this->client->request('POST', '/api/fixtures/import', $parts, [
+            'file' => new UploadedFile($file, 'fbi.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        ], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+
+        return $this->client->getResponse()->getStatusCode();
+    }
+
+    /** @return string le JSON `mappings` reliant DIVISION → l'équipe donnée */
+    private function mapping(string $teamId): string
+    {
+        return json_encode([['division' => self::DIVISION, 'teamId' => $teamId]], \JSON_THROW_ON_ERROR);
+    }
+
+    /** @return list<string> une ligne HOME (le club en Equipe 1) au libellé de salle donné */
+    private function homeRow(string $ref, string $needle, string $salle): array
+    {
+        return [self::DIVISION, $ref, $needle . ' - 1', 'AS Voisins', '14/03/2099', '15:30', $salle];
+    }
+
+    private function assertNoFixture(string $ref): void
+    {
+        $this->em->clear();
+        self::assertSame(0, $this->em->getRepository(Fixture::class)->count(['externalRef' => $ref]), \sprintf('aucune rencontre « %s » ne doit être écrite', $ref));
+    }
+
+    /** @param list<string> $expected */
+    private function assertVenueLabels(string $venueId, array $expected, string $message): void
+    {
+        $this->em->clear();
+        $venue = $this->em->find(Venue::class, $venueId);
+        self::assertInstanceOf(Venue::class, $venue);
+        self::assertSame($expected, $venue->getExternalLabels(), $message);
+    }
+
+    private function assertVenueLabelCount(string $venueId, int $expected, string $message): void
+    {
+        $this->em->clear();
+        $venue = $this->em->find(Venue::class, $venueId);
+        self::assertInstanceOf(Venue::class, $venue);
+        self::assertCount($expected, $venue->getExternalLabels(), $message);
+    }
+
+    /** @param list<string> $aliases */
+    private function createVenue(string $clubId, string $name, array $aliases = []): Venue
+    {
+        $this->scopeGucToClub($clubId);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
+        self::assertInstanceOf(Season::class, $season);
+        $venue = new Venue;
+        $venue->setClubId($clubId);
+        $venue->setSeasonId($season->getId());
+        $venue->setName($name);
+        $venue->setSource('manual');
+        if ([] !== $aliases) {
+            $venue->setExternalLabels($aliases);
+        }
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue;
+    }
+
+    private function seedPlacedHome(string $clubId, Team $team, string $venueId, string $fbiLabel): Fixture
+    {
+        $this->scopeGucToClub($clubId);
+        $fixture = new Fixture;
+        $fixture->setClubId($clubId);
+        $fixture->setSeasonId($team->getSeasonId());
+        $fixture->setTeamId($team->getId());
+        $fixture->setMatchDate(new DateTimeImmutable('2099-03-14'));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel('Adv Placé');
+        $fixture->setExternalRef('A9-PLACED');
+        $fixture->setFbiVenueLabel($fbiLabel);
+        $fixture->setVenueId($venueId);
+        $fixture->setKickoffTime(new DateTimeImmutable('15:30'));
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('now'));
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $fixture;
+    }
+
+    private function createTeam(string $clubId): Team
+    {
+        $this->scopeGucToClub($clubId);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
+        self::assertInstanceOf(Season::class, $season);
+        if (null === $this->chosenPlanVersion($season)) {
+            $this->settleSeasonPlan($season);
+        }
+
+        $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
+        if (null === $sport) {
+            $uid = uniqid('', true);
+            $sport = new Sport;
+            $sport->setName('Basket ' . $uid);
+            $sport->setSlug('basket-' . $uid);
+            $sport->setIsActive(true);
+            $this->em->persist($sport);
+        }
+        $category = new SportCategory;
+        $category->setClubId($clubId);
+        $category->setSportId($sport->getId());
+        $category->setName('U13-' . uniqid('', true));
+        $this->em->persist($category);
+
+        $team = new Team;
+        $team->setClubId($clubId);
+        $team->setSeasonId($season->getId());
+        $team->setSportCategoryId($category->getId());
+        $team->setPriorityTierId(3);
+        $team->setName('U13-1');
+        $team->setSessionsPerWeek(2);
+        $team->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team;
+    }
+
+    /** @param list<list<string>> $rows */
+    private function xlsx(array $rows): string
+    {
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray(
+            [['Division', 'N° de match ', 'Equipe 1', 'Equipe 2', 'Date de rencontre', 'Heure', 'Salle'], ...$rows],
+            null,
+            'A1',
+        );
+        $path = tempnam(sys_get_temp_dir(), 'fbiabuse') . '.xlsx';
+        new Xlsx($spreadsheet)->save($path);
+        $this->tempFiles[] = $path;
+
+        return $path;
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string, 3: string} [token, userId, clubId, needle (nom du club)]
+     */
+    private function register(string $ara): array
+    {
+        $ip = \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254));
+        $suffix = strtolower($ara) . substr(md5(uniqid('', true)), 0, 6);
+        $clubName = 'Club ' . $ara;
+        $this->client->request('POST', '/api/register', [], [], [
+            'CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $ip,
+        ], json_encode([
+            'email' => $suffix . '@test.fr', 'password' => 'Password123!',
+            'firstName' => 'F', 'lastName' => 'Import', 'ara' => strtoupper($suffix), 'club_name' => $clubName, 'consent' => true,
+        ], \JSON_THROW_ON_ERROR));
+
+        $token = $this->verifyRegistration($this->client, $suffix . '@test.fr');
+        self::assertNotSame('', $token, 'verification must return a token');
+
+        $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $me = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        return [$token, $me['id'], $me['club']['id'], $clubName];
+    }
+}
