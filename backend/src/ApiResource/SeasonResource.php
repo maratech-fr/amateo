@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\ApiResource;
 
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
@@ -39,11 +40,15 @@ class SeasonResource
     #[Groups(['read'])]
     public string $name = '';
 
+    /** Y-m-d. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
-    public DateTimeImmutable $startDate;
+    public string $startDate = '';
 
+    /** Y-m-d. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
-    public DateTimeImmutable $endDate;
+    public string $endDate = '';
 
     #[Groups(['read'])]
     public string $status = '';
@@ -63,8 +68,8 @@ class SeasonResource
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->name = $entity->getName();
-        $dto->startDate = $entity->getStartDate();
-        $dto->endDate = $entity->getEndDate();
+        $dto->startDate = $entity->getStartDate()->format('Y-m-d');
+        $dto->endDate = $entity->getEndDate()->format('Y-m-d');
         $dto->status = $entity->getStatus()->value;
         $dto->exportPdfUrl = $entity->getExportPdfUrl();
         $dto->transitionData = $entity->getTransitionData();
