@@ -182,6 +182,18 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if (null !== $input->venueId) {
             $entity->setVenueId('' === $input->venueId ? null : $input->venueId);
         }
+        // PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un match à domicile
+        // PLACÉ/SOUMIS/VALIDÉ sans gymnase est un état IMPOSSIBLE. Vider la salle d'un tel match
+        // SANS le repasser « à placer » dans le même geste est refusé (422, zéro écriture). Le
+        // prédicat porte sur le STATUT : le dé-placement (UNPLACED + salle vidée ensemble) reste
+        // légitime, et le terrain neutre (HOME + UNPLACED + salle nulle) arrivera plus tard.
+        if (
+            FixtureHomeAway::HOME === $entity->getHomeAway()
+            && null === $entity->getVenueId()
+            && \in_array($entity->getStatus(), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
+        ) {
+            $this->refuse('Un match à domicile placé doit avoir un gymnase. Pour retirer sa salle, repassez-le « à placer » dans le même geste.');
+        }
         if (null !== $input->kickoffTime) {
             $entity->setKickoffTime($this->parseTime($input->kickoffTime));
         }

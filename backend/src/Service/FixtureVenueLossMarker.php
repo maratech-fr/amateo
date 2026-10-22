@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Deletion\FixtureVenueLossStep;
 use App\Entity\Fixture;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
@@ -23,19 +22,20 @@ use Doctrine\ORM\EntityManagerInterface;
  * optimiste (`version`), comportement HÉRITÉ du dépointage historique et assumé — le dépointage
  * n'est pas une édition métier, c'est une conséquence d'une salle disparue.
  *
- * Deux gâchettes le consomment, à parité stricte (MÊME état final) : la VALIDATION d'un planning
- * (les matchs pointant une salle disparue) et la SUPPRESSION d'un gymnase (via
- * {@see FixtureVenueLossStep}). L'effacement de la raison, lui, vit dans
- * {@see Fixture::setVenueId} — reposer une salle éteint `venue_lost`.
+ * UNE seule gâchette le consomme désormais : la VALIDATION d'un planning (les matchs pointant une
+ * salle disparue laissée par une exploration). La SUPPRESSION d'un gymnase ne dépointe plus de
+ * match — depuis PR4 « fermetures à la source » (décision fondateur 2026-10-22) supprimer un
+ * gymnase porteur de matchs est REFUSÉ à la source, un match à domicile sans salle étant rendu
+ * impossible. L'effacement de la raison, lui, vit dans {@see Fixture::setVenueId} — reposer une
+ * salle éteint `venue_lost`.
  */
 final class FixtureVenueLossMarker
 {
     public function __construct(private readonly EntityManagerInterface $entityManager) {}
 
     /**
-     * L'UNIQUE endroit où vit ce DQL. Statique pour être atteignable par le pas de cascade
-     * {@see FixtureVenueLossStep}, qui ne reçoit qu'un EntityManager (il n'est
-     * pas un service injectable) — sans dupliquer la requête ailleurs.
+     * L'UNIQUE endroit où vit ce DQL, exposé en statique pour rester atteignable sans service
+     * injectable et sans dupliquer la requête ailleurs.
      *
      * @param list<string> $fixtureIds
      */

@@ -12,6 +12,7 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
+use App\Entity\Fixture;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
@@ -21,6 +22,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -28,6 +30,8 @@ use App\Enum\CompetitionType;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\SchedulePlanType;
@@ -213,6 +217,91 @@ final class CascadeDeleteApiTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(Reservation::class)->find($otherReservation), 'another club reservation with the same teamId must survive');
     }
 
+    /**
+     * PR4 « fermetures à la source » (décision fondateur 2026-10-22) — supprimer un gymnase qui
+     * porte au moins une rencontre est INTERDIT : « geste fort, très lourd de sens, aucun cas ne
+     * le justifie ». Le DELETE est refusé (422 nommé) et n'écrit RIEN — le gymnase, le match et
+     * les créneaux restent intacts. Inverse P2-52, où la suppression dépointait le match en
+     * « à placer » (venue_lost) ; le match à domicile sans salle est désormais rendu impossible
+     * à la source.
+     */
+    public function testDeletingAVenueCarryingAMatchIsRefusedAndWritesNothing(): void
+    {
+        $venue = $this->persistVenue('Gymnase Matéo');
+        $slotId = $this->persist((new VenueTrainingSlot)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))
+            ->setDurationMinutes(90)->setCapacity(1));
+        $fixtureId = $this->persistHomeFixture($venue->getId(), FixtureStatus::PLACED);
+
+        $this->client->request('DELETE', '/api/venues/' . $venue->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(422, (string) $this->client->getResponse()->getContent());
+
+        $this->em->clear();
+        self::assertNotNull($this->em->getRepository(Venue::class)->find($venue->getId()), 'le gymnase refusé n\'est pas supprimé');
+        $fixture = $this->em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertNotNull($fixture, 'le match survit');
+        self::assertSame($venue->getId(), $fixture->getVenueId(), 'le match garde sa salle : zéro écriture');
+        self::assertSame(FixtureStatus::PLACED, $fixture->getStatus(), 'le match n\'est PAS repassé « à placer »');
+        self::assertNotNull($this->em->getRepository(VenueTrainingSlot::class)->find($slotId), 'le créneau du gymnase est intact');
+    }
+
+    /**
+     * Le pendant falsifiant : SANS aucune rencontre, le gymnase reste supprimable et sa cascade
+     * (créneaux, réservations) part comme avant — la garde ne doit pas sur-bloquer un gymnase
+     * vide de matchs.
+     */
+    public function testDeletingAMatchFreeVenueStillCascadesItsChildren(): void
+    {
+        $venue = $this->persistVenue('Gymnase vide');
+        $slotId = $this->persist((new VenueTrainingSlot)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setVenueId($venue->getId())->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('19:00'))
+            ->setDurationMinutes(90)->setCapacity(1));
+        $reservationId = $this->persistReservation('11111111-1111-4111-8111-111111111111', $venue->getId(), 2, '19:00');
+
+        $this->client->request('DELETE', '/api/venues/' . $venue->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $this->em->clear();
+        self::assertNull($this->em->getRepository(Venue::class)->find($venue->getId()), 'un gymnase sans match se supprime');
+        self::assertNull($this->em->getRepository(VenueTrainingSlot::class)->find($slotId), 'son créneau part avec lui');
+        self::assertNull($this->em->getRepository(Reservation::class)->find($reservationId), 'sa réservation part avec lui');
+    }
+
+    /**
+     * Tenant : la garde ne touche pas au cloisonnement. Le gymnase d'un AUTRE club — même porteur
+     * de matchs — est invisible (404, byte-identique à avant), AVANT que la garde ne s'exécute ;
+     * rien n'est écrit chez l'autre club. Non-régression : vert avant comme après.
+     */
+    public function testDeletingAnotherClubsVenueIs404AndTouchesNothing(): void
+    {
+        [$otherClub, $otherSeason] = $this->createOtherClub();
+        $this->scopeGucToClub($otherClub->getId());
+        $venue = (new Venue)->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
+            ->setName('Chez B')->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+        $fixtureId = $this->persistHomeFixture($venue->getId(), FixtureStatus::PLACED, $otherClub, $otherSeason);
+
+        $this->scopeGucToClub($this->club->getId());
+        $this->client->request('DELETE', '/api/venues/' . $venue->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(404);
+
+        $this->em->clear();
+        $this->scopeGucToClub($otherClub->getId());
+        // La requête HTTP (en tant que CE club) a laissé les filtres Doctrine tenant/saison
+        // scopés sur lui ; on les relâche pour LIRE chez l'autre club (RLS déjà re-scopée
+        // ci-dessus) et prouver que rien n'y a été écrit.
+        foreach (['tenant_filter', 'season_filter'] as $filter) {
+            if ($this->em->getFilters()->isEnabled($filter)) {
+                $this->em->getFilters()->disable($filter);
+            }
+        }
+        self::assertNotNull($this->em->getRepository(Venue::class)->find($venue->getId()), 'le gymnase de l\'autre club survit');
+        self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixtureId), 'son match aussi');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -293,6 +382,30 @@ final class CascadeDeleteApiTest extends WebTestCase
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setTeamId($teamId)->setVenueId($venueId)->setDayOfWeek($day)
             ->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(120));
+    }
+
+    private function persistVenue(string $name): Venue
+    {
+        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setName($name)->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue;
+    }
+
+    /** @return string the persisted fixture id */
+    private function persistHomeFixture(string $venueId, FixtureStatus $status, ?Club $club = null, ?Season $season = null): string
+    {
+        $club ??= $this->club;
+        $season ??= $this->season;
+
+        return $this->persist((new Fixture)
+            ->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setTeamId('11111111-1111-4111-8111-111111111111')
+            ->setMatchDate(new DateTimeImmutable('2026-01-10'))
+            ->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
+            ->setStatus($status, new DateTimeImmutable)->setVenueId($venueId));
     }
 
     /**

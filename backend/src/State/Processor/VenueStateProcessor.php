@@ -6,6 +6,7 @@ namespace App\State\Processor;
 
 use App\ApiResource\VenueResource;
 use App\Dto\VenueInput;
+use App\Entity\Fixture;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
@@ -48,6 +49,15 @@ class VenueStateProcessor extends AbstractStateProcessor
     protected function cascadeBeforeDelete(object $entity): void
     {
         if ($entity instanceof Venue) {
+            // PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un match à domicile
+            // sans gymnase est un état IMPOSSIBLE : supprimer un gymnase qui porte au moins une
+            // rencontre est REFUSÉ (422), AVANT toute purge, zéro écriture. Le filtre tenant scope
+            // déjà le comptage sur le club de ce gymnase (un gymnase d'un autre club est invisible,
+            // 404 avant d'arriver ici). La VALIDATION d'un planning reste la seule gâchette qui
+            // dépointe un match (`FixtureVenueLossMarker`).
+            if ($this->entityManager->getRepository(Fixture::class)->count(['venueId' => $entity->getId()]) > 0) {
+                $this->refuse('Ce gymnase accueille des matchs : le supprimer les laisserait sans salle. Retirez-les d\'abord, puis supprimez le gymnase.');
+            }
             $this->cascadeDeleter?->purgeChildrenOfVenue($entity);
         }
     }
