@@ -111,6 +111,30 @@ final class ReservationGroupOccupancy
     }
 
     /**
+     * MAISON UNIQUE de la règle (b) réciproque : l'identité du PREMIER bloc dont les membres sont
+     * EXACTEMENT l'ensemble réservé (comparaison d'ENSEMBLES, insensible à l'ordre), sinon `null`. Un
+     * ensemble réservé vide ne complète jamais un bloc. Statique et pure — l'appelant borne d'abord
+     * les blocs et les réservations à UNE portée. MIROIR MÉCANIQUE du front
+     * `wizard/lib/blockOccupancy.ts::completeBlockOnCase` ({@see ReservationBlockOccupancyMirrorParityTest}).
+     *
+     * @param array<string, true>                $reservedSet équipes réservées sur la case
+     * @param array<string, array<string, true>> $blocks      blockId => jeu de membres
+     */
+    public static function matchingBlock(array $reservedSet, array $blocks): ?string
+    {
+        if ([] === $reservedSet) {
+            return null;
+        }
+        foreach ($blocks as $blockId => $memberSet) {
+            if (self::setsEqual($memberSet, $reservedSet)) {
+                return (string) $blockId;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<string, true> $a
      * @param array<string, true> $b
      */
@@ -574,16 +598,7 @@ final class ReservationGroupOccupancy
      */
     private function reservedSetMatchesABlock(array $reservedSet, ?string $schedulePlanId): bool
     {
-        if ([] === $reservedSet) {
-            return false;
-        }
-        foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
-            if (self::setsEqual($memberSet, $reservedSet)) {
-                return true;
-            }
-        }
-
-        return false;
+        return null !== self::matchingBlock($reservedSet, $this->blockMemberSetsInScope($schedulePlanId));
     }
 
     private function teamReservationCount(string $teamId, ?string $schedulePlanId): int

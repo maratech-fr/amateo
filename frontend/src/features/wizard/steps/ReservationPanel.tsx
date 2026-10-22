@@ -8,7 +8,8 @@ import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { readFailed } from "@/shared/lib/readState";
 
 import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
-import { occupantsBySlot, effectiveSlotCapacity, slotKey } from "../lib/reservationSlots";
+import { completeBlockOnCase } from "../lib/blockOccupancy";
+import { occupantsBySlot, effectiveSlotCapacity, reservedTeamsBySlot, slotKey } from "../lib/reservationSlots";
 import { closuresByVenue, closurePeriodLabel, isSlotClosed } from "../lib/venueClosures";
 import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useWizardTeamCoaches } from "../queries";
 import { ReservationGrid } from "./ReservationGrid";
@@ -101,6 +102,14 @@ export function ReservationPanel({
   // slotKey → occupant LABELS (noms d'équipes + libellés de créneaux libres, lot 4bis) pour la
   // grille : un créneau libre occupe une place nommée, comptée comme une équipe.
   const reservedNames = occupantsBySlot(reservations, (id) => teamName.get(id) ?? "?");
+  // #12 — les cases dont l'ensemble réservé est EXACTEMENT un bloc de mutualisation de la portée
+  // (dérivé par le miroir `completeBlockOnCase`) : la grille y affiche « Complet · Groupe … » au lieu
+  // du compteur « 2/1 » (le groupe compte pour UN occupant, règle b serveur). Les membres de bloc de
+  // la portée sont disponibles via `sharedBlocks` (`teamIds`), socle comme période.
+  const blockLikes = sharedBlocks.map((b) => ({ id: b.id, teamIds: b.teamIds }));
+  const blockCompleteSlots = new Set(
+    [...reservedTeamsBySlot(reservations).entries()].filter(([, ids]) => null !== completeBlockOnCase(ids, blockLikes)).map(([slotKeyValue]) => slotKeyValue),
+  );
 
   return (
     <div>
@@ -155,6 +164,7 @@ export function ReservationPanel({
         capacityOf={(s) => effectiveSlotCapacity(s, venueCanSplit)}
         onSelectSlot={setActiveSlot}
         closures={closuresOfVenue}
+        blockCompleteSlots={blockCompleteSlots}
       />
 
       {null !== activeSlot ? (

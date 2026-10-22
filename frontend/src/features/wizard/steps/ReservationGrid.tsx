@@ -20,6 +20,12 @@ interface Props {
    * pour le geste correctif (retirer l'épinglage orphelin qui bloque la génération). Vide par défaut.
    */
   closures?: Closure[];
+  /**
+   * #12 — les slotKeys dont l'ensemble réservé est EXACTEMENT un bloc de mutualisation (dérivées par
+   * le miroir `blockOccupancy.ts::completeBlockOnCase`). Une telle case compte pour UN occupant (le
+   * groupe) : « Complet · Groupe <A> + <B> », jamais le compteur « 2/1 ». Vide par défaut.
+   */
+  blockCompleteSlots?: ReadonlySet<string>;
 }
 
 /**
@@ -28,7 +34,7 @@ interface Props {
  * not create them), and each slot shows the team(s) reserved on it + its
  * remaining capacity, click → the assign modal.
  */
-export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capacityOf, onSelectSlot, closures = [] }: Props) {
+export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capacityOf, onSelectSlot, closures = [], blockCompleteSlots }: Props) {
   const color = venue.color ?? "var(--accent)";
 
   // Dynamic vertical range: only the hours that actually hold slots for THIS
@@ -77,6 +83,12 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
           const teams = reservedTeams.get(slotKeyOf(slot)) ?? [];
           const capacity = capacityOf(slot);
           const label = 0 === teams.length ? "libre" : teams.join(", ");
+          // #12 — case BLOC-COMPLÈTE : le groupe occupe la case en entier (UN occupant). On affiche
+          // « Complet · Groupe <A> + <B> » (libellé validé fondateur 2026-10-22) à la place du
+          // compteur « 2/1 », qui ne vaut que pour des équipes individuelles.
+          const blockComplete = blockCompleteSlots?.has(slotKeyOf(slot)) ?? false;
+          const groupComplete = blockComplete ? `Complet · Groupe ${teams.join(" + ")}` : "";
+          const occupancyText = blockComplete ? groupComplete : `${teams.length}/${capacity} réservé`;
           const dayLabel = WEEK[di]?.label ?? "";
           // P2-17 — libellé de groupe du créneau mutualisé, affiché discrètement (pas de fusion
           // ici, contrairement à la vue planning). Vide/trim→rien.
@@ -92,7 +104,7 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
               type="button"
               disabled={disabled}
               onClick={() => onSelectSlot(slot)}
-              aria-label={`${dayLabel} ${hhmm(slot.startTime)} · ${venue.name}${"" !== groupLabel ? ` · ${groupLabel}` : ""} · ${teams.length}/${capacity} réservé${closedBy ? ` · ${closedText}` : ""} — cliquer pour gérer`}
+              aria-label={`${dayLabel} ${hhmm(slot.startTime)} · ${venue.name}${"" !== groupLabel ? ` · ${groupLabel}` : ""} · ${occupancyText}${closedBy ? ` · ${closedText}` : ""} — cliquer pour gérer`}
               className={cn(
                 "z-10 m-px flex flex-col items-start gap-0.5 overflow-hidden rounded border border-border border-l-4 px-1 py-0.5 text-left text-[10px] leading-tight hover:ring-1 hover:ring-accent",
                 closedBy ? "line-through" : "",
@@ -105,10 +117,13 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
                     fond TEINTÉ de la case (color-mix ci-dessous) ces jetons tombent sous AA (gotcha #11). La
                     couleur d'accent reste réservée au GRAPHIQUE (bordure gauche, teinte de fond) ; la
                     hiérarchie plein/libre passe par la graisse et le compteur lui-même, pas par la couleur. */}
-                <span className="shrink-0 tabular-nums text-foreground">
-                  {teams.length}/{capacity}
-                </span>
+                {blockComplete ? null : (
+                  <span className="shrink-0 tabular-nums text-foreground">
+                    {teams.length}/{capacity}
+                  </span>
+                )}
               </span>
+              {blockComplete ? <span className="w-full truncate font-semibold text-foreground">{groupComplete}</span> : null}
               {"" !== groupLabel ? <span className="w-full truncate font-semibold uppercase tracking-wide text-foreground">{groupLabel}</span> : null}
               {closedBy ? <span className="w-full truncate">{closedText}</span> : null}
               <span className={cn("truncate text-foreground", 0 !== teams.length ? "font-medium" : "")}>{label}</span>

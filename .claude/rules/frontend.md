@@ -23,7 +23,12 @@ paths:
   `WeekSegmentationMirrorParityTest`, découpage début·milieu·fin, 2026-09-05 ; côté matchs
   `MatchConflictDetector::kickoffInsideLeagueWindow` ⇄ `matches/lib/envelope.ts::
   kickoffInsideLeagueWindow` (enveloppe ligue, intervalle fermé sur le jour), parité
-  `LeagueEnvelopeMirrorParityTest`/`leagueEnvelope.parity.test.ts`, FRT-32 2026-09-18) ;
+  `LeagueEnvelopeMirrorParityTest`/`leagueEnvelope.parity.test.ts`, FRT-32 2026-09-18 ; côté wizard
+  `App\Service\ReservationGroupOccupancy::matchingBlock` (règle b réciproque de
+  `reservedSetMatchesABlock`) ⇄ `wizard/lib/blockOccupancy.ts::completeBlockOnCase` (une case dont
+  l'ensemble réservé == les membres d'un bloc est BLOC-COMPLÈTE, « Complet · Groupe … », jamais
+  « 2/1 »), parité `ReservationBlockOccupancyMirrorParityTest`/`blockOccupancy.parity.test.ts`, #12
+  2026-10-22) ;
   **(3) redérivation silencieuse** — ❌ interdite. Signe d'alerte :
   un `switch`/chaîne de conditions sur les valeurs d'un **enum métier partagé** (`scope`,
   `ruleType`, `family`, `lockLevel`, `status`…) pour **décider d'un comportement** (pas pour

@@ -35,6 +35,7 @@ vi.mock("../queries", () => ({
   useWizardCoachPlayers: () => q([]),
   useConstraintValidation: () => constraintValidation,
   useReservations: () => reservations,
+  useSharedTrainingBlocks: () => q([]),
   useTeamPeriodOverrides: () => teamOverrides,
   usePeriodSlots: () => periodSlots,
   useVenuePeriodOverrides: () => venueOverrides,

@@ -41,6 +41,7 @@ vi.mock("../queries", () => ({
   useWizardCoachPlayers: () => ({ data: [] }),
   useConstraintValidation: () => ({ data: undefined, isLoading: false }),
   useReservations: () => ({ data: [] }),
+  useSharedTrainingBlocks: () => ({ data: [] }),
   usePeriodSlots: () => ({ data: periodSlotsState.data, isLoading: periodSlotsState.isLoading, isError: periodSlotsState.isError }),
   useVenuePeriodOverrides: () => ({ data: [], isError: false }),
   useTeamPeriodOverrides: () => ({ data: [], isError: teamOverridesState.isError }),
