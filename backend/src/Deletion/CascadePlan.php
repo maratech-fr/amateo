@@ -117,13 +117,12 @@ final class CascadePlan
             new ScopedConstraintStep(ConstraintScope::FACILITY, new ImpactLabel('venue_constraint', 'contrainte visant ce gymnase', 'contraintes visant ce gymnase')),
             new ClearFieldStep(Team::class, 'forcedVenueId', new ImpactLabel('venue_forced_team', 'équipe qui perdra son gymnase imposé', 'équipes qui perdront leur gymnase imposé')),
             new ClearFieldStep(Venue::class, 'parentVenueId', new ImpactLabel('venue_child', 'sous-salle qui perdra son gymnase parent', 'sous-salles qui perdront leur gymnase parent')),
-            // P2-52 — le match SURVIT (sa salle est optionnelle : il redevient « à placer »,
-            // donc récupérable). C'est pourquoi la décision fondateur laisse le geste passer
-            // au lieu de le refuser — mais un match DÉJÀ DÉCLARÉ à la fédération devra être
-            // re-soumis, et cela doit être dit AVANT (cf. DeletionImpactCounter). Le pas dédié
-            // délègue au FixtureVenueLossMarker : MÊME bascule que la gâchette de validation
-            // (UNPLACED + raison persistante venue_lost), annonce `venue_fixture` inchangée.
-            new FixtureVenueLossStep(new ImpactLabel('venue_fixture', 'match qui perdra sa salle', 'matchs qui perdront leur salle')),
+            // PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un match à domicile
+            // sans gymnase est rendu IMPOSSIBLE à la source : supprimer un gymnase porteur de
+            // matchs est désormais REFUSÉ (`VenueStateProcessor::cascadeBeforeDelete`,
+            // `DeletionImpactCounter::forVenue`). La cascade n'a donc plus à dépointer de match —
+            // le pas dédié a quitté le plan. La VALIDATION d'un planning reste la seule gâchette
+            // qui dépointe un match en venue_lost (via `FixtureVenueLossMarker`, conservé).
         ];
     }
 
