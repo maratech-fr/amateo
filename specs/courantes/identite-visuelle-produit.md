@@ -310,6 +310,19 @@ FIGÉ**.
   récap superadmin). Volet distinct du même lot : l'envoi des liens de collecte est désormais
   plafonné PAR CLUB (`coach_wish_send`, 200/24 h, partagé envoi initial/relance/renvoi ciblé) et
   refusé pour un club de démonstration — `backend/docs/backend-auth-mercure.md` §4 Access control.
+- **Bouton CTA des e-mails d'identité (lot bugs Rillieux PR 5/6, #2, 2026-10-22)** : les TROIS
+  e-mails d'identité — vérification d'inscription (`App\Service\Registration\RegisterService::
+  sendVerificationEmail`, bouton « Confirmer mon adresse »), mot de passe oublié
+  (`App\Controller\PasswordController::forgot`, « Réinitialiser mon mot de passe ») et
+  confirmation de changement d'e-mail (`App\Controller\AuthController::sendEmailChangeConfirmation`,
+  « Confirmer la nouvelle adresse ») — posent désormais le MÊME mécanisme d'en-têtes internes que
+  le lien coach (`EmailTemplateRenderer::CTA_URL_HEADER`/`CTA_LABEL_HEADER`, lus et RETIRÉS au
+  worker par `EmailSignatureListener`) : l'URL du bouton est EXACTEMENT celle du lien nu déjà
+  présent dans la partie texte, jamais dupliquée ni auto-liée ailleurs dans le corps
+  (anti-hameçonnage — le gabarit n'auto-lie jamais une URL du corps). La partie texte de ces trois
+  e-mails reste byte-identique (le lien nu y reste, pour un client sans HTML). Bug vécu : le
+  gestionnaire du club de Rillieux avait dû copier-coller le lien de validation à la main. Garde
+  `backend/tests/Integration/Api/IdentityEmailCtaButtonTest.php`.
 - **Image OG — posée (P5-24 PR-3, 2026-09-29)** : une image de partage Open Graph **UNIQUE** (1200×630,
   fond CLAIR `#faf9f7`, logotype + accroche de la vitrine), servie en deux copies octet-identiques
   — `landing/assets/brand/og.png` et `frontend/public/brand/og.png`, chacune sur son propre

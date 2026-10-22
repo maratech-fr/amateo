@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Mail\EmailTemplateRenderer;
 use App\Service\MailFrom;
 use App\Service\PasswordPolicy;
 use App\Service\ProductIdentity;
@@ -63,13 +64,19 @@ final class PasswordController extends AbstractController
                 // qu'AuthController quand la variable est vide (dev nu).
                 $base = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') : $request->getSchemeAndHttpHost();
                 $link = $base . '/reset-password/' . $resetToken->getToken();
-                $this->mailer->send(
-                    (new Email)
-                        ->from($this->mailFrom->address())
-                        ->to($user->getEmail())
-                        ->subject(\sprintf('Réinitialisation de votre mot de passe %s', $this->productIdentity->name()))
-                        ->text("Pour réinitialiser votre mot de passe, ouvrez ce lien :\n{$link}\n\nCe lien expire dans 1 heure."),
-                );
+                $message = (new Email)
+                    ->from($this->mailFrom->address())
+                    ->to($user->getEmail())
+                    ->subject(\sprintf('Réinitialisation de votre mot de passe %s', $this->productIdentity->name()))
+                    ->text("Pour réinitialiser votre mot de passe, ouvrez ce lien :\n{$link}\n\nCe lien expire dans 1 heure.");
+                // Bouton CTA du HTML : en-têtes internes lus/retirés au worker par
+                // EmailSignatureListener. L'URL EST le lien (dérivé de FRONTEND_BASE_URL, jamais
+                // du Host entrant — anti password-reset-poisoning) — même mécanisme que
+                // CoachWishMailBuilder, posé DANS le try (la panne du bus reste avalée).
+                $headers = $message->getHeaders();
+                $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+                $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Réinitialiser mon mot de passe');
+                $this->mailer->send($message);
             } catch (Throwable) {
                 // Élargi de ResetPasswordExceptionInterface à Throwable : outre le throttle
                 // du helper, un échec de DISPATCH du mail (Redis down au moment d'enfiler le
