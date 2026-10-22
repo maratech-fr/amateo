@@ -68,6 +68,30 @@ final class FrontMockDateFormatMatchesContractTest extends TestCase
         'features/coach-wishes/campaignWeeks.test.ts' => 'input de ROBUSTESSE : sert À DESSEIN un `startDate` RFC 3339 hérité pour prouver que `planDerivedWeeks` le normalise au lundi au lieu de dériver « NaN » (germe du bug Rillieux). Ce n\'est pas un mock de la forme d\'API servie — l\'API sert bien Y-m-d (cf. ses autres cas, lignes 18-46).',
     ];
 
+    /**
+     * Exemptions CIBLÉES (fichier → champ → raison) : un champ servi, pour UN endpoint précis, dans
+     * un format que la classification par NOM ne peut pas voir — parce qu'un contrôleur ÉCRIT À LA
+     * MAIN sérialise ce nom autrement que les DTO ApiResource homonymes. Le scan des mocks étant par
+     * nom (sans connaître le endpoint), ces cas ne se distinguent que nommément : on exempte le
+     * couple (fichier, champ), jamais tout le fichier (ses AUTRES champs restent gardés). Nominatif,
+     * jamais en masse ; chaque entrée est validée par {@see testExemptionsStillExistAndAreMotivated}
+     * (fichier présent, champ encore classé, raison non vide).
+     *
+     * @var array<string, array<string, string>>
+     */
+    private const array FIELD_EXEMPTIONS = [
+        'features/admin/AdminDashboardPage.test.tsx' => [
+            // `GET /api/admin/club-requests` n'est PAS une ApiResource : AdminClubRequestController.php:68
+            // sérialise `createdAt` en Y-m-d (snapshot `format: date`), pas en RFC 3339 comme les ~10
+            // DTO ApiResource homonymes (`CoachResource`, `UserResource`…) d'où le garde tire sa
+            // classification HORODATAGE. Le mock `newClubRequest` sert donc la vraie forme de CE
+            // endpoint — une date nue. Les AUTRES `createdAt` du fichier (clubs, RFC 3339) restent gardés.
+            'createdAt' => 'GET /api/admin/club-requests servi par un contrôleur écrit à la main '
+                . '(AdminClubRequestController.php:68) qui sérialise `createdAt` en Y-m-d (snapshot '
+                . '`format: date`), pas en RFC 3339 comme les DTO ApiResource homonymes.',
+        ],
+    ];
+
     public function testFrontDateMocksMatchTheServedFormat(): void
     {
         $dateOnly = $this->dateOnlyFieldNames();
@@ -92,6 +116,9 @@ final class FrontMockDateFormatMatchesContractTest extends TestCase
                 }
                 foreach ($matches as $match) {
                     [$key, $value] = [$match[1], $match[2]];
+                    if (isset(self::FIELD_EXEMPTIONS[$relative][$key])) {
+                        continue;
+                    }
                     if (isset($dateOnlySet[$key]) && $this->looksLikeDateTime($value)) {
                         $violations[] = \sprintf('%s:%d — `%s` servi `%s` (DATE-SEULE : l\'API sert Y-m-d)', $relative, $i + 1, $key, $value);
                     } elseif (isset($timestampSet[$key]) && $this->looksLikeBareDate($value)) {
@@ -121,6 +148,24 @@ final class FrontMockDateFormatMatchesContractTest extends TestCase
             }
             if (!is_file(self::FRONT . '/' . $relative)) {
                 $stale[] = \sprintf('%s : exempté mais le fichier n\'existe plus — retirer l\'exemption', $relative);
+            }
+        }
+
+        // Exemptions par champ : fichier présent, raison non vide, ET le champ est TOUJOURS classé
+        // (dans le jeu date-seule ∪ horodatage). Un champ qui n'est plus classé ne serait jamais
+        // flaggé — son exemption ne garderait plus rien : la retirer (anti-rot).
+        $classified = array_fill_keys(array_merge($this->dateOnlyFieldNames(), $this->timestampFieldNames()), true);
+        foreach (self::FIELD_EXEMPTIONS as $relative => $fields) {
+            if (!is_file(self::FRONT . '/' . $relative)) {
+                $stale[] = \sprintf('%s : exempté (par champ) mais le fichier n\'existe plus — retirer l\'exemption', $relative);
+            }
+            foreach ($fields as $field => $reason) {
+                if ('' === trim($reason)) {
+                    $stale[] = \sprintf('%s/%s : exemption de champ SANS raison', $relative, $field);
+                }
+                if (!isset($classified[$field])) {
+                    $stale[] = \sprintf('%s/%s : champ exempté mais plus classé (ni date-seule ni horodatage) — l\'exemption ne garde plus rien, la retirer', $relative, $field);
+                }
             }
         }
 
