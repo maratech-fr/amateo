@@ -290,6 +290,14 @@ final class CascadeDeleteApiTest extends WebTestCase
 
         $this->em->clear();
         $this->scopeGucToClub($otherClub->getId());
+        // La requête HTTP (en tant que CE club) a laissé les filtres Doctrine tenant/saison
+        // scopés sur lui ; on les relâche pour LIRE chez l'autre club (RLS déjà re-scopée
+        // ci-dessus) et prouver que rien n'y a été écrit.
+        foreach (['tenant_filter', 'season_filter'] as $filter) {
+            if ($this->em->getFilters()->isEnabled($filter)) {
+                $this->em->getFilters()->disable($filter);
+            }
+        }
         self::assertNotNull($this->em->getRepository(Venue::class)->find($venue->getId()), 'le gymnase de l\'autre club survit');
         self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixtureId), 'son match aussi');
     }
