@@ -26,6 +26,7 @@ use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
 use App\Repository\FbiIngestionRepository;
+use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -67,6 +68,9 @@ final class FbiFixtureImporterTest extends KernelTestCase
     /** @var list<string> */
     private array $tempFiles = [];
 
+    /** Gymnase par défaut (sans alias) pour l'appariement automatique de {@see importMapped}. */
+    private ?string $defaultVenueId = null;
+
     // ── The real export ────────────────────────────────────────────────────
 
     public function testRealExportAnalyzeGroupsEveryDivision(): void
@@ -102,11 +106,15 @@ final class FbiFixtureImporterTest extends KernelTestCase
     public function testRealExportImportsMappedDivisionsInOnePass(): void
     {
         [$club, $teamA, $teamB] = $this->realClub();
+        // Chantier A — les domiciles DF2+PNM du réel export jouent tous « GYMNASE MATEO » :
+        // on apparie ce libellé au gymnase du club au dépôt (sans alias → inerte tant que
+        // le serveur n'enforce pas ; couvre les domiciles une fois la règle en vigueur).
+        $venueMateo = $this->createVenue('Gymnase Matéo');
 
         $result = $this->importer->import(self::REAL_EXPORT, $club, [
             ['division' => 'DF2', 'fbiTeamLabel' => null, 'teamId' => $teamA->getId()],
             ['division' => 'PNM', 'fbiTeamLabel' => null, 'teamId' => $teamB->getId()],
-        ]);
+        ], [], null, [['label' => 'GYMNASE MATEO', 'venueId' => $venueMateo]]);
 
         self::assertSame(32, $result['created']); // 22 DF2 + 10 PNM
         self::assertSame(0, $result['updated']);
@@ -1550,32 +1558,47 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(FixtureReviewState::NEW, $fixture->getReviewState());
     }
 
-    public function testHomeImportWithoutAMatchingAliasHasNoVenue(): void
+    public function testHomeImportWithoutAnyVenueCoverageIsRefused(): void
     {
+        // Chantier A PR 2 — « pas de salle appariée, pas d'import » : un domicile dont la
+        // salle n'est appariée à AUCUN gymnase (ni alias confirmé, ni venueMapping) fait
+        // REFUSER tout le dépôt. L'ancienne promesse « naît sans gymnase » est devenue
+        // impossible (le domicile venueless ne survit que par terrain neutre).
         $this->createVenueWithAliases('Gymnase Matéo', ['gymnase mateo']);
 
-        $this->importMapped([['D2', 'AL2', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE INCONNUE']]);
-
-        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL2'])?->getVenueId());
+        $this->expectException(ImportRejectedException::class);
+        $this->importMapped(
+            [['D2', 'AL2', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE INCONNUE']],
+            venueMappings: [],
+            venueChoices: [],
+        );
     }
 
-    public function testAnExistingUnplacedHomeIsBackfilledWhenTheAliasAppearsOnReDeposit(): void
+    public function testAppairingAtDepositBornWithVenueThenASecondHomeIsAttachedByTheAlias(): void
     {
-        $venue = $this->em->getRepository(Venue::class)->find($this->createVenue('Gymnase Matéo'));
-        self::assertNotNull($venue);
+        // Nouveau monde — on apparie la salle AU DÉPÔT (venueMapping) : le domicile naît
+        // AVEC son gymnase (UNPLACED). L'appariement pose l'alias, si bien qu'un dépôt
+        // suivant d'un AUTRE match au même libellé est rattaché d'office, sans ré-apparier.
+        $venue = $this->createVenue('Gymnase Matéo');
 
-        // Premier dépôt : pas encore d'alias → aucun gymnase.
-        $this->importMapped([['D2', 'AL3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
-        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL3'])?->getVenueId());
+        $this->importMapped(
+            [['D2', 'AL3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']],
+            venueMappings: [['label' => 'GYMNASE MATEO', 'venueId' => $venue]],
+            venueChoices: [],
+        );
+        $first = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL3']);
+        self::assertSame($venue, $first?->getVenueId(), 'le domicile naît avec le gymnase apparié');
+        self::assertSame(FixtureStatus::UNPLACED, $first?->getStatus(), 'apparier ne place jamais');
 
-        // L'alias est rattaché, puis un re-dépôt backfille le domicile resté sans salle.
-        $venue->setExternalLabels(['gymnase mateo']);
-        $this->em->flush();
-        $this->importMapped([['D2', 'AL3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']], null);
-
-        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL3']);
-        self::assertSame($venue->getId(), $fixture?->getVenueId());
-        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus(), 'le backfill ne place pas la rencontre');
+        // Un AUTRE match au même libellé, sans nouvel appariement (l'alias est confirmé).
+        $this->importMapped(
+            [['D2', 'AL3b', 'BC TESTVILLE - 1', 'AS Autre', '10/10/2026', '15:30', 'GYMNASE MATEO']],
+            null,
+            [],
+            [],
+            [],
+        );
+        self::assertSame($venue, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL3b'])?->getVenueId(), 'rattaché d\'office par l\'alias confirmé');
     }
 
     public function testAPlacedFixtureIsNeverMovedByAnAlias(): void
@@ -1583,14 +1606,17 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $aliased = $this->createVenue('Gymnase Matéo');
         $placedVenue = $this->createVenue('Autre Gymnase');
 
-        // Domicile importé sans alias → sans salle, qu'on place à la main sur un AUTRE gymnase.
-        $this->importMapped([['D2', 'AL4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        // Apparié au dépôt sur « Gymnase Matéo », puis PLACÉ à la main sur un AUTRE gymnase.
+        $this->importMapped(
+            [['D2', 'AL4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']],
+            venueMappings: [['label' => 'GYMNASE MATEO', 'venueId' => $aliased]],
+            venueChoices: [],
+        );
         $this->placeAt('AL4', $placedVenue);
 
-        // L'alias apparaît sur le premier gymnase ; un re-dépôt ne DOIT PAS déplacer un match déjà placé.
-        $this->em->getRepository(Venue::class)->find($aliased)?->setExternalLabels(['gymnase mateo']);
-        $this->em->flush();
-        $this->importMapped([['D2', 'AL4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']], null);
+        // Un re-dépôt au même libellé (alias confirmé) ne déplace JAMAIS un match déjà placé :
+        // le backfill d'appariement ne touche que les domiciles encore SANS gymnase.
+        $this->importMapped([['D2', 'AL4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']], null, [], [], []);
 
         self::assertSame($placedVenue, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL4'])?->getVenueId());
     }
@@ -1660,16 +1686,24 @@ final class FbiFixtureImporterTest extends KernelTestCase
         );
     }
 
-    public function testADomicileWithoutAVenueStaysSilent(): void
+    public function testANeutralHomeStaysOutsideTheVenueDeviationDetector(): void
     {
-        // Garde-fou du plan : un domicile SANS gymnase (venueId null) reste hors du
-        // détecteur — le libellé se met à jour en silence, jamais d'écart salle.
-        $this->importMapped([['D2', 'UV00', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X']]);
+        // Nouveau monde — un domicile sans gymnase n'existe plus que par TERRAIN NEUTRE.
+        // Un neutre (venueId null) reste HORS du détecteur d'écart salle : un re-dépôt qui
+        // nomme une autre salle ne lève aucun écart (le libellé se met à jour en silence),
+        // et la rencontre reste un terrain neutre.
+        $this->importMapped(
+            [['D2', 'UV00', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X']],
+            venueMappings: [['label' => 'Gymnase X', 'venueId' => 'NEUTRAL']],
+            venueChoices: [],
+        );
 
-        $result = $this->importMapped([['D2', 'UV00', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase Y']]);
+        $result = $this->importMapped([['D2', 'UV00', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase Y']], null, [], [], []);
 
         self::assertSame([], $result['unresolvedDeviations']);
-        self::assertSame('Gymnase Y', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV00'])?->getFbiVenueLabel());
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV00']);
+        self::assertNull($fixture?->getVenueId(), 'un terrain neutre n\'a pas de gymnase');
+        self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $fixture?->getUnplacedReason(), 'il reste un terrain neutre');
     }
 
     public function testKeepAppOnAnUnplacedVenueStampsTheKeptLabelAndIsIdempotent(): void
@@ -1725,23 +1759,30 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertNull($fixture?->getKeptVenueLabel());
     }
 
-    public function testTakeFileOnAnUnplacedVenueWithAnUnknownLabelLeavesNoGym(): void
+    public function testTakeFileOnAnUnplacedVenueResolvesToTheMappedVenueNeverNull(): void
     {
+        // Chantier A PR 2 (D-b) — dans le monde « domicile toujours avec gymnase »,
+        // « prendre le fichier » sur l'écart salle résout vers le gymnase APPARIÉ du nouveau
+        // libellé (venueMapping), JAMAIS vers venueId null : l'ancienne « salle remonte à
+        // rattacher » disparaît.
         $jdr = $this->createVenue('GYMNASE JDR');
+        $repris = $this->createVenue('Gymnase Repris');
         $fixture = $this->unplacedHomeWithVenue('UV04', $jdr, 'OLD LABEL');
         $id = $fixture->getId();
 
         $result = $this->importMapped(
-            [['D2', 'UV04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE INCONNUE']],
+            [['D2', 'UV04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE REPRISE']],
             null,
             [['fixtureId' => $id, 'field' => 'venue', 'choice' => 'take_file']],
+            [['label' => 'SALLE REPRISE', 'venueId' => $repris]],
+            [],
         );
         self::assertSame([], $result['unresolvedDeviations']);
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV04']);
-        self::assertNull($fixture?->getVenueId(), 'un libellé inconnu ne repose aucun gymnase (la salle remonte « à rattacher »)');
+        self::assertSame($repris, $fixture?->getVenueId(), 'take_file résout vers le gymnase apparié, jamais null');
         self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
-        self::assertSame('SALLE INCONNUE', $fixture?->getFbiVenueLabel());
+        self::assertSame('SALLE REPRISE', $fixture?->getFbiVenueLabel());
     }
 
     public function testADateChangeAlongsideTheVenueTakesTheCurrentPathNoVenueDeviation(): void
@@ -1954,13 +1995,23 @@ final class FbiFixtureImporterTest extends KernelTestCase
      * Imports rows with the default mapping (every division of the rows →
      * $this->team) unless explicit mappings are given.
      *
-     * @param list<list<string>>                                                            $rows
-     * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string}>|null $mappings
-     * @param list<array{fixtureId: string, field: string, choice: string}>                 $decisions
+     * Chantier A PR 2 — « pas de salle appariée, pas d'import » : chaque domicile CRÉÉ
+     * doit porter un gymnase. Par DÉFAUT ($venueMappings/$venueChoices null), ce helper
+     * APPARIE automatiquement chaque salle à domicile du fichier à un gymnase par défaut
+     * (sans alias → INERTE tant que le serveur n'enforce pas la règle : le venueMapping
+     * est ignoré et le domicile reste venueId=null, comportement d'avant). Un test qui
+     * veut piloter la couverture (refus, alias confirmé, écart salle, terrain neutre)
+     * passe `venueMappings: []` / `venueChoices: []` (opt-out explicite).
+     *
+     * @param list<list<string>>                                                             $rows
+     * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string}>|null  $mappings
+     * @param list<array{fixtureId: string, field: string, choice: string}>                  $decisions
+     * @param list<array{label: string, venueId: string}>|null                               $venueMappings null = auto-apparier les salles à domicile ; [] = opt-out
+     * @param list<array{division: string, venueId: string}>|null                            $venueChoices  null = auto-apparier les domiciles sans salle ; [] = opt-out
      *
      * @return array{created: int, updated: int, unchanged: int, exempted: int, errors: list<string>, warnings: list<array{type: string, division: string, externalRef: string, message: string}>, unmappedDivisions: list<array{name: string, fbiTeamLabel: string|null, rowCount: int}>, unresolvedDeviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>, depositedAt: string}
      */
-    private function importMapped(array $rows, ?array $mappings = null, array $decisions = []): array
+    private function importMapped(array $rows, ?array $mappings = null, array $decisions = [], ?array $venueMappings = null, ?array $venueChoices = null): array
     {
         if (null === $mappings) {
             $divisions = array_values(array_unique(array_column($rows, 0)));
@@ -1969,8 +2020,76 @@ final class FbiFixtureImporterTest extends KernelTestCase
                 $divisions,
             );
         }
+        if (null === $venueMappings || null === $venueChoices) {
+            [$autoMappings, $autoChoices] = $this->autoVenueCoverage($rows);
+            $venueMappings ??= $autoMappings;
+            $venueChoices ??= $autoChoices;
+        }
 
-        return $this->importer->import($this->xlsx($rows), $this->club, $mappings, $decisions);
+        return $this->importer->import($this->xlsx($rows), $this->club, $mappings, $decisions, null, $venueMappings, $venueChoices);
+    }
+
+    /**
+     * Dérive la couverture « salles » des lignes : chaque salle à DOMICILE distincte (le
+     * club en Equipe 1) → le gymnase par défaut ; chaque division ayant un domicile SANS
+     * salle → le gymnase par défaut. Inerte tant que le serveur n'enforce pas (venueMappings
+     * ignoré), couvre les domiciles une fois la règle en vigueur.
+     *
+     * @param list<list<string>> $rows
+     *
+     * @return array{0: list<array{label: string, venueId: string}>, 1: list<array{division: string, venueId: string}>}
+     */
+    private function autoVenueCoverage(array $rows): array
+    {
+        $normalizer = self::getContainer()->get(VenueLabelNormalizer::class);
+        \assert($normalizer instanceof VenueLabelNormalizer);
+        // Les libellés DÉJÀ confirmés comme alias d'un gymnase : on ne les ré-apparie pas
+        // (ce serait une collision 422 avec leur porteur, p. ex. « SALLE RAPHAEL DE BARROS »
+        // des cas d'écart salle). Ils sont déjà couverts par leur alias.
+        $confirmed = [];
+        foreach ($this->em->getRepository(Venue::class)->findAll() as $venue) {
+            foreach ($venue->getExternalLabels() as $alias) {
+                $confirmed[$alias] = true;
+            }
+        }
+
+        $needle = mb_strtolower(self::CLUB_NAME);
+        $labels = [];
+        $divisionsNoSalle = [];
+        foreach ($rows as $row) {
+            $equipe1 = mb_strtolower(trim((string) ($row[2] ?? '')));
+            if (false === mb_stripos($equipe1, $needle)) {
+                continue; // extérieur : aucune salle à domicile à couvrir
+            }
+            $salle = trim((string) ($row[6] ?? ''));
+            if ('' === $salle) {
+                $divisionsNoSalle[trim((string) ($row[0] ?? ''))] = true;
+
+                continue;
+            }
+            if (isset($confirmed[$normalizer->normalize($salle)])) {
+                continue; // déjà couvert par un alias confirmé
+            }
+            $labels[$salle] = true;
+        }
+        if ([] === $labels && [] === $divisionsNoSalle) {
+            return [[], []];
+        }
+        $venueId = $this->ensureDefaultVenue();
+        $venueMappings = array_map(static fn (string $label): array => ['label' => $label, 'venueId' => $venueId], array_keys($labels));
+        $venueChoices = array_map(static fn (string $division): array => ['division' => $division, 'venueId' => $venueId], array_keys($divisionsNoSalle));
+
+        return [$venueMappings, $venueChoices];
+    }
+
+    /** Un gymnase par défaut SANS alias (inerte NOW), cible de l'appariement automatique. */
+    private function ensureDefaultVenue(): string
+    {
+        if (null === $this->defaultVenueId) {
+            $this->defaultVenueId = $this->createVenue('Gymnase par défaut (appariement)');
+        }
+
+        return $this->defaultVenueId;
     }
 
     /**
