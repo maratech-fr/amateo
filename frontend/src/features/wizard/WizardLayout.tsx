@@ -391,10 +391,23 @@ export function WizardPage() {
     }
     abandoningRef.current = false;
   };
-  const keepPeriod = () => {
+  const stayOnPeriod = () => {
     setQuitAsked(false);
     if ("blocked" === blocker.state) {
       blocker.reset();
+    }
+  };
+  // « Garder la période et quitter » (retour Rillieux #15) : la 3e issue, ZÉRO écriture. On
+  // conserve la période (aucun DELETE de l'entrée) et on ramène à l'accueil — via blocker.proceed
+  // quand la sortie vient d'une navigation SPA interceptée, sinon navigate("/") pour le bouton.
+  const keepAndLeave = () => {
+    leavingRef.current = true;
+    exitPeriodMode();
+    setQuitAsked(false);
+    if ("blocked" === blocker.state) {
+      blocker.proceed();
+    } else {
+      navigate("/");
     }
   };
 
@@ -523,13 +536,15 @@ export function WizardPage() {
         // « Abandonner » contredisait le bouton renommé « Retour à l'accueil » : le geste
         // paraît anodin, le dialogue accusait un abandon. Le titre dit ce qu'on QUITTE (il
         // s'ouvre aussi depuis le blocker de navigation, pas seulement depuis ce bouton),
-        // la description dit ce qu'il advient de la période — inchangée (revue #350).
+        // la description dit ce qu'il advient de la période. La 3e action « Garder la période
+        // et quitter » (retour Rillieux #15) sort SANS écriture (keepAndLeave).
         title="Quitter l'ajustement ?"
-        description="Si aucun planning n'a été généré pour cette période, elle sera retirée du calendrier (recréable via « Adapter »). Si une génération existe, la période sera conservée."
+        description="Vos réglages sont enregistrés : vous pouvez garder la période et la reprendre plus tard via « Adapter ». Si vous la retirez alors qu'aucun planning n'a été généré, elle disparaît du calendrier."
         confirmLabel="Retirer la période"
         cancelLabel="Rester sur l'ajustement"
+        primaryAction={{ label: "Garder la période et quitter", onClick: keepAndLeave }}
         onConfirm={() => void confirmAbandon()}
-        onCancel={keepPeriod}
+        onCancel={stayOnPeriod}
       />
       <div className="flex flex-col gap-6 md:flex-row">
       {/* Left step navigation — collapsible (W8/N4) so any step (incl. génération) can go full-width.
