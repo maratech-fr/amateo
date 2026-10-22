@@ -1,4 +1,9 @@
-FROM php:8.4-fpm AS base
+# Épinglé sur 8.4.27 (2026-10-22) — correctif des failles critiques PHP2Shell
+# CVE-2026-109618 / CVE-2026-109619 (exécution de code à distance non authentifiée,
+# PHP-FPM touché) : un tag flottant `8.4-fpm` pouvait réutiliser une couche de base
+# en cache antérieure au correctif. Ne jamais redescendre sous 8.4.27 ; les montées
+# suivantes passent par Dependabot (écosystème docker).
+FROM php:8.4.27-fpm AS base
 
 ARG UID=1000
 ARG GID=1000
