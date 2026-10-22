@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\ApiResource;
 
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
@@ -44,9 +45,11 @@ class CalendarEntryResource
     #[Groups(['read'])]
     public string $title = '';
 
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $startDate = '';
 
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $endDate = '';
 
