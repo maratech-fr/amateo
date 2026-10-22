@@ -369,6 +369,11 @@ final class VenueAliasIdentityContext extends BaseContext
         $parts = ['file' => DataPart::fromPath($path)];
         if (null !== $mappings) {
             $parts['mappings'] = json_encode($mappings, \JSON_THROW_ON_ERROR);
+            // Chantier A — le dépôt qui CRÉE le domicile apparie sa salle au gymnase
+            // jetable (« pas de salles appariées, pas d'import »). Quand le libellé est
+            // déjà un alias confirmé de ce gymnase, l'appariement est idempotent ; un
+            // re-dépôt (mappings nul) garde le gymnase déjà posé.
+            $parts['venueMappings'] = json_encode([['label' => $salle, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR);
         }
         $form = new FormDataPart($parts);
 

@@ -52,7 +52,7 @@ final class VenueAliasContext extends BaseContext
 
     private string $venueId2 = '';
 
-    private string $competitionId = '';
+    private int $lastStatus = 0;
 
     private string $unavailabilityId = '';
 
@@ -116,9 +116,11 @@ final class VenueAliasContext extends BaseContext
     #[When('je re-dépose un autre match au même libellé, puis je le place sur le premier gymnase')]
     public function jeReDeposeEtPlace(): void
     {
-        // Le dépôt au libellé déjà rattaché reçoit le premier gymnase d'office ; on
-        // le fait ensuite passer PLACED (témoin de placement) via une écriture admin.
+        // Le dépôt au libellé déjà apparié (alias confirmé) reçoit le premier gymnase
+        // d'office ; on le fait ensuite passer PLACED (témoin de placement) via une
+        // écriture admin.
         $this->deposit(self::REF_2, null);
+        $this->assertLastDepositOk();
         $this->dbalExec(
             \sprintf(
                 'UPDATE fixture SET status=\'PLACED\', venue_id=\'%s\' WHERE club_id=\'%s\' AND external_ref=\'%s\'',
@@ -179,30 +181,59 @@ final class VenueAliasContext extends BaseContext
         }
     }
 
-    #[When('je dépose un fichier FBI dont la salle est « GYMNASE BEHAT ALIAS »')]
-    public function jeDeposeUnFichier(): void
+    #[When('je dépose un fichier FBI en appariant la salle au gymnase jetable')]
+    public function jeDeposeEnAppariant(): void
     {
-        $this->deposit(self::REF_1, [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
-        $this->competitionId = $this->dbalScalar(
-            \sprintf('SELECT id AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::DIVISION),
-            admin: true,
-        );
+        // Chantier A — l'appariement voyage AVEC le dépôt (venueMappings libellé→gymnase) :
+        // le domicile naît rattaché, et l'alias est posé sur le gymnase pour les suivants.
+        $this->deposit(self::REF_1, [['division' => self::DIVISION, 'teamId' => $this->teamId]], $this->venueId);
+        $this->assertLastDepositOk();
     }
 
-    #[Then('la rencontre importée n\'a pas de gymnase')]
-    public function laRencontreNaPasDeGymnase(): void
+    #[When('je dépose un fichier FBI sans apparier sa salle')]
+    public function jeDeposeSansApparier(): void
     {
-        if (null !== $this->venueIdOf(self::REF_1)) {
-            throw new RuntimeException('un libellé inconnu ne devrait rattacher aucun gymnase');
+        // Aucun venueMapping et aucun alias confirmé : la salle n'est appariée à rien.
+        $this->deposit(self::REF_1, [['division' => self::DIVISION, 'teamId' => $this->teamId]], null);
+    }
+
+    #[Then('le dépôt est refusé et aucune rencontre n\'est créée')]
+    public function leDepotEstRefuse(): void
+    {
+        if (422 !== $this->lastStatus) {
+            throw new RuntimeException(\sprintf('le dépôt sans salle appariée aurait dû être refusé 422 (reçu %d)', $this->lastStatus));
+        }
+        $id = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, self::REF_1),
+            admin: true,
+        );
+        if ('' !== $id) {
+            throw new RuntimeException('un dépôt refusé ne doit créer aucune rencontre');
         }
     }
 
-    #[When('je rattache le libellé « GYMNASE BEHAT ALIAS » au gymnase jetable')]
-    public function jeRattacheLeLibelle(): void
+    #[When('je dépose un fichier FBI en déclarant sa salle « terrain neutre »')]
+    public function jeDeposeEnTerrainNeutre(): void
     {
-        $result = $this->apiPost(\sprintf('venues/%s/external-labels', $this->venueId), ['label' => self::FBI_LABEL], $this->token);
-        if (200 !== $result['status']) {
-            throw new RuntimeException(\sprintf('le rattachement a répondu %d (200 attendu)', $result['status']));
+        $this->deposit(self::REF_1, [['division' => self::DIVISION, 'teamId' => $this->teamId]], 'NEUTRAL');
+        $this->assertLastDepositOk();
+    }
+
+    #[Then('la rencontre est à domicile, sans gymnase, en terrain neutre et déjà traitée')]
+    public function laRencontreEstEnTerrainNeutre(): void
+    {
+        $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId(self::REF_1)), $this->token)['json'];
+        if (($json['homeAway'] ?? null) !== 'HOME') {
+            throw new RuntimeException('un terrain neutre reste un match à domicile');
+        }
+        if (null !== ($json['venueId'] ?? null)) {
+            throw new RuntimeException('un terrain neutre n\'a pas de gymnase du club');
+        }
+        if (true !== ($json['neutralGround'] ?? null)) {
+            throw new RuntimeException('la rencontre aurait dû porter le drapeau terrain neutre');
+        }
+        if (($json['reviewState'] ?? null) !== 'REVIEWED') {
+            throw new RuntimeException('un terrain neutre naît déjà traité (rien à placer)');
         }
     }
 
@@ -211,25 +242,10 @@ final class VenueAliasContext extends BaseContext
     {
         $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId(self::REF_1)), $this->token)['json'];
         if (($json['venueId'] ?? null) !== $this->venueId) {
-            throw new RuntimeException('le backfill n\'a pas posé le gymnase sur le domicile déjà déposé');
+            throw new RuntimeException('l\'appariement n\'a pas posé le gymnase sur le domicile');
         }
         if (($json['status'] ?? null) !== 'UNPLACED') {
-            throw new RuntimeException('rattacher un libellé ne doit jamais placer la rencontre');
-        }
-    }
-
-    #[When('je re-dépose un autre match au même libellé')]
-    public function jeReDeposeUnAutreMatch(): void
-    {
-        // Correspondance division↔équipe déjà persistée → plus besoin de mapping.
-        $this->deposit(self::REF_2, null);
-    }
-
-    #[Then('le nouveau match est rattaché d\'office')]
-    public function leNouveauMatchEstRattacheDOffice(): void
-    {
-        if ($this->venueIdOf(self::REF_2) !== $this->venueId) {
-            throw new RuntimeException('un dépôt au libellé rattaché aurait dû recevoir le gymnase d\'office');
+            throw new RuntimeException('apparier un libellé ne doit jamais placer la rencontre');
         }
     }
 
@@ -297,11 +313,15 @@ final class VenueAliasContext extends BaseContext
     }
 
     /**
-     * Dépose un fichier FBI d'UNE ligne (HOME au libellé FBI_LABEL) via multipart.
+     * Dépose un fichier FBI d'UNE ligne (HOME au libellé FBI_LABEL) via multipart. Ne
+     * lève JAMAIS : le code HTTP est mémorisé dans {@see $lastStatus} pour que les
+     * scénarios de REFUS (422) puissent l'affirmer ; les scénarios de succès appellent
+     * {@see assertLastDepositOk}.
      *
      * @param list<array{division: string, teamId: string}>|null $mappings
+     * @param string|null                                        $venueId  gymnase (uuid) OU 'NEUTRAL' à apparier au libellé FBI_LABEL (null = aucun appariement)
      */
-    private function deposit(string $ref, ?array $mappings): void
+    private function deposit(string $ref, ?array $mappings, ?string $venueId = null): void
     {
         $rows = [[
             self::DIVISION,
@@ -318,16 +338,26 @@ final class VenueAliasContext extends BaseContext
         if (null !== $mappings) {
             $parts['mappings'] = json_encode($mappings, \JSON_THROW_ON_ERROR);
         }
+        if (null !== $venueId) {
+            $parts['venueMappings'] = json_encode([['label' => self::FBI_LABEL, 'venueId' => $venueId]], \JSON_THROW_ON_ERROR);
+        }
         $form = new FormDataPart($parts);
 
         $response = $this->client->request('POST', 'fixtures/import', [
             'headers' => array_merge(['Authorization' => 'Bearer ' . $this->token], $form->getPreparedHeaders()->toArray()),
             'body' => $form->bodyToIterable(),
         ]);
-        $status = $response->getStatusCode();
+        $this->lastStatus = $response->getStatusCode();
+        // On consomme le corps (le client HTTP streame) avant de supprimer le fichier.
+        $response->getContent(false);
         @unlink($path);
-        if (200 !== $status) {
-            throw new RuntimeException(\sprintf('le dépôt FBI a répondu %d (200 attendu) : %s', $status, $response->getContent(false)));
+    }
+
+    /** Affirme que le dernier dépôt a réussi (200) — pour les scénarios de succès. */
+    private function assertLastDepositOk(): void
+    {
+        if (200 !== $this->lastStatus) {
+            throw new RuntimeException(\sprintf('le dépôt FBI a répondu %d (200 attendu)', $this->lastStatus));
         }
     }
 

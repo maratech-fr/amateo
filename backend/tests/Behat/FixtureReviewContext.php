@@ -447,6 +447,13 @@ final class FixtureReviewContext extends BaseContext
         $parts = ['file' => DataPart::fromPath($path)];
         if (null !== $mappings) {
             $parts['mappings'] = json_encode($mappings, \JSON_THROW_ON_ERROR);
+            // Chantier A — « pas de salles appariées, pas d'import » : le dépôt qui CRÉE
+            // un domicile apparie sa salle au gymnase jetable (un re-dépôt, lui, garde le
+            // gymnase déjà posé → aucun appariement à refournir). Un extérieur n'est pas
+            // concerné (jamais une salle à domicile).
+            if ('HOME' === $homeAway) {
+                $parts['venueMappings'] = json_encode([['label' => $salle, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR);
+            }
         }
         $form = new FormDataPart($parts);
 
