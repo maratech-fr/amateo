@@ -40,8 +40,8 @@ l'e2e `modal-reachability.spec.ts` (`colorScheme` calculé). Conséquence direct
 primitive partagée qui consomme les jetons de **thème** par défaut (ex. `EmptyHint`/`EmptyBlock`,
 `text-muted-foreground`) doit demander sa peau `console` explicitement (prop `variant`, foyer
 `shared/lib/surfaceSkin.ts::SurfaceSkin`, même patron que les onglets) pour rendre juste sur cette
-surface — la majorité des empty states admin l'ont fait (P4-149, 2026-08-30) ; 4 sites restent en
-arbitrage visuel, voir [`roadmap.md`](../evolution/roadmap.md) P4-149. `AdminAuthLayout` n'offre
+surface — les 18 empty states admin l'ont fait (P4-149, soldé 2026-10-22 option 1, trace
+[`etat-des-lieux.md`](etat-des-lieux.md) §3). `AdminAuthLayout` n'offre
 **aucune** bascule de thème — cette surface a sa propre palette `--console-*`, indépendante du
 mode clair/sombre applicatif, donc une bascule `.dark` n'y changerait rien ; les bascules
 publique (`AuthLayout`) et applicative (`AppLayout`) restent, hors de cette surface.
@@ -182,10 +182,14 @@ elle détaille membres, onboarding, crédits consommés et signalements non trai
 l'onglet Incidents), ainsi que **toutes** les raisons du signal. Aucune pastille d'onglet n'est
 posée pour ce signal — il reste visible seulement en dépliant la ligne.
 
-La santé est rafraîchie toutes les 30 secondes, l'overview toutes les 60 secondes, et un
-bouton permet de rafraîchir les trois panneaux. Chaque flux conserve ses propres états
-chargement, erreur et vide afin qu'une sonde indisponible ne masque pas les autres
-informations. SA2 ne déclenche aucune mutation ou action de support.
+La santé est rafraîchie toutes les 30 secondes, l'overview toutes les 60 secondes, et le
+bouton « Actualiser » invalide TOUTES les requêtes `admin-*` de la console — toutes sections
+confondues (demandes d'inscription, adhésions, jobs, référentiels, signalements, erreurs
+système…) — SAUF `admin-session` (la re-demander déconnecterait le superadmin) ; un prédicat
+partagé (`isRefreshableAdminQuery`, `AdminDashboardPage.tsx`, #22 2026-10-22) pilote à la fois
+l'invalidation du clic et l'état « en cours » du bouton (`useIsFetching`). Chaque flux conserve
+ses propres états chargement, erreur et vide afin qu'une sonde indisponible ne masque pas les
+autres informations. SA2 ne déclenche aucune mutation ou action de support.
 
 ## Socle d'exécution des jobs SA3-A
 

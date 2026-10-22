@@ -7,6 +7,7 @@ import { renderWithProviders } from "@/test/utils";
 import type { AdminReleaseNote } from "../api";
 import { createAdminReleaseNote, getAdminReleaseNotes, publishAdminReleaseNote } from "../api";
 import { useAdminStore } from "../store";
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 import { ReleaseNotesSection } from "./ReleaseNotesSection";
 
 vi.mock("../api", async (importOriginal) => {
@@ -59,6 +60,16 @@ describe("ReleaseNotesSection", () => {
     await waitFor(() =>
       expect(mockCreate).toHaveBeenCalledWith({ title: "Ma note", body: "Le corps", noteDate: "2026-08-13" }, "csrf-token"),
     );
+  });
+
+  // P4-149 (option 1) — le vide « Aucune note » passe par EmptyHint variant="console"
+  // (skin partagé `text-console-muted`), comme ses 14 voisins, jamais un <p> console fait main.
+  it("rend l'état vide via le skin console partagé (EmptyHint)", async () => {
+    mockList.mockResolvedValue({ items: [] });
+    renderWithProviders(<ReleaseNotesSection />);
+
+    const hint = await screen.findByText(ADMIN_SECTIONS_TEXTS.releaseNotesEmpty);
+    expect(hint.className).toContain("text-console-muted");
   });
 
   it("publie un brouillon", async () => {
