@@ -132,17 +132,10 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setScheduleId($schedule->getId())->setTeamId($team->getId())->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
-        // DOC-2 : un match DÉJÀ DÉCLARÉ à la fédération, posé dans ce gymnase.
-        $declared = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
-            ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
-            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId());
-        $this->em->persist($declared);
-        // P4-270 : un match PLACÉ mais PAS encore déclaré, posé dans ce gymnase — compté dans
-        // placedFixtures (redeviendra « à placer ») mais PAS dans declaredFixtures (rien à re-soumettre).
-        $placedOnly = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
-            ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire 2')
-            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable)->setVenueId($venue->getId());
-        $this->em->persist($placedOnly);
+        // PR4 « fermetures à la source » — ce gymnase ne porte AUCUN match : il reste
+        // supprimable, et la parité annoncé==détruit se mesure sur ses enfants destructibles.
+        // Le cas « gymnase AVEC match » (désormais REFUSÉ, jamais détruit) vit dans
+        // {@see self::testAVenueCarryingAMatchIsBlockedAndValidationStaysTheOnlyUnplacer}.
         // Un créneau du même club dans un AUTRE gymnase : il ne doit ni être compté ni partir.
         $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setVenueId($other->getId())->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90)->setCapacity(1));
@@ -158,10 +151,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertSame(1, $announced['venue_reservation'] ?? 0, 'la réservation est annoncée');
         self::assertSame(1, $announced['venue_slot_template'] ?? 0, 'la séance placée est annoncée');
         self::assertSame(1, $announced['venue_forced_team'] ?? 0, 'l\'équipe qui perd son gymnase imposé est annoncée');
-        self::assertSame(2, $announced['venue_fixture'] ?? 0, 'les deux matchs qui perdent leur salle sont annoncés');
-        self::assertSame(2, $impact->placedFixtures, 'P4-270 : les deux matchs PLACÉS (déclaré + placé-seul) sont comptés');
-        self::assertSame(1, $impact->declaredFixtures, 'DOC-2 : seul le match DÉJÀ DÉCLARÉ est le sous-ensemble à re-soumettre');
-        self::assertFalse($impact->blocked, 'un gymnase ne se refuse pas : la décision fondateur laisse le geste passer');
+        self::assertFalse($impact->blocked, 'un gymnase SANS match ne se refuse pas : sa cascade passe');
 
         self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
         $this->em->flush();
@@ -172,14 +162,6 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertSame(0, $this->countBy(Reservation::class, 'venueId', $venue->getId()));
         self::assertSame(0, $this->countBy(ScheduleSlotTemplate::class, 'venueId', $venue->getId()));
         self::assertNull($this->em->getRepository(Team::class)->find($team->getId())?->getForcedVenueId());
-        // …et ce qui SURVIT survit : le match reste, sans sa salle (il redevient « à placer »,
-        // donc récupérable — c'est ce qui justifie d'avertir plutôt que de refuser).
-        $reloaded = $this->em->getRepository(Fixture::class)->find($declared->getId());
-        self::assertNotNull($reloaded, 'un match déclaré ne disparaît pas avec le gymnase');
-        self::assertNull($reloaded->getVenueId());
-        // P2-52 — la MÊME bascule que la gâchette validation : « à placer » + raison persistante.
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'le match redevient « à placer »');
-        self::assertSame(FixtureUnplacedReason::VENUE_LOST, $reloaded->getUnplacedReason(), 'la raison venue_lost est posée');
         // La frontière du gymnase tient : l'autre salle est intacte.
         self::assertSame(1, $this->countBy(VenueTrainingSlot::class, 'venueId', $other->getId()));
     }
@@ -651,51 +633,58 @@ final class DeletionImpactParityTest extends KernelTestCase
     }
 
     /**
-     * P2-52 — LES DEUX GÂCHETTES MÈNENT AU MÊME ÉTAT FINAL. Un match dépointé par la SUPPRESSION
-     * de son gymnase et un match dépointé par la VALIDATION (pointeur pendouillant) atterrissent
-     * dans un état byte-identique : « à placer », raison venue_lost, heure conservée. Le foyer
-     * unique (`FixtureVenueLossMarker`) le garantit — ce test le prouve.
+     * PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un match à domicile sans
+     * gymnase est rendu IMPOSSIBLE à la source : supprimer un gymnase porteur de matchs est
+     * désormais REFUSÉ. Il ne reste donc QU'UNE gâchette qui dépointe un match en venue_lost — la
+     * VALIDATION d'un planning (pointeur pendouillant laissé par une exploration). Ce test prouve
+     * les deux faces du revirement de P2-52 :
+     *   (A) le compteur d'impact BLOQUE la suppression d'un gymnase qui porte un match, en
+     *       servant au front une raison lisible (le front grise le bouton) ;
+     *   (B) la gâchette de VALIDATION, elle, atteint toujours venue_lost — l'état final complet
+     *       (« à placer », raison venue_lost, heure conservée) est détaillé par son test jumeau
+     *       {@see self::testValidationImpactAnnouncesTheOrphanAndValidationUnplacesExactlyIt}.
      */
-    public function testBothTriggersReachTheSameFinalStateOnAVenueLostMatch(): void
+    public function testAVenueCarryingAMatchIsBlockedAndValidationStaysTheOnlyUnplacer(): void
     {
         [$club, $season] = $this->seed();
         $team = $this->team($club, $season, forcedVenueId: '11111111-1111-4111-8111-111111111111');
 
-        // Chemin A — suppression de gymnase : le match posé dessus est marqué par le step.
-        $venueA = $this->venue($club, $season, 'Matéo');
-        $fixtureA = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+        // (A) un gymnase qui porte un match : sa suppression est refusée, avec une raison lisible.
+        $venue = $this->venue($club, $season, 'Matéo');
+        $this->em->persist((new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venueA->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
-        $this->em->persist($fixtureA);
-        // Chemin B — validation : le gymnase a déjà disparu (pointeur pendouillant).
-        $fixtureB = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
-            ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId('33333333-3333-4333-8333-333333333333')->setKickoffTime(new DateTimeImmutable('15:30'));
-        $this->em->persist($fixtureB);
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30')));
         $this->em->flush();
 
-        // A : le geste de suppression de gymnase.
-        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venueA);
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
+        self::assertTrue($impact->blocked, 'un gymnase qui porte un match ne peut plus être supprimé');
+        self::assertNotNull($impact->reason, 'le refus porte une raison lisible pour le front');
+        self::assertStringContainsStringIgnoringCase('match', $impact->reason, 'la raison nomme les matchs');
+        self::assertSame(1, $impact->placedFixtures, 'le front sait combien de matchs rendent le gymnase indélébile');
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+        self::assertArrayNotHasKey('venue_fixture', $announced, 'plus de dépointage annoncé : le pas a quitté le plan du gymnase');
+
+        // (B) la VALIDATION reste la seule gâchette qui dépointe réellement un match en venue_lost.
+        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+            ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv2')
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId('33333333-3333-4333-8333-333333333333')->setKickoffTime(new DateTimeImmutable('16:00'));
+        $this->em->persist($orphan);
         $this->em->flush();
-        // B : la gâchette de validation (le prédicat ne voit plus A — son venueId est déjà NULL).
+
         $finder = self::getContainer()->get(OrphanedFixtureFinder::class);
         $ids = array_map(static fn (Fixture $f): string => $f->getId(), $finder->orphanedFixtures($club->getId(), $season->getId()));
-        self::assertSame([$fixtureB->getId()], $ids, 'seul B est orphelin — A a déjà été dépointé par le step');
+        self::assertSame([$orphan->getId()], $ids, 'seul le pointeur pendouillant est orphelin (le match du vrai gymnase ne l\'est pas)');
         self::getContainer()->get(FixtureVenueLossMarker::class)->mark($ids);
         $this->em->clear();
 
-        $reloadedA = $this->em->getRepository(Fixture::class)->find($fixtureA->getId());
-        $reloadedB = $this->em->getRepository(Fixture::class)->find($fixtureB->getId());
-        self::assertNotNull($reloadedA);
-        self::assertNotNull($reloadedB);
-        $stateOf = static fn (Fixture $f): array => [
-            $f->getVenueId(),
-            $f->getStatus(),
-            $f->getUnplacedReason(),
-            $f->getKickoffTime()?->format('H:i'),
-        ];
-        self::assertSame([null, FixtureStatus::UNPLACED, FixtureUnplacedReason::VENUE_LOST, '15:30'], $stateOf($reloadedA), 'suppression gymnase : état attendu');
-        self::assertSame($stateOf($reloadedA), $stateOf($reloadedB), 'les deux gâchettes mènent au MÊME état final');
+        $reloaded = $this->em->getRepository(Fixture::class)->find($orphan->getId());
+        self::assertNotNull($reloaded);
+        self::assertNull($reloaded->getVenueId());
+        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus());
+        self::assertSame(FixtureUnplacedReason::VENUE_LOST, $reloaded->getUnplacedReason());
     }
 
     protected function setUp(): void
