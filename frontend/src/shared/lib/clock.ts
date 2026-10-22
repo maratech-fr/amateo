@@ -38,7 +38,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * donc la date et on vérifie qu'elle se relit à l'identique (le constructeur reporte :
  * le 31 février devient le 3 mars).
  */
-function isRealDate(iso: string): boolean {
+export function isRealDate(iso: string): boolean {
   if (!ISO_DATE.test(iso)) {
     return false;
   }

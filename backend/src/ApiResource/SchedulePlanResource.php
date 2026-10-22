@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\ApiResource;
 
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
@@ -65,11 +66,13 @@ class SchedulePlanResource
     #[Groups(['read'])]
     public string $name = '';
 
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
-    public DateTimeImmutable $startDate;
+    public string $startDate = '';
 
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
-    public DateTimeImmutable $endDate;
+    public string $endDate = '';
 
     #[Groups(['read'])]
     public ?string $calendarEntryId = null;
@@ -96,8 +99,8 @@ class SchedulePlanResource
         $dto->seasonId = $entity->getSeasonId();
         $dto->type = $entity->getType();
         $dto->name = $entity->getName();
-        $dto->startDate = $entity->getStartDate();
-        $dto->endDate = $entity->getEndDate();
+        $dto->startDate = $entity->getStartDate()->format('Y-m-d');
+        $dto->endDate = $entity->getEndDate()->format('Y-m-d');
         $dto->calendarEntryId = $entity->getCalendarEntryId();
         $dto->chosenScheduleId = $entity->getChosenScheduleId();
         $dto->teamSelectionInitialized = $entity->isTeamSelectionInitialized();

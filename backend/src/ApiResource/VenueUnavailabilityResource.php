@@ -6,6 +6,7 @@ namespace App\ApiResource;
 
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
@@ -45,10 +46,12 @@ class VenueUnavailabilityResource
     public string $venueId = '';
 
     /** Y-m-d, inclusive. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $startDate = '';
 
     /** Y-m-d, inclusive. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $endDate = '';
 

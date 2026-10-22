@@ -26415,11 +26415,13 @@
                     },
                     "startDate": {
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "endDate": {
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "isDisruptive": {
                         "default": false,
@@ -26601,11 +26603,13 @@
                     },
                     "startDate": {
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "endDate": {
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "isDisruptive": {
                         "default": false,
@@ -26686,11 +26690,13 @@
                             },
                             "startDate": {
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             },
                             "endDate": {
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             },
                             "isDisruptive": {
                                 "default": false,
@@ -28267,7 +28273,8 @@
                     "deadline": {
                         "description": "Y-m-d.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "weeks": {
                         "type": "array",
@@ -28379,7 +28386,8 @@
                     "deadline": {
                         "description": "Y-m-d.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "weeks": {
                         "type": "array",
@@ -28448,7 +28456,8 @@
                             "deadline": {
                                 "description": "Y-m-d.",
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             },
                             "weeks": {
                                 "type": "array",
@@ -28761,13 +28770,15 @@
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "endDate": {
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "fbiTeamLabel": {
                         "description": "FBI club-team label \u2014 disambiguates two club teams in one division.",
@@ -28811,14 +28822,16 @@
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "effectiveEntryDeadline": {
                         "description": "club value ?? community default (Y-m-d), null when neither exists.",
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "deadlineSource": {
                         "description": "'club' | 'community' | null \u2014 the origin of effectiveEntryDeadline.",
@@ -28924,13 +28937,15 @@
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "endDate": {
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "fbiTeamLabel": {
                         "description": "FBI club-team label \u2014 disambiguates two club teams in one division.",
@@ -28974,14 +28989,16 @@
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "effectiveEntryDeadline": {
                         "description": "club value ?? community default (Y-m-d), null when neither exists.",
                         "type": [
                             "string",
                             "null"
-                        ]
+                        ],
+                        "format": "date"
                     },
                     "deadlineSource": {
                         "description": "'club' | 'community' | null \u2014 the origin of effectiveEntryDeadline.",
@@ -29036,13 +29053,15 @@
                                 "type": [
                                     "string",
                                     "null"
-                                ]
+                                ],
+                                "format": "date"
                             },
                             "endDate": {
                                 "type": [
                                     "string",
                                     "null"
-                                ]
+                                ],
+                                "format": "date"
                             },
                             "fbiTeamLabel": {
                                 "description": "FBI club-team label \u2014 disambiguates two club teams in one division.",
@@ -29086,14 +29105,16 @@
                                 "type": [
                                     "string",
                                     "null"
-                                ]
+                                ],
+                                "format": "date"
                             },
                             "effectiveEntryDeadline": {
                                 "description": "club value ?? community default (Y-m-d), null when neither exists.",
                                 "type": [
                                     "string",
                                     "null"
-                                ]
+                                ],
+                                "format": "date"
                             },
                             "deadlineSource": {
                                 "description": "'club' | 'community' | null \u2014 the origin of effectiveEntryDeadline.",
@@ -30030,7 +30051,8 @@
                     },
                     "matchDate": {
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "homeAway": {
                         "default": "",
@@ -30313,7 +30335,8 @@
                     },
                     "matchDate": {
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "homeAway": {
                         "default": "",
@@ -30503,7 +30526,8 @@
                             },
                             "matchDate": {
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             },
                             "homeAway": {
                                 "default": "",
@@ -32626,12 +32650,14 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "endDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "calendarEntryId": {
                         "type": [
@@ -32720,12 +32746,14 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "endDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "calendarEntryId": {
                         "type": [
@@ -32787,12 +32815,14 @@
                                 "type": "string"
                             },
                             "startDate": {
+                                "default": "",
                                 "type": "string",
-                                "format": "date-time"
+                                "format": "date"
                             },
                             "endDate": {
+                                "default": "",
                                 "type": "string",
-                                "format": "date-time"
+                                "format": "date"
                             },
                             "calendarEntryId": {
                                 "type": [
@@ -33123,12 +33153,14 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "endDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "status": {
                         "default": "",
@@ -33218,12 +33250,14 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "endDate": {
+                        "default": "",
                         "type": "string",
-                        "format": "date-time"
+                        "format": "date"
                     },
                     "status": {
                         "default": "",
@@ -33275,12 +33309,14 @@
                                 "type": "string"
                             },
                             "startDate": {
+                                "default": "",
                                 "type": "string",
-                                "format": "date-time"
+                                "format": "date"
                             },
                             "endDate": {
+                                "default": "",
                                 "type": "string",
-                                "format": "date-time"
+                                "format": "date"
                             },
                             "status": {
                                 "default": "",
@@ -36200,12 +36236,14 @@
                     "startDate": {
                         "description": "Y-m-d, borne INCLUSE.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "endDate": {
                         "description": "Y-m-d, borne INCLUSE.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     }
                 }
             },
@@ -36230,12 +36268,14 @@
                     "startDate": {
                         "description": "Y-m-d, borne INCLUSE.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "endDate": {
                         "description": "Y-m-d, borne INCLUSE.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     }
                 }
             },
@@ -36264,12 +36304,14 @@
                             "startDate": {
                                 "description": "Y-m-d, borne INCLUSE.",
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             },
                             "endDate": {
                                 "description": "Y-m-d, borne INCLUSE.",
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             }
                         }
                     }
@@ -37274,12 +37316,14 @@
                     "startDate": {
                         "description": "Y-m-d, inclusive.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "endDate": {
                         "description": "Y-m-d, inclusive.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "label": {
                         "type": [
@@ -37364,12 +37408,14 @@
                     "startDate": {
                         "description": "Y-m-d, inclusive.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "endDate": {
                         "description": "Y-m-d, inclusive.",
                         "default": "",
-                        "type": "string"
+                        "type": "string",
+                        "format": "date"
                     },
                     "label": {
                         "type": [
@@ -37410,12 +37456,14 @@
                             "startDate": {
                                 "description": "Y-m-d, inclusive.",
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             },
                             "endDate": {
                                 "description": "Y-m-d, inclusive.",
                                 "default": "",
-                                "type": "string"
+                                "type": "string",
+                                "format": "date"
                             },
                             "label": {
                                 "type": [

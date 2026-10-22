@@ -220,7 +220,7 @@ Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Gro
 ### `CrossStack/` — backend↔frontend contract guards (group `contract`, not `phase1`)
 
 The frontend has **no codegen**: its API types are hand-written interfaces in `features/*/api.ts`.
-Three `CrossStack/` tests guard that hand-sync from three distinct angles, each blind to what the
+Four `CrossStack/` tests guard that hand-sync from four distinct angles, each blind to what the
 others catch:
 - `OpenApiSnapshotMatchesTheLiveContractTest` — the committed snapshot (`specs/courantes/openapi-snapshot.json`)
   matches the live backend contract. Says nothing about whether the frontend actually followed.
@@ -233,8 +233,19 @@ others catch:
   reason (guarded by its own test). Optionality (`required`) is intentionally not checked in v1 — the
   snapshot's read schemas the frontend consumes carry no `required` array at all (only `*Input`
   write-schemas do); extending the guard to `X.XInput` pairs is the documented escape hatch.
+- `FrontMockDateFormatMatchesContractTest` (lot bugs Rillieux #16 PR2, decision fondateur
+  2026-10-22 « un mock doit envoyer ce que l'API envoie ») — a date field's NAME, not the OpenAPI
+  snapshot, is the source of truth (a `string` property typed date-only has no `format: date` API
+  Platform can infer): a property ending in `Date`/`Deadline` is served `Y-m-d`, a `DateTimeImmutable`
+  property (`*At`) is served RFC 3339. Scans literal date-shaped values in every front `*.test.ts(x)`
+  file and rougit either direction — a mock giving a date-only field a datetime, or a timestamp field
+  a bare date. Nominative exemptions (`EXEMPTIONS` constant) for deliberate robustness inputs, each
+  motivated and checked to still exist (`campaignWeeks.test.ts` is the one today). Companion guard
+  `OpenApi/DateOnlyFieldsServeDateOnlyStringsTest` (not `CrossStack/`, not `contract` — plain
+  `Integration` suite, `backend-tests` job) asserts the backend side alone: every `*Date`/`*Deadline`
+  property of an `ApiResource` is typed `string`, never a raw `DateTimeImmutable`.
 
-These three run in the `contract` group (`engine-semantics` CI job — a required check of `main`,
+These four run in the `contract` group (`engine-semantics` CI job — a required check of `main`,
 **not** part of `blocking-tests`/`backend-tests`; see `docs/testing/blocking-tests.md` for what
 actually gates the merge).
 
