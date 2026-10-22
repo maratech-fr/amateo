@@ -10,6 +10,7 @@ use App\Entity\ClubCreationRequest;
 use App\Entity\EmailChangeToken;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Mail\EmailTemplateRenderer;
 use App\Repository\Basketball\FfbbCommitteeRepository;
 use App\Repository\Basketball\FfbbLeagueRepository;
 use App\Repository\ClubRepository;
@@ -592,13 +593,18 @@ final class AuthController extends AbstractController
         // DISPATCH (Redis down) tomberait ici — avalé : un 500 sur cette seule branche
         // serait un oracle d'énumération (comme la vérification / le reset).
         try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($email)
-                    ->subject(\sprintf('Confirmez votre nouvelle adresse e-mail %s', $product))
-                    ->text("Vous avez demandé à changer l'adresse e-mail de votre compte {$product}.\n\nPour confirmer cette nouvelle adresse, ouvrez ce lien :\n{$link}\n\nVotre adresse actuelle reste active tant que vous n'avez pas confirmé.\n\nCe lien expire dans 24 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."),
-            );
+            $message = (new Email)
+                ->from($this->mailFrom->address())
+                ->to($email)
+                ->subject(\sprintf('Confirmez votre nouvelle adresse e-mail %s', $product))
+                ->text("Vous avez demandé à changer l'adresse e-mail de votre compte {$product}.\n\nPour confirmer cette nouvelle adresse, ouvrez ce lien :\n{$link}\n\nVotre adresse actuelle reste active tant que vous n'avez pas confirmé.\n\nCe lien expire dans 24 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.");
+            // Bouton CTA du HTML : en-têtes internes lus/retirés au worker par
+            // EmailSignatureListener. L'URL EST le lien du texte (jamais dupliqué en clair
+            // sous le bouton) — même mécanisme que CoachWishMailBuilder.
+            $headers = $message->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Confirmer la nouvelle adresse');
+            $this->mailer->send($message);
         } catch (Throwable $e) {
             // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
             // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
