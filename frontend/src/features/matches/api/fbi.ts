@@ -119,6 +119,9 @@ export interface ImportFbiResult {
   /** RMM-4 — perimeter écarts that had NO decision: left INTACT, never
    * overwritten. Reported so the manager can re-deposit to re-present them. */
   unresolvedDeviations: Deviation[];
+  /** Chantier A — nombre de domiciles de championnats commencés auto-validés
+   * « validé ligue » par ce dépôt (passe post-flush). */
+  leagueValidated: number;
   /** RMM-4 — this deposit is dated (freshness feed). */
   depositedAt: string;
 }

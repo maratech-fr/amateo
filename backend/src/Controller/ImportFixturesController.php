@@ -139,6 +139,9 @@ final class ImportFixturesController extends AbstractController
             // RMM-4 — perimeter écarts (home already placed) that had NO decision:
             // left INTACT and reported, never overwritten by default.
             'unresolvedDeviations' => $result['unresolvedDeviations'],
+            // Chantier A — le nombre de domiciles de championnats commencés basculés
+            // « validé ligue » automatiquement par ce dépôt (passe post-flush).
+            'leagueValidated' => $result['leagueValidated'],
             'depositedAt' => $result['depositedAt'],
         ], Response::HTTP_OK);
     }

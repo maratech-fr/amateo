@@ -107,6 +107,7 @@ final class FbiFixtureImporter
         private readonly FbiDeviationService $deviationService,
         private readonly FbiMappingGuards $mappingGuards,
         private readonly FbiCorrectionLedger $ledger,
+        private readonly LeagueValidationOutlook $leagueValidationOutlook,
     ) {}
 
     /**
@@ -230,6 +231,7 @@ final class FbiFixtureImporter
      *     unmappedDivisions: list<array{name: string, fbiTeamLabel: string|null, rowCount: int}>,
      *     completeness: list<array{competitionId: string, name: string, imported: int, expected: int}>,
      *     unresolvedDeviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>,
+     *     leagueValidated: int,
      *     depositedAt: string,
      * }
      */
@@ -337,6 +339,10 @@ final class FbiFixtureImporter
                     continue;
                 }
 
+                // À la CRÉATION, le statut reste TOUJOURS UNPLACED (le défaut de Fixture) :
+                // le chemin de création ne pose jamais VALIDATED. Le dépôt valide « validé
+                // ligue » les championnats commencés dans une PASSE SÉPARÉE, APRÈS le flush
+                // (voir plus bas), jamais ici.
                 $fixture = new Fixture;
                 $fixture->setClubId($club->getId());
                 $fixture->setSeasonId($competition->getSeasonId());
@@ -380,6 +386,24 @@ final class FbiFixtureImporter
         // so the flush is unconditional now.
         $this->entityManager->flush();
 
+        // Auto-validation « validé ligue » au dépôt (chantier A) — PASSE SÉPARÉE, APRÈS le
+        // flush : les rencontres viennent de naître UNPLACED (jamais placées d'office), on
+        // relit maintenant celles qu'un championnat COMMENCÉ rend validables (heure +
+        // gymnase, sans écart) et on les bascule VALIDATED + MANUAL par la MAISON UNIQUE du
+        // prédicat et de l'écriture ({@see LeagueValidationOutlook}, partagée avec le geste
+        // manuel en lot — jamais une seconde copie, d'où une ancre FIXED byte-identique). Le
+        // POST manuel ne sert plus que de rattrapage (échéance qui tombe APRÈS le dépôt).
+        $leagueValidated = 0;
+        if (null !== $seasonId) {
+            foreach ($this->leagueValidationOutlook->fixturesToConfirm($seasonId) as $fixture) {
+                $this->leagueValidationOutlook->markLeagueValidated($fixture, $now);
+                ++$leagueValidated;
+            }
+            if ($leagueValidated > 0) {
+                $this->entityManager->flush();
+            }
+        }
+
         // Completeness (6.2): « 9/22 journées — fichier partiel ou phase pas
         // sortie » — counted on the PERSISTED fixtures (the data that is true),
         // only for competitions carrying a pairing expectation.
@@ -411,6 +435,7 @@ final class FbiFixtureImporter
             'unmappedDivisions' => $unmapped,
             'completeness' => $completeness,
             'unresolvedDeviations' => $unresolvedDeviations,
+            'leagueValidated' => $leagueValidated,
             'depositedAt' => $now->format(DateTimeImmutable::ATOM),
         ];
     }
