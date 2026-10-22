@@ -5,9 +5,10 @@ import { axe } from "vitest-axe";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { AdminActionsResponse, AdminClubsResponse, AdminFeedbackResponse, AdminFreshnessResponse, AdminHealthResponse, AdminJobsResponse, AdminOverviewResponse, AdminSystemErrorsResponse } from "./api";
-import { getAdminActions, getAdminClubs, getAdminFeedback, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminOverview, getAdminSystemErrors, runAdminClubAction, runAdminJob } from "./api";
+import type { AdminActionsResponse, AdminClubRequestsResponse, AdminClubsResponse, AdminFeedbackResponse, AdminFreshnessResponse, AdminHealthResponse, AdminJobsResponse, AdminOverviewResponse, AdminSystemErrorsResponse } from "./api";
+import { getAdminActions, getAdminClubRequests, getAdminClubs, getAdminFeedback, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminOverview, getAdminPendingMemberships, getAdminSession, getAdminSystemErrors, runAdminClubAction, runAdminJob } from "./api";
 import { AdminDashboardPage } from "./AdminDashboardPage";
+import { useAdminSession } from "./queries";
 import { useAdminStore } from "./store";
 import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
 
@@ -27,6 +28,12 @@ vi.mock("./api", async (importOriginal) => {
     // traités + erreurs système ≤ 7 j), en plus de leurs sections.
     getAdminFeedback: vi.fn(),
     getAdminSystemErrors: vi.fn(),
+    // #22 — « Actualiser » doit rafraîchir TOUTES les données de la console, y compris les
+    // demandes d'inscription de clubs (montées par ClubRequestsSection) ; la session, elle,
+    // ne doit jamais être re-demandée.
+    getAdminClubRequests: vi.fn(),
+    getAdminPendingMemberships: vi.fn(),
+    getAdminSession: vi.fn(),
   };
 });
 
@@ -238,6 +245,27 @@ const mockRunClubAction = vi.mocked(runAdminClubAction);
 const mockFreshness = vi.mocked(getAdminFreshness);
 const mockFeedback = vi.mocked(getAdminFeedback);
 const mockSystemErrors = vi.mocked(getAdminSystemErrors);
+const mockClubRequests = vi.mocked(getAdminClubRequests);
+const mockPendingMemberships = vi.mocked(getAdminPendingMemberships);
+const mockSession = vi.mocked(getAdminSession);
+
+// #22 — une demande d'inscription de club servie par l'API (createdAt/expiresAt au format
+// `date` Y-m-d du contrat, PAS RFC 3339 : snapshot `specs/courantes/openapi-snapshot.json`).
+const newClubRequest: AdminClubRequestsResponse = {
+  items: [
+    {
+      id: "req-new",
+      clubName: "AS Val de Marne",
+      ara: "ARA909",
+      clubEmail: null,
+      status: "pending",
+      requesterName: "Alex Martin",
+      requesterEmail: "alex@asvdm.test",
+      createdAt: "2026-10-20",
+      expiresAt: "2026-11-03",
+    },
+  ],
+};
 
 describe("AdminDashboardPage", () => {
   beforeEach(() => {
@@ -252,6 +280,9 @@ describe("AdminDashboardPage", () => {
     mockFreshness.mockReset().mockResolvedValue(freshness);
     mockFeedback.mockReset().mockResolvedValue(feedbackResponse(null));
     mockSystemErrors.mockReset().mockResolvedValue(systemErrorsResponse(0));
+    mockClubRequests.mockReset().mockResolvedValue({ items: [] });
+    mockPendingMemberships.mockReset().mockResolvedValue({ items: [] });
+    mockSession.mockReset().mockResolvedValue({ id: "admin-1", email: "ops@example.test", csrfToken: "csrf-123" });
     useAdminStore.setState({ identity: { id: "admin-1", email: "ops@example.test" }, csrfToken: "csrf-123" });
   });
 
@@ -817,6 +848,38 @@ describe("AdminDashboardPage", () => {
 
       const demoRow = screen.getByText("Club Démo Test").closest("tr") as HTMLElement;
       expect(within(demoRow).getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions })).toBeInTheDocument();
+    });
+  });
+
+  // #22 — le fondateur a dû se déconnecter pour voir une nouvelle demande d'inscription :
+  // « Actualiser » ne rafraîchissait qu'une liste FIXE (overview/health/jobs/clubs/freshness/
+  // feedback/systemErrors) et oubliait les demandes de création de clubs. La promesse : un clic
+  // rafraîchit TOUTES les clés `admin-*` (dont `admin-club-requests`) SAUF `admin-session`.
+  describe("« Actualiser » rafraîchit toute la console", () => {
+    // La session admin est MONTÉE à côté de la page (comme sous AdminShell en vrai), pour
+    // observer qu'Actualiser ne la re-demande jamais (ne jamais déconnecter sur un refresh).
+    function PageUnderSession() {
+      useAdminSession();
+      return <AdminDashboardPage />;
+    }
+
+    it("re-demande les demandes d'inscription (le bug fondateur) et ne re-demande jamais la session", async () => {
+      const user = userEvent.setup();
+      // 1er appel : aucune demande ; 2e appel (après Actualiser) : une nouvelle demande arrive.
+      mockClubRequests.mockReset().mockResolvedValueOnce({ items: [] }).mockResolvedValue(newClubRequest);
+      renderWithProviders(<PageUnderSession />, { route: "/admin?tab=clubs" });
+
+      await screen.findByText("Basket Club des Lacs");
+      await waitFor(() => expect(mockSession).toHaveBeenCalledOnce());
+      // Rien côté demandes avant le rafraîchissement.
+      expect(screen.queryByText("AS Val de Marne")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.refresh }));
+
+      // La nouvelle demande apparaît : `admin-club-requests` a bien été re-demandée.
+      expect(await screen.findByText("AS Val de Marne")).toBeInTheDocument();
+      // La session n'a PAS été re-demandée (clé `admin-session` exclue du rafraîchissement).
+      expect(mockSession).toHaveBeenCalledOnce();
     });
   });
 });

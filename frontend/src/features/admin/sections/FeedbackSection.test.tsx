@@ -102,6 +102,16 @@ describe("FeedbackSection", () => {
     expect(within(list).getByText(ADMIN_SECTIONS_TEXTS.feedbackStatusLabel("untreated"))).toBeInTheDocument();
   });
 
+  // P4-149 (option 1) — le vide « Aucun signalement » passe par EmptyHint variant="console"
+  // (skin partagé `text-console-muted`), comme ses 14 voisins, jamais un <p> console fait main.
+  it("rend l'état vide via le skin console partagé (EmptyHint)", async () => {
+    mockList.mockResolvedValue({ items: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 }, qos: qosBase });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    const hint = await screen.findByText(ADMIN_SECTIONS_TEXTS.feedbackEmpty);
+    expect(hint.className).toContain("text-console-muted");
+  });
+
   it("filtre par statut — requête serveur ciblée", async () => {
     mockList.mockResolvedValue(listResponse());
     renderWithProviders(<FeedbackSection />, { route: "/admin" });
