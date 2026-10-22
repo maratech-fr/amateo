@@ -8,6 +8,7 @@ use App\Controller\LeagueValidatedFixturesController;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use App\Service\Basketball\FbiDivisionSignature;
@@ -169,6 +170,25 @@ final class LeagueValidationOutlook
         }
 
         return $toConfirm;
+    }
+
+    /**
+     * Applique « validé ligue » à un domicile validable : l'ancre MANUAL d'abord,
+     * puis le statut — setStatus(VALIDATED) TRAITE la rencontre (REVIEWED + horodaté,
+     * aucun écart pendant par construction, le prédicat l'exige). Le MANUAL n'est PAS
+     * cosmétique : l'ancre FIXED du solveur ({@see MatchPlacementPayloadBuilder::matchRow})
+     * et le cadenas de la grille l'exigent.
+     *
+     * Foyer UNIQUE de l'écriture, partagé par le geste manuel en lot
+     * ({@see LeagueValidatedFixturesController::confirm}) et par l'auto-validation au
+     * dépôt FBI ({@see FbiFixtureImporter::import}) — jamais une seconde copie, c'est ce
+     * qui rend les deux ancres byte-identiques. N'appelle pas le flush : l'appelant
+     * décide quand écrire.
+     */
+    public function markLeagueValidated(Fixture $fixture, DateTimeImmutable $now): void
+    {
+        $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
+        $fixture->setStatus(FixtureStatus::VALIDATED, $now);
     }
 
     /**

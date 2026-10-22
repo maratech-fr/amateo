@@ -91,7 +91,7 @@ vi.mock("./api", () => ({
   swapFixtures: vi.fn().mockResolvedValue(undefined),
   analyzeFbiFixtures: vi.fn().mockResolvedValue({ divisions: [], totalRows: 0, exempted: 0, errors: [], deviations: [] }),
   importFbiFixtures: vi.fn().mockResolvedValue({
-    message: "", created: 0, updated: 0, unchanged: 0, exempted: 0, errors: [], warnings: [], unmappedDivisions: [], completeness: [], unresolvedDeviations: [], depositedAt: "2026-08-28",
+    message: "", created: 0, updated: 0, unchanged: 0, exempted: 0, errors: [], warnings: [], unmappedDivisions: [], completeness: [], unresolvedDeviations: [], leagueValidated: 0, depositedAt: "2026-08-28",
   }),
   applyFfbbRencontres: vi.fn().mockResolvedValue({ created: 0, updated: 0, unresolvedDeviations: [], depositedAt: "2026-08-28" }),
   updateSportCategoryDuration: vi.fn().mockResolvedValue({ id: "s1", sportId: "sp", name: "U11", matchMinutes: 40, warmupMinutes: 10, defaultMatchMinutes: 40, defaultWarmupMinutes: 10 }),
