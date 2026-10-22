@@ -225,7 +225,10 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
     protected function setUp(): void
     {
         $this->client = self::createClient();
-        $this->client->disableReboot();
+        // PAS de disableReboot (contrairement aux tests mono-session) : on crée DEUX
+        // clubs par scénario, et garder le noyau vivant fait fuiter la 1ʳᵉ session dans
+        // l'inscription de la 2ᵉ. Le noyau redémarre à chaque requête ; les écritures EM
+        // survivent via la transaction DAMA partagée (patron ImportFixturesAuthorizationTest).
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
