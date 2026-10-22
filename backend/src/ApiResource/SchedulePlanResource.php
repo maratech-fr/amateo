@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\ApiResource;
 
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
@@ -65,9 +66,11 @@ class SchedulePlanResource
     #[Groups(['read'])]
     public string $name = '';
 
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $startDate = '';
 
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $endDate = '';
 

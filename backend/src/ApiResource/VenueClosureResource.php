@@ -35,10 +35,12 @@ class VenueClosureResource
     public string $title = '';
 
     /** Y-m-d, borne INCLUSE. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $startDate = '';
 
     /** Y-m-d, borne INCLUSE. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $endDate = '';
 
