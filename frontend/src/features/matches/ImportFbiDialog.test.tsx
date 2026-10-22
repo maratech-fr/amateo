@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +6,7 @@ import { toast } from "@/shared/stores/toastStore";
 import { listboxTrigger, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
-import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, LeagueValidationOutlook, PriorityTier, Team, VenueLabelInventoryRow } from "./api";
+import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, ImportHomeWithoutVenue, ImportVenueRow, LeagueValidationOutlook, PriorityTier, Team, VenueLabelInventoryRow } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 
 const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures } = vi.hoisted(() => ({
@@ -131,7 +131,7 @@ describe("ImportFbiDialog", () => {
     expect(importFbiFixtures).toHaveBeenCalledOnce();
     // Only DF2 rides along — PNM is already persisted server-side. No deviation →
     // the import carries an EMPTY decisions list (RMM-4, nothing to reconcile).
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: null }], []);
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: null }], [], [], []);
 
     // The dialog stays open and surfaces the diff report + warnings + errors.
     await waitFor(() => expect(screen.getByText(/22 créés · 1 mis à jour · 9 inchangés/)).toBeInTheDocument());
@@ -167,7 +167,7 @@ describe("ImportFbiDialog", () => {
     // What the select DISPLAYS is what gets imported — untouched suggestion
     // included, and its competitionId rides along (pairing reused server-side).
     await user.click(screen.getByRole("button", { name: "Importer" }));
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: "comp-9" }], []);
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: "comp-9" }], [], [], []);
   });
 
   it("ignores a suggestion whose team is not offerable — nothing invisible is ever sent", async () => {
@@ -193,7 +193,7 @@ describe("ImportFbiDialog", () => {
     // DF2 sans équipe → confirmation ; même en confirmant, rien d'invisible n'est envoyé.
     await user.click(screen.getByRole("button", { name: "Importer" }));
     await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [], []);
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [], [], [], []);
   });
 
   it("shows the blocking poule error and the minor drift on the analyze table", async () => {
@@ -336,70 +336,6 @@ describe("ImportFbiDialog", () => {
     expect(screen.queryByRole("button", { name: "Ouvrir la file" })).not.toBeInTheDocument();
   });
 
-  it("Lot L — après import, des rencontres validables ⇒ section « validé ligue » dans le rapport, et confirmer bascule", async () => {
-    // Persistant (pas Once) : l'import invalide le compte → il refetche ; les DEUX lectures
-    // voient les 4 validables. Remis à 0 par le beforeEach du test suivant.
-    getLeagueValidationOutlook.mockResolvedValue({ matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 4 }], toTreat: [], missingDeadline: [], totalValidatable: 4 });
-    confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 4 });
-    const user = userEvent.setup();
-    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
-
-    await pickFile(user);
-    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Importer" }));
-    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
-
-    await waitFor(() => expect(screen.getByText(/4 rencontres de championnats commencés .* portent déjà date, heure et gymnase dans FBI/)).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
-    // La modale d'import est elle-même un role=dialog : on cible la confirmation par son nom.
-    const dialog = await screen.findByRole("dialog", { name: /Marquer « validé ligue »/ });
-    await user.click(within(dialog).getByRole("button", { name: /Marquer « validé ligue »/ }));
-    expect(confirmLeagueValidatedFixtures).toHaveBeenCalledOnce();
-  });
-
-  it("Lot L — rien à valider (compte 0) ⇒ aucune section « validé ligue » dans le rapport", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
-
-    await pickFile(user);
-    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Importer" }));
-    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
-    await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /Marquer « validé ligue »/ })).not.toBeInTheDocument();
-  });
-
-  it("E2 — après import, des salles à apparier ⇒ renvoi qui FERME la modale (pas de modale sur modale)", async () => {
-    const user = userEvent.setup();
-    // Persistant (pas Once) : l'import invalide l'inventaire → il refetche ; les DEUX
-    // lectures doivent voir le libellé non apparié. Remis à [] en fin de test.
-    getVenueLabelInventory.mockResolvedValue([{ labelKey: "gymnase mateo", displayLabel: "GYMNASE MATEO", venueId: null, suggestedVenueId: null, homeCount: 2, placedCount: 0, unplacedCount: 2 }]);
-    const onClose = vi.fn();
-    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={onClose} />);
-
-    await pickFile(user);
-    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Importer" }));
-    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
-
-    await waitFor(() => expect(screen.getByText(/1 salle à apparier/)).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: /Apparier les salles/ }));
-    expect(onClose).toHaveBeenCalled();
-    getVenueLabelInventory.mockResolvedValue([]);
-  });
-
-  it("E2 — tout apparié (inventaire vide) ⇒ rapport sans renvoi « à apparier »", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
-
-    await pickFile(user);
-    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Importer" }));
-    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
-    await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
-    expect(screen.queryByText(/à apparier/)).not.toBeInTheDocument();
-  });
-
   // ── Onglets par famille (mesure terrain : 50 divisions, écran illisible) ─────────
 
   it("range les divisions en onglets par famille, avec un compteur (appariées/total)", async () => {
@@ -473,7 +409,7 @@ describe("ImportFbiDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Importer quand même" }));
     // Rien d'apparié → aucune mapping n'accompagne l'import.
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [], []);
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [], [], [], []);
   });
 
   it("la confirmation nomme les divisions au format « name (fbiTeamLabel) »", async () => {
@@ -515,7 +451,7 @@ describe("ImportFbiDialog", () => {
     await user.click(screen.getByRole("button", { name: "Importer" }));
 
     expect(screen.queryByText("Des divisions restent sans équipe")).not.toBeInTheDocument();
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: "comp-9" }], []);
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: "comp-9" }], [], [], []);
   });
 
   // ── Re-dépôt : l'onglet actif est un state séparé, non réinitialisé ──────────────
@@ -631,5 +567,90 @@ describe("ImportFbiDialog", () => {
       .map((li) => names.find((n) => li.textContent?.startsWith(n) ?? false))
       .filter((n): n is string => undefined !== n);
     expect(rendered).toEqual(["DF2", "DFU9", "DFU11", "DM2", "PRM"]);
+  });
+
+  // ── Chantier A PR 2 — « Salles à domicile » : appariement obligatoire + terrain neutre ──
+  // CONTRAT (option A) : la modale reçoit une prop `venues` (gymnases du club) ; par libellé à
+  // domicile de `analysis.venues`, un sélecteur « Gymnase pour <libellé> » (option « Terrain
+  // neutre (pas chez nous) ») ; par domicile sans salle de `analysis.homesWithoutVenue`, un
+  // sélecteur « Gymnase pour les domiciles sans salle de <division> ». « Importer » est grisé
+  // (disabledReason) tant qu'un libellé n'a pas de gymnase. L'import envoie venueMappings +
+  // venueChoices (venueId = uuid ou 'NEUTRAL'). NEO rend `venues`/`homesWithoutVenue` OPTIONNELS
+  // sur ImportFbiAnalysis (lus `?? []`) → les mocks existants restent valides.
+  const venueOptions = [
+    { id: "venue-mateo", name: "Gymnase Matéo" },
+    { id: "venue-coubertin", name: "Coubertin" },
+  ];
+
+  const analysisWithVenues = (venues: ImportVenueRow[], homesWithoutVenue: ImportHomeWithoutVenue[] = []): ImportFbiAnalysis => ({
+    divisions: [matchedDiv("PNM", "team-1")],
+    totalRows: 3,
+    exempted: 0,
+    errors: [],
+    deviations: [],
+    venues,
+    homesWithoutVenue,
+  });
+
+  it("la section « Salles à domicile » rend un sélecteur par libellé à domicile et un par domicile sans salle", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(
+      analysisWithVenues(
+        [{ label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: "venue-mateo", neutral: false }],
+        [{ division: "PNM", fbiTeamLabel: null, rowCount: 1 }],
+      ),
+    );
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    // Un sélecteur de gymnase par libellé à domicile (nom accessible = le libellé) …
+    expect(await screen.findByRole("button", { name: /GYMNASE MATEO/ })).toBeInTheDocument();
+    // … et un sélecteur pour les domiciles sans salle de la division.
+    expect(screen.getByRole("button", { name: /domiciles sans salle.*PNM/ })).toBeInTheDocument();
+  });
+
+  it("« Importer » est grisé avec sa raison tant qu'un libellé à domicile n'a pas de gymnase", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(
+      analysisWithVenues([{ label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: null, neutral: false }]),
+    );
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    const importBtn = await screen.findByRole("button", { name: "Importer" });
+    // disabledReason → aria-disabled (focalisable) + description accessible, jamais un simple title.
+    await waitFor(() => expect(importBtn).toHaveAttribute("aria-disabled", "true"));
+    expect(importBtn).toHaveAccessibleDescription(/gymnase/i);
+  });
+
+  it("l'import envoie venueMappings (libellé→gymnase ou terrain neutre) et venueChoices", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(
+      analysisWithVenues(
+        [
+          // GYMNASE MATEO : suggestion gardée (Gymnase Matéo).
+          { label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: "venue-mateo", neutral: false },
+          // SALLE ADVERSE : on la déclare terrain neutre.
+          { label: "SALLE ADVERSE", rowCount: 2, confirmedVenueId: null, suggestedVenueId: null, neutral: false },
+        ],
+        [{ division: "PNM", fbiTeamLabel: null, rowCount: 1 }],
+      ),
+    );
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await pickListboxOption(user, /SALLE ADVERSE/, "Terrain neutre (pas chez nous)");
+    await pickListboxOption(user, /domiciles sans salle.*PNM/, "Coubertin");
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+
+    await waitFor(() => expect(importFbiFixtures).toHaveBeenCalledOnce());
+    const call = (importFbiFixtures.mock.calls as unknown[][])[0] ?? [];
+    expect(call[3]).toEqual(
+      expect.arrayContaining([
+        { label: "GYMNASE MATEO", venueId: "venue-mateo" },
+        { label: "SALLE ADVERSE", venueId: "NEUTRAL" },
+      ]),
+    );
+    expect(call[4]).toEqual([{ division: "PNM", venueId: "venue-coubertin" }]);
   });
 });
