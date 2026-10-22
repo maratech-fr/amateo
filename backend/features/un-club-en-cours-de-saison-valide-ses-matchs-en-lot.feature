@@ -25,6 +25,18 @@ Fonctionnalité: Un club qui démarre en cours de saison valide ses matchs en lo
     Et le domicile sans heure est resté « à placer »
     Et plus aucune rencontre n'est validable « validé ligue »
 
+  Scénario: Championnat déjà commencé — le dépôt valide tout seul ses domiciles
+    Un club démarre en cours de saison alors que le libellé de salle est DÉJÀ apparié au gymnase.
+    Le fichier porte un domicile de championnat dont le premier match est déjà joué : au dépôt,
+    sans aucun geste en lot, ce domicile daté (heure + gymnase) bascule « validé ligue » tout seul,
+    et plus rien n'est proposé à la validation. Le geste en lot ne sert plus que de rattrapage.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et le libellé « GYM BEHAT » est déjà apparié au gymnase jetable
+    Quand je dépose un fichier FBI avec un domicile daté dans le passé à « GYM BEHAT »
+    Alors le domicile passé est « validé ligue »
+    Et aucune rencontre n'est validable « validé ligue »
+
   Scénario: Échéance non passée — rien n'est proposé pour ce championnat
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »

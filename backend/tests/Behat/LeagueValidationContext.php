@@ -154,6 +154,7 @@ final class LeagueValidationContext extends BaseContext
     }
 
     #[When('j\'apparie le libellé « GYM BEHAT » au gymnase jetable')]
+    #[Given('le libellé « GYM BEHAT » est déjà apparié au gymnase jetable')]
     public function jApparieLeLibelle(): void
     {
         // Backfill : les domiciles NON PLACÉS de ce libellé reçoivent le gymnase, tout
@@ -286,6 +287,12 @@ final class LeagueValidationContext extends BaseContext
     public function laRencontreDateeEstValidee(): void
     {
         $this->assertStatusOf(self::REF_DATED, 'VALIDATED');
+    }
+
+    #[Then('le domicile passé est « validé ligue »')]
+    public function leDomicilePasseEstValide(): void
+    {
+        $this->assertStatusOf(self::REF_PAST, 'VALIDATED');
     }
 
     #[Then('le domicile sans heure est resté « à placer »')]
