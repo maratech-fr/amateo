@@ -2,7 +2,7 @@ import { anchorIsWritable, usePeriodAnchor } from "@/features/cockpit/queries";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import type { Reservation, Team, Venue, VenueTrainingSlot } from "../api";
-import { useConstraintValidation, usePeriodSlots, useReservations, useTeamPeriodOverrides, useVenuePeriodOverrides, useVenueSlots, useWizardCoachPlayers, useWizardCoaches, useWizardTeamCoaches, useWizardTeams, useWizardVenues } from "../queries";
+import { useConstraintValidation, usePeriodSlots, useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useVenuePeriodOverrides, useVenueSlots, useWizardCoachPlayers, useWizardCoaches, useWizardTeamCoaches, useWizardTeams, useWizardVenues } from "../queries";
 import { useWizardStore } from "../store";
 import { DAY_LABEL_LONG } from "@/shared/lib/days";
 
@@ -142,6 +142,12 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
   // En mode période, seul l'état `period` autorise la lecture : `base` (mode période
   // rehydraté sans entrée) lirait le SOCLE et le présenterait comme la période.
   const { data: reservations = [] } = useReservations(periodAnchor.planId, periodMode ? "period" === periodAnchor.state : anchorIsWritable(periodAnchor));
+  // #12 — les blocs de mutualisation de la portée courante : une case dont l'ensemble réservé est
+  // EXACTEMENT un bloc compte pour UN occupant (le groupe), pas « partielle » (le serveur, règle b,
+  // ferme déjà la case). Même portée que les réservations ; en socle on écarte les blocs de période.
+  const scopePlanId = periodMode ? periodAnchor.planId : null;
+  const { data: allSharedBlocks = [] } = useSharedTrainingBlocks(scopePlanId);
+  const scopedBlocks = null === scopePlanId ? allSharedBlocks.filter((b) => null === b.schedulePlanId) : allSharedBlocks;
   // #8 PR-B — une période POSSÈDE désormais sa grille (elle n'est plus héritée en lecture
   // seule) : la règle « gymnase sans créneau » doit donc s'y appliquer AUSSI, mais sur les
   // créneaux de la PÉRIODE et en épargnant les gymnases explicitement désactivés (dont
@@ -318,7 +324,8 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
     const gridSlots = periodMode ? periodSlots : slots;
     const canSplit = new Map(venues.map((v) => [v.id, v.canSplit]));
     const venueNameById = new Map(venues.map((v) => [v.id, v.name]));
-    const notices: RecapNotice[] = sharedSlotStatuses(gridSlots, reservations, canSplit).map((s) => ({
+    const blockLikes = scopedBlocks.map((b) => ({ id: b.id, teamIds: b.teamIds }));
+    const notices: RecapNotice[] = sharedSlotStatuses(gridSlots, reservations, canSplit, blockLikes).map((s) => ({
       key: s.slot.id,
       // Partiel = une place se PERD (avertissement orange) ; non réservé = information neutre
       // (le système choisira, gris). Mêmes deux tons et mêmes textes qu'auparavant côté récap.

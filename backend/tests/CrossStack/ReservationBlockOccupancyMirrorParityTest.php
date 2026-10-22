@@ -74,7 +74,7 @@ final class ReservationBlockOccupancyMirrorParityTest extends TestCase
         $list = $decoded['cases'] ?? [];
         self::assertNotEmpty($list, 'blockOccupancy.parity.json ne porte plus aucun cas.');
         foreach ($list as $case) {
-            /** @var array{name: string, reservedTeamIds: list<string>, blocks: list<array{id: string, teamIds: list<string>}>, expectedCompleteBlockId: string|null} $case */
+            /* @var array{name: string, reservedTeamIds: list<string>, blocks: list<array{id: string, teamIds: list<string>}>, expectedCompleteBlockId: string|null} $case */
             $out[] = [
                 'label' => (string) $case['name'],
                 'reservedTeamIds' => $case['reservedTeamIds'],

@@ -1,6 +1,7 @@
 import { groupTeamsByTier, type TierLike } from "@/shared/lib/teamTiers";
 
 import type { Reservation, Team, TeamSoloBudget, VenueTrainingSlot } from "../api";
+import { type BlockLike, completeBlockOnCase } from "./blockOccupancy";
 import { hhmm } from "./days";
 
 /** A reservation and a slot refer to the same physical time-slot when venue +
@@ -128,6 +129,7 @@ export function sharedSlotStatuses(
   slots: VenueTrainingSlot[],
   reservations: Reservation[],
   venueCanSplit: Map<string, boolean>,
+  blocks: BlockLike[] = [],
 ): SharedSlotStatus[] {
   const bySlot = reservedTeamsBySlot(reservations);
   const statuses: SharedSlotStatus[] = [];
@@ -140,6 +142,12 @@ export function sharedSlotStatuses(
     }
     const reservedTeamIds = bySlot.get(slotKey(slot.venueId, slot.dayOfWeek, slot.startTime)) ?? [];
     if (reservedTeamIds.length >= capacity) {
+      continue;
+    }
+    // #12 — une case BLOC-COMPLÈTE (l'ensemble réservé == les membres d'un bloc) compte pour UN
+    // occupant (le groupe) : le serveur (règle b) ferme déjà la case à toute autre équipe, aucune
+    // place n'est « perdue » — donc aucune notice, même si la capacité dépasse la taille du bloc.
+    if (null !== completeBlockOnCase(reservedTeamIds, blocks)) {
       continue;
     }
     statuses.push({ slot, reservedTeamIds, capacity, kind: 0 === reservedTeamIds.length ? "unreserved" : "partial" });
