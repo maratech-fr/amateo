@@ -53,6 +53,54 @@ describe("ReservationGrid — libellé de groupe (P2-17)", () => {
 });
 
 /**
+ * #12 (retours Rillieux, décision fondateur 2026-10-13 « groupe mutualisé = une équipe » ; libellé
+ * validé 2026-10-22) — une case BLOC-COMPLÈTE (toutes les équipes d'un bloc réservées dessus) compte
+ * pour UN occupant : la grille affiche « Complet · Groupe <A> + <B> » et JAMAIS le compteur « 2/1 »
+ * (le bloc occupe la case en entier, règle b serveur). Le parent transmet les slotKeys bloc-complètes
+ * via `blockCompleteSlots` (dérivées par le miroir `blockOccupancy.ts::completeBlockOnCase`).
+ */
+describe("ReservationGrid — case bloc-complète (#12)", () => {
+  const cap1 = (): number => 1;
+
+  it("affiche « Complet · Groupe U15F + U18F » (libellé + nom accessible), jamais « 2/1 »", () => {
+    render(
+      <ReservationGrid
+        venue={venue}
+        slots={[monday]}
+        reservedTeams={new Map([["k", ["U15F", "U18F"]]])}
+        slotKeyOf={() => "k"}
+        capacityOf={cap1}
+        onSelectSlot={vi.fn()}
+        blockCompleteSlots={new Set(["k"])}
+      />,
+    );
+
+    // Libellé VISIBLE validé par le fondateur.
+    expect(screen.getByText(/Complet · Groupe U15F \+ U18F/)).toBeInTheDocument();
+    // Porté dans le nom accessible du créneau (pour l'AT), et plus jamais le faux « 2/1 ».
+    const cell = screen.getByRole("button", { name: /Complet · Groupe U15F \+ U18F/ });
+    expect(cell).toHaveAccessibleName(expect.not.stringMatching(/2\/1/));
+    expect(screen.queryByText("2/1")).toBeNull();
+  });
+
+  it("CONTRÔLE — sans `blockCompleteSlots`, la même case retombe sur le compteur « 2/1 » (comportement hors bloc inchangé)", () => {
+    render(
+      <ReservationGrid
+        venue={venue}
+        slots={[monday]}
+        reservedTeams={new Map([["k", ["U15F", "U18F"]]])}
+        slotKeyOf={() => "k"}
+        capacityOf={cap1}
+        onSelectSlot={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("2/1")).toBeInTheDocument();
+    expect(screen.queryByText(/Complet · Groupe/)).toBeNull();
+  });
+});
+
+/**
  * D1/D2 (P2-22) — un créneau d'un jour fermé est barré + libellé ; SANS réservation il est
  * désactivé (on ne peut plus rien y ajouter), AVEC réservation il reste cliquable pour le
  * geste correctif (retirer l'épinglage qui bloque la génération).

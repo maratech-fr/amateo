@@ -1,0 +1,56 @@
+{
+  "_comment": "#12 (retours Rillieux) — cas de PARITÉ MÉCANIQUE de la dérivation « cette case est-elle BLOC-COMPLÈTE ? » (l'ensemble des équipes réservées sur la case est EXACTEMENT les membres d'un bloc de mutualisation). Consommé par blockOccupancy.parity.test.ts (front, wizard/lib/blockOccupancy.ts::completeBlockOnCase) ET par ReservationBlockOccupancyMirrorParityTest.php (backend, App\\Service\\ReservationGroupOccupancy::matchingBlock, règle (b) réciproque). `expectedCompleteBlockId` est LE verdict attendu des deux implémentations : changer la règle d'un seul côté rougit le côté qui dérive. Décision fondateur 2026-10-13 « groupe mutualisé = une équipe » : une case bloc-complète compte pour UN occupant (le groupe), jamais N. Le plafond PAR ÉQUIPE (règle (d)) n'est PAS dans ce miroir. L'élection d'un bloc MAXIMAL sur des blocs IMBRIQUÉS/co-présents sur une case est HORS portée ici (le wizard ne produit jamais une telle case : règle (a) exige une case vide pour poser un bloc) — elle est gardée contre le vrai moteur par NestedBlockOccupantFoldParityTest.",
+  "cases": [
+    {
+      "name": "deux membres d'un bloc réservés sur la case = case bloc-complète → le groupe (1 occupant, pas 2)",
+      "reservedTeamIds": ["u15f", "u18f"],
+      "blocks": [{ "id": "g", "teamIds": ["u15f", "u18f"] }],
+      "expectedCompleteBlockId": "g"
+    },
+    {
+      "name": "l'ordre des équipes réservées est indifférent (ensemble, pas liste)",
+      "reservedTeamIds": ["u18f", "u15f"],
+      "blocks": [{ "id": "g", "teamIds": ["u15f", "u18f"] }],
+      "expectedCompleteBlockId": "g"
+    },
+    {
+      "name": "bloc PARTIEL — un seul des deux membres réservé → PAS bloc-complète (règle actuelle : équipe individuelle)",
+      "reservedTeamIds": ["u15f"],
+      "blocks": [{ "id": "g", "teamIds": ["u15f", "u18f"] }],
+      "expectedCompleteBlockId": null
+    },
+    {
+      "name": "cas MIXTE — les membres du bloc PLUS une équipe en plus → PAS bloc-complète (la case porte autre chose que le groupe)",
+      "reservedTeamIds": ["u15f", "u18f", "sm1"],
+      "blocks": [{ "id": "g", "teamIds": ["u15f", "u18f"] }],
+      "expectedCompleteBlockId": null
+    },
+    {
+      "name": "aucun bloc en portée → jamais bloc-complète",
+      "reservedTeamIds": ["u15f", "u18f"],
+      "blocks": [],
+      "expectedCompleteBlockId": null
+    },
+    {
+      "name": "case vide → jamais bloc-complète",
+      "reservedTeamIds": [],
+      "blocks": [{ "id": "g", "teamIds": ["u15f", "u18f"] }],
+      "expectedCompleteBlockId": null
+    },
+    {
+      "name": "plusieurs blocs — la case égale EXACTEMENT le second → ce bloc (discrimine le bon groupe)",
+      "reservedTeamIds": ["sm3", "sm4"],
+      "blocks": [
+        { "id": "g1", "teamIds": ["u15f", "u18f"] },
+        { "id": "g2", "teamIds": ["sm3", "sm4"] }
+      ],
+      "expectedCompleteBlockId": "g2"
+    },
+    {
+      "name": "bloc à trois membres — les trois réservés → bloc-complète ; seulement deux → non",
+      "reservedTeamIds": ["u11a", "u11b", "u11c"],
+      "blocks": [{ "id": "trio", "teamIds": ["u11a", "u11b", "u11c"] }],
+      "expectedCompleteBlockId": "trio"
+    }
+  ]
+}
