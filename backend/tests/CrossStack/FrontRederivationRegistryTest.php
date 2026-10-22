@@ -93,6 +93,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\CoachDoubleBookingDetector::bookingsCollide',
             'parityTest' => 'CoachDoubleBookingMirrorParityTest.php',
         ],
+        'features/wizard/lib/blockOccupancy.ts' => [
+            'decides' => 'une case est-elle BLOC-COMPLÈTE (ensemble réservé == membres d\'un bloc) → le groupe l\'occupe en entier (« Complet · Groupe … », jamais « 2/1 »), #12',
+            'backendTruth' => 'App\\Service\\ReservationGroupOccupancy::matchingBlock (règle b réciproque de reservedSetMatchesABlock)',
+            'parityTest' => 'ReservationBlockOccupancyMirrorParityTest.php',
+        ],
         'features/wizard/lib/orphanReservations.ts' => [
             'decides' => 'réservation orpheline par triplet (étroit) ET réservation NON SERVIE (large : hors service / jour fermé / triplet ∉ grille)',
             'backendTruth' => 'App\\Service\\OrphanPinGuard::orphanTripletIds + ::unservedReservationIds',

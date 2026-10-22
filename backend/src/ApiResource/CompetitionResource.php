@@ -6,6 +6,7 @@ namespace App\ApiResource;
 
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
@@ -53,9 +54,13 @@ class CompetitionResource
     #[Groups(['read'])]
     public string $competitionType = '';
 
+    /** Y-m-d. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public ?string $startDate = null;
 
+    /** Y-m-d. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public ?string $endDate = null;
 
@@ -88,10 +93,12 @@ class CompetitionResource
     // reinvents « club gagne ». Written via POST /api/competitions/entry-deadlines. ──
 
     /** The club's own entry deadline (Y-m-d), null when the club has set none. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public ?string $entryDeadline = null;
 
     /** club value ?? community default (Y-m-d), null when neither exists. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public ?string $effectiveEntryDeadline = null;
 

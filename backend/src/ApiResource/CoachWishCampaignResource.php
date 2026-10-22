@@ -6,6 +6,7 @@ namespace App\ApiResource;
 
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
@@ -55,6 +56,7 @@ class CoachWishCampaignResource
     public string $calendarEntryId = '';
 
     /** Y-m-d. */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
     public string $deadline = '';
 

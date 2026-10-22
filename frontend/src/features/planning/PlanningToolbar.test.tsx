@@ -16,7 +16,7 @@ type ScheduleOver = Partial<Omit<Schedule, "capabilities">> & { capabilities?: P
 
 const schedule = (status: Schedule["status"], over: ScheduleOver = {}): Schedule => {
   const { capabilities: capsOver, ...rest } = over;
-  return { id: "s1", name: "Plan A", status, score: 100, createdAt: "2026-01-01", updatedAt: "2026-01-01", planType: "SEASON", schedulePlanId: "season-plan", generatedTeamCount: 12, hasStructurePhoto: true, isLiveContext: true, capabilities: null === capsOver ? null : { ...DEFAULT_CAPS, ...capsOver }, ...rest };
+  return { id: "s1", name: "Plan A", status, score: 100, createdAt: "2026-01-01T09:00:00+00:00", updatedAt: "2026-01-01T09:00:00+00:00", planType: "SEASON", schedulePlanId: "season-plan", generatedTeamCount: 12, hasStructurePhoto: true, isLiveContext: true, capabilities: null === capsOver ? null : { ...DEFAULT_CAPS, ...capsOver }, ...rest };
 };
 
 function renderToolbar(
@@ -191,7 +191,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
 
   it("stars exactly ONE version — falls back to the latest when no pointer is set", () => {
     // Neither carries the server pointer → fallback to the latest visible (s2).
-    renderToolbar([schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01", isLiveContext: false }), schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01", isLiveContext: false })]);
+    renderToolbar([schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01T09:00:00+00:00", isLiveContext: false }), schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00", isLiveContext: false })]);
     expect(screen.getAllByRole("option", { name: /★/ })).toHaveLength(1);
   });
 
@@ -205,7 +205,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
     // Deux versions : celle qu'on regarde n'est pas la dernière, donc la saison reste
     // ancrée — le serveur la déclare supprimable (canDelete), c'est bien « une version
     // de travail ordinaire » qu'on teste.
-    renderToolbar([schedule("COMPLETED", { id: "s1", capabilities: { canDelete: true } }), schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01" })]);
+    renderToolbar([schedule("COMPLETED", { id: "s1", capabilities: { canDelete: true } }), schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00" })]);
     expect(screen.getByRole("button", { name: /supprimer cette version/i })).toBeInTheDocument();
   });
 
@@ -215,7 +215,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
   });
 
   it("hides Valider while a sibling is still solving — the server refuses the whole validation (canValidate:false)", () => {
-    renderToolbar([schedule("COMPLETED", { id: "s1", capabilities: { canValidate: false } }), schedule("GENERATING", { id: "s2", createdAt: "2026-02-01" })]);
+    renderToolbar([schedule("COMPLETED", { id: "s1", capabilities: { canValidate: false } }), schedule("GENERATING", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00" })]);
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
   });
 
@@ -227,7 +227,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
 
   it("enables « Charger cette version » on a non-live version", () => {
     // s1 (selected) is NOT the loaded context — s2 carries the ★.
-    renderToolbar([schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01", isLiveContext: false }), schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01", isLiveContext: true })]);
+    renderToolbar([schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01T09:00:00+00:00", isLiveContext: false }), schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00", isLiveContext: true })]);
     expect(screen.getByRole("button", { name: /charger cette version/i })).toBeEnabled();
   });
 

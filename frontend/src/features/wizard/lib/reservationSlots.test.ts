@@ -161,6 +161,41 @@ describe("sharedSlotStatuses — les avertissements du récap sur créneau parta
   });
 });
 
+/**
+ * #12 (retours Rillieux, décision fondateur 2026-10-13 « groupe mutualisé = une équipe ») — une case
+ * BLOC-COMPLÈTE (l'ensemble réservé == les membres d'un bloc) compte pour UN occupant (le groupe) : le
+ * récap ne doit JAMAIS la signaler « partiellement réservée, la place restante restera vide ». Sur un
+ * gymnase divisible dont la capacité dépasse la taille du bloc, l'ancien calcul (par nombre d'équipes)
+ * criait une fausse notice. Le serveur (règle b) ferme déjà la case à toute autre équipe.
+ */
+describe("sharedSlotStatuses — une case bloc-complète ne déclenche aucune notice (#12)", () => {
+  const block = (id: string, teamIds: string[]): { id: string; teamIds: string[] } => ({ id, teamIds });
+
+  it("se tait sur une case dont l'ensemble réservé est EXACTEMENT un bloc, même si la capacité la dépasse", () => {
+    // Gymnase divisible, capacité 3 ; le bloc {a,b} (2 membres) occupe la case en entier (règle b) :
+    // aucune 3ᵉ équipe ne peut s'y ajouter → pas de place « perdue », donc AUCUNE notice.
+    const s = slot("s", "v1", 2, "18:00", 3);
+    const reserved = [resa("a", "v1", 2, "18:00"), resa("b", "v1", 2, "18:00")];
+    expect(sharedSlotStatuses([s], reserved, SPLIT, [block("g", ["a", "b"])])).toEqual([]);
+  });
+
+  it("CONTRÔLE — sans bloc déclaré, la même case reste « partielle » (la règle actuelle est préservée hors mutualisation)", () => {
+    const s = slot("s", "v1", 2, "18:00", 3);
+    const reserved = [resa("a", "v1", 2, "18:00"), resa("b", "v1", 2, "18:00")];
+    const statuses = sharedSlotStatuses([s], reserved, SPLIT, []);
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toMatchObject({ kind: "partial", reservedTeamIds: ["a", "b"], capacity: 3 });
+  });
+
+  it("CONTRÔLE — une case PARTIELLE qui n'est PAS un bloc continue d'avertir, bloc présent ou non", () => {
+    const s = slot("s", "v1", 2, "18:00", 3);
+    const reserved = [resa("a", "v1", 2, "18:00")]; // 1 sur 3 : ce n'est pas le bloc {a,b}
+    const statuses = sharedSlotStatuses([s], reserved, SPLIT, [block("g", ["a", "b"])]);
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toMatchObject({ kind: "partial", reservedTeamIds: ["a"] });
+  });
+});
+
 describe("lot 4bis — créneaux libres", () => {
   it("isFreeSlot distingue un créneau sans équipe", () => {
     expect(isFreeSlot(free("Loto", "v1", 2, "18:00"))).toBe(true);

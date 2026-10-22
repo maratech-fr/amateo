@@ -198,6 +198,39 @@ describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {
     expect(screen.getByText(/séance commune est déjà posée/i)).toBeInTheDocument();
     expect(screen.getByText(/indisponible/i)).toBeInTheDocument();
   });
+
+  /**
+   * #12 (décision fondateur 2026-10-13 « groupe mutualisé = une équipe ») — sur un créneau à capacité 1
+   * occupé par un bloc COMPLET {SM1,SM2} (deux réservations), la modale dit « un entraînement mutualisé
+   * occupe seul ce créneau » et JAMAIS « Créneau complet (2/1) » : le groupe compte pour UN occupant.
+   * Angle MODALE de la même promesse que `ReservationGrid.test.tsx` (grille) et `blockOccupancy.test.ts`
+   * (foyer) ; domaine sensible (mutualisation, charte §1). Le CONTRÔLE prouve que la case n'est pas
+   * reconnue par hasard : sans le bloc déclaré, elle retombe sur « Créneau complet (2/1) ».
+   */
+  it("un créneau cap 1 occupé par un bloc complet ne déclenche PAS « Créneau complet (2/1) »", () => {
+    renderModal({
+      slot: { ...SLOT, capacity: 1 },
+      venueCanSplit: new Map([["v1", false]]),
+      reservations: [resa("a", "v1", 1, "18:00"), resa("b", "v1", 1, "18:00")],
+    });
+
+    // Le bon motif : le groupe occupe la case seul (règle b), pas un faux « complet ».
+    expect(screen.getByText(/occupe seul ce créneau/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Créneau complet/i)).toBeNull();
+    expect(screen.queryByText(/2\/1/)).toBeNull();
+  });
+
+  it("CONTRÔLE — la même case cap 1 SANS le bloc déclaré retombe bien sur « Créneau complet (2/1) »", () => {
+    renderModal({
+      slot: { ...SLOT, capacity: 1 },
+      venueCanSplit: new Map([["v1", false]]),
+      sharedTrainingBlocks: [],
+      reservations: [resa("a", "v1", 1, "18:00"), resa("b", "v1", 1, "18:00")],
+    });
+
+    expect(screen.getByText(/Créneau complet/i)).toBeInTheDocument();
+    expect(screen.getByText(/2\/1/)).toBeInTheDocument();
+  });
 });
 
 describe("SlotReservationModal — budget solo servi par le backend (P2-60 / P4-164)", () => {
