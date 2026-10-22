@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -108,7 +109,7 @@ export function ReleaseNotesSection() {
           <button type="button" className="underline" onClick={() => void notes.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
         </p>
       ) : 0 === items.length ? (
-        <p className="text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesEmpty}</p>
+        <EmptyHint variant="console">{ADMIN_SECTIONS_TEXTS.releaseNotesEmpty}</EmptyHint>
       ) : (
         <ul className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/[0.03]">
           {items.map((note) => (

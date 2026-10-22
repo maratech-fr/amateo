@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 
 import { useActivateAdminMembership, useAdminClubRequests, useAdminPendingMemberships, useDecideAdminClubRequest } from "../queries";
@@ -47,7 +48,7 @@ export function ClubRequestsSection() {
             <button type="button" className="underline" onClick={() => void requests.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
           </p>
         ) : 0 === requestItems.length ? (
-          <p className="mt-3 text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.clubRequestsCreationEmpty}</p>
+          <EmptyHint variant="console" className="mt-3">{ADMIN_SECTIONS_TEXTS.clubRequestsCreationEmpty}</EmptyHint>
         ) : (
           <ul className="mt-3 divide-y divide-white/10">
             {requestItems.map((item) => (
@@ -107,7 +108,7 @@ export function ClubRequestsSection() {
             <button type="button" className="underline" onClick={() => void memberships.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
           </p>
         ) : 0 === membershipItems.length ? (
-          <p className="mt-3 text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.clubRequestsMembershipsEmpty}</p>
+          <EmptyHint variant="console" className="mt-3">{ADMIN_SECTIONS_TEXTS.clubRequestsMembershipsEmpty}</EmptyHint>
         ) : (
           <ul className="mt-3 divide-y divide-white/10">
             {membershipItems.map((item) => (

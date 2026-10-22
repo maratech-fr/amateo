@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -77,7 +78,7 @@ export function FeedbackSection() {
             <button type="button" className="underline" onClick={() => void feedback.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
           </p>
         ) : 0 === items.length ? (
-          <p className="text-sm text-console-text-dim">{ADMIN_SECTIONS_TEXTS.feedbackEmpty}</p>
+          <EmptyHint variant="console">{ADMIN_SECTIONS_TEXTS.feedbackEmpty}</EmptyHint>
         ) : (
           <ul className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/[0.03]">
             {items.map((item) => (

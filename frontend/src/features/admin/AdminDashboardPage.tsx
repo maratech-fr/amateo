@@ -1,3 +1,4 @@
+import { type Query, useIsFetching, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -50,11 +51,20 @@ import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 
 const CLUBS_PER_PAGE = 25;
 
+// #22 — « Actualiser » rafraîchit TOUTES les données `admin-*` de la console (dont les demandes
+// d'inscription), SAUF la session : la re-demander déconnecterait le superadmin. Un seul prédicat
+// partagé pour l'invalidation (le clic) ET l'état « en cours » du bouton (useIsFetching).
+const isRefreshableAdminQuery = (query: Query): boolean => {
+  const key = query.queryKey[0];
+  return typeof key === "string" && key.startsWith("admin-") && key !== "admin-session";
+};
+
 const integerFormatter = new Intl.NumberFormat("fr-FR");
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 const shortDateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" });
 
 export function AdminDashboardPage() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [queryDraft, setQueryDraft] = useState("");
@@ -76,8 +86,9 @@ export function AdminDashboardPage() {
   sinceDate.setUTCDate(sinceDate.getUTCDate() - 7);
   const sevenDaysAgo = sinceDate.toISOString().slice(0, 10);
   const recentSystemErrors = useAdminSystemErrors(1, 1, sevenDaysAgo);
-  const refreshing =
-    overview.isFetching || health.isFetching || jobs.isFetching || clubs.isFetching || freshness.isFetching || feedback.isFetching || recentSystemErrors.isFetching;
+  // Bouton « Actualiser » en cours dès qu'une requête `admin-*` (hors session) charge — même
+  // prédicat que l'invalidation, pour que toute la console (demandes d'inscription comprises) compte.
+  const refreshing = useIsFetching({ predicate: isRefreshableAdminQuery }) > 0;
 
   // Santé = une défaillance d'infrastructure : état global dégradé, un conteneur À L'ARRÊT
   // (jamais « inconnu »), un job en échec/interrompu, un référentiel périmé, ou une lecture
@@ -156,7 +167,7 @@ export function AdminDashboardPage() {
   }
 
   function refreshAll() {
-    void Promise.all([overview.refetch(), health.refetch(), jobs.refetch(), clubs.refetch(), freshness.refetch(), feedback.refetch(), recentSystemErrors.refetch()]);
+    void queryClient.invalidateQueries({ predicate: isRefreshableAdminQuery });
   }
 
   const incidentsSubTabs =
