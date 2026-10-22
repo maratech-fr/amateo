@@ -1115,6 +1115,18 @@ jobs:
       - name: DeploymentImminentFreezeTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/DeploymentImminentFreezeTest.php --group phase1'
 
+      # NR d'axe CONSTRAINT SEMANTICS (chantier A) — AU DÉPÔT d'un fichier FBI, tout championnat
+      # COMMENCÉ (échéance passée OU premier match joué) voit ses domiciles validables (heure +
+      # gymnase, sans écart) passer tout seuls « validé ligue » (source MANUAL + statut VALIDATED),
+      # BYTE-IDENTIQUE au POST manuel en lot ; un championnat non commencé reste UNPLACED/TO_PLACE,
+      # un sans heure / sans gymnase / avec écart n'est jamais validé, le compteur leagueValidated
+      # est exact et un re-dépôt ne revalide pas. Le DÉPÔT emprunte la MAISON UNIQUE du prédicat
+      # (LeagueValidationOutlook), jamais une seconde copie. Sans ce gate, une régression qui
+      # cesserait de valider au dépôt — ou qui verrouillerait en ancre fixe une vague non commencée
+      # qu'il faut pouvoir bouger — passerait tous les checks requis.
+      - name: ImportLeagueAutoValidationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/ImportLeagueAutoValidationTest.php --group phase1'
+
   # Backend : UN SEUL passage de la suite PHPUnit COMPLÈTE (`phpunit tests/ --exclude-group
   # contract`), instrumenté par pcov, avec le cliquet de couverture — remplace les ex-jobs
   # `unit-tests` ET `backend-coverage` qui jouaient DEUX FOIS la même suite (P4-166 ; fusion

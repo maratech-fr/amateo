@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Enum\FixturePlacementSource;
-use App\Enum\FixtureStatus;
 use App\Service\FbiFixtureImporter;
 use App\Service\FriendlyAutoValidator;
 use App\Service\LeagueValidationOutlook;
@@ -25,36 +23,44 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
- * « Validé ligue » en lot, PILOTÉ PAR LE DÉMARRAGE DU CHAMPIONNAT (lot O). Un club qui
- * démarre l'application EN COURS de saison importe son fichier FBI : le geste bascule d'un
- * coup les domiciles que le fichier atteste, MAIS seulement pour les championnats déjà
- * COMMENCÉS. Un championnat est commencé si son ÉCHÉANCE DE SAISIE est passée (jour inclus —
- * « les dates peuvent être validées à partir de la date d'échéance », décision fondateur)
- * OU si son PREMIER match est déjà joué (une compétition sans échéance mais dont les dates
- * sont tombées n'est plus provisoire).
+ * « Validé ligue » en lot, PILOTÉ PAR LE DÉMARRAGE DU CHAMPIONNAT (lot O). Ce geste est
+ * désormais un RATTRAPAGE : au DÉPÔT d'un fichier FBI, l'auto-validation bascule DÉJÀ les
+ * domiciles des championnats commencés ({@see FbiFixtureImporter::import}, même maison
+ * unique du prédicat et de l'écriture). Ce POST couvre le cas où l'échéance tombe APRÈS le
+ * dépôt (le championnat mûrit entre deux passages) — un club qui démarre l'application en
+ * cours de saison le rejoue pour basculer d'un coup les domiciles désormais mûrs.
+ * N'est concerné QUE un championnat déjà COMMENCÉ : son ÉCHÉANCE DE SAISIE est passée (jour
+ * inclus — « les dates peuvent être validées à partir de la date d'échéance », décision
+ * fondateur) OU son PREMIER match est déjà joué (une compétition sans échéance mais dont
+ * les dates sont tombées n'est plus provisoire).
  *
  * Pourquoi pas « heure + gymnase » seuls : en octobre, une nouvelle vague de matchs jeunes
  * arrive (nouvelle phase, nouvelle poule) avec des DATES PROVISOIRES, échéance non passée et
  * aucun match encore joué. Les verrouiller en ancres fixes au moment où il faut pouvoir les
  * bouger serait le piège. Tant qu'un championnat n'a pas commencé, on ne propose RIEN pour lui.
  *
- * ⚠ EXCEPTION CONSENTIE à « une rencontre naît AVEC son gymnase mais jamais placée
- * d'office » ({@see FbiFixtureImporter::attachConfirmedVenue}) : le statut
- * n'est PAS posé pendant l'import ; c'est CE geste, explicite et confirmé, qui valide.
+ * Au DÉPÔT, une rencontre d'un championnat commencé naît AVEC son gymnase (alias confirmé)
+ * puis bascule « validé ligue » tout de suite ({@see FbiFixtureImporter::attachConfirmedVenue}
+ * pour le gymnase, puis l'auto-validation du même import) : le placement d'office au sens
+ * de la grille reste exclu, mais le statut VALIDATED, lui, EST désormais posé au dépôt pour
+ * ces domiciles. Ce POST ne fait que RATTRAPER ce que le dépôt n'a pas encore pu valider
+ * (championnat mûri entre deux passages).
  *
- * Toute la LECTURE et le prédicat (maison unique, partagée avec le cockpit) vivent dans
- * {@see LeagueValidationOutlook} ; ce contrôleur ne porte que les gardes, le balayage des
- * amicaux passés ({@see FriendlyAutoValidator}) et l'écriture. Deux routes :
+ * Toute la LECTURE, le prédicat ET l'écriture (maison unique, partagée avec le cockpit et le
+ * dépôt FBI) vivent dans {@see LeagueValidationOutlook} ; ce contrôleur ne porte que les
+ * gardes, le balayage des amicaux passés ({@see FriendlyAutoValidator}) et le pilotage du
+ * flush. Deux routes :
  *   - GET rend la lecture détaillée par championnat commencé + les rencontres à traiter + les
  *     championnats sans échéance PAS ENCORE commencés (à renseigner) + le total à valider ;
  *   - POST applique. Il est SANS CORPS : le serveur RECALCULE les domiciles à basculer au
  *     moment de l'application (l'horloge injectée + les échéances du moment font foi). Aucun
  *     championnat choisi par le client.
  *
- * Application : statut VALIDATED (horloge injectée) + source de placement MANUAL. Le MANUAL
- * n'est PAS cosmétique : la formule du cadenas de la grille (`matches/lib/weekendGrid.ts`)
- * et l'ancre FIXED du solveur ({@see MatchPlacementPayloadBuilder::matchRow})
- * l'exigent. Rejouable : le prédicat exclut VALIDATED. On ne DÉVALIDE jamais.
+ * Application : statut VALIDATED (horloge injectée) + source de placement MANUAL, par
+ * {@see LeagueValidationOutlook::markLeagueValidated}. Le MANUAL n'est PAS cosmétique : la
+ * formule du cadenas de la grille (`matches/lib/weekendGrid.ts`) et l'ancre FIXED du solveur
+ * ({@see MatchPlacementPayloadBuilder::matchRow}) l'exigent. Rejouable : le prédicat exclut
+ * VALIDATED. On ne DÉVALIDE jamais.
  *
  * Les amicaux sont HORS du lot : « validé ligue » n'a pas de sens sans championnat, et un
  * libellé amical (« Amical PNF ») en est exclu comme un domicile sans compétition. Ces
@@ -95,10 +101,9 @@ final class LeagueValidatedFixturesController extends AbstractController
         $now = DateTimeImmutable::createFromInterface($this->clock->now());
         $confirmed = 0;
         foreach ($this->outlook->fixturesToConfirm($seasonId) as $fixture) {
-            // L'ancre MANUAL d'abord, puis le statut : setStatus(VALIDATED) TRAITE la
-            // rencontre (REVIEWED + horodaté, aucun écart pendant par construction).
-            $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
-            $fixture->setStatus(FixtureStatus::VALIDATED, $now);
+            // Écriture par la maison unique (partagée avec l'auto-validation au dépôt) :
+            // ancre MANUAL puis statut VALIDATED (qui TRAITE la rencontre).
+            $this->outlook->markLeagueValidated($fixture, $now);
             ++$confirmed;
         }
         try {

@@ -36,6 +36,7 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInvent
       unmappedDivisions: [],
       completeness: [],
       unresolvedDeviations: [],
+      leagueValidated: 0,
       depositedAt: "2026-08-24T10:00:00+00:00",
     } satisfies ImportFbiResult as ImportFbiResult),
   ),
@@ -256,6 +257,7 @@ describe("ImportFbiDialog", () => {
       unmappedDivisions: [],
       completeness: [{ competitionId: "c1", name: "PNM", imported: 9, expected: 22 }],
       unresolvedDeviations: [],
+      leagueValidated: 0,
       depositedAt: "2026-08-24T10:00:00+00:00",
     });
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
@@ -301,6 +303,7 @@ describe("ImportFbiDialog", () => {
       unresolvedDeviations: [
         { fixtureId: "fx-1", externalRef: "101137", division: "PNM", teamId: "team-1", status: "PLACED", persisting: false, fields: { date: { app: "2026-11-28", file: "2026-12-05" } } },
       ],
+      leagueValidated: 0,
       depositedAt: "2026-08-24T10:00:00+00:00",
     });
     const onClose = vi.fn();

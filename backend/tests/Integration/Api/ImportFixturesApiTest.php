@@ -222,6 +222,41 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(409, 'an engaged team must refuse deletion');
     }
 
+    public function testImportResponseCarriesTheLeagueValidatedCount(): void
+    {
+        // Chantier A — la réponse de POST /api/fixtures/import porte le compteur
+        // `leagueValidated` : au dépôt, un domicile de championnat COMMENCÉ (premier match
+        // joué, date passée) avec heure + gymnase (alias confirmé) bascule tout seul
+        // « validé ligue ». Le détail de la MÉCANIQUE (byte-identité avec le POST manuel, les
+        // cas non validables) vit dans Integration/Service/ImportLeagueAutoValidationTest ; ICI
+        // seule la SURFACE exposée par l'API est en jeu.
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $needle = strtoupper($clubName);
+
+        // Un gymnase du club portant l'alias FBI confirmé — le domicile importé naît avec lui.
+        $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $clubId = $this->responseData()['club']['id'];
+        self::assertIsString($clubId);
+        $this->scopeGucToClub($clubId);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
+        self::assertNotNull($season);
+        $venue = new Venue;
+        $venue->setClubId($clubId);
+        $venue->setSeasonId($season->getId());
+        $venue->setName('Gymnase Matéo');
+        $venue->setSource('manual');
+        $venue->setExternalLabels(['gymnase mateo']);
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        // Un domicile daté DANS LE PASSÉ (premier match joué) → championnat commencé.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D CHAMP', 'LV1', $needle . ' - 1', 'AS Voisins', '19/09/2020', '15:30', 'GYMNASE MATEO'],
+        ]), ['mappings' => json_encode([['division' => 'D CHAMP', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['leagueValidated'] ?? null, 'la réponse d\'import porte le compte des domiciles auto-validés');
+    }
+
     public function testImportRefusedWhileSocleNotValidated(): void
     {
         // SocleGuard path on BOTH import endpoints: without a validated main
