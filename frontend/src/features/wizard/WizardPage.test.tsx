@@ -1,5 +1,7 @@
-import { screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createMemoryRouter, Link, RouterProvider } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
@@ -181,6 +183,72 @@ describe("Wizard (integration)", () => {
     await user.click(await screen.findByRole("button", { name: /Retour à l'accueil/ }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(deleteEntryMutateAsync).not.toHaveBeenCalled();
+  });
+
+  // ── PR4 #15 (Rillieux) — « Garder la période et quitter » : la 3e issue, zéro écriture ──
+  // Retour Rillieux : impossible de quitter l'ajustement d'une période sans valider ; la seule
+  // sortie était « Retirer la période » (destructif). La 3e action CONSERVE la période (aucune
+  // écriture) et ramène à l'accueil — y compris quand la sortie vient d'une navigation interne
+  // bloquée par le useBlocker d'abandon (→ proceed). Router multi-routes (pas renderWithProviders,
+  // dont l'unique route attrape-tout ne laisse pas observer l'URL ni déclencher une nav SPA bloquée).
+  describe("Garder la période et quitter — zéro écriture, retour à l'accueil (PR4 #15)", () => {
+    function renderWizardWithRoutes(initial: string) {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const router = createMemoryRouter(
+        [
+          {
+            path: "/wizard",
+            element: (
+              <>
+                <WizardPage />
+                <Link to="/planning">aller au planning</Link>
+              </>
+            ),
+          },
+          { path: "/", element: <div>ACCUEIL</div> },
+          { path: "/planning", element: <div>PLANNING</div> },
+        ],
+        { initialEntries: [initial] },
+      );
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      );
+      return router;
+    }
+
+    it("le bouton « Garder la période et quitter » n'émet AUCUNE écriture et revient à l'accueil (/)", async () => {
+      // Plan vide (défaut beforeEach : periodPlanId posé, schedulesData=[]) → dialogue armé.
+      const user = userEvent.setup();
+      useWizardStore.setState({ mode: "period", calendarEntryId: "entry-x", stepId: "constraints" });
+      const router = renderWizardWithRoutes("/wizard");
+
+      await user.click(await screen.findByRole("button", { name: /Retour à l'accueil/ }));
+      await user.click(await screen.findByRole("button", { name: "Garder la période et quitter" }));
+
+      // La période est CONSERVÉE : aucun DELETE de l'entrée (le seul write de ce chemin).
+      expect(deleteEntryMutateAsync).not.toHaveBeenCalled();
+      // …et on est revenu à l'accueil.
+      await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+      expect(deleteEntryMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("idem via une navigation interne BLOQUÉE (useBlocker → proceed) : zéro écriture, la nav aboutit", async () => {
+      const user = userEvent.setup();
+      useWizardStore.setState({ mode: "period", calendarEntryId: "entry-x", stepId: "constraints" });
+      const router = renderWizardWithRoutes("/wizard");
+      await screen.findByText(/Mode période —/);
+
+      // Navigation SPA vers un autre écran → le blocker d'abandon l'intercepte, le dialogue s'ouvre.
+      await user.click(screen.getByRole("link", { name: "aller au planning" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent("Quitter l'ajustement ?");
+
+      // « Garder la période et quitter » laisse la navigation ABOUTIR (blocker.proceed) sans rien écrire.
+      await user.click(screen.getByRole("button", { name: "Garder la période et quitter" }));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/planning"));
+      expect(deleteEntryMutateAsync).not.toHaveBeenCalled();
+    });
   });
 
   // ── P2-25 — le wizard est adressable ; un lien atterrit SUR l'objet, pas sur l'écran ──

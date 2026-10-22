@@ -20,15 +20,22 @@ interface ConfirmDialogProps {
    * dans un champ dédié. Garde-fou pour un geste lourd et irréversible.
    */
   confirmPhrase?: string;
+  /**
+   * Action primaire OPTIONNELLE (3e bouton, ex. « Garder la période et quitter »). Absente,
+   * la modale rend STRICTEMENT les 2 boutons d'avant (annuler + confirmer). Présente, le pied
+   * bascule en variante 3 boutons — ordre DOM/tabulation primaire → annuler → destructif.
+   */
+  primaryAction?: { label: string; onClick: () => void };
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 /**
  * Minimal accessible confirmation modal (no dependency): portal + overlay,
- * role="dialog"/aria-modal, Escape + overlay-click cancel, focus the confirm
- * button on open, and a simple Tab focus-trap. Used for destructive actions
- * (delete venue/constraint, reset club).
+ * role="dialog"/aria-modal, Escape + overlay-click cancel, and a simple Tab
+ * focus-trap. Le focus initial va au PANNEAU (via `useModalA11y`), pas à un
+ * bouton — donc Échap annule sans jamais déclencher une action primaire.
+ * Used for destructive actions (delete venue/constraint, reset club).
  */
 export function ConfirmDialog({
   open,
@@ -39,10 +46,12 @@ export function ConfirmDialog({
   destructive = true,
   confirmDisabled = false,
   confirmPhrase,
+  primaryAction,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const titleId = useId();
+  const descriptionId = useId();
   const phraseInputId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const [phraseInput, setPhraseInput] = useState("");
@@ -83,13 +92,14 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
         className={cn("relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-lg border border-border bg-card p-6 text-card-foreground shadow-xl", MODAL_WIDTH.sm)}
       >
         <h2 id={titleId} className="shrink-0 text-lg font-semibold">
           {title}
         </h2>
         <div className="min-h-0 overflow-y-auto">
-          {description ? <div className="mt-2 text-sm text-muted-foreground">{description}</div> : null}
+          {description ? <div id={descriptionId} className="mt-2 text-sm text-muted-foreground">{description}</div> : null}
           {undefined === confirmPhrase ? null : (
             <div className="mt-4">
               <label htmlFor={phraseInputId} className="block text-sm text-muted-foreground">
@@ -109,14 +119,36 @@ export function ConfirmDialog({
         {/* Même filet que le pied ÉPINGLÉ de `Modal` (P4-127 d) : bordure + `pt-4`, pour que les
             deux panneaux jumeaux restent jumeaux. Les boutons vivaient déjà HORS de la zone
             défilante ; seule la ligne de séparation est ajoutée. */}
-        <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4">
-          <Button variant="ghost" onClick={onCancel}>
-            {cancelLabel}
-          </Button>
-          <Button variant={destructive ? "destructive" : "default"} disabled={confirmBlocked} onClick={onConfirm}>
-            {confirmLabel}
-          </Button>
-        </div>
+        {primaryAction ? (
+          // Variante 3 boutons (passe design PR4 #15) : ordre DOM/tabulation primaire → annuler →
+          // destructif. `flex-row-reverse` pose VISUELLEMENT le primaire à droite et le destructif
+          // isolé à gauche (`sm:mr-auto`) ; en colonne pleine largeur sur mobile.
+          <div className="mt-4 flex shrink-0 flex-col gap-2 border-t border-border pt-4 sm:flex-row-reverse sm:items-center">
+            <Button variant="default" className="w-full sm:w-auto" onClick={primaryAction.onClick}>
+              {primaryAction.label}
+            </Button>
+            <Button variant="ghost" className="w-full sm:w-auto" onClick={onCancel}>
+              {cancelLabel}
+            </Button>
+            <Button
+              variant={destructive ? "destructive" : "outline"}
+              className="mt-2 w-full sm:mt-0 sm:mr-auto sm:w-auto"
+              disabled={confirmBlocked}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button variant="ghost" onClick={onCancel}>
+              {cancelLabel}
+            </Button>
+            <Button variant={destructive ? "destructive" : "default"} disabled={confirmBlocked} onClick={onConfirm}>
+              {confirmLabel}
+            </Button>
+          </div>
+        )}
       </div>
     </div>,
     document.body,
