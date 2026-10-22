@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\Controller\VenueExternalLabelController;
+use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -13,6 +14,10 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Enum\SeasonStatus;
+use App\Exception\ImportRejectedException;
+use App\Service\FbiFixtureImporter;
+use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Integration\Service\ImportVenueRequiredTest;
 use App\Tests\TenantGucTrait;
@@ -226,6 +231,94 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         self::assertNull($still->getUnplacedReason(), 'un placé ne devient jamais neutre');
     }
 
+    /**
+     * A10 — un `venueMappings` vers un gymnase du MÊME club mais d'une AUTRE saison (archivée)
+     * est refusé comme un inconnu/étranger (400), sans écrire d'alias : le canal d'import ne
+     * doit pas contourner la garde d'écriture de saison (SEC-13) qui protège l'endpoint des
+     * libellés. Le club du gymnase ne suffit pas — sa SAISON doit être la saison d'écriture.
+     */
+    public function testVenueMappingToAVenueOfAnotherSeasonIsRefused(): void
+    {
+        [, , $clubA, $needleA] = $this->register('A10');
+        $teamA = $this->createTeam($clubA);
+        $archived = $this->archivedSeasonVenue($clubA, 'Gymnase Saison Archivée');
+
+        $this->assertArchivedSeasonVenueRefused(
+            $clubA,
+            $teamA,
+            $archived,
+            [$this->homeRow('AB10-1', $needleA, 'SALLE A10')],
+            [['label' => 'SALLE A10', 'venueId' => $archived]],
+            [],
+            'AB10-1',
+        );
+    }
+
+    /**
+     * A10 (venueChoices) — même refus pour un domicile SANS salle apparié à un gymnase d'une
+     * autre saison : ni rencontre, ni alias dans la saison archivée. Même foyer, même
+     * falsification du season_filter que ci-dessus.
+     */
+    public function testVenueChoiceToAVenueOfAnotherSeasonIsRefused(): void
+    {
+        [, , $clubA, $needleA] = $this->register('A10b');
+        $teamA = $this->createTeam($clubA);
+        $archived = $this->archivedSeasonVenue($clubA, 'Gymnase Saison Archivée B');
+
+        $this->assertArchivedSeasonVenueRefused(
+            $clubA,
+            $teamA,
+            $archived,
+            [$this->homeRow('AB10b-1', $needleA, '')],
+            [],
+            [['division' => self::DIVISION, 'venueId' => $archived]],
+            'AB10b-1',
+        );
+    }
+
+    /**
+     * FALSIFICATION du season_filter (backend.md) pour atteindre le FOYER
+     * {@see FbiFixtureImporter::import} → `ownedVenueForImport` : au dépôt HTTP réel, le
+     * season_filter masque déjà un gymnase hors saison courante (`find()` → null → 400
+     * « introuvable »), court-circuitant le défaut qu'on garde — défense en profondeur
+     * INTESTABLE en boîte noire. On COUPE le garde amont (appel SERVICE direct, season_filter
+     * désactivé) : le gymnase archivé devient VISIBLE, et SEUL un contrôle de SAISON dans
+     * `ownedVenueForImport` doit alors refuser l'appariement. ÉCHOUE tant que l'import accepte
+     * le gymnase hors saison (il pose l'alias dans la saison archivée) ; VERT une fois le
+     * contrôle ajouté, avec ZÉRO écriture (ni alias, ni rencontre) dans la saison archivée.
+     *
+     * @param list<list<string>>                              $rows
+     * @param list<array{label: string, venueId: string}>    $venueMappings
+     * @param list<array{division: string, venueId: string}> $venueChoices
+     */
+    private function assertArchivedSeasonVenueRefused(string $clubId, Team $team, string $archivedVenueId, array $rows, array $venueMappings, array $venueChoices, string $ref): void
+    {
+        $this->scopeGucToClub($clubId);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        // Le garde amont coupé : le gymnase archivé n'est plus masqué par la saison courante.
+        $em->getFilters()->disable('season_filter');
+        $club = $em->find(Club::class, $clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $importer = self::getContainer()->get(FbiFixtureImporter::class);
+        self::assertInstanceOf(FbiFixtureImporter::class, $importer);
+
+        $before = $em->find(Venue::class, $archivedVenueId)?->getExternalLabels() ?? [];
+        $mappings = [['division' => self::DIVISION, 'fbiTeamLabel' => null, 'teamId' => $team->getId()]];
+
+        try {
+            $importer->import($this->xlsx($rows), $club, $mappings, [], $team->getSeasonId(), $venueMappings, $venueChoices);
+        } catch (ImportRejectedException) {
+            // Refus attendu une fois le contrôle de saison ajouté : AUCUNE écriture archivée.
+            $em->clear();
+            self::assertSame($before, $em->find(Venue::class, $archivedVenueId)?->getExternalLabels() ?? [], 'aucun alias écrit dans la saison archivée (SEC-13 non contournée)');
+            self::assertSame(0, $em->getRepository(Fixture::class)->count(['externalRef' => $ref]), 'aucune rencontre créée dans la saison archivée');
+
+            return;
+        }
+        self::fail('un gymnase d\'une autre saison doit être refusé à l\'appariement (garde de saison SEC-13 non contournée au dépôt)');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -313,6 +406,34 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $this->em->flush();
 
         return $venue;
+    }
+
+    /**
+     * Crée une saison ARCHIVÉE (passée) du club + un gymnase vivant dans CETTE saison, et rend
+     * son id. La saison COURANTE reste celle semée par l'inscription (où l'import écrit).
+     */
+    private function archivedSeasonVenue(string $clubId, string $name): string
+    {
+        $this->scopeGucToClub($clubId);
+        $currentYear = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $past = new Season;
+        $past->setClubId($clubId);
+        $past->setName((string) ($currentYear - 1));
+        $past->setStartDate(new DateTimeImmutable(($currentYear - 1) . '-08-01'));
+        $past->setEndDate(new DateTimeImmutable($currentYear . '-07-15'));
+        $past->setStatus(SeasonStatus::ARCHIVED);
+        $past->setTransitionData([]);
+        $this->em->persist($past);
+
+        $venue = new Venue;
+        $venue->setClubId($clubId);
+        $venue->setSeasonId($past->getId());
+        $venue->setName($name);
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue->getId();
     }
 
     private function seedPlacedHome(string $clubId, Team $team, string $venueId, string $fbiLabel): Fixture
