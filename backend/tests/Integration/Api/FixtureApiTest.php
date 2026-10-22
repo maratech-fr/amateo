@@ -22,6 +22,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
 use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -180,6 +181,30 @@ final class FixtureApiTest extends WebTestCase
         $this->putFixture($placed['id'], ['status' => 'UNPLACED', 'venueId' => '', 'kickoffTime' => ''] + $placed);
         self::assertResponseStatusCodeSame(200);
         self::assertNull($this->responseData()['placementSource'] ?? null);
+    }
+
+    /**
+     * PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un match à domicile
+     * PLACÉ sans gymnase est un état IMPOSSIBLE : vider `venueId` d'un domicile
+     * PLACED/SUBMITTED/VALIDATED SANS le repasser « à placer » dans le MÊME geste est refusé
+     * (422 nommé), zéro écriture. Le dé-placement légitime (statut UNPLACED + salle vidée
+     * ensemble) reste vert : {@see self::testUnplacingClearsThePlacementSource} — son jumeau,
+     * ici on prouve le trou qu'il laissait ouvert (statut INCHANGÉ).
+     */
+    public function testClearingVenueOfAPlacedHomeFixtureWithoutUnplacingIsRefused(): void
+    {
+        $placed = $this->createPlaced('2027-01-10'); // HOME + salle + statut PLACED
+        // venueId vidé, mais le statut reste PLACED (le geste ne repasse PAS « à placer »).
+        $this->putFixture($placed['id'], ['venueId' => ''] + $placed);
+        self::assertResponseStatusCodeSame(422, (string) $this->client->getResponse()->getContent());
+
+        // Zéro écriture : le match garde sa salle ET son statut.
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        $reloaded = $this->em->getRepository(Fixture::class)->find($placed['id']);
+        self::assertNotNull($reloaded);
+        self::assertSame('22222222-2222-4222-8222-222222222222', $reloaded->getVenueId(), 'la salle n\'a pas été vidée');
+        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'le statut n\'a pas bougé');
     }
 
     public function testCreatingWithSolverSourceIsRejected(): void

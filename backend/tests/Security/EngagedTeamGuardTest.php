@@ -19,7 +19,6 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
-use App\Service\EntityCascadeDeleter;
 use App\Service\FixtureVenueLossMarker;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -386,14 +385,18 @@ final class EngagedTeamGuardTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'et il ne part pas avec elle');
     }
 
-    public function testAFixtureVenueLostByVenueDeletionStillEngagesItsTeam(): void
+    public function testDeletingAVenueCarryingAnEngagedTeamsMatchIsRefused(): void
     {
-        // P2-52 — l'AUTRE gâchette : supprimer le GYMNASE d'un match engagé le dépointe (via le
-        // même marker), il redevient « à placer » mais reste — l'équipe reste engagée, DELETE → 409.
+        // PR4 « fermetures à la source » (décision fondateur 2026-10-22) — l'ANCIENNE porte
+        // dérobée : supprimer le GYMNASE d'un match engagé le dépointait (venue_lost) sans toucher
+        // à l'équipe. Elle est fermée : supprimer un gymnase porteur de matchs est REFUSÉ (422), le
+        // match GARDE sa salle, et l'équipe reste donc engagée — DELETE équipe → 409. Angle
+        // « périmètre engagé » (§7.1, domaine sensible) de la promesse prouvée côté API par
+        // CascadeDeleteApiTest::testDeletingAVenueCarryingAMatchIsRefusedAndWritesNothing.
         $client = $this->client;
-        $team = $this->createTeam('U18 dont la salle est vendue');
+        $team = $this->createTeam('U18 dont la salle est convoitée');
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Gymnase vendu')->setSource('manual');
+        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Gymnase convoité')->setSource('manual');
         $this->em->persist($venue);
         $this->em->flush();
         $fixture = $this->fixture($team, FixtureStatus::SUBMITTED);
@@ -401,19 +404,22 @@ final class EngagedTeamGuardTest extends WebTestCase
         $fixture->setVenueId($venue->getId());
         $this->em->flush();
 
-        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
-        $this->em->flush();
+        $token = self::getContainer()->get('lexik_jwt_authentication.jwt_manager')->create($this->user);
+        $client->request('DELETE', \sprintf('/api/venues/%s', $venue->getId()), [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+        ]);
+        self::assertResponseStatusCodeSame(422, 'supprimer un gymnase porteur de matchs est refusé');
+
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());
-        $marked = $this->em->getRepository(Fixture::class)->find($fixture->getId());
-        self::assertNotNull($marked, 'le match survit à la suppression de son gymnase');
-        self::assertNull($marked->getVenueId());
-        self::assertSame(FixtureUnplacedReason::VENUE_LOST, $marked->getUnplacedReason());
+        $survivor = $this->em->getRepository(Fixture::class)->find($fixture->getId());
+        self::assertNotNull($survivor, 'le match ne bouge pas');
+        self::assertSame($venue->getId(), $survivor->getVenueId(), 'il garde sa salle : zéro écriture');
 
-        $client->loginUser($this->user);
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
         ]);
-        self::assertResponseStatusCodeSame(409, 'un match dont le gymnase a été supprimé engage toujours son équipe');
+        self::assertResponseStatusCodeSame(409, 'l\'équipe dont le match a gardé sa salle reste engagée');
     }
 
     protected function setUp(): void

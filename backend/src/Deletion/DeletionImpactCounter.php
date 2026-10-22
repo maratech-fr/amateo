@@ -59,14 +59,20 @@ final readonly class DeletionImpactCounter
     public function forVenue(Venue $venue): DeletionImpact
     {
         $target = new DeletionTarget($venue->getId(), $venue->getClubId(), $venue->getSeasonId());
+        // PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un gymnase qui porte au
+        // moins un match est INDÉLÉBILE (le serveur le refusera, `VenueStateProcessor`) : on
+        // l'annonce ici, même raison lisible, pour que l'écran grise le bouton plutôt que d'offrir
+        // un geste qui finira en 422.
+        $placedFixtures = $this->placedFixturesOnVenue($target);
+        $blocked = $placedFixtures > 0;
 
         return $this->build(
             CascadePlan::forVenue(),
             $target,
-            blocked: false,
-            reason: null,
+            blocked: $blocked,
+            reason: $blocked ? 'Ce gymnase accueille des matchs : le supprimer les laisserait sans salle. Retirez-les d\'abord, puis supprimez le gymnase.' : null,
             slotField: 'venueId',
-            placedFixtures: $this->placedFixturesOnVenue($target),
+            placedFixtures: $placedFixtures,
             declaredFixtures: $this->declaredFixturesOnVenue($target),
         );
     }
@@ -182,10 +188,11 @@ final readonly class DeletionImpactCounter
 
     /**
      * P4-270 — les matchs DÉJÀ PLACÉS dans ce gymnase (statut PLACED/SUBMITTED/VALIDATED : ceux
-     * qui portent une salle). À la disparition du gymnase ils REDEVIENNENT « à placer »
-     * ({@see FixtureVenueLossStep}) — un compteur pour le dire, sur-ensemble de `declaredFixtures`.
-     * Même patron que {@see declaredFixturesOnVenue} : borne club+saison explicite, filtres
-     * Doctrine désactivés dans ce compteur (RLS double en base).
+     * qui portent une salle). Depuis PR4 « fermetures à la source » un seul suffit à RENDRE LE
+     * GYMNASE INDÉLÉBILE ({@see self::forVenue} : `blocked`), un match à domicile sans salle étant
+     * rendu impossible. Sur-ensemble de `declaredFixtures`. Même patron que
+     * {@see self::declaredFixturesOnVenue} : borne club+saison explicite, filtres Doctrine
+     * désactivés dans ce compteur (RLS double en base).
      */
     private function placedFixturesOnVenue(DeletionTarget $target): int
     {

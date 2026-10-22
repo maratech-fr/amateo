@@ -1584,17 +1584,26 @@ d'une équipe JEUNE suit son engagement FFBB » (détail § « Engagements FFBB 
 seulement sur clic explicite du gestionnaire, et toujours la valeur RE-DÉDUITE côté serveur (jamais
 un niveau fourni par le client). La garde générique reste souveraine partout ailleurs, PUT compris.
 
-**La salle d'un match, elle, n'est délibérément PAS protégée** — un gymnase qui ferme dépointe le
-match (y compris `SUBMITTED`/`VALIDATED`), **annoncé jamais refusé** (`DeletionImpactCounter`). Deux
-gâchettes partagent le foyer unique `FixtureVenueLossMarker` (dépointage : `UNPLACED`, `venueId`
-NULL, raison persistante `unplacedReason = venue_lost`, coup d'envoi conservé comme repère) : la
-suppression de gymnase (`CascadePlan`), et la VALIDATION d'un planning (`GET
-/api/schedules/{id}/validate-impact` annonce `{orphanedFixtures, declaredOrphanedFixtures}` avant
-confirmation ; `POST …/validate` dépointe exactement ce que l'impact a annoncé — même prédicat
-`OrphanedFixtureFinder`, parité par construction). L'exploration (« Charger cette version ») ne
-dépointe **plus rien** — un match dont le gymnase est absent de la photo survit intact, nommant un
-`venueId` transitoirement pendouillant. Le périmètre engagé résiste aux deux gâchettes (le match
-existe toujours après dépointage, son équipe reste engagée).
+**La salle d'un match est désormais protégée À LA SOURCE** (chantier A « fermetures à la source »,
+décision fondateur 2026-10-22 — INVERSE ce qui suivait jusque-là) : un gymnase qui porte au moins
+un match à domicile `PLACED`/`SUBMITTED`/`VALIDATED` ne peut plus être supprimé — refus 422 nommé
+(`VenueStateProcessor::cascadeBeforeDelete`), AVANT toute cascade, zéro écriture ;
+`DeletionImpactCounter::forVenue` annonce `blocked`+`reason` pour que l'écran grise la
+confirmation plutôt que d'offrir un geste qui finirait en 422. Un `PUT /api/fixtures/{id}` qui
+viderait `venueId` d'un tel match SANS le repasser `UNPLACED` dans le MÊME geste est refusé
+pareillement (`FixtureStateProcessor`, 422) — le dé-placement normal (statut et salle vidés
+ensemble) reste permis. `FixtureVenueLossStep` a quitté `CascadePlan` : la suppression d'un
+gymnase ne dépointe plus aucun match (un gymnase SANS match reste supprimable, cascade inchangée).
+
+Le foyer `FixtureVenueLossMarker` n'a donc plus qu'**une** gâchette : la VALIDATION d'un planning
+(`GET /api/schedules/{id}/validate-impact` annonce `{orphanedFixtures, declaredOrphanedFixtures}`
+avant confirmation ; `POST …/validate` dépointe exactement ce que l'impact a annoncé — même
+prédicat `OrphanedFixtureFinder`, parité par construction). L'exploration (« Charger cette
+version ») ne dépointe **toujours rien** — un match dont le gymnase est absent de la photo survit
+intact, nommant un `venueId` transitoirement pendouillant, résorbé seulement à la validation
+suivante. Le périmètre engagé résiste à cette gâchette (le match existe toujours après
+dépointage, son équipe reste engagée) et, a fortiori, à la nouvelle garde de suppression (le
+match garde sa salle, rien ne bouge).
 
 ## 12. Tests & gardes (pointeurs)
 
