@@ -6,14 +6,20 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Coach;
 use App\Entity\Reservation;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\PlanEntitlements;
+use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use App\Service\TeamImportGate;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -372,6 +378,162 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertStringContainsString('parc-v1', implode(' ', $body['errors']));
     }
 
+    // ───────────── Gardes rejouées au dry-run : alerte avant l'import, jamais un 422 en cours ─────────────
+    // L'import (PR suivante) écrit tout-ou-rien ; une ligne qui violerait une garde de persistance
+    // DOIT être signalée dans l'APERÇU (alerte / décoché), pas découverte au milieu de l'écriture.
+
+    public function testSplitOnANonSplittableExistingVenueRaisesAnAlert(): void
+    {
+        // Le gymnase EXISTE et n'est pas divisible (`canSplit:false`). Un créneau qui demande
+        // 2 équipes en parallèle y est impossible (garde VenueTrainingSlotStateProcessor sur la
+        // capacité). Rejouée au dry-run : la ligne passe en alerte, 200, jamais un 500.
+        $this->makeVenue('Gymnase Mateo', canSplit: false);
+
+        $parc = $this->validParc();
+        $parc['gymnases'] = [['nom' => 'Gymnase Mateo']];
+        $parc['equipes'] = [];
+        $parc['creneaux'] = [['gymnase' => 'Gymnase Mateo', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 2]];
+        $parc['reservations'] = [];
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status, 'une garde de capacité rejouée ne fait jamais un 500');
+
+        $line = $body['sections']['creneaux'][0];
+        self::assertSame('alerte', $line['statut'], 'capacité ≥ 2 sur un gymnase non divisible = alerte');
+        self::assertFalse($line['coche']);
+        self::assertNotNull($line['raison'] ?? null, 'l\'alerte doit dire pourquoi');
+    }
+
+    public function testSplitOnAVenueToCreateRaisesNoAlert(): void
+    {
+        // TÉMOIN de la garde ci-dessus : pour un gymnase À CRÉER, `canSplit` est DÉRIVÉ de la
+        // capacité demandée (il naîtra divisible). Donc PAS d'alerte — sinon la garde serait
+        // sur-appliquée et bloquerait un terrain qu'on s'apprête justement à créer divisible.
+        $parc = $this->validParc();
+        $parc['gymnases'] = [['nom' => 'Palais Tout Neuf']];
+        $parc['equipes'] = [];
+        $parc['creneaux'] = [['gymnase' => 'Palais Tout Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 2]];
+        $parc['reservations'] = [];
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        self::assertNotSame('alerte', $body['sections']['creneaux'][0]['statut'], 'un gymnase à créer dérive canSplit : aucune alerte');
+    }
+
+    public function testBlockCommonSessionsExceedingAMemberRaisesAnAlert(): void
+    {
+        // Mutualisation dont les séances communes (2) dépassent les séances d'une équipe membre
+        // (U11M1 n'en a qu'1) : le bloc serait refusé à l'écriture (SharedTrainingBlockStateProcessor,
+        // Σ séances communes > séances hebdo d'un membre). Rejouée au dry-run → alerte, 200.
+        $this->makeTeam('U11M1', sessionsPerWeek: 1);
+        $this->makeTeam('U11M2', sessionsPerWeek: 3);
+
+        $parc = $this->validParc();
+        $parc['gymnases'] = [];
+        $parc['equipes'] = [['nom' => 'U11M1', 'genre' => 'M'], ['nom' => 'U11M2', 'genre' => 'M']];
+        $parc['creneaux'] = [];
+        $parc['mutualisations'] = [[
+            'equipes' => ['U11M1', 'U11M2'], 'gymnase' => 'Gymnase Mateo',
+            'jour' => 3, 'debut' => '17:00', 'seances_communes' => 2,
+        ]];
+        $parc['reservations'] = [];
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status, 'une garde de bloc rejouée ne fait jamais un 500');
+
+        $line = $body['sections']['mutualisations'][0];
+        self::assertSame('alerte', $line['statut'], 'Σ séances communes > séances d\'un membre = alerte');
+        self::assertFalse($line['coche']);
+        self::assertNotNull($line['raison'] ?? null);
+    }
+
+    public function testTeamsBeyondThePaidCapAreDecochedWithAReason(): void
+    {
+        // Cap payant (PlanEntitlements::remainingTeamSlots) : on ne peut créer plus d'équipes que
+        // de places restantes dans l'offre. RECO la plus simple (tranchée ici) : les équipes EN
+        // SURPLUS ressortent DÉCOCHÉES avec une raison nommant l'offre — préféré à une alerte de
+        // récap sans ancrage, car le décochage par ligne dit AU GESTIONNAIRE lesquelles ne seront
+        // pas créées, et réutilise le modèle de statut existant.
+        $remaining = $this->capClubAtEssentiel();
+        self::assertIsInt($remaining, 'l\'offre Essentiel doit porter un cap fini');
+        self::assertGreaterThanOrEqual(1, $remaining);
+
+        $parc = $this->validParc();
+        $parc['gymnases'] = [];
+        $parc['creneaux'] = [];
+        $parc['reservations'] = [];
+        $parc['equipes'] = array_map(
+            static fn (int $i): array => ['nom' => 'Neuve ' . $i, 'genre' => 'M'],
+            range(1, $remaining + 1),
+        );
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $statuts = array_column($body['sections']['equipes'], 'statut');
+        self::assertSame($remaining, \count(array_filter($statuts, static fn (string $s): bool => 'aCreer' === $s)), 'autant d\'équipes créables que de places');
+
+        $surplus = array_values(array_filter($body['sections']['equipes'], static fn (array $l): bool => 'decoche' === $l['statut']));
+        self::assertCount(1, $surplus, 'l\'équipe au-delà du cap est décochée');
+        self::assertNotNull($surplus[0]['raison'] ?? null, 'la raison doit nommer la limite de l\'offre');
+    }
+
+    // ───────────── Couverture des sections coachs & mutualisations (apparié + à créer) ─────────────
+
+    public function testCoachSectionMatchesAnExistingCoachAndCreatesANewOne(): void
+    {
+        // Coachs : même normalisation que les gymnases/équipes. « ALICE MARTIN » (casse repliée)
+        // s'apparie au coach existant ; « Bob Nouveau » est à créer.
+        $alice = $this->makeCoach('Alice', 'Martin');
+
+        $parc = $this->validParc();
+        $parc['gymnases'] = [];
+        $parc['equipes'] = [];
+        $parc['creneaux'] = [];
+        $parc['reservations'] = [];
+        $parc['coachs'] = [
+            ['nom' => 'ALICE MARTIN', 'equipe' => 'SM1'],
+            ['nom' => 'Bob Nouveau'],
+        ];
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        self::assertSame('apparie', $body['sections']['coachs'][0]['statut']);
+        self::assertSame($alice->getId(), $body['sections']['coachs'][0]['cibleId']);
+        self::assertSame('aCreer', $body['sections']['coachs'][1]['statut']);
+        self::assertNull($body['sections']['coachs'][1]['cibleId']);
+    }
+
+    public function testMutualisationSectionMatchesAnExistingBlockAndCreatesANewOne(): void
+    {
+        // Mutualisations : un groupe dont les équipes membres forment un bloc DÉJÀ existant
+        // s'apparie (cibleId = bloc) ; un groupe sans bloc est à créer.
+        $u11m1 = $this->makeTeam('U11M1', sessionsPerWeek: 2);
+        $u11m2 = $this->makeTeam('U11M2', sessionsPerWeek: 2);
+        $this->makeTeam('U13F1', sessionsPerWeek: 2);
+        $this->makeTeam('U13F2', sessionsPerWeek: 2);
+        $blockId = $this->makeBlock([$u11m1->getId(), $u11m2->getId()], commonSessions: 1);
+
+        $parc = $this->validParc();
+        $parc['gymnases'] = [];
+        $parc['equipes'] = [];
+        $parc['creneaux'] = [];
+        $parc['reservations'] = [];
+        $parc['mutualisations'] = [
+            ['equipes' => ['U11M1', 'U11M2'], 'gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '17:00', 'seances_communes' => 1],
+            ['equipes' => ['U13F1', 'U13F2'], 'gymnase' => 'Gymnase Mateo', 'jour' => 4, 'debut' => '17:00', 'seances_communes' => 1],
+        ];
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        self::assertSame('apparie', $body['sections']['mutualisations'][0]['statut'], 'un groupe déjà formé en bloc s\'apparie');
+        self::assertSame($blockId, $body['sections']['mutualisations'][0]['cibleId']);
+        self::assertSame('aCreer', $body['sections']['mutualisations'][1]['statut'], 'un groupe sans bloc est à créer');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -464,16 +626,67 @@ final class ParcImportAnalyzeTest extends WebTestCase
         return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
     }
 
-    private function makeVenue(string $name): Venue
+    private function makeVenue(string $name, bool $canSplit = false): Venue
     {
         $this->scopeGucToClub($this->club->getId());
         $venue = (new Venue)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual')->setIsActive(true);
+            ->setName($name)->setSource('manual')->setIsActive(true)->setCanSplit($canSplit);
         $this->em->persist($venue);
         $this->em->flush();
 
         return $venue;
+    }
+
+    private function makeCoach(string $firstName, string $lastName): Coach
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $coach = (new Coach)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setFirstName($firstName)->setLastName($lastName)->setIsActive(true);
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        return $coach;
+    }
+
+    /**
+     * Un bloc de mutualisation (groupe de $teamIds), comme la production le pose — pour
+     * prouver qu'une mutualisation déjà formée s'apparie au dry-run.
+     *
+     * @param list<string> $teamIds
+     */
+    private function makeBlock(array $teamIds, int $commonSessions): string
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $block = (new SharedTrainingBlock)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId(null)->setCommonSessions($commonSessions);
+        $this->em->persist($block);
+        foreach ($teamIds as $teamId) {
+            $member = (new SharedTrainingBlockTeam)
+                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId);
+            $this->em->persist($member);
+        }
+        $this->em->flush();
+
+        return $block->getId();
+    }
+
+    /**
+     * Attache le club à l'offre Essentiel (cap d'équipes fini) pour la saison courante et
+     * rend les places restantes avant le cap.
+     */
+    private function capClubAtEssentiel(): ?int
+    {
+        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'essentiel']);
+        \assert($plan instanceof SubscriptionPlan);
+
+        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear(new DateTimeImmutable('today')));
+        $this->em->flush();
+
+        return self::getContainer()->get(PlanEntitlements::class)->remainingTeamSlots($this->club, $this->season);
     }
 
     private function makeTeam(string $name, int $sessionsPerWeek): Team
