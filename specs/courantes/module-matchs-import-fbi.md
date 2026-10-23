@@ -280,8 +280,13 @@ liste ET la dérivation `creations` héritent du même ordre) plutôt que l'ordr
 `POST /api/ffbb/rencontres/apply` re-fetche côté serveur (jamais les valeurs client), écrit sa propre
 `FbiIngestion source=FFBB_API`. Ses décisions partagent le même `venueId` optionnel que l'arbitrage
 hors dépôt sur un écart `venue` (appariement INLINE, § « Arbitrage d'un écart de salle » ci-dessus,
-chantier A PR 4) — **hors périmètre** : la création de rencontres (`newFixture`) n'est pas concernée,
-décision fondateur en attente.
+chantier A PR 4).
+
+**Un amical ou une coupe créés par ce canal sans gymnase : statu quo (décision fondateur
+2026-10-23, option « pour l'instant »).** Une rencontre créée par `FfbbRencontreReconciler::newFixture`
+sans salle naît `UNPLACED` « à placer », exactement comme un match saisi à la main — aucun
+traitement spécial, aucun code dédié. Le gestionnaire la place (ou non) depuis l'écran comme
+n'importe quel match sans salle. Le cas sera revu plus tard si le besoin se confirme.
 
 ### Workflow de traitement — NEW / OUT_OF_SYNC / REVIEWED
 
