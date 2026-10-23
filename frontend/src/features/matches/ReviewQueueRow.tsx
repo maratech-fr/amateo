@@ -1,4 +1,4 @@
-import { ArrowRightLeft, CalendarClock, Check, House, MapPin, Plane } from "lucide-react";
+import { ArrowRightLeft, CalendarClock, Check, House, MapPin, MapPinOff, Plane } from "lucide-react";
 import { useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -81,6 +81,12 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
           {null !== venueText ? <span className="text-muted-foreground"> · {venueText}</span> : null}
         </span>
         <StatusPill>{FIXTURE_STATUS_LABEL[fixture.status]}</StatusPill>
+        {/* Chantier A — un domicile sur terrain neutre (« pas chez nous ») : pastille NEUTRE, jamais une salle à rattacher. */}
+        {fixture.neutralGround ? (
+          <StatusPill variant="neutral" icon={<MapPinOff className="size-3.5" aria-hidden="true" />}>
+            Terrain neutre
+          </StatusPill>
+        ) : null}
         <span className="text-xs text-muted-foreground">{treatmentLabel(fixture)}</span>
         <span className="ml-auto flex items-center gap-2">
           {canReplace ? (

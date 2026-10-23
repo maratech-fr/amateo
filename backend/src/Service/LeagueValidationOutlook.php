@@ -10,6 +10,7 @@ use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use App\Service\Basketball\FbiDivisionSignature;
 use App\State\Processor\FixtureStateProcessor;
@@ -300,6 +301,12 @@ final class LeagueValidationOutlook
             return false;
         }
         if (FixtureStatus::UNPLACED !== $fixture->getStatus()) {
+            return false;
+        }
+        // Un terrain neutre (« pas chez nous ») est un domicile sans gymnase du club PAR
+        // CHOIX : jamais « à placer », jamais « validé ligue », jamais nommé dans `toTreat`
+        // (sans quoi le NO_VENUE le signalerait à tort comme une salle manquante à poser).
+        if (FixtureUnplacedReason::NEUTRAL_GROUND === $fixture->getUnplacedReason()) {
             return false;
         }
         $competitionId = $fixture->getCompetitionId();

@@ -88,6 +88,29 @@ export interface DeviationDecision {
   choice: "keep_app" | "take_file";
 }
 
+/**
+ * Chantier A PR 2 — une salle à DOMICILE du fichier, agrégée par libellé : combien de
+ * matchs la jouent, le gymnase déjà confirmé (alias), une suggestion floue, et si le
+ * libellé est DÉJÀ neutre (mémoire dérivée des rencontres de la saison). La modale propose
+ * un gymnase par ligne (option « terrain neutre »). Servie par le serveur — le front
+ * l'AFFICHE. `venueId === 'NEUTRAL'` est la sentinelle de l'appariement terrain neutre.
+ */
+export interface ImportVenueRow {
+  label: string;
+  rowCount: number;
+  confirmedVenueId: string | null;
+  suggestedVenueId: string | null;
+  neutral: boolean;
+}
+
+/** Chantier A PR 2 — un domicile SANS salle dans le fichier, par division : la modale lui
+ *  fait choisir un gymnase (ou « terrain neutre ») sinon l'import est refusé. */
+export interface ImportHomeWithoutVenue {
+  division: string;
+  fbiTeamLabel: string | null;
+  rowCount: number;
+}
+
 export interface ImportFbiAnalysis {
   divisions: ImportAnalysisDivision[];
   totalRows: number;
@@ -96,6 +119,25 @@ export interface ImportFbiAnalysis {
   /** RMM-4 — home matches already placed whose date/heure/salle differ from the
    * file, each to be decided per écart before the import writes anything. */
   deviations: Deviation[];
+  /** Chantier A PR 2 — les salles à domicile du fichier, par libellé (optionnel côté TS :
+   *  lu `?? []` pour que les mocks antérieurs restent valides). */
+  venues?: ImportVenueRow[];
+  /** Chantier A PR 2 — les domiciles sans salle dans le fichier (lu `?? []`). */
+  homesWithoutVenue?: ImportHomeWithoutVenue[];
+}
+
+/** Chantier A PR 2 — un appariement de salle envoyé à l'import : un libellé à domicile → un
+ *  gymnase (uuid) OU la sentinelle 'NEUTRAL' (terrain neutre). */
+export interface ImportVenueMapping {
+  label: string;
+  venueId: string;
+}
+
+/** Chantier A PR 2 — un choix de gymnase pour les domiciles SANS salle d'une division →
+ *  gymnase (uuid) OU 'NEUTRAL'. */
+export interface ImportVenueChoice {
+  division: string;
+  venueId: string;
 }
 
 export interface ImportFbiWarning {
@@ -144,9 +186,17 @@ export const analyzeFbiFixtures = (file: File): Promise<ImportFbiAnalysis> => {
 };
 
 /** One-pass import: the SAME file + the completed mappings + the per-écart
- * decisions (RMM-4, all multipart). An empty `decisions` means every perimeter
- * écart stays unresolved and is reported — nothing is overwritten by default. */
-export const importFbiFixtures = (file: File, mappings: FbiMapping[], decisions: DeviationDecision[] = []): Promise<ImportFbiResult> => {
+ * decisions (RMM-4) + the venue coverage (chantier A PR 2 : venueMappings libellé→gymnase,
+ * venueChoices division-sans-salle→gymnase, uuid ou 'NEUTRAL'), all multipart. An empty
+ * `decisions` means every perimeter écart stays unresolved and is reported. The server
+ * refuses (422) if a home created by the deposit has no venue and is not neutral. */
+export const importFbiFixtures = (
+  file: File,
+  mappings: FbiMapping[],
+  decisions: DeviationDecision[] = [],
+  venueMappings: ImportVenueMapping[] = [],
+  venueChoices: ImportVenueChoice[] = [],
+): Promise<ImportFbiResult> => {
   const form = new FormData();
   form.append("file", file);
   if (mappings.length > 0) {
@@ -154,6 +204,12 @@ export const importFbiFixtures = (file: File, mappings: FbiMapping[], decisions:
   }
   if (decisions.length > 0) {
     form.append("decisions", JSON.stringify(decisions));
+  }
+  if (venueMappings.length > 0) {
+    form.append("venueMappings", JSON.stringify(venueMappings));
+  }
+  if (venueChoices.length > 0) {
+    form.append("venueChoices", JSON.stringify(venueChoices));
   }
   return api.post("fixtures/import", { body: form }).json<ImportFbiResult>();
 };

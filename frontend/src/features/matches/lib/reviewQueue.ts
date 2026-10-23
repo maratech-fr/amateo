@@ -26,10 +26,12 @@ export interface TeamQueue {
  * P4-187b — un domicile importé qui porte un libellé de salle FBI/FFBB mais aucun
  * gymnase rattaché : invisible de la collision de gymnase et de la fermeture tant que
  * son `venueId` n'est pas posé. Présentation pure (le backend a déjà tout calculé) —
- * on lit trois champs, on ne décide d'aucune règle métier.
+ * on lit quatre champs, on ne décide d'aucune règle métier. Chantier A PR 2 — un TERRAIN
+ * NEUTRE (`neutralGround`) est un domicile sans gymnase PAR CHOIX : jamais une salle à
+ * rattacher, donc exclu (du compteur « sans gymnase » et des files à placer).
  */
 export function isUnattachedHome(fixture: Fixture): boolean {
-  return "HOME" === fixture.homeAway && null === fixture.venueId && null !== fixture.fbiVenueLabel;
+  return "HOME" === fixture.homeAway && null === fixture.venueId && null !== fixture.fbiVenueLabel && true !== fixture.neutralGround;
 }
 
 /**

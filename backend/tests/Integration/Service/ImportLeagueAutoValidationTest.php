@@ -20,6 +20,7 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Service\FbiFixtureImporter;
 use App\Service\LeagueValidationOutlook;
@@ -218,28 +219,35 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
     }
 
     /**
-     * (e) Un domicile d'un championnat commencé SANS GYMNASE n'est jamais validé (NO_VENUE) — la
-     * salle du fichier n'étant appariée à aucun alias, aucun gymnase n'est rattaché.
+     * (e) Chantier A PR 2 — un domicile de championnat commencé déclaré TERRAIN NEUTRE n'est
+     * JAMAIS validé « validé ligue ». C'est le seul chemin par lequel un domicile de
+     * championnat commencé peut rester SANS gymnase du club (depuis « pas de salles appariées,
+     * pas d'import », un domicile venu du fichier ne peut plus naître NO_VENUE — l'import serait
+     * refusé). Le neutre est hors du prédicat (`isCandidate` l'exclut) : il reste UNPLACED +
+     * NEUTRAL_GROUND, jamais VALIDATED, jamais dans `toTreat`.
+     *
+     * ⚠ Promesse CHANGÉE : l'ancien cas « SANS GYMNASE n'est jamais validé (NO_VENUE), import
+     * réussi » est devenu IMPOSSIBLE (l'import refuse désormais un domicile importable sans
+     * gymnase) — remplacé par le cas neutre, le seul venueless survivant.
      */
-    public function testAHomeWithoutVenueIsNeverValidated(): void
+    public function testANeutralGroundHomeOfAStartedChampionshipIsNeverValidated(): void
     {
         [, $clubId, $seasonId, $needle] = $this->createClub();
         $this->scopeGucToClub($clubId);
         $team = $this->createTeam($clubId, $seasonId);
-        // Alias présent pour un AUTRE libellé : la salle du fichier ne l'apparie pas → pas de gymnase.
-        $this->createVenueWithAlias($clubId, $seasonId, 'Gymnase E', 'gymnase e');
 
         $result = $this->deposit($clubId, $seasonId, [
-            ['D CHAMP E', 'NOVENUE-1', $needle . ' - 1', 'AS Voisins', $this->fbiDate(self::PAST_DATE), '15:30', 'SALLE SANS ALIAS'],
-        ], $team->getId());
-        self::assertSame(0, $result['leagueValidated'] ?? null, 'sans gymnase, rien n\'est validé (NO_VENUE)');
+            ['D CHAMP E', 'NEUTRE-1', $needle . ' - 1', 'AS Voisins', $this->fbiDate(self::PAST_DATE), '15:30', 'GYMNASE ADVERSE'],
+        ], $team->getId(), venueMappings: [['label' => 'GYMNASE ADVERSE', 'venueId' => 'NEUTRAL']]);
+        self::assertSame(0, $result['leagueValidated'] ?? null, 'un terrain neutre, même d\'un championnat commencé, n\'est jamais validé');
 
         $this->scopeGucToClub($clubId);
         $this->em->clear();
-        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'NOVENUE-1']);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'NEUTRE-1']);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'un terrain neutre reste UNPLACED, jamais VALIDATED');
         self::assertNull($fixture->getVenueId());
+        self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $fixture->getUnplacedReason());
     }
 
     /**
@@ -310,11 +318,12 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
      * Dépose un fichier FBI PAR LE SERVICE (le foyer où vit l'auto-validation, {@see FbiFixtureImporter::import}) :
      * mappings = chaque division des lignes → l'équipe donnée. Rend le rapport d'import.
      *
-     * @param list<list<string>> $rows lignes de données (sans en-tête)
+     * @param list<list<string>>                          $rows          lignes de données (sans en-tête)
+     * @param list<array{label: string, venueId: string}> $venueMappings libellé → gymnase (uuid) ou 'NEUTRAL'
      *
      * @return array<string, mixed>
      */
-    private function deposit(string $clubId, string $seasonId, array $rows, string $teamId): array
+    private function deposit(string $clubId, string $seasonId, array $rows, string $teamId, array $venueMappings = []): array
     {
         $this->scopeGucToClub($clubId);
         $club = $this->em->find(Club::class, $clubId);
@@ -324,7 +333,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
             array_values(array_unique(array_column($rows, 0))),
         );
 
-        return $this->importer->import($this->xlsx($rows), $club, $mappings, [], $seasonId);
+        return $this->importer->import($this->xlsx($rows), $club, $mappings, [], $seasonId, $venueMappings);
     }
 
     /**

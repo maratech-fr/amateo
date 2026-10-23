@@ -72,11 +72,13 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->client->request('GET', '/api/fixtures', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertCount(0, $this->responseData()['member'] ?? [], 'analyze must write nothing');
 
-        // 2. IMPORT — same file + the manager's mapping: ONE pass creates all.
+        // 2. IMPORT — same file + the manager's mapping: ONE pass creates all. Chantier A PR 2 :
+        // le domicile « Gymnase X » est apparié à un gymnase du club (sinon l'import est refusé).
+        $venueX = $this->createClubVenue($token, 'Gymnase X');
         $this->upload('/api/fixtures/import', $token, $this->xlsx([
             ['D2 Poule A', 'A9001', $needle . ' - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X'],
             ['D2 Poule A', 'A9002', 'AS Voisins', $needle . ' - 1', '10/10/2026', '00:00', 'Salle Y'],
-        ]), ['mappings' => json_encode([['division' => 'D2 Poule A', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR)]);
+        ]), ['mappings' => json_encode([['division' => 'D2 Poule A', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR), 'venueMappings' => json_encode([['label' => 'Gymnase X', 'venueId' => $venueX]], \JSON_THROW_ON_ERROR)]);
         self::assertResponseStatusCodeSame(200);
         $report = $this->responseData();
         self::assertSame(2, $report['created']);
@@ -119,10 +121,12 @@ final class ImportFixturesApiTest extends WebTestCase
         [$token, $clubName, $teamId] = $this->registerWithTeam();
         $needle = strtoupper($clubName);
 
-        // Import a home match, then place it (PLACED — inside the perimeter).
+        // Import a home match, then place it (PLACED — inside the perimeter). Chantier A PR 2 :
+        // « Gymnase X » apparié à un gymnase du club (sinon l'import est refusé).
+        $venueX = $this->createClubVenue($token, 'Gymnase X');
         $this->upload('/api/fixtures/import', $token, $this->xlsx([
             ['D2', 'A9300', $needle . ' - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X'],
-        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR)]);
+        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR), 'venueMappings' => json_encode([['label' => 'Gymnase X', 'venueId' => $venueX]], \JSON_THROW_ON_ERROR)]);
         self::assertResponseStatusCodeSame(200);
 
         $fixtureId = $this->placeFixture('A9300');
@@ -169,10 +173,13 @@ final class ImportFixturesApiTest extends WebTestCase
         $needle = strtoupper($clubName);
 
         // Import a home match (UNPLACED, no salle) then attach it to a club gym
-        // WITHOUT placing it — the « 20 »-case state.
+        // WITHOUT placing it — the « 20 »-case state. Chantier A PR 2 : un domicile sans salle
+        // dans le fichier prend un gymnase via venueChoices (sinon l'import est refusé) ; on le
+        // re-pointe ensuite à la main sur GYMNASE JDR pour le scénario.
+        $choiceVenue = $this->createClubVenue($token, 'Gymnase Choix');
         $this->upload('/api/fixtures/import', $token, $this->xlsx([
             ['D2', 'A9600', $needle . ' - 1', 'AS Voisins', '03/10/2026', '15:30', ''],
-        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR)]);
+        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR), 'venueChoices' => json_encode([['division' => 'D2', 'venueId' => $choiceVenue]], \JSON_THROW_ON_ERROR)]);
         self::assertResponseStatusCodeSame(200);
         $venueId = $this->attachUnplacedGym('A9600', 'GYMNASE JDR');
 
@@ -212,9 +219,11 @@ final class ImportFixturesApiTest extends WebTestCase
         // at the federation).
         [$token, $clubName, $teamId] = $this->registerWithTeam();
 
+        // Chantier A PR 2 : le domicile sans salle prend un gymnase via venueChoices (sinon refus).
+        $choiceVenue = $this->createClubVenue($token, 'Gymnase Engagement');
         $this->upload('/api/fixtures/import', $token, $this->xlsx([
             ['D2', 'A9200', strtoupper($clubName) . ' - 1', 'AS Voisins', '03/10/2026', '', ''],
-        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR)]);
+        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR), 'venueChoices' => json_encode([['division' => 'D2', 'venueId' => $choiceVenue]], \JSON_THROW_ON_ERROR)]);
         self::assertResponseStatusCodeSame(200);
         self::assertSame(1, $this->responseData()['created']);
 
@@ -357,6 +366,30 @@ final class ImportFixturesApiTest extends WebTestCase
         // Relâche l'horloge épinglée (Redis partagé, non rollbacké entre tests).
         self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
+    }
+
+    /**
+     * Crée un gymnase du club (saison courante) et rend son id — chantier A PR 2 : un domicile
+     * importable ne naît jamais sans gymnase, l'appariement de salles (venueMappings/venueChoices)
+     * pointe un gymnase EXISTANT. Scope GUC rétabli au club pour l'écriture.
+     */
+    private function createClubVenue(string $token, string $name): string
+    {
+        $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $clubId = $this->responseData()['club']['id'];
+        self::assertIsString($clubId);
+        $this->scopeGucToClub($clubId);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
+        self::assertNotNull($season);
+        $venue = new Venue;
+        $venue->setClubId($clubId);
+        $venue->setSeasonId($season->getId());
+        $venue->setName($name);
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue->getId();
     }
 
     /** Places the imported fixture (PLACED + a venue id) and returns its id. */

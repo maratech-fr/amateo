@@ -1007,8 +1007,8 @@ export function useAnalyzeFbiFixtures() {
 export function useImportFbiFixtures() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, mappings, decisions }: { file: File; mappings: matchesApi.FbiMapping[]; decisions?: matchesApi.DeviationDecision[] }) =>
-      matchesApi.importFbiFixtures(file, mappings, decisions ?? []),
+    mutationFn: ({ file, mappings, decisions, venueMappings, venueChoices }: { file: File; mappings: matchesApi.FbiMapping[]; decisions?: matchesApi.DeviationDecision[]; venueMappings?: matchesApi.ImportVenueMapping[]; venueChoices?: matchesApi.ImportVenueChoice[] }) =>
+      matchesApi.importFbiFixtures(file, mappings, decisions ?? [], venueMappings ?? [], venueChoices ?? []),
     onSuccess: () => {
       invalidateFixtures(queryClient);
       // The import persists the new Division↔team mappings as competitions.

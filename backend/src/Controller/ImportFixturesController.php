@@ -91,6 +91,20 @@ final class ImportFixturesController extends AbstractController
             return $decisions;
         }
 
+        $rawVenueMappings = $this->parseVenueCoverage($request, 'venueMappings', 'label');
+        if ($rawVenueMappings instanceof JsonResponse) {
+            return $rawVenueMappings;
+        }
+        /** @var list<array{label: string, venueId: string}> $venueMappings */
+        $venueMappings = $rawVenueMappings;
+
+        $rawVenueChoices = $this->parseVenueCoverage($request, 'venueChoices', 'division');
+        if ($rawVenueChoices instanceof JsonResponse) {
+            return $rawVenueChoices;
+        }
+        /** @var list<array{division: string, venueId: string}> $venueChoices */
+        $venueChoices = $rawVenueChoices;
+
         // La saison de l'ingestion est CELLE de la requête (revue de sécurité
         // 2026-08-24) : la deviner depuis les données importées ouvrait un repli
         // dégénéré (multi-saison → saison arbitraire ; club vide → pas de saison
@@ -98,7 +112,7 @@ final class ImportFixturesController extends AbstractController
         $season = $this->seasonResolver->selectedOrCurrent($request, $club->getId());
 
         try {
-            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings, $decisions, $season?->getId());
+            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings, $decisions, $season?->getId(), $venueMappings, $venueChoices);
         } catch (ImportRejectedException $e) {
             // Le SEUL type relayé : son message est écrit pour le gestionnaire.
             return $this->json(['error' => $e->getMessage()], $e->getStatusCode());
@@ -278,5 +292,50 @@ final class ImportFixturesController extends AbstractController
         }
 
         return $decisions;
+    }
+
+    /**
+     * Chantier A PR 2 — un champ multipart d'appariement de salles, JSON : une liste
+     * d'entrées {<keyField>, venueId}, où venueId est un uuid de gymnase OU la sentinelle
+     * 'NEUTRAL' (terrain neutre). `venueMappings` porte un `label` (libellé de salle du
+     * fichier), `venueChoices` une `division` (domiciles sans salle). Absent = liste vide.
+     * Mêmes bornes que « mappings » : un corps forgé est refusé au bord (400), jamais relayé
+     * au service — qui refuse à son tour un gymnase étranger/inconnu (400) ou une garde
+     * d'attach (422).
+     *
+     * @param 'label'|'division' $keyField
+     *
+     * @return list<array<string, string>>|JsonResponse
+     */
+    private function parseVenueCoverage(Request $request, string $fieldName, string $keyField): array|JsonResponse
+    {
+        $raw = $request->request->get($fieldName);
+        if (null === $raw || '' === $raw) {
+            return [];
+        }
+        if (!\is_string($raw)) {
+            return $this->json(['error' => \sprintf('Champ « %s » invalide.', $fieldName)], Response::HTTP_BAD_REQUEST);
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!\is_array($decoded) || !array_is_list($decoded)) {
+            return $this->json(['error' => \sprintf('Champ « %s » invalide (liste JSON attendue).', $fieldName)], Response::HTTP_BAD_REQUEST);
+        }
+
+        $uuid = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+        $entries = [];
+        foreach ($decoded as $entry) {
+            $venueId = \is_array($entry) ? ($entry['venueId'] ?? null) : null;
+            if (!\is_array($entry)
+                || !\is_string($entry[$keyField] ?? null) || '' === trim($entry[$keyField])
+                || !\is_string($venueId)
+                || ('NEUTRAL' !== $venueId && 1 !== preg_match($uuid, $venueId))
+            ) {
+                return $this->json(['error' => \sprintf('Champ « %s » invalide (entrées {%s, venueId: uuid|NEUTRAL} attendues).', $fieldName, $keyField)], Response::HTTP_BAD_REQUEST);
+            }
+            $entries[] = [$keyField => $entry[$keyField], 'venueId' => $venueId];
+        }
+
+        return $entries;
     }
 }

@@ -430,13 +430,13 @@ describe("matches queries — imports/applications en masse", () => {
     await waitFor(() => expect(result.current.latest.isSuccess).toBe(true));
 
     const file = new File(["x"], "fbi.xlsx");
-    // `decisions` OMIS → le hook DOIT passer [] à l'API (le `?? []` de queries.ts) : sans lui,
-    // le multipart n'ajoute pas la clé et le backend traite « aucune décision », ce qui est
-    // justement le comportement voulu — mais c'est queries.ts qui doit poser le défaut.
+    // `decisions`/`venueMappings`/`venueChoices` OMIS → le hook DOIT passer [] à l'API (les
+    // `?? []` de queries.ts) : sans eux, le multipart n'ajoute pas la clé et le backend traite
+    // « aucune décision / aucune salle » — comportement voulu, mais c'est queries.ts qui pose le défaut.
     result.current.importFbi.mutate({ file, mappings: [] });
 
     await waitFor(() => expect(result.current.importFbi.isSuccess).toBe(true));
-    expect(matchesApi.importFbiFixtures).toHaveBeenCalledWith(file, [], []);
+    expect(matchesApi.importFbiFixtures).toHaveBeenCalledWith(file, [], [], [], []);
     await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getCompetitions).toHaveBeenCalledTimes(2));

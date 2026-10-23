@@ -46,14 +46,18 @@ Fonctionnalité: Un club qui démarre en cours de saison valide ses matchs en lo
     Et l'échéance de saisie du championnat n'est pas encore passée
     Alors aucune rencontre n'est validable « validé ligue »
 
-  Scénario: Premier match joué, sans échéance — le championnat a démarré
+  Scénario: Premier match joué, sans échéance — le dépôt valide tout seul
     Un championnat sans échéance renseignée dont le premier match est déjà joué a DÉMARRÉ :
-    il est proposé « validé ligue », sans qu'aucune échéance n'ait à être saisie.
+    appariée au dépôt, sa rencontre datée bascule « validé ligue » toute seule, sans qu'aucune
+    échéance n'ait à être saisie — rien ne reste à proposer au lot. (Depuis « pas de salle
+    appariée, pas d'import », le gymnase est posé dès le dépôt, donc l'auto-validation du
+    championnat commencé s'applique AU DÉPÔT au lieu d'attendre un appariement ultérieur.)
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »
     Quand je dépose un fichier FBI avec un domicile daté dans le passé à « GYM BEHAT »
     Et j'apparie le libellé « GYM BEHAT » au gymnase jetable
-    Alors 1 rencontre est validable « validé ligue » sans qu'aucune échéance ne soit renseignée
+    Alors le domicile passé est « validé ligue »
+    Et aucune rencontre n'est validable « validé ligue »
 
   Scénario: Un amical passé se valide tout seul et n'est jamais proposé au lot
     Un amical dont la date est passée n'a plus rien à confirmer : dès qu'un gestionnaire ouvre

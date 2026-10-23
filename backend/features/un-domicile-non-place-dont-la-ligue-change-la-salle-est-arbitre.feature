@@ -4,7 +4,8 @@ Fonctionnalité: Un domicile non placé dont la ligue change la salle est arbitr
   fédéral) sans être placé pour autant. Si un dépôt suivant nomme une AUTRE salle, l'écart
   n'est jamais réécrit en silence : il est présenté au gestionnaire, qui garde son gymnase
   (le libellé source est mémorisé pour ne plus reposer la question) ou adopte la salle du
-  fichier (l'alias confirmé repose le bon gymnase, sinon la salle remonte « à rattacher »).
+  fichier — qui, depuis « pas de salle appariée, pas d'import », résout toujours vers le
+  gymnase apparié du nouveau libellé, jamais vers une rencontre sans salle.
 
   Scénario: Un dépôt divergent ouvre un écart de salle et laisse le gymnase intact
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur

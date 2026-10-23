@@ -310,6 +310,10 @@ final class FbiCorrectionContext extends BaseContext
         $parts = ['file' => DataPart::fromPath($path)];
         if (null !== $mappings) {
             $parts['mappings'] = json_encode($mappings, \JSON_THROW_ON_ERROR);
+            // Chantier A — le dépôt qui CRÉE le domicile apparie sa salle au gymnase
+            // jetable (« pas de salles appariées, pas d'import ») ; un re-dépôt garde le
+            // gymnase déjà posé → aucun appariement à refournir.
+            $parts['venueMappings'] = json_encode([['label' => self::VENUE_NAME, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR);
         }
         $form = new FormDataPart($parts);
 

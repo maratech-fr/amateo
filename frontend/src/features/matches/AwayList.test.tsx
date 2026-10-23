@@ -19,7 +19,7 @@ const away = (over: Partial<Fixture> = {}): Fixture => ({
   externalRef: null,
   fbiVenueLabel: "Halle Clemenceau",
   placementSource: null,
-  unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null, opponentOrganismeCode: null, opponentTeamKey: null, fbiEcho: null, awayTravel: null, ...over,
+  unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null, opponentOrganismeCode: null, opponentTeamKey: null, fbiEcho: null, awayTravel: null, ...over,
 });
 
 const teams = new Map<string, Team>([["team-1", { id: "team-1", name: "SM2", sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }]]);

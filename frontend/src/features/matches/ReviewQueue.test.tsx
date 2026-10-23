@@ -34,6 +34,7 @@ const homeAmical = {
   fbiVenueLabel: null,
   placementSource: "MANUAL",
   unplacedReason: null,
+  neutralGround: false,
   reviewState: "NEW",
   reviewedAt: null,
   pendingDeviations: [],

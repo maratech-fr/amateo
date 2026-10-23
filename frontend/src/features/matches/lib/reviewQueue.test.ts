@@ -26,6 +26,9 @@ function fx(teamId: string, reviewState: FixtureReviewState, matchDate: string, 
     pendingDeviations: [],
     ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null,
     suggestedVenueId: null,
+    // Chantier A PR 2 — le drapeau « terrain neutre » (FixtureResource l'expose) : par
+    // défaut faux. Un domicile neutre est volontairement sans gymnase, JAMAIS « à rattacher ».
+    neutralGround: false,
     ...extra,
   };
 }
@@ -60,6 +63,8 @@ describe("buildReviewQueue (PR-3b — la file de traitement)", () => {
       fx("t1", "NEW", "2026-11-04", { fbiVenueLabel: null }),
       // Domicile DÉJÀ rattaché (venueId posé) → exclu.
       fx("t1", "NEW", "2026-11-05", { fbiVenueLabel: "MATEO", venueId: "v1" }),
+      // Chantier A PR 2 — terrain neutre (sans gymnase par choix) → exclu du compteur.
+      fx("t1", "NEW", "2026-11-06", { fbiVenueLabel: "GYMNASE ADVERSE", neutralGround: true }),
     ];
     const [q] = buildReviewQueue(fixtures, ["t1"]);
     expect(q.unattachedCount).toBe(2);
@@ -137,5 +142,12 @@ describe("isUnattachedHome (le domicile importé sans gymnase)", () => {
 
   it("venueId déjà posé → false (déjà rattaché)", () => {
     expect(isUnattachedHome(fx("t1", "NEW", "2026-11-01", { fbiVenueLabel: "MATEO", venueId: "v1" }))).toBe(false);
+  });
+
+  // Chantier A PR 2 (D-c/D-f) — un terrain neutre est un domicile SANS gymnase par CHOIX
+  // (« pas chez nous »), jamais une salle à rattacher : il est exclu de isUnattachedHome,
+  // donc du compteur « sans gymnase » et des files à placer.
+  it("terrain neutre (HOME, sans gymnase, drapeau neutralGround) → false (rien à rattacher)", () => {
+    expect(isUnattachedHome(fx("t1", "NEW", "2026-11-01", { fbiVenueLabel: "GYMNASE ADVERSE", neutralGround: true }))).toBe(false);
   });
 });

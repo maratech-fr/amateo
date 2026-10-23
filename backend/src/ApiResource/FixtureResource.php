@@ -17,6 +17,7 @@ use ApiPlatform\OpenApi\Model\Operation as OpenApiOperation;
 use ApiPlatform\OpenApi\Model\RequestBody as OpenApiRequestBody;
 use App\Dto\FixtureInput;
 use App\Entity\Fixture;
+use App\Enum\FixtureUnplacedReason;
 use App\State\Processor\FixtureStateProcessor;
 use App\State\Provider\FixtureStateProvider;
 use ArrayObject;
@@ -169,6 +170,15 @@ class FixtureResource
     public ?string $unplacedReason = null;
 
     /**
+     * Un domicile joué sur TERRAIN NEUTRE (« pas chez nous ») — dérivé de
+     * `unplacedReason` (NEUTRAL_GROUND). Vrai = home sans gymnase du club PAR CHOIX,
+     * jamais une salle à rattacher ni une rencontre à placer. Le front l'AFFICHE
+     * (pastille neutre) et l'exclut du compteur « sans gymnase » et des files à placer.
+     */
+    #[Groups(['read'])]
+    public bool $neutralGround = false;
+
+    /**
      * Le TRAITEMENT de la rencontre (espace « Importer ») : NEW (à traiter) ·
      * OUT_OF_SYNC (déphasée) · REVIEWED (traité). Distinct du statut de placement.
      */
@@ -236,6 +246,7 @@ class FixtureResource
         $dto->opponentOrganismeCode = $entity->getOpponentOrganismeCode();
         $dto->placementSource = $entity->getPlacementSource()?->value;
         $dto->unplacedReason = $entity->getUnplacedReason()?->value;
+        $dto->neutralGround = FixtureUnplacedReason::NEUTRAL_GROUND === $entity->getUnplacedReason();
         $dto->reviewState = $entity->getReviewState()->value;
         $dto->reviewedAt = $entity->getReviewedAt();
         $dto->pendingDeviations = $entity->getPendingDeviations();

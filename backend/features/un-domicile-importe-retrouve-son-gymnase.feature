@@ -1,28 +1,37 @@
 # language: fr
-Fonctionnalité: Un domicile importé retrouve son gymnase depuis le libellé FBI/FFBB
-  Un match à domicile importé porte le libellé de salle de la fédération, mais pas de
-  gymnase du club : il est invisible de la collision de gymnase et de la fermeture. En
-  rattachant une fois le libellé au bon gymnase, le domicile déjà déposé le récupère, et
-  tout dépôt suivant au même libellé est rattaché d'office — sans jamais être placé.
+Fonctionnalité: Pas de salle appariée, pas d'import — ou alors en terrain neutre
+  Un match à domicile importé doit porter un gymnase du club AVANT d'entrer. Au dépôt, le
+  gestionnaire apparie la salle du fichier à l'un de ses gymnases : le domicile naît rattaché
+  (jamais placé), visible de la collision de gymnase et de la fermeture. Une salle laissée sans
+  gymnase fait REFUSER le dépôt — rien n'entre à moitié. Seul le terrain neutre (« pas chez
+  nous », coupe ou playoff hors de nos murs) entre sans gymnase : il reste un domicile, déjà
+  traité, hors de la grille et du placement.
 
-  Scénario: Rattacher un libellé rend le domicile visible de la fermeture du gymnase
+  Scénario: Apparier la salle au dépôt rattache le domicile sans le placer, visible de la fermeture
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable pour les alias
-    Quand je dépose un fichier FBI dont la salle est « GYMNASE BEHAT ALIAS »
-    Alors la rencontre importée n'a pas de gymnase
-    Quand je rattache le libellé « GYMNASE BEHAT ALIAS » au gymnase jetable
+    Quand je dépose un fichier FBI en appariant la salle au gymnase jetable
     Alors la rencontre a son gymnase et reste à placer
-    Quand je re-dépose un autre match au même libellé
-    Alors le nouveau match est rattaché d'office
     Quand le gymnase jetable est fermé à la date des matchs
     Alors un conflit « gymnase indisponible » vise la rencontre
+
+  Scénario: Une salle laissée sans gymnase fait refuser le dépôt
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable pour les alias
+    Quand je dépose un fichier FBI sans apparier sa salle
+    Alors le dépôt est refusé et aucune rencontre n'est créée
+
+  Scénario: Un terrain neutre entre sans gymnase, à domicile et déjà traité
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable pour les alias
+    Quand je dépose un fichier FBI en déclarant sa salle « terrain neutre »
+    Alors la rencontre est à domicile, sans gymnase, en terrain neutre et déjà traitée
 
   Scénario: Ré-affecter un libellé rattaché au mauvais gymnase corrige les non placés sans défaire un placement
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable pour les alias
     Et un deuxième gymnase jetable pour la ré-affectation
-    Quand je dépose un fichier FBI dont la salle est « GYMNASE BEHAT ALIAS »
-    Et je rattache le libellé « GYMNASE BEHAT ALIAS » au gymnase jetable
+    Quand je dépose un fichier FBI en appariant la salle au gymnase jetable
     Et je re-dépose un autre match au même libellé, puis je le place sur le premier gymnase
     Et je ré-affecte le libellé « GYMNASE BEHAT ALIAS » au deuxième gymnase jetable
     Alors le domicile non placé bascule sur le deuxième gymnase

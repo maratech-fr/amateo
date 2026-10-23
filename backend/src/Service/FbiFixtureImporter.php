@@ -18,8 +18,11 @@ use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbRencontreReconciler;
+use App\Service\Basketball\VenueAliasResolver;
+use App\Service\Basketball\VenueExternalLabelAttacher;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Fbi\FbiArrivalReview;
 use App\Service\Fbi\FbiDeviationService;
@@ -99,6 +102,9 @@ final class FbiFixtureImporter
     /** The reconciliation perimeter (RMM-4 D1/D3): only these three home fields become a CHOICE. */
     private const DEVIATION_FIELDS = ['date', 'kickoff', 'venue'];
 
+    /** La sentinelle d'un appariement « terrain neutre » (venueId = 'NEUTRAL' dans venueMappings/venueChoices). */
+    private const string NEUTRAL = 'NEUTRAL';
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
@@ -108,6 +114,8 @@ final class FbiFixtureImporter
         private readonly FbiMappingGuards $mappingGuards,
         private readonly FbiCorrectionLedger $ledger,
         private readonly LeagueValidationOutlook $leagueValidationOutlook,
+        private readonly VenueExternalLabelAttacher $venueLabelAttacher,
+        private readonly VenueAliasResolver $venueAliasResolver,
     ) {}
 
     /**
@@ -122,6 +130,8 @@ final class FbiFixtureImporter
      *     exempted: int,
      *     errors: list<string>,
      *     deviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>,
+     *     venues: list<array{label: string, rowCount: int, confirmedVenueId: string|null, suggestedVenueId: string|null, neutral: bool}>,
+     *     homesWithoutVenue: list<array{division: string, fbiTeamLabel: string|null, rowCount: int}>,
      * }
      */
     public function analyze(string $filePath, Club $club): array
@@ -205,6 +215,10 @@ final class FbiFixtureImporter
             'exempted' => $parsed['exempted'],
             'errors' => $parsed['errors'],
             'deviations' => $this->groupDeviations($records, $persistingSet),
+            // Chantier A PR 2 — les salles à domicile du fichier (par libellé, agrégées) et
+            // les domiciles SANS salle dans le fichier : de quoi apparier dans la modale.
+            'venues' => $this->analyzeHomeVenues($parsed['rows']),
+            'homesWithoutVenue' => $this->analyzeHomesWithoutVenue($groups),
         ];
     }
 
@@ -218,8 +232,19 @@ final class FbiFixtureImporter
      * `unresolvedDeviations` — never an écrasement by default. Every deposit
      * writes a dated {@see FbiIngestion} (freshness + reconciliation trace).
      *
+     * Chantier A PR 2 — « pas de salles appariées, pas d'import » + terrain neutre :
+     * `$venueMappings` (libellé de salle à domicile → gymnase uuid OU 'NEUTRAL') et
+     * `$venueChoices` (division dont des domiciles n'ont PAS de salle → gymnase uuid OU
+     * 'NEUTRAL') sont appliqués AVANT la vérification de couverture ET l'auto-validation.
+     * Un uuid APPARIE le libellé (attach alias + backfill, MAISON {@see VenueExternalLabelAttacher}) ;
+     * 'NEUTRAL' marque les domiciles UNPLACED du libellé/division en terrain neutre. Tant
+     * qu'un domicile IMPORTABLE créé par ce dépôt reste sans gymnase et n'est pas neutre, le
+     * dépôt est REFUSÉ (422 nommant les libellés manquants) AVANT toute écriture de rencontre.
+     *
      * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}> $mappings
-     * @param list<array{fixtureId: string, field: string, choice: string}>                                        $decisions per-écart verdicts from the screen
+     * @param list<array{fixtureId: string, field: string, choice: string}>                                        $decisions     per-écart verdicts from the screen
+     * @param list<array{label: string, venueId: string}>                                                          $venueMappings libellé de salle à domicile → gymnase (uuid) ou 'NEUTRAL'
+     * @param list<array{division: string, venueId: string}>                                                       $venueChoices  division dont un domicile n'a pas de salle → gymnase (uuid) ou 'NEUTRAL'
      *
      * @return array{
      *     created: int,
@@ -235,7 +260,7 @@ final class FbiFixtureImporter
      *     depositedAt: string,
      * }
      */
-    public function import(string $filePath, Club $club, array $mappings, array $decisions = [], ?string $seasonId = null): array
+    public function import(string $filePath, Club $club, array $mappings, array $decisions = [], ?string $seasonId = null, array $venueMappings = [], array $venueChoices = []): array
     {
         $parsed = $this->parseFile($filePath, $club);
         $errors = $parsed['errors'];
@@ -275,6 +300,15 @@ final class FbiFixtureImporter
                 $existingByTeamRef[$existing->getTeamId() . '|' . $existing->getExternalRef()] = $existing;
             }
         }
+
+        // Chantier A PR 2 — on APPLIQUE les appariements (uuid → attach alias + backfill ;
+        // 'NEUTRAL' → mémoire de libellé/division neutre), PUIS on vérifie la couverture :
+        // un domicile importable créé par ce dépôt sans gymnase et non neutre fait refuser
+        // tout le dépôt (422 nommé), AVANT toute écriture de rencontre. Les deux passes
+        // précèdent la création ET l'auto-validation (un gymnase apparié compte « validé
+        // ligue » le même dépôt, un neutre jamais).
+        [$neutralLabels, $neutralDivisions, $venueChoiceVenues] = $this->applyVenueCoverage($club, $seasonId, $venueMappings, $venueChoices);
+        $this->assertImportableHomesHaveVenue($groups, $resolver, $existingByTeamRef, $blockedKeys, $neutralLabels, $neutralDivisions, $venueChoiceVenues);
 
         $created = 0;
         $updated = 0;
@@ -354,11 +388,26 @@ final class FbiFixtureImporter
                 $fixture->setKickoffTime($row['kickoffTime']);
                 $fixture->setExternalRef($row['numero']);
                 $fixture->setFbiVenueLabel($row['venueLabel']);
-                // P4-187a — un domicile dont le libellé égale un alias confirmé
-                // naît AVEC son gymnase (mais UNPLACED : jamais placé d'office).
-                $this->attachConfirmedVenue($fixture, $row['venueLabel']);
-                // P4-199 — extérieur / passé / semaine ISO en cours → naît traité.
-                $this->treatOnArrival($fixture, $now, $club);
+                if (FixtureHomeAway::HOME === $row['homeAway'] && $this->isNeutralHome($row, $group['name'], $neutralLabels, $neutralDivisions)) {
+                    // Chantier A PR 2 (D-c) — terrain neutre (« pas chez nous ») : HOME sans
+                    // gymnase du club PAR CHOIX, naît UNPLACED + TRAITÉ, garde son
+                    // `fbiVenueLabel` (porte de sortie D-e : apparier le libellé plus tard
+                    // le re-rattache). Jamais placé, jamais confié au solveur comme à placer.
+                    $fixture->setUnplacedReason(FixtureUnplacedReason::NEUTRAL_GROUND);
+                    $this->treatOnArrival($fixture, $now, $club);
+                    $fixture->markReviewed($now);
+                } else {
+                    // P4-187a — un domicile dont le libellé égale un alias confirmé naît AVEC
+                    // son gymnase (mais UNPLACED : jamais placé d'office). Un domicile SANS
+                    // salle dans le fichier prend le gymnase choisi dans la modale
+                    // (venueChoices), toujours sans le placer.
+                    $this->attachConfirmedVenue($fixture, $row['venueLabel']);
+                    if (null === $fixture->getVenueId() && null === $row['venueLabel'] && isset($venueChoiceVenues[$group['name']])) {
+                        $fixture->setVenueId($venueChoiceVenues[$group['name']]);
+                    }
+                    // P4-199 — extérieur / passé / semaine ISO en cours → naît traité.
+                    $this->treatOnArrival($fixture, $now, $club);
+                }
                 $this->entityManager->persist($fixture);
                 ++$created;
             }
@@ -867,6 +916,279 @@ final class FbiFixtureImporter
     public function attachConfirmedVenue(Fixture $fixture, ?string $venueLabel): bool
     {
         return $this->deviationService->attachConfirmedVenue($fixture, $venueLabel);
+    }
+
+    /**
+     * Agrège les salles à DOMICILE du fichier par libellé (patron {@see VenueLabelInventory})
+     * : la graphie la plus fréquente, le nombre de matchs, le gymnase confirmé (alias), une
+     * suggestion floue (jamais le confirmé), et si le libellé est DÉJÀ neutre (mémoire dérivée
+     * des rencontres NEUTRE de la saison). Les extérieurs n'entrent jamais. Lecture seule.
+     *
+     * @param list<array{divisionName: string, divisionKey: string, clubLabel: string, clubLabelKey: string, numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}> $rows
+     *
+     * @return list<array{label: string, rowCount: int, confirmedVenueId: string|null, suggestedVenueId: string|null, neutral: bool}>
+     */
+    private function analyzeHomeVenues(array $rows): array
+    {
+        $neutralLabels = $this->derivedNeutralLabels();
+
+        /** @var array<string, array{displayCounts: array<string, int>, rowCount: int}> $byLabel clé NORMALISÉE → agrégat */
+        $byLabel = [];
+        foreach ($rows as $row) {
+            if (FixtureHomeAway::HOME !== $row['homeAway'] || null === $row['venueLabel']) {
+                continue;
+            }
+            $key = $this->normalizeLabel($row['venueLabel']);
+            if ('' === $key) {
+                continue;
+            }
+            if (!isset($byLabel[$key])) {
+                $byLabel[$key] = ['displayCounts' => [], 'rowCount' => 0];
+            }
+            $byLabel[$key]['displayCounts'][$row['venueLabel']] = ($byLabel[$key]['displayCounts'][$row['venueLabel']] ?? 0) + 1;
+            ++$byLabel[$key]['rowCount'];
+        }
+
+        $venues = [];
+        foreach ($byLabel as $key => $group) {
+            $displayCounts = $group['displayCounts'];
+            arsort($displayCounts);
+            $displayLabel = (string) array_key_first($displayCounts);
+
+            $confirmedVenueId = $this->venueAliasResolver->resolveConfirmed($displayLabel);
+            $suggestedVenueId = $this->venueAliasResolver->suggest($displayLabel);
+            if ($suggestedVenueId === $confirmedVenueId) {
+                $suggestedVenueId = null; // rien à suggérer : le confirmé est déjà posé
+            }
+
+            $venues[] = [
+                'label' => $displayLabel,
+                'rowCount' => $group['rowCount'],
+                'confirmedVenueId' => $confirmedVenueId,
+                'suggestedVenueId' => $suggestedVenueId,
+                'neutral' => isset($neutralLabels[$key]),
+            ];
+        }
+
+        usort($venues, static fn (array $a, array $b): int => strcasecmp($a['label'], $b['label']));
+
+        return $venues;
+    }
+
+    /**
+     * Les domiciles SANS salle dans le fichier, par division (grain = le bucket de
+     * {@see groupRows}, label FBI porté seulement quand deux équipes du club partagent la
+     * division). Lecture seule.
+     *
+     * @param list<array{name: string, divisionKey: string, label: string, labelKey: string, multiLabel: bool, rowCount: int, rows: list<array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}>}> $groups
+     *
+     * @return list<array{division: string, fbiTeamLabel: string|null, rowCount: int}>
+     */
+    private function analyzeHomesWithoutVenue(array $groups): array
+    {
+        $rows = [];
+        foreach ($groups as $group) {
+            $count = 0;
+            foreach ($group['rows'] as $row) {
+                if (FixtureHomeAway::HOME === $row['homeAway'] && null === $row['venueLabel']) {
+                    ++$count;
+                }
+            }
+            if ($count > 0) {
+                $rows[] = [
+                    'division' => $group['name'],
+                    'fbiTeamLabel' => $group['multiLabel'] ? $group['label'] : null,
+                    'rowCount' => $count,
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Les libellés NORMALISÉS déjà portés par une rencontre NEUTRE de la saison (mémoire
+     * dérivée, tenant+saison filtrés) — « pré-coché » neutre dans l'analyse ET l'import.
+     *
+     * @return array<string, true>
+     */
+    private function derivedNeutralLabels(): array
+    {
+        $labels = [];
+        foreach ($this->entityManager->getRepository(Fixture::class)->findBy(['unplacedReason' => FixtureUnplacedReason::NEUTRAL_GROUND]) as $neutral) {
+            $label = $neutral->getFbiVenueLabel();
+            if (null !== $label) {
+                $labels[$this->normalizeLabel($label)] = true;
+            }
+        }
+
+        return $labels;
+    }
+
+    /**
+     * Chantier A PR 2 — applique les appariements de salles AVANT la vérification de
+     * couverture et l'auto-validation, et rend la mémoire du terrain neutre :
+     *  - un venueMapping/venueChoice uuid APPARIE (attach alias + backfill, MAISON
+     *    {@see VenueExternalLabelAttacher}) ou pose le gymnase choisi d'une division sans
+     *    salle ; un gymnase étranger/inconnu → 400 ; une garde d'attach → 422 ;
+     *  - 'NEUTRAL' mémorise le libellé (venueMapping) ou la division (venueChoice) comme
+     *    terrain neutre ; un libellé qui est un alias CONFIRMÉ ne peut pas l'être (D-h, 422) ;
+     *  - D-d : les libellés déjà portés par une rencontre NEUTRE de la saison sont ajoutés à
+     *    la mémoire dérivée (un second dépôt au même libellé passe sans mapping).
+     *
+     * @param list<array{label: string, venueId: string}>    $venueMappings
+     * @param list<array{division: string, venueId: string}> $venueChoices
+     *
+     * @return array{0: array<string, true>, 1: array<string, true>, 2: array<string, string>} [neutralLabels (normalisés), neutralDivisions, venueChoiceVenues (division → uuid)]
+     */
+    private function applyVenueCoverage(Club $club, ?string $seasonId, array $venueMappings, array $venueChoices): array
+    {
+        // Le résolveur d'alias mémoïse la liste des gymnases par requête ; un dépôt qui vient
+        // de créer un gymnase (ou un re-dépôt après `em->clear()`) travaillerait sur une liste
+        // périmée/détachée. On la ré-amorce pour que l'appariement + la couverture + la
+        // création lisent les gymnases ACTUELS (alias fraîchement posés compris).
+        $this->venueAliasResolver->reset();
+
+        /** @var array<string, true> $neutralLabels clé NORMALISÉE → true */
+        $neutralLabels = [];
+        /** @var array<string, true> $neutralDivisions nom de division → true */
+        $neutralDivisions = [];
+        /** @var array<string, string> $venueChoiceVenues nom de division → venueId (uuid) */
+        $venueChoiceVenues = [];
+
+        foreach ($venueMappings as $mapping) {
+            $label = $mapping['label'];
+            if (self::NEUTRAL === $mapping['venueId']) {
+                if (null !== $this->venueAliasResolver->resolveConfirmed($label)) {
+                    throw ImportRejectedException::unprocessable(\sprintf('La salle « %s » est déjà un gymnase du club : elle ne peut pas être déclarée « terrain neutre ».', $label));
+                }
+                $neutralLabels[$this->normalizeLabel($label)] = true;
+
+                continue;
+            }
+            // uuid : APPARIE le libellé au gymnase (attach alias + backfill), gardes 422/400.
+            $this->venueLabelAttacher->attach($this->ownedVenueForImport($mapping['venueId'], $club, $seasonId), $label);
+        }
+
+        foreach ($venueChoices as $choice) {
+            if (self::NEUTRAL === $choice['venueId']) {
+                $neutralDivisions[$choice['division']] = true;
+
+                continue;
+            }
+            $venueChoiceVenues[$choice['division']] = $this->ownedVenueForImport($choice['venueId'], $club, $seasonId)->getId();
+        }
+
+        // D-d — mémoire DÉRIVÉE des rencontres neutres déjà en base (tenant+saison filtrés).
+        $neutralLabels += $this->derivedNeutralLabels();
+
+        return [$neutralLabels, $neutralDivisions, $venueChoiceVenues];
+    }
+
+    /**
+     * Le gymnase par id, s'il appartient au club courant ET à la saison d'écriture de l'import —
+     * sinon 400 (un gymnase étranger est invisible sous le filtre tenant). On lit la VRAIE saison
+     * du gymnase ({@see Venue::getSeasonId}) et on la compare à `$seasonId` SANS se reposer sur le
+     * `season_filter` (SEC-13, garde non contournable même si le filtre était désactivé) : les
+     * alias sont copiés au changement de saison, apparier le dépôt courant à un gymnase d'une
+     * autre saison écrirait un alias/rencontre dans la mauvaise saison. L'import n'écrit jamais
+     * chez un autre club/une autre saison et ne crée JAMAIS de gymnase.
+     */
+    private function ownedVenueForImport(string $venueId, Club $club, ?string $seasonId): Venue
+    {
+        $venue = $this->entityManager->getRepository(Venue::class)->find($venueId);
+        if (!$venue instanceof Venue
+            || $venue->getClubId() !== $club->getId()
+            || (null !== $seasonId && $venue->getSeasonId() !== $seasonId)) {
+            throw ImportRejectedException::badRequest('Gymnase introuvable pour cet appariement.');
+        }
+
+        return $venue;
+    }
+
+    /**
+     * Chantier A PR 2 — « pas de salles appariées, pas d'import » : refuse le dépôt (422
+     * nommant les libellés manquants) si un domicile IMPORTABLE CRÉÉ par ce dépôt reste sans
+     * gymnase et n'est pas neutre. Ne concerne QUE les créations (un domicile EXISTANT
+     * dé-placé n'y est pas soumis) et mirroite les sauts de la boucle de création (division
+     * non mappée, mapping refusé, poule bloquante). Lecture seule.
+     *
+     * @param list<array{name: string, divisionKey: string, label: string, labelKey: string, multiLabel: bool, rowCount: int, rows: list<array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}>}> $groups
+     * @param callable(string, string, bool): (Competition|null)                                                                                                                                                                                                                                                $resolver
+     * @param array<string, Fixture>                                                                                                                                                                                                                                                                            $existingByTeamRef
+     * @param array<string, true>                                                                                                                                                                                                                                                                               $blockedKeys
+     * @param array<string, true>                                                                                                                                                                                                                                                                               $neutralLabels
+     * @param array<string, true>                                                                                                                                                                                                                                                                               $neutralDivisions
+     * @param array<string, string>                                                                                                                                                                                                                                                                             $venueChoiceVenues
+     */
+    private function assertImportableHomesHaveVenue(array $groups, callable $resolver, array $existingByTeamRef, array $blockedKeys, array $neutralLabels, array $neutralDivisions, array $venueChoiceVenues): void
+    {
+        /** @var array<string, true> $missing libellés/divisions distincts sans gymnase */
+        $missing = [];
+        /** @var array<string, true> $seen team|ref dedup */
+        $seen = [];
+        foreach ($groups as $group) {
+            $competition = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
+            if (!$competition instanceof Competition) {
+                continue; // non mappée → ni créée ni erreur, rien à couvrir
+            }
+            if (isset($blockedKeys[$group['divisionKey'] . '|' . $group['labelKey']])) {
+                continue; // mapping refusé par le garde → division errorée, pas créée
+            }
+            $guard = $this->mappingGuards->pouleGuard($competition, $group['rows'], $group['name']);
+            if (null !== $guard && $guard['blocking']) {
+                continue; // division bloquée → sautée, pas créée
+            }
+            $teamId = $competition->getTeamId();
+            foreach ($group['rows'] as $row) {
+                if (FixtureHomeAway::HOME !== $row['homeAway']) {
+                    continue;
+                }
+                $key = $teamId . '|' . $row['numero'];
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                if (isset($existingByTeamRef[$key])) {
+                    continue; // domicile EXISTANT : la couverture ne concerne que les créés
+                }
+                if ($this->isNeutralHome($row, $group['name'], $neutralLabels, $neutralDivisions)) {
+                    continue; // neutre : sans gymnase par choix, couvert
+                }
+                if (null !== $row['venueLabel']) {
+                    if (null === $this->venueAliasResolver->resolveConfirmed($row['venueLabel'])) {
+                        $missing[$row['venueLabel']] = true;
+                    }
+
+                    continue; // salle appariée (alias confirmé) → couverte
+                }
+                if (!isset($venueChoiceVenues[$group['name']])) {
+                    $missing[\sprintf('%s (domicile sans salle)', $group['name'])] = true;
+                }
+            }
+        }
+
+        if ([] !== $missing) {
+            throw ImportRejectedException::unprocessable(\sprintf('Chaque salle à domicile doit être associée à un gymnase avant l\'import. Sans gymnase : %s.', implode(', ', array_keys($missing))));
+        }
+    }
+
+    /**
+     * Un domicile du fichier déclaré TERRAIN NEUTRE : son libellé normalisé est dans la
+     * mémoire des libellés neutres, ou (domicile sans salle) sa division est neutre.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param array<string, true>                                                                                                                                                 $neutralLabels
+     * @param array<string, true>                                                                                                                                                 $neutralDivisions
+     */
+    private function isNeutralHome(array $row, string $divisionName, array $neutralLabels, array $neutralDivisions): bool
+    {
+        $label = $row['venueLabel'];
+        if (null !== $label) {
+            return isset($neutralLabels[$this->normalizeLabel($label)]);
+        }
+
+        return isset($neutralDivisions[$divisionName]);
     }
 
     /**

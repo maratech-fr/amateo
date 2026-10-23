@@ -143,7 +143,7 @@ export function ImportPage() {
         <ReviewQueue fixtures={fixtures.data ?? []} teams={teams.data ?? []} venues={venues.data ?? []} />
       </div>
 
-      {importDialogOpen ? <ImportFbiDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setImportDialogOpen(false)} /> : null}
+      {importDialogOpen ? <ImportFbiDialog teams={teams.data ?? []} tiers={tiers.data ?? []} venues={venues.data ?? []} onClose={() => setImportDialogOpen(false)} /> : null}
       {ffbbDialogOpen ? <FfbbEngagementsDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}
     </div>
   );

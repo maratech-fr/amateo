@@ -26,6 +26,7 @@ const fixture: Fixture = {
   fbiVenueLabel: null,
   placementSource: null,
   unplacedReason: null,
+  neutralGround: false,
   reviewState: "NEW" as const,
   reviewedAt: null,
   pendingDeviations: [],

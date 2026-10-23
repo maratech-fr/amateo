@@ -21,6 +21,7 @@ const away = (over: Partial<Fixture> = {}): Fixture => ({
   fbiVenueLabel: null,
   placementSource: null,
   unplacedReason: null,
+  neutralGround: false,
   reviewState: "NEW",
   reviewedAt: null,
   pendingDeviations: [],
