@@ -27,6 +27,6 @@ Fonctionnalité: Le nom que FBI donne à un gymnase
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM ALIAS BEHAT » rattaché à l'alias « SALLE DU 8 MAI »
     Et une rencontre sœur atteste la graphie brute « Salle du 8 Mai » pour ce gymnase
-    Quand je dépose puis place un domicile dans « GYM ALIAS BEHAT » sous le libellé du gymnase
+    Quand je dépose puis place un domicile dans « GYM ALIAS BEHAT » sans salle dans le fichier
     Et la ligue re-dépose la rencontre au libellé « SALLE INCONNUE » et je garde l'appli
     Alors le registre « à corriger dans FBI » propose de taper « Salle du 8 Mai »

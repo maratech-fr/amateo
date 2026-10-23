@@ -155,10 +155,14 @@ final class VenueAliasIdentityContext extends BaseContext
         }
     }
 
-    #[When('je dépose puis place un domicile dans « GYM ALIAS BEHAT » sous le libellé du gymnase')]
-    public function jeDeposeEtPlaceSousLeNomDuGymnase(): void
+    #[When('je dépose puis place un domicile dans « GYM ALIAS BEHAT » sans salle dans le fichier')]
+    public function jeDeposeEtPlaceSansSalle(): void
     {
-        $this->deposeEtPlace(self::VENUE_NAME);
+        // Domicile SANS salle dans le fichier : le gymnase est choisi au dépôt (venueChoices),
+        // la rencontre n'a donc AUCUNE graphie FBI propre. Quand la ligue re-dépose une salle
+        // inconnue et qu'on garde l'appli, le registre doit proposer la graphie brute attestée
+        // par une rencontre SŒUR (« Salle du 8 Mai »), seule graphie confirmée du gymnase.
+        $this->deposeEtPlace('');
     }
 
     #[When('je dépose puis place un domicile dans « GYM ALIAS BEHAT » sous l\'alias « Salle du 8 Mai »')]
@@ -369,11 +373,19 @@ final class VenueAliasIdentityContext extends BaseContext
         $parts = ['file' => DataPart::fromPath($path)];
         if (null !== $mappings) {
             $parts['mappings'] = json_encode($mappings, \JSON_THROW_ON_ERROR);
-            // Chantier A — le dépôt qui CRÉE le domicile apparie sa salle au gymnase
-            // jetable (« pas de salles appariées, pas d'import »). Quand le libellé est
-            // déjà un alias confirmé de ce gymnase, l'appariement est idempotent ; un
-            // re-dépôt (mappings nul) garde le gymnase déjà posé.
-            $parts['venueMappings'] = json_encode([['label' => $salle, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR);
+            // Chantier A — le dépôt qui CRÉE le domicile doit apparier sa salle (« pas de
+            // salles appariées, pas d'import »). Deux voies, selon la salle du fichier :
+            //  - salle NON vide → venueMappings (libellé → gymnase ; idempotent si le libellé
+            //    est déjà un alias confirmé) ;
+            //  - salle VIDE → venueChoices (domicile sans salle → gymnase, posé SANS créer
+            //    d'alias). On n'attache ainsi JAMAIS le NOM du gymnase comme un faux alias FBI :
+            //    la graphie brute proposée au registre reste celle qu'une rencontre SŒUR
+            //    atteste, pas le nom interne Amateo (cause du flake nom-fbi-gymnase:26).
+            if ('' === $salle) {
+                $parts['venueChoices'] = json_encode([['division' => self::DIVISION, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR);
+            } else {
+                $parts['venueMappings'] = json_encode([['label' => $salle, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR);
+            }
         }
         $form = new FormDataPart($parts);
 
