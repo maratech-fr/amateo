@@ -20,6 +20,15 @@ use PHPUnit\Framework\TestCase;
 #[Group('phase1')]
 final class LogoPaletteExtractorTest extends TestCase
 {
+    /**
+     * Logo au format RÉELLEMENT servi par la FFBB : WebP (FfbbLogoFetcher demande
+     * `format=webp`). GD de notre image n'a pas le support WebP à l'écriture — on ne
+     * peut donc pas en fabriquer un ici ; cette fixture est un WebP lossless (VP8L)
+     * 8×8 d'un aplat #3366cc, forgé hors ligne et vérifié décodable (GD recompilé
+     * avec `--with-webp` rend exactement #3366cc).
+     */
+    private const WEBP_3366CC = 'UklGRhoAAABXRUJQVlA4TA0AAAAvB8ABAKhZZ8rc/wIAAA==';
+
     /** @return iterable<string, array{string}> */
     public static function hostileBytes(): iterable
     {
@@ -97,6 +106,37 @@ final class LogoPaletteExtractorTest extends TestCase
     }
 
     /**
+     * Le logo arrive au format RÉELLEMENT servi (WebP) — l'extracteur doit en tirer
+     * sa dominante. Sans support WebP dans le GD de l'image, `imagecreatefromstring`
+     * échoue et l'extraction retombe TOUJOURS sur `gradient_color` en prod : ce test
+     * exige que le WebP soit bel et bien décodé.
+     */
+    public function testARealWorldWebpLogoYieldsItsDominantColour(): void
+    {
+        $bytes = (string) base64_decode(self::WEBP_3366CC, true);
+
+        $pair = (new LogoPaletteExtractor)->extract($bytes);
+
+        self::assertNotNull($pair, 'un logo WebP réel doit être extractible');
+        $this->assertHexNear('#3366cc', $pair[0], 'dominante du WebP');
+    }
+
+    /**
+     * Un logo PNG à PALETTE (non truecolor) doit livrer sa VRAIE dominante. Sur une
+     * image palettisée, `imagecolorat` rend l'INDICE de palette, pas le RGBA : sans
+     * `imagepalettetotruecolor`, la couleur lue est fausse (un indice ras des #000000).
+     */
+    public function testAPaletteBasedPngIsReadAsTrueColourNotPaletteIndices(): void
+    {
+        $bytes = $this->palettePng(16, 16, [0xCC, 0x33, 0x66]);
+
+        $pair = (new LogoPaletteExtractor)->extract($bytes);
+
+        self::assertNotNull($pair, 'un PNG à palette reste extractible');
+        $this->assertHexNear('#cc3366', $pair[0], 'la dominante est la vraie couleur, pas un indice de palette');
+    }
+
+    /**
      * Abus — une image VALIDE dont une dimension dépasse le plafond est refusée
      * AVANT tout décodage (anti-bombe). Témoin falsifiable : un ruban d'un pixel
      * de haut mais trop large se décoderait sans peine si la borne était retirée ;
@@ -167,6 +207,23 @@ final class LogoPaletteExtractorTest extends TestCase
         imagealphablending($img, false);
         imagesavealpha($img, true);
         $painter($img, $w, $h);
+        ob_start();
+        imagepng($img);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($img);
+
+        return $bytes;
+    }
+
+    /**
+     * Construit un PNG à PALETTE (imagecreate, non truecolor) d'un aplat de couleur.
+     *
+     * @param array{int, int, int} $rgb
+     */
+    private function palettePng(int $w, int $h, array $rgb): string
+    {
+        $img = imagecreate($w, $h); // palette, pas truecolor
+        imagecolorallocate($img, $rgb[0], $rgb[1], $rgb[2]); // indice 0 = fond, remplit l'image
         ob_start();
         imagepng($img);
         $bytes = (string) ob_get_clean();

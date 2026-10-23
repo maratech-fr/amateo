@@ -33,6 +33,8 @@ final class FfbbClubPopulatorTest extends KernelTestCase
     private const CLUB_CODE = 'ARA0069036';
     // 1x1 transparent PNG — finfo detects image/png (accepted by FfbbLogoFetcher).
     private const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    // WebP lossless 8×8 d'un aplat #3366cc (format réellement servi par la FFBB) — finfo détecte image/webp.
+    private const WEBP_3366CC = 'UklGRhoAAABXRUJQVlA4TA0AAAAvB8ABAKhZZ8rc/wIAAA==';
 
     private EntityManagerInterface $em;
 
@@ -229,6 +231,27 @@ final class FfbbClubPopulatorTest extends KernelTestCase
         self::assertNull($reloaded?->getAccentColorDark());
     }
 
+    public function testWebpLogoServedByTheFfbbSetsTheExtractedAccentNotTheGradient(): void
+    {
+        // Le format RÉELLEMENT servi par la FFBB est le WebP (FfbbLogoFetcher demande
+        // `format=webp`). Le logo WebP (aplat #3366cc) traverse le VRAI FfbbLogoFetcher
+        // (finfo détecte image/webp, type autorisé) puis l'extracteur : l'accent devient
+        // la dominante extraite, JAMAIS le `gradient_color`. Sans support WebP dans GD,
+        // l'extraction échoue et retombe sur le gradient — c'est le trou que ce test garde.
+        $club = $this->seedClub(self::CLUB_CODE);
+        $populator = $this->buildPopulator(
+            clubHit: $this->hitWithLogo('#c9102e'),
+            clubLogoBytes: (string) base64_decode(self::WEBP_3366CC, true),
+            clubLogoContentType: 'image/webp',
+        );
+
+        self::assertTrue($populator->populate($club));
+
+        $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
+        self::assertNotSame('#c9102e', $reloaded?->getAccentColor(), 'un logo WebP extractible l’emporte sur le gradient FFBB');
+        $this->assertHexNear('#3366cc', (string) $reloaded?->getAccentColor(), 'accent = dominante du logo WebP');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -299,12 +322,13 @@ final class FfbbClubPopulatorTest extends KernelTestCase
     }
 
     /**
-     * @param array<string, mixed>|null $clubHit       override the club search hit (else the BCCL fixture)
-     * @param string|null               $clubLogoBytes override the bytes the logo fetcher returns (else a 1×1 transparent PNG)
+     * @param array<string, mixed>|null $clubHit             override the club search hit (else the BCCL fixture)
+     * @param string|null                $clubLogoBytes       override the bytes the logo fetcher returns (else a 1×1 transparent PNG)
+     * @param string                     $clubLogoContentType Content-Type the asset host serves (FFBB serves WebP)
      *
      * @param-out callable(): int $searchCount
      */
-    private function buildPopulator(mixed &$searchCount = null, ?array $clubHit = null, ?string $clubLogoBytes = null): FfbbClubPopulator
+    private function buildPopulator(mixed &$searchCount = null, ?array $clubHit = null, ?string $clubLogoBytes = null, string $clubLogoContentType = 'image/png'): FfbbClubPopulator
     {
         $searches = 0;
         $api = new FfbbApiClient(new MockHttpClient(function (string $method, string $url, array $options) use (&$searches, $clubHit): MockResponse {
@@ -323,7 +347,7 @@ final class FfbbClubPopulatorTest extends KernelTestCase
 
         $bytes = $clubLogoBytes ?? (string) base64_decode(self::PNG, true);
         $logo = new FfbbLogoFetcher(new MockHttpClient(
-            fn (): MockResponse => new MockResponse($bytes, ['response_headers' => ['content-type' => 'image/png']]),
+            fn (): MockResponse => new MockResponse($bytes, ['response_headers' => ['content-type' => $clubLogoContentType]]),
         ), new NullLogger);
 
         return new FfbbClubPopulator(
