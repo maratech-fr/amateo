@@ -11,6 +11,14 @@ Fonctionnalité: L'import des équipes choisit ses lignes
     Alors l'analyse liste les trois équipes
     Et « BEHAT SF1 » est marquée déjà présente
     Et « BEHAT SM2 » et « BEHAT U13 » ne sont pas marquées déjà présentes
+    Et chaque équipe analysée reçoit un rang et un genre suggérés
+    Et « BEHAT SF1 » est suggérée en genre féminin
+    Et « BEHAT SM2 » est suggérée en genre masculin
+
+  Scénario: La ligne éditée s'importe avec le rang et le genre choisis
+    Étant donné le club de démonstration, connecté, avec son code FFBB
+    Quand j'importe « BEHAT SM2 » en forçant son rang « S » et son genre mixte
+    Alors « BEHAT SM2 » est créée au rang « S » et au genre mixte
 
   Scénario: Seules les lignes cochées s'importent
     Étant donné le club de démonstration, connecté, avec son code FFBB

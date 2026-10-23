@@ -52,6 +52,8 @@ final class TeamsImportContext extends BaseContext
 
     private int $analyzeStatus = 0;
 
+    private int $overrideTierId = 0;
+
     #[Given('le club de démonstration, connecté, avec son code FFBB')]
     public function leClubConnecte(): void
     {
@@ -147,6 +149,84 @@ final class TeamsImportContext extends BaseContext
             if (false !== $this->analyzedRow($name)['alreadyPresent']) {
                 throw new RuntimeException(\sprintf('« %s » est neuve : elle ne devrait PAS être marquée déjà présente', $name));
             }
+        }
+    }
+
+    #[Then('chaque équipe analysée reçoit un rang et un genre suggérés')]
+    public function chaqueEquipeASuggestions(): void
+    {
+        $rows = $this->analyzeJson['rows'] ?? [];
+        foreach (\is_array($rows) ? $rows : [] as $row) {
+            if (!\is_array($row) || !\array_key_exists('suggestedTierId', $row) || !\is_int($row['suggestedTierId'])) {
+                throw new RuntimeException('chaque ligne analysée doit porter un rang suggéré (suggestedTierId entier)');
+            }
+            if (!\array_key_exists('suggestedGender', $row)) {
+                throw new RuntimeException('chaque ligne analysée doit porter un genre suggéré (suggestedGender, éventuellement vide)');
+            }
+        }
+    }
+
+    #[Then('« BEHAT SF1 » est suggérée en genre féminin')]
+    public function sf1GenreFeminin(): void
+    {
+        if ('F' !== ($this->rawAnalyzedRow(self::TEAM_A)['suggestedGender'] ?? null)) {
+            throw new RuntimeException('« BEHAT SF1 » : le genre lu dans le nom devrait être féminin');
+        }
+    }
+
+    #[Then('« BEHAT SM2 » est suggérée en genre masculin')]
+    public function sm2GenreMasculin(): void
+    {
+        if ('M' !== ($this->rawAnalyzedRow(self::TEAM_B)['suggestedGender'] ?? null)) {
+            throw new RuntimeException('« BEHAT SM2 » : le genre lu dans le nom devrait être masculin');
+        }
+    }
+
+    #[When('j\'importe « BEHAT SM2 » en forçant son rang « S » et son genre mixte')]
+    public function jImporteSm2AvecOverride(): void
+    {
+        $this->overrideTierId = (int) $this->dbalScalar(
+            'SELECT id AS behatval FROM priority_tier WHERE label=\'S\' ORDER BY id LIMIT 1',
+            admin: true,
+        );
+        if (0 === $this->overrideTierId) {
+            throw new RuntimeException('le rang « S » n\'est pas seedé — impossible d\'éprouver l\'override');
+        }
+
+        // Fichier : en-tête = ligne 1, BEHAT SF1 = 2, BEHAT SM2 = 3, BEHAT U13 = 4.
+        // On ne coche que la ligne 3 (BEHAT SM2) et on force son rang + son genre.
+        $path = $this->writeTeamsXlsx($this->ffbbCode);
+        [$status, $json] = $this->multipart('import-teams', $path, [
+            'seasonId' => $this->seasonId,
+            'rows' => json_encode([3], \JSON_THROW_ON_ERROR),
+            'overrides' => json_encode([['row' => 3, 'tierId' => $this->overrideTierId, 'gender' => 'MIXTE']], \JSON_THROW_ON_ERROR),
+        ]);
+        @unlink($path);
+        if (200 !== $status) {
+            throw new RuntimeException(\sprintf('l\'import a répondu %d (200 attendu)', $status));
+        }
+        if (1 !== ($json['created'] ?? null)) {
+            throw new RuntimeException(\sprintf('une équipe attendue, created=%s', var_export($json['created'] ?? null, true)));
+        }
+    }
+
+    #[Then('« BEHAT SM2 » est créée au rang « S » et au genre mixte')]
+    public function sm2AuRangSEtMixte(): void
+    {
+        $tierId = (int) $this->dbalScalar(
+            \sprintf('SELECT priority_tier_id AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::TEAM_B),
+            admin: true,
+        );
+        if ($tierId !== $this->overrideTierId) {
+            throw new RuntimeException(\sprintf('« BEHAT SM2 » devrait être au rang S (id %d), lu id %d', $this->overrideTierId, $tierId));
+        }
+
+        $gender = $this->dbalScalar(
+            \sprintf('SELECT gender AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::TEAM_B),
+            admin: true,
+        );
+        if ('MIXTE' !== $gender) {
+            throw new RuntimeException(\sprintf('« BEHAT SM2 » devrait être au genre mixte, lu « %s »', $gender));
         }
     }
 
@@ -253,6 +333,25 @@ final class TeamsImportContext extends BaseContext
         foreach (\is_array($rows) ? $rows : [] as $row) {
             if (\is_array($row) && ($row['name'] ?? null) === $name) {
                 /* @var array{row: int, name: string, category: string, number: string, alreadyPresent: bool} $row */
+                return $row;
+            }
+        }
+
+        throw new RuntimeException(\sprintf('la ligne « %s » est absente de l\'analyse', $name));
+    }
+
+    /**
+     * La ligne analysée d'un nom donné, SANS typage figé — pour lire les champs
+     * suggérés (`suggestedTierId`/`suggestedGender`) que `analyzedRow` ne déclare pas.
+     *
+     * @return array<string, mixed>
+     */
+    private function rawAnalyzedRow(string $name): array
+    {
+        $rows = $this->analyzeJson['rows'] ?? [];
+        foreach (\is_array($rows) ? $rows : [] as $row) {
+            if (\is_array($row) && ($row['name'] ?? null) === $name) {
+                /** @var array<string, mixed> $row */
                 return $row;
             }
         }
