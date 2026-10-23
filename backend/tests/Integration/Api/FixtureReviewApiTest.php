@@ -347,9 +347,19 @@ final class FixtureReviewApiTest extends WebTestCase
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase de la rencontre reste intact');
         self::assertNotNull($reloaded->getPendingDeviation('venue'));
+        // La requête HTTP (en tant que CE club) a laissé les filtres Doctrine tenant/saison
+        // figés sur lui ; `scopeGucToClub` ne déplace que le GUC RLS. On relâche les filtres
+        // pour LIRE le gymnase de l'autre club et prouver qu'il n'a reçu aucun alias (patron
+        // CascadeDeleteApiTest).
         $this->scopeGucToClub($foreignClub->getId());
+        foreach (['tenant_filter', 'season_filter'] as $filter) {
+            if ($this->em->getFilters()->isEnabled($filter)) {
+                $this->em->getFilters()->disable($filter);
+            }
+        }
         $stolen = $this->em->getRepository(Venue::class)->find($foreignVenue);
-        self::assertSame([], $stolen?->getExternalLabels() ?? ['x'], 'le gymnase étranger n\'a reçu aucun alias');
+        self::assertInstanceOf(Venue::class, $stolen, 'le gymnase étranger existe toujours');
+        self::assertSame([], $stolen->getExternalLabels(), 'le gymnase étranger n\'a reçu aucun alias');
     }
 
     public function testInlineVenueChoiceOfAnArchivedSeasonVenueIsRefusedAndWritesNothing(): void
