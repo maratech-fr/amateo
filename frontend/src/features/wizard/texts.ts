@@ -111,6 +111,8 @@ export const WIZARD_TEXTS = {
   venueNameTaken: "Un gymnase porte déjà ce nom — utilisez l'existant, ou choisissez un autre nom.",
   venueAdded: (name: string) => `Gymnase « ${name} » ajouté.`,
   venuesIntro: "Ajoutez vos gymnases, puis cliquez dans la grille pour poser les créneaux de disponibilité (jour + heure). Un gymnase sans créneau ne peut pas être utilisé.",
+  // Chantier G — libellé du bouton d'ouverture de l'import du parc par IA (Équipes ET Gymnases).
+  importParcWithAi: "Importer mon parc avec l'IA",
   addVenuesSectionTitle: "Ajouter des gymnases",
   venueNameLabel: "Nom du gymnase",
   communeCodeLabel: "Commune (code postal)",
