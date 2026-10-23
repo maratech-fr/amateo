@@ -8,6 +8,7 @@ use App\Entity\Fixture;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Exception\ImportRejectedException;
 use App\Service\FbiCorrectionLedger;
 use App\Service\FbiFixtureImporter;
 use App\Service\ManagementAccessGuard;
@@ -95,7 +96,21 @@ final class ReviewFixtureDeviationController extends AbstractController
                 // corrompue, jamais un 500 (revue sécurité PR-3a).
                 return $this->json(['error' => 'La valeur de la source pour cet écart est illisible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
-            $this->importer->applyFieldTakeFile($fixture, $field, $row, $now);
+            // Chantier A PR 4 — appariement INLINE de l'écart de salle : le corps porte un
+            // `venueId` OPTIONNEL (l'uuid d'un gymnase du club OU la sentinelle 'NEUTRAL').
+            // Le foyer partagé décide AVANT toute écriture « est-ce que ça laisserait venueId
+            // null ? » : gymnase introuvable → 404, borne du rattachement/libellé déjà porté
+            // → 422 (relayés depuis {@see ImportRejectedException}), et faute de cible (salle
+            // inconnue sans choix) → rien écrit, 422 nommé, l'écart reste à trancher.
+            $venueChoice = \is_string($body['venueId'] ?? null) ? $body['venueId'] : null;
+            try {
+                $applied = $this->importer->applyFieldTakeFile($fixture, $field, $row, $now, $venueChoice);
+            } catch (ImportRejectedException $e) {
+                return $this->json(['error' => $e->getMessage()], $e->getStatusCode());
+            }
+            if (!$applied) {
+                return $this->json(['error' => 'Cette salle n\'est rattachée à aucun gymnase du club. Choisissez un gymnase, ou « terrain neutre » si le match ne se joue pas chez vous.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
         } else {
             // « Garder l'appli » : l'appli fait foi, FBI est en retard → une entrée
             // « à corriger dans FBI ». (take_source, lui, n'ouvre jamais d'entrée.)

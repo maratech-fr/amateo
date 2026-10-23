@@ -83,6 +83,12 @@ use Symfony\Component\Clock\ClockInterface;
 final class FbiFixtureImporter
 {
     /**
+     * La sentinelle d'un appariement « terrain neutre » (venueId = 'NEUTRAL' dans
+     * venueMappings/venueChoices, mais AUSSI dans un choix inline d'arbitrage de salle,
+     * chantier A PR 4). MAISON UNIQUE de la sentinelle, partagée avec {@see FbiDeviationService}.
+     */
+    public const string NEUTRAL = 'NEUTRAL';
+    /**
      * Header candidates per logical column, normalized. The real export titles
      * « N° de match » (trailing space included) where PR-4 assumed « Numéro » —
      * both are accepted (fact F8: labels are not under our control).
@@ -101,9 +107,6 @@ final class FbiFixtureImporter
 
     /** The reconciliation perimeter (RMM-4 D1/D3): only these three home fields become a CHOICE. */
     private const DEVIATION_FIELDS = ['date', 'kickoff', 'venue'];
-
-    /** La sentinelle d'un appariement « terrain neutre » (venueId = 'NEUTRAL' dans venueMappings/venueChoices). */
-    private const string NEUTRAL = 'NEUTRAL';
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -540,15 +543,19 @@ final class FbiFixtureImporter
      *   cleared) — exactly today's reschedule; the placement is invalidated.
      * - KICKOFF: write the hour IN PLACE (venue kept); a SUBMITTED/VALIDATED
      *   fixture drops to PLACED (D2 — the FBI checkmark was on a wrong hour).
-     * - VENUE: the file names a different room → un-place (venue cleared, raw
-     *   label adopted) so the manager re-places; this makes take_file RESOLVE the
-     *   écart (next deposit: home UNPLACED → file wins, no deviation).
+     * - VENUE: chantier A PR 4 — « prendre le fichier » ne laisse JAMAIS un domicile
+     *   sans gymnase (la promesse). La décision passe par le foyer partagé
+     *   {@see FbiDeviationService::applyFieldTakeFile} : un choix inline (uuid/'NEUTRAL')
+     *   ou l'alias confirmé reposent une salle ; faute de cible, rien n'est écrit.
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param string|null                                                                                                                                                         $venueChoice uuid d'un gymnase choisi inline, la sentinelle {@see self::NEUTRAL}, ou null
+     *
+     * @return bool vrai = appliqué ; faux = salle sans cible, non appliquée (l'écart reste)
      */
-    public function applyFieldTakeFile(Fixture $existing, string $field, array $row, DateTimeImmutable $now): void
+    public function applyFieldTakeFile(Fixture $existing, string $field, array $row, DateTimeImmutable $now, ?string $venueChoice = null): bool
     {
-        $this->deviationService->applyFieldTakeFile($existing, $field, $row, $now);
+        return $this->deviationService->applyFieldTakeFile($existing, $field, $row, $now, $venueChoice);
     }
 
     /**
@@ -626,6 +633,30 @@ final class FbiFixtureImporter
                 continue;
             }
             $map[$decision['fixtureId'] . '|' . $decision['field']] = $decision['choice'];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Chantier A PR 4 — la carte PARALLÈLE « fixtureId|field » → venueId du choix INLINE
+     * d'arbitrage de salle : un uuid de gymnase OU la sentinelle {@see self::NEUTRAL}. Seules
+     * les décisions qui portent un `venueId` figurent ici (les autres suivent l'alias confirmé).
+     * Threadée jusqu'à {@see applyFieldTakeFile} pour que « prendre le fichier » ne laisse
+     * jamais un domicile sans gymnase.
+     *
+     * @param list<array{fixtureId: string, field: string, choice: string, venueId?: string}> $decisions
+     *
+     * @return array<string, string>
+     */
+    public function indexDecisionVenues(array $decisions): array
+    {
+        $map = [];
+        foreach ($decisions as $decision) {
+            if (!\in_array($decision['field'], self::DEVIATION_FIELDS, true) || !isset($decision['venueId']) || '' === $decision['venueId']) {
+                continue;
+            }
+            $map[$decision['fixtureId'] . '|' . $decision['field']] = $decision['venueId'];
         }
 
         return $map;
@@ -746,9 +777,15 @@ final class FbiFixtureImporter
      * @param list<array{type: string, division: string, externalRef: string, message: string}>                                                                                         $warnings
      * @param bool                                                                                                                                                                      $sourceIsAuthoritative décision P4-199 « FBI fait foi » : un champ non tranché est appliqué D'OFFICE (voir {@see sourceIsAuthoritativeForWindow})
      * @param list<string>|null                                                                                                                                                         $scope                 champs dont la boucle de purge des entrées périmées s'occupe (défaut : tous les {@see DEVIATION_FIELDS}) — restreint à `['venue']` pour l'écart salle d'un non placé, sinon la purge effacerait les entrées `autoApplied` date/heure posées le même dépôt
+     * @param array<string, string>                                                                                                                                                     $decisionVenues        chantier A PR 4 — « fixtureId|field » → venueId du choix INLINE (uuid ou {@see self::NEUTRAL}) d'un arbitrage de salle, threadé jusqu'à {@see applyFieldTakeFile}
      */
-    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now, bool $sourceIsAuthoritative = false, ?array $scope = null): bool
+    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now, bool $sourceIsAuthoritative = false, ?array $scope = null, array $decisionVenues = []): bool
     {
+        // Chantier A PR 4 — une salle sans cible connue (ni choix inline ni alias confirmé)
+        // n'est jamais appliquée d'OFFICE dans la fenêtre : « FBI fait foi » sur date/heure,
+        // jamais sur une salle qui laisserait le domicile sans gymnase. Dès qu'un champ reste
+        // un écart à arbitrer, la rencontre est déphasée (jamais « traitée » en silence).
+        $heldBackEcart = false;
         $changed = false;
         // The status the manager SAW — captured before any take_file mutates it.
         $status = $existing->getStatus()->value;
@@ -759,14 +796,21 @@ final class FbiFixtureImporter
                 $persistingSet[$existing->getId() . '|' . $field] = true;
             }
             $choice = $decisions[$existing->getId() . '|' . $field] ?? null;
+            $venueChoice = $decisionVenues[$existing->getId() . '|' . $field] ?? null;
             $effect = 'none';
             if ('take_file' === $choice) {
-                // The only branch that mutates the rencontre DATA → « updated ».
-                $this->applyFieldTakeFile($existing, $field, $row, $now);
-                $warnings[] = $this->takeFileWarning($field, $divisionName, $row);
-                $existing->removePendingDeviation($field);
-                $changed = true;
-                $effect = 'take_file';
+                // The only branch that mutates the rencontre DATA → « updated » — SAUF une
+                // salle sans cible (chantier A PR 4) : « prendre le fichier » laisserait le
+                // domicile sans gymnase, on n'applique RIEN et l'écart reste à trancher.
+                if ($this->applyFieldTakeFile($existing, $field, $row, $now, $venueChoice)) {
+                    $warnings[] = $this->takeFileWarning($field, $divisionName, $row);
+                    $existing->removePendingDeviation($field);
+                    $changed = true;
+                    $effect = 'take_file';
+                } else {
+                    $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, false));
+                    $heldBackEcart = true;
+                }
             } elseif ('keep_app' === $choice) {
                 // Keep the app value: the écart is resolved but NO data changes
                 // (« unchanged » as far as the rencontre content goes).
@@ -781,12 +825,13 @@ final class FbiFixtureImporter
                 // FBI ». Les DEUX canaux (xlsx + API) passent par ce moteur partagé.
                 $this->ledger->open($existing, FbiCorrectionField::from($field), $vals['app'], $vals['file'], $now);
                 $effect = 'keep_app';
-            } elseif ($sourceIsAuthoritative) {
+            } elseif ($sourceIsAuthoritative && $this->applyFieldTakeFile($existing, $field, $row, $now)) {
                 // Décision P4-199 — « FBI fait foi » : la source est appliquée
                 // d'OFFICE (date/salle dé-placent, heure en place), et une entrée
                 // `autoApplied` remplace l'écart à arbitrer pour ALLUMER le bandeau
                 // « la source a déplacé ce match » — la rencontre reste traitée.
-                $this->applyFieldTakeFile($existing, $field, $row, $now);
+                // Chantier A PR 4 — l'application d'office est SAUTÉE pour une salle inconnue
+                // (applyFieldTakeFile rend faux) : branche `else` ci-dessous, l'écart reste.
                 $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, true));
                 // (d) Fenêtre imminente : l'appli s'aligne d'office sur la source — toute
                 // entrée « à corriger dans FBI » de ce champ n'a plus d'objet, elle se ferme.
@@ -794,6 +839,11 @@ final class FbiFixtureImporter
                 $changed = true;
                 $effect = 'take_file';
             } else {
+                if ($sourceIsAuthoritative) {
+                    // « FBI fait foi » mais la SALLE est inconnue : jamais appliquée d'office
+                    // (le domicile garde son gymnase), l'écart reste à arbitrer → déphasé.
+                    $heldBackEcart = true;
+                }
                 $openCorrection = $this->ledger->findOpen($existing, FbiCorrectionField::from($field));
                 if ($openCorrection instanceof FbiCorrection && $this->ledger->stillShowsRecordedValue($openCorrection, $vals['file'])) {
                     // (a) FBI affiche TOUJOURS la valeur d'origine : le gestionnaire a déjà
@@ -830,12 +880,14 @@ final class FbiFixtureImporter
             }
         }
 
-        if ($sourceIsAuthoritative) {
-            // La source a fait foi : les entrées restantes sont toutes `autoApplied`
-            // (bandeau), la rencontre est traitée — on contourne finalizeReview qui
-            // la rangerait OUT_OF_SYNC sur ces pending.
+        if ($sourceIsAuthoritative && !$heldBackEcart) {
+            // La source a fait foi SANS écart retenu : les entrées restantes sont toutes
+            // `autoApplied` (bandeau), la rencontre est traitée — on contourne finalizeReview
+            // qui la rangerait OUT_OF_SYNC sur ces pending.
             $existing->markReviewed($now);
         } else {
+            // Un écart retenu (salle inconnue dans la fenêtre) laisse la rencontre déphasée :
+            // finalizeReview la range OUT_OF_SYNC tant qu'un pending non résolu subsiste.
             $this->finalizeReview($existing, $now);
         }
 

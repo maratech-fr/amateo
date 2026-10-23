@@ -260,6 +260,13 @@ export interface ResolveDeviationInput {
   fixtureId: string;
   field: DeviationField;
   choice: "keep_app" | "take_source";
+  /**
+   * Chantier A PR 4 — l'appariement INLINE d'un écart de SALLE : sur `field: 'venue'` +
+   * `choice: 'take_source'`, l'uuid du gymnase choisi OU la sentinelle `'NEUTRAL'`
+   * (terrain neutre). Le serveur rattache le libellé source au gymnase et pose le venueId —
+   * jamais un domicile laissé sans gymnase.
+   */
+  venueId?: string;
 }
 
 export interface ResolveDeviationResult {

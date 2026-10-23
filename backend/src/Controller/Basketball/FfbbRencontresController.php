@@ -12,6 +12,7 @@ use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\OpponentLocationResolver;
+use App\Service\FbiFixtureImporter;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\ManagementAccessGuard;
@@ -192,10 +193,12 @@ final class FfbbRencontresController extends AbstractController
 
     /**
      * The per-écart verdicts (same shape as the xlsx import): a JSON list of
-     * {fixtureId, field, choice}. Absent = no decision (every écart stays
-     * unresolved and is reported, never overwritten).
+     * {fixtureId, field, choice}, plus un `venueId` OPTIONNEL sur un take_file de
+     * salle (chantier A PR 4) — l'appariement INLINE : l'uuid d'un gymnase OU la
+     * sentinelle {@see FbiFixtureImporter::NEUTRAL}. Absent = no decision (every
+     * écart stays unresolved and is reported, never overwritten).
      *
-     * @return list<array{fixtureId: string, field: string, choice: string}>|JsonResponse
+     * @return list<array{fixtureId: string, field: string, choice: string, venueId?: string}>|JsonResponse
      */
     private function parseDecisions(Request $request): array|JsonResponse
     {
@@ -215,7 +218,17 @@ final class FfbbRencontresController extends AbstractController
             ) {
                 return $this->json(['error' => 'Champ « decisions » invalide (entrées {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} attendues).'], Response::HTTP_BAD_REQUEST);
             }
-            $decisions[] = ['fixtureId' => $entry['fixtureId'], 'field' => $entry['field'], 'choice' => $entry['choice']];
+            $decision = ['fixtureId' => $entry['fixtureId'], 'field' => $entry['field'], 'choice' => $entry['choice']];
+            // Chantier A PR 4 — `venueId` optionnel : un uuid de gymnase OU 'NEUTRAL'. Un
+            // libellé forgé est rejeté ici ; la résolution tenant/saison (404) vit au moteur.
+            $venueId = $entry['venueId'] ?? null;
+            if (null !== $venueId) {
+                if (!\is_string($venueId) || (FbiFixtureImporter::NEUTRAL !== $venueId && 1 !== preg_match(self::UUID_RE, $venueId))) {
+                    return $this->json(['error' => 'Champ « decisions » invalide (venueId attendu : un uuid de gymnase ou « NEUTRAL »).'], Response::HTTP_BAD_REQUEST);
+                }
+                $decision['venueId'] = $venueId;
+            }
+            $decisions[] = $decision;
         }
 
         return $decisions;
