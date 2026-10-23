@@ -6,8 +6,10 @@
 > aperçu cochable de ce qu'elle ferait — sans jamais écrire (§3). **Palier 2 (chantier G PR 2) :
 > import réel.** Le gestionnaire a tranché cet aperçu (coché/décoché, ré-apparié, corrigé) ; l'app
 > bascule les lignes cochées en écriture, en une seule transaction tout-ou-rien (§6).
-> L'écran qui pilote ces décisions depuis l'aperçu et le texte du prompt donné au gestionnaire
-> restent le périmètre de PR suivantes du même chantier (§7).
+> **Palier 3 (chantier G PR 3) : l'écran.** `ParcImportModal`, ouverte depuis les étapes Équipes et
+> Gymnases du wizard (mode saison), porte les quatre temps — prompt à copier, collage, aperçu
+> cochable, import + récap — et génère elle-même le prompt donné au gestionnaire (§7). Reste à ce
+> chantier : la feature Behat qui prouve le parcours bout en bout (§8).
 
 ## 1. Format `parc-v1`
 
@@ -231,8 +233,59 @@ mercredi 18:00 libre), l'équipe préfère (souple) le mercredi : avant l'import
 le mercredi ; après, la réservation importée est un verrou HARD qui pose la séance le lundi malgré
 la préférence contraire. Bloquant — step `ci.yml` et ligne `docs/testing/blocking-tests.md`.
 
-## 7. Hors périmètre de ce chantier (pour l'instant)
+## 7. L'écran — `ParcImportModal` (chantier G PR 3)
 
-Deux PR restent à venir : **l'écran** qui consomme l'aperçu cochable de §3 et pilote les décisions
-de §6 (cocher/décocher, ré-apparier, corriger, déclencher l'import) et **le format du prompt**
-donné au gestionnaire (le texte, collé dans un chatbot externe, qui produit le `parc-v1`).
+Bouton « Importer mon parc avec l'IA » (`WIZARD_TEXTS.importParcWithAi`), affiché au-dessus du
+formulaire d'ajout des étapes **Équipes** (`TeamsStep`/`TeamsEditor`) et **Gymnases**
+(`VenuesStep`/`VenuesEditor`) du wizard — **mode saison seulement** (absent de `PeriodTeams`/
+`PeriodVenues`, même porte que l'import FBI des équipes, P3-7). `ParcImportModal`
+(`frontend/src/features/wizard/parcImport/ParcImportModal.tsx`) est le MÊME composant depuis les
+deux entrées (prop `origin: "teams" | "venues"`, pas encore consommée pour varier le
+comportement) ; il reçoit les équipes/gymnases/coachs déjà saisis (`{id, name}`) pour nourrir le
+prompt et le ré-appariement (point 3 ci-dessous).
+
+Quatre temps, dans une seule modale (jamais plusieurs écrans à cliqueter) :
+
+1. **Prompt** — `buildParcPrompt` (`frontend/src/features/wizard/parcImport/promptTemplate.ts`)
+   dérive le texte depuis `PARC_V1_SPEC`, la source machine-lisible côté front (version, sections
+   requises/optionnelles, énumération de genre, champs par section — gardée en parité avec le
+   validateur, §7.1) : les noms EXACTS déjà saisis sont embarqués pour que l'assistant les
+   réutilise au lieu d'en inventer des variantes, la règle « deux équipes sur la même case =
+   mutualisation ou terrain divisé » est explicite, le champ `categorie` est présenté comme
+   optionnel. `PRODUCT_NAME` (jamais en littéral) nomme l'outil. Bouton « Copier »
+   (`navigator.clipboard`).
+2. **Collage** — zone de texte, bouton « Analyser » qui appelle `useAnalyzeParc` (dry-run §3).
+3. **Aperçu** — une case par ligne (le verdict SERVEUR, affiché verbatim, jamais redérivé),
+   `StatusPill` par statut, la raison serveur en texte, une mise à jour de séances proposée
+   affichée en clair. Deux corrections possibles, amorcées depuis le texte collé réellement
+   envoyé (jamais une valeur inventée côté front) :
+   - un créneau **à créer** (section `creneaux`) peut voir son jour/heure/durée corrigés sur
+     place (`SlotEditor`) ;
+   - une ligne d'ENTITÉ (équipes/gymnases/coachs) dont le statut porte un sélecteur
+     (`apparie`/`suggere`/`aCreer`) peut être **ré-appariée** à une autre entité EXISTANTE ou
+     laissée à « Créer » (D5) — `TeamSelect`/`VenueSelect`/`Listbox` respectivement, valeur `""`
+     = créer, sinon l'id choisi part en `cibleId` à l'import. Une ligne `decoche`/`alerte` n'a
+     jamais de sélecteur : la structure reste à la main.
+   Bandeau si au moins un gymnase naît à créer (« renseignez l'adresse ensuite »). Bouton
+   « Importer N » désactivé à 0 coché, `disabledReason` découvrable (A11Y-30).
+4. **Import + récap** — `useImportParc` poste `{payload, decisions}` (le texte collé RE-PARSÉ,
+   jamais l'aperçu reconstruit) ; au succès, équipes/gymnases/coachs sont invalidés PARTOUT
+   (D-25) ; le récap chiffré par section (§6) s'affiche verbatim.
+
+Décisions d'interaction (passe `ui-ux-pro-max`) : clôture jamais bloquée (dry-run, rien n'est
+écrit avant l'import) sauf pendant un appel en cours (double-soumission désarmée) ; chaque état
+nouveau s'annonce en `aria-live` (`role="status"`) plutôt que de voler le focus ; le toast
+d'erreur vit au niveau HOOK (`mutateOnErrorToastGuard`), jamais passé à `mutate()`.
+
+### 7.1 Parité prompt ⇄ validateur
+
+Le front n'invente aucune règle de format : `PARC_V1_SPEC` est gardée en parité avec
+`ParcPayloadValidator` (§1) par `backend/tests/CrossStack/ParcPromptValidatorParityTest.php`
+(groupe `contract`) — version, sections requises/optionnelles, énumération de genre, champs du
+validateur, dans LES DEUX SENS : une dérive d'un côté sans l'autre rougit avant qu'un chatbot ne
+produise un JSON que le serveur refuse en silence (ou qu'une donnée se perde).
+
+## 8. Hors périmètre de ce chantier (pour l'instant)
+
+Reste à venir (PR 4/4 du même chantier) : la feature Behat qui prouve le parcours bout en bout
+(prompt → collage → aperçu → import → honoré par le vrai moteur).
