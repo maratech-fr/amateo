@@ -221,4 +221,16 @@ idempotent, on ne dévalide jamais]. Le geste chiffré en
 lot reste le RATTRAPAGE [l'échéance qui tombe APRÈS le dépôt]. Sans ce gate, une régression qui cesserait
 de valider au dépôt, ou qui validerait à tort un championnat non commencé / un domicile sans heure / en
 terrain neutre / dévié, passerait tous les checks requis).
+`CrossStack/ParcImportReservationSemanticsGateTest` (axes *constraint semantics* + *generation pipeline*,
+chantier G PR2 — une RÉSERVATION saisie par l'IMPORT DE PARC est HONORÉE par le solveur, de bout en bout :
+texte parc-v1 → import réel (`ParcImportExecutor`) → vrai builder (`ScheduleConstraintBuilder`) → vrai
+moteur `/generate` (contrat 1.5). Une réservation d'équipe pré-génération est un verrou HARD : un gymnase
+a deux cases (lundi 18:00 réservée, mercredi 18:00 libre) et l'équipe PRÉFÈRE (souple) le mercredi —
+AVANT l'import la séance tombe le mercredi, APRÈS la réservation du lundi elle tombe sur la case réservée
+malgré la préférence contraire. TÉMOIN falsifiable dans les deux sens : le MÊME décor résolu AVANT
+l'import suit la préférence (mercredi), donc c'est bien la réservation importée — et elle seule — qui
+déplace la séance ; si l'import cessait d'écrire la réservation ou de la poser HARD au socle
+(`schedulePlanId` null), le second solve retomberait sur le mercredi. Skip propre si le moteur est absent.
+Sans ce gate, un import qui cesserait de poser ses réservations en verrous honorés passerait tous les
+checks requis).
 Detail: `docs/testing/testing-strategy.md`.
