@@ -77,3 +77,34 @@ describe("DurationSelect — durée « Autre… » (D8)", () => {
     expect(ok).toHaveAttribute("title", expect.stringContaining("minuit"));
   });
 });
+
+/**
+ * Retours Rillieux #9 — quand le DÉBUT du créneau est connu (les deux éditeurs, saison ET période,
+ * passent `startTime` à `DurationSelect`), le sélecteur affiche l'heure de FIN « Fin : 18:45 »,
+ * recalculée à chaque changement de durée. Les barres « À poser » n'ont pas encore de début :
+ * sans `startTime`, aucune fin n'est affichée. L'heure vient de `shared/lib/time.ts::endTime`,
+ * jamais assemblée à la main (garde `timeFormatGuard`).
+ *
+ * C'est le foyer qui couvre la PÉRIODE autant que la saison : les deux éditeurs réutilisent ce même
+ * composant avec leur `startTime`/`value` vivants — le réglage de durée repropage ici (promesse 5).
+ */
+describe("DurationSelect — heure de fin affichée (#9)", () => {
+  it("affiche « Fin : 18:45 » pour un début connu et la durée courante", () => {
+    render(<DurationSelect value={75} startTime="17:30" onChange={vi.fn()} aria-label="Durée" />);
+    expect(screen.getByText(/Fin\s*:\s*18:45/)).toBeInTheDocument();
+  });
+
+  it("RECALCULE la fin quand la durée change (75 → 90 min : 18:45 → 19:00)", () => {
+    const { rerender } = render(<DurationSelect value={75} startTime="17:30" onChange={vi.fn()} aria-label="Durée" />);
+    expect(screen.getByText(/Fin\s*:\s*18:45/)).toBeInTheDocument();
+    // Le parent (l'éditeur) a changé la durée : le composant reçoit la nouvelle valeur et refait le calcul.
+    rerender(<DurationSelect value={90} startTime="17:30" onChange={vi.fn()} aria-label="Durée" />);
+    expect(screen.getByText(/Fin\s*:\s*19:00/)).toBeInTheDocument();
+    expect(screen.queryByText(/18:45/)).toBeNull();
+  });
+
+  it("n'affiche PAS de fin tant que le début est inconnu (barre « À poser »)", () => {
+    render(<DurationSelect value={75} onChange={vi.fn()} aria-label="Durée à poser" />);
+    expect(screen.queryByText(/Fin\s*:/)).toBeNull();
+  });
+});
