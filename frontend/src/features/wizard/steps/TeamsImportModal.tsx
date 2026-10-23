@@ -1,13 +1,24 @@
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { FilePicker } from "@/shared/components/ui/file-picker";
 import { Modal } from "@/shared/components/ui/modal";
+import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { snapshotFile } from "@/shared/lib/fileSnapshot";
 import { errorMessage } from "@/shared/lib/errorMessage";
+import { tierGroupLabel } from "@/shared/lib/teamTiers";
 
-import type { TeamImportAnalysis, TeamImportResult } from "../api";
-import { useAnalyzeTeamsImport, useImportTeams } from "../queries";
+import type { Gender, TeamImportAnalysis, TeamImportOverride, TeamImportResult } from "../api";
+import { useAnalyzeTeamsImport, useImportTeams, usePriorityTiers } from "../queries";
+
+/** Les options du contrôle Genre, miroir de `GENDERS` de l'éditeur d'équipes (vide = indéterminé). */
+const GENDER_OPTIONS: { value: Gender | ""; label: string }[] = [
+  { value: "", label: "—" },
+  { value: "M", label: "Homme" },
+  { value: "F", label: "Femme" },
+  { value: "MIXTE", label: "Mixte" },
+];
 
 interface TeamsImportModalProps {
   clubId: string;
@@ -39,6 +50,8 @@ interface TeamsImportModalProps {
 export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModalProps) {
   const analyze = useAnalyzeTeamsImport();
   const importMut = useImportTeams();
+  // Le catalogue des rangs (maison unique côté serveur) : peuple la colonne Rang.
+  const { data: tiers = [] } = usePriorityTiers();
   // Le SNAPSHOT mémoire du fichier (figé à la sélection) : le même objet sert l'analyse
   // ET l'import, immunisé contre un fichier ré-écrit sur disque entre les deux.
   const [file, setFile] = useState<File | null>(null);
@@ -46,6 +59,10 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
   const [result, setResult] = useState<TeamImportResult | null>(null);
   // Numéros de ligne Excel cochés. Les doublons (`alreadyPresent`) naissent DÉCOCHÉS.
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  // Rang + genre édités dans l'aperçu, keyés par numéro de ligne Excel — pré-remplis
+  // par les suggestions du serveur (#4), libres de l'être changés avant l'import.
+  const [tierByRow, setTierByRow] = useState<Record<number, number>>({});
+  const [genderByRow, setGenderByRow] = useState<Record<number, Gender | "">>({});
   const [httpError, setHttpError] = useState<string | null>(null);
 
   const analyzing = analyze.isPending;
@@ -71,6 +88,9 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
           setAnalysis(data);
           // Défaut : tout coché SAUF les déjà-présentes (anti-doublon), cochables à la main.
           setChecked(new Set(data.rows.filter((r) => !r.alreadyPresent).map((r) => r.row)));
+          // Pré-remplissage des colonnes Rang + Genre depuis les suggestions du serveur.
+          setTierByRow(Object.fromEntries(data.rows.map((r) => [r.row, r.suggestedTierId])));
+          setGenderByRow(Object.fromEntries(data.rows.map((r) => [r.row, r.suggestedGender ?? ""])));
         },
         onError: (error) => void errorMessage(error).then(setHttpError),
       },
@@ -97,8 +117,17 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
       return;
     }
     setHttpError(null);
+    const rows = [...checked].sort((a, b) => a - b);
+    // Un override par ligne COCHÉE (rang + genre de l'aperçu) ; une ligne décochée n'en envoie jamais.
+    const overrides: TeamImportOverride[] = (analysis?.rows ?? [])
+      .filter((r) => checked.has(r.row))
+      .map((r) => ({
+        row: r.row,
+        tierId: tierByRow[r.row] ?? r.suggestedTierId,
+        gender: (genderByRow[r.row] ?? r.suggestedGender ?? "") || null,
+      }));
     importMut.mutate(
-      { clubId, seasonId, file, rows: [...checked].sort((a, b) => a - b) },
+      { clubId, seasonId, file, rows, overrides },
       {
         onSuccess: setResult,
         onError: (error) => void errorMessage(error).then(setHttpError),
@@ -137,17 +166,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
               Déposez l'export FBI de la liste de vos équipes (.xlsx, colonnes Nom, Catégorie, Numéro, Organisme). Un
               autre fichier Excel ne sera pas reconnu.
             </p>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Fichier FBI (.xlsx)</span>
-              <input
-                aria-label="Fichier FBI (.xlsx)"
-                type="file"
-                accept=".xlsx"
-                className="text-sm"
-                disabled={analyzing}
-                onChange={(e) => void onFileChange(e.target.files?.[0] ?? null)}
-              />
-            </label>
+            <FilePicker label="Fichier FBI (.xlsx)" accept=".xlsx" disabled={analyzing} onFileChange={(f) => void onFileChange(f)} />
             {analyzing ? (
               <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Spinner className="size-4" />
@@ -172,14 +191,41 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
             </div>
             <ul className="flex flex-col gap-1">
               {rows.map((r) => (
-                <li key={r.row}>
-                  <label className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted">
+                <li key={r.row} className="flex items-center gap-2">
+                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted">
                     <input type="checkbox" className="size-4 shrink-0" checked={checked.has(r.row)} onChange={() => toggle(r.row)} />
-                    <span className="min-w-0 flex-1">
+                    <span className="min-w-0 flex-1 truncate">
                       {r.name} · {r.category}
                       {r.alreadyPresent ? <span className="text-muted-foreground"> — déjà présente</span> : null}
                     </span>
                   </label>
+                  {/* Rang + genre, pré-remplis par le serveur, édités avant l'import (#4). */}
+                  <Select
+                    aria-label={`Rang de ${r.name}`}
+                    compact
+                    wrapperClassName="w-32 shrink-0"
+                    value={String(tierByRow[r.row] ?? r.suggestedTierId)}
+                    onChange={(e) => setTierByRow((prev) => ({ ...prev, [r.row]: Number(e.target.value) }))}
+                  >
+                    {tiers.map((t) => (
+                      <option key={t.id} value={String(t.id)}>
+                        {tierGroupLabel(t)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    aria-label={`Genre de ${r.name}`}
+                    compact
+                    wrapperClassName="w-24 shrink-0"
+                    value={genderByRow[r.row] ?? r.suggestedGender ?? ""}
+                    onChange={(e) => setGenderByRow((prev) => ({ ...prev, [r.row]: e.target.value as Gender | "" }))}
+                  >
+                    {GENDER_OPTIONS.map((g) => (
+                      <option key={g.value} value={g.value}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </Select>
                 </li>
               ))}
             </ul>

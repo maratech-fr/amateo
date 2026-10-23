@@ -8,7 +8,7 @@ import { isScheduleStreamConnected, useScheduleStream } from "@/features/plannin
 import { activeTeams, pausedTeamIds } from "./lib/activeLayer";
 import { WIZARD_TEXTS } from "./texts";
 
-import type { CoachPayload, ConstraintPayload, SlotPayload, Team, TeamCoachRole, TeamPayload, Venue, VenuePayload, VenueTravelTimePayload } from "./api";
+import type { CoachPayload, ConstraintPayload, SlotPayload, Team, TeamCoachRole, TeamImportOverride, TeamPayload, Venue, VenuePayload, VenueTravelTimePayload } from "./api";
 import * as wizardApi from "./api";
 
 /**
@@ -129,8 +129,8 @@ export function useAnalyzeTeamsImport() {
 export function useImportTeams() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ clubId, seasonId, file, rows }: { clubId: string; seasonId: string; file: File; rows: number[] }) =>
-      wizardApi.importTeams(clubId, seasonId, file, rows),
+    mutationFn: ({ clubId, seasonId, file, rows, overrides }: { clubId: string; seasonId: string; file: File; rows: number[]; overrides: TeamImportOverride[] }) =>
+      wizardApi.importTeams(clubId, seasonId, file, rows, overrides),
     onSuccess: () => {
       void invalidateEverywhere(queryClient, "teams");
       void queryClient.invalidateQueries({ queryKey: ["sport_categories"] });

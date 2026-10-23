@@ -351,7 +351,7 @@ final class TeamsImportContext extends BaseContext
         $rows = $this->analyzeJson['rows'] ?? [];
         foreach (\is_array($rows) ? $rows : [] as $row) {
             if (\is_array($row) && ($row['name'] ?? null) === $name) {
-                /** @var array<string, mixed> $row */
+                /* @var array<string, mixed> $row */
                 return $row;
             }
         }

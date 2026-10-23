@@ -101,7 +101,7 @@ describe("TeamsImportModal", () => {
     // toujours câblé, au format JSON-LD réel, pour tous les tests.
     vi.mocked(api.get).mockReset();
     vi.mocked(api.get).mockImplementation(
-      (path: string) =>
+      (path) =>
         ({
           json: () => Promise.resolve(String(path).startsWith("priority_tiers") ? { member: TIERS } : { member: [] }),
         }) as never,

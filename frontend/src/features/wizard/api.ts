@@ -84,6 +84,17 @@ export interface TeamImportRow {
   category: string;
   number: string;
   alreadyPresent: boolean;
+  /** Rang suggéré par le serveur (par catégorie + numéro), pré-remplissant la colonne Rang (#4). */
+  suggestedTierId: number;
+  /** Genre lu dans le nom par le serveur (`null` si aucun motif clair) — jamais MIXTE en auto (#4). */
+  suggestedGender: Gender | null;
+}
+
+/** Le rang + le genre édités dans l'aperçu, envoyés pour chaque ligne COCHÉE (#4). */
+export interface TeamImportOverride {
+  row: number;
+  tierId: number;
+  gender: Gender | null;
 }
 
 /** Le résultat du dry-run : les lignes, les erreurs par ligne, le total lu. */
@@ -116,13 +127,16 @@ export const analyzeTeamsImport = (clubId: string, seasonId: string, file: File)
 /**
  * Import : le MÊME fichier + `seasonId` + la liste des numéros de ligne cochés (`rows`,
  * JSON — la modale l'envoie TOUJOURS, patron du champ « mappings »/« rows » de l'import
- * rencontres). Les équipes naissent rang D · 2 séances · genre/niveau vides, à compléter.
+ * rencontres) + un `overrides` par ligne cochée (rang + genre édités dans l'aperçu, #4).
+ * Les équipes naissent 2 séances · niveau vide ; rang + genre viennent de l'override
+ * (défaut serveur sinon : rang D, genre vide).
  */
-export const importTeams = (clubId: string, seasonId: string, file: File, rows: number[]): Promise<TeamImportResult> => {
+export const importTeams = (clubId: string, seasonId: string, file: File, rows: number[], overrides: TeamImportOverride[]): Promise<TeamImportResult> => {
   const form = new FormData();
   form.append("file", file);
   form.append("seasonId", seasonId);
   form.append("rows", JSON.stringify(rows));
+  form.append("overrides", JSON.stringify(overrides));
   return api.post(`clubs/${clubId}/import-teams`, { body: form }).json<TeamImportResult>();
 };
 

@@ -171,12 +171,12 @@ final class FfbbExcelImporterTest extends KernelTestCase
         self::assertSame(3, $result['total']);
         self::assertSame([], $result['errors']);
         self::assertSame(
-            ['row' => 2, 'name' => 'SF1', 'category' => 'Seniors', 'number' => '6', 'alreadyPresent' => true],
+            ['row' => 2, 'name' => 'SF1', 'category' => 'Seniors', 'number' => '6', 'alreadyPresent' => true, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'F'],
             $result['rows'][0],
             'le numéro de ligne est celui d\'Excel (en-tête = ligne 1), et SF1 est déjà en base',
         );
         self::assertSame(
-            ['row' => 3, 'name' => 'SM1', 'category' => 'Seniors', 'number' => '1', 'alreadyPresent' => false],
+            ['row' => 3, 'name' => 'SM1', 'category' => 'Seniors', 'number' => '1', 'alreadyPresent' => false, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'M'],
             $result['rows'][1],
         );
         self::assertSame(4, $result['rows'][2]['row']);
