@@ -12,6 +12,7 @@ use App\Repository\Basketball\FfbbLeagueRepository;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbClubPopulator;
 use App\Service\Basketball\FfbbLogoFetcher;
+use App\Service\Basketball\LogoPaletteExtractor;
 use App\Storage\LogoStorage;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -163,10 +164,127 @@ final class FfbbClubPopulatorTest extends KernelTestCase
         self::assertSame('0643720140', $reloaded?->getContactPhone());
     }
 
+    public function testBlackAndWhiteLogoSetsTheDominantAsAccentAndAReadableDarkAccent(): void
+    {
+        // Promesses 1 + 2 : la dominante du logo (sombre) devient l'accent — JAMAIS
+        // le `gradient_color` FFBB tant que le logo est extractible — et la 2e couleur
+        // (claire) devient l'accent sombre car elle clear AA (4,5:1) face aux DEUX
+        // surfaces du thème sombre (bg #151311, card #1f1d1a, cf. shared/lib/color.ts).
+        // Reproduit le cas réel de Rillieux (#1d1d1d / #eeeeee).
+        $club = $this->seedClub(self::CLUB_CODE);
+        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: self::darkWithLightCorner());
+
+        self::assertTrue($populator->populate($club));
+
+        $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
+        self::assertNotSame('#c9102e', $reloaded?->getAccentColor(), 'le logo extractible l’emporte sur le gradient FFBB');
+        self::assertHexNear('#101010', (string) $reloaded?->getAccentColor(), 'dominante sombre → accent');
+        self::assertHexNear('#f0f0f0', (string) $reloaded?->getAccentColorDark(), 'seconde claire lisible → accent sombre');
+    }
+
+    public function testSecondColourTooDarkForTheDarkThemeLeavesTheDarkAccentNull(): void
+    {
+        // Promesse 2 (envers) : une 2e couleur trop SOMBRE échoue l'AA face aux surfaces
+        // sombres → `accentColorDark` reste null (le front garde sa dérivation par contraste).
+        $club = $this->seedClub(self::CLUB_CODE);
+        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: self::lightWithDarkCorner());
+
+        self::assertTrue($populator->populate($club));
+
+        $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
+        self::assertHexNear('#f0f0f0', (string) $reloaded?->getAccentColor(), 'dominante claire → accent');
+        self::assertNull($reloaded?->getAccentColorDark(), 'seconde trop sombre pour le thème sombre → pas d’accent sombre');
+    }
+
+    public function testAChosenAccentIsNeverOverwrittenByLogoExtractionEvenOnRefresh(): void
+    {
+        // Promesse 3 : un accent choisi par le club n'est JAMAIS écrasé, même quand
+        // « Actualiser depuis la FFBB » rapporte un logo extractible. Complète
+        // testRefreshDoesNotWipeManuallyEnteredFields (lui sans logo) par le chemin AVEC logo.
+        $club = $this->seedClub(self::CLUB_CODE);
+        $club->setAccentColor('#123456');
+        $this->em->flush();
+
+        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: self::darkWithLightCorner());
+        self::assertTrue($populator->populate($club, refresh: true));
+
+        $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
+        self::assertSame('#123456', $reloaded?->getAccentColor(), 'accent choisi préservé malgré un logo extractible');
+        self::assertNull($reloaded?->getAccentColorDark(), 'le bloc d’extraction est entièrement sauté quand un accent existe');
+    }
+
+    public function testAnUnextractableLogoKeepsTheFfbbGradientFallback(): void
+    {
+        // Promesse 4 : extraction impossible (logo 1×1 transparent, aucun pixel opaque)
+        // → on garde le repli actuel `gradient_color`, sans bruit. Même chemin que
+        // testPopulateMapsAllFieldsAndReferences (logo transparent du décor BCCL), nommé ici.
+        $club = $this->seedClub(self::CLUB_CODE);
+        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#00AA55'));
+
+        self::assertTrue($populator->populate($club));
+
+        $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
+        self::assertSame('#00aa55', $reloaded?->getAccentColor(), 'repli gradient FFBB quand le logo n’est pas extractible');
+        self::assertNull($reloaded?->getAccentColorDark());
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /** @return array<string, mixed> club search hit carrying a logo id + gradient fallback */
+    private function hitWithLogo(string $gradient): array
+    {
+        return ['code' => self::CLUB_CODE, 'nom' => 'CLUB AU LOGO', 'logo' => ['id' => '076ee1ea-3e09-43b5-9552-d029a95a4a35', 'gradient_color' => $gradient]];
+    }
+
+    /** PNG majoritairement sombre (#101010) avec un coin clair (#f0f0f0) minoritaire. */
+    private static function darkWithLightCorner(): string
+    {
+        return self::png(40, 40, static function ($img, int $w, int $h): void {
+            imagefilledrectangle($img, 0, 0, $w - 1, $h - 1, (int) imagecolorallocate($img, 16, 16, 16));
+            imagefilledrectangle($img, 0, 0, $w - 1, (int) ($h / 10) - 1, (int) imagecolorallocate($img, 240, 240, 240));
+        });
+    }
+
+    /** PNG majoritairement clair (#f0f0f0) avec un coin sombre (#202020) minoritaire. */
+    private static function lightWithDarkCorner(): string
+    {
+        return self::png(40, 40, static function ($img, int $w, int $h): void {
+            imagefilledrectangle($img, 0, 0, $w - 1, $h - 1, (int) imagecolorallocate($img, 240, 240, 240));
+            imagefilledrectangle($img, 0, 0, $w - 1, (int) ($h / 10) - 1, (int) imagecolorallocate($img, 32, 32, 32));
+        });
+    }
+
+    /**
+     * Construit un PNG en mémoire avec GD (aucun binaire en dépôt).
+     *
+     * @param callable(\GdImage, int, int): void $painter
+     */
+    private static function png(int $w, int $h, callable $painter): string
+    {
+        $img = imagecreatetruecolor($w, $h);
+        $painter($img, $w, $h);
+        ob_start();
+        imagepng($img);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($img);
+
+        return $bytes;
+    }
+
+    private static function assertHexNear(string $expected, string $actual, string $message = ''): void
+    {
+        $e = (int) hexdec(ltrim($expected, '#'));
+        $a = (int) hexdec(ltrim($actual, '#'));
+        $delta = max(
+            abs((($e >> 16) & 0xFF) - (($a >> 16) & 0xFF)),
+            abs((($e >> 8) & 0xFF) - (($a >> 8) & 0xFF)),
+            abs(($e & 0xFF) - ($a & 0xFF)),
+        );
+        self::assertLessThanOrEqual(48, $delta, \sprintf('%s (%s attendu, %s obtenu)', $message, $expected, $actual));
     }
 
     private function seedClub(string $code): Club
@@ -180,11 +298,12 @@ final class FfbbClubPopulatorTest extends KernelTestCase
     }
 
     /**
-     * @param array<string, mixed>|null $clubHit override the club search hit (else the BCCL fixture)
+     * @param array<string, mixed>|null $clubHit       override the club search hit (else the BCCL fixture)
+     * @param string|null                $clubLogoBytes override the bytes the logo fetcher returns (else a 1×1 transparent PNG)
      *
      * @param-out callable(): int $searchCount
      */
-    private function buildPopulator(mixed &$searchCount = null, ?array $clubHit = null): FfbbClubPopulator
+    private function buildPopulator(mixed &$searchCount = null, ?array $clubHit = null, ?string $clubLogoBytes = null): FfbbClubPopulator
     {
         $searches = 0;
         $api = new FfbbApiClient(new MockHttpClient(function (string $method, string $url, array $options) use (&$searches, $clubHit): MockResponse {
@@ -201,8 +320,9 @@ final class FfbbClubPopulatorTest extends KernelTestCase
             return $searches;
         };
 
+        $bytes = $clubLogoBytes ?? (string) base64_decode(self::PNG, true);
         $logo = new FfbbLogoFetcher(new MockHttpClient(
-            fn (): MockResponse => new MockResponse((string) base64_decode(self::PNG, true), ['response_headers' => ['content-type' => 'image/png']]),
+            fn (): MockResponse => new MockResponse($bytes, ['response_headers' => ['content-type' => 'image/png']]),
         ), new NullLogger);
 
         return new FfbbClubPopulator(
@@ -213,6 +333,7 @@ final class FfbbClubPopulatorTest extends KernelTestCase
             self::getContainer()->get(FfbbCommitteeRepository::class),
             $this->em,
             new NullLogger,
+            new LogoPaletteExtractor,
         );
     }
 
