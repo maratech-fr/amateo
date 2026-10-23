@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace App\Service\ParcImport;
 
+use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\Reservation;
+use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
+use App\Entity\Venue;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\PlanEntitlements;
+use App\Service\SoloReservationBudget;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -46,20 +53,26 @@ final class ParcImportAnalyzer
         private readonly EntityManagerInterface $entityManager,
         private readonly VenueAliasResolver $venueResolver,
         private readonly VenueLabelNormalizer $normalizer,
+        private readonly SoloReservationBudget $soloReservationBudget,
+        private readonly PlanEntitlements $planEntitlements,
     ) {}
 
     /**
-     * @param array<string, mixed> $parc le parc décodé, déjà validé en FORME
+     * @param array<string, mixed> $parc     le parc décodé, déjà validé en FORME
+     * @param string               $seasonId la saison résolue ('' si aucune) — pour le cap payant
+     *                                       et le rejeu des gardes de mutualisation
      *
      * @return array{format: string, recap: array<string, array<string, int>>, sections: array<string, list<array<string, mixed>>>}
      */
-    public function analyze(array $parc): array
+    public function analyze(array $parc, Club $club, string $seasonId): array
     {
+        $season = '' !== $seasonId ? $this->entityManager->find(Season::class, $seasonId) : null;
+
         $sections = [
-            'equipes' => $this->analyzeTeams($this->section($parc, 'equipes')),
+            'equipes' => $this->analyzeTeams($this->section($parc, 'equipes'), $club, $season),
             'gymnases' => $this->analyzeVenues($this->section($parc, 'gymnases')),
             'creneaux' => $this->analyzeSlots($this->section($parc, 'creneaux')),
-            'mutualisations' => $this->analyzeMutualisations($this->section($parc, 'mutualisations')),
+            'mutualisations' => $this->analyzeMutualisations($this->section($parc, 'mutualisations'), $club->getId(), $seasonId),
             'coachs' => $this->analyzeCoaches($this->section($parc, 'coachs')),
             'reservations' => $this->analyzeReservations(
                 $this->section($parc, 'reservations'),
@@ -93,14 +106,19 @@ final class ParcImportAnalyzer
      *
      * @return list<array<string, mixed>>
      */
-    private function analyzeTeams(array $teams): array
+    private function analyzeTeams(array $teams, Club $club, ?Season $season): array
     {
         $byId = [];
         foreach ($this->activeTeams() as $team) {
             $byId[$team->getId()] = $team;
         }
 
-        $out = [];
+        // On calcule d'abord le verdict d'appariement de chaque ligne, puis on applique le cap
+        // payant aux SEULES lignes « à créer » (une équipe appariée existe déjà, elle ne consomme
+        // aucune place neuve). Le cap vient du MÊME foyer que le refus d'écriture (PlanEntitlements) :
+        // les équipes en surplus sont DÉCOCHÉES avec une raison qui nomme l'offre — dire par ligne
+        // lesquelles ne seront pas créées, plutôt qu'une alerte de récap sans ancrage.
+        $rows = [];
         foreach ($teams as $i => $entry) {
             $nom = $this->stringField($entry, 'nom');
             [$statut, $cibleId, $raison] = $this->poolVerdict($nom, $this->teamPool());
@@ -114,10 +132,56 @@ final class ParcImportAnalyzer
                 }
             }
 
-            $out[] = $this->line($i, $nom, $statut, $cibleId, $raison, $extra);
+            $rows[] = ['index' => $i, 'nom' => $nom, 'statut' => $statut, 'cibleId' => $cibleId, 'raison' => $raison, 'extra' => $extra];
         }
 
-        return $out;
+        $this->applyTeamCap($rows, $club, $season);
+
+        return array_map(
+            fn (array $row): array => $this->line($row['index'], $row['nom'], $row['statut'], $row['cibleId'], $row['raison'], $row['extra']),
+            $rows,
+        );
+    }
+
+    /**
+     * Passe les équipes « à créer » au-delà des places restantes de l'offre en DÉCOCHÉ, avec le
+     * message de l'offre. `remainingTeamSlots` null = offre illimitée → rien à borner. La raison
+     * réutilise {@see PlanEntitlements::teamCapExceededMessage} (le même texte que le refus à
+     * l'écriture, même palier supérieur nommé).
+     *
+     * @param list<array{index: int, nom: string, statut: string, cibleId: string|null, raison: string|null, extra: array<string, mixed>}> $rows
+     */
+    private function applyTeamCap(array &$rows, Club $club, ?Season $season): void
+    {
+        if (!$season instanceof Season) {
+            return;
+        }
+        $remaining = $this->planEntitlements->remainingTeamSlots($club, $season);
+        if (null === $remaining) {
+            return;
+        }
+
+        $toCreate = \count(array_filter($rows, static fn (array $row): bool => 'aCreer' === $row['statut']));
+        if ($toCreate <= $remaining) {
+            return;
+        }
+
+        $message = $this->planEntitlements->teamCapExceededMessage($club, $season, $toCreate)
+            ?? 'Le nombre d\'équipes dépasse la limite de votre offre.';
+        $allowed = $remaining;
+        foreach ($rows as &$row) {
+            if ('aCreer' !== $row['statut']) {
+                continue;
+            }
+            if ($allowed > 0) {
+                --$allowed;
+                continue;
+            }
+            $row['statut'] = 'decoche';
+            $row['cibleId'] = null;
+            $row['raison'] = $message;
+        }
+        unset($row);
     }
 
     /**
@@ -156,6 +220,10 @@ final class ParcImportAnalyzer
                 $out[] = $this->line($i, $libelle, 'alerte', null, 'Ce créneau en chevauche un autre du même gymnase le même jour — à trancher à la main.');
                 continue;
             }
+            if ($this->splitOnNonSplittableVenue($slot)) {
+                $out[] = $this->line($i, $libelle, 'alerte', null, 'Ce créneau accueille 2 équipes ou plus, mais le gymnase existant n\'est pas déclaré divisible — rendez-le divisible ou ramenez la capacité à 1.');
+                continue;
+            }
             $out[] = $this->line($i, $libelle, 'aCreer', null, null);
         }
 
@@ -163,19 +231,138 @@ final class ParcImportAnalyzer
     }
 
     /**
+     * La garde de capacité ({@see VenueTrainingSlotStateProcessor}) rejouée au dry-run : une
+     * capacité ≥ 2 n'est permise que sur un gymnase divisible. On ne l'applique qu'à un gymnase
+     * qui EXISTE DÉJÀ et dont `canSplit` est false ; un gymnase À CRÉER dérivera `canSplit` de la
+     * capacité demandée (il naîtra divisible), donc aucune alerte — sinon on bloquerait un terrain
+     * qu'on s'apprête justement à créer divisible.
+     */
+    private function splitOnNonSplittableVenue(mixed $slot): bool
+    {
+        if (!\is_array($slot)) {
+            return false;
+        }
+        $parallel = $slot['equipes_en_parallele'] ?? null;
+        if (!\is_int($parallel) || $parallel < 2) {
+            return false;
+        }
+
+        $venueId = $this->resolveVenueId($this->stringField($slot, 'gymnase'));
+        if (null === $venueId) {
+            return false; // gymnase à créer : canSplit dérivé, jamais une alerte
+        }
+
+        $venue = $this->entityManager->find(Venue::class, $venueId);
+
+        return $venue instanceof Venue && !$venue->getCanSplit();
+    }
+
+    /**
      * @param list<mixed> $mutualisations
      *
      * @return list<array<string, mixed>>
      */
-    private function analyzeMutualisations(array $mutualisations): array
+    private function analyzeMutualisations(array $mutualisations, string $clubId, string $seasonId): array
     {
+        $existingBlocks = '' !== $seasonId ? $this->socleBlocks($clubId, $seasonId) : [];
+
         $out = [];
         foreach ($mutualisations as $i => $entry) {
-            $libelle = $this->stringField($entry, 'libelle');
+            $libelle = $this->mutualisationLabel($entry);
+            $teamNames = \is_array($entry) ? $this->stringList($entry['equipes'] ?? null) : [];
+            $commonSessions = \is_array($entry) && \is_int($entry['seances_communes'] ?? null) ? $entry['seances_communes'] : 1;
+
+            // Appariement : un groupe dont l'ensemble d'équipes RÉSOUT exactement un bloc existant
+            // s'apparie à ce bloc. Si une équipe membre reste à créer, aucun bloc ne peut matcher.
+            $teamIds = [];
+            $allResolved = true;
+            foreach ($teamNames as $name) {
+                $id = $this->resolveTeamId($name);
+                if (null === $id) {
+                    $allResolved = false;
+                } else {
+                    $teamIds[] = $id;
+                }
+            }
+
+            $matchedBlockId = null;
+            if ($allResolved && [] !== $teamIds) {
+                $set = $this->sortedUnique($teamIds);
+                foreach ($existingBlocks as $block) {
+                    if ($block['members'] === $set) {
+                        $matchedBlockId = $block['blockId'];
+                        break;
+                    }
+                }
+            }
+
+            // Garde du bloc (Σ séances communes ≤ séances d'un membre) rejouée depuis sa MAISON
+            // ({@see SoloReservationBudget}, celle que SharedTrainingBlockStateProcessor consulte) :
+            // une violation passe en alerte, jamais un 500.
+            if ($allResolved && [] !== $teamIds && '' !== $seasonId
+                && $this->blockExceedsMemberSessions($teamIds, $clubId, $seasonId, $commonSessions, $matchedBlockId)) {
+                $out[] = $this->line($i, $libelle, 'alerte', null, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes — à ajuster à la main.');
+                continue;
+            }
+
+            if (null !== $matchedBlockId) {
+                $out[] = $this->line($i, $libelle, 'apparie', $matchedBlockId, null);
+                continue;
+            }
             $out[] = $this->line($i, $libelle, 'aCreer', null, null);
         }
 
         return $out;
+    }
+
+    /**
+     * Les blocs de mutualisation du SOCLE (plan null) avec leur ensemble d'équipes trié — pour
+     * apparier un groupe du parc à un bloc déjà formé.
+     *
+     * @return list<array{blockId: string, members: list<string>}>
+     */
+    private function socleBlocks(string $clubId, string $seasonId): array
+    {
+        $blocks = $this->entityManager->getRepository(SharedTrainingBlock::class)
+            ->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null]);
+        $memberRepository = $this->entityManager->getRepository(SharedTrainingBlockTeam::class);
+
+        $out = [];
+        foreach ($blocks as $block) {
+            $members = [];
+            foreach ($memberRepository->findBy(['blockId' => $block->getId()]) as $member) {
+                $members[] = $member->getTeamId();
+            }
+            $out[] = ['blockId' => $block->getId(), 'members' => $this->sortedUnique($members)];
+        }
+
+        return $out;
+    }
+
+    /**
+     * La garde centrale B(T) ≤ S(T) rejouée pour un bloc proposé : vraie si, pour une équipe du
+     * groupe, la somme des séances communes de ses blocs (celui-ci substitué) dépasse ses séances
+     * effectives. Délègue au foyer unique {@see SoloReservationBudget::forTeamsWithBlockSubstituted}.
+     *
+     * @param list<string> $teamIds
+     */
+    private function blockExceedsMemberSessions(array $teamIds, string $clubId, string $seasonId, int $commonSessions, ?string $matchedBlockId): bool
+    {
+        $budgets = $this->soloReservationBudget->forTeamsWithBlockSubstituted(
+            $teamIds,
+            $clubId,
+            $seasonId,
+            null,
+            $matchedBlockId,
+            $commonSessions,
+        );
+        foreach ($budgets as $budget) {
+            if ($budget->block > $budget->effective) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -536,6 +723,51 @@ final class ParcImportAnalyzer
         $debut = $this->stringField($reservation, 'debut');
 
         return trim($equipe . ' · ' . $gym . ' ' . $debut);
+    }
+
+    private function mutualisationLabel(mixed $mutualisation): string
+    {
+        $teams = \is_array($mutualisation) ? $this->stringList($mutualisation['equipes'] ?? null) : [];
+        if ([] !== $teams) {
+            return implode(' + ', $teams);
+        }
+
+        return $this->stringField($mutualisation, 'gymnase');
+    }
+
+    /**
+     * Les chaînes non vides d'une valeur brute (ignore le reste) — pour lire une liste de noms
+     * d'équipes sans dépendre de sa validité de forme.
+     *
+     * @return list<string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (\is_string($item) && '' !== trim($item)) {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<string> $ids
+     *
+     * @return list<string>
+     */
+    private function sortedUnique(array $ids): array
+    {
+        $ids = array_values(array_unique($ids));
+        sort($ids);
+
+        return $ids;
     }
 
     /**

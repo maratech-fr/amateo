@@ -72,7 +72,12 @@ final class ParcImportAnalyzeController extends AbstractController
             return $this->json(['errors' => $countErrors], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        return $this->json($this->analyzer->analyze($parc), Response::HTTP_OK);
+        $seasonId = $request->attributes->get('_season_id');
+
+        return $this->json(
+            $this->analyzer->analyze($parc, $club, \is_string($seasonId) ? $seasonId : ''),
+            Response::HTTP_OK,
+        );
     }
 
     /**
