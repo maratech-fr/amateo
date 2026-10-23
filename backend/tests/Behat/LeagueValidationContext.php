@@ -205,12 +205,6 @@ final class LeagueValidationContext extends BaseContext
         }
     }
 
-    #[Then('1 rencontre est validable « validé ligue » sans qu\'aucune échéance ne soit renseignée')]
-    public function uneRencontreValidableSansEcheance(): void
-    {
-        $this->assertCount(1);
-    }
-
     #[Then('l\'amical passé est « validé ligue »')]
     public function lAmicalPasseEstValide(): void
     {
@@ -389,6 +383,12 @@ final class LeagueValidationContext extends BaseContext
         $parts = ['file' => DataPart::fromPath($path)];
         if (null !== $mappings) {
             $parts['mappings'] = json_encode($mappings, \JSON_THROW_ON_ERROR);
+            // Chantier A — « pas de salle appariée, pas d'import » : tout domicile du décor
+            // joue à « GYM BEHAT », on apparie donc ce libellé au gymnase jetable DANS le
+            // dépôt qui crée les rencontres. L'ancienne étape « j'apparie » (POST external-labels)
+            // reste ensuite idempotente ; la promesse de rattrapage « validé ligue » est inchangée
+            // (le domicile naît avec son gymnase, UNPLACED, donc validable quand l'échéance tombe).
+            $parts['venueMappings'] = json_encode([['label' => self::VENUE_NAME, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR);
         }
         $form = new FormDataPart($parts);
 
