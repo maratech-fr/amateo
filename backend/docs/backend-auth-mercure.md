@@ -58,6 +58,12 @@ confiance aux en-têtes : elle inflate le zip avec un compteur borné et compte 
 jamais les tailles déclarées ni le `<dimension ref>` (qui peut mentir). Un fichier qui n'est pas
 un zip lisible n'est pas refusé ici (rien à inflater) : il part au parseur en aval, dont un filet
 générique rend 422 sans fuite.
+**Chantier G** : `/api/clubs/{id}/parc-import/analyze` (dry-run de l'import de parc par IA) porte
+le limiteur dédié `parc_import` **par utilisateur** — 30/h en prod, 5/15 min en `when@test` (le
+429 se prouve en quelques requêtes) — même patron per-user que `xlsx_import`, consommé après la
+gate d'auth (`ParcImportGate`). Le corps y est borné à 256 Ko et au dénombrement (60 équipes, 20
+gymnases, 500 créneaux+réservations cumulés) plutôt que par `XlsxUploadGuard` — ce n'est pas un
+upload de fichier mais un texte JSON. Détail : [`import-du-parc.md`](../../specs/courantes/import-du-parc.md).
 
 **P4-316** : l'envoi réel des liens de collecte de doléances (`POST
 /api/coach_wish_campaigns/{id}/send-links` et `/remind`, `CoachWishCampaignActionController`)

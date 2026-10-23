@@ -66,12 +66,27 @@ final class VenueAliasResolver implements ResetInterface
      */
     public function suggest(?string $label): ?string
     {
+        $candidates = $this->candidates($label);
+
+        return 1 === \count($candidates) ? $candidates[0] : null;
+    }
+
+    /**
+     * Les gymnases dont le nom ou un alias ressemble (fuzzy) au libellé — l'ensemble des
+     * candidats, là où {@see suggest} ne rend que le résultat UNIQUE. L'analyzer d'import
+     * de parc en a besoin pour DISTINGUER « aucun candidat » (à créer) de « deux ou plus »
+     * (ambigu, décoché) — deux cas que `suggest` confond en `null`.
+     *
+     * @return list<string>
+     */
+    public function candidates(?string $label): array
+    {
         if (null === $label) {
-            return null;
+            return [];
         }
         $key = $this->normalizer->normalize($label);
         if ('' === $key) {
-            return null;
+            return [];
         }
 
         $candidates = [];
@@ -81,7 +96,34 @@ final class VenueAliasResolver implements ResetInterface
             }
         }
 
-        return 1 === \count($candidates) ? array_key_first($candidates) : null;
+        return array_keys($candidates);
+    }
+
+    /**
+     * Le gymnase dont le nom NORMALISÉ égale EXACTEMENT le libellé, ou dont un alias confirmé
+     * l'égale (clé stricte, jamais fuzzy). Null si aucun ne l'égale, ou si DEUX gymnases ou
+     * plus l'égalent (homonymie : on ne tranche pas). Sert à l'appariement exact du parc —
+     * l'étage flou passe ensuite par {@see candidates}.
+     */
+    public function exactMatch(?string $label): ?string
+    {
+        if (null === $label) {
+            return null;
+        }
+        $key = $this->normalizer->normalize($label);
+        if ('' === $key) {
+            return null;
+        }
+
+        $matches = [];
+        foreach ($this->venues() as $venue) {
+            if ($this->normalizer->normalize($venue->getName()) === $key
+                || \in_array($key, $venue->getExternalLabels(), true)) {
+                $matches[$venue->getId()] = true;
+            }
+        }
+
+        return 1 === \count($matches) ? array_key_first($matches) : null;
     }
 
     public function reset(): void
