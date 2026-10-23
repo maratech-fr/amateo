@@ -65,7 +65,7 @@ describe("buildParcPrompt (générateur de prompt chatbot, chantier G PR3)", () 
     // Clés JSON que le chatbot DOIT émettre, telles que ParcPayloadValidator/ParcImportAnalyzer
     // (chantier G #1252) les lisent. La vérité est le validateur ; le verrouillage mécanique est
     // dans ParcPromptValidatorParityTest.
-    for (const field of ["nom", "genre", "seances", "gymnase", "jour", "debut", "duree", "equipes_en_parallele", "seances_communes"]) {
+    for (const field of ["nom", "genre", "categorie", "seances", "gymnase", "jour", "debut", "duree", "equipes_en_parallele", "seances_communes"]) {
       expect(prompt).toContain(field);
     }
     // Énumération du genre : M / F / MIXTE (MIXTE est la valeur distinctive à asserter).

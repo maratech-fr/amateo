@@ -37,6 +37,10 @@ vi.mock("@/shared/lib/travelStream", () => ({
 
 vi.mock("../queries", () => ({
   useWizardVenues: () => ({ data: h.venues.data, isSuccess: true }),
+  // NEO a câblé l'import du parc par IA dans VenuesStep (prompt pré-rempli du périmètre) : ces deux
+  // lectures voisines doivent exister dans le mock, sinon VenuesStep plante au rendu (hooks undefined).
+  useWizardTeams: () => ({ data: [] }),
+  useWizardCoaches: () => ({ data: [] }),
   useVenueSlots: () => ({ data: [] }),
   useReservations: () => ({ data: [] }),
   useVenueGeoCheck: () => ({ data: [] }),
@@ -63,7 +67,10 @@ vi.mock("../queries", () => ({
 
 vi.mock("@/features/matches/queries", () => ({ useVenueMatchWindows: () => ({ data: [] }) }));
 vi.mock("@/features/matches/MatchWindowsEditor", () => ({ MatchWindowsEditor: () => null }));
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: { postalCode: "69100" } } }) }));
+vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: { id: "club-1", postalCode: "69100" } } }), useWorkingSeason: () => undefined }));
+// La modale d'import du parc n'est pas rendue ici (parcOpen reste faux) ; on la neutralise pour
+// isoler VenuesStep de tout son graphe de modules.
+vi.mock("../parcImport/ParcImportModal", () => ({ ParcImportModal: () => null }));
 vi.mock("@/shared/lib/socle", () => ({ useSocleValidated: () => false }));
 vi.mock("@/shared/components/ui/venue-select", () => ({ VenueSelect: () => null }));
 vi.mock("./slotFields", () => ({ CapacitySelect: () => null, DurationSelect: () => null, GroupLabelField: () => null, SharedSlotHint: () => null }));

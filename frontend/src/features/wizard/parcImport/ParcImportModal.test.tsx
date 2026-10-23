@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +21,8 @@ import { PARC_IMPORT_TEXTS } from "./texts";
  *
  * Contrat du composant (défini ici, implémenté par NEO) :
  *   ParcImportModal({ origin: "teams" | "venues"; clubId; seasonId;
- *                     teams/venues/coaches: readonly string[]; onClose })
+ *                     teams/venues/coaches: readonly {id,name}[]; onClose })
+ *   — le prompt n'utilise que les NOMS ; les id servent au ré-appariement (D5, ci-dessous).
  *   - Temps 1 — prompt : rend `buildParcPrompt({teams,venues,coaches})`, bouton PARC_IMPORT_TEXTS.copyPrompt
  *     (→ navigator.clipboard.writeText(prompt)).
  *   - Temps 2 — collage : zone de texte nommée PARC_IMPORT_TEXTS.pasteLabel + bouton
@@ -31,9 +32,14 @@ import { PARC_IMPORT_TEXTS } from "./texts";
  *     affichée via PARC_IMPORT_TEXTS.sessionsUpdate(de,a) ; bandeau PARC_IMPORT_TEXTS.venuesCreatedWithoutAddress
  *     dès qu'un gymnase est `aCreer` ; bouton PARC_IMPORT_TEXTS.importAction(nbCoché) — grisé AVEC
  *     disabledReason PARC_IMPORT_TEXTS.nothingToImport quand rien n'est coché.
- *   - Temps 4 — import : au clic, useImportParc().mutate(sélection, { onSuccess(result) }). ⚠ La
- *     SIGNATURE de l'import et la forme de `result` sont PROVISOIRES (PR2, chez un autre 💊 TANK) —
- *     le test ne garde que le CÂBLAGE (l'import est appelé), à réaligner sur le contrat PR2.
+ *   - Temps 4 — import : au clic, useImportParc().mutate({ payload, decisions }, { onSuccess(result) }),
+ *     contrat RÉEL de PR2 (#1253) : `payload` = le parc collé, `decisions` =
+ *     `[{section, index, coche, cibleId?, corrections?}]` ; réponse `{recap:{<section>:{crees,apparies,misAJour,ignores}}}`.
+ *   - Ré-appariement (D5 « SM1 → Senior 1 ▾ ») : pour les sections équipes / gymnases / coachs, une
+ *     ligne apparie / suggere / aCreer porte un SÉLECTEUR (primitive riche TeamSelect / VenueSelect /
+ *     Listbox) listant les entités EXISTANTES de la section (par nom, valeur = id) + une option
+ *     « Créer ». Choisir une entité envoie son `cibleId` dans la décision ; choisir « Créer » n'en
+ *     envoie pas. Les sections créneaux / mutualisations / réservations n'ont pas ce sélecteur.
  *
  * On mute la PROD (le vrai composant) : seules les deux hooks de données (`./queries`) sont des
  * doubles contrôlables ; `buildParcPrompt`/`PARC_IMPORT_TEXTS` sont les vrais modules de la PR.
@@ -115,9 +121,10 @@ const defaultProps = {
   origin: "teams" as const,
   clubId: "club-1",
   seasonId: "season-1",
-  teams: ["Séniors Garçons 1", "U13 Masculins"] as const,
-  venues: ["Gymnase Léon-Blum"] as const,
-  coaches: ["Camille Durand"] as const,
+  // {id,name}[] (D5) : le prompt n'en lit que les NOMS, le ré-appariement a besoin des id.
+  teams: [{ id: "t1", name: "Séniors Garçons 1" }, { id: "t2", name: "U13 Masculins" }] as const,
+  venues: [{ id: "v1", name: "Gymnase Léon-Blum" }] as const,
+  coaches: [{ id: "c1", name: "Camille Durand" }] as const,
   onClose: () => {},
 };
 
@@ -333,18 +340,24 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
     expect(screen.getByText(PARC_IMPORT_TEXTS.nothingToImport)).toBeInTheDocument();
   });
 
-  it("au clic Importer, l'import est appelé (contrat PR2 provisoire)", async () => {
-    // ⚠ PROVISOIRE : la SIGNATURE de l'import (sélection envoyée) et la forme du récap de retour
-    // viennent de la PR2 (autre 💊 TANK). On ne garde ici que le CÂBLAGE : cocher puis Importer
-    // DÉCLENCHE useImportParc().mutate. Le récap chiffré de fin sera réaligné sur le contrat PR2.
+  it("au clic Importer, l'import reçoit { payload, decisions } au format PR2 et le récap s'affiche", async () => {
     const user = userEvent.setup();
-    q.importResult.value = { message: "Import effectué." };
+    q.importResult.value = { recap: { gymnases: { crees: 1, apparies: 0, misAJour: 0, ignores: 0 } } };
+    const parc = JSON.stringify({ format: "parc-v1", equipes: [], gymnases: [{ nom: "Palais des Sports" }], creneaux: [], mutualisations: [], reservations: [] });
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
-    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }), parc);
     await user.click(await screen.findByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
 
     expect(q.importMutate).toHaveBeenCalledTimes(1);
+    const body = q.importMutate.mock.calls[0]?.[0] as { payload: unknown; decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
+    expect(body).toHaveProperty("payload");
+    expect(Array.isArray(body.decisions)).toBe(true);
+    const dec = body.decisions.find((d) => "gymnases" === d.section && 0 === d.index);
+    expect(dec?.coche).toBe(true);
+    // Le récap PR2 s'affiche (données serveur) — le libellé de section et le compte vivent dans le
+    // MÊME <li> (« Gymnases — 1 créé(s) … »), d'où le match par sous-chaîne.
+    expect(await screen.findByText(PARC_IMPORT_TEXTS.sectionRecap(1, 0, 0, 0), { exact: false })).toBeInTheDocument();
   });
 
   it("s'ouvre aussi bien depuis l'étape Équipes que depuis l'étape Gymnases", async () => {
@@ -355,5 +368,72 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
 
     renderWithProviders(<ParcImportModal {...defaultProps} origin="venues" />);
     expect(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel })).toBeInTheDocument();
+  });
+
+  // ─────────── Ré-appariement par sélecteur (D5 « SM1 → Senior 1 ▾ ») ───────────
+  // Le sélecteur porte un NOM ACCESSIBLE contextualisé incluant le libellé de la ligne (A11Y-28),
+  // d'où la recherche du trigger par le libellé. Primitive riche (TeamSelect/VenueSelect/Listbox) :
+  // trigger = bouton, panneau = listbox, choix = option (patron ConstraintStep/PeriodSteps).
+
+  it("ré-appariement — une ligne gymnase liste les gymnases existants + « Créer » ; choisir un gymnase envoie son cibleId", async () => {
+    const user = userEvent.setup();
+    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
+    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
+
+    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+
+    await user.click(await screen.findByRole("button", { name: /Palais des Sports/ }));
+    const list = screen.getByRole("listbox");
+    expect(within(list).getByRole("option", { name: "Salle Mont Blanc" })).toBeInTheDocument();
+    expect(within(list).getByRole("option", { name: PARC_IMPORT_TEXTS.rematchCreate })).toBeInTheDocument();
+    await user.click(within(list).getByRole("option", { name: "Gymnase Léon-Blum" }));
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null }> };
+    const dec = body.decisions.find((d) => "gymnases" === d.section && 0 === d.index);
+    expect(dec?.cibleId).toBe("v1");
+  });
+
+  it("ré-appariement — revenir sur « Créer » efface le cibleId (choisir « Créer » n'en envoie pas)", async () => {
+    const user = userEvent.setup();
+    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
+    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
+    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+
+    const open = async (): Promise<void> => void (await user.click(await screen.findByRole("button", { name: /Palais des Sports/ })));
+    await open();
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Gymnase Léon-Blum" }));
+    await open();
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: PARC_IMPORT_TEXTS.rematchCreate }));
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null }> };
+    const dec = body.decisions.find((d) => "gymnases" === d.section && 0 === d.index);
+    expect(dec?.cibleId ?? null).toBeNull();
+  });
+
+  it("le sélecteur de ré-appariement n'existe que pour équipes / gymnases / coachs", async () => {
+    const user = userEvent.setup();
+    const parc = JSON.stringify({ format: "parc-v1", equipes: [], gymnases: [], creneaux: [{ gymnase: "Gymnase X", jour: 2, debut: "18:00", duree: 90 }], mutualisations: [], reservations: [] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await paste(user, analysisOf({
+      equipes: [mkLine(0, "SM1", "aCreer")],
+      gymnases: [mkLine(0, "Palais des Sports", "aCreer")],
+      coachs: [mkLine(0, "Coach Zed", "aCreer")],
+      creneaux: [mkLine(0, "Gymnase X · jour 2 18:00", "aCreer")],
+      reservations: [mkLine(0, "SM1 · Gymnase X 18:00", "alerte", { raison: "collision" })],
+      mutualisations: [mkLine(0, "A + B", "aCreer")],
+    }), parc);
+
+    // Présent sur les trois sections d'entités (trigger = bouton nommé par le libellé de la ligne).
+    expect(await screen.findByRole("button", { name: /SM1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Palais des Sports/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Coach Zed/ })).toBeInTheDocument();
+    // Absent ailleurs : créneau (édition inline, pas de ré-appariement), réservation, mutualisation.
+    expect(screen.queryByRole("button", { name: /jour 2 18:00/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Gymnase X 18:00/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /A \+ B/ })).not.toBeInTheDocument();
   });
 });

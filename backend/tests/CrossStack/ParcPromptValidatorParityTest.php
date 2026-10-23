@@ -44,7 +44,7 @@ final class ParcPromptValidatorParityTest extends TestCase
      *
      * @var list<string>
      */
-    private const array VALIDATOR_FIELDS = ['nom', 'genre', 'jour', 'debut', 'duree', 'equipes_en_parallele', 'equipe', 'gymnase'];
+    private const array VALIDATOR_FIELDS = ['nom', 'genre', 'categorie', 'jour', 'debut', 'duree', 'equipes_en_parallele', 'equipe', 'gymnase'];
 
     public function testTemplateExposesTheParcV1Spec(): void
     {
