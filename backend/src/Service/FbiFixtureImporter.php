@@ -307,7 +307,7 @@ final class FbiFixtureImporter
         // tout le dépôt (422 nommé), AVANT toute écriture de rencontre. Les deux passes
         // précèdent la création ET l'auto-validation (un gymnase apparié compte « validé
         // ligue » le même dépôt, un neutre jamais).
-        [$neutralLabels, $neutralDivisions, $venueChoiceVenues] = $this->applyVenueCoverage($club, $venueMappings, $venueChoices);
+        [$neutralLabels, $neutralDivisions, $venueChoiceVenues] = $this->applyVenueCoverage($club, $seasonId, $venueMappings, $venueChoices);
         $this->assertImportableHomesHaveVenue($groups, $resolver, $existingByTeamRef, $blockedKeys, $neutralLabels, $neutralDivisions, $venueChoiceVenues);
 
         $created = 0;
@@ -1041,7 +1041,7 @@ final class FbiFixtureImporter
      *
      * @return array{0: array<string, true>, 1: array<string, true>, 2: array<string, string>} [neutralLabels (normalisés), neutralDivisions, venueChoiceVenues (division → uuid)]
      */
-    private function applyVenueCoverage(Club $club, array $venueMappings, array $venueChoices): array
+    private function applyVenueCoverage(Club $club, ?string $seasonId, array $venueMappings, array $venueChoices): array
     {
         // Le résolveur d'alias mémoïse la liste des gymnases par requête ; un dépôt qui vient
         // de créer un gymnase (ou un re-dépôt après `em->clear()`) travaillerait sur une liste
@@ -1067,7 +1067,7 @@ final class FbiFixtureImporter
                 continue;
             }
             // uuid : APPARIE le libellé au gymnase (attach alias + backfill), gardes 422/400.
-            $this->venueLabelAttacher->attach($this->ownedVenueForImport($mapping['venueId'], $club), $label);
+            $this->venueLabelAttacher->attach($this->ownedVenueForImport($mapping['venueId'], $club, $seasonId), $label);
         }
 
         foreach ($venueChoices as $choice) {
@@ -1076,7 +1076,7 @@ final class FbiFixtureImporter
 
                 continue;
             }
-            $venueChoiceVenues[$choice['division']] = $this->ownedVenueForImport($choice['venueId'], $club)->getId();
+            $venueChoiceVenues[$choice['division']] = $this->ownedVenueForImport($choice['venueId'], $club, $seasonId)->getId();
         }
 
         // D-d — mémoire DÉRIVÉE des rencontres neutres déjà en base (tenant+saison filtrés).
@@ -1086,14 +1086,20 @@ final class FbiFixtureImporter
     }
 
     /**
-     * Le gymnase par id, s'il appartient au club courant — sinon 400 (un gymnase étranger est
-     * invisible sous le filtre tenant). L'import n'écrit jamais chez un autre club et ne crée
-     * JAMAIS de gymnase : il ne fait que rattacher un gymnase EXISTANT.
+     * Le gymnase par id, s'il appartient au club courant ET à la saison d'écriture de l'import —
+     * sinon 400 (un gymnase étranger est invisible sous le filtre tenant). On lit la VRAIE saison
+     * du gymnase ({@see Venue::getSeasonId}) et on la compare à `$seasonId` SANS se reposer sur le
+     * `season_filter` (SEC-13, garde non contournable même si le filtre était désactivé) : les
+     * alias sont copiés au changement de saison, apparier le dépôt courant à un gymnase d'une
+     * autre saison écrirait un alias/rencontre dans la mauvaise saison. L'import n'écrit jamais
+     * chez un autre club/une autre saison et ne crée JAMAIS de gymnase.
      */
-    private function ownedVenueForImport(string $venueId, Club $club): Venue
+    private function ownedVenueForImport(string $venueId, Club $club, ?string $seasonId): Venue
     {
         $venue = $this->entityManager->getRepository(Venue::class)->find($venueId);
-        if (!$venue instanceof Venue || $venue->getClubId() !== $club->getId()) {
+        if (!$venue instanceof Venue
+            || $venue->getClubId() !== $club->getId()
+            || (null !== $seasonId && $venue->getSeasonId() !== $seasonId)) {
             throw ImportRejectedException::badRequest('Gymnase introuvable pour cet appariement.');
         }
 

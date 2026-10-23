@@ -276,6 +276,24 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         );
     }
 
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        // PAS de disableReboot (contrairement aux tests mono-session) : on crée DEUX
+        // clubs par scénario, et garder le noyau vivant fait fuiter la 1ʳᵉ session dans
+        // l'inscription de la 2ᵉ. Le noyau redémarre à chaque requête ; les écritures EM
+        // survivent via la transaction DAMA partagée (patron ImportFixturesAuthorizationTest).
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ($this->tempFiles as $file) {
+            @unlink($file);
+        }
+        parent::tearDown();
+    }
+
     /**
      * FALSIFICATION du season_filter (backend.md) pour atteindre le FOYER
      * {@see FbiFixtureImporter::import} → `ownedVenueForImport` : au dépôt HTTP réel, le
@@ -287,7 +305,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
      * le gymnase hors saison (il pose l'alias dans la saison archivée) ; VERT une fois le
      * contrôle ajouté, avec ZÉRO écriture (ni alias, ni rencontre) dans la saison archivée.
      *
-     * @param list<list<string>>                              $rows
+     * @param list<list<string>>                             $rows
      * @param list<array{label: string, venueId: string}>    $venueMappings
      * @param list<array{division: string, venueId: string}> $venueChoices
      */
@@ -317,24 +335,6 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
             return;
         }
         self::fail('un gymnase d\'une autre saison doit être refusé à l\'appariement (garde de saison SEC-13 non contournée au dépôt)');
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        // PAS de disableReboot (contrairement aux tests mono-session) : on crée DEUX
-        // clubs par scénario, et garder le noyau vivant fait fuiter la 1ʳᵉ session dans
-        // l'inscription de la 2ᵉ. Le noyau redémarre à chaque requête ; les écritures EM
-        // survivent via la transaction DAMA partagée (patron ImportFixturesAuthorizationTest).
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
-    }
-
-    protected function tearDown(): void
-    {
-        foreach ($this->tempFiles as $file) {
-            @unlink($file);
-        }
-        parent::tearDown();
     }
 
     /**
