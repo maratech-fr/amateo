@@ -1,4 +1,4 @@
-import { AlertTriangle, Lock, Plus, Route, Trash2 } from "lucide-react";
+import { AlertTriangle, Lock, Plus, Route, Sparkles, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -23,18 +23,20 @@ import { toast } from "@/shared/stores/toastStore";
 import { MatchWindowsEditor } from "@/features/matches/MatchWindowsEditor";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 
-import { useMe } from "@/shared/session/queries";
+import { useMe, useWorkingSeason } from "@/shared/session/queries";
+import { coachFullName } from "@/shared/lib/coachName";
 
 import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
 import { DAYS, hhmm } from "../lib/days";
 import { filterSalles } from "../lib/salleSuggestions";
 import { slotPlacementError } from "../lib/slotOverlap";
-import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardVenues } from "../queries";
+import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardCoaches, useWizardTeams, useWizardVenues } from "../queries";
 import { venueGeoAlertMessage } from "../lib/venueGeoAlert";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
 import { WIZARD_TEXTS } from "../texts";
 import { PeriodVenues } from "./PeriodVenues";
+import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { TravelMatrixModal } from "./TravelMatrixModal";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { VenueGeocodeField } from "./VenueGeocodeField";
@@ -266,11 +268,19 @@ function VenuesEditor() {
   const delVenue = useDeleteVenue();
   const addSlot = useCreateSlot();
 
+  // Chantier G — l'import du parc par IA (onboarding), même porte d'entrée que côté Équipes. Le
+  // prompt embarque le périmètre DÉJÀ saisi (équipes/gymnases/coachs), d'où les deux lectures voisines.
+  const [parcOpen, setParcOpen] = useState(false);
+  const { data: parcTeams = [] } = useWizardTeams();
+  const { data: parcCoaches = [] } = useWizardCoaches();
+  const parcSeasonId = useWorkingSeason()?.id;
+
   const [name, setName] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   // --- Autocomplétion salles FFBB (P2-20) ---
   const { data: me } = useMe();
+  const parcClubId = me?.club?.id;
   // CP de recherche : celui du club par défaut, modifiable (une salle peut être
   // dans la commune voisine — l'index FFBB ne lie les salles qu'aux communes).
   const [salleCp, setSalleCp] = useState<string | null>(null);
@@ -454,6 +464,14 @@ function VenuesEditor() {
   return (
     <div>
       <p className="mb-4 text-sm text-muted-foreground">{WIZARD_TEXTS.venuesIntro}</p>
+
+      {/* Chantier G — import du parc par IA (onboarding), même porte d'entrée que l'étape Équipes. */}
+      <div className="mb-4">
+        <Button variant="outline" size="sm" onClick={() => setParcOpen(true)}>
+          <Sparkles className="size-4" />
+          {WIZARD_TEXTS.importParcWithAi}
+        </Button>
+      </div>
 
       {venuesLoaded ? (
       <AccordionSection
@@ -881,6 +899,19 @@ function VenuesEditor() {
             setVenueName("");
             setMatrixOpen(false);
           }}
+        />
+      ) : null}
+
+      {/* Chantier G — la modale d'import du parc par IA, montée club + saison connus (onboarding). */}
+      {parcOpen && undefined !== parcClubId && undefined !== parcSeasonId ? (
+        <ParcImportModal
+          origin="venues"
+          clubId={parcClubId}
+          seasonId={parcSeasonId}
+          teams={parcTeams.map((t) => t.name)}
+          venues={venues.map((v) => v.name)}
+          coaches={parcCoaches.map((c) => coachFullName(c))}
+          onClose={() => setParcOpen(false)}
         />
       ) : null}
     </div>

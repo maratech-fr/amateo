@@ -1,7 +1,7 @@
 import { closestCorners, DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowUpDown, ChevronDown, ChevronUp, FileUp, GripVertical, Link2, Plus, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, FileUp, GripVertical, Link2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
@@ -23,11 +23,14 @@ import type { Gender, PriorityTier, SportCategory, Team, TeamLevel, TeamPayload 
 import { useWizardFooter } from "../lib/footerSlot";
 import { orderedTeams, teamsOfTier } from "../lib/ranking";
 import { mutualisedTeammateLabel } from "../lib/sharedTraining";
-import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingBlocks, useSportCategories, useUpdateTeam, useWizardTeams } from "../queries";
+import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingBlocks, useSportCategories, useUpdateTeam, useWizardCoaches, useWizardTeams, useWizardVenues } from "../queries";
 import { useWizardStore } from "../store";
+import { WIZARD_TEXTS } from "../texts";
+import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { PeriodTeams } from "./PeriodTeams";
 import { TeamLinksModal } from "./TeamLinksModal";
 import { TeamsImportModal } from "./TeamsImportModal";
+import { coachFullName } from "@/shared/lib/coachName";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 
 const GENDERS: { value: Gender | ""; label: string }[] = [
@@ -406,6 +409,11 @@ function TeamsEditor() {
   // P3-7 — l'import FBI des équipes (onboarding). Saison SEULE : ce bouton vit dans
   // TeamsEditor, jamais dans PeriodTeams (branche « mode période » de TeamsStep).
   const [importOpen, setImportOpen] = useState(false);
+  // Chantier G — l'import du parc par IA (onboarding). Même porte d'entrée saison-seule ; le prompt
+  // embarque le périmètre DÉJÀ saisi (équipes/gymnases/coachs), d'où les deux lectures voisines.
+  const [parcOpen, setParcOpen] = useState(false);
+  const { data: parcVenues = [] } = useWizardVenues();
+  const { data: parcCoaches = [] } = useWizardCoaches();
   // La saison de TRAVAIL résolue (X-Season-Id, sinon saison courante serveur) : c'est
   // exactement ce que l'en-tête posera, donc le seasonId du corps que le serveur exige.
   const workingSeasonId = useWorkingSeason()?.id;
@@ -767,10 +775,14 @@ function TeamsEditor() {
           {/* P3-7 — l'import FBI des équipes, au-dessus du formulaire d'ajout. Visible liste
               vide OU pleine ; hors mode « Trier ». Par construction absent en mode période
               (TeamsStep bascule alors sur PeriodTeams, qui ne rend jamais ce bouton). */}
-          <div className="mb-4">
+          <div className="mb-4 flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
               <FileUp className="size-4" />
               Importer depuis FBI
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setParcOpen(true)}>
+              <Sparkles className="size-4" />
+              {WIZARD_TEXTS.importParcWithAi}
             </Button>
           </div>
           {/* P4-36 (a) — l'en-tête ne vivait QUE dans la branche « au moins une équipe »,
@@ -980,6 +992,18 @@ function TeamsEditor() {
           toujours) ; le bouton reste visible même sinon, mais n'ouvre rien à vide. */}
       {importOpen && undefined !== clubId && undefined !== workingSeasonId ? (
         <TeamsImportModal clubId={clubId} seasonId={workingSeasonId} onClose={() => setImportOpen(false)} />
+      ) : null}
+      {/* Chantier G — la modale d'import du parc par IA, même garde club + saison que l'import FBI. */}
+      {parcOpen && undefined !== clubId && undefined !== workingSeasonId ? (
+        <ParcImportModal
+          origin="teams"
+          clubId={clubId}
+          seasonId={workingSeasonId}
+          teams={teams.map((t) => t.name)}
+          venues={parcVenues.map((v) => v.name)}
+          coaches={parcCoaches.map((c) => coachFullName(c))}
+          onClose={() => setParcOpen(false)}
+        />
       ) : null}
     </div>
   );

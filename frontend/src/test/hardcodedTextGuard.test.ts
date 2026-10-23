@@ -68,6 +68,8 @@ const MIGRATED_FILES = [
   "features/wizard/steps/VenuesStep.tsx",
   // Lot 5 PR E (P4-284) : les 3 écrans dont le `<table>` passe à la primitive sont migrés en même temps.
   "features/wizard/steps/TravelMatrixModal.tsx",
+  // Chantier G PR3 — la modale d'import du parc par IA naît migrée (texts.ts de parcImport).
+  "features/wizard/parcImport/ParcImportModal.tsx",
   "features/club/ClubPage.tsx",
   "features/planning/ClubViewTable.tsx",
   // P4-346 PR A — coquille de la console superadmin migrée dans features/admin/texts/dashboard.ts.

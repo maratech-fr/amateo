@@ -1,0 +1,98 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { api } from "@/shared/api/client";
+import { errorMessage } from "@/shared/lib/errorMessage";
+import { toast } from "@/shared/stores/toastStore";
+
+import { invalidateEverywhere } from "../queries";
+
+/**
+ * Chantier G PR3 — les deux hooks de données de l'import du parc. Le front n'invente aucune règle :
+ * `analyze` est un dry-run (le serveur rend les verdicts ligne par ligne, qu'on AFFICHE), `import`
+ * bascule en écriture les lignes cochées. Le toast d'erreur vit AU NIVEAU HOOK (FRT-38 /
+ * `mutateOnErrorToastGuard`) : la modale ne passe JAMAIS d'`onError` à `mutate()`.
+ */
+
+/** Statut servi par l'analyzer pour une ligne (`App\Service\ParcImport\ParcImportAnalyzer`). */
+export type ParcLineStatus = "apparie" | "suggere" | "aCreer" | "decoche" | "alerte";
+
+/** Une ligne d'aperçu — tout vient du serveur, affiché verbatim (`libelle`, `raison`). */
+export interface ParcAnalysisLine {
+  index: number;
+  libelle: string;
+  statut: ParcLineStatus;
+  coche: boolean;
+  cibleId: string | null;
+  raison: string | null;
+  /** Équipes : une mise à jour de séances PROPOSÉE (pas appliquée). */
+  miseAJour?: { champ: "seances"; de: number; a: number };
+}
+
+/** Le récap chiffré d'une section de l'aperçu. */
+export interface ParcSectionRecap {
+  total: number;
+  apparie: number;
+  suggere: number;
+  aCreer: number;
+  decoche: number;
+  alerte: number;
+}
+
+/** La réponse du dry-run `POST /api/clubs/{id}/parc-import/analyze`. */
+export interface ParcAnalysis {
+  format: string;
+  recap: Record<string, ParcSectionRecap>;
+  sections: Record<string, ParcAnalysisLine[]>;
+}
+
+/** Une décision ligne par ligne, envoyée à l'import (contrat PR2). */
+export interface ParcImportDecision {
+  section: string;
+  index: number;
+  coche: boolean;
+  cibleId?: string | null;
+  corrections?: Record<string, unknown>;
+}
+
+/** Le récap servi par l'import réel (contrat PR2, provisoire). */
+export interface ParcImportResult {
+  message?: string;
+  recap?: Record<string, { crees: number; apparies: number; misAJour: number; ignores: number }>;
+}
+
+/** La sélection envoyée à l'import : le parc collé + les décisions. */
+export interface ParcImportSelection {
+  payload: unknown;
+  decisions: ParcImportDecision[];
+}
+
+/**
+ * Dry-run : poste le texte BRUT rendu par l'assistant (`application/json`, lu côté serveur via
+ * `$request->getContent()`, pas de désérialisation API Platform). Aucune écriture, aucune
+ * invalidation de cache. La saison de travail voyage dans l'en-tête `X-Season-Id` (client).
+ */
+export function useAnalyzeParc(clubId: string) {
+  return useMutation({
+    mutationFn: (text: string) =>
+      api.post(`clubs/${clubId}/parc-import/analyze`, { body: text, headers: { "Content-Type": "application/json" } }).json<ParcAnalysis>(),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
+ * Import réel des lignes cochées. Au succès on invalide équipes/gymnases/coachs PARTOUT (D-25) :
+ * l'import fait naître/rattacher ces entités, les écrans voisins doivent les voir sans attendre
+ * le `staleTime`.
+ */
+export function useImportParc(clubId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (selection: ParcImportSelection) => api.post(`clubs/${clubId}/parc-import`, { json: selection }).json<ParcImportResult>(),
+    onSuccess: () => {
+      void invalidateEverywhere(queryClient, "teams");
+      void invalidateEverywhere(queryClient, "venues");
+      void invalidateEverywhere(queryClient, "coaches");
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
