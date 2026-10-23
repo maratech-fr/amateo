@@ -277,3 +277,84 @@ describe("ReviewQueueRow — valider / pris en compte / bandeau (P4-199)", () =>
     expect(screen.getByRole("button", { name: "Garder Amateo" })).toBeInTheDocument();
   });
 });
+
+/**
+ * Chantier A PR 4 — l'écart de SALLE s'arbitre par appariement INLINE (fondateur
+ * 2026-10-22 Q1 = (b)). CONTRAT que NEO implémente sur `ReviewQueueRow` :
+ *  - sur un écart de champ `venue`, « Prendre la source » n'est PAS un bouton direct :
+ *    il est précédé d'un sélecteur de gymnase (VenueSelect, aria-label contenant
+ *    « gymnase »), offrant en plus une option « Terrain neutre (pas chez nous) » ;
+ *  - tant qu'aucun gymnase/neutre n'est choisi, « Prendre … » est DÉSACTIVÉ avec une
+ *    raison DÉCOUVRABLE (prop `disabledReason` → `aria-disabled`, clic neutralisé) ;
+ *  - un choix de gymnase envoie `onResolve({ fixtureId, field:'venue',
+ *    choice:'take_source', venueId:'<uuid>' })` ; « Terrain neutre » envoie
+ *    `venueId:'NEUTRAL'`.
+ * `ResolveDeviationInput` gagne donc un champ optionnel `venueId?: string`.
+ * Promesse : l'arbitrage ne laisse JAMAIS un domicile sans gymnase (ni venueId null
+ * silencieux). Les autres champs (date/heure) gardent le bouton direct.
+ */
+describe("ReviewQueueRow — écart de salle : appariement inline (chantier A PR 4)", () => {
+  const VENUE_TRIGGER = /gymnase/i;
+  const NEUTRAL_OPTION = "Terrain neutre (pas chez nous)";
+
+  function venueEcart(extra: Partial<Fixture> = {}): Fixture {
+    return fx({
+      status: "PLACED",
+      venueId: "v1", // rattaché → pas de bloc « Rattacher » (isUnattachedHome faux)
+      homeAway: "HOME",
+      reviewState: "OUT_OF_SYNC",
+      pendingDeviations: [{ field: "venue", appValue: "Gymnase Alpha", sourceValue: "GYMNASE INCONNU", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: false }],
+      ...extra,
+    });
+  }
+
+  function renderEcart(fixture: Fixture, onResolve = vi.fn()) {
+    render(
+      <ul>
+        <ReviewQueueRow fixture={fixture} venues={venues} onValidateLine={vi.fn()} onResolve={onResolve} onPlace={vi.fn()} onAttach={vi.fn()} busy={false} />
+      </ul>,
+    );
+    return { onResolve };
+  }
+
+  it("un écart de salle montre un sélecteur de gymnase (jamais un « Prendre » direct)", () => {
+    renderEcart(venueEcart());
+    expect(listboxTrigger(VENUE_TRIGGER)).toBeInTheDocument();
+  });
+
+  it("le sélecteur offre l'option « Terrain neutre (pas chez nous) »", async () => {
+    const user = userEvent.setup();
+    renderEcart(venueEcart());
+    const list = await openListbox(user, VENUE_TRIGGER);
+    expect(within(list).getByRole("option", { name: NEUTRAL_OPTION })).toBeInTheDocument();
+  });
+
+  it("« Prendre la source » est DÉSACTIVÉ tant qu'aucun gymnase n'est choisi, et le clic n'arbitre rien", async () => {
+    const user = userEvent.setup();
+    const { onResolve } = renderEcart(venueEcart());
+    const take = screen.getByRole("button", { name: /Prendre/ });
+    expect(take).toHaveAttribute("aria-disabled", "true");
+    await user.click(take);
+    expect(onResolve).not.toHaveBeenCalled();
+  });
+
+  it("choisir un gymnase puis « Prendre la source » envoie le venueId choisi", async () => {
+    const user = userEvent.setup();
+    const fixture = venueEcart();
+    const { onResolve } = renderEcart(fixture);
+    const list = await openListbox(user, VENUE_TRIGGER);
+    await user.click(within(list).getByRole("option", { name: "Coubertin" }));
+    await user.click(screen.getByRole("button", { name: /Prendre/ }));
+    expect(onResolve).toHaveBeenCalledWith({ fixtureId: fixture.id, field: "venue", choice: "take_source", venueId: "v2" });
+  });
+
+  it("choisir « Terrain neutre » puis « Prendre la source » envoie venueId « NEUTRAL »", async () => {
+    const user = userEvent.setup();
+    const fixture = venueEcart();
+    const { onResolve } = renderEcart(fixture);
+    const list = await openListbox(user, VENUE_TRIGGER);
+    await user.click(within(list).getByRole("option", { name: NEUTRAL_OPTION }));
+    await user.click(screen.getByRole("button", { name: /Prendre/ }));
+    expect(onResolve).toHaveBeenCalledWith({ fixtureId: fixture.id, field: "venue", choice: "take_source", venueId: "NEUTRAL" });
+  });
+});

@@ -55,6 +55,8 @@ final class VenueDeviationContext extends BaseContext
 
     private string $venueId2 = '';
 
+    private string $venueId3 = '';
+
     private string $competitionId = '';
 
     private string $matchDate = '';
@@ -223,6 +225,40 @@ final class VenueDeviationContext extends BaseContext
         }
     }
 
+    #[Given('un gymnase jetable non rattaché nommé « GYM CIBLE »')]
+    public function unGymnaseCible(): void
+    {
+        $this->venueId3 = $this->createdId($this->apiPost('venues', ['name' => 'GYM CIBLE DEV', 'source' => 'manual'], $this->token), 'gymnase');
+    }
+
+    #[When('j\'apparie l\'écart de salle au gymnase « GYM CIBLE »')]
+    public function jApparieAuGymnaseCible(): void
+    {
+        // Appariement INLINE (chantier A PR 4) : « prendre la source » PORTE le gymnase choisi —
+        // le libellé source devient un alias de ce gymnase et le venueId est posé, jamais null.
+        $result = $this->apiPost('fixtures/review/deviations', [
+            'fixtureId' => $this->fixtureId(),
+            'field' => 'venue',
+            'choice' => 'take_source',
+            'venueId' => $this->venueId3,
+        ], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('apparier l\'écart de salle a répondu %d (200 attendu)', $result['status']));
+        }
+    }
+
+    #[Then('le domicile bascule sur le gymnase choisi et reste non placé')]
+    public function leDomicileBasculeSurLeGymnaseChoisi(): void
+    {
+        $json = $this->fixtureJson();
+        if (($json['venueId'] ?? null) !== $this->venueId3) {
+            throw new RuntimeException('apparier une salle inconnue aurait dû poser le gymnase choisi — jamais venueId null');
+        }
+        if (($json['status'] ?? null) !== 'UNPLACED') {
+            throw new RuntimeException('apparier la salle d\'un non placé ne le place jamais');
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -241,7 +277,7 @@ final class VenueDeviationContext extends BaseContext
         if ('' !== $this->teamId) {
             $this->apiDelete(\sprintf('teams/%s', $this->teamId), $this->token);
         }
-        foreach ([$this->venueId, $this->venueId2] as $venue) {
+        foreach ([$this->venueId, $this->venueId2, $this->venueId3] as $venue) {
             if ('' !== $venue) {
                 $this->apiDelete(\sprintf('venues/%s', $venue), $this->token);
             }

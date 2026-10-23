@@ -1291,6 +1291,35 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertFalse($fixture?->getPendingDeviation('date')['autoApplied'] ?? true, 'écart à arbitrer, pas auto-appliqué');
     }
 
+    public function testPlacedHomeVenueDeviationTowardAnUnknownSalleInTheWindowKeepsItsVenueAndStaysAnEcart(): void
+    {
+        // Chantier A PR 4 — « FBI fait foi » applique date/heure d'OFFICE, mais une SALLE
+        // INCONNUE (aucun alias confirmé) ne dé-place JAMAIS un domicile à venueId null,
+        // même dans la fenêtre : le gymnase courant est conservé et l'écart salle reste à
+        // arbitrer. Sans cela, un domicile imminent perdrait son gymnase en silence.
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        $coubertin = $this->createVenue('GYMNASE COUBERTIN');
+        // Un domicile PLACÉ au gymnase Coubertin, à une date DANS la fenêtre (19 sept.).
+        $fixture = $this->unplacedHomeWithVenue('RWV1', $coubertin, 'GYMNASE COUBERTIN');
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $fixture->setMatchDate(new DateTimeImmutable('2026-09-19'));
+        $this->em->flush();
+
+        // Re-dépôt : MÊME date (en fenêtre) et MÊME heure, mais une salle INCONNUE —
+        // seule la salle diverge. Opt-out d'appariement : le libellé reste vraiment inconnu.
+        $result = $this->importMapped([['D2', 'RWV1', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', 'SALLE INCONNUE']], null, [], [], []);
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RWV1']);
+        self::assertSame($coubertin, $reloaded?->getVenueId(), 'le gymnase actuel est conservé — jamais venueId null');
+        self::assertSame(FixtureStatus::PLACED, $reloaded?->getStatus(), 'le domicile n\'est pas dé-placé par une salle inconnue');
+        self::assertCount(1, $result['unresolvedDeviations'], 'la salle inconnue reste un écart à arbitrer, jamais « FBI fait foi »');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
+        $entry = $reloaded?->getPendingDeviation('venue');
+        self::assertNotNull($entry, 'l\'écart de salle est ouvert');
+        self::assertFalse($entry['autoApplied'] ?? true, 'la salle n\'est pas appliquée d\'office — c\'est un écart à trancher');
+    }
+
     // ── P4-199 : retrait du suffixe FFBB « (n) » ────────────────────────────
 
     public function testTheFfbbTeamNumberSuffixIsStrippedFromTheStoredOpponent(): void
