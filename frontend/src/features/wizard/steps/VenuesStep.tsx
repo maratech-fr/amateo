@@ -312,9 +312,18 @@ function VenuesEditor() {
   // Pruned once a colour actually lands in the venue list.
   const pendingColorsRef = useRef<string[]>([]);
 
-  // Fall back to the first venue when the selected id isn't in the list yet
-  // (just-created, list refetching) so the panel never flashes "no venue".
-  const selected = (selectedId ? venues.find((v) => v.id === selectedId) : null) ?? venues[0] ?? null;
+  // Résolution du gymnase affiché dans la carte d'édition. Priorité : l'id sélectionné trouvé
+  // dans la liste (éventuellement périmée) → le gymnase TOUT JUSTE CRÉÉ porté par la mutation
+  // tant que la liste n'a pas re-fetché (son id correspond à la sélection qu'on vient de poser) →
+  // le premier gymnase. Le palier du milieu est ce qui empêche la carte d'afficher le gymnase
+  // PRÉCÉDENT juste après un ajout : `selectedId` pointe déjà sur le gymnase neuf, mais `venues`
+  // ne l'a pas encore re-fetché, donc `venues.find` rend `undefined` et l'ancien `?? venues[0]`
+  // retombait sur le premier gymnase de la liste (P4-339).
+  const selected =
+    (selectedId ? venues.find((v) => v.id === selectedId) : null) ??
+    (selectedId && create.data?.id === selectedId ? create.data : null) ??
+    venues[0] ??
+    null;
   const selectedGeoAlert = null === selected ? undefined : geoAlertById.get(selected.id);
 
   // P2-53 RMM-8 — « Trajets entre gymnases » : un bouton du pied de page (à côté de « Suivant »),
