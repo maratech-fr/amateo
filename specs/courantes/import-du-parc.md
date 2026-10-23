@@ -8,8 +8,9 @@
 > bascule les lignes cochées en écriture, en une seule transaction tout-ou-rien (§6).
 > **Palier 3 (chantier G PR 3) : l'écran.** `ParcImportModal`, ouverte depuis les étapes Équipes et
 > Gymnases du wizard (mode saison), porte les quatre temps — prompt à copier, collage, aperçu
-> cochable, import + récap — et génère elle-même le prompt donné au gestionnaire (§7). Reste à ce
-> chantier : la feature Behat qui prouve le parcours bout en bout (§8).
+> cochable, import + récap — et génère elle-même le prompt donné au gestionnaire (§7). **Palier 4
+> (chantier G PR 4, dernier) : couverture Behat** — la feature qui prouve le parcours bout en bout
+> sur la stack réelle (§8). Le chantier G est complet.
 
 ## 1. Format `parc-v1`
 
@@ -285,7 +286,24 @@ Le front n'invente aucune règle de format : `PARC_V1_SPEC` est gardée en parit
 validateur, dans LES DEUX SENS : une dérive d'un côté sans l'autre rougit avant qu'un chatbot ne
 produise un JSON que le serveur refuse en silence (ou qu'une donnée se perde).
 
-## 8. Hors périmètre de ce chantier (pour l'instant)
+## 8. Couverture Behat (chantier G PR 4/4)
 
-Reste à venir (PR 4/4 du même chantier) : la feature Behat qui prouve le parcours bout en bout
-(prompt → collage → aperçu → import → honoré par le vrai moteur).
+`backend/features/l-import-du-parc-en-un-geste.feature` (contexte `ParcImportContext`, suite
+`import-parc` déclarée dans `backend/behat.dist.php`) prouve le parcours bout en bout sur la stack
+réelle, en trois scénarios :
+
+- analyser le parc de deux équipes/un gymnase/un créneau/un coach/une réservation rend l'aperçu qui
+  propose de tout créer ; importer fait naître les cinq et pose la réservation au socle sur sa case
+  réservée ;
+- importer est refusé (409, rien écrit) tant que le planning de saison est **en vigueur** — c'est
+  un geste d'onboarding (§2, point 4) ;
+- recoller le même parc (déjà importé une fois) fait reconnaître à l'aperçu les équipes/le
+  gymnase/le coach déjà présents et la réservation déjà posée « déjà présente », et réimporter ne
+  crée aucun doublon.
+
+La génération elle-même (le vrai moteur `/generate` honore la réservation importée comme un verrou
+HARD) n'est **pas** rejouée en Behat — un solve sur le club de démonstration serait lourd et
+exigerait de rouvrir/restaurer le socle pour chaque scénario. C'est le NR bloquant
+`CrossStack/ParcImportReservationSemanticsGateTest` (§6) qui porte ce smoke sémantique ; cette
+feature prouve la jointure qu'il suppose — l'import réel pose bien la réservation au socle
+(`schedulePlanId` null). Le chantier G est complet avec cette PR.
