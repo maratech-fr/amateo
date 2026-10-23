@@ -140,6 +140,12 @@ final class ParcPayloadValidator
         if (\is_array($team) && \array_key_exists('genre', $team) && !\in_array($team['genre'], self::GENDERS, true)) {
             $errors[] = 'genre inconnu (attendu M, F ou MIXTE).';
         }
+        // `categorie` (déduite par le chatbot) est OPTIONNELLE ; mais si elle est présente, ce doit
+        // être une chaîne NON VIDE — une chaîne vide (le chatbot n'a rien déduit) est refusée plutôt
+        // que lue « au mieux » puis mal classée à l'import. Absente = aucun contrôle.
+        if (\is_array($team) && \array_key_exists('categorie', $team) && !$this->isNonEmptyString($team['categorie'])) {
+            $errors[] = 'la catégorie doit être une chaîne non vide.';
+        }
 
         return $errors;
     }

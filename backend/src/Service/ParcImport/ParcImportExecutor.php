@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Service\ParcImport;
 
+use App\Controller\GroupReservationController;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -22,6 +24,7 @@ use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\PlanEntitlements;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SoloReservationBudget;
+use App\Service\SportCategoryResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -82,13 +85,18 @@ final class ParcImportExecutor
 
     private const int DEFAULT_SLOT_DURATION = 90;
 
+    private const int DEFAULT_GROUP_RESERVATION_DURATION = 90;
+
+    /** Catégorie « repère » d'une équipe importée sans catégorie — jamais un rattachement muet. */
+    private const string UNFILED_CATEGORY = 'À classer';
+
     /** @var array<string, string> nom normalisé → venueId (créés dans ce run OU résolus) */
     private array $venueByName = [];
 
     /** @var array<string, string> nom normalisé → teamId */
     private array $teamByName = [];
 
-    private ?string $fallbackSportCategoryId = null;
+    private ?string $sportId = null;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -97,6 +105,8 @@ final class ParcImportExecutor
         private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
         private readonly SoloReservationBudget $soloReservationBudget,
         private readonly PlanEntitlements $planEntitlements,
+        private readonly SportCategoryResolver $sportCategoryResolver,
+        private readonly GroupReservationController $groupReservationWriter,
     ) {}
 
     /**
@@ -109,7 +119,7 @@ final class ParcImportExecutor
     {
         $this->venueByName = [];
         $this->teamByName = [];
-        $this->fallbackSportCategoryId = null;
+        $this->sportId = null;
 
         $index = $this->indexDecisions($decisions);
 
@@ -224,7 +234,7 @@ final class ParcImportExecutor
             $team = (new Team)
                 ->setClubId($club->getId())
                 ->setSeasonId($seasonId)
-                ->setSportCategoryId($this->fallbackSportCategoryId($club->getId()))
+                ->setSportCategoryId($this->categoryIdForCreatedTeam($entry, $club))
                 ->setPriorityTierId(self::DEFAULT_PRIORITY_TIER_ID)
                 ->setName($nom)
                 ->setSessionsPerWeek($this->sessionsOf($entry, $decision))
@@ -349,40 +359,110 @@ final class ParcImportExecutor
             }
             $commonSessions = \is_int($entry['seances_communes'] ?? null) ? $entry['seances_communes'] : 1;
 
-            // Idempotence : un bloc du socle portant exactement ces équipes existe déjà → réutilisé.
-            if ($this->blockExists($club->getId(), $seasonId, $teamIds)) {
+            $block = $this->existingBlockForTeams($club->getId(), $seasonId, $teamIds);
+            if ($block instanceof SharedTrainingBlock) {
+                // Idempotence : un bloc du socle portant exactement ces équipes existe déjà → réutilisé.
                 ++$recap['apparies'];
-
-                continue;
-            }
-
-            // Garde Σ séances communes ≤ séances d'un membre, rejouée depuis sa maison unique.
-            foreach ($this->soloReservationBudget->forTeamsWithBlockSubstituted($teamIds, $club->getId(), $seasonId, null, null, $commonSessions) as $budget) {
-                if ($budget->block > $budget->effective) {
-                    $this->fail('mutualisations', $i, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes.');
+            } else {
+                // Garde Σ séances communes ≤ séances d'un membre, rejouée depuis sa maison unique,
+                // AVANT toute écriture (un dépassement refuse l'import, rien n'est écrit).
+                foreach ($this->soloReservationBudget->forTeamsWithBlockSubstituted($teamIds, $club->getId(), $seasonId, null, null, $commonSessions) as $budget) {
+                    if ($budget->block > $budget->effective) {
+                        $this->fail('mutualisations', $i, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes.');
+                    }
                 }
-            }
 
-            $block = (new SharedTrainingBlock)
-                ->setClubId($club->getId())
-                ->setSeasonId($seasonId)
-                ->setSchedulePlanId(null)
-                ->setCommonSessions($commonSessions);
-            $this->entityManager->persist($block);
-            foreach ($teamIds as $teamId) {
-                $member = (new SharedTrainingBlockTeam)
+                $block = (new SharedTrainingBlock)
                     ->setClubId($club->getId())
                     ->setSeasonId($seasonId)
                     ->setSchedulePlanId(null)
-                    ->setBlockId($block->getId())
-                    ->setTeamId($teamId);
-                $this->entityManager->persist($member);
+                    ->setCommonSessions($commonSessions);
+                $this->entityManager->persist($block);
+                foreach ($teamIds as $teamId) {
+                    $member = (new SharedTrainingBlockTeam)
+                        ->setClubId($club->getId())
+                        ->setSeasonId($seasonId)
+                        ->setSchedulePlanId(null)
+                        ->setBlockId($block->getId())
+                        ->setTeamId($teamId);
+                    $this->entityManager->persist($member);
+                }
+                $this->entityManager->flush();
+                ++$recap['crees'];
             }
-            $this->entityManager->flush();
-            ++$recap['crees'];
+
+            // Réservation de GROUPE : chaque membre reçoit une réservation socle co-localisée sur la
+            // case, posée par la maison du rail /api/reservations/group (jamais recopiée). Idempotent
+            // (déjà posée → rien) et sans effet si la case ne se résout pas (gymnase/jour/heure).
+            $this->poseGroupReservation($block, $teamIds, $entry, $decision['cibleId'], $decision['corrections'], $club, $seasonId, $i);
         }
 
         return $recap;
+    }
+
+    /**
+     * Pose la réservation de groupe du bloc sur sa case, via {@see GroupReservationController} (rail
+     * /api/reservations/group) : garde d'occupation {@see ReservationGroupOccupancy::assertBlockReservationAllowed}
+     * puis écriture atomique N-réservations/1-flush. Ne fait rien si la case ne se résout pas, ou si
+     * tous les membres y sont déjà réservés (idempotence) — un rejeu ne crée aucun doublon.
+     *
+     * @param list<string>         $teamIds
+     * @param array<string, mixed> $corrections
+     */
+    private function poseGroupReservation(SharedTrainingBlock $block, array $teamIds, mixed $entry, ?string $cibleId, array $corrections, Club $club, string $seasonId, int $index): void
+    {
+        $venueId = null !== $cibleId
+            ? $this->ownedVenue($cibleId, $club, $seasonId, 'mutualisations', $index)->getId()
+            : $this->venueIdForName($this->stringField($entry, 'gymnase'));
+        $day = $this->intCorrectionOr($corrections, 'jour', $entry, 'jour');
+        $start = $this->timeCorrectionOr($corrections, 'debut', $entry, 'debut');
+        // Case non résolue (gymnase/jour/heure) : le bloc est déclaré, sa réservation reste à poser à
+        // la main. Retours SÉPARÉS (et non un `||` que Rector réécrirait en in_array, perdant le
+        // narrowing non-null dont ont besoin les appels ci-dessous).
+        if (null === $venueId) {
+            return;
+        }
+        if (null === $day) {
+            return;
+        }
+        if (null === $start) {
+            return;
+        }
+        $duration = $this->intCorrectionOr($corrections, 'duree', $entry, 'duree') ?? self::DEFAULT_GROUP_RESERVATION_DURATION;
+
+        if ($this->allMembersReservedOnCase($teamIds, $venueId, $day, $start)) {
+            return; // déjà posée (rejeu) : aucun doublon.
+        }
+
+        try {
+            $this->reservationGroupOccupancy->assertBlockReservationAllowed($block, $teamIds, $venueId, $day, new DateTimeImmutable($start), null);
+            $this->groupReservationWriter->writeBlockReservationsAtomically(
+                $club->getId(),
+                $seasonId,
+                $teamIds,
+                $venueId,
+                $day,
+                new DateTimeImmutable($start),
+                $duration,
+                null,
+            );
+        } catch (UnprocessableEntityHttpException $exception) {
+            $this->fail('mutualisations', $index, $exception->getMessage());
+        }
+    }
+
+    /**
+     * @param list<string> $teamIds
+     */
+    private function allMembersReservedOnCase(array $teamIds, string $venueId, int $day, string $startHhmm): bool
+    {
+        foreach ($teamIds as $teamId) {
+            if (!$this->reservationExists($teamId, $venueId, $day, $startHhmm)) {
+                return false;
+            }
+        }
+
+        return [] !== $teamIds;
     }
 
     /**
@@ -738,9 +818,12 @@ final class ParcImportExecutor
     }
 
     /**
+     * Le bloc du socle portant EXACTEMENT cet ensemble d'équipes, ou null — pour l'apparier plutôt
+     * que d'en créer un second (idempotence des mutualisations).
+     *
      * @param list<string> $teamIds déjà triés et dédupliqués
      */
-    private function blockExists(string $clubId, string $seasonId, array $teamIds): bool
+    private function existingBlockForTeams(string $clubId, string $seasonId, array $teamIds): ?SharedTrainingBlock
     {
         $blocks = $this->entityManager->getRepository(SharedTrainingBlock::class)
             ->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null]);
@@ -752,11 +835,11 @@ final class ParcImportExecutor
                 $members[] = $member->getTeamId();
             }
             if ($this->sortedUnique($members) === $teamIds) {
-                return true;
+                return $block;
             }
         }
 
-        return false;
+        return null;
     }
 
     /** Pose le lien `TeamCoach` MAIN s'il n'existe pas déjà ; rend true s'il vient d'être posé. */
@@ -808,29 +891,68 @@ final class ParcImportExecutor
         return false;
     }
 
-    private function fallbackSportCategoryId(string $clubId): string
+    /**
+     * La catégorie d'une équipe CRÉÉE. Si le texte porte « categorie » (déduite par le chatbot),
+     * elle est appariée par NOM NORMALISÉ (casse/accents repliés) à une catégorie EXISTANTE du club,
+     * sinon créée (maison partagée {@see SportCategoryResolver::findOrCreate}). Sans catégorie,
+     * l'équipe est classée « À classer » (repère explicite à reclasser) — jamais un rattachement
+     * muet à une catégorie du catalogue qui mentirait sur l'âge/le genre.
+     */
+    private function categoryIdForCreatedTeam(mixed $entry, Club $club): string
     {
-        if (null !== $this->fallbackSportCategoryId) {
-            return $this->fallbackSportCategoryId;
+        $categorie = \is_array($entry) ? ($entry['categorie'] ?? null) : null;
+        if (\is_string($categorie) && '' !== trim($categorie)) {
+            $name = trim($categorie);
+            $matched = $this->matchCategoryByNormalizedName($name, $club->getId());
+
+            return $matched ?? $this->sportCategoryResolver->findOrCreate($name, $club->getId(), $this->defaultSportId($club))->getId();
         }
 
-        // Le format parc-v1 ne porte pas de catégorie ; une équipe créée est rattachée à une
-        // catégorie EXISTANTE du club (onboarding : le catalogue est posé à l'inscription) pour
-        // rester visible et éditable — le gestionnaire la reclasse ensuite. À défaut de toute
-        // catégorie, un identifiant neuf PARTAGÉ par le run tient lieu de repère (aucune FK ne
-        // lie `team.sport_category_id`).
-        $category = $this->entityManager->getRepository(SportCategory::class)
-            ->findOneBy(['clubId' => $clubId], ['sortOrder' => 'ASC']);
-        if ($category instanceof SportCategory) {
-            return $this->fallbackSportCategoryId = $category->getId();
+        return $this->sportCategoryResolver->findOrCreate(self::UNFILED_CATEGORY, $club->getId(), $this->defaultSportId($club))->getId();
+    }
+
+    private function matchCategoryByNormalizedName(string $name, string $clubId): ?string
+    {
+        $key = $this->normalizer->normalize($name);
+        if ('' === $key) {
+            return null;
         }
-        $catalog = $this->entityManager->getRepository(SportCategory::class)
-            ->findOneBy(['clubId' => null], ['sortOrder' => 'ASC']);
-        if ($catalog instanceof SportCategory) {
-            return $this->fallbackSportCategoryId = $catalog->getId();
+        foreach ($this->entityManager->getRepository(SportCategory::class)->findBy(['clubId' => $clubId]) as $category) {
+            if ($this->normalizer->normalize($category->getName()) === $key) {
+                return $category->getId();
+            }
         }
 
-        return $this->fallbackSportCategoryId = $this->newUuid();
+        return null;
+    }
+
+    /**
+     * Le sport auquel rattacher une catégorie créée : celui du club s'il en porte un, sinon le
+     * sport actif existant, sinon le basket par défaut créé une fois (patron
+     * {@see App\Service\ClubProvisioner}). Mémorisé pour le run.
+     */
+    private function defaultSportId(Club $club): string
+    {
+        if (null !== $this->sportId) {
+            return $this->sportId;
+        }
+        $clubSportId = $club->getSportId();
+        if (null !== $clubSportId && '' !== $clubSportId) {
+            return $this->sportId = $clubSportId;
+        }
+        $sportRepository = $this->entityManager->getRepository(Sport::class);
+        $active = $sportRepository->findOneBy(['isActive' => true]);
+        if ($active instanceof Sport) {
+            return $this->sportId = $active->getId();
+        }
+        $basketball = $sportRepository->findOneBy(['slug' => 'basketball']);
+        if (!$basketball instanceof Sport) {
+            $basketball = (new Sport)->setName('Basketball')->setSlug('basketball')->setIsActive(true);
+            $this->entityManager->persist($basketball);
+            $this->entityManager->flush();
+        }
+
+        return $this->sportId = $basketball->getId();
     }
 
     /**
@@ -1055,20 +1177,5 @@ final class ParcImportExecutor
             'reservations' => self::LABEL_RESERVATIONS,
             default => $section,
         };
-    }
-
-    private function newUuid(): string
-    {
-        return \sprintf(
-            '%04x%04x-%04x-4%03x-8%03x-%04x%04x%04x',
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFF),
-            random_int(0, 0xFFF),
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF),
-        );
     }
 }

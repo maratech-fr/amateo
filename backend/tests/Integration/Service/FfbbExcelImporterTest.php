@@ -15,6 +15,7 @@ use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
+use App\Service\SportCategoryResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -280,7 +281,11 @@ final class FfbbExcelImporterTest extends KernelTestCase
 
     private function importer(): FfbbExcelImporter
     {
-        return new FfbbExcelImporter($this->em, self::getContainer()->get(PlanEntitlements::class));
+        return new FfbbExcelImporter(
+            $this->em,
+            self::getContainer()->get(PlanEntitlements::class),
+            self::getContainer()->get(SportCategoryResolver::class),
+        );
     }
 
     private function categoryId(string $name): string
