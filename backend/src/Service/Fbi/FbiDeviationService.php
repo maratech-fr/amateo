@@ -417,7 +417,7 @@ final class FbiDeviationService
         // maison du rattachement) et on POSE le venueId — jamais un dé-placement. Le statut
         // reste inchangé (un non placé reste non placé : apparier ne place pas).
         if (null !== $venueChoice) {
-            $venue = $this->ownedVenueOrRefuse($venueChoice);
+            $venue = $this->ownedVenueOrRefuse($venueChoice, $existing->getClubId(), $existing->getSeasonId());
             if (null !== $sourceLabel) {
                 $this->venueLabelAttacher->attach($venue, $sourceLabel);
                 $existing->setFbiVenueLabel($sourceLabel);
@@ -447,14 +447,20 @@ final class FbiDeviationService
     }
 
     /**
-     * Le gymnase d'uuid $venueId, borné tenant ET saison par les filtres globaux (un
-     * gymnase d'un AUTRE club ou d'une AUTRE saison est invisible) — ou un refus 404
-     * nommé AVANT toute mutation. Foyer de la résolution du choix inline d'arbitrage.
+     * Le gymnase d'uuid $venueId choisi inline, s'il appartient AU club ET à la saison de la
+     * rencontre arbitrée — sinon un refus 404 nommé AVANT toute mutation (zéro écriture).
+     * Durcissement /security-review (patron {@see FbiFixtureImporter::ownedVenueForImport}, A10) :
+     * on vérifie club ET saison AU SERVICE, sans se reposer sur les SEULS `tenant_filter`/
+     * `season_filter` (défense en profondeur — les alias sont copiés au changement de saison,
+     * apparier le dépôt courant à un gymnase d'une autre saison écrirait un alias dans la
+     * mauvaise saison). Le cross-CLUB reste en outre masqué par la RLS PostgreSQL à la lecture.
      */
-    private function ownedVenueOrRefuse(string $venueId): Venue
+    private function ownedVenueOrRefuse(string $venueId, string $clubId, string $seasonId): Venue
     {
         $venue = $this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $venueId]);
-        if (!$venue instanceof Venue) {
+        if (!$venue instanceof Venue
+            || $venue->getClubId() !== $clubId
+            || $venue->getSeasonId() !== $seasonId) {
             throw new ImportRejectedException('Gymnase introuvable.', Response::HTTP_NOT_FOUND);
         }
 

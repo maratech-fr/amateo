@@ -7,6 +7,7 @@ namespace App\Controller\Basketball;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Season;
 use App\Enum\TravelComputeScope;
+use App\Exception\ImportRejectedException;
 use App\Message\ComputeTravelTimesMessage;
 use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
@@ -138,6 +139,11 @@ final class FfbbRencontresController extends AbstractController
             // Two simultaneous applies creating the same rencontre: the partial
             // unique index wins → a clean retryable 409 instead of a raw 500.
             return $this->json(['error' => 'Une vérification concurrente a créé les mêmes rencontres — réessayez.'], Response::HTTP_CONFLICT);
+        } catch (ImportRejectedException $e) {
+            // Durcissement /security-review — un refus MÉTIER de l'appariement inline (gymnase
+            // introuvable du club/saison → 404, borne de rattachement → 422) ressort NOMMÉ avec
+            // son statut, AVANT le filet générique : jamais déguisé en 502 « FFBB indisponible ».
+            return $this->json(['error' => $e->getMessage()], $e->getStatusCode());
         } catch (Throwable) {
             return $this->json(['error' => 'FFBB indisponible, réessayez plus tard.'], Response::HTTP_BAD_GATEWAY);
         }
