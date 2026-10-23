@@ -37,6 +37,10 @@ export const PARC_IMPORT_TEXTS = {
   nothingToImport: "Cochez au moins une ligne pour pouvoir importer.",
   importDone: "Import terminé.",
 
+  // Ré-appariement (D5) — pour une ligne équipe/gymnase/coach, choisir l'entité existante à viser.
+  rematchCreate: "Créer",
+  rematchLabel: (libelle: string) => `Associer « ${libelle} » à un élément existant, ou le créer`,
+
   // Correction sur place d'un créneau (champs simples amorcés depuis le parc collé)
   editDay: (libelle: string) => `Jour — ${libelle}`,
   editStart: (libelle: string) => `Heure de début — ${libelle}`,

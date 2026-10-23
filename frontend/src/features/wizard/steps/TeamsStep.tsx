@@ -999,9 +999,9 @@ function TeamsEditor() {
           origin="teams"
           clubId={clubId}
           seasonId={workingSeasonId}
-          teams={teams.map((t) => t.name)}
-          venues={parcVenues.map((v) => v.name)}
-          coaches={parcCoaches.map((c) => coachFullName(c))}
+          teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+          venues={parcVenues.map((v) => ({ id: v.id, name: v.name }))}
+          coaches={parcCoaches.map((c) => ({ id: c.id, name: coachFullName(c) }))}
           onClose={() => setParcOpen(false)}
         />
       ) : null}

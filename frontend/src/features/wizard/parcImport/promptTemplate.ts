@@ -17,7 +17,7 @@ export const PARC_V1_SPEC = {
   optionalSections: ["coachs"],
   genders: ["M", "F", "MIXTE"],
   fields: {
-    equipes: ["nom", "genre", "seances"],
+    equipes: ["nom", "genre", "categorie", "seances"],
     gymnases: ["nom"],
     creneaux: ["gymnase", "jour", "debut", "duree", "equipes_en_parallele"],
     mutualisations: ["equipes", "seances_communes"],
@@ -70,6 +70,7 @@ export function buildParcPrompt(input: { teams: readonly string[]; venues: reado
     sections,
     "",
     `Le genre d'une équipe (champ « genre ») vaut exactement l'une de ces valeurs : ${PARC_V1_SPEC.genders.join(", ")}.`,
+    "Le champ « categorie » d'une équipe est la catégorie d'âge déduite (ex. U13, Séniors) ; il est optionnel : omettez-le si vous ne le connaissez pas.",
     "",
     "Noms déjà saisis dans l'outil — réutilisez EXACTEMENT ces noms (même orthographe, mêmes accents) dès que le planning les mentionne, n'en inventez aucune variante :",
     "Équipes :",

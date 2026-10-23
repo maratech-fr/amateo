@@ -4,10 +4,13 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
+import { Listbox } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { TeamSelect } from "@/shared/components/ui/team-select";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { DAYS, dayLabelLongCap } from "@/shared/lib/days";
 
 import { buildParcPrompt } from "./promptTemplate";
@@ -22,20 +25,32 @@ import {
 } from "./queries";
 import { PARC_IMPORT_TEXTS as T } from "./texts";
 
+/** Une entité DÉJÀ saisie du club — son nom nourrit le prompt, son id le ré-appariement (D5). */
+export interface ParcEntity {
+  id: string;
+  name: string;
+}
+
 interface ParcImportModalProps {
   /** D'où la modale est ouverte (Équipes ou Gymnases) — le même composant, deux portes d'entrée. */
   origin: "teams" | "venues";
   clubId: string;
   /** Saison de travail — résolue côté serveur via l'en-tête `X-Season-Id`, ici pour la cohérence du contrat. */
   seasonId: string;
-  teams: readonly string[];
-  venues: readonly string[];
-  coaches: readonly string[];
+  teams: readonly ParcEntity[];
+  venues: readonly ParcEntity[];
+  coaches: readonly ParcEntity[];
   onClose: () => void;
 }
 
 /** L'ordre d'affichage des sections de l'aperçu (fixe, indépendant de l'ordre des clés serveur). */
 const SECTION_ORDER = ["equipes", "gymnases", "creneaux", "mutualisations", "coachs", "reservations"] as const;
+
+/** Les sections d'ENTITÉS : une ligne apparie/suggere/aCreer y porte un sélecteur de ré-appariement (D5). */
+const REMATCH_SECTIONS = new Set(["equipes", "gymnases", "coachs"]);
+
+/** Un statut dont la ligne est cochée par défaut — seul cas qui porte un sélecteur de ré-appariement. */
+const isRematchStatus = (statut: ParcLineStatus): boolean => "apparie" === statut || "suggere" === statut || "aCreer" === statut;
 
 /** La teinte de la pastille par statut — PRÉSENTATION du verdict serveur (le texte le porte aussi). */
 const STATUS_VARIANT: Record<ParcLineStatus, "success" | "accent" | "warning" | "neutral"> = {
@@ -93,7 +108,11 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const analyze = useAnalyzeParc(clubId);
   const importMut = useImportParc(clubId);
 
-  const prompt = useMemo(() => buildParcPrompt({ teams, venues, coaches }), [teams, venues, coaches]);
+  // Le prompt ne lit que les NOMS ; les id des entités servent au ré-appariement (D5).
+  const prompt = useMemo(
+    () => buildParcPrompt({ teams: teams.map((t) => t.name), venues: venues.map((v) => v.name), coaches: coaches.map((c) => c.name) }),
+    [teams, venues, coaches],
+  );
 
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState("");
@@ -103,6 +122,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [parc, setParc] = useState<unknown>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [slotDrafts, setSlotDrafts] = useState<Record<number, SlotDraft>>({});
+  // Ré-appariement par ligne (D5) — l'id choisi pour une ligne équipe/gymnase/coach. "" = « Créer »
+  // (aucun cibleId envoyé). Amorcé depuis `line.cibleId` du verdict serveur.
+  const [rematch, setRematch] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ParcImportResult | null>(null);
 
   const analyzing = analyze.isPending;
@@ -117,12 +139,17 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setResult(null);
 
     const nextChecked: Record<string, boolean> = {};
+    const nextRematch: Record<string, string> = {};
     for (const section of Object.keys(data.sections)) {
       for (const line of data.sections[section] ?? []) {
         nextChecked[keyOf(section, line.index)] = line.coche;
+        if (REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut)) {
+          nextRematch[keyOf(section, line.index)] = line.cibleId ?? "";
+        }
       }
     }
     setChecked(nextChecked);
+    setRematch(nextRematch);
 
     // Amorce des champs éditables des CRÉNEAUX depuis le parc collé (correction sur place).
     let parsed: ParsedParc | null = null;
@@ -161,6 +188,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const updateSlot = (index: number, patch: Partial<SlotDraft>): void =>
     setSlotDrafts((prev) => ({ ...prev, [index]: { ...prev[index], ...patch } }));
 
+  const updateRematch = (section: string, index: number, value: string): void =>
+    setRematch((prev) => ({ ...prev, [keyOf(section, index)]: value }));
+
   const count = Object.values(checked).filter(Boolean).length;
 
   const venuesToCreate = (analysis?.sections.gymnases ?? []).some((line) => "aCreer" === line.statut);
@@ -172,12 +202,17 @@ export function ParcImportModal(props: ParcImportModalProps) {
     const decisions: ParcImportDecision[] = [];
     for (const section of Object.keys(analysis.sections)) {
       for (const line of analysis.sections[section] ?? []) {
+        const key = keyOf(section, line.index);
+        const hasSelector = REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut);
+        // Ligne à sélecteur : la cible choisie ("" = « Créer » → aucun cibleId). Sinon le verdict serveur.
+        const chosen = hasSelector ? rematch[key] : undefined;
+        const cibleId = hasSelector ? ("" === chosen || undefined === chosen ? undefined : chosen) : line.cibleId;
         const draft = "creneaux" === section ? slotDrafts[line.index] : undefined;
         decisions.push({
           section,
           index: line.index,
-          coche: checked[keyOf(section, line.index)] ?? false,
-          cibleId: line.cibleId,
+          coche: checked[key] ?? false,
+          cibleId,
           corrections: undefined === draft ? undefined : { jour: draft.jour, debut: draft.debut, duree: draft.duree },
         });
       }
@@ -294,6 +329,17 @@ export function ParcImportModal(props: ParcImportModalProps) {
                           </span>
                         </label>
                         {null === line.raison ? null : <p className="mt-0.5 pl-6 text-xs text-muted-foreground">{line.raison}</p>}
+                        {REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut) ? (
+                          <RematchRow
+                            section={section}
+                            line={line}
+                            value={rematch[keyOf(section, line.index)] ?? ""}
+                            teams={teams}
+                            venues={venues}
+                            coaches={coaches}
+                            onChange={(v) => updateRematch(section, line.index, v)}
+                          />
+                        ) : null}
                         {"creneaux" === section ? <SlotEditor line={line} draft={slotDrafts[line.index]} onChange={(patch) => updateSlot(line.index, patch)} /> : null}
                       </li>
                     ))}
@@ -351,4 +397,39 @@ function SlotEditor({ line, draft, onChange }: { line: ParcAnalysisLine; draft: 
       </div>
     </div>
   );
+}
+
+/**
+ * Ré-appariement d'une ligne d'entité (D5) : un sélecteur riche listant les entités EXISTANTES de la
+ * section (par nom, valeur = id) plus « Créer » (le placeholder, valeur ""). Équipes → `TeamSelect`,
+ * gymnases → `VenueSelect`, coachs → `Listbox`. Le nom accessible du déclencheur est contextualisé
+ * par le libellé de la ligne (A11Y-28). Choisir une entité envoie son id ; « Créer » n'envoie rien.
+ */
+function RematchRow({
+  section,
+  line,
+  value,
+  teams,
+  venues,
+  coaches,
+  onChange,
+}: {
+  section: string;
+  line: ParcAnalysisLine;
+  value: string;
+  teams: readonly ParcEntity[];
+  venues: readonly ParcEntity[];
+  coaches: readonly ParcEntity[];
+  onChange: (value: string) => void;
+}) {
+  const label = T.rematchLabel(line.libelle);
+  const common = { value, onValueChange: onChange, placeholder: T.rematchCreate, "aria-label": label, wrapperClassName: "mt-1 ml-6 w-full max-w-xs" } as const;
+
+  if ("gymnases" === section) {
+    return <VenueSelect {...common} venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))} />;
+  }
+  if ("equipes" === section) {
+    return <TeamSelect {...common} teams={teams.map((t) => ({ id: t.id, name: t.name, priorityTierId: 0, tierOrder: 0 }))} tiers={[]} />;
+  }
+  return <Listbox {...common} options={coaches.map((c) => ({ value: c.id, label: c.name }))} />;
 }

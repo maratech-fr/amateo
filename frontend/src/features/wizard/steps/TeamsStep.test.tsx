@@ -52,6 +52,10 @@ const deletionImpact = {
 
 vi.mock("../queries", () => ({
   useWizardTeams: () => ({ data: teamsState.data ?? [team] }),
+  // NEO a câblé l'import du parc par IA dans TeamsStep (prompt pré-rempli du périmètre) : ces deux
+  // lectures voisines doivent exister dans le mock, sinon TeamsStep plante au rendu (hooks undefined).
+  useWizardVenues: () => ({ data: [] }),
+  useWizardCoaches: () => ({ data: [] }),
   useSportCategories: () => ({ data: CATEGORIES }),
   usePriorityTiers: () => ({
     data: [
@@ -103,6 +107,9 @@ const socleState = { validated: false };
 vi.mock("@/shared/lib/socle", () => ({
   useSocleValidated: () => socleState.validated,
 }));
+// La modale d'import du parc n'est pas rendue ici (parcOpen reste faux) ; on la neutralise pour
+// isoler TeamsStep de tout le graphe de modules de parcImport.
+vi.mock("../parcImport/ParcImportModal", () => ({ ParcImportModal: () => null }));
 
 import { TeamsStep } from "./TeamsStep";
 import { useWizardStore } from "../store";

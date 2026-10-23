@@ -908,9 +908,9 @@ function VenuesEditor() {
           origin="venues"
           clubId={parcClubId}
           seasonId={parcSeasonId}
-          teams={parcTeams.map((t) => t.name)}
-          venues={venues.map((v) => v.name)}
-          coaches={parcCoaches.map((c) => coachFullName(c))}
+          teams={parcTeams.map((t) => ({ id: t.id, name: t.name }))}
+          venues={venues.map((v) => ({ id: v.id, name: v.name }))}
+          coaches={parcCoaches.map((c) => ({ id: c.id, name: coachFullName(c) }))}
           onClose={() => setParcOpen(false)}
         />
       ) : null}
