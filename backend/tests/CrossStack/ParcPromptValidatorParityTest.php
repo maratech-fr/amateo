@@ -100,7 +100,7 @@ final class ParcPromptValidatorParityTest extends TestCase
     {
         // Sens inverse : si le validateur RENOMME un champ, la liste canonique ci-dessus devient
         // fausse et doit rougir ici — avant que le gabarit ne continue d'enseigner un champ mort.
-        $source = (string) file_get_contents((string) (new ReflectionClass(ParcPayloadValidator::class))->getFileName());
+        $source = (string) file_get_contents((string) new ReflectionClass(ParcPayloadValidator::class)->getFileName());
         foreach (self::VALIDATOR_FIELDS as $field) {
             self::assertStringContainsString(
                 '\'' . $field . '\'',
@@ -141,7 +141,7 @@ final class ParcPromptValidatorParityTest extends TestCase
 
     private function validatorString(string $const): string
     {
-        $value = (new ReflectionClass(ParcPayloadValidator::class))->getConstant($const);
+        $value = new ReflectionClass(ParcPayloadValidator::class)->getConstant($const);
         self::assertIsString($value, \sprintf('ParcPayloadValidator::%s doit être une chaîne', $const));
 
         return $value;
@@ -152,7 +152,7 @@ final class ParcPromptValidatorParityTest extends TestCase
      */
     private function validatorList(string $const): array
     {
-        $value = (new ReflectionClass(ParcPayloadValidator::class))->getConstant($const);
+        $value = new ReflectionClass(ParcPayloadValidator::class)->getConstant($const);
         self::assertIsArray($value, \sprintf('ParcPayloadValidator::%s doit être un tableau', $const));
         $out = [];
         foreach ($value as $item) {
