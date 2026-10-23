@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -13,6 +13,7 @@ import { isPasswordValid } from "@/shared/lib/passwordPolicy";
 
 import { AuthLayout } from "./AuthLayout";
 import { useDevDemoRegister, useRegister, useRegisterClubLookup, useRegisterConfig } from "./queries";
+import { AUTH_TEXTS } from "./texts";
 import { TurnstileWidget } from "./TurnstileWidget";
 
 // Miroir du serveur (AuthController: filter_var FILTER_VALIDATE_EMAIL) pour un
@@ -69,6 +70,13 @@ export function RegisterPage() {
   // (le token est à usage unique : après un refus serveur, il faut en redemander un).
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = useState(0);
+  // Amendement fondateur 2026-10-23 — « Ce n'est pas mon club » : l'utilisateur récuse le club
+  // reconnu par la FFBB. On ne réaffiche PLUS le champ « Nom du club » (le serveur ignore ce nom
+  // dès que la FFBB a trouvé le club) : on EFFACE le code ARA + on y remet le focus, et on
+  // mémorise le nom récusé dans `recheckClub` → une invitation à revérifier le code s'affiche,
+  // sans champ. `recheckClub` retombe à null dès que le code change (frappe → lookup live).
+  const [recheckClub, setRecheckClub] = useState<string | null>(null);
+  const araInputRef = useRef<HTMLInputElement>(null);
 
   // P4-298 — le code FFBB normalisé + sa version DEBOUNCÉE (≈400 ms). On ne déclenche le
   // lookup d'affichage qu'au format COMPLET valide (miroir FFBB_CODE_RE) : une saisie
@@ -84,6 +92,10 @@ export function RegisterPage() {
   }, [araUpper]);
   // AFFICHAGE SEUL : on lit `data` pour afficher, jamais pour pré-remplir `club_name`.
   const clubLookup = useRegisterClubLookup(debouncedAra, FFBB_CODE_RE.test(debouncedAra));
+  // Le club RÉSOLU par la FFBB (affichage seul). Trois régimes à la saisie : (b) récusé
+  // (`recheckClub` non nul) → UNIQUEMENT l'invitation à revérifier le code ; (a) `found` non
+  // récusé → la confirmation + le bouton « Ce n'est pas mon club » ; (c) sinon → le champ nom.
+  const found = clubLookup.data?.status === "found" ? clubLookup.data : null;
 
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -92,11 +104,11 @@ export function RegisterPage() {
     event.preventDefault();
     setError(null);
     if ("" === form.email || !EMAIL_RE.test(form.email)) {
-      setError("Renseignez une adresse email valide.");
+      setError(AUTH_TEXTS.emailRequired);
       return;
     }
     if (!isPasswordValid(form.password)) {
-      setError("Le mot de passe ne respecte pas les critères.");
+      setError(AUTH_TEXTS.passwordInvalid);
       return;
     }
     // La non-correspondance est déjà signalée sous le champ (NewPasswordFields) —
@@ -107,7 +119,7 @@ export function RegisterPage() {
     // noValidate rend le `required` de la case inerte : garde explicite avec
     // un message clair plutôt qu'un bouton désarmé silencieux (revue PR-5).
     if (!consent) {
-      setError("Vous devez accepter les conditions d'utilisation et la politique de confidentialité.");
+      setError(AUTH_TEXTS.consentRequired);
       return;
     }
     try {
@@ -147,15 +159,15 @@ export function RegisterPage() {
           // formulaire (le fondateur corrige et retape) — surtout pas d'éjection vers
           // /login (le client ky exempte cette route, cf. shared/api/client.ts).
           if (401 === status) {
-            setError("Mot de passe incorrect pour le compte de démonstration.");
+            setError(AUTH_TEXTS.demoWrongPassword);
             return;
           }
           if (409 === status) {
             // Le serveur est l'autorité sur la CAUSE (error code) — on ne fait que
             // choisir le libellé (présentation), sans re-dériver la règle métier.
             setError(err.data?.error === "teardown_refused"
-              ? "Impossible de remplacer votre club de démonstration précédent. Réessayez, ou contactez le support."
-              : "Ce code FFBB est déjà utilisé par un autre club : nous ne le remplaçons pas.");
+              ? AUTH_TEXTS.demoTeardownRefused
+              : AUTH_TEXTS.demoAraTaken);
             return;
           }
           // 422/404/autre : on retombe sur l'écran d'e-mail, sans rien dire.
@@ -177,19 +189,19 @@ export function RegisterPage() {
   // envoyé sur ce chemin : le raccourci a déjà fait « les deux » côté serveur.
   if (null !== demoPhase) {
     return "explain" === demoPhase ? (
-      <AuthLayout title="Démonstration">
+      <AuthLayout title={AUTH_TEXTS.demoTitle}>
         <div className="flex flex-col gap-4">
           <p className="text-sm text-foreground">
-            Dans la vraie vie, vous confirmez votre e-mail et la boîte officielle de votre club valide votre inscription. Ce clic fait les deux.
+            {AUTH_TEXTS.demoExplainBody}
           </p>
-          <Button onClick={() => setDemoPhase("ready")}>Continuer</Button>
+          <Button onClick={() => setDemoPhase("ready")}>{AUTH_TEXTS.continue}</Button>
         </div>
       </AuthLayout>
     ) : (
-      <AuthLayout title="Votre club est prêt">
+      <AuthLayout title={AUTH_TEXTS.demoReadyTitle}>
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-foreground">Connectez-vous normalement.</p>
-          <Button onClick={() => navigate("/login")}>Se connecter</Button>
+          <p className="text-sm text-foreground">{AUTH_TEXTS.demoReadyBody}</p>
+          <Button onClick={() => navigate("/login")}>{AUTH_TEXTS.signIn}</Button>
         </div>
       </AuthLayout>
     );
@@ -197,7 +209,7 @@ export function RegisterPage() {
 
   if (sent) {
     return (
-      <AuthLayout title="Créer un compte" description="Vérifiez votre boîte mail pour activer votre compte.">
+      <AuthLayout title={AUTH_TEXTS.createAccountTitle} description={AUTH_TEXTS.sentDescription}>
         <p className="text-sm text-muted-foreground">
           Un email de confirmation vient d'être envoyé à <span className="text-foreground">{form.email}</span>. Ouvrez le lien qu'il contient pour activer votre compte. Pensez à vérifier vos spams.
         </p>
@@ -208,9 +220,9 @@ export function RegisterPage() {
   if ("sport" === step) {
     return (
       <AuthLayout
-        title="Votre sport"
-        description="Choisissez le sport de votre club. D'autres arrivent bientôt."
-        footer={<>Déjà un compte ? <Link className="text-accent hover:underline" to="/login">Se connecter</Link></>}
+        title={AUTH_TEXTS.sportTitle}
+        description={AUTH_TEXTS.sportDescription}
+        footer={<>{AUTH_TEXTS.alreadyHaveAccount} <Link className="text-accent hover:underline" to="/login">{AUTH_TEXTS.signIn}</Link></>}
       >
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-3">
@@ -231,11 +243,11 @@ export function RegisterPage() {
                 {s.enabled ? <Check aria-hidden className="absolute right-1.5 top-1.5 size-3.5 text-accent" /> : null}
                 <span aria-hidden className="text-2xl leading-none">{s.icon}</span>
                 <span>{s.label}</span>
-                {s.enabled ? null : <span className="text-xs text-muted-foreground">bientôt</span>}
+                {s.enabled ? null : <span className="text-xs text-muted-foreground">{AUTH_TEXTS.soon}</span>}
               </button>
             ))}
           </div>
-          <Button onClick={() => setStep("details")}>Continuer</Button>
+          <Button onClick={() => setStep("details")}>{AUTH_TEXTS.continue}</Button>
         </div>
       </AuthLayout>
     );
@@ -243,23 +255,23 @@ export function RegisterPage() {
 
   return (
     <AuthLayout
-      title="Créer un compte"
-      description="Le code club FFBB identifie votre club. S'il existe déjà, votre demande sera soumise à l'approbation du gestionnaire."
-      footer={<>Déjà un compte ? <Link className="text-accent hover:underline" to="/login">Se connecter</Link></>}
+      title={AUTH_TEXTS.createAccountTitle}
+      description={AUTH_TEXTS.detailsDescription}
+      footer={<>{AUTH_TEXTS.alreadyHaveAccount} <Link className="text-accent hover:underline" to="/login">{AUTH_TEXTS.signIn}</Link></>}
     >
       <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="firstName">Prénom</Label>
+            <Label htmlFor="firstName">{AUTH_TEXTS.firstName}</Label>
             <Input id="firstName" required value={form.firstName} onChange={set("firstName")} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lastName">Nom</Label>
+            <Label htmlFor="lastName">{AUTH_TEXTS.lastName}</Label>
             <Input id="lastName" required value={form.lastName} onChange={set("lastName")} />
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{AUTH_TEXTS.email}</Label>
           <Input
             id="email"
             type="email"
@@ -267,7 +279,7 @@ export function RegisterPage() {
             required
             value={form.email}
             onChange={(e) => { set("email")(e); if (null !== emailError) setEmailError(null); }}
-            onBlur={() => setEmailError("" !== form.email && !EMAIL_RE.test(form.email) ? "Adresse email invalide." : null)}
+            onBlur={() => setEmailError("" !== form.email && !EMAIL_RE.test(form.email) ? AUTH_TEXTS.emailInvalid : null)}
             aria-invalid={null !== emailError}
           />
           {emailError ? <p className="text-xs text-destructive">{emailError}</p> : null}
@@ -279,23 +291,61 @@ export function RegisterPage() {
           onConfirmChange={(v) => setForm((prev) => ({ ...prev, confirm: v }))}
         />
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ara">Code club FFBB</Label>
-          <Input id="ara" required value={form.ara} onChange={set("ara")} placeholder="Ex. ARA0069013" className="uppercase" />
+          <Label htmlFor="ara">{AUTH_TEXTS.araLabel}</Label>
+          <Input
+            id="ara"
+            ref={araInputRef}
+            required
+            value={form.ara}
+            // Toute frappe dans le code efface l'invitation « Vérifiez votre code » (le lookup
+            // live reprend la main) — jamais un message périmé sur un code qui a changé.
+            onChange={(e) => { set("ara")(e); setRecheckClub(null); }}
+            placeholder={AUTH_TEXTS.araPlaceholder}
+            className="uppercase"
+          />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="club_name">Nom du club <span className="text-muted-foreground">(si nouveau club)</span></Label>
-          <Input id="club_name" value={form.club_name} onChange={set("club_name")} />
-          <p className="text-xs text-muted-foreground">Récupéré automatiquement depuis la FFBB si le code est reconnu.</p>
-          {/* P4-298 — affichage SEUL (jamais de pré-remplissage de club_name). FFBB muette ou
-              code encore partiel → rien (non bloquant). */}
-          {clubLookup.data?.status === "found" ? (
-            <p className="text-xs text-foreground">
-              {clubLookup.data.city ? `${clubLookup.data.name} (${clubLookup.data.city})` : clubLookup.data.name} — c'est bien votre club ?
+        {/* Amendement fondateur 2026-10-23 — trois régimes à la saisie du code. */}
+        {null !== recheckClub ? (
+          // (b) Club RÉCUSÉ : le code a été effacé, on invite à le revérifier en NOMMANT le club
+          // reconnu. Aucun champ nom (le serveur ignore ce nom dès que la FFBB a trouvé le club).
+          <p className="text-xs text-warning">{AUTH_TEXTS.checkYourCode(recheckClub)}</p>
+        ) : found ? (
+          // (a) Club RECONNU par la FFBB (non récusé) : le champ « Nom du club » DISPARAÎT (le
+          // serveur re-résout, inutile de taper) au profit d'une confirmation + un bouton
+          // « Ce n'est pas mon club » qui efface le code et y remet le focus.
+          <div className="flex flex-col gap-1.5">
+            <p className="flex items-center gap-1.5 text-sm text-foreground">
+              <Check aria-hidden className="size-4 shrink-0 text-accent" />
+              <span>
+                {AUTH_TEXTS.youAreClub} {found.city ? `${found.name} (${found.city})` : found.name}
+              </span>
             </p>
-          ) : clubLookup.data?.status === "unknown" ? (
-            <p className="text-xs text-warning">Code non reconnu à la FFBB — vérifiez la saisie.</p>
-          ) : null}
-        </div>
+            <button
+              type="button"
+              className="self-start text-xs text-accent hover:underline"
+              onClick={() => {
+                setRecheckClub(found.name ?? null);
+                setForm((prev) => ({ ...prev, ara: "", club_name: "" }));
+                araInputRef.current?.focus();
+              }}
+            >
+              {AUTH_TEXTS.notMyClub}
+            </button>
+          </div>
+        ) : (
+          // (c) Saisie normale : le champ « Nom du club » (+ le hint « code non reconnu » sur
+          // `unknown`). FFBB muette, vérif désactivée ou code encore partiel → rien de plus.
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="club_name">
+              {AUTH_TEXTS.clubNameLabel} <span className="text-muted-foreground">{AUTH_TEXTS.clubNameHint}</span>
+            </Label>
+            <Input id="club_name" value={form.club_name} onChange={set("club_name")} />
+            <p className="text-xs text-muted-foreground">{AUTH_TEXTS.clubNameAutoHint}</p>
+            {clubLookup.data?.status === "unknown" ? (
+              <p className="text-xs text-warning">{AUTH_TEXTS.clubNotRecognized}</p>
+            ) : null}
+          </div>
+        )}
         {/* RGPD : consentement explicite requis (le backend le refuse sans). */}
         <label className="flex items-start gap-2 text-sm">
           <input
@@ -326,14 +376,14 @@ export function RegisterPage() {
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={() => setStep("sport")}>
-            Précédent
+            {AUTH_TEXTS.previous}
           </Button>
           {/* Désarmé tant que le mdp n'est pas valide OU non confirmé (comme reset
               /profil) : sinon un clic avec confirmation vide ne fait RIEN et lit
               comme une page cassée (revue #261 round 1). */}
           <Button type="submit" className="flex-1" disabled={register.isPending || !isPasswordValid(form.password) || form.password !== form.confirm}>
             {register.isPending ? <Spinner className="size-4" /> : null}
-            Créer le compte
+            {AUTH_TEXTS.createAccount}
           </Button>
         </div>
       </form>

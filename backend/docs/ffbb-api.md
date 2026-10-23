@@ -78,12 +78,19 @@ Champs **ignorés** : `offresPratiques`, `labellisation`, `engagements_*`, `_geo
 > avant appel) : `FfbbClubPopulator` (mapping complet ci-dessus, à la création / au re-import) et
 > `FfbbClubDirectory` — maison unique qui ne lit QUE ce dont elle a besoin : `exists()` (garde
 > anti-squatting à l'inscription), `lookupClubEmail()` (mail institutionnel, approbation P3-4) et
-> `lookupIdentity()` (**P4-298 — nom + ville, JAMAIS le mail**, pour l'affichage « c'est bien
-> votre club ? » à la saisie du code). La route publique **`GET /api/register/club-lookup`**
-> (préfixe `^/api/register`, limiteur IP dédié `register_club_lookup`, cache 15 min des réponses
-> définitives) n'est qu'un mince appelant de `lookupIdentity`, **gaté par
-> `app.ffbb_register_existence_check`** : flag off (dev/test/Behat/démos) ⇒ `unavailable` sans
-> aucun appel sortant — même drapeau que la garde d'existence du register.
+> `lookupIdentity()` (nom + ville, JAMAIS le mail — trois états francs `found`/`unknown`/
+> `unavailable`). Deux appelants, deux usages distincts. La route publique
+> **`GET /api/register/club-lookup`** (préfixe `^/api/register`, limiteur IP dédié
+> `register_club_lookup`, cache 15 min des réponses définitives) n'est qu'un mince appelant
+> d'AFFICHAGE : « c'est bien votre club ? » à la saisie du code, sans jamais pré-remplir
+> `club_name`. **`RegisterService` l'appelle une seconde fois, à l'envoi**, et là le résultat
+> FAIT FOI : `found` → le serveur RE-RÉSOUT lui-même le nom et IGNORE le `club_name` soumis
+> (améliorations légères #1, 2026-10-23 — **amende P4-298**, qui prévoyait un affichage seul
+> sans aucune incidence sur la valeur stockée) ; `unknown` refuse l'inscription (400) ;
+> `unavailable` (FFBB muette) ne bloque jamais, repli sur le `club_name` soumis. Les deux
+> appelants sont **gatés par `app.ffbb_register_existence_check`** : flag off (dev/test/Behat/
+> démos) ⇒ `unavailable` sans aucun appel sortant — même drapeau que la garde d'existence du
+> register.
 
 ## 3. Logo d'un organisme
 

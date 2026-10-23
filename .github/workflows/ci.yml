@@ -555,6 +555,15 @@ jobs:
       - name: RegisterClubLookupTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RegisterClubLookupTest.php --group phase1'
 
+      # Améliorations légères #1 (revient sur P4-298) — l'inscription RE-RÉSOUT elle-même le nom du
+      # club auprès de la FFBB et IGNORE le `club_name` soumis quand la fédération connaît le code
+      # (nom menteur neutralisé) ; FFBB muette + nom vide → 400 « nom requis » jamais 500 ; la
+      # réponse 202 ne révèle jamais le nom résolu ni ne dépend de l'existence d'un compte ; un code
+      # malformé ne sort jamais vers la FFBB. Sans ce gate, un attaquant imposerait un nom de club
+      # arbitraire ou la panne FFBB deviendrait une 500, invisible aux autres checks.
+      - name: RegisterClubNameResolutionTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RegisterClubNameResolutionTest.php --group phase1'
+
       # P4-45 — le pendant PAR CLUB de SEC-11. Step nommé, donc réellement bloquant :
       # porter `phase1` ne suffit pas (cf. le commentaire P2-9ter plus bas).
       - name: ClubQuotaTest

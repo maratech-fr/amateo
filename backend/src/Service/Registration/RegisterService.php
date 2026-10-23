@@ -139,34 +139,45 @@ final class RegisterService
         $email = strtolower($email);
         $existingClub = $this->clubRepository->findRealByFfbbCode($ara);
 
-        // club_name is required to CREATE a club. Keyed on the ARA (public), not the
-        // email → still enumeration-safe: the 400 never depends on account existence.
-        if (!$existingClub instanceof Club && '' === $clubName) {
-            return $this->json(['error' => 'Le nom du club est requis pour créer un nouveau club.'], 400);
-        }
-
-        // Vérification FFBB — chemin CRÉATION uniquement (ARA neuf, aucun club réel en
+        // Re-résolution FFBB — chemin CRÉATION uniquement (ARA neuf, aucun club réel en
         // base). Rejoindre un club déjà en base n'appelle JAMAIS la fédération (format
-        // hérité toléré). Keyée sur l'ARA (donnée publique FFBB), jamais sur l'e-mail →
-        // ne rouvre pas l'oracle d'énumération A3 que ce contrôleur ferme. Gardée par un
-        // flag d'environnement : active en prod (anti-squatting d'un code fédéral), inerte
-        // en dev/Behat & démos (codes synthétiques, patron Turnstile).
+        // hérité toléré). Keyée sur l'ARA (donnée publique FFBB), AVANT la recherche par
+        // e-mail → ne rouvre pas l'oracle d'énumération A3 que ce contrôleur ferme. Le
+        // serveur RE-RÉSOUT lui-même le nom et IGNORE le `club_name` soumis dès que la
+        // fédération connaît le code (le nom tapé n'est qu'un repli). Gardée par un flag
+        // d'environnement : active en prod (anti-squatting d'un code fédéral + nom fédéral
+        // faisant foi), inerte en dev/Behat & démos (codes synthétiques, patron Turnstile)
+        // → le `club_name` soumis reste alors le nom.
+        $resolvedName = null;
         if (!$existingClub instanceof Club && $this->ffbbRegisterExistenceCheck) {
             if (!FfbbApiClient::isValidClubCode($ara)) {
                 return $this->json(['error' => 'Ce code FFBB n\'est pas valide.'], 400);
             }
-            // FFBB muette (null) → ne PAS bloquer : la demande s'ouvrira sans mail FFBB
-            // (file superadmin). Seul un « inconnu » FRANC (false) refuse l'inscription.
-            if (false === $this->ffbbClubDirectory->exists($ara)) {
+            // Trois états francs, miroir d'`FfbbClubDirectory::exists()` : `found` → le nom
+            // FÉDÉRAL prime (le `club_name` soumis est ignoré) ; `unknown` → refus FRANC ;
+            // `unavailable` (FFBB muette) → ne bloque PAS, repli sur le nom soumis.
+            $identity = $this->ffbbClubDirectory->lookupIdentity($ara);
+            if ('unknown' === $identity['status']) {
                 return $this->json(['error' => 'Ce code FFBB est inconnu de la fédération.'], 400);
+            }
+            if ('found' === $identity['status']) {
+                $resolvedName = $identity['name'];
             }
         }
 
+        // club_name is required to CREATE a club — SEULEMENT quand la fédération n'a rien
+        // résolu (FFBB muette/désactivée). Keyed on the ARA (public), not the email →
+        // still enumeration-safe: the 400 never depends on account existence.
+        if (!$existingClub instanceof Club && null === $resolvedName && '' === $clubName) {
+            return $this->json(['error' => 'Le nom du club est requis pour créer un nouveau club.'], 400);
+        }
+
         // Intent captured at register time: a club NAME rides on the token ONLY when this
-        // registration creates a club (new ARA). A join (existing ARA) stores null, so
-        // verify can never silently promote a would-be pending member to admin if the
-        // target club has since vanished.
-        $intentClubName = $existingClub instanceof Club ? null : $clubName;
+        // registration creates a club (new ARA). The FFBB-resolved name wins over the
+        // submitted one; the submitted name is only a fallback when FFBB is silent. A join
+        // (existing ARA) stores null, so verify can never silently promote a would-be
+        // pending member to admin if the target club has since vanished.
+        $intentClubName = $existingClub instanceof Club ? null : ($resolvedName ?? $clubName);
 
         $existingUser = $this->entityManager->getRepository(User::class)->findOneBy(['email' => $email]);
         if (null !== $existingUser) {

@@ -4079,7 +4079,7 @@
                                     },
                                     "club_name": {
                                         "type": "string",
-                                        "description": "Required only when the ARA creates a new club (snake_case)"
+                                        "description": "When creating a new club: required only if the FFBB does not resolve the name (code unknown, FFBB unavailable, or the existence check is off); ignored when the FFBB finds the club \u2014 the federal name is used (snake_case)"
                                     },
                                     "consent": {
                                         "type": "boolean",

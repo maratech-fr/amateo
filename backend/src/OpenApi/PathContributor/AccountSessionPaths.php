@@ -50,7 +50,7 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                     'firstName' => ['type' => 'string'],
                     'lastName' => ['type' => 'string'],
                     'ara' => ['type' => 'string', 'description' => 'FFBB club code — 3-20 uppercase alphanumeric'],
-                    'club_name' => ['type' => 'string', 'description' => 'Required only when the ARA creates a new club (snake_case)'],
+                    'club_name' => ['type' => 'string', 'description' => 'When creating a new club: required only if the FFBB does not resolve the name (code unknown, FFBB unavailable, or the existence check is off); ignored when the FFBB finds the club — the federal name is used (snake_case)'],
                     'consent' => ['type' => 'boolean', 'description' => 'RGPD: acceptance of the terms & privacy policy — required (400 without)'],
                     'turnstileToken' => ['type' => 'string', 'description' => 'Cloudflare Turnstile challenge token — required only when the anti-robot check is enabled (see GET /api/register/config); absent or invalid then → 403'],
                 ],
