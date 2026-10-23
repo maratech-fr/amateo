@@ -82,7 +82,7 @@ jusqu'à `N × 35 s` de solve. `BUILD_BUDGET_SECONDS = 10.0` reste le budget de 
 verrou `MatchPlacementLock` et le timeout HTTP backend→engine suivent la même formule
 (`PlaceMatchesMessage::budgetSecondsFor` : `N × (35 + 15) s + 60 s` de marge, `35` = budget/semaine,
 `15` = `ENGINE_PER_WEEK_OVERHEAD_SECONDS`, `60` = `LOCK_TTL_MARGIN_SECONDS`) — détail complet dans
-`specs/courantes/module-matchs.md` §3. Le solve lui-même vit dans un **processus fils jetable**
+`specs/courantes/module-matchs-radar-et-placement.md` §3. Le solve lui-même vit dans un **processus fils jetable**
 (ENG-49, `ProcessPoolExecutor(max_workers=1, max_tasks_per_child=1, mp_context=spawn)`,
 `engine/app/main.py`) : toute sa mémoire native meurt avec le fils à chaque placement, et
 `malloc_trim(0)` côté parent rend le reste des arènes glibc de l'orchestration FastAPI — un fils tué
@@ -166,7 +166,8 @@ Avec une fenêtre, un match HORS fenêtre bascule dans la branche d'ancrage mêm
 TO_PLACE sans elle : posé (venue+kickoff, solveur compris) → FIXED, protégé au même titre qu'un
 placement manuel ; non posé → absent du payload ; un extérieur hors fenêtre est omis (son empreinte
 personne est déjà ignorée depuis la décision B, il ne portait que sa date). C'est le mécanisme
-derrière « Placer ce week-end » (`specs/courantes/module-matchs.md` §3/§5) : résoudre une seule
+derrière « Placer ce week-end » (`specs/courantes/module-matchs-radar-et-placement.md` §3,
+`specs/courantes/module-matchs-consultation.md` §5) : résoudre une seule
 semaine sans jamais remettre en jeu un placement déjà posé ailleurs, gardé par le scénario Behat
 « placer un week-end ne déplace pas un match posé ailleurs ». **En offre Découverte** (mode restreint,
 `PlanEntitlements::outputBudget()['restricted']`, club non démo, pool > 0), c'est la SEULE fenêtre

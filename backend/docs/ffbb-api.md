@@ -100,7 +100,7 @@ Même host, même asset, même re-hébergement paresseux que §3, mais un usage 
 d'un organisme rencontré à l'extérieur, une donnée du **module matchs** plutôt que de la fiche club.
 
 - **`OpponentDirectoryEntry.logoId`** (colonne `logo_id`, table GLOBALE fédérale partagée — voir
-  `specs/courantes/module-matchs.md` § Modèle & données transverses) est posé par
+  `specs/courantes/module-matchs-modele-donnees.md` § Modèle & données transverses) est posé par
   `App\Service\Basketball\OpponentLocationResolver` depuis les hits organismes qu'il tient DÉJÀ
   (`strictOrganismeMatch`/`resolveOrganismeByCode`, canal `search*`) — **zéro appel réseau de
   plus**. Upsert `COALESCE(EXCLUDED.logo_id, opponent_directory.logo_id)` : un logo déjà connu
@@ -174,7 +174,7 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   domiciles NON PLACÉS du club au même libellé, épargne les domiciles déjà PLACÉS/SOUMIS/VALIDÉS) —
   sans effet sur `apply`/`FfbbRencontreReconciler` elle-même, qui continue de ne poser `venueId` que
   sur un domicile encore sans salle. Détail :
-  [`module-matchs.md`](../../specs/courantes/module-matchs.md) §1 « Modèle & données transverses ».
+  [`module-matchs-modele-donnees.md`](../../specs/courantes/module-matchs-modele-donnees.md) §1 « Modèle & données transverses ».
   ⚠ **Pont par référence FFBB de salle : piste FERMÉE** (décision fondateur, `etat-des-lieux.md` §2)
   — l'objet `salle` d'un hit rencontres (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que
   `{id, libelle, adresse, cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`,
@@ -190,7 +190,7 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   il ne répond pas à l'appariement d'un hit rencontres SANS coordonnées de départ, une ligne
   `FFBB_API` et une ligne `MANUAL` de la MÊME salle restant donc deux suggestions disjointes dans
   `opponent_venue_suggestion` (§1 « Modèle & données transverses » de
-  [`module-matchs.md`](../../specs/courantes/module-matchs.md), table `OpponentVenueSuggestion`).
+  [`module-matchs-modele-donnees.md`](../../specs/courantes/module-matchs-modele-donnees.md), table `OpponentVenueSuggestion`).
 - `apply` partage aussi les règles de naissance/fenêtre du xlsx (`FfbbRencontreReconciler` appelle
   `FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`, foyer unique) — un extérieur
   créé par ce canal naît `REVIEWED` d'office, un domicile PLACÉ déphasé dont la date app OU la date
@@ -199,10 +199,10 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   ni choix inline, `venueId` sur la décision) n'est jamais appliquée d'office même dans cette fenêtre,
   le gymnase actuel est conservé et l'écart reste à trancher ; les décisions `apply` partagent le même
   `venueId` optionnel que l'arbitrage hors dépôt sur un écart `venue` (§ détail
-  [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Arbitrage d'un écart de salle ») ;
+  [`module-matchs-import-fbi.md`](../../specs/courantes/module-matchs-import-fbi.md) § « Arbitrage d'un écart de salle ») ;
   les libellés `clubLabel`/`opponentLabel` perdent leur suffixe FFBB « (n) »
   à la lecture (`VenueLabelNormalizer::stripTeamNumberSuffix`). Détail :
-  [`module-matchs.md`](../../specs/courantes/module-matchs.md) §7 « Écran Importer ».
+  [`module-matchs-import-fbi.md`](../../specs/courantes/module-matchs-import-fbi.md) §7 « Écran Importer ».
 - **Filtre strict serveur** (`FfbbApiClient::searchRencontres`) : la recherche plein texte sur le
   code club rend du bruit (un hit « AMICAL PNM » ne concernant pas le club, mesuré) — ne sont
   gardés que les hits où le code club apparaît sur `idOrganismeEquipe1.code` OU
@@ -213,7 +213,7 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   compteurs seuls. La trace des écarts n'est pas portée par `FbiIngestion` : elle vit sur
   `Fixture.pendingDeviations`, commune aux deux canaux.
 
-Détail produit complet (appariement 3 étages, front) : [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §7 « Écran Importer ».
+Détail produit complet (appariement 3 étages, front) : [`../../specs/courantes/module-matchs-import-fbi.md`](../../specs/courantes/module-matchs-import-fbi.md) §7 « Écran Importer ».
 
 ## Engagements + compétitions — appariement
 
@@ -295,7 +295,7 @@ valeur écrite est **RE-DÉDUITE côté serveur** après résolution des compét
 touchés, aucune régénération n'est déclenchée. Garde NR bloquante : `FfbbLevelAlignmentTest`
 (`backend/tests/Security/`) — falsifie le 409 du PUT générique, la valeur serveur contre un `level`
 client forgé, le no-op sur ligne inéligible et le rejet d'une équipe d'un autre club. Détail produit
-(modale, proposition liée à l'équipe suggérée) : [`module-matchs.md`](../../specs/courantes/module-matchs.md)
+(modale, proposition liée à l'équipe suggérée) : [`module-matchs-import-fbi.md`](../../specs/courantes/module-matchs-import-fbi.md)
 §7 « Engagements FFBB — le niveau d'une équipe JEUNE suit son engagement, par clic ».
 
 `ffbbserver_rencontres` (ne porte que des amicaux pour le club de référence, zéro championnat) est
@@ -358,7 +358,7 @@ haut.
 - Consommé par `LocateOpponentModal` (champ « Nom du gymnase », débounced 300 ms, prend la main
   sur le code postal dès qu'elle est active ; chaque résultat affiche « Nom · adresse · CP Ville »
   — détail produit :
-  [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §9 « Écran
+  [`../../specs/courantes/module-matchs-adversaires.md`](../../specs/courantes/module-matchs-adversaires.md) §9 « Écran
   Adversaires ») et par `OpponentVenueAutoLocator` (repli automatique ci-dessus, ne retient qu'une
   égalité stricte et unique).
 

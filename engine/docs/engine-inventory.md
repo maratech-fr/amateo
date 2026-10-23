@@ -44,7 +44,7 @@ Les endpoints exposés par `app/main.py` (santé + les trois du contrat) :
 ### POST /place-matches
 
 Le **second problème CP-SAT**, distinct du solve hebdomadaire (ADR-0003 ; comportement produit :
-[`module-matchs.md`](../../specs/courantes/module-matchs.md) §Solveur de placement). Ce qui est propre à l'engine :
+[`module-matchs-radar-et-placement.md`](../../specs/courantes/module-matchs-radar-et-placement.md) §Solveur de placement). Ce qui est propre à l'engine :
 
 - **Handler** : `place_matches(input_data: MatchPlacementInputSchema)` (`app/main.py::place_matches`). Même
   garde de contrat que `/generate` — MAJOR seul, 422 sinon : **un seul `CONTRACT_VERSION` pour les

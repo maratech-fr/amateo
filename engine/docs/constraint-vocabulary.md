@@ -175,7 +175,8 @@
 > (`match_input_schema.py::CoachUnavailabilitySchema`) — TOUJOURS SOFT (`W_COACH_UNAVAILABLE=60`,
 > `engine/app/solver/match_placement/weights.py`), jamais un élagage de domaine ni un HARD. Les deux
 > mécanismes ne partagent ni schéma ni mécanisme — voir
-> [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §1/§3.
+> [`../../specs/courantes/module-matchs-modele-donnees.md`](../../specs/courantes/module-matchs-modele-donnees.md) §1,
+> [`../../specs/courantes/module-matchs-radar-et-placement.md`](../../specs/courantes/module-matchs-radar-et-placement.md) §3.
 
 ---
 
