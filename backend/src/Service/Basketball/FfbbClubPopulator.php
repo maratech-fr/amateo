@@ -30,6 +30,12 @@ use Throwable;
  */
 final class FfbbClubPopulator
 {
+    // Surfaces du thème SOMBRE, recopiées de frontend/src/shared/lib/color.ts (SURFACES.dark) —
+    // une 2e couleur de logo ne devient l'accent sombre que si elle y reste lisible (AA 4,5:1).
+    private const string DARK_THEME_BG = '#151311';
+    private const string DARK_THEME_CARD = '#1f1d1a';
+    private const float WCAG_AA = 4.5;
+
     public function __construct(
         private readonly FfbbApiClient $api,
         private readonly FfbbLogoFetcher $logoFetcher,
@@ -38,6 +44,7 @@ final class FfbbClubPopulator
         private readonly FfbbCommitteeRepository $committees,
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
+        private readonly LogoPaletteExtractor $paletteExtractor,
     ) {}
 
     /**
@@ -112,27 +119,74 @@ final class FfbbClubPopulator
         $parent = $this->arr($hit['organisme_id_pere'] ?? null);
         $this->setIfPresent(null === $parent ? null : $this->str($parent['code'] ?? null), $club->setCommitteeCode(...));
 
+        // Le logo du club ET l'accent dérivé du logo partagent les MÊMES octets : un
+        // seul téléchargement sert les deux blocs (jamais un second fetch pour l'accent).
+        $needsLogo = null === $club->getLogoUrl();
+        $needsAccent = null === $club->getAccentColor();
+        $logoBytes = $needsLogo || $needsAccent ? $this->logoBytes($hit) : null;
+
         // Club logo: only set it when the club has none (never clobber an upload).
-        if (null === $club->getLogoUrl()) {
-            $bytes = $this->logoBytes($hit);
-            if (null !== $bytes) {
-                $this->logoStorage->store($club->getId(), $bytes);
-                $club->setLogoUrl(LogoUrl::build($club->getId(), $bytes));
-            }
+        if ($needsLogo && null !== $logoBytes) {
+            $this->logoStorage->store($club->getId(), $logoBytes);
+            $club->setLogoUrl(LogoUrl::build($club->getId(), $logoBytes));
         }
 
-        // P2-21 lot C — l'accent par défaut = la couleur dominante du logo selon la
-        // FFBB (`logo.gradient_color`, mesuré : #c9102e pour BCCL). SEULEMENT si le
-        // club n'a encore rien choisi : un accent posé à la main (ou extrait du logo
-        // côté client) ne se fait jamais écraser par un ré-import. Format validé —
-        // une valeur FFBB inattendue ne doit pas casser le thème.
-        if (null === $club->getAccentColor()) {
-            $logo = $this->arr($hit['logo'] ?? null);
-            $gradient = null === $logo ? null : $this->str($logo['gradient_color'] ?? null);
-            if (null !== $gradient && 1 === preg_match('/^#[0-9a-fA-F]{6}$/', $gradient)) {
-                $club->setAccentColor(strtolower($gradient));
+        // P2-21 / retour Rillieux #14 — l'accent par défaut vient du LOGO quand il est
+        // extractible : la couleur dominante devient l'accent (elle l'emporte sur le
+        // `gradient_color` FFBB), la seconde devient l'accent SOMBRE si elle reste lisible
+        // (AA 4,5:1) sur les deux surfaces du thème sombre. SEULEMENT si le club n'a encore
+        // rien choisi : un accent posé à la main ne se fait jamais écraser par un ré-import.
+        if ($needsAccent) {
+            $palette = null === $logoBytes ? null : $this->paletteExtractor->extract($logoBytes);
+            if (null !== $palette) {
+                $club->setAccentColor($palette[0]);
+                $second = $palette[1];
+                if (null !== $second && $this->readableOnDarkSurfaces($second)) {
+                    $club->setAccentColorDark($second);
+                }
+            } else {
+                // Repli : le logo n'est pas extractible → la couleur dominante FFBB
+                // (`logo.gradient_color`, mesuré : #c9102e pour BCCL). Format validé —
+                // une valeur FFBB inattendue ne doit pas casser le thème.
+                $logo = $this->arr($hit['logo'] ?? null);
+                $gradient = null === $logo ? null : $this->str($logo['gradient_color'] ?? null);
+                if (null !== $gradient && 1 === preg_match('/^#[0-9a-fA-F]{6}$/', $gradient)) {
+                    $club->setAccentColor(strtolower($gradient));
+                }
             }
         }
+    }
+
+    /**
+     * Une couleur reste-t-elle lisible (contraste WCAG AA, 4,5:1) sur LES DEUX surfaces
+     * du thème sombre ? Sinon le front garde sa dérivation par contraste (accentColorDark null).
+     */
+    private function readableOnDarkSurfaces(string $hex): bool
+    {
+        return $this->contrastRatio($hex, self::DARK_THEME_BG) >= self::WCAG_AA
+            && $this->contrastRatio($hex, self::DARK_THEME_CARD) >= self::WCAG_AA;
+    }
+
+    /** Rapport de contraste WCAG (1..21) entre deux hex #rrggbb — miroir de color.ts::contrastRatio. */
+    private function contrastRatio(string $a, string $b): float
+    {
+        $la = $this->luminance($a);
+        $lb = $this->luminance($b);
+
+        return (max($la, $lb) + 0.05) / (min($la, $lb) + 0.05);
+    }
+
+    /** Luminance relative WCAG (0 noir, 1 blanc) d'un hex #rrggbb — miroir de color.ts::luminance. */
+    private function luminance(string $hex): float
+    {
+        $n = (int) hexdec(ltrim($hex, '#'));
+        $lin = static function (int $v): float {
+            $c = $v / 255;
+
+            return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
+        };
+
+        return 0.2126 * $lin(($n >> 16) & 0xFF) + 0.7152 * $lin(($n >> 8) & 0xFF) + 0.0722 * $lin($n & 0xFF);
     }
 
     /** @param callable(?string): mixed $setter */

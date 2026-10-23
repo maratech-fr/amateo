@@ -30,6 +30,14 @@
 - Mode clair/sombre : `frontend/src/shared/stores/themeStore.ts` (+ slot `accent`).
 - **Pré-paint du thème** : `frontend/src/main.tsx` (`readPersistedThemeMode`) pose la classe `.dark` **avant** le premier rendu React. Sans lui, l'arbre se rend en clair puis un effet bascule : flash du mauvais thème **et** animation `transition-colors` qui laisse les surfaces à des couleurs intermédiaires **sub-AA** (A11Y-06).
 - Écran de réglage : `frontend/src/features/club/ClubPage.tsx` + `LogoCropper.tsx`.
+- **Accent par défaut dérivé du logo FFBB** (2026-10-23, retour Rillieux) : au populate (register
+  ET « Actualiser depuis la FFBB »), et seulement si le club n'a encore aucun accent choisi, les
+  octets du logo déjà téléchargé passent par `App\Service\Basketball\LogoPaletteExtractor` — la
+  couleur dominante devient `accentColor`, la 2ᵉ couleur devient `accentColorDark` seulement si
+  elle reste lisible (AA 4,5:1) sur les deux surfaces du thème sombre, sinon ce champ reste `null`
+  (le front garde sa dérivation par contraste). Logo inextractible → repli sur `logo.gradient_color`
+  de la FFBB, inchangé. Un accent déjà posé par le club n'est jamais écrasé. Détail protocole FFBB :
+  [`ffbb-api.md`](../../backend/docs/ffbb-api.md) §3.
 - Surfaces de marque : `frontend/src/app/AppLayout.tsx` — l'en-tête pose **la marque PRODUIT
   d'abord** : icône `BrandIcon` (`shared/components/ui/brand-icon.tsx`) **toujours présente**,
   puis le blason du club (son `logoUrl`) juste après **s'il existe**, même taille (24 px) — pas de

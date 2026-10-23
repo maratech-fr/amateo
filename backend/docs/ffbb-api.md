@@ -57,7 +57,8 @@ Body:
 | `telephone` | `Club.contactPhone` |
 | `mail` | `Club.contactEmail` |
 | `urlSiteWeb` | `Club.website` — et, sur les hits comité/ligue du 2ᵉ `multi-search`, `FfbbCommittee.website` / `FfbbLeague.website` (⚠ trim — la ligue ARA rend une espace finale, mesurée en réel) |
-| `logo.id` | uuid → logo réhébergé (§3) |
+| `logo.id` | uuid → logo réhébergé (§3), qui sert aussi l'accent par défaut (§3) |
+| `logo.gradient_color` | repli de l'accent par défaut **seulement si le logo n'est pas extractible** (§3) |
 | `organisme_id_pere` (`id,nom,adresse,code`) | comité → `FfbbCommittee` |
 | `organisme_id_pere.organisme_id_pere` (`id,nom,code`) | ligue → `FfbbLeague` |
 
@@ -100,6 +101,19 @@ GET https://api.ffbb.com/assets/{uuid}?format=webp&height=220&fit=contain
 
 - `{uuid}` = `logo.id` du hit.
 - **Réhébergé** chez nous (pas de hotlink) : download → validation MIME/taille → stockage via le pipeline logo existant.
+- **Accent par défaut du club dérivé de ces MÊMES octets** (amélioration légère 3/6, 2026-10-23,
+  retour Rillieux) : `App\Service\Basketball\LogoPaletteExtractor` (GD, pur, sans réseau — bornes
+  anti-bombe 2 MiB / 4096 px par axe, dimensions lues via `getimagesizefromstring` avant tout
+  décodage, pixels transparents ignorés, PNG à palette convertis en truecolor ; GD de l'image PHP
+  compilé `--with-webp` car le fetcher demande `format=webp` à la FFBB) lit les 2 couleurs dominantes du logo déjà téléchargé —
+  un seul fetch sert le logo ET l'accent, jamais un second download. **Seulement si le club n'a
+  encore aucun accent choisi** (`FfbbClubPopulator::applyClub`) : la dominante devient
+  `accentColor` (elle l'emporte désormais sur `logo.gradient_color`) ; la 2ᵉ couleur devient
+  `accentColorDark` seulement si son contraste WCAG AA (≥ 4,5:1) tient face aux DEUX surfaces du
+  thème sombre (constantes recopiées de `shared/lib/color.ts`), sinon le champ reste `null` et le
+  front garde sa propre dérivation. Logo inextractible (best-effort silencieux) → repli sur
+  `logo.gradient_color` comme avant. Détail produit, écran et extraction client (cropper) :
+  [`identite-visuelle-club.md`](../../specs/courantes/identite-visuelle-club.md).
 
 ## 3bis. Logo d'un ADVERSAIRE
 
