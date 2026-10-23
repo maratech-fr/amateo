@@ -104,7 +104,8 @@ GET https://api.ffbb.com/assets/{uuid}?format=webp&height=220&fit=contain
 - **Accent par défaut du club dérivé de ces MÊMES octets** (amélioration légère 3/6, 2026-10-23,
   retour Rillieux) : `App\Service\Basketball\LogoPaletteExtractor` (GD, pur, sans réseau — bornes
   anti-bombe 2 MiB / 4096 px par axe, dimensions lues via `getimagesizefromstring` avant tout
-  décodage, pixels transparents ignorés) lit les 2 couleurs dominantes du logo déjà téléchargé —
+  décodage, pixels transparents ignorés, PNG à palette convertis en truecolor ; GD de l'image PHP
+  compilé `--with-webp` car le fetcher demande `format=webp` à la FFBB) lit les 2 couleurs dominantes du logo déjà téléchargé —
   un seul fetch sert le logo ET l'accent, jamais un second download. **Seulement si le club n'a
   encore aucun accent choisi** (`FfbbClubPopulator::applyClub`) : la dominante devient
   `accentColor` (elle l'emporte désormais sur `logo.gradient_color`) ; la 2ᵉ couleur devient
