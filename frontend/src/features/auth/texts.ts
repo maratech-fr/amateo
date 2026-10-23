@@ -33,6 +33,9 @@ export const AUTH_TEXTS = {
   clubNotRecognized: "Code non reconnu à la FFBB — vérifiez la saisie.",
   youAreClub: "Vous êtes le club",
   notMyClub: "Ce n'est pas mon club",
+  // Amendement fondateur 2026-10-23 — après « Ce n'est pas mon club » : une SEULE phrase qui
+  // invite à revérifier le code en NOMMANT le club reconnu (le champ nom ne réapparaît pas).
+  checkYourCode: (name: string) => `Vérifiez votre code : il correspond au club ${name}.`,
   // Écran « vérifiez votre e-mail ».
   sentDescription: "Vérifiez votre boîte mail pour activer votre compte.",
   // Écrans du raccourci démo.

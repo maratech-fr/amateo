@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -70,9 +70,13 @@ export function RegisterPage() {
   // (le token est à usage unique : après un refus serveur, il faut en redemander un).
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = useState(0);
-  // Améliorations légères #1 — « Ce n'est pas mon club » : l'utilisateur récuse le club
-  // reconnu par la FFBB → on réaffiche le champ « Nom du club » (vide) pour qu'il saisisse.
-  const [notMyClub, setNotMyClub] = useState(false);
+  // Amendement fondateur 2026-10-23 — « Ce n'est pas mon club » : l'utilisateur récuse le club
+  // reconnu par la FFBB. On ne réaffiche PLUS le champ « Nom du club » (le serveur ignore ce nom
+  // dès que la FFBB a trouvé le club) : on EFFACE le code ARA + on y remet le focus, et on
+  // mémorise le nom récusé dans `recheckClub` → une invitation à revérifier le code s'affiche,
+  // sans champ. `recheckClub` retombe à null dès que le code change (frappe → lookup live).
+  const [recheckClub, setRecheckClub] = useState<string | null>(null);
+  const araInputRef = useRef<HTMLInputElement>(null);
 
   // P4-298 — le code FFBB normalisé + sa version DEBOUNCÉE (≈400 ms). On ne déclenche le
   // lookup d'affichage qu'au format COMPLET valide (miroir FFBB_CODE_RE) : une saisie
@@ -88,11 +92,10 @@ export function RegisterPage() {
   }, [araUpper]);
   // AFFICHAGE SEUL : on lit `data` pour afficher, jamais pour pré-remplir `club_name`.
   const clubLookup = useRegisterClubLookup(debouncedAra, FFBB_CODE_RE.test(debouncedAra));
-  // Améliorations légères #1 — le club est « reconnu » quand la FFBB le résout ET que
-  // l'utilisateur ne l'a pas récusé : le champ « Nom du club » disparaît alors au profit
-  // de la confirmation. `unknown`/`unavailable` → `resolved` nul → le champ reste.
+  // Le club RÉSOLU par la FFBB (affichage seul). Trois régimes à la saisie : (b) récusé
+  // (`recheckClub` non nul) → UNIQUEMENT l'invitation à revérifier le code ; (a) `found` non
+  // récusé → la confirmation + le bouton « Ce n'est pas mon club » ; (c) sinon → le champ nom.
   const found = clubLookup.data?.status === "found" ? clubLookup.data : null;
-  const resolved = found && !notMyClub ? found : null;
 
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -289,40 +292,55 @@ export function RegisterPage() {
         />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="ara">{AUTH_TEXTS.araLabel}</Label>
-          <Input id="ara" required value={form.ara} onChange={set("ara")} placeholder={AUTH_TEXTS.araPlaceholder} className="uppercase" />
+          <Input
+            id="ara"
+            ref={araInputRef}
+            required
+            value={form.ara}
+            // Toute frappe dans le code efface l'invitation « Vérifiez votre code » (le lookup
+            // live reprend la main) — jamais un message périmé sur un code qui a changé.
+            onChange={(e) => { set("ara")(e); setRecheckClub(null); }}
+            placeholder={AUTH_TEXTS.araPlaceholder}
+            className="uppercase"
+          />
         </div>
-        {/* Améliorations légères #1 — club RECONNU par la FFBB (et non récusé) : le champ
-            « Nom du club » DISPARAÎT (le serveur re-résout, inutile de taper) au profit d'une
-            confirmation + un bouton « Ce n'est pas mon club » qui réaffiche le champ, vide. */}
-        {resolved ? (
+        {/* Amendement fondateur 2026-10-23 — trois régimes à la saisie du code. */}
+        {null !== recheckClub ? (
+          // (b) Club RÉCUSÉ : le code a été effacé, on invite à le revérifier en NOMMANT le club
+          // reconnu. Aucun champ nom (le serveur ignore ce nom dès que la FFBB a trouvé le club).
+          <p className="text-xs text-warning">{AUTH_TEXTS.checkYourCode(recheckClub)}</p>
+        ) : found ? (
+          // (a) Club RECONNU par la FFBB (non récusé) : le champ « Nom du club » DISPARAÎT (le
+          // serveur re-résout, inutile de taper) au profit d'une confirmation + un bouton
+          // « Ce n'est pas mon club » qui efface le code et y remet le focus.
           <div className="flex flex-col gap-1.5">
             <p className="flex items-center gap-1.5 text-sm text-foreground">
               <Check aria-hidden className="size-4 shrink-0 text-accent" />
               <span>
-                {AUTH_TEXTS.youAreClub} {resolved.city ? `${resolved.name} (${resolved.city})` : resolved.name}
+                {AUTH_TEXTS.youAreClub} {found.city ? `${found.name} (${found.city})` : found.name}
               </span>
             </p>
             <button
               type="button"
               className="self-start text-xs text-accent hover:underline"
               onClick={() => {
-                setForm((prev) => ({ ...prev, club_name: "" }));
-                setNotMyClub(true);
+                setRecheckClub(found.name ?? null);
+                setForm((prev) => ({ ...prev, ara: "", club_name: "" }));
+                araInputRef.current?.focus();
               }}
             >
               {AUTH_TEXTS.notMyClub}
             </button>
           </div>
         ) : (
+          // (c) Saisie normale : le champ « Nom du club » (+ le hint « code non reconnu » sur
+          // `unknown`). FFBB muette, vérif désactivée ou code encore partiel → rien de plus.
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="club_name">
               {AUTH_TEXTS.clubNameLabel} <span className="text-muted-foreground">{AUTH_TEXTS.clubNameHint}</span>
             </Label>
             <Input id="club_name" value={form.club_name} onChange={set("club_name")} />
             <p className="text-xs text-muted-foreground">{AUTH_TEXTS.clubNameAutoHint}</p>
-            {/* P4-298 — affichage SEUL (jamais de pré-remplissage de club_name). FFBB muette,
-                vérif désactivée ou code encore partiel → rien (non bloquant) ; `found` est
-                traité au-dessus (le champ disparaît). */}
             {clubLookup.data?.status === "unknown" ? (
               <p className="text-xs text-warning">{AUTH_TEXTS.clubNotRecognized}</p>
             ) : null}
