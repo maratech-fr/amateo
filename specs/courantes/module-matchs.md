@@ -371,9 +371,40 @@ AUTRE salle n'est **jamais** réécrit en silence — décision fermée (`etat-d
 peut avoir raison, seul un arbitrage tranche. `FbiFixtureImporter::detectUnplacedVenueDeviation`
 détecte (scope `['venue']` du moteur partagé `processPerimeterFields`, jamais « FBI fait foi » sur
 ce champ) ; `Fixture.keptVenueLabel` mémorise le libellé « gardé » (idempotence — tant que la
-source répète ce libellé, la question ne revient pas) ; « Prendre le fichier » suit l'alias
-confirmé du nouveau libellé, sinon vide `venueId` (« à rattacher »). Le geste vit dans la file de
-traitement de l'onglet Importer (§4), pas dans le rapport de dépôt.
+source répète ce libellé, la question ne revient pas) ; « Prendre le fichier » ne vide plus jamais
+`venueId` (chantier A PR 4, § ci-dessous « Arbitrage d'un écart de salle »). Le geste vit dans la
+file de traitement de l'onglet Importer (§4), pas dans le rapport de dépôt.
+
+### Arbitrage d'un écart de salle : appariement INLINE, jamais un `venueId` null (chantier A PR 4)
+
+**Décision fondateur 2026-10-23** (retours Rillieux, chantier A, PR 4/5, Option A) : un domicile ne
+perd **jamais** son gymnase à l'arbitrage d'un écart de SALLE — ni le détecteur NON PLACÉ ci-dessus,
+ni la fenêtre « FBI fait foi » d'un domicile déjà PLACÉ (§7 « Workflow de traitement »). « Prendre le
+fichier »/« Prendre la source » porte désormais un `venueId` OPTIONNEL sur une décision de champ
+`venue`, aux **deux** canaux hors-dépôt (`ReviewFixtureDeviationController`) et API
+(`FfbbRencontresController` / `FfbbRencontreReconciler`). Foyer partagé
+`FbiDeviationService::applyVenueTakeFile` décide la cible AVANT toute écriture :
+- **uuid d'un gymnase du club+saison** : rattache le libellé source à ce gymnase (MAISON
+  `VenueExternalLabelAttacher`, mêmes gardes — longueur ≤ 120, plafond 30 alias, libellé déjà alias
+  d'un AUTRE gymnase → 422) et pose `venueId` — apparier ne place JAMAIS (le statut ne change pas) ;
+  un gymnase d'un AUTRE club ou d'une AUTRE saison est invisible (filtres tenant/saison) → **404**,
+  avant toute mutation (`ownedVenueOrRefuse`) ;
+- **sentinelle `FbiFixtureImporter::NEUTRAL`** : pose `unplacedReason = NEUTRAL_GROUND` — refusée
+  (422) si le libellé source est DÉJÀ un alias confirmé d'un gymnase du club (ce n'est alors pas
+  neutre) ;
+- **sans `venueId`** : l'alias confirmé du libellé source repose la salle seul (comportement
+  antérieur, inchangé — « les 20 cas ») ;
+- **faute des trois** : RIEN n'est écrit — 422 nommé côté arbitrage hors dépôt, l'écart simplement
+  RETENU côté import/API (`heldBackEcart`, le domicile reste déphasé `OUT_OF_SYNC`), jamais un
+  dé-placement vers `venueId` null.
+
+Front (`ReviewQueueRow`) : sur un écart `venue` seulement, le bouton direct « Prendre … » est
+remplacé par un `VenueSelect` (gymnases du club + option « Terrain neutre (pas chez nous) »,
+sentinelle `'NEUTRAL'`) suivi du bouton, qui reste **désactivé** (`disabledReason`, A11Y-30) tant
+qu'aucun choix n'est fait. Les champs date/heure gardent le bouton direct, inchangé.
+
+**Hors périmètre** : la CRÉATION de rencontres par le canal API
+(`FfbbRencontreReconciler::newFixture`) n'est pas concernée — décision fondateur en attente.
 
 ### Registre « à corriger dans FBI » (`FbiCorrection`, `FbiCorrectionLedger`)
 
@@ -1317,7 +1348,10 @@ côté front **date croissante · heure croissante (une heure absente en dernier
 adversaire en collation française** (`lib/creatableSort.ts`, appliqué une fois à la source — la
 liste ET la dérivation `creations` héritent du même ordre) plutôt que l'ordre brut du backend.
 `POST /api/ffbb/rencontres/apply` re-fetche côté serveur (jamais les valeurs client), écrit sa propre
-`FbiIngestion source=FFBB_API`.
+`FbiIngestion source=FFBB_API`. Ses décisions partagent le même `venueId` optionnel que l'arbitrage
+hors dépôt sur un écart `venue` (appariement INLINE, § « Arbitrage d'un écart de salle » ci-dessus,
+chantier A PR 4) — **hors périmètre** : la création de rencontres (`newFixture`) n'est pas concernée,
+décision fondateur en attente.
 
 ### Workflow de traitement — NEW / OUT_OF_SYNC / REVIEWED
 
@@ -1334,8 +1368,11 @@ n'est pas nouveau » (`treatOnArrival`, foyer partagé aux deux canaux). Rattrap
 avant ce prédicat. Un domicile PLACÉ/SUBMITTED que la source renvoie identique sur date+heure+salle
 devient `VALIDATED` + traité (D9 — « attesté FBI », plus un geste du gestionnaire). Un champ
 divergent sans décision → `OUT_OF_SYNC`, valeur app gardée — **sauf** si la fenêtre passé/semaine ISO
-s'applique (app OU source), qui applique la source d'office (« pris en compte », `autoApplied`).
-Une rencontre absente d'un dépôt n'est jamais touchée (import partiel légitime).
+s'applique (app OU source), qui applique la source d'office (« pris en compte », `autoApplied`) —
+**sauf sur la SALLE** (chantier A PR 4, § ci-dessus) : une salle inconnue (ni alias confirmé ni choix
+inline) n'est **jamais** appliquée d'office même dans cette fenêtre, le gymnase actuel est conservé,
+l'écart reste à trancher et la rencontre reste `OUT_OF_SYNC`. Une rencontre absente d'un dépôt n'est
+jamais touchée (import partiel légitime).
 
 Périmètre de réconciliation par écart (choix explicite, jamais un écrasement) : seuls les domiciles
 **déjà placés** peuvent diverger sur date/heure/salle — un `UNPLACED` reste hors périmètre sur date/
@@ -1366,8 +1403,9 @@ un seul mécanisme fait conclure à tort que le dialogue s'est tu.
 Deux routes de traitement (management + saison écrivable + socle pointé) : `POST
 /api/fixtures/review` (`{fixtureIds}` ligne, ou `{teamId}` masse — les rencontres à écart pendant
 sont sautées et NOMMÉES, jamais tranchées en masse) ; `POST /api/fixtures/review/deviations`
-(`{fixtureId, field, choice: keep_app|take_source}`, rejoue le moteur partagé depuis la valeur
-PERSISTÉE). `ReviewQueueRow` : icône domicile/extérieur, heure ou « heure non publiée », salle
+(`{fixtureId, field, choice: keep_app|take_source, venueId?}`, rejoue le moteur partagé depuis la
+valeur PERSISTÉE — `venueId` OPTIONNEL sur `field: 'venue'` + `take_source`, l'appariement INLINE
+ci-dessus, chantier A PR 4). `ReviewQueueRow` : icône domicile/extérieur, heure ou « heure non publiée », salle
 résolue ; bouton « Valider » (NEW sans écart), « Pris en compte » (alerte `autoApplied` seule — une
 phrase UNIQUE, maison `lib/autoAppliedPhrase.ts` : date+heure reprogrammées fusionnent en « {source} a
 déplacé ce match : {ancienne date} → {nouvelle date} à {heure} », un seul champ garde sa forme
