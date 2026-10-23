@@ -19,11 +19,13 @@ import { buildParcPrompt } from "./promptTemplate";
  *   }): string
  *
  * Ce que ces tests UNITAIRES gardent : les PROMESSES du prompt (noms embarqués, sections du
- * format, « rends UNIQUEMENT le JSON », marque sourcée de `PRODUCT_NAME`, réutilisation d'un nom
- * existant, règle des deux équipes sur une même case). L'EXACTITUDE des noms de champs et des
- * énumérations de `parc-v1` ⇄ le validateur backend est, elle, du ressort du test de parité
- * CrossStack prompt⇄validateur (à écrire quand le validateur de la PR1 existe) — ces tests-ci ne
- * la dupliquent pas.
+ * format, champs EXACTS, « rends UNIQUEMENT le JSON », marque sourcée de `PRODUCT_NAME`,
+ * réutilisation d'un nom existant, règle des deux équipes sur une même case). Les champs et
+ * énumérations asservis ici sont ceux du validateur réel de la PR1
+ * (`App\Service\ParcImport\ParcPayloadValidator`, chantier G #1252) — la VÉRITÉ. Le verrouillage
+ * mécanique prompt⇄validateur (toute dérive de l'un ou l'autre) est tenu par le test de parité
+ * CrossStack `ParcPromptValidatorParityTest` (groupe `contract`) ; ces tests-ci n'en dupliquent
+ * pas la mécanique, ils prouvent que la fonction REND bien ces champs.
  *
  * La marque est mockée à « TestBrand » : si NEO écrit « Amateo » en littéral au lieu de lire
  * `PRODUCT_NAME`, la sortie contiendrait « Amateo » (et pas « TestBrand ») → le test rougit.
@@ -58,12 +60,16 @@ describe("buildParcPrompt (générateur de prompt chatbot, chantier G PR3)", () 
     }
   });
 
-  it("décrit les champs structurants d'un créneau : jour, durée, séances, terrain divisé", () => {
+  it("nomme les champs EXACTS de parc-v1 tels que le validateur les lit", () => {
     const prompt = buildParcPrompt(SAMPLE);
-    expect(prompt).toMatch(/jour/i);
-    expect(prompt).toMatch(/dur[ée]e/i);
-    expect(prompt).toMatch(/s[ée]ances?/i);
-    expect(prompt).toMatch(/terrain divis[ée]/i);
+    // Clés JSON que le chatbot DOIT émettre, telles que ParcPayloadValidator/ParcImportAnalyzer
+    // (chantier G #1252) les lisent. La vérité est le validateur ; le verrouillage mécanique est
+    // dans ParcPromptValidatorParityTest.
+    for (const field of ["nom", "genre", "seances", "gymnase", "jour", "debut", "duree", "equipes_en_parallele", "seances_communes"]) {
+      expect(prompt).toContain(field);
+    }
+    // Énumération du genre : M / F / MIXTE (MIXTE est la valeur distinctive à asserter).
+    expect(prompt).toContain("MIXTE");
   });
 
   it("demande de ne rendre QUE le JSON (aucun autre texte)", () => {
