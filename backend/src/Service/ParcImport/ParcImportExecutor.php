@@ -1,0 +1,1181 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Service\ParcImport;
+
+use App\Controller\GroupReservationController;
+use App\Entity\Club;
+use App\Entity\Coach;
+use App\Entity\Reservation;
+use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
+use App\Entity\TeamCoach;
+use App\Entity\Venue;
+use App\Entity\VenueTrainingSlot;
+use App\Enum\Gender;
+use App\Enum\TeamCoachRole;
+use App\Service\Basketball\VenueAliasResolver;
+use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\PlanEntitlements;
+use App\Service\ReservationGroupOccupancy;
+use App\Service\SoloReservationBudget;
+use App\Service\SportCategoryResolver;
+use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+
+/**
+ * Chantier G PR 2 — l'IMPORT RÉEL transactionnel du parc. L'aperçu (dry-run) est le métier de
+ * {@see ParcImportAnalyzer} ; ICI c'est l'ÉCRITURE : le gestionnaire a tranché l'aperçu
+ * (cocher/décocher, ré-apparier, corriger), et {@see import} bascule les lignes cochées en base
+ * en UNE SEULE transaction TOUT-OU-RIEN.
+ *
+ * Ordre d'écriture : gymnases → équipes → créneaux → blocs → coachs + `TeamCoach` MAIN →
+ * réservations. Un gymnase naît SANS adresse ; son `canSplit` est DÉRIVÉ (vrai si un créneau du
+ * parc y demande ≥ 2 équipes en parallèle). Les gardes EXISTANTES sont REJOUÉES depuis leurs
+ * maisons — jamais recopiées ni contournées :
+ *  - cap payant : {@see PlanEntitlements} (refus AVANT tout persist, tout-ou-rien) ;
+ *  - capacité / occupation d'une réservation : {@see ReservationGroupOccupancy} ;
+ *  - Σ des séances communes d'un bloc : {@see SoloReservationBudget} ;
+ *  - chevauchement / capacité d'un créneau : même règle que {@see VenueTrainingSlotStateProcessor}.
+ * Une ligne cochée invalide au moment de l'écriture → {@see UnprocessableEntityHttpException}
+ * nommant la ligne (section + rang), et la transaction est annulée (rien écrit).
+ *
+ * Décisions : `[{section, index, coche, cibleId?, corrections?}]`. Seules les lignes `coche:true`
+ * sont écrites ; `cibleId` apparie à une entité EXISTANTE, RE-VÉRIFIÉE tenant côté serveur (même
+ * club ET même saison, patron A10 {@see FbiFixtureImporter::ownedVenueForImport}) ; `corrections`
+ * remplace des champs simples (équipes : `seances` ; créneaux/réservations : `jour`, `debut`,
+ * `duree`). Sur une équipe appariée, seul le nombre de séances peut bouger (genre/catégorie/niveau
+ * jamais), et seulement si `corrections.seances` est présent.
+ *
+ * Idempotence : une entité déjà présente (nom normalisé, ou triplet pour un créneau / une
+ * réservation) est RÉUTILISÉE, jamais recréée — rejouer le même import n'ajoute aucun doublon.
+ * Noms hostiles : tout `=`/`+`/`-`/`@` et toute tabulation ou retour-ligne de TÊTE sont retirés
+ * avant écriture (le nom stocké ne déclenche jamais une formule à l'ouverture de l'export XLSX).
+ *
+ * Service PUR de contexte HTTP : il reçoit le club et la saison en paramètres (le NR bloquant
+ * {@see ParcImportReservationSemanticsGateTest} l'appelle hors requête), et ne lit ni le
+ * `RequestStack` ni la session de sécurité. L'auth/rôle/socle sont gardés en amont par
+ * {@see ParcImportGate} dans le contrôleur.
+ */
+final class ParcImportExecutor
+{
+    private const string LABEL_EQUIPES = 'équipe';
+
+    private const string LABEL_GYMNASES = 'gymnase';
+
+    private const string LABEL_CRENEAUX = 'créneau';
+
+    private const string LABEL_MUTUALISATIONS = 'mutualisation';
+
+    private const string LABEL_COACHS = 'coach';
+
+    private const string LABEL_RESERVATIONS = 'réservation';
+
+    private const int DEFAULT_PRIORITY_TIER_ID = 5;
+
+    private const int DEFAULT_SESSIONS_PER_WEEK = 2;
+
+    private const int DEFAULT_RESERVATION_DURATION = 90;
+
+    private const int DEFAULT_SLOT_DURATION = 90;
+
+    private const int DEFAULT_GROUP_RESERVATION_DURATION = 90;
+
+    /** Catégorie « repère » d'une équipe importée sans catégorie — jamais un rattachement muet. */
+    private const string UNFILED_CATEGORY = 'À classer';
+
+    /** @var array<string, string> nom normalisé → venueId (créés dans ce run OU résolus) */
+    private array $venueByName = [];
+
+    /** @var array<string, string> nom normalisé → teamId */
+    private array $teamByName = [];
+
+    private ?string $sportId = null;
+
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly VenueAliasResolver $venueResolver,
+        private readonly VenueLabelNormalizer $normalizer,
+        private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
+        private readonly SoloReservationBudget $soloReservationBudget,
+        private readonly PlanEntitlements $planEntitlements,
+        private readonly SportCategoryResolver $sportCategoryResolver,
+        private readonly GroupReservationController $groupReservationWriter,
+    ) {}
+
+    /**
+     * @param array<string, mixed>       $parc      le parc-v1 décodé, déjà validé en FORME et en bornes
+     * @param list<array<string, mixed>> $decisions les choix de l'aperçu
+     *
+     * @return array{recap: array<string, array<string, int>>}
+     */
+    public function import(Club $club, string $seasonId, array $parc, array $decisions): array
+    {
+        $this->venueByName = [];
+        $this->teamByName = [];
+        $this->sportId = null;
+
+        $index = $this->indexDecisions($decisions);
+
+        /** @var array{recap: array<string, array<string, int>>} $result */
+        $result = $this->entityManager->wrapInTransaction(function () use ($club, $seasonId, $parc, $index): array {
+            // Cap payant AVANT tout persist (tout-ou-rien) : jamais « les premières passent ».
+            $this->assertTeamCapNotExceeded($parc, $index, $club, $seasonId);
+
+            $recap = [
+                'gymnases' => $this->importVenues($parc, $index, $club, $seasonId),
+                'equipes' => $this->importTeams($parc, $index, $club, $seasonId),
+                'creneaux' => $this->importSlots($parc, $index, $club, $seasonId),
+                'mutualisations' => $this->importBlocks($parc, $index, $club, $seasonId),
+                'coachs' => $this->importCoaches($parc, $index, $club, $seasonId),
+                'reservations' => $this->importReservations($parc, $index, $club, $seasonId),
+            ];
+
+            return ['recap' => $recap];
+        });
+
+        return $result;
+    }
+
+    // ───────────────────────────── Sections ─────────────────────────────
+
+    /**
+     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     *
+     * @return array<string, int>
+     */
+    private function importVenues(array $parc, array $index, Club $club, string $seasonId): array
+    {
+        $recap = $this->emptyRecap();
+        foreach ($this->lines($parc, 'gymnases') as $i => $entry) {
+            $decision = $index['gymnases'][$i] ?? null;
+            if (null === $decision || !$decision['coche']) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+            $nom = $this->neutralize($this->stringField($entry, 'nom'));
+
+            if (null !== $decision['cibleId']) {
+                $venue = $this->ownedVenue($decision['cibleId'], $club, $seasonId, 'gymnases', $i);
+                $this->venueByName[$this->normalizer->normalize($nom)] = $venue->getId();
+                ++$recap['apparies'];
+
+                continue;
+            }
+
+            $existing = $this->resolveExistingVenueId($nom);
+            if (null !== $existing) {
+                $this->venueByName[$this->normalizer->normalize($nom)] = $existing;
+                ++$recap['apparies'];
+
+                continue;
+            }
+
+            $venue = (new Venue)
+                ->setClubId($club->getId())
+                ->setSeasonId($seasonId)
+                ->setName($nom)
+                ->setSource('manual')
+                ->setIsActive(true)
+                ->setCanSplit($this->venueCanSplit($parc, $nom));
+            $this->entityManager->persist($venue);
+            $this->entityManager->flush();
+            $this->venueByName[$this->normalizer->normalize($nom)] = $venue->getId();
+            ++$recap['crees'];
+        }
+
+        return $recap;
+    }
+
+    /**
+     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     *
+     * @return array<string, int>
+     */
+    private function importTeams(array $parc, array $index, Club $club, string $seasonId): array
+    {
+        $recap = $this->emptyRecap();
+        foreach ($this->lines($parc, 'equipes') as $i => $entry) {
+            $decision = $index['equipes'][$i] ?? null;
+            if (null === $decision || !$decision['coche']) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+            $nom = $this->neutralize($this->stringField($entry, 'nom'));
+
+            $existingId = $decision['cibleId'] ?? $this->resolveExistingTeamId($nom);
+            if (null !== $existingId) {
+                $team = $this->ownedTeam($existingId, $club, $seasonId, 'equipes', $i);
+                $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
+                // Équipe appariée : SEUL le nombre de séances peut bouger, et seulement si la mise à
+                // jour a été acceptée (corrections.seances). Jamais le genre, la catégorie, le niveau.
+                $sessions = $decision['corrections']['seances'] ?? null;
+                if (\is_int($sessions) && $sessions >= 1 && $sessions !== $team->getSessionsPerWeek()) {
+                    $team->setSessionsPerWeek($sessions);
+                    $this->entityManager->flush();
+                    ++$recap['misAJour'];
+                } else {
+                    ++$recap['apparies'];
+                }
+
+                continue;
+            }
+
+            $team = (new Team)
+                ->setClubId($club->getId())
+                ->setSeasonId($seasonId)
+                ->setSportCategoryId($this->categoryIdForCreatedTeam($entry, $club))
+                ->setPriorityTierId(self::DEFAULT_PRIORITY_TIER_ID)
+                ->setName($nom)
+                ->setSessionsPerWeek($this->sessionsOf($entry, $decision))
+                ->setIsActive(true)
+                ->setGender($this->genderOf($entry));
+            $this->entityManager->persist($team);
+            $this->entityManager->flush();
+            $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
+            ++$recap['crees'];
+        }
+
+        return $recap;
+    }
+
+    /**
+     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     *
+     * @return array<string, int>
+     */
+    private function importSlots(array $parc, array $index, Club $club, string $seasonId): array
+    {
+        $recap = $this->emptyRecap();
+        foreach ($this->lines($parc, 'creneaux') as $i => $entry) {
+            $decision = $index['creneaux'][$i] ?? null;
+            if (null === $decision || !$decision['coche']) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+            $corrections = $decision['corrections'];
+
+            $venueId = null !== $decision['cibleId']
+                ? $this->ownedVenue($decision['cibleId'], $club, $seasonId, 'creneaux', $i)->getId()
+                : $this->venueIdForName($this->stringField($entry, 'gymnase'));
+            if (null === $venueId) {
+                $this->fail('creneaux', $i, 'Gymnase introuvable pour ce créneau.');
+            }
+
+            $day = $this->intCorrectionOr($corrections, 'jour', $entry, 'jour');
+            $start = $this->timeCorrectionOr($corrections, 'debut', $entry, 'debut');
+            $duration = $this->intCorrectionOr($corrections, 'duree', $entry, 'duree') ?? self::DEFAULT_SLOT_DURATION;
+            $capacity = $this->parallelOf($entry);
+
+            if (null === $day || null === $start) {
+                $this->fail('creneaux', $i, 'Jour ou heure de ce créneau illisible.');
+            }
+
+            // Idempotence : un créneau identique (gymnase + jour + heure) existe déjà → réutilisé.
+            if ($this->slotExists($venueId, $day, $start)) {
+                ++$recap['apparies'];
+
+                continue;
+            }
+
+            // Capacité (rejeu de VenueTrainingSlotStateProcessor::validateCapacityForVenue) :
+            // une capacité ≥ 2 n'est permise que sur un gymnase divisible.
+            if ($capacity >= 2) {
+                $venue = $this->entityManager->find(Venue::class, $venueId);
+                if ($venue instanceof Venue && !$venue->getCanSplit()) {
+                    $this->fail('creneaux', $i, 'Un créneau ne peut accueillir 2 équipes ou plus que si le gymnase est déclaré divisible.');
+                }
+            }
+
+            // Chevauchement (rejeu de VenueTrainingSlotStateProcessor::validateNoOverlap) : deux
+            // créneaux du MÊME gymnase le MÊME jour ne peuvent jamais partager un horaire.
+            if ($this->slotOverlaps($venueId, $day, $start, $duration)) {
+                $this->fail('creneaux', $i, 'Ce créneau en chevauche un autre du même gymnase ce jour-là.');
+            }
+
+            $slot = (new VenueTrainingSlot)
+                ->setClubId($club->getId())
+                ->setSeasonId($seasonId)
+                ->setVenueId($venueId)
+                ->setDayOfWeek($day)
+                ->setStartTime(new DateTimeImmutable($start))
+                ->setDurationMinutes($duration)
+                ->setCapacity(max(1, $capacity));
+            $this->entityManager->persist($slot);
+            $this->entityManager->flush();
+            ++$recap['crees'];
+        }
+
+        return $recap;
+    }
+
+    /**
+     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     *
+     * @return array<string, int>
+     */
+    private function importBlocks(array $parc, array $index, Club $club, string $seasonId): array
+    {
+        $recap = $this->emptyRecap();
+        foreach ($this->lines($parc, 'mutualisations') as $i => $entry) {
+            $decision = $index['mutualisations'][$i] ?? null;
+            if (null === $decision || !$decision['coche']) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+            if (!\is_array($entry)) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+
+            $teamIds = [];
+            foreach ($this->stringList($entry['equipes'] ?? null) as $name) {
+                $id = $this->teamIdForName($name);
+                if (null === $id) {
+                    $this->fail('mutualisations', $i, 'Une équipe de cette mutualisation est introuvable.');
+                }
+                $teamIds[] = $id;
+            }
+            $teamIds = $this->sortedUnique($teamIds);
+            if ([] === $teamIds) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+            $commonSessions = \is_int($entry['seances_communes'] ?? null) ? $entry['seances_communes'] : 1;
+
+            $block = $this->existingBlockForTeams($club->getId(), $seasonId, $teamIds);
+            if ($block instanceof SharedTrainingBlock) {
+                // Idempotence : un bloc du socle portant exactement ces équipes existe déjà → réutilisé.
+                ++$recap['apparies'];
+            } else {
+                // Garde Σ séances communes ≤ séances d'un membre, rejouée depuis sa maison unique,
+                // AVANT toute écriture (un dépassement refuse l'import, rien n'est écrit).
+                foreach ($this->soloReservationBudget->forTeamsWithBlockSubstituted($teamIds, $club->getId(), $seasonId, null, null, $commonSessions) as $budget) {
+                    if ($budget->block > $budget->effective) {
+                        $this->fail('mutualisations', $i, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes.');
+                    }
+                }
+
+                $block = (new SharedTrainingBlock)
+                    ->setClubId($club->getId())
+                    ->setSeasonId($seasonId)
+                    ->setSchedulePlanId(null)
+                    ->setCommonSessions($commonSessions);
+                $this->entityManager->persist($block);
+                foreach ($teamIds as $teamId) {
+                    $member = (new SharedTrainingBlockTeam)
+                        ->setClubId($club->getId())
+                        ->setSeasonId($seasonId)
+                        ->setSchedulePlanId(null)
+                        ->setBlockId($block->getId())
+                        ->setTeamId($teamId);
+                    $this->entityManager->persist($member);
+                }
+                $this->entityManager->flush();
+                ++$recap['crees'];
+            }
+
+            // Réservation de GROUPE : chaque membre reçoit une réservation socle co-localisée sur la
+            // case, posée par la maison du rail /api/reservations/group (jamais recopiée). Idempotent
+            // (déjà posée → rien) et sans effet si la case ne se résout pas (gymnase/jour/heure).
+            $this->poseGroupReservation($block, $teamIds, $entry, $decision['cibleId'], $decision['corrections'], $club, $seasonId, $i);
+        }
+
+        return $recap;
+    }
+
+    /**
+     * Pose la réservation de groupe du bloc sur sa case, via {@see GroupReservationController} (rail
+     * /api/reservations/group) : garde d'occupation {@see ReservationGroupOccupancy::assertBlockReservationAllowed}
+     * puis écriture atomique N-réservations/1-flush. Ne fait rien si la case ne se résout pas, ou si
+     * tous les membres y sont déjà réservés (idempotence) — un rejeu ne crée aucun doublon.
+     *
+     * @param list<string>         $teamIds
+     * @param array<string, mixed> $corrections
+     */
+    private function poseGroupReservation(SharedTrainingBlock $block, array $teamIds, mixed $entry, ?string $cibleId, array $corrections, Club $club, string $seasonId, int $index): void
+    {
+        $venueId = null !== $cibleId
+            ? $this->ownedVenue($cibleId, $club, $seasonId, 'mutualisations', $index)->getId()
+            : $this->venueIdForName($this->stringField($entry, 'gymnase'));
+        $day = $this->intCorrectionOr($corrections, 'jour', $entry, 'jour');
+        $start = $this->timeCorrectionOr($corrections, 'debut', $entry, 'debut');
+        // Case non résolue (gymnase/jour/heure) : le bloc est déclaré, sa réservation reste à poser à
+        // la main. Retours SÉPARÉS (et non un `||` que Rector réécrirait en in_array, perdant le
+        // narrowing non-null dont ont besoin les appels ci-dessous).
+        if (null === $venueId) {
+            return;
+        }
+        if (null === $day) {
+            return;
+        }
+        if (null === $start) {
+            return;
+        }
+        $duration = $this->intCorrectionOr($corrections, 'duree', $entry, 'duree') ?? self::DEFAULT_GROUP_RESERVATION_DURATION;
+
+        if ($this->allMembersReservedOnCase($teamIds, $venueId, $day, $start)) {
+            return; // déjà posée (rejeu) : aucun doublon.
+        }
+
+        try {
+            $this->reservationGroupOccupancy->assertBlockReservationAllowed($block, $teamIds, $venueId, $day, new DateTimeImmutable($start), null);
+            $this->groupReservationWriter->writeBlockReservationsAtomically(
+                $club->getId(),
+                $seasonId,
+                $teamIds,
+                $venueId,
+                $day,
+                new DateTimeImmutable($start),
+                $duration,
+                null,
+            );
+        } catch (UnprocessableEntityHttpException $exception) {
+            $this->fail('mutualisations', $index, $exception->getMessage());
+        }
+    }
+
+    /**
+     * @param list<string> $teamIds
+     */
+    private function allMembersReservedOnCase(array $teamIds, string $venueId, int $day, string $startHhmm): bool
+    {
+        foreach ($teamIds as $teamId) {
+            if (!$this->reservationExists($teamId, $venueId, $day, $startHhmm)) {
+                return false;
+            }
+        }
+
+        return [] !== $teamIds;
+    }
+
+    /**
+     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     *
+     * @return array<string, int>
+     */
+    private function importCoaches(array $parc, array $index, Club $club, string $seasonId): array
+    {
+        $recap = $this->emptyRecap();
+        foreach ($this->lines($parc, 'coachs') as $i => $entry) {
+            $decision = $index['coachs'][$i] ?? null;
+            if (null === $decision || !$decision['coche']) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+            $nom = $this->neutralize($this->stringField($entry, 'nom'));
+            $teamName = $this->stringField($entry, 'equipe');
+            $teamId = $this->teamIdForName($teamName);
+            if (null === $teamId) {
+                $this->fail('coachs', $i, 'L\'équipe de ce coach est introuvable.');
+            }
+
+            $existingId = $decision['cibleId'] ?? $this->resolveExistingCoachId($nom);
+            if (null !== $existingId) {
+                $coach = $this->ownedCoach($existingId, $club, $seasonId, 'coachs', $i);
+                $created = false;
+            } else {
+                [$firstName, $lastName] = $this->splitName($nom);
+                $coach = (new Coach)
+                    ->setClubId($club->getId())
+                    ->setSeasonId($seasonId)
+                    ->setFirstName($firstName)
+                    ->setLastName($lastName)
+                    ->setIsActive(true);
+                $this->entityManager->persist($coach);
+                $this->entityManager->flush();
+                $created = true;
+            }
+
+            $linked = $this->linkCoachMain($coach->getId(), $teamId, $club->getId(), $seasonId);
+            if ($created) {
+                ++$recap['crees'];
+            } elseif ($linked) {
+                ++$recap['apparies'];
+            } else {
+                ++$recap['ignores'];
+            }
+        }
+
+        return $recap;
+    }
+
+    /**
+     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     *
+     * @return array<string, int>
+     */
+    private function importReservations(array $parc, array $index, Club $club, string $seasonId): array
+    {
+        $recap = $this->emptyRecap();
+        foreach ($this->lines($parc, 'reservations') as $i => $entry) {
+            $decision = $index['reservations'][$i] ?? null;
+            if (null === $decision || !$decision['coche']) {
+                ++$recap['ignores'];
+
+                continue;
+            }
+            $corrections = $decision['corrections'];
+
+            $teamId = $this->teamIdForName($this->stringField($entry, 'equipe'));
+            if (null === $teamId) {
+                $this->fail('reservations', $i, 'L\'équipe de cette réservation est introuvable.');
+            }
+
+            $venueId = null !== $decision['cibleId']
+                ? $this->ownedVenue($decision['cibleId'], $club, $seasonId, 'reservations', $i)->getId()
+                : $this->venueIdForName($this->stringField($entry, 'gymnase'));
+            if (null === $venueId) {
+                $this->fail('reservations', $i, 'Gymnase introuvable pour cette réservation.');
+            }
+
+            $day = $this->intCorrectionOr($corrections, 'jour', $entry, 'jour');
+            $start = $this->timeCorrectionOr($corrections, 'debut', $entry, 'debut');
+            $duration = $this->intCorrectionOr($corrections, 'duree', $entry, 'duree') ?? self::DEFAULT_RESERVATION_DURATION;
+            if (null === $day || null === $start) {
+                $this->fail('reservations', $i, 'Jour ou heure de cette réservation illisible.');
+            }
+
+            // Idempotence : une réservation socle identique (équipe + gymnase + jour + heure) existe
+            // déjà → réutilisée, jamais recréée.
+            if ($this->reservationExists($teamId, $venueId, $day, $start)) {
+                ++$recap['apparies'];
+
+                continue;
+            }
+
+            // Occupation / capacité / budget solo, rejoués depuis leur maison unique. Une violation
+            // devient un 422 nommant la ligne (la garde lève UnprocessableEntityHttpException).
+            try {
+                $this->reservationGroupOccupancy->assertIndividualReservationAllowed(
+                    $teamId,
+                    $venueId,
+                    $day,
+                    new DateTimeImmutable($start),
+                    null,
+                    $club->getId(),
+                    $seasonId,
+                );
+            } catch (UnprocessableEntityHttpException $exception) {
+                $this->fail('reservations', $i, $exception->getMessage());
+            }
+
+            $reservation = (new Reservation)
+                ->setClubId($club->getId())
+                ->setSeasonId($seasonId)
+                ->setSchedulePlanId(null)
+                ->setTeamId($teamId)
+                ->setVenueId($venueId)
+                ->setDayOfWeek($day)
+                ->setStartTime(new DateTimeImmutable($start))
+                ->setDurationMinutes($duration);
+            $this->entityManager->persist($reservation);
+            $this->entityManager->flush();
+            ++$recap['crees'];
+        }
+
+        return $recap;
+    }
+
+    // ───────────────────────────── Cap payant ─────────────────────────────
+
+    /**
+     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     */
+    private function assertTeamCapNotExceeded(array $parc, array $index, Club $club, string $seasonId): void
+    {
+        $season = $this->entityManager->find(Season::class, $seasonId);
+        if (!$season instanceof Season) {
+            return; // sans saison résolue, le cap ne s'applique pas (parité analyzer).
+        }
+        $remaining = $this->planEntitlements->remainingTeamSlots($club, $season);
+        if (null === $remaining) {
+            return; // offre illimitée.
+        }
+
+        $toCreate = 0;
+        foreach ($this->lines($parc, 'equipes') as $i => $entry) {
+            $decision = $index['equipes'][$i] ?? null;
+            if (null === $decision || !$decision['coche']) {
+                continue;
+            }
+            $nom = $this->neutralize($this->stringField($entry, 'nom'));
+            if (null !== ($decision['cibleId'] ?? $this->resolveExistingTeamId($nom))) {
+                continue; // appariée : ne consomme aucune place neuve.
+            }
+            ++$toCreate;
+        }
+
+        if ($toCreate > $remaining) {
+            $message = $this->planEntitlements->teamCapExceededMessage($club, $season, $toCreate)
+                ?? 'Le nombre d\'équipes à créer dépasse la limite de votre offre.';
+
+            throw new UnprocessableEntityHttpException($message);
+        }
+    }
+
+    // ───────────────────────────── Résolution ─────────────────────────────
+
+    private function venueIdForName(string $name): ?string
+    {
+        $key = $this->normalizer->normalize($name);
+        if ('' === $key) {
+            return null;
+        }
+        if (isset($this->venueByName[$key])) {
+            return $this->venueByName[$key];
+        }
+        $resolved = $this->resolveExistingVenueId($name);
+        if (null !== $resolved) {
+            $this->venueByName[$key] = $resolved;
+        }
+
+        return $resolved;
+    }
+
+    private function teamIdForName(string $name): ?string
+    {
+        $key = $this->normalizer->normalize($name);
+        if ('' === $key) {
+            return null;
+        }
+        if (isset($this->teamByName[$key])) {
+            return $this->teamByName[$key];
+        }
+        $resolved = $this->resolveExistingTeamId($name);
+        if (null !== $resolved) {
+            $this->teamByName[$key] = $resolved;
+        }
+
+        return $resolved;
+    }
+
+    private function resolveExistingVenueId(string $name): ?string
+    {
+        $exact = $this->venueResolver->exactMatch($name);
+        if (null !== $exact) {
+            return $exact;
+        }
+        $candidates = $this->venueResolver->candidates($name);
+
+        return 1 === \count($candidates) ? $candidates[0] : null;
+    }
+
+    private function resolveExistingTeamId(string $name): ?string
+    {
+        return $this->resolveInPool($name, $this->activeTeamPool());
+    }
+
+    private function resolveExistingCoachId(string $name): ?string
+    {
+        return $this->resolveInPool($name, $this->activeCoachPool());
+    }
+
+    /**
+     * Même décision d'appariement que l'aperçu ({@see ParcImportAnalyzer::poolVerdict}) : exact
+     * unique, sinon un unique candidat flou. Un pool ambigu (≥ 2) n'apparie à RIEN (la ligne
+     * serait « à créer » faute d'exact, ou décochée dans l'aperçu).
+     *
+     * @param list<array{id: string, name: string}> $pool
+     */
+    private function resolveInPool(string $label, array $pool): ?string
+    {
+        $key = $this->normalizer->normalize($label);
+        if ('' === $key) {
+            return null;
+        }
+
+        $exact = [];
+        $fuzzy = [];
+        foreach ($pool as $candidate) {
+            $normalized = $this->normalizer->normalize($candidate['name']);
+            if ($normalized === $key) {
+                $exact[$candidate['id']] = true;
+            }
+            if ($normalized === $key || $this->normalizer->fuzzyMatches($candidate['name'], $label)) {
+                $fuzzy[$candidate['id']] = true;
+            }
+        }
+
+        if (1 === \count($exact)) {
+            return array_key_first($exact);
+        }
+        $fuzzyIds = array_keys($fuzzy);
+
+        return 1 === \count($fuzzyIds) ? $fuzzyIds[0] : null;
+    }
+
+    private function ownedVenue(string $venueId, Club $club, string $seasonId, string $section, int $index): Venue
+    {
+        $venue = $this->entityManager->getRepository(Venue::class)->find($venueId);
+        if (!$venue instanceof Venue || $venue->getClubId() !== $club->getId() || $venue->getSeasonId() !== $seasonId) {
+            $this->fail($section, $index, 'Gymnase introuvable pour cet appariement.');
+        }
+
+        return $venue;
+    }
+
+    private function ownedTeam(string $teamId, Club $club, string $seasonId, string $section, int $index): Team
+    {
+        $team = $this->entityManager->getRepository(Team::class)->find($teamId);
+        if (!$team instanceof Team || $team->getClubId() !== $club->getId() || $team->getSeasonId() !== $seasonId) {
+            $this->fail($section, $index, 'Équipe introuvable pour cet appariement.');
+        }
+
+        return $team;
+    }
+
+    private function ownedCoach(string $coachId, Club $club, string $seasonId, string $section, int $index): Coach
+    {
+        $coach = $this->entityManager->getRepository(Coach::class)->find($coachId);
+        if (!$coach instanceof Coach || $coach->getClubId() !== $club->getId() || $coach->getSeasonId() !== $seasonId) {
+            $this->fail($section, $index, 'Coach introuvable pour cet appariement.');
+        }
+
+        return $coach;
+    }
+
+    // ───────────────────────────── Idempotence ─────────────────────────────
+
+    private function slotExists(string $venueId, int $day, string $startHhmm): bool
+    {
+        /** @var list<VenueTrainingSlot> $rows */
+        $rows = $this->entityManager->getRepository(VenueTrainingSlot::class)->findBy([
+            'venueId' => $venueId,
+            'dayOfWeek' => $day,
+            'schedulePlanId' => null,
+        ]);
+        foreach ($rows as $slot) {
+            if ($slot->getStartTime()->format('H:i') === $startHhmm) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function slotOverlaps(string $venueId, int $day, string $startHhmm, int $duration): bool
+    {
+        $start = $this->minutesOf($startHhmm);
+        if (null === $start) {
+            return false;
+        }
+        $end = $start + $duration;
+
+        /** @var list<VenueTrainingSlot> $rows */
+        $rows = $this->entityManager->getRepository(VenueTrainingSlot::class)->findBy([
+            'venueId' => $venueId,
+            'dayOfWeek' => $day,
+            'schedulePlanId' => null,
+        ]);
+        foreach ($rows as $slot) {
+            $otherStart = (int) $slot->getStartTime()->format('H') * 60 + (int) $slot->getStartTime()->format('i');
+            $otherEnd = $otherStart + $slot->getDurationMinutes();
+            if ($start < $otherEnd && $otherStart < $end) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function reservationExists(string $teamId, string $venueId, int $day, string $startHhmm): bool
+    {
+        /** @var list<Reservation> $rows */
+        $rows = $this->entityManager->getRepository(Reservation::class)->findBy([
+            'teamId' => $teamId,
+            'venueId' => $venueId,
+            'dayOfWeek' => $day,
+            'schedulePlanId' => null,
+        ]);
+        foreach ($rows as $reservation) {
+            if ($reservation->getStartTime()->format('H:i') === $startHhmm) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Le bloc du socle portant EXACTEMENT cet ensemble d'équipes, ou null — pour l'apparier plutôt
+     * que d'en créer un second (idempotence des mutualisations).
+     *
+     * @param list<string> $teamIds déjà triés et dédupliqués
+     */
+    private function existingBlockForTeams(string $clubId, string $seasonId, array $teamIds): ?SharedTrainingBlock
+    {
+        $blocks = $this->entityManager->getRepository(SharedTrainingBlock::class)
+            ->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null]);
+        $memberRepository = $this->entityManager->getRepository(SharedTrainingBlockTeam::class);
+
+        foreach ($blocks as $block) {
+            $members = [];
+            foreach ($memberRepository->findBy(['blockId' => $block->getId()]) as $member) {
+                $members[] = $member->getTeamId();
+            }
+            if ($this->sortedUnique($members) === $teamIds) {
+                return $block;
+            }
+        }
+
+        return null;
+    }
+
+    /** Pose le lien `TeamCoach` MAIN s'il n'existe pas déjà ; rend true s'il vient d'être posé. */
+    private function linkCoachMain(string $coachId, string $teamId, string $clubId, string $seasonId): bool
+    {
+        $existing = $this->entityManager->getRepository(TeamCoach::class)->findOneBy([
+            'coachId' => $coachId,
+            'teamId' => $teamId,
+            'role' => TeamCoachRole::MAIN,
+        ]);
+        if ($existing instanceof TeamCoach) {
+            return false;
+        }
+
+        $link = (new TeamCoach)
+            ->setClubId($clubId)
+            ->setSeasonId($seasonId)
+            ->setTeamId($teamId)
+            ->setCoachId($coachId)
+            ->setRole(TeamCoachRole::MAIN)
+            ->setIsRequired(false);
+        $this->entityManager->persist($link);
+        $this->entityManager->flush();
+
+        return true;
+    }
+
+    // ───────────────────────────── Dérivations ─────────────────────────────
+
+    /**
+     * `canSplit` dérivé : vrai si un créneau du parc vise ce gymnase (par nom) avec ≥ 2 équipes
+     * en parallèle. Un gymnase créé naît donc divisible pile quand un créneau l'exige.
+     *
+     * @param array<string, mixed> $parc
+     */
+    private function venueCanSplit(array $parc, string $venueName): bool
+    {
+        $target = $this->normalizer->normalize($venueName);
+        foreach ($this->lines($parc, 'creneaux') as $slot) {
+            if (!\is_array($slot)) {
+                continue;
+            }
+            if ($this->normalizer->normalize($this->stringField($slot, 'gymnase')) === $target
+                && $this->parallelOf($slot) >= 2) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * La catégorie d'une équipe CRÉÉE. Si le texte porte « categorie » (déduite par le chatbot),
+     * elle est appariée par NOM NORMALISÉ (casse/accents repliés) à une catégorie EXISTANTE du club,
+     * sinon créée (maison partagée {@see SportCategoryResolver::findOrCreate}). Sans catégorie,
+     * l'équipe est classée « À classer » (repère explicite à reclasser) — jamais un rattachement
+     * muet à une catégorie du catalogue qui mentirait sur l'âge/le genre.
+     */
+    private function categoryIdForCreatedTeam(mixed $entry, Club $club): string
+    {
+        $categorie = \is_array($entry) ? ($entry['categorie'] ?? null) : null;
+        if (\is_string($categorie) && '' !== trim($categorie)) {
+            $name = trim($categorie);
+            $matched = $this->matchCategoryByNormalizedName($name, $club->getId());
+
+            return $matched ?? $this->sportCategoryResolver->findOrCreate($name, $club->getId(), $this->defaultSportId($club))->getId();
+        }
+
+        return $this->sportCategoryResolver->findOrCreate(self::UNFILED_CATEGORY, $club->getId(), $this->defaultSportId($club))->getId();
+    }
+
+    private function matchCategoryByNormalizedName(string $name, string $clubId): ?string
+    {
+        $key = $this->normalizer->normalize($name);
+        if ('' === $key) {
+            return null;
+        }
+        foreach ($this->entityManager->getRepository(SportCategory::class)->findBy(['clubId' => $clubId]) as $category) {
+            if ($this->normalizer->normalize($category->getName()) === $key) {
+                return $category->getId();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Le sport auquel rattacher une catégorie créée : celui du club s'il en porte un, sinon le
+     * sport actif existant, sinon le basket par défaut créé une fois (patron
+     * {@see App\Service\ClubProvisioner}). Mémorisé pour le run.
+     */
+    private function defaultSportId(Club $club): string
+    {
+        if (null !== $this->sportId) {
+            return $this->sportId;
+        }
+        $clubSportId = $club->getSportId();
+        if (null !== $clubSportId && '' !== $clubSportId) {
+            return $this->sportId = $clubSportId;
+        }
+        $sportRepository = $this->entityManager->getRepository(Sport::class);
+        $active = $sportRepository->findOneBy(['isActive' => true]);
+        if ($active instanceof Sport) {
+            return $this->sportId = $active->getId();
+        }
+        $basketball = $sportRepository->findOneBy(['slug' => 'basketball']);
+        if (!$basketball instanceof Sport) {
+            $basketball = (new Sport)->setName('Basketball')->setSlug('basketball')->setIsActive(true);
+            $this->entityManager->persist($basketball);
+            $this->entityManager->flush();
+        }
+
+        return $this->sportId = $basketball->getId();
+    }
+
+    /**
+     * @param array{coche: bool, cibleId: string|null, corrections: array<string, mixed>} $decision
+     */
+    private function sessionsOf(mixed $entry, array $decision): int
+    {
+        $corrected = $decision['corrections']['seances'] ?? null;
+        if (\is_int($corrected) && $corrected >= 1) {
+            return $corrected;
+        }
+        $seances = \is_array($entry) ? ($entry['seances'] ?? null) : null;
+
+        return \is_int($seances) && $seances >= 1 ? $seances : self::DEFAULT_SESSIONS_PER_WEEK;
+    }
+
+    private function genderOf(mixed $entry): ?Gender
+    {
+        $genre = \is_array($entry) ? ($entry['genre'] ?? null) : null;
+
+        return \is_string($genre) && null !== Gender::tryFrom($genre) ? Gender::from($genre) : null;
+    }
+
+    private function parallelOf(mixed $slot): int
+    {
+        $parallel = \is_array($slot) ? ($slot['equipes_en_parallele'] ?? null) : null;
+
+        return \is_int($parallel) && $parallel >= 1 ? $parallel : 1;
+    }
+
+    // ───────────────────────────── Helpers ─────────────────────────────
+
+    /**
+     * @param list<array<string, mixed>> $decisions
+     *
+     * @return array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>>
+     */
+    private function indexDecisions(array $decisions): array
+    {
+        $index = [];
+        foreach ($decisions as $decision) {
+            $section = $decision['section'] ?? null;
+            $position = $decision['index'] ?? null;
+            if (!\is_string($section) || !\is_int($position)) {
+                continue;
+            }
+            $cibleId = $decision['cibleId'] ?? null;
+            $corrections = $decision['corrections'] ?? null;
+            $index[$section][$position] = [
+                'coche' => true === ($decision['coche'] ?? null),
+                'cibleId' => \is_string($cibleId) && '' !== $cibleId ? $cibleId : null,
+                'corrections' => \is_array($corrections) ? $corrections : [],
+            ];
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param array<string, mixed> $parc
+     *
+     * @return array<int, mixed>
+     */
+    private function lines(array $parc, string $section): array
+    {
+        $value = $parc[$section] ?? null;
+
+        return \is_array($value) && array_is_list($value) ? $value : [];
+    }
+
+    /**
+     * @param array<string, mixed> $corrections
+     */
+    private function intCorrectionOr(array $corrections, string $correctionKey, mixed $entry, string $entryKey): ?int
+    {
+        $corrected = $corrections[$correctionKey] ?? null;
+        if (\is_int($corrected)) {
+            return $corrected;
+        }
+        $raw = \is_array($entry) ? ($entry[$entryKey] ?? null) : null;
+
+        return \is_int($raw) ? $raw : null;
+    }
+
+    /**
+     * @param array<string, mixed> $corrections
+     */
+    private function timeCorrectionOr(array $corrections, string $correctionKey, mixed $entry, string $entryKey): ?string
+    {
+        $corrected = $corrections[$correctionKey] ?? null;
+        if (\is_string($corrected) && null !== $this->minutesOf($corrected)) {
+            return $corrected;
+        }
+        $raw = \is_array($entry) ? ($entry[$entryKey] ?? null) : null;
+
+        return \is_string($raw) && null !== $this->minutesOf($raw) ? $raw : null;
+    }
+
+    private function minutesOf(string $hhmm): ?int
+    {
+        if (1 !== preg_match('/^([01]\d|2[0-3]):([0-5]\d)$/', $hhmm, $m)) {
+            return null;
+        }
+
+        return (int) $m[1] * 60 + (int) $m[2];
+    }
+
+    /**
+     * Retire en tête tout déclencheur de formule (`=`/`+`/`-`/`@`) et toute tabulation ou
+     * retour-ligne : le nom stocké ne peut jamais devenir une formule vivante à l'ouverture de
+     * l'export XLSX (couplé au StringValueBinder de SpreadsheetGenerator).
+     */
+    private function neutralize(string $name): string
+    {
+        return (string) preg_replace('/^[=+\-@\t\r\n]+/', '', $name);
+    }
+
+    /**
+     * @return array{0: string, 1: string} prénom, nom
+     */
+    private function splitName(string $name): array
+    {
+        $parts = preg_split('/\s+/', trim($name), 2);
+        if (false === $parts || '' === ($parts[0] ?? '')) {
+            return [$name, $name];
+        }
+
+        return [$parts[0], $parts[1] ?? $parts[0]];
+    }
+
+    private function stringField(mixed $entry, string $field): string
+    {
+        if (\is_array($entry) && \is_string($entry[$field] ?? null)) {
+            return $entry[$field];
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (!\is_array($value)) {
+            return [];
+        }
+        $out = [];
+        foreach ($value as $item) {
+            if (\is_string($item) && '' !== trim($item)) {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<string> $ids
+     *
+     * @return list<string>
+     */
+    private function sortedUnique(array $ids): array
+    {
+        $ids = array_values(array_unique($ids));
+        sort($ids);
+
+        return $ids;
+    }
+
+    /**
+     * @return list<array{id: string, name: string}>
+     */
+    private function activeTeamPool(): array
+    {
+        $pool = [];
+        foreach ($this->entityManager->getRepository(Team::class)->findAll() as $team) {
+            if ($team->getIsActive()) {
+                $pool[] = ['id' => $team->getId(), 'name' => $team->getName()];
+            }
+        }
+
+        return $pool;
+    }
+
+    /**
+     * @return list<array{id: string, name: string}>
+     */
+    private function activeCoachPool(): array
+    {
+        $pool = [];
+        foreach ($this->entityManager->getRepository(Coach::class)->findAll() as $coach) {
+            if ($coach->getIsActive()) {
+                $pool[] = ['id' => $coach->getId(), 'name' => trim($coach->getFirstName() . ' ' . $coach->getLastName())];
+            }
+        }
+
+        return $pool;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function emptyRecap(): array
+    {
+        return ['crees' => 0, 'apparies' => 0, 'misAJour' => 0, 'ignores' => 0];
+    }
+
+    private function fail(string $section, int $index, string $message): never
+    {
+        throw new UnprocessableEntityHttpException(\sprintf('%s n°%d : %s', $this->sectionLabel($section), $index + 1, $message));
+    }
+
+    private function sectionLabel(string $section): string
+    {
+        return match ($section) {
+            'equipes' => self::LABEL_EQUIPES,
+            'gymnases' => self::LABEL_GYMNASES,
+            'creneaux' => self::LABEL_CRENEAUX,
+            'mutualisations' => self::LABEL_MUTUALISATIONS,
+            'coachs' => self::LABEL_COACHS,
+            'reservations' => self::LABEL_RESERVATIONS,
+            default => $section,
+        };
+    }
+}

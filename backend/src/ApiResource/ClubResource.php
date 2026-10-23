@@ -48,6 +48,16 @@ use Symfony\Component\Serializer\Attribute\Groups;
         deserialize: false,
         name: 'parc_import_analyze',
     ),
+    // Chantier G PR2 — import RÉEL du parc. Le corps est `{payload, decisions}` (JSON brut lu par
+    // le contrôleur, `deserialize: false`) : le payload est re-validé, les lignes cochées sont
+    // basculées en écriture tout-ou-rien. Même gate et mêmes bornes que l'analyse.
+    new Post(
+        uriTemplate: '/clubs/{id}/parc-import',
+        controller: 'App\Controller\ParcImportExecuteController',
+        read: false,
+        deserialize: false,
+        name: 'parc_import',
+    ),
 ], input: ClubInput::class, provider: ClubStateProvider::class, processor: ClubStateProcessor::class)]
 class ClubResource
 {

@@ -7,10 +7,10 @@ namespace App\Service\Basketball;
 use App\Entity\Club;
 use App\Entity\Season;
 use App\Entity\Sport;
-use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Exception\ImportRejectedException;
 use App\Service\PlanEntitlements;
+use App\Service\SportCategoryResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use RuntimeException;
@@ -20,11 +20,10 @@ final class FfbbExcelImporter
     private const DEFAULT_PRIORITY_TIER_ID = 5;
     private const DEFAULT_SESSIONS_PER_WEEK = 2;
 
-    private ?int $nextSortOrderValue = null;
-
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly PlanEntitlements $planEntitlements,
+        private readonly SportCategoryResolver $sportCategoryResolver,
     ) {}
 
     /**
@@ -130,7 +129,7 @@ final class FfbbExcelImporter
             }
             $knownNames[$nameKey] = true;
 
-            $sportCategory = $this->findOrCreateSportCategory($categorie, $clubId, $sport->getId());
+            $sportCategory = $this->sportCategoryResolver->findOrCreate($categorie, $clubId, $sport->getId());
 
             $team = (new Team)
                 ->setClubId($clubId)
@@ -309,65 +308,6 @@ final class FfbbExcelImporter
     private function findDefaultSport(): ?Sport
     {
         return $this->entityManager->getRepository(Sport::class)->findOneBy(['isActive' => true]);
-    }
-
-    private function findOrCreateSportCategory(string $name, string $clubId, string $sportId): SportCategory
-    {
-        $repository = $this->entityManager->getRepository(SportCategory::class);
-
-        $category = $repository->findOneBy([
-            'name' => $name,
-            'clubId' => $clubId,
-            'sportId' => $sportId,
-        ]);
-
-        if ($category instanceof SportCategory) {
-            return $category;
-        }
-
-        $category = $repository->findOneBy([
-            'name' => $name,
-            'clubId' => null,
-            'sportId' => $sportId,
-        ]);
-
-        if ($category instanceof SportCategory) {
-            return $category;
-        }
-
-        $category = (new SportCategory)
-            ->setName($name)
-            ->setClubId($clubId)
-            ->setSportId($sportId)
-            ->setIsCustom(true)
-            // Comme SportCategoryStateProcessor::nextSortOrder : une catégorie créée se
-            // range APRÈS le catalogue (0 = la place de « Vétéran », elle sautait en tête
-            // de tous les sélecteurs). Pas de flush ici — l'import est tout-ou-rien, et
-            // l'UUID naît au constructeur (P4-35).
-            ->setSortOrder($this->nextSortOrder());
-
-        $this->entityManager->persist($category);
-
-        return $category;
-    }
-
-    /**
-     * Le rang d'affichage suivant (même règle que SportCategoryStateProcessor).
-     * Mémorisé puis incrémenté : le flush étant final, MAX(sortOrder) ne voit pas
-     * les catégories du lot en cours — sans le compteur elles seraient ex æquo.
-     */
-    private function nextSortOrder(): int
-    {
-        if (null === $this->nextSortOrderValue) {
-            $max = $this->entityManager->createQueryBuilder()
-                ->select('MAX(c.sortOrder)')
-                ->from(SportCategory::class, 'c')
-                ->getQuery()
-                ->getSingleScalarResult();
-            $this->nextSortOrderValue = null === $max ? 0 : ((int) $max) + 1;
-        }
-
-        return $this->nextSortOrderValue++;
     }
 
     /** @param array<mixed> $row */

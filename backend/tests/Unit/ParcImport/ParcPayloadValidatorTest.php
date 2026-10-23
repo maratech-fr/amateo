@@ -68,6 +68,16 @@ final class ParcPayloadValidatorTest extends TestCase
         ];
         yield 'genres F / MIXTE / absent' => [$genres];
 
+        // `categorie` (déduite par le chatbot, cadrage D1) : chaîne non vide quand présente =
+        // recevable ; absente aussi (déduite/À classer à l'import, jamais bloquant au validateur).
+        $categorie = self::validParc();
+        $categorie['equipes'] = [
+            ['nom' => 'SM1', 'genre' => 'M', 'seances' => 3, 'categorie' => 'Seniors'],
+            ['nom' => 'U13F1', 'genre' => 'F', 'categorie' => 'U13'],
+            ['nom' => 'SansCategorie', 'genre' => 'M'],
+        ];
+        yield 'categorie chaîne non vide / absente' => [$categorie];
+
         // Champs hors périmètre : présents sur chaque élément, IGNORÉS (reste vert).
         $extra = self::validParc();
         $extra['equipes'][0] += ['niveau' => 'R2', 'effectif' => 14];
@@ -150,6 +160,12 @@ final class ParcPayloadValidatorTest extends TestCase
         $badGender = self::validParc();
         $badGender['equipes'][0]['genre'] = 'X';
         yield 'genre inconnu' => [$badGender, 'genre'];
+
+        // `categorie` : si PRÉSENTE, ce doit être une chaîne NON VIDE — une chaîne vide (le chatbot
+        // n'a rien déduit) est refusée en nommant l'équipe, jamais lue « au mieux » puis mal classée.
+        $emptyCategorie = self::validParc();
+        $emptyCategorie['equipes'][0]['categorie'] = '';
+        yield 'catégorie vide' => [$emptyCategorie, 'catégorie'];
     }
 
     /**
