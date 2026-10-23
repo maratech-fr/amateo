@@ -514,6 +514,101 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame('GYMNASE STUB', $entry['sourceValue']);
     }
 
+    public function testTakeFileVenueTowardAnUnknownLabelLeavesTheVenueIntact(): void
+    {
+        // Chantier A PR 4 (canal API) — « prendre la source » sur un écart de salle dont
+        // le libellé est INCONNU (aucun gymnase du club ne le porte), sans choix inline,
+        // ne dé-place JAMAIS vers venueId null : l'écart reste rapporté, le gymnase intact.
+        [$token, , $clubId] = $this->register('FRVX');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $this->pairTeamToStubCompetition($clubId, $season->getId(), $team->getId());
+
+        $existing = $this->createFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, true, FixtureStatus::UNPLACED, FfbbHttpClientStub::CHAMP_KICKOFF);
+        $this->scopeGucToClub($clubId);
+        $appVenueId = $this->aVenue($clubId, $season->getId());
+        $existing->setVenueId($appVenueId);
+        $this->em->flush();
+        $existingId = $existing->getId();
+
+        // take_file SANS venueId : le libellé « GYMNASE STUB » n'est porté par aucun gymnase.
+        $result = $this->apply($token, [['fixtureId' => $existingId, 'field' => 'venue', 'choice' => 'take_file']], []);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertSame($appVenueId, $reloaded?->getVenueId(), 'le gymnase reste intact — jamais venueId null');
+        self::assertCount(1, $result['unresolvedDeviations'], 'une salle inconnue sans choix reste un écart, jamais appliquée');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
+    }
+
+    public function testTakeFileVenueWithAnInlineVenueChoiceAttachesAndPostsTheVenue(): void
+    {
+        // Chantier A PR 4 (canal API) — appariement INLINE : la décision d'écart de salle
+        // porte un `venueId` → le libellé source devient un alias de ce gymnase (MAISON
+        // VenueExternalLabelAttacher) et le venueId est posé ; l'écart est résolu, UNPLACED.
+        [$token, , $clubId] = $this->register('FRVY');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $this->pairTeamToStubCompetition($clubId, $season->getId(), $team->getId());
+        $cosec2 = $this->venueWithAlias($clubId, $season->getId(), 'Cosec2', []); // sans alias « gymnase stub »
+
+        $existing = $this->createFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, true, FixtureStatus::UNPLACED, FfbbHttpClientStub::CHAMP_KICKOFF);
+        $this->scopeGucToClub($clubId);
+        $existing->setVenueId($this->aVenue($clubId, $season->getId()));
+        $this->em->flush();
+        $existingId = $existing->getId();
+
+        $result = $this->apply($token, [['fixtureId' => $existingId, 'field' => 'venue', 'choice' => 'take_file', 'venueId' => $cosec2]], []);
+        self::assertSame([], $result['unresolvedDeviations'], 'l\'appariement inline résout l\'écart');
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertSame($cosec2, $reloaded?->getVenueId(), 'le gymnase choisi inline est posé');
+        self::assertSame(FixtureStatus::UNPLACED, $reloaded?->getStatus(), 'apparier ne place jamais');
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded?->getReviewState());
+        $venue = $this->em->getRepository(Venue::class)->find($cosec2);
+        self::assertContains('gymnase stub', $venue?->getExternalLabels() ?? [], 'le libellé source est rattaché en alias');
+    }
+
+    public function testTakeFileVenueWithAForeignVenueChoiceSurfacesA404NotA502(): void
+    {
+        // Durcissement /security-review : un `venueId` de décision pointant un gymnase
+        // étranger (invisible, 404 au moteur) ne doit PAS être avalé par le catch générique
+        // et ressortir en 502 « FFBB indisponible ». Il ressort en 404 nommé, zéro écriture.
+        [$token, , $clubId] = $this->register('FRVZ');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $this->pairTeamToStubCompetition($clubId, $season->getId(), $team->getId());
+
+        $existing = $this->createFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, true, FixtureStatus::UNPLACED, FfbbHttpClientStub::CHAMP_KICKOFF);
+        $this->scopeGucToClub($clubId);
+        $appVenueId = $this->aVenue($clubId, $season->getId());
+        $existing->setVenueId($appVenueId);
+        $this->em->flush();
+        $existingId = $existing->getId();
+
+        // Un gymnase d'un AUTRE club (uuid valide → passe la validation, invisible au moteur).
+        [, , $otherClubId] = $this->register('FRVZ2');
+        $otherSeason = $this->seasonOf($otherClubId);
+        $foreignVenue = $this->venueWithAlias($otherClubId, $otherSeason->getId(), 'Gymnase Étranger', []);
+
+        $this->client->request('POST', '/api/ffbb/rencontres/apply', [], [], $this->auth($token) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'decisions' => [['fixtureId' => $existingId, 'field' => 'venue', 'choice' => 'take_file', 'venueId' => $foreignVenue]],
+            'creations' => [],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404, 'un gymnase introuvable ressort en 404 nommé, jamais un 502 « FFBB indisponible »');
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertSame($appVenueId, $reloaded?->getVenueId(), 'le gymnase reste intact — zéro écriture');
+    }
+
     public function testFfbbApiIngestionIsNotTheXlsxFreshnessAndDoesNotTouchATrace(): void
     {
         [$token, , $clubId] = $this->register('FRG');

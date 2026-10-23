@@ -145,17 +145,69 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
                 </Button>
                 <span className="text-xs text-muted-foreground">{consequence.keepApp}</span>
               </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => onResolve({ fixtureId: fixture.id, field: d.field, choice: "take_source" })}>
-                  Prendre {src}
-                </Button>
-                <span className="text-xs text-muted-foreground">{consequence.takeFile}</span>
-              </div>
+              {"venue" === d.field ? (
+                // Chantier A PR 4 — l'écart de SALLE s'arbitre par appariement INLINE : jamais
+                // un « Prendre » direct qui laisserait le domicile sans gymnase. On choisit un
+                // gymnase (ou « terrain neutre ») AVANT de prendre la source.
+                <VenueTakeSourceColumn fixture={fixture} venues={venues} src={src} consequence={consequence.takeFile} busy={busy} onResolve={onResolve} />
+              ) : (
+                <div className="flex flex-1 flex-col gap-1">
+                  <Button variant="outline" size="sm" disabled={busy} onClick={() => onResolve({ fixtureId: fixture.id, field: d.field, choice: "take_source" })}>
+                    Prendre {src}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">{consequence.takeFile}</span>
+                </div>
+              )}
             </div>
           </div>
         );
       })}
     </li>
+  );
+}
+
+/** Chantier A PR 4 — la sentinelle « terrain neutre » du choix inline (miroir de `FbiFixtureImporter::NEUTRAL`). */
+const NEUTRAL_GROUND_VENUE = "NEUTRAL";
+/** Le libellé de l'option « terrain neutre » du sélecteur de salle (demande fondateur). */
+const NEUTRAL_GROUND_OPTION = "Terrain neutre (pas chez nous)";
+
+/**
+ * Chantier A PR 4 — la colonne « Prendre la source » d'un écart de SALLE : un
+ * `VenueSelect` (gymnases du club + une option « terrain neutre ») précède le bouton.
+ * « Prendre … » reste DÉSACTIVÉ — avec une raison découvrable (`disabledReason`) — tant
+ * qu'aucun gymnase/neutre n'est choisi ; au clic il envoie l'uuid choisi (ou la sentinelle
+ * `'NEUTRAL'`) en `venueId`. Jamais un domicile arbitré sans gymnase (ni venueId null silencieux).
+ */
+function VenueTakeSourceColumn({ fixture, venues, src, consequence, busy, onResolve }: { fixture: Fixture; venues: Venue[]; src: string; consequence: string; busy: boolean; onResolve: (input: ResolveDeviationInput) => void }) {
+  // "" = aucun choix ; un uuid de gymnase ; ou la sentinelle « NEUTRAL ».
+  const [choice, setChoice] = useState<string>("");
+  const chosen = "" !== choice;
+
+  return (
+    <div className="flex flex-1 flex-col gap-1">
+      <VenueSelect
+        venues={venues}
+        value={choice}
+        onValueChange={setChoice}
+        placeholder="Choisir un gymnase"
+        leadingOptions={[{ value: NEUTRAL_GROUND_VENUE, label: NEUTRAL_GROUND_OPTION }]}
+        aria-label={`Choisir le gymnase pour la salle du fichier de la rencontre du ${frDateWeekdayNoYear(fixture.matchDate)} contre ${fixture.opponentLabel}`}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busy || !chosen}
+        disabledReason={chosen ? undefined : "Choisissez un gymnase, ou « terrain neutre », avant de prendre la source."}
+        onClick={() => {
+          if (chosen) {
+            onResolve({ fixtureId: fixture.id, field: "venue", choice: "take_source", venueId: choice });
+          }
+        }}
+      >
+        Prendre {src}
+      </Button>
+      <span className="text-xs text-muted-foreground">{consequence}</span>
+    </div>
   );
 }
 

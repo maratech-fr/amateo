@@ -33,3 +33,12 @@ Fonctionnalité: Un domicile non placé dont la ligue change la salle est arbitr
     Et la ligue re-dépose le domicile au libellé « SALLE RAPHAEL DE BARROS », sans trancher
     Et j'adopte le fichier sur l'écart de salle
     Alors le domicile bascule sur le deuxième gymnase et reste non placé
+
+  Scénario: « Prendre le fichier » vers une salle inconnue s'apparie au gymnase choisi inline
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable rattaché au libellé « SALLE ORIGINE »
+    Et un gymnase jetable non rattaché nommé « GYM CIBLE »
+    Quand je dépose un domicile non placé au libellé « SALLE ORIGINE »
+    Et la ligue re-dépose le domicile au libellé « SALLE RAPHAEL DE BARROS », sans trancher
+    Et j'apparie l'écart de salle au gymnase « GYM CIBLE »
+    Alors le domicile bascule sur le gymnase choisi et reste non placé

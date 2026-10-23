@@ -6,14 +6,21 @@ namespace App\Service\Fbi;
 
 use App\Entity\FbiCorrection;
 use App\Entity\Fixture;
+use App\Entity\Venue;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
+use App\Exception\ImportRejectedException;
 use App\Service\Basketball\VenueAliasResolver;
+use App\Service\Basketball\VenueExternalLabelAttacher;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\FbiCorrectionLedger;
+use App\Service\FbiFixtureImporter;
 use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Le moteur de réconciliation app⇄fichier des écarts (RMM-4) : détection du
@@ -33,6 +40,8 @@ final class FbiDeviationService
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly VenueAliasResolver $venueAliasResolver,
         private readonly FbiCorrectionLedger $ledger,
+        private readonly EntityManagerInterface $entityManager,
+        private readonly VenueExternalLabelAttacher $venueLabelAttacher,
     ) {}
 
     /**
@@ -161,43 +170,38 @@ final class FbiDeviationService
      *   cleared) — exactly today's reschedule; the placement is invalidated.
      * - KICKOFF: write the hour IN PLACE (venue kept); a SUBMITTED/VALIDATED
      *   fixture drops to PLACED (D2 — the FBI checkmark was on a wrong hour).
-     * - VENUE: the file names a different room → un-place (venue cleared, raw
-     *   label adopted) so the manager re-places; this makes take_file RESOLVE the
-     *   écart (next deposit: home UNPLACED → file wins, no deviation).
+     * - VENUE: chantier A PR 4 — « prendre le fichier » sur un écart de salle ne
+     *   laisse JAMAIS un domicile sans gymnase (la promesse protégée). La DÉCISION
+     *   « est-ce que ça laisserait venueId null ? » se prend AVANT toute écriture
+     *   ({@see applyVenueTakeFile}) : un choix inline (uuid → rattache + pose ;
+     *   'NEUTRAL' → terrain neutre) OU l'alias confirmé du libellé reposent une
+     *   salle ; faute de cible, on n'écrit RIEN (l'écart reste à trancher).
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param string|null                                                                                                                                                         $venueChoice uuid d'un gymnase choisi inline, la sentinelle {@see FbiFixtureImporter::NEUTRAL}, ou null (pas de choix — suit l'alias confirmé)
+     *
+     * @return bool vrai = le champ a été appliqué ; faux = non appliqué (salle sans cible : jamais un venueId null silencieux, l'écart reste)
      */
-    public function applyFieldTakeFile(Fixture $existing, string $field, array $row, DateTimeImmutable $now): void
+    public function applyFieldTakeFile(Fixture $existing, string $field, array $row, DateTimeImmutable $now, ?string $venueChoice = null): bool
     {
         switch ($field) {
             case 'date':
                 $existing->setMatchDate($row['matchDate']);
                 $this->unplace($existing, $now);
-                break;
+
+                return true;
             case 'kickoff':
                 if ($row['kickoffTime'] instanceof DateTimeImmutable) {
                     $existing->setKickoffTime($row['kickoffTime']);
                 }
                 $this->demoteSubmitted($existing, $now, 'kickoff', $row['kickoffTime']?->format('H:i'));
-                break;
+
+                return true;
             case 'venue':
-                // Un NON PLACÉ (les 20 cas) : après avoir vidé le gymnase erroné, on
-                // relit le libellé adopté depuis un alias confirmé — la salle correcte
-                // (Debarros) se repose seule, un libellé inconnu laisse venueId null (la
-                // salle remonte dans l'inventaire « à rattacher »). Le statut reste
-                // UNPLACED. Un PLACÉ garde le comportement actuel (pas de re-rattachement
-                // auto : le gestionnaire re-place).
-                $wasUnplaced = FixtureStatus::UNPLACED === $existing->getStatus();
-                if (null !== $row['venueLabel']) {
-                    $existing->setFbiVenueLabel($row['venueLabel']);
-                }
-                $existing->setKeptVenueLabel(null);
-                $this->unplace($existing, $now);
-                if ($wasUnplaced) {
-                    $this->attachConfirmedVenue($existing, $row['venueLabel']);
-                }
-                break;
+                return $this->applyVenueTakeFile($existing, $row, $now, $venueChoice);
         }
+
+        return false;
     }
 
     /**
@@ -373,6 +377,94 @@ final class FbiDeviationService
             'seenAt' => $previous['seenAt'] ?? $now->format(DateTimeImmutable::ATOM),
             'autoApplied' => $autoApplied,
         ];
+    }
+
+    /**
+     * « Prendre le fichier » sur l'écart de SALLE — foyer partagé par les trois canaux
+     * (import xlsx, canal API, arbitrage hors dépôt). La promesse : un domicile ne perd
+     * JAMAIS son gymnase au profit d'un venueId null silencieux. On décide la cible AVANT
+     * toute écriture :
+     *  - 'NEUTRAL' → terrain neutre (venueId null VOULU, l'exception explicite) ; un libellé
+     *    qui désigne un gymnase du club (alias confirmé) est refusé (422) ;
+     *  - uuid → le libellé source est rattaché à ce gymnase (MAISON {@see VenueExternalLabelAttacher},
+     *    gardes verbatim) et le venueId est posé ; introuvable (tenant/saison) → 404 ;
+     *  - pas de choix → l'alias confirmé du libellé repose une salle (les 20 cas) ; faute
+     *    d'alias, on n'écrit RIEN et on rend faux (l'écart reste à trancher).
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     */
+    private function applyVenueTakeFile(Fixture $existing, array $row, DateTimeImmutable $now, ?string $venueChoice): bool
+    {
+        $sourceLabel = $row['venueLabel'];
+
+        // Terrain neutre (« pas chez nous ») : venueId null est VOULU. Mais un libellé qui
+        // EST un gymnase du club (alias confirmé) n'est pas neutre — on le refuse nommé.
+        if (FbiFixtureImporter::NEUTRAL === $venueChoice) {
+            if (null !== $this->venueAliasResolver->resolveConfirmed($sourceLabel)) {
+                throw ImportRejectedException::unprocessable('Ce libellé désigne un gymnase du club — choisissez ce gymnase plutôt que « terrain neutre ».');
+            }
+            if (null !== $sourceLabel) {
+                $existing->setFbiVenueLabel($sourceLabel);
+            }
+            $existing->setKeptVenueLabel(null);
+            $this->unplace($existing, $now);
+            $existing->setUnplacedReason(FixtureUnplacedReason::NEUTRAL_GROUND);
+
+            return true;
+        }
+
+        // Choix inline d'un gymnase : on rattache le libellé source à ce gymnase (une seule
+        // maison du rattachement) et on POSE le venueId — jamais un dé-placement. Le statut
+        // reste inchangé (un non placé reste non placé : apparier ne place pas).
+        if (null !== $venueChoice) {
+            $venue = $this->ownedVenueOrRefuse($venueChoice, $existing->getClubId(), $existing->getSeasonId());
+            if (null !== $sourceLabel) {
+                $this->venueLabelAttacher->attach($venue, $sourceLabel);
+                $existing->setFbiVenueLabel($sourceLabel);
+            }
+            $existing->setVenueId($venue->getId()); // réinitialise keptVenueLabel + unplacedReason
+
+            return true;
+        }
+
+        // Pas de choix : DÉCISION AVANT TOUTE ÉCRITURE. On ne résout vers une salle QUE si
+        // le libellé source a un alias confirmé sur un NON PLACÉ ; sinon « prendre le
+        // fichier » laisserait le domicile sans gymnase → on n'écrit RIEN (l'écart reste).
+        $wasUnplaced = FixtureStatus::UNPLACED === $existing->getStatus();
+        if (!$wasUnplaced || null === $this->venueAliasResolver->resolveConfirmed($sourceLabel)) {
+            return false;
+        }
+        // Cible connue (les 20 cas) : on vide le gymnase erroné puis l'alias confirmé repose
+        // le bon (Debarros). Le statut reste UNPLACED.
+        if (null !== $sourceLabel) {
+            $existing->setFbiVenueLabel($sourceLabel);
+        }
+        $existing->setKeptVenueLabel(null);
+        $this->unplace($existing, $now);
+        $this->attachConfirmedVenue($existing, $sourceLabel);
+
+        return true;
+    }
+
+    /**
+     * Le gymnase d'uuid $venueId choisi inline, s'il appartient AU club ET à la saison de la
+     * rencontre arbitrée — sinon un refus 404 nommé AVANT toute mutation (zéro écriture).
+     * Durcissement /security-review (patron {@see FbiFixtureImporter::ownedVenueForImport}, A10) :
+     * on vérifie club ET saison AU SERVICE, sans se reposer sur les SEULS `tenant_filter`/
+     * `season_filter` (défense en profondeur — les alias sont copiés au changement de saison,
+     * apparier le dépôt courant à un gymnase d'une autre saison écrirait un alias dans la
+     * mauvaise saison). Le cross-CLUB reste en outre masqué par la RLS PostgreSQL à la lecture.
+     */
+    private function ownedVenueOrRefuse(string $venueId, string $clubId, string $seasonId): Venue
+    {
+        $venue = $this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $venueId]);
+        if (!$venue instanceof Venue
+            || $venue->getClubId() !== $clubId
+            || $venue->getSeasonId() !== $seasonId) {
+            throw new ImportRejectedException('Gymnase introuvable.', Response::HTTP_NOT_FOUND);
+        }
+
+        return $venue;
     }
 
     /**

@@ -195,7 +195,12 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   `FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`, foyer unique) — un extérieur
   créé par ce canal naît `REVIEWED` d'office, un domicile PLACÉ déphasé dont la date app OU la date
   API tombe dans la fenêtre passé/semaine ISO en cours (fuseau club) est appliqué D'OFFICE plutôt que
-  proposé à l'arbitrage ; les libellés `clubLabel`/`opponentLabel` perdent leur suffixe FFBB « (n) »
+  proposé à l'arbitrage — **sauf la SALLE** (chantier A PR 4) : une salle inconnue (ni alias confirmé
+  ni choix inline, `venueId` sur la décision) n'est jamais appliquée d'office même dans cette fenêtre,
+  le gymnase actuel est conservé et l'écart reste à trancher ; les décisions `apply` partagent le même
+  `venueId` optionnel que l'arbitrage hors dépôt sur un écart `venue` (§ détail
+  [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Arbitrage d'un écart de salle ») ;
+  les libellés `clubLabel`/`opponentLabel` perdent leur suffixe FFBB « (n) »
   à la lecture (`VenueLabelNormalizer::stripTeamNumberSuffix`). Détail :
   [`module-matchs.md`](../../specs/courantes/module-matchs.md) §7 « Écran Importer ».
 - **Filtre strict serveur** (`FfbbApiClient::searchRencontres`) : la recherche plein texte sur le

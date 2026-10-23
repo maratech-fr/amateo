@@ -118,8 +118,8 @@ final class FfbbRencontreReconciler
      * apply the per-écart decisions and create the chosen rencontres (idempotent).
      * Writes a dated FFBB_API {@see FbiIngestion} (counters only, no trace).
      *
-     * @param list<array{fixtureId: string, field: string, choice: string}> $decisions
-     * @param list<array{rencontreId: string, teamId: string}>              $creations
+     * @param list<array{fixtureId: string, field: string, choice: string, venueId?: string}> $decisions chantier A PR 4 — `venueId` optionnel (uuid d'un gymnase ou sentinelle 'NEUTRAL') sur un take_file de salle : l'appariement INLINE
+     * @param list<array{rencontreId: string, teamId: string}>                                $creations
      *
      * @return array{created: int, updated: int, unresolved: int, unresolvedDeviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>, depositedAt: string}
      */
@@ -131,6 +131,9 @@ final class FfbbRencontreReconciler
         $rowsByRencontreId = array_column($rows, null, 'rencontreId');
         $venueNames = $this->importer->venueNamesById();
         $decisionMap = $this->importer->indexDecisions($decisions);
+        // Chantier A PR 4 — la carte PARALLÈLE des gymnases choisis inline (uuid/'NEUTRAL')
+        // pour un arbitrage de salle, threadée au moteur partagé.
+        $decisionVenues = $this->importer->indexDecisionVenues($decisions);
         $context = $this->matchingContext();
         $now = $this->now();
         // P4-199 — le club porte le fuseau : il gouverne la naissance « traitée »
@@ -194,7 +197,7 @@ final class FfbbRencontreReconciler
                 // d'office hors périmètre (au-delà du rattachement d'alias ci-dessus).
                 $venueDeviation = $this->importer->detectUnplacedVenueDeviation($fixture, $row, $venueNames);
                 if (null !== $venueDeviation) {
-                    $this->importer->processPerimeterFields($fixture, $row, ['venue' => $venueDeviation], $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now, false, ['venue']);
+                    $this->importer->processPerimeterFields($fixture, $row, ['venue' => $venueDeviation], $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now, false, ['venue'], $decisionVenues);
                 }
 
                 continue;
@@ -207,7 +210,7 @@ final class FfbbRencontreReconciler
 
                 continue;
             }
-            $this->importer->processPerimeterFields($fixture, $row, $fields, $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now, $weekEnd instanceof DateTimeImmutable && $this->importer->sourceIsAuthoritativeForWindow($fixture, $row, $weekEnd));
+            $this->importer->processPerimeterFields($fixture, $row, $fields, $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now, $weekEnd instanceof DateTimeImmutable && $this->importer->sourceIsAuthoritativeForWindow($fixture, $row, $weekEnd), null, $decisionVenues);
         }
 
         $created = $this->applyCreations($creations, $rowsByRencontreId, $context, $clubId, $seasonId, $createdByKey, $club, $now);

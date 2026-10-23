@@ -8,6 +8,7 @@ use App\Entity\Fixture;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Exception\ImportRejectedException;
 use App\Service\FbiCorrectionLedger;
 use App\Service\FbiFixtureImporter;
 use App\Service\ManagementAccessGuard;
@@ -42,6 +43,10 @@ final class ReviewFixtureDeviationController extends AbstractController
 {
     private const FIELDS = ['date', 'kickoff', 'venue'];
 
+    // Même motif que {@see FfbbRencontresController} (pas de maison partagée sans refactor
+    // large : la regex uuid est dupliquée dans une douzaine de contrôleurs/services).
+    private const string UUID_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ManagementAccessGuard $managementAccessGuard,
@@ -73,6 +78,14 @@ final class ReviewFixtureDeviationController extends AbstractController
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
+        // Chantier A PR 4 — `venueId` OPTIONNEL d'un appariement inline : un uuid de gymnase
+        // OU la sentinelle 'NEUTRAL' (même validation que le canal API). Présent mais malformé
+        // → 400 propre AVANT tout appel au moteur — jamais une erreur SQL 500 sur la colonne uuid.
+        $rawVenueId = $body['venueId'] ?? null;
+        if (null !== $rawVenueId && (!\is_string($rawVenueId) || (FbiFixtureImporter::NEUTRAL !== $rawVenueId && 1 !== preg_match(self::UUID_RE, $rawVenueId)))) {
+            return $this->json(['error' => 'venueId invalide : un uuid de gymnase ou « NEUTRAL » attendu.'], Response::HTTP_BAD_REQUEST);
+        }
+        $venueChoice = \is_string($rawVenueId) ? $rawVenueId : null;
 
         // Tenant/season filtered — a foreign fixture is invisible → 404.
         $fixture = $this->entityManager->getRepository(Fixture::class)->findOneBy(['id' => $fixtureId]);
@@ -95,7 +108,20 @@ final class ReviewFixtureDeviationController extends AbstractController
                 // corrompue, jamais un 500 (revue sécurité PR-3a).
                 return $this->json(['error' => 'La valeur de la source pour cet écart est illisible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
-            $this->importer->applyFieldTakeFile($fixture, $field, $row, $now);
+            // Chantier A PR 4 — appariement INLINE de l'écart de salle : le `venueId` validé
+            // plus haut (uuid d'un gymnase du club OU 'NEUTRAL'). Le foyer partagé décide AVANT
+            // toute écriture « est-ce que ça laisserait venueId null ? » : gymnase introuvable
+            // (club/saison) → 404, borne du rattachement/libellé déjà porté → 422 (relayés
+            // depuis {@see ImportRejectedException}), et faute de cible (salle inconnue sans
+            // choix) → rien écrit, 422 nommé, l'écart reste à trancher.
+            try {
+                $applied = $this->importer->applyFieldTakeFile($fixture, $field, $row, $now, $venueChoice);
+            } catch (ImportRejectedException $e) {
+                return $this->json(['error' => $e->getMessage()], $e->getStatusCode());
+            }
+            if (!$applied) {
+                return $this->json(['error' => 'Cette salle n\'est rattachée à aucun gymnase du club. Choisissez un gymnase, ou « terrain neutre » si le match ne se joue pas chez vous.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
         } else {
             // « Garder l'appli » : l'appli fait foi, FBI est en retard → une entrée
             // « à corriger dans FBI ». (take_source, lui, n'ouvre jamais d'entrée.)
