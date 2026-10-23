@@ -5,6 +5,7 @@ import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { formatDuration } from "@/shared/lib/duration";
+import { endTime } from "@/shared/lib/time";
 
 import { durationOptions } from "../lib/days";
 import { pastMidnightMessage } from "../lib/slotOverlap";
@@ -86,6 +87,11 @@ export function DurationSelect({
         ))}
         <option value={OTHER_DURATION}>Autre…</option>
       </Select>
+      {undefined !== startTime && "" !== endTime(startTime, value) ? (
+        // Le début est connu (les deux éditeurs le passent) : on dit l'heure de FIN, recalculée à
+        // chaque changement de durée. L'heure vient du foyer `shared/lib/time.ts::endTime`.
+        <span className="text-xs text-muted-foreground">Fin : {endTime(startTime, value)}</span>
+      ) : null}
       {editing ? (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">

@@ -50,3 +50,32 @@ export function parseTime(value: string | null | undefined): number | null {
 
   return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null;
 }
+
+/**
+ * Heure de FIN d'un créneau = début (heure-ish) + durée (minutes), reformatée en « HH:MM ».
+ * Même foyer que `formatMinutes`/`parseTime` : un seul endroit sait additionner des minutes et
+ * les rendre en heure de pendule (garde `timeFormatGuard`). **Chaîne vide — jamais « NaN:NaN » —
+ * si le début est illisible** : l'échec reste explicite, comme `parseTime`.
+ */
+export function endTime(start: string, durationMinutes: number): string {
+  const startMin = parseTime(start);
+  if (null === startMin) {
+    return "";
+  }
+
+  return formatMinutes(startMin + durationMinutes);
+}
+
+/**
+ * Plage « début – fin » d'un créneau (tiret demi-cadratin U+2013, une espace de part et d'autre) :
+ * « 17:30 – 18:45 ». Début et fin passent tous deux par le foyer (`formatMinutes`), donc une forme
+ * servie par l'API (secondes, ISO) ressort normalisée. **Chaîne vide si le début est illisible.**
+ */
+export function formatTimeRange(start: string, durationMinutes: number): string {
+  const startMin = parseTime(start);
+  if (null === startMin) {
+    return "";
+  }
+
+  return `${formatMinutes(startMin)} – ${formatMinutes(startMin + durationMinutes)}`;
+}

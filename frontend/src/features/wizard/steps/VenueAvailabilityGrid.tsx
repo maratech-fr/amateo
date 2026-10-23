@@ -1,8 +1,10 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import type { Closure } from "@/features/cockpit/api";
 import type { VenueMatchWindow } from "@/features/matches/api";
+import { dayLabelLongCap } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
+import { formatTimeRange } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
 import type { Venue, VenueTrainingSlot } from "../api";
@@ -86,6 +88,13 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
   //  3. **On ne reprend JAMAIS la main** sur un défilement déjà fait par l'utilisateur : le
   //     repositionnement ne se rejoue qu'au changement de GYMNASE (chaque gymnase a sa propre
   //     bande utile), gardé par un ref — un state re-rendrait pour rien.
+  // Repère au survol (#8) — la case survolée (jour ISO + minute de la rangée). Sert à la fois
+  // l'étiquette flottante « Mardi · 17:15 » posée SOUS le curseur et le marquage de la ligne
+  // d'heure de la gouttière alignée (le gestionnaire confondait 17:15 et 17:30). Rien en lecture
+  // seule : on ne pose pas de créneau, le repère de pose n'aurait pas de sens.
+  const [hovered, setHovered] = useState<{ day: number; min: number } | null>(null);
+  const hoveredHour = null === hovered ? null : Math.floor(hovered.min / 60) * 60;
+
   const scrollBoxRef = useRef<HTMLDivElement>(null);
   const positionedFor = useRef<string | null>(null);
   const firstSlotMin = slots.length > 0 ? Math.min(...slots.map((s) => startMinutes(s.startTime))) : null;
@@ -128,7 +137,12 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
           // que la 7ᵉ colonne rend maintenant courant sur petit écran.
           // La gouttière reste lisible pendant le défilement HORIZONTAL : sans `sticky`,
           // les heures disparaissaient sous les colonnes dès qu'on faisait défiler.
-          <div key={`t${m}`} className="sticky left-0 z-20 border-r border-border bg-card pr-1 text-right text-[10px] text-muted-foreground" style={{ gridColumn: 1, gridRow: 2 + i }}>
+          <div
+            key={`t${m}`}
+            data-active={hoveredHour === m ? "true" : undefined}
+            className="sticky left-0 z-20 border-r border-border bg-card pr-1 text-right text-[10px] text-muted-foreground data-[active=true]:bg-accent/15 data-[active=true]:font-semibold data-[active=true]:text-foreground"
+            style={{ gridColumn: 1, gridRow: 2 + i }}
+          >
             {0 === m % 60 ? fmt(m) : ""}
           </div>
         ))}
@@ -139,20 +153,46 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
         {WEEK.map((d, di) =>
           rows.map((m, ri) => {
             // Frontière de JOUR épaissie (retour fondateur 2026-08-05 : isoler un jour d'un coup
-            // d'œil) + pause méridienne 12h-14h en fond rosé — TEINTE DE FOND seulement : les
-            // créneaux (z-10, fond opaque) passent devant et gardent leur couleur.
+            // d'œil) + pause méridienne 12h-14h en fond neutre OPAQUE (`surface-muted`, éclairci au
+            // retour #8 « grille trop foncée » — plus le rosé `destructive` qui tirait vers l'alerte).
+            // Fond seulement : les créneaux (z-10, fond opaque) passent devant et gardent leur couleur.
             const cellClass = cn(
               "border-l border-t border-border/40",
-              0 === m % 60 ? "border-t-border/70" : "",
-              "border-l-2 border-l-border",
-              m >= 12 * 60 && m < 14 * 60 ? "bg-destructive/5" : "",
-              readOnly ? "" : "hover:bg-muted",
+              0 === m % 60 ? "border-t-border/60" : "",
+              // Frontière de JOUR (#8) — bordure gauche ÉPAISSE (2 px) ET teintée d'un jeton du thème
+              // plus franc que le quadrillage interne (`border/40`·`/60`), pour que la colonne de
+              // chaque jour se détache nettement — sans jamais une couleur en dur.
+              "border-l-2 border-l-muted-foreground/35",
+              m >= 12 * 60 && m < 14 * 60 ? "bg-surface-muted" : "",
+              readOnly ? "" : "relative hover:bg-accent/10",
             );
             const gridStyle = { gridColumn: 2 + di, gridRow: 2 + ri };
+            const showTip = !readOnly && null !== hovered && hovered.day === d.n && hovered.min === m;
             return readOnly ? (
               <div key={`c${d.n}-${m}`} aria-hidden="true" className={cellClass} style={gridStyle} />
             ) : (
-              <button key={`c${d.n}-${m}`} type="button" aria-label={`${d.label} ${fmt(m)}`} onClick={() => onAdd(d.n, fmt(m))} className={cellClass} style={gridStyle} />
+              <button
+                key={`c${d.n}-${m}`}
+                type="button"
+                aria-label={`${d.label} ${fmt(m)}`}
+                onMouseEnter={() => setHovered({ day: d.n, min: m })}
+                onMouseLeave={() => setHovered((h) => (null !== h && h.day === d.n && h.min === m ? null : h))}
+                onClick={() => onAdd(d.n, fmt(m))}
+                className={cellClass}
+                style={gridStyle}
+              >
+                {showTip ? (
+                  // Doublon décoratif pour un lecteur d'écran (la case annonce déjà « Mar 17:15 ») —
+                  // d'où `aria-hidden`. Jeton `bg-foreground`/`text-background` : contraste fort (AA)
+                  // dans les deux thèmes. Jamais de couleur en dur.
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium text-background shadow"
+                  >
+                    {`${dayLabelLongCap(d.n)} · ${fmt(m)}`}
+                  </span>
+                ) : null}
+              </button>
             );
           }),
         )}
@@ -203,7 +243,12 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
           // sans borne : le bloc tombe où il est et mesure ce qu'il dure.
           const startRow = 2 + Math.round((startMinutes(slot.startTime) - gridStart) / STEP);
           const span = Math.max(1, Math.round(slot.durationMinutes / STEP));
-          const visibleLabel = `${hhmm(slot.startTime)}${slot.capacity > 1 ? ` ·${slot.capacity}` : ""}`;
+          // #9 — le bloc DIT sa plage « 17:30 – 18:45 » (foyer `time.ts::formatTimeRange`), mais
+          // seulement si sa hauteur le permet (span ≥ 2 rangées) ; sous ça, le début seul pour ne
+          // pas déborder. Le suffixe de capacité (« ·2 ») reste accolé dans les deux cas.
+          const range = formatTimeRange(slot.startTime, slot.durationMinutes);
+          const capacitySuffix = slot.capacity > 1 ? ` ·${slot.capacity}` : "";
+          const visibleLabel = `${span >= 2 ? range : hhmm(slot.startTime)}${capacitySuffix}`;
           // P2-22 D1 — le créneau tombe-t-il un jour fermé ? Barré + libellé d'indispo, jamais
           // une bande de remplacement (grain JOUR strict, lu de `weekdays`).
           const closedBy = closureForSlot(slot, closures);
@@ -218,7 +263,11 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
             slot.id === selectedSlotId ? "ring-2 ring-accent" : "",
             closedBy ? "line-through" : "",
           );
-          const slotStyle = { gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, borderLeftColor: color, backgroundColor: `color-mix(in oklch, ${color} 30%, var(--card))` };
+          // Fond ÉCLAIRCI au retour #8 (« grille trop foncée ») : 30 % → 22 % de la couleur du
+          // gymnase sur `--card`. Le bloc reste nettement borné (bordure pleine + liseré gauche 4 px
+          // à la couleur PLEINE), mais l'aplat tire moins vers le sombre — texte `foreground` plus
+          // lisible, deux thèmes (gardé par `a11y-contrast.spec.ts`).
+          const slotStyle = { gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, borderLeftColor: color, backgroundColor: `color-mix(in oklch, ${color} 22%, var(--card))` };
           const body = (
             <>
               <span>{visibleLabel}</span>
@@ -236,13 +285,14 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
               key={slot.id}
               type="button"
               onClick={() => onSelect(slot)}
-              title={`${hhmm(slot.startTime)} · ${formatDuration(slot.durationMinutes)} · cap ${slot.capacity} — cliquer pour modifier`}
+              title={`${range} · ${formatDuration(slot.durationMinutes)} · cap ${slot.capacity} — cliquer pour modifier`}
               // Le `title` n'est PAS le nom accessible et ne s'affiche jamais au doigt : la
               // durée n'était lisible qu'à la souris. ⚠ Le nom accessible doit CONTENIR le
               // texte visible (WCAG 2.5.3) — sans quoi une commande vocale prononçant ce
               // qui est écrit à l'écran n'atteint plus le bouton. D'où le texte visible en
-              // tête, mot pour mot, complété ensuite (le libellé d'indispo compris).
-              aria-label={`${visibleLabel} · ${WEEK[di]?.label ?? ""} ${formatDuration(slot.durationMinutes)} · capacité ${slot.capacity}${closedBy ? ` · ${closedText}` : ""} — modifier`}
+              // tête, mot pour mot, puis la PLAGE (#9, déjà présente quand span ≥ 2, ajoutée
+              // sinon), complété ensuite (le libellé d'indispo compris).
+              aria-label={`${visibleLabel}${span >= 2 ? "" : ` · ${range}`} · ${WEEK[di]?.label ?? ""} ${formatDuration(slot.durationMinutes)} · capacité ${slot.capacity}${closedBy ? ` · ${closedText}` : ""} — modifier`}
               className={slotClass}
               style={slotStyle}
             >
