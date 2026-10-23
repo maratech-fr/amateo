@@ -357,16 +357,45 @@ describe("RegisterPage", () => {
     expect(screen.queryByText(/code non reconnu/i)).not.toBeInTheDocument();
   });
 
-  // Améliorations légères #1 — « Ce n'est pas mon club » réaffiche le champ, VIDE (jamais
-  // pré-rempli depuis le lookup).
-  it("club lookup found: 'ce n'est pas mon club' re-reveals the empty field", async () => {
+  // Amendement fondateur 2026-10-23 — RÉÉCRITURE DE PROMESSE (remplace « réaffiche le champ
+  // vide »). « Ce n'est pas mon club » ne réaffiche PLUS le champ « Nom du club » : le serveur
+  // ignore ce nom dès que la FFBB a trouvé le club. Le clic EFFACE le code ARA et y remet le
+  // focus, affiche « Vérifiez votre code : il correspond au club X », fait disparaître la
+  // confirmation « Vous êtes le club X » ; le champ « Nom du club » n'apparaît PAS (il ne sort
+  // que sur `unknown`/`unavailable`). Sélecteurs par rôle + nom accessible (règle fondateur).
+  it("club lookup found: 'ce n'est pas mon club' clears the ARA code and invites to re-check it", async () => {
     h.lookupData = { status: "found", name: "Basket Club Lyon", city: "Lyon" };
     const user = userEvent.setup();
     renderWithProviders(<RegisterPage />);
     await gotoDetails(user);
-    expect(screen.queryByLabelText(/nom du club/i)).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: /code club ffbb/i }), "ARA0069013");
+    expect(screen.getByText(/vous êtes le club/i)).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: /ce n'est pas mon club/i }));
-    expect(screen.getByLabelText(/nom du club/i)).toHaveValue("");
+
+    // Le code est effacé et reprend le focus : le gestionnaire retape le bon.
+    expect(screen.getByRole("textbox", { name: /code club ffbb/i })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: /code club ffbb/i })).toHaveFocus();
+    // Un message invite à vérifier le code, en NOMMANT le club reconnu (une seule phrase).
+    expect(screen.getByText(/vérifiez votre code.*Basket Club Lyon/i)).toBeInTheDocument();
+    // La confirmation disparaît, et le champ « Nom du club » n'apparaît PAS (regime found récusé).
+    expect(screen.queryByText(/vous êtes le club/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/nom du club/i)).not.toBeInTheDocument();
+  });
+
+  // Amendement fondateur 2026-10-23 — le message « Vérifiez votre code » ne reste JAMAIS
+  // périmé : dès que le code change, il s'efface (le lookup live reprend la main).
+  it("club lookup found: the re-check message clears once the ARA code changes", async () => {
+    h.lookupData = { status: "found", name: "Basket Club Lyon", city: "Lyon" };
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    await user.type(screen.getByRole("textbox", { name: /code club ffbb/i }), "ARA0069013");
+    await user.click(screen.getByRole("button", { name: /ce n'est pas mon club/i }));
+    expect(screen.getByText(/vérifiez votre code/i)).toBeInTheDocument();
+
+    await user.type(screen.getByRole("textbox", { name: /code club ffbb/i }), "ARA0069099");
+    expect(screen.queryByText(/vérifiez votre code/i)).not.toBeInTheDocument();
   });
 
   // P4-298 — un code PARTIEL (hors format FFBB complet) ne déclenche AUCUN fetch :
