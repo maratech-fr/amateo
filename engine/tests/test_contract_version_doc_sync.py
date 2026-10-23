@@ -67,8 +67,13 @@ DOCS_QUOTING_THE_ACTIVE_VERSION = (
 # numéro à `CLAUDE.md`. Règle : « toute mention d'une version DE CONTRAT numérique = la version
 # active ». On n'exige PAS la présence (le doc peut ne parler du contrat que symboliquement) ;
 # on interdit seulement qu'un `contrat 2.NN` / `CONTRACT_VERSION 2.NN` PÉRIMÉ y traîne comme
-# courant. C'est le filet demandé pour `module-matchs.md`, refondu en parallèle.
-DOCS_WITH_ROBUST_ACTIVE_VERSION = (REPO_ROOT / "specs" / "courantes" / "module-matchs.md",)
+# courant. C'est le filet demandé pour `module-matchs.md` — découpé par thème (P4-315) en
+# plusieurs fichiers, dont deux citent encore le contrat avec un numéro (modèle de données §1,
+# solveur de placement §3) : les deux restent sous ce filet.
+DOCS_WITH_ROBUST_ACTIVE_VERSION = (
+    REPO_ROOT / "specs" / "courantes" / "module-matchs-modele-donnees.md",
+    REPO_ROOT / "specs" / "courantes" / "module-matchs-radar-et-placement.md",
+)
 
 # Une version de contrat numérique CITÉE au contact du mot « contrat » ou de `CONTRACT_VERSION`
 # (dans un sens ou dans l'autre, à courte distance sur la même ligne). Un « 1.15 » isolé, loin de

@@ -69,14 +69,14 @@ structuré : `{label, postalCode, city, latitude, longitude}`) et écrit adresse
 depuis **SON** hit fédéral, jamais depuis une latitude/longitude que le corps porterait (patron
 SEC-15, même famille que `OpponentTravelResolver::resolveFederalVenue` sur le catalogue PARTAGÉ des
 gymnases adverses — le lien tenant `OpponentVenueLink`, lui, garde les coordonnées choisies par le
-club, § « Table TENANT `OpponentVenueLink` » de `module-matchs.md`) : le front n'envoie que le `label` du
+club, § « Table TENANT `OpponentVenueLink` » de `module-matchs-modele-donnees.md`) : le front n'envoie que le `label` du
 candidat choisi dans `AddressGeocodeField`, mais une requête forgée directement sur la route ne
 pourrait de toute façon pas imposer de coordonnées. Management-gated (SEC-07) ; 422 « adresse
 introuvable » (aucun candidat), 502 (BAN muette). Réponse `{address, postalCode, city, geolocated}`
 — `geolocated` reflète l'état réel (`latitude`/`longitude` non nuls), jamais recalculé côté front.
 `GET /api/opponents/travel` (module matchs) sert un champ additif `clubGeolocated` dérivé de la même
 vérité, consommé par `useClubGeolocated()` pour le bandeau « Trajets indisponibles » de l'onglet
-« Adversaires » (`/matchs/adversaires`) — voir `specs/courantes/module-matchs.md` § Écran
+« Adversaires » (`/matchs/adversaires`) — voir `specs/courantes/module-matchs-adversaires.md` § Écran
 Adversaires.
 
 ### 1ter. Retrouver une adresse depuis des coordonnées (reverse-geocoding, P4-271)
@@ -254,7 +254,7 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   adverse est joué cette saison — le gymnase apparié ; (2) pour un code SANS aucun lien, le point
   VILLE de l'annuaire fédéral (pour que le repli « ville seule » de la projection porte un trajet
   approché) ; dédupliquées par coordonnées arrondies (deux libellés du même gymnase = une paire).
-  « Réessayer les manquants » côté écran (`specs/courantes/module-matchs.md` § Écran Adversaires)
+  « Réessayer les manquants » côté écran (`specs/courantes/module-matchs-adversaires.md` § Écran Adversaires)
   est donc littéralement ce même `POST /resolve`.
 
 ### Poser le siège invalide les trajets dérivés (`PATCH /api/club/siege`)
@@ -417,7 +417,7 @@ corrige) à l'adresse fédérale de la salle :
    derrière le numéro de salle : `searchSallesNearby` autour du point stocké (rayon
    `VERIFY_RADIUS_METERS` = 2000 m, même patron de VÉRIFICATION que
    `FfbbSalleResolver::resolveByExternalRef` (résolution du gymnase fédéral pour la table partagée
-   `OpponentVenueSuggestion`, `module-matchs.md` §1 « Modèle & données transverses ») — frère
+   `OpponentVenueSuggestion`, `module-matchs-modele-donnees.md` §1 « Modèle & données transverses ») — frère
    délibérément séparé, celui-ci lit le champ `adresse` que l'autre n'a pas besoin de lire, puis ne
    garde que le hit dont `numero` est **exactement** celui demandé.
 2. **(a) `BanGeocodingClient::reverseStreet`** — reverse-géocode le point stocké : si la feature rend

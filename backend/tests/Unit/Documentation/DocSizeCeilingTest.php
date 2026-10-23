@@ -51,13 +51,16 @@ final class DocSizeCeilingTest extends TestCase
      *   des capacités + décisions fermées + traces datées de livraison). Il grossit par
      *   construction, une livraison après l'autre ; « le découper par thème » ne s'y applique pas
      *   comme pour un inventaire — un découpage par époque serait une décision à part entière.
-     * - `module-matchs.md` : grande spec courante d'UN module (FFBB). C'est un vrai CANDIDAT au
-     *   découpage thématique, mais hors périmètre de DOC-59 (qui ne visait que `frontend-spec.md`
-     *   et `backend-inventory.md`) — à traiter dans sa propre passe de rangement.
+     *
+     * `module-matchs.md` (1 771 l.) a été découpé par thème le 2026-10-23 (P4-315) en
+     * `module-matchs-modele-donnees.md`, `module-matchs-radar-et-placement.md`,
+     * `module-matchs-consultation.md`, `module-matchs-import-fbi.md`, `module-matchs-reglages.md`,
+     * `module-matchs-adversaires.md`, `module-matchs-perimetre-engage.md` et
+     * `module-matchs-tests.md` — `module-matchs.md` lui-même redevient un index court sans
+     * exception, patron DOC-59.
      */
     private const array ALLOWED = [
         'etat-des-lieux.md',
-        'module-matchs.md',
     ];
 
     public function testNoLivingDocOverflowsItsThematicCeiling(): void

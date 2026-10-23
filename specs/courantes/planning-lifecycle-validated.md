@@ -180,7 +180,7 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
   pointage, tout match domicile dont le gymnase a disparu du club+saison est dépointé
   (`FixtureVenueLossMarker`, `UNPLACED` + raison persistante `venue_lost`) — annoncé au préalable
   par `GET /api/schedules/{id}/validate-impact` (même prédicat, parité par construction). Comportement
-  et détail complet : [`module-matchs.md`](module-matchs.md) §11 « Le périmètre engagé » (sous-§ salle
+  et détail complet : [`module-matchs-perimetre-engage.md`](module-matchs-perimetre-engage.md) §11 « Le périmètre engagé » (sous-§ salle
   protégée à la source) ; cette spec ne fait que pointer l'effet de bord, pas le redécrire.
 
 ### 3.4 Pas de nouveau statut

@@ -158,7 +158,7 @@ un gymnase pris deux fois : vous le voyez avant le week-end, pas après.
   entraînement simultanés), les collisions de gymnase et un calendrier incomplet —
   `etat-des-lieux.md` §1.5.
 - Chaque conflit se **traite**, il ne se masque jamais : à traiter (par défaut), dérogation
-  demandée, réglé en interne, ou sans solution pour l'instant — `module-matchs.md` § Résolution des
+  demandée, réglé en interne, ou sans solution pour l'instant — `module-matchs-consultation.md` § Résolution des
   conflits.
 - Un onglet Conflits dédié, pivoté par coach, équipe, gymnase ou journée — `etat-des-lieux.md`
   §1.5.

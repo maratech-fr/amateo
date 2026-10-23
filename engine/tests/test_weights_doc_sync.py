@@ -41,7 +41,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 VOCAB = REPO_ROOT / "engine" / "docs" / "constraint-vocabulary.md"
 EMISSION = REPO_ROOT / "frontend" / "docs" / "constraint-emission.md"
 COVERAGE = REPO_ROOT / "backend" / "docs" / "constraint-coverage.md"
-MODULE_MATCHS = REPO_ROOT / "specs" / "courantes" / "module-matchs.md"
+MODULE_MATCHS = REPO_ROOT / "specs" / "courantes" / "module-matchs-radar-et-placement.md"
 ADR_0003 = REPO_ROOT / "docs" / "architecture" / "adr-0003-match-placement-solve.md"
 
 # AUD-DOC-45 (bis) — un STAMP n'est pas du CONTENU. La ligne « Last verified @ … » et son
