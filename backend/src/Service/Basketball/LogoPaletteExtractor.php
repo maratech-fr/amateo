@@ -58,6 +58,13 @@ final class LogoPaletteExtractor
                 return null;
             }
 
+            // Sur une image À PALETTE, `imagecolorat` rend l'INDICE de palette, pas le
+            // RGBA : on convertit en truecolor pour lire les vraies couleurs (un PNG
+            // palettisé sinon ras des #000000).
+            if (!imageistruecolor($image)) {
+                imagepalettetotruecolor($image);
+            }
+
             try {
                 return $this->palette($image, $width, $height);
             } finally {

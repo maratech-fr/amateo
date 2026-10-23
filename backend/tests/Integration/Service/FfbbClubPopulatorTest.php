@@ -323,8 +323,8 @@ final class FfbbClubPopulatorTest extends KernelTestCase
 
     /**
      * @param array<string, mixed>|null $clubHit             override the club search hit (else the BCCL fixture)
-     * @param string|null                $clubLogoBytes       override the bytes the logo fetcher returns (else a 1×1 transparent PNG)
-     * @param string                     $clubLogoContentType Content-Type the asset host serves (FFBB serves WebP)
+     * @param string|null               $clubLogoBytes       override the bytes the logo fetcher returns (else a 1×1 transparent PNG)
+     * @param string                    $clubLogoContentType Content-Type the asset host serves (FFBB serves WebP)
      *
      * @param-out callable(): int $searchCount
      */
