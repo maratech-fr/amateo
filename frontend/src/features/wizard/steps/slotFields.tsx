@@ -64,7 +64,7 @@ export function DurationSelect({
   };
 
   return (
-    <div className="inline-flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <Select
         aria-label={ariaLabel}
         wrapperClassName={wrapperClassName}
