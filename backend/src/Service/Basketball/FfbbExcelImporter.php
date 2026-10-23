@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Service\Basketball;
 
 use App\Entity\Club;
+use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\Team;
+use App\Enum\Gender;
 use App\Exception\ImportRejectedException;
 use App\Service\PlanEntitlements;
 use App\Service\SportCategoryResolver;
@@ -27,12 +29,16 @@ final class FfbbExcelImporter
     ) {}
 
     /**
-     * @param list<int>|null $selectedRows numéros de ligne Excel à importer (P3-7) ;
-     *                                     null = tout importer (comportement historique)
+     * @param list<int>|null                                 $selectedRows numéros de ligne Excel à importer (P3-7) ;
+     *                                                                     null = tout importer (comportement historique)
+     * @param array<int, array{tierId: int, gender: string}> $overrides    rang + genre édités dans l'aperçu (#4),
+     *                                                                     keyés par numéro de ligne Excel, appliqués
+     *                                                                     aux SEULES lignes créées ; absent = défaut
+     *                                                                     historique (rang D, genre vide)
      *
      * @return array{created: int, skipped: int, errors: list<string>}
      */
-    public function import(string $filePath, string $clubId, string $seasonId, ?array $selectedRows = null): array
+    public function import(string $filePath, string $clubId, string $seasonId, ?array $selectedRows = null, array $overrides = []): array
     {
         $club = $this->entityManager->getRepository(Club::class)->find($clubId);
         if (!$club instanceof Club) {
@@ -95,6 +101,13 @@ final class FfbbExcelImporter
             $knownNames[mb_strtolower($team->getName(), 'UTF-8')] = true;
         }
 
+        // #4 — les rangs valides pour valider un override (le genre l'est par `Gender::tryFrom`).
+        // Un override dont le rang n'existe pas est un 400, levé AVANT tout persist (tout-ou-rien).
+        $validTierIds = [];
+        foreach ($this->entityManager->getRepository(PriorityTier::class)->findAll() as $tier) {
+            $validTierIds[$tier->getId()] = true;
+        }
+
         foreach ($rows as $rowIndex => $row) {
             if (null !== $selectedSet && !isset($selectedSet[$rowIndex + 2])) {
                 continue;
@@ -103,10 +116,11 @@ final class FfbbExcelImporter
             /** @var array<mixed> $row */
             $nom = $this->stringValue($row[$columnMap['nom']] ?? null);
             $categorie = $this->stringValue($row[$columnMap['catégorie']] ?? null);
-            $numero = $this->stringValue($row[$columnMap['numéro']] ?? null);
             $organisme = $this->stringValue($row[$columnMap['organisme']] ?? null);
 
-            if (\in_array('', [$nom, $categorie, $numero, $organisme], true)) {
+            // Le NUMÉRO est optionnel (une équipe « sans numéro » est légitime, #4) :
+            // seuls nom, catégorie et organisme font une ligne exploitable.
+            if (\in_array('', [$nom, $categorie, $organisme], true)) {
                 continue;
             }
 
@@ -131,11 +145,17 @@ final class FfbbExcelImporter
 
             $sportCategory = $this->sportCategoryResolver->findOrCreate($categorie, $clubId, $sport->getId());
 
+            // #4 — l'override (rang + genre édités dans l'aperçu) ne s'applique qu'ici,
+            // à une ligne RETENUE pour création. Sans override : défaut historique (rang D,
+            // genre vide). Un override invalide jette AVANT tout persist (tout-ou-rien).
+            [$tierId, $gender] = $this->resolveOverride($overrides[$rowIndex + 2] ?? null, $validTierIds);
+
             $team = (new Team)
                 ->setClubId($clubId)
                 ->setSeasonId($seasonId)
                 ->setSportCategoryId($sportCategory->getId())
-                ->setPriorityTierId(self::DEFAULT_PRIORITY_TIER_ID)
+                ->setPriorityTierId($tierId)
+                ->setGender($gender)
                 ->setName($nom)
                 ->setSessionsPerWeek(self::DEFAULT_SESSIONS_PER_WEEK)
                 ->setIsActive(true);
@@ -175,8 +195,13 @@ final class FfbbExcelImporter
      * à importer et évite les doublons. Mêmes refus métier que `import()` : code
      * club étranger → 422 ; colonnes manquantes → 400 ; fichier vide → erreur.
      *
+     * Sert aussi, pour chaque ligne (#4), un rang suggéré (par catégorie + numéro,
+     * résolu PAR LABEL via le repository `PriorityTier`) et un genre lu dans le nom —
+     * pré-remplissant les deux colonnes éditables de l'aperçu, sans RIEN décider :
+     * le gestionnaire reste libre de les changer.
+     *
      * @return array{
-     *     rows: list<array{row: int, name: string, category: string, number: string, alreadyPresent: bool}>,
+     *     rows: list<array{row: int, name: string, category: string, number: string, alreadyPresent: bool, suggestedTierId: int, suggestedGender: ?string}>,
      *     errors: list<string>,
      *     total: int
      * }
@@ -217,6 +242,13 @@ final class FfbbExcelImporter
             $knownNames[mb_strtolower($team->getName(), 'UTF-8')] = true;
         }
 
+        // #4 — le rang suggéré est résolu PAR LABEL (jamais un id en dur) : on charge
+        // la table canonique label→id une fois pour tout l'analyse.
+        $tierIdByLabel = [];
+        foreach ($this->entityManager->getRepository(PriorityTier::class)->findAll() as $tier) {
+            $tierIdByLabel[$tier->getLabel()] = $tier->getId();
+        }
+
         $out = [];
         $errors = [];
         $total = 0;
@@ -228,7 +260,9 @@ final class FfbbExcelImporter
             $numero = $this->stringValue($row[$columnMap['numéro']] ?? null);
             $organisme = $this->stringValue($row[$columnMap['organisme']] ?? null);
 
-            if (\in_array('', [$nom, $categorie, $numero, $organisme], true)) {
+            // Le NUMÉRO est optionnel (équipe « sans numéro » → rang suggéré C, #4) :
+            // seuls nom, catégorie et organisme font une ligne exploitable.
+            if (\in_array('', [$nom, $categorie, $organisme], true)) {
                 continue;
             }
             ++$total;
@@ -248,16 +282,108 @@ final class FfbbExcelImporter
             $alreadyPresent = isset($knownNames[$nameKey]);
             $knownNames[$nameKey] = true;
 
+            $suggestedLabel = $this->suggestedTierLabel($categorie, $numero);
+            $suggestedGender = $this->readGender($nom);
+
             $out[] = [
                 'row' => $excelRow,
                 'name' => $nom,
                 'category' => $categorie,
                 'number' => $numero,
                 'alreadyPresent' => $alreadyPresent,
+                'suggestedTierId' => $tierIdByLabel[$suggestedLabel] ?? self::DEFAULT_PRIORITY_TIER_ID,
+                'suggestedGender' => $suggestedGender?->value,
             ];
         }
 
         return ['rows' => $out, 'errors' => $errors, 'total' => $total];
+    }
+
+    /**
+     * Résout un override (rang + genre édités dans l'aperçu) en valeurs de l'équipe.
+     * `null` = pas d'override → défaut historique (rang D, genre vide). Un rang
+     * inconnu ou un genre hors `Gender::cases()` → 400 nommé, AVANT tout persist.
+     *
+     * @param array{tierId: int, gender: string}|null $override
+     * @param array<int, true>                        $validTierIds
+     *
+     * @return array{0: int, 1: ?Gender}
+     */
+    private function resolveOverride(?array $override, array $validTierIds): array
+    {
+        if (null === $override) {
+            return [self::DEFAULT_PRIORITY_TIER_ID, null];
+        }
+
+        $tierId = $override['tierId'];
+        if (!isset($validTierIds[$tierId])) {
+            throw ImportRejectedException::badRequest(\sprintf('Rang inconnu (%d) dans les options d\'import.', $tierId));
+        }
+
+        $genderRaw = $override['gender'];
+        if ('' === $genderRaw) {
+            return [$tierId, null];
+        }
+
+        $gender = Gender::tryFrom($genderRaw);
+        if (!$gender instanceof Gender) {
+            throw ImportRejectedException::badRequest(\sprintf('Genre inconnu (%s) dans les options d\'import.', $genderRaw));
+        }
+
+        return [$tierId, $gender];
+    }
+
+    /**
+     * #4 — le LABEL de rang suggéré pour une équipe, d'après sa catégorie et son
+     * numéro. Seniors n°1/2/3/4+ → S/A/B/C ; jeunes n°1/2/3+ → A/B/C ; loisir → D ;
+     * sans numéro → C (jamais le défaut D). Le label est ensuite résolu en id via le
+     * repository `PriorityTier` (jamais un id en dur).
+     */
+    private function suggestedTierLabel(string $category, string $number): string
+    {
+        $cat = mb_strtolower($category, 'UTF-8');
+        if (str_contains($cat, 'loisir')) {
+            return 'D';
+        }
+
+        $rank = ctype_digit($number) ? (int) $number : 0; // sans numéro → 0
+
+        if (str_contains($cat, 'senior')) {
+            return match (true) {
+                1 === $rank => 'S',
+                2 === $rank => 'A',
+                3 === $rank => 'B',
+                default => 'C', // n°4 et +, ET sans numéro
+            };
+        }
+
+        // Jeunes (toute catégorie d'âge) : n°1/2/3+ → A/B/C ; sans numéro → C.
+        return match (true) {
+            1 === $rank => 'A',
+            2 === $rank => 'B',
+            default => 'C',
+        };
+    }
+
+    /**
+     * #4 — le genre LU dans le nom, seulement dans un motif clair : une catégorie
+     * d'âge suivie de la lettre (`U13F1`, `U18M`), ou `SM…`/`SF…`. Jamais la 1re
+     * lettre M/F trouvée au hasard (« Mercredi Basket » n'est pas masculin), jamais
+     * MIXTE en automatique : à défaut de motif, `null` (le gestionnaire tranche).
+     */
+    private function readGender(string $name): ?Gender
+    {
+        // Catégorie d'âge suivie de la lettre : U13F1, U18M.
+        if (1 === preg_match('/\bU\d+\s*([MF])/i', $name, $matches)) {
+            return Gender::from(mb_strtoupper($matches[1], 'UTF-8'));
+        }
+
+        // SM… → M, SF… → F (code FFBB « Senior Masculin/Féminin »).
+        if (1 === preg_match('/\bS([MF])/i', $name, $matches)) {
+            return Gender::from(mb_strtoupper($matches[1], 'UTF-8'));
+        }
+
+        return null;
     }
 
     /**

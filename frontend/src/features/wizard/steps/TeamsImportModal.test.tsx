@@ -13,7 +13,21 @@ vi.mock("@/shared/api/client", () => ({
   api: { get: vi.fn(), post, put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }));
 
+import { api } from "@/shared/api/client";
+
 import { TeamsImportModal } from "./TeamsImportModal";
+
+/**
+ * Le catalogue des rangs, au format EXACT de l'API (`priority_tiers`, JSON-LD
+ * `member`) — la modale le lit (`usePriorityTiers`) pour peupler la colonne Rang.
+ */
+const TIERS = [
+  { id: 1, label: "S", name: "Elite", color: null },
+  { id: 2, label: "A", name: "Régional+", color: null },
+  { id: 3, label: "B", name: "Régional", color: null },
+  { id: 4, label: "C", name: "Départemental", color: null },
+  { id: 5, label: "D", name: "Loisir", color: null },
+];
 
 /** Un HTTPError réel + son `.data` (ky 2.x expose le corps parsé ainsi — cf. errorMessage). */
 function httpError(status: number, body?: unknown): HTTPError {
@@ -60,11 +74,15 @@ function renderModal() {
   return { ...utils, invalidateSpy, onClose };
 }
 
+// Le back sert désormais un rang + un genre suggérés par ligne (#4) : le mock les
+// porte TOUS, au format EXACT de l'API, sans quoi il divergerait du contrat servi
+// (garde `FrontMockDateFormatMatchesContractTest` / règle « le mock envoie ce que
+// l'API envoie »). `suggestedGender` est "M" | "F" | "MIXTE" | null.
 const THREE_ROWS: TeamImportAnalysis = {
   rows: [
-    { row: 3, name: "SM1", category: "Seniors", number: "1", alreadyPresent: false },
-    { row: 4, name: "SF1", category: "Seniors", number: "2", alreadyPresent: true },
-    { row: 5, name: "SM2", category: "Seniors", number: "3", alreadyPresent: false },
+    { row: 3, name: "SM1", category: "Seniors", number: "1", alreadyPresent: false, suggestedTierId: 1, suggestedGender: "M" },
+    { row: 4, name: "SF1", category: "Seniors", number: "2", alreadyPresent: true, suggestedTierId: 2, suggestedGender: "F" },
+    { row: 5, name: "SM2", category: "Seniors", number: "3", alreadyPresent: false, suggestedTierId: 3, suggestedGender: "M" },
   ],
   errors: [],
   total: 3,
@@ -79,6 +97,15 @@ async function deposit(user: ReturnType<typeof userEvent.setup>): Promise<void> 
 describe("TeamsImportModal", () => {
   beforeEach(() => {
     post.mockReset();
+    // La modale lit le catalogue des rangs via `usePriorityTiers` (GET priority_tiers) :
+    // toujours câblé, au format JSON-LD réel, pour tous les tests.
+    vi.mocked(api.get).mockReset();
+    vi.mocked(api.get).mockImplementation(
+      (path) =>
+        ({
+          json: () => Promise.resolve(String(path).startsWith("priority_tiers") ? { member: TIERS } : { member: [] }),
+        }) as never,
+    );
   });
 
   it("dépose le fichier → analyse appelée avec un FormData file + seasonId, puis les lignes s'affichent", async () => {
@@ -218,5 +245,48 @@ describe("TeamsImportModal", () => {
     const footerClose = screen.getAllByRole("button", { name: "Fermer" }).find((b) => "Fermer" === b.textContent?.trim());
     await user.click(footerClose as HTMLElement);
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  // --- #4 : deux colonnes éditables Rang + Genre, pré-remplies par le back, envoyées dans `overrides` ---
+
+  /** Les overrides envoyés, décodés et indexés par numéro de ligne Excel. */
+  function sentOverrides(): Record<number, { row: number; tierId: number; gender: string | null }> {
+    const call = post.mock.calls.find((c) => String(c[0]) === "clubs/club-1/import-teams");
+    expect(call, "import doit avoir été POSTé").toBeTruthy();
+    const raw = (call?.[1] as { body: FormData }).body.get("overrides");
+    expect(typeof raw, "le champ multipart « overrides » doit être envoyé").toBe("string");
+    const list = JSON.parse(String(raw)) as { row: number; tierId: number; gender: string | null }[];
+    return Object.fromEntries(list.map((o) => [o.row, o]));
+  }
+
+  it("pré-remplit Rang et Genre depuis le back et envoie un override par ligne COCHÉE", async () => {
+    wireApi({ analysis: THREE_ROWS, result: { message: "ok", created: 2, skipped: 0, errors: [] } });
+    const user = userEvent.setup();
+    renderModal();
+    await deposit(user);
+
+    // On n'édite RIEN : le défaut part tel que le back l'a suggéré. Cochées par défaut :
+    // SM1 (row 3) et SM2 (row 5) ; SF1 (row 4) est déjà présente → décochée → pas d'override.
+    await user.click(screen.getByRole("button", { name: /^Importer/ }));
+
+    const overrides = sentOverrides();
+    expect(overrides[3]).toEqual({ row: 3, tierId: 1, gender: "M" });
+    expect(overrides[5]).toEqual({ row: 5, tierId: 3, gender: "M" });
+    expect(overrides[4], "une ligne décochée ne part jamais dans overrides").toBeUndefined();
+  });
+
+  it("une édition du rang d'une ligne part dans overrides (Select « Rang de … »)", async () => {
+    wireApi({ analysis: THREE_ROWS, result: { message: "ok", created: 2, skipped: 0, errors: [] } });
+    const user = userEvent.setup();
+    renderModal();
+    await deposit(user);
+
+    // Contrat : colonne Rang = `Select` natif (role combobox) au nom accessible
+    // contextualisé « Rang de SM1 », options = valeurs des rangs (id en string).
+    // On remplace le rang suggéré S (1) par C (4).
+    await user.selectOptions(screen.getByRole("combobox", { name: "Rang de SM1" }), "4");
+    await user.click(screen.getByRole("button", { name: /^Importer/ }));
+
+    expect(sentOverrides()[3]).toEqual({ row: 3, tierId: 4, gender: "M" });
   });
 });

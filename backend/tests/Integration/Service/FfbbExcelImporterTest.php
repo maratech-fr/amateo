@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
+use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
+use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
@@ -40,6 +42,9 @@ final class FfbbExcelImporterTest extends KernelTestCase
     use TenantGucTrait;
 
     private const CLUB_CODE = 'ARA0069036';
+
+    /** Rang par défaut historique (D) quand aucun override n'est fourni — miroir de l'importeur. */
+    private const DEFAULT_TIER_ID = 5;
 
     private EntityManagerInterface $em;
 
@@ -166,12 +171,12 @@ final class FfbbExcelImporterTest extends KernelTestCase
         self::assertSame(3, $result['total']);
         self::assertSame([], $result['errors']);
         self::assertSame(
-            ['row' => 2, 'name' => 'SF1', 'category' => 'Seniors', 'number' => '6', 'alreadyPresent' => true],
+            ['row' => 2, 'name' => 'SF1', 'category' => 'Seniors', 'number' => '6', 'alreadyPresent' => true, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'F'],
             $result['rows'][0],
             'le numéro de ligne est celui d\'Excel (en-tête = ligne 1), et SF1 est déjà en base',
         );
         self::assertSame(
-            ['row' => 3, 'name' => 'SM1', 'category' => 'Seniors', 'number' => '1', 'alreadyPresent' => false],
+            ['row' => 3, 'name' => 'SM1', 'category' => 'Seniors', 'number' => '1', 'alreadyPresent' => false, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'M'],
             $result['rows'][1],
         );
         self::assertSame(4, $result['rows'][2]['row']);
@@ -240,6 +245,124 @@ final class FfbbExcelImporterTest extends KernelTestCase
         self::assertSame(['created' => 1, 'skipped' => 0, 'errors' => []], $result);
     }
 
+    public function testAnalyzeSuggestsRankFromCategoryAndNumberAndGenderFromName(): void
+    {
+        // #4 (retours Rillieux) — l'analyse NE PROPOSE PLUS tout en rang D : elle sert,
+        // pour CHAQUE ligne, un rang suggéré (par catégorie + numéro) et un genre lu dans
+        // le nom. Règle à MAISON UNIQUE côté back. Rangs résolus PAR LABEL via le repo
+        // `PriorityTier` (jamais un id en dur) : on lit l'id attendu via `tierIdForLabel`.
+        $this->seedPriorityTiers();
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $result = $this->importer()->analyze($this->xlsx([
+            ['SM1', 'Seniors', '1', $org],            // senior n°1 → S ; « SM1 » → M
+            ['SF2', 'Seniors', '2', $org],            // senior n°2 → A ; « SF2 » → F
+            ['SM4', 'Seniors', '4', $org],            // senior n°4+ → C ; → M
+            ['U13M1', 'U13', '1', $org],              // jeune n°1 → A ; « U13M1 » → M
+            ['U13F2', 'U13', '2', $org],              // jeune n°2 → B ; « U13F2 » → F
+            ['U15M3', 'U15', '3', $org],              // jeune n°3+ → C ; → M
+            ['Loisir Detente', 'Loisir', '1', $org],  // loisir → D ; aucun genre lisible
+            ['Veterans', 'Seniors', '', $org],        // sans numéro → C (jamais le défaut D) ; aucun genre
+        ]), $this->club->getId(), $this->seasonId);
+
+        $byName = [];
+        foreach ($result['rows'] as $row) {
+            $byName[$row['name']] = $row;
+        }
+
+        self::assertSame($this->tierIdForLabel('S'), $byName['SM1']['suggestedTierId'], 'senior n°1 → S');
+        self::assertSame('M', $byName['SM1']['suggestedGender']);
+        self::assertSame($this->tierIdForLabel('A'), $byName['SF2']['suggestedTierId'], 'senior n°2 → A');
+        self::assertSame('F', $byName['SF2']['suggestedGender']);
+        self::assertSame($this->tierIdForLabel('C'), $byName['SM4']['suggestedTierId'], 'senior n°4+ → C');
+        self::assertSame($this->tierIdForLabel('A'), $byName['U13M1']['suggestedTierId'], 'jeune n°1 → A');
+        self::assertSame('M', $byName['U13M1']['suggestedGender']);
+        self::assertSame($this->tierIdForLabel('B'), $byName['U13F2']['suggestedTierId'], 'jeune n°2 → B');
+        self::assertSame('F', $byName['U13F2']['suggestedGender']);
+        self::assertSame($this->tierIdForLabel('C'), $byName['U15M3']['suggestedTierId'], 'jeune n°3+ → C');
+        self::assertSame($this->tierIdForLabel('D'), $byName['Loisir Detente']['suggestedTierId'], 'loisir → D');
+        self::assertNull($byName['Loisir Detente']['suggestedGender'], 'aucun genre lisible → vide');
+        self::assertSame($this->tierIdForLabel('C'), $byName['Veterans']['suggestedTierId'], 'sans numéro → C, jamais le défaut D');
+        self::assertNull($byName['Veterans']['suggestedGender']);
+    }
+
+    public function testImportAppliesCheckedRowOverridesAndIgnoresUncheckedOnes(): void
+    {
+        // #4 — l'import accepte des `overrides` (rang + genre édités dans l'aperçu),
+        // appliqués AUX SEULES lignes cochées. Un override sur une ligne NON cochée
+        // n'a aucun effet (il ne la ressuscite pas).
+        $this->seedPriorityTiers();
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $file = $this->xlsx([
+            ['SM1', 'Seniors', '1', $org],   // ligne 2 — NON cochée
+            ['SM2', 'Seniors', '2', $org],   // ligne 3 — cochée, forcée S + MIXTE
+        ]);
+
+        $result = $this->importer()->import($file, $this->club->getId(), $this->seasonId, [3], [
+            2 => ['tierId' => $this->tierIdForLabel('S'), 'gender' => 'M'],      // ligne non cochée → ignoré
+            3 => ['tierId' => $this->tierIdForLabel('S'), 'gender' => 'MIXTE'],  // ligne cochée → appliqué
+        ]);
+        self::assertSame(['created' => 1, 'skipped' => 0, 'errors' => []], $result);
+
+        $teams = $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]);
+        self::assertCount(1, $teams, 'seule la ligne cochée est créée — l\'override d\'une ligne non cochée ne la crée pas');
+        self::assertSame('SM2', $teams[0]->getName());
+        self::assertSame($this->tierIdForLabel('S'), $teams[0]->getPriorityTierId(), 'le rang édité est appliqué');
+        self::assertSame(Gender::MIXTE, $teams[0]->getGender(), 'le genre édité est appliqué');
+    }
+
+    public function testACheckedRowWithoutOverrideKeepsTheHistoricalDefaults(): void
+    {
+        // Compatibilité : sans override, une ligne cochée garde le défaut historique
+        // (rang D = 5, genre vide). L'écran envoie TOUJOURS des overrides pré-remplis,
+        // mais le service ne doit rien casser quand ils manquent.
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $file = $this->xlsx([['SM2', 'Seniors', '2', $org]]); // ligne 2
+
+        $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2], []);
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM2']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertSame(self::DEFAULT_TIER_ID, $team->getPriorityTierId(), 'sans override, le rang reste le défaut (D)');
+        self::assertNull($team->getGender(), 'sans override, le genre reste vide');
+    }
+
+    public function testOverrideWithUnknownTierIsRejectedAndWritesNothing(): void
+    {
+        // Un override dont le rang n'existe pas → 400 nommé, tout-ou-rien (rien créé).
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $file = $this->xlsx([['SM2', 'Seniors', '2', $org]]); // ligne 2
+
+        try {
+            $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2], [
+                2 => ['tierId' => 999999, 'gender' => 'M'],
+            ]);
+            self::fail('un rang inexistant doit faire refuser l\'import');
+        } catch (ImportRejectedException $e) {
+            self::assertSame(400, $e->getStatusCode(), 'un override invalide est un 400 (requête mauvaise)');
+        }
+
+        self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'tout-ou-rien : rien créé');
+    }
+
+    public function testOverrideWithInvalidGenderIsRejectedAndWritesNothing(): void
+    {
+        // Un override dont le genre n'est pas M/F/MIXTE → 400 nommé, tout-ou-rien.
+        $this->seedPriorityTiers();
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $file = $this->xlsx([['SM2', 'Seniors', '2', $org]]); // ligne 2
+
+        try {
+            $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2], [
+                2 => ['tierId' => $this->tierIdForLabel('A'), 'gender' => 'Z'],
+            ]);
+            self::fail('un genre hors M/F/MIXTE doit faire refuser l\'import');
+        } catch (ImportRejectedException $e) {
+            self::assertSame(400, $e->getStatusCode());
+        }
+
+        self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'tout-ou-rien : rien créé');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -305,5 +428,31 @@ final class FfbbExcelImporterTest extends KernelTestCase
         $this->files[] = $file;
 
         return $file;
+    }
+
+    /**
+     * Les 5 rangs de référence (mapping canonique label→id du seed), idempotents :
+     * `priority_tier` est GLOBAL. Permet de résoudre un rang PAR LABEL dans les
+     * assertions (jamais un id en dur).
+     */
+    private function seedPriorityTiers(): void
+    {
+        foreach ([[1, 'S', 'Elite'], [2, 'A', 'Régional+'], [3, 'B', 'Régional'], [4, 'C', 'Départemental'], [5, 'D', 'Loisir']] as [$id, $label, $name]) {
+            if ($this->em->getRepository(PriorityTier::class)->find($id) instanceof PriorityTier) {
+                continue;
+            }
+            $tier = (new PriorityTier)->setId($id)->setLabel($label)->setName($name)
+                ->setColor('#000000')->setOrToolsWeight(1)->setDefaultMinSessions(1);
+            $this->em->persist($tier);
+        }
+        $this->em->flush();
+    }
+
+    private function tierIdForLabel(string $label): int
+    {
+        $tier = $this->em->getRepository(PriorityTier::class)->findOneBy(['label' => $label]);
+        self::assertInstanceOf(PriorityTier::class, $tier, \sprintf('le rang « %s » doit être seedé', $label));
+
+        return $tier->getId();
     }
 }

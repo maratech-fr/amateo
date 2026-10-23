@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { FilePicker } from "@/shared/components/ui/file-picker";
 import { Listbox, type ListboxOption } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
 import { snapshotFile } from "@/shared/lib/fileSnapshot";
@@ -267,16 +268,7 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
         <div className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">{M.importFbiIntro}</p>
 
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-muted-foreground">{M.importFbiFileLabel}</span>
-            <input
-              aria-label={M.importFbiFileAria}
-              type="file"
-              accept=".xlsx"
-              className="text-sm"
-              onChange={(e) => void onFileChange(e.target.files?.[0] ?? null)}
-            />
-          </label>
+          <FilePicker label={M.importFbiFileAria} accept=".xlsx" onFileChange={(f) => void onFileChange(f)} />
 
           {analyzeFbi.isPending ? <p className="text-xs text-muted-foreground">{M.importFbiAnalyzing}</p> : null}
 

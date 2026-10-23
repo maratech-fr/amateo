@@ -57,8 +57,15 @@ final class ImportController extends AbstractController
             return $selectedRows;
         }
 
+        // #4 — le rang + le genre édités dans l'aperçu, keyés par numéro de ligne Excel.
+        // Absent = aucun override (défaut historique). JSON malformé → 400.
+        $overrides = $this->parseOverrides($request);
+        if ($overrides instanceof JsonResponse) {
+            return $overrides;
+        }
+
         try {
-            $result = $this->importer->import((string) $file->getRealPath(), $id, $seasonId, $selectedRows);
+            $result = $this->importer->import((string) $file->getRealPath(), $id, $seasonId, $selectedRows, $overrides);
         } catch (ImportRejectedException $e) {
             // Le SEUL type relayé : son message est écrit pour le gestionnaire.
             return $this->json(['error' => $e->getMessage()], $e->getStatusCode());
@@ -115,5 +122,46 @@ final class ImportController extends AbstractController
         }
 
         return $rows;
+    }
+
+    /**
+     * Le champ multipart « overrides » : une liste JSON `[{row, tierId, gender}]`
+     * (rang + genre édités dans l'aperçu), patron du champ « rows ». On la réindexe
+     * par numéro de ligne Excel pour le service. Absent/vide = aucun override. JSON
+     * malformé → 400 ; la validité MÉTIER (rang connu, genre valide) est tranchée par
+     * le service, qui refuse en 400 nommé avant tout persist.
+     *
+     * @return array<int, array{tierId: int, gender: string}>|JsonResponse
+     */
+    private function parseOverrides(Request $request): array|JsonResponse
+    {
+        $raw = $request->request->get('overrides');
+        if (null === $raw || '' === $raw) {
+            return [];
+        }
+        if (!\is_string($raw)) {
+            return $this->json(['error' => 'Champ « overrides » invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!\is_array($decoded) || !array_is_list($decoded)) {
+            return $this->json(['error' => 'Champ « overrides » invalide (liste JSON attendue).'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $overrides = [];
+        foreach ($decoded as $entry) {
+            if (!\is_array($entry)) {
+                return $this->json(['error' => 'Champ « overrides » invalide (objets {row, tierId, gender} attendus).'], Response::HTTP_BAD_REQUEST);
+            }
+            $row = $entry['row'] ?? null;
+            $tierId = $entry['tierId'] ?? null;
+            $gender = $entry['gender'] ?? '';
+            if (!\is_int($row) || !\is_int($tierId) || !\is_string($gender)) {
+                return $this->json(['error' => 'Champ « overrides » invalide (objets {row, tierId, gender} attendus).'], Response::HTTP_BAD_REQUEST);
+            }
+            $overrides[$row] = ['tierId' => $tierId, 'gender' => $gender];
+        }
+
+        return $overrides;
     }
 }
