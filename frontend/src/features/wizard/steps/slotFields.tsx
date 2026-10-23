@@ -87,11 +87,6 @@ export function DurationSelect({
         ))}
         <option value={OTHER_DURATION}>Autre…</option>
       </Select>
-      {undefined !== startTime && "" !== endTime(startTime, value) ? (
-        // Le début est connu (les deux éditeurs le passent) : on dit l'heure de FIN, recalculée à
-        // chaque changement de durée. L'heure vient du foyer `shared/lib/time.ts::endTime`.
-        <span className="text-xs text-muted-foreground">Fin : {endTime(startTime, value)}</span>
-      ) : null}
       {editing ? (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -116,6 +111,27 @@ export function DurationSelect({
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Heure de FIN d'un créneau — 4ᵉ colonne des éditeurs (Jour · Début · Durée · Fin), même forme
+ * que ses colonnes voisines : un libellé « Fin » (`text-xs text-muted-foreground`) coiffe une
+ * valeur en LECTURE SEULE (pas un `Input`), alignée sur la hauteur des contrôles (`h-9`) et
+ * recalculée à chaque changement de durée par le foyer `shared/lib/time.ts::endTime` (jamais
+ * assemblée à la main, garde `timeFormatGuard`). Rien n'est rendu tant que le début est illisible
+ * (`endTime` renvoie "") — l'éditeur ne montre une fin que lorsqu'il y a un début.
+ */
+export function SlotEndField({ startTime, duration }: { startTime: string; duration: number }) {
+  const end = endTime(startTime, duration);
+  if ("" === end) {
+    return null;
+  }
+  return (
+    <div className="text-xs text-muted-foreground">
+      <span>Fin</span>
+      <div className="mt-0.5 flex h-9 items-center text-sm text-foreground">{end}</div>
     </div>
   );
 }

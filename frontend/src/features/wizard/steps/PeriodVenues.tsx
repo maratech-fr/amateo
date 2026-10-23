@@ -42,7 +42,7 @@ import {
   useWizardVenues,
 } from "../queries";
 import { WEEK } from "../lib/weekGrid";
-import { CapacitySelect, DurationSelect, SharedSlotHint } from "./slotFields";
+import { CapacitySelect, DurationSelect, SharedSlotHint, SlotEndField } from "./slotFields";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 
@@ -688,6 +688,7 @@ function PeriodSlotEditor({
           {/* D8 — « Autre… » ouvre une saisie libre (pas de 15, min 15, fin ≤ minuit vu le début). */}
           <DurationSelect aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} present={[slot.durationMinutes]} startTime={time} onChange={(d) => (setDuration(d), setError(null))} />
         </label>
+        <SlotEndField startTime={time} duration={duration} />
         {canSplit ? (
           <div className="text-xs text-muted-foreground">
             {/* CapacitySelect porte son propre aria-label="Capacité". */}
