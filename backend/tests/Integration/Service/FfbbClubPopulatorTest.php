@@ -15,6 +15,7 @@ use App\Service\Basketball\FfbbLogoFetcher;
 use App\Service\Basketball\LogoPaletteExtractor;
 use App\Storage\LogoStorage;
 use Doctrine\ORM\EntityManagerInterface;
+use GdImage;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -172,14 +173,14 @@ final class FfbbClubPopulatorTest extends KernelTestCase
         // surfaces du thème sombre (bg #151311, card #1f1d1a, cf. shared/lib/color.ts).
         // Reproduit le cas réel de Rillieux (#1d1d1d / #eeeeee).
         $club = $this->seedClub(self::CLUB_CODE);
-        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: self::darkWithLightCorner());
+        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: $this->darkWithLightCorner());
 
         self::assertTrue($populator->populate($club));
 
         $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
         self::assertNotSame('#c9102e', $reloaded?->getAccentColor(), 'le logo extractible l’emporte sur le gradient FFBB');
-        self::assertHexNear('#101010', (string) $reloaded?->getAccentColor(), 'dominante sombre → accent');
-        self::assertHexNear('#f0f0f0', (string) $reloaded?->getAccentColorDark(), 'seconde claire lisible → accent sombre');
+        $this->assertHexNear('#101010', (string) $reloaded?->getAccentColor(), 'dominante sombre → accent');
+        $this->assertHexNear('#f0f0f0', (string) $reloaded?->getAccentColorDark(), 'seconde claire lisible → accent sombre');
     }
 
     public function testSecondColourTooDarkForTheDarkThemeLeavesTheDarkAccentNull(): void
@@ -187,12 +188,12 @@ final class FfbbClubPopulatorTest extends KernelTestCase
         // Promesse 2 (envers) : une 2e couleur trop SOMBRE échoue l'AA face aux surfaces
         // sombres → `accentColorDark` reste null (le front garde sa dérivation par contraste).
         $club = $this->seedClub(self::CLUB_CODE);
-        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: self::lightWithDarkCorner());
+        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: $this->lightWithDarkCorner());
 
         self::assertTrue($populator->populate($club));
 
         $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
-        self::assertHexNear('#f0f0f0', (string) $reloaded?->getAccentColor(), 'dominante claire → accent');
+        $this->assertHexNear('#f0f0f0', (string) $reloaded?->getAccentColor(), 'dominante claire → accent');
         self::assertNull($reloaded?->getAccentColorDark(), 'seconde trop sombre pour le thème sombre → pas d’accent sombre');
     }
 
@@ -205,7 +206,7 @@ final class FfbbClubPopulatorTest extends KernelTestCase
         $club->setAccentColor('#123456');
         $this->em->flush();
 
-        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: self::darkWithLightCorner());
+        $populator = $this->buildPopulator(clubHit: $this->hitWithLogo('#c9102e'), clubLogoBytes: $this->darkWithLightCorner());
         self::assertTrue($populator->populate($club, refresh: true));
 
         $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
@@ -241,18 +242,18 @@ final class FfbbClubPopulatorTest extends KernelTestCase
     }
 
     /** PNG majoritairement sombre (#101010) avec un coin clair (#f0f0f0) minoritaire. */
-    private static function darkWithLightCorner(): string
+    private function darkWithLightCorner(): string
     {
-        return self::png(40, 40, static function ($img, int $w, int $h): void {
+        return $this->png(40, 40, static function ($img, int $w, int $h): void {
             imagefilledrectangle($img, 0, 0, $w - 1, $h - 1, (int) imagecolorallocate($img, 16, 16, 16));
             imagefilledrectangle($img, 0, 0, $w - 1, (int) ($h / 10) - 1, (int) imagecolorallocate($img, 240, 240, 240));
         });
     }
 
     /** PNG majoritairement clair (#f0f0f0) avec un coin sombre (#202020) minoritaire. */
-    private static function lightWithDarkCorner(): string
+    private function lightWithDarkCorner(): string
     {
-        return self::png(40, 40, static function ($img, int $w, int $h): void {
+        return $this->png(40, 40, static function ($img, int $w, int $h): void {
             imagefilledrectangle($img, 0, 0, $w - 1, $h - 1, (int) imagecolorallocate($img, 240, 240, 240));
             imagefilledrectangle($img, 0, 0, $w - 1, (int) ($h / 10) - 1, (int) imagecolorallocate($img, 32, 32, 32));
         });
@@ -261,9 +262,9 @@ final class FfbbClubPopulatorTest extends KernelTestCase
     /**
      * Construit un PNG en mémoire avec GD (aucun binaire en dépôt).
      *
-     * @param callable(\GdImage, int, int): void $painter
+     * @param callable(GdImage, int, int):void $painter
      */
-    private static function png(int $w, int $h, callable $painter): string
+    private function png(int $w, int $h, callable $painter): string
     {
         $img = imagecreatetruecolor($w, $h);
         $painter($img, $w, $h);
@@ -275,7 +276,7 @@ final class FfbbClubPopulatorTest extends KernelTestCase
         return $bytes;
     }
 
-    private static function assertHexNear(string $expected, string $actual, string $message = ''): void
+    private function assertHexNear(string $expected, string $actual, string $message = ''): void
     {
         $e = (int) hexdec(ltrim($expected, '#'));
         $a = (int) hexdec(ltrim($actual, '#'));
@@ -299,7 +300,7 @@ final class FfbbClubPopulatorTest extends KernelTestCase
 
     /**
      * @param array<string, mixed>|null $clubHit       override the club search hit (else the BCCL fixture)
-     * @param string|null                $clubLogoBytes override the bytes the logo fetcher returns (else a 1×1 transparent PNG)
+     * @param string|null               $clubLogoBytes override the bytes the logo fetcher returns (else a 1×1 transparent PNG)
      *
      * @param-out callable(): int $searchCount
      */
