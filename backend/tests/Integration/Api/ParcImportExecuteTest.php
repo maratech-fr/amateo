@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Coach;
 use App\Entity\Fixture;
 use App\Entity\Reservation;
 use App\Entity\Season;
@@ -19,6 +20,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Service\ParcImport\ParcImportAnalyzer;
 use App\Service\ParcImport\ParcImportGate;
@@ -427,6 +429,67 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertStringContainsString('HYPERLINK', $name, 'la substance du nom survit, seul le déclencheur part');
     }
 
+    // ───────────────────────── Coachs : création + lien MAIN (promesse 1, Q1 = oui) ─────────────────────────
+
+    public function testCoachIsCreatedAndLinkedMainWhileAMatchedCoachIsOnlyLinked(): void
+    {
+        // Section coachs (optionnelle, décision fondateur Q1 = oui) : un coach s'apparie par son nom
+        // (même normalisation que les équipes) ; sinon il est créé. Dans les deux cas il reçoit un lien
+        // `TeamCoach` de rôle MAIN sur l'équipe citée. Alice existe déjà (appariée, JAMAIS recréée),
+        // Bob est inconnu (créé) — tous deux repartent liés MAIN à leur équipe.
+        $sm1 = $this->makeTeam('SM1', sessionsPerWeek: 2);
+        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $alice = $this->makeCoach('Alice', 'Martin');
+        $this->scopeGucToClub($this->club->getId());
+        $coachesBefore = $this->rowCount('coach');
+
+        $parc = $this->emptyParc();
+        $parc['coachs'] = [
+            ['nom' => 'ALICE MARTIN', 'equipe' => 'SM1'],
+            ['nom' => 'Bob Nouveau', 'equipe' => 'SF1'],
+        ];
+        $decisions = [
+            ['section' => 'coachs', 'index' => 0, 'coche' => true],
+            ['section' => 'coachs', 'index' => 1, 'coche' => true],
+        ];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(200, $status);
+
+        self::assertSame($coachesBefore + 1, $this->rowCount('coach'), 'seul le coach inconnu est créé — l\'apparié n\'est jamais recréé');
+
+        // Alice appariée : son lien MAIN sur SM1 est posé, pas un second coach.
+        self::assertSame(TeamCoachRole::MAIN, $this->linkRoleOf($alice->getId(), $sm1->getId()), 'le coach apparié reçoit son lien MAIN');
+
+        // Bob créé : existe et reçoit son lien MAIN sur SF1.
+        $bob = $this->em->getRepository(Coach::class)->findOneBy(['clubId' => $this->club->getId(), 'lastName' => 'Nouveau']);
+        self::assertInstanceOf(Coach::class, $bob, 'le coach inconnu est créé');
+        self::assertSame(TeamCoachRole::MAIN, $this->linkRoleOf($bob->getId(), $sf1->getId()), 'le coach créé reçoit son lien MAIN');
+    }
+
+    public function testReplayingTheCoachImportDuplicatesNeitherCoachNorLink(): void
+    {
+        // Idempotence de la section coachs : rejouer le même import ne crée ni coach ni lien MAIN en double.
+        $this->makeTeam('SM1', sessionsPerWeek: 2);
+
+        $parc = $this->emptyParc();
+        $parc['coachs'] = [['nom' => 'Bob Nouveau', 'equipe' => 'SM1']];
+        $decisions = [['section' => 'coachs', 'index' => 0, 'coche' => true]];
+
+        [$first] = $this->import($parc, $decisions);
+        self::assertSame(200, $first);
+
+        $this->scopeGucToClub($this->club->getId());
+        $coaches = $this->rowCount('coach');
+        $links = $this->rowCount('team_coach');
+
+        [$second] = $this->import($parc, $decisions);
+        self::assertSame(200, $second);
+
+        self::assertSame($coaches, $this->rowCount('coach'), 'aucun coach en double');
+        self::assertSame($links, $this->rowCount('team_coach'), 'aucun lien MAIN en double');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -547,6 +610,30 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->flush();
 
         return $team;
+    }
+
+    private function makeCoach(string $firstName, string $lastName): Coach
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $coach = (new Coach)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setFirstName($firstName)->setLastName($lastName)->setIsActive(true);
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        return $coach;
+    }
+
+    private function linkRoleOf(string $coachId, string $teamId): ?TeamCoachRole
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $link = $this->em->getRepository(TeamCoach::class)->findOneBy([
+            'clubId' => $this->club->getId(),
+            'coachId' => $coachId,
+            'teamId' => $teamId,
+        ]);
+
+        return $link instanceof TeamCoach ? $link->getRole() : null;
     }
 
     /** Engage une équipe en lui attachant un match (l'engagement est dérivé de l'EXISTENCE d'un fixture). */
