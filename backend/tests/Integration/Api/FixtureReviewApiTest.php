@@ -362,6 +362,28 @@ final class FixtureReviewApiTest extends WebTestCase
         self::assertSame([], $stolen->getExternalLabels(), 'le gymnase étranger n\'a reçu aucun alias');
     }
 
+    public function testInlineVenueChoiceWithAMalformedVenueIdIs400AndNeverA500(): void
+    {
+        // Durcissement /security-review : un `venueId` qui n'est ni un uuid ni « NEUTRAL »
+        // est rejeté proprement en 400 (même validation que le canal API), jamais une erreur
+        // SQL 500 sur la colonne uuid, et rien n'est écrit.
+        [$club, $user, $season] = $this->createClubUser('rmk');
+        $team = $this->createTeam($club, $season, 'SF3');
+        [$fixture, $jdr] = $this->unplacedVenueDeviatedFixture($club, $season, $team, 'GYMNASE JDR');
+
+        $this->post($user, '/api/fixtures/review/deviations', [
+            'fixtureId' => $fixture->getId(),
+            'field' => 'venue',
+            'choice' => 'take_source',
+            'venueId' => 'pas-un-uuid-ni-NEUTRAL',
+        ]);
+        self::assertResponseStatusCodeSame(400, 'un venueId malformé est un 400 propre, jamais un 500');
+
+        $reloaded = $this->reloadFixture($club, $fixture->getId());
+        self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase reste intact');
+        self::assertNotNull($reloaded->getPendingDeviation('venue'), 'l\'écart reste à trancher');
+    }
+
     public function testInlineVenueChoiceOfAnArchivedSeasonVenueIsRefusedAndWritesNothing(): void
     {
         // Abus (patron A10) : un gymnase du MÊME club mais d'une AUTRE saison (archivée)

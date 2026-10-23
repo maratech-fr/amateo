@@ -574,6 +574,41 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertContains('gymnase stub', $venue?->getExternalLabels() ?? [], 'le libellé source est rattaché en alias');
     }
 
+    public function testTakeFileVenueWithAForeignVenueChoiceSurfacesA404NotA502(): void
+    {
+        // Durcissement /security-review : un `venueId` de décision pointant un gymnase
+        // étranger (invisible, 404 au moteur) ne doit PAS être avalé par le catch générique
+        // et ressortir en 502 « FFBB indisponible ». Il ressort en 404 nommé, zéro écriture.
+        [$token, , $clubId] = $this->register('FRVZ');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $this->pairTeamToStubCompetition($clubId, $season->getId(), $team->getId());
+
+        $existing = $this->createFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, true, FixtureStatus::UNPLACED, FfbbHttpClientStub::CHAMP_KICKOFF);
+        $this->scopeGucToClub($clubId);
+        $appVenueId = $this->aVenue($clubId, $season->getId());
+        $existing->setVenueId($appVenueId);
+        $this->em->flush();
+        $existingId = $existing->getId();
+
+        // Un gymnase d'un AUTRE club (uuid valide → passe la validation, invisible au moteur).
+        [, , $otherClubId] = $this->register('FRVZ2');
+        $otherSeason = $this->seasonOf($otherClubId);
+        $foreignVenue = $this->venueWithAlias($otherClubId, $otherSeason->getId(), 'Gymnase Étranger', []);
+
+        $this->client->request('POST', '/api/ffbb/rencontres/apply', [], [], $this->auth($token) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'decisions' => [['fixtureId' => $existingId, 'field' => 'venue', 'choice' => 'take_file', 'venueId' => $foreignVenue]],
+            'creations' => [],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404, 'un gymnase introuvable ressort en 404 nommé, jamais un 502 « FFBB indisponible »');
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertSame($appVenueId, $reloaded?->getVenueId(), 'le gymnase reste intact — zéro écriture');
+    }
+
     public function testFfbbApiIngestionIsNotTheXlsxFreshnessAndDoesNotTouchATrace(): void
     {
         [$token, , $clubId] = $this->register('FRG');

@@ -16,6 +16,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Service\Fbi\FbiDeviationService;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -276,6 +277,23 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         );
     }
 
+    /**
+     * A11 (service) — l'appariement INLINE de l'arbitrage hors dépôt ({@see FbiDeviationService})
+     * ne doit pas s'appuyer sur les SEULS filtres : comme {@see ownedVenueForImport} (A10), il
+     * vérifie club ET saison. On COUPE tenant_filter + season_filter (défense en profondeur
+     * intestable en boîte noire : au dépôt HTTP le gymnase hors saison est déjà masqué) et on
+     * appelle le service : un gymnase d'une AUTRE saison doit être refusé, ZÉRO alias écrit.
+     * ÉCHOUE tant que le service ne vérifie que les filtres ; VERT une fois le contrôle ajouté.
+     */
+    public function testArbitrationInlineVenueChoiceToAVenueOfAnotherSeasonIsRefusedAtTheService(): void
+    {
+        [, , $clubA] = $this->register('A11');
+        $team = $this->createTeam($clubA);
+        $archivedVenueId = $this->archivedSeasonVenue($clubA, 'Gymnase Saison Archivée Arbitrage');
+
+        $this->assertServiceVenueChoiceRefused($clubA, $team, $archivedVenueId);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -292,6 +310,64 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
             @unlink($file);
         }
         parent::tearDown();
+    }
+
+    // Note : le gymnase d'un AUTRE CLUB n'est pas falsifiable proprement à ce niveau — la RLS
+    // PostgreSQL (GUC du club appelant), indépendante des filtres Doctrine, masque déjà la ligne
+    // du club étranger à la LECTURE (le `find` de résolution ET celui de la relecture de preuve).
+    // Le cross-club est donc garanti par la couche RLS, pas par ce contrôle de défense en
+    // profondeur ; seul le cross-SAISON (même club, RLS permissive) l'éprouve au service.
+
+    /**
+     * Falsification du service : filtres coupés, un écart de salle d'un domicile NON PLACÉ du
+     * club A arbitré « prendre le fichier » vers $venueId (hors saison) doit lever
+     * {@see ImportRejectedException} AVANT toute écriture — aucun alias posé sur le gymnase visé,
+     * le gymnase courant de la rencontre intact.
+     */
+    private function assertServiceVenueChoiceRefused(string $clubA, Team $team, string $venueId): void
+    {
+        $this->scopeGucToClub($clubA);
+        $currentGym = $this->createVenue($clubA, 'Gymnase Courant Arbitrage');
+        $fixture = new Fixture;
+        $fixture->setClubId($clubA);
+        $fixture->setSeasonId($team->getSeasonId());
+        $fixture->setTeamId($team->getId());
+        $fixture->setMatchDate(new DateTimeImmutable('2099-03-14'));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel('Adv Arbitrage');
+        $fixture->setExternalRef('A11-DEV');
+        $fixture->setVenueId($currentGym->getId());
+        $fixture->setFbiVenueLabel('SALLE SOURCE INCONNUE');
+        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $em->getFilters()->disable('tenant_filter');
+        $em->getFilters()->disable('season_filter');
+        $service = self::getContainer()->get(FbiDeviationService::class);
+        self::assertInstanceOf(FbiDeviationService::class, $service);
+
+        $row = [
+            'numero' => 'A11-DEV',
+            'matchDate' => new DateTimeImmutable('2099-03-14'),
+            'homeAway' => FixtureHomeAway::HOME,
+            'opponentLabel' => 'Adv Arbitrage',
+            'kickoffTime' => null,
+            'venueLabel' => 'SALLE SOURCE INCONNUE',
+        ];
+
+        try {
+            $service->applyFieldTakeFile($fixture, 'venue', $row, new DateTimeImmutable, $venueId);
+        } catch (ImportRejectedException) {
+            $target = $em->find(Venue::class, $venueId);
+            self::assertSame([], $target?->getExternalLabels() ?? ['x'], 'aucun alias écrit sur le gymnase hors club/saison');
+            self::assertSame($currentGym->getId(), $fixture->getVenueId(), 'le gymnase courant de la rencontre est intact');
+
+            return;
+        }
+        self::fail('un gymnase hors du club/saison de la rencontre doit être refusé à l\'arbitrage (club+saison vérifiés au service, pas seulement les filtres)');
     }
 
     /**
