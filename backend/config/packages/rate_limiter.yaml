@@ -209,6 +209,16 @@ framework:
             policy: 'sliding_window'
             limit: 30
             interval: '1 hour'
+        # Chantier G — l'analyse (dry-run) et l'import d'un parc par IA (POST
+        # /api/clubs/{id}/parc-import/analyze), keyé PAR UTILISATEUR (JWT) : chaque appel décode
+        # et apparie tout le parc (équipes/gymnases/créneaux/réservations) contre la base — un
+        # travail CPU/mémoire non nul. 30/h couvre largement l'usage réel (on colle un parc
+        # ponctuellement, puis on ajuste), et borne une boucle d'appels. Consommé APRÈS la gate
+        # d'auth (403/404/409), dans ParcImportGate::gate. Même patron per-user que xlsx_import.
+        parc_import:
+            policy: 'sliding_window'
+            limit: 30
+            interval: '1 hour'
 
 # Dev/e2e: the Playwright suite registers ~8 clubs in one minute from one IP —
 # the strict anti-brute-force sizing (5/15min) is a production concern. 100 is
@@ -328,6 +338,13 @@ when@test:
             # 429 en 6 requêtes. Keyée par user : elle ne fuit pas dans les autres suites (aucune
             # ne fait 6 imports xlsx sous une même identité — la plus grosse en fait 4).
             xlsx_import:
+                policy: 'sliding_window'
+                limit: 5
+                interval: '15 minutes'
+            # Chantier G — petite borne PAR UTILISATEUR pour que ParcImportAnalyzeTest tripe le
+            # 429 en quelques analyses (patron xlsx_import). Keyée par user : elle ne fuit pas
+            # (aucune autre suite ne fait autant d'analyses de parc sous une même identité).
+            parc_import:
                 policy: 'sliding_window'
                 limit: 5
                 interval: '15 minutes'

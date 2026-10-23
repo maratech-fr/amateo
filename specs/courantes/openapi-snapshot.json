@@ -5568,6 +5568,116 @@
                 }
             }
         },
+        "/api/clubs/{id}/parc-import/analyze": {
+            "post": {
+                "operationId": "parc_import_analyze",
+                "tags": [
+                    "Club"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Club resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Club.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Club"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Club.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a Club resource.",
+                "description": "Creates a Club resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Club identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The new Club resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Club.ClubInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Club.ClubInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Club.ClubInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
         "/api/club_league_windows": {
             "get": {
                 "operationId": "api_club_league_windows_get_collection",
@@ -28767,6 +28877,7 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "description": "Y-m-d.",
                         "type": [
                             "string",
                             "null"
@@ -28774,6 +28885,7 @@
                         "format": "date"
                     },
                     "endDate": {
+                        "description": "Y-m-d.",
                         "type": [
                             "string",
                             "null"
@@ -28934,6 +29046,7 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "description": "Y-m-d.",
                         "type": [
                             "string",
                             "null"
@@ -28941,6 +29054,7 @@
                         "format": "date"
                     },
                     "endDate": {
+                        "description": "Y-m-d.",
                         "type": [
                             "string",
                             "null"
@@ -29050,6 +29164,7 @@
                                 "type": "string"
                             },
                             "startDate": {
+                                "description": "Y-m-d.",
                                 "type": [
                                     "string",
                                     "null"
@@ -29057,6 +29172,7 @@
                                 "format": "date"
                             },
                             "endDate": {
+                                "description": "Y-m-d.",
                                 "type": [
                                     "string",
                                     "null"
@@ -30050,6 +30166,7 @@
                         ]
                     },
                     "matchDate": {
+                        "description": "Y-m-d.",
                         "default": "",
                         "type": "string",
                         "format": "date"
@@ -30133,6 +30250,11 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "neutralGround": {
+                        "description": "Un domicile jou\u00e9 sur TERRAIN NEUTRE (\u00ab pas chez nous \u00bb) \u2014 d\u00e9riv\u00e9 de\n`unplacedReason` (NEUTRAL_GROUND). Vrai = home sans gymnase du club PAR CHOIX,\njamais une salle \u00e0 rattacher ni une rencontre \u00e0 placer. Le front l'AFFICHE\n(pastille neutre) et l'exclut du compteur \u00ab sans gymnase \u00bb et des files \u00e0 placer.",
+                        "default": false,
+                        "type": "boolean"
                     },
                     "reviewState": {
                         "description": "Le TRAITEMENT de la rencontre (espace \u00ab Importer \u00bb) : NEW (\u00e0 traiter) \u00b7\nOUT_OF_SYNC (d\u00e9phas\u00e9e) \u00b7 REVIEWED (trait\u00e9). Distinct du statut de placement.",
@@ -30334,6 +30456,7 @@
                         ]
                     },
                     "matchDate": {
+                        "description": "Y-m-d.",
                         "default": "",
                         "type": "string",
                         "format": "date"
@@ -30417,6 +30540,11 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "neutralGround": {
+                        "description": "Un domicile jou\u00e9 sur TERRAIN NEUTRE (\u00ab pas chez nous \u00bb) \u2014 d\u00e9riv\u00e9 de\n`unplacedReason` (NEUTRAL_GROUND). Vrai = home sans gymnase du club PAR CHOIX,\njamais une salle \u00e0 rattacher ni une rencontre \u00e0 placer. Le front l'AFFICHE\n(pastille neutre) et l'exclut du compteur \u00ab sans gymnase \u00bb et des files \u00e0 placer.",
+                        "default": false,
+                        "type": "boolean"
                     },
                     "reviewState": {
                         "description": "Le TRAITEMENT de la rencontre (espace \u00ab Importer \u00bb) : NEW (\u00e0 traiter) \u00b7\nOUT_OF_SYNC (d\u00e9phas\u00e9e) \u00b7 REVIEWED (trait\u00e9). Distinct du statut de placement.",
@@ -30525,6 +30653,7 @@
                                 ]
                             },
                             "matchDate": {
+                                "description": "Y-m-d.",
                                 "default": "",
                                 "type": "string",
                                 "format": "date"
@@ -30608,6 +30737,11 @@
                                     "string",
                                     "null"
                                 ]
+                            },
+                            "neutralGround": {
+                                "description": "Un domicile jou\u00e9 sur TERRAIN NEUTRE (\u00ab pas chez nous \u00bb) \u2014 d\u00e9riv\u00e9 de\n`unplacedReason` (NEUTRAL_GROUND). Vrai = home sans gymnase du club PAR CHOIX,\njamais une salle \u00e0 rattacher ni une rencontre \u00e0 placer. Le front l'AFFICHE\n(pastille neutre) et l'exclut du compteur \u00ab sans gymnase \u00bb et des files \u00e0 placer.",
+                                "default": false,
+                                "type": "boolean"
                             },
                             "reviewState": {
                                 "description": "Le TRAITEMENT de la rencontre (espace \u00ab Importer \u00bb) : NEW (\u00e0 traiter) \u00b7\nOUT_OF_SYNC (d\u00e9phas\u00e9e) \u00b7 REVIEWED (trait\u00e9). Distinct du statut de placement.",
@@ -33153,11 +33287,13 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "description": "Y-m-d.",
                         "default": "",
                         "type": "string",
                         "format": "date"
                     },
                     "endDate": {
+                        "description": "Y-m-d.",
                         "default": "",
                         "type": "string",
                         "format": "date"
@@ -33250,11 +33386,13 @@
                         "type": "string"
                     },
                     "startDate": {
+                        "description": "Y-m-d.",
                         "default": "",
                         "type": "string",
                         "format": "date"
                     },
                     "endDate": {
+                        "description": "Y-m-d.",
                         "default": "",
                         "type": "string",
                         "format": "date"
@@ -33309,11 +33447,13 @@
                                 "type": "string"
                             },
                             "startDate": {
+                                "description": "Y-m-d.",
                                 "default": "",
                                 "type": "string",
                                 "format": "date"
                             },
                             "endDate": {
+                                "description": "Y-m-d.",
                                 "default": "",
                                 "type": "string",
                                 "format": "date"

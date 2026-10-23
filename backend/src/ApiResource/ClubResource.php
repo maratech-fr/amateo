@@ -37,6 +37,17 @@ use Symfony\Component\Serializer\Attribute\Groups;
         read: false,
         name: 'import_teams_analyze',
     ),
+    // Chantier G — dry-run de l'import de parc par IA. Le corps EST le texte parc-v1 BRUT
+    // (JSON), lu par le contrôleur via getContent() ; `deserialize: false` empêche API
+    // Platform de le désérialiser en ClubInput (un JSON illisible doit donner notre 422
+    // nommé, jamais un 400 de désérialisation). Écrit RIEN.
+    new Post(
+        uriTemplate: '/clubs/{id}/parc-import/analyze',
+        controller: 'App\Controller\ParcImportAnalyzeController',
+        read: false,
+        deserialize: false,
+        name: 'parc_import_analyze',
+    ),
 ], input: ClubInput::class, provider: ClubStateProvider::class, processor: ClubStateProcessor::class)]
 class ClubResource
 {
