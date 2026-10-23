@@ -16,6 +16,7 @@ use App\Tests\Behat\LeagueValidationContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
+use App\Tests\Behat\ParcImportContext;
 use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
@@ -180,6 +181,11 @@ return (new Config)
                 new Suite('import-equipes')
                     ->withPaths('%paths.base%/features/l-import-des-equipes-choisit-ses-lignes.feature')
                     ->withContexts(TeamsImportContext::class),
+            )
+            ->withSuite(
+                new Suite('import-parc')
+                    ->withPaths('%paths.base%/features/l-import-du-parc-en-un-geste.feature')
+                    ->withContexts(ParcImportContext::class),
             )
             ->withSuite(
                 new Suite('personne-deux-endroits')
