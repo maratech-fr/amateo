@@ -6,10 +6,12 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\SuperAdmin;
 use App\Security\TotpService;
+use App\Tests\BuildsTestImages;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -37,6 +39,7 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class AdminFeedbackTest extends WebTestCase
 {
+    use BuildsTestImages;
     use StartsFreshBrowserSession;
     use VerifiesRegistration;
 
@@ -293,6 +296,74 @@ final class AdminFeedbackTest extends WebTestCase
         self::assertResponseStatusCodeSame(400);
     }
 
+    /**
+     * Chantier F PR3 — ROUND-TRIP de la capture : un membre l'envoie en multipart (porte club),
+     * le blob est STOCKÉ HORS table (patron ClubLogoStorage) et n'est servi QUE par le rail
+     * superadmin, octet pour octet. La route de service lit le stockage PAR ID (404 si absent,
+     * AUCUNE lecture DB — patron ClubLogoController::serve), ce qui la rend lisible même quand la
+     * ligne de signalement du membre vit dans une transaction de test (le blob, lui, est sur disque).
+     *
+     * Falsifiable : tant que le multipart n'est pas géré, le POST renvoie 400 (pas de `id`) ; tant
+     * que la route de service n'existe pas, le GET superadmin renvoie 404 ≠ 200 + octets.
+     */
+    public function testMemberScreenshotIsServedOnlyToSuperAdmin(): void
+    {
+        $this->admin()->executeStatement('DELETE FROM feedback');
+        $token = $this->registerVerified('AFBSHOT');
+        $png = $this->validPngBytes(6, 6);
+
+        $this->client->request(
+            'POST',
+            '/api/feedback',
+            ['payload' => json_encode(['topic' => 'bug', 'message' => 'Voici une capture.', 'context' => ['screen' => 'planning']], \JSON_THROW_ON_ERROR)],
+            ['screenshot' => $this->uploadedImage($png, 'capture.png', 'image/png')],
+            ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'REMOTE_ADDR' => $this->requestIp],
+        );
+        self::assertResponseStatusCodeSame(201, 'un envoi multipart avec capture aboutit');
+        $id = $this->responseBody()['id'];
+        self::assertIsString($id);
+
+        $this->startFreshBrowserSession($this->client);
+        $this->authenticateSuperAdmin('feedback-shot@example.test');
+
+        $this->client->request('GET', '/api/admin/feedback/' . $id . '/screenshot');
+        self::assertResponseIsSuccessful();
+        $response = $this->client->getResponse();
+        self::assertStringStartsWith('image/', (string) $response->headers->get('Content-Type'), 'servie comme une image');
+        self::assertSame($png, $response->getContent(), 'octet pour octet, la capture stockée hors table');
+    }
+
+    /** Un id sans capture → 404 (jamais une fuite ni un 500) — l'angle superadmin de l'étanchéité. */
+    public function testScreenshotServeUnknownIdIs404ForSuperAdmin(): void
+    {
+        $this->authenticateSuperAdmin('feedback-shot-404@example.test');
+        $this->client->request('GET', '/api/admin/feedback/' . Uuid::v4()->toRfc4122() . '/screenshot');
+        self::assertResponseStatusCodeSame(404, 'un id sans capture → 404, jamais une fuite');
+    }
+
+    /**
+     * PROMESSE : le détail expose `hasScreenshot` — un pointeur léger (colonne), pas le blob —
+     * pour que la console sache afficher ou non l'aperçu. Vrai quand une capture est jointe, faux
+     * sinon. Falsifiable : la colonne/le champ absents → clé manquante (null) ≠ true/false.
+     */
+    public function testDetailExposesHasScreenshot(): void
+    {
+        $this->admin()->executeStatement('DELETE FROM feedback');
+        $club = $this->seedClub('ShotFlag');
+        $withShot = $this->seedFeedbackWithScreenshotFlag($club, true);
+        $without = $this->seedFeedbackWithScreenshotFlag($club, false);
+
+        $this->authenticateSuperAdmin('feedback-shot-flag@example.test');
+
+        $this->client->request('GET', '/api/admin/feedback/' . $withShot);
+        self::assertResponseIsSuccessful();
+        self::assertTrue($this->responseBody()['hasScreenshot'] ?? null, 'le détail signale la présence d\'une capture');
+
+        $this->client->request('GET', '/api/admin/feedback/' . $without);
+        self::assertResponseIsSuccessful();
+        self::assertFalse($this->responseBody()['hasScreenshot'] ?? null, 'et son absence');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -304,6 +375,7 @@ final class AdminFeedbackTest extends WebTestCase
 
     protected function tearDown(): void
     {
+        $this->cleanupTempImages();
         $this->admin()->executeStatement('DELETE FROM feedback');
         foreach ($this->userIds as $userId) {
             $this->admin()->executeStatement('DELETE FROM app_user WHERE id = :id', ['id' => $userId]);
@@ -362,6 +434,19 @@ final class AdminFeedbackTest extends WebTestCase
                 'treated' => $treatedAt,
                 'created' => $createdAt,
             ],
+        );
+
+        return $id;
+    }
+
+    /** Sème un signalement portant UNIQUEMENT le pointeur `has_screenshot` (colonne PR3), via la connexion admin. */
+    private function seedFeedbackWithScreenshotFlag(string $clubId, bool $hasScreenshot): string
+    {
+        $id = Uuid::v4()->toRfc4122();
+        $this->admin()->executeStatement(
+            'INSERT INTO feedback (id, version, club_id, user_id, topic, message, context, status, treated_at, created_at, has_screenshot) VALUES (:id, 1, :club, :user, :topic, :message, NULL, :status, NULL, :created, :shot)',
+            ['id' => $id, 'club' => $clubId, 'user' => Uuid::v4()->toRfc4122(), 'topic' => 'bug', 'message' => 'x', 'status' => 'untreated', 'created' => '2026-08-01T10:00:00+00:00', 'shot' => $hasScreenshot],
+            ['shot' => ParameterType::BOOLEAN],
         );
 
         return $id;

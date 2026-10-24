@@ -97,6 +97,37 @@ final class FeedbackContextIsolationTest extends WebTestCase
         self::assertStringNotContainsString($planB, $raw, 'le plan de B ne fuit jamais');
     }
 
+    /**
+     * NR d'axe *tenant isolation* — EXTENSION Chantier F PR3 (blob de capture HORS RLS).
+     *
+     * PROMESSE BLOQUANTE : l'image d'un signalement vit HORS de la table `feedback` et HORS du
+     * filtre RLS (stockage par id, patron ClubLogoStorage). Sa SEULE porte de lecture est le rail
+     * superadmin (`GET /api/admin/feedback/{id}/screenshot`). AUCUN tenant ne la lit : un JWT club
+     * — quel que soit l'id DEVINÉ — frappe le firewall admin → 401, jamais un oracle d'existence.
+     * C'est la parade au contournement : même si deux clubs partageaient un gymnase et des
+     * adversaires, la capture de l'un ne fuit jamais vers l'autre, faute de porte club.
+     *
+     * Témoin de falsification : exposer une route CLUB du blob (ou déplacer la route hors du
+     * firewall admin) rendrait ce test ROUGE (200/404 au lieu de 401). L'angle superadmin « id
+     * inconnu → 404, jamais de fuite » est prouvé à côté par
+     * {@see \App\Tests\Integration\Api\AdminFeedbackTest::testScreenshotServeUnknownIdIs404ForSuperAdmin} ;
+     * l'angle intégration (JWT de l'auteur) par
+     * {@see \App\Tests\Integration\Api\FeedbackScreenshotTest::testScreenshotIsUnreachableWithAClubJwt}
+     * (doublon VOULU, point sensible sécurité/tenant).
+     */
+    public function testAClubJwtNeverReachesTheScreenshotServeRoute(): void
+    {
+        [$tokenB] = $this->registerVerifiedMember('FBSHOTISO');
+        $guessedId = Uuid::v4()->toRfc4122();
+
+        $this->client->request('GET', '/api/admin/feedback/' . $guessedId . '/screenshot', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $tokenB]);
+        self::assertResponseStatusCodeSame(401, 'un JWT club ne lit jamais une capture, quel que soit l\'id deviné');
+
+        $this->startFreshBrowserSession($this->client);
+        $this->client->request('GET', '/api/admin/feedback/' . $guessedId . '/screenshot');
+        self::assertResponseStatusCodeSame(401, 'et l\'anonyme non plus');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
