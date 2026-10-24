@@ -94,13 +94,17 @@ export interface TeamImportRow {
   suggestedTierId: number;
   /** Genre lu dans le nom par le serveur (`null` si aucun motif clair) — jamais MIXTE en auto (#4). */
   suggestedGender: Gender | null;
+  /** Entente (CTC) suggérée par le serveur (« CTC »/« ENTENTE » dans le libellé) — pré-coche la case, décochable (chantier D). */
+  suggestedCtc: boolean;
 }
 
-/** Le rang + le genre édités dans l'aperçu, envoyés pour chaque ligne COCHÉE (#4). */
+/** Le rang + le genre + l'entente édités dans l'aperçu, envoyés pour chaque ligne COCHÉE (#4, chantier D). */
 export interface TeamImportOverride {
   row: number;
   tierId: number;
   gender: Gender | null;
+  /** Entente (CTC) — jamais d'office : vaut la case de l'aperçu (pré-cochée depuis `suggestedCtc`, décochable). */
+  ctc: boolean;
 }
 
 /** Le résultat du dry-run : les lignes, les erreurs par ligne, le total lu. */

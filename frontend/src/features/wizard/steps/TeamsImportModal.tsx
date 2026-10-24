@@ -63,6 +63,8 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
   // par les suggestions du serveur (#4), libres de l'être changés avant l'import.
   const [tierByRow, setTierByRow] = useState<Record<number, number>>({});
   const [genderByRow, setGenderByRow] = useState<Record<number, Gender | "">>({});
+  // Entente (CTC) par ligne — pré-cochée depuis la suggestion du serveur, décochable (chantier D).
+  const [ctcByRow, setCtcByRow] = useState<Record<number, boolean>>({});
   const [httpError, setHttpError] = useState<string | null>(null);
 
   const analyzing = analyze.isPending;
@@ -91,6 +93,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
           // Pré-remplissage des colonnes Rang + Genre depuis les suggestions du serveur.
           setTierByRow(Object.fromEntries(data.rows.map((r) => [r.row, r.suggestedTierId])));
           setGenderByRow(Object.fromEntries(data.rows.map((r) => [r.row, r.suggestedGender ?? ""])));
+          setCtcByRow(Object.fromEntries(data.rows.map((r) => [r.row, r.suggestedCtc])));
         },
         onError: (error) => void errorMessage(error).then(setHttpError),
       },
@@ -125,6 +128,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
         row: r.row,
         tierId: tierByRow[r.row] ?? r.suggestedTierId,
         gender: (genderByRow[r.row] ?? r.suggestedGender ?? "") || null,
+        ctc: ctcByRow[r.row] ?? r.suggestedCtc,
       }));
     importMut.mutate(
       { clubId, seasonId, file, rows, overrides },
@@ -226,6 +230,17 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                       </option>
                     ))}
                   </Select>
+                  {/* Entente (CTC) — pré-cochée depuis le serveur, décochable ; jamais d'office (chantier D). */}
+                  <label className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="size-4 shrink-0"
+                      aria-label={`Entente (CTC) pour ${r.name}`}
+                      checked={ctcByRow[r.row] ?? r.suggestedCtc}
+                      onChange={() => setCtcByRow((prev) => ({ ...prev, [r.row]: !(prev[r.row] ?? r.suggestedCtc) }))}
+                    />
+                    <span aria-hidden="true">CTC</span>
+                  </label>
                 </li>
               ))}
             </ul>
