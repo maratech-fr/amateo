@@ -19,12 +19,13 @@ use Symfony\Component\Mime\RawMessage;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * P5-6 PR 2 — le digest quotidien des signalements au support.
+ * P5-6 PR 2, réécrit Chantier F PR4 — le digest quotidien des signalements au support.
  *
- * Garde : la fenêtre [J-1, J) (ni le jour même, ni l'avant-veille) ; le compteur
- * global des non-traités ; l'extrait du message borné à 200 caractères ; digest
- * VIDE → aucun email ; SUPPORT_EMAIL vide → no-op ; l'exit non-zéro ne signale que
- * l'échec de DISPATCH.
+ * Promesse (décision fondateur PR4) : UN SEUL mail le matin annonçant les NOUVEAUX
+ * signalements NON TRAITÉS = déposés la VEILLE [J-1, J) ET encore non traités. Zéro
+ * nouveau non-traité → AUCUN mail. Corps bref (~3 lignes), SANS extrait des messages,
+ * avec UN lien unique vers la console filtrée sur les non-traités (jamais un lien par
+ * item). SUPPORT_EMAIL vide → no-op ; l'exit non-zéro ne signale que l'échec de DISPATCH.
  *
  * `feedback` est FORCE RLS : on sème et on lit par la connexion `admin` (hors DAMA).
  * On ouvre une transaction dessus, on vide la table pour un décor déterministe, et
@@ -33,47 +34,58 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class FeedbackDigestCommandTest extends KernelTestCase
 {
+    private const string FRONTEND_BASE_URL = 'https://app.example.test';
+
+    /** Le lien UNIQUE du digest : la console, onglet incidents, sous-onglet signalements, filtré non-traités. */
+    private const string EXPECTED_LINK = self::FRONTEND_BASE_URL . '/admin?tab=incidents&sub=signalements&fstatus=untreated';
+
     private Connection $admin;
 
     private bool $inTransaction = false;
 
-    public function testSendsYesterdayDigestWithBoundedExcerptAndUntreatedCount(): void
+    public function testSendsDigestOfYesterdaysNewUntreatedWithSingleLinkAndNoExcerpt(): void
     {
         $club = $this->seedClub('Golf');
-        $longMessage = str_repeat('a', 250);
-        // Dans la fenêtre [J-1, J) — J = 2026-08-13.
-        $this->seedFeedback($club, 'bug', $longMessage, 'untreated', '2026-08-12T09:00:00+00:00');
+        $secret = 'ne jamais recopier ce texte de message dans le mail';
+        // DEUX nouveaux non-traités de la veille — J = 2026-08-13, veille = 2026-08-12.
+        $this->seedFeedback($club, 'bug', $secret, 'untreated', '2026-08-12T09:00:00+00:00');
+        $this->seedFeedback($club, 'idea', 'une autre doléance', 'untreated', '2026-08-12T15:00:00+00:00');
+        // Hors périmètre : déposé la veille mais DÉJÀ TRAITÉ → n'est pas un « nouveau non-traité ».
+        $this->seedFeedback($club, 'bug', 'déjà traité hier', 'treated', '2026-08-12T10:00:00+00:00');
         // Hors fenêtre : le jour même, et l'avant-veille.
-        $this->seedFeedback($club, 'idea', 'aujourd\'hui', 'untreated', '2026-08-13T09:00:00+00:00');
-        $this->seedFeedback($club, 'bug', 'avant-veille', 'treated', '2026-08-10T09:00:00+00:00');
+        $this->seedFeedback($club, 'bug', 'aujourd\'hui', 'untreated', '2026-08-13T09:00:00+00:00');
+        $this->seedFeedback($club, 'bug', 'avant-veille', 'untreated', '2026-08-10T09:00:00+00:00');
 
         $mailer = $this->recordingMailer();
         $tester = new CommandTester($this->command($mailer, 'support@example.test'));
         self::assertSame(Command::SUCCESS, $tester->execute(['--date' => '2026-08-13']));
 
-        self::assertCount(1, $mailer->sent, 'un seul digest, pour la veille');
+        self::assertCount(1, $mailer->sent, 'UN seul mail le matin, pas un par signalement');
         $email = $mailer->sent[0];
         self::assertInstanceOf(Email::class, $email);
         self::assertSame('support@example.test', $email->getTo()[0]->getAddress());
         $body = $email->getTextBody() ?? '';
-        // Extrait borné : 200 « a » + ellipse, jamais les 250.
-        self::assertStringContainsString(str_repeat('a', 200) . '…', $body);
-        self::assertStringNotContainsString(str_repeat('a', 201), $body);
-        // Compteur global des non-traités : les deux untreated (veille + jour même).
-        self::assertStringContainsString('En attente de traitement (total) : 2', $body);
+        // UN lien unique vers la console filtrée sur les non-traités — jamais un lien par item.
+        self::assertSame(1, substr_count($body, self::EXPECTED_LINK), 'un lien unique vers les non-traités, pas un par item');
+        // AUCUN extrait du message utilisateur dans le corps (plus de recopie du texte).
+        self::assertStringNotContainsString($secret, $body, 'le digest ne recopie jamais le texte des messages');
+        // Corps bref (~3 lignes) : jamais une ligne par signalement.
+        self::assertLessThanOrEqual(6, substr_count(trim($body), "\n") + 1, 'un corps bref (~3 lignes), pas une ligne par item');
     }
 
-    public function testEmptyWindowSendsNoEmail(): void
+    public function testNoNewUntreatedYesterdaySendsNoEmail(): void
     {
         $club = $this->seedClub('Hotel');
-        // Rien dans la fenêtre : seulement le jour même.
+        // Un non-traité, mais du JOUR MÊME (hors fenêtre de la veille).
         $this->seedFeedback($club, 'bug', 'aujourd\'hui', 'untreated', '2026-08-13T09:00:00+00:00');
+        // Un signalement de la veille, mais DÉJÀ TRAITÉ → ne compte pas comme nouveau non-traité.
+        $this->seedFeedback($club, 'bug', 'veille traité', 'treated', '2026-08-12T09:00:00+00:00');
 
         $mailer = $this->recordingMailer();
         $tester = new CommandTester($this->command($mailer, 'support@example.test'));
         self::assertSame(Command::SUCCESS, $tester->execute(['--date' => '2026-08-13']));
 
-        self::assertSame([], $mailer->sent, 'digest vide → aucun email');
+        self::assertSame([], $mailer->sent, 'aucun nouveau non-traité de la veille → aucun mail');
     }
 
     public function testEmptySupportEmailIsANoOp(): void
@@ -132,7 +144,7 @@ final class FeedbackDigestCommandTest extends KernelTestCase
         $registry = self::getContainer()->get(ManagerRegistry::class);
         \assert($registry instanceof ManagerRegistry);
 
-        return new FeedbackDigestCommand($registry, $mailer, $supportEmail);
+        return new FeedbackDigestCommand($registry, $mailer, supportEmail: $supportEmail, frontendBaseUrl: self::FRONTEND_BASE_URL);
     }
 
     /** @return MailerInterface&object{sent: list<RawMessage>} */

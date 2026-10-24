@@ -305,4 +305,19 @@ describe("FeedbackSection", () => {
     expect(within(dialog).getByText(htmlMessage)).toBeInTheDocument();
     expect(dialog.querySelector("img")).toBeNull();
   });
+
+  // Chantier F PR4 — rétention : un signalement PURGÉ (texte + contexte détruits après 30 j,
+  // marqueur `purgedAt`) rend « Contenu purgé (rétention) » (clé centralisée) à la place du
+  // message, jamais un cadre vide. Falsification : sans lecture de `purgedAt`, le détail rend le
+  // message vide et n'affiche jamais ce placeholder.
+  it("affiche le placeholder de contenu purgé quand purgedAt est posé", async () => {
+    mockList.mockResolvedValue(listResponse({ message: "", purgedAt: "2026-09-01T10:00:00+00:00" }));
+    mockDetail.mockResolvedValue({ ...detailBase, message: "", context: null, purgedAt: "2026-09-01T10:00:00+00:00" });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackPurgedPlaceholder)).toBeInTheDocument();
+  });
 });
