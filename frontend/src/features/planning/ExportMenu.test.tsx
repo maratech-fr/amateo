@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { pickListboxOption } from "@/test/pickListboxOption";
 
@@ -73,5 +73,22 @@ describe("ExportMenu — P4-62, l'export annonce son périmètre", () => {
     // c'est ce que le serveur rendra (le PDF ignore tout filtre client).
     await pickListboxOption(user, "Périmètre de l'export", "Tonkin");
     expect(screen.getByText(/L'écran est filtré/)).toHaveTextContent("Tonkin");
+  });
+});
+
+describe("ExportMenu — chantier E, le nom des coachs", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  // Promesse fondateur : une case « Afficher le nom des coachs », DÉCOCHÉE par défaut. On vise le
+  // RÔLE + le nom accessible (robuste au libellé exact) ; le stockage vide garantit le défaut
+  // décoché quelle que soit la source du clubId.
+  it("propose une case « Afficher le nom des coachs », décochée par défaut", async () => {
+    render(<ExportMenu scheduleId="s1" venues={venues} screenFilterCount={0} />);
+    await openMenu();
+
+    const box = screen.getByRole("checkbox", { name: /coach/i });
+    expect(box).not.toBeChecked();
   });
 });
