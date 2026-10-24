@@ -154,6 +154,13 @@ export const WIZARD_TEXTS = {
   splitCascadeDescription: "Ces créneaux repasseront à 1 équipe et leurs réservations seront vidées — vous devrez re-réserver :",
   reservationsEmptied: (n: number) => `${n} ${n > 1 ? "réservations seront vidées" : "réservation sera vidée"}.`,
 
+  // VenuesStep — recherche d'un gymnase par son nom dans TOUTE la FFBB (retour Rillieux #20)
+  notFoundFfbbTitle: "Introuvable à la FFBB ?",
+  nameSearchHint: "Cherchez ce gymnase par son nom dans toute la FFBB — un clic l'ajoute avec son adresse (nécessaire aux trajets).",
+  nameSearchResultsLabel: "Salles FFBB trouvées par nom",
+  nameSearchEmpty: "Aucune salle FFBB ne porte ce nom. Ajoutez-le ci-dessus comme gymnase.",
+  nameSearchError: "Recherche FFBB momentanément indisponible — réessayez plus tard.",
+
   // VenuesStep — PR F (P4-279), toasts trajets
   venuePositionSaved: "Position enregistrée",
   travelRecomputed: "Trajets recalculés.",

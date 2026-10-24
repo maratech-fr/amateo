@@ -211,6 +211,14 @@ export const listFfbbSalles = (postalCode: string): Promise<{ postalCode: string
 export const listFfbbSallesProches = (radiusKm: number | null): Promise<{ radiusKm: number | null; salles: FfbbSalle[] }> =>
   api.get("ffbb/salles-proches", null === radiusKm ? undefined : { searchParams: { radius: radiusKm } }).json();
 
+/**
+ * Retour Rillieux #20 — recherche d'une salle par son NOM dans TOUTE la FFBB (route `?q=`,
+ * seuil 3 caractères côté serveur). Même forme de réponse que `listFfbbSalles` (`{ postalCode,
+ * salles }`, `postalCode` toujours null par nom) ; best-effort comme les autres voies FFBB.
+ */
+export const listFfbbSallesByName = (name: string): Promise<{ postalCode: string | null; salles: FfbbSalle[] }> =>
+  api.get("ffbb/salles", { searchParams: { q: name } }).json();
+
 export interface SlotPayload {
   venueId: string;
   dayOfWeek: number;

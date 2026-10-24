@@ -4,6 +4,8 @@ import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { Spinner } from "@/shared/components/ui/spinner";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { Input } from "@/shared/components/ui/input";
@@ -16,6 +18,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { nextVenueColor } from "@/shared/lib/color";
+import { readState } from "@/shared/lib/readState";
 import { useSocleValidated } from "@/shared/lib/socle";
 import { useTravelStream } from "@/shared/lib/travelStream";
 import { toast } from "@/shared/stores/toastStore";
@@ -30,7 +33,7 @@ import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
 import { DAYS, hhmm } from "../lib/days";
 import { filterSalles } from "../lib/salleSuggestions";
 import { slotPlacementError } from "../lib/slotOverlap";
-import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardCoaches, useWizardTeams, useWizardVenues } from "../queries";
+import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesByName, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardCoaches, useWizardTeams, useWizardVenues } from "../queries";
 import { venueGeoAlertMessage } from "../lib/venueGeoAlert";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
@@ -46,6 +49,9 @@ import { venuesWithoutSlot } from "../lib/useStepValidation";
 import { splitCascadePreview, type SplitCascadePreview } from "../lib/reservationSlots";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+/** Seuil de la recherche par nom dans la FFBB — même valeur que le serveur (#20). */
+const MIN_NAME_SEARCH_LENGTH = 3;
 
 /** Neutral grey fallback when a venue has no colour set yet. */
 const DEFAULT_VENUE_COLOR = "#666666";
@@ -306,6 +312,21 @@ function VenuesEditor() {
   const filteredNearby = (nearbyQuery.data?.salles ?? []).filter(
     (salle) => "" === nearbyFilter || norm(`${salle.name} ${salle.address ?? ""} ${salle.city ?? ""}`).includes(nearbyFilter),
   );
+  // Retour Rillieux #20 — recherche par NOM dans TOUTE la FFBB, en dernier recours quand le nom
+  // saisi n'est NI dans la commune NI à proximité (le gymnase « Mont Blanc » de Rillieux, absent
+  // des deux, avait dû être créé à la main SANS adresse → 0 trajet). Le hook est best-effort
+  // (502 muet), actif ≥ 3 caractères, débouncé (`queries.ts`) ; on ne l'alimente QUE quand il a
+  // un rôle (nom assez long, pas déjà résolu par une suggestion, et introuvable localement) —
+  // sinon il reste désactivé et la saisie libre au-dessus demeure le chemin normal.
+  const nameTrimmed = name.trim();
+  const nameNorm = norm(nameTrimmed);
+  const matchesLocally =
+    "" !== nameNorm &&
+    [...(sallesQuery.data?.salles ?? []), ...(nearbyQuery.data?.salles ?? [])].some((salle) => norm(salle.name).includes(nameNorm));
+  const showNameSearch = nameTrimmed.length >= MIN_NAME_SEARCH_LENGTH && null === pendingSalle && !matchesLocally;
+  const nameSearch = useFfbbSallesByName(showNameSearch ? nameTrimmed : "");
+  const nameSearchRead = readState(nameSearch);
+  const nameSearchResults = showNameSearch ? (nameSearch.data?.salles ?? []) : [];
   const [selectedId, setSelectedId] = useState("");
   const [duration, setDuration] = useState(90);
   const [venueName, setVenueName] = useState("");
@@ -454,6 +475,22 @@ function VenuesEditor() {
     nameRef.current?.focus();
   };
 
+  // Retour Rillieux #20 — un clic sur un résultat de recherche par nom crée le gymnase en UN geste
+  // AVEC son ancrage fédéral ET son adresse/position (patron de « à proximité », mais l'adresse part
+  // aussi — sans quoi 0 trajet). L'anti-doublon est porté par le bouton lui-même (désactivé + « déjà
+  // lié ✓ ») : une salle déjà liée n'arrive pas ici.
+  const addSalleFromName = (salle: FfbbSalle) => {
+    const color = nextVenueColor([...venues.map((v) => v.color), ...pendingColorsRef.current]);
+    pendingColorsRef.current.push(color);
+    create.mutate(
+      { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, address: salle.address, latitude: salle.latitude, longitude: salle.longitude },
+      { onSuccess: (created) => (setSelectedId(created.id), toast.success(WIZARD_TEXTS.venueAdded(created.name))) },
+    );
+    // Vider le champ referme le bloc de recherche (nom < 3) — le gymnase est créé.
+    setName("");
+    setPendingSalle(null);
+  };
+
   // P1-4 PR B — un gymnase à fenêtre MATCH est légitime sans créneau
   // d'entraînement (loué pour les matchs seulement) : la règle l'épargne, ici
   // comme au gate (useStepValidation — les deux sites bougent ensemble, §7.2).
@@ -558,6 +595,51 @@ function VenuesEditor() {
         <p id="venue-add-error" role="alert" className="mb-3 text-sm text-destructive">
           {addError}
         </p>
+      ) : null}
+
+      {/* Retour Rillieux #20 — le nom saisi n'est ni dans la commune ni à proximité : on le cherche
+          dans TOUTE la FFBB par son nom. Trouvé → un clic le crée AVEC son ancrage fédéral ET son
+          adresse/position (sans quoi 0 trajet) ; absent → la saisie libre ci-dessus reste le chemin.
+          Best-effort : chargement (Spinner) / vide (EmptyHint) / 502 (LoadErrorHint, discret). */}
+      {showNameSearch ? (
+        <div className="mb-3 rounded-lg border border-border bg-card p-3">
+          <div className="mb-1 text-xs font-medium text-muted-foreground">{WIZARD_TEXTS.notFoundFfbbTitle}</div>
+          <p className="mb-2 text-xs text-muted-foreground">{WIZARD_TEXTS.nameSearchHint}</p>
+          {"loading" === nameSearchRead ? (
+            <Spinner />
+          ) : "failed" === nameSearchRead ? (
+            <LoadErrorHint>{WIZARD_TEXTS.nameSearchError}</LoadErrorHint>
+          ) : 0 === nameSearchResults.length ? (
+            <EmptyHint>{WIZARD_TEXTS.nameSearchEmpty}</EmptyHint>
+          ) : (
+            <ul aria-label={WIZARD_TEXTS.nameSearchResultsLabel} className="flex max-h-44 flex-col gap-1 overflow-y-auto">
+              {nameSearchResults.map((salle) => {
+                // Déjà liée (au NUMÉRO fédéral) : la ligne reste LISIBLE mais fermée au geste fautif —
+                // re-choisir referait un doublon (anti-doublon existant, `importedRefs`).
+                const linked = null !== salle.externalRef && importedRefs.has(salle.externalRef);
+                return (
+                  <li key={`${salle.externalRef ?? salle.name}-${salle.address ?? ""}`} className="flex items-center gap-2 text-sm">
+                    <button
+                      type="button"
+                      disabled={linked || create.isPending}
+                      className="flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-2.5 py-1 text-left hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+                      onClick={() => addSalleFromName(salle)}
+                    >
+                      <span className="font-medium">{salle.name}</span>
+                      {salle.address ? (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {salle.address}
+                          {salle.city ? `, ${salle.city}` : ""}
+                        </span>
+                      ) : null}
+                      {linked ? <span className="ml-auto shrink-0 text-xs text-muted-foreground">{WIZARD_TEXTS.alreadyLinkedTag}</span> : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       ) : null}
 
       {/* P2-21 lot D — les gymnases d'à côté, un clic pour les ajouter. La liste
