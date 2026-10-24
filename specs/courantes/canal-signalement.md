@@ -107,8 +107,44 @@ une lecture qui échoue n'annule jamais le dépôt (contexte partiel, erreur tra
 Le client peut aussi joindre des repères TEXTE libres pour situer l'incident (whitelistés,
 longueur bornée, stockés verbatim — jamais exécutés) : `screenLabel`, `activeFilters`,
 `displayedRange`, `lastClick`, `incidentStatus`/`incidentUrl`/`incidentCode` (trio d'un appel
-réseau fautif). Leur **collecte** côté écran (wizard, module matchs) et leur **affichage/recherche**
-en console superadmin restent à livrer (chantier en cours, prochaine PR).
+réseau fautif, repris de `lastIncidentStore` — capté seulement sur un ≥ 500).
+
+**Collecte livrée** (chantier F PR2) pour `screenLabel`, `lastClick` et le trio incident :
+- `screenLabel` est composé par l'écran appelant et voyage `PageHeader`/`FeedbackButton`/
+  `FeedbackDialog` — wizard : « Assistant · Étape i/6 · <libellé de l'étape> » ; module matchs :
+  « Matchs · <onglet actif> » (`MatchesLayout.tsx`).
+- `lastClick` vient de `frontend/src/shared/feedback/lastClickStore.ts` : un écouteur de clic
+  GLOBAL, posé UNE fois au bootstrap (`installLastClickCapture`, `main.tsx`), retient le **nom
+  accessible** (aria-label → libellé associé → texte visible → title) et le **rôle ARIA** du
+  contrôle actionnable le plus proche — **jamais la valeur** d'un `<input>`/`<textarea>`/
+  `<select>` ni un texte saisi (règle centrale de confidentialité du fichier), fenêtre de
+  fraîcheur 10 min comme `lastIncidentStore`.
+- le trio incident est désormais lu en entier (`readRecentIncident`, pas seulement le
+  `requestId`) par `FeedbackDialog`.
+
+**Pas encore alimentés par un écran** : `activeFilters`/`displayedRange` existent dans le contrat
+de bout en bout (API `FeedbackContext`, props `FeedbackButton`/`FeedbackDialog`/`PageHeader`)
+mais aucun appelant ne les renseigne — les filtres et la plage affichée du module matchs vivent
+dans des composants enfants qui ne remontent pas leur état jusqu'au `PageHeader` ; les y faire
+voyager est un refactor à part, à embarquer dans la fin du chantier F (`roadmap.md` P4-323).
+
+L'**affichage/recherche** en console superadmin est livré — § 3quinquies.
+
+## 3quinquies. Console superadmin : recherche, deep-liens, contexte en 5 blocs
+
+L'onglet Signalements (D6, `features/admin/sections/FeedbackSection.tsx`) rend le contexte large
+(§3quater) en **5 blocs titrés** — Planning, Période, Écran, Dernier geste, Technique — le métier
+lisible d'abord, le technique en dernier ; un bloc sans aucune donnée ne s'affiche pas. L'URL
+reste du TEXTE pur, jamais un lien cliquable (consigne déjà posée pour le contexte lourd).
+
+La liste se filtre par statut ET par une recherche texte `q` (`GET /api/admin/feedback?q=`,
+`AdminFeedbackController`) : nom de club OU mot du message, insensible à la casse (`ILIKE`),
+les deux se combinent avec le filtre de statut. Les métacaractères `LIKE` (`%`, `_`, `\`) sont
+échappés avant d'être injectés dans le motif — `q` est cherché **littéralement**, jamais comme un
+joker ; borné à 100 caractères (400 au-delà, même contrat que la recherche de clubs).
+
+Deux paramètres d'URL ouvrent directement la console sur un signalement : `?feedback={id}` ouvre
+son détail, `?fstatus=untreated|treated` initialise le filtre de statut.
 
 ## 4. Hors périmètre
 Un système de tickets (statuts multiples, assignation, SLA), un chat, un forum, une base de

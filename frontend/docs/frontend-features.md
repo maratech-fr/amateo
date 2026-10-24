@@ -415,7 +415,7 @@ et elle est là pour ça : c'est le seul écran qu'on peut confondre avec une fa
 
 ⚠ **La « référence support » n'est jamais fabriquée.** L'échec de génération est **asynchrone** — le
 POST rend 202, l'échec arrive en `status: FAILED` dans des réponses **200** — or `lastIncidentStore`
-n'enregistre un incident que sur un **≥ 500** (depuis P4-129, 2026-08-23, il capture `{status, url, code?, requestId?}` — request-id présent OU NON : le 502 nginx qui a motivé la ligne n'en portait pas, et l'ancien rail ne retenait rien ; le wrapper `readRecentIncidentRequestId` préserve le contrat de la modale de signalement). La ligne « Code incident » ne s'affiche donc que
+n'enregistre un incident que sur un **≥ 500** (depuis P4-129, 2026-08-23, il capture `{status, url, code?, requestId?}` — request-id présent OU NON : le 502 nginx qui a motivé la ligne n'en portait pas, et l'ancien rail ne retenait rien ; la modale de signalement lit désormais ce trio en entier (`readRecentIncident` — `context.incidentStatus`/`incidentUrl`/`incidentCode`, chantier F PR2, `canal-signalement.md` §3quater), le wrapper `readRecentIncidentRequestId` restant réservé aux deux écrans d'erreur `GenerationServiceDown`/`ServerErrorScreen`). La ligne « Code incident » ne s'affiche donc que
 si une valeur fraîche existe (rare ici). La corrélation honnête est le **`scheduleId`**, joint
 automatiquement au signalement — à condition que « Contacter le support » ouvre `FeedbackDialog` en
 **`variant="contextual"`** : en `free`, le contexte reste à quai.
