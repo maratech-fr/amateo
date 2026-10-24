@@ -8,6 +8,7 @@ use App\Entity\Feedback;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\User;
+use App\Service\FeedbackContextEnricher;
 use App\Service\FeedbackMailBuilder;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -54,12 +55,22 @@ final class FeedbackController extends AbstractController
         'url' => 2048,
         'requestId' => 128,
         'userAgent' => 512,
+        // Chantier F PR1 — repères TEXTE que le client joint pour situer l'incident
+        // (jamais d'id : le contexte serveur ne lit QUE le club authentifié).
+        'screenLabel' => 160,
+        'activeFilters' => 300,
+        'displayedRange' => 80,
+        'lastClick' => 160,
+        'incidentStatus' => 40,
+        'incidentUrl' => 300,
+        'incidentCode' => 80,
     ];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly MailerInterface $mailer,
         private readonly FeedbackMailBuilder $mailBuilder,
+        private readonly FeedbackContextEnricher $contextEnricher,
         private readonly RateLimiterFactory $feedbackLimiter,
         private readonly RequestStack $requestStack,
         private readonly LoggerInterface $logger,
@@ -127,6 +138,11 @@ final class FeedbackController extends AbstractController
             $context['snapshot'] = $schedule->engineInput();
             $context['diagnostics'] = $this->diagnosticsOf($scheduleId);
         }
+
+        // Contexte AUTOMATIQUE large (Chantier F PR1) : résolu CÔTÉ SERVEUR depuis le
+        // club authentifié, joint à TOUT signalement (planning nommé ou non). Best-effort :
+        // ne fait jamais échouer le POST.
+        $context = $this->contextEnricher->enrich($clubId, $user->getId(), $context);
 
         $feedback = new Feedback($clubId, $user->getId(), $topic, $message);
         $feedback->setContext([] === $context ? null : $context);

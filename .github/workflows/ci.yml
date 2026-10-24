@@ -462,6 +462,15 @@ jobs:
       - name: TenantIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/TenantIsolationTest.php --group phase1'
 
+      # Axe tenant isolation — le contexte automatique d'un signalement (Chantier F) est
+      # calculé SERVEUR depuis le club authentifié : un client qui injecte dans `context`
+      # les ids d'un autre club (clubId/planId/seasonId) ne fait JAMAIS lire ce club —
+      # ces clés sont hors whitelist, l'enrichisseur ne lit que le club de l'auteur, et le
+      # JSON stocké ne contient aucun identifiant étranger. Sans ce gate, un signalement
+      # fuiterait les données d'un autre club dans la console superadmin.
+      - name: FeedbackContextIsolationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/FeedbackContextIsolationTest.php --group phase1'
+
       - name: SeasonIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SeasonIsolationTest.php --group phase1'
 

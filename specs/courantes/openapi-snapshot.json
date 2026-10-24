@@ -10031,6 +10031,27 @@
                                             },
                                             "userAgent": {
                                                 "type": "string"
+                                            },
+                                            "screenLabel": {
+                                                "type": "string"
+                                            },
+                                            "activeFilters": {
+                                                "type": "string"
+                                            },
+                                            "displayedRange": {
+                                                "type": "string"
+                                            },
+                                            "lastClick": {
+                                                "type": "string"
+                                            },
+                                            "incidentStatus": {
+                                                "type": "string"
+                                            },
+                                            "incidentUrl": {
+                                                "type": "string"
+                                            },
+                                            "incidentCode": {
+                                                "type": "string"
                                             }
                                         }
                                     }

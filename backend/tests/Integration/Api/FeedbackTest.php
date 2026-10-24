@@ -9,6 +9,7 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
+use App\Tests\Security\FeedbackContextIsolationTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -157,6 +158,130 @@ final class FeedbackTest extends WebTestCase
 
         self::assertNotSame(429, $statuses[0], 'la première reste dans le budget');
         self::assertSame(429, $statuses[10], 'la 11ᵉ dépasse la borne 10/h et doit être throttlée');
+    }
+
+    /**
+     * PROMESSE (Chantier F PR1, « contexte automatique large ») : un signalement SANS
+     * planning nommé porte quand même le CONTEXTE AUTOMATIQUE calculé CÔTÉ SERVEUR
+     * depuis le club authentifié — « on donne l'erreur, mais c'est le contexte qui
+     * permet de se resituer et de corriger au plus vite » (intention fondateur). Le
+     * support lit, sans rien demander à l'auteur : rôle, saison, offre, compteurs,
+     * socle en vigueur, période, versions affichée/pointée, génération en cours,
+     * horloge simulée. Chaque DIMENSION est une clé de `context.auto` — null quand
+     * sans objet (« pas de période » est une information), jamais absente.
+     *
+     * Falsifiable : sans enrichisseur serveur, la clé `auto` est absente → ROUGE.
+     * L'étanchéité tenant de ce contexte (ids injectés par le client) est prouvée à
+     * part, BLOQUANTE : {@see FeedbackContextIsolationTest} (tenant
+     * = point sensible, doublon d'angle assumé).
+     */
+    public function testPlainMemberSubmitCarriesTheServerComputedLargeContext(): void
+    {
+        [$token, , $clubId] = $this->registerVerifiedMember('FBCTX');
+        $seasonId = $this->currentSeasonId($clubId);
+
+        $this->post($token, ['topic' => 'bug', 'message' => 'Rien ne se passe quand je clique.']);
+        self::assertResponseStatusCodeSame(201);
+        $id = $this->responseBody()['id'];
+
+        $context = $this->contextOf($clubId, $id);
+        $auto = $context['auto'] ?? null;
+        self::assertIsArray($auto, 'un signalement porte le contexte automatique serveur, même sans planning nommé');
+
+        // Valeurs vérifiables à bas coût pour un club NEUF (membre simple, aucune équipe,
+        // offre par défaut, aucune génération) — chacune falsifiable.
+        self::assertSame('member', $auto['role'] ?? null, 'le rôle de l\'auteur dans le club');
+        self::assertSame($seasonId, $auto['season']['id'] ?? null, 'la saison courante, résolue SERVEUR');
+        self::assertSame('decouverte', $auto['offer']['plan'] ?? null, 'l\'offre effective (Découverte par défaut)');
+        self::assertSame(0, $auto['counters']['teams'] ?? null, 'compteur d\'équipes d\'un club neuf');
+        self::assertArrayHasKey('venues', $auto['counters'] ?? [], 'compteur de gymnases présent');
+        self::assertFalse($auto['socle']['inForce'] ?? null, 'aucun socle en vigueur sur un club neuf');
+        self::assertArrayHasKey('validatedAt', $auto['socle'] ?? [], 'date de validation du socle (null tant qu\'il n\'est pas validé)');
+        self::assertFalse($auto['generation']['running'] ?? null, 'aucune génération en cours');
+
+        // Dimensions présentes même « sans objet » (null) — le support lit l'absence.
+        self::assertArrayHasKey('period', $auto, 'la période courante (null hors période)');
+        self::assertArrayHasKey('versions', $auto, 'versions affichée vs pointée');
+        self::assertArrayHasKey('simulatedToday', $auto, 'horloge simulée (null hors démo — CHECK club_simulated_today_demo_only)');
+    }
+
+    /**
+     * PROMESSE : les champs TEXTE que le client joint pour situer l'incident — libellé
+     * d'écran, filtres actifs, plage affichée, dernier clic, et le trio incident
+     * status/url/code d'un appel réseau fautif — sont ACCEPTÉS et bornés en longueur
+     * (même patron que `screen`/`url` existants). Un champ trop long est tronqué.
+     *
+     * Falsifiable : tant que ces clés ne sont pas dans LIGHT_CONTEXT_FIELDS, elles
+     * n'atterrissent pas en base → ROUGE.
+     */
+    public function testNewClientTextFieldsAreWhitelistedAndTruncated(): void
+    {
+        [$token, , $clubId] = $this->registerVerifiedMember('FBLIGHT');
+
+        $this->post($token, [
+            'topic' => 'bug',
+            'message' => 'Le filtre ne garde pas mon choix.',
+            'context' => [
+                'screenLabel' => str_repeat('é', 400),        // > 160 → tronqué
+                'activeFilters' => 'rang:S;gymnase:Halle A',
+                'displayedRange' => 'sem. 12 -> 18',
+                'lastClick' => 'bouton Generer',
+                'incidentStatus' => '422',
+                'incidentUrl' => '/api/schedule_plans/x/generate',
+                'incidentCode' => 'window_already_planned',
+            ],
+        ]);
+        self::assertResponseStatusCodeSame(201);
+        $context = $this->contextOf($clubId, $this->responseBody()['id']);
+
+        self::assertSame(160, mb_strlen((string) ($context['screenLabel'] ?? '')), 'screenLabel borné à 160');
+        self::assertSame('rang:S;gymnase:Halle A', $context['activeFilters'] ?? null);
+        self::assertSame('sem. 12 -> 18', $context['displayedRange'] ?? null);
+        self::assertSame('bouton Generer', $context['lastClick'] ?? null);
+        self::assertSame('422', $context['incidentStatus'] ?? null);
+        self::assertSame('/api/schedule_plans/x/generate', $context['incidentUrl'] ?? null);
+        self::assertSame('window_already_planned', $context['incidentCode'] ?? null);
+    }
+
+    /**
+     * PROMESSE : une clé de contexte INCONNUE envoyée par le client est IGNORÉE (jamais
+     * stockée) — le client ne dicte pas la forme, il ne peut pas enfler le sac JSON.
+     * Le champ whitelisté voisin, lui, passe (témoin que l'input a bien été lu).
+     */
+    public function testUnknownContextKeysAreDropped(): void
+    {
+        [$token, , $clubId] = $this->registerVerifiedMember('FBUNK');
+
+        $this->post($token, [
+            'topic' => 'idea', 'message' => 'Une idee.',
+            'context' => ['screenLabel' => 'Equipes', 'totallyMadeUpKey' => 'nope', 'adminOnly' => 'x'],
+        ]);
+        self::assertResponseStatusCodeSame(201);
+        $context = $this->contextOf($clubId, $this->responseBody()['id']);
+
+        self::assertArrayNotHasKey('totallyMadeUpKey', $context, 'une cle inconnue n\'est jamais stockee');
+        self::assertArrayNotHasKey('adminOnly', $context);
+        self::assertSame('Equipes', $context['screenLabel'] ?? null, 'le champ whiteliste passe');
+    }
+
+    /**
+     * PROMESSE : du HTML/script collé dans un champ texte (ici lastClick) est stocké
+     * VERBATIM comme du texte — le backend ne l'exécute ni ne le dénature ; c'est au
+     * lecteur (console superadmin) de l'échapper au rendu. La trace exacte est gardée.
+     */
+    public function testHtmlInATextFieldIsStoredVerbatimAsText(): void
+    {
+        [$token, , $clubId] = $this->registerVerifiedMember('FBHTML');
+        $payload = '<img src=x onerror=alert(1)>';
+
+        $this->post($token, [
+            'topic' => 'bug', 'message' => 'Bizarre.',
+            'context' => ['lastClick' => $payload],
+        ]);
+        self::assertResponseStatusCodeSame(201);
+        $context = $this->contextOf($clubId, $this->responseBody()['id']);
+
+        self::assertSame($payload, $context['lastClick'] ?? null, 'le HTML est conservé tel quel, comme du texte');
     }
 
     protected function setUp(): void

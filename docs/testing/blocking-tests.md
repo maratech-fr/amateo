@@ -75,6 +75,15 @@ les mots de passe DEV du dépôt n'ouvrent PAS les comptes prod — refuse sans 
 mot de passe < 12, create-only [second run no-op]) ·
 `Unit/NoMergeConflictMarkerTest` (aucun marqueur de conflit Git commité — dépôt entier, `git grep` sur les fichiers SUIVIS ; écrit après que trois marqueurs de `stash pop` ont atteint `main` dans un journal Markdown, invisibles au linter comme à la revue) ·
 `Security/TenantIsolationTest` (isolation club) ·
+`Security/FeedbackContextIsolationTest` (axe *tenant isolation*, Chantier F PR1 « contexte automatique
+large » : le contexte serveur d'un signalement est calculé depuis le club AUTHENTIFIÉ et ne divulgue
+jamais un autre club même quand le client injecte dans `context` les ids d'un club B [`clubId`,
+`planId`, `seasonId`, hors whitelist donc ignorés] — `context.auto.season.id` reste celui de A et le
+JSON stocké ENTIER ne contient aucun identifiant de B [preuve d'EFFET, pas de lecture du site d'appel,
+par-dessus la défense en profondeur TenantFilter/RLS]. Aucun NOUVEL id n'est accepté du client. Angle
+VOULU en plus : l'injection d'un `scheduleId` ÉTRANGER [404, rien créé] est prouvée par le scénario
+« planning étranger » de la suite d'intégration du canal de signalement (`Integration/Api`). Sans ce
+gate, un signalement ferait fuiter les données d'un autre club dans la console superadmin) ·
 `Security/SeasonIsolationTest` (scoping saison + `X-Season-Id`) ·
 `Security/SeasonReadonlyTest` (saison archivée → 409) ·
 `Security/MatchTenantIsolationTest` (entités match tenant+season) ·
