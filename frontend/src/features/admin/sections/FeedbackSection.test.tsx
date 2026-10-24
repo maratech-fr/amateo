@@ -51,6 +51,7 @@ const itemBase: AdminFeedbackItem = {
   treatedAt: null,
   hasHeavyContext: true,
   hasScreenshot: false,
+  purgedAt: null,
 };
 
 function listResponse(item?: Partial<AdminFeedbackItem>): AdminFeedbackResponse {

@@ -280,8 +280,13 @@ function FeedbackDetailDialog({ id, fallback, onClose }: { id: string; fallback:
 
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{ADMIN_SECTIONS_TEXTS.feedbackMessage}</p>
-          {/* TEXTE PUR : nœud texte React (échappé), retours à la ligne préservés. */}
-          <p className="mt-1 whitespace-pre-line rounded-md border border-border bg-muted/40 p-3">{message}</p>
+          {/* Rétention (PR4) : texte purgé → placeholder, jamais un cadre vide. Sinon TEXTE PUR
+              (nœud texte React échappé, retours à la ligne préservés). */}
+          {data?.purgedAt ? (
+            <p className="mt-1 rounded-md border border-border bg-muted/40 p-3 italic text-muted-foreground">{ADMIN_SECTIONS_TEXTS.feedbackPurgedPlaceholder}</p>
+          ) : (
+            <p className="mt-1 whitespace-pre-line rounded-md border border-border bg-muted/40 p-3">{message}</p>
+          )}
         </div>
 
         {data?.hasScreenshot ? (

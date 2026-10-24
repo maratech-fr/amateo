@@ -108,7 +108,7 @@ final readonly class AdminFeedbackController
         $rows = $connection->fetchAllAssociative(
             \sprintf(<<<'SQL'
                 SELECT f.id, f.club_id, c.name AS club_name, f.topic, f.message,
-                       f.created_at, f.status, f.treated_at, f.has_screenshot,
+                       f.created_at, f.status, f.treated_at, f.has_screenshot, f.purged_at,
                        COALESCE(jsonb_exists(f.context::jsonb, 'snapshot'), false) AS has_heavy_context
                 FROM feedback f
                 LEFT JOIN club c ON c.id = f.club_id
@@ -141,7 +141,7 @@ final readonly class AdminFeedbackController
 
         $row = $this->connection()->fetchAssociative(<<<'SQL'
             SELECT f.id, f.club_id, c.name AS club_name, f.topic, f.message, f.context,
-                   f.created_at, f.status, f.treated_at, f.has_screenshot,
+                   f.created_at, f.status, f.treated_at, f.has_screenshot, f.purged_at,
                    COALESCE(jsonb_exists(f.context::jsonb, 'snapshot'), false) AS has_heavy_context
             FROM feedback f
             LEFT JOIN club c ON c.id = f.club_id
@@ -349,6 +349,9 @@ final readonly class AdminFeedbackController
             'treatedAt' => null === $row['treated_at'] ? null : $this->atom($row['treated_at']),
             'hasHeavyContext' => (bool) $row['has_heavy_context'],
             'hasScreenshot' => (bool) $row['has_screenshot'],
+            // Marqueur de rétention (Chantier F PR4) : non nul → texte/contexte purgés, la
+            // console rend « contenu purgé » à la place du message.
+            'purgedAt' => null === $row['purged_at'] ? null : $this->atom($row['purged_at']),
         ];
     }
 

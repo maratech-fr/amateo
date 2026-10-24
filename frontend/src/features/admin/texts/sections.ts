@@ -240,6 +240,7 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackMetaReceivedAt: "Reçu le",
   feedbackMetaStatus: "Statut",
   feedbackMessage: "Message",
+  feedbackPurgedPlaceholder: "Contenu purgé (rétention)",
   feedbackLoadingContext: "Chargement du contexte…",
   feedbackContextError: "Le contexte n'a pas pu être lu.",
   feedbackContext: "Contexte",

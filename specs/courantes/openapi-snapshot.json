@@ -2981,6 +2981,13 @@
                                                     },
                                                     "hasScreenshot": {
                                                         "type": "boolean"
+                                                    },
+                                                    "purgedAt": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "format": "date-time"
                                                     }
                                                 }
                                             }
@@ -3170,6 +3177,13 @@
                                         },
                                         "hasScreenshot": {
                                             "type": "boolean"
+                                        },
+                                        "purgedAt": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date-time"
                                         },
                                         "context": {
                                             "type": [
