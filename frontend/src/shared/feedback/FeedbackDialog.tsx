@@ -11,8 +11,10 @@ import { errorMessage } from "@/shared/lib/errorMessage";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { FeedbackContext, FeedbackTopic } from "./api";
+import { captureScreen } from "./captureScreen";
 import { readRecentLastClick } from "./lastClickStore";
 import { useSubmitFeedback } from "./queries";
+import { FEEDBACK_TEXTS } from "./texts";
 
 interface FeedbackDialogProps {
   /**
@@ -44,6 +46,7 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
   const submit = useSubmitFeedback();
   const [topic, setTopic] = useState<FeedbackTopic>("bug");
   const [message, setMessage] = useState("");
+  const [attachScreenshot, setAttachScreenshot] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const topicId = useId();
   const messageId = useId();
@@ -53,7 +56,7 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
   const screen = screenProp ?? pathname;
   const messageLabel = contextual ? "Décrivez le problème" : "Votre message";
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const trimmed = message.trim();
     if ("" === trimmed) {
@@ -102,8 +105,22 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
     // Topic FIGÉ en contextuel — jamais dérivé d'un état d'UI (aucun sélecteur rendu).
     const effectiveTopic: FeedbackTopic = contextual ? "bug" : topic;
 
+    // Capture d'écran optionnelle : on EXCLUT la fenêtre de signalement elle-même (elle
+    // couvre l'écran). Un échec de capture ne perd pas le signalement — il part sans image.
+    let screenshot: Blob | undefined;
+    if (attachScreenshot) {
+      try {
+        const blob = await captureScreen({ excludeSelector: '[role="dialog"]' });
+        if (null !== blob) {
+          screenshot = blob;
+        }
+      } catch {
+        // Capture ratée : on continue sans image.
+      }
+    }
+
     submit.mutate(
-      { topic: effectiveTopic, message: trimmed, context },
+      { topic: effectiveTopic, message: trimmed, context, screenshot },
       {
         onSuccess: () => {
           toast.success("Signalement envoyé — vous recevrez un accusé par email.");
@@ -140,7 +157,7 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
         </>
       }
     >
-      <form id={formId} onSubmit={handleSubmit} className="mt-4 space-y-4">
+      <form id={formId} onSubmit={(event) => void handleSubmit(event)} className="mt-4 space-y-4">
         {contextual ? null : (
           <div className="space-y-1.5">
             <Label htmlFor={topicId}>Type de signalement</Label>
@@ -165,6 +182,19 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
             required
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={attachScreenshot}
+              onChange={(event) => setAttachScreenshot(event.target.checked)}
+              className="size-4 rounded border border-input"
+            />
+            {FEEDBACK_TEXTS.attachScreenshot}
+          </label>
+          <p className="text-xs text-muted-foreground">{FEEDBACK_TEXTS.attachScreenshotHint}</p>
         </div>
 
         {contextual ? (

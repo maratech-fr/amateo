@@ -50,6 +50,7 @@ const itemBase: AdminFeedbackItem = {
   status: "untreated",
   treatedAt: null,
   hasHeavyContext: true,
+  hasScreenshot: false,
 };
 
 function listResponse(item?: Partial<AdminFeedbackItem>): AdminFeedbackResponse {

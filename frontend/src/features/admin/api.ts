@@ -416,6 +416,9 @@ export interface AdminFeedbackItem {
   status: AdminFeedbackStatus;
   treatedAt: string | null;
   hasHeavyContext: boolean;
+  // Pointeur léger (PR3) : une capture d'écran est jointe → servie par
+  // /api/admin/feedback/{id}/screenshot. Le blob vit hors table, hors RLS.
+  hasScreenshot: boolean;
 }
 
 /** Panneau qualité de service (§3ter) — agrégats GLOBAUX, calculés côté serveur. */

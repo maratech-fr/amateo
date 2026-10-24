@@ -8,14 +8,17 @@ use App\Entity\Feedback;
 use App\Entity\SuperAdmin;
 use App\Security\AdminSessionCsrf;
 use App\Service\FeedbackMailBuilder;
+use App\Storage\FeedbackScreenshotStorage;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\Persistence\ManagerRegistry;
+use finfo;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
@@ -47,6 +50,7 @@ final readonly class AdminFeedbackController
         private ClockInterface $clock,
         private MailerInterface $mailer,
         private FeedbackMailBuilder $mailBuilder,
+        private FeedbackScreenshotStorage $screenshotStorage,
         private LoggerInterface $logger,
     ) {}
 
@@ -104,7 +108,7 @@ final readonly class AdminFeedbackController
         $rows = $connection->fetchAllAssociative(
             \sprintf(<<<'SQL'
                 SELECT f.id, f.club_id, c.name AS club_name, f.topic, f.message,
-                       f.created_at, f.status, f.treated_at,
+                       f.created_at, f.status, f.treated_at, f.has_screenshot,
                        COALESCE(jsonb_exists(f.context::jsonb, 'snapshot'), false) AS has_heavy_context
                 FROM feedback f
                 LEFT JOIN club c ON c.id = f.club_id
@@ -137,7 +141,7 @@ final readonly class AdminFeedbackController
 
         $row = $this->connection()->fetchAssociative(<<<'SQL'
             SELECT f.id, f.club_id, c.name AS club_name, f.topic, f.message, f.context,
-                   f.created_at, f.status, f.treated_at,
+                   f.created_at, f.status, f.treated_at, f.has_screenshot,
                    COALESCE(jsonb_exists(f.context::jsonb, 'snapshot'), false) AS has_heavy_context
             FROM feedback f
             LEFT JOIN club c ON c.id = f.club_id
@@ -153,6 +157,36 @@ final readonly class AdminFeedbackController
         $item['context'] = \is_string($rawContext) ? json_decode($rawContext, true) : null;
 
         return new JsonResponse($item);
+    }
+
+    /**
+     * Sert la capture d'écran d'un signalement — SEULE porte de lecture du blob (hors table,
+     * hors RLS). Lit le STOCKAGE par id, AUCUNE lecture DB en garde (patron
+     * ClubLogoController::serve) : la route reste servable même quand la ligne de signalement
+     * vit dans une transaction de test. Le firewall `^/api/admin` fait l'étanchéité tenant
+     * (JWT club/anonyme → 401) ; ici, id non-UUID ou blob absent → 404, jamais une fuite.
+     * `nosniff` + `inline` + `no-store` : pas de reniflage de type, affichage en place, aucun cache.
+     */
+    #[Route('/{id}/screenshot', methods: ['GET'])]
+    public function screenshot(string $id): Response
+    {
+        if (1 !== preg_match(self::UUID_PATTERN, $id)) {
+            return new Response('', 404);
+        }
+
+        $bytes = $this->screenshotStorage->read($id);
+        if (null === $bytes) {
+            return new Response('', 404);
+        }
+
+        $mime = new finfo(\FILEINFO_MIME_TYPE)->buffer($bytes);
+
+        return new Response($bytes, 200, [
+            'Content-Type' => false === $mime ? 'application/octet-stream' : $mime,
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Disposition' => 'inline',
+            'Cache-Control' => 'no-store',
+        ]);
     }
 
     #[Route('/{id}/treat', methods: ['POST'])]
@@ -314,6 +348,7 @@ final readonly class AdminFeedbackController
             'status' => (string) $row['status'],
             'treatedAt' => null === $row['treated_at'] ? null : $this->atom($row['treated_at']),
             'hasHeavyContext' => (bool) $row['has_heavy_context'],
+            'hasScreenshot' => (bool) $row['has_screenshot'],
         ];
     }
 

@@ -6,6 +6,7 @@ import { clearLastClick, recordLastClick } from "@/shared/feedback/lastClickStor
 import { renderWithProviders } from "@/test/utils";
 
 import { submitFeedback } from "./api";
+import { captureScreen } from "./captureScreen";
 import { FeedbackDialog } from "./FeedbackDialog";
 
 /**
@@ -18,11 +19,15 @@ vi.mock("./api", async (importOriginal) => {
   const original = await importOriginal<typeof import("./api")>();
   return { ...original, submitFeedback: vi.fn() };
 });
+vi.mock("./captureScreen", () => ({ captureScreen: vi.fn() }));
 
 const mockSubmit = vi.mocked(submitFeedback);
+const mockCapture = vi.mocked(captureScreen);
 
 beforeEach(() => {
   mockSubmit.mockReset();
+  mockCapture.mockReset();
+  mockCapture.mockResolvedValue(null);
   clearLastClick();
 });
 

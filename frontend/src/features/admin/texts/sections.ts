@@ -262,6 +262,8 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackBlockScreen: "Écran",
   feedbackBlockLastAction: "Dernier geste",
   feedbackBlockTechnical: "Technique",
+  feedbackScreenshot: "Capture d'écran",
+  feedbackScreenshotAlt: "Capture d'écran jointe au signalement",
   // Libellés de ligne du contexte large (5 blocs). « Écran »/« URL »/« Saison »/« Navigateur »/
   // « Réf. incident » sont réutilisés des clés feedbackMeta* ci-dessus.
   feedbackAutoSocle: "Socle",

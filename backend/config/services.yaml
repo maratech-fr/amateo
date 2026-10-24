@@ -10,6 +10,10 @@ parameters:
     # Where club logos are stored. Dev/default = local disk (persisted via the
     # ./:/app mount). Prod: swap the LogoStorage alias below for object storage.
     app.logo_storage_dir: '%kernel.project_dir%/var/storage/logos'
+    # Where feedback screenshots are stored. Dev/default = local disk (persisted via
+    # the ./:/app mount). Prod: swap the FeedbackScreenshotStorage alias below for
+    # object storage. The blob lives OUT of the feedback table and OUT of RLS.
+    app.feedback_screenshot_storage_dir: '%kernel.project_dir%/var/storage/feedback-screenshots'
     # P5-24 — où vivent les actifs de marque servis côté backend (icône inlinée
     # dans le pied de page de l'export PDF). Le chemin arrive par injection à
     # `App\Service\BrandAssets` ; jamais codé en dur chez l'appelant.
@@ -170,6 +174,14 @@ services:
         arguments:
             $dir: '%app.logo_storage_dir%'
     App\Storage\LogoStorage: '@App\Storage\LocalLogoStorage'
+
+    # Feedback screenshot storage: local disk in dev. Prod swaps this alias for an
+    # object-storage implementation — callers depend only on the
+    # FeedbackScreenshotStorage interface (blob out of table, out of RLS).
+    App\Storage\LocalFeedbackScreenshotStorage:
+        arguments:
+            $dir: '%app.feedback_screenshot_storage_dir%'
+    App\Storage\FeedbackScreenshotStorage: '@App\Storage\LocalFeedbackScreenshotStorage'
 
     # P5-24 — le mark produit inliné dans le pied de page du PDF. Chemin depuis le
     # dépôt (jamais un littéral chez le générateur).

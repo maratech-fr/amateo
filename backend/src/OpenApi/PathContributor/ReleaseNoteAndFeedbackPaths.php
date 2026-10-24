@@ -7,9 +7,11 @@ namespace App\OpenApi\PathContributor;
 use ApiPlatform\OpenApi\Model\Operation;
 use ApiPlatform\OpenApi\Model\PathItem;
 use ApiPlatform\OpenApi\Model\Paths;
+use ApiPlatform\OpenApi\Model\RequestBody;
 use ApiPlatform\OpenApi\Model\Response;
 use App\OpenApi\CustomPathContributor;
 use App\OpenApi\OpenApiSchemas;
+use ArrayObject;
 
 /** User-facing release-note and feedback custom routes. */
 final readonly class ReleaseNoteAndFeedbackPaths implements CustomPathContributor
@@ -81,6 +83,36 @@ final readonly class ReleaseNoteAndFeedbackPaths implements CustomPathContributo
      */
     private function feedbackPaths(): array
     {
+        // Même corps, deux portes : JSON (chemin historique) OU multipart/form-data quand une
+        // capture d'écran est jointe — le JSON passe alors dans le champ `payload`, la capture
+        // dans le fichier `screenshot` (sondé serveur : PNG/JPEG/WebP, ≤ 2 Mo).
+        $bodySchema = [
+            'type' => 'object',
+            'required' => ['topic', 'message'],
+            'properties' => [
+                'topic' => ['type' => 'string', 'enum' => ['bug', 'missing_constraint', 'idea']],
+                'message' => ['type' => 'string', 'maxLength' => 5000],
+                // Optional light context. When `scheduleId` names a schedule of
+                // the current club, the server copies its snapshot + diagnostics
+                // into the stored context; a foreign/unknown id is a 404.
+                'context' => ['type' => 'object', 'properties' => [
+                    'screen' => ['type' => 'string'],
+                    'url' => ['type' => 'string'],
+                    'scheduleId' => ['type' => 'string', 'format' => 'uuid'],
+                    'requestId' => ['type' => 'string'],
+                    'userAgent' => ['type' => 'string'],
+                    // Repères TEXTE joints par le client pour situer l'incident (jamais d'id).
+                    'screenLabel' => ['type' => 'string'],
+                    'activeFilters' => ['type' => 'string'],
+                    'displayedRange' => ['type' => 'string'],
+                    'lastClick' => ['type' => 'string'],
+                    'incidentStatus' => ['type' => 'string'],
+                    'incidentUrl' => ['type' => 'string'],
+                    'incidentCode' => ['type' => 'string'],
+                ]],
+            ],
+        ];
+
         return [
             '/api/feedback' => new PathItem(post: new Operation(
                 operationId: 'submitFeedback',
@@ -92,36 +124,21 @@ final readonly class ReleaseNoteAndFeedbackPaths implements CustomPathContributo
                     ]),
                     '401' => new Response('Unauthorized'),
                     '404' => new Response('No club in context, or the referenced schedule is unknown/foreign (nothing is stored)'),
-                    '422' => new Response('Invalid topic, empty message, or message too long'),
+                    '422' => new Response('Invalid topic, empty message, message too long, or an invalid screenshot (type/size/dimensions) — nothing is stored'),
                     '429' => new Response('Too many feedback submissions (per-user rate limit)'),
                 ],
                 summary: 'Submit a member feedback report (bug, missing constraint or idea)',
-                requestBody: $this->schemas->jsonBody([
-                    'type' => 'object',
-                    'required' => ['topic', 'message'],
-                    'properties' => [
-                        'topic' => ['type' => 'string', 'enum' => ['bug', 'missing_constraint', 'idea']],
-                        'message' => ['type' => 'string', 'maxLength' => 5000],
-                        // Optional light context. When `scheduleId` names a schedule of
-                        // the current club, the server copies its snapshot + diagnostics
-                        // into the stored context; a foreign/unknown id is a 404.
-                        'context' => ['type' => 'object', 'properties' => [
-                            'screen' => ['type' => 'string'],
-                            'url' => ['type' => 'string'],
-                            'scheduleId' => ['type' => 'string', 'format' => 'uuid'],
-                            'requestId' => ['type' => 'string'],
-                            'userAgent' => ['type' => 'string'],
-                            // Repères TEXTE joints par le client pour situer l'incident (jamais d'id).
-                            'screenLabel' => ['type' => 'string'],
-                            'activeFilters' => ['type' => 'string'],
-                            'displayedRange' => ['type' => 'string'],
-                            'lastClick' => ['type' => 'string'],
-                            'incidentStatus' => ['type' => 'string'],
-                            'incidentUrl' => ['type' => 'string'],
-                            'incidentCode' => ['type' => 'string'],
-                        ]],
-                    ],
-                ]),
+                requestBody: new RequestBody(content: new ArrayObject([
+                    'application/json' => ['schema' => $bodySchema],
+                    'multipart/form-data' => ['schema' => [
+                        'type' => 'object',
+                        'required' => ['payload'],
+                        'properties' => [
+                            'payload' => ['type' => 'string', 'description' => 'JSON-encoded feedback body (same shape as the application/json request)'],
+                            'screenshot' => ['type' => 'string', 'format' => 'binary', 'description' => 'Optional screenshot (PNG/JPEG/WebP, max 2 MB, type sniffed server-side; SVG and non-images rejected)'],
+                        ],
+                    ]],
+                ])),
             )),
         ];
     }
