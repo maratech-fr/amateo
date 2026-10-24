@@ -17,6 +17,10 @@ final readonly class ExportPdfMessage
         private ?string $clubId = null,
         // Export scope: null = all venues, else a single venue id.
         private ?string $venueId = null,
+        // Chantier E — « afficher le nom des coachs » dans la grille du PDF. Nullable pour la
+        // MÊME garde legacy que clubId/venueId : un message enfilé AVANT l'ajout de ce champ se
+        // désérialise avec la propriété readonly NON initialisée ; le getter retombe sur false.
+        private ?bool $showCoaches = false,
     ) {}
 
     public function getScheduleId(): string
@@ -33,5 +37,11 @@ final readonly class ExportPdfMessage
     public function getVenueId(): ?string
     {
         return $this->venueId ?? null;
+    }
+
+    public function getShowCoaches(): bool
+    {
+        // ?? guards the uninitialized-readonly case of a legacy payload (see getClubId()).
+        return $this->showCoaches ?? false;
     }
 }

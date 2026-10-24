@@ -43,4 +43,21 @@ trait ResolvesExportScopeTrait
 
         return $venueId;
     }
+
+    /**
+     * Chantier E — « afficher le nom des coachs » lu du corps en FAIL-CLOSED : les noms ne
+     * partent QUE sur le booléen STRICT `true`. Un `"true"`, un `1`, un `"1"`, l'absence du
+     * champ, l'absence de corps → false. Un flag laxiste divulguerait des noms de personnes
+     * sur un document remis aux familles sans que le gestionnaire l'ait demandé.
+     */
+    private function resolveShowCoaches(RequestStack $requestStack): bool
+    {
+        $request = $requestStack->getCurrentRequest();
+        if (!$request instanceof Request) {
+            return false;
+        }
+        $body = json_decode($request->getContent() ?: '{}', true);
+
+        return \is_array($body) && true === ($body['showCoaches'] ?? null);
+    }
 }

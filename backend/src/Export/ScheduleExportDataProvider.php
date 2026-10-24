@@ -17,6 +17,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Service\PlanVenueClosures;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueWindowOccupancy;
+use App\Support\CoachShortName;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -83,8 +84,16 @@ final class ScheduleExportDataProvider
         }
 
         $coachNames = [];
+        // Chantier E — en plus du nom plein (Excel), le nom COURT pour la grille du PDF, construit
+        // depuis LES MÊMES coachs tenant-scopés. Un coach sans nom n'entre pas dans la map courte
+        // (CoachShortName rend null) → sa ligne est omise à l'export (« pas de coach → rien »).
+        $coachShortNames = [];
         foreach ($this->entityManager->getRepository(Coach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $coach) {
             $coachNames[$coach->getId()] = trim(\sprintf('%s %s', $coach->getFirstName(), $coach->getLastName()));
+            $shortName = CoachShortName::from($coach->getFirstName(), $coach->getLastName());
+            if (null !== $shortName) {
+                $coachShortNames[$coach->getId()] = $shortName;
+            }
         }
 
         // Defined-but-unfilled venue windows ("créneaux vides"): the same view the
@@ -205,7 +214,7 @@ final class ScheduleExportDataProvider
             $groupLabels[$key] = $label;
         }
 
-        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots);
+        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots, $coachShortNames);
     }
 
     /**

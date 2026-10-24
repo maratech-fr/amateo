@@ -52,8 +52,7 @@ final class ResolvesExportScopeShowCoachesTest extends TestCase
 
     private function resolve(string $body): bool
     {
-        $stack = new RequestStack;
-        $stack->push(Request::create('/api/schedules/x/export-pdf', 'POST', [], [], [], [], $body));
+        $stack = new RequestStack([Request::create('/api/schedules/x/export-pdf', 'POST', [], [], [], [], $body)]);
 
         return $this->resolveWithStack($stack);
     }

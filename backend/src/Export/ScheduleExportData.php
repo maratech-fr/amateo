@@ -35,6 +35,10 @@ final readonly class ScheduleExportData
      * @param list<ExportReservedWindow>  $freeSlots      lot 4bis — créneaux LIBRES réservés
      *                                                    (réservation sans équipe, nommée) de la
      *                                                    couche exportée : des cases occupées nommées
+     * @param array<string, string>       $coachShortNames coachId → nom COURT (« Karim B. ») — chantier E,
+     *                                                    la GRILLE du PDF l'affiche quand le gestionnaire
+     *                                                    coche « Afficher le nom des coachs ». Un coach
+     *                                                    sans nom n'entre pas dans la map (ligne omise)
      */
     public function __construct(
         public array $slots,
@@ -46,5 +50,6 @@ final readonly class ScheduleExportData
         public array $teamRanks = [],
         public array $groupLabels = [],
         public array $freeSlots = [],
+        public array $coachShortNames = [],
     ) {}
 }

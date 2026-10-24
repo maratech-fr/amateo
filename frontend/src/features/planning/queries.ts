@@ -479,7 +479,7 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
   const [busy, setBusy] = useState<ExportFormat | null>(null);
 
   const run = useCallback(
-    async (format: ExportFormat, venueId: planningApi.ExportVenueScope): Promise<void> => {
+    async (format: ExportFormat, venueId: planningApi.ExportVenueScope, showCoaches = false): Promise<void> => {
       if (null === scheduleId || null !== busy) {
         return;
       }
@@ -491,12 +491,15 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
           download(URL.createObjectURL(blob), `${fileBase}.xlsx`);
           return;
         }
-        await planningApi.exportSchedulePdf(scheduleId, venueId);
-        // The worker writes the file path with a scope suffix (-all / -<venueId8>);
-        // the schedule row carries a single, shared export URL, so only download
-        // once it matches THIS request's scope — guards against another in-flight
-        // export (other tab/scope) whose 'completed' + URL we'd otherwise grab.
-        const scopeToken = `-${null === venueId ? "all" : venueId.slice(0, 8)}.${format}`;
+        await planningApi.exportSchedulePdf(scheduleId, venueId, showCoaches);
+        // The worker writes the file path with a scope suffix (-all / -<venueId8>), plus
+        // -coaches when the coach names were requested (chantier E). The schedule row carries
+        // a single, shared export URL, so only download once it matches THIS request's scope +
+        // coach choice — guards against another in-flight export (other tab/scope/choice) whose
+        // 'completed' + URL we'd otherwise grab. Le jeton DOIT refléter EXACTEMENT le nom de
+        // fichier que le back écrit (`PdfGenerator::generate`), sinon le polling expire.
+        const coachToken = showCoaches ? "-coaches" : "";
+        const scopeToken = `-${null === venueId ? "all" : venueId.slice(0, 8)}${coachToken}.${format}`;
         const deadline = Date.now() + EXPORT_TIMEOUT_MS;
         for (;;) {
           await sleep(EXPORT_POLL_MS);
