@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { download, slugFilename } from "@/shared/lib/download";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { registerLongAction, unregisterLongAction } from "@/shared/lib/longActionAbort";
+import { exportScopeToken } from "./lib/exportScopeToken";
 import { isScheduleStreamConnected, useScheduleStream } from "./lib/scheduleStream";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -498,8 +499,7 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
         // coach choice — guards against another in-flight export (other tab/scope/choice) whose
         // 'completed' + URL we'd otherwise grab. Le jeton DOIT refléter EXACTEMENT le nom de
         // fichier que le back écrit (`PdfGenerator::generate`), sinon le polling expire.
-        const coachToken = showCoaches ? "-coaches" : "";
-        const scopeToken = `-${null === venueId ? "all" : venueId.slice(0, 8)}${coachToken}.${format}`;
+        const scopeToken = exportScopeToken(venueId, showCoaches);
         const deadline = Date.now() + EXPORT_TIMEOUT_MS;
         for (;;) {
           await sleep(EXPORT_POLL_MS);

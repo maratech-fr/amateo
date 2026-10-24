@@ -251,7 +251,7 @@ class PdfGenerator
         }
 
         $steps = max(1, intdiv($endMin - $startMin, self::STEP_MINUTES));
-        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $freeByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols, $data->coachShortNames, $showCoaches);
+        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $freeByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols, $data->coachShortNames, $showCoaches, $data->teamMainCoachIds);
         $header = $this->buildHeader($columns, $venues, $dayStartCols);
 
         $scopeLabel = null === $venueId ? 'Tous les gymnases' : ($venues[$venueId]['name'] ?? 'Gymnase');
@@ -289,14 +289,15 @@ class PdfGenerator
      * @param list<array{day:int,venueId:string}>                   $columns
      * @param array<string, array<int, list<ScheduleSlotTemplate>>> $byColStep
      * @param array<string, array<int, ExportEmptyWindow>>          $emptyByColStep
-     * @param array<string, array<int, ExportReservedWindow>>       $freeByColStep  lot 4bis free slots
+     * @param array<string, array<int, ExportReservedWindow>>       $freeByColStep    lot 4bis free slots
      * @param array<string, string>                                 $teamNames
      * @param array<string, array{name:string,color:?string}>       $venues
-     * @param array<string, string>                                 $groupLabels     "venue|day|H:i" → label
-     * @param array<int, true>                                      $dayStartCols    column indices that open a new day
-     * @param array<string, string>                                 $coachShortNames coachId → « Karim B. »
+     * @param array<string, string>                                 $groupLabels      "venue|day|H:i" → label
+     * @param array<int, true>                                      $dayStartCols     column indices that open a new day
+     * @param array<string, string>                                 $coachShortNames  coachId → « Karim B. »
+     * @param array<string, string>                                 $teamMainCoachIds teamId → coachId du 1er MAIN
      */
-    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols, array $coachShortNames = [], bool $showCoaches = false): string
+    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = []): string
     {
         // covered[colIndex][step] = true when a rowspan from above occupies the cell.
         $covered = [];
@@ -367,7 +368,7 @@ class PdfGenerator
                 for ($k = 1; $k < $span; ++$k) {
                     $covered[$colIndex][$step + $k] = true;
                 }
-                $cells .= $this->slotCell($bucket, $span, $teamNames, $venues, $groupLabels, $dayStart, $coachShortNames, $showCoaches);
+                $cells .= $this->slotCell($bucket, $span, $teamNames, $venues, $groupLabels, $dayStart, $coachShortNames, $showCoaches, $teamMainCoachIds);
             }
             $rows .= \sprintf('<tr%s><th class="%s">%s</th>%s</tr>', $trClass, $timeClass, $timeLabel, $cells);
         }
@@ -389,13 +390,16 @@ class PdfGenerator
     }
 
     /**
-     * @param list<ScheduleSlotTemplate>                      $bucket      concurrent slots (≥1) in one cell
+     * @param list<ScheduleSlotTemplate>                      $bucket           concurrent slots (≥1) in one cell
      * @param array<string, string>                           $teamNames
      * @param array<string, array{name:string,color:?string}> $venues
-     * @param array<string, string>                           $groupLabels     "venue|day|H:i" → label
-     * @param array<string, string>                           $coachShortNames coachId → « Karim B. »
+     * @param array<string, string>                           $groupLabels      "venue|day|H:i" → label
+     * @param array<string, string>                           $coachShortNames  coachId → « Karim B. »
+     * @param array<string, string>                           $teamMainCoachIds teamId → coachId du 1er MAIN
+     *                                                                          (repli quand la séance n'a
+     *                                                                          pas de coach à elle)
      */
-    private function slotCell(array $bucket, int $span, array $teamNames, array $venues, array $groupLabels, bool $dayStart, array $coachShortNames = [], bool $showCoaches = false): string
+    private function slotCell(array $bucket, int $span, array $teamNames, array $venues, array $groupLabels, bool $dayStart, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = []): string
     {
         // Colour the cell by the (shared) venue of the bucket; stack each team.
         $venue = $venues[$bucket[0]->getVenueId()] ?? ['name' => 'Salle', 'color' => null];
@@ -427,7 +431,10 @@ class PdfGenerator
             // version décochée. Contenu club, échappé comme tout le reste du gabarit.
             $coachLine = '';
             if ($showCoaches) {
-                $coachId = $slot->getCoachId();
+                // Chantier E — comme à l'écran (`grid.ts::slotCoachId` : `slot.coachId ??
+                // teamCoach.get(teamId)`) : le coach POSÉ sur la séance prime, sinon le 1er coach MAIN
+                // de son équipe. Aucun des deux → rien.
+                $coachId = $slot->getCoachId() ?? ($teamMainCoachIds[$slot->getTeamId()] ?? null);
                 $coachShort = null === $coachId ? null : ($coachShortNames[$coachId] ?? null);
                 if (null !== $coachShort && '' !== $coachShort) {
                     $coachLine = \sprintf('<span class="coach">%s</span>', htmlspecialchars($coachShort));

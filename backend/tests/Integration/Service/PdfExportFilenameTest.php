@@ -59,6 +59,12 @@ final class PdfExportFilenameTest extends KernelTestCase
         self::assertStringNotContainsString('-coaches', $optedOut, 'décoché → JAMAIS -coaches (sinon le run décoché saisirait la version cochée, rendue une seconde plus tôt)');
     }
 
+    protected function setUp(): void
+    {
+        self::bootKernel();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
     private function generator(): PdfGenerator
     {
         $http = new MockHttpClient(static fn (): MockResponse => new MockResponse((string) json_encode(['success' => true])));
@@ -115,11 +121,5 @@ final class PdfExportFilenameTest extends KernelTestCase
         $this->em->flush();
 
         return [$club, $season];
-    }
-
-    protected function setUp(): void
-    {
-        self::bootKernel();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 }

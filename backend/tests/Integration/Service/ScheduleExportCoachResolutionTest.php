@@ -14,8 +14,10 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Export\ScheduleExportData;
 use App\Export\ScheduleExportDataProvider;
+use App\State\Provider\AbstractStateProvider;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
+use App\Tests\Unit\Service\PdfGridCoachNameTest;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -29,7 +31,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * Ici on prouve la MOITIÉ « RÉSOLUTION » de la promesse — la seule qui traverse le serveur : le
  * provider dérive, depuis les liens `team_coach`, la carte équipe → 1er coach MAIN, scopée
  * club+saison et ORDONNÉE comme l'endpoint que lit l'écran. L'écran reçoit `team_coaches` dans
- * l'ordre `e.id ASC` imposé par {@see \App\State\Provider\AbstractStateProvider::provideCollection}
+ * l'ordre `e.id ASC` imposé par {@see AbstractStateProvider::provideCollection}
  * (« Deterministic order on the UUID PK ») et prend le 1er MAIN dans cet ordre
  * (`frontend/src/features/planning/PlanningPage.tsx:402-409`, consommé par `grid.ts::slotCoachId`).
  * L'export doit suivre le MÊME tri, sinon il nommerait un AUTRE coach que l'écran pour une équipe
@@ -37,8 +39,8 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *
  * La MOITIÉ « APPLICATION » (une séance sans coach retombe sur ce coach d'équipe ; un coach POSÉ
  * sur la séance PRIME) est prouvée au plus bas, sans DB, par le jumeau
- * {@see \App\Tests\Unit\Service\PdfGridCoachNameTest::testGridFallsBackToTheTeamMainCoachWhenTheSlotCarriesNone}
- * et {@see \App\Tests\Unit\Service\PdfGridCoachNameTest::testTheSlotOwnCoachWinsOverTheTeamMainCoach}
+ * {@see PdfGridCoachNameTest::testGridFallsBackToTheTeamMainCoachWhenTheSlotCarriesNone}
+ * et {@see PdfGridCoachNameTest::testTheSlotOwnCoachWinsOverTheTeamMainCoach}
  * — point sensible « export » : deux angles VOULUS (résolution côté DB ⇄ application côté rendu),
  * cités l'un l'autre.
  *
