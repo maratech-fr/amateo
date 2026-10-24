@@ -8,14 +8,19 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
 import { submitFeedback } from "./api";
+import { captureScreen } from "./captureScreen";
 import { FeedbackDialog } from "./FeedbackDialog";
 
 vi.mock("./api", async (importOriginal) => {
   const original = await importOriginal<typeof import("./api")>();
   return { ...original, submitFeedback: vi.fn() };
 });
+// La capture est pilotée par son propre fichier (FeedbackDialogCapture.test.tsx) ; ici on la
+// neutralise (aucune image jointe) pour que ces scénarios restent sur le chemin sans capture.
+vi.mock("./captureScreen", () => ({ captureScreen: vi.fn() }));
 
 const mockSubmit = vi.mocked(submitFeedback);
+const mockCapture = vi.mocked(captureScreen);
 
 /** Erreur HTTP factice à la façon de ky (status + `data` = corps déjà consommé). */
 function httpError(status: number, body?: unknown): HTTPError {
@@ -26,6 +31,8 @@ function httpError(status: number, body?: unknown): HTTPError {
 
 beforeEach(() => {
   mockSubmit.mockReset();
+  mockCapture.mockReset();
+  mockCapture.mockResolvedValue(null);
   clearLastIncident();
   useToastStore.setState({ toasts: [] });
 });

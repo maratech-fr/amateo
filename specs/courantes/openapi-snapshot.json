@@ -2978,6 +2978,9 @@
                                                     },
                                                     "hasHeavyContext": {
                                                         "type": "boolean"
+                                                    },
+                                                    "hasScreenshot": {
+                                                        "type": "boolean"
                                                     }
                                                 }
                                             }
@@ -3165,6 +3168,9 @@
                                         "hasHeavyContext": {
                                             "type": "boolean"
                                         },
+                                        "hasScreenshot": {
+                                            "type": "boolean"
+                                        },
                                         "context": {
                                             "type": [
                                                 "object",
@@ -3185,6 +3191,57 @@
                     }
                 },
                 "summary": "Read one feedback report in full (heavy context included)",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/admin/feedback/{id}/screenshot": {
+            "get": {
+                "operationId": "getAdminFeedbackScreenshot",
+                "tags": [
+                    "AdminSupport"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The stored screenshot bytes (inline, no-store); the blob lives out of the feedback table and out of RLS",
+                        "content": {
+                            "image/png": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            },
+                            "image/jpeg": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            },
+                            "image/webp": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "404": {
+                        "description": "No screenshot stored for this id"
+                    }
+                },
+                "summary": "Serve a feedback report screenshot (super-admin only; the only read door for the blob)",
                 "parameters": [
                     {
                         "name": "id",
@@ -9994,7 +10051,7 @@
                         "description": "No club in context, or the referenced schedule is unknown/foreign (nothing is stored)"
                     },
                     "422": {
-                        "description": "Invalid topic, empty message, or message too long"
+                        "description": "Invalid topic, empty message, message too long, or an invalid screenshot (type/size/dimensions) \u2014 nothing is stored"
                     },
                     "429": {
                         "description": "Too many feedback submissions (per-user rate limit)"
@@ -10064,6 +10121,25 @@
                                                 "type": "string"
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "payload"
+                                ],
+                                "properties": {
+                                    "payload": {
+                                        "type": "string",
+                                        "description": "JSON-encoded feedback body (same shape as the application/json request)"
+                                    },
+                                    "screenshot": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "Optional screenshot (PNG/JPEG/WebP, max 2 MB, type sniffed server-side; SVG and non-images rejected)"
                                     }
                                 }
                             }

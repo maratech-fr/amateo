@@ -10,6 +10,7 @@ use ApiPlatform\OpenApi\Model\Paths;
 use ApiPlatform\OpenApi\Model\Response;
 use App\OpenApi\CustomPathContributor;
 use App\OpenApi\OpenApiSchemas;
+use ArrayObject;
 
 /** Super-admin release-note and feedback moderation custom routes. */
 final readonly class AdminContentModerationPaths implements CustomPathContributor
@@ -141,6 +142,9 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                 // The heavy context (schedule snapshot + diagnostics) is NOT returned
                 // by the list — only a flag; read the detail to get it.
                 'hasHeavyContext' => ['type' => 'boolean'],
+                // Light pointer to the out-of-table screenshot blob (serve it from
+                // /api/admin/feedback/{id}/screenshot when true).
+                'hasScreenshot' => ['type' => 'boolean'],
             ],
         ];
         $qosSchema = [
@@ -240,6 +244,21 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                 ],
                 summary: 'Revert a feedback report to untreated (no email)',
                 parameters: [$idParameter, $csrfHeader],
+            )),
+            '/api/admin/feedback/{id}/screenshot' => new PathItem(get: new Operation(
+                operationId: 'getAdminFeedbackScreenshot',
+                tags: ['AdminSupport'],
+                responses: [
+                    '200' => new Response('The stored screenshot bytes (inline, no-store); the blob lives out of the feedback table and out of RLS', new ArrayObject([
+                        'image/png' => ['schema' => ['type' => 'string', 'format' => 'binary']],
+                        'image/jpeg' => ['schema' => ['type' => 'string', 'format' => 'binary']],
+                        'image/webp' => ['schema' => ['type' => 'string', 'format' => 'binary']],
+                    ])),
+                    '401' => new Response('No authenticated super-admin session'),
+                    '404' => new Response('No screenshot stored for this id'),
+                ],
+                summary: 'Serve a feedback report screenshot (super-admin only; the only read door for the blob)',
+                parameters: [$idParameter],
             )),
         ];
     }

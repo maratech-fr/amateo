@@ -30,10 +30,23 @@ export interface FeedbackPayload {
   topic: FeedbackTopic;
   message: string;
   context?: FeedbackContext;
+  // Chantier F PR3 — capture d'écran optionnelle. Présente → l'envoi passe en multipart
+  // (le JSON va dans le champ `payload`, l'image dans le fichier `screenshot`).
+  screenshot?: Blob;
 }
 
 export interface FeedbackCreated {
   id: string;
 }
 
-export const submitFeedback = (body: FeedbackPayload): Promise<FeedbackCreated> => api.post("feedback", { json: body }).json();
+export const submitFeedback = (body: FeedbackPayload): Promise<FeedbackCreated> => {
+  if (undefined !== body.screenshot) {
+    const { screenshot, ...rest } = body;
+    const form = new FormData();
+    form.append("payload", JSON.stringify(rest));
+    // Le serveur SONDE les octets (type/dimensions) et ignore le nom de fichier.
+    form.append("screenshot", screenshot, "capture.webp");
+    return api.post("feedback", { body: form }).json();
+  }
+  return api.post("feedback", { json: body }).json();
+};

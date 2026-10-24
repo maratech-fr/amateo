@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Tests\Integration\Api\AdminFeedbackTest;
+use App\Tests\Integration\Api\FeedbackScreenshotTest;
 use App\Tests\Integration\Api\FeedbackTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
@@ -110,9 +112,9 @@ final class FeedbackContextIsolationTest extends WebTestCase
      * Témoin de falsification : exposer une route CLUB du blob (ou déplacer la route hors du
      * firewall admin) rendrait ce test ROUGE (200/404 au lieu de 401). L'angle superadmin « id
      * inconnu → 404, jamais de fuite » est prouvé à côté par
-     * {@see \App\Tests\Integration\Api\AdminFeedbackTest::testScreenshotServeUnknownIdIs404ForSuperAdmin} ;
+     * {@see AdminFeedbackTest::testScreenshotServeUnknownIdIs404ForSuperAdmin} ;
      * l'angle intégration (JWT de l'auteur) par
-     * {@see \App\Tests\Integration\Api\FeedbackScreenshotTest::testScreenshotIsUnreachableWithAClubJwt}
+     * {@see FeedbackScreenshotTest::testScreenshotIsUnreachableWithAClubJwt}
      * (doublon VOULU, point sensible sécurité/tenant).
      */
     public function testAClubJwtNeverReachesTheScreenshotServeRoute(): void

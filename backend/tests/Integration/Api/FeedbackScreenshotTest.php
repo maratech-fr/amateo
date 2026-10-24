@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Api;
 
 use App\Tests\BuildsTestImages;
+use App\Tests\Security\FeedbackContextIsolationTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -30,7 +31,7 @@ use Symfony\Component\Uid\Uuid;
  * ({@see AdminFeedbackTest::testMemberScreenshotIsServedOnlyToSuperAdmin} /
  * ::testScreenshotServeUnknownIdIs404ForSuperAdmin / ::testDetailExposesHasScreenshot) ;
  * l'étanchéité tenant du blob (aucune porte club) est bloquante
- * ({@see \App\Tests\Security\FeedbackContextIsolationTest::testAClubJwtNeverReachesTheScreenshotServeRoute}).
+ * ({@see FeedbackContextIsolationTest::testAClubJwtNeverReachesTheScreenshotServeRoute}).
  */
 #[Group('integration')]
 final class FeedbackScreenshotTest extends WebTestCase
@@ -136,7 +137,7 @@ final class FeedbackScreenshotTest extends WebTestCase
     /**
      * PROMESSE (étanchéité, angle intégration) : le blob de capture vit HORS table et HORS RLS ;
      * un JWT club — quel que soit l'id DEVINÉ — frappe le firewall admin → 401. Aucun lecteur club.
-     * L'angle BLOQUANT (gate tenant) est {@see \App\Tests\Security\FeedbackContextIsolationTest::testAClubJwtNeverReachesTheScreenshotServeRoute}
+     * L'angle BLOQUANT (gate tenant) est {@see FeedbackContextIsolationTest::testAClubJwtNeverReachesTheScreenshotServeRoute}
      * (doublon VOULU, point sensible sécurité/tenant).
      */
     public function testScreenshotIsUnreachableWithAClubJwt(): void

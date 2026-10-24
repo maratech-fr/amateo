@@ -284,6 +284,19 @@ function FeedbackDetailDialog({ id, fallback, onClose }: { id: string; fallback:
           <p className="mt-1 whitespace-pre-line rounded-md border border-border bg-muted/40 p-3">{message}</p>
         </div>
 
+        {data?.hasScreenshot ? (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{ADMIN_SECTIONS_TEXTS.feedbackScreenshot}</p>
+            {/* Aperçu chargé depuis le rail superadmin (session cookie) — seule porte du blob. */}
+            <img
+              src={`/api/admin/feedback/${encodeURIComponent(id)}/screenshot`}
+              alt={ADMIN_SECTIONS_TEXTS.feedbackScreenshotAlt}
+              loading="lazy"
+              className="mt-1 max-h-96 w-full max-w-md rounded-md border border-border object-contain"
+            />
+          </div>
+        ) : null}
+
         {detail.isPending ? (
           <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner className="size-4" /> {ADMIN_SECTIONS_TEXTS.feedbackLoadingContext}</p>
         ) : detail.isError ? (

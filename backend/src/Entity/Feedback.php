@@ -61,6 +61,14 @@ class Feedback implements TenantOwnedInterface
     #[ORM\Column(type: 'string', length: 20)]
     private string $status = self::STATUS_UNTREATED;
 
+    /**
+     * Pointeur LÉGER vers la capture d'écran jointe : le blob vit HORS table
+     * (FeedbackScreenshotStorage, patron LogoStorage), seul ce drapeau dit à la
+     * console superadmin s'il faut proposer l'aperçu.
+     */
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $hasScreenshot = false;
+
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $treatedAt = null;
 
@@ -131,6 +139,18 @@ class Feedback implements TenantOwnedInterface
     public function getStatus(): string
     {
         return $this->status;
+    }
+
+    public function hasScreenshot(): bool
+    {
+        return $this->hasScreenshot;
+    }
+
+    public function setHasScreenshot(bool $hasScreenshot): self
+    {
+        $this->hasScreenshot = $hasScreenshot;
+
+        return $this;
     }
 
     public function getTreatedAt(): ?DateTimeImmutable
