@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -56,8 +56,9 @@ describe("VenueAvailabilityGrid — les bornes de ce qu'on peut poser", () => {
     const user = userEvent.setup();
     render(<VenueAvailabilityGrid venue={venue} slots={[slot({ startTime: "07:00:00" })]} selectedSlotId={null} onAdd={onAdd} onSelect={vi.fn()} />);
 
-    // La grille commence à 07:00 : le créneau est sur SA ligne, la toute première.
-    expect(screen.getByRole("button", { name: /^07:00 ·/ })).toHaveStyle({ gridRow: "2 / span 6" });
+    // La grille commence à 07:00 : le créneau est sur SA ligne, la toute première. Son nom
+    // accessible commence désormais par la PLAGE « 07:00 – 08:30 » (#9), pas par le seul début.
+    expect(screen.getByRole("button", { name: /^07:00 – 08:30/ })).toHaveStyle({ gridRow: "2 / span 6" });
 
     // …et surtout la cellule de 08:00 reste POSABLE — c'est ce que le relogement cassait.
     await user.click(screen.getByRole("button", { name: "Lun 08:00" }));
@@ -175,11 +176,11 @@ describe("VenueAvailabilityGrid — lecture seule (socle validé)", () => {
     // 18:30 (hors de l'heure pile) n'apparaît que sur le créneau, jamais dans la gouttière des heures.
     render(<VenueAvailabilityGrid venue={venue} slots={[slot({ startTime: "18:30:00" })]} selectedSlotId={null} onAdd={vi.fn()} onSelect={onSelect} readOnly />);
 
-    // Le libellé du créneau reste visible…
-    expect(screen.getByText("18:30")).toBeInTheDocument();
+    // Le libellé du créneau reste visible — la PLAGE « 18:30 – 20:00 » (90 min, span ≥ 2, #9)…
+    expect(screen.getByText("18:30 – 20:00")).toBeInTheDocument();
     // …mais ce n'est plus un bouton « — modifier », et cliquer dessus n'appelle pas onSelect.
     expect(screen.queryByRole("button", { name: /modifier/ })).toBeNull();
-    await user.click(screen.getByText("18:30"));
+    await user.click(screen.getByText("18:30 – 20:00"));
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -246,4 +247,99 @@ describe("VenueAvailabilityGrid — l'ouverture vise la bande utile", () => {
     expect(scrollBox(container).scrollTop).toBe(484);
   });
 
+});
+
+/**
+ * Retours Rillieux #8 — repère au survol. Survoler une case de la grille fait apparaître une
+ * étiquette flottante « Mardi · 17:15 » (jour long capitalisé · heure de pendule) qui dit SOUS LE
+ * CURSEUR le jour et l'heure exacts (le gestionnaire confondait 17:15 et 17:30). L'étiquette est
+ * `aria-hidden` : la case porte DÉJÀ son nom accessible jour + heure (« Mar 17:15 »), l'étiquette
+ * ne ferait que la doubler pour un lecteur d'écran. La ligne d'heure en gouttière alignée est
+ * marquée active le temps du survol.
+ */
+describe("VenueAvailabilityGrid — repère au survol (#8)", () => {
+  it("fait apparaître « Mardi · 17:15 » au survol, aria-hidden, et la retire quand on sort", async () => {
+    const user = userEvent.setup();
+    render(<VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
+
+    // Rien avant le survol : l'étiquette n'existe que sous le curseur.
+    expect(screen.queryByText("Mardi · 17:15")).toBeNull();
+
+    const cell = screen.getByRole("button", { name: "Mar 17:15" });
+    await user.hover(cell);
+
+    const tip = screen.getByText("Mardi · 17:15");
+    // Doublon décoratif pour un lecteur d'écran — la case annonce déjà « Mar 17:15 ».
+    expect(tip).toHaveAttribute("aria-hidden", "true");
+
+    await user.unhover(cell);
+    expect(screen.queryByText("Mardi · 17:15")).toBeNull();
+  });
+
+  it("surligne la ligne d'heure de la gouttière alignée sur la case survolée, puis la relâche", async () => {
+    const user = userEvent.setup();
+    render(<VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
+
+    // La gouttière affiche « 09:00 » (heure pile) ; au repos elle n'est pas marquée active.
+    expect(screen.getByText("09:00")).not.toHaveAttribute("data-active", "true");
+
+    await user.hover(screen.getByRole("button", { name: "Mar 09:00" }));
+    expect(screen.getByText("09:00")).toHaveAttribute("data-active", "true");
+
+    await user.unhover(screen.getByRole("button", { name: "Mar 09:00" }));
+    expect(screen.getByText("09:00")).not.toHaveAttribute("data-active", "true");
+  });
+});
+
+/**
+ * Retours Rillieux #8 — séparateur de jour. La frontière entre colonnes de JOUR doit rester PLUS
+ * marquée que le quadrillage interne (lignes d'heures), y compris après l'éclaircissement de la
+ * grille (tranché par le fondateur sur captures A/B à la PR). On épingle la distinction par la
+ * LARGEUR (bordure gauche à 2 px), jamais par une couleur exacte : le séparateur vertical est
+ * épais, les lignes de temps horizontales restent fines.
+ *
+ * Garde de non-régression : la promesse est déjà tenue structurellement — ce test la verrouille
+ * pendant le changement de couleurs du lot, où il serait facile de diluer le séparateur avec le reste.
+ */
+describe("VenueAvailabilityGrid — séparateur de jour marqué (#8)", () => {
+  it("la frontière de jour (bordure gauche) est plus épaisse que le quadrillage interne (lignes d'heures)", () => {
+    render(<VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
+
+    const cell = screen.getByRole("button", { name: "Mar 09:00" });
+    // Le séparateur de jour est un trait VERTICAL épais…
+    expect(cell).toHaveClass("border-l-2");
+    // …quand les lignes d'heures (horizontales) restent fines : pas de bordure haute 2 px.
+    expect(cell.className).not.toMatch(/\bborder-t-2\b/);
+  });
+});
+
+/**
+ * Retours Rillieux #9 — le bloc d'un créneau donne sa PLAGE « 17:30 – 18:45 ». Le `title` et le
+ * nom accessible la portent toujours ; le bloc l'AFFICHE quand sa hauteur le permet (span ≥ 2
+ * rangées), sinon il garde le début seul pour ne pas déborder. La plage vient de
+ * `shared/lib/time.ts::formatTimeRange`, jamais assemblée à la main.
+ */
+describe("VenueAvailabilityGrid — plage horaire du bloc (#9)", () => {
+  it("affiche « 17:30 – 18:45 » dans le bloc, le title et le nom accessible (span ≥ 2)", () => {
+    // 17:30 + 75 min → fin 18:45, span 5 rangées : la hauteur permet la plage complète.
+    render(<VenueAvailabilityGrid venue={venue} slots={[slot({ dayOfWeek: 2, startTime: "17:30:00", durationMinutes: 75 })]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
+
+    // Visible dans le bloc.
+    expect(screen.getByText("17:30 – 18:45")).toBeInTheDocument();
+    // Nom accessible (aria-label) ET title portent la plage (WCAG 2.5.3 : le nom contient le visible).
+    const block = screen.getByRole("button", { name: /17:30 – 18:45/ });
+    expect(block).toHaveAttribute("title", expect.stringContaining("17:30 – 18:45"));
+  });
+
+  it("garde le DÉBUT seul dans le bloc sous 2 rangées, mais donne la plage au title et au nom accessible", () => {
+    // 17:30 + 15 min → span 1 rangée : la plage ne tiendrait pas, le bloc n'affiche que le début.
+    render(<VenueAvailabilityGrid venue={venue} slots={[slot({ dayOfWeek: 2, startTime: "17:30:00", durationMinutes: 15 })]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
+
+    const block = screen.getByRole("button", { name: /17:30 – 17:45/ });
+    // Le bloc n'affiche QUE « 17:30 » (pas la plage) …
+    expect(within(block).getByText("17:30")).toBeInTheDocument();
+    expect(within(block).queryByText("17:30 – 17:45")).toBeNull();
+    // … mais le title garde la plage, découvrable à la souris et au lecteur d'écran.
+    expect(block).toHaveAttribute("title", expect.stringContaining("17:30 – 17:45"));
+  });
 });

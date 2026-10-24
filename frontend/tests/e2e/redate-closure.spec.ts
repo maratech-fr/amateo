@@ -28,25 +28,67 @@ async function expectNoPreviewContrastViolations(page: import("./fixtures").Page
  * ⚑ **SA PROPRE fermeture, pas l'incident du seed** : depuis le découpage début·milieu·fin
  * (fondateur 2026-09-05), l'incident Matéo est DÉCOUPÉ en deux enfants — sa racine porte des
  * semaines-enfants, elle n'est donc plus re-datable (fenêtre gelée). Ce trajet crée donc SA PROPRE
- * fermeture d'UN SEUL bout (lun 19/10 → ven 23/10, une seule semaine entamée = un seul segment,
- * re-datable), la re-date vers un AUTRE bout d'un seul segment (jeu 22/10 : toujours la même
- * semaine calendaire → un seul segment, la règle de re-datage l'accepte), puis la SUPPRIME en
+ * fermeture d'UN SEUL bout (lundi → vendredi d'une même semaine calendaire = une seule semaine
+ * entamée = un seul segment, re-datable), la re-date vers un AUTRE bout d'un seul segment (le jeudi
+ * de la même semaine → toujours un segment, la règle de re-datage l'accepte), puis la SUPPRIME en
  * `finally` — le trajet est IDEMPOTENT quelle que soit l'ordre des fichiers et ne laisse aucun
  * résidu dans la base e2e (amateo_dev).
  *
- * ⚠ Re-dater vers un vendredi (semaine entamée + semaines pleines = plusieurs segments) serait
- * REFUSÉ (422) par la règle début·milieu·fin — d'où le choix de jeu 22/10, qui reste dans la
- * semaine du 19/10 (un seul segment).
+ * ⚠ Re-dater vers un jour d'une AUTRE semaine (semaine entamée + semaines pleines = plusieurs
+ * segments) serait REFUSÉ (422) par la règle début·milieu·fin — d'où le choix du jeudi, qui reste
+ * dans la semaine du lundi (un seul segment). Les dates sont CALCULÉES depuis aujourd'hui (voir
+ * {@link computeClosureWindow}), jamais figées : une fenêtre en dur devenait « passé (non
+ * modifiable) » (`MonthCalendar.tsx` `isPast = iso < today`) dès que l'horloge réelle la dépassait.
  */
 
 const EMAIL = "dev-bccl@amateo.local";
 const PASSWORD = "charge-load-test-pwd";
 const TITLE = "Fermeture e2e à re-dater";
-// Un seul bout : lundi → vendredi (une semaine entamée = un segment), bien après l'incident du seed
-// (fin 18/10) et dans la saison. Re-datage vers jeudi = toujours la même semaine (un segment).
-const START = "2026-10-19";
-const ORIGINAL_END = "2026-10-23";
-const REDATED_END = "2026-10-22";
+
+const MONTH_LABELS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+
+/** ISO Y-m-d sur la date LOCALE (même base que `shared/lib/clock.ts::toISODate`, donc que le « aujourd'hui » de l'app). */
+function toISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Une semaine FUTURE lundi → vendredi tenant dans UN SEUL mois, re-datée au jeudi — calculée depuis
+ * aujourd'hui pour ne jamais retomber dans le passé (bombe à date). On vise le lundi de la semaine +2
+ * (buffer : la fenêtre reste future même lancée un vendredi), puis on avance d'une semaine tant que la
+ * semaine lun→ven déborde sur DEUX mois (sinon `goToMonth` ne saurait vers quel libellé naviguer).
+ *
+ * La saison du club seedé (2026-07-15 → 2027-07-14) couvre toute fenêtre proche, et l'incident Matéo
+ * du seed (31/08 → 16/10) est passé : aucun chevauchement de fermeture existante. Un chevauchement de
+ * VACANCES SCOLAIRES resterait COSMÉTIQUE ici — `CalendarEntryRedatability::redateNeedsPreview` ne
+ * dépend QUE de la présence de semaines-enfants, jamais des congés —, contrairement à l'aperçu
+ * découpé plus bas qui, lui, exige « hors vacances ».
+ */
+function computeClosureWindow(): { start: string; originalEnd: string; redatedEnd: string; monthLabel: string } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // getDay : 0 = dimanche … 1 = lundi. Décalage jusqu'au prochain lundi (≥ 7 j), puis +1 semaine (semaine +2).
+  const toNextMonday = ((8 - today.getDay()) % 7) || 7;
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + toNextMonday + 7);
+  const fridayOf = (mon: Date): Date => new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 4);
+  // Une semaine lun→ven à cheval sur deux mois : prendre la suivante (entièrement dans le mois d'après).
+  while (monday.getMonth() !== fridayOf(monday).getMonth()) {
+    monday.setDate(monday.getDate() + 7);
+  }
+  const thursday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 3);
+  return {
+    start: toISO(monday),
+    originalEnd: toISO(fridayOf(monday)),
+    redatedEnd: toISO(thursday),
+    monthLabel: `${MONTH_LABELS[monday.getMonth()]} ${monday.getFullYear()}`,
+  };
+}
+
+const WINDOW = computeClosureWindow();
+const START = WINDOW.start; // lundi : une seule semaine entamée = un seul segment, re-datable
+const ORIGINAL_END = WINDOW.originalEnd; // vendredi de la même semaine
+const REDATED_END = WINDOW.redatedEnd; // jeudi : toujours la même semaine → un segment, accepté
+const CLOSURE_MONTH_LABEL = WINDOW.monthLabel; // ex. « Novembre 2026 » (libellé exact de l'en-tête du calendrier)
 
 async function login(page: import("./fixtures").Page): Promise<void> {
   await page.goto("/login");
@@ -80,14 +122,14 @@ async function createClosureWithPlan(page: import("./fixtures").Page): Promise<s
   return entryId;
 }
 
-/** Amène le calendrier sur octobre 2026 (la fenêtre de la fermeture) — il s'ouvre sur le mois courant. */
-async function goToOctober(page: import("./fixtures").Page): Promise<void> {
-  await goToMonth(page, "Octobre 2026");
+/** Amène le calendrier sur le mois de la fermeture (calculé) — il s'ouvre sur le mois courant. */
+async function goToClosureMonth(page: import("./fixtures").Page): Promise<void> {
+  await goToMonth(page, CLOSURE_MONTH_LABEL);
 }
 
 /** Ouvre le dialogue du jour sur une case COUVERTE par la fermeture (son titre est dans l'aria-label). */
 async function openClosureDay(page: import("./fixtures").Page): Promise<void> {
-  await goToOctober(page);
+  await goToClosureMonth(page);
   const dayCell = page.getByRole("button", { name: new RegExp(`${TITLE}.*(?<!passé \\(non modifiable\\))$`) }).filter({ hasNotText: "passé" });
   await expect(dayCell.first(), "une case-jour couverte par la fermeture doit être cliquable").toBeVisible({ timeout: 30_000 });
   await dayCell.first().click();

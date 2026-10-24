@@ -5,6 +5,7 @@ import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { formatDuration } from "@/shared/lib/duration";
+import { endTime } from "@/shared/lib/time";
 
 import { durationOptions } from "../lib/days";
 import { pastMidnightMessage } from "../lib/slotOverlap";
@@ -63,7 +64,7 @@ export function DurationSelect({
   };
 
   return (
-    <div className="inline-flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <Select
         aria-label={ariaLabel}
         wrapperClassName={wrapperClassName}
@@ -110,6 +111,27 @@ export function DurationSelect({
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Heure de FIN d'un créneau — 4ᵉ colonne des éditeurs (Jour · Début · Durée · Fin), même forme
+ * que ses colonnes voisines : un libellé « Fin » (`text-xs text-muted-foreground`) coiffe une
+ * valeur en LECTURE SEULE (pas un `Input`), alignée sur la hauteur des contrôles (`h-9`) et
+ * recalculée à chaque changement de durée par le foyer `shared/lib/time.ts::endTime` (jamais
+ * assemblée à la main, garde `timeFormatGuard`). Rien n'est rendu tant que le début est illisible
+ * (`endTime` renvoie "") — l'éditeur ne montre une fin que lorsqu'il y a un début.
+ */
+export function SlotEndField({ startTime, duration }: { startTime: string; duration: number }) {
+  const end = endTime(startTime, duration);
+  if ("" === end) {
+    return null;
+  }
+  return (
+    <div className="text-xs text-muted-foreground">
+      <span>Fin</span>
+      <div className="mt-0.5 flex h-9 items-center text-sm text-foreground">{end}</div>
     </div>
   );
 }
