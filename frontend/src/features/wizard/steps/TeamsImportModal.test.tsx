@@ -105,7 +105,7 @@ const CTC_ROWS: TeamImportAnalysis = {
 /** Dépose un fichier et attend que l'écran de sélection soit rendu. */
 async function deposit(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.upload(screen.getByLabelText("Fichier FBI (.xlsx)"), xlsx());
-  await screen.findByRole("checkbox", { name: /SM1/ });
+  await screen.findByRole("checkbox", { name: /^SM1/ });
 }
 
 describe("TeamsImportModal", () => {
@@ -137,9 +137,9 @@ describe("TeamsImportModal", () => {
     expect(form.get("seasonId")).toBe("season-1");
     expect((form.get("file") as File).name).toBe("equipes.xlsx");
 
-    expect(screen.getByRole("checkbox", { name: /SM1/ })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /SF1/ })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /SM2/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^SM1/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^SF1/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^SM2/ })).toBeInTheDocument();
   });
 
   it("décoche par défaut les équipes déjà présentes, mais les laisse cochables", async () => {
@@ -149,9 +149,9 @@ describe("TeamsImportModal", () => {
     await deposit(user);
 
     // SM1/SM2 (nouvelles) cochées ; SF1 (déjà présente) décochée.
-    expect(screen.getByRole("checkbox", { name: /SM1/ })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /SM2/ })).toBeChecked();
-    const sf1 = screen.getByRole("checkbox", { name: /SF1/ });
+    expect(screen.getByRole("checkbox", { name: /^SM1/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^SM2/ })).toBeChecked();
+    const sf1 = screen.getByRole("checkbox", { name: /^SF1/ });
     expect(sf1).not.toBeChecked();
     // Le marqueur est du TEXTE (jamais couleur seule), lu dans le nom de la case.
     expect(sf1).toHaveAccessibleName(/déjà présente/);
@@ -168,7 +168,7 @@ describe("TeamsImportModal", () => {
     await deposit(user);
 
     // Défaut {3,5} → on retire SM2 (5). Reste {3}.
-    await user.click(screen.getByRole("checkbox", { name: /SM2/ }));
+    await user.click(screen.getByRole("checkbox", { name: /^SM2/ }));
     expect(screen.getByRole("button", { name: "Importer 1 équipe" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Importer 1 équipe" }));
@@ -187,8 +187,8 @@ describe("TeamsImportModal", () => {
     await deposit(user);
 
     // On décoche les deux seules cochées par défaut (SF1 est déjà décochée) → compte 0.
-    await user.click(screen.getByRole("checkbox", { name: /SM1/ }));
-    await user.click(screen.getByRole("checkbox", { name: /SM2/ }));
+    await user.click(screen.getByRole("checkbox", { name: /^SM1/ }));
+    await user.click(screen.getByRole("checkbox", { name: /^SM2/ }));
     expect(screen.getByRole("button", { name: "Importer 0 équipe" })).toBeDisabled();
   });
 
