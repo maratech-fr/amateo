@@ -19,36 +19,33 @@ use Symfony\Component\Mime\Email;
 use Throwable;
 
 /**
- * P5-6 PR 2 — digest quotidien des signalements au support (rail superadmin),
- * 7h30 Europe/Paris via l'AdminJobCatalog. Patron ClubApprovalDigestCommand :
- * `--dry-run` + `--date` pour répéter sans écrire ni envoyer.
+ * Chantier F PR4 (réécrit depuis P5-6 PR 2) — digest quotidien des signalements au support.
  *
- * Fenêtre = les signalements CRÉÉS la veille [J-1 00:00, J 00:00), plus le compteur
- * global des non-traités. Digest VIDE (aucun signalement dans la fenêtre) → aucun
- * email. Destinataire = SUPPORT_EMAIL (vide → no-op annoncé).
+ * Promesse (décision fondateur PR4) : UN SEUL mail le matin annonçant les NOUVEAUX
+ * signalements NON TRAITÉS = déposés la VEILLE [J-1, J) ET encore `untreated`. Zéro nouveau
+ * non-traité → AUCUN mail. Corps BREF (~3 lignes), SANS extrait des messages (plus de recopie
+ * du texte utilisateur), avec UN lien unique vers la console filtrée sur les non-traités
+ * (jamais un lien par item). SUPPORT_EMAIL vide → no-op annoncé ; l'exit non-zéro ne signale
+ * que l'échec de DISPATCH (`mailer->send` n'enfile qu'un message sur le bus — post-async).
  *
- * Lecture CROSS-TENANT : `feedback` est FORCE RLS, l'amateo_app sans GUC ne verrait
- * rien — on lit par la connexion `admin` (porte admin_all), en SQL paramétré.
- *
- * ⚠ Le corps de l'email — INTERNE au fondateur — porte un EXTRAIT du message
- * saisi par l'utilisateur (borné à 200 caractères) : c'est un digest de support,
- * pas un texte public. L'exit non-zéro ne signale QUE l'échec de DISPATCH (le
- * `mailer->send` n'enfile qu'un message sur le bus — sémantique post-async).
+ * Lecture CROSS-TENANT : `feedback` est FORCE RLS, l'amateo_app sans GUC ne verrait rien —
+ * on lit par la connexion `admin` (porte admin_all), en SQL paramétré.
  */
 #[AsCommand(
     name: 'app:feedback:digest',
-    description: 'Daily support digest of the feedback reports created yesterday (+ untreated backlog count). Runs daily (cron-runner).',
+    description: 'Daily support digest of yesterday\'s new untreated feedback reports (single link, no excerpt). Runs daily (cron-runner).',
 )]
 final class FeedbackDigestCommand extends Command
 {
-    private const int MESSAGE_EXCERPT_MAX = 200;
-
     public function __construct(
         private readonly ManagerRegistry $registry,
         private readonly MailerInterface $mailer,
         // Destinataire du digest — bind global `$supportEmail` (%env(SUPPORT_EMAIL)%),
         // vide par défaut → no-op annoncé.
         private readonly string $supportEmail = '',
+        // Origine navigateur pour le lien de la console — bind global `$frontendBaseUrl`
+        // (%env(FRONTEND_BASE_URL)%).
+        private readonly string $frontendBaseUrl = '',
         private readonly MailFrom $mailFrom = new MailFrom,
     ) {
         parent::__construct();
@@ -76,32 +73,31 @@ final class FeedbackDigestCommand extends Command
         }
         $start = $today->modify('-1 day');
 
-        $connection = $this->connection();
-        $rows = $connection->fetchAllAssociative(<<<'SQL'
-            SELECT f.topic, f.message, f.created_at, c.name AS club_name
-            FROM feedback f
-            LEFT JOIN club c ON c.id = f.club_id
-            WHERE f.created_at >= :start AND f.created_at < :end
-            ORDER BY f.topic, f.created_at
-            SQL, ['start' => $start->format('Y-m-d'), 'end' => $today->format('Y-m-d')]);
+        // Les NOUVEAUX non-traités de la veille : déposés dans [J-1, J) ET encore `untreated`.
+        $count = (int) $this->connection()->fetchOne(
+            <<<'SQL'
+                SELECT COUNT(*) FROM feedback
+                WHERE created_at >= :start AND created_at < :end AND status = 'untreated'
+                SQL,
+            ['start' => $start->format('Y-m-d'), 'end' => $today->format('Y-m-d')],
+        );
 
-        if ([] === $rows) {
-            $io->success(\sprintf('Aucun signalement le %s — pas de digest.', $start->format('Y-m-d')));
+        if (0 === $count) {
+            $io->success(\sprintf('Aucun nouveau signalement non traité le %s — pas de digest.', $start->format('Y-m-d')));
 
             return Command::SUCCESS;
         }
 
         if ('' === $this->supportEmail) {
-            $io->warning(\sprintf('%d signalement(s) le %s, mais aucune adresse support configurée — rien envoyé.', \count($rows), $start->format('Y-m-d')));
+            $io->warning(\sprintf('%d nouveau(x) non-traité(s) le %s, mais aucune adresse support configurée — rien envoyé.', $count, $start->format('Y-m-d')));
 
             return Command::SUCCESS;
         }
 
-        $untreated = (int) $connection->fetchOne('SELECT COUNT(*) FROM feedback WHERE status = \'untreated\'');
-        $email = $this->buildDigest($start, $rows, $untreated);
+        $email = $this->buildDigest($start, $count);
 
         if ($dryRun) {
-            $io->success(\sprintf('[dry-run] %d signalement(s) le %s → digest vers %s (non envoyé).', \count($rows), $start->format('Y-m-d'), $this->supportEmail));
+            $io->success(\sprintf('[dry-run] %d nouveau(x) non-traité(s) le %s → digest vers %s (non envoyé).', $count, $start->format('Y-m-d'), $this->supportEmail));
 
             return Command::SUCCESS;
         }
@@ -114,52 +110,32 @@ final class FeedbackDigestCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->success(\sprintf('%d signalement(s) le %s → digest envoyé à %s.', \count($rows), $start->format('Y-m-d'), $this->supportEmail));
+        $io->success(\sprintf('%d nouveau(x) non-traité(s) le %s → digest envoyé à %s.', $count, $start->format('Y-m-d'), $this->supportEmail));
 
         return Command::SUCCESS;
     }
 
-    /**
-     * @param list<array<string, mixed>> $rows
-     */
-    private function buildDigest(DateTimeImmutable $day, array $rows, int $untreated): Email
+    private function buildDigest(DateTimeImmutable $day, int $count): Email
     {
-        $lines = [
-            \sprintf('Signalements du %s : %d', $day->format('d/m/Y'), \count($rows)),
-            \sprintf('En attente de traitement (total) : %d', $untreated),
-            '',
-        ];
-
-        $currentTopic = null;
-        foreach ($rows as $row) {
-            $topic = (string) $row['topic'];
-            if ($topic !== $currentTopic) {
-                $currentTopic = $topic;
-                $lines[] = '';
-                $lines[] = \sprintf('— %s —', $topic);
-            }
-            // Le nom de club est du contenu géré par le club : même aplatissement
-            // que le message (revue sécurité — cosmétique, le corps est MIME-encodé).
-            $club = null === $row['club_name'] ? 'club inconnu' : $this->excerpt((string) $row['club_name']);
-            $lines[] = \sprintf('  [%s] %s', $club, $this->excerpt((string) $row['message']));
-        }
+        // Corps BREF : le nombre + UN lien vers la console filtrée sur les non-traités. Aucun
+        // extrait du message utilisateur (plus de recopie du texte) — le support ouvre la console.
+        $body = implode("\n", [
+            \sprintf('Nouveaux signalements non traités déposés le %s : %d', $day->format('d/m/Y'), $count),
+            'Les consulter et les traiter dans la console :',
+            $this->consoleLink(),
+        ]);
 
         return (new Email)
             ->from($this->mailFrom->address())
             ->to($this->supportEmail)
-            ->subject(\sprintf('Signalements du %s (%d)', $day->format('d/m/Y'), \count($rows)))
-            ->text(implode("\n", $lines));
+            ->subject(\sprintf('Signalements non traités du %s (%d)', $day->format('d/m/Y'), $count))
+            ->text($body);
     }
 
-    /** Extrait borné du message utilisateur — digest INTERNE, pas un texte public. */
-    private function excerpt(string $message): string
+    /** Lien UNIQUE : console → onglet incidents → sous-onglet signalements → filtre non-traités. */
+    private function consoleLink(): string
     {
-        $flat = trim(preg_replace('/\s+/', ' ', $message) ?? $message);
-        if (mb_strlen($flat) <= self::MESSAGE_EXCERPT_MAX) {
-            return $flat;
-        }
-
-        return mb_substr($flat, 0, self::MESSAGE_EXCERPT_MAX) . '…';
+        return rtrim($this->frontendBaseUrl, '/') . '/admin?tab=incidents&sub=signalements&fstatus=untreated';
     }
 
     private function connection(): Connection

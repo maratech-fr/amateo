@@ -6,7 +6,9 @@ namespace App\Tests\Security;
 
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\Feedback;
 use App\Entity\User;
+use App\Storage\FeedbackScreenshotStorage;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -88,9 +90,62 @@ final class RgpdExportTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    /**
+     * Chantier F PR4 — l'export de portabilité (art. 20) contient le TEXTE du signalement
+     * (donnée fournie par la personne) mais JAMAIS les octets de la CAPTURE : le blob vit hors
+     * table (FeedbackScreenshotStorage), et l'export ne lit que les lignes — jamais le stockage.
+     *
+     * Garde de non-régression (point sensible : export). Falsification documentée : faire lire
+     * le stockage par RgpdExportService ferait apparaître la sentinelle du blob → ROUGE.
+     */
+    public function testClubExportNeverContainsTheScreenshot(): void
+    {
+        [$token, $userId] = $this->registerVerified('EXPS');
+        $clubId = $this->clubIdOf($userId);
+
+        $uniqueMessage = 'signalement exportable ' . bin2hex(random_bytes(4));
+        $feedbackId = $this->seedFeedbackWithScreenshot($clubId, $userId, $uniqueMessage);
+        $sentinel = 'SCREENSHOT_SENTINEL_' . bin2hex(random_bytes(6));
+        $this->storage()->store($feedbackId, "\x89PNG\r\n" . $sentinel);
+
+        try {
+            $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+            self::assertResponseIsSuccessful();
+            $raw = (string) $this->client->getResponse()->getContent();
+
+            self::assertStringContainsString($uniqueMessage, $raw, 'le texte du signalement reste exporté (art. 20)');
+            self::assertStringNotContainsString($sentinel, $raw, 'les octets de la capture ne sont JAMAIS dans l\'export');
+        } finally {
+            $this->storage()->delete($feedbackId);
+        }
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    private function storage(): FeedbackScreenshotStorage
+    {
+        $storage = self::getContainer()->get(FeedbackScreenshotStorage::class);
+        \assert($storage instanceof FeedbackScreenshotStorage);
+
+        return $storage;
+    }
+
+    private function seedFeedbackWithScreenshot(string $clubId, string $userId, string $message): string
+    {
+        $this->scopeGucToClub($clubId);
+        $em = $this->em();
+        $feedback = new Feedback($clubId, $userId, 'bug', $message);
+        $feedback->setHasScreenshot(true);
+        $em->persist($feedback);
+        $em->flush();
+        $id = $feedback->getId();
+        $em->clear();
+        $this->clearGuc();
+
+        return $id;
     }
 
     /**

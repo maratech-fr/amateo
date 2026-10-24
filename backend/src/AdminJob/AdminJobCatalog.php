@@ -68,6 +68,10 @@ final class AdminJobCatalog
             // P4-52 — les rendus d'export ne repartaient jamais. 3h45 : après les purges de
             // données, avant les imports du matin.
             new AdminJobDefinition('purge-exports', 'Purge des rendus d’export', 'app:exports:purge', AdminJobSchedule::daily(3, 45)),
+            // Chantier F — rétention RGPD du canal de signalement : texte/contexte 30 j après
+            // traité (ligne conservée), captures à created+90 ou treated+30. Créneau libre
+            // après purge-exports (3:45), avant le contrôle de restauration hebdomadaire (4:00).
+            new AdminJobDefinition('purge-feedback', 'Purge des signalements expirés', 'app:feedback:purge', AdminJobSchedule::daily(3, 50)),
             // Reprouve chaque dimanche qu'un dump nocturne est RESTAURABLE : 04:00, après le
             // dump (01:00) et les purges (jusqu'à 03:45), avant les imports du matin.
             new AdminJobDefinition('db-restore-check', 'Contrôle de restauration', 'app:db:restore-check', AdminJobSchedule::weekly(4)),

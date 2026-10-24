@@ -419,6 +419,9 @@ export interface AdminFeedbackItem {
   // Pointeur léger (PR3) : une capture d'écran est jointe → servie par
   // /api/admin/feedback/{id}/screenshot. Le blob vit hors table, hors RLS.
   hasScreenshot: boolean;
+  // Chantier F PR4 — marqueur de rétention : non nul → texte/contexte purgés (30 j après
+  // traité) ; le détail rend « Contenu purgé (rétention) » à la place du message.
+  purgedAt: string | null;
 }
 
 /** Panneau qualité de service (§3ter) — agrégats GLOBAUX, calculés côté serveur. */

@@ -145,6 +145,9 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                 // Light pointer to the out-of-table screenshot blob (serve it from
                 // /api/admin/feedback/{id}/screenshot when true).
                 'hasScreenshot' => ['type' => 'boolean'],
+                // Retention marker (Chantier F PR4): non-null once the message/context were
+                // purged (30 days after treated); the row survives for QoS stats.
+                'purgedAt' => ['type' => ['string', 'null'], 'format' => 'date-time'],
             ],
         ];
         $qosSchema = [

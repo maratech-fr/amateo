@@ -18,6 +18,7 @@ use App\Entity\TeamTag;
 use App\Enum\AuditAction;
 use App\Enum\OpponentVenueLinkSource;
 use App\Repository\OpponentVenueSuggestionRepository;
+use App\Storage\FeedbackScreenshotStorage;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -102,6 +103,7 @@ final class ErasedClubPurger
         private readonly AuditTrail $auditTrail,
         private readonly OpponentVenueSuggestionRepository $venueSuggestions,
         private readonly OrphanAccountNotifier $orphanAccountNotifier,
+        private readonly FeedbackScreenshotStorage $feedbackScreenshots,
     ) {}
 
     /** @return int nombre de lignes supprimées (workspace complet) */
@@ -136,6 +138,13 @@ final class ErasedClubPurger
         // autres clubs. Pré-passe AVANT le DELETE des liens ci-dessous (les lignes doivent
         // encore exister). Suit le nouveau grain : club-scoped, sans saison.
         $this->decrementSharedVenueChoices($clubId);
+
+        // RGPD art. 17 — les captures d'écran des signalements vivent HORS table
+        // (FeedbackScreenshotStorage, hors RLS) : le DELETE de masse des lignes `feedback`
+        // ci-dessous ne les toucherait pas. On détruit chaque blob par id AVANT le DELETE,
+        // tant que les lignes existent encore pour en donner les ids. PurgeCompletenessTest
+        // garde la ligne `feedback` ; ce geste garde le blob, invisible à ce balayage de tables.
+        $this->deleteFeedbackScreenshots($clubId);
 
         foreach (self::PURGED_BY_CLUB as $entityClass) {
             $deleted += (int) $this->entityManager->createQueryBuilder()
@@ -198,6 +207,24 @@ final class ErasedClubPurger
      * les lignes sont supprimées en DQL de masse juste après, on ne veut pas d'entités
      * gérées. Tourne sous le GUC du club (RLS borne la table tenant).
      */
+    /**
+     * Détruit les captures d'écran (blobs hors table) des signalements du club, AVANT le DELETE
+     * de masse de leurs lignes. Tourne sous le GUC du club (RLS borne la table tenant) ; on ne
+     * lit que les ids des lignes porteuses d'une capture (`has_screenshot = TRUE`).
+     */
+    private function deleteFeedbackScreenshots(string $clubId): void
+    {
+        /** @var list<string> $ids */
+        $ids = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT id FROM feedback WHERE club_id = :clubId AND has_screenshot = TRUE',
+            ['clubId' => $clubId],
+        );
+
+        foreach ($ids as $id) {
+            $this->feedbackScreenshots->delete($id);
+        }
+    }
+
     private function decrementSharedVenueChoices(string $clubId): void
     {
         /** @var list<array{opponent_organisme_code: string, venue_external_ref: string}> $rows */

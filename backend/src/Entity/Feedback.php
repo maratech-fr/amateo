@@ -72,6 +72,15 @@ class Feedback implements TenantOwnedInterface
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $treatedAt = null;
 
+    /**
+     * Marqueur de PURGE (rétention RGPD, Chantier F PR4) : posé par `app:feedback:purge`
+     * 30 jours après « traité » quand le MESSAGE et le CONTEXTE sont détruits. La ligne
+     * survit (stats QoS intactes) ; ce marqueur dit à la console « contenu purgé » et rend
+     * la purge IDEMPOTENTE (une ligne déjà purgée n'est jamais ré-estampée).
+     */
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $purgedAt = null;
+
     #[ORM\Column(type: 'datetimetz_immutable')]
     private DateTimeImmutable $createdAt;
 
@@ -156,6 +165,18 @@ class Feedback implements TenantOwnedInterface
     public function getTreatedAt(): ?DateTimeImmutable
     {
         return $this->treatedAt;
+    }
+
+    public function getPurgedAt(): ?DateTimeImmutable
+    {
+        return $this->purgedAt;
+    }
+
+    public function setPurgedAt(?DateTimeImmutable $purgedAt): self
+    {
+        $this->purgedAt = $purgedAt;
+
+        return $this;
     }
 
     public function getCreatedAt(): DateTimeImmutable
