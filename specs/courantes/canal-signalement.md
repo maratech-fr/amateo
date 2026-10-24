@@ -2,7 +2,8 @@
 
 > Le canal par lequel un gestionnaire signale un bug, une contrainte manquante ou une idée — et
 > de quoi **reproduire** ce qu'un utilisateur a rencontré. Base saine (pas un `mailto:` jetable),
-> sans sur-ingénierie tickets. Les décisions D1-D6 + §3bis/§3ter ci-dessous sont implémentées.
+> sans sur-ingénierie tickets. Les décisions D1-D6 + §3bis/§3ter/§3quater ci-dessous sont
+> implémentées.
 >
 > **La reproduction d'une génération n'est jamais le problème** : `Schedule::$snapshotData`
 > (`backend/src/Entity/Schedule.php:96`) porte le payload engine complet et figé, écrit avant
@@ -40,7 +41,7 @@ un email vers `support@` à chaque dépôt (le mail part par le bus, rail déjà
 | # | Décision |
 |---|---|
 | D1 | **In-app, DEUX portes** : (a) un « Signaler » **contextuel**, dans l'en-tête (`PageHeader`, `frontend/docs/frontend-components.md`) de chaque écran principal et du wizard — contexte auto-joint (écran, club, saison, `scheduleId` s'il y en a un) + champ descriptif du bug ; (b) un « Signaler un bug » **dans le burger** — zone libre : choix d'un topic (bug / contrainte manquante / idée) + commentaire libre. Les deux portes existent partout. **Exception motivée (lot B)** : à l'étape Génération du wizard, l'écran embarqué (`PlanningPage`) masque sa propre porte (a) — celle de l'EN-TÊTE DU WIZARD reste SEULE, pour ne jamais en doubler deux sur le même écran, et joint le planning AFFICHÉ par l'écran embarqué (store wizard `displayedScheduleId`, éphémère) ; un planning ouvert via `/planning` autonome garde sa propre porte (a) |
-| D2 | **Contexte MAXIMAL, redondance assumée** : « je préfère être redondant et pouvoir reproduire plutôt que devoir redemander » — écran, club, saison, `scheduleId` ET **copie** des diagnostics + du payload rejouable dans le signalement lui-même. Justification technique de la redondance : le planning référencé peut être supprimé/régénéré après coup — la copie rend le signalement **impérissable** |
+| D2 | **Contexte MAXIMAL, redondance assumée** : « je préfère être redondant et pouvoir reproduire plutôt que devoir redemander » — écran, club, saison, `scheduleId` ET **copie** des diagnostics + du payload rejouable dans le signalement lui-même. Justification technique de la redondance : le planning référencé peut être supprimé/régénéré après coup — la copie rend le signalement **impérissable**. Le contexte serveur est détaillé en §3quater (`context.auto`) |
 | D3 | **Signé, et TOUT LE MONDE peut signaler** (Gestionnaires ET Membres) |
 | D4 | **Digest quotidien** vers `support@` (pas un email par dépôt) — la console SA reste la vue temps réel |
 | D5 | **La corrélation request-id/logs structurés vit à part** : chaîne complète documentée dans [`docs/ops/observability.md`](../../docs/ops/observability.md) |
@@ -77,6 +78,37 @@ délais de solve) est couvert ailleurs : `solver_metrics` + monitoring SA exista
 sur les 3 zones, `etat-des-lieux.md` §3 2026-10-06) + métriques de capacité
 (`AdminCapacityService`, console superadmin — détail [`superadmin-auth.md`](superadmin-auth.md)
 § Capacité).
+
+## 3quater. Contexte automatique large (`context.auto`)
+
+En plus du contexte léger whitelisté (D2) et de la copie du planning nommé, **tout** signalement
+(planning nommé ou non) porte une clé `context.auto` calculée **côté serveur** par
+`FeedbackContextEnricher` (`backend/src/Service/FeedbackContextEnricher.php`), pour que le support
+se resitue sans rien redemander à l'auteur :
+
+| Clé | Contenu |
+|---|---|
+| `role` | rôle de l'auteur dans le club (adhésion active) |
+| `season` | saison courante résolue serveur : id/nom/dates |
+| `offer` | offre EFFECTIVE du club (Découverte par défaut) — même calcul que `/api/me` |
+| `counters` | compteurs d'inventaire (équipes, gymnases) |
+| `socle` | le plan SEASON (ADR-0002) : `inForce` (une version pointée) + `validatedAt` (1ʳᵉ validation, `null` tant qu'il n'est pas validé) |
+| `period` | la fenêtre CLOSURE/HOLIDAY qui contient AUJOURD'HUI (horloge du club) : type/nom/dates/avancement — `null` hors période (« pas de période » est une information) |
+| `versions` | `displayed` (le planning déjà joint par le client, ré-vérifié tenant) vs `pointed` (la version choisie du socle) — numéro + nom de chacun, `null` si absent |
+| `generation.running` | une génération est-elle en cours pour ce club (`ClubGenerationLock`) |
+| `simulatedToday` | horloge simulée du club (démos/dev), `null` pour tout club à l'heure réelle |
+
+**Toujours résolu depuis le club AUTHENTIFIÉ, jamais depuis un id client** : `clubId`/`seasonId`/
+`planId` envoyés dans `context` ne sont pas dans `LIGHT_CONTEXT_FIELDS`, donc déjà tombés avant
+d'atteindre l'enrichisseur — gardé par le NR d'axe *tenant isolation*
+`Security/FeedbackContextIsolationTest` (bloquant, `docs/testing/blocking-tests.md`). Best-effort :
+une lecture qui échoue n'annule jamais le dépôt (contexte partiel, erreur tracée sans PII).
+
+Le client peut aussi joindre des repères TEXTE libres pour situer l'incident (whitelistés,
+longueur bornée, stockés verbatim — jamais exécutés) : `screenLabel`, `activeFilters`,
+`displayedRange`, `lastClick`, `incidentStatus`/`incidentUrl`/`incidentCode` (trio d'un appel
+réseau fautif). Leur **collecte** côté écran (wizard, module matchs) et leur **affichage/recherche**
+en console superadmin restent à livrer (chantier en cours, prochaine PR).
 
 ## 4. Hors périmètre
 Un système de tickets (statuts multiples, assignation, SLA), un chat, un forum, une base de
