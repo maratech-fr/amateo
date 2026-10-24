@@ -12,6 +12,33 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-10-25 — lot Dependabot (2 PRs mergées, frontend + engine)
+
+### Paquets du frontend (PR #1265 — 17 montées mineures/patch)
+
+**C'est quoi** : les bibliothèques de l'interface, dont React (le moteur d'affichage), Sentry
+(remontée des erreurs), Vitest (tests unitaires) et `@playwright/test` (le robot qui joue les
+parcours dans un vrai navigateur) — React 19.3.1, Sentry 11.8, Vitest 5.0.5, Playwright 1.64.1
+en tête de lot.
+
+**Ça apporte** : correctifs de routine.
+
+**Adapté chez nous** : comme à chaque montée de `@playwright/test`, l'image Docker qui lance
+Playwright en local/CI doit porter la MÊME version que le paquet — tag aligné sur
+`v1.64.1-noble` dans `docker-compose.yml` (service `e2e`), gardé par
+`backend/tests/Unit/Dependency/PlaywrightImageMatchesLockTest.php`.
+
+### Paquets du moteur (PR #1240 — 7 montées mineures/patch)
+
+**C'est quoi** : les bibliothèques Python du moteur de calcul des plannings — FastAPI 0.143.1
+(le serveur web qui reçoit les demandes du backend), Pydantic 2.14.1 + `pydantic-settings` 2.16
+(vérification de la forme des données), Starlette 1.8 (sous FastAPI), Ruff 0.17 (outil
+d'analyse), `httptools` 0.9, NumPy 2.5.4 et `sentry-sdk` 2.72.
+
+**Ça apporte** : correctifs et suivi de routine.
+
+**Adapté chez nous** : rien.
+
 ## 2026-10-24 — modern-screenshot (nouvelle dépendance frontend, hors Dependabot — P4-323)
 
 **C'est quoi** : `modern-screenshot`, une librairie qui rend un nœud du DOM en image (PNG/WebP)
@@ -129,71 +156,6 @@ arrière 8 → 7 n'étant pas garanti sur le format AOF/RDB. Couvrait le volet R
 ligne de roadmap P4-310 ; le volet Mercure est livré le même jour (entrée ci-dessus) — la ligne
 est close et a quitté la roadmap.
 
-## 2026-10-16 — lot Dependabot (5 PRs mergées dont 2 réparées, 2 fermées)
-
-### Paquets du moteur (engine, PR #1196 — 9 montées mineures)
-
-**C'est quoi** : les bibliothèques Python du moteur de calcul des plannings — `fastapi` (le
-serveur web qui reçoit les demandes du backend), `pydantic` (qui vérifie la forme des données
-reçues), et des outils de test.
-
-**Ça apporte** : correctifs et suivi de routine. Seul changement de comportement notable :
-FastAPI 0.143 ne configure plus automatiquement la télémétrie OpenTelemetry — nous ne
-l'utilisons pas, donc aucun effet.
-
-**Adapté chez nous** : rien.
-
-### protobuf 6 → 7 (engine, PR #1197 — FERMÉE)
-
-**C'est quoi** : un format d'échange de données utilisé en interne par le solveur `ortools`.
-Notre code ne s'en sert jamais directement.
-
-**Ça apporte** : rien pour nous — et c'est **incompatible** : `ortools` 9.15 exige une version
-de protobuf inférieure à 6.34. Mergée, plus aucune génération de planning n'aurait fonctionné.
-
-**Adapté chez nous** : PR fermée et version majeure ignorée par Dependabot ; protobuf montera
-quand une future version d'`ortools` l'acceptera.
-
-### Paquets du frontend (PR #1195 — 15 montées mineures, réparée)
-
-**C'est quoi** : les bibliothèques de l'interface, dont `@playwright/test` (le robot qui joue
-les parcours dans un vrai navigateur) et Sentry (remontée des erreurs).
-
-**Ça apporte** : correctifs de routine.
-
-**Adapté chez nous** : l'image Docker qui lance Playwright en local doit porter la MÊME version
-que le paquet — passée de 1.63.0 à 1.64.0 (`docker-compose.yml`, service `e2e`). C'était aussi
-la moitié utile de la PR #1193, fermée.
-
-### Paquets du backend (PR #1194 — 21 montées, réparée)
-
-**C'est quoi** : les correctifs de la version 7.4 de Symfony, Sentry, et les outils d'analyse
-(PHPStan, Rector) ; plus `symfony/mercure-bundle`, qui envoie les mises à jour en direct à l'écran.
-
-**Ça apporte** : correctifs de routine ; PHPStan 2.3 détecte des cas qu'il laissait passer.
-
-**Adapté chez nous** : trois choses.
-- Dependabot avait tiré plusieurs composants Symfony en 8.0 (il résout sans notre règle « rester
-  sur la 7.4 ») : ramenés en 7.4 par `composer update` dans le conteneur.
-- `mercure-bundle` 0.6 parle par défaut la langue de **Mercure 1.0**, alors que notre serveur
-  Mercure est encore en 0.x : épinglé à `protocol_version: '0.x'` dans
-  `backend/config/packages/mercure.yaml`, en attendant la montée vers Mercure 1.0 du lot 4.
-- PHPStan 2.3 a signalé une vérification inutile dans `VenueTravelTimeAutofillService` : retirée.
-
-### Mercure 0.24 en production (PR #1193 — FERMÉE)
-
-**C'est quoi** : le serveur qui pousse les mises à jour en direct (progression d'une génération,
-calcul des trajets, placement des matchs).
-
-**Ça apporte** : une étape intermédiaire que le fondateur a refusée : Mercure passe directement
-de 0.19 à 1.0, même version en dev et en prod, dans une PR dédiée du lot 4.
-
-**Adapté chez nous** : rien ici.
-
-### Mineurs sans impact (#1192, #1183)
-
-`shivammathur/setup-php` 2.40.0 (installe PHP dans la CI, empreinte vérifiée sur le tag) et
-l'image `puppeteer` 25.14.0 du worker qui fabrique les PDF. Rien à adapter.
-
-> Lot le plus ancien retiré par le bornage à 6 (§ en-tête) : `symfony/lock` (2026-10-16, lot 4 PR
-> E, P4-316) — détail dans `git log -p --follow docs/upgrades.md`.
+> Lot le plus ancien retiré par le bornage à 6 (§ en-tête) : lot Dependabot 5 PRs (2026-10-16,
+> `fastapi`/`pydantic` moteur, protobuf fermée, frontend Playwright 1.64.0, backend Symfony/Sentry,
+> Mercure 0.24 fermée) — détail dans `git log -p --follow docs/upgrades.md`.

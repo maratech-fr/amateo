@@ -95,7 +95,13 @@ paths:
   (icône + mot) posé partout où le produit se nomme comme MARQUE (login/inscription, écrans
   système, console admin — jamais pour une mention dans une phrase), n'en porte aucune : le mot
   hérite `currentColor`, un seul ton dans tous les thèmes (un second ton teal codé en dur tombait
-  sous la barre de contraste sur fond clair, retiré).
+  sous la barre de contraste sur fond clair, retiré). `CtcMark` (`shared/components/ui/ctc-mark.tsx`,
+  chantier D) est la maison unique du pictogramme d'une équipe « en entente (CTC) » (poignée de
+  main + nom accessible « Entente (CTC) avec {partenaire} ») — posé DEVANT le nom d'équipe partout
+  où il s'affiche (grilles, listes, options de `TeamSelect`), sauf exports/pages publiques à
+  token/phrases-toasts/console admin ; gardé par `frontend/src/test/ctcMarkGuard.test.ts` (liste
+  NOMINATIVE des surfaces + balayage de complétude sur le jeton `teamLabel`, patron
+  `pageHeaderGuard`/`readStateGuard`).
 - 🔴 **Tout écran principal rend `PageHeader`** (`shared/components/ui/page-header.tsx`) —
   jamais un `<h1` brut : trait `border-accent` + titre à gauche, bouton « Signaler » TOUJOURS
   visible à droite, gardé par `frontend/src/test/pageHeaderGuard.test.ts` (liste nominative des
