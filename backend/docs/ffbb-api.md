@@ -382,6 +382,12 @@ haut.
   [`../../specs/courantes/module-matchs-adversaires.md`](../../specs/courantes/module-matchs-adversaires.md) §9 « Écran
   Adversaires ») et par `OpponentVenueAutoLocator` (repli automatique ci-dessus, ne retient qu'une
   égalité stricte et unique).
+- Autre consommateur côté front (retour Rillieux #20, 2026-10-24) : l'étape Gymnases du wizard
+  (`VenuesStep`, `useFfbbSallesByName`) — bloc « Introuvable à la FFBB ? », dernier recours quand
+  le nom saisi n'est ni dans la commune ni à proximité ; un clic crée le gymnase avec son ancrage
+  fédéral **et** son adresse/position (contrairement au panneau « à proximité » ci-dessus, qui ne
+  pose pas l'adresse) — détail écran : [`../../frontend/docs/frontend-wizard.md`](../../frontend/docs/frontend-wizard.md)
+  §2 « Gymnases ».
 
 ## Ce qui est disponible et NON exploité
 

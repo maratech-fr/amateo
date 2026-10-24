@@ -63,6 +63,7 @@ vi.mock("../queries", () => ({
   useDeletionImpact: () => ({ data: undefined, isPending: false, isError: false }),
   useFfbbSalles: () => ({ data: { salles: [] } }),
   useFfbbSallesProches: () => ({ data: { salles: [] } }),
+  useFfbbSallesByName: () => ({ data: { postalCode: null, salles: [] }, isPending: false }),
 }));
 
 vi.mock("@/features/matches/queries", () => ({ useVenueMatchWindows: () => ({ data: [] }) }));

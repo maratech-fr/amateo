@@ -1,4 +1,5 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { readState, type ReadState } from "@/shared/lib/readState";
@@ -171,6 +172,29 @@ export function useFfbbSallesProches(radiusKm: number | null) {
   return useQuery({
     queryKey: ["wizard", "ffbb_salles_proches", radiusKm],
     queryFn: () => wizardApi.listFfbbSallesProches(radiusKm),
+    staleTime: 3_600_000,
+    retry: false,
+  });
+}
+
+/**
+ * Retour Rillieux #20 — recherche d'une salle par son NOM dans TOUTE la FFBB (`/api/ffbb/salles?q=`),
+ * en dernier recours quand le nom saisi n'est ni dans la commune ni à proximité. Active SEULEMENT à
+ * partir de 3 caractères (même seuil que le serveur) et DÉBOUNCÉE (300 ms) : une frappe au clavier
+ * ne lance pas une requête par caractère. Même profil best-effort que `useFfbbSalles` (`retry: false`,
+ * `staleTime` de session — le référentiel des salles ne bouge pas pendant une saisie).
+ */
+export function useFfbbSallesByName(query: string) {
+  const trimmed = query.trim();
+  const [debounced, setDebounced] = useState(trimmed);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(trimmed), 300);
+    return () => clearTimeout(timer);
+  }, [trimmed]);
+  return useQuery({
+    queryKey: ["wizard", "ffbb_salles_by_name", debounced],
+    queryFn: () => wizardApi.listFfbbSallesByName(debounced),
+    enabled: debounced.length >= 3,
     staleTime: 3_600_000,
     retry: false,
   });
