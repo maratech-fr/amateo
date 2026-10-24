@@ -4,7 +4,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
-import { DurationSelect, GROUP_LABEL_MAX, GroupLabelField } from "./slotFields";
+import { DurationSelect, GROUP_LABEL_MAX, GroupLabelField, SlotEndField } from "./slotFields";
 
 /** Contrôleur minimal : `GroupLabelField` est contrôlé, on lui prête un état pour observer la saisie. */
 function Harness({ capacity }: { capacity: number }) {
@@ -75,5 +75,53 @@ describe("DurationSelect — durée « Autre… » (D8)", () => {
     const ok = screen.getByRole("button", { name: /^OK$/i });
     expect(ok).toHaveAttribute("aria-disabled", "true");
     expect(ok).toHaveAttribute("title", expect.stringContaining("minuit"));
+  });
+});
+
+/**
+ * Retour fondateur (améliorations légères 4/6) — en édition, l'heure de FIN d'un créneau n'est plus
+ * pendue SOUS le sélecteur de durée : elle devient une 4ᵉ colonne de la rangée des éditeurs
+ * (Jour · Début · Durée · Fin), via le composant partagé `SlotEndField` que consomment les deux
+ * éditeurs (`VenuesStep` socle, `PeriodVenues` période). Le libellé « Fin » (même style
+ * `text-xs text-muted-foreground` que Jour/Début/Durée) coiffe une valeur en LECTURE SEULE « 18:45 »
+ * recalculée à chaque changement de durée ; l'heure vient du foyer `shared/lib/time.ts::endTime`,
+ * jamais assemblée à la main (garde `timeFormatGuard`). Sans début lisible, aucune colonne n'est
+ * rendue — l'éditeur ne montre une fin que lorsqu'il y a un début.
+ *
+ * ⚠ La mise sur une MÊME LIGNE visuelle des quatre colonnes n'est pas prouvable en jsdom (aucun
+ * moteur de layout) : c'est la revue visuelle du fondateur qui l'atteste. Ici on garde le CONTRAT
+ * de rendu — le libellé, la valeur, le recalcul, et le silence quand le début est illisible.
+ */
+describe("SlotEndField — heure de fin, 4ᵉ colonne de l'éditeur (retour fondateur)", () => {
+  it("coiffe la valeur « 18:45 » d'un libellé « Fin » pour un début 17:30 et 75 min", () => {
+    render(<SlotEndField startTime="17:30" duration={75} />);
+    expect(screen.getByText("Fin")).toBeInTheDocument();
+    expect(screen.getByText("18:45")).toBeInTheDocument();
+  });
+
+  it("RECALCULE la fin quand la durée change (75 → 90 min : 18:45 → 19:00)", () => {
+    const { rerender } = render(<SlotEndField startTime="17:30" duration={75} />);
+    expect(screen.getByText("18:45")).toBeInTheDocument();
+    // L'éditeur a changé la durée : le composant reçoit la nouvelle valeur et refait le calcul.
+    rerender(<SlotEndField startTime="17:30" duration={90} />);
+    expect(screen.getByText("19:00")).toBeInTheDocument();
+    expect(screen.queryByText("18:45")).toBeNull();
+  });
+
+  it('ne rend RIEN (ni libellé ni valeur) tant que le début est illisible — `endTime` renvoie ""', () => {
+    render(<SlotEndField startTime="" duration={75} />);
+    expect(screen.queryByText("Fin")).toBeNull();
+    expect(screen.queryByText(/\d{1,2}:\d{2}/)).toBeNull();
+  });
+});
+
+/**
+ * Corollaire du même retour : le sélecteur de durée NE porte PLUS l'heure de fin (« Fin : … »
+ * pendue sous le select, commit aeb53c6) — elle a migré dans `SlotEndField`, sa propre colonne.
+ */
+describe("DurationSelect — l'heure de fin a quitté le select (retour fondateur)", () => {
+  it("n'affiche AUCUN « Fin : … » même quand le début est connu", () => {
+    render(<DurationSelect value={75} startTime="17:30" onChange={vi.fn()} aria-label="Durée" />);
+    expect(screen.queryByText(/Fin\s*:/)).toBeNull();
   });
 });

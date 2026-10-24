@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMinutes as sharedFormat, parseTime } from "./time";
+import { endTime, formatMinutes as sharedFormat, formatTimeRange, parseTime } from "./time";
 import { fmtMinutes } from "@/features/wizard/lib/days";
 import { formatMinutes as matchesFormat } from "@/features/matches/lib/weekendGrid";
 import { formatMinutes as planningFormat } from "@/features/planning/lib/grid";
@@ -83,5 +83,40 @@ describe("les replis restent le choix de l'appelant (D-21)", () => {
   it("la détection de coach dédoublé garde null — la réaction la plus stricte", async () => {
     const mod = await import("@/features/wizard/lib/coachDoubleBooking");
     expect(mod).toBeDefined();
+  });
+});
+
+/**
+ * Retours Rillieux #9 — l'heure de FIN d'un créneau (début + durée) et la PLAGE « début – fin »
+ * se calculent ici, au foyer unique des heures de pendule, jamais assemblées à la main dans un
+ * écran (garde `timeFormatGuard`). Un seul endroit sait additionner des minutes et les reformater
+ * en « HH:MM », d'où la réutilisation de `parseTime` (lecture) + `formatMinutes` (écriture, clampée).
+ *
+ * `endTime` sert l'éditeur de créneau (« Fin : 18:45 »), `formatTimeRange` sert le bloc de la
+ * grille et ses `title`/`aria-label` (« 17:30 – 18:45 »).
+ */
+describe("endTime — fin d'un créneau (début + durée)", () => {
+  it("additionne la durée au début et reformate en heure de pendule", () => {
+    expect(endTime("17:30", 75)).toBe("18:45");
+    expect(endTime("17:30", 90)).toBe("19:00");
+    // Les formes réellement servies par l'API (secondes, ISO) sont normalisées comme ailleurs.
+    expect(endTime("17:30:00", 75)).toBe("18:45");
+  });
+
+  it("rend une chaîne vide — jamais « NaN:NaN » — sur un début illisible", () => {
+    // Même ethos que `parseTime` : l'échec est explicite, pas déguisé en heure impossible.
+    expect(endTime("", 60)).toBe("");
+  });
+});
+
+describe("formatTimeRange — plage « début – fin » (foyer unique)", () => {
+  it("compose « 17:30 – 18:45 » (tiret demi-cadratin, une espace de part et d'autre)", () => {
+    expect(formatTimeRange("17:30", 75)).toBe("17:30 – 18:45");
+    // Début normalisé depuis la forme servie par l'API.
+    expect(formatTimeRange("17:30:00", 75)).toBe("17:30 – 18:45");
+  });
+
+  it("rend une chaîne vide sur un début illisible", () => {
+    expect(formatTimeRange("", 90)).toBe("");
   });
 });
