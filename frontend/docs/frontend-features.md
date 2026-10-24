@@ -89,6 +89,14 @@ Messenger ; handler backend `ExportPdfHandler`).
   ailleurs pour une équipe sans entraînement.
 - Les fichiers produits sont servis sous **`/exports`** : proxifié par Vite en dev
   (`vite.config.ts`) et par le Nginx frontend en prod (`docker/frontend/nginx.conf`).
+- **Case « Afficher le nom des coachs » (chantier E)** : décochée par défaut, mémorisée
+  **par club** dans le navigateur (`lib/exportPrefs.ts`, clé `export-show-coaches-<clubId>`,
+  partagée avec l'export rapide du cockpit — `cockpit/SeasonSchedulesModal.tsx::CompactExport`).
+  Ne gouverne que la **grille** du PDF (`{ showCoaches: true }` dans le body quand cochée,
+  jamais la matrice équipes × jours ni l'Excel, dont la feuille « Planning » porte déjà sa
+  propre colonne Coach) : nom COURT (« Karim B. ») du coach posé sur la séance, sinon du 1ᵉʳ
+  coach MAIN de l'équipe — aucun des deux → rien. Nom de fichier suffixé `-coaches` quand
+  cochée (`lib/exportScopeToken.ts`, foyer partagé avec le polling de `useScheduleExport`).
 
 ### 6.6 Multi-tenant transparent
 

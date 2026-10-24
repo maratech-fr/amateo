@@ -471,6 +471,14 @@ curl -X POST http://localhost:8080/api/schedules/a1b2c3d4-e5f6-7890-abcd-ef12345
   -H "Authorization: Bearer <ton-jwt>"
 ```
 
+Corps optionnel (lu à la main par `ExportPdfController`, jamais par un DTO d'API Platform — l'opération hérite du schéma générique `Schedule.ScheduleInput` de la ressource, qui ne décrit donc NI `venueId` NI `showCoaches` : `/api/docs` ne montre pas la vraie forme du corps de cette route) :
+
+```json
+{ "venueId": "…", "showCoaches": true }
+```
+
+`venueId` scope l'export à un seul gymnase (absent/`null` = tous). `showCoaches` affiche le nom court des coachs dans la grille — lu **fail-closed**, seul le booléen strict `true` l'active (`App\Controller\ResolvesExportScopeTrait::resolveShowCoaches`) ; détail du rendu : `backend/docs/backend-controllers.md` § Export PDF / Excel.
+
 ### Comportement
 
 - Le backend répond **202 Accepted** (traitement asynchrone, comme pour la génération).
