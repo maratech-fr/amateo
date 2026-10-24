@@ -262,6 +262,34 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackBlockScreen: "Écran",
   feedbackBlockLastAction: "Dernier geste",
   feedbackBlockTechnical: "Technique",
+  // Libellés de ligne du contexte large (5 blocs). « Écran »/« URL »/« Saison »/« Navigateur »/
+  // « Réf. incident » sont réutilisés des clés feedbackMeta* ci-dessus.
+  feedbackAutoSocle: "Socle",
+  feedbackAutoVersions: "Versions",
+  feedbackAutoFilters: "Filtres actifs",
+  feedbackAutoRange: "Plage affichée",
+  feedbackAutoLastClick: "Dernier clic",
+  feedbackAutoIncident: "Incident",
+  feedbackAutoOffer: "Offre",
+  feedbackAutoCounters: "Volumétrie",
+  feedbackAutoRole: "Rôle",
+  feedbackAutoClock: "Horloge simulée",
+  feedbackAutoGeneration: "Génération",
+  feedbackSocleValue: (inForce: boolean, validatedAt: string | null): string =>
+    inForce ? (null === validatedAt ? "En vigueur" : `En vigueur (validé le ${validatedAt})`) : "Aucune version pointée",
+  feedbackVersionsValue: (displayed: number | null, pointed: number | null): string => {
+    const parts: string[] = [];
+    if (null !== displayed) parts.push(`affichée v${displayed}`);
+    if (null !== pointed) parts.push(`en vigueur v${pointed}`);
+    return 0 === parts.length ? "—" : parts.join(" · ");
+  },
+  feedbackPeriodValue: (name: string, startDate: string, endDate: string, progressPct: number): string =>
+    `${name} · ${startDate} → ${endDate} · ${progressPct} %`,
+  feedbackIncidentValue: (status: string, url: string, code: string | null): string =>
+    null === code ? `${status} · ${url}` : `${status} · ${url} · ${code}`,
+  feedbackCountersValue: (teams: number, venues: number): string =>
+    `${teams} équipe${teams > 1 ? "s" : ""} · ${venues} gymnase${venues > 1 ? "s" : ""}`,
+  feedbackGenerationValue: (running: boolean): string => (running ? "En cours au dépôt" : "Aucune"),
   feedbackTopicLabel: (topic: AdminFeedbackTopic): string =>
     ({ bug: "Bug", missing_constraint: "Contrainte manquante", idea: "Idée" } as const)[topic],
   feedbackStatusLabel: (status: AdminFeedbackStatus): string =>

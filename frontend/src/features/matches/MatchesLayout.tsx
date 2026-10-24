@@ -8,7 +8,7 @@ import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
 import { openConflictCount } from "./lib/conflictResolution";
-import { MATCHES_HELP_LABEL, MATCHES_HELP_TRIGGER, MATCHES_TAB_HELP, activeMatchesTab } from "./lib/screenHelp";
+import { MATCHES_HELP_LABEL, MATCHES_HELP_TRIGGER, MATCHES_TAB_HELP, MATCHES_TAB_LABEL, activeMatchesTab } from "./lib/screenHelp";
 import { pendingReviewCount } from "./lib/reviewQueue";
 import { useConflicts, useFixtures, useModuleVisit } from "./queries";
 import { useMatchesStore } from "./store";
@@ -80,7 +80,7 @@ export function MatchesLayout() {
     // reste une carte centrée, sous l'en-tête.
     return (
       <div className="flex flex-col gap-4">
-        <PageHeader title="Matchs" screen={pathname} />
+        <PageHeader title="Matchs" screen={pathname} screenLabel={`Matchs · ${MATCHES_TAB_LABEL[activeMatchesTab(pathname)]}`} />
         <div className="mx-auto max-w-md py-10 text-center">
           <Lock className="mx-auto mb-3 size-8 text-accent" />
           <h2 className="mb-1 text-lg font-semibold">Matchs verrouillés</h2>
@@ -101,7 +101,7 @@ export function MatchesLayout() {
       {/* L'en-tête « Matchs » porte le bouton « Signaler » (contexte = la route de l'onglet
           courant) — un seul, en tête du module, à la place du bouton discret d'antan qui ne
           vivait que sur le Calendrier. */}
-      <PageHeader title="Matchs" screen={pathname} />
+      <PageHeader title="Matchs" screen={pathname} screenLabel={`Matchs · ${MATCHES_TAB_LABEL[activeMatchesTab(pathname)]}`} />
       {/* LOT F — l'aide contextuelle (i) de l'onglet courant, à GAUCHE de la barre d'onglets :
           un seul bouton, cohérent sur les 7 écrans, dont le contenu suit l'onglet actif. */}
       <div className="flex items-center gap-2">

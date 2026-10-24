@@ -2,7 +2,7 @@ import { HTTPError } from "ky";
 import { type FormEvent, useId, useState } from "react";
 import { useLocation } from "react-router";
 
-import { readRecentIncidentRequestId } from "@/shared/api/lastIncidentStore";
+import { readRecentIncident } from "@/shared/api/lastIncidentStore";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import { Modal } from "@/shared/components/ui/modal";
@@ -11,6 +11,7 @@ import { errorMessage } from "@/shared/lib/errorMessage";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { FeedbackContext, FeedbackTopic } from "./api";
+import { readRecentLastClick } from "./lastClickStore";
 import { useSubmitFeedback } from "./queries";
 
 interface FeedbackDialogProps {
@@ -24,6 +25,12 @@ interface FeedbackDialogProps {
   screen?: string;
   /** Planning affiché par l'écran appelant (variante contextuelle uniquement). */
   scheduleId?: string | null;
+  /** Libellé d'écran LISIBLE (ex. « Assistant · Étape 2/6 · Gymnases ») — contextuel seul. */
+  screenLabel?: string;
+  /** Filtres actifs composés par l'écran (ex. « familles : Championnat ») — contextuel seul. */
+  activeFilters?: string;
+  /** Plage affichée (ex. « week-end du 08/11 ») — contextuel seul. */
+  displayedRange?: string;
 }
 
 const TOPIC_OPTIONS: { value: FeedbackTopic; label: string }[] = [
@@ -32,7 +39,7 @@ const TOPIC_OPTIONS: { value: FeedbackTopic; label: string }[] = [
   { value: "idea", label: "Idée" },
 ];
 
-export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleId }: FeedbackDialogProps) {
+export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleId, screenLabel, activeFilters, displayedRange }: FeedbackDialogProps) {
   const { pathname } = useLocation();
   const submit = useSubmitFeedback();
   const [topic, setTopic] = useState<FeedbackTopic>("bug");
@@ -61,12 +68,34 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
       userAgent: navigator.userAgent,
     };
     if (contextual) {
+      // La porte CONTEXTUELLE joint les repères que seul le front connaît. La porte LIBRE
+      // (burger) reste un contexte léger — aucun de ces repères n'y fuite (garde de frontière).
       if (scheduleId) {
         context.scheduleId = scheduleId;
       }
-      const requestId = readRecentIncidentRequestId();
-      if (requestId) {
-        context.requestId = requestId;
+      if (screenLabel) {
+        context.screenLabel = screenLabel;
+      }
+      if (activeFilters) {
+        context.activeFilters = activeFilters;
+      }
+      if (displayedRange) {
+        context.displayedRange = displayedRange;
+      }
+      const lastClick = readRecentLastClick();
+      if (lastClick) {
+        context.lastClick = lastClick.label;
+      }
+      const incident = readRecentIncident();
+      if (incident) {
+        context.incidentStatus = incident.status;
+        context.incidentUrl = incident.url;
+        if (incident.code) {
+          context.incidentCode = incident.code;
+        }
+        if (incident.requestId) {
+          context.requestId = incident.requestId;
+        }
       }
     }
 

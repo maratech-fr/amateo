@@ -6,6 +6,7 @@ import { AppRouter } from "@/app/router";
 import { ErrorBoundary } from "@/app/ErrorBoundary";
 import { Providers } from "@/app/providers";
 import { buildSentryOptions } from "@/app/sentry";
+import { installLastClickCapture } from "@/shared/feedback/lastClickStore";
 import { seedOnlineFromNavigator } from "@/shared/lib/online";
 import { readPersistedThemeMode } from "@/shared/stores/themeStore";
 import "@/index.css";
@@ -34,6 +35,10 @@ document.documentElement.classList.toggle("dark", "dark" === readPersistedThemeM
 // (`#online = true`) et ne bascule que sur les événements window. Sans ce seed, un onglet ouvert
 // DÉJÀ hors ligne se croirait en ligne (bandeau muet, mutations lancées au lieu d'être mises en file).
 seedOnlineFromNavigator();
+
+// Chantier F PR2 — mémoire du dernier contrôle cliqué (nom accessible + rôle, jamais une valeur
+// de champ), pour situer le geste de l'utilisateur quand il ouvre un signalement contextuel.
+installLastClickCapture();
 
 const container = document.getElementById("root");
 if (!container) {

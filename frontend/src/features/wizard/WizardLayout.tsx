@@ -592,7 +592,11 @@ export function WizardPage() {
             {/* P5-6 — porte contextuelle : l'étape courante voyage dans le contexte. Lot B — à
                 l'étape Génération, on joint AUSSI le planning affiché (remonté par PlanningPage via
                 le store) ; les autres étapes n'en tiennent aucun. */}
-            <FeedbackButton screen={`wizard/${stepId}`} scheduleId={"generate" === stepId ? displayedScheduleId ?? undefined : undefined} />
+            <FeedbackButton
+              screen={`wizard/${stepId}`}
+              screenLabel={`Assistant · Étape ${index + 1}/${WIZARD_STEPS.length} · ${currentStep?.label ?? ""}`}
+              scheduleId={"generate" === stepId ? displayedScheduleId ?? undefined : undefined}
+            />
             <Button
               variant="ghost"
               size="sm"

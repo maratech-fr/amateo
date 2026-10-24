@@ -279,10 +279,11 @@ export function useDeleteAdminReleaseNote() {
 
 // P5-6 — inbox des signalements. La QoS voyage AVEC la liste (agrégat global renvoyé
 // quel que soit le filtre) ; on la lit donc de la réponse courante, sans requête à part.
-export function useAdminFeedback(status?: AdminFeedbackStatus) {
+export function useAdminFeedback(status?: AdminFeedbackStatus, q?: string) {
+  const search = q?.trim() ? q.trim() : undefined;
   return useQuery({
-    queryKey: ["admin-feedback", status ?? "all"],
-    queryFn: () => getAdminFeedback(status ? { status } : {}),
+    queryKey: ["admin-feedback", status ?? "all", search ?? ""],
+    queryFn: () => getAdminFeedback({ ...(status ? { status } : {}), ...(search ? { q: search } : {}) }),
     placeholderData: (previous) => previous,
     refetchInterval: 60_000,
   });

@@ -11,6 +11,12 @@ interface FeedbackButtonProps {
   screen?: string;
   /** Planning affiché par l'écran, s'il en tient un. */
   scheduleId?: string | null;
+  /** Libellé d'écran LISIBLE joint au signalement (ex. « Assistant · Étape 2/6 · Gymnases »). */
+  screenLabel?: string;
+  /** Filtres actifs composés par l'écran (joints au signalement). */
+  activeFilters?: string;
+  /** Plage affichée par l'écran (jointe au signalement). */
+  displayedRange?: string;
   variant?: ButtonProps["variant"];
   className?: string;
 }
@@ -20,7 +26,7 @@ interface FeedbackButtonProps {
  * posé dans l'en-tête d'un écran, qui ouvre la modale en variante contextuelle (topic
  * « bug » figé + contexte joint automatiquement).
  */
-export function FeedbackButton({ screen, scheduleId, variant = "ghost", className }: FeedbackButtonProps) {
+export function FeedbackButton({ screen, scheduleId, screenLabel, activeFilters, displayedRange, variant = "ghost", className }: FeedbackButtonProps) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -30,7 +36,17 @@ export function FeedbackButton({ screen, scheduleId, variant = "ghost", classNam
         <Flag className="size-4 text-destructive" />
         Signaler
       </Button>
-      {open ? <FeedbackDialog variant="contextual" screen={screen} scheduleId={scheduleId} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <FeedbackDialog
+          variant="contextual"
+          screen={screen}
+          scheduleId={scheduleId}
+          screenLabel={screenLabel}
+          activeFilters={activeFilters}
+          displayedRange={displayedRange}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

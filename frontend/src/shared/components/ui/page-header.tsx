@@ -10,6 +10,12 @@ interface PageHeaderProps {
   screen: string;
   /** Planning affiché par l'écran, s'il en tient un (joint au signalement). */
   scheduleId?: string | null;
+  /** Libellé d'écran LISIBLE joint au signalement (ex. « Assistant · Étape 2/6 · Gymnases »). */
+  screenLabel?: string;
+  /** Filtres actifs composés par l'écran (joints au signalement). */
+  activeFilters?: string;
+  /** Plage affichée par l'écran (jointe au signalement). */
+  displayedRange?: string;
   /** Contenu AVANT le titre, dans le même bloc (ex. blason du club). */
   leading?: ReactNode;
   /** Contenu APRÈS le titre, dans le même bloc (ex. pastille « principal », renommer, supprimer). */
@@ -42,7 +48,7 @@ interface PageHeaderProps {
  * Vit dans `shared/` : un en-tête partagé ne peut pas remonter vers une feature (AUD-FRT-21), donc
  * le `FeedbackButton` est descendu avec lui dans `shared/feedback/`.
  */
-export function PageHeader({ title, screen, scheduleId, leading, beside, actions, subtitle, showFeedback = true, className }: PageHeaderProps) {
+export function PageHeader({ title, screen, scheduleId, screenLabel, activeFilters, displayedRange, leading, beside, actions, subtitle, showFeedback = true, className }: PageHeaderProps) {
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2", className)}>
       {leading}
@@ -54,7 +60,7 @@ export function PageHeader({ title, screen, scheduleId, leading, beside, actions
       {/* Le groupe de droite est poussé au bout par `ml-auto` — les actions restent AVANT « Signaler ». */}
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {actions}
-        {showFeedback ? <FeedbackButton screen={screen} scheduleId={scheduleId} /> : null}
+        {showFeedback ? <FeedbackButton screen={screen} scheduleId={scheduleId} screenLabel={screenLabel} activeFilters={activeFilters} displayedRange={displayedRange} /> : null}
       </div>
     </div>
   );

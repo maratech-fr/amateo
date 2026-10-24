@@ -22,6 +22,17 @@ export function activeMatchesTab(pathname: string): MatchesTab {
   return "calendrier";
 }
 
+/** Libellé lisible de l'onglet — pour le contexte d'un signalement (« Matchs · Calendrier »). */
+export const MATCHES_TAB_LABEL: Record<MatchesTab, string> = {
+  conflits: "Conflits",
+  calendrier: "Calendrier",
+  importer: "Importer",
+  configuration: "Configuration",
+  adversaires: "Adversaires",
+  "semaine-type": "Semaine type",
+  contraintes: "Contraintes",
+};
+
 export const MATCHES_TAB_HELP: Record<MatchesTab, ReactNode> = {
   calendrier: (
     <p>

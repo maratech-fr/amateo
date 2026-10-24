@@ -195,6 +195,7 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                     ['name' => 'page', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'integer', 'minimum' => 1, 'default' => 1]],
                     ['name' => 'limit', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25]],
                     ['name' => 'status', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string', 'enum' => ['untreated', 'treated']]],
+                    ['name' => 'q', 'in' => 'query', 'required' => false, 'description' => 'Case-insensitive search on club name or message word (LIKE wildcards escaped)', 'schema' => ['type' => 'string', 'maxLength' => 100]],
                 ],
             )),
             '/api/admin/feedback/{id}' => new PathItem(get: new Operation(
