@@ -655,5 +655,47 @@ describe("TeamsStep", () => {
     expect(TEAM_COLUMNS.gender).not.toBe("w-20");
     expect(TEAM_COLUMNS.gender).not.toBe("w-24");
   });
+
+  // ── Chantier D (CTC) PR1 — déclarer une entente dans l'éditeur d'équipe ──
+  // Retour Rillieux #6 : rendre visible qu'une équipe est en entente (CTC). La saisie vit dans
+  // l'éditeur de l'étape Équipes (pas un 3ᵉ onglet Liens) : une case « Entente (CTC) » + un champ
+  // « Partenaire(s) » en texte libre, enregistrés par le même `onField` → PUT {isCtc, ctcPartner}.
+  // Le partenaire est FACULTATIF même case cochée ; aucune référence vers un autre club (texte libre).
+
+  it("offre une case « Entente (CTC) » sur la ligne, et l'enregistre au clic", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TeamsStep />);
+
+    const ctc = within(teamRow()).getByRole("checkbox", { name: /Entente \(CTC\)/ });
+    expect(ctc).not.toBeChecked();
+    await user.click(ctc);
+
+    expect(updateMut).toHaveBeenCalled();
+    expect(updateMut.mock.calls[0][0].body.isCtc).toBe(true);
+  });
+
+  it("montre le champ « Partenaire(s) » (pré-rempli) quand l'équipe est déjà en entente", () => {
+    team = { ...baseTeam, isCtc: true, ctcPartner: "AS Voisine" };
+    renderWithProviders(<TeamsStep />);
+    const row = teamRow();
+
+    expect(within(row).getByRole("checkbox", { name: /Entente \(CTC\)/ })).toBeChecked();
+    const partner = within(row).getByRole("textbox", { name: /Partenaire/ });
+    expect((partner as HTMLInputElement).value).toBe("AS Voisine");
+  });
+
+  it("envoie le partenaire saisi (texte libre) à l'enregistrement", async () => {
+    team = { ...baseTeam, isCtc: true, ctcPartner: null };
+    const user = userEvent.setup();
+    renderWithProviders(<TeamsStep />);
+
+    const partner = within(teamRow()).getByRole("textbox", { name: /Partenaire/ });
+    await user.type(partner, "Entente des 3 Rivières");
+    await user.tab(); // blur → enregistrement
+
+    expect(updateMut).toHaveBeenCalled();
+    const body = updateMut.mock.calls.at(-1)?.[0].body;
+    expect(body.ctcPartner).toBe("Entente des 3 Rivières");
+  });
 });
 
