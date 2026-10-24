@@ -437,6 +437,26 @@ export interface AdminFeedbackResponse {
  * par le serveur (snapshot/diagnostics opaques). Rendu en TEXTE PUR ; le snapshot n'est
  * jamais déplié dans le DOM (métadonnées + « copier le JSON » seulement).
  */
+/**
+ * Chantier F PR1 — le contexte AUTOMATIQUE large recalculé côté serveur
+ * (`FeedbackContextEnricher`). Tout nullable : un signalement sans planning nommé,
+ * ou antérieur au lot, n'en porte qu'une partie (ou pas du tout — `context.auto` absent).
+ */
+export interface AdminFeedbackAuto {
+  role?: string | null;
+  season?: { id: string; name: string; startDate: string; endDate: string } | null;
+  counters?: { teams: number; venues: number };
+  socle?: { inForce: boolean; validatedAt: string | null };
+  period?: { type: string; name: string; startDate: string; endDate: string; progress: number } | null;
+  versions?: {
+    displayed: { id: string; number: number; name: string } | null;
+    pointed: { id: string; number: number; name: string } | null;
+  };
+  generation?: { running: boolean };
+  simulatedToday?: string | null;
+  offer?: { plan: string; name: string } | null;
+}
+
 export interface AdminFeedbackContext {
   screen?: string;
   url?: string;
@@ -447,6 +467,15 @@ export interface AdminFeedbackContext {
   scheduleStatus?: string;
   snapshot?: unknown;
   diagnostics?: unknown[];
+  // Chantier F PR2 — repères TEXTE du client (porte contextuelle) + contexte serveur large.
+  screenLabel?: string;
+  activeFilters?: string;
+  displayedRange?: string;
+  lastClick?: string;
+  incidentStatus?: number | string;
+  incidentUrl?: string;
+  incidentCode?: string;
+  auto?: AdminFeedbackAuto;
   [key: string]: unknown;
 }
 
@@ -575,11 +604,12 @@ export function deleteAdminReleaseNote(id: string, csrfToken: string): Promise<v
 
 // P5-6 — signalements (lecture + verdicts CSRF-protégés).
 
-export function getAdminFeedback(params: { page?: number; limit?: number; status?: AdminFeedbackStatus }): Promise<AdminFeedbackResponse> {
+export function getAdminFeedback(params: { page?: number; limit?: number; status?: AdminFeedbackStatus; q?: string }): Promise<AdminFeedbackResponse> {
   const searchParams: Record<string, string | number> = {};
   if (params.page) searchParams.page = params.page;
   if (params.limit) searchParams.limit = params.limit;
   if (params.status) searchParams.status = params.status;
+  if (params.q) searchParams.q = params.q;
   return adminApi.get("feedback", { searchParams }).json();
 }
 

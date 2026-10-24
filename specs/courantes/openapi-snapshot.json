@@ -3096,6 +3096,16 @@
                                 "treated"
                             ]
                         }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "description": "Case-insensitive search on club name or message word (LIKE wildcards escaped)",
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 100
+                        }
                     }
                 ]
             }

@@ -94,6 +94,61 @@ describe("FeedbackDialog — variante contextuelle", () => {
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
     expect(mockSubmit.mock.calls[0][0].context).not.toHaveProperty("requestId");
   });
+
+  // Chantier F PR2 — la porte contextuelle joint les repères que SEUL le front connaît :
+  // le libellé d'écran lisible, les filtres/plage affichés, et le TRIO complet de l'incident
+  // (statut + URL + code), pas seulement le request-id. Falsification : ignorer ces props /
+  // ne joindre que le request-id laisse ces clés absentes du payload.
+  it("joint screenLabel, activeFilters, displayedRange et le trio complet de l'incident", async () => {
+    mockSubmit.mockResolvedValue({ id: "fb1" });
+    recordIncident({ status: 500, url: "/api/venues", code: "venue_conflict", requestId: "req-1" });
+    renderWithProviders(
+      <FeedbackDialog
+        variant="contextual"
+        screen="wizard/venues"
+        screenLabel="Assistant · Étape 2/6 · Gymnases"
+        activeFilters="familles : Championnat"
+        displayedRange="week-end du 08/11"
+        onClose={vi.fn()}
+      />,
+      { route: "/wizard" },
+    );
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Décrivez le problème" }), "Souci de gymnase");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    const ctx = mockSubmit.mock.calls[0][0].context as Record<string, unknown>;
+    expect(ctx).toMatchObject({
+      screenLabel: "Assistant · Étape 2/6 · Gymnases",
+      activeFilters: "familles : Championnat",
+      displayedRange: "week-end du 08/11",
+      incidentUrl: "/api/venues",
+      incidentCode: "venue_conflict",
+    });
+    expect(String(ctx.incidentStatus)).toBe("500");
+  });
+
+  // Note : la jointure du DERNIER CLIC (`lastClickStore`) est prouvée dans son propre
+  // fichier `FeedbackDialogLastClick.test.tsx` (import de module neuf isolé — il rougit SEUL
+  // tant que le store n'existe pas, sans casser le chargement de CE fichier sous Vite).
+
+  // Garde de frontière : la porte LIBRE (burger) reste un contexte léger — les repères riches
+  // de la porte contextuelle ne doivent JAMAIS fuiter dans un signalement libre.
+  it("variante libre : n'ajoute aucun des repères riches contextuels", async () => {
+    mockSubmit.mockResolvedValue({ id: "fb1" });
+    recordIncident({ status: 500, url: "/api/x", code: "boom", requestId: "req-2" });
+    renderWithProviders(<FeedbackDialog variant="free" onClose={vi.fn()} />, { route: "/planning" });
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Votre message" }), "Une idée");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    const ctx = mockSubmit.mock.calls[0][0].context as Record<string, unknown>;
+    expect(ctx).not.toHaveProperty("screenLabel");
+    expect(ctx).not.toHaveProperty("lastClick");
+    expect(ctx).not.toHaveProperty("incidentStatus");
+  });
 });
 
 describe("FeedbackDialog — retours serveur", () => {

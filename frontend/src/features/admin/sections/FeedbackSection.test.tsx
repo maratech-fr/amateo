@@ -164,6 +164,131 @@ describe("FeedbackSection", () => {
     await waitFor(() => expect(mockUntreat).toHaveBeenCalledWith("fb1", "csrf-token"));
   });
 
+  // Chantier F PR2 — le détail rend le CONTEXTE AUTOMATIQUE large (`context.auto`) + les
+  // repères TEXTE du client en CINQ blocs titrés : Planning / Période / Écran / Dernier geste /
+  // Technique. Falsification : le bloc plat actuel ne rend aucun de ces titres ni ces valeurs.
+  it("rend le contexte large en 5 blocs titrés (context.auto + repères texte)", async () => {
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: {
+        screen: "wizard/venues",
+        url: "http://app/wizard",
+        userAgent: "UA-test",
+        screenLabel: "Assistant · Étape 2/6 · Gymnases",
+        activeFilters: "familles : Championnat",
+        displayedRange: "week-end du 08/11",
+        lastClick: "bouton « Ajouter un gymnase »",
+        incidentStatus: "500",
+        incidentUrl: "http://app/api/venues",
+        incidentCode: "venue_conflict",
+        auto: {
+          role: "manager",
+          season: { id: "se1", name: "Saison 2026-2027", startDate: "2026-09-01", endDate: "2027-06-30" },
+          offer: { plan: "discovery", name: "Découverte" },
+          counters: { teams: 14, venues: 3 },
+          socle: { inForce: true, validatedAt: "2026-10-12T10:00:00+00:00" },
+          period: { type: "holiday", name: "Vacances de la Toussaint", startDate: "2026-10-17", endDate: "2026-11-02", progress: 0.3 },
+          versions: { displayed: { id: "sc3", number: 3, name: "v3" }, pointed: { id: "sc2", number: 2, name: "v2" } },
+          generation: { running: false },
+          simulatedToday: null,
+        },
+      },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    // Les cinq blocs sont titrés (clés centralisées, jamais la phrase recopiée).
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackBlockPlanning)).toBeInTheDocument();
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackBlockPeriod)).toBeInTheDocument();
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackBlockScreen)).toBeInTheDocument();
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackBlockLastAction)).toBeInTheDocument();
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackBlockTechnical)).toBeInTheDocument();
+
+    // Des valeurs du contexte (données serveur / client) sont lisibles.
+    expect(within(dialog).getByText(/Saison 2026-2027/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Vacances de la Toussaint/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Assistant · Étape 2\/6 · Gymnases/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Ajouter un gymnase/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Découverte/)).toBeInTheDocument();
+  });
+
+  // Rétro-compatibilité : un ANCIEN signalement sans `context.auto` (ni repères texte) reste
+  // lisible — le détail ne plante pas et rend ses champs plats existants.
+  it("rend un ancien signalement sans context.auto sans planter", async () => {
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: { screen: "/planning", url: "http://app/planning", userAgent: "UA-old" },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText(detailBase.message)).toBeInTheDocument();
+    expect(within(dialog).getByText("/planning")).toBeInTheDocument();
+  });
+
+  // ⚠ Sécurité (revue PR1) : une URL de schéma `javascript:` jointe au contexte n'est JAMAIS
+  // rendue en LIEN cliquable — texte pur seulement. Falsification : rendre l'URL en <a href>
+  // crée une ancre `javascript:` et rend ce test rouge.
+  it("ne rend jamais une URL javascript: comme lien (texte pur)", async () => {
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: {
+        screen: "/planning",
+        url: "javascript:alert(1)",
+        incidentUrl: "javascript:alert(2)",
+        userAgent: "UA",
+      },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(dialog.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(within(dialog).getByText(/javascript:alert\(1\)/)).toBeInTheDocument();
+  });
+
+  // Chantier F PR2 — deep-link : `?feedback={id}` ouvre directement le détail (lien du digest,
+  // PR4). Falsification : sans lecture du param, aucun dialogue ne s'ouvre au montage.
+  it("ouvre le détail depuis le deep-link ?feedback={id}", async () => {
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue(detailBase);
+    renderWithProviders(<FeedbackSection />, { route: "/admin?feedback=fb1" });
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await waitFor(() => expect(mockDetail).toHaveBeenCalledWith("fb1"));
+  });
+
+  // Chantier F PR2 — le filtre s'initialise depuis `?fstatus=untreated` (le digest pointera
+  // les non-traités). Falsification : sans lecture du param, la liste part sur « Tous ».
+  it("initialise le filtre depuis ?fstatus=untreated", async () => {
+    mockList.mockResolvedValue(listResponse());
+    renderWithProviders(<FeedbackSection />, { route: "/admin?fstatus=untreated" });
+
+    await waitFor(() => expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ status: "untreated" })));
+    expect(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.feedbackFilterUntreated })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  // Chantier F PR2 — la recherche par club ou mot du message passe `q` au serveur (le filtrage
+  // ILIKE/échappement est prouvé côté backend, AdminFeedbackTest). Falsification : pas de champ
+  // de recherche, ou `q` jamais transmis.
+  it("passe le terme de recherche q au serveur", async () => {
+    mockList.mockResolvedValue(listResponse());
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await screen.findByText("Basket Club Lyon");
+    await userEvent.type(screen.getByRole("textbox", { name: ADMIN_SECTIONS_TEXTS.feedbackSearchLabel }), "lyon");
+
+    await waitFor(() => expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ q: "lyon" })));
+  });
+
   // ⚠ Consigne revue PR 2 : le contenu utilisateur se rend en TEXTE PUR. Falsification
   // prévue : un dangerouslySetInnerHTML dans le détail interpréterait le HTML et rendrait
   // ce test rouge (le texte littéral disparaît, un <img> apparaît).

@@ -14,6 +14,16 @@ export interface FeedbackContext {
   requestId?: string;
   userAgent?: string;
   scheduleId?: string;
+  // Chantier F PR2 — repères que SEUL le front connaît, joints par la porte CONTEXTUELLE :
+  // le libellé d'écran lisible, les filtres/plage affichés, le dernier geste accessible et
+  // le trio complet du dernier incident serveur (statut + URL + code).
+  screenLabel?: string;
+  activeFilters?: string;
+  displayedRange?: string;
+  lastClick?: string;
+  incidentStatus?: number;
+  incidentUrl?: string;
+  incidentCode?: string;
 }
 
 export interface FeedbackPayload {

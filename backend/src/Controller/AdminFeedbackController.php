@@ -61,6 +61,13 @@ final readonly class AdminFeedbackController
         $page = $request->query->getInt('page', 1);
         $limit = $request->query->getInt('limit', 25);
         $status = $request->query->get('status');
+        $search = $request->query->get('q');
+        if (null !== $search) {
+            $search = trim($search);
+            if ('' === $search) {
+                $search = null;
+            }
+        }
 
         if ($page < 1 || $limit < 1 || $limit > 100) {
             return new JsonResponse(['error' => 'Paramètres de pagination invalides.'], 400);
@@ -68,13 +75,29 @@ final readonly class AdminFeedbackController
         if (null !== $status && !\in_array($status, [Feedback::STATUS_UNTREATED, Feedback::STATUS_TREATED], true)) {
             return new JsonResponse(['error' => 'Filtre de statut invalide.'], 400);
         }
+        if (null !== $search && mb_strlen($search) > 100) {
+            return new JsonResponse(['error' => 'Recherche trop longue.'], 400);
+        }
 
         $connection = $this->connection();
-        $where = null === $status ? '' : 'WHERE f.status = :status';
-        $params = null === $status ? [] : ['status' => $status];
+        $conditions = [];
+        $params = [];
+        if (null !== $status) {
+            $conditions[] = 'f.status = :status';
+            $params['status'] = $status;
+        }
+        if (null !== $search) {
+            // Métacaractères LIKE échappés (`\`, `%`, `_` préfixés d'un backslash, le caractère
+            // d'échappement par défaut d'ILIKE) : `q` est cherché LITTÉRALEMENT — un `%` saisi ne
+            // devient jamais un joker qui ramène toute la table. Recherche cross-tenant sur le
+            // nom du club OU le message, insensible à la casse.
+            $conditions[] = '(c.name ILIKE :q OR f.message ILIKE :q)';
+            $params['q'] = '%' . addcslashes($search, '\\%_') . '%';
+        }
+        $where = [] === $conditions ? '' : 'WHERE ' . implode(' AND ', $conditions);
 
         $total = (int) $connection->fetchOne(
-            \sprintf('SELECT COUNT(*) FROM feedback f %s', $where),
+            \sprintf('SELECT COUNT(*) FROM feedback f LEFT JOIN club c ON c.id = f.club_id %s', $where),
             $params,
         );
 

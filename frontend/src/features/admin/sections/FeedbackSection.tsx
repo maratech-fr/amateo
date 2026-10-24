@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { Search } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -35,13 +37,26 @@ const FILTERS: { id: StatusFilter; label: string }[] = [
 
 /**
  * Onglet « Signalements » de la console SA (P5-6, D6) : le panneau qualité de service en
- * tête (§3ter), la liste filtrable par statut, et le détail (message + contexte) rendu en
- * TEXTE PUR — le snapshot n'est jamais déplié dans le DOM (métadonnées + copie JSON).
+ * tête (§3ter), la liste filtrable par statut + recherche (club ou mot du message, `q` serveur),
+ * et le détail (message + contexte LARGE en 5 blocs) rendu en TEXTE PUR — le snapshot n'est
+ * jamais déplié dans le DOM (métadonnées + copie JSON). Deep-link `?feedback={id}` ouvre
+ * directement un signalement (lien du digest) ; `?fstatus` initialise le filtre.
  */
 export function FeedbackSection() {
-  const [filter, setFilter] = useState<StatusFilter>("all");
-  const [openItem, setOpenItem] = useState<AdminFeedbackItem | null>(null);
-  const feedback = useAdminFeedback("all" === filter ? undefined : filter);
+  const [searchParams] = useSearchParams();
+  const initialStatus = searchParams.get("fstatus");
+  const [filter, setFilter] = useState<StatusFilter>("untreated" === initialStatus || "treated" === initialStatus ? initialStatus : "all");
+  const [openId, setOpenId] = useState<string | null>(searchParams.get("feedback"));
+
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+  // Débounce : on ne requête qu'après une pause de frappe (la QoS + la liste voyagent ensemble).
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchDraft), 200);
+    return () => clearTimeout(timer);
+  }, [searchDraft]);
+
+  const feedback = useAdminFeedback("all" === filter ? undefined : filter, search);
   const items = feedback.data?.items ?? [];
 
   return (
@@ -54,20 +69,34 @@ export function FeedbackSection() {
       {feedback.data ? <QosPanel qos={feedback.data.qos} /> : null}
 
       <section aria-label={ADMIN_SECTIONS_TEXTS.feedbackListLabel} className="space-y-4">
-        <div className="flex flex-wrap gap-2" role="group" aria-label={ADMIN_SECTIONS_TEXTS.feedbackFilterGroupLabel}>
-          {FILTERS.map((f) => (
-            <Button
-              key={f.id}
-              type="button"
-              size="sm"
-              variant={filter === f.id ? "default" : "outline"}
-              className={cn(filter === f.id && "bg-console-accent text-console-surface hover:bg-console-accent-hover")}
-              aria-pressed={filter === f.id}
-              onClick={() => setFilter(f.id)}
-            >
-              {f.label}
-            </Button>
-          ))}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-2" role="group" aria-label={ADMIN_SECTIONS_TEXTS.feedbackFilterGroupLabel}>
+            {FILTERS.map((f) => (
+              <Button
+                key={f.id}
+                type="button"
+                size="sm"
+                variant={filter === f.id ? "default" : "outline"}
+                className={cn(filter === f.id && "bg-console-accent text-console-surface hover:bg-console-accent-hover")}
+                aria-pressed={filter === f.id}
+                onClick={() => setFilter(f.id)}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+          <div className="relative w-full md:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-console-muted" aria-hidden="true" />
+            <input
+              type="text"
+              value={searchDraft}
+              maxLength={100}
+              aria-label={ADMIN_SECTIONS_TEXTS.feedbackSearchLabel}
+              placeholder={ADMIN_SECTIONS_TEXTS.feedbackSearchPlaceholder}
+              onChange={(event) => setSearchDraft(event.target.value)}
+              className="h-9 w-full rounded-md border border-white/15 bg-white/[0.04] pl-9 pr-3 text-sm text-white outline-none placeholder:text-console-text-faint focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
+            />
+          </div>
         </div>
 
         {feedback.isPending ? (
@@ -86,7 +115,7 @@ export function FeedbackSection() {
                 <button
                   type="button"
                   aria-label={ADMIN_SECTIONS_TEXTS.feedbackViewSignalement(item.clubName ?? ADMIN_SECTIONS_TEXTS.feedbackClubUnknownLower)}
-                  onClick={() => setOpenItem(item)}
+                  onClick={() => setOpenId(item.id)}
                   className="flex w-full flex-col gap-1 p-4 text-left transition-colors hover:bg-white/[0.04] md:flex-row md:items-center md:gap-4"
                 >
                   <span className="shrink-0 text-xs text-console-muted md:w-40">{fmtDate(item.createdAt)}</span>
@@ -101,7 +130,9 @@ export function FeedbackSection() {
         )}
       </section>
 
-      {null !== openItem ? <FeedbackDetailDialog item={openItem} onClose={() => setOpenItem(null)} /> : null}
+      {null !== openId ? (
+        <FeedbackDetailDialog id={openId} fallback={items.find((i) => i.id === openId) ?? null} onClose={() => setOpenId(null)} />
+      ) : null}
     </section>
   );
 }
@@ -181,23 +212,25 @@ function SmallMetric({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
-function FeedbackDetailDialog({ item, onClose }: { item: AdminFeedbackItem; onClose: () => void }) {
-  const detail = useAdminFeedbackDetail(item.id);
+function FeedbackDetailDialog({ id, fallback, onClose }: { id: string; fallback: AdminFeedbackItem | null; onClose: () => void }) {
+  const detail = useAdminFeedbackDetail(id);
   const treat = useTreatAdminFeedback();
   const untreat = useUntreatAdminFeedback();
   const [confirming, setConfirming] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const message = detail.data?.message ?? item.message;
+  // Métadonnées : le détail serveur dès qu'il arrive, sinon la ligne de liste (deep-link : null).
+  const data = detail.data ?? fallback;
+  const message = data?.message ?? "";
   const context = detail.data?.context ?? null;
-  const status = detail.data?.status ?? item.status;
+  const status: AdminFeedbackStatus = data?.status ?? "untreated";
   const pending = treat.isPending || untreat.isPending;
 
   const runVerdict = () => {
     setActionError(null);
     const mutation = "untreated" === status ? treat : untreat;
-    mutation.mutate(item.id, {
+    mutation.mutate(id, {
       onSuccess: () => {
         setConfirming(false);
         onClose();
@@ -239,9 +272,9 @@ function FeedbackDetailDialog({ item, onClose }: { item: AdminFeedbackItem; onCl
     >
       <div className="mt-4 space-y-5 text-sm">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaClub} value={item.clubName ?? ADMIN_SECTIONS_TEXTS.feedbackClubUnknown} />
-          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaType} value={ADMIN_SECTIONS_TEXTS.feedbackTopicLabel(item.topic)} />
-          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaReceivedAt} value={fmtDate(item.createdAt)} />
+          <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaClub} value={data?.clubName ?? ADMIN_SECTIONS_TEXTS.feedbackClubUnknown} />
+          {data ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaType} value={ADMIN_SECTIONS_TEXTS.feedbackTopicLabel(data.topic)} /> : null}
+          {data ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaReceivedAt} value={fmtDate(data.createdAt)} /> : null}
           <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaStatus} value={ADMIN_SECTIONS_TEXTS.feedbackStatusLabel(status)} />
         </dl>
 
@@ -257,7 +290,7 @@ function FeedbackDetailDialog({ item, onClose }: { item: AdminFeedbackItem; onCl
           <p className="text-xs text-destructive">{ADMIN_SECTIONS_TEXTS.feedbackContextError}</p>
         ) : null}
 
-        {null !== context ? <ContextBlock context={context} onCopy={copyJson} copied={copied} /> : null}
+        {null !== context ? <ContextBlocks context={context} onCopy={copyJson} copied={copied} /> : null}
 
         {null !== actionError ? (
           <p role="alert" className="text-sm text-destructive">{actionError}</p>
@@ -268,32 +301,93 @@ function FeedbackDetailDialog({ item, onClose }: { item: AdminFeedbackItem; onCl
   );
 }
 
-function ContextBlock({ context, onCopy, copied }: { context: AdminFeedbackContext; onCopy: () => void; copied: boolean }) {
-  // Le snapshot est ÉNORME : on n'affiche que ses métadonnées (jamais son JSON dans le DOM).
+/** Le contexte LARGE en 5 blocs titrés — le métier lisible d'abord, le technique après. */
+function ContextBlocks({ context, onCopy, copied }: { context: AdminFeedbackContext; onCopy: () => void; copied: boolean }) {
+  const auto = context.auto;
+  const T = ADMIN_SECTIONS_TEXTS;
+
+  // Snapshot ÉNORME : seules ses métadonnées (jamais son JSON dans le DOM).
   const snapshotBytes = undefined === context.snapshot ? 0 : JSON.stringify(context.snapshot).length;
   const diagnosticsCount = Array.isArray(context.diagnostics) ? context.diagnostics.length : 0;
   const hasHeavy = snapshotBytes > 0 || diagnosticsCount > 0;
 
+  const planningRows: Row[] = [];
+  if (auto?.socle) {
+    planningRows.push({ label: T.feedbackAutoSocle, value: T.feedbackSocleValue(auto.socle.inForce, null === auto.socle.validatedAt ? null : fmtDate(auto.socle.validatedAt)) });
+  }
+  if (auto?.versions && (auto.versions.displayed || auto.versions.pointed)) {
+    planningRows.push({ label: T.feedbackAutoVersions, value: T.feedbackVersionsValue(auto.versions.displayed?.number ?? null, auto.versions.pointed?.number ?? null) });
+  }
+
+  const screenLead = context.screenLabel ?? context.screen;
+  const screenRows: Row[] = [];
+  if (context.url) screenRows.push({ label: T.feedbackMetaUrl, value: context.url });
+  if (context.activeFilters) screenRows.push({ label: T.feedbackAutoFilters, value: context.activeFilters });
+  if (context.displayedRange) screenRows.push({ label: T.feedbackAutoRange, value: context.displayedRange });
+
+  const lastActionRows: Row[] = [];
+  if (context.lastClick) lastActionRows.push({ label: T.feedbackAutoLastClick, value: context.lastClick });
+  if (undefined !== context.incidentStatus) {
+    lastActionRows.push({ label: T.feedbackAutoIncident, value: T.feedbackIncidentValue(String(context.incidentStatus), context.incidentUrl ?? "", context.incidentCode ?? null) });
+  }
+  if (context.requestId) lastActionRows.push({ label: T.feedbackMetaIncidentRef, value: context.requestId });
+
+  const technicalRows: Row[] = [];
+  if (auto?.season) technicalRows.push({ label: T.feedbackMetaSeason, value: auto.season.name });
+  if (auto?.offer) technicalRows.push({ label: T.feedbackAutoOffer, value: auto.offer.name });
+  if (auto?.counters) technicalRows.push({ label: T.feedbackAutoCounters, value: T.feedbackCountersValue(auto.counters.teams, auto.counters.venues) });
+  if (auto?.role) technicalRows.push({ label: T.feedbackAutoRole, value: auto.role });
+  if (auto?.generation) technicalRows.push({ label: T.feedbackAutoGeneration, value: T.feedbackGenerationValue(auto.generation.running) });
+  if (auto?.simulatedToday) technicalRows.push({ label: T.feedbackAutoClock, value: auto.simulatedToday });
+  if (context.scheduleStatus) technicalRows.push({ label: T.feedbackMetaScheduleStatus, value: context.scheduleStatus });
+  if (context.userAgent) technicalRows.push({ label: T.feedbackMetaBrowser, value: context.userAgent });
+
+  return (
+    <div className="space-y-4">
+      <ContextSection title={T.feedbackBlockPlanning} rows={planningRows} />
+      {auto?.period ? (
+        <ContextSection title={T.feedbackBlockPeriod} rows={[]}>
+          <p className="break-words text-xs font-medium">{T.feedbackPeriodValue(auto.period.name, auto.period.startDate, auto.period.endDate, Math.round(auto.period.progress * 100))}</p>
+        </ContextSection>
+      ) : null}
+      <ContextSection title={T.feedbackBlockScreen} rows={screenRows}>
+        {screenLead ? <p className="break-words text-xs font-medium">{screenLead}</p> : null}
+      </ContextSection>
+      <ContextSection title={T.feedbackBlockLastAction} rows={lastActionRows} />
+      <ContextSection title={T.feedbackBlockTechnical} rows={technicalRows}>
+        {hasHeavy ? (
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span>{T.feedbackSnapshotMeta(snapshotBytes.toLocaleString("fr-FR"), diagnosticsCount)}</span>
+            <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCopy}>
+              {copied ? T.feedbackCopied : T.feedbackCopyJson}
+            </Button>
+          </div>
+        ) : null}
+      </ContextSection>
+    </div>
+  );
+}
+
+interface Row {
+  label: string;
+  value: string;
+}
+
+function ContextSection({ title, rows, children }: { title: string; rows: Row[]; children?: ReactNode }) {
+  // Un bloc muet (aucune ligne, aucun enfant) ne s'affiche pas — console lisible.
+  if (0 === rows.length && !children) {
+    return null;
+  }
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{ADMIN_SECTIONS_TEXTS.feedbackContext}</p>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        {context.screen ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaScreen} value={context.screen} /> : null}
-        {/* URL en TEXTE PUR — jamais un lien cliquable (consigne revue). */}
-        {context.url ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaUrl} value={context.url} /> : null}
-        {context.requestId ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaIncidentRef} value={context.requestId} /> : null}
-        {context.userAgent ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaBrowser} value={context.userAgent} /> : null}
-        {context.seasonId ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaSeason} value={context.seasonId} /> : null}
-        {context.scheduleId ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaSchedule} value={context.scheduleId} /> : null}
-        {context.scheduleStatus ? <MetaRow label={ADMIN_SECTIONS_TEXTS.feedbackMetaScheduleStatus} value={context.scheduleStatus} /> : null}
-      </dl>
-      {hasHeavy ? (
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <span>{ADMIN_SECTIONS_TEXTS.feedbackSnapshotMeta(snapshotBytes.toLocaleString("fr-FR"), diagnosticsCount)}</span>
-          <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCopy}>
-            {copied ? ADMIN_SECTIONS_TEXTS.feedbackCopied : ADMIN_SECTIONS_TEXTS.feedbackCopyJson}
-          </Button>
-        </div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      {children}
+      {rows.length > 0 ? (
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          {rows.map((row) => (
+            <MetaRow key={row.label} label={row.label} value={row.value} />
+          ))}
+        </dl>
       ) : null}
     </div>
   );

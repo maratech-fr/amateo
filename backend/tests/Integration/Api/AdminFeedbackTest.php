@@ -205,6 +205,94 @@ final class AdminFeedbackTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    /**
+     * Promesse (amendement fondateur 2026-10-23) : la console RECHERCHE un signalement par
+     * NOM DE CLUB ou par MOT du message (ILIKE, insensible à la casse), à travers les tenants.
+     * Le rail superadmin reste étanche en ENTRÉE (anonyme/JWT club → 401) : déjà prouvé par
+     * testAnonymousAndClubJwtAreRefusedAtTheFirewall, non redoublé ici.
+     */
+    public function testSuperAdminSearchesByClubNameOrMessageWord(): void
+    {
+        $this->admin()->executeStatement('DELETE FROM feedback');
+        $alpha = $this->seedClub('Alpha Basket');
+        $bravo = $this->seedClub('Bravo Sport');
+        $this->seedFeedback($alpha, null, 'bug', 'Le planning plante au chargement', 'untreated', '2026-08-01T10:00:00+00:00', null);
+        $this->seedFeedback($bravo, null, 'idea', 'Un tri par gymnase serait utile', 'untreated', '2026-08-02T10:00:00+00:00', null);
+
+        $this->authenticateSuperAdmin('feedback-q-club@example.test');
+
+        // Par nom de club (fragment, casse indifférente) : ne garde que ce club.
+        $this->client->request('GET', '/api/admin/feedback?q=ALPHA&limit=50');
+        self::assertResponseIsSuccessful();
+        $body = $this->responseBody();
+        self::assertSame(1, $body['pagination']['total'], 'la recherche par nom de club ne garde que ce club');
+        self::assertSame('Alpha Basket', $body['items'][0]['clubName']);
+
+        // Par mot du message (dans l'autre club) : la recherche traverse le tenant.
+        $this->client->request('GET', '/api/admin/feedback?q=gymnase&limit=50');
+        self::assertResponseIsSuccessful();
+        $body = $this->responseBody();
+        self::assertSame(1, $body['pagination']['total'], 'la recherche par mot du message traverse le tenant');
+        self::assertSame('Bravo Sport', $body['items'][0]['clubName']);
+    }
+
+    /**
+     * Abus / injection : les métacaractères LIKE (`%`, `_`, `\`) de `q` sont ÉCHAPPÉS et
+     * cherchés LITTÉRALEMENT — un `%` ne doit JAMAIS se comporter en joker qui ramène toute
+     * la table (falsification : sans échappement, `?q=%` rend TOUT, `?q=a_b` matche aussi « axb »).
+     */
+    public function testSearchEscapesLikeWildcards(): void
+    {
+        $this->admin()->executeStatement('DELETE FROM feedback');
+        $club = $this->seedClub('Zeta');
+        $this->seedFeedback($club, null, 'bug', '100% des creneaux occupes', 'untreated', '2026-08-01T10:00:00+00:00', null);
+        $this->seedFeedback($club, null, 'bug', 'a_b litteral souligne', 'untreated', '2026-08-02T10:00:00+00:00', null);
+        $this->seedFeedback($club, null, 'bug', 'axb variante quelconque', 'untreated', '2026-08-03T10:00:00+00:00', null);
+
+        $this->authenticateSuperAdmin('feedback-q-escape@example.test');
+
+        // `%` (encodé %25) cherché littéralement : seul le message qui contient vraiment « % ».
+        $this->client->request('GET', '/api/admin/feedback?q=%25&limit=50');
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseBody()['pagination']['total'], 'le % est un caractère recherché, jamais un joker');
+
+        // `_` cherché littéralement : « a_b » ne doit PAS matcher « axb » (joker simple échappé).
+        $this->client->request('GET', '/api/admin/feedback?q=a_b&limit=50');
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseBody()['pagination']['total'], 'le _ est un caractère recherché, jamais un joker simple');
+    }
+
+    /**
+     * Recherche ET filtre de statut se CUMULENT : `?q=…&status=untreated` ne garde que les
+     * non-traités QUI matchent. Un autre club non-traité (qui ne matche pas) prouve que c'est
+     * bien `q` qui discrimine, pas le seul statut (falsification : `q` ignoré → 2 non-traités).
+     */
+    public function testSearchCombinesWithTheStatusFilter(): void
+    {
+        $this->admin()->executeStatement('DELETE FROM feedback');
+        $omega = $this->seedClub('Omega');
+        $other = $this->seedClub('Autre');
+        $this->seedFeedback($omega, null, 'bug', 'Omega souci urgent', 'untreated', '2026-08-01T10:00:00+00:00', null);
+        $this->seedFeedback($omega, null, 'idea', 'Omega idee deja traitee', 'treated', '2026-08-02T10:00:00+00:00', '2026-08-02T12:00:00+00:00');
+        $this->seedFeedback($other, null, 'bug', 'Autre souci non traite', 'untreated', '2026-08-03T10:00:00+00:00', null);
+
+        $this->authenticateSuperAdmin('feedback-q-status@example.test');
+        $this->client->request('GET', '/api/admin/feedback?q=omega&status=untreated&limit=50');
+        self::assertResponseIsSuccessful();
+        $body = $this->responseBody();
+        self::assertSame(1, $body['pagination']['total'], 'recherche ET filtre de statut se cumulent');
+        self::assertSame('untreated', $body['items'][0]['status']);
+        self::assertSame('Omega', $body['items'][0]['clubName']);
+    }
+
+    /** `q` trop long (> 100 caractères) → 400, même contrat que la recherche de clubs. */
+    public function testSearchQueryOverHundredCharactersIsRejected(): void
+    {
+        $this->authenticateSuperAdmin('feedback-q-long@example.test');
+        $this->client->request('GET', '/api/admin/feedback?q=' . str_repeat('a', 101));
+        self::assertResponseStatusCodeSame(400);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
