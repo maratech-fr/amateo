@@ -26,6 +26,13 @@ Fonctionnalité: L'import des équipes choisit ses lignes
     Alors « BEHAT SM2 » et « BEHAT U13 » sont créées
     Et « BEHAT SF1 » est absente de la base
 
+  Scénario: Une équipe en entente est suggérée, mais n'est jamais partagée sans décision
+    Étant donné le club de démonstration, connecté, avec son code FFBB
+    Quand j'analyse un fichier contenant « BEHAT U15F CTC »
+    Alors « BEHAT U15F CTC » est suggérée en entente
+    Quand j'importe « BEHAT U15F CTC » en décochant l'entente
+    Alors « BEHAT U15F CTC » est créée sans entente
+
   Scénario: Le fichier d'un autre club est refusé dès l'analyse
     Étant donné le club de démonstration, connecté, avec son code FFBB
     Quand j'analyse un fichier d'équipes portant le code d'un autre club
