@@ -11,6 +11,7 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { groupTeamsByTier, TIER_MEANING, tierGroupLabel } from "@/shared/lib/teamTiers";
@@ -91,6 +92,8 @@ function payload(team: Team, patch: Partial<TeamPayload>): TeamPayload {
     level: team.level,
     sessionsPerWeek: team.sessionsPerWeek,
     isActive: team.isActive,
+    isCtc: team.isCtc,
+    ctcPartner: team.ctcPartner,
     ...patch,
   };
 }
@@ -126,9 +129,10 @@ interface RowProps {
 }
 
 function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLinks, rankLabel, canUp, canDown, onMove, linksLabel, sessionsLocked }: RowProps) {
-  // Local edit buffers (saved on blur). name/sessions only change through this row.
+  // Local edit buffers (saved on blur). name/sessions/ctcPartner only change through this row.
   const [name, setName] = useState(team.name);
   const [sessions, setSessions] = useState(String(team.sessionsPerWeek));
+  const [ctcPartner, setCtcPartner] = useState(team.ctcPartner ?? "");
 
   // Competitive team ranked "Bonus" (D) is likely a mistake — it will be
   // scheduled last. Non-blocking warning (the solver stays the authority).
@@ -138,7 +142,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
 
   return (
     <div className="border-t border-border py-1.5">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {undefined === number ? null : <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{number}</span>}
         {/* P4-36 (b) — le rang n'existait que comme TITRE de section : invisible dès qu'on
             trie autrement, et illisible quand on cherche une équipe précise. Décision
@@ -220,6 +224,30 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label={`Supprimer l'équipe ${team.name}`} disabled={engaged} onClick={() => onDelete(team)}>
           <Trash2 className="size-4" />
         </Button>
+        {/* Entente (CTC) — repère interne au club, texte libre (chantier D PR1). `w-full` → cette
+            rangée passe sous les contrôles (le conteneur est `flex-wrap`), mais reste DANS la même
+            ligne logique d'équipe. La case s'enregistre au clic (contrôlée par le serveur, comme
+            Genre/Catégorie) ; le champ « Partenaire(s) » n'apparaît QUE cochée (divulgation
+            progressive) et s'enregistre au blur. Partenaire FACULTATIF même coché ; texte libre. */}
+        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 pl-8">
+          <label className="flex items-center gap-1.5 text-xs text-foreground">
+            <input type="checkbox" className="size-4 shrink-0" checked={true === team.isCtc} onChange={(e) => onField(team, { isCtc: e.target.checked })} />
+            {WIZARD_TEXTS.ctcLabel}
+          </label>
+          {true === team.isCtc ? (
+            <label className="flex items-center gap-1.5 text-xs text-foreground">
+              {WIZARD_TEXTS.ctcPartnerLabel}
+              <Input
+                compact
+                className="w-48"
+                placeholder={WIZARD_TEXTS.ctcPartnerPlaceholder}
+                value={ctcPartner}
+                onChange={(e) => setCtcPartner(e.target.value)}
+                onBlur={() => ctcPartner !== (team.ctcPartner ?? "") && onField(team, { ctcPartner: ctcPartner.trim() || null })}
+              />
+            </label>
+          ) : null}
+        </div>
       </div>
       {engaged && (
         // Marqueur COURT, mais du TEXTE : un `title` de survol ne suffisait pas — un
@@ -336,7 +364,10 @@ function SortableTeamRow({ team, canUp, canDown, onArrow }: SortRowProps) {
       <button type="button" className="-m-1 cursor-grab touch-none rounded p-1 text-muted-foreground hover:text-foreground" aria-label="Déplacer l'équipe" {...attributes} {...listeners}>
         <GripVertical className="size-4" />
       </button>
-      <span className="flex-1 text-sm">{team.name}</span>
+      <span className="flex flex-1 items-center text-sm">
+        {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
+        {team.name}
+      </span>
       <Button size="icon" variant="ghost" className="size-7" aria-label="Monter" disabled={!canUp} onClick={() => onArrow(-1)}>
         <ChevronUp className="size-4" />
       </Button>

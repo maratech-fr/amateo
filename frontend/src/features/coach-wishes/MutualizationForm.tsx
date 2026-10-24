@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 
 import type { Coach, PriorityTier, Team, TeamCoach } from "@/features/wizard/api";
 import { Button } from "@/shared/components/ui/button";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 
@@ -136,6 +137,7 @@ export function MutualizationForm({
           {partnerCandidates.map((t) => (
             <label key={t.id} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-sm">
               <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={partnerTeamIds.has(t.id)} onChange={() => togglePartner(t.id)} aria-label={`Partenaire ${t.name}`} />
+              {t.isCtc ? <CtcMark partner={t.ctcPartner} /> : null}
               {t.name}
             </label>
           ))}

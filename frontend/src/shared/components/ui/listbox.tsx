@@ -525,8 +525,11 @@ export function Listbox({
 
 function Glyph({ icon, swatch }: { icon?: ReactNode; swatch?: string | null }) {
   if (icon !== undefined) {
+    // Pas d'`aria-hidden` ici : l'icône décide de sa propre sémantique. Les icônes décoratives
+    // (lucide `Users` d'un groupe, sans nom) restent ignorées de l'AT ; une icône porteuse d'un
+    // nom (`CtcMark`) est exposée. Le `[&_svg]` teinte/dimensionne sans toucher au `role`.
     return (
-      <span aria-hidden className="flex size-5 shrink-0 items-center justify-center [&_svg]:size-4 [&_svg]:text-muted-foreground">
+      <span className="flex size-5 shrink-0 items-center justify-center [&_svg]:size-4 [&_svg]:text-muted-foreground">
         {icon}
       </span>
     );
@@ -586,8 +589,12 @@ function Option({ opt, selected, onPick, leading }: { opt: ListboxOption; select
         opt.disabled && "cursor-not-allowed opacity-50",
       )}
     >
-      <span aria-hidden className="flex size-5 items-center justify-center [&_svg]:size-4">
-        {opt.disabled ? <AlertTriangle className="text-warning" /> : <Glyph icon={opt.icon} swatch={opt.swatch} />}
+      {/* Pas d'`aria-hidden` sur la cellule : une icône d'option qui porte son PROPRE nom
+          accessible (`CtcMark`, `role="img"`) doit atteindre le lecteur d'écran et rejoindre
+          le nom de l'option. Les glyphes décoratifs (AlertTriangle, pastille) se masquent
+          eux-mêmes. */}
+      <span className="flex size-5 items-center justify-center [&_svg]:size-4">
+        {opt.disabled ? <AlertTriangle aria-hidden className="text-warning" /> : <Glyph icon={opt.icon} swatch={opt.swatch} />}
       </span>
       <span className="min-w-0">
         {/* Selection is conveyed by aria-selected + a heavier weight — NOT `text-accent`: as text on

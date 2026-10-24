@@ -2,6 +2,7 @@ import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, MapPin, Sparkles
 import { Fragment, type ReactNode, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { coachFullName } from "@/shared/lib/coachName";
 import type { CoachGender } from "@/shared/lib/coachWording";
@@ -216,6 +217,7 @@ function ConflictSideRow({ side }: { side: ConflictSideLine }) {
     <TableRow>
       <th scope="row" className="w-full px-1.5 py-0.5 text-left align-top font-normal">
         <span className="block">
+          {true === side.isCtc ? <CtcMark partner={side.ctcPartner} /> : null}
           <span className="font-medium text-foreground">{side.teamName}</span>
           {undefined !== side.roleWord ? <span className="text-muted-foreground"> {side.roleWord}</span> : null}
         </span>
@@ -323,7 +325,10 @@ function ConflictVenueRow({ side }: { side: ConflictSideLine }) {
           d'identité ne capte plus tout le vide — l'espace se répartit sur Gymnase · Date · Créneau. */}
       <th scope="row" className="px-1.5 py-0.5 text-left align-top font-normal">
         <span className="flex flex-wrap items-baseline gap-x-1.5">
-          <span className="font-medium text-foreground">{side.teamName}</span>
+          <span className="inline-flex items-baseline font-medium text-foreground">
+            {true === side.isCtc ? <CtcMark partner={side.ctcPartner} /> : null}
+            {side.teamName}
+          </span>
           {undefined !== side.opponent ? <span className="min-w-0 text-foreground [overflow-wrap:anywhere]">{side.opponent}</span> : null}
         </span>
       </th>

@@ -1,6 +1,7 @@
 import { Users } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Listbox, type ListboxGroup, type ListboxOption } from "@/shared/components/ui/listbox";
 import { groupTeamsByTier, type TeamLike, TIER_MEANING, tierGroupLabel, type TierLike } from "@/shared/lib/teamTiers";
 
@@ -66,7 +67,10 @@ export function TeamSelect<T extends TeamLike>({ teams, tiers, mutualisationGrou
 
   const teamOption = (team: T, swatch: string | null): ListboxOption => {
     const meta = optionMeta?.(team) ?? {};
-    return { value: team.id, label: team.name, swatch, count: meta.count, sub: meta.sub, disabled: meta.disabled, title: meta.title };
+    // Une équipe en entente (CTC) porte le repère CtcMark comme ICÔNE d'option (il remplace la
+    // pastille de couleur du palier) ; « PARTOUT où le nom s'affiche », sélecteurs compris.
+    const icon = true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : undefined;
+    return { value: team.id, label: team.name, swatch, icon, count: meta.count, sub: meta.sub, disabled: meta.disabled, title: meta.title };
   };
 
   // Flat fallback: no tiers loaded AND no mutualisation section → a plain list (no group headers).

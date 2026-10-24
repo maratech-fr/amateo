@@ -1,6 +1,7 @@
 import { Lock, LockOpen } from "lucide-react";
 import { useEffect } from "react";
 
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
@@ -186,7 +187,10 @@ export function ClubViewTable({ model, selectedSlotId, onSelectSlot, highlightSl
             {group.rows.map((row) => (
               <TableRow key={row.teamId} className="align-top">
                 <TableHead scope="row" className="sticky left-0 z-10 border-b border-r border-border bg-card px-2 py-1 text-left font-medium normal-case tracking-normal text-foreground align-top">
-                  <span className="block truncate">{row.teamLabel}</span>
+                  <span className="flex items-center truncate">
+                    {row.isCtc ? <CtcMark partner={row.ctcPartner} /> : null}
+                    <span className="truncate">{row.teamLabel}</span>
+                  </span>
                   {0 === row.sessionCount ? <span className="block text-[10px] font-normal text-warning">{PLANNING_TEXTS.clubViewNoSession}</span> : null}
                 </TableHead>
                 {row.cells.map((cell) => (

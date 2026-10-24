@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
@@ -189,7 +190,8 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
           </h3>
           <ul className="flex flex-col gap-1.5">
             {correctionGroups.map((group) => {
-              const teamName = teams.get(group.fixture.teamId)?.name ?? "Équipe ?";
+              const team = teams.get(group.fixture.teamId);
+              const teamName = team?.name ?? "Équipe ?";
               const seen = group.done ? null : seenInFbiLabel(group.corrections[0]?.lastSeenInFbiAt ?? null, today);
               return (
                 <li
@@ -209,7 +211,10 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
                   <div className={cn("min-w-0 flex-1", group.done ? "text-muted-foreground" : "")}>
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-medium tabular-nums">{frDateWeekdayNoYear(group.fixture.matchDate)}</span>
-                      <span className="font-medium">{teamName}</span>
+                      <span className="inline-flex items-center font-medium">
+                        {true === team?.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
+                        {teamName}
+                      </span>
                       <span className="text-muted-foreground">vs {group.fixture.opponentLabel}</span>
                       {null !== group.fixture.externalRef ? <span className="tabular-nums text-muted-foreground">n° {group.fixture.externalRef}</span> : null}
                       {null !== seen ? <span className="w-full text-xs text-muted-foreground">{seen}</span> : null}

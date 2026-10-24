@@ -210,6 +210,8 @@ describe("buildConflictSideLines — VENUE_OVERLAP (collision de gymnase, détai
     // Le gymnase vit dans `place`, la date sur CHAQUE ligne, le créneau dans `times` (coup d'envoi → fin).
     expect(a).toEqual({
       teamName: "SF2",
+      isCtc: false,
+      ctcPartner: null,
       kind: "home",
       place: "Gymnase Mateo",
       opponent: "vs BC Villeurbanne",
@@ -218,6 +220,8 @@ describe("buildConflictSideLines — VENUE_OVERLAP (collision de gymnase, détai
     });
     expect(b).toEqual({
       teamName: "SM2",
+      isCtc: false,
+      ctcPartner: null,
       kind: "home",
       place: "Gymnase Mateo",
       opponent: "vs ASVEL U21",

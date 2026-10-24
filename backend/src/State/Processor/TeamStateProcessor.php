@@ -100,6 +100,10 @@ class TeamStateProcessor extends AbstractStateProcessor
         $entity->setIsActive($input->isActive ?? true);
         $entity->setParentTeamId($input->parentTeamId);
 
+        $isCtc = $input->isCtc ?? false;
+        $entity->setIsCtc($isCtc);
+        $entity->setCtcPartner($this->normalizeCtcPartner($isCtc, $input->ctcPartner));
+
         return $entity;
     }
 
@@ -186,6 +190,18 @@ class TeamStateProcessor extends AbstractStateProcessor
             $entity->setParentTeamId($input->parentTeamId);
         }
         $entity->setIsActive($input->isActive ?? $entity->getIsActive());
+
+        // Entente (CTC) : PERCEPTION INTERNE, aucune garde d'engagement (modifiable comme le nom,
+        // contrairement au `level`). Même idiome « PUT partiel » que les champs ci-dessus : absent =
+        // on garde. Décocher l'entente (isCtc=false) efface le partenaire même s'il est encore dans
+        // le payload ; un partenaire présent est trim, un partenaire blanc devient null.
+        $isCtc = $input->isCtc ?? $entity->getIsCtc();
+        $entity->setIsCtc($isCtc);
+        if (!$isCtc) {
+            $entity->setCtcPartner(null);
+        } elseif (null !== $input->ctcPartner) {
+            $entity->setCtcPartner($this->normalizeCtcPartner(true, $input->ctcPartner));
+        }
     }
 
     /**
@@ -202,6 +218,20 @@ class TeamStateProcessor extends AbstractStateProcessor
         $dto->isEngaged = $this->teamEngagementGuard->isEngaged($entity->getId());
 
         return $dto;
+    }
+
+    /**
+     * Texte libre du/des partenaire(s) : trim, vide ⇒ null, et toujours null quand l'équipe
+     * n'est PAS en entente. Le serveur ne résout rien — la chaîne reste opaque.
+     */
+    private function normalizeCtcPartner(bool $isCtc, ?string $partner): ?string
+    {
+        if (!$isCtc || null === $partner) {
+            return null;
+        }
+        $trimmed = trim($partner);
+
+        return '' === $trimmed ? null : $trimmed;
     }
 
     /**

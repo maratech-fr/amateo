@@ -2,6 +2,7 @@ import { AlertTriangle, Bus, Car, CircleDashed, Clock, HelpCircle, Lock } from "
 import { type UIEvent, useRef } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
@@ -163,6 +164,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
               <>
                 <span className="flex w-full items-center gap-1 text-xs font-medium">
                   <Bus className="size-3 shrink-0" aria-hidden="true" />
+                  {true === cell.isCtc ? <CtcMark partner={cell.ctcPartner} /> : null}
                   <span className="truncate">{cell.teamLabel}</span>
                   {true === cell.estimated ? <Clock aria-label="Heure estimée" className="ml-auto size-3 shrink-0" /> : null}
                   {true === cell.unknownHour ? <HelpCircle aria-label="Heure inconnue" className="ml-auto size-3 shrink-0" /> : null}
@@ -279,6 +281,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                 }}
               >
                 <span className="flex w-full items-center font-medium">
+                  {true === cell.isCtc ? <CtcMark partner={cell.ctcPartner} /> : null}
                   <span className="truncate">{cell.teamLabel}</span>
                 </span>
                 <StatusPill variant="warning" className="px-1 py-0 text-[10px]" icon={<CircleDashed className="size-3 text-warning" aria-hidden="true" />}>
@@ -333,6 +336,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
               }}
             >
               <span className="flex w-full items-center gap-1 font-medium">
+                {true === cell.isCtc ? <CtcMark partner={cell.ctcPartner} /> : null}
                 <span className="truncate">{cell.ghost ? `Habitude ${cell.teamLabel}` : cell.teamLabel}</span>
                 {/* P1-4 PR E1 — padlock: MANUAL anchor, the solver never moves it. */}
                 {cell.locked ? <Lock aria-label="Ancre manuelle" className="ml-auto size-3 shrink-0 text-muted-foreground" /> : null}

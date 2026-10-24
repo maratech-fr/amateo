@@ -284,6 +284,8 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
         guards={guards}
         habits={habits}
         teamLabel={teamsMap.get(selectedFixture.teamId)?.name ?? "Équipe ?"}
+        isCtc={true === teamsMap.get(selectedFixture.teamId)?.isCtc}
+        ctcPartner={teamsMap.get(selectedFixture.teamId)?.ctcPartner ?? null}
         categoryLabel={categoriesMap.get(teamsMap.get(selectedFixture.teamId)?.sportCategoryId ?? "")?.name ?? "—"}
         envelope={selectedEnvelope}
         busy={mutating}

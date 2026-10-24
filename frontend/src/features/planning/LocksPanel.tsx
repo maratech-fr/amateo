@@ -1,6 +1,7 @@
 import { Eye, EyeOff, Lock, PanelRightClose } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { cn } from "@/shared/lib/utils";
 
@@ -40,6 +41,8 @@ export function LocksPanel({ locks, lookups, selectedSlotId, onSelectSlot, lensA
       day: slot.dayOfWeek,
       startMin: parseTimeToMinutes(slot.startTime),
       teamLabel: lookups.teams.get(slot.teamId)?.name ?? "Équipe ?",
+      isCtc: true === lookups.teams.get(slot.teamId)?.isCtc,
+      ctcPartner: lookups.teams.get(slot.teamId)?.ctcPartner ?? null,
       venueLabel: lookups.venues.get(slot.venueId)?.name ?? "Gymnase ?",
       dayLabel: dayLabelOf(slot.dayOfWeek),
       timeLabel: toHourMinute(slot.startTime),
@@ -113,7 +116,10 @@ export function LocksPanel({ locks, lookups, selectedSlotId, onSelectSlot, lensA
                     entry.slotId === selectedSlotId ? "bg-muted ring-1 ring-accent" : "",
                   )}
                 >
-                  <span className="font-medium text-foreground">{entry.teamLabel}</span>
+                  <span className="flex items-center font-medium text-foreground">
+                    {entry.isCtc ? <CtcMark partner={entry.ctcPartner} /> : null}
+                    {entry.teamLabel}
+                  </span>
                   <span className="flex flex-wrap items-center gap-x-1 text-muted-foreground">
                     <span>
                       {entry.dayLabel} {entry.timeLabel}

@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 
 import type { PriorityTier, Team } from "@/features/wizard/api";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { compareTeamsByRank, groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
 
@@ -131,6 +132,7 @@ export function TeamPicker({
                           ineligible && "italic",
                         )}
                       >
+                        {t.isCtc ? <CtcMark partner={t.ctcPartner} /> : null}
                         {t.name}
                         {ineligible ? " ⚠" : ""}
                       </button>

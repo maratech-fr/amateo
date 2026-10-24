@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { OpponentLogo } from "@/shared/components/ui/opponent-logo";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
@@ -63,7 +64,8 @@ export function AwayList({ fixtures, teams, habits, coachRoles, onEdit, onDelete
       <ul className="flex flex-col gap-1">
         {away.map((fixture) => {
           const { hour, estimated } = awayHour(fixture, habits);
-          const teamLabel = teams.get(fixture.teamId)?.name ?? "Équipe ?";
+          const team = teams.get(fixture.teamId);
+          const teamLabel = team?.name ?? "Équipe ?";
           // Amendement 2026-09-20 : le trajet est DÉRIVÉ de la rencontre (`fixture.awayTravel`).
           const travelInfo = fixture.awayTravel;
           // L'heure (et son badge « estimée ») portent les conflits de coach et sont en QUEUE de
@@ -73,6 +75,7 @@ export function AwayList({ fixtures, teams, habits, coachRoles, onEdit, onDelete
           return (
             <li key={fixture.id} className="flex items-center justify-between gap-2 text-sm">
               <span className="min-w-0" title={awayLine}>
+                {true === team?.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
                 <span className="font-medium">{teamLabel}</span>
                 {undefined !== coachRoles?.get(fixture.teamId) ? <StatusPill className="ml-1.5 text-foreground">{coachRoles.get(fixture.teamId)}</StatusPill> : null}
                 <span className="text-muted-foreground">

@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -168,6 +169,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
     <Card className="flex min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
+          {cell.isCtc ? <CtcMark partner={cell.ctcPartner} /> : null}
           {cell.teamLabel}
           {cell.locked ? <Lock className="size-4 text-muted-foreground" /> : null}
         </CardTitle>

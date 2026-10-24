@@ -22,6 +22,10 @@ export interface Team {
   level: TeamLevel | null;
   sessionsPerWeek: number;
   isActive: boolean;
+  /** Équipe « en entente (CTC) » — repère visuel interne, aucun effet moteur (exposé par TeamResource). */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente, texte libre opaque ; null hors entente. */
+  ctcPartner?: string | null;
   /**
    * L'équipe joue déjà en compétition — vrai dès qu'elle porte AU MOINS UN match, quel
    * qu'en soit le statut : la correspondance faite par l'import FBI suffit, la
@@ -57,6 +61,8 @@ export interface TeamPayload {
   level?: TeamLevel | null;
   sessionsPerWeek?: number;
   isActive?: boolean;
+  isCtc?: boolean;
+  ctcPartner?: string | null;
 }
 
 export const listTeams = (): Promise<Team[]> => collectionAll<Team>("teams");

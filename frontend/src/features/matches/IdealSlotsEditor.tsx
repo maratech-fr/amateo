@@ -7,6 +7,7 @@ import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { dayLabelLongCap } from "@/shared/lib/days";
@@ -257,7 +258,8 @@ function IdealSlotRow<T extends TeamLike>({
     <li className="rounded-md border border-border bg-card px-2 py-1.5">
       {editing && null !== habit ? (
         <div className="flex flex-wrap items-end gap-2">
-          <span className="min-w-32 flex-1 truncate self-center text-sm font-medium" title={team.name}>
+          <span className="flex min-w-32 flex-1 items-center truncate self-center text-sm font-medium" title={team.name}>
+            {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
             {team.name}
           </span>
           <SlotFields
@@ -282,7 +284,8 @@ function IdealSlotRow<T extends TeamLike>({
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <span className="min-w-32 flex-1 truncate text-sm font-medium" title={team.name}>
+          <span className="flex min-w-32 flex-1 items-center truncate text-sm font-medium" title={team.name}>
+            {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
             {team.name}
           </span>
           {null !== habit ? <span className="truncate text-sm text-muted-foreground">{slotSummary(habit, venuesById, weekendAlternates)}</span> : null}

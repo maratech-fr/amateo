@@ -49,6 +49,10 @@ export interface ClubViewCell {
 export interface ClubViewRow {
   teamId: string;
   teamLabel: string;
+  /** L'équipe de la ligne est-elle « en entente (CTC) » ? Repère CtcMark devant son nom. */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente (nom accessible du repère) ; null hors entente. */
+  ctcPartner?: string | null;
   /** Une cellule par colonne, dans l'ordre de `dayColumns`. */
   cells: ClubViewCell[];
   /** Nombre total de séances de la semaine — sert au repère « aucune séance ». */
@@ -127,9 +131,13 @@ export function buildClubView(slots: Slot[], lookups: Lookups, filter: Set<strin
   const rowOf = (id: string): ClubViewRow => {
     const byDay = matrix.get(id);
 
+    const team = lookups.teams.get(id);
+
     return {
       teamId: id,
       teamLabel: teamLike(id).name,
+      isCtc: true === team?.isCtc,
+      ctcPartner: team?.ctcPartner ?? null,
       cells: dayColumns.map(({ day }) => {
         const entries = [...(byDay?.get(day) ?? [])].sort((a, b) => a.startLabel.localeCompare(b.startLabel));
 

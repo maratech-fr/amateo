@@ -319,6 +319,10 @@ export interface Team {
    *  TeamResource ; le plan de PÉRIODE peut le surcharger (override). Le front l'AFFICHE
    *  (compte des séances à replacer), il ne décide d'aucune règle. */
   sessionsPerWeek: number;
+  /** Équipe « en entente (CTC) » — repère visuel porté devant le nom sur les tuiles (exposé par TeamResource). */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente, texte libre ; null hors entente. */
+  ctcPartner?: string | null;
 }
 
 export interface Venue {

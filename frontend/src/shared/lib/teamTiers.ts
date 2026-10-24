@@ -26,6 +26,10 @@ export interface TeamLike {
   name: string;
   priorityTierId: number;
   tierOrder: number;
+  /** Équipe « en entente (CTC) » — repère visuel porté par TeamSelect devant le nom. */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente, texte libre ; pour le nom accessible du repère. */
+  ctcPartner?: string | null;
 }
 
 export interface TeamTierGroup<T extends TeamLike> {

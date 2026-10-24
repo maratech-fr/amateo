@@ -7,6 +7,7 @@ import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { coachFullName } from "@/shared/lib/coachName";
 import { capitalizeWord, COACH_GENDER_OPTIONS, playerWord, salariedWord, vehicledWord } from "@/shared/lib/coachWording";
@@ -82,6 +83,13 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
   const coachImpact = useDeletionImpact("coach", confirmDelete ? coach.id : null);
 
   const firstTeam = teams[0]?.id ?? "";
+  // Repère d'entente (CTC) devant le nom d'équipe d'une pastille de liaison ; `null` sinon. Le
+  // nom des `aria-label`/toasts reste NU (D-f) — seul le libellé VISIBLE porte le picto.
+  const ctcMarkFor = (teamId: string) => {
+    const t = teams.find((x) => x.id === teamId);
+
+    return true === t?.isCtc ? <CtcMark partner={t.ctcPartner} /> : null;
+  };
   const addLink = () => {
     const teamId = linkTeam || firstTeam;
     if ("" === teamId) {
@@ -215,13 +223,13 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
           {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- région défilante nommée, atteignable au clavier (WCAG 2.1.1, A11Y-26 résidu) */}
           <div aria-label="Rattachements aux équipes" tabIndex={0} className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {coachLinks.map((link) => (
-              <span key={link.id} className="whitespace-nowrap rounded-full bg-accent/15 px-2 py-0.5 text-xs">
-                {teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
+              <span key={link.id} className="inline-flex items-center whitespace-nowrap rounded-full bg-accent/15 px-2 py-0.5 text-xs">
+                {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
               </span>
             ))}
             {playerLinks.map((link) => (
-              <span key={link.id} className="whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs">
-                {teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
+              <span key={link.id} className="inline-flex items-center whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs">
+                {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
               </span>
             ))}
           </div>
@@ -249,7 +257,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
             <div className="mt-2 flex flex-wrap gap-1.5">
               {coachLinks.map((link) => (
                 <span key={link.id} className="flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs">
-                  {teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
+                  {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
                   <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (${link.role === "MAIN" ? "coach" : "adjoint"})`} className="rounded p-1.5 -m-1.5" onClick={() => delTeamCoach.mutate(link.id)}>
                     <X className="size-3" />
                   </button>
@@ -257,7 +265,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
               ))}
               {playerLinks.map((link) => (
                 <span key={link.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs">
-                  {teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
+                  {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
                   <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (${playerWord(coach.gender)})`} className="rounded p-1.5 -m-1.5" onClick={() => delPlayer.mutate(link.id)}>
                     <X className="size-3" />
                   </button>

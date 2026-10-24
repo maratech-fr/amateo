@@ -267,6 +267,10 @@ export interface DayGroup {
 export interface GridCellMember {
   slotId: string;
   teamLabel: string;
+  /** L'équipe du membre est-elle « en entente (CTC) » ? Pour le repère CtcMark devant son nom. */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente du membre (nom accessible du repère) ; null hors entente. */
+  ctcPartner?: string | null;
   coachLabel: string;
   locked: boolean;
   /** L'ORIGINE du verrou (F1), pour la lentille verrous : `null` quand le membre n'est
@@ -290,6 +294,10 @@ export interface GridCell {
   /** In the coach view, "joueur" when the coach is a player (not the team's coach) of this slot. */
   roleTag: string | null;
   teamLabel: string;
+  /** L'équipe de la cellule est-elle « en entente (CTC) » ? Repère CtcMark devant son nom (tuile). */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente (nom accessible du repère) ; null hors entente. */
+  ctcPartner?: string | null;
   venueLabel: string;
   /** Le gymnase de la cellule (colonne). Sert au repérage des couples (gymnase, jour) FERMÉS
    *  pour MARQUER les fenêtres vides d'une période (P2-43) — le libellé ne suffit pas (homonymes). */
@@ -439,7 +447,10 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
   for (const slot of visible) {
     const start = parseTimeToMinutes(slot.startTime);
     const venue = lookups.venues.get(slot.venueId);
-    const teamLabel = lookups.teams.get(slot.teamId)?.name ?? "Équipe ?";
+    const team = lookups.teams.get(slot.teamId);
+    const teamLabel = team?.name ?? "Équipe ?";
+    const isCtc = true === team?.isCtc;
+    const ctcPartner = team?.ctcPartner ?? null;
     const venueLabel = venue?.name ?? "Gymnase ?";
     const mainCoachId = slotCoachId(slot, lookups);
     const coachLabel = coachName(lookups.coaches, mainCoachId);
@@ -456,7 +467,7 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
       // par le libellé, chaque équipe restant un membre cliquable (D4).
       const mk = "" !== label ? mergeKeyOf(slot, key, label) : "";
       if ("" !== mk && (groupSize.get(mk) ?? 0) >= 2) {
-        const member: GridCellMember = { slotId: slot.id, teamLabel, coachLabel, locked, lockOrigin: slot.lockOrigin };
+        const member: GridCellMember = { slotId: slot.id, teamLabel, isCtc, ctcPartner, coachLabel, locked, lockOrigin: slot.lockOrigin };
         const existing = merged.get(mk);
         if (undefined === existing) {
           const cell: GridCell = {
@@ -471,6 +482,8 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
             secondaryLabel: "",
             roleTag: null,
             teamLabel,
+            isCtc,
+            ctcPartner,
             venueLabel,
             venueId: slot.venueId,
             venueColor: venue?.color ?? null,
@@ -531,6 +544,8 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
         secondaryLabel,
         roleTag,
         teamLabel,
+        isCtc,
+        ctcPartner,
         venueLabel,
         venueId: slot.venueId,
         venueColor: venue?.color ?? null,
