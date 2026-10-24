@@ -40,7 +40,8 @@ fichier/classe interne (`frontend/src/features/wizard/steps/SharedTrainingBlockP
 ### 2.1 Déclarer un groupe depuis la saisie (modale « Liens » du wizard)
 
 `SharedTrainingBlockPanel` (`frontend/src/features/wizard/steps/SharedTrainingBlockPanel.tsx`),
-section « Mutualisation » de la modale **Liens** : créer/modifier/supprimer un groupe en choisissant
+onglet « Mutualisation » de la modale **Liens** (`TeamLinksModal`, deux onglets depuis le retour
+Rillieux #10 — « Passerelles » actif par défaut, « Mutualisation » ensuite) : créer/modifier/supprimer un groupe en choisissant
 ses équipes et son nombre de séances communes (liste déroulante bornée, jamais une saisie libre).
 Rail API Platform standard sur la ressource `SharedTrainingBlockResource`
 (`SharedTrainingBlockStateProcessor`), même portée socle/période que ci-dessus. Le serveur reste

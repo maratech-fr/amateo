@@ -155,21 +155,42 @@ describe("filterCandidates — recherche texte insensible casse+accents, coché 
   });
 });
 
-describe("mutualisedTeammateLabel — la sous-ligne tirée des blocs de mutualisation (P2-51)", () => {
+describe("mutualisedTeammateLabel — « Mutualisée : N séance(s) sur M avec … » (P2-51 + #11)", () => {
+  // #11 (améliorations légères, retour Rillieux 2026-10-21) : afficher le NOMBRE de séances
+  // mutualisées rapporté au total de l'équipe — « 1 séance sur 2 avec U21 » — pas un simple
+  // « Mutualisée avec … ». La forme porte un segment PAR bloc (chacun son propre compte de séances
+  // communes), le total M = séances/semaine EFFECTIVES de l'équipe (valeur de saison côté socle,
+  // override de période côté plan — c'est l'appelant qui le fournit, d'où la distinction saison/
+  // période réelle).
   const nameOf = (id: string): string => ({ t1: "SM1", t2: "SM2", t3: "U13F2", t4: "U13F3" })[id] ?? "?";
 
-  it("nomme la co-équipière du bloc", () => {
-    const blocks = [{ teamIds: ["t3", "t4"] }];
-    expect(mutualisedTeammateLabel("t3", blocks, nameOf)).toBe("Mutualisée avec U13F3");
+  it("nomme la co-équipière ET le NOMBRE de séances mutualisées sur le total de l'équipe", () => {
+    const blocks = [{ teamIds: ["t3", "t4"], commonSessions: 1 }];
+    expect(mutualisedTeammateLabel("t3", blocks, nameOf, 2)).toBe("Mutualisée : 1 séance sur 2 avec U13F3");
   });
 
-  it("fusionne plusieurs blocs SANS doublon (partenaire commune nommée une seule fois)", () => {
-    // t1 est dans deux blocs {t1,t2} ET {t1,t2,t3} : t2 ne doit pas être doublée.
-    const blocks = [{ teamIds: ["t1", "t2"] }, { teamIds: ["t1", "t2", "t3"] }];
-    expect(mutualisedTeammateLabel("t1", blocks, nameOf)).toBe("Mutualisée avec SM2, U13F2");
+  it("pluralise « séances » quand plusieurs séances sont communes", () => {
+    const blocks = [{ teamIds: ["t3", "t4"], commonSessions: 2 }];
+    expect(mutualisedTeammateLabel("t3", blocks, nameOf, 3)).toBe("Mutualisée : 2 séances sur 3 avec U13F3");
+  });
+
+  it("nomme TOUTES les co-équipières d'un même bloc dans son segment", () => {
+    const blocks = [{ teamIds: ["t1", "t2", "t3"], commonSessions: 1 }];
+    expect(mutualisedTeammateLabel("t1", blocks, nameOf, 2)).toBe("Mutualisée : 1 séance sur 2 avec SM2, U13F2");
+  });
+
+  it("un segment par bloc (chacun son compte), joints par « · » — plus de fusion inter-blocs", () => {
+    // Depuis #11 la fusion inter-blocs des co-équipières TOMBE : chaque bloc porte son propre
+    // nombre de séances communes, donc son propre segment (t2 peut légitimement figurer deux fois
+    // si deux blocs distincts la partagent — ce sont deux séances mutualisées différentes).
+    const blocks = [
+      { teamIds: ["t1", "t2"], commonSessions: 1 },
+      { teamIds: ["t1", "t3"], commonSessions: 2 },
+    ];
+    expect(mutualisedTeammateLabel("t1", blocks, nameOf, 3)).toBe("Mutualisée : 1 séance sur 3 avec SM2 · 2 séances sur 3 avec U13F2");
   });
 
   it("rend null quand l'équipe n'est dans aucun bloc", () => {
-    expect(mutualisedTeammateLabel("t9", [{ teamIds: ["t1", "t2"] }, { teamIds: ["t3", "t4"] }], nameOf)).toBeNull();
+    expect(mutualisedTeammateLabel("t9", [{ teamIds: ["t1", "t2"], commonSessions: 1 }], nameOf, 2)).toBeNull();
   });
 });

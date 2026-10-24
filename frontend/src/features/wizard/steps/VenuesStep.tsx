@@ -43,7 +43,7 @@ import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { TravelMatrixModal } from "./TravelMatrixModal";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { VenueGeocodeField } from "./VenueGeocodeField";
-import { CapacitySelect, DurationSelect, GroupLabelField, SharedSlotHint } from "./slotFields";
+import { CapacitySelect, DurationSelect, GroupLabelField, SharedSlotHint, SlotEndField } from "./slotFields";
 import { WEEK } from "../lib/weekGrid";
 import { venuesWithoutSlot } from "../lib/useStepValidation";
 import { splitCascadePreview, type SplitCascadePreview } from "../lib/reservationSlots";
@@ -194,6 +194,7 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
           {/* D8 — « Autre… » ouvre une saisie libre (pas de 15, min 15, fin ≤ minuit vu le début). */}
           <DurationSelect aria-label={WIZARD_TEXTS.slotDurationLabel} className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} present={[slot.durationMinutes]} startTime={time} onChange={(d) => (setDuration(d), setError(null))} />
         </label>
+        <SlotEndField startTime={time} duration={duration} />
         {canSplit ? (
           <div className="text-xs text-muted-foreground">
             {/* CapacitySelect's inner select carries the Capacité accessible name. */}

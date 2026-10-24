@@ -101,18 +101,12 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
       .map((c) => [c.scopeTargetId as string, c.id]),
   );
   const nameOf = (id: string): string => teams.find((t) => t.id === id)?.name ?? "?";
-  // P2-51 — la sous-ligne « Mutualisée avec … » tirée des blocs (helper pur, testé).
-  const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, sharedBlocks, nameOf);
   // P2-45 — le repère « passerelle », intensité comprise (lue telle quelle du lien, jamais recalculée).
   const bridgeLabelOf = (teamId: string): string | null => {
     const parts = teamLinks
       .filter((l) => l.teamAId === teamId || l.teamBId === teamId)
       .map((l) => `${teams.find((t) => t.id === (l.teamAId === teamId ? l.teamBId : l.teamAId))?.name ?? "?"} (${INTENSITY_LABEL[l.trainingIntensity]})`);
     return parts.length > 0 ? `Passerelle avec ${parts.join(", ")}` : null;
-  };
-  const linksLabelOf = (teamId: string): string | null => {
-    const combined = [mutualiseLabelOf(teamId), bridgeLabelOf(teamId)].filter((x): x is string => null !== x);
-    return combined.length > 0 ? combined.join(" · ") : null;
   };
 
   const groups = groupTeamsByTier(teams, tiers);
@@ -121,6 +115,15 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
 
   const isActive = (t: Team): boolean => overrideOf.get(t.id)?.isActive ?? true;
   const sessionsOf = (t: Team): number => overrideOf.get(t.id)?.sessionsPerWeek ?? t.sessionsPerWeek;
+
+  // P2-51 + #11 — la sous-ligne « Mutualisée : N séance(s) sur M … » tirée des blocs (helper pur,
+  // testé). En PÉRIODE, le total M suit l'override de séances de la période (`sessionsOf`), pas la
+  // valeur de saison — distinction réelle gardée par le jumeau de ce test côté période.
+  const mutualiseLabelOf = (t: Team): string | null => mutualisedTeammateLabel(t.id, sharedBlocks, nameOf, sessionsOf(t));
+  const linksLabelOf = (t: Team): string | null => {
+    const combined = [mutualiseLabelOf(t), bridgeLabelOf(t.id)].filter((x): x is string => null !== x);
+    return combined.length > 0 ? combined.join(" · ") : null;
+  };
 
   // Upsert the override, or DELETE it when the state is back to the seasonal default
   // (active + seasonal session count) — keeps the table sparse. Returns the mutation
@@ -299,7 +302,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                       <input type="checkbox" checked={active} disabled={busy} onChange={(e) => toggle(t, e.target.checked)} aria-label={`${t.name} active cette période`} />
                       <span className={cn(!active && "text-muted-foreground line-through")}>{t.name}</span>
                     </label>
-                    {linksLabelOf(t.id) ? <span className="text-xs italic text-muted-foreground">· {linksLabelOf(t.id)}</span> : null}
+                    {linksLabelOf(t) ? <span className="text-xs italic text-muted-foreground">· {linksLabelOf(t)}</span> : null}
                     {/* P2-63 PR 5 (F) — provenance « via doléances », SEULEMENT pour la valeur
                         'coach_wish' (une équipe activée par la mutualisation porte 'mutualisation'). */}
                     {"coach_wish" === overrideOf.get(t.id)?.source ? <StatusPill variant="accent">via doléances</StatusPill> : null}

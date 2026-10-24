@@ -51,38 +51,40 @@ export function maxCommonSessions(teams: Team[], overrideByTeamId: ReadonlyMap<s
 }
 
 /**
- * P2-51 — la sous-ligne « Mutualisée avec … » d'une équipe, tirée des BLOCS de mutualisation (SEULE
- * notion depuis PR-7). Les co-équipières de tous les blocs où l'équipe figure s'unissent SANS
- * doublon (une partenaire présente dans plusieurs blocs n'est nommée qu'une fois), l'ordre
- * d'insertion préservé. `null` si l'équipe n'appartient à AUCUN bloc. Présentation pure (patron
- * `matches/lib/diagnostic.ts`) : le serveur reste seul maître de la mutualisation, l'écran la
- * reflète. Type STRUCTUREL `{ teamIds }` pour lire le bloc par sa forme sans coupler ce lib à l'entité.
+ * P2-51 + #11 — la sous-ligne « Mutualisée : N séance(s) sur M avec … » d'une équipe, tirée des
+ * BLOCS de mutualisation (SEULE notion depuis PR-7). Depuis #11 (améliorations légères, retour
+ * Rillieux 2026-10-21) la sous-ligne NOMME le nombre de séances mutualisées rapporté au total de
+ * l'équipe : chaque bloc où l'équipe figure porte SON propre `commonSessions`, donc son propre
+ * SEGMENT « N séance(s) sur M avec … » (les segments sont joints par « · »). La fusion inter-blocs
+ * des co-équipières d'avant #11 TOMBE — une même partenaire peut légitimement figurer dans deux
+ * segments si deux blocs distincts la partagent (deux séances mutualisées différentes). `M` =
+ * séances/semaine EFFECTIVES de l'équipe, fourni par l'APPELANT (valeur de saison côté socle,
+ * override de période côté plan — d'où le paramètre, ce lib ne connaît pas la portée).
+ * `null` si l'équipe n'appartient à AUCUN bloc. Présentation pure (patron `matches/lib/
+ * diagnostic.ts`) : le serveur reste seul maître de la mutualisation, l'écran la reflète. Type
+ * STRUCTUREL `{ teamIds, commonSessions }` pour lire le bloc par sa forme sans coupler ce lib à
+ * l'entité.
  */
 export function mutualisedTeammateLabel(
   teamId: string,
-  blocks: readonly { teamIds: string[] }[],
+  blocks: readonly { teamIds: string[]; commonSessions: number }[],
   teamName: (id: string) => string,
+  totalSessions: number,
 ): string | null {
-  const others: string[] = [];
-  const seen = new Set<string>();
-  let member = false;
-  for (const src of blocks) {
-    if (!src.teamIds.includes(teamId)) {
+  const segments: string[] = [];
+  for (const block of blocks) {
+    if (!block.teamIds.includes(teamId)) {
       continue;
     }
-    member = true;
-    for (const id of src.teamIds) {
-      if (id !== teamId && !seen.has(id)) {
-        seen.add(id);
-        others.push(id);
-      }
-    }
+    const others = block.teamIds.filter((id) => id !== teamId).map(teamName);
+    const n = block.commonSessions;
+    segments.push(`${n} séance${n > 1 ? "s" : ""} sur ${totalSessions} avec ${others.join(", ")}`);
   }
-  if (!member) {
+  if (0 === segments.length) {
     return null;
   }
 
-  return others.length > 0 ? `Mutualisée avec ${others.map(teamName).join(", ")}` : "Mutualisée";
+  return `Mutualisée : ${segments.join(" · ")}`;
 }
 
 /** Libellé d'un groupe : « SM1 + SM2 — 1 séance commune » (pluriel géré). */

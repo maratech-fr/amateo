@@ -352,16 +352,26 @@ interface TierZoneProps {
   teamIds: string[];
   teamById: Map<string, Team>;
   onArrow: (tierId: number, teamId: string, dir: -1 | 1) => void;
+  /** #7 — inverse l'ordre de CETTE zone de rang (jamais toute la liste). */
+  onReverse: (tierId: number) => void;
 }
 
 /** A droppable tier zone — always visible during sort so teams can be dropped across tiers. */
-function TierZone({ tier, teamIds, teamById, onArrow }: TierZoneProps) {
+function TierZone({ tier, teamIds, teamById, onArrow, onReverse }: TierZoneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `zone-${tier.id}` });
   return (
     <section>
-      <h3 className="mb-1 text-sm font-semibold">
-        {tierGroupLabel(tier)}
-      </h3>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{tierGroupLabel(tier)}</h3>
+        {/* #7 — un bouton par zone : inverse l'ordre de CE rang seul. Nom accessible
+            CONTEXTUALISÉ par le rang (A11Y-28), le libellé visible restant court. */}
+        {teamIds.length > 1 ? (
+          <Button size="sm" variant="ghost" aria-label={`Inverser l'ordre du rang ${tier.label}`} onClick={() => onReverse(tier.id)}>
+            <ArrowUpDown className="size-4" />
+            Inverser l'ordre
+          </Button>
+        ) : null}
+      </div>
       <SortableContext items={teamIds} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className={cn("flex min-h-14 flex-col gap-1.5 rounded-lg border-2 border-dashed p-2 transition-colors", isOver ? "border-accent bg-accent/5" : "border-border")}>
           {0 === teamIds.length ? (
@@ -500,8 +510,11 @@ function TeamsEditor() {
   const baseBlocks = sharedBlocks.filter((b) => null === b.schedulePlanId);
   const teamNameById = new Map(teams.map((t) => [t.id, t.name]));
   const nameOf = (id: string): string => teamNameById.get(id) ?? "?";
-  // P2-51 PR-6 — la sous-ligne fusionne groupe K ET bloc, sans doublon (helper pur, testé).
-  const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, baseBlocks, nameOf);
+  // #11 — en SAISON le total M rapporté par la sous-ligne « … séance(s) sur M … » est la valeur de
+  // saison de l'équipe (aucun override de période ne s'applique sur le socle).
+  const teamSessionsById = new Map(teams.map((t) => [t.id, t.sessionsPerWeek]));
+  // P2-51 PR-6 + #11 — la sous-ligne nomme, par bloc, le nombre de séances mutualisées sur M (helper pur, testé).
+  const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, baseBlocks, nameOf, teamSessionsById.get(teamId) ?? 0);
   // P2-45 — le repère « passerelle » : nomme la co-équipière ET l'INTENSITÉ (tranchage fondateur),
   // lue telle quelle du lien servi (jamais recalculée). Une équipe peut être passerelée à plusieurs.
   const bridgeLabelOf = (teamId: string): string | null => {
@@ -727,6 +740,17 @@ function TeamsEditor() {
     setBothLanes({ ...lanesRef.current, [laneId]: arrayMove(items, idx, j) });
   };
 
+  // #7 — inverse l'ordre des équipes d'UNE SEULE zone de rang (jamais toute la liste), via le même
+  // mécanisme que le glisser-déposer : on réécrit les lanes locales, la sortie du mode (flushSort)
+  // persiste l'ordre COMPLET, les autres rangs intacts.
+  const reverseLane = (laneId: number) => {
+    const items = [...(lanesRef.current[laneId] ?? [])];
+    if (items.length < 2) {
+      return;
+    }
+    setBothLanes({ ...lanesRef.current, [laneId]: items.reverse() });
+  };
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -762,7 +786,7 @@ function TeamsEditor() {
           >
             <div className="flex flex-col gap-4">
               {sortedTiers.map((tier) => (
-                <TierZone key={tier.id} tier={tier} teamIds={lanes[tier.id] ?? []} teamById={teamById} onArrow={moveInLane} />
+                <TierZone key={tier.id} tier={tier} teamIds={lanes[tier.id] ?? []} teamById={teamById} onArrow={moveInLane} onReverse={reverseLane} />
               ))}
             </div>
             <DragOverlay>

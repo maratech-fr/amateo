@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
@@ -50,18 +51,40 @@ beforeEach(() => {
   teamLinksState.data = [];
 });
 
-describe("TeamLinksModal — deux sections dans l'ordre passerelles → mutualisation", () => {
-  it("titre « Liens de {équipe} » et les deux sections dans l'ordre", () => {
+describe("TeamLinksModal — deux ONGLETS (Passerelles · Mutualisation)", () => {
+  // #10 (améliorations légères, retour Rillieux 2026-10-21) — mutualisation et passerelle vivaient
+  // dans le MÊME bloc, trop chargé : la modale les sépare désormais en DEUX onglets (primitive
+  // `Tabs`), « Passerelles » actif par défaut (l'ordre historique haut → bas de la modale).
+  it("titre « Liens de {équipe} » et une barre d'onglets Passerelles · Mutualisation", () => {
     renderModal();
     expect(screen.getByRole("dialog", { name: "Liens de SM1" })).toBeInTheDocument();
-    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-    const passIdx = headings.indexOf("Passerelles entre équipes");
-    const mutIdx = headings.indexOf("Mutualisation");
-    expect(passIdx).toBeGreaterThanOrEqual(0);
-    expect(mutIdx).toBeGreaterThan(passIdx);
-    // D13 (correction fondateur) — UNE seule section « Mutualisation » (rendue par
-    // `SharedTrainingBlockPanel`) : plus de second panneau, plus de titre « Bloc d'équipes ».
-    expect(headings).not.toContain("Bloc d'équipes");
+    expect(screen.getByRole("tab", { name: "Passerelles" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Mutualisation" })).toBeInTheDocument();
+    // Passerelles est l'onglet actif par défaut.
+    expect(screen.getByRole("tab", { name: "Passerelles" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Mutualisation" })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("par défaut, SEUL le panneau Passerelles est visible ; la mutualisation est dans l'onglet voisin", () => {
+    renderModal();
+    // Panneau actif = Passerelles : son contenu est accessible…
+    expect(screen.getByRole("heading", { level: 3, name: "Passerelles entre équipes" })).toBeInTheDocument();
+    // …et celui de la mutualisation (panneau inactif, `hidden`) ne l'est pas tant qu'on n'a pas
+    // activé son onglet (`getByRole` ignore un sous-arbre `hidden`).
+    expect(screen.queryByRole("button", { name: "Créer le groupe" })).toBeNull();
+  });
+
+  it("activer l'onglet Mutualisation montre la mutualisation et masque les passerelles", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
+    expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
+    // Les passerelles sont alors dans le panneau inactif.
+    expect(screen.queryByRole("button", { name: "Ajouter la passerelle" })).toBeNull();
+    // D13 (correction fondateur) — UNE seule mutualisation (rendue par `SharedTrainingBlockPanel`) :
+    // pas de titre « Bloc d'équipes ».
+    expect(screen.queryByRole("heading", { name: "Bloc d'équipes" })).toBeNull();
   });
 
   it("jamais un dialog dans le dialog : « Gérer les passerelles » est absent", () => {
@@ -69,17 +92,22 @@ describe("TeamLinksModal — deux sections dans l'ordre passerelles → mutualis
     expect(screen.queryByRole("button", { name: "Gérer les passerelles" })).toBeNull();
   });
 
-  it("readOnlyLinks=false : passerelles éditables, mutualisation éditable", () => {
+  it("readOnlyLinks=false : passerelles éditables (onglet actif), mutualisation éditable (onglet voisin)", async () => {
+    const user = userEvent.setup();
     renderModal(false);
     expect(screen.getByRole("button", { name: "Ajouter la passerelle" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 
-  it("readOnlyLinks=true : passerelles en lecture seule (raison dite, pas d'ajout), mutualisation TOUJOURS éditable", () => {
+  it("readOnlyLinks=true : passerelles en lecture seule (raison dite, pas d'ajout), mutualisation TOUJOURS éditable", async () => {
+    const user = userEvent.setup();
     renderModal(true, "plan-9");
+    // Onglet Passerelles (actif) : raison dite, aucun ajout.
     expect(screen.getByText(/se déclarent au niveau de la saison/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ajouter la passerelle" })).toBeNull();
     // La mutualisation reste éditable (ancrée au plan) même quand les passerelles ne le sont pas.
+    await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 });

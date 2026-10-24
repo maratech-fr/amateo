@@ -422,17 +422,34 @@ describe("PeriodTeams — default team selection (E3) + toggles", () => {
   });
 });
 
-describe("PeriodTeams — repère de mutualisation (P2-51)", () => {
+describe("PeriodTeams — repère de mutualisation (P2-51 + #11)", () => {
   // En période aussi, la sous-ligne lit les blocs de mutualisation : sans ce repère EN PÉRIODE, la
   // mutualisation mentirait par omission (elle n'apparaîtrait qu'en saison).
-  it("marque une équipe mutualisée via un bloc en période", () => {
+  // #11 (améliorations légères, retour Rillieux) — la sous-ligne nomme le NOMBRE de séances
+  // mutualisées sur le total de l'équipe. Jumeau de `TeamsStep.test.tsx` (saison) : prouvé aux DEUX
+  // endroits car la mutualisation est un point sensible (charte des tests §1).
+  it("marque une équipe mutualisée via un bloc en période, avec le nombre de séances", () => {
+    // T1 (SM1) a 2 séances/sem de saison, sans override → total effectif 2.
     overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
     sharedBlocksState.data = [
       { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: "plan-1", teamIds: ["t1", "t2"], commonSessions: 1, label: null, sessions: [] },
     ];
     render(<PeriodTeams calendarEntryId="mutualise-block-marker" />);
 
-    expect(screen.getByText(/Mutualisée avec U13/)).toBeInTheDocument();
+    expect(screen.getByText(/Mutualisée : 1 séance sur 2 avec U13/)).toBeInTheDocument();
+  });
+
+  // #11 — la distinction saison/PÉRIODE est RÉELLE : en période, le total M suit l'override de
+  // séances de la période (pas la valeur de saison). Ici un override ramène SM1 à 1 séance → la
+  // sous-ligne dit « sur 1 », pas « sur 2 ». Sans cette prise en compte, la période mentirait.
+  it("rapporte les séances mutualisées au total de PÉRIODE (override), pas à celui de saison", () => {
+    overridesState.data = [{ id: "o1", teamId: "t1", isActive: true, sessionsPerWeek: 1, schedulePlanId: "plan-1" }];
+    sharedBlocksState.data = [
+      { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: "plan-1", teamIds: ["t1", "t2"], commonSessions: 1, label: null, sessions: [] },
+    ];
+    render(<PeriodTeams calendarEntryId="mutualise-block-override" />);
+
+    expect(screen.getByText(/Mutualisée : 1 séance sur 1 avec U13/)).toBeInTheDocument();
   });
 });
 
@@ -500,6 +517,8 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     render(<PeriodTeams calendarEntryId="period-anchor" />);
 
     await user.click(screen.getByRole("button", { name: "Liens de SM1" }));
+    // #10 — la mutualisation vit dans l'onglet « Mutualisation » (modale à deux onglets).
+    await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
     // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée. D13 — la « Mutualisation » est
     // rendue par SharedTrainingBlockPanel : créer écrit un « bloc » ancré au plan de période.
     await user.click(screen.getByRole("checkbox", { name: "U13" }));
@@ -518,14 +537,15 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     render(<PeriodTeams calendarEntryId="readonly-links" />);
 
     await user.click(screen.getByRole("button", { name: "Liens de SM1" }));
-    // La raison : jamais une section grisée muette.
+    // Onglet « Passerelles » actif par défaut (#10) — la raison : jamais une section grisée muette.
     expect(screen.getByText(/se déclarent au niveau de la saison/)).toBeInTheDocument();
     // L'intensité est affichée en TEXTE (pas via un contrôle éditable).
     expect(screen.getByText(/Entraînement\s*:\s*Préféré/)).toBeInTheDocument();
     // Aucun contrôle d'édition de passerelle.
     expect(screen.queryByRole("button", { name: "Ajouter la passerelle" })).toBeNull();
     expect(screen.queryByLabelText(/Intensité d'entraînement, passerelle/)).toBeNull();
-    // La mutualisation, elle, RESTE éditable en période (le formulaire est là).
+    // La mutualisation, elle, RESTE éditable en période (onglet « Mutualisation » voisin).
+    await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 });
