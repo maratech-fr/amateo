@@ -12,6 +12,24 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-10-24 — modern-screenshot (nouvelle dépendance frontend, hors Dependabot — P4-323)
+
+**C'est quoi** : `modern-screenshot`, une librairie qui rend un nœud du DOM en image (PNG/WebP)
+côté navigateur — sans passer par une capture d'écran système ni un service tiers.
+
+**Ça apporte** : la capture d'écran optionnelle jointe à un signalement (chantier F PR3,
+`canal-signalement.md` §3sexies) : une image de l'écran courant, générée par le navigateur lui-même,
+à l'identique de ce que l'utilisateur voit (texte sélectionnable rendu, pas une vidéo ni un flux
+système).
+
+**Adapté chez nous** : chargée en **import dynamique** (`frontend/src/shared/feedback/
+captureScreen.ts`) — un chunk séparé, jamais dans le bundle principal, puisque la capture reste
+l'exception (case cochée par défaut mais décochable, et seulement dans la modale de signalement).
+Jamais de `workerUrl` : le worker de la librairie chargerait un script externe, que la CSP du
+produit bloque. Aucun réglage serveur ni schéma à adapter — la sortie (WebP/PNG, ≤1920 px,
+≤2 Mo) est validée côté serveur comme n'importe quel fichier joint, indépendamment de la
+librairie qui l'a produite.
+
 ## 2026-10-16 (soir) — Python 3.12 → 3.14 (moteur, option B, montée complète)
 
 **C'est quoi** : la version de Python qui fait tourner le moteur (`engine/`) — l'interpréteur
@@ -177,20 +195,5 @@ de 0.19 à 1.0, même version en dev et en prod, dans une PR dédiée du lot 4.
 `shivammathur/setup-php` 2.40.0 (installe PHP dans la CI, empreinte vérifiée sur le tag) et
 l'image `puppeteer` 25.14.0 du worker qui fabrique les PDF. Rien à adapter.
 
-## 2026-10-16 — symfony/lock (nouvelle dépendance, lot 4 PR E, hors Dependabot — P4-316)
-
-**C'est quoi** : `symfony/lock`, le composant Symfony de verrous — jusqu'ici absent du
-`composer.json` backend, les quelques verrous du produit (génération, placement de matchs)
-passaient par un usage direct de Redis, pas par ce composant.
-
-**Ça apporte** : un store de verrous PARTAGÉ et configurable (`framework.lock`), que Symfony
-câble automatiquement derrière `rate_limiter` (`lock_factory: auto`) — jusqu'ici, le composant
-étant absent, ce câblage ne trouvait aucun verrou : nos limiteurs comptaient sans verrou, et un
-plafond (ex. `coach_wish_send`, mais aussi les tentatives de connexion) restait contournable par
-des requêtes parallèles. Contrepartie : si Redis tombe, les routes à limiteur répondent une erreur
-au lieu de laisser passer.
-
-**Adapté chez nous** : `backend/config/packages/lock.yaml` pose `framework.lock:
-'%env(REDIS_URL)%'` — même DSN que le cache. Conséquence immédiate et volontaire : **tous** les
-limiteurs `rate_limiter` (pas seulement le nouveau `coach_wish_send`, P4-316) deviennent
-atomiques, du fait de ce seul fichier de config, sans toucher à `rate_limiter.yaml`.
+> Lot le plus ancien retiré par le bornage à 6 (§ en-tête) : `symfony/lock` (2026-10-16, lot 4 PR
+> E, P4-316) — détail dans `git log -p --follow docs/upgrades.md`.

@@ -2,8 +2,8 @@
 
 > Le canal par lequel un gestionnaire signale un bug, une contrainte manquante ou une idée — et
 > de quoi **reproduire** ce qu'un utilisateur a rencontré. Base saine (pas un `mailto:` jetable),
-> sans sur-ingénierie tickets. Les décisions D1-D6 + §3bis/§3ter/§3quater ci-dessous sont
-> implémentées.
+> sans sur-ingénierie tickets. Les décisions D1-D6 + §3bis/§3ter/§3quater/§3quinquies/§3sexies
+> ci-dessous sont implémentées.
 >
 > **La reproduction d'une génération n'est jamais le problème** : `Schedule::$snapshotData`
 > (`backend/src/Entity/Schedule.php:96`) porte le payload engine complet et figé, écrit avant
@@ -128,7 +128,8 @@ mais aucun appelant ne les renseigne — les filtres et la plage affichée du mo
 dans des composants enfants qui ne remontent pas leur état jusqu'au `PageHeader` ; les y faire
 voyager est un refactor à part, à embarquer dans la fin du chantier F (`roadmap.md` P4-323).
 
-L'**affichage/recherche** en console superadmin est livré — § 3quinquies.
+L'**affichage/recherche** en console superadmin est livré — § 3quinquies. La **capture d'écran**
+optionnelle est livrée — § 3sexies.
 
 ## 3quinquies. Console superadmin : recherche, deep-liens, contexte en 5 blocs
 
@@ -146,7 +147,54 @@ joker ; borné à 100 caractères (400 au-delà, même contrat que la recherche 
 Deux paramètres d'URL ouvrent directement la console sur un signalement : `?feedback={id}` ouvre
 son détail, `?fstatus=untreated|treated` initialise le filtre de statut.
 
+## 3sexies. Capture d'écran jointe (chantier F PR3)
+
+Les deux portes (D1) offrent désormais une case **« Joindre une capture »** — **cochée par
+défaut**, décochable, juste sous le champ de message. Elle couvre ce que le texte ne dit pas
+(mise en page, état exact d'un écran) sans ajouter un upload de fichier arbitraire : une seule
+image, générée côté client, jamais choisie par l'utilisateur.
+
+**Côté client** (`frontend/src/shared/feedback/captureScreen.ts`) : la librairie de rendu
+DOM→image (`modern-screenshot`, nouvelle dépendance) est chargée en **import dynamique** (chunk à
+part, jamais dans le bundle principal) ; `document.documentElement` est capturé, la **fenêtre de
+signalement elle-même exclue** (`[role="dialog"]`, retirée du clone avant rendu) ; l'image est
+plafonnée à 1920 px de large (`scale` réduit en conséquence) et exportée en **WebP**, qualité
+dégressive (0.8 → 0.6 → 0.4) jusqu'à tomber sous **2 Mo** — même borne que le serveur ; Safari, qui
+ignore parfois le type demandé, peut rendre un PNG à la place, accepté tel quel. Toute erreur ou
+tout dernier palier encore trop lourd rend `null` : la capture est **best-effort**, un échec
+n'empêche jamais l'envoi du signalement (il part sans image).
+
+**Côté serveur** (`FeedbackController::createFeedback`/`validateScreenshot`) : une image jointe
+fait basculer la requête en **multipart** (`payload` = le JSON habituel dans un champ de
+formulaire, `screenshot` = le fichier) — le chemin JSON pur reste inchangé pour tout appelant qui
+ne joint rien. Validation dans l'ordre taille → **type SONDÉ** (`finfo`, jamais le type déclaré
+par le client — un SVG ou un polyglotte tombent ici) → dimensions lues dans l'en-tête sans décoder
+un pixel (≤ 8000 px/côté, ≤ 40 Mpx — garde-fou anti-bombe de décompression), AVANT toute
+persistance. L'écriture est **atomique dans les deux sens** : un signalement invalide ne laisse
+aucune ligne ; si l'écriture du blob échoue APRÈS la création de la ligne, la ligne est retirée
+(jamais de signalement marqué « avec capture » dont l'image manquerait).
+
+Le blob vit **hors de la table `feedback`, hors RLS** — `FeedbackScreenshotStorage` (interface) /
+`LocalFeedbackScreenshotStorage` (disque local, patron `LogoStorage`), clé = l'id du signalement
+(UUID validé avant tout accès disque, pas de traversée de chemin possible), même paramètre
+d'injection que les logos (`app.feedback_screenshot_storage_dir`,
+`backend/config/services.yaml`). La table ne porte qu'un pointeur léger, `feedback.has_screenshot`
+(migration `Version20261024120000`). **Seule porte de lecture** : `GET
+/api/admin/feedback/{id}/screenshot` (console superadmin uniquement — le firewall `^/api/admin`
+fait l'étanchéité tenant), type sondé à la lecture, `X-Content-Type-Options: nosniff` +
+`Cache-Control: no-store`. La console (`FeedbackSection.tsx`) affiche l'aperçu en `<img>` quand
+`hasScreenshot` est vrai.
+
+⚠ **Pas encore livré** (PR4) : purge/rétention de la capture (J+90, ou J+30 après traitement —
+§ roadmap `P4-323`), suppression du blob à l'effacement RGPD d'un club (`ErasedClubPurger` purge
+déjà la ligne `feedback`, PAS le fichier hors table — orphelin tant que PR4 n'est pas livrée) et
+inclusion/exclusion motivée dans l'export de portabilité (`RgpdExportService` exporte déjà la
+ligne `feedback`, jamais le blob — à trancher en PR4). Détail RGPD :
+[`docs/security/rgpd.md`](../../docs/security/rgpd.md).
+
 ## 4. Hors périmètre
 Un système de tickets (statuts multiples, assignation, SLA), un chat, un forum, une base de
 connaissances, ni le remplaçant de Sentry (les erreurs techniques remontent par Sentry, pas par ce
-canal). Pas de pièces jointes (surface upload = lot sécurité à part entière si le besoin émerge).
+canal). **Pas de pièce jointe générique** : la seule image possible est la capture d'écran
+optionnelle du signalement lui-même (§3sexies, un seul fichier généré côté client, jamais un choix
+libre de l'utilisateur) — aucune autre surface d'upload.

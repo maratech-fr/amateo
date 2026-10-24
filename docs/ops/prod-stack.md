@@ -197,7 +197,7 @@ passe rouge au lieu de se cacher derrière « la boucle tourne »).
 | `postgres_data` | postgres | la base |
 | `redis_data` | redis (AOF) | queue Messenger + rate-limiters (survit au restart — le dev n'en a volontairement pas) |
 | `backups` | php, worker, cron | dumps `pg_dump` (`var/backups`) |
-| `logo_storage` | php, worker, cron | logos clubs (`var/storage`) |
+| `logo_storage` | php, worker, cron | monte tout `var/storage` — logos clubs ET, depuis le chantier F PR3 (P4-323), les captures d'écran de signalement (`var/storage/feedback-screenshots`) ; même volume, pas une 2ᵉ montée à ajouter |
 | `exports` | pdf-worker (rw), php + worker (rw), nginx (ro) | PDF générés (`public/exports`) — uid 1000 partagé php/pdf-worker, vérifié |
 
 `./jwt` est un bind **read-only** vers `config/jwt` (le keypair ne vit jamais
