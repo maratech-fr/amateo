@@ -31,7 +31,9 @@ final class LocalFeedbackScreenshotStorage implements FeedbackScreenshotStorage
         if (!is_dir($this->dir) && !mkdir($this->dir, 0o775, true) && !is_dir($this->dir)) {
             throw new RuntimeException("Cannot create feedback screenshot storage dir: {$this->dir}");
         }
-        file_put_contents($path, $bytes);
+        if (false === file_put_contents($path, $bytes)) {
+            throw new RuntimeException("Cannot write feedback screenshot: {$path}");
+        }
     }
 
     public function read(string $id): ?string
