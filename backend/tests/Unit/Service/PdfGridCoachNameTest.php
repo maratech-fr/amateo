@@ -94,6 +94,41 @@ final class PdfGridCoachNameTest extends TestCase
         self::assertStringNotContainsString('<script>pwn', $html, 'jamais de balise vivante dans la cellule');
     }
 
+    public function testGridFallsBackToTheTeamMainCoachWhenTheSlotCarriesNone(): void
+    {
+        // Promesse fondateur Q4 : une séance SANS coach (coachId null) affiche le 1er coach MAIN de
+        // son équipe — EXACTEMENT ce que montre l'écran (`grid.ts::slotCoachId` : `slot.coachId ??
+        // teamCoach.get(teamId)`). Sur la base locale du fondateur, 233 séances sont dans ce cas.
+        // La RÉSOLUTION du 1er MAIN (MAIN seul, scopé club+saison, ordre de l'endpoint) est prouvée
+        // côté serveur par le jumeau {@see \App\Tests\Integration\Service\ScheduleExportCoachResolutionTest}
+        // (point sensible « export », angles VOULUS cités l'un l'autre) ; ici on prouve que la GRILLE
+        // APPLIQUE cette carte équipe → coach quand la séance n'a pas de coach à elle.
+        $html = $this->slotCell(
+            [$this->slot('t-a', 'v-a', 2, '18:00', null)],
+            coachShortNames: ['c-9' => 'Karim B.'],
+            showCoaches: true,
+            teamMainCoachIds: ['t-a' => 'c-9'],
+        );
+
+        self::assertStringContainsString('Karim B.', $html, 'séance sans coach → le 1er coach MAIN de l’équipe paraît, comme à l’écran');
+    }
+
+    public function testTheSlotOwnCoachWinsOverTheTeamMainCoach(): void
+    {
+        // Précédence : un coach POSÉ sur la séance PRIME sur le coach d'équipe (`slot.coachId ??
+        // teamCoach` côté écran : le `??` ne retombe sur l'équipe que si la séance n'a rien). Ce
+        // garde interdit une résolution inversée (le coach d'équipe écrasant celui de la séance).
+        $html = $this->slotCell(
+            [$this->slot('t-a', 'v-a', 2, '18:00', 'c-1')],
+            coachShortNames: ['c-1' => 'Karim B.', 'c-9' => 'Autre C.'],
+            showCoaches: true,
+            teamMainCoachIds: ['t-a' => 'c-9'],
+        );
+
+        self::assertStringContainsString('Karim B.', $html, 'le coach de la séance gagne');
+        self::assertStringNotContainsString('Autre C.', $html, 'jamais le coach d’équipe quand la séance en porte un');
+    }
+
     private function slot(string $teamId, string $venueId, int $day, string $time, ?string $coachId): ScheduleSlotTemplate
     {
         return new ScheduleSlotTemplate()
@@ -107,15 +142,22 @@ final class PdfGridCoachNameTest extends TestCase
 
     /**
      * @param list<ScheduleSlotTemplate> $bucket
-     * @param array<string, string>      $coachShortNames coachId → « Karim B. »
+     * @param array<string, string>      $coachShortNames  coachId → « Karim B. »
+     * @param array<string, string>      $teamMainCoachIds teamId → coachId du 1er MAIN (repli quand
+     *                                                     la séance n'a pas de coach à elle)
+     *
+     * ⚠ Signature PROPOSÉE (option A) : `$teamMainCoachIds` ajouté EN FIN, après `$showCoaches` :
+     * `slotCell(bucket, span, teamNames, venues, groupLabels, dayStart, coachShortNames, showCoaches,
+     * teamMainCoachIds)`. NEO l'adapte mécaniquement ; la RÈGLE de repli (séance d'abord, sinon
+     * équipe) ne bouge pas.
      */
-    private function slotCell(array $bucket, array $coachShortNames, bool $showCoaches): string
+    private function slotCell(array $bucket, array $coachShortNames, bool $showCoaches, array $teamMainCoachIds = []): string
     {
         $teamNames = ['t-a' => 'U13 F', 't-b' => 'U15 M'];
         $venues = ['v-a' => ['name' => 'Gymnase Municipal', 'color' => '#FFD700']];
         $generator = new ReflectionClass(PdfGenerator::class)->newInstanceWithoutConstructor();
 
         return (string) new ReflectionMethod(PdfGenerator::class, 'slotCell')
-            ->invoke($generator, $bucket, 6, $teamNames, $venues, [], false, $coachShortNames, $showCoaches);
+            ->invoke($generator, $bucket, 6, $teamNames, $venues, [], false, $coachShortNames, $showCoaches, $teamMainCoachIds);
     }
 }
