@@ -254,6 +254,14 @@ export const ADMIN_SECTIONS_TEXTS = {
     `Snapshot : ${bytes} caractères · ${count} diagnostic${count > 1 ? "s" : ""}`,
   feedbackCopied: "Copié",
   feedbackCopyJson: "Copier le JSON",
+  // Chantier F PR2 — recherche (club ou mot du message) + contexte large en 5 blocs titrés.
+  feedbackSearchLabel: "Rechercher un signalement",
+  feedbackSearchPlaceholder: "Club ou mot du message",
+  feedbackBlockPlanning: "Planning",
+  feedbackBlockPeriod: "Période",
+  feedbackBlockScreen: "Écran",
+  feedbackBlockLastAction: "Dernier geste",
+  feedbackBlockTechnical: "Technique",
   feedbackTopicLabel: (topic: AdminFeedbackTopic): string =>
     ({ bug: "Bug", missing_constraint: "Contrainte manquante", idea: "Idée" } as const)[topic],
   feedbackStatusLabel: (status: AdminFeedbackStatus): string =>
