@@ -20,7 +20,8 @@ front (ky beforeRequest : crypto.randomUUID → X-Request-Id)
   → réponse HTTP : X-Request-Id renvoyé sur TOUTE réponse
   → UI : les erreurs ≥ 500 affichent « (réf. incident : xxxxxxxx) »
     (8 premiers caractères) — c'est ce que le support demande au club,
-    et ce que le futur canal signalement joindra automatiquement.
+    et ce que le canal signalement joint automatiquement (trio incident,
+    `canal-signalement.md` §3quater).
 ```
 
 ## Formats de logs

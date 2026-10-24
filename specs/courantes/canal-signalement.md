@@ -2,8 +2,8 @@
 
 > Le canal par lequel un gestionnaire signale un bug, une contrainte manquante ou une idée — et
 > de quoi **reproduire** ce qu'un utilisateur a rencontré. Base saine (pas un `mailto:` jetable),
-> sans sur-ingénierie tickets. Les décisions D1-D6 + §3bis/§3ter/§3quater/§3quinquies/§3sexies
-> ci-dessous sont implémentées.
+> sans sur-ingénierie tickets. Les décisions D1-D6 + §3bis/§3ter/§3quater/§3quinquies/§3sexies/
+> §3septies ci-dessous sont implémentées — **chantier F (4 PR) livré en entier**.
 >
 > **La reproduction d'une génération n'est jamais le problème** : `Schedule::$snapshotData`
 > (`backend/src/Entity/Schedule.php:96`) porte le payload engine complet et figé, écrit avant
@@ -124,9 +124,11 @@ réseau fautif, repris de `lastIncidentStore` — capté seulement sur un ≥ 50
 
 **Pas encore alimentés par un écran** : `activeFilters`/`displayedRange` existent dans le contrat
 de bout en bout (API `FeedbackContext`, props `FeedbackButton`/`FeedbackDialog`/`PageHeader`)
-mais aucun appelant ne les renseigne — les filtres et la plage affichée du module matchs vivent
-dans des composants enfants qui ne remontent pas leur état jusqu'au `PageHeader` ; les y faire
-voyager est un refactor à part, à embarquer dans la fin du chantier F (`roadmap.md` P4-323).
+mais aucun appelant ne les renseigne — `MatchesLayout.tsx` n'ouvre `PageHeader` qu'avec
+`screenLabel` (`:83`, `:104`), jamais `activeFilters`/`displayedRange` : les filtres et la plage
+affichée du module matchs vivent dans des composants enfants qui ne remontent pas leur état
+jusqu'au `PageHeader`. Les y faire voyager est un refactor à part, hors chantier F (clos) —
+`roadmap.md` P4-356.
 
 L'**affichage/recherche** en console superadmin est livré — § 3quinquies. La **capture d'écran**
 optionnelle est livrée — § 3sexies.
@@ -185,12 +187,35 @@ fait l'étanchéité tenant), type sondé à la lecture, `X-Content-Type-Options
 `Cache-Control: no-store`. La console (`FeedbackSection.tsx`) affiche l'aperçu en `<img>` quand
 `hasScreenshot` est vrai.
 
-⚠ **Pas encore livré** (PR4) : purge/rétention de la capture (J+90, ou J+30 après traitement —
-§ roadmap `P4-323`), suppression du blob à l'effacement RGPD d'un club (`ErasedClubPurger` purge
-déjà la ligne `feedback`, PAS le fichier hors table — orphelin tant que PR4 n'est pas livrée) et
-inclusion/exclusion motivée dans l'export de portabilité (`RgpdExportService` exporte déjà la
-ligne `feedback`, jamais le blob — à trancher en PR4). Détail RGPD :
+La **rétention** (purge de la capture, suppression du blob à l'effacement RGPD d'un club, sort
+de l'export de portabilité) est tranchée et livrée — § 3septies. Détail RGPD :
 [`docs/security/rgpd.md`](../../docs/security/rgpd.md).
+
+## 3septies. Rétention RGPD + digest réduit (chantier F PR4)
+
+`app:feedback:purge` (`AdminJobCatalog` clé `purge-feedback`, quotidien 3h50 — juste après
+`purge-exports`, avant le contrôle de restauration hebdomadaire) ferme la rétention du canal en
+deux volets, horloge applicative :
+
+- **Texte + contexte** d'un signalement **traité** sont détruits 30 jours après `treated_at` : le
+  message est vidé (`''`), le contexte mis à `NULL`, mais la **ligne survit** — `purged_at` posé
+  (les indicateurs QoS de §3ter continuent de compter ce signalement). Idempotent
+  (`purged_at IS NULL` au filtre) ; repasser en « non traité » (`untreat`) ne ressuscite jamais un
+  texte déjà détruit. La console affiche « Contenu purgé (rétention) » à la place du message
+  (`FeedbackSection.tsx`, clé `purgedAt` exposée par `GET /api/admin/feedback`).
+- **La capture** (blob hors table, §3sexies) part au PREMIER des deux : J+90 après le dépôt
+  (`created_at`) OU J+30 après « traité » (`treated_at`) — un `untreat` ne prolonge JAMAIS la
+  rétention au-delà de J+90, même sans aucun traitement.
+- **Effacement d'un club** (`DELETE /api/me` → `ErasedClubPurger`) détruit aussi désormais les
+  blobs de capture de ses signalements, avant le `DELETE` de masse des lignes `feedback` qui en
+  donne les ids. L'export de portabilité (`RgpdExportService`) continue de n'exporter que le
+  texte du signalement — jamais le blob de capture, hors boucle DB.
+
+Le **digest** (D4) change de forme à la même PR : plus un email par dépôt ni un listing avec
+extraits du message, mais UN mail le matin, UNIQUEMENT si des signalements **non traités** ont
+été **créés la veille** [J-1, J) — le compte d'items, jamais leur contenu — avec un lien UNIQUE
+vers la console filtrée sur les non-traités
+(`/admin?tab=incidents&sub=signalements&fstatus=untreated`), jamais un lien par item.
 
 ## 4. Hors périmètre
 Un système de tickets (statuts multiples, assignation, SLA), un chat, un forum, une base de
