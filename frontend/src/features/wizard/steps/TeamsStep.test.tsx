@@ -26,6 +26,15 @@ const CATEGORIES = [
   { id: "cat1", name: "Senior", sortOrder: 1 },
   { id: "catU11", name: "U11", sortOrder: 6 },
 ];
+// ⚠ Référence STABLE, comme le fait react-query en prod (le `data` d'une requête ne change
+// d'identité que sur refetch). Un tableau littéral recréé à CHAQUE rendu du mock ferait churner
+// `tiers` → `toggleSort` (deps) → l'effet qui pousse « Trier » dans le pied → une boucle de rendu
+// infinie DÈS que le pied est un vrai setter (harnais `TeamsStepWithFooter`). C'était la cause du
+// hang de #7. Hors harnais le pied est un no-op (contexte par défaut), la boucle ne se voit pas.
+const PRIORITY_TIERS = [
+  { id: 1, label: "S", name: "Elite", color: null },
+  { id: 5, label: "D", name: "Bonus", color: null },
+];
 
 // P2-51 — les blocs de mutualisation (repère « Mutualisée avec … » par ligne).
 const sharedBlocksState: { data: SharedTrainingBlock[] } = { data: [] };
@@ -59,12 +68,7 @@ vi.mock("../queries", () => ({
   useWizardVenues: () => ({ data: [] }),
   useWizardCoaches: () => ({ data: [] }),
   useSportCategories: () => ({ data: CATEGORIES }),
-  usePriorityTiers: () => ({
-    data: [
-      { id: 1, label: "S", name: "Elite", color: null },
-      { id: 5, label: "D", name: "Bonus", color: null },
-    ],
-  }),
+  usePriorityTiers: () => ({ data: PRIORITY_TIERS }),
   useCreateTeam: () => ({ mutate: createMut, isPending: false }),
   useUpdateTeam: () => ({ mutate: updateMut }),
   useDeleteTeam: () => ({ mutate: deleteMut }),
@@ -589,6 +593,9 @@ describe("TeamsStep", () => {
   // « Inverser l'ordre » qui inverse l'ordre des équipes DE CETTE ZONE SEULEMENT (pas toute la
   // liste), via le mécanisme existant (lanes locales → flushSort à la sortie, comme le
   // glisser-déposer). L'inversion est persistée par l'ordre COMPLET, le rang voisin intact.
+  // Garde-fou : plafond à 10 s (sous le testTimeout de 15 s). La cause du hang (références de mock
+  // instables → boucle de rendu infinie via le pied, cf. PRIORITY_TIERS plus haut) est corrigée ;
+  // ce plafond fait ÉCHOUER vite toute régression de stabilité au lieu de pendre.
   it("inverse l'ordre d'une SEULE zone de rang (pas toute la liste) et persiste l'ordre complet", async () => {
     teamsState.data = [
       { ...baseTeam, id: "a", name: "Alpha", priorityTierId: 1, tierOrder: 0 },
@@ -617,7 +624,7 @@ describe("TeamsStep", () => {
       { id: "c", priorityTierId: 5, tierOrder: 0 },
       { id: "d", priorityTierId: 5, tierOrder: 1 },
     ]);
-  });
+  }, 10_000);
 
   /**
    * P4-107 (4ᵉ tranche) — **les trois rendus des mêmes colonnes ne peuvent plus diverger.**
