@@ -13,6 +13,7 @@ import { Button } from "@/shared/components/ui/button";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { readFailed } from "@/shared/lib/readState";
+import { getShowCoaches } from "@/features/planning/lib/exportPrefs";
 import { frDateNumeric } from "./lib/date";
 import { useCalendarEntries, useSchedulePlans } from "./queries";
 import type { CalendarEntry } from "./api";
@@ -38,9 +39,13 @@ const EXPORT_FORMATS: { key: ExportFormat; label: string }[] = [
  * absolute dropdown — it would be clipped by the modal's scroll container). The
  * export always covers every gym (venue scope lives on the planning page).
  */
-function CompactExport({ scheduleId, label }: { scheduleId: string; label: string }) {
+function CompactExport({ scheduleId, label, clubId = null }: { scheduleId: string; label: string; clubId?: string | null }) {
   const [open, setOpen] = useState(false);
   const { run, busy } = useScheduleExport(scheduleId, label);
+  // Chantier E — l'export rapide du cockpit lit la MÊME mémorisation « afficher le nom des
+  // coachs » que la page planning (clé par club). Pas de case ici (déclencheur icône) : on
+  // honore simplement le choix déjà fait. Sans club connu → décoché.
+  const showCoaches = null !== clubId ? getShowCoaches(clubId) : false;
 
   return (
     <div className="flex items-center gap-1">
@@ -56,7 +61,7 @@ function CompactExport({ scheduleId, label }: { scheduleId: string; label: strin
               key={key}
               type="button"
               disabled={null !== busy}
-              onClick={() => void run(key, null)}
+              onClick={() => void run(key, null, showCoaches)}
               className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
             >
               {busy === key ? <Spinner className="size-3" /> : null}
@@ -200,7 +205,7 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
                     <Button variant="ghost" size="icon" className="size-8" aria-label={`Consulter ${row.label}`} title="Consulter" onClick={() => consult(row)}>
                       <Eye className="size-4" />
                     </Button>
-                    <CompactExport scheduleId={row.id} label={row.label} />
+                    <CompactExport scheduleId={row.id} label={row.label} clubId={me?.club?.id ?? null} />
                   </>
                 )}
                 {/* Suppression : plannings SECONDAIRES uniquement (jamais le socle). */}

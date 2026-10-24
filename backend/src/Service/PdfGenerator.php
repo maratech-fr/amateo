@@ -76,7 +76,7 @@ class PdfGenerator
     /**
      * @return array{pdf: string}
      */
-    public function generate(Schedule $schedule, ?string $venueId = null): array
+    public function generate(Schedule $schedule, ?string $venueId = null, bool $showCoaches = false): array
     {
         $data = $this->exportData->load($schedule, $venueId);
         // P3-20 — la vue « club » (matrice équipes × jours) est ce que le gestionnaire veut
@@ -89,14 +89,18 @@ class PdfGenerator
         // gymnase ce jour-là ». Le seuil « ≥ 2 gymnases » venait d'une justification de
         // DÉCLENCHEUR (lever l'ambiguïté sur le gymnase) prise à tort pour la raison d'être de
         // la vue : un club mono-gymnase a le même besoin de donner à chaque équipe SA ligne.
-        $html = $this->buildHtml($schedule, $data, $venueId, true);
+        $html = $this->buildHtml($schedule, $data, $venueId, true, $showCoaches);
         // Scope suffix keeps the all-venues and per-venue exports as distinct files. Le jeton
         // de VUE compte autant : la page qui attend l'export compare ce suffixe pour ne pas
         // saisir le fichier d'une autre demande — sans lui, une image « par club » servirait
-        // la grille rendue une seconde plus tôt. La vue « grid » ne porte AUCUN jeton : son
-        // nom de fichier reste byte-identique à l'historique.
+        // la grille rendue une seconde plus tôt. Le défaut (tous gymnases, sans coachs) reste
+        // byte-identique à l'historique.
+        // Chantier E — le choix « afficher les coachs » distingue aussi le fichier : la page qui
+        // attend l'export (`queries.ts` `scopeToken`) compare ce suffixe `-coaches`, sinon le
+        // polling saisirait la version SANS coachs rendue pour une autre demande du même planning.
         $scope = null === $venueId ? 'all' : substr($venueId, 0, 8);
-        $pdfFilename = \sprintf('schedule-%s-%s.pdf', $schedule->getId(), $scope);
+        $coachSuffix = $showCoaches ? '-coaches' : '';
+        $pdfFilename = \sprintf('schedule-%s-%s%s.pdf', $schedule->getId(), $scope, $coachSuffix);
 
         // The Puppeteer worker (a separate container) both creates this dir and
         // writes the files, as its own uid — PHP only reads back the result, so we
@@ -172,7 +176,7 @@ class PdfGenerator
         );
     }
 
-    private function buildHtml(Schedule $schedule, ScheduleExportData $data, ?string $venueId, bool $multiSection = false): string
+    private function buildHtml(Schedule $schedule, ScheduleExportData $data, ?string $venueId, bool $multiSection = false, bool $showCoaches = false): string
     {
         $slots = $data->slots;
         $teamNames = $data->teamNames;
@@ -247,7 +251,7 @@ class PdfGenerator
         }
 
         $steps = max(1, intdiv($endMin - $startMin, self::STEP_MINUTES));
-        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $freeByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols);
+        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $freeByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols, $data->coachShortNames, $showCoaches, $data->teamMainCoachIds);
         $header = $this->buildHeader($columns, $venues, $dayStartCols);
 
         $scopeLabel = null === $venueId ? 'Tous les gymnases' : ($venues[$venueId]['name'] ?? 'Gymnase');
@@ -285,13 +289,15 @@ class PdfGenerator
      * @param list<array{day:int,venueId:string}>                   $columns
      * @param array<string, array<int, list<ScheduleSlotTemplate>>> $byColStep
      * @param array<string, array<int, ExportEmptyWindow>>          $emptyByColStep
-     * @param array<string, array<int, ExportReservedWindow>>       $freeByColStep  lot 4bis free slots
+     * @param array<string, array<int, ExportReservedWindow>>       $freeByColStep    lot 4bis free slots
      * @param array<string, string>                                 $teamNames
      * @param array<string, array{name:string,color:?string}>       $venues
-     * @param array<string, string>                                 $groupLabels    "venue|day|H:i" → label
-     * @param array<int, true>                                      $dayStartCols   column indices that open a new day
+     * @param array<string, string>                                 $groupLabels      "venue|day|H:i" → label
+     * @param array<int, true>                                      $dayStartCols     column indices that open a new day
+     * @param array<string, string>                                 $coachShortNames  coachId → « Karim B. »
+     * @param array<string, string>                                 $teamMainCoachIds teamId → coachId du 1er MAIN
      */
-    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols): string
+    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = []): string
     {
         // covered[colIndex][step] = true when a rowspan from above occupies the cell.
         $covered = [];
@@ -362,7 +368,7 @@ class PdfGenerator
                 for ($k = 1; $k < $span; ++$k) {
                     $covered[$colIndex][$step + $k] = true;
                 }
-                $cells .= $this->slotCell($bucket, $span, $teamNames, $venues, $groupLabels, $dayStart);
+                $cells .= $this->slotCell($bucket, $span, $teamNames, $venues, $groupLabels, $dayStart, $coachShortNames, $showCoaches, $teamMainCoachIds);
             }
             $rows .= \sprintf('<tr%s><th class="%s">%s</th>%s</tr>', $trClass, $timeClass, $timeLabel, $cells);
         }
@@ -384,12 +390,16 @@ class PdfGenerator
     }
 
     /**
-     * @param list<ScheduleSlotTemplate>                      $bucket      concurrent slots (≥1) in one cell
+     * @param list<ScheduleSlotTemplate>                      $bucket           concurrent slots (≥1) in one cell
      * @param array<string, string>                           $teamNames
      * @param array<string, array{name:string,color:?string}> $venues
-     * @param array<string, string>                           $groupLabels "venue|day|H:i" → label
+     * @param array<string, string>                           $groupLabels      "venue|day|H:i" → label
+     * @param array<string, string>                           $coachShortNames  coachId → « Karim B. »
+     * @param array<string, string>                           $teamMainCoachIds teamId → coachId du 1er MAIN
+     *                                                                          (repli quand la séance n'a
+     *                                                                          pas de coach à elle)
      */
-    private function slotCell(array $bucket, int $span, array $teamNames, array $venues, array $groupLabels, bool $dayStart): string
+    private function slotCell(array $bucket, int $span, array $teamNames, array $venues, array $groupLabels, bool $dayStart, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = []): string
     {
         // Colour the cell by the (shared) venue of the bucket; stack each team.
         $venue = $venues[$bucket[0]->getVenueId()] ?? ['name' => 'Salle', 'color' => null];
@@ -398,9 +408,10 @@ class PdfGenerator
 
         // Cell composition (founder): start time on TOP, team name(s) centred below. The
         // gym is NOT repeated here — it already IS the column header (adaptation of the
-        // "gym at the bottom" wish), and the coach is dropped from the grid entirely (it
-        // only cluttered the cell). A shared window stacks each team on its own line, one
-        // per row, WITHOUT splitting the cell into sub-cells.
+        // "gym at the bottom" wish). Le coach n'y figure PAS par défaut (il encombrait la
+        // cellule) ; chantier E le rend sous le nom d'équipe, en nom COURT, UNIQUEMENT quand
+        // le gestionnaire a coché « Afficher le nom des coachs » (`$showCoaches`). A shared
+        // window stacks each team on its own line, one per row, WITHOUT splitting the cell.
         $slot0 = $bucket[0];
         $time = \sprintf('<div class="cell-time">%s</div>', htmlspecialchars($slot0->getStartTime()->format('H:i')));
 
@@ -414,7 +425,22 @@ class PdfGenerator
         $entries = '';
         foreach ($bucket as $slot) {
             $teamName = $teamNames[$slot->getTeamId()] ?? 'Équipe inconnue';
-            $entries .= \sprintf('<div class="entry"><span class="team">%s</span></div>', htmlspecialchars($teamName));
+            // Chantier E — la ligne de coach (nom court) sous l'équipe, seulement si coché ET si un
+            // nom court est connu pour ce coach. Sans nom court (coachId null, ou coach sans nom →
+            // absent de la map) → AUCUNE ligne ajoutée : la cellule reste byte-identique à la
+            // version décochée. Contenu club, échappé comme tout le reste du gabarit.
+            $coachLine = '';
+            if ($showCoaches) {
+                // Chantier E — comme à l'écran (`grid.ts::slotCoachId` : `slot.coachId ??
+                // teamCoach.get(teamId)`) : le coach POSÉ sur la séance prime, sinon le 1er coach MAIN
+                // de son équipe. Aucun des deux → rien.
+                $coachId = $slot->getCoachId() ?? ($teamMainCoachIds[$slot->getTeamId()] ?? null);
+                $coachShort = null === $coachId ? null : ($coachShortNames[$coachId] ?? null);
+                if (null !== $coachShort && '' !== $coachShort) {
+                    $coachLine = \sprintf('<span class="coach">%s</span>', htmlspecialchars($coachShort));
+                }
+            }
+            $entries .= \sprintf('<div class="entry"><span class="team">%s</span>%s</div>', htmlspecialchars($teamName), $coachLine);
         }
 
         return \sprintf(
@@ -726,6 +752,8 @@ class PdfGenerator
                 td.filled .group-title { display: block; font-weight: bold; font-size: 8px; text-transform: uppercase; letter-spacing: 0.03em; opacity: 0.95; margin-bottom: 2px; padding-bottom: 1px; border-bottom: 1px solid rgba(255,255,255,0.55); }
                 td.filled .entry + .entry { margin-top: 2px; padding-top: 2px; border-top: 1px dashed rgba(255,255,255,0.45); }
                 td.filled .team { display: block; font-weight: bold; line-height: 1.1; }
+                /* Chantier E — nom court du coach sous l\'equipe (opt-in « Afficher le nom des coachs »). */
+                td.filled .coach { display: block; font-weight: normal; font-size: 7px; line-height: 1.1; opacity: 0.85; }
                 .empty { color: #999; font-style: italic; }
                 td.cell.empty { text-align: center; vertical-align: middle; color: #999; font-style: italic; font-size: 8px; border: 1px dashed #ccc; }
                 /* Lot 4bis — case de creneau LIBRE reserve : fond neutre trame, libelle en gris

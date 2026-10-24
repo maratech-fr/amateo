@@ -12,11 +12,14 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\TeamCoachRole;
 use App\Service\PlanVenueClosures;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueWindowOccupancy;
+use App\Support\CoachShortName;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -83,8 +86,34 @@ final class ScheduleExportDataProvider
         }
 
         $coachNames = [];
+        // Chantier E — en plus du nom plein (Excel), le nom COURT pour la grille du PDF, construit
+        // depuis LES MÊMES coachs tenant-scopés. Un coach sans nom n'entre pas dans la map courte
+        // (CoachShortName rend null) → sa ligne est omise à l'export (« pas de coach → rien »).
+        $coachShortNames = [];
         foreach ($this->entityManager->getRepository(Coach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $coach) {
             $coachNames[$coach->getId()] = trim(\sprintf('%s %s', $coach->getFirstName(), $coach->getLastName()));
+            $shortName = CoachShortName::from($coach->getFirstName(), $coach->getLastName());
+            if (null !== $shortName) {
+                $coachShortNames[$coach->getId()] = $shortName;
+            }
+        }
+
+        // Chantier E — la carte équipe → 1er coach MAIN, repli du coach affiché quand une séance n'a
+        // pas de coach à elle (233 séances dans ce cas sur la base locale du fondateur). On lit LE MÊME
+        // critère que l'écran : liens `team_coach` MAIN seuls, scopés club+saison, et ORDONNÉS par id de
+        // LIEN ASC — exactement l'ordre que sert l'endpoint `team_coach` (AbstractStateProvider, tri
+        // déterministe sur la PK) que consomme `grid.ts::slotCoachId`. On garde le 1er lien par équipe.
+        // ⚠ On N'ordonne PAS via `CoachDoubleBookingDetector` (sa résolution « 1er MAIN » relève d'un
+        // autre chantier) : la requête ordonnée vit ici, pour l'export.
+        $teamMainCoachIds = [];
+        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(
+            ['clubId' => $clubId, 'seasonId' => $seasonId, 'role' => TeamCoachRole::MAIN],
+            ['id' => 'ASC'],
+        ) as $link) {
+            $teamId = $link->getTeamId();
+            if (!isset($teamMainCoachIds[$teamId])) {
+                $teamMainCoachIds[$teamId] = $link->getCoachId();
+            }
         }
 
         // Defined-but-unfilled venue windows ("créneaux vides"): the same view the
@@ -205,7 +234,7 @@ final class ScheduleExportDataProvider
             $groupLabels[$key] = $label;
         }
 
-        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots);
+        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots, $coachShortNames, $teamMainCoachIds);
     }
 
     /**

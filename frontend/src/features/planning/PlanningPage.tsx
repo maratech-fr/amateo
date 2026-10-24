@@ -896,6 +896,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                     venues={venues}
                     exportName={exportName}
                     screenFilterCount={resourceFilter.length}
+                    clubId={me?.club?.id ?? null}
                   />
                 ) : null
               }

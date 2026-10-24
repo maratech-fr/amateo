@@ -56,6 +56,9 @@ const MIGRATED_FILES = [
   "features/cockpit/DayDialog.tsx",
   "features/cockpit/WeekPickerDialog.tsx",
   "features/planning/PlanningPage.tsx",
+  // Chantier E — le menu d'export migré dans features/planning/texts.ts en même temps que la case
+  // « Afficher le nom des coachs ». La migration ne recule jamais.
+  "features/planning/ExportMenu.tsx",
   "features/planning/SlotDetail.tsx",
   "features/planning/DiagnosticsPanel.tsx",
   "features/matches/ConflictLine.tsx",

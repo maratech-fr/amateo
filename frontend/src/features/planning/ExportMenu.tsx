@@ -8,7 +8,9 @@ import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { useCredits } from "@/shared/credits/useCredits";
 
 import type { Venue } from "./api";
+import { getShowCoaches, setShowCoaches } from "./lib/exportPrefs";
 import { type ExportFormat, useScheduleExport } from "./queries";
+import { PLANNING_TEXTS } from "./texts";
 
 /**
  * Export the currently viewed schedule to PDF / Excel, scoped to every gym
@@ -24,10 +26,17 @@ export function ExportMenu({
   venues,
   exportName = null,
   screenFilterCount = 0,
+  clubId = null,
 }: {
   scheduleId: string;
   venues: Venue[];
   exportName?: string | null;
+  /**
+   * Chantier E — le club courant, pour mémoriser « Afficher le nom des coachs » PAR club
+   * (clé `export-show-coaches-<clubId>`). Fourni en prop (pas via `useMe`) pour que le
+   * composant reste rendable sans QueryClientProvider. null = pas de mémorisation (défaut décoché).
+   */
+  clubId?: string | null;
   /**
    * P4-62 — combien de ressources le filtre de l'ÉCRAN masque actuellement. Le
    * filtre est une loupe de lecture, jamais le périmètre de l'export (le PDF est
@@ -42,6 +51,16 @@ export function ExportMenu({
   const [scope, setScope] = useState<string>(""); // "" = all venues
   const rootRef = useRef<HTMLDivElement>(null);
   const { run, busy } = useScheduleExport(scheduleId, exportName);
+  // Chantier E — case « Afficher le nom des coachs », décochée par défaut, mémorisée par club.
+  // Lu une fois à l'ouverture du composant (le menu naît après le chargement de `me`, donc le
+  // clubId est présent) ; pas d'effet de synchro (règle react-hooks/set-state-in-effect).
+  const [showCoaches, setShowCoachesState] = useState(() => (null !== clubId ? getShowCoaches(clubId) : false));
+  const toggleCoaches = (checked: boolean): void => {
+    setShowCoachesState(checked);
+    if (null !== clubId) {
+      setShowCoaches(clubId, checked);
+    }
+  };
   // §4bis pt 2 — les DEUX exports (PDF/Excel) consomment 1 crédit : chaque
   // entrée affiche le solde et se désactive à 0 (Découverte bridée). null = offre
   // non bridée (payant/bêta/démo) : ni suffixe, ni blocage.
@@ -73,7 +92,7 @@ export function ExportMenu({
   }, [open]);
 
   const venueId = "" === scope ? null : scope;
-  const scopeLabel = null === venueId ? "tous les gymnases" : (venues.find((v) => v.id === venueId)?.name ?? "un gymnase");
+  const scopeLabel = null === venueId ? PLANNING_TEXTS.exportScopeAll : (venues.find((v) => v.id === venueId)?.name ?? PLANNING_TEXTS.exportScopeOne);
   const formats: { key: ExportFormat; label: string; icon: typeof FileText }[] = [
     { key: "pdf", label: "PDF", icon: FileText },
     { key: "xlsx", label: "Excel", icon: FileSpreadsheet },
@@ -83,7 +102,7 @@ export function ExportMenu({
     <div ref={rootRef} className="relative">
       <Button variant="outline" size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="export-panel">
         <Download className="size-4" />
-        Exporter
+        {PLANNING_TEXTS.exportButton}
       </Button>
       {open ? (
         // z-50: above the WeekGrid frozen headers (z-40 corner / z-30 rows), which
@@ -95,28 +114,32 @@ export function ExportMenu({
         // une zone de réglages qu'on déplie : role="group" + un nom. La primitive
         // shared/components/ui/menu.tsx, elle, est un VRAI menu (roving tabindex, flèches) —
         // c'est elle qu'il faut utiliser le jour où un vrai menu est voulu.
-        <div id="export-panel" role="group" aria-label="Options d'export" className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-border bg-card p-3 shadow-lg">
+        <div id="export-panel" role="group" aria-label={PLANNING_TEXTS.exportOptionsGroup} className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-border bg-card p-3 shadow-lg">
           <label className="mb-1 block text-xs font-medium text-muted-foreground" htmlFor="export-scope">
-            Périmètre
+            {PLANNING_TEXTS.exportScopeFieldLabel}
           </label>
           <VenueSelect
             id="export-scope"
-            aria-label="Périmètre de l'export"
+            aria-label={PLANNING_TEXTS.exportScopeAriaLabel}
             wrapperClassName="mb-3 w-full"
             className="h-9"
-            placeholder="Tous les gymnases"
+            placeholder={PLANNING_TEXTS.exportScopePlaceholder}
             venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
             value={scope}
             onValueChange={setScope}
           />
-          <p className="mb-3 text-xs leading-tight text-muted-foreground">Chaque export contient les deux vues : la grille (jours × gymnases) et la vue par club (équipes × jours).</p>
+          <p className="mb-3 text-xs leading-tight text-muted-foreground">{PLANNING_TEXTS.exportBothViews}</p>
+          <label className="mb-3 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showCoaches} onChange={(e) => toggleCoaches(e.target.checked)} className="size-4" />
+            {PLANNING_TEXTS.exportShowCoaches}
+          </label>
           <div className="flex flex-col gap-1">
             {formats.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 type="button"
                 disabled={null !== busy || creditsBlocked}
-                onClick={() => void run(key, venueId)}
+                onClick={() => void run(key, venueId, showCoaches)}
                 className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-50"
               >
                 {busy === key ? <Spinner className="size-4" /> : <Icon className="size-4" />}
@@ -127,11 +150,11 @@ export function ExportMenu({
           </div>
           {screenFilterCount > 0 ? (
             <p className="mt-2 rounded-md bg-muted p-2 text-xs leading-tight">
-              L'écran est filtré ({screenFilterCount} {1 === screenFilterCount ? "ressource" : "ressources"}), mais
-              l'export porte sur <strong>{scopeLabel}</strong> — le filtre d'affichage ne le restreint pas.
+              {PLANNING_TEXTS.exportScreenFilteredPrefix(screenFilterCount)} <strong>{scopeLabel}</strong>
+              {PLANNING_TEXTS.exportScreenFilteredSuffix}
             </p>
           ) : null}
-          <p className="mt-2 text-xs leading-tight text-muted-foreground">Une page paysage, ajustée pour rester lisible.</p>
+          <p className="mt-2 text-xs leading-tight text-muted-foreground">{PLANNING_TEXTS.exportOnePage}</p>
         </div>
       ) : null}
     </div>

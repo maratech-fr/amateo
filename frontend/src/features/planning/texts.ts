@@ -58,4 +58,18 @@ export const PLANNING_TEXTS = {
   clubViewFreeSlotWord: "créneau libre",
   clubViewTeamColumn: "Équipe",
   clubViewNoSession: "aucune séance",
+  // ExportMenu (chantier E — migration en même temps que l'ajout de la case « coachs »)
+  exportButton: "Exporter",
+  exportOptionsGroup: "Options d'export",
+  exportScopeFieldLabel: "Périmètre",
+  exportScopeAriaLabel: "Périmètre de l'export",
+  exportScopePlaceholder: "Tous les gymnases",
+  exportBothViews: "Chaque export contient les deux vues : la grille (jours × gymnases) et la vue par club (équipes × jours).",
+  exportOnePage: "Une page paysage, ajustée pour rester lisible.",
+  exportShowCoaches: "Afficher le nom des coachs",
+  exportScopeAll: "tous les gymnases",
+  exportScopeOne: "un gymnase",
+  exportScreenFilteredPrefix: (count: number): string =>
+    `L'écran est filtré (${count} ${1 === count ? "ressource" : "ressources"}), mais l'export porte sur`,
+  exportScreenFilteredSuffix: " — le filtre d'affichage ne le restreint pas.",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

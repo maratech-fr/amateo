@@ -45,6 +45,8 @@ final class ExportPdfController extends AbstractController
         // Optional export scope: a single venue (validated against this schedule's
         // club+season; foreign/unknown → 404 via the shared trait).
         $venueId = $this->resolveExportVenueId($this->entityManager, $this->requestStack, $schedule);
+        // Chantier E — « afficher le nom des coachs », lu fail-closed (booléen strict true seul).
+        $showCoaches = $this->resolveShowCoaches($this->requestStack);
 
         $schedule->setPdfExportStatus('pending');
         $this->entityManager->flush();
@@ -54,6 +56,7 @@ final class ExportPdfController extends AbstractController
                 scheduleId: $schedule->getId(),
                 clubId: $schedule->getClubId(),
                 venueId: $venueId,
+                showCoaches: $showCoaches,
             ),
         );
 

@@ -104,4 +104,67 @@ final class ExportPdfHandlerRlsTest extends KernelTestCase
         self::assertSame('completed', $reloaded->getPdfExportStatus(), 'handler must scope its own GUC to see and update the schedule');
         self::assertSame('/exports/x.pdf', $reloaded->getPdfExportUrl());
     }
+
+    /**
+     * Chantier E — le handler TRANSMET « afficher le nom des coachs » du message au générateur.
+     * Sans ce relais, la case cochée n'atteindrait jamais le PDF : la grille resterait muette malgré
+     * l'option. `PdfGenerator` est mocké ; on capture l'argument passé à `generate`.
+     *
+     * ⚠ Signature PROPOSÉE : `generate(Schedule, ?venueId, bool $showCoaches)`. NEO l'adapte
+     * mécaniquement ; le relais message → générateur est la promesse.
+     */
+    public function testHandlerForwardsShowCoachesToTheGenerator(): void
+    {
+        self::bootKernel();
+        $container = self::getContainer();
+        $em = $container->get(EntityManagerInterface::class);
+
+        $uid = uniqid('', true);
+        $club = new Club;
+        $club->setName('Coach Flag Club');
+        $club->setSlug('coach-flag-' . $uid);
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setOnboardingCompleted(true);
+        $em->persist($club);
+        $em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName('2025-2026');
+        $season->setStartDate(new DateTimeImmutable('2025-09-01'));
+        $season->setEndDate(new DateTimeImmutable('2026-06-30'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $em->persist($season);
+        $em->flush();
+
+        $schedule = new Schedule;
+        $schedule->setClubId($club->getId());
+        $schedule->setSeasonId($season->getId());
+        $schedule->setName('Coach flag export');
+        $schedule->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($schedule);
+        $em->flush();
+        $scheduleId = $schedule->getId();
+        $em->clear();
+        $this->clearGuc();
+
+        $captured = null;
+        $pdfGenerator = $this->createMock(PdfGenerator::class);
+        $pdfGenerator->method('generate')->willReturnCallback(
+            function (Schedule $schedule, ?string $venueId = null, bool $showCoaches = false) use (&$captured): array {
+                $captured = $showCoaches;
+
+                return ['pdf' => '/exports/x.pdf'];
+            },
+        );
+        $hub = $this->createMock(HubInterface::class);
+        $hub->method('publish')->willReturnCallback(static fn (Update $u): string => 'id');
+
+        $handler = new ExportPdfHandler($em, $pdfGenerator, $hub, $container->get(TenantConnectionContext::class));
+        $handler(new ExportPdfMessage(scheduleId: $scheduleId, clubId: $club->getId(), showCoaches: true));
+
+        self::assertTrue($captured, 'le handler doit relayer showCoaches=true du message au générateur');
+    }
 }

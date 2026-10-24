@@ -227,7 +227,7 @@ describe("SeasonSchedulesModal — plannings, not versions", () => {
     // Le PNG a été RETIRÉ du produit le 2026-08-21 : il ne doit plus être proposé nulle part.
     expect(screen.queryByRole("button", { name: "PNG" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "PDF" }));
-    expect(run).toHaveBeenCalledWith("pdf", null);
+    expect(run).toHaveBeenCalledWith("pdf", null, false);
   });
 
   // Régression (bombe à retardement de date, 2026-10-12) : la fenêtre d'un plan de période PASSÉE

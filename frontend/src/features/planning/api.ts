@@ -162,13 +162,18 @@ export interface Schedule {
 export type ExportVenueScope = string | null;
 
 /** Queue a PDF export (async worker). Poll the schedule for pdfExportStatus/Url. */
-export const exportSchedulePdf = (id: string, venueId: ExportVenueScope): Promise<unknown> =>
-  api
-    .post(`schedules/${id}/export-pdf`, {
-      // Le corps reste VIDE dans le cas par défaut : mêmes octets qu'avant P3-20.
-      json: null === venueId ? {} : { venueId },
-    })
-    .json();
+export const exportSchedulePdf = (id: string, venueId: ExportVenueScope, showCoaches = false): Promise<unknown> => {
+  // Le corps reste VIDE dans le cas par défaut (tous gymnases, sans coachs) : mêmes octets
+  // qu'avant. On n'ajoute `showCoaches` que s'il est coché (chantier E, lu fail-closed côté back).
+  const json: { venueId?: string; showCoaches?: boolean } = {};
+  if (null !== venueId) {
+    json.venueId = venueId;
+  }
+  if (showCoaches) {
+    json.showCoaches = true;
+  }
+  return api.post(`schedules/${id}/export-pdf`, { json }).json();
+};
 
 /** Download the schedule as an .xlsx (synchronous stream). Returns the blob. */
 export const exportScheduleXlsx = async (id: string, venueId: ExportVenueScope): Promise<Blob> =>
