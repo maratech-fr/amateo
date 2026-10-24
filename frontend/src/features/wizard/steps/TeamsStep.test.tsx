@@ -1,8 +1,10 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
+import { WizardFooterContext } from "../lib/footerSlot";
 
 import { TEAM_COLUMNS } from "../lib/teamColumns";
 
@@ -23,6 +25,15 @@ const CATEGORIES = [
   { id: "catVet", name: "Vétéran", sortOrder: 0 },
   { id: "cat1", name: "Senior", sortOrder: 1 },
   { id: "catU11", name: "U11", sortOrder: 6 },
+];
+// ⚠ Référence STABLE, comme le fait react-query en prod (le `data` d'une requête ne change
+// d'identité que sur refetch). Un tableau littéral recréé à CHAQUE rendu du mock ferait churner
+// `tiers` → `toggleSort` (deps) → l'effet qui pousse « Trier » dans le pied → une boucle de rendu
+// infinie DÈS que le pied est un vrai setter (harnais `TeamsStepWithFooter`). C'était la cause du
+// hang de #7. Hors harnais le pied est un no-op (contexte par défaut), la boucle ne se voit pas.
+const PRIORITY_TIERS = [
+  { id: 1, label: "S", name: "Elite", color: null },
+  { id: 5, label: "D", name: "Bonus", color: null },
 ];
 
 // P2-51 — les blocs de mutualisation (repère « Mutualisée avec … » par ligne).
@@ -57,12 +68,7 @@ vi.mock("../queries", () => ({
   useWizardVenues: () => ({ data: [] }),
   useWizardCoaches: () => ({ data: [] }),
   useSportCategories: () => ({ data: CATEGORIES }),
-  usePriorityTiers: () => ({
-    data: [
-      { id: 1, label: "S", name: "Elite", color: null },
-      { id: 5, label: "D", name: "Bonus", color: null },
-    ],
-  }),
+  usePriorityTiers: () => ({ data: PRIORITY_TIERS }),
   useCreateTeam: () => ({ mutate: createMut, isPending: false }),
   useUpdateTeam: () => ({ mutate: updateMut }),
   useDeleteTeam: () => ({ mutate: deleteMut }),
@@ -113,6 +119,22 @@ vi.mock("../parcImport/ParcImportModal", () => ({ ParcImportModal: () => null })
 
 import { TeamsStep } from "./TeamsStep";
 import { useWizardStore } from "../store";
+
+/**
+ * Le bouton « Trier » vit dans le PIED du wizard (`setFooterExtra`, slot `WizardFooterContext`),
+ * rendu par `WizardLayout` — absent d'un rendu nu de `TeamsStep`. Ce harnais capture ce que l'étape
+ * injecte dans le pied et le rend, pour qu'un test puisse entrer en mode « Trier » (puis en sortir
+ * via « Terminer le tri ») sans monter tout le wizard.
+ */
+function TeamsStepWithFooter() {
+  const [extra, setExtra] = useState<ReactNode>(null);
+  return (
+    <WizardFooterContext.Provider value={{ setFooterExtra: setExtra, setSuppressScrollJump: () => {} }}>
+      <TeamsStep />
+      <div>{extra}</div>
+    </WizardFooterContext.Provider>
+  );
+}
 
 describe("TeamsStep", () => {
   beforeEach(() => {
@@ -256,16 +278,22 @@ describe("TeamsStep", () => {
 
   // P2-27 — le repère « mutualisée » sur la ligne, nommant les co-équipières (jamais un simple
   // pictogramme). Les groupes du SOCLE (l'éditeur de saison ne travaille jamais une période).
-  // P2-51 — la sous-ligne « Mutualisée avec … » lit les blocs de mutualisation. Une équipe membre
-  // d'un BLOC doit afficher « Mutualisée avec … » en nommant ses co-équipières.
-  it("marks a team mutualised through a block, naming the co-team", () => {
-    teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
+  // P2-51 — la sous-ligne de mutualisation lit les blocs ; une équipe membre d'un BLOC nomme ses
+  // co-équipières.
+  // #11 (améliorations légères, retour Rillieux) — la sous-ligne nomme le NOMBRE de séances
+  // mutualisées rapporté au total de l'équipe (« 1 séance sur 2 avec SM4 »), pas un simple
+  // « Mutualisée avec … ». En saison le total M est la valeur de saison (team.sessionsPerWeek).
+  it("marks a team mutualised through a block, naming the co-team AND the shared-session count", () => {
+    teamsState.data = [
+      { ...baseTeam, sessionsPerWeek: 2 },
+      { ...baseTeam, id: "t2", name: "SM4", sessionsPerWeek: 2 },
+    ];
     sharedBlocksState.data = [
       { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds: ["t1", "t2"], commonSessions: 1, label: null, sessions: [] },
     ];
     renderWithProviders(<TeamsStep />);
 
-    expect(screen.getByText(/Mutualisée avec SM4/)).toBeInTheDocument();
+    expect(screen.getByText("Mutualisée : 1 séance sur 2 avec SM4")).toBeInTheDocument();
   });
 
   it("leaves a team with neither group nor bridge unmarked (P2-45 : ni Mutualisée ni Passerelle)", () => {
@@ -297,8 +325,11 @@ describe("TeamsStep", () => {
     renderWithProviders(<TeamsStep />);
 
     await user.click(screen.getByRole("button", { name: "Liens de SM3" }));
-    // La modale : SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée. D13 — la
-    // « Mutualisation » est rendue par SharedTrainingBlockPanel : créer écrit un « bloc ».
+    // #10 — la modale a désormais deux ONGLETS (Passerelles · Mutualisation) ; la mutualisation
+    // vit dans son panneau, atteignable en activant l'onglet « Mutualisation ».
+    await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
+    // SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée. D13 — la « Mutualisation »
+    // est rendue par SharedTrainingBlockPanel : créer écrit un « bloc ».
     await user.click(screen.getByRole("checkbox", { name: "SM4" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
@@ -556,6 +587,44 @@ describe("TeamsStep", () => {
 
     expect(screen.getByRole("button", { name: /Descendre Alpha/ })).toBeDisabled();
   });
+
+  // ── #7 (améliorations légères, retour Rillieux 2026-10-21) ──
+  // Trier une à une est pénible : en mode « Trier », chaque ZONE DE RANG porte un bouton
+  // « Inverser l'ordre » qui inverse l'ordre des équipes DE CETTE ZONE SEULEMENT (pas toute la
+  // liste), via le mécanisme existant (lanes locales → flushSort à la sortie, comme le
+  // glisser-déposer). L'inversion est persistée par l'ordre COMPLET, le rang voisin intact.
+  // Garde-fou : plafond à 10 s (sous le testTimeout de 15 s). La cause du hang (références de mock
+  // instables → boucle de rendu infinie via le pied, cf. PRIORITY_TIERS plus haut) est corrigée ;
+  // ce plafond fait ÉCHOUER vite toute régression de stabilité au lieu de pendre.
+  it("inverse l'ordre d'une SEULE zone de rang (pas toute la liste) et persiste l'ordre complet", async () => {
+    teamsState.data = [
+      { ...baseTeam, id: "a", name: "Alpha", priorityTierId: 1, tierOrder: 0 },
+      { ...baseTeam, id: "b", name: "Bravo", priorityTierId: 1, tierOrder: 1 },
+      { ...baseTeam, id: "c", name: "Charlie", priorityTierId: 5, tierOrder: 0 },
+      { ...baseTeam, id: "d", name: "Delta", priorityTierId: 5, tierOrder: 1 },
+    ];
+    const user = userEvent.setup();
+    renderWithProviders(<TeamsStepWithFooter />);
+
+    // Entrer en mode « Trier » (le bouton vit dans le pied, rendu par le harnais).
+    await user.click(screen.getByRole("button", { name: "Trier" }));
+
+    // Le bouton d'inversion est NOMMÉ par sa zone (nom accessible contextualisé, A11Y-28) : on
+    // n'inverse QUE le rang S, jamais le rang D.
+    await user.click(screen.getByRole("button", { name: /Inverser l'ordre du rang S/ }));
+
+    // L'ordre se persiste à la sortie (flushSort), comme le glisser-déposer.
+    await user.click(screen.getByRole("button", { name: "Terminer le tri" }));
+
+    // Rang S inversé (b avant a) ; rang D INTACT (c puis d) — la preuve que l'inversion est « par
+    // zone, pas toute la liste ».
+    expect(reorderMut).toHaveBeenCalledWith([
+      { id: "b", priorityTierId: 1, tierOrder: 0 },
+      { id: "a", priorityTierId: 1, tierOrder: 1 },
+      { id: "c", priorityTierId: 5, tierOrder: 0 },
+      { id: "d", priorityTierId: 5, tierOrder: 1 },
+    ]);
+  }, 10_000);
 
   /**
    * P4-107 (4ᵉ tranche) — **les trois rendus des mêmes colonnes ne peuvent plus diverger.**

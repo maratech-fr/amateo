@@ -196,6 +196,18 @@ test("lot 9 F3 — « Mutualiser… » est atteignable et actif sur un plan de p
     await mutualizeDialog.getByRole("button", { name: "Mutualiser", exact: true }).click();
     await expect(mutualizeDialog, `la modale doit se fermer sur un succès${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`).toBeHidden({ timeout: 30_000 });
     await expect(page.getByText(/Groupe « U11 »|U11/).first(), "le nom du groupe doit apparaître sur la grille").toBeVisible({ timeout: 20_000 });
+
+    // --- #11 (améliorations légères 5/6) : à l'étape Équipes de la période, la sous-ligne d'équipe
+    //     nomme le NOMBRE de séances mutualisées (« Mutualisée : 1 séance sur N avec … »), pas un
+    //     simple « Mutualisée ». Seconde preuve (NAVIGATEUR) du point sensible mutualisation. ---
+    const teamsStep = page.locator("nav").getByRole("button", { name: /Équipes/ });
+    await expect(teamsStep, "le rail du wizard de période doit offrir l'étape Équipes").toBeVisible({ timeout: 15_000 });
+    await teamsStep.click();
+    await settleVeil(page);
+    await expect(
+      page.getByText(/Mutualisée\s*:\s*\d+ séances? sur \d+ avec/).first(),
+      "la sous-ligne d'équipe doit afficher le nombre de séances mutualisées (#11)",
+    ).toBeVisible({ timeout: 20_000 });
   } finally {
     if ("" !== entryId) {
       await page.request.delete(`/api/calendar_entries/${entryId}`);
