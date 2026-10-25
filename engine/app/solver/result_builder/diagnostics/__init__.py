@@ -213,5 +213,5 @@ def _generate_diagnostics(
         )
     )
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
-    diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}))
+    diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}, model=model))
     return diagnostics

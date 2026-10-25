@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from app.solver.constraints import MANDATORY, ResolvedImplicitRules, build_travel_matrix, team_share_declared_pairs
-from app.solver.constraints.travel import TravelPlacement, iter_travel_pairs_from_placements, required_gap
+from app.solver.constraints.travel import (
+    TravelPlacement,
+    _LateToleranceLookup,
+    _relay_exempts_pair,
+    iter_travel_pairs_from_placements,
+    required_gap,
+)
 from app.solver.model import _format_time
 
 # Libellés FR des jours (1 = lundi … 7 = dimanche), pour NOMMER la case rompue d'un bloc dans le
@@ -235,6 +241,7 @@ def _travel_time_move_violation(
     team_coach_map: dict[str, list[str]],
     coach_names: dict[str, str],
     venue_names: dict[str, str],
+    late_tolerances: _LateToleranceLookup | None = None,
 ) -> dict[str, Any] | None:
     """P2-55 (ENG-36) — refus NOMMÉ (MIROIR MANDATORY) quand un déplacement crée un enchaînement au
     battement trop court pour le coach (patron ``_team_link_move_violation``).
@@ -289,6 +296,15 @@ def _travel_time_move_violation(
     ):
         if gap >= required_gap(barometer, resolved_rules.travel_time_tolerance_minutes):
             continue  # battement suffisant (toléré compris) : la pose ne poserait rien ici non plus.
+        if _relay_exempts_pair(
+            traveler_is_coach=True,  # miroir cadré au voyageur COACH (team_links=()).
+            gap=gap,
+            barometer=barometer,
+            pa=pa,
+            pb=pb,
+            tolerances=late_tolerances or {},
+        ):
+            continue  # relais de l'adjoint (chantier H) : la génération tolère, le verdict aussi.
         if id(pa) not in candidate_ids and id(pb) not in candidate_ids:
             continue  # enchaînement PRÉEXISTANT (baseline seule) : jamais imputé au déplacement.
         coach_id = traveler_key.split(":", 1)[1]

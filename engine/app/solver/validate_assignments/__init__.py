@@ -29,7 +29,12 @@ from typing import Any, cast
 from ortools.sat.python import cp_model
 
 from app.schemas.validate_input_schema import CandidateAssignmentSchema, ValidateAssignmentsInputSchema
-from app.solver.constraints import diagnose_candidate_conflicts, parse_v2_constraints, resolve_implicit_rules
+from app.solver.constraints import (
+    diagnose_candidate_conflicts,
+    late_relay_tolerances,
+    parse_v2_constraints,
+    resolve_implicit_rules,
+)
 from app.solver.model import (
     DEFAULT_SESSION_MINUTES,
     HARD_LOCK_LEVEL,
@@ -125,6 +130,11 @@ def validate_assignment(
 
     model = build_model(data)
     model.team_coach_map = team_coach_map
+    # P4-361 — relais de l'adjoint (chantier H) : le modèle porte de quoi évaluer l'exemption de
+    # trajet (verrou tolérant + adjoint disponible), consommé par le miroir déterministe AVANT le
+    # solve ET par la pose HARD de `_apply_hard` — parité génération ⇄ verdict.
+    model.team_assistant_map = parsed["team_assistant_map"]
+    model.coach_unavailability = parsed["coach_unavailability"]
 
     # Les N candidats, dérivés une fois : un dict par déplacement (le langage des miroirs) + la
     # SlotKey pinnée dans model.x. Une liste à 1 élément EST le cas single — un seul chemin.
@@ -275,6 +285,7 @@ def validate_assignment(
         team_coach_map,
         coach_names,
         venue_names,
+        late_relay_tolerances(model),
     )
     if travel_violation is not None:
         return {"valid": False, "violations": [travel_violation], "compromises": [], "metrics": metrics}

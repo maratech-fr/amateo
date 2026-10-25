@@ -20,8 +20,10 @@ from ortools.sat.python import cp_model
 
 from ...constraints import (
     build_travel_matrix,
+    is_relay_exempt_pair,
     is_travel_too_tight,
     iter_team_link_overlaps,
+    late_relay_tolerances,
     team_share_declared_pairs,
 )
 from ...model import (
@@ -127,6 +129,8 @@ def _diagnose_travel_times(
     solver_status: int,
     slots: list[dict[str, Any]],
     team_coach_map: Mapping[str, list[str]],
+    *,
+    model: Any = None,
 ) -> list[dict[str, Any]]:
     """P2-53 RMM-8 PR-2 — NOMMER un battement de trajet RÉSIDUEL sous une règle MANDATORY.
 
@@ -154,6 +158,11 @@ def _diagnose_travel_times(
     tolerance_minutes = int(_get(travel, "toleranceMinutes", "tolerance_minutes", default=20))
 
     placements = _team_link_placements_from_slots(slots)
+    # P4-361 — verrous tolérants dont le relais de l'adjoint s'ouvre (chantier H) : un enchaînement
+    # entre deux verrous VERS une telle séance tardive n'est PAS annoncé infaisable (le coach arrive
+    # en retard, l'adjoint ouvre). Lookup depuis le MODÈLE (locked_slots + team_assistant_map +
+    # coach_unavailability) — vide si ``model`` absent (doubles de test) : byte-identique.
+    tolerances = late_relay_tolerances(model)
     coach_names = _coach_name_map(model_data)
     team_names = _team_name_map(model_data)
     vehicled = {
@@ -186,6 +195,16 @@ def _diagnose_travel_times(
             for j in range(i + 1, len(ordered)):
                 if not _too_tight(ordered[i], ordered[j], driving=driving):
                     continue
+                if is_relay_exempt_pair(
+                    ordered[i],
+                    ordered[j],
+                    traveler_is_coach=True,
+                    driving=driving,
+                    matrix=matrix,
+                    default_minutes=default_minutes,
+                    tolerances=tolerances,
+                ):
+                    continue  # relais de l'adjoint : le coach arrive en retard, jamais annoncé infaisable.
                 key: tuple[str, ...] = ("coach", coach_id, str(ordered[i][2]), ordered[i][3], ordered[j][3])
                 if key in seen:
                     continue
