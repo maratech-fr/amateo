@@ -9,12 +9,13 @@ import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
+import { coachFullName } from "@/shared/lib/coachName";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { parseTime } from "@/shared/lib/time";
 
 import type { Closure } from "@/features/cockpit/api";
 
-import type { PriorityTier, Reservation, SharedTrainingBlock, Team, TeamCoach, TeamSoloBudget, Venue, VenueTrainingSlot, VenueTravelTime } from "../api";
+import type { Coach, PriorityTier, Reservation, SharedTrainingBlock, Team, TeamCoach, TeamSoloBudget, Venue, VenueTrainingSlot, VenueTravelTime } from "../api";
 import { conflictingReservation, lateArrivalTolerated, mainCoachByTeam } from "../lib/coachDoubleBooking";
 import { dayLabel, hhmm } from "../lib/days";
 import { closureLabel } from "../lib/venueClosures";
@@ -35,6 +36,9 @@ interface Props {
   reservations: Reservation[];
   /** null = les liens ne sont pas connus (chargement ou échec) — surtout PAS un tableau vide. */
   teamCoaches: TeamCoach[] | null;
+  /** Chantier H — les coachs NOMMÉS (du club+saison) : le CTA de relais nomme l'adjoint éligible
+   *  qui ouvrira la séance (« {Prénom Nom} (adjoint) »), pas un « adjoint » générique. */
+  coaches?: Coach[];
   coachesPending: boolean;
   coachesFailed: boolean;
   onRetryCoaches: () => void;
@@ -97,6 +101,7 @@ export function SlotReservationModal({
   tiers,
   reservations,
   teamCoaches,
+  coaches = [],
   coachesPending,
   coachesFailed,
   onRetryCoaches,
@@ -135,7 +140,7 @@ export function SlotReservationModal({
   // Chantier H — tolérance d'arrivée tardive par équipe ajoutée (0 = aucune), et l'offre de relais
   // en attente (un dédoublement TOLÉRABLE que le gestionnaire peut accepter au lieu de subir le refus).
   const [toleranceByTeam, setToleranceByTeam] = useState<Record<string, number>>({});
-  const [pendingRelay, setPendingRelay] = useState<{ teamId: string; lateMinutes: number } | null>(null);
+  const [pendingRelay, setPendingRelay] = useState<{ teamId: string; lateMinutes: number; adjointName: string } | null>(null);
   const [relayValue, setRelayValue] = useState(0);
 
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
@@ -150,6 +155,7 @@ export function SlotReservationModal({
       assistantsByTeam.set(link.teamId, [...(assistantsByTeam.get(link.teamId) ?? []), link.coachId]);
     }
   }
+  const coachNameById = new Map(coaches.map((c) => [c.id, coachFullName(c)]));
   const travelBareme = (venueA: string, venueB: string): number => {
     const row = venueTravelTimes.find((t) => (t.venueAId === venueA && t.venueBId === venueB) || (t.venueAId === venueB && t.venueBId === venueA));
     const walking = row?.walkingMinutes;
@@ -296,8 +302,8 @@ export function SlotReservationModal({
       const relay = relayOffer(candidate, clash);
       if (null !== relay) {
         setError(null);
-        setPendingRelay({ teamId, lateMinutes: relay });
-        setRelayValue(relay);
+        setPendingRelay({ teamId, lateMinutes: relay.lateMinutes, adjointName: coachNameById.get(relay.adjointId) ?? "Un adjoint" });
+        setRelayValue(relay.lateMinutes);
 
         return;
       }
@@ -320,7 +326,7 @@ export function SlotReservationModal({
    * rejointe a un adjoint (ASSISTANT ≠ le coach dédoublé). Rend le retard (minutes) ou null. La
    * disponibilité FINE de l'adjoint reste vérifiée serveur (récap).
    */
-  const relayOffer = (candidate: { teamId: string; venueId: string; startTime: string; durationMinutes: number }, clash: Reservation): number | null => {
+  const relayOffer = (candidate: { teamId: string; venueId: string; startTime: string; durationMinutes: number }, clash: Reservation): { lateMinutes: number; adjointId: string } | null => {
     const candidateStart = parseTime(candidate.startTime);
     const clashStart = parseTime(clash.startTime);
     if (null === candidateStart || null === clashStart || candidateStart <= clashStart) {
@@ -338,8 +344,8 @@ export function SlotReservationModal({
       return null;
     }
     const doubledCoach = coachByTeam.get(candidate.teamId);
-    const adjoints = (assistantsByTeam.get(candidate.teamId) ?? []).filter((id) => id !== doubledCoach);
-    return adjoints.length > 0 ? lateMinutes : null;
+    const adjointId = (assistantsByTeam.get(candidate.teamId) ?? []).find((id) => id !== doubledCoach);
+    return undefined === adjointId ? null : { lateMinutes, adjointId };
   };
 
   // Le sélecteur porte deux sémantiques d'écriture (ajouter UNE équipe, ou poser TOUT un bloc) :
@@ -788,7 +794,7 @@ export function SlotReservationModal({
           le retard pré-rempli (modifiable 0..30) et un adjoint qui ouvrira la séance. */}
       {null !== pendingRelay ? (
         <div className="mt-3 flex flex-col gap-2">
-          <NoticeBanner tone="warning" role="status" message={WIZARD_TEXTS.lateRelayNotice(pendingRelay.lateMinutes)} />
+          <NoticeBanner tone="warning" role="status" message={WIZARD_TEXTS.lateRelayNotice(pendingRelay.lateMinutes, pendingRelay.adjointName)} />
           <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-foreground" htmlFor={relayInputId}>
               {WIZARD_TEXTS.lateToleranceInputLabel}
@@ -816,7 +822,7 @@ export function SlotReservationModal({
               setPendingRelay(null);
             }}
           >
-            {WIZARD_TEXTS.tolerateLateArrivalCta(relayValue)}
+            {WIZARD_TEXTS.tolerateLateArrivalCta(relayValue, pendingRelay.adjointName)}
           </Button>
         </div>
       ) : null}

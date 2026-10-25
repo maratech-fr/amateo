@@ -11,7 +11,7 @@ import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
 import { completeBlockOnCase } from "../lib/blockOccupancy";
 import { occupantsBySlot, effectiveSlotCapacity, reservedTeamsBySlot, slotKey } from "../lib/reservationSlots";
 import { closuresByVenue, closurePeriodLabel, isSlotClosed } from "../lib/venueClosures";
-import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useVenueTravelTimes, useWizardTeamCoaches } from "../queries";
+import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useVenueTravelTimes, useWizardCoaches, useWizardTeamCoaches } from "../queries";
 import { ReservationGrid } from "./ReservationGrid";
 import { SlotReservationModal } from "./SlotReservationModal";
 
@@ -66,6 +66,8 @@ export function ReservationPanel({
   // silencieux éteindrait donc le contrôle pendant le chargement ou après un échec — un
   // fail-OPEN sur la garde même que ce lot ajoute. La modale doit savoir qu'elle ne sait pas.
   const { data: teamCoaches, isPending: coachesPending, isError: coachesFailed, refetch: refetchCoaches } = useWizardTeamCoaches();
+  // Chantier H — les coachs nommés, pour que le CTA de relais nomme l'adjoint qui ouvrira.
+  const { data: coaches = [] } = useWizardCoaches();
   // P2-60 — le budget solo par équipe de la portée courante (résidu R(T), posées, appartenance à un
   // bloc), calculé et servi par le backend. La modale l'AFFICHE ; sans lui elle ferme la saisie
   // (fail-closed) — on passe donc l'état de la requête, jamais un `= []` de confort.
@@ -177,6 +179,7 @@ export function ReservationPanel({
           tiers={tiers}
           reservations={reservations}
           teamCoaches={teamCoaches ?? null}
+          coaches={coaches}
           coachesPending={coachesPending}
           coachesFailed={coachesFailed}
           onRetryCoaches={() => void refetchCoaches()}

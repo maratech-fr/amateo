@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CalendarClock } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -16,6 +16,7 @@ import { planRepresentative, visibleSeasonPlans } from "@/features/planning/lib/
 import type { CalendarEntry } from "./api";
 import { useSchedulePlans } from "./queries";
 import { seasonPlanCounts } from "./seasonPlannings";
+import { COCKPIT_TEXTS } from "./texts";
 
 interface SeasonPlanBannerProps {
   schedules: Schedule[];
@@ -54,6 +55,9 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
   // serveur ; vide (donc pas de pastille) tant qu'aucune version n'est pointée.
   const { data: placedConflicts } = usePlacedConflicts();
   const conflictedPeople = new Set((placedConflicts?.conflicts ?? []).map((c) => c.personId)).size;
+  // Chantier H — les relais (retards tolérés ouverts par un adjoint) : comptés et affichés À PART,
+  // jamais fondus dans les conflits « à deux endroits » (un relais est toléré, pas un conflit).
+  const relayCount = (placedConflicts?.relays ?? []).length;
 
   // Validated (state 3) → consult the plan. Not yet (state 2) → back to the
   // wizard's generation step to finish/validate it.
@@ -97,6 +101,11 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
               {conflictedPeople > 0 ? (
                 <StatusPill variant="warning" icon={<AlertTriangle className="size-3.5 shrink-0 text-warning" aria-hidden="true" />}>
                   {`${conflictedPeople} personne${conflictedPeople > 1 ? "s" : ""} à deux endroits`}
+                </StatusPill>
+              ) : null}
+              {relayCount > 0 ? (
+                <StatusPill variant="warning" icon={<CalendarClock className="size-3.5 shrink-0 text-warning" aria-hidden="true" />}>
+                  {COCKPIT_TEXTS.relayPill(relayCount)}
                 </StatusPill>
               ) : null}
               {overlayCount > 0 ? <span>{` · ${overlayCount} planning${overlayCount > 1 ? "s" : ""} secondaire${overlayCount > 1 ? "s" : ""}${openOverlayCount > 0 ? ` (${openOverlayCount} en cours)` : ""}`}</span> : null}

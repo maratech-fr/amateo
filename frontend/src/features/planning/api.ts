@@ -1236,6 +1236,21 @@ export interface PlacedConflict {
 }
 
 /**
+ * Chantier H — un RELAIS : un retard toléré ouvert par un adjoint, servi À CÔTÉ des conflits (hors
+ * de leur compte). La personne quitte la 1ʳᵉ séance (`first`) et rejoint la 2ᵉ (`second`) en retard
+ * de `lateMinutes` ; `adjointName` ouvre la séance rejointe le temps qu'elle arrive.
+ */
+export interface PlacedRelay {
+  personId: string;
+  personName: string;
+  dayOfWeek: number;
+  lateMinutes: number;
+  adjointName: string;
+  first: PlacedConflictSide;
+  second: PlacedConflictSide;
+}
+
+/**
  * P4-269 — le radar « une personne à deux endroits » sur le planning d'entraînement EN VIGUEUR.
  * `seasonPlanChosen` false = aucune version pointée : pas de planning en vigueur à scanner, donc
  * une liste vide ne veut pas dire « tout va bien ». Le backend décide TOUT ; le front AFFICHE.
@@ -1245,11 +1260,15 @@ export interface PlacedConflicts {
   seasonId: string | null;
   seasonPlanChosen: boolean;
   conflicts: PlacedConflict[];
+  /** Chantier H — les relais (retards tolérés ouverts par un adjoint), HORS du compte de conflits.
+   *  Optionnel au TYPE (un vieux feed/mock sans la clé reste valide) mais TOUJOURS normalisé à `[]`
+   *  par {@link getPlacedConflicts} au runtime ; les consommateurs lisent `?? []`. */
+  relays?: PlacedRelay[];
 }
 
 export const getPlacedConflicts = async (): Promise<PlacedConflicts> => {
   const raw = await api.get("training/placed-conflicts").json<PlacedConflicts>();
-  // Normalisation défensive : on mute la PROD, jamais un mock — un feed sans `conflicts`
+  // Normalisation défensive : on mute la PROD, jamais un mock — un feed sans `conflicts`/`relays`
   // (jamais servi ainsi, mais un contrat qui glisse ne doit pas casser l'écran) reste sûr.
-  return { ...raw, conflicts: Array.isArray(raw.conflicts) ? raw.conflicts : [] };
+  return { ...raw, conflicts: Array.isArray(raw.conflicts) ? raw.conflicts : [], relays: Array.isArray(raw.relays) ? raw.relays : [] };
 };
