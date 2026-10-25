@@ -30,6 +30,7 @@ final class CustomRoutesOpenApiTest extends KernelTestCase
             '/api/me',
             '/api/me/password',
             '/api/schedule-slots/{id}/manual-edit/lock',
+            '/api/schedules/{id}/export-pdf/{filename}',
             '/api/school-holidays',
             '/api/public-holidays',
             '/api/league-match-windows',

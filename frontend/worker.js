@@ -5,7 +5,10 @@ import puppeteer from 'puppeteer';
 import { startHeartbeat } from './worker-heartbeat.js';
 
 const PORT = 3000;
-const OUTPUT_DIR = '/app/backend/public/exports';
+// P4-357 — les rendus vivent HORS du docroot : ils ne se téléchargent que par la route
+// AUTHENTIFIÉE `GET /api/schedules/{id}/export-pdf/{filename}` (côté backend). MÊME répertoire
+// que `PdfGenerator::OUTPUT_DIR` — les deux foyers bougent ensemble. Ce worker CRÉE le dossier.
+const OUTPUT_DIR = '/app/backend/var/exports';
 
 // A4 in CSS px at 96dpi. Landscape swaps the two. ~24px of margin each way.
 const A4 = { w: 794, h: 1123 };

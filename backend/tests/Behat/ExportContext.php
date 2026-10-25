@@ -110,12 +110,14 @@ final class ExportContext extends BaseContext
     #[Then('je reçois un fichier PDF non vide')]
     public function jeRecoisUnPdfNonVide(): void
     {
-        // Le fichier est servi par nginx sous /exports (même origine que l'API, hors préfixe /api).
-        $apiBase = rtrim((string) (getenv('BEHAT_API_BASE') ?: 'http://nginx/api'), '/');
-        $origin = (string) preg_replace('#/api$#', '', $apiBase);
-        $absoluteUrl = $origin . $this->pdfUrl;
+        // P4-357 — le rendu se télécharge par la route AUTHENTIFIÉE renvoyée dans `pdfExportUrl`
+        // (`/api/schedules/{id}/export-pdf/{filename}`), plus par une URL statique publique. On
+        // porte donc le MÊME Bearer que le déclenchement : c'est le geste réel du gestionnaire.
+        $absoluteUrl = $this->renderOrigin() . $this->pdfUrl;
 
-        $response = $this->client->request('GET', $absoluteUrl);
+        $response = $this->client->request('GET', $absoluteUrl, [
+            'headers' => ['Authorization' => 'Bearer ' . $this->token],
+        ]);
         $status = $response->getStatusCode();
         if (200 !== $status) {
             throw new RuntimeException(\sprintf('le fichier exporté n\'est pas servi (HTTP %d) à %s', $status, $absoluteUrl));
@@ -132,6 +134,31 @@ final class ExportContext extends BaseContext
         }
         if (!str_starts_with($bytes, '%PDF')) {
             throw new RuntimeException('le fichier exporté ne porte pas l\'entête d\'un PDF (« %PDF »)');
+        }
+    }
+
+    #[Then('l\'ancienne adresse statique du rendu ne répond plus')]
+    public function lAncienneAdresseStatiqueNeRepondPlus(): void
+    {
+        // Même nom de fichier, ancienne adresse statique publique `/exports/<nom>` : l'edge la
+        // renvoie désormais en 404 (le rendu ne fuit plus hors du firewall JWT).
+        $legacyUrl = $this->renderOrigin() . '/exports/' . basename($this->pdfUrl);
+
+        $status = $this->client->request('GET', $legacyUrl)->getStatusCode();
+        if (404 !== $status) {
+            throw new RuntimeException(\sprintf('l\'ancienne adresse statique aurait dû répondre 404, obtenu %d à %s', $status, $legacyUrl));
+        }
+    }
+
+    #[Then('le rendu n\'est pas servi sans session')]
+    public function leRenduNEstPasServiSansSession(): void
+    {
+        // La route authentifiée, SANS Bearer : le firewall JWT refuse, rien n'est servi.
+        $absoluteUrl = $this->renderOrigin() . $this->pdfUrl;
+
+        $status = $this->client->request('GET', $absoluteUrl)->getStatusCode();
+        if (!\in_array($status, [401, 403], true)) {
+            throw new RuntimeException(\sprintf('le rendu sans session aurait dû être refusé (401/403), obtenu %d à %s', $status, $absoluteUrl));
         }
     }
 
@@ -159,6 +186,14 @@ final class ExportContext extends BaseContext
             \sprintf('UPDATE schedule SET pdf_export_status=%s, pdf_export_url=%s WHERE id=\'%s\'', $status, $url, $this->scheduleId),
             admin: true,
         );
+    }
+
+    /** L'origine HTTP (hors préfixe /api) à laquelle la route de téléchargement est servie. */
+    private function renderOrigin(): string
+    {
+        $apiBase = rtrim((string) (getenv('BEHAT_API_BASE') ?: 'http://nginx/api'), '/');
+
+        return (string) preg_replace('#/api$#', '', $apiBase);
     }
 
     private function pollUntilExported(string $scheduleId): string

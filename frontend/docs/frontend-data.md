@@ -109,8 +109,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: true },
-      // Fichiers PDF exportés, servis depuis le `public/exports` du backend.
-      '/exports': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: true },
+      // P4-357 — plus de proxy `/exports` dédié : le rendu PDF se télécharge par la route
+      // authentifiée `/api/schedules/{id}/export-pdf/{filename}`, déjà couverte par le proxy `/api`.
       '/.well-known/mercure': { target: process.env.MERCURE_PROXY_TARGET ?? 'http://127.0.0.1:3000', changeOrigin: true },
       // FRT-17 : PAS de proxy `/engine` — le frontend ne contacte JAMAIS l'engine
       // directement (frontière §2 de CLAUDE.md). Le proxy mort a été supprimé.
@@ -119,9 +119,11 @@ export default defineConfig({
 });
 ```
 
-En production, le Nginx frontend proxy `/api` → backend Nginx, `/exports` → backend et
-`/.well-known/mercure` → Mercure hub. **Pas de `location /engine/`** (`docker/frontend/nginx.conf:96-102`) —
-frontière §2 de `CLAUDE.md` : le frontend ne contacte jamais l'engine directement.
+En production, le Nginx frontend proxy `/api` → backend Nginx et
+`/.well-known/mercure` → Mercure hub. **Pas de `location /engine/`** (`docker/frontend/nginx.conf:99-105`) —
+frontière §2 de `CLAUDE.md` : le frontend ne contacte jamais l'engine directement. **`/exports/` répond
+404** (P4-357) : le PDF ne se télécharge plus en statique, uniquement par la route authentifiée
+`/api/schedules/{id}/export-pdf/{filename}`.
 
 ---
 

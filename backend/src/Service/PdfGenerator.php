@@ -39,8 +39,11 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 class PdfGenerator
 {
     private const PDF_WORKER_URL = 'http://pdf-worker:3000/generate';
-    private const OUTPUT_DIR = '/app/backend/public/exports';
-    private const PUBLIC_PATH = '/exports';
+    // P4-357 — les rendus vivent HORS du docroot (`public/` n'est plus servi en statique
+    // pour eux) : ils ne se téléchargent que par la route AUTHENTIFIÉE confinée au club
+    // `GET /api/schedules/{id}/export-pdf/{filename}` (ExportPdfDownloadController). Le worker
+    // (`frontend/worker.js`) écrit dans le MÊME répertoire — les deux foyers bougent ensemble.
+    private const OUTPUT_DIR = '/app/backend/var/exports';
     // Match the on-screen planning grid's granularity (grid.ts stepMin = 15) so
     // slots starting at :15/:45 land on the right row instead of being snapped or
     // dropped into a coarser bucket.
@@ -57,20 +60,16 @@ class PdfGenerator
     ) {}
 
     /**
-     * P4-52 — où les rendus atterrissent, et sous quelle URL ils sont servis.
+     * P4-52 — où les rendus atterrissent sur disque.
      *
-     * Exposés en accesseurs plutôt que recopiés dans `PurgeExportsCommand` : la purge doit
-     * balayer EXACTEMENT le répertoire que ce générateur écrit. Deux constantes qui
-     * dériveraient donneraient une purge qui ne trouve rien — et qui le dit en vert.
+     * Exposé en accesseur plutôt que recopié dans `PurgeExportsCommand` (et lu par la route de
+     * téléchargement + son NR) : la purge et le téléchargement doivent balayer/servir EXACTEMENT
+     * le répertoire que ce générateur écrit. Une constante recopiée qui dériverait donnerait une
+     * purge qui ne trouve rien — et qui le dit en vert (P4-357 : même piège pour le téléchargement).
      */
     public static function outputDir(): string
     {
         return self::OUTPUT_DIR;
-    }
-
-    public static function publicPath(): string
-    {
-        return self::PUBLIC_PATH;
     }
 
     /**
@@ -117,7 +116,10 @@ class PdfGenerator
             throw new RuntimeException('PDF worker unreachable: ' . $e->getMessage(), $e->getCode(), $e);
         }
 
-        return ['pdf' => self::PUBLIC_PATH . '/' . $pdfFilename];
+        // P4-357 — l'URL de téléchargement est la route AUTHENTIFIÉE confinée au club, plus une
+        // adresse statique publique. Le NOM de fichier (donc le jeton `-<scope>[-coaches].pdf`
+        // que le polling front compare par `endsWith`) est INCHANGÉ : seul le préfixe bascule.
+        return ['pdf' => \sprintf('/api/schedules/%s/export-pdf/%s', $schedule->getId(), $pdfFilename)];
     }
 
     private function callWorker(string $html, string $filename, string $footerTemplate): void

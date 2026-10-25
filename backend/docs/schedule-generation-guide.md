@@ -489,10 +489,15 @@ Corps optionnel (lu à la main par `ExportPdfController`, jamais par un DTO d'AP
 
 ### Téléchargement
 
-Il n'existe **pas** de route de téléchargement dédiée : `pdfExportUrl` pointe directement vers un **fichier statique** servi sous `/exports/…` (répertoire `backend/public/exports`).
+`pdfExportUrl` pointe vers une route **authentifiée et confinée au club** —
+`GET /api/schedules/{id}/export-pdf/{filename}` (`ExportPdfDownloadController`, P4-357). Le
+rendu vit désormais HORS du docroot (`backend/var/exports`) ; il ne se télécharge plus par
+aucune URL statique publique. Le contrôleur refuse en 404 **byte-identique** un planning inconnu,
+un planning d'un AUTRE club, une traversée de chemin, un nom hors motif, ou le nom du rendu d'un
+AUTRE planning glissé sous cet `{id}`.
 
 ```bash
-curl -O "http://localhost:8080<pdfExportUrl>"   # ex. /exports/schedule-a1b2c3d4-….pdf
+curl -O -H "Authorization: Bearer <ton-jwt>" "http://localhost:8080<pdfExportUrl>"   # ex. /api/schedules/a1b2c3d4-…/export-pdf/schedule-a1b2c3d4-….pdf
 ```
 
 ### Note importante

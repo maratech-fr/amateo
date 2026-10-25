@@ -24,7 +24,7 @@ Dire l'inverse serait mentir sur la portée du correctif.
 | Propriété | Valeur | Où |
 |---|---|---|
 | Nom | `BEARER` | paramètre `app.jwt_cookie_name` (`backend/config/services.yaml`) |
-| Chemin | `/api` | `app.jwt_cookie_path` — le navigateur ne l'envoie qu'à l'API, jamais aux assets ni aux exports |
+| Chemin | `/api` | `app.jwt_cookie_path` — le navigateur ne l'envoie qu'à l'API, jamais aux assets statiques. Le téléchargement du rendu PDF (`GET /api/schedules/{id}/export-pdf/{filename}`, P4-357) vit sous `/api` : le cookie le couvre comme toute autre route, y compris une navigation directe (lien/`window.open`) |
 | `httpOnly` | oui | `lexik_jwt_authentication.yaml` (`set_cookies.BEARER`) |
 | `SameSite` | `strict` | idem — **c'est toute la défense CSRF** de ce cookie |
 | `Secure` | `%env(bool:JWT_COOKIE_SECURE)%` | **défaut `true`** (fail-closed) ; `false` posé explicitement en dev/CI |

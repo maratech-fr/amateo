@@ -46,7 +46,7 @@ cd backend && make test     # PHPStan(lvl8) + CS-Fixer + PHPUnit testsuite Unit 
 cd backend && make tests-complete             # miroir exact de la CI — à passer AVANT tout push backend
 cd backend && make behat    # tests fonctionnels Gherkin FR (API réelle) — `with-sandbox.sh` en mode play
 cd engine  && make test     # ruff (+format --check) + mypy + bandit + deptry + pytest  | make format
-make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /exports, /.well-known/mercure)
+make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /.well-known/mercure)
 make -C frontend e2e        # Playwright entièrement dockerisé — exige stack + dev lancés
 ```
 

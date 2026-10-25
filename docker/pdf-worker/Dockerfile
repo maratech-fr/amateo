@@ -43,7 +43,7 @@ RUN apt-get update \
 
 # SEC-15 — défaut NON-ROOT : pptruser est l'utilisateur prévu par l'image
 # puppeteer (sandbox Chromium comprise). Les deux composes l'écrasent
-# explicitement (dev : uid hôte pour créer public/exports sur le bind-mount ;
+# explicitement (dev : uid hôte pour créer var/exports sur le bind-mount ;
 # prod : 1000:1000, le même uid que le www-data de l'image php, pour partager
 # le volume exports) — ce USER est le filet si l'image est lancée nue.
 USER pptruser
