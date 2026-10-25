@@ -93,4 +93,24 @@ describe("TeamSelect", () => {
     expect(wrapper).toHaveClass("w-40");
     expect(wrapper).not.toHaveClass("w-full");
   });
+
+  // ── Chantier D (CTC) PR1 — le repère d'entente porté par l'option d'équipe (ListboxOption.icon) ──
+  // Promesse : « PARTOUT où le nom s'affiche », sélecteurs compris. Le picto CtcMark est l'ICÔNE de
+  // l'option d'une équipe en entente ; une équipe ordinaire n'en porte pas. Tous les consommateurs de
+  // TeamSelect en héritent sans y penser.
+  it("porte le picto CtcMark sur l'option d'une équipe en entente, et aucun sur les autres", async () => {
+    const user = userEvent.setup();
+    const withCtc: TeamLike[] = [
+      { id: "ctc", name: "U15F", priorityTierId: 1, tierOrder: 0, isCtc: true, ctcPartner: "AS Voisine" } as TeamLike,
+      { id: "plain", name: "SM1", priorityTierId: 1, tierOrder: 1 },
+    ];
+    render(<TeamSelect aria-label="Équipe" teams={withCtc} tiers={tiers} value="" onValueChange={vi.fn()} />);
+    await user.click(trigger());
+
+    const ctcOption = screen.getByRole("option", { name: /U15F/ });
+    expect(within(ctcOption).getByRole("img", { name: /Entente \(CTC\) avec AS Voisine/ })).toBeInTheDocument();
+
+    const plainOption = screen.getByRole("option", { name: "SM1" });
+    expect(within(plainOption).queryByRole("img", { name: /Entente \(CTC\)/ })).toBeNull();
+  });
 });

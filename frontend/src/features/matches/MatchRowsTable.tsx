@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Modal } from "@/shared/components/ui/modal";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
@@ -144,7 +145,10 @@ function GroupRows({
               </button>
             </TableCell>
             <TableCell className="whitespace-nowrap">
-              <span className="font-medium">{teamName}</span>
+              <span className="inline-flex items-center font-medium">
+                {true === team?.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
+                {teamName}
+              </span>
               {undefined !== role ? <StatusPill className="ml-1.5 text-foreground">{role}</StatusPill> : null}
             </TableCell>
             <TableCell className="whitespace-nowrap text-muted-foreground">{HOME_AWAY_LABEL[fixture.homeAway]}</TableCell>

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router";
 
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
@@ -212,10 +213,17 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
         if (queue.unattachedCount > 0) {
           headerParts.push(`${queue.unattachedCount} sans gymnase`);
         }
+        // Repère d'entente (CTC) devant l'en-tête d'équipe de l'accordéon (`title` est un ReactNode).
+        const team = teams.find((t) => t.id === queue.teamId);
         return (
           <AccordionSection
             key={queue.teamId}
-            title={headerParts.join(" · ")}
+            title={
+              <span className="inline-flex items-center">
+                {true === team?.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
+                {headerParts.join(" · ")}
+              </span>
+            }
             open={openTeamId === queue.teamId}
             onToggle={(next) => setParam("equipe", next ? queue.teamId : null)}
           >

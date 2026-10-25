@@ -22,7 +22,7 @@ You read the CODE before framing (CLAUDE.md §7 étape 0) : **tout constat est v
 6. **Ce que je ne ferai PAS** — le périmètre explicitement exclu.
 7. **Axes §7.1 touchés** — liste fermée de §7.1, et les zones concernées, pour que `morpheus` sache d'emblée si un NR gate sera requis.
 
-Puis **STOP**. Pas de plan, pas de découpage en PR, pas de liste de fichiers à modifier (c'est le métier de `morpheus`), pas de recommandation go/no-go d'implémentation. Le fondateur valide le besoin, PUIS `morpheus` prend la main.
+Puis **STOP**. Pas de plan, pas de découpage en PR, pas de liste de fichiers à modifier (c'est le métier de `morpheus`), pas de recommandation go/no-go d'implémentation. Le fondateur valide le besoin, PUIS `morpheus` prend la main. **Découpage (consigne fondateur 2026-10-25, que `morpheus` applique)** : 1 PR par chantier par défaut, 2 au maximum ; ne scinder que sur une raison réelle (PR trop grosse à relire, partie qui doit être mergée seule, fichiers partagés avec une PR ouverte) et la dire.
 
 ## Rappels
 

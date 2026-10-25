@@ -34665,6 +34665,18 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "isCtc": {
+                        "description": "\u00c9quipe d\u00e9clar\u00e9e \u00ab en entente (CTC) \u00bb \u2014 rep\u00e8re interne, aucun effet moteur.",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "ctcPartner": {
+                        "description": "Le/les partenaires de l'entente, texte libre opaque (\u2264 120) ; null hors entente.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -34771,6 +34783,19 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "isCtc": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "ctcPartner": {
+                        "maxLength": 120,
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -34871,6 +34896,18 @@
                         "type": "boolean"
                     },
                     "parentTeamId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "isCtc": {
+                        "description": "\u00c9quipe d\u00e9clar\u00e9e \u00ab en entente (CTC) \u00bb \u2014 rep\u00e8re interne, aucun effet moteur.",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "ctcPartner": {
+                        "description": "Le/les partenaires de l'entente, texte libre opaque (\u2264 120) ; null hors entente.",
                         "type": [
                             "string",
                             "null"
@@ -34980,6 +35017,18 @@
                                 "type": "boolean"
                             },
                             "parentTeamId": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "isCtc": {
+                                "description": "\u00c9quipe d\u00e9clar\u00e9e \u00ab en entente (CTC) \u00bb \u2014 rep\u00e8re interne, aucun effet moteur.",
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "ctcPartner": {
+                                "description": "Le/les partenaires de l'entente, texte libre opaque (\u2264 120) ; null hors entente.",
                                 "type": [
                                     "string",
                                     "null"

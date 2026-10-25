@@ -125,13 +125,13 @@ final class ImportController extends AbstractController
     }
 
     /**
-     * Le champ multipart « overrides » : une liste JSON `[{row, tierId, gender}]`
-     * (rang + genre édités dans l'aperçu), patron du champ « rows ». On la réindexe
-     * par numéro de ligne Excel pour le service. Absent/vide = aucun override. JSON
-     * malformé → 400 ; la validité MÉTIER (rang connu, genre valide) est tranchée par
-     * le service, qui refuse en 400 nommé avant tout persist.
+     * Le champ multipart « overrides » : une liste JSON `[{row, tierId, gender, ctc?}]`
+     * (rang + genre + entente édités dans l'aperçu), patron du champ « rows ». On la
+     * réindexe par numéro de ligne Excel pour le service. Absent/vide = aucun override ;
+     * `ctc` absent = hors entente. JSON malformé → 400 ; la validité MÉTIER (rang connu,
+     * genre valide) est tranchée par le service, qui refuse en 400 nommé avant tout persist.
      *
-     * @return array<int, array{tierId: int, gender: string}>|JsonResponse
+     * @return array<int, array{tierId: int, gender: string, ctc: bool}>|JsonResponse
      */
     private function parseOverrides(Request $request): array|JsonResponse
     {
@@ -159,7 +159,11 @@ final class ImportController extends AbstractController
             if (!\is_int($row) || !\is_int($tierId) || !\is_string($gender)) {
                 return $this->json(['error' => 'Champ « overrides » invalide (objets {row, tierId, gender} attendus).'], Response::HTTP_BAD_REQUEST);
             }
-            $overrides[$row] = ['tierId' => $tierId, 'gender' => $gender];
+            $ctc = $entry['ctc'] ?? false;
+            if (!\is_bool($ctc)) {
+                return $this->json(['error' => 'Champ « overrides » invalide (ctc booléen attendu).'], Response::HTTP_BAD_REQUEST);
+            }
+            $overrides[$row] = ['tierId' => $tierId, 'gender' => $gender, 'ctc' => $ctc];
         }
 
         return $overrides;

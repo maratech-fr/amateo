@@ -29,12 +29,13 @@ final class FfbbExcelImporter
     ) {}
 
     /**
-     * @param list<int>|null                                 $selectedRows numéros de ligne Excel à importer (P3-7) ;
-     *                                                                     null = tout importer (comportement historique)
-     * @param array<int, array{tierId: int, gender: string}> $overrides    rang + genre édités dans l'aperçu (#4),
-     *                                                                     keyés par numéro de ligne Excel, appliqués
-     *                                                                     aux SEULES lignes créées ; absent = défaut
-     *                                                                     historique (rang D, genre vide)
+     * @param list<int>|null                                             $selectedRows numéros de ligne Excel à importer (P3-7) ;
+     *                                                                                 null = tout importer (comportement historique)
+     * @param array<int, array{tierId: int, gender: string, ctc?: bool}> $overrides    rang + genre (et entente CTC) édités
+     *                                                                                 dans l'aperçu (#4, chantier D), keyés par
+     *                                                                                 numéro de ligne Excel, appliqués aux SEULES
+     *                                                                                 lignes créées ; absent = défaut historique
+     *                                                                                 (rang D, genre vide, hors entente)
      *
      * @return array{created: int, skipped: int, errors: list<string>}
      */
@@ -147,8 +148,10 @@ final class FfbbExcelImporter
 
             // #4 — l'override (rang + genre édités dans l'aperçu) ne s'applique qu'ici,
             // à une ligne RETENUE pour création. Sans override : défaut historique (rang D,
-            // genre vide). Un override invalide jette AVANT tout persist (tout-ou-rien).
-            [$tierId, $gender] = $this->resolveOverride($overrides[$rowIndex + 2] ?? null, $validTierIds);
+            // genre vide, hors entente). Un override invalide jette AVANT tout persist
+            // (tout-ou-rien). L'entente (chantier D) n'est posée que si l'override la coche —
+            // jamais déduite du libellé — et le partenaire reste toujours vide (texte libre).
+            [$tierId, $gender, $isCtc] = $this->resolveOverride($overrides[$rowIndex + 2] ?? null, $validTierIds);
 
             $team = (new Team)
                 ->setClubId($clubId)
@@ -156,6 +159,7 @@ final class FfbbExcelImporter
                 ->setSportCategoryId($sportCategory->getId())
                 ->setPriorityTierId($tierId)
                 ->setGender($gender)
+                ->setIsCtc($isCtc)
                 ->setName($nom)
                 ->setSessionsPerWeek(self::DEFAULT_SESSIONS_PER_WEEK)
                 ->setIsActive(true);
@@ -201,7 +205,7 @@ final class FfbbExcelImporter
      * le gestionnaire reste libre de les changer.
      *
      * @return array{
-     *     rows: list<array{row: int, name: string, category: string, number: string, alreadyPresent: bool, suggestedTierId: int, suggestedGender: ?string}>,
+     *     rows: list<array{row: int, name: string, category: string, number: string, alreadyPresent: bool, suggestedTierId: int, suggestedGender: ?string, suggestedCtc: bool}>,
      *     errors: list<string>,
      *     total: int
      * }
@@ -293,6 +297,7 @@ final class FfbbExcelImporter
                 'alreadyPresent' => $alreadyPresent,
                 'suggestedTierId' => $tierIdByLabel[$suggestedLabel] ?? self::DEFAULT_PRIORITY_TIER_ID,
                 'suggestedGender' => $suggestedGender?->value,
+                'suggestedCtc' => $this->suggestsCtc($nom),
             ];
         }
 
@@ -300,19 +305,21 @@ final class FfbbExcelImporter
     }
 
     /**
-     * Résout un override (rang + genre édités dans l'aperçu) en valeurs de l'équipe.
-     * `null` = pas d'override → défaut historique (rang D, genre vide). Un rang
-     * inconnu ou un genre hors `Gender::cases()` → 400 nommé, AVANT tout persist.
+     * Résout un override (rang + genre + entente édités dans l'aperçu) en valeurs de
+     * l'équipe. `null` = pas d'override → défaut historique (rang D, genre vide, hors
+     * entente). Un rang inconnu ou un genre hors `Gender::cases()` → 400 nommé, AVANT
+     * tout persist. L'entente (chantier D) n'est posée que si l'override la coche
+     * explicitement (`ctc: true`) — jamais d'office, même quand le libellé porte « CTC ».
      *
-     * @param array{tierId: int, gender: string}|null $override
-     * @param array<int, true>                        $validTierIds
+     * @param array{tierId: int, gender: string, ctc?: bool}|null $override
+     * @param array<int, true>                                    $validTierIds
      *
-     * @return array{0: int, 1: ?Gender}
+     * @return array{0: int, 1: ?Gender, 2: bool}
      */
     private function resolveOverride(?array $override, array $validTierIds): array
     {
         if (null === $override) {
-            return [self::DEFAULT_PRIORITY_TIER_ID, null];
+            return [self::DEFAULT_PRIORITY_TIER_ID, null, false];
         }
 
         $tierId = $override['tierId'];
@@ -320,9 +327,11 @@ final class FfbbExcelImporter
             throw ImportRejectedException::badRequest(\sprintf('Rang inconnu (%d) dans les options d\'import.', $tierId));
         }
 
+        $isCtc = $override['ctc'] ?? false;
+
         $genderRaw = $override['gender'];
         if ('' === $genderRaw) {
-            return [$tierId, null];
+            return [$tierId, null, $isCtc];
         }
 
         $gender = Gender::tryFrom($genderRaw);
@@ -330,7 +339,19 @@ final class FfbbExcelImporter
             throw ImportRejectedException::badRequest(\sprintf('Genre inconnu (%s) dans les options d\'import.', $genderRaw));
         }
 
-        return [$tierId, $gender];
+        return [$tierId, $gender, $isCtc];
+    }
+
+    /**
+     * Chantier D — l'analyse SUGGÈRE l'entente (CTC) pour une équipe dont le libellé
+     * porte « CTC » ou « ENTENTE » (casse indifférente), sans RIEN décider : le
+     * gestionnaire reste libre de décocher. Aucun marqueur → jamais suggérée.
+     */
+    private function suggestsCtc(string $name): bool
+    {
+        $upper = mb_strtoupper($name, 'UTF-8');
+
+        return str_contains($upper, 'CTC') || str_contains($upper, 'ENTENTE');
     }
 
     /**

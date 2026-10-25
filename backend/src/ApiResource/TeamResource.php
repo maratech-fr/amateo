@@ -98,6 +98,14 @@ class TeamResource
     #[Groups(['read'])]
     public ?string $parentTeamId = null;
 
+    /** Équipe déclarée « en entente (CTC) » — repère interne, aucun effet moteur. */
+    #[Groups(['read'])]
+    public bool $isCtc = false;
+
+    /** Le/les partenaires de l'entente, texte libre opaque (≤ 120) ; null hors entente. */
+    #[Groups(['read'])]
+    public ?string $ctcPartner = null;
+
     public static function fromEntity(Team $entity): self
     {
         $dto = new self;
@@ -117,6 +125,8 @@ class TeamResource
         $dto->forcedVenueId = $entity->getForcedVenueId();
         $dto->isActive = $entity->getIsActive();
         $dto->parentTeamId = $entity->getParentTeamId();
+        $dto->isCtc = $entity->getIsCtc();
+        $dto->ctcPartner = $entity->getCtcPartner();
 
         return $dto;
     }

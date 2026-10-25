@@ -80,18 +80,32 @@ function renderModal() {
 // l'API envoie »). `suggestedGender` est "M" | "F" | "MIXTE" | null.
 const THREE_ROWS: TeamImportAnalysis = {
   rows: [
-    { row: 3, name: "SM1", category: "Seniors", number: "1", alreadyPresent: false, suggestedTierId: 1, suggestedGender: "M" },
-    { row: 4, name: "SF1", category: "Seniors", number: "2", alreadyPresent: true, suggestedTierId: 2, suggestedGender: "F" },
-    { row: 5, name: "SM2", category: "Seniors", number: "3", alreadyPresent: false, suggestedTierId: 3, suggestedGender: "M" },
+    { row: 3, name: "SM1", category: "Seniors", number: "1", alreadyPresent: false, suggestedTierId: 1, suggestedGender: "M", suggestedCtc: false },
+    { row: 4, name: "SF1", category: "Seniors", number: "2", alreadyPresent: true, suggestedTierId: 2, suggestedGender: "F", suggestedCtc: false },
+    { row: 5, name: "SM2", category: "Seniors", number: "3", alreadyPresent: false, suggestedTierId: 3, suggestedGender: "M", suggestedCtc: false },
   ],
   errors: [],
   total: 3,
 };
 
+/**
+ * Chantier D — deux lignes dont une PORTE l'entente dans son libellé (« CTC »), l'autre
+ * pas. Le back sert `suggestedCtc` par ligne (miroir `FfbbExcelImporter::analyze`) ; la
+ * modale en pré-coche la case « Entente (CTC) », décochable, et l'envoie dans `overrides`.
+ */
+const CTC_ROWS: TeamImportAnalysis = {
+  rows: [
+    { row: 2, name: "U15F CTC RILLIEUX", category: "U15", number: "1", alreadyPresent: false, suggestedTierId: 2, suggestedGender: "F", suggestedCtc: true },
+    { row: 3, name: "SM1", category: "Seniors", number: "1", alreadyPresent: false, suggestedTierId: 1, suggestedGender: "M", suggestedCtc: false },
+  ],
+  errors: [],
+  total: 2,
+};
+
 /** Dépose un fichier et attend que l'écran de sélection soit rendu. */
 async function deposit(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.upload(screen.getByLabelText("Fichier FBI (.xlsx)"), xlsx());
-  await screen.findByRole("checkbox", { name: /SM1/ });
+  await screen.findByRole("checkbox", { name: /^SM1/ });
 }
 
 describe("TeamsImportModal", () => {
@@ -123,9 +137,9 @@ describe("TeamsImportModal", () => {
     expect(form.get("seasonId")).toBe("season-1");
     expect((form.get("file") as File).name).toBe("equipes.xlsx");
 
-    expect(screen.getByRole("checkbox", { name: /SM1/ })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /SF1/ })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /SM2/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^SM1/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^SF1/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^SM2/ })).toBeInTheDocument();
   });
 
   it("décoche par défaut les équipes déjà présentes, mais les laisse cochables", async () => {
@@ -135,9 +149,9 @@ describe("TeamsImportModal", () => {
     await deposit(user);
 
     // SM1/SM2 (nouvelles) cochées ; SF1 (déjà présente) décochée.
-    expect(screen.getByRole("checkbox", { name: /SM1/ })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /SM2/ })).toBeChecked();
-    const sf1 = screen.getByRole("checkbox", { name: /SF1/ });
+    expect(screen.getByRole("checkbox", { name: /^SM1/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^SM2/ })).toBeChecked();
+    const sf1 = screen.getByRole("checkbox", { name: /^SF1/ });
     expect(sf1).not.toBeChecked();
     // Le marqueur est du TEXTE (jamais couleur seule), lu dans le nom de la case.
     expect(sf1).toHaveAccessibleName(/déjà présente/);
@@ -154,7 +168,7 @@ describe("TeamsImportModal", () => {
     await deposit(user);
 
     // Défaut {3,5} → on retire SM2 (5). Reste {3}.
-    await user.click(screen.getByRole("checkbox", { name: /SM2/ }));
+    await user.click(screen.getByRole("checkbox", { name: /^SM2/ }));
     expect(screen.getByRole("button", { name: "Importer 1 équipe" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Importer 1 équipe" }));
@@ -173,8 +187,8 @@ describe("TeamsImportModal", () => {
     await deposit(user);
 
     // On décoche les deux seules cochées par défaut (SF1 est déjà décochée) → compte 0.
-    await user.click(screen.getByRole("checkbox", { name: /SM1/ }));
-    await user.click(screen.getByRole("checkbox", { name: /SM2/ }));
+    await user.click(screen.getByRole("checkbox", { name: /^SM1/ }));
+    await user.click(screen.getByRole("checkbox", { name: /^SM2/ }));
     expect(screen.getByRole("button", { name: "Importer 0 équipe" })).toBeDisabled();
   });
 
@@ -250,12 +264,12 @@ describe("TeamsImportModal", () => {
   // --- #4 : deux colonnes éditables Rang + Genre, pré-remplies par le back, envoyées dans `overrides` ---
 
   /** Les overrides envoyés, décodés et indexés par numéro de ligne Excel. */
-  function sentOverrides(): Record<number, { row: number; tierId: number; gender: string | null }> {
+  function sentOverrides(): Record<number, { row: number; tierId: number; gender: string | null; ctc: boolean }> {
     const call = post.mock.calls.find((c) => String(c[0]) === "clubs/club-1/import-teams");
     expect(call, "import doit avoir été POSTé").toBeTruthy();
     const raw = (call?.[1] as { body: FormData }).body.get("overrides");
     expect(typeof raw, "le champ multipart « overrides » doit être envoyé").toBe("string");
-    const list = JSON.parse(String(raw)) as { row: number; tierId: number; gender: string | null }[];
+    const list = JSON.parse(String(raw)) as { row: number; tierId: number; gender: string | null; ctc: boolean }[];
     return Object.fromEntries(list.map((o) => [o.row, o]));
   }
 
@@ -270,8 +284,8 @@ describe("TeamsImportModal", () => {
     await user.click(screen.getByRole("button", { name: /^Importer/ }));
 
     const overrides = sentOverrides();
-    expect(overrides[3]).toEqual({ row: 3, tierId: 1, gender: "M" });
-    expect(overrides[5]).toEqual({ row: 5, tierId: 3, gender: "M" });
+    expect(overrides[3]).toEqual({ row: 3, tierId: 1, gender: "M", ctc: false });
+    expect(overrides[5]).toEqual({ row: 5, tierId: 3, gender: "M", ctc: false });
     expect(overrides[4], "une ligne décochée ne part jamais dans overrides").toBeUndefined();
   });
 
@@ -287,6 +301,46 @@ describe("TeamsImportModal", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Rang de SM1" }), "4");
     await user.click(screen.getByRole("button", { name: /^Importer/ }));
 
-    expect(sentOverrides()[3]).toEqual({ row: 3, tierId: 4, gender: "M" });
+    expect(sentOverrides()[3]).toEqual({ row: 3, tierId: 4, gender: "M", ctc: false });
+  });
+
+  // --- Chantier D : case « Entente (CTC) » par ligne, pré-cochée depuis le back, décochable, envoyée ---
+
+  it("pré-coche la case « Entente (CTC) » depuis la suggestion du serveur et l'envoie dans overrides", async () => {
+    // Promesse : l'entente suggérée par le serveur (`suggestedCtc`) arrive pré-cochée ;
+    // une ligne sans marqueur arrive décochée. L'état part dans `overrides.ctc`.
+    wireApi({ analysis: CTC_ROWS, result: { message: "ok", created: 2, skipped: 0, errors: [] } });
+    const user = userEvent.setup();
+    renderModal();
+    await user.upload(screen.getByLabelText("Fichier FBI (.xlsx)"), xlsx());
+    await screen.findByRole("button", { name: /^Importer/ });
+
+    // Nom accessible CONTEXTUALISÉ (A11Y-28) : « Entente (CTC) pour <équipe> ».
+    expect(screen.getByRole("checkbox", { name: "Entente (CTC) pour U15F CTC RILLIEUX" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Entente (CTC) pour SM1" })).not.toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: /^Importer/ }));
+
+    const overrides = sentOverrides();
+    expect(overrides[2]?.ctc, "l'équipe suggérée en entente part ctc:true").toBe(true);
+    expect(overrides[3]?.ctc, "l'équipe sans marqueur part ctc:false").toBe(false);
+  });
+
+  it("la case « Entente (CTC) » est décochable — l'override part ctc:false même si le nom contient CTC", async () => {
+    // Abus « jamais d'office », côté écran : décocher l'entente d'une équipe dont le nom
+    // porte « CTC » envoie ctc:false — l'entente reste une DÉCISION, jamais imposée.
+    wireApi({ analysis: CTC_ROWS, result: { message: "ok", created: 2, skipped: 0, errors: [] } });
+    const user = userEvent.setup();
+    renderModal();
+    await user.upload(screen.getByLabelText("Fichier FBI (.xlsx)"), xlsx());
+    await screen.findByRole("button", { name: /^Importer/ });
+
+    const ctc = screen.getByRole("checkbox", { name: "Entente (CTC) pour U15F CTC RILLIEUX" });
+    await user.click(ctc);
+    expect(ctc).not.toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: /^Importer/ }));
+
+    expect(sentOverrides()[2]?.ctc, "l'entente décochée part ctc:false").toBe(false);
   });
 });

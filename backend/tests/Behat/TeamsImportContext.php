@@ -33,6 +33,8 @@ final class TeamsImportContext extends BaseContext
 
     private const string TEAM_C = 'BEHAT U13';
 
+    private const string TEAM_D = 'BEHAT U15F CTC';
+
     private const string FOREIGN_CODE = 'ZZZ0000001';
 
     private string $token = '';
@@ -267,6 +269,67 @@ final class TeamsImportContext extends BaseContext
         }
     }
 
+    #[When('j\'analyse un fichier contenant « BEHAT U15F CTC »')]
+    public function jAnalyseUnFichierAvecCtc(): void
+    {
+        $path = $this->writeCtcTeamXlsx($this->ffbbCode);
+        [$this->analyzeStatus, $this->analyzeJson] = $this->multipart('import-teams/analyze', $path, ['seasonId' => $this->seasonId]);
+        @unlink($path);
+        if (200 !== $this->analyzeStatus) {
+            throw new RuntimeException(\sprintf('l\'analyse a répondu %d (200 attendu)', $this->analyzeStatus));
+        }
+    }
+
+    #[Then('« BEHAT U15F CTC » est suggérée en entente')]
+    public function ctcEstSuggereeEnEntente(): void
+    {
+        if (true !== ($this->rawAnalyzedRow(self::TEAM_D)['suggestedCtc'] ?? null)) {
+            throw new RuntimeException('« BEHAT U15F CTC » : « CTC » dans le nom devrait suggérer l\'entente');
+        }
+    }
+
+    #[When('j\'importe « BEHAT U15F CTC » en décochant l\'entente')]
+    public function jImporteCtcEntenteDecochee(): void
+    {
+        // Fichier : en-tête = ligne 1, BEHAT U15F CTC = ligne 2. On la COCHE pour l'import,
+        // mais on DÉCOCHE l'entente (ctc:false) — l'entente est une décision, jamais d'office.
+        $tierId = (int) $this->dbalScalar('SELECT id AS behatval FROM priority_tier ORDER BY id LIMIT 1', admin: true);
+        if (0 === $tierId) {
+            throw new RuntimeException('aucun rang seedé — impossible d\'importer');
+        }
+
+        $path = $this->writeCtcTeamXlsx($this->ffbbCode);
+        [$status, $json] = $this->multipart('import-teams', $path, [
+            'seasonId' => $this->seasonId,
+            'rows' => json_encode([2], \JSON_THROW_ON_ERROR),
+            'overrides' => json_encode([['row' => 2, 'tierId' => $tierId, 'gender' => 'F', 'ctc' => false]], \JSON_THROW_ON_ERROR),
+        ]);
+        @unlink($path);
+        if (200 !== $status) {
+            throw new RuntimeException(\sprintf('l\'import a répondu %d (200 attendu)', $status));
+        }
+        if (1 !== ($json['created'] ?? null)) {
+            throw new RuntimeException(\sprintf('une équipe attendue, created=%s', var_export($json['created'] ?? null, true)));
+        }
+    }
+
+    #[Then('« BEHAT U15F CTC » est créée sans entente')]
+    public function ctcCreeeSansEntente(): void
+    {
+        if ($this->teamCount(self::TEAM_D) < 1) {
+            throw new RuntimeException('« BEHAT U15F CTC » cochée devrait exister en base');
+        }
+        $isCtc = $this->dbalScalar(
+            \sprintf('SELECT is_ctc AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::TEAM_D),
+            admin: true,
+        );
+        // Postgres rend un booléen FAUX comme « f » (ou « 0 »/vide selon le driver) : l'entente
+        // décochée ne doit JAMAIS être vraie, même si le libellé porte « CTC » (jamais d'office).
+        if (\in_array($isCtc, ['t', 'true', '1'], true)) {
+            throw new RuntimeException('« BEHAT U15F CTC » importée entente décochée : is_ctc ne doit PAS être vrai');
+        }
+    }
+
     #[When('j\'analyse un fichier d\'équipes portant le code d\'un autre club')]
     public function jAnalyseUnAutreClub(): void
     {
@@ -306,7 +369,7 @@ final class TeamsImportContext extends BaseContext
     {
         $names = implode(', ', array_map(
             static fn (string $n): string => \sprintf('\'%s\'', $n),
-            [self::TEAM_A, self::TEAM_B, self::TEAM_C],
+            [self::TEAM_A, self::TEAM_B, self::TEAM_C, self::TEAM_D],
         ));
         $this->dbalExec(
             \sprintf('DELETE FROM team WHERE club_id=\'%s\' AND name IN (%s)', $this->clubId, $names),
@@ -394,6 +457,26 @@ final class TeamsImportContext extends BaseContext
             [self::TEAM_C, $this->categoryName, '3', $org],
         ], null, 'A1');
         $path = tempnam(sys_get_temp_dir(), 'behat-teams') . '.xlsx';
+        new Xlsx($spreadsheet)->save($path);
+
+        return $path;
+    }
+
+    /**
+     * Un fichier d'une seule équipe dont le libellé porte « CTC » (chantier D) :
+     * l'analyse doit la SUGGÉRER en entente, l'import ne la déclare en entente que
+     * si le gestionnaire le coche. Fichier séparé — ne perturbe pas le décor à 3
+     * équipes des autres scénarios (qui en attendent exactement 3).
+     */
+    private function writeCtcTeamXlsx(string $clubCode): string
+    {
+        $org = \sprintf('%s - CLUB BEHAT', $clubCode);
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray([
+            ['Nom', 'Catégorie', 'Numéro', 'Organisme'],
+            [self::TEAM_D, $this->categoryName, '1', $org],
+        ], null, 'A1');
+        $path = tempnam(sys_get_temp_dir(), 'behat-ctc') . '.xlsx';
         new Xlsx($spreadsheet)->save($path);
 
         return $path;

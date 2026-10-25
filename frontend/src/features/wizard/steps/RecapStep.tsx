@@ -4,6 +4,7 @@ import { anchorIsWritable, useCalendarEntry, useEntryConflicts, usePeriodAnchor 
 import { frDateShort } from "@/features/cockpit/lib/date";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { cn } from "@/shared/lib/utils";
@@ -454,7 +455,10 @@ export function RecapStep() {
                     key={t.id}
                     label={
                       <span className={cn("flex flex-wrap items-baseline gap-x-2", paused && "text-muted-foreground")}>
-                        <span className={cn(paused && "line-through")}>{t.name}</span>
+                        <span className={cn("inline-flex items-center", paused && "line-through")}>
+                        {true === t.isCtc ? <CtcMark partner={t.ctcPartner} /> : null}
+                        {t.name}
+                      </span>
                         {paused ? <span className="text-xs italic">{WIZARD_TEXTS.pausedForPeriod}</span> : null}
                         {/* P4-58 (c) — l'absence se DIT : une équipe sans coach affichait
                             un blanc, indistinguable d'un oubli de rendu. */}

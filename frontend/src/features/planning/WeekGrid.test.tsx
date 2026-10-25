@@ -46,6 +46,34 @@ describe("WeekGrid", () => {
     expect(container.querySelector('[data-slot-id="a"]')).not.toBeNull();
   });
 
+  // ── Chantier D (CTC) PR1 — le repère d'entente devant le nom sur la tuile planning ──
+  // Promesse (Rillieux #6, fondateur 2026-10-24) : une équipe en entente (CTC) porte son picto DEVANT
+  // son nom sur les tuiles du planning, « pour l'identifier d'un coup d'œil ». La tuile le rend via la
+  // primitive CtcMark ; le flag voyage par le modèle de grille (GridResource/grid.ts).
+  it("affiche le repère CtcMark devant une équipe en entente sur la tuile", () => {
+    const ctcLookups: Lookups = {
+      teams: new Map<string, Team>([["t1", { id: "t1", name: "U15F", sportCategoryId: "c", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2, isCtc: true, ctcPartner: "AS Voisine" } as Team]]),
+      venues: new Map<string, Venue>([["v1", { id: "v1", name: "Gymnase Alpha", color: "#00aa00" }]]),
+      coaches: new Map<string, Coach>(),
+      teamCoach: new Map<string, string>(),
+      teamPlayerCoaches: new Map<string, string[]>(),
+    };
+    const model = buildGrid([{ ...slot, teamId: "t1" }], "gymnase", ctcLookups);
+    render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} />);
+
+    expect(screen.getByText("U15F")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Entente \(CTC\) avec AS Voisine/ })).toBeInTheDocument();
+  });
+
+  it("n'affiche aucun repère CtcMark pour une équipe ordinaire", () => {
+    // La fixture `lookups` (U11) n'a pas de CTC → aucune équipe en entente, aucun picto.
+    const model = buildGrid([slot], "gymnase", lookups);
+    render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} />);
+
+    expect(screen.getByText("U11")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Entente \(CTC\)/ })).toBeNull();
+  });
+
   it("fusionne un créneau mutualisé sous son libellé, chaque équipe restant cliquable (P2-17 D4)", async () => {
     const mergeLookups: Lookups = {
       teams: new Map<string, Team>([

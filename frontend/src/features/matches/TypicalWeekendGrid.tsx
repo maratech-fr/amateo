@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
@@ -131,10 +132,11 @@ export function TypicalWeekendGrid({ habits, venues, teams, durations, weekendAl
             {blocks.map((block) => {
               const columnIndex = columns.findIndex((c) => c.key === block.columnKey);
               const venue = venues.get(columns[columnIndex]?.venueId ?? "");
+              const team = teams.get(block.teamId);
               return (
                 <div
                   key={block.key}
-                  title={`${teams.get(block.teamId)?.name ?? "Équipe ?"} · ${block.kickoff} · ${venue?.name ?? "?"}`}
+                  title={`${team?.name ?? "Équipe ?"} · ${block.kickoff} · ${venue?.name ?? "?"}`}
                   className="z-10 m-px flex flex-col items-start overflow-hidden rounded border-l-4 px-1 py-0.5 text-left leading-tight"
                   style={{
                     gridColumn: 2 + columnIndex,
@@ -146,7 +148,10 @@ export function TypicalWeekendGrid({ habits, venues, teams, durations, weekendAl
                     backgroundColor: tint(venue?.color ?? null) ?? "var(--muted)",
                   }}
                 >
-                  <span className="w-full truncate font-medium">{teams.get(block.teamId)?.name ?? "Équipe ?"}</span>
+                  <span className="flex w-full items-center truncate font-medium">
+                    {true === team?.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
+                    {team?.name ?? "Équipe ?"}
+                  </span>
                   <span className="truncate text-[10px] text-muted-foreground">{block.kickoff}</span>
                 </div>
               );

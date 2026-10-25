@@ -14,6 +14,10 @@ export interface Team {
   // découpage as the wizard's teams step.
   priorityTierId: number;
   tierOrder: number;
+  /** Équipe « en entente (CTC) » — repère visuel porté devant le nom (exposé par TeamResource). */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente, texte libre ; null hors entente. */
+  ctcPartner?: string | null;
 }
 
 export interface PriorityTier {

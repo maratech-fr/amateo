@@ -80,6 +80,21 @@ class Team implements TenantOwnedInterface
     #[ORM\Column(type: 'guid', nullable: true)]
     private ?string $parentTeamId = null;
 
+    /**
+     * L'équipe est-elle déclarée « en entente (CTC) » ? Simple PERCEPTION INTERNE du club :
+     * un repère visuel, ZÉRO effet moteur/créneaux. La fédération ne connaît pas l'entente.
+     */
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $isCtc = false;
+
+    /**
+     * Le ou les partenaires de l'entente, en TEXTE LIBRE (≤ 120). Jamais une référence vers un
+     * autre club/organisme : le serveur ne résout rien, c'est du texte opaque. null quand il n'y
+     * a pas d'entente (ou qu'aucun partenaire n'est encore nommé).
+     */
+    #[ORM\Column(type: 'string', length: 120, nullable: true)]
+    private ?string $ctcPartner = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -316,6 +331,35 @@ class Team implements TenantOwnedInterface
     public function setParentTeamId(?string $parentTeamId): self
     {
         $this->parentTeamId = $parentTeamId;
+
+        return $this;
+    }
+
+    public function getIsCtc(): bool
+    {
+        return $this->isCtc;
+    }
+
+    public function isIsCtc(): bool
+    {
+        return $this->isCtc;
+    }
+
+    public function setIsCtc(bool $isCtc): self
+    {
+        $this->isCtc = $isCtc;
+
+        return $this;
+    }
+
+    public function getCtcPartner(): ?string
+    {
+        return $this->ctcPartner;
+    }
+
+    public function setCtcPartner(?string $ctcPartner): self
+    {
+        $this->ctcPartner = $ctcPartner;
 
         return $this;
     }

@@ -1,5 +1,6 @@
 import { AlertTriangle, MapPin, MapPinOff } from "lucide-react";
 import { StatusPill } from "@/shared/components/ui/badge";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
@@ -34,7 +35,9 @@ export function UnplacedList({ fixtures, teams, selectedFixtureId, unplacedReaso
 
   return (
     <ul className="flex flex-col gap-1">
-      {unplaced.map((fixture) => (
+      {unplaced.map((fixture) => {
+        const team = teams.get(fixture.teamId);
+        return (
         <li key={fixture.id}>
           <button
             type="button"
@@ -46,7 +49,8 @@ export function UnplacedList({ fixtures, teams, selectedFixtureId, unplacedReaso
           >
             <span className="min-w-0">
               <span className="flex items-center gap-1.5">
-                <span className="min-w-0 truncate font-medium">{teams.get(fixture.teamId)?.name ?? "Équipe ?"}</span>
+                {true === team?.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
+                <span className="min-w-0 truncate font-medium">{team?.name ?? "Équipe ?"}</span>
                 {undefined !== coachRoles?.get(fixture.teamId) ? <StatusPill className="shrink-0 text-foreground">{coachRoles.get(fixture.teamId)}</StatusPill> : null}
               </span>
               <span className="block truncate text-xs text-muted-foreground">
@@ -73,7 +77,8 @@ export function UnplacedList({ fixtures, teams, selectedFixtureId, unplacedReaso
             <MapPin className="size-4 shrink-0 text-muted-foreground" />
           </button>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

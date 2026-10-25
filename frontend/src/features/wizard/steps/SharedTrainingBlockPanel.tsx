@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
@@ -152,6 +153,7 @@ export function SharedTrainingBlockPanel({
       <div key={t.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <label className={cn("flex items-center gap-1.5 text-sm", anchorLocked && "text-muted-foreground")}>
           <input type="checkbox" aria-label={t.name} checked={checked.has(t.id)} disabled={anchorLocked} onChange={() => toggle(t.id)} />
+          {true === t.isCtc ? <CtcMark partner={t.ctcPartner} /> : null}
           {t.name}
         </label>
         {anchorLocked ? (

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
@@ -42,6 +43,10 @@ interface PlacementPanelProps {
   /** P1-4 PR C — the team's habitual windows: prefill + hint, never a guard. */
   habits: TeamMatchHabit[];
   teamLabel: string;
+  /** L'équipe du match est-elle « en entente (CTC) » ? Repère CtcMark devant le titre. */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente (nom accessible du repère) ; null hors entente. */
+  ctcPartner?: string | null;
   categoryLabel: string;
   envelope: EnvelopeResult;
   busy: boolean;
@@ -102,6 +107,8 @@ export function PlacementPanel({
   guards,
   habits,
   teamLabel,
+  isCtc,
+  ctcPartner,
   categoryLabel,
   envelope,
   busy,
@@ -197,6 +204,7 @@ export function PlacementPanel({
       <CardHeader className="flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-1.5">
           {locked ? <Lock aria-label="Ancre manuelle" className="size-3.5 text-muted-foreground" /> : null}
+          {true === isCtc ? <CtcMark partner={ctcPartner} /> : null}
           {teamLabel}
         </CardTitle>
         <button type="button" onClick={onClose} aria-label="Fermer" className="rounded p-1 text-muted-foreground hover:text-foreground">

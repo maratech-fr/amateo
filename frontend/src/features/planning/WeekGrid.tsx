@@ -1,6 +1,7 @@
 import { ArrowLeftRight, Lock, LockOpen } from "lucide-react";
 import { type UIEvent, useEffect, useRef } from "react";
 
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
@@ -444,6 +445,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                       >
                         {undefined !== memberDeviatedOrigin ? renderDeviationChip(memberDeviatedOrigin) : null}
                         {lensActive && null === uniformOrigin && null !== member.lockOrigin ? renderLensInline(member.lockOrigin) : null}
+                        {member.isCtc ? <CtcMark partner={member.ctcPartner} /> : null}
                         <span className="truncate">{member.teamLabel}</span>
                       </button>
                       {renderLock(member.slotId, member.teamLabel, member.locked)}
@@ -508,6 +510,10 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
               >
                 <span className="flex w-full items-center gap-1 pr-5 font-medium">
                   {undefined !== deviatedOrigin ? renderDeviationChip(deviatedOrigin) : null}
+                  {/* Repère d'entente (CTC) devant le NOM D'ÉQUIPE : seulement quand le libellé de
+                      tête EST l'équipe (vues gymnase/coach) — en vue équipe, la tête est le gymnase
+                      (l'équipe est la colonne), pas de repère ici. */}
+                  {cell.isCtc && cell.primaryLabel === cell.teamLabel ? <CtcMark partner={cell.ctcPartner} /> : null}
                   <span className="truncate">{cell.primaryLabel}</span>
                   {/* Opaque accent chip: the translucent bg-accent/20 was dark-on-dark
                       in dark mode (sub-AA). Solid bg-accent reuses the AA-guaranteed

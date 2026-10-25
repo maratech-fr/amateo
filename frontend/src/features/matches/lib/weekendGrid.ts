@@ -179,6 +179,10 @@ export interface WeekendCell {
   lane: number;
   laneCount: number;
   teamLabel: string;
+  /** L'équipe est-elle « en entente (CTC) » ? Repère CtcMark devant le nom sur la case. */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente (nom accessible du repère) ; null hors entente. */
+  ctcPartner?: string | null;
   opponentLabel: string;
   venueLabel: string;
   venueColor: string | null;
@@ -455,6 +459,8 @@ export function buildWeekendGrid(
       lane: 0,
       laneCount: 1,
       teamLabel: teams.get(fixture.teamId)?.name ?? "Équipe ?",
+      isCtc: true === teams.get(fixture.teamId)?.isCtc,
+      ctcPartner: teams.get(fixture.teamId)?.ctcPartner ?? null,
       opponentLabel: fixture.opponentLabel,
       venueLabel: venues.get(fixture.venueId as string)?.name ?? "Gymnase ?",
       venueColor: venues.get(fixture.venueId as string)?.color ?? null,
@@ -492,6 +498,8 @@ export function buildWeekendGrid(
       lane: 0,
       laneCount: 1,
       teamLabel: teams.get(ghost.teamId)?.name ?? "Équipe ?",
+      isCtc: true === teams.get(ghost.teamId)?.isCtc,
+      ctcPartner: teams.get(ghost.teamId)?.ctcPartner ?? null,
       opponentLabel: "",
       venueLabel: venues.get(ghost.venueId)?.name ?? "Gymnase ?",
       venueColor: venues.get(ghost.venueId)?.color ?? null,

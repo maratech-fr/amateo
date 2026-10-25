@@ -47,6 +47,10 @@ export interface ConflictSideTimes {
 
 export interface ConflictSideLine {
   teamName: string;
+  /** L'équipe du côté est-elle « en entente (CTC) » ? Repère CtcMark devant le nom. */
+  isCtc?: boolean;
+  /** Le/les partenaire(s) de l'entente (nom accessible du repère) ; null hors entente. */
+  ctcPartner?: string | null;
   /** Le mot du rôle (`SIDE_ROLE_WORD`) — absent quand le côté ne porte pas de rôle. */
   roleWord?: string;
   kind: ConflictSideKind;
@@ -149,6 +153,8 @@ function matchSide(side: ConflictFixtureView, teams: Map<string, Team>, gender: 
   const { times, travelUnknown } = matchTimes(side);
   return {
     teamName: teams.get(side.teamId)?.name ?? "Équipe ?",
+    isCtc: true === teams.get(side.teamId)?.isCtc,
+    ctcPartner: teams.get(side.teamId)?.ctcPartner ?? null,
     roleWord: roleWordOf(side, gender),
     kind: HOME_AWAY_KIND[side.homeAway],
     place: matchPlace(side),
@@ -172,6 +178,8 @@ function venueSide(side: ConflictFixtureView, teams: Map<string, Team>, venueNam
   const duration = side.matchDurationMinutes;
   return {
     teamName: teams.get(side.teamId)?.name ?? "Équipe ?",
+    isCtc: true === teams.get(side.teamId)?.isCtc,
+    ctcPartner: teams.get(side.teamId)?.ctcPartner ?? null,
     kind: HOME_AWAY_KIND[side.homeAway],
     place: venueName,
     opponent: undefined !== side.opponentLabel && "" !== side.opponentLabel ? `vs ${side.opponentLabel}` : undefined,
@@ -187,6 +195,8 @@ function trainingSide(training: ConflictTrainingView, teams: Map<string, Team>, 
   const venueName = venues.get(training.venueId)?.name ?? "Gymnase ?";
   return {
     teamName: teams.get(training.teamId)?.name ?? "Équipe ?",
+    isCtc: true === teams.get(training.teamId)?.isCtc,
+    ctcPartner: teams.get(training.teamId)?.ctcPartner ?? null,
     roleWord: roleWordOf(training, gender),
     kind: "training",
     place: `Entraînement · ${venueName}`,

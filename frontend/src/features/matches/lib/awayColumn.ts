@@ -106,6 +106,8 @@ export function buildAwayCells(layout: AwayLayout, intervals: { startMin: number
       lane: 0,
       laneCount: 1,
       teamLabel: teams.get(fixture.teamId)?.name ?? "Équipe ?",
+      isCtc: true === teams.get(fixture.teamId)?.isCtc,
+      ctcPartner: teams.get(fixture.teamId)?.ctcPartner ?? null,
       opponentLabel: fixture.opponentLabel,
       venueLabel: fixture.fbiVenueLabel ?? "",
       venueColor: null,

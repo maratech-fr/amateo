@@ -180,4 +180,9 @@ export const WIZARD_TEXTS = {
   travelLegendManual: "Saisi à la main",
   travelMatrixCaption: "Temps de trajet entre gymnases, en voiture et à vélo, du gymnase de la ligne vers celui de la colonne. Cliquez une case pour la modifier.",
   travelMatrixCorner: "Depuis \\ vers",
+
+  // TeamsStep — entente (CTC) : repère interne au club, texte libre (chantier D PR1)
+  ctcLabel: "Entente (CTC)",
+  ctcPartnerLabel: "Partenaire(s)",
+  ctcPartnerPlaceholder: "Avec qui ? (facultatif)",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

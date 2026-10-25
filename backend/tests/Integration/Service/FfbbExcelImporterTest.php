@@ -171,12 +171,12 @@ final class FfbbExcelImporterTest extends KernelTestCase
         self::assertSame(3, $result['total']);
         self::assertSame([], $result['errors']);
         self::assertSame(
-            ['row' => 2, 'name' => 'SF1', 'category' => 'Seniors', 'number' => '6', 'alreadyPresent' => true, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'F'],
+            ['row' => 2, 'name' => 'SF1', 'category' => 'Seniors', 'number' => '6', 'alreadyPresent' => true, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'F', 'suggestedCtc' => false],
             $result['rows'][0],
-            'le numéro de ligne est celui d\'Excel (en-tête = ligne 1), et SF1 est déjà en base',
+            'le numéro de ligne est celui d\'Excel (en-tête = ligne 1), et SF1 est déjà en base ; aucun marqueur CTC → entente non suggérée',
         );
         self::assertSame(
-            ['row' => 3, 'name' => 'SM1', 'category' => 'Seniors', 'number' => '1', 'alreadyPresent' => false, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'M'],
+            ['row' => 3, 'name' => 'SM1', 'category' => 'Seniors', 'number' => '1', 'alreadyPresent' => false, 'suggestedTierId' => self::DEFAULT_TIER_ID, 'suggestedGender' => 'M', 'suggestedCtc' => false],
             $result['rows'][1],
         );
         self::assertSame(4, $result['rows'][2]['row']);
@@ -361,6 +361,65 @@ final class FfbbExcelImporterTest extends KernelTestCase
         }
 
         self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'tout-ou-rien : rien créé');
+    }
+
+    public function testAnalyzeSuggestsCtcWhenTheTeamLabelCarriesCtcOrEntente(): void
+    {
+        // Chantier D (retours Rillieux #6) — l'analyse SUGGÈRE l'entente (CTC) pour une
+        // équipe dont le libellé porte « CTC » ou « ENTENTE », casse indifférente — sans
+        // RIEN décider : le gestionnaire reste libre de décocher (jamais d'office, cf.
+        // l'abus plus bas). Aucun marqueur → jamais suggérée.
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $result = $this->importer()->analyze($this->xlsx([
+            ['U15F CTC RILLIEUX', 'U15', '1', $org],   // « CTC » (majuscules) → suggérée
+            ['Entente Nord U13M', 'U13', '1', $org],   // « Entente » (casse mixte) → suggérée
+            ['SM1', 'Seniors', '1', $org],             // aucun marqueur → non suggérée
+        ]), $this->club->getId(), $this->seasonId);
+
+        $byName = [];
+        foreach ($result['rows'] as $row) {
+            $byName[$row['name']] = $row;
+        }
+
+        self::assertTrue($byName['U15F CTC RILLIEUX']['suggestedCtc'], '« CTC » dans le libellé → entente suggérée');
+        self::assertTrue($byName['Entente Nord U13M']['suggestedCtc'], '« Entente » dans le libellé (casse indifférente) → entente suggérée');
+        self::assertFalse($byName['SM1']['suggestedCtc'], 'aucun marqueur CTC/ENTENTE → entente jamais suggérée');
+    }
+
+    public function testImportCreatesACtcTeamWhenTheOverrideSaysSoWithoutGuessingThePartner(): void
+    {
+        // Chantier D — un override `ctc: true` sur une ligne cochée crée l'équipe EN
+        // ENTENTE (isCtc=true). Le PARTENAIRE n'est jamais déduit du libellé : il naît
+        // vide, le gestionnaire le renseignera lui-même (texte libre opaque).
+        $this->seedPriorityTiers();
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $file = $this->xlsx([['U15F CTC RILLIEUX', 'U15', '1', $org]]); // ligne 2
+
+        $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2], [
+            2 => ['tierId' => $this->tierIdForLabel('A'), 'gender' => 'F', 'ctc' => true],
+        ]);
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'U15F CTC RILLIEUX']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertTrue($team->getIsCtc(), 'override ctc:true → l\'équipe naît en entente');
+        self::assertNull($team->getCtcPartner(), 'le partenaire n\'est jamais déduit du libellé — il reste vide');
+    }
+
+    public function testImportNeverMarksCtcWithoutAnOverrideEvenWhenTheNameContainsCtc(): void
+    {
+        // Abus « jamais en silence » — une équipe importée SANS décision d'entente
+        // (aucun override, ou override sans `ctc`) n'est JAMAIS déclarée en entente,
+        // même si son libellé contient « CTC ». L'entente est une case que le
+        // gestionnaire coche, jamais une déduction du nom à son insu.
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $file = $this->xlsx([['U15F CTC RILLIEUX', 'U15', '1', $org]]); // ligne 2
+
+        $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2], []);
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'U15F CTC RILLIEUX']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertFalse($team->getIsCtc(), 'sans décision explicite, « CTC » dans le nom ne déclare JAMAIS l\'entente');
+        self::assertNull($team->getCtcPartner());
     }
 
     protected function setUp(): void

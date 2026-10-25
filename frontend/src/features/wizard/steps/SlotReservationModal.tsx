@@ -2,6 +2,7 @@ import { AlertTriangle, CalendarClock, Lock, Trash2, Undo2, Users } from "lucide
 import { useId, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
@@ -124,6 +125,7 @@ export function SlotReservationModal({
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  const teamById = new Map(teams.map((t) => [t.id, t]));
   const venueName = new Map(venues.map((v) => [v.id, v.name]));
   const coachByTeam = mainCoachByTeam(teamCoaches ?? []);
   // La règle ne peut pas s'appliquer sans les liens équipe→coach : une Map vide ne trouve
@@ -394,7 +396,10 @@ export function SlotReservationModal({
             teamOnSlot.map((r) => (
               <li key={r.id} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
                 <Lock className="size-3.5 text-accent" />
-                <span className="flex-1 font-medium">{teamName.get(r.teamId ?? "") ?? "?"}</span>
+                <span className="flex flex-1 items-center font-medium">
+                  {true === teamById.get(r.teamId ?? "")?.isCtc ? <CtcMark partner={teamById.get(r.teamId ?? "")?.ctcPartner} /> : null}
+                  {teamName.get(r.teamId ?? "") ?? "?"}
+                </span>
                 <button
                   type="button"
                   aria-label={`Retirer ${teamName.get(r.teamId ?? "") ?? "l'équipe"}`}

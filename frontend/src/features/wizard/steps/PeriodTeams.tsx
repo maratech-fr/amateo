@@ -11,6 +11,7 @@ import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
@@ -300,7 +301,10 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={active} disabled={busy} onChange={(e) => toggle(t, e.target.checked)} aria-label={`${t.name} active cette période`} />
-                      <span className={cn(!active && "text-muted-foreground line-through")}>{t.name}</span>
+                      <span className={cn("flex items-center", !active && "text-muted-foreground line-through")}>
+                        {true === t.isCtc ? <CtcMark partner={t.ctcPartner} /> : null}
+                        {t.name}
+                      </span>
                     </label>
                     {linksLabelOf(t) ? <span className="text-xs italic text-muted-foreground">· {linksLabelOf(t)}</span> : null}
                     {/* P2-63 PR 5 (F) — provenance « via doléances », SEULEMENT pour la valeur

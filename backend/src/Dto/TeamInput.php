@@ -59,4 +59,13 @@ class TeamInput
     #[Assert\Choice(callback: [TeamLevel::class, 'values'])]
     #[Groups(['write'])]
     public ?string $level = null;
+
+    // Entente (CTC) : un repère interne au club, texte libre. isCtc=false ⇒ le partenaire
+    // est forcé à null côté processor ; partenaire borné à 120 (colonne varchar(120)).
+    #[Groups(['write'])]
+    public ?bool $isCtc = null;
+
+    #[Assert\Length(max: 120, maxMessage: 'Le partenaire d’entente ne peut pas dépasser {{ limit }} caractères.')]
+    #[Groups(['write'])]
+    public ?string $ctcPartner = null;
 }

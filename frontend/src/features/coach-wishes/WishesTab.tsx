@@ -10,6 +10,7 @@ import { dayLabel } from "@/features/wizard/lib/days";
 import { groupedCoaches } from "@/features/wizard/lib/ranking";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { StatusPill } from "@/shared/components/ui/badge";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -144,6 +145,7 @@ export function WishesTab({
   const shownWeeks = useMemo(() => (null === weekFilter ? weeks : weeks.filter((w) => w.monday === weekFilter)), [weeks, weekFilter]);
 
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  const teamById = new Map(teams.map((t) => [t.id, t]));
   const coachName = new Map(coaches.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim()]));
   // P3-14 (retour terrain) — les deux filtres se lisaient dans l'ordre BRUT de l'API. Les
   // regroupements existent déjà et servent partout ailleurs : on les réutilise plutôt que
@@ -376,6 +378,7 @@ export function WishesTab({
                             retours fondateur 2026-10-10. */}
                         <div className="flex flex-wrap items-center gap-1.5">
                           <p className="font-medium">
+                            {teamById.get(w.teamId)?.isCtc ? <CtcMark partner={teamById.get(w.teamId)?.ctcPartner} /> : null}
                             {teamName.get(w.teamId) ?? "Équipe"}
                             {null !== w.coachId ? <> · {coachName.get(w.coachId) ?? <span className="italic text-muted-foreground">coach dé-attribué</span>}</> : null}
                           </p>
@@ -479,6 +482,7 @@ export function WishesTab({
                 <input type="checkbox" aria-label={`Traité — mutualisation ${teamName.get(m.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={m.done} onChange={() => toggleMutDone(m)} />
                 <div className={cn("min-w-0 flex-1", m.done && "line-through")}>
                   <p className="font-medium">
+                    {teamById.get(m.teamId)?.isCtc ? <CtcMark partner={teamById.get(m.teamId)?.ctcPartner} /> : null}
                     {teamName.get(m.teamId) ?? "Équipe"} · {null === m.coachId ? <span className="italic text-muted-foreground">coach dé-attribué</span> : (coachName.get(m.coachId) ?? "Coach")}
                   </p>
                   <p className="text-xs text-muted-foreground">
