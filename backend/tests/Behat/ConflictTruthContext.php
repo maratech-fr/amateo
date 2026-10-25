@@ -122,6 +122,15 @@ final class ConflictTruthContext extends BaseContext
 
     private string $playedMatchId = '';
 
+    /** Chantier H — indispo déclarée du coach principal au coup d'envoi d'un match à domicile. */
+    private string $matchCoachFixtureId = '';
+
+    private string $coachUnavailabilityId = '';
+
+    private string $matchAdjointCoachId = '';
+
+    private string $matchAdjointLinkId = '';
+
     /** Décor du statut de traitement « joue/coache » (empreinte écrite + code HTTP obtenu). */
     private string $resolvedFingerprint = '';
 
@@ -407,6 +416,73 @@ final class ConflictTruthContext extends BaseContext
         $this->playedMatchId = $this->poserMatchExterieur($this->playedTeamId, $saturday, '16:00');
     }
 
+    // ── Chantier H volet matchs : coach principal indisponible au coup d'envoi (famille MATCH_COACH_UNAVAILABLE) ──
+
+    #[Given('une indisponibilité déclarée du coach principal couvre le coup d\'envoi d\'un match à domicile ce samedi')]
+    public function uneIndisponibiliteCouvreLeCoupDEnvoi(): void
+    {
+        // Samedi 2026-12-05 (après l'horloge épinglée 2026-12-01) : match à domicile, coup d'envoi 15:00.
+        $this->matchCoachFixtureId = $this->idOf($this->apiPost('fixtures', [
+            'teamId' => $this->teamId,
+            'matchDate' => '2026-12-05',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire (indispo coach)',
+            'kickoffTime' => '15:00',
+            'venueId' => $this->venueId,
+        ], $this->token), 'match à domicile');
+
+        // Le coach principal est DÉCLARÉ indisponible le samedi 14:00-16:00 : 15:00 y tombe.
+        $this->coachUnavailabilityId = $this->idOf($this->apiPost('constraints', [
+            'name' => 'Indispo coach principal (chantier H)',
+            'scope' => 'COACH',
+            'scopeTargetId' => $this->coachId,
+            'family' => 'COACH_AVAILABILITY',
+            'ruleType' => 'HARD',
+            'config' => ['unavailableDays' => [6], 'fromTime' => '14:00', 'untilTime' => '16:00'],
+        ], $this->token), 'indisponibilité coach');
+    }
+
+    #[Given('cette équipe a un adjoint disponible ce samedi')]
+    public function cetteEquipeAUnAdjointDisponible(): void
+    {
+        $this->matchAdjointCoachId = $this->idOf($this->apiPost('coaches', ['firstName' => 'Jules', 'lastName' => 'Adjoint'], $this->token), 'adjoint');
+        $this->matchAdjointLinkId = $this->idOf($this->apiPost('team_coaches', [
+            'teamId' => $this->teamId,
+            'coachId' => $this->matchAdjointCoachId,
+            'role' => 'ASSISTANT',
+        ], $this->token), 'lien adjoint');
+    }
+
+    #[Then('le radar signale le coach principal indisponible, en rouge')]
+    public function leRadarSignaleCoachEnRouge(): void
+    {
+        $this->assertCoachUnavailableSeverity(3, 'rouge');
+    }
+
+    #[Then('le radar signale le coach principal indisponible, en orange')]
+    public function leRadarSignaleCoachEnOrange(): void
+    {
+        $this->assertCoachUnavailableSeverity(4, 'orange');
+    }
+
+    private function assertCoachUnavailableSeverity(int $expected, string $colour): void
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (\is_array($conflict)
+                && 'MATCH_COACH_UNAVAILABLE' === ($conflict['type'] ?? null)
+                && ($conflict['coachId'] ?? null) === $this->coachId
+            ) {
+                if ((int) ($conflict['severity'] ?? 0) !== $expected) {
+                    throw new RuntimeException(\sprintf('conflit « coach indisponible » attendu en %s (gravité %d), obtenu gravité %s', $colour, $expected, var_export($conflict['severity'] ?? null, true)));
+                }
+
+                return;
+            }
+        }
+
+        throw new RuntimeException('le radar aurait dû signaler « coach principal indisponible » pour ce match à domicile');
+    }
+
     #[When('je demande les conflits des matchs')]
     public function jeDemandeLesConflits(): void
     {
@@ -604,10 +680,14 @@ final class ConflictTruthContext extends BaseContext
             $this->apiDelete($this->resolutionPath($this->resolvedFingerprint), $this->token);
         }
 
-        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId] as $id) {
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId, $this->matchCoachFixtureId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
+        }
+        // Chantier H : l'indispo déclarée + le lien adjoint (avant l'équipe/le coach qu'ils référencent).
+        if ('' !== $this->coachUnavailabilityId) {
+            $this->apiDelete(\sprintf('constraints/%s', $this->coachUnavailabilityId), $this->token);
         }
         // Les compétitions (championnat + coupe) sont portées par l'équipe jetable :
         // elles partent avec elle (cascade teams → competitions), les matchs ayant été
@@ -616,7 +696,7 @@ final class ConflictTruthContext extends BaseContext
         if ('' !== $this->membershipId) {
             $this->apiDelete(\sprintf('coach_player_memberships/%s', $this->membershipId), $this->token);
         }
-        foreach ([$this->teamCoachId, $this->sisterTeamCoachId, $this->personTeamCoachId] as $id) {
+        foreach ([$this->teamCoachId, $this->sisterTeamCoachId, $this->personTeamCoachId, $this->matchAdjointLinkId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
             }
@@ -638,7 +718,7 @@ final class ConflictTruthContext extends BaseContext
                 $this->apiDelete(\sprintf('teams/%s', $teamId), $this->token);
             }
         }
-        foreach ([$this->coachId, $this->personCoachId] as $id) {
+        foreach ([$this->coachId, $this->personCoachId, $this->matchAdjointCoachId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('coaches/%s', $id), $this->token);
             }

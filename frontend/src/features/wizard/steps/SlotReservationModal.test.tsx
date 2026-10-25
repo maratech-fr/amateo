@@ -93,6 +93,62 @@ beforeEach(() => {
   });
 });
 
+describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
+  // Décor : coach m principal de SM3 et SM4 ; SM4 a un adjoint j. SM3 déjà réservée au gymnase 2
+  // (17:00-18:30) ; on pose SM4 sur le créneau v1 18:00-19:30. Le coach enchaîne : il quitte SM3 à
+  // 18:30 et rejoint SM4 à 18:00 → retard 30 (trajet v1↔v2 nul). Tolérable, et j peut ouvrir.
+  const SHARED_COACHES = [
+    { id: "tc-c", teamId: "c", coachId: "m", role: "MAIN" as const },
+    { id: "tc-d", teamId: "d", coachId: "m", role: "MAIN" as const },
+    { id: "tc-j", teamId: "d", coachId: "j", role: "ASSISTANT" as const },
+  ];
+  const V2: Venue = { id: "v2", name: "Gymnase B", color: null, canSplit: false, isActive: true };
+
+  function renderRelay(extra: Partial<Parameters<typeof SlotReservationModal>[0]> = {}) {
+    return renderModal({
+      teamCoaches: SHARED_COACHES,
+      reservations: [resa("c", "v2", 1, "17:00")],
+      venues: [VENUE, V2],
+      sharedTrainingBlocks: [],
+      // Barème de trajet v1↔v2 = 0 (coach non véhiculé) → retard 30, tolérable. Donnée servie au
+      // wizard par le backend (chantier H) — prop consommée par la modale pour décider du relais.
+      venueTravelTimes: [{ venueAId: "v1", venueBId: "v2", walkingMinutes: 0, drivingMinutes: 0 }],
+      ...extra,
+    });
+  }
+
+  it("au refus d'un dédoublement TOLÉRABLE avec adjoint, propose un CTA de tolérance (pas le refus dur)", async () => {
+    renderRelay();
+    await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
+
+    // Un CTA primaire propose de tolérer le retard et nomme l'adjoint qui ouvrira la séance.
+    expect(screen.getByRole("button", { name: /tolérer ce retard/i })).toBeInTheDocument();
+    // Un champ éditable (0..30) porte le retard pré-rempli.
+    expect(screen.getByRole("spinbutton", { name: /retard toléré/i })).toBeInTheDocument();
+    // Un bandeau d'avertissement (role=status), jamais le refus dur « ne peut pas être ajoutée ».
+    expect(screen.queryByText(/ne peut pas être ajoutée/i)).toBeNull();
+  });
+
+  it("une fois le retard toléré, une pastille l'affiche et un bouton texte le retire", async () => {
+    renderRelay();
+    const user = userEvent.setup();
+    await pickListboxOption(user, "Ajouter une équipe", "SM4");
+    await user.click(screen.getByRole("button", { name: /tolérer ce retard/i }));
+
+    expect(screen.getByText(/retard toléré · \d+ min/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retirer la tolérance/i })).toBeInTheDocument();
+  });
+
+  it("un dédoublement NON tolérable (sans adjoint) garde le refus dur, sans CTA", async () => {
+    // SM4 sans adjoint j : rien n'ouvre la séance → refus dur inchangé, aucun CTA de tolérance.
+    renderRelay({ teamCoaches: SHARED_COACHES.filter((l) => l.coachId !== "j") });
+    await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
+
+    expect(screen.queryByRole("button", { name: /tolérer ce retard/i })).toBeNull();
+    expect(screen.getByText(/ne peut pas être ajoutée/i)).toBeInTheDocument();
+  });
+});
+
 describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {
   it("offre le bloc sous « Entraînements mutualisés » sur un créneau LIBRE", async () => {
     renderModal();

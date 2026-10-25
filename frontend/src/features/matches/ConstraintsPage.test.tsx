@@ -325,21 +325,23 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     );
   });
 
-  it("ALIGN-19 — une indisponibilité d'un coach UNIQUEMENT adjoint affiche la phrase « ne bloque jamais une séance »", () => {
+  it("chantier H — une indisponibilité d'un coach UNIQUEMENT adjoint affiche la phrase « ne bloque jamais un match »", () => {
+    // Écran MATCHS : le mot juste est « match », pas « séance » ; et on dit que ça pèse PEU au
+    // placement (l'adjoint n'est qu'un appoint), jamais un blocage.
     rulesState.data = [rule({ id: "u1", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null })];
     coachesState.data = [coachOf("c1", "Anna", "Martin")];
     // c1 est ADJOINT sur son unique équipe (jamais principal).
     teamCoachesState.data = [{ id: "tc1", teamId: "t1", coachId: "c1", role: "ASSISTANT" }];
     openCoachs();
-    expect(screen.getByText("un adjoint indisponible ne bloque jamais une séance")).toBeInTheDocument();
+    expect(screen.getByText("l'indisponibilité d'un adjoint ne bloque jamais un match — elle pèse peu au placement")).toBeInTheDocument();
   });
 
-  it("ALIGN-19 — un coach PRINCIPAL ne déclenche pas la phrase (son indisponibilité, elle, ferme)", () => {
+  it("chantier H — un coach PRINCIPAL ne déclenche pas la phrase (son indisponibilité, elle, ferme)", () => {
     rulesState.data = [rule({ id: "u1", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null })];
     coachesState.data = [coachOf("c1", "Anna", "Martin")];
     teamCoachesState.data = [{ id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" }];
     openCoachs();
-    expect(screen.queryByText("un adjoint indisponible ne bloque jamais une séance")).not.toBeInTheDocument();
+    expect(screen.queryByText("l'indisponibilité d'un adjoint ne bloque jamais un match — elle pèse peu au placement")).not.toBeInTheDocument();
   });
 
   it("ne montre PAS les règles CLUB ni les interdictions TEAM dans la section Coachs", () => {

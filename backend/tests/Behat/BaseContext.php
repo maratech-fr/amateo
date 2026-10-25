@@ -180,6 +180,23 @@ abstract class BaseContext implements Context
     }
 
     /**
+     * PATCH `application/merge-patch+json` (API Platform exige ce media type pour un PATCH).
+     * Le corps part en RAW (pas l'option `json`, qui imposerait ld+json et dérouterait le PATCH).
+     *
+     * @param array<mixed>          $body
+     * @param array<string, string> $headers
+     *
+     * @return array{status: int, json: array<mixed>}
+     */
+    protected function apiPatch(string $path, array $body, string $token, array $headers = []): array
+    {
+        return $this->decode($this->client->request('PATCH', ltrim($path, '/'), [
+            'headers' => $this->authHeaders($token, ['Content-Type' => 'application/merge-patch+json', ...$headers]),
+            'body' => json_encode($body, \JSON_THROW_ON_ERROR),
+        ]));
+    }
+
+    /**
      * @param array<string, string> $headers
      *
      * @return array{status: int, json: array<mixed>}
