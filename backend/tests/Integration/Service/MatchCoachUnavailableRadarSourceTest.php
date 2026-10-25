@@ -20,6 +20,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ConflictRadarLoader;
+use App\Service\MatchConflictDetector;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -45,7 +46,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *    sévérité 3 (ROUGE), déjà vrai (témoin que le correctif ne casse pas la vraie source) ;
  *  - la même, mais l'équipe a un ADJOINT disponible → sévérité 4 (ORANGE), déjà vrai (témoin).
  *
- * Severity : 1 = pire (convention {@see \App\Service\MatchConflictDetector}). 3 = rouge « coach
+ * Severity : 1 = pire (convention {@see MatchConflictDetector}). 3 = rouge « coach
  * principal indisponible », 4 = orange « un adjoint/autre principal peut couvrir ».
  */
 #[Group('integration')]
