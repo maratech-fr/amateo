@@ -42,6 +42,7 @@ final class RgpdExportTest extends WebTestCase
         $this->client->request('GET', '/api/me/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseIsSuccessful();
         self::assertStringContainsString('attachment', (string) $this->client->getResponse()->headers->get('Content-Disposition'));
+        $this->assertNotCacheable('/api/me/export');
 
         $raw = (string) $this->client->getResponse()->getContent();
         $data = json_decode($raw, true);
@@ -65,6 +66,7 @@ final class RgpdExportTest extends WebTestCase
 
         $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $tokenA]);
         self::assertResponseIsSuccessful();
+        $this->assertNotCacheable('/api/club/export');
 
         $raw = (string) $this->client->getResponse()->getContent();
         $data = json_decode($raw, true);
@@ -123,6 +125,22 @@ final class RgpdExportTest extends WebTestCase
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    /**
+     * P4-359 (hygiène, point sensible : export) — un export RGPD (du compte OU du club) est
+     * NOMINATIF : il n'est jamais mis en cache (navigateur ou cache partagé), comme le PDF
+     * authentifié (P4-357). `Cache-Control` contient `no-store` ET `private`, jamais `public`.
+     *
+     * Falsifiable : sans directive explicite, Symfony calcule `no-cache, private` — `no-store` est
+     * ABSENT → ROUGE. Avec `setPrivate()` + `no-store` dans le contrôleur → VERT.
+     */
+    private function assertNotCacheable(string $label): void
+    {
+        $cacheControl = (string) $this->client->getResponse()->headers->get('Cache-Control');
+        self::assertStringContainsString('no-store', $cacheControl, $label . ' : une réponse nominative ne doit jamais être stockée en cache');
+        self::assertStringContainsString('private', $cacheControl, $label . ' : jamais mise en cache partagée');
+        self::assertStringNotContainsString('public', $cacheControl, $label . ' : jamais « public »');
     }
 
     private function storage(): FeedbackScreenshotStorage

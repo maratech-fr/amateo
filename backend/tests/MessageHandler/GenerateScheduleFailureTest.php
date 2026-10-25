@@ -212,6 +212,64 @@ final class GenerateScheduleFailureTest extends KernelTestCase
     }
 
     /**
+     * P4-358 (hygiène, point sensible : pipeline de génération) — une exception du moteur NON
+     * traduite (ni timeout de transport, ni refus de contrat 422) tombe dans la branche générique
+     * `engine_error`. PROMESSE : le message de CE diagnostic ne porte jamais l'URL/hôte interne du
+     * solveur ni le message brut de l'exception — il est réécrit comme ses voisins `engine_timeout`
+     * / `engine_rejected` (un libellé stable, la substance technique restant dans les logs serveur).
+     * C'est ce message qui remonte dans `auto.generationFailure.firstError` d'un signalement
+     * (P4-355), donc lisible par le support — d'où l'exigence d'hygiène à la SOURCE.
+     *
+     * Décor réaliste du leak : le moteur (ou un proxy devant lui) répond 200 avec un corps NON-JSON
+     * (p. ex. une page d'erreur HTML). `EngineClient::solve()` appelle `toArray(false)`, qui lève
+     * une `JsonException` dont Symfony APPOSE l'URL appelée — `… for "http://engine:8000/generate".`
+     * — portant l'hôte/port interne. Cette exception n'est NI un `TransportExceptionInterface` (→
+     * engine_timeout) NI un `EngineRequestRejectedException` (→ engine_rejected) : elle atteint bien
+     * la branche générique.
+     *
+     * Falsifiable : tant que le handler recopie `$exception->getMessage()` brut, le diagnostic porte
+     * `engine:8000` → ROUGE. Une fois le message réécrit (sans URL ni détail d'infra) → VERT.
+     */
+    public function testEngineErrorDiagnosticDoesNotLeakTheInternalEngineUrl(): void
+    {
+        [$em, $club, $schedule] = $this->seedScheduleReadyToGenerate('engine-error-leak');
+        $scheduleId = $schedule->getId();
+
+        // 200 + corps NON-JSON : toArray(false) lève une JsonException portant l'URL du moteur.
+        $hub = $this->createMock(HubInterface::class);
+        $hub->method('publish')->willReturn('id');
+
+        $this->runHandler(
+            $em,
+            $club->getId(),
+            $scheduleId,
+            new MockHttpClient(new MockResponse('<html><body>502 Bad Gateway</body></html>', ['http_code' => 200])),
+            $hub,
+        );
+
+        $this->scopeGucToClub($club->getId());
+        $em->clear();
+
+        $reloaded = $em->getRepository(Schedule::class)->find($scheduleId);
+        self::assertInstanceOf(Schedule::class, $reloaded);
+        self::assertSame(ScheduleStatus::FAILED, $reloaded->getStatus(), 'une exception moteur non traduite laisse un échec terminal');
+
+        $engineError = null;
+        foreach ($em->getRepository(ScheduleDiagnostic::class)->findBy(['scheduleId' => $scheduleId]) as $diagnostic) {
+            if ('engine_error' === $diagnostic->getType()) {
+                $engineError = $diagnostic;
+            }
+        }
+        self::assertInstanceOf(ScheduleDiagnostic::class, $engineError, 'une exception moteur non traduite produit un diagnostic engine_error');
+
+        $message = $engineError->getMessage();
+        self::assertStringNotContainsString('engine:8000', $message, 'l\'hôte/port interne du moteur ne doit jamais fuir dans le diagnostic');
+        self::assertStringNotContainsString('http://engine', $message, 'l\'URL interne du moteur ne doit jamais fuir dans le diagnostic');
+        self::assertStringNotContainsString('for "http', $message, 'le message brut de l\'exception (qui porte l\'URL appelée) ne doit pas être recopié tel quel');
+        self::assertNotSame('', trim($message), 'le diagnostic porte tout de même un libellé stable');
+    }
+
+    /**
      * Geste 2 (greffe de convergence) — le corps RÉELLEMENT envoyé au moteur est
      * reconstituable depuis la base : il vaut `Schedule::engineInput()` (snapshot + greffe)
      * rechargé. Ici en RÉGÉNÉRATION : une V1 COMPLETED du même plan porte un placement, greffé

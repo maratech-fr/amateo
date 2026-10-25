@@ -416,7 +416,10 @@ paths:
   réécrits spec par spec : `tests/e2e/support.ts` (`firstHolidayFreeMonday`,
   `schoolHolidayWindows` — feed serveur `GET /api/school-holidays`, jamais un calendrier recopié
   en dur —, `isoLocal`, `frMonthLabel`), repris par `redate-closure.spec.ts`/`mutualize.spec.ts` (P4-353, 2026-10-25) ;
-  `matches.spec.ts` reste à convertir (P4-360 — la vue Semaine ne navigue qu'entre week-ends à rencontres).
+  `matches.spec.ts` calcule aussi sa fenêtre depuis aujourd'hui, mais via un helper LOCAL
+  `futureSaturday` (P4-360, 2026-10-25) plutôt que `support.ts` — pas de vacances scolaires en
+  jeu ici, seulement la contrainte propre à la vue Semaine (navigation limitée aux week-ends qui
+  PORTENT une rencontre, `weekendGrid.ts`).
 - **Superadmin : jamais de login dans une spec** — le projet Playwright `setup`
   (`tests/e2e/superadmin.setup.ts`) fige UNE session par run (`storageState`), réutilisée sans
   retry par le projet `superadmin` ; un login par spec, multiplié par les retries, brûle le

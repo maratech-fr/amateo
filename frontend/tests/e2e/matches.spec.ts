@@ -28,6 +28,26 @@ function nextSaturdayAtLeast(minAhead: number): string {
   return ymd(d);
 }
 
+/**
+ * P4-360 — un SAMEDI FUTUR ~`weeksAhead` semaines après aujourd'hui (Y-m-d LOCAL), pour dater une
+ * rencontre LOIN de « maintenant » SANS figer un mois en dur : une date absolue « 2027-03-xx »
+ * devenait « passée » dès mars 2027 (case-jour non cliquable, semaine hors navigation). Un SAMEDI
+ * est sa propre clé de week-end (`weekendKeyOf(samedi) === samedi`, cf. `weekendGrid.ts`), d'où les
+ * assertions `semaine=<samedi>` et la navigation « Semaine suivante » (index-based sur les week-ends
+ * qui portent une rencontre, `CalendarControls.tsx`). ⚠ La fenêtre doit tomber APRÈS le week-end
+ * d'atterrissage ET AVANT la fin de saison du seed BCCL (`BcclSeeder.php`, saison 2026-2027) :
+ * `weeksAhead` est choisi pour rester dans cette saison, comme l'ancienne cible de mars 2027.
+ */
+function futureSaturday(weeksAhead: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + weeksAhead * 7);
+  while (6 !== d.getDay()) {
+    d.setDate(d.getDate() + 1); // 6 = samedi
+  }
+  return ymd(d);
+}
+
 /** Un nom d'équipe devient un motif littéral (« U11M1 (bis) » ne doit pas casser la RegExp). */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -80,6 +100,14 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
 
   // A unique opponent so the assertions target THIS run's fixture (dev DB is not reset).
   const opponent = `E2E-${Date.now().toString(36).toUpperCase()}`;
+  // P4-360 — fenêtre FUTURE calculée depuis aujourd'hui (plus de « 2027-03-xx » en dur). Le domicile
+  // tombe un SAMEDI loin devant (placé sur la grille) ; les deux extérieurs sont des MERCREDIS (jour
+  // sans habitude de match → AWAY_NO_FOOTPRINT) sur DEUX week-ends distincts : `homeSat + 4` et
+  // `homeSat + 11` jours (weekendKeyOf = samedi suivant, puis le samedi d'après), comme les anciens
+  // 06/10/17 mars. Structure jour-de-semaine/week-end IDENTIQUE à l'ancienne cible figée.
+  const homeSat = futureSaturday(18);
+  const awayWed1 = addDays(homeSat, 4);
+  const awayWed2 = addDays(homeSat, 11);
 
   await page.getByRole("link", { name: "Matchs" }).click();
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
@@ -113,7 +141,7 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // les <select> natifs du dialogue — `page.getByRole("option")` ramasserait sinon une <option>
   // native invisible (waiting for element to be visible → timeout).
   await page.getByRole("listbox").getByRole("option").first().click();
-  await page.getByLabel("Date").fill("2027-03-06"); // a Saturday
+  await page.getByLabel("Date").fill(homeSat); // un samedi FUTUR (calculé depuis aujourd'hui)
   await page.getByLabel("Adversaire").fill(opponent);
   await page.getByRole("button", { name: "Créer" }).click();
   // La création est asynchrone : attendre la fermeture AVANT d'en rouvrir une (sinon
@@ -124,18 +152,19 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   //    Le seed ne pose d'habitudes de match que les jours 6/7 (BcclSeeder.php:1407-1424),
   //    donc AUCUNE équipe n'a d'habitude un mercredi : chaque extérieur sans heure émet
   //    un AWAY_NO_FOOTPRINT (gravité 7, MatchConflictDetector.php:590-609 ; filtré sur
-  //    matchDate >= aujourd'hui — 2027 est futur —, JAMAIS sur le statut : un extérieur né
+  //    matchDate >= aujourd'hui — la fenêtre est future —, JAMAIS sur le statut : un extérieur né
   //    REVIEWED compte). Conflit DÉTERMINISTE qui peuple l'onglet Conflits sur une base
   //    FRAÎCHE (CI), là où le radar seul ne prouvait rien (le club n'a aucun conflit).
-  //    DEUX week-ends distincts (10→13-14 mars, weekendKeyOf ramène au samedi ; 17→20-21
-  //    mars) pour que le pivot Journée ait ≥2 entrées : avec UNE seule, `openKey` la force
+  //    DEUX week-ends distincts (awayWed1 et awayWed2, à +4 et +11 j du samedi domicile ;
+  //    weekendKeyOf ramène chaque mercredi au samedi suivant) pour que le pivot Journée ait
+  //    ≥2 entrées : avec UNE seule, `openKey` la force
   //    ouverte (ConflictsPage.tsx:156) et le clic EFFACE `?ouvert` — le deep-link goBack
   //    (:301) ne tiendrait plus. Un AWAY n'apparaît PAS dans « à placer » (UnplacedList :
   //    HOME uniquement) NI dans une case GYMNASE de la grille ; depuis le lot 3 PR-3a il
   //    apparaît dans la colonne « Extérieur » de la grille, écrit « à <adv> », jamais
   //    « vs <adv> » → l'assertion `vs ${opponent}` (:229) ne le ramasse pas. La colonne
   //    « Extérieur » est vérifiée plus bas (en-tête + bloc data-away « heure inconnue »).
-  for (const [date, suffix] of [["2027-03-10", "EXT"], ["2027-03-17", "EXT2"]] as const) {
+  for (const [date, suffix] of [[awayWed1, "EXT"], [awayWed2, "EXT2"]] as const) {
     await page.getByRole("button", { name: /Nouveau match/i }).click();
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
     await page.getByRole("dialog").getByRole("button", { name: /^Équipe/ }).click();
@@ -177,7 +206,7 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
 
     // ── Manual loop (P1-4 PR E1): the placed match is a clickable grid cell. ──
     // ⚠ La grille ne montre qu'UNE semaine : celle du premier week-end À VENIR qui
-    // porte des rencontres. Notre match est daté LOIN (6 mars 2027) pour ne heurter
+    // porte des rencontres. Notre match est daté LOIN (homeSat, ~18 semaines) pour ne heurter
     // aucune donnée réelle — sur une base qui porte de vraies rencontres (le bac à
     // sable), la grille atterrit donc des mois AVANT lui. On avance jusqu'à SA
     // semaine (bornes : seules les semaines qui portent des rencontres sont listées).
@@ -208,7 +237,7 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // Les deux -EXT/-EXT2 créés plus haut (mercredis SANS habitude → heure inconnue)
   // apparaissent dans la colonne « Extérieur » de la grille, PAS dans une case
   // gymnase. On hop jusqu'à la semaine qui porte le premier extérieur (base réelle :
-  // il est daté LOIN, mars 2027). Tous les locators sont scopés au conteneur grille
+  // il est daté LOIN, futur). Tous les locators sont scopés au conteneur grille
   // (`data-testid="weekend-grid"`) pour ne rien ramasser dans la bande AwayList sœur.
   const gridRoot = page.getByTestId("weekend-grid");
   const awayExtBlock = gridRoot.getByRole("button", { name: new RegExp(`à ${opponent}-EXT\\b`) });
@@ -494,7 +523,7 @@ test("gymnases adverses: le tableau Adversaires reflow sans défilement horizont
   expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
   const opponent = `REFLOW-${Date.now().toString(36).toUpperCase()}`;
   const created = await page.request.post("/api/fixtures", {
-    data: { teamId, matchDate: "2027-03-06", homeAway: "AWAY", opponentLabel: opponent, competitionId: null },
+    data: { teamId, matchDate: futureSaturday(18), homeAway: "AWAY", opponentLabel: opponent, competitionId: null },
   });
   expect(created.ok(), "POST /api/fixtures").toBeTruthy();
   const fixtureId = (await created.json()).id as string;
@@ -546,7 +575,7 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   const opponent = `E2E3B-${Date.now().toString(36).toUpperCase()}`;
   // Clé samedi de la semaine du match (weekendKeyOf ramène au samedi) — réutilisée pour
   // naviguer par l'URL (`semaine=`) dans le try ET dans le nettoyage `finally`.
-  const matchDate = "2027-03-13";
+  const matchDate = futureSaturday(19);
   await page.goto("/matchs");
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
   // UXS-07 — l'index peut renvoyer sur Conflits (atterrissage conditionnel, store vierge après
@@ -560,7 +589,7 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   let createdFixtureId: string | undefined;
 
   try {
-    // ── Créer un domicile daté LOIN (samedi 2027-03-13) ──────────────────────────
+    // ── Créer un domicile daté LOIN (samedi futur, calculé depuis aujourd'hui) ────
     await page.getByRole("button", { name: /Nouveau match/i }).click();
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
     await page.getByRole("dialog").getByRole("button", { name: /^Équipe/ }).click();
@@ -636,7 +665,7 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
 
     // ── Mois → clic ligne → bascule Semaine (URL semaine=, cellule focalisée) ──────
     await page.getByRole("button", { name: "Mois", exact: true }).click();
-    // Naviguer jusqu'au mois du match (mars 2027) : la table le liste.
+    // Naviguer jusqu'au mois du match (futur) : la table le liste.
     const row = page.getByRole("button", { name: new RegExp(`Ouvrir .*${opponent}.* dans la semaine`) });
     const nextMonth = page.getByRole("button", { name: "Mois suivant" });
     for (let hops = 0; hops < 24 && !(await row.isVisible()) && (await nextMonth.isEnabled()); hops += 1) {

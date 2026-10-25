@@ -67,6 +67,10 @@ final class ExportXlsxController extends AbstractController
             \sprintf('planning-%s.xlsx', $planningName),
             \sprintf('planning-%s.xlsx', preg_replace('/[^a-zA-Z0-9_-]+/', '-', $planningName) ?: 'export'),
         ));
+        // Un export est NOMINATIF (noms de coachs/équipes) : jamais mis en cache (navigateur ou
+        // cache partagé), sinon il survit sur un poste partagé du club. Patron ExportPdfDownloadController.
+        $response->setPrivate();
+        $response->headers->addCacheControlDirective('no-store');
 
         return $response;
     }
