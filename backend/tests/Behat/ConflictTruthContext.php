@@ -438,7 +438,8 @@ final class ConflictTruthContext extends BaseContext
         $this->coachUnavailabilityId = $this->idOf($this->apiPost('match_constraints', [
             'scope' => 'COACH',
             'scopeTargetId' => $this->coachId,
-            'ruleType' => 'HARD',
+            // Une indisponibilité d'entraîneur de match est TOUJOURS une préférence (MatchConstraintStateProcessor refuse HARD en 422).
+            'ruleType' => 'PREFERRED',
             'daysOfWeek' => [6],
             'kickoffMin' => '14:00',
             'kickoffMax' => '16:00',
