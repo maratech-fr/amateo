@@ -407,6 +407,16 @@ paths:
 - ⚠ **Un e2e qui passe sans avoir rien mis à l'épreuve est un faux vert** : quand un scénario peut
   devenir vide (une modale trop courte pour déborder, une liste vide), lui donner un **témoin** qui
   ÉCHOUE en le disant — cf. `tests/e2e/modal-reachability.spec.ts`.
+- ⚠ **Une spec e2e qui pose une date calendaire EN DUR est une bombe à retardement** — elle
+  tourne rouge dès que l'horloge réelle la dépasse (le jour/mois visé devient « passé », plus
+  cliquable ou plus dans la vue par défaut). Calculer la fenêtre depuis `new Date()` plutôt
+  qu'une constante calendaire, et l'écarter des vacances scolaires quand le geste testé en
+  dépend (`ClosureSegmentation` retire les semaines de vacances avant de découper début·milieu·
+  fin — une fenêtre qui en chevauche une fausse l'aperçu). Maison unique des helpers, jamais
+  réécrits spec par spec : `tests/e2e/support.ts` (`firstHolidayFreeMonday`,
+  `schoolHolidayWindows` — feed serveur `GET /api/school-holidays`, jamais un calendrier recopié
+  en dur —, `isoLocal`, `frMonthLabel`), repris par `redate-closure.spec.ts`/`mutualize.spec.ts`/
+  `matches.spec.ts` (P4-353, 2026-10-25).
 - **Superadmin : jamais de login dans une spec** — le projet Playwright `setup`
   (`tests/e2e/superadmin.setup.ts`) fige UNE session par run (`storageState`), réutilisée sans
   retry par le projet `superadmin` ; un login par spec, multiplié par les retries, brûle le

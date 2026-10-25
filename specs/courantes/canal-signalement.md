@@ -96,6 +96,8 @@ se resitue sans rien redemander à l'auteur :
 | `period` | la fenêtre CLOSURE/HOLIDAY qui contient AUJOURD'HUI (horloge du club) : type/nom/dates/avancement — `null` hors période (« pas de période » est une information) |
 | `versions` | `displayed` (le planning déjà joint par le client, ré-vérifié tenant) vs `pointed` (la version choisie du socle) — numéro + nom de chacun, `null` si absent |
 | `generation.running` | une génération est-elle en cours pour ce club (`ClubGenerationLock`) |
+| `apiVersion` | version de l'API résolue serveur (env `VERSION`, repli « dev ») — comparée côté console à la version du bundle déclarée par le client (« App vX · API vY », détecte un bundle resté en cache après un déploiement) |
+| `generationFailure` | la RAISON d'un échec de génération RÉCENT (< 12 h) de la saison, résolu depuis la DERNIÈRE version FAILED\|COMPLETED de la saison (COALESCE(`solveStartedAt`, `createdAt`)) — une COMPLETED postérieure l'efface (le gestionnaire a re-généré avec succès). Résumé borné `{status, kind: technical\|business, type, failedAt, version:{number,name}, firstError ≤300, countsByType}` — `kind` distingue une panne d'INFRASTRUCTURE émise par le backend (`engine_timeout`/`engine_rejected`/`engine_error`/`internal_error`/`engine_status`/`engine_failed`/`club_mismatch`/`overlay_entry_missing`/`stuck_timeout`) d'une INFÉASIBILITÉ du solveur (tout autre type de diagnostic) ; absent hors échec frais |
 | `simulatedToday` | horloge simulée du club (démos/dev), `null` pour tout club à l'heure réelle |
 
 **Toujours résolu depuis le club AUTHENTIFIÉ, jamais depuis un id client** : `clubId`/`seasonId`/
@@ -106,8 +108,8 @@ une lecture qui échoue n'annule jamais le dépôt (contexte partiel, erreur tra
 
 Le client peut aussi joindre des repères TEXTE libres pour situer l'incident (whitelistés,
 longueur bornée, stockés verbatim — jamais exécutés) : `screenLabel`, `activeFilters`,
-`displayedRange`, `lastClick`, `incidentStatus`/`incidentUrl`/`incidentCode` (trio d'un appel
-réseau fautif, repris de `lastIncidentStore` — capté seulement sur un ≥ 500).
+`displayedRange`, `appVersion`, `lastClick`, `incidentStatus`/`incidentUrl`/`incidentCode` (trio
+d'un appel réseau fautif, repris de `lastIncidentStore` — capté seulement sur un ≥ 500).
 
 **Collecte livrée** (chantier F PR2) pour `screenLabel`, `lastClick` et le trio incident :
 - `screenLabel` est composé par l'écran appelant et voyage `PageHeader`/`FeedbackButton`/
@@ -121,14 +123,19 @@ réseau fautif, repris de `lastIncidentStore` — capté seulement sur un ≥ 50
   fraîcheur 10 min comme `lastIncidentStore`.
 - le trio incident est désormais lu en entier (`readRecentIncident`, pas seulement le
   `requestId`) par `FeedbackDialog`.
-
-**Pas encore alimentés par un écran** : `activeFilters`/`displayedRange` existent dans le contrat
-de bout en bout (API `FeedbackContext`, props `FeedbackButton`/`FeedbackDialog`/`PageHeader`)
-mais aucun appelant ne les renseigne — `MatchesLayout.tsx` n'ouvre `PageHeader` qu'avec
-`screenLabel` (`:83`, `:104`), jamais `activeFilters`/`displayedRange` : les filtres et la plage
-affichée du module matchs vivent dans des composants enfants qui ne remontent pas leur état
-jusqu'au `PageHeader`. Les y faire voyager est un refactor à part, hors chantier F (clos) —
-`roadmap.md` P4-356.
+- `appVersion` (P4-355) est posé par `FeedbackDialog` lui-même, systématiquement, pour les
+  **deux portes** — pas par un écran appelant : la version du BUNDLE front (`shared/lib/appVersion.ts`,
+  foyer unique), cuite au build par `VITE_APP_VERSION` (build-arg `docker/frontend/Dockerfile`,
+  posée au déploiement avec le tag/sha — `.github/workflows/deploy.yml`), repli « dev » hors build
+  taggé (dev, jsdom, e2e).
+- `activeFilters`/`displayedRange` (P4-356) sont désormais alimentés par le module Matchs : les
+  deux `PageHeader` de `MatchesLayout.tsx` reçoivent les filtres NON-DÉFAUT (axe + compte de
+  ressources cochées, types/familles de conflit cochés en clair, « extérieurs masqués ») et la
+  plage affichée (« week-end du JJ/MM » / le mois en clair / « Phase : <libellé> », selon la
+  temporalité de consultation) — composition PURE dans `features/matches/lib/feedbackContext.ts`
+  (`composeActiveFilters`/`composeDisplayedRange`), câblée dans `MatchesLayout`. Les autres
+  écrans ne les renseignent pas encore (contrat de bout en bout déjà posé, à reprendre écran par
+  écran).
 
 L'**affichage/recherche** en console superadmin est livré — § 3quinquies. La **capture d'écran**
 optionnelle est livrée — § 3sexies.
@@ -139,6 +146,12 @@ L'onglet Signalements (D6, `features/admin/sections/FeedbackSection.tsx`) rend l
 (§3quater) en **5 blocs titrés** — Planning, Période, Écran, Dernier geste, Technique — le métier
 lisible d'abord, le technique en dernier ; un bloc sans aucune donnée ne s'affiche pas. L'URL
 reste du TEXTE pur, jamais un lien cliquable (consigne déjà posée pour le contexte lourd).
+
+Le bloc **Planning** affiche aussi, quand `generationFailure` est présent, un sous-bloc « Échec de
+génération récent » : la nature (technique/métier) + le type de diagnostic + le numéro de version
+fautive sur une ligne, puis le 1ᵉʳ message d'erreur et sa date. Le bloc **Technique** affiche
+« App vX · API vY » (`appVersion` du contexte client, `apiVersion` résolu serveur) et, si les deux
+diffèrent, une mention invitant à suspecter un bundle resté en cache.
 
 La liste se filtre par statut ET par une recherche texte `q` (`GET /api/admin/feedback?q=`,
 `AdminFeedbackController`) : nom de club OU mot du message, insensible à la casse (`ILIKE`),
