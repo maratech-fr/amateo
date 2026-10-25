@@ -82,6 +82,10 @@ final class ExportPdfDownloadController extends AbstractController
         $response = new BinaryFileResponse($target);
         $response->headers->set('Content-Type', 'application/pdf');
         $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_ATTACHMENT, basename($filename));
+        // Un rendu PDF est NOMINATIF (noms de coachs) : jamais mis en cache (navigateur ou cache
+        // partagé), sinon il survit sur un poste partagé du club.
+        $response->setPrivate();
+        $response->headers->addCacheControlDirective('no-store');
 
         return $response;
     }
