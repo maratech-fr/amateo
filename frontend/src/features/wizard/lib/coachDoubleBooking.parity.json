@@ -43,5 +43,99 @@
       "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 5, "startMinutes": 1080, "durationMinutes": 120 },
       "collide": true
     }
+  ],
+  "_toleranceComment": "Chantier H — cas de PARITÉ MÉCANIQUE de la TOLÉRANCE d'arrivée tardive. Consommé par coachDoubleBooking.parity.test.ts (front, `lateArrivalTolerated`) ET par CoachDoubleBookingMirrorParityTest.php (backend, `CoachDoubleBookingDetector::lateArrivalTolerated`). `a` = la séance que le coach QUITTE, `b` = celle qu'il rejoint EN RETARD ; le trajet est pris par `baremeMinutes`. retard = max(0, fin(a) + barème − début(b)) ; la paire géométriquement dédoublante (déjà prouvée par `cases`) est TOLÉRÉE ssi 1 <= toleranceMinutes <= 30, début(b) STRICTEMENT après début(a), et retard <= toleranceMinutes (plafond 30). La DISPONIBILITÉ de l'adjoint n'est PAS dans cette règle pure (vérifiée serveur) — seule la géométrie du retard l'est. Chaque `tolerated` est LE verdict attendu des deux implémentations.",
+  "toleranceCases": [
+    {
+      "name": "Rillieux : fin 20:15 gym1, début 20:00 gym2, trajet vélo 15, tolérance 30 → retard 30, toléré",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1125, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1200, "durationMinutes": 90 },
+      "toleranceMinutes": 30,
+      "baremeMinutes": 15,
+      "tolerated": true
+    },
+    {
+      "name": "un trajet plus long (16) pousse le retard à 31 — au-delà du plafond, refusé",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1125, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1200, "durationMinutes": 90 },
+      "toleranceMinutes": 30,
+      "baremeMinutes": 16,
+      "tolerated": false
+    },
+    {
+      "name": "retard 30 mais tolérance réglée à 29 par le gestionnaire — au-dessus de SA tolérance, refusé",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1125, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1200, "durationMinutes": 90 },
+      "toleranceMinutes": 29,
+      "baremeMinutes": 15,
+      "tolerated": false
+    },
+    {
+      "name": "plafond 30 souverain : tolérance 40 (hors bornes), retard 35 — jamais toléré au-delà de 30",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1125, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1205, "durationMinutes": 90 },
+      "toleranceMinutes": 40,
+      "baremeMinutes": 15,
+      "tolerated": false
+    },
+    {
+      "name": "véhiculé : même paire, trajet voiture 5 → retard 20, toléré à 30",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1125, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1200, "durationMinutes": 90 },
+      "toleranceMinutes": 30,
+      "baremeMinutes": 5,
+      "tolerated": true
+    },
+    {
+      "name": "couple non arbitré : barème par défaut 20 → retard 35, refusé à 30",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1125, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1200, "durationMinutes": 90 },
+      "toleranceMinutes": 30,
+      "baremeMinutes": 20,
+      "tolerated": false
+    },
+    {
+      "name": "débuts ÉGAUX jamais tolérés : le coach manquerait le début entier, pas une arrivée tardive",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1200, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1200, "durationMinutes": 90 },
+      "toleranceMinutes": 30,
+      "baremeMinutes": 0,
+      "tolerated": false
+    },
+    {
+      "name": "tolérance 0 (défaut) : aucune tolérance, jamais toléré même pour un retard nul",
+      "a": { "coachId": "c1", "teamId": "tA", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1020, "durationMinutes": 90 },
+      "b": { "coachId": "c1", "teamId": "tB", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1050, "durationMinutes": 90 },
+      "toleranceMinutes": 0,
+      "baremeMinutes": 0,
+      "tolerated": false
+    }
+  ],
+  "_multiCoachComment": "Chantier H / P4-333 — PARITÉ MÉCANIQUE du partage de coach PRINCIPAL entre deux équipes co-réservées. Consommé par coachDoubleBooking.parity.test.ts (front, `teamsShareMainCoach`) ET CoachDoubleBookingMirrorParityTest.php (backend, `CoachDoubleBookingDetector::teamsShareMainCoach`). Le bloqueur ne regardait que le PREMIER principal par équipe (P4-319) ; il doit regarder TOUS les principaux : deux équipes se dédoublent dès qu'elles partagent AU MOINS un coach principal. Exemple roadmap P4-333 : équipe A a Camille (1er) et Dorian (2e), équipe B a Dorian seul → elles partagent Dorian.",
+  "multiCoachCases": [
+    {
+      "name": "Camille/Dorian (P4-333) : A=[Camille,Dorian], B=[Dorian] → partagent Dorian",
+      "coachIdsA": ["camille", "dorian"],
+      "coachIdsB": ["dorian"],
+      "shares": true
+    },
+    {
+      "name": "principaux disjoints → aucun partage",
+      "coachIdsA": ["camille"],
+      "coachIdsB": ["dorian"],
+      "shares": false
+    },
+    {
+      "name": "une équipe sans principal → aucun partage",
+      "coachIdsA": [],
+      "coachIdsB": ["dorian"],
+      "shares": false
+    },
+    {
+      "name": "même principal unique des deux côtés → partage",
+      "coachIdsA": ["c1"],
+      "coachIdsB": ["c1"],
+      "shares": true
+    }
   ]
 }

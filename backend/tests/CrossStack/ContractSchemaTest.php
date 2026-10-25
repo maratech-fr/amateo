@@ -403,6 +403,10 @@ final class ContractSchemaTest extends TestCase
         // Contrat 1.3 (RGPD-03) — la PII du coach ne part plus au moteur.
         self::assertArrayNotHasKey('email', $payload['coaches'][0]);
         self::assertArrayNotHasKey('phone', $payload['coaches'][0]);
+        // Contrat 1.6 (chantier H) — `acceptableLateMinutes` du coach était MORT (aucune UI, jamais
+        // lu par le moteur) et est RETIRÉ du fil : la tolérance d'arrivée tardive est désormais portée
+        // par la SÉANCE (Reservation.coachLateToleranceMinutes → slotTemplates), pas par la personne.
+        self::assertArrayNotHasKey('acceptableLateMinutes', $payload['coaches'][0]);
 
         // Contrat 1.3 (ENG-53) — le schéma mort `priorityTiers` de tête n'est jamais émis
         // (les tiers voyagent en contraintes `PRIORITY_TIER`).

@@ -531,6 +531,27 @@ def test_coach_unavailable_from_pushes_the_kickoff_before_the_bound() -> None:
     )
 
 
+def test_assistant_only_unavailability_weighs_as_assistant_not_as_main() -> None:
+    # Chantier H volet matchs (amendement c) — l'indisponibilité d'un coach qui n'est
+    # qu'ADJOINT (role ASSISTANT) de l'équipe pèse W_COACH_ASSISTANT (10), pas 60 : un adjoint
+    # indisponible ne doit pas chasser le match de son créneau idéal comme le ferait un
+    # principal. Idéal 15:30 (habitude = +W_HABIT_TIME 15 + W_HABIT_VENUE 5 = +20) ; l'adjoint
+    # est indisponible 14:00-16:00 (couvre 15:30). Avec le poids ADJOINT (−10), l'idéal garde
+    # +10 > 0 → le match RESTE à 15:30. TÉMOIN (role MAIN) : −60 → l'idéal perd (−40) → il bouge
+    # (test_coach_unavailability_steers_the_placement_out_of_the_window, même scénario, role MAIN).
+    payload = _coach_unavailability_payload(with_unavailability=True)
+    payload["teams"][0]["coaches"] = [{"coachId": "c", "role": "ASSISTANT"}]
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    assert len(output.placements) == 1
+    assert _minutes(output.placements[0].kickoff) == _minutes(time(15, 30)), (
+        "un adjoint indisponible pèse W_COACH_ASSISTANT (10) < habitude (20) → l'idéal est GARDÉ"
+    )
+    assert_no_hard_violation(input_data, output)
+
+
 def test_coach_unavailability_never_blocks_a_match_with_no_alternative() -> None:
     # P4-272 ⑤ — the ONLY window (14:00-16:00) is fully inside the coach's unavailability:
     # every candidate is penalised. A coach unavailability is SOFT — it NEVER blocks (W_PLACE

@@ -859,6 +859,29 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('ASSISTANT', $assistant[0]['coachRole']);
     }
 
+    public function testAMatchMatchMainClashIsSoftenedToFiveWhenATeamHasAnAvailableAdjoint(): void
+    {
+        // Chantier H volet matchs (amendement a) — un conflit MATCH_MATCH MAIN×MAIN (gravité 3)
+        // est ADOUCI à 5 quand UNE des équipes a un ADJOINT disponible qui peut couvrir ce côté
+        // (« un adjoint peut tenir », convention P4-189 — 5 pour MATCH_MATCH, distinct du 4 de la
+        // famille b). Le champ `relief` porte le libellé. CÔTÉ JOUEUR jamais adouci (docblock).
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-03', '15:30');
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$left, $right], [
+                $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN),      // le coach dédoublé
+                $this->link(self::COACH_A, self::TEAM_2, TeamCoachRole::MAIN),
+                $this->link(self::COACH_B, self::TEAM_1, TeamCoachRole::ASSISTANT), // adjoint disponible sur TEAM_1
+            ], coachUnavailabilities: []), // coachUnavailabilities vide → l'adjoint COACH_B est disponible
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(5, $conflicts[0]['severity'], 'un adjoint disponible sur une équipe adoucit le MATCH_MATCH MAIN×MAIN (3→5)');
+        self::assertTrue($conflicts[0]['relief'], 'le champ relief porte le libellé du relais');
+    }
+
     public function testMainAndAssistantOnTheSameTeamStillCountsMain(): void
     {
         // The within-team « worst engagement wins » (rolesByTeam) is UNCHANGED
@@ -877,6 +900,138 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertCount(1, $conflicts);
         self::assertSame(3, $conflicts[0]['severity']);
         self::assertSame('MAIN', $conflicts[0]['coachRole']);
+    }
+
+    // ── Chantier H volet matchs — famille MATCH_COACH_UNAVAILABLE + relief (amendement b/a) ──
+    //
+    // DÉFAUT DE MAPPING appliqué par TANK (dit au fondateur/NEO) — l'échelle de gravité EXISTANTE
+    // est `toneOf` (`matches/lib/diagnostic.ts`) : severity ≤ 2 → destructive, ≤ 5 → warning, ≥ 6 →
+    // muted ; et 3 = conflit dur (MATCH_MATCH MAIN×MAIN), 5 = adouci « un adjoint peut tenir »
+    // (P4-189). L'amendement MORPHEUS fixe « coup d'envoi dans l'indispo d'un MAIN → 3, 5 si relief ».
+    // La refonte fondateur (couleurs famille b) ajoute un JAUNE (échauffement seul à domicile, ou
+    // indispo qui commence PENDANT le match) plus doux que l'orange, et « adjoint dispo → rouge
+    // devient orange, jaune reste jaune ». Pour obtenir TROIS crans d'urgence sur l'échelle entière
+    // (plus bas = plus grave), TANK retient : ROUGE = 3, ORANGE = 4 (relief adoucit un rouge d'UN
+    // cran, strictement entre rouge et jaune), JAUNE = 5. Les trois restent en ton « warning »
+    // aujourd'hui (le split visuel rouge/orange/jaune est une finition front/ui-ux-pro-max portée
+    // par NEO sur `severity` + le champ `relief`) ; ces tests figent la SEVERITY serveur + `relief`.
+
+    public function testAMainCoachUnavailableAtKickoffRaisesCoachUnavailableInRed(): void
+    {
+        // Coup d'envoi 15:00 (samedi) DANS l'indispo déclarée du coach principal 14:00-16:00, sans
+        // relief → MATCH_COACH_UNAVAILABLE ROUGE (severity 3). Empreinte TYPE:coachId:fixtureId.
+        $home = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $home->setVenueId('venue-mateo');
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$home], [$this->link(self::COACH_A, self::TEAM_1)], coachUnavailabilities: [
+                $this->coachUnavailability(self::COACH_A, 6, '14:00', '16:00'),
+            ]),
+            static fn (array $c): bool => 'MATCH_COACH_UNAVAILABLE' === $c['type'],
+        ));
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(3, $conflicts[0]['severity'], 'coup d\'envoi dans l\'indispo d\'un principal, sans relief → rouge (3)');
+        self::assertSame(self::COACH_A, $conflicts[0]['coachId']);
+        self::assertSame('fx-1', $conflicts[0]['fixture']['fixtureId']);
+        self::assertFalse($conflicts[0]['relief'], 'aucun adjoint ni autre principal disponible → pas de relief');
+    }
+
+    public function testAnAvailableAdjointSoftensTheCoachUnavailabilityToOrange(): void
+    {
+        // Même indispo du principal, MAIS l'équipe a un adjoint (ASSISTANT) DISPONIBLE → le coup
+        // d'envoi reste alerté mais ADOUCI en ORANGE (severity 4, relief). « Un adjoint peut tenir. »
+        $home = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $home->setVenueId('venue-mateo');
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$home], [
+                $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN),
+                $this->link(self::COACH_B, self::TEAM_1, TeamCoachRole::ASSISTANT),
+            ], coachUnavailabilities: [
+                $this->coachUnavailability(self::COACH_A, 6, '14:00', '16:00'), // seul le principal est indispo
+            ]),
+            static fn (array $c): bool => 'MATCH_COACH_UNAVAILABLE' === $c['type'],
+        ));
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(4, $conflicts[0]['severity'], 'un adjoint disponible adoucit le rouge en orange (4)');
+        self::assertTrue($conflicts[0]['relief'], 'un adjoint disponible ouvre le relief');
+    }
+
+    public function testAnotherAvailableMainCoachAlsoSoftensItToOrange(): void
+    {
+        // Factuellement il reste un coach PRINCIPAL disponible → orange aussi (fondateur : « on
+        // alerte, mais il y a un coach »).
+        $home = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $home->setVenueId('venue-mateo');
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$home], [
+                $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN),
+                $this->link(self::COACH_B, self::TEAM_1, TeamCoachRole::MAIN), // second principal, disponible
+            ], coachUnavailabilities: [
+                $this->coachUnavailability(self::COACH_A, 6, '14:00', '16:00'),
+            ]),
+            static fn (array $c): bool => 'MATCH_COACH_UNAVAILABLE' === $c['type'],
+        ));
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(4, $conflicts[0]['severity'], 'un autre principal disponible adoucit aussi en orange (4)');
+        self::assertTrue($conflicts[0]['relief']);
+    }
+
+    public function testAnAssistantOnlyCoachUnavailabilityNeverRaisesTheFamily(): void
+    {
+        // L'indispo d'un coach qui n'est qu'ADJOINT ne déclenche JAMAIS la famille : le principal
+        // (disponible) reste l'entité, un adjoint indisponible est un non-événement (amendement b).
+        $home = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $home->setVenueId('venue-mateo');
+
+        $conflicts = array_column($this->detect([$home], [
+            $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN),      // principal DISPONIBLE
+            $this->link(self::COACH_B, self::TEAM_1, TeamCoachRole::ASSISTANT),
+        ], coachUnavailabilities: [
+            $this->coachUnavailability(self::COACH_B, 6, '14:00', '16:00'), // seul l'adjoint est indispo
+        ]), 'type');
+
+        self::assertNotContains('MATCH_COACH_UNAVAILABLE', $conflicts, 'l\'indispo d\'un adjoint seul ne lève jamais la famille');
+    }
+
+    public function testAnUnavailabilityStartingDuringTheHomeMatchIsYellow(): void
+    {
+        // Coup d'envoi 15:00 LIBRE (hors indispo), mais l'indispo du principal 16:00-17:00 commence
+        // PENDANT le match (105 min → 15:00-16:45 chevauche 16:00-16:45). À domicile → JAUNE
+        // (severity 5), moins grave qu'un coup d'envoi manqué. DÉFAUT TANK (cf. en-tête de section).
+        $home = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $home->setVenueId('venue-mateo');
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$home], [$this->link(self::COACH_A, self::TEAM_1)], coachUnavailabilities: [
+                $this->coachUnavailability(self::COACH_A, 6, '16:00', '17:00'),
+            ]),
+            static fn (array $c): bool => 'MATCH_COACH_UNAVAILABLE' === $c['type'],
+        ));
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(5, $conflicts[0]['severity'], 'indispo qui commence pendant le match, coup d\'envoi libre, à domicile → jaune (5)');
+    }
+
+    public function testCoachUnavailabilityAtKickoffOfAnAwayMatchStaysRed(): void
+    {
+        // À l'EXTÉRIEUR, le coach doit être à l'heure sur place : une indispo au coup d'envoi reste
+        // ROUGE (3), jamais adoucie en jaune par l'absence d'échauffement à domicile.
+        $away = $this->awayFixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$away], [$this->link(self::COACH_A, self::TEAM_1)], coachUnavailabilities: [
+                $this->coachUnavailability(self::COACH_A, 6, '14:00', '16:00'),
+            ]),
+            static fn (array $c): bool => 'MATCH_COACH_UNAVAILABLE' === $c['type'],
+        ));
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(3, $conflicts[0]['severity'], 'à l\'extérieur, l\'indispo au coup d\'envoi reste rouge (3)');
     }
 
     /**
@@ -1812,6 +1967,18 @@ final class MatchConflictDetectorTest extends TestCase
     }
 
     /**
+     * Chantier H volet matchs — une indisponibilité DÉCLARÉE d'un coach sur un jour ISO, bornes
+     * kickoff FACULTATIVES (intervalle FERMÉ, même algèbre que le solveur `geometry.py::
+     * _kick_in_unavailability`). Forme d'entrée de la famille MATCH_COACH_UNAVAILABLE.
+     *
+     * @return array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}
+     */
+    private function coachUnavailability(string $coachId, int $dayOfWeek, ?string $kickoffMin, ?string $kickoffMax): array
+    {
+        return ['coachId' => $coachId, 'dayOfWeek' => $dayOfWeek, 'kickoffMin' => $kickoffMin, 'kickoffMax' => $kickoffMax];
+    }
+
+    /**
      * @param list<Fixture>                                                                                          $fixtures
      * @param list<TeamCoach>                                                                                        $links
      * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $overlayPeriods
@@ -1830,7 +1997,7 @@ final class MatchConflictDetectorTest extends TestCase
      *
      * @return list<array<string, mixed>>
      */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], ?array $levelByTeam = null, array $deadlineByCompetition = []): array
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], ?array $levelByTeam = null, array $deadlineByCompetition = [], array $coachUnavailabilities = []): array
     {
         // Lot M — the TEAM_LINK family left the radar; the detector no longer takes
         // team links. `$teamLinks` is kept in THIS helper's positional shape only so
@@ -1846,8 +2013,12 @@ final class MatchConflictDetectorTest extends TestCase
         // $levelByTeam SANS une équipe (p.ex. `[]`) exercent TEAM_LEVEL_MISSING.
         $levelByTeam ??= [self::TEAM_1 => TeamLevel::DEPARTEMENTAL, self::TEAM_2 => TeamLevel::DEPARTEMENTAL];
 
+        // Chantier H volet matchs — `$coachUnavailabilities` est passé en DERNIER argument : la
+        // signature réelle de `detect()` le gagne (famille MATCH_COACH_UNAVAILABLE + relief). Tant
+        // que NEO ne l'a pas ajouté, PHP IGNORE cet argument surnuméraire → la famille n'est pas
+        // émise → les tests du chantier H rougissent (RED pour la bonne raison, feature absente).
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam, $deadlineByCompetition);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam, $deadlineByCompetition, $coachUnavailabilities);
     }
 
     private function membership(string $coachId, string $teamId, bool $active = true): CoachPlayerMembership

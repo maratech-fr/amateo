@@ -14,3 +14,11 @@ Fonctionnalité: Une personne à deux endroits en même temps est signalée
     Étant donné le club de démonstration, connecté, avec son planning de saison en vigueur
     Quand je place deux séances qui se chevauchent dans le même gymnase, coachées par la même personne
     Alors le radar ne signale aucun conflit pour cette personne
+
+  Scénario: Un retard toléré ouvert par un adjoint est un relais, pas un conflit (chantier H)
+    Deux séances se chevauchent dans deux gymnases pour la même personne, mais la séance rejointe en
+    retard TOLÈRE ce retard et a un adjoint disponible qui l'ouvre : le radar l'inscrit comme un
+    RELAIS, hors du compte des conflits — la personne arrive en retard, l'adjoint tient le début.
+    Étant donné le club de démonstration, connecté, avec son planning de saison en vigueur
+    Quand je place deux séances qui se chevauchent dans deux gymnases, dont la seconde tolère le retard et a un adjoint disponible
+    Alors le radar ne compte aucun conflit pour cette personne, mais inscrit un relais
