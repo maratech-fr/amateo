@@ -544,6 +544,67 @@ final class ValidateConstraintsTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
     }
 
+    // ── Chantier H : le relais de l'adjoint tolère un retard au RÉCAP (ValidateConstraintsController) ──
+
+    public function testAToleratedLateArrivalWithAnAvailableAdjointWarnsInsteadOfBlocking(): void
+    {
+        // Rillieux : Sébastien finit à 20:15 au Mont Blanc (U21 19:00-20:15), rejoint le Louison
+        // Bobet (SENIORS 20:00) ; trajet 15 min à pied (non véhiculé), chevauchement 15 min →
+        // retard 30 = la tolérance posée. Jules (adjoint) ouvre la séance → le récap AVERTIT, il ne
+        // bloque PAS la paire dédoublante.
+        $ctx = $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'available');
+        $data = $this->validate();
+
+        self::assertStringNotContainsString('deux créneaux en même temps', implode(' | ', $data['blockers']), 'un retard toléré + adjoint dispo ne bloque plus la paire');
+        $warnings = implode(' | ', $data['warnings']);
+        self::assertStringContainsString('Sébastien', $warnings);
+        self::assertStringContainsString('en retard', $warnings);
+        self::assertStringContainsString('Jules', $warnings);
+        self::assertStringContainsString('adjoint', $warnings);
+        self::assertStringContainsString($ctx['seniorsName'], $warnings, 'l\'avertissement nomme la séance rejointe');
+        unset($ctx);
+    }
+
+    public function testAToleranceWithoutAnyAssistantStillBlocks(): void
+    {
+        // Abus : tolérance posée SANS aucun lien ASSISTANT sur la séance rejointe → personne ne
+        // l'ouvre, le dédoublement reste un BLOQUEUR (l'adjoint est obligatoire).
+        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'none');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testAToleranceWithAnUnavailableAdjointStillBlocks(): void
+    {
+        // Abus : l'adjoint existe mais est DÉCLARÉ indisponible sur la fenêtre d'ouverture → il ne
+        // peut pas ouvrir, le dédoublement reste bloqué (la dispo de l'adjoint est VÉRIFIÉE).
+        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'declared_unavailable');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testAToleranceWithTheAdjointBookedElsewhereStillBlocks(): void
+    {
+        // Abus : l'adjoint est lui-même coach MAIN d'une 3ᵉ séance qui chevauche, dans un AUTRE
+        // gymnase → il n'est pas libre d'ouvrir, le dédoublement reste bloqué.
+        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'booked_elsewhere');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testADelayOfThirtyOneViaTravelStillBlocks(): void
+    {
+        // Abus : chevauchement 15 + barème 16 → retard 31 > plafond 30 → au-delà de la tolérance,
+        // le dédoublement reste un bloqueur même avec un adjoint disponible.
+        $this->seedRelayScenario(tolerance: 30, bareme: 16, adjoint: 'available');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testAZeroToleranceStillBlocks(): void
+    {
+        // Rétro-compat : tolérance 0 (défaut) = aucune tolérance → le dédoublement bloque comme
+        // avant le chantier H, adjoint ou pas.
+        $this->seedRelayScenario(tolerance: 0, bareme: 15, adjoint: 'available');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -704,67 +765,6 @@ final class ValidateConstraintsTest extends WebTestCase
         $reservation->setDurationMinutes(90);
         $this->em->persist($reservation);
         $this->em->flush();
-    }
-
-    // ── Chantier H : le relais de l'adjoint tolère un retard au RÉCAP (ValidateConstraintsController) ──
-
-    public function testAToleratedLateArrivalWithAnAvailableAdjointWarnsInsteadOfBlocking(): void
-    {
-        // Rillieux : Sébastien finit à 20:15 au Mont Blanc (U21 19:00-20:15), rejoint le Louison
-        // Bobet (SENIORS 20:00) ; trajet 15 min à pied (non véhiculé), chevauchement 15 min →
-        // retard 30 = la tolérance posée. Jules (adjoint) ouvre la séance → le récap AVERTIT, il ne
-        // bloque PAS la paire dédoublante.
-        $ctx = $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'available');
-        $data = $this->validate();
-
-        self::assertStringNotContainsString('deux créneaux en même temps', implode(' | ', $data['blockers']), 'un retard toléré + adjoint dispo ne bloque plus la paire');
-        $warnings = implode(' | ', $data['warnings']);
-        self::assertStringContainsString('Sébastien', $warnings);
-        self::assertStringContainsString('en retard', $warnings);
-        self::assertStringContainsString('Jules', $warnings);
-        self::assertStringContainsString('adjoint', $warnings);
-        self::assertStringContainsString($ctx['seniorsName'], $warnings, 'l\'avertissement nomme la séance rejointe');
-        unset($ctx);
-    }
-
-    public function testAToleranceWithoutAnyAssistantStillBlocks(): void
-    {
-        // Abus : tolérance posée SANS aucun lien ASSISTANT sur la séance rejointe → personne ne
-        // l'ouvre, le dédoublement reste un BLOQUEUR (l'adjoint est obligatoire).
-        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'none');
-        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
-    }
-
-    public function testAToleranceWithAnUnavailableAdjointStillBlocks(): void
-    {
-        // Abus : l'adjoint existe mais est DÉCLARÉ indisponible sur la fenêtre d'ouverture → il ne
-        // peut pas ouvrir, le dédoublement reste bloqué (la dispo de l'adjoint est VÉRIFIÉE).
-        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'declared_unavailable');
-        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
-    }
-
-    public function testAToleranceWithTheAdjointBookedElsewhereStillBlocks(): void
-    {
-        // Abus : l'adjoint est lui-même coach MAIN d'une 3ᵉ séance qui chevauche, dans un AUTRE
-        // gymnase → il n'est pas libre d'ouvrir, le dédoublement reste bloqué.
-        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'booked_elsewhere');
-        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
-    }
-
-    public function testADelayOfThirtyOneViaTravelStillBlocks(): void
-    {
-        // Abus : chevauchement 15 + barème 16 → retard 31 > plafond 30 → au-delà de la tolérance,
-        // le dédoublement reste un bloqueur même avec un adjoint disponible.
-        $this->seedRelayScenario(tolerance: 30, bareme: 16, adjoint: 'available');
-        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
-    }
-
-    public function testAZeroToleranceStillBlocks(): void
-    {
-        // Rétro-compat : tolérance 0 (défaut) = aucune tolérance → le dédoublement bloque comme
-        // avant le chantier H, adjoint ou pas.
-        $this->seedRelayScenario(tolerance: 0, bareme: 15, adjoint: 'available');
-        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
     }
 
     /**

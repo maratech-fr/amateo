@@ -7,10 +7,13 @@ namespace App\Service;
 use App\Controller\ValidateConstraintsController;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
+use App\Entity\Constraint;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
+use App\Entity\VenueTravelTime;
+use App\Enum\TeamCoachRole;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -63,19 +66,27 @@ final class PlacedSessionPersonConflictDetector
      *     dayOfWeek: int,
      *     first: array{teamId: string, teamName: string, venueId: string, venueName: string, startTime: string},
      *     second: array{teamId: string, teamName: string, venueId: string, venueName: string, startTime: string},
+     * }>, relays: list<array{
+     *     personId: string,
+     *     personName: string,
+     *     dayOfWeek: int,
+     *     lateMinutes: int,
+     *     adjointName: string,
+     *     first: array{teamId: string, teamName: string, venueId: string, venueName: string, startTime: string},
+     *     second: array{teamId: string, teamName: string, venueId: string, venueName: string, startTime: string},
      * }>}
      */
     public function detect(string $clubId, ?string $seasonId): array
     {
         $seasonScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
         if (null === $seasonScheduleId || null === $seasonId) {
-            return ['seasonPlanChosen' => false, 'conflicts' => []];
+            return ['seasonPlanChosen' => false, 'conflicts' => [], 'relays' => []];
         }
 
         /** @var list<ScheduleSlotTemplate> $slots */
         $slots = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $seasonScheduleId]);
         if (\count($slots) < 2) {
-            return ['seasonPlanChosen' => true, 'conflicts' => []];
+            return ['seasonPlanChosen' => true, 'conflicts' => [], 'relays' => []];
         }
 
         // teamId → coachs de séance (MAIN + ASSISTANT) et joueurs (memberships ACTIFS).
@@ -97,12 +108,42 @@ final class PlacedSessionPersonConflictDetector
 
         $pairs = $this->collidingPairs($slots, $sessionCoachesByTeam, $playersByTeam);
         if ([] === $pairs) {
-            return ['seasonPlanChosen' => true, 'conflicts' => []];
+            return ['seasonPlanChosen' => true, 'conflicts' => [], 'relays' => []];
         }
+
+        // Chantier H — décor du relais (mêmes maisons partagées que le récap) : adjoints par équipe,
+        // barème de trajet, statut véhiculé + nom des coachs, indispos déclarées, séances-coach.
+        $assistantsByTeam = [];
+        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy($scope) as $link) {
+            if (TeamCoachRole::ASSISTANT === $link->getRole()) {
+                $assistantsByTeam[$link->getTeamId()][] = $link->getCoachId();
+            }
+        }
+        $matrix = $this->travelMatrix($scope);
+        [$coachNames, $coachVehicled] = $this->coachIndex($scope);
+        $blockedByCoach = CoachDoubleBookingDetector::blockedIntervalsByCoach(
+            $this->entityManager->getRepository(Constraint::class)->findBy($scope),
+        );
+        $coachBookings = $this->coachBookings($slots, $sessionCoachesByTeam);
 
         $names = $this->displayNames($pairs, $slots);
         $conflicts = [];
+        $relays = [];
         foreach ($pairs as $pair) {
+            $relay = $this->relayFor($pair, $sessionCoachesByTeam, $assistantsByTeam, $matrix, $coachVehicled, $coachNames, $blockedByCoach, $coachBookings);
+            if (null !== $relay) {
+                $relays[] = [
+                    'personId' => $pair['personId'],
+                    'personName' => $names['coach'][$pair['personId']] ?? 'Cette personne',
+                    'dayOfWeek' => $pair['dayOfWeek'],
+                    'lateMinutes' => $relay['lateMinutes'],
+                    'adjointName' => $relay['adjointName'],
+                    'first' => $this->describe($pair['first'], $names),
+                    'second' => $this->describe($pair['second'], $names),
+                ];
+
+                continue;
+            }
             $conflicts[] = [
                 'personId' => $pair['personId'],
                 'personName' => $names['coach'][$pair['personId']] ?? 'Cette personne',
@@ -112,7 +153,117 @@ final class PlacedSessionPersonConflictDetector
             ];
         }
 
-        return ['seasonPlanChosen' => true, 'conflicts' => $conflicts];
+        return ['seasonPlanChosen' => true, 'conflicts' => $conflicts, 'relays' => $relays];
+    }
+
+    /**
+     * Chantier H — cette paire dédoublante est-elle un RELAIS tolérable ? Oui ssi la personne est un
+     * coach de séance de l'équipe REJOINTE (la plus tardive — un joueur n'est jamais « ouvert » par
+     * un adjoint), que cette séance tolère un retard couvrant le retard géométrique (fin de la 1ʳᵉ +
+     * barème de trajet − début de la 2ᵉ), et qu'un adjoint DISPONIBLE l'ouvre (maison partagée
+     * {@see CoachDoubleBookingDetector::adjointOpening}). Rend `{lateMinutes, adjointName}` ou null.
+     *
+     * @param array{personId: string, dayOfWeek: int, first: ScheduleSlotTemplate, second: ScheduleSlotTemplate}   $pair
+     * @param array<string, list<string>>                                                                          $sessionCoachesByTeam
+     * @param array<string, list<string>>                                                                          $assistantsByTeam
+     * @param array<string, array{driving: ?int, walking: ?int}>                                                   $matrix
+     * @param array<string, bool>                                                                                  $coachVehicled
+     * @param array<string, string>                                                                                $coachNames
+     * @param array<string, list<array{0: int, 1: int, 2: int}>>                                                   $blockedByCoach
+     * @param array<string, list<array{venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>> $coachBookings
+     *
+     * @return array{lateMinutes: int, adjointName: string}|null
+     */
+    private function relayFor(array $pair, array $sessionCoachesByTeam, array $assistantsByTeam, array $matrix, array $coachVehicled, array $coachNames, array $blockedByCoach, array $coachBookings): ?array
+    {
+        $personId = $pair['personId'];
+        $early = $pair['first'];
+        $late = $pair['second'];
+        // Côté JOUEUR jamais : la personne doit être un coach de séance de l'équipe rejointe.
+        $lateCoach = $late->getCoachId();
+        $lateCoaches = null !== $lateCoach ? [$lateCoach] : ($sessionCoachesByTeam[$late->getTeamId()] ?? []);
+        if (!\in_array($personId, $lateCoaches, true)) {
+            return null;
+        }
+
+        $bareme = CoachDoubleBookingDetector::travelBaremeMinutes($matrix, $early->getVenueId(), $late->getVenueId(), $coachVehicled[$personId] ?? false);
+        $earlyBooking = ['startMinutes' => $this->startMinutes($early), 'durationMinutes' => $early->getDurationMinutes()];
+        $lateBooking = ['startMinutes' => $this->startMinutes($late), 'durationMinutes' => $late->getDurationMinutes()];
+        if (!CoachDoubleBookingDetector::lateArrivalTolerated($earlyBooking, $lateBooking, $late->getCoachLateToleranceMinutes(), $bareme)) {
+            return null;
+        }
+
+        $lateMinutes = max(0, $this->startMinutes($early) + $early->getDurationMinutes() + $bareme - $this->startMinutes($late));
+        $assistants = array_values(array_filter($assistantsByTeam[$late->getTeamId()] ?? [], static fn (string $id): bool => $id !== $personId));
+        $adjointId = CoachDoubleBookingDetector::adjointOpening($assistants, $blockedByCoach, $coachBookings, $late->getDayOfWeek(), $this->startMinutes($late), $this->startMinutes($late) + $lateMinutes, $late->getVenueId());
+        if (null === $adjointId) {
+            return null;
+        }
+
+        return ['lateMinutes' => $lateMinutes, 'adjointName' => $coachNames[$adjointId] ?? 'Un adjoint'];
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $scope
+     *
+     * @return array<string, array{driving: ?int, walking: ?int}>
+     */
+    private function travelMatrix(array $scope): array
+    {
+        $matrix = [];
+        foreach ($this->entityManager->getRepository(VenueTravelTime::class)->findBy($scope) as $row) {
+            [$a, $b] = $row->getVenueAId() < $row->getVenueBId() ? [$row->getVenueAId(), $row->getVenueBId()] : [$row->getVenueBId(), $row->getVenueAId()];
+            $matrix[$a . '|' . $b] = ['driving' => $row->getDrivingMinutes(), 'walking' => $row->getWalkingMinutes()];
+        }
+
+        return $matrix;
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $scope
+     *
+     * @return array{0: array<string, string>, 1: array<string, bool>}
+     */
+    private function coachIndex(array $scope): array
+    {
+        $names = [];
+        $vehicled = [];
+        foreach ($this->entityManager->getRepository(Coach::class)->findBy($scope) as $coach) {
+            $names[$coach->getId()] = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $vehicled[$coach->getId()] = $coach->isVehicled();
+        }
+
+        return [$names, $vehicled];
+    }
+
+    /**
+     * Les séances placées où chaque coach de séance est présent — pour vérifier qu'un adjoint n'est
+     * pas occupé ailleurs (chantier H). Coach de séance = `slot.coachId` posé, sinon les coachs de
+     * l'équipe (même repli que la présence).
+     *
+     * @param list<ScheduleSlotTemplate>  $slots
+     * @param array<string, list<string>> $sessionCoachesByTeam
+     *
+     * @return array<string, list<array{venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>>
+     */
+    private function coachBookings(array $slots, array $sessionCoachesByTeam): array
+    {
+        $byCoach = [];
+        foreach ($slots as $slot) {
+            $coachId = $slot->getCoachId();
+            $coaches = null !== $coachId ? [$coachId] : ($sessionCoachesByTeam[$slot->getTeamId()] ?? []);
+            $booking = [
+                'venueId' => $slot->getVenueId(),
+                'dayOfWeek' => $slot->getDayOfWeek(),
+                'startMinutes' => $this->startMinutes($slot),
+                'durationMinutes' => $slot->getDurationMinutes(),
+            ];
+            foreach ($coaches as $coach) {
+                $byCoach[$coach][] = $booking;
+            }
+        }
+
+        return $byCoach;
     }
 
     /**

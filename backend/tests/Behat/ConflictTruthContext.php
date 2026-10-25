@@ -465,24 +465,6 @@ final class ConflictTruthContext extends BaseContext
         $this->assertCoachUnavailableSeverity(4, 'orange');
     }
 
-    private function assertCoachUnavailableSeverity(int $expected, string $colour): void
-    {
-        foreach ($this->conflicts as $conflict) {
-            if (\is_array($conflict)
-                && 'MATCH_COACH_UNAVAILABLE' === ($conflict['type'] ?? null)
-                && ($conflict['coachId'] ?? null) === $this->coachId
-            ) {
-                if ((int) ($conflict['severity'] ?? 0) !== $expected) {
-                    throw new RuntimeException(\sprintf('conflit « coach indisponible » attendu en %s (gravité %d), obtenu gravité %s', $colour, $expected, var_export($conflict['severity'] ?? null, true)));
-                }
-
-                return;
-            }
-        }
-
-        throw new RuntimeException('le radar aurait dû signaler « coach principal indisponible » pour ce match à domicile');
-    }
-
     #[When('je demande les conflits des matchs')]
     public function jeDemandeLesConflits(): void
     {
@@ -751,6 +733,24 @@ final class ConflictTruthContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    private function assertCoachUnavailableSeverity(int $expected, string $colour): void
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (\is_array($conflict)
+                && 'MATCH_COACH_UNAVAILABLE' === ($conflict['type'] ?? null)
+                && ($conflict['coachId'] ?? null) === $this->coachId
+            ) {
+                if ((int) ($conflict['severity'] ?? 0) !== $expected) {
+                    throw new RuntimeException(\sprintf('conflit « coach indisponible » attendu en %s (gravité %d), obtenu gravité %s', $colour, $expected, var_export($conflict['severity'] ?? null, true)));
+                }
+
+                return;
+            }
+        }
+
+        throw new RuntimeException('le radar aurait dû signaler « coach principal indisponible » pour ce match à domicile');
     }
 
     /**
