@@ -56,6 +56,7 @@ const h = vi.hoisted(() => ({
   created: { value: null as Venue | null },
   createCalls: [] as CreateBody[],
   nameSearch: { used: false, lastQuery: "", salles: [] as FfbbSalle[] },
+  nearby: { salles: [] as FfbbSalle[] },
 }));
 
 vi.mock("@/shared/lib/travelStream", () => ({
@@ -98,10 +99,10 @@ vi.mock("../queries", () => ({
   useUpdateSlot: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSlot: () => ({ mutate: vi.fn() }),
   useDeletionImpact: () => ({ data: undefined, isPending: false, isError: false }),
-  // Commune + proximité VOLONTAIREMENT vides : le gymnase cherché n'est PAS dans la commune (le cas
-  // de #20) — seule la recherche par NOM peut le ramener.
+  // Commune VOLONTAIREMENT vide. La proximité est vide par DÉFAUT (cas #20 : seule la recherche par
+  // NOM ramène le gymnase) ; le parcours « à proximité » (P4-354) la peuple via `h.nearby.salles`.
   useFfbbSalles: () => ({ data: { salles: [] } }),
-  useFfbbSallesProches: () => ({ data: { salles: [] } }),
+  useFfbbSallesProches: () => ({ data: { salles: h.nearby.salles } }),
   // Recherche par NOM dans toute la FFBB (`/api/ffbb/salles?q=`). Le mock consigne qu'il a été
   // CONSULTÉ (preuve que la PROD a câblé le hook) et renvoie la forme réelle `{ postalCode, salles }`.
   useFfbbSallesByName: (query: string) => {
@@ -146,6 +147,7 @@ beforeEach(() => {
   h.created.value = null;
   h.createCalls = [];
   h.nameSearch = { used: false, lastQuery: "", salles: [] };
+  h.nearby = { salles: [] };
 });
 
 afterEach(() => {
@@ -198,5 +200,50 @@ describe("VenuesStep — recherche d'un gymnase par son nom dans la FFBB (#20)",
     expect(manual?.externalRef ?? null).toBeNull();
     expect(manual?.latitude ?? null).toBeNull();
     expect(manual?.longitude ?? null).toBeNull();
+  });
+});
+
+/**
+ * P4-354 — PROMESSE : un gymnase créé depuis la liste FFBB « à proximité » naît AVEC l'adresse de la
+ * salle affichée dans cette liste (`salle.address`), comme le gymnase créé par « recherche par nom ».
+ * Sans elle, le gymnase naît sans adresse → fiche gymnase vide et 0 trajet (retour Rillieux, gymnase
+ * « Mont Blanc », doc 2026-10-24).
+ *
+ * NIVEAU — le plus bas qui prouve VRAIMENT : composant Vitest (jsdom). Le payload de création du clic
+ * « + Ajouter » d'une salle de proximité est entièrement visible sans navigateur ; rien ne traverse le
+ * serveur ici (la route `/api/ffbb/salles-proches` et le stockage de `Venue.address` sont prouvés
+ * ailleurs). On mute la PROD (le vrai `VenuesStep`), seul `../queries` est stubé.
+ *
+ * ANGLE JUMEAU, pas un doublon : le chemin VOISIN « recherche par nom » prouve la même garantie
+ * d'adresse à CE niveau au-dessus (`VenuesStep.ffbbSearch.test.tsx:170` — `address: FOUND.address`
+ * dans le payload). C'est un CHEMIN de code DISTINCT (`VenuesStep.tsx:676` vs `:485`) avec sa propre
+ * régression possible : la promesse « à proximité envoie l'adresse » n'est prouvée nulle part sans ce
+ * test.
+ *
+ * ROUGE AVANT NEO : `VenuesStep.tsx:676` crée le gymnase de proximité SANS `address: salle.address` —
+ * le payload n'a donc pas de champ `address` et l'assertion `address: FOUND.address` échoue. VERT une
+ * fois `address: salle.address` ajouté au payload (alignement sur `addSalleFromName`, `:485`).
+ */
+describe("VenuesStep — un gymnase créé depuis « à proximité » porte l'adresse de la salle (P4-354)", () => {
+  it("le clic « Ajouter » d'une salle de proximité crée le gymnase AVEC son adresse (fiche + trajets)", async () => {
+    const user = userEvent.setup();
+    h.nearby.salles = [FOUND];
+    renderWithProviders(<Harness />);
+
+    // Nom laissé vide : la liste « à proximité » s'affiche telle quelle (aucun filtre).
+    await user.click(await screen.findByRole("button", { name: WIZARD_TEXTS.addTag }));
+
+    // Promesse P4-354 : créé AVEC son adresse (comme « recherche par nom », cf. docblock).
+    await waitFor(() =>
+      expect(h.createCalls).toContainEqual(
+        expect.objectContaining({
+          name: FOUND.name,
+          externalRef: FOUND.externalRef,
+          address: FOUND.address,
+          latitude: FOUND.latitude,
+          longitude: FOUND.longitude,
+        }),
+      ),
+    );
   });
 });
