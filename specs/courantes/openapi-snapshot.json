@@ -19015,6 +19015,34 @@
                 }
             }
         },
+        "/api/schedules/{id}/export-pdf/{filename}": {
+            "get": {
+                "operationId": "getScheduleExportPdfRender",
+                "tags": [
+                    "Schedule"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The rendered PDF file, as an attachment.",
+                        "content": {
+                            "application/pdf": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "404": {
+                        "description": "Unknown schedule, another club's render, or a filename that is not a render of this schedule"
+                    }
+                },
+                "summary": "Download the rendered PDF of a schedule (authenticated, scoped to the club; the file lives outside the docroot)"
+            }
+        },
         "/api/schedules/{id}/export-xlsx": {
             "post": {
                 "operationId": "export_xlsx",

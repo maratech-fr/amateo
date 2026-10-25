@@ -42,11 +42,8 @@ const config = defineConfig({
         target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080',
         changeOrigin: true,
       },
-      // Exported PDF/PNG files live under the backend's public/exports.
-      '/exports': {
-        target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080',
-        changeOrigin: true,
-      },
+      // P4-357 — plus de proxy `/exports` : le rendu PDF ne se télécharge que par la route
+      // authentifiée `/api/schedules/{id}/export-pdf/{filename}` (proxifiée par `/api` ci-dessus).
       '/.well-known/mercure': {
         // D-15 — le défaut ignorait `MERCURE_PORT`, alors que le hub est publié sur CE port
         // (`docker-compose.yml`). Dans Docker le compose passe `MERCURE_PROXY_TARGET`, donc

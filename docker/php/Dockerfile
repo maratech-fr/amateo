@@ -219,10 +219,12 @@ RUN APP_SECRET=build-throwaway \
     php bin/console assets:install public --env=prod --no-interaction
 
 # Runtime-written dirs (volumes mount over most of them in the prod compose):
-# var/backups (dumps), var/storage/logos, public/exports (pdf-worker), var
-# cache/log, config/jwt (mounted read-only from the host at deploy time).
-RUN mkdir -p var/cache var/log var/backups var/storage/logos public/exports config/jwt \
-    && chown -R www-data:www-data var public/exports
+# var/backups (dumps), var/storage/logos, var/exports (pdf-worker renders, P4-357 — hors
+# docroot), var cache/log, config/jwt (mounted read-only from the host at deploy time).
+# var/exports is created www-data-owned so a FRESH `exports` named volume seeds from it
+# and the pdf-worker (uid 1000 = www-data) can write into the mountpoint.
+RUN mkdir -p var/cache var/log var/backups var/storage/logos var/exports config/jwt \
+    && chown -R www-data:www-data var
 
 USER www-data
 

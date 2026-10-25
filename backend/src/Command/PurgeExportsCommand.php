@@ -18,12 +18,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * P4-52 — la rétention des rendus d'export.
  *
- * Les PDF s'écrivent dans `public/exports` (`PdfGenerator`) et **ne repartaient jamais** :
- * une saison de régénérations laisse autant de fichiers, indéfiniment.
+ * Les PDF s'écrivent dans le répertoire de `PdfGenerator::outputDir()` (`var/exports`, hors
+ * docroot depuis P4-357) et **ne repartaient jamais** : une saison de régénérations laisse autant
+ * de fichiers, indéfiniment.
  *
- * ⚑ Le rendu est servi **publiquement par design** (`nginx.prod.conf` : « SEC-14 : proxy
- * PUBLIC par design ») — l'URL porte l'UUID du planning, elle n'est pas devinable, mais elle
- * ne se périme pas non plus. La rétention borne donc deux choses d'un coup : le disque, et la
+ * ⚑ Le rendu ne se télécharge que par la route AUTHENTIFIÉE confinée au club
+ * (`GET /api/schedules/{id}/export-pdf/{filename}`, P4-357) — l'URL porte l'UUID du planning, elle
+ * ne se périme pas d'elle-même. La rétention borne donc deux choses d'un coup : le disque, et la
  * durée pendant laquelle un vieux rendu reste atteignable.
  *
  * **Deux motifs de suppression, et un seul filet.**
@@ -48,9 +49,6 @@ final class PurgeExportsCommand extends Command
 {
     /** Jours au-delà desquels un rendu non épinglé part. Un planning se consulte dans les jours qui suivent ; une saison dure dix mois. */
     private const int RETENTION_DAYS = 90;
-
-    /** `schedule-{uuid}-{scope}.{ext}` — le nom EST la seule jointure entre le fichier et sa ligne. */
-    private const string PUBLIC_PREFIX = '/exports';
 
     /**
      * `schedule-{uuid}-{scope}.{ext}` — le nom EST la seule jointure entre le fichier et sa
@@ -89,8 +87,15 @@ final class PurgeExportsCommand extends Command
 
         // Épinglé : la saison le pointe. Il ne part JAMAIS, quel que soit son âge — c'est le
         // seul rendu qu'un gestionnaire ait une raison de rouvrir des mois plus tard.
-        if (isset($pinnedUrls[self::PUBLIC_PREFIX . '/' . $name])) {
-            return 'keep';
+        //
+        // P4-357 — on compare le BASENAME de chaque URL épinglée, pas l'URL entière : l'URL de
+        // production a basculé de la forme statique `/exports/<nom>` à la route authentifiée
+        // `/api/schedules/{id}/export-pdf/<nom>`, mais les deux pointent le MÊME fichier `<nom>`.
+        // Sans ça, le basculement ferait repartir à la purge un rendu pourtant épinglé.
+        foreach ($pinnedUrls as $url => $_) {
+            if (basename((string) $url) === $name) {
+                return 'keep';
+            }
         }
 
         if (!isset($knownScheduleIds[strtolower($matches[1])])) {

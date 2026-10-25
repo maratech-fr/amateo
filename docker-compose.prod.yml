@@ -74,7 +74,9 @@ services:
       - ./jwt:/app/backend/config/jwt:ro
       - backups:/app/backend/var/backups
       - logo_storage:/app/backend/var/storage
-      - exports:/app/backend/public/exports
+      # P4-357 — les rendus vivent HORS du docroot : servis par la route authentifiée
+      # ExportPdfDownloadController (plus par nginx en statique), le volume est monté sur var/.
+      - exports:/app/backend/var/exports
     expose:
       - "9000"
     depends_on:
@@ -110,9 +112,8 @@ services:
     depends_on:
       php-fpm:
         condition: service_healthy
-    volumes:
-      # pdf-worker writes exports at runtime; nginx serves them (/exports/).
-      - exports:/app/backend/public/exports:ro
+    # P4-357 — nginx ne sert plus les rendus en statique (ils vivent hors docroot et ne se
+    # téléchargent que par la route authentifiée) : plus de montage `exports` ici.
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/api/health >/dev/null"]
       interval: 20s
@@ -204,7 +205,8 @@ services:
       - ./jwt:/app/backend/config/jwt:ro
       - backups:/app/backend/var/backups
       - logo_storage:/app/backend/var/storage
-      - exports:/app/backend/public/exports
+      # P4-357 — rendus hors docroot (cf. php-fpm).
+      - exports:/app/backend/var/exports
     command: >-
       php bin/console messenger:consume async --time-limit=3600 --memory-limit=256M --no-interaction
     depends_on:
@@ -248,6 +250,10 @@ services:
       - ./jwt:/app/backend/config/jwt:ro
       - backups:/app/backend/var/backups
       - logo_storage:/app/backend/var/storage
+      # P4-357 — la purge quotidienne des rendus (`app:exports:purge`) tourne ICI : sans le
+      # volume monté, elle ne voyait AUCUN répertoire (NO-OP silencieux « Aucun répertoire de
+      # rendus »). Montée désormais, le 1ᵉʳ passage balaiera d'un coup les rendus > 90 j.
+      - exports:/app/backend/var/exports
     # `|| true` keeps ONE failed tick from killing the loop, but each success
     # touches a witness file — the healthcheck goes red when no tick has
     # SUCCEEDED for 5 minutes, so a permanently-failing run-due (bad DSN,
@@ -322,7 +328,9 @@ services:
     # write/read the shared exports volume without a chown dance.
     user: "1000:1000"
     volumes:
-      - exports:/app/backend/public/exports
+      # P4-357 — rendus hors docroot : le worker écrit ici, le backend les sert par la route
+      # authentifiée. MÊME chemin que `PdfGenerator::outputDir()` / `frontend/worker.js`.
+      - exports:/app/backend/var/exports
     environment:
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
