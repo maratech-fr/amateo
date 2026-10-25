@@ -673,7 +673,7 @@ function VenuesEditor() {
                       const color = nextVenueColor([...venues.map((v) => v.color), ...pendingColorsRef.current]);
                       pendingColorsRef.current.push(color);
                       create.mutate(
-                        { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, latitude: salle.latitude, longitude: salle.longitude },
+                        { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, address: salle.address, latitude: salle.latitude, longitude: salle.longitude },
                         { onSuccess: (created) => (setSelectedId(created.id), toast.success(WIZARD_TEXTS.venueAdded(created.name))) },
                       );
                     }}
