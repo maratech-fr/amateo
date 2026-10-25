@@ -278,25 +278,42 @@ FIGÉ**.
   fermée** (fondateur, 2026-09-29) : signature sur tous les e-mails, superadmin compris ;
   l'accroche reprend le titre de la vitrine ; le lien pointe vers la vitrine, jamais l'app —
   `etat-des-lieux.md` §2.
-- **Lien coach habillé (D1, 2026-10-09)** : le gabarit CARTE ci-dessus gagne un **bouton CTA**
-  optionnel (`EmailTemplateRenderer::ctaButton` — table + styles inline, survit à Outlook/Gmail),
-  posé par `App\Service\CoachWishMailBuilder::buildCoachLink` sur l'envoi initial ET la relance
-  (en-têtes internes `X-Amateo-Cta-Url`/`-Label`, lus et RETIRÉS au worker par
-  `EmailSignatureListener` comme les autres `X-Amateo-*`) ; l'`href` n'est rendu que s'il est
-  `http(s)` (un `javascript:`/`data:` n'est jamais cliquable), label et URL échappés. La partie
-  TEXTE garde le lien nu en plus du bouton (un client sans HTML reste cliquable, le masquage démo
-  l'attend). Le corps et l'expéditeur portent désormais le **prénom du gestionnaire qui déclenche
-  CET envoi** (pas un libellé de club impersonnel) : « {Prénom} ({`Club::emailLabel()`}) prépare
-  le planning de « {période} » … » et un expéditeur « {Prénom} ({libellé}) via {produit} »
-  (`App\Service\MailFrom::addressAs()` — MÊME adresse d'envoi, seul le nom affiché varie, encodé
-  RFC 2047 à la construction). **Aperçu avant envoi** : `GET /api/coach_wish_campaigns/{id}/
-  email-preview` (`CoachWishEmailPreviewController`, gestionnaires, 404 byte-identique hors club)
-  construit ce MÊME e-mail avec un jeton FACTICE constant (jamais un vrai lien personnel) et un
-  prénom de coach d'exemple, et sert ses logos en `data:` URI (les `cid:` du mail réel ne
-  résolvent pas dans l'iframe) ; le front (`SollicitationTab`) l'affiche dans une iframe
-  `sandbox=""` (patron `MailboxPage` : du HTML non fiable ne s'injecte jamais
-  autrement). Détail API/contrôleur : `backend/docs/backend-controllers.md` §
-  « Aperçu de l'e-mail coach ».
+- **Bouton CTA — tout e-mail à lien d'action pose son bouton (règle fermée, D1, généralisée
+  2026-10-26)** : le gabarit CARTE ci-dessus porte un **bouton CTA** optionnel
+  (`EmailTemplateRenderer::ctaButton` — table + styles inline, survit à Outlook/Gmail), posé par le
+  builder/commande SOURCE via deux en-têtes internes (`EmailTemplateRenderer::CTA_URL_HEADER`/
+  `CTA_LABEL_HEADER`, `X-Amateo-Cta-Url`/`-Label`), lus et RETIRÉS au worker par
+  `EmailSignatureListener` comme les autres `X-Amateo-*` — ils ne fuient jamais sur le message
+  livré. L'`href` n'est rendu que s'il est `http(s)` (un `javascript:`/`data:` n'est jamais
+  cliquable), label et URL échappés ; l'URL du bouton est TOUJOURS celle du lien nu déjà présent
+  dans le corps, jamais dupliquée ni auto-liée ailleurs (le gabarit n'auto-lie jamais une URL du
+  corps — anti-hameçonnage). La partie TEXTE garde ce lien nu en plus du bouton (un client sans
+  HTML reste cliquable, le masquage démo l'attend).
+  **Portée de la règle** : tout foyer `new Email`/`new TemplatedEmail` de `src/` qui porte un lien
+  d'action pose ce bouton — garde statique à deux étages : `backend/tests/Unit/Mail/
+  ActionMailCtaInventoryTest.php` tient l'inventaire FERMÉ de chaque foyer (CTA ou exempt), dans
+  les deux sens (un foyer non classé, ou une entrée sans foyer en face, rougit) ; le trait
+  `backend/tests/AssertsActionMailCta.php` vérifie par mail que l'en-tête == l'unique URL du corps,
+  le libellé, et que le lien n'apparaît qu'UNE fois. **Exempts** (aucun lien d'action à cliquer) :
+  un accusé de dépôt, un refus, un avis « compte existe déjà », un avis à l'ancienne adresse — la
+  liste exacte vit dans l'inventaire ci-dessus, pas ici (one canonical home). Détail des libellés
+  et des producteurs câblés par cette généralisation : `etat-des-lieux.md` §3, trace 2026-10-26.
+  Raison d'être de cet inventaire fermé : un destinataire sans bouton doit copier-coller le lien
+  nu à la main — bug vécu côté terrain avant que la règle ne devienne systématique.
+  **Coach (premier foyer câblé)** : `App\Service\CoachWishMailBuilder::buildCoachLink` pose ce
+  bouton sur l'envoi initial ET la relance ; le corps et l'expéditeur portent le **prénom du
+  gestionnaire qui déclenche CET envoi** (pas un libellé de club impersonnel) : « {Prénom}
+  ({`Club::emailLabel()`}) prépare le planning de « {période} » … » et un expéditeur « {Prénom}
+  ({libellé}) via {produit} » (`App\Service\MailFrom::addressAs()` — MÊME adresse d'envoi, seul le
+  nom affiché varie, encodé RFC 2047 à la construction). **Aperçu avant envoi** : `GET /api/
+  coach_wish_campaigns/{id}/email-preview` (`CoachWishEmailPreviewController`, gestionnaires, 404
+  byte-identique hors club) construit ce MÊME e-mail avec un jeton FACTICE constant (jamais un vrai
+  lien personnel) et un prénom de coach d'exemple, et sert ses logos en `data:` URI (les `cid:` du
+  mail réel ne résolvent pas dans l'iframe) ; le front (`SollicitationTab`) l'affiche dans une
+  iframe `sandbox=""` (patron `MailboxPage` : du HTML non fiable ne s'injecte jamais autrement).
+  Détail API/contrôleur : `backend/docs/backend-controllers.md` § « Aperçu de l'e-mail coach ».
+  **E-mails d'identité** (vérification d'inscription, mot de passe oublié, confirmation de
+  changement d'e-mail) : garde dédiée `backend/tests/Integration/Api/IdentityEmailCtaButtonTest.php`.
 - **Pied anti-usurpation (anti-hameçonnage, P4-316, 2026-10-16)** : un e-mail à club connu part
   parfois vers une adresse TIERCE (le coach, pas un membre du club) — marque + logo du club
   pourraient prêter à confusion. Le gabarit CARTE ajoute donc une phrase FIXE, hors de tout
@@ -310,19 +327,6 @@ FIGÉ**.
   récap superadmin). Volet distinct du même lot : l'envoi des liens de collecte est désormais
   plafonné PAR CLUB (`coach_wish_send`, 200/24 h, partagé envoi initial/relance/renvoi ciblé) et
   refusé pour un club de démonstration — `backend/docs/backend-auth-mercure.md` §4 Access control.
-- **Bouton CTA des e-mails d'identité (lot bugs Rillieux PR 5/6, #2, 2026-10-22)** : les TROIS
-  e-mails d'identité — vérification d'inscription (`App\Service\Registration\RegisterService::
-  sendVerificationEmail`, bouton « Confirmer mon adresse »), mot de passe oublié
-  (`App\Controller\PasswordController::forgot`, « Réinitialiser mon mot de passe ») et
-  confirmation de changement d'e-mail (`App\Controller\AuthController::sendEmailChangeConfirmation`,
-  « Confirmer la nouvelle adresse ») — posent désormais le MÊME mécanisme d'en-têtes internes que
-  le lien coach (`EmailTemplateRenderer::CTA_URL_HEADER`/`CTA_LABEL_HEADER`, lus et RETIRÉS au
-  worker par `EmailSignatureListener`) : l'URL du bouton est EXACTEMENT celle du lien nu déjà
-  présent dans la partie texte, jamais dupliquée ni auto-liée ailleurs dans le corps
-  (anti-hameçonnage — le gabarit n'auto-lie jamais une URL du corps). La partie texte de ces trois
-  e-mails reste byte-identique (le lien nu y reste, pour un client sans HTML). Bug vécu : le
-  gestionnaire du club de Rillieux avait dû copier-coller le lien de validation à la main. Garde
-  `backend/tests/Integration/Api/IdentityEmailCtaButtonTest.php`.
 - **Image OG — posée (P5-24 PR-3, 2026-09-29)** : une image de partage Open Graph **UNIQUE** (1200×630,
   fond CLAIR `#faf9f7`, logotype + accroche de la vitrine), servie en deux copies octet-identiques
   — `landing/assets/brand/og.png` et `frontend/public/brand/og.png`, chacune sur son propre

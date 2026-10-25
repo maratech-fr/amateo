@@ -112,7 +112,8 @@ message d'avant à l'octet près) ·
 `Integration/Mail/ClockedClubMailInterceptTest` (P4-16 : un club à horloge SIMULÉE n'envoie JAMAIS de
 vrai e-mail — à l'enfilage, l'e-mail d'un club à horloge active est rangé dans sa boîte et l'événement
 rejeté [aucun `SendEmailMessage` enfilé], un club SANS horloge enfile normalement [rien en boîte], et
-un autre club ne voit jamais la boîte d'autrui [RLS]. Falsifié en désactivant le listener. Sans ce
+un autre club ne voit jamais la boîte d'autrui [RLS] ; un e-mail métier qui porte désormais un bouton
+CTA [D1] y est capté pareillement, bouton compris [A5]. Falsifié en désactivant le listener. Sans ce
 gate, une régression du listener enverrait de vrais e-mails aux gestionnaires pendant une démo rejouée) ·
 `Security/ReadOnlyRoleTest` (P5-20 : le rôle Postgres de lecture seule `amateo_read` — SELECT scopé au
 club via une policy `readonly_tenant` portant le prédicat canonique, aucune écriture [refus au niveau
