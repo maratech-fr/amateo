@@ -26,6 +26,8 @@ export interface ParcAnalysisLine {
   raison: string | null;
   /** Équipes : une mise à jour de séances PROPOSÉE (pas appliquée). */
   miseAJour?: { champ: "seances"; de: number; a: number };
+  /** Mutualisations : le libellé du bloc DÉRIVÉ par le serveur (ex. « CEC »), affiché et corrigeable (D8). */
+  groupe?: string | null;
 }
 
 /** Le récap chiffré d'une section de l'aperçu. */
@@ -38,11 +40,33 @@ export interface ParcSectionRecap {
   alerte: number;
 }
 
+/** La fiabilité globale de l'aperçu (D10) — `bandeau` vrai affiche l'avertissement, jamais bloquant. */
+export interface ParcAnalysisReliability {
+  taux: number;
+  anomalies: number;
+  bandeau: boolean;
+}
+
+/** Une alerte transverse (D9) — `message` est une DONNÉE serveur, affichée verbatim. */
+export interface ParcAnalysisAlert {
+  type: string;
+  message: string;
+}
+
 /** La réponse du dry-run `POST /api/clubs/{id}/parc-import/analyze`. */
 export interface ParcAnalysis {
   format: string;
+  fiabilite: ParcAnalysisReliability;
   recap: Record<string, ParcSectionRecap>;
   sections: Record<string, ParcAnalysisLine[]>;
+  alertes: ParcAnalysisAlert[];
+  /**
+   * Le parc NORMALISÉ relu côté serveur par `ParcPayloadValidator::parse()` (G2 D4) : le front
+   * l'amorce pour les brouillons ET le reposte à l'import, au lieu de re-parser le texte collé — qui
+   * peut n'être lisible QUE par la passe de récupération serveur (guillemets typographiques, bloc
+   * ```json). Forme loose (parc-v2, décidée côté serveur), narrowée par la modale.
+   */
+  payload?: unknown;
 }
 
 /** Une décision ligne par ligne, envoyée à l'import (contrat PR2). */

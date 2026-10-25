@@ -61,9 +61,18 @@ final class ParcImportAnalyzeController extends AbstractController
             return $this->json(['errors' => $errors], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        // Le validateur a prouvé que c'est un objet JSON recevable.
-        /** @var array<string, mixed> $parc */
-        $parc = json_decode($raw, true);
+        // Le validateur a prouvé que c'est un objet recevable ; on le relit par la MÊME passe de
+        // RÉCUPÉRATION (guillemets typographiques, bloc ```json), jamais le JSON brut (D4) — sans quoi
+        // un collage lisible seulement après récupération échappait à `json_decode($raw)` et
+        // atteignait `boundsErrors(null)` → TypeError → 500.
+        $parc = $this->validator->parse($raw);
+        if (null === $parc) {
+            // Inatteignable après `errors()` vide (qui refuse déjà un parse null) ; garde le type array.
+            return $this->json(
+                ['errors' => ['Le contenu collé n\'est pas du JSON valide — collez le texte rendu par l\'assistant sans le modifier.']],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
 
         $countErrors = $this->boundsErrors($parc);
         if ([] !== $countErrors) {
@@ -73,7 +82,9 @@ final class ParcImportAnalyzeController extends AbstractController
         $seasonId = $request->attributes->get('_season_id');
 
         return $this->json(
-            $this->analyzer->analyze($parc, $club, \is_string($seasonId) ? $seasonId : ''),
+            // Le `payload` NORMALISÉ (relu par `parse()`) voyage à côté de l'aperçu : le front l'amorce
+            // pour les brouillons ET le reposte à l'import, au lieu de re-parser le texte brut collé.
+            ['payload' => $parc] + $this->analyzer->analyze($parc, $club, \is_string($seasonId) ? $seasonId : ''),
             Response::HTTP_OK,
         );
     }

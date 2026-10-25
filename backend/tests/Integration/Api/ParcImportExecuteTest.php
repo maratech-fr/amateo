@@ -204,6 +204,33 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertCount(2, $members, 'le bloc regroupe exactement les deux équipes de la case');
     }
 
+    public function testACorrectedGroupeOverridesTheBlockLabel(): void
+    {
+        // Lot correctif import IA « G2 » PR2 (D8, requalification du groupe) — le gestionnaire voit le
+        // `groupe` DÉRIVÉ de la case (« CEC ») à l'aperçu et le CORRIGE (« Section Loisirs ») avant
+        // d'importer. Le libellé corrigé voyage dans `corrections.groupe` de la décision (canal des
+        // corrections, comme `seances`/`jour`/`debut`/`duree`) et nomme le bloc — le `groupe` brut de
+        // la case ne doit JAMAIS l'emporter sur la correction. Le `payload` collé reste intact
+        // (le serveur réécrit depuis la source + les corrections, jamais depuis l'aperçu reconstruit).
+        $this->makeTeam('U9M1', sessionsPerWeek: 1);
+        $this->makeTeam('U11F2', sessionsPerWeek: 1);
+        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => 'Section Loisirs']]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(200, $status);
+
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+        self::assertSame('Section Loisirs', $block->getLabel(), 'le groupe CORRIGÉ nomme le bloc, jamais le groupe brut de la case');
+    }
+
     // ───────────────────────── Coachs retirés (D11) ─────────────────────────
 
     public function testAStaleCoachsSectionFromAnOldChatbotIsIgnoredSilently(): void

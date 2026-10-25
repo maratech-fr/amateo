@@ -24,14 +24,13 @@ import type { Gender, PriorityTier, SportCategory, Team, TeamLevel, TeamPayload 
 import { useWizardFooter } from "../lib/footerSlot";
 import { orderedTeams, teamsOfTier } from "../lib/ranking";
 import { mutualisedTeammateLabel } from "../lib/sharedTraining";
-import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingBlocks, useSportCategories, useUpdateTeam, useWizardCoaches, useWizardTeams, useWizardVenues } from "../queries";
+import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingBlocks, useSportCategories, useUpdateTeam, useWizardTeams, useWizardVenues } from "../queries";
 import { useWizardStore } from "../store";
 import { WIZARD_TEXTS } from "../texts";
 import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { PeriodTeams } from "./PeriodTeams";
 import { TeamLinksModal } from "./TeamLinksModal";
 import { TeamsImportModal } from "./TeamsImportModal";
-import { coachFullName } from "@/shared/lib/coachName";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 
 const GENDERS: { value: Gender | ""; label: string }[] = [
@@ -454,7 +453,6 @@ function TeamsEditor() {
   // embarque le périmètre DÉJÀ saisi (équipes/gymnases/coachs), d'où les deux lectures voisines.
   const [parcOpen, setParcOpen] = useState(false);
   const { data: parcVenues = [] } = useWizardVenues();
-  const { data: parcCoaches = [] } = useWizardCoaches();
   // La saison de TRAVAIL résolue (X-Season-Id, sinon saison courante serveur) : c'est
   // exactement ce que l'en-tête posera, donc le seasonId du corps que le serveur exige.
   const workingSeasonId = useWorkingSeason()?.id;
@@ -1056,7 +1054,7 @@ function TeamsEditor() {
           seasonId={workingSeasonId}
           teams={teams.map((t) => ({ id: t.id, name: t.name }))}
           venues={parcVenues.map((v) => ({ id: v.id, name: v.name }))}
-          coaches={parcCoaches.map((c) => ({ id: c.id, name: coachFullName(c) }))}
+          club={{ name: me?.club?.name, city: me?.club?.city ?? undefined }}
           onClose={() => setParcOpen(false)}
         />
       ) : null}

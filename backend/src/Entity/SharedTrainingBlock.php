@@ -39,6 +39,9 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_shared_training_block_plan', columns: ['schedule_plan_id'])]
 class SharedTrainingBlock implements TenantOwnedInterface
 {
+    /** Longueur MAX du libellé de bloc — borne commune à la colonne et aux corrections entrantes. */
+    public const int LABEL_MAX_LENGTH = 40;
+
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]
     private string $id;
@@ -68,7 +71,7 @@ class SharedTrainingBlock implements TenantOwnedInterface
     private int $commonSessions = 1;
 
     /** Nom OPTIONNEL du bloc (« Baby U7-U9 »…), affiché partout où le bloc paraît ; NULL = sans nom. */
-    #[ORM\Column(type: 'string', length: 40, nullable: true)]
+    #[ORM\Column(type: 'string', length: self::LABEL_MAX_LENGTH, nullable: true)]
     private ?string $label = null;
 
     public function __construct()

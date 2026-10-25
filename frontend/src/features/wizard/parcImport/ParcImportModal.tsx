@@ -4,7 +4,6 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
-import { Listbox } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
@@ -39,15 +38,16 @@ interface ParcImportModalProps {
   seasonId: string;
   teams: readonly ParcEntity[];
   venues: readonly ParcEntity[];
-  coaches: readonly ParcEntity[];
+  /** Contexte du club de la session (nom, ville) — embarqué dans le prompt, utile en terrain vierge. */
+  club?: { name?: string; city?: string; sport?: string };
   onClose: () => void;
 }
 
 /** L'ordre d'affichage des sections de l'aperçu (fixe, indépendant de l'ordre des clés serveur). */
-const SECTION_ORDER = ["equipes", "gymnases", "creneaux", "mutualisations", "coachs", "reservations"] as const;
+const SECTION_ORDER = ["equipes", "gymnases", "creneaux", "mutualisations", "reservations"] as const;
 
 /** Les sections d'ENTITÉS : une ligne apparie/suggere/aCreer y porte un sélecteur de ré-appariement (D5). */
-const REMATCH_SECTIONS = new Set(["equipes", "gymnases", "coachs"]);
+const REMATCH_SECTIONS = new Set(["equipes", "gymnases"]);
 
 /** Un statut dont la ligne est cochée par défaut — seul cas qui porte un sélecteur de ré-appariement. */
 const isRematchStatus = (statut: ParcLineStatus): boolean => "apparie" === statut || "suggere" === statut || "aCreer" === statut;
@@ -62,13 +62,14 @@ const STATUS_VARIANT: Record<ParcLineStatus, "success" | "accent" | "warning" | 
 };
 
 /** La forme (partielle) du parc collé — on ne lit que ce qui amorce une correction sur place. */
-interface ParsedSlot {
+interface ParsedCase {
   jour?: unknown;
   debut?: unknown;
   duree?: unknown;
 }
 interface ParsedParc {
-  creneaux?: ParsedSlot[];
+  /** parc-v2 porte des CASES (plus de section `creneaux`) : le brouillon du créneau dérivé s'y amorce. */
+  cases?: ParsedCase[];
 }
 
 interface SlotDraft {
@@ -104,27 +105,33 @@ const keyOf = (section: string, index: number): string => `${section}:${index}`;
 export function ParcImportModal(props: ParcImportModalProps) {
   // `origin` et `seasonId` font partie du contrat (la saison voyage dans l'en-tête `X-Season-Id`,
   // l'origine servira au récap de PR2) ; ils ne pilotent encore aucun comportement ici.
-  const { clubId, teams, venues, coaches, onClose } = props;
+  const { clubId, teams, venues, club, onClose } = props;
   const analyze = useAnalyzeParc(clubId);
   const importMut = useImportParc(clubId);
 
-  // Le prompt ne lit que les NOMS ; les id des entités servent au ré-appariement (D5).
+  // Le prompt ne lit que les NOMS (+ le contexte club) ; les id des entités servent au ré-appariement (D5).
   const prompt = useMemo(
-    () => buildParcPrompt({ teams: teams.map((t) => t.name), venues: venues.map((v) => v.name) }),
-    [teams, venues],
+    () => buildParcPrompt({ teams: teams.map((t) => t.name), venues: venues.map((v) => v.name), club }),
+    [teams, venues, club],
   );
 
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState("");
   const [analysis, setAnalysis] = useState<ParcAnalysis | null>(null);
-  // Le parc collé, re-décodé une fois l'analyse réussie : il amorce les corrections sur place et
-  // repart tel quel comme `payload` à l'import (le serveur réécrit depuis la source, pas l'aperçu).
+  // Le parc NORMALISÉ renvoyé par l'analyse (relu par `ParcPayloadValidator::parse`, G2 D4) : il
+  // amorce les corrections sur place et repart tel quel comme `payload` à l'import (le serveur
+  // réécrit depuis la source, pas l'aperçu) — jamais le texte brut collé re-parsé côté front.
   const [parc, setParc] = useState<unknown>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [slotDrafts, setSlotDrafts] = useState<Record<number, SlotDraft>>({});
-  // Ré-appariement par ligne (D5) — l'id choisi pour une ligne équipe/gymnase/coach. "" = « Créer »
+  // Ré-appariement par ligne (D5) — l'id choisi pour une ligne équipe/gymnase. "" = « Créer »
   // (aucun cibleId envoyé). Amorcé depuis `line.cibleId` du verdict serveur.
   const [rematch, setRematch] = useState<Record<string, string>>({});
+  // D12 — le gymnase choisi pour une CASE (ligne créneau), indexé par `line.index`. "" = aucun →
+  // le serveur résout par le nom du parc. Amorcé depuis `line.cibleId`.
+  const [slotVenue, setSlotVenue] = useState<Record<number, string>>({});
+  // D8 — le libellé du groupe mutualisé, corrigeable, indexé par `line.index`. Amorcé depuis `line.groupe`.
+  const [groupDrafts, setGroupDrafts] = useState<Record<number, string>>({});
   const [result, setResult] = useState<ParcImportResult | null>(null);
 
   const analyzing = analyze.isPending;
@@ -134,38 +141,43 @@ export function ParcImportModal(props: ParcImportModalProps) {
     void navigator.clipboard.writeText(prompt).then(() => setCopied(true));
   };
 
-  const applyAnalysis = (data: ParcAnalysis, text: string): void => {
+  const applyAnalysis = (data: ParcAnalysis): void => {
     setAnalysis(data);
     setResult(null);
 
     const nextChecked: Record<string, boolean> = {};
     const nextRematch: Record<string, string> = {};
+    const nextSlotVenue: Record<number, string> = {};
+    const nextGroupDrafts: Record<number, string> = {};
     for (const section of Object.keys(data.sections)) {
       for (const line of data.sections[section] ?? []) {
         nextChecked[keyOf(section, line.index)] = line.coche;
         if (REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut)) {
           nextRematch[keyOf(section, line.index)] = line.cibleId ?? "";
         }
+        if ("creneaux" === section && isRematchStatus(line.statut)) {
+          nextSlotVenue[line.index] = line.cibleId ?? "";
+        }
+        if ("mutualisations" === section && isRematchStatus(line.statut)) {
+          nextGroupDrafts[line.index] = line.groupe ?? "";
+        }
       }
     }
     setChecked(nextChecked);
     setRematch(nextRematch);
+    setSlotVenue(nextSlotVenue);
+    setGroupDrafts(nextGroupDrafts);
 
-    // Amorce des champs éditables des CRÉNEAUX depuis le parc collé (correction sur place).
-    let parsed: ParsedParc | null = null;
-    try {
-      const raw: unknown = JSON.parse(text);
-      if (null !== raw && "object" === typeof raw) {
-        parsed = raw as ParsedParc;
-      }
-    } catch {
-      parsed = null;
-    }
-    setParc(parsed);
+    // Amorce des champs éditables des CRÉNEAUX depuis les CASES du parc NORMALISÉ que l'analyse
+    // renvoie (relu par `ParcPayloadValidator::parse()`, G2 D4) — jamais le texte brut collé, qui peut
+    // n'être lisible QUE par la passe de récupération serveur (guillemets typographiques, bloc ```json).
+    const payload = data.payload;
+    const parsed: ParsedParc | null = null !== payload && "object" === typeof payload ? (payload as ParsedParc) : null;
+    setParc(payload ?? null);
     const drafts: Record<number, SlotDraft> = {};
-    const slots: ParsedSlot[] = null !== parsed && Array.isArray(parsed.creneaux) ? parsed.creneaux : [];
+    const cases: ParsedCase[] = null !== parsed && Array.isArray(parsed.cases) ? parsed.cases : [];
     for (const line of data.sections.creneaux ?? []) {
-      const slot = slots[line.index];
+      const slot = cases[line.index];
       if (undefined !== slot) {
         drafts[line.index] = {
           jour: "number" === typeof slot.jour ? slot.jour : 1,
@@ -178,8 +190,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
   };
 
   const doAnalyze = (): void => {
-    const text = rawText;
-    analyze.mutate(text, { onSuccess: (data) => applyAnalysis(data, text) });
+    analyze.mutate(rawText, { onSuccess: applyAnalysis });
   };
 
   const toggle = (section: string, index: number): void =>
@@ -190,6 +201,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   const updateRematch = (section: string, index: number, value: string): void =>
     setRematch((prev) => ({ ...prev, [keyOf(section, index)]: value }));
+
+  const updateSlotVenue = (index: number, value: string): void => setSlotVenue((prev) => ({ ...prev, [index]: value }));
+
+  const updateGroup = (index: number, value: string): void => setGroupDrafts((prev) => ({ ...prev, [index]: value }));
 
   const count = Object.values(checked).filter(Boolean).length;
 
@@ -203,17 +218,28 @@ export function ParcImportModal(props: ParcImportModalProps) {
     for (const section of Object.keys(analysis.sections)) {
       for (const line of analysis.sections[section] ?? []) {
         const key = keyOf(section, line.index);
-        const hasSelector = REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut);
-        // Ligne à sélecteur : la cible choisie ("" = « Créer » → aucun cibleId). Sinon le verdict serveur.
-        const chosen = hasSelector ? rematch[key] : undefined;
-        const cibleId = hasSelector ? ("" === chosen || undefined === chosen ? undefined : chosen) : line.cibleId;
+        const hasRematch = REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut);
+        // D12 — une case (créneau) porte son propre sélecteur de gymnase ; son choix pilote le cibleId.
+        const hasSlotVenue = "creneaux" === section && isRematchStatus(line.statut);
+        // Cible choisie ("" = « Créer » / aucun → le serveur résout par le nom) ; sinon le verdict serveur.
+        const chosen = hasRematch ? rematch[key] : hasSlotVenue ? slotVenue[line.index] : undefined;
+        const cibleId = hasRematch || hasSlotVenue ? ("" === chosen || undefined === chosen ? undefined : chosen) : line.cibleId;
         const draft = "creneaux" === section ? slotDrafts[line.index] : undefined;
+        // D8 — le libellé du groupe mutualisé CORRIGÉ voyage dans `corrections.groupe` (le serveur
+        // l'honore comme label du bloc, prioritaire sur le groupe brut de la case).
+        const groupe = "mutualisations" === section && isRematchStatus(line.statut) ? (groupDrafts[line.index] ?? "").trim() : "";
+        const corrections =
+          undefined !== draft
+            ? { jour: draft.jour, debut: draft.debut, duree: draft.duree }
+            : "" !== groupe
+              ? { groupe }
+              : undefined;
         decisions.push({
           section,
           index: line.index,
           coche: checked[key] ?? false,
           cibleId,
-          corrections: undefined === draft ? undefined : { jour: draft.jour, debut: draft.debut, duree: draft.duree },
+          corrections,
         });
       }
     }
@@ -300,6 +326,19 @@ export function ParcImportModal(props: ParcImportModalProps) {
               <h3 className="text-sm font-semibold">{T.previewHeading}</h3>
               <p className="text-sm text-muted-foreground">{T.previewHelp}</p>
             </div>
+            {/* D10 — fiabilité peu sûre : on prévient, on ne bloque JAMAIS l'import. */}
+            {analysis.fiabilite.bandeau ? <NoticeBanner tone="warning" role="status" message={T.unreliableResult} /> : null}
+            {/* D9 — alertes transverses : les messages sont des DONNÉES serveur, affichés verbatim. */}
+            {0 === analysis.alertes.length ? null : (
+              <NoticeBanner tone="warning" role="status">
+                <p className="font-medium">{T.alertsHeading}</p>
+                <ul className="flex list-disc flex-col gap-1 pl-5">
+                  {analysis.alertes.map((alerte, i) => (
+                    <li key={`${alerte.type}:${i}`}>{alerte.message}</li>
+                  ))}
+                </ul>
+              </NoticeBanner>
+            )}
             {venuesToCreate ? <NoticeBanner tone="warning" role="status" message={T.venuesCreatedWithoutAddress} /> : null}
             {SECTION_ORDER.map((section) => {
               const lines = analysis.sections[section] ?? [];
@@ -336,11 +375,30 @@ export function ParcImportModal(props: ParcImportModalProps) {
                             value={rematch[keyOf(section, line.index)] ?? ""}
                             teams={teams}
                             venues={venues}
-                            coaches={coaches}
                             onChange={(v) => updateRematch(section, line.index, v)}
                           />
                         ) : null}
+                        {"creneaux" === section && isRematchStatus(line.statut) ? (
+                          <VenueSelect
+                            aria-label={T.venueForSlot(line.libelle)}
+                            wrapperClassName="mt-1 ml-6 w-full max-w-xs"
+                            placeholder={T.rematchCreate}
+                            value={slotVenue[line.index] ?? ""}
+                            onValueChange={(v) => updateSlotVenue(line.index, v)}
+                            venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))}
+                          />
+                        ) : null}
                         {"creneaux" === section ? <SlotEditor line={line} draft={slotDrafts[line.index]} onChange={(patch) => updateSlot(line.index, patch)} /> : null}
+                        {"mutualisations" === section && isRematchStatus(line.statut) ? (
+                          <div className="mt-1 w-full max-w-xs pl-6">
+                            <Input
+                              aria-label={T.groupLabel(line.libelle)}
+                              placeholder={T.groupLabelPlaceholder}
+                              value={groupDrafts[line.index] ?? ""}
+                              onChange={(e) => updateGroup(line.index, e.target.value)}
+                            />
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -402,8 +460,8 @@ function SlotEditor({ line, draft, onChange }: { line: ParcAnalysisLine; draft: 
 /**
  * Ré-appariement d'une ligne d'entité (D5) : un sélecteur riche listant les entités EXISTANTES de la
  * section (par nom, valeur = id) plus « Créer » (le placeholder, valeur ""). Équipes → `TeamSelect`,
- * gymnases → `VenueSelect`, coachs → `Listbox`. Le nom accessible du déclencheur est contextualisé
- * par le libellé de la ligne (A11Y-28). Choisir une entité envoie son id ; « Créer » n'envoie rien.
+ * gymnases → `VenueSelect`. Le nom accessible du déclencheur est contextualisé par le libellé de la
+ * ligne (A11Y-28). Choisir une entité envoie son id ; « Créer » n'envoie rien.
  */
 function RematchRow({
   section,
@@ -411,7 +469,6 @@ function RematchRow({
   value,
   teams,
   venues,
-  coaches,
   onChange,
 }: {
   section: string;
@@ -419,17 +476,13 @@ function RematchRow({
   value: string;
   teams: readonly ParcEntity[];
   venues: readonly ParcEntity[];
-  coaches: readonly ParcEntity[];
   onChange: (value: string) => void;
 }) {
   const label = T.rematchLabel(line.libelle);
   const common = { value, onValueChange: onChange, placeholder: T.rematchCreate, "aria-label": label, wrapperClassName: "mt-1 ml-6 w-full max-w-xs" } as const;
 
-  if ("gymnases" === section) {
-    return <VenueSelect {...common} venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))} />;
-  }
   if ("equipes" === section) {
     return <TeamSelect {...common} teams={teams.map((t) => ({ id: t.id, name: t.name, priorityTierId: 0, tierOrder: 0 }))} tiers={[]} />;
   }
-  return <Listbox {...common} options={coaches.map((c) => ({ value: c.id, label: c.name }))} />;
+  return <VenueSelect {...common} venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))} />;
 }

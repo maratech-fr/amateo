@@ -165,6 +165,47 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertStringContainsString('parc-v2', implode(' ', $body['errors']));
     }
 
+    // ───────────────────────── D4 — la récupération atteint l'endpoint + payload NORMALISÉ renvoyé ─────────────────────────
+    // Les RÈGLES de la passe de récupération (guillemets typographiques, bloc ```json) sont éprouvées
+    // au plus bas par {@see ParcPayloadValidatorTest::testTypographicQuotesAreRecoveredBeforeParsing}
+    // et {@see ParcPayloadValidatorTest::testAMarkdownFencedBlockIsUnwrappedBeforeParsing}. ICI on
+    // prouve le CÂBLAGE : un collage que le serveur ne lit QUE grâce à `parse()` s'analyse (200), et la
+    // réponse porte le payload NORMALISÉ (relu par `parse()`) que le front amorce + poste à l'import —
+    // sans quoi le front re-parse le texte brut illisible et poste `payload: null` (défaut G2 D4).
+
+    public function testATypographicQuotePasteAnalyzesAndReturnsTheNormalizedPayload(): void
+    {
+        // Le collage RÉEL d'un chatbot : le JSON parc-v2 avec des guillemets typographiques « ” » —
+        // INVALIDE tel quel, relu uniquement par la passe de récupération. L'analyse aboutit (200) et
+        // la réponse porte le payload NORMALISÉ (guillemets droits, cases présentes).
+        $straight = json_encode($this->validParc(), \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
+        $typographic = str_replace('"', '”', (string) $straight);
+
+        [$status, $body] = $this->analyzeRaw($typographic);
+
+        self::assertSame(200, $status, 'un collage à guillemets typographiques, relu par la récupération, s\'analyse');
+        self::assertArrayHasKey('payload', $body, 'la réponse porte le payload NORMALISÉ relu par parse()');
+        self::assertSame('parc-v2', $body['payload']['format'] ?? null, 'le payload normalisé est du parc-v2');
+        self::assertArrayHasKey('cases', (array) ($body['payload'] ?? []), 'le payload normalisé porte les cases');
+        self::assertSame('MATEO', $body['payload']['cases'][0]['gymnase'] ?? null, 'la case normalisée a ses guillemets droits relus');
+    }
+
+    public function testAMarkdownFencedPasteAnalyzesAndReturnsTheNormalizedPayload(): void
+    {
+        // Un chatbot qui désobéit à « rends UNIQUEMENT le JSON » habille son parc-v2 d'un bloc ```json —
+        // INVALIDE tel quel. Dé-habillé par la récupération, il s'analyse (200) et la réponse porte le
+        // payload normalisé dé-habillé.
+        $straight = json_encode($this->validParc(), \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
+        $fenced = "```json\n" . (string) $straight . "\n```";
+
+        [$status, $body] = $this->analyzeRaw($fenced);
+
+        self::assertSame(200, $status, 'un collage habillé d\'un bloc ```json, dé-habillé par la récupération, s\'analyse');
+        self::assertArrayHasKey('payload', $body, 'la réponse porte le payload NORMALISÉ dé-habillé');
+        self::assertSame('parc-v2', $body['payload']['format'] ?? null);
+        self::assertNotEmpty($body['payload']['cases'] ?? [], 'le payload normalisé porte les cases dé-habillées');
+    }
+
     public function testMatchingNeverReachesAnotherClub(): void
     {
         // Un AUTRE club possède un gymnase « Gymnase Mateo » et une équipe « SM1 ». L'analyse de NOTRE
