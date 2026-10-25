@@ -95,6 +95,19 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
             (string) $this->client->getResponse()->headers->get('Content-Type'),
             'le rendu est servi comme un PDF',
         );
+        // Un rendu PDF est NOMINATIF (noms de coachs) : la réponse du propriétaire ne doit JAMAIS
+        // être mise en cache par le navigateur — sinon elle survit sur un poste partagé du club.
+        $cacheControl = (string) $this->client->getResponse()->headers->get('Cache-Control');
+        self::assertStringContainsString(
+            'no-store',
+            $cacheControl,
+            'le PDF nominatif n’est jamais stocké en cache navigateur (no-store)',
+        );
+        self::assertStringContainsString(
+            'private',
+            $cacheControl,
+            'le PDF nominatif n’est jamais mis en cache partagé (private)',
+        );
 
         // 2. Club B sur l'URL EXACTE de A → 404, byte-identique à un planning inconnu.
         $this->getAs($tokenB, $ownUrl);
