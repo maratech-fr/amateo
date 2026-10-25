@@ -121,11 +121,11 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
   await expect(importDialog).toBeVisible();
   await importDialog.getByLabel("Fichier FBI (.xlsx)").setInputFiles({ name: "equipes.xlsx", mimeType: XLSX_MIME, buffer });
   // Le doublon SM1 est marqué « déjà présente » et décoché ; les neuf nouvelles sont cochées.
-  const dupe = importDialog.getByRole("checkbox", { name: /SM1/ });
+  const dupe = importDialog.getByRole("checkbox", { name: /^SM1/ });
   await expect(dupe).toBeVisible({ timeout: 15_000 });
   await expect(dupe).toHaveAccessibleName(/déjà présente/);
   await expect(dupe).not.toBeChecked();
-  await expect(importDialog.getByRole("checkbox", { name: /U11M1/ })).toBeChecked();
+  await expect(importDialog.getByRole("checkbox", { name: /^U11M1/ })).toBeChecked();
   await importDialog.getByRole("button", { name: /^Importer \d+ équipe/ }).click();
   await expect(importDialog.getByText(/équipes? créées?/)).toBeVisible({ timeout: 15_000 });
   await importDialog.getByRole("button", { name: "Fermer" }).last().click();
