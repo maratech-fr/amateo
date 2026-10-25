@@ -10122,6 +10122,10 @@
                                             "displayedRange": {
                                                 "type": "string"
                                             },
+                                            "appVersion": {
+                                                "type": "string",
+                                                "maxLength": 40
+                                            },
                                             "lastClick": {
                                                 "type": "string"
                                             },

@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "./fixtures";
-import { forceTheme, loginSeededClub, settleVeil, watchFailedApiCalls } from "./support";
+import { firstHolidayFreeMonday, forceTheme, frMonthLabel, isoLocal, loginSeededClub, settleVeil, watchFailedApiCalls } from "./support";
+
+/** Une fenêtre de calendrier FUTURE (lun→ven), hors vacances, calculée depuis aujourd'hui. */
+interface DatedWindow {
+  start: string;
+  end: string;
+  monthLabel: string;
+}
 
 /**
  * **Lot 9 F3 — le bouton « Mutualiser… » EST atteignable par un vrai parcours (preuve bac à sable).**
@@ -21,11 +28,13 @@ import { forceTheme, loginSeededClub, settleVeil, watchFailedApiCalls } from "./
  */
 
 const TITLE = `Mutualiser F3 e2e ${Date.now()}`;
-// Fenêtre de 5 jours (lun→ven) SANS vacances scolaires, bien dans la saison 2026-2027 et loin des
-// périodes du seed (octobre) : lun 7 → ven 11 décembre 2026 (Noël ne commence que le 19).
-const START = "2026-12-07";
-const END = "2026-12-11";
-const MONTH_LABEL = "Décembre 2026";
+
+/** La fenêtre de 5 jours (lun→ven) hors vacances, FUTURE : calculée depuis aujourd'hui (P4-353). */
+async function futureClosureWindow(page: Page): Promise<DatedWindow> {
+  const monday = await firstHolidayFreeMonday(page, 1);
+  const friday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 4);
+  return { start: isoLocal(monday), end: isoLocal(friday), monthLabel: frMonthLabel(monday) };
+}
 
 interface SlotRow {
   id: string;
@@ -53,10 +62,10 @@ function pickCleanSoloPair(slots: SlotRow[]): { source: SlotRow; joiner: SlotRow
   return { source, joiner };
 }
 
-async function createTranscribedPeriod(page: Page): Promise<{ entryId: string; versionId: string; slots: SlotRow[] }> {
+async function createTranscribedPeriod(page: Page, win: DatedWindow): Promise<{ entryId: string; versionId: string; slots: SlotRow[] }> {
   const entry = await page.request.post("/api/calendar_entries", {
     headers: { "Content-Type": "application/json" },
-    data: { kind: "period", periodType: "closure", title: TITLE, startDate: START, endDate: END },
+    data: { kind: "period", periodType: "closure", title: TITLE, startDate: win.start, endDate: win.end },
   });
   expect(entry.ok(), `création de la fermeture jetable (HTTP ${entry.status()})`).toBeTruthy();
   const entryId = (await entry.json()).id as string;
@@ -138,7 +147,9 @@ test("lot 9 F3 — « Mutualiser… » est atteignable et actif sur un plan de p
   let entryId = "";
   try {
     // --- Décor déterministe (API) : une fermeture + sa V1 transcrite du socle, NON validée. ---
-    const built = await createTranscribedPeriod(page);
+    //     Fenêtre FUTURE hors vacances, calculée depuis aujourd'hui (P4-353, plus de mois figé).
+    const win = await futureClosureWindow(page);
+    const built = await createTranscribedPeriod(page, win);
     entryId = built.entryId;
     const { source, joiner } = pickCleanSoloPair(built.slots);
     const joinerName = await teamNameById(page, joiner.teamId);
@@ -147,7 +158,7 @@ test("lot 9 F3 — « Mutualiser… » est atteignable et actif sur un plan de p
     await page.goto("/");
     await expect(page.getByRole("button", { name: /Tous les plannings/ })).toBeVisible({ timeout: 30_000 });
     await settleVeil(page);
-    await goToMonth(page, MONTH_LABEL);
+    await goToMonth(page, win.monthLabel);
     const dayCell = page.getByRole("button", { name: new RegExp(TITLE) }).filter({ hasNotText: "passé" });
     await expect(dayCell.first(), "une case-jour couverte par la fermeture doit être cliquable").toBeVisible({ timeout: 30_000 });
     await dayCell.first().click();

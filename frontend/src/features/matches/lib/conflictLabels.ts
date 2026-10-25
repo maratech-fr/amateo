@@ -1,6 +1,7 @@
 import { type CoachGender, playerWord } from "@/shared/lib/coachWording";
 
 import type { ConflictSideRole, ConflictType } from "../api";
+import type { Kind } from "./consultFilter";
 
 /**
  * PR-2a — maison UNIQUE du libellé « famille de conflit » affiché dans les chips
@@ -32,6 +33,14 @@ export const CONFLICT_FAMILY_LABEL: Record<ConflictType, string> = {
 
 /** Les 12 familles, dans l'ordre de la table (ordre des chips). */
 export const CONFLICT_FAMILIES = Object.keys(CONFLICT_FAMILY_LABEL) as ConflictType[];
+
+/**
+ * Le libellé d'un TYPE de compétition (chips « Types » du Calendrier). PRÉSENTATION pure
+ * (une table clé→libellé, jamais un décideur de comportement) — maison déplacée ici depuis
+ * `CalendarControls` (P4-356) pour que la composition du contexte de signalement
+ * (`feedbackContext.ts`) la partage sans dépendre d'un composant.
+ */
+export const KIND_LABEL: Record<Kind, string> = { amical: "Amical", championnat: "Championnat", coupe: "Coupe", brassage: "Brassage" };
 
 /**
  * Le mot d'un rôle PAR CÔTÉ, pour annoter une équipe dans le résumé d'un conflit

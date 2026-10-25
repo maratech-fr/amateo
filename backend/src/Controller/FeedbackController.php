@@ -80,6 +80,8 @@ final class FeedbackController extends AbstractController
         'screenLabel' => 160,
         'activeFilters' => 300,
         'displayedRange' => 80,
+        // P4-355 — version du BUNDLE front déclarée par le client (« App vX · API vY »).
+        'appVersion' => 40,
         'lastClick' => 160,
         'incidentStatus' => 40,
         'incidentUrl' => 300,

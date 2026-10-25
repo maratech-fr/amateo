@@ -358,3 +358,74 @@ export function watchFailedApiCalls(page: Page): string[] {
 
   return failures;
 }
+
+// ── P4-353 — fenêtres de calendrier FUTURES, calculées depuis aujourd'hui ───────────────────────
+// Les specs qui posent une fermeture/indisponibilité datée ne doivent JAMAIS figer un mois en dur
+// (il devient « passé » dès que l'horloge réelle le dépasse, et la case-jour n'est plus cliquable).
+// On calcule la fenêtre depuis aujourd'hui ET on l'écarte des vacances scolaires (certains gestes,
+// comme le découpage début·milieu·fin d'une indisponibilité, perdent une semaine couverte par une
+// vacance — cf. ClosureSegmentation). La source des vacances est la MÊME que le serveur : le feed de
+// la zone du club (GET /api/school-holidays), jamais un calendrier recopié en dur dans le test.
+
+const FR_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+
+/** Y-m-d sur la date LOCALE (même base que `shared/lib/clock.ts::toISODate`, donc que le « aujourd'hui » de l'app). */
+export function isoLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Nom de mois CAPITALISÉ, « Novembre » (libellé d'une case-jour du calendrier cockpit). */
+export function frMonthName(d: Date): string {
+  const m = FR_MONTHS[d.getMonth()];
+  return `${m.charAt(0).toUpperCase()}${m.slice(1)}`;
+}
+
+/** Libellé d'en-tête du calendrier cockpit, « Novembre 2026 ». */
+export function frMonthLabel(d: Date): string {
+  return `${frMonthName(d)} ${d.getFullYear()}`;
+}
+
+/** Les fenêtres de vacances scolaires de la zone du club, [startISO, endISO] (feed serveur). */
+export async function schoolHolidayWindows(page: Page): Promise<[string, string][]> {
+  const res = await page.request.get("/api/school-holidays");
+  if (!res.ok()) {
+    return [];
+  }
+  const body = (await res.json()) as { items?: { startDate: string; endDate: string }[] };
+  return (body.items ?? []).map((h) => [h.startDate, h.endDate] as [string, string]);
+}
+
+/**
+ * Le LUNDI de la 1ʳᵉ série de `weeks` semaines calendaires lun→dim CONSÉCUTIVES, FUTURES, dont
+ * chaque semaine ouvrée (lun→ven) est HORS vacances scolaires et — si `sameMonth` — toutes dans le
+ * MÊME mois (pour qu'une seule navigation « Mois » suffise). Buffer de 2 semaines : la fenêtre reste
+ * future même lancée un vendredi. Lève si aucune fenêtre n'est trouvée dans la saison (bornée à ~1,5 an).
+ */
+export async function firstHolidayFreeMonday(page: Page, weeks: number, sameMonth = true): Promise<Date> {
+  const holidays = await schoolHolidayWindows(page);
+  const overlapsHoliday = (monISO: string, friISO: string): boolean => holidays.some(([hs, he]) => monISO <= he && friISO >= hs);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const toNextMonday = ((8 - today.getDay()) % 7) || 7; // 1 = lundi
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate() + toNextMonday + 7);
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    let ok = true;
+    for (let w = 0; w < weeks; w += 1) {
+      const mon = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 7 * w);
+      const fri = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 4);
+      if (sameMonth && (mon.getMonth() !== base.getMonth() || fri.getMonth() !== base.getMonth())) {
+        ok = false;
+        break;
+      }
+      if (overlapsHoliday(isoLocal(mon), isoLocal(fri))) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      return base;
+    }
+    base.setDate(base.getDate() + 7);
+  }
+  throw new Error(`P4-353 : aucune fenêtre de ${weeks} semaine(s) future hors vacances trouvée dans la saison`);
+}

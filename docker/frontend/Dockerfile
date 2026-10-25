@@ -27,6 +27,12 @@ FROM tooling AS build
 ARG VITE_SENTRY_DSN=""
 ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 
+# P4-355 — version du BUNDLE figée au build (git tag/sha), promue en ENV pour Vite
+# (import.meta.env.VITE_APP_VERSION). Vide par défaut → repli « dev » (shared/lib/appVersion.ts) ;
+# le déploiement la renseigne (.github/workflows/deploy.yml), jointe au contexte d'un signalement.
+ARG VITE_APP_VERSION=""
+ENV VITE_APP_VERSION=$VITE_APP_VERSION
+
 RUN npm run build
 
 FROM nginx:1.31-alpine AS runtime

@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
@@ -7,11 +8,15 @@ import { PageHeader } from "@/shared/components/ui/page-header";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
+import type { Competition, Team } from "./api";
 import { openConflictCount } from "./lib/conflictResolution";
+import { composeActiveFilters, composeDisplayedRange } from "./lib/feedbackContext";
+import { listPhases } from "./lib/phaseView";
 import { MATCHES_HELP_LABEL, MATCHES_HELP_TRIGGER, MATCHES_TAB_HELP, MATCHES_TAB_LABEL, activeMatchesTab } from "./lib/screenHelp";
 import { pendingReviewCount } from "./lib/reviewQueue";
 import { useConflicts, useFixtures, useModuleVisit } from "./queries";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 /**
  * RMM-1 PR2 — « deux espaces ». Le module matchs écrasait deux temps que le
@@ -71,6 +76,19 @@ export function MatchesLayout() {
   const conflicts = useConflicts();
   const openConflicts = undefined !== conflicts.data ? openConflictCount(conflicts.data.conflicts) : 0;
 
+  // P4-356 — les repères d'affichage du module joints au « Signaler » : les filtres actifs et la
+  // plage affichée, composés depuis le store (+ le cache des phases pour le libellé de phase) en
+  // deux chaînes bornées. Le front ne décide rien — il RÉSUME l'état d'affichage (`feedbackContext`).
+  const { filterMode, filterIds, consultKinds, consultFamilies, consultAway, consultTemporality, selectedWeekend, consultMonth, consultPhaseId } = useMatchesStore();
+  // Le libellé de phase se LIT dans le cache react-query (peuplé par le Calendrier) sans relancer
+  // de requête ni s'y abonner — un repère de contexte best-effort : cache vide → plage de phase omise.
+  const queryClient = useQueryClient();
+  const phases = listPhases(queryClient.getQueryData<Competition[]>(["competitions"]) ?? [], queryClient.getQueryData<Team[]>(["teams"]) ?? []);
+  const activePhaseId = phases.some((p) => p.competitionId === consultPhaseId) ? consultPhaseId : (phases[0]?.competitionId ?? null);
+  const phaseLabel = phases.find((p) => p.competitionId === activePhaseId)?.label ?? null;
+  const activeFilters = composeActiveFilters({ filterMode, filterIds, consultKinds, consultFamilies, consultAway });
+  const displayedRange = composeDisplayedRange({ temporality: consultTemporality, weekendKey: selectedWeekend, month: consultMonth, phaseLabel });
+
   // Matchs verrouillés tant que le plan de saison ne pointe pas une version
   // (état cockpit 2) — même condition que le SocleGuard côté serveur. Le garde
   // couvre LES DEUX espaces puisqu'il enveloppe l'Outlet.
@@ -80,11 +98,17 @@ export function MatchesLayout() {
     // reste une carte centrée, sous l'en-tête.
     return (
       <div className="flex flex-col gap-4">
-        <PageHeader title="Matchs" screen={pathname} screenLabel={`Matchs · ${MATCHES_TAB_LABEL[activeMatchesTab(pathname)]}`} />
+        <PageHeader
+          title={MATCHES_TEXTS.pageTitle}
+          screen={pathname}
+          screenLabel={MATCHES_TEXTS.screenContext(MATCHES_TAB_LABEL[activeMatchesTab(pathname)])}
+          activeFilters={activeFilters}
+          displayedRange={displayedRange}
+        />
         <div className="mx-auto max-w-md py-10 text-center">
           <Lock className="mx-auto mb-3 size-8 text-accent" />
-          <h2 className="mb-1 text-lg font-semibold">Matchs verrouillés</h2>
-          <p className="text-sm text-muted-foreground">Validez d'abord votre planning de saison (accueil → Ouvrir) pour débloquer les matchs.</p>
+          <h2 className="mb-1 text-lg font-semibold">{MATCHES_TEXTS.lockedTitle}</h2>
+          <p className="text-sm text-muted-foreground">{MATCHES_TEXTS.lockedHint}</p>
         </div>
       </div>
     );
@@ -101,7 +125,13 @@ export function MatchesLayout() {
       {/* L'en-tête « Matchs » porte le bouton « Signaler » (contexte = la route de l'onglet
           courant) — un seul, en tête du module, à la place du bouton discret d'antan qui ne
           vivait que sur le Calendrier. */}
-      <PageHeader title="Matchs" screen={pathname} screenLabel={`Matchs · ${MATCHES_TAB_LABEL[activeMatchesTab(pathname)]}`} />
+      <PageHeader
+        title={MATCHES_TEXTS.pageTitle}
+        screen={pathname}
+        screenLabel={MATCHES_TEXTS.screenContext(MATCHES_TAB_LABEL[activeMatchesTab(pathname)])}
+        activeFilters={activeFilters}
+        displayedRange={displayedRange}
+      />
       {/* LOT F — l'aide contextuelle (i) de l'onglet courant, à GAUCHE de la barre d'onglets :
           un seul bouton, cohérent sur les 7 écrans, dont le contenu suit l'onglet actif. */}
       <div className="flex items-center gap-2">
@@ -110,41 +140,41 @@ export function MatchesLayout() {
         </HelpButton>
         {/* Nav défilable horizontalement (pas de `flex-wrap`, pas de `scrollbar-hide`) : à l'étroit
             les onglets restent sur une ligne et l'actif est ramené en vue (`scrollIntoView` ci-dessus). */}
-        <nav ref={navRef} aria-label="Espaces matchs" className="flex flex-1 gap-4 overflow-x-auto rounded-lg border border-border bg-card px-3 sm:gap-6">
+        <nav ref={navRef} aria-label={MATCHES_TEXTS.navAriaLabel} className="flex flex-1 gap-4 overflow-x-auto rounded-lg border border-border bg-card px-3 sm:gap-6">
         {/* PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
             (coach/équipe/gymnase/journée), en lecture seule. P4-207 — badge = conflits
             À TRAITER, affiché seulement quand > 0. */}
         <NavLink to="/matchs/conflits" className={linkClass}>
-          {openConflicts > 0 ? `Conflits · ${openConflicts}` : "Conflits"}
+          {openConflicts > 0 ? MATCHES_TEXTS.tabConflictsBadge(openConflicts) : MATCHES_TEXTS.tabConflicts}
         </NavLink>
         {/* PR 3b — le « Calendrier » : l'écran unique du module (fusion Semaine⇄Consulter),
             placer/échanger/saisir + consulter Semaine · Mois · Phase. `end` : /matchs n'est pas
             actif quand on est sur un autre espace. */}
         <NavLink to="/matchs" end className={linkClass}>
-          Calendrier
+          {MATCHES_TEXTS.tabCalendar}
         </NavLink>
         {/* PR-3b — l'espace « Importer » : dépôt FBI / API + file de traitement par
             équipe. Le compte de rencontres à traiter s'affiche quand il est > 0. */}
         <NavLink to="/matchs/importer" className={linkClass}>
-          {pending > 0 ? `Importer · ${pending}` : "Importer"}
+          {pending > 0 ? MATCHES_TEXTS.tabImportBadge(pending) : MATCHES_TEXTS.tabImport}
         </NavLink>
         <NavLink to="/matchs/configuration" className={linkClass}>
-          Configuration
+          {MATCHES_TEXTS.tabConfiguration}
         </NavLink>
         {/* C8 — les « Adversaires » : localisation + trajets, sortis de la Configuration
             (une page sœur dédiée, deep-linkable). */}
         <NavLink to="/matchs/adversaires" className={linkClass}>
-          Adversaires
+          {MATCHES_TEXTS.tabOpponents}
         </NavLink>
         {/* PR 2a — la « Semaine type » : le gabarit idéal + les créneaux partagés, sortis
             de la Configuration (une page sœur, deep-linkable). */}
         <NavLink to="/matchs/semaine-type" className={linkClass}>
-          Semaine type
+          {MATCHES_TEXTS.tabTypicalWeek}
         </NavLink>
         {/* P4-272 ① — les « Contraintes » de match : l'écran unique (section Ligue éditable +
             Club/Équipes/Coachs à venir), en accordéon. */}
         <NavLink to="/matchs/contraintes" className={linkClass}>
-          Contraintes
+          {MATCHES_TEXTS.tabConstraints}
         </NavLink>
         </nav>
       </div>

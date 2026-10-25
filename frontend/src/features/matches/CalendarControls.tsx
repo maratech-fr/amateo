@@ -9,13 +9,12 @@ import { todayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
 
 import type { ConflictType } from "./api";
-import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
+import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL, KIND_LABEL } from "./lib/conflictLabels";
 import { DEFAULT_KINDS, KINDS, type Kind, normalizeKinds } from "./lib/consultFilter";
 import { monthLabel } from "./lib/monthView";
 import { weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { useMatchesStore, type ConsultTemporality } from "./store";
 
-const KIND_LABEL: Record<Kind, string> = { amical: "Amical", championnat: "Championnat", coupe: "Coupe", brassage: "Brassage" };
 const TEMPORALITIES: ConsultTemporality[] = ["semaine", "mois", "phase"];
 const TEMPORALITY_LABEL: Record<ConsultTemporality, string> = { semaine: "Semaine", mois: "Mois", phase: "Phase" };
 

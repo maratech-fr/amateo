@@ -105,6 +105,8 @@ final readonly class ReleaseNoteAndFeedbackPaths implements CustomPathContributo
                     'screenLabel' => ['type' => 'string'],
                     'activeFilters' => ['type' => 'string'],
                     'displayedRange' => ['type' => 'string'],
+                    // Version du bundle front déclarée par le client (bornée serveur à 40).
+                    'appVersion' => ['type' => 'string', 'maxLength' => 40],
                     'lastClick' => ['type' => 'string'],
                     'incidentStatus' => ['type' => 'string'],
                     'incidentUrl' => ['type' => 'string'],

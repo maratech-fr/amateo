@@ -169,6 +169,37 @@ final class FeedbackPurgeCommandTest extends KernelTestCase
     }
 
     /**
+     * PROMESSE (RGPD, P4-355) : le RÉSUMÉ d'un échec de génération vit DANS `context`
+     * (`auto.generationFailure`, dont un `firstError` qui peut porter du texte moteur sensible) —
+     * il est donc détruit AVEC le contexte 30 jours après « traité », sans ligne de rétention à
+     * part. Preuve d'effet : le texte d'erreur ne subsiste nulle part dans la ligne purgée.
+     *
+     * Falsifiable : un témoin AVANT purge atteste que le texte est bien présent ; si la purge ne
+     * vidait pas le contexte, il survivrait (ROUGE).
+     */
+    public function testTreatedGenerationFailureSummaryIsPurgedWithTheContext(): void
+    {
+        // Marqueur distinctif SANS « / » (json_encode échappe les slashes → le témoin ne les retrouverait pas).
+        $secret = 'engine_error brut tres distinctif zzz-secret-42';
+        $id = $this->seedFeedback(
+            status: 'treated',
+            createdAt: $this->isoAgo('50 days'),
+            treatedAt: $this->isoAgo('31 days'),
+            message: 'La génération a planté.',
+            context: ['auto' => ['generationFailure' => ['status' => 'failed', 'type' => 'engine_error', 'firstError' => $secret]]],
+        );
+
+        // Témoin : AVANT la purge, le résumé (et son texte sensible) est bien stocké.
+        self::assertStringContainsString($secret, (string) $this->rowOf($id)['context'], 'pré-condition : le résumé d\'échec est stocké');
+
+        self::assertSame(Command::SUCCESS, $this->tester->execute([]), $this->tester->getDisplay());
+
+        $row = $this->rowOf($id);
+        self::assertNull($row['context'], 'le contexte — donc le résumé d\'échec de génération — est purgé');
+        self::assertNotNull($row['purged_at'], 'un marqueur de purge est posé');
+    }
+
+    /**
      * PROMESSE (décision fondateur #3) : la purge est une commande INSCRITE au catalogue des jobs
      * d'exploitation, planifiée quotidiennement — pas un script oublié hors catalogue.
      *

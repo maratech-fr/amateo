@@ -278,6 +278,9 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackAutoRole: "Rôle",
   feedbackAutoClock: "Horloge simulée",
   feedbackAutoGeneration: "Génération",
+  // P4-355 — versions App (bundle front déclaré) / API (résolue serveur) + mention d'un écart.
+  feedbackAutoVersion: "Versions",
+  feedbackAutoGenerationFailure: "Échec de génération récent",
   feedbackSocleValue: (inForce: boolean, validatedAt: string | null): string =>
     inForce ? (null === validatedAt ? "En vigueur" : `En vigueur (validé le ${validatedAt})`) : "Aucune version pointée",
   feedbackVersionsValue: (displayed: number | null, pointed: number | null): string => {
@@ -293,6 +296,17 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackCountersValue: (teams: number, venues: number): string =>
     `${teams} équipe${teams > 1 ? "s" : ""} · ${venues} gymnase${venues > 1 ? "s" : ""}`,
   feedbackGenerationValue: (running: boolean): string => (running ? "En cours au dépôt" : "Aucune"),
+  feedbackVersionValue: (app: string | null, api: string | null): string => {
+    const parts: string[] = [];
+    if (null !== app && "" !== app) parts.push(`App v${app}`);
+    if (null !== api && "" !== api) parts.push(`API v${api}`);
+    return 0 === parts.length ? "—" : parts.join(" · ");
+  },
+  feedbackVersionMismatch: "Le bundle du navigateur est probablement en cache (version différente de l'API).",
+  // Nature d'un échec de génération : panne d'infra (technique) vs contraintes incompatibles (métier).
+  feedbackFailureKindLabel: (kind: "technical" | "business"): string => ("technical" === kind ? "technique" : "métier"),
+  // Résumé d'un échec : nature, type du diagnostic, version fautive — le 1ᵉʳ message est rendu à part.
+  feedbackFailureLead: (kind: string, type: string, versionNumber: number): string => `Échec ${kind} · ${type} · v${versionNumber}`,
   feedbackTopicLabel: (topic: AdminFeedbackTopic): string =>
     ({ bug: "Bug", missing_constraint: "Contrainte manquante", idea: "Idée" } as const)[topic],
   feedbackStatusLabel: (status: AdminFeedbackStatus): string =>

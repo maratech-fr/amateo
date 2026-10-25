@@ -158,6 +158,26 @@ describe("FeedbackDialog — variante contextuelle", () => {
   });
 });
 
+describe("FeedbackDialog — version de l'app (P4-355)", () => {
+  // La version du bundle (`appVersion`, foyer `shared/lib/appVersion.ts`, repli « dev » hors
+  // build) est jointe au contexte de BASE des DEUX portes — le support compare « App vX · API vY ».
+  // Falsification : tant qu'elle n'est pas ajoutée au contexte de base, la clé est absente du
+  // payload. En jsdom (aucun VITE_APP_VERSION), c'est le repli → une chaîne non vide.
+  it.each([["free"], ["contextual"]] as const)("joint appVersion au contexte sur la porte %s", async (variant) => {
+    mockSubmit.mockResolvedValue({ id: "fb1" });
+    renderWithProviders(<FeedbackDialog variant={variant} onClose={vi.fn()} />, { route: "/planning" });
+
+    const messageLabel = "contextual" === variant ? "Décrivez le problème" : "Votre message";
+    await userEvent.type(screen.getByRole("textbox", { name: messageLabel }), "Un souci");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    const ctx = mockSubmit.mock.calls[0][0].context as Record<string, unknown>;
+    expect(typeof ctx.appVersion, "appVersion est une chaîne").toBe("string");
+    expect((ctx.appVersion as string).length, "appVersion non vide (repli « dev »)").toBeGreaterThan(0);
+  });
+});
+
 describe("FeedbackDialog — retours serveur", () => {
   it("sur 201 : toast de confirmation puis fermeture", async () => {
     mockSubmit.mockResolvedValue({ id: "fb1" });

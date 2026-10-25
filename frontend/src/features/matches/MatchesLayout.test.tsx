@@ -39,11 +39,20 @@ vi.mock("./api", () => ({
 // qui expose le `screen` transmis, pour éprouver « Signaler visible sur CHAQUE onglet, contexte =
 // la route ».
 vi.mock("@/shared/feedback/FeedbackButton", () => ({
-  FeedbackButton: ({ screen: screenProp }: { screen?: string }) => (
-    <button type="button" data-screen={screenProp}>
+  FeedbackButton: ({ screen: screenProp, activeFilters, displayedRange }: { screen?: string; activeFilters?: string; displayedRange?: string }) => (
+    <button type="button" data-screen={screenProp} data-active-filters={activeFilters} data-displayed-range={displayedRange}>
       Signaler
     </button>
   ),
+}));
+
+// P4-356 — la composition des filtres/plage est une lib PURE testée à part
+// (lib/feedbackContext.test.ts). Ici on prouve seulement le CÂBLAGE : les deux chaînes
+// atteignent le `PageHeader` → `FeedbackButton`. Des sentinelles isolent le câblage de la
+// logique. Signatures proposées (NEO peut les adapter mécaniquement).
+vi.mock("./lib/feedbackContext", () => ({
+  composeActiveFilters: () => "FILTRES-SENTINELLE",
+  composeDisplayedRange: () => "PLAGE-SENTINELLE",
 }));
 
 beforeEach(() => {
@@ -270,6 +279,28 @@ describe("MatchesLayout — le bouton « Signaler » de l'en-tête (feat/entete-
     const signaler = screen.getByRole("button", { name: "Signaler" });
     expect(signaler).toBeInTheDocument();
     expect(signaler).toHaveAttribute("data-screen", "/matchs/conflits");
+  });
+});
+
+describe("MatchesLayout — filtres & plage joints au « Signaler » (P4-356)", () => {
+  // Le module compose les filtres actifs et la plage affichée et les passe au PageHeader (donc au
+  // bouton Signaler) — sur LES DEUX PageHeader (déverrouillé ET verrouillé). Falsification : tant
+  // que MatchesLayout ne passe pas ces deux props, les sentinelles n'atteignent pas le bouton.
+  it("passe les filtres actifs et la plage affichée au Signaler (socle validé)", () => {
+    meState.chosen = "s1";
+    renderAt("/matchs");
+    const signaler = screen.getByRole("button", { name: "Signaler" });
+    expect(signaler).toHaveAttribute("data-active-filters", "FILTRES-SENTINELLE");
+    expect(signaler).toHaveAttribute("data-displayed-range", "PLAGE-SENTINELLE");
+  });
+
+  it("les passe AUSSI sur le PageHeader du module VERROUILLÉ (les 2 PageHeader)", () => {
+    meState.chosen = null;
+    renderAt("/matchs");
+    expect(screen.getByRole("heading", { name: "Matchs verrouillés" })).toBeInTheDocument();
+    const signaler = screen.getByRole("button", { name: "Signaler" });
+    expect(signaler).toHaveAttribute("data-active-filters", "FILTRES-SENTINELLE");
+    expect(signaler).toHaveAttribute("data-displayed-range", "PLAGE-SENTINELLE");
   });
 });
 

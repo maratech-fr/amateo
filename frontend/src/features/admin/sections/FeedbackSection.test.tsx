@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { AdminFeedbackDetail, AdminFeedbackItem, AdminFeedbackQos, AdminFeedbackResponse } from "../api";
+import type { AdminFeedbackAuto, AdminFeedbackDetail, AdminFeedbackItem, AdminFeedbackQos, AdminFeedbackResponse } from "../api";
 import { getAdminFeedback, getAdminFeedbackDetail, treatAdminFeedback, untreatAdminFeedback } from "../api";
 import { useAdminStore } from "../store";
 import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
@@ -305,6 +305,82 @@ describe("FeedbackSection", () => {
 
     expect(within(dialog).getByText(htmlMessage)).toBeInTheDocument();
     expect(dialog.querySelector("img")).toBeNull();
+  });
+
+  // P4-355 — la console affiche « App vX · API vY » et SIGNALE l'écart (bundle en cache) quand la
+  // version du front déclarée diffère de celle de l'API résolue serveur. Falsification : sans le
+  // rendu des versions, ni les valeurs ni la mention d'écart n'apparaissent.
+  it("affiche les versions App/API et signale l'écart quand elles diffèrent", async () => {
+    const auto = {
+      role: "manager",
+      season: { id: "se1", name: "Saison 2026-2027", startDate: "2026-09-01", endDate: "2027-06-30" },
+      generation: { running: false },
+      simulatedToday: null,
+      apiVersion: "1.2.4",
+    } as AdminFeedbackAuto;
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: { screen: "/planning", url: "http://app/planning", userAgent: "UA", appVersion: "1.2.3", auto },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText(/1\.2\.3/), "la version du front est lisible").toBeInTheDocument();
+    expect(within(dialog).getByText(/1\.2\.4/), "la version de l'API est lisible").toBeInTheDocument();
+    expect(within(dialog).getByText(/cache/i), "l'écart de version mentionne le cache du bundle").toBeInTheDocument();
+  });
+
+  it("ne signale aucun écart quand App et API coïncident", async () => {
+    const auto = { role: "manager", generation: { running: false }, simulatedToday: null, apiVersion: "1.2.4" } as AdminFeedbackAuto;
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: { screen: "/planning", url: "http://app/planning", userAgent: "UA", appVersion: "1.2.4", auto },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getAllByText(/1\.2\.4/).length, "la version coïncidente reste lisible").toBeGreaterThan(0);
+    expect(within(dialog).queryByText(/cache/i), "aucune mention d'écart quand les versions coïncident").toBeNull();
+  });
+
+  // P4-355 (amendement) — le résumé d'un échec de génération récent (`auto.generationFailure`) se lit
+  // dans le bloc Planning : le 1ᵉʳ message d'erreur et le type du diagnostic, sans copier le JSON.
+  // Falsification : sans rendu du résumé, ni le message ni le type n'apparaissent.
+  it("rend le résumé d'un échec de génération récent dans le bloc Planning", async () => {
+    const auto = {
+      role: "manager",
+      socle: { inForce: true, validatedAt: "2026-10-12T10:00:00+00:00" },
+      generation: { running: false },
+      simulatedToday: null,
+      generationFailure: {
+        status: "failed",
+        kind: "technical",
+        type: "engine_timeout",
+        failedAt: "2026-10-25T08:00:00+00:00",
+        version: { number: 4, name: "Planning v4" },
+        firstError: "Schedule generation timed out.",
+        countsByType: { engine_timeout: 1 },
+      },
+    } as AdminFeedbackAuto;
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: { screen: "/planning", url: "http://app/planning", userAgent: "UA", auto },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackBlockPlanning)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Schedule generation timed out\./), "le 1ᵉʳ message d'erreur est lisible").toBeInTheDocument();
+    expect(within(dialog).getByText(/engine_timeout/), "le type du diagnostic est lisible").toBeInTheDocument();
   });
 
   // Chantier F PR4 — rétention : un signalement PURGÉ (texte + contexte détruits après 30 j,
