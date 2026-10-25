@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Mail\EmailTemplateRenderer;
 use App\Service\MailFrom;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -119,17 +120,24 @@ final class FeedbackDigestCommand extends Command
     {
         // Corps BREF : le nombre + UN lien vers la console filtrée sur les non-traités. Aucun
         // extrait du message utilisateur (plus de recopie du texte) — le support ouvre la console.
+        $link = $this->consoleLink();
         $body = implode("\n", [
             \sprintf('Nouveaux signalements non traités déposés le %s : %d', $day->format('d/m/Y'), $count),
             'Les consulter et les traiter dans la console :',
-            $this->consoleLink(),
+            $link,
         ]);
 
-        return (new Email)
+        $email = (new Email)
             ->from($this->mailFrom->address())
             ->to($this->supportEmail)
             ->subject(\sprintf('Signalements non traités du %s (%d)', $day->format('d/m/Y'), $count))
             ->text($body);
+        // Bouton CTA du HTML (D1) : l'URL EST le lien UNIQUE de la console (le même que le corps).
+        $headers = $email->getHeaders();
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Traiter les signalements');
+
+        return $email;
     }
 
     /** Lien UNIQUE : console → onglet incidents → sous-onglet signalements → filtre non-traités. */

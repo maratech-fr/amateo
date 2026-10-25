@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Club;
 use App\Entity\ClubInvitation;
 use App\Mail\ClubMailMetadata;
+use App\Mail\EmailTemplateRenderer;
 use DateTimeImmutable;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -56,6 +57,13 @@ final readonly class ClubInvitationMailer
                 . "Ce lien expire le {$expiry}.\n\n"
                 . 'Si vous n\'attendiez pas cette invitation, ignorez simplement cet e-mail.',
             );
+        // Bouton CTA du HTML (D1) : l'URL EST le lien d'invitation, DÉRIVÉ de FRONTEND_BASE_URL
+        // (jamais du Host entrant quand la base est posée, A1) — jamais dupliqué sous le bouton.
+        if (1 === preg_match('~^https?://~i', $link)) {
+            $headers = $email->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Accepter l\'invitation');
+        }
         // Identité du club (logo + nom court) sur la carte d'e-mail (D1), quand elle est connue.
         if ($club instanceof Club) {
             ClubMailMetadata::mark($email, $club);

@@ -103,6 +103,7 @@ final class HealthAlertCommandTest extends KernelTestCase
             $registry,
             $container->get(MailFrom::class),
             $container->get(ProductIdentity::class),
+            'https://app.example.test',
         );
     }
 

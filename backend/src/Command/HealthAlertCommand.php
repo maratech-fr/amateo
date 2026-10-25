@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\AdminJob\AdminJobCatalog;
 use App\AdminJob\AdminJobDefinition;
+use App\Mail\EmailTemplateRenderer;
 use App\Service\AdminAlertStateStore;
 use App\Service\AdminDataFreshnessService;
 use App\Service\AdminHealthService;
@@ -49,6 +50,9 @@ final class HealthAlertCommand extends Command
         private readonly MailFrom $mailFrom,
         // Nom produit unique (P5-15) — préfixe des sujets d'alerte superadmin.
         private readonly ProductIdentity $productIdentity,
+        // Origine navigateur pour l'URL ABSOLUE de la console — bind global `$frontendBaseUrl`
+        // (%env(FRONTEND_BASE_URL)%) ; un chemin relatif « /admin » serait inutilisable en client mail.
+        private readonly string $frontendBaseUrl = '',
     ) {
         parent::__construct();
     }
@@ -163,10 +167,16 @@ final class HealthAlertCommand extends Command
     /** @param list<string> $recipients */
     private function send(array $recipients, string $subject, string $body): void
     {
+        // Console en URL ABSOLUE (jamais « /admin » relatif, inutilisable en client mail), sur sa
+        // propre ligne pour être rendue en bouton par le gabarit HTML (patron FeedbackDigestCommand).
+        $consoleLink = rtrim($this->frontendBaseUrl, '/') . '/admin';
         $email = (new Email)
             ->from($this->mailFrom->address())
             ->subject($subject)
-            ->text($body . "\n\nConsole : /admin");
+            ->text($body . "\n\nConsole :\n" . $consoleLink);
+        $headers = $email->getHeaders();
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $consoleLink);
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Ouvrir la console');
         foreach ($recipients as $recipient) {
             $email->addTo($recipient);
         }

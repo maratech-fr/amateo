@@ -442,6 +442,7 @@ final class DeploymentTickCommandTest extends KernelTestCase
             self::getContainer()->get(MailFrom::class),
             self::getContainer()->get(ProductIdentity::class),
             new MockClock(new DateTimeImmutable($now)),
+            'https://app.example.test',
         );
 
         new CommandTester($command)->execute([]);

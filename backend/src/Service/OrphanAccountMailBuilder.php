@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Mail\EmailTemplateRenderer;
 use DateTimeImmutable;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
@@ -79,15 +80,25 @@ final class OrphanAccountMailBuilder
      */
     private function compose(string $to, string $subject, array $lines): Email
     {
-        if ('' !== $this->frontendBaseUrl) {
+        $link = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/login' : null;
+        if (null !== $link) {
             $lines[] = '';
-            $lines[] = rtrim($this->frontendBaseUrl, '/') . '/login';
+            $lines[] = $link;
         }
 
-        return (new Email)
+        $email = (new Email)
             ->from($this->mailFrom->address())
             ->to($to)
             ->subject($subject)
             ->text(implode("\n", $lines));
+
+        // Bouton CTA du HTML (D1) — posé seulement quand le lien est cliquable (base front configurée).
+        if (null !== $link) {
+            $headers = $email->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Me connecter');
+        }
+
+        return $email;
     }
 }
