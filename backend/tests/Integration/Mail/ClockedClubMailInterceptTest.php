@@ -9,7 +9,9 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\User;
 use App\Mail\ClubBusinessMail;
+use App\Mail\EmailTemplateRenderer;
 use App\Repository\ClubMailboxMessageRepository;
+use App\Service\PlacementRunEmailBuilder;
 use App\Service\TenantConnectionContext;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -68,6 +70,26 @@ final class ClockedClubMailInterceptTest extends WebTestCase
 
         self::assertSame([], $this->queuedEmails(), 'un e-mail métier d\'un club à horloge n\'est jamais envoyé réellement');
         self::assertSame(1, $this->mailbox->countForClub($clubId), 'il est rangé dans la boîte du club');
+    }
+
+    public function testACtaCarryingBusinessMailIsStillBoxedForAClockedClub(): void
+    {
+        // A5 (D1) : un e-mail MÉTIER réel qui porte désormais un bouton d'action (placement de
+        // matchs) reste INTERCEPTÉ pour un club à horloge — le CTA ne crée aucune fuite
+        // (aucun SendEmailMessage), l'e-mail est rangé en boîte comme les autres.
+        [$clubId, $memberEmail] = $this->seedClockedClub();
+        $club = $this->em->getRepository(Club::class)->find($clubId);
+        self::assertInstanceOf(Club::class, $club);
+
+        $email = self::getContainer()->get(PlacementRunEmailBuilder::class)->build($memberEmail, placed: 8, toTreat: 2, club: $club);
+        // ROUGE tant que le builder ne pose pas le bouton « Ouvrir le calendrier des matchs ».
+        self::assertTrue($email->getHeaders()->has(EmailTemplateRenderer::CTA_URL_HEADER), 'ROUGE tant que l\'e-mail de placement ne porte pas son CTA');
+
+        $this->guc->setClubId($clubId);
+        $this->mailer->send($email);
+
+        self::assertSame([], $this->queuedEmails(), 'un e-mail métier à CTA d\'un club à horloge ne part jamais réellement');
+        self::assertSame(1, $this->mailbox->countForClub($clubId), 'il est rangé dans la boîte du club, bouton compris');
     }
 
     public function testBusinessMailToAClubCoachIsBoxed(): void

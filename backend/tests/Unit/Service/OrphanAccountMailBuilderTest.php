@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Service;
 
 use App\Service\OrphanAccountMailBuilder;
+use App\Tests\AssertsActionMailCta;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -18,7 +19,30 @@ use PHPUnit\Framework\TestCase;
 #[Group('phase1')]
 final class OrphanAccountMailBuilderTest extends TestCase
 {
+    use AssertsActionMailCta;
+
     private const DEADLINE = '2026-11-03';
+
+    public function testAccessRemovedNoticeCarriesALoginCta(): void
+    {
+        // PROMESSE (D1) : le préavis « compte sans club » porte un bouton « Me connecter » vers le
+        // lien /login du corps. ROUGE tant que le builder ne pose pas l'en-tête CTA.
+        $email = new OrphanAccountMailBuilder('https://app.example.test')->buildAccessRemoved('x@y.fr', 'Camille', new DateTimeImmutable(self::DEADLINE));
+
+        $this->assertCtaHeadersPointToBodyLink($email, 'https://app.example.test/login', 'Me connecter');
+    }
+
+    public function testClubDeletedNoticeCarriesALoginCta(): void
+    {
+        $email = new OrphanAccountMailBuilder('https://app.example.test')->buildClubDeleted('x@y.fr', 'Camille', new DateTimeImmutable(self::DEADLINE));
+
+        $this->assertCtaHeadersPointToBodyLink($email, 'https://app.example.test/login', 'Me connecter');
+    }
+
+    public function testNoCtaWhenNoFrontendBaseIsConfigured(): void
+    {
+        $this->assertCarriesNoCtaHeaders(new OrphanAccountMailBuilder('')->buildAccessRemoved('x@y.fr', 'Camille', new DateTimeImmutable(self::DEADLINE)));
+    }
 
     public function testAccessRemovedNoticeNamesTheDeadlineAndTheProduct(): void
     {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Command;
 
 use App\Service\TransitionReminderMailBuilder;
+use App\Tests\AssertsActionMailCta;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -12,7 +13,18 @@ use PHPUnit\Framework\TestCase;
 #[Group('phase1')]
 final class TransitionReminderEmailTest extends TestCase
 {
+    use AssertsActionMailCta;
+
     private const PIVOT = '2026-07-15';
+
+    public function testReminderCarriesTheOpenAppCta(): void
+    {
+        // PROMESSE (D1) : le rappel « préparer la saison suivante » porte un bouton « Ouvrir
+        // l'application » vers le lien du corps. ROUGE tant que le builder ne pose pas l'en-tête.
+        $email = new TransitionReminderMailBuilder('http://localhost:5173')->build('admin@club.fr', 'BCCL', '2025-2026', new DateTimeImmutable(self::PIVOT), 56);
+
+        $this->assertCtaHeadersPointToBodyLink($email, 'http://localhost:5173/', 'Ouvrir l\'application');
+    }
 
     public function testSubjectAndBodyAtJ56(): void
     {

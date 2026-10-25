@@ -10,6 +10,7 @@ use App\Entity\Coach;
 use App\Entity\Feedback;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Mail\EmailTemplateRenderer;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -19,6 +20,7 @@ use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Mime\Email;
 
 /**
  * RGPD PR-1 non-regression (axe auth & memberships) : le droit à l'effacement.
@@ -132,6 +134,32 @@ final class AccountErasureTest extends WebTestCase
         self::assertNotNull($user->getAnonymizedAt());
         self::assertStringEndsWith('@anonymized.invalid', $user->getEmail());
         self::assertSame('Compte', $user->getFirstName());
+    }
+
+    public function testOrphanedClubNoticeCarriesARegisterCta(): void
+    {
+        // PROMESSE (D1) : quand le dernier gestionnaire efface son compte, le préavis au club
+        // orphelin porte un lien d'INSCRIPTION (/register) + un bouton « Inscrire un gestionnaire »
+        // (reprendre le club). ROUGE tant que le producteur ne pose pas l'en-tête CTA ni /register.
+        [$token, $userId] = $this->registerVerified('ERCTA');
+        $clubId = $this->clubIdOf($userId);
+
+        // Une adresse connue du club → le préavis part réellement (sinon notifyOrphanedClubs est muet).
+        $contact = 'orphan-notice-' . substr(md5($userId), 0, 6) . '@club.fr';
+        $em = $this->em();
+        $club = $em->getRepository(Club::class)->find($clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $club->setContactEmail($contact);
+        $em->flush();
+
+        $this->request('DELETE', '/api/me', $token, ['password' => 'Password123!']);
+        self::assertResponseIsSuccessful();
+
+        $notice = $this->mailTo($contact);
+        self::assertMatchesRegularExpression('~https?://\S+/register\b~', (string) $notice->getTextBody(), 'le préavis doit porter un lien d\'inscription (/register)');
+        $headers = $notice->getHeaders();
+        self::assertTrue($headers->has(EmailTemplateRenderer::CTA_URL_HEADER), 'ROUGE tant que le préavis orphelin ne pose pas le bouton d\'inscription');
+        self::assertSame('Inscrire un gestionnaire', $headers->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
     }
 
     public function testRemainingActiveMemberEvenNonManagementPreventsTheClubPurge(): void
@@ -417,6 +445,22 @@ final class AccountErasureTest extends WebTestCase
     private function em(): EntityManagerInterface
     {
         return self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /** Le dernier e-mail capté (clone signé à l'enfilage) adressé à `$address`. */
+    private function mailTo(string $address): Email
+    {
+        foreach (self::getMailerMessages() as $message) {
+            if (!$message instanceof Email) {
+                continue;
+            }
+            foreach ($message->getTo() as $to) {
+                if ($to->getAddress() === $address) {
+                    return $message;
+                }
+            }
+        }
+        self::fail(\sprintf('aucun e-mail adressé à %s', $address));
     }
 
     private function clubIdOf(string $userId): string
