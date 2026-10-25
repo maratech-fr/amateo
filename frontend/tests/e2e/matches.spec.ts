@@ -29,13 +29,19 @@ function nextSaturdayAtLeast(minAhead: number): string {
 }
 
 // P4-353 — dates FUTURES calculées depuis aujourd'hui (jamais figées : une date en dur — « mars
-// 2027 » à l'origine — devient « passée » dès que l'horloge réelle la dépasse, et le filtre
-// matchDate >= aujourd'hui / la navigation au mois du match rougissent). Toutes restent dans la
-// saison du club seedé (…→2027-07-14) et loin d'aujourd'hui (la grille atterrit des semaines avant).
-const HOME_SATURDAY = nextSaturdayAtLeast(56); // un samedi futur = la clé de semaine (weekendKeyOf)
+// 2027 » à l'origine — devient « passée » dès que l'horloge réelle la dépasse). ⚠ Elles doivent
+// aussi rester DATÉES LOIN (~18-19 semaines, comme l'était « mars 2027ᵉ ») : la vue Semaine ne
+// navigue QU'ENTRE les week-ends qui PORTENT des rencontres (`listWeekends`, `CalendarControls`
+// désactive « Semaine suivante » sur le dernier), et le test PR 3b (:551) atteint la semaine du
+// match en AVANÇANT depuis le week-end d'atterrissage (premier ≥ aujourd'hui). Une date trop PROCHE
+// tomberait SUR ce week-end d'atterrissage (ou avant les rencontres de base) → « Semaine suivante »
+// jamais atteignable, boucle bloquée. Loin devant les rencontres du club, l'atterrissage est AVANT
+// elle et l'avance y mène. Restent dans la saison du seed (…→2027-07-14) ; ~18-19 sem. depuis
+// aujourd'hui = plus de marge que le « mars 2027 » figé d'origine (qui mourait dès mars passé).
+const HOME_SATURDAY = nextSaturdayAtLeast(126); // ~18 semaines : un samedi futur, LOIN devant les rencontres de base = la clé de semaine (weekendKeyOf)
 // Deux mercredis de DEUX week-ends distincts (aucune habitude de match un mercredi : le seed ne pose
-// d'habitude que les jours 6/7) → le pivot Journée a ≥ 2 entrées.
-const AWAY_WED_1 = addDays(nextSaturdayAtLeast(70), -3);
+// d'habitude que les jours 6/7) → le pivot Journée a ≥ 2 entrées. Mêmes ~19 semaines devant.
+const AWAY_WED_1 = addDays(nextSaturdayAtLeast(133), -3);
 const AWAY_WED_2 = addDays(AWAY_WED_1, 7);
 
 /** Un nom d'équipe devient un motif littéral (« U11M1 (bis) » ne doit pas casser la RegExp). */
