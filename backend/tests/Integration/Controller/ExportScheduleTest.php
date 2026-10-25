@@ -14,6 +14,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\Security\ExportPdfDownloadIsolationTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -139,7 +140,7 @@ final class ExportScheduleTest extends WebTestCase
     /**
      * P4-359 (hygiène, point sensible : export) — le classeur XLSX porte les noms COMPLETS des
      * coachs : une réponse NOMINATIVE. PROMESSE : elle n'est jamais mise en cache (ni navigateur, ni
-     * cache partagé), comme le PDF authentifié (P4-357, {@see \App\Tests\Security\ExportPdfDownloadIsolationTest}) —
+     * cache partagé), comme le PDF authentifié (P4-357, {@see ExportPdfDownloadIsolationTest}) —
      * `Cache-Control` contient `no-store` ET `private`, jamais `public`. Sinon le fichier survit
      * dans le cache d'un poste partagé du club après la déconnexion du gestionnaire.
      *

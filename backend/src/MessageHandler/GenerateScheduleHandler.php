@@ -383,10 +383,22 @@ final class GenerateScheduleHandler
 
             return;
         } catch (Throwable $exception) {
-            $this->failSchedule($schedule, 'engine_error', $exception->getMessage());
+            // P4-358 — exception moteur NON traduite (ni timeout de transport, ni refus de contrat
+            // 422) : échec terminal LISIBLE avec un libellé STABLE, jamais le message brut de
+            // l'exception. Symfony APPOSE l'URL appelée sur une JsonException/HttpException
+            // (« … for "http://engine:8000/generate". ») : recopié tel quel, l'hôte/port interne du
+            // solveur fuirait à l'écran ET dans `auto.generationFailure.firstError` d'un signalement
+            // (P4-355), lisible par le support. La substance technique reste dans le log serveur.
+            // Patron de l'engine_timeout (:361) / engine_rejected (:375).
+            $this->logger?->error('Engine call failed with an untranslated exception', [
+                'scheduleId' => $schedule->getId(),
+                'clubId' => $schedule->getClubId(),
+                'exception' => $exception,
+            ]);
+            $this->failSchedule($schedule, 'engine_error', 'Le moteur de calcul n\'a pas pu traiter la demande de génération. Réessayez ; si le problème persiste, signalez-le.');
             $this->metricsRecorder?->record($schedule, null, $payloadBytes);
             $this->entityManager->flush();
-            $this->progressPublisher->publishSafely($schedule, ['warnings' => [$exception->getMessage()]]);
+            $this->progressPublisher->publishSafely($schedule, ['warnings' => ['Le moteur de calcul n\'a pas pu traiter la demande de génération.']]);
             $this->writeResultFilesIfEnabled($schedule, $lotDir);
 
             return;

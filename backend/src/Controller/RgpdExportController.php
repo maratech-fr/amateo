@@ -103,6 +103,11 @@ final class RgpdExportController extends AbstractController
     {
         $response = JsonResponse::fromJsonString(json_encode($data, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE));
         $response->headers->set('Content-Disposition', \sprintf('attachment; filename="%s-%s.json"', $basename, date('Y-m-d')));
+        // Un export de portabilité est NOMINATIF (données personnelles) : jamais mis en cache
+        // (navigateur ou cache partagé), sinon il survit sur un poste partagé. Patron
+        // ExportPdfDownloadController.
+        $response->setPrivate();
+        $response->headers->addCacheControlDirective('no-store');
 
         return $response;
     }
