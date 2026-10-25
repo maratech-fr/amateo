@@ -434,6 +434,15 @@ jobs:
       - name: ExportAuthenticationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ExportAuthenticationTest.php --group phase1'
 
+      # Axe tenant isolation (P4-357) — le rendu PDF se télécharge par la route AUTHENTIFIÉE
+      # GET /api/schedules/{id}/export-pdf/{filename}, plus par une URL statique publique. Un club B
+      # visant l'URL d'un rendu du club A obtient un 404 byte-identique à un planning inconnu (aucune
+      # divulgation d'existence), une traversée / un nom hors motif / le nom d'un autre planning sont
+      # refusés 404, et le disque reste intact. Sans ce gate, un rendu PDF d'un autre club serait
+      # téléchargeable par énumération d'URL et passerait tous les checks requis de `main`.
+      - name: ExportPdfDownloadIsolationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ExportPdfDownloadIsolationTest.php --group phase1'
+
       # Axe auth & memberships — le seed BCCL de PROD pose des gestionnaires PRÉ-VÉRIFIÉS,
       # rattachés au bon club, avec des mots de passe pilotés par options (les mots de passe
       # dev du dépôt n'ouvrent pas les comptes prod), refuse sans credentials, create-only.

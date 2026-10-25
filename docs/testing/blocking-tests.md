@@ -68,6 +68,17 @@ firewall JWT, refus 401 sans session, ET rien n'est enfilé (le `pdfExportStatus
 passe JAMAIS à « pending », effet lu APRÈS la requête). Témoin de falsification : le 401 — ouvrir une
 route d'export en PUBLIC_ACCESS le fait tomber. Sans ce gate, un planning PDF/XLSX divulgué à un
 anonyme passerait tous les checks requis de `main`) ·
+`Security/ExportPdfDownloadIsolationTest` (axe *tenant isolation*, P4-357 — le rendu PDF d'un
+planning ne se télécharge plus par une URL statique publique [`/exports/…`] mais par la route
+AUTHENTIFIÉE `GET /api/schedules/{id}/export-pdf/{filename}` [`ExportPdfDownloadController`, patron
+`ExportXlsxController`]. Le propriétaire télécharge son rendu [200 `application/pdf`, témoin de
+falsification : 404 tant que la route n'existe pas] ; un club B visant l'URL EXACTE d'un rendu du
+club A obtient un 404 BYTE-IDENTIQUE à celui d'un planning inconnu [find sous RLS → `Planning
+introuvable.`, aucune divulgation d'existence] ; une traversée [`..%2f…`], un nom HORS du motif
+strict [`RENDER_PATTERN`] et le nom d'un AUTRE planning glissé sous le `{id}` du sien [préfixe
+`schedule-{id}-` exigé] sont refusés 404 ; le disque reste INTACT après les refus. Angle voisin,
+cross-référencé [export = domaine sensible] : `ExportAuthenticationTest` couvre le 401 anonyme de la
+même route. Sans ce gate, un rendu PDF d'un autre club serait téléchargeable par énumération d'URL) ·
 `Integration/Command/BcclProdSeedCommandTest` (axe *auth & memberships* : le seed BCCL de PROD
 [`app:bccl:seed-prod`] pose des gestionnaires PRÉ-VÉRIFIÉS [le rail /register est mort en prod],
 rattachés au bon club [ARA0069036, jamais la démo], avec des mots de passe pilotés par options —

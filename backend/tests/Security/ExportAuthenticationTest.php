@@ -80,6 +80,31 @@ final class ExportAuthenticationTest extends WebTestCase
         );
     }
 
+    /**
+     * P4-357 — le rendu PDF ne se télécharge plus par une URL statique publique mais par la route
+     * AUTHENTIFIÉE `GET /api/schedules/{id}/export-pdf/{filename}` : sans session, le firewall JWT
+     * refuse 401 et RIEN n'est servi (le corps n'est pas un PDF). Témoin : le 401 — ouvrir la
+     * route en PUBLIC_ACCESS le ferait tomber et exposerait le fichier à un anonyme. Le refus
+     * cross-tenant d'un club AUTHENTIFIÉ sur la même route (404 byte-identique) + la robustesse du
+     * nom de fichier sont gardés par `Security/ExportPdfDownloadIsolationTest` (angle voisin,
+     * export = domaine sensible, charte §1).
+     */
+    public function testTheRenderedPdfIsNotServedWithoutASession(): void
+    {
+        [, $schedule] = $this->seedScheduleOf('dl');
+        $scheduleId = $schedule->getId();
+
+        // Requête ANONYME sur l'URL de téléchargement : aucun cookie JWT ni Bearer.
+        $this->client->request('GET', \sprintf('/api/schedules/%s/export-pdf/schedule-%s-all.pdf', $scheduleId, $scheduleId));
+
+        self::assertResponseStatusCodeSame(401, 'le téléchargement du rendu sans session est refusé par le firewall JWT');
+        self::assertStringStartsNotWith(
+            '%PDF',
+            (string) $this->client->getResponse()->getContent(),
+            'rien n’est servi : une requête refusée ne doit jamais rendre les octets d’un PDF',
+        );
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

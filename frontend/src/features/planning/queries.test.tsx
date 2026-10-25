@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { download } from "@/shared/lib/download";
 import { toast } from "@/shared/stores/toastStore";
 
 import * as planningApi from "./api";
@@ -25,6 +26,7 @@ import {
   useRegenerateFromVersion,
   useRegenerateOverlay,
   useReopenSchedule,
+  useScheduleExport,
   useSchedules,
   useSlots,
   useSocleDeviation,
@@ -86,8 +88,16 @@ vi.mock("./api", async (importOriginal) => {
     regenerate: vi.fn().mockResolvedValue({ id: "sched-v2" }),
     createOverlayVersion: vi.fn().mockResolvedValue({ id: "overlay-1" }),
     fillSchedule: vi.fn().mockResolvedValue({ id: "sched-fill" }),
+    exportSchedulePdf: vi.fn().mockResolvedValue({}),
   };
 });
+
+// `useScheduleExport` télécharge via ce foyer ; on le double pour observer l'URL retenue sans
+// toucher le DOM. `slugFilename` → identité pour que le nom de fichier soit lisible dans l'assertion.
+vi.mock("@/shared/lib/download", () => ({
+  download: vi.fn(),
+  slugFilename: (s: string) => s,
+}));
 
 function makeClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -575,5 +585,45 @@ describe("planning queries — useValidateImpact : clé scopée par scheduleId, 
     expect(planningApi.getValidateImpact).toHaveBeenCalledWith("s-b");
     expect(a.result.current.data?.orphanedFixtures).toBe(1);
     expect(b.result.current.data?.orphanedFixtures).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useScheduleExport (PDF) — P4-357 : le rendu se télécharge par la route AUTHENTIFIÉE
+// `/api/schedules/{id}/export-pdf/{filename}`, plus par l'URL statique `/exports/…`. Le polling
+// ne RETIENT que l'URL dont le nom de fichier FINIT par le jeton de SA demande
+// (`url.endsWith(exportScopeToken(venueId, showCoaches))`, inchangé par le déplacement de l'URL,
+// -coaches compris) : l'URL d'un run VOISIN (autre choix de coachs) est ignorée. Le jeton pur est
+// gardé par `lib/exportScopeToken.test.ts` ; ici on prouve l'EFFET de bout en bout sur la vraie
+// forme d'URL (export = domaine sensible, charte §1 — second angle VOULU, cross-référencé).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("planning queries — useScheduleExport : le polling ne retient que l'URL /api/… finissant par le jeton de SA demande", () => {
+  const completed = (url: string): planningApi.Schedule => ({ pdfExportStatus: "completed", pdfExportUrl: url }) as unknown as planningApi.Schedule;
+
+  it("PDF coché → télécharge l'URL authentifiée …-all-coaches.pdf, pas celle d'un run décoché", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = makeClient();
+      vi.mocked(planningApi.exportSchedulePdf).mockResolvedValue({});
+      const decochee = "/api/schedules/sched-1/export-pdf/schedule-sched-1-all.pdf";
+      const cochee = "/api/schedules/sched-1/export-pdf/schedule-sched-1-all-coaches.pdf";
+      // 1er sondage : une URL de portée VOISINE (sans -coaches) → refusée ; 2e : la sienne → prise.
+      vi.mocked(planningApi.getSchedule).mockResolvedValueOnce(completed(decochee)).mockResolvedValueOnce(completed(cochee));
+
+      const { result } = renderHook(() => useScheduleExport("sched-1", "mon-planning"), { wrapper: wrapperFor(client) });
+
+      let finished!: Promise<void>;
+      await act(async () => {
+        finished = result.current.run("pdf", null, true);
+        await vi.advanceTimersByTimeAsync(1500); // 1er sondage (URL voisine ignorée)
+        await vi.advanceTimersByTimeAsync(1500); // 2e sondage (URL de SA demande)
+      });
+      await finished;
+
+      expect(download).toHaveBeenCalledTimes(1);
+      expect(download).toHaveBeenCalledWith(cochee, "mon-planning.pdf");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -59,6 +59,30 @@ final class PdfExportFilenameTest extends KernelTestCase
         self::assertStringNotContainsString('-coaches', $optedOut, 'décoché → JAMAIS -coaches (sinon le run décoché saisirait la version cochée, rendue une seconde plus tôt)');
     }
 
+    /**
+     * P4-357 — le rendu ne se sert plus par une URL statique publique (`/exports/…`) : `generate()`
+     * produit l'URL de la route AUTHENTIFIÉE `GET /api/schedules/{id}/export-pdf/{filename}`. Le nom
+     * de fichier (donc le JETON de fin `-all` / `-all-coaches.pdf` que le polling front compare,
+     * `url.endsWith(scopeToken)`) est INCHANGÉ — seul le préfixe de l'URL bascule. Les deux bouts se
+     * gardent l'un l'autre : un préfixe qui dériverait ferait tomber `endsWith` du côté front
+     * (`frontend/.../lib/exportScopeToken.test.ts`), un suffixe qui dériverait ferait expirer le
+     * polling (gardé ci-dessus).
+     */
+    public function testUrlIsTheAuthenticatedApiRouteThatStillEndsWithTheFilename(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->makeSchedule($club, $season);
+        $prefix = \sprintf('/api/schedules/%s/export-pdf/', $schedule->getId());
+
+        $optedIn = $this->generator()->generate($schedule, null, true)['pdf'];
+        $optedOut = $this->generator()->generate($schedule, null, false)['pdf'];
+
+        self::assertStringStartsWith($prefix, $optedIn, 'le rendu se télécharge par la route authentifiée, pas par /exports statique');
+        self::assertStringStartsWith($prefix, $optedOut, 'même route authentifiée sans coachs');
+        self::assertStringEndsWith(\sprintf('schedule-%s-all-coaches.pdf', $schedule->getId()), $optedIn, 'l’URL se termine toujours par le nom de fichier (jeton du polling intact)');
+        self::assertStringEndsWith(\sprintf('schedule-%s-all.pdf', $schedule->getId()), $optedOut, 'idem décoché');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

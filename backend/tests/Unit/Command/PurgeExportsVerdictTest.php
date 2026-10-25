@@ -68,6 +68,30 @@ final class PurgeExportsVerdictTest extends TestCase
     }
 
     /**
+     * P4-357 — l'épinglage se fait désormais par le BASENAME du rendu, pas par l'URL entière. Une
+     * saison dont `exportPdfUrl` porte la NOUVELLE forme authentifiée
+     * (`/api/schedules/{id}/export-pdf/schedule-{id}-{scope}.pdf`) épingle le même fichier que
+     * l'ancienne forme statique (`/exports/schedule-{id}-{scope}.pdf`, gardée par le test ci-dessus).
+     * Sans ça, le basculement de l'URL de production ferait repartir à la purge le SEUL rendu qu'un
+     * gestionnaire ait une raison de rouvrir des mois plus tard — alors qu'il est épinglé.
+     *
+     * Contrat proposé à NEO (option A) : `verdictFor` compare le `basename` de chaque URL épinglée
+     * à `$name` ; le paramètre `$pinnedUrls` reste une map d'URL (n'importe quelle forme).
+     */
+    public function testAPinnedRenderSurvivesWhenTheSeasonHoldsTheNewAuthenticatedUrl(): void
+    {
+        $name = $this->renderName(self::GONE);
+
+        self::assertSame('keep', PurgeExportsCommand::verdictFor(
+            $name,
+            [self::LIVE => true],
+            ['/api/schedules/' . self::GONE . '/export-pdf/' . $name => true],
+            self::CUTOFF - 999_999,
+            self::CUTOFF,
+        ), 'un rendu épinglé par la nouvelle URL authentifiée ne part jamais : ni vieux, ni orphelin');
+    }
+
+    /**
      * Semgrep signale tout `unlink()` à chemin non littéral, et il a raison de le faire.
      * L'alerte est ici un faux positif — mais on ne le déclare pas sur parole : le motif
      * lui-même refuse les séparateurs, et c'est ce que ce test épingle. Un `.+` aurait
