@@ -87,8 +87,10 @@ Messenger ; handler backend `ExportPdfHandler`).
   gymnase**, seules les équipes qui y sont placées — les données d'export portent toujours
   toutes les équipes du club, donc les lister toutes ferait passer une équipe qui s'entraîne
   ailleurs pour une équipe sans entraînement.
-- Les fichiers produits sont servis sous **`/exports`** : proxifié par Vite en dev
-  (`vite.config.ts`) et par le Nginx frontend en prod (`docker/frontend/nginx.conf`).
+- Le rendu produit se télécharge par la route **authentifiée et confinée au club**
+  `GET /api/schedules/{id}/export-pdf/{filename}` (P4-357, `ExportPdfDownloadController`) —
+  proxifiée comme n'importe quelle route `/api` (Vite en dev, Nginx frontend en prod). Le fichier
+  vit HORS du docroot backend ; `/exports/` ne sert plus rien.
 - **Case « Afficher le nom des coachs » (chantier E)** : décochée par défaut, mémorisée
   **par club** dans le navigateur (`lib/exportPrefs.ts`, clé `export-show-coaches-<clubId>`,
   partagée avec l'export rapide du cockpit — `cockpit/SeasonSchedulesModal.tsx::CompactExport`).

@@ -40,7 +40,7 @@ est éteinte demande un vrai hébergement (VPS + tunnel nommé, ou déploiement)
 
 | Port | Service | Ce que verrait l'invité via le tunnel |
 |------|---------|----------------------------------------|
-| **8081** | `frontend` (nginx) | ✅ **le SPA**, qui proxifie `/api/`, `/exports/`, `/.well-known/mercure` sur la même origine |
+| **8081** | `frontend` (nginx) | ✅ **le SPA**, qui proxifie `/api/`, `/.well-known/mercure` sur la même origine |
 | 8080 | `nginx` (API Symfony) | ❌ du JSON — aucune interface |
 
 Une seule origine publique suffit donc : `8081` sert l'appli **et** relaie l'API (cf.

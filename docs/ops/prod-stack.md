@@ -198,7 +198,7 @@ passe rouge au lieu de se cacher derrière « la boucle tourne »).
 | `redis_data` | redis (AOF) | queue Messenger + rate-limiters (survit au restart — le dev n'en a volontairement pas) |
 | `backups` | php, worker, cron | dumps `pg_dump` (`var/backups`) |
 | `logo_storage` | php, worker, cron | monte tout `var/storage` — logos clubs ET, depuis le chantier F PR3 (P4-323), les captures d'écran de signalement (`var/storage/feedback-screenshots`) ; même volume, pas une 2ᵉ montée à ajouter |
-| `exports` | pdf-worker (rw), php + worker (rw), nginx (ro) | PDF générés (`public/exports`) — uid 1000 partagé php/pdf-worker, vérifié |
+| `exports` | pdf-worker (rw), php + worker (rw), cron-runner (rw) | PDF générés, HORS docroot (`var/exports`, P4-357) — téléchargés par une route authentifiée (`ExportPdfDownloadController`), plus servis par nginx en statique ; monté sur `cron-runner` pour que `app:exports:purge` (quotidien) voie le répertoire — avant P4-357 ce montage manquait et la purge était un NO-OP silencieux ; uid 1000 partagé php/pdf-worker, vérifié |
 
 `./jwt` est un bind **read-only** vers `config/jwt` (le keypair ne vit jamais
 dans une image ni dans git). ⚠ Les conteneurs php tournent en **uid 1000** :

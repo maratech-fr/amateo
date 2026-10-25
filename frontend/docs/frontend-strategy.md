@@ -375,10 +375,12 @@ est rejeté automatiquement.
 ## 4. Infrastructure Reuse
 
 `docker/frontend/Dockerfile` (build multi-stage + Nginx) et `docker/frontend/nginx.conf`
-(proxy `/api`, `/bundles/`, `/exports/` → backend, `/.well-known/mercure` → hub, en-têtes de
+(proxy `/api`, `/bundles/` → backend, `/.well-known/mercure` → hub, en-têtes de
 sécurité + CSP, SPA fallback) sont l'infrastructure de déploiement de la zone, distincte du code
-source (`frontend/src/`) — **pas de `location /engine/`** (`nginx.conf:96-102`, frontière §2 de
-`CLAUDE.md`).
+source (`frontend/src/`) — **pas de `location /engine/`** (`nginx.conf:99-105`, frontière §2 de
+`CLAUDE.md`). **`/exports/` renvoie un 404 sec** (P4-357) : le rendu PDF vit hors du docroot
+backend et ne se télécharge plus que par la route authentifiée `/api/schedules/{id}/export-pdf/{filename}`,
+proxifiée comme n'importe quelle route `/api`.
 
 ---
 

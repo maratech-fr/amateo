@@ -41,7 +41,7 @@ Amateo is a monorepo with three main stacks:
 | redis | 6379 | Cache + Messenger transport |
 | engine | 8000 | Python solver microservice |
 | mercure | 3000 | SSE hub for real-time updates |
-| frontend | 8081 | SPA (nginx) — also proxies `/api`, `/exports`, `/bundles`, `/.well-known/mercure`; **no `/engine` location, in dev or prod** — the frontend never calls the engine directly (boundary, `CLAUDE.md` §2). To talk to the engine locally: `docker compose exec engine …` |
+| frontend | 8081 | SPA (nginx) — also proxies `/api`, `/bundles`, `/.well-known/mercure`; **no `/engine` location, in dev or prod** — the frontend never calls the engine directly (boundary, `CLAUDE.md` §2). To talk to the engine locally: `docker compose exec engine …` |
 | messenger-worker | — | consumes the Redis queue (generation, PDF export) — **without it a generation stays `PENDING`** |
 | cron-runner | — | runs `app:jobs:run-due` every minute (reminders, purges, holiday imports) |
 | pdf-worker | — | PDF/PNG rendering (Node) |
