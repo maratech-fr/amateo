@@ -12,7 +12,7 @@ export const PARC_IMPORT_TEXTS = {
   // Temps 1 — le prompt à copier
   promptHeading: "1. Copiez le prompt dans votre assistant",
   promptHelp:
-    "Collez ce texte dans un assistant conversationnel (ChatGPT, Claude, Gemini…). Il décrira votre planning au bon format. Puis recopiez sa réponse ci-dessous.",
+    "Collez ce texte dans un assistant conversationnel (ChatGPT, Claude, Gemini, Copilot…). Il décrira votre planning au bon format. Puis recopiez sa réponse ci-dessous.",
   copyPrompt: "Copier le prompt",
   promptCopied: "Prompt copié.",
 
@@ -28,6 +28,11 @@ export const PARC_IMPORT_TEXTS = {
   previewHelp: "Rien n'est enregistré tant que vous n'avez pas cliqué sur Importer. Décochez ce que vous ne voulez pas.",
   venuesCreatedWithoutAddress:
     "Les gymnases à créer naîtront sans adresse — vous la renseignerez ensuite dans l'étape « Gymnases ».",
+  /** Bandeau « résultat peu fiable » (D10) — informatif, jamais bloquant : l'import reste possible. */
+  unreliableResult:
+    "La lecture de votre planning semble incertaine : vérifiez chaque ligne de près avant d'importer, et corrigez ce qui a été mal lu.",
+  /** En-tête du bloc des alertes transverses (D9) — les messages, eux, sont des données serveur. */
+  alertsHeading: "Points à vérifier",
   /** Mise à jour de séances PROPOSÉE sur une équipe appariée (cochée, décochable). */
   sessionsUpdate: (de: number, a: number) => `Séances : ${de} → ${a} (mise à jour proposée)`,
 
@@ -45,6 +50,12 @@ export const PARC_IMPORT_TEXTS = {
   editDay: (libelle: string) => `Jour — ${libelle}`,
   editStart: (libelle: string) => `Heure de début — ${libelle}`,
   editDuration: (libelle: string) => `Durée en minutes — ${libelle}`,
+  /** D12 — sélecteur de gymnase d'une case (créneau) : corriger un gymnase mal lu avant l'import. */
+  venueForSlot: (libelle: string) => `Gymnase du créneau — ${libelle}`,
+
+  // Requalification d'une mutualisation (D8) — nommer/corriger le libellé du groupe mutualisé.
+  groupLabel: (libelle: string) => `Nom du groupe mutualisé — ${libelle}`,
+  groupLabelPlaceholder: "Nom du groupe (ex. « CEC »)",
 
   /** Le libellé HUMAIN d'un statut de ligne (enum serveur → libellé). Table inline. */
   statusLabel: (statut: string): string => {
@@ -65,7 +76,6 @@ export const PARC_IMPORT_TEXTS = {
       gymnases: "Gymnases",
       creneaux: "Créneaux",
       mutualisations: "Mutualisations",
-      coachs: "Coachs",
       reservations: "Réservations",
     };
     return titles[section] ?? section;

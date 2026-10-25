@@ -349,7 +349,9 @@ final class ParcImportExecutor
                 continue;
             }
             $commonSessions = \is_int($entry['seances_communes'] ?? null) ? $entry['seances_communes'] : 1;
-            $label = \is_string($entry['groupe'] ?? null) && '' !== trim($entry['groupe']) ? trim($entry['groupe']) : null;
+            // D8 — le libellé CORRIGÉ par le gestionnaire (corrections.groupe) l'emporte sur le groupe
+            // DÉRIVÉ de la case ; borné à la longueur max de la colonne, comme les autres corrections.
+            $label = $this->blockLabel($decision['corrections'], $entry);
 
             $block = $this->existingBlockForTeams($club->getId(), $seasonId, $teamIds);
             if ($block instanceof SharedTrainingBlock) {
@@ -887,6 +889,28 @@ final class ParcImportExecutor
         $value = $derived[$section] ?? null;
 
         return \is_array($value) && array_is_list($value) ? $value : [];
+    }
+
+    /**
+     * Libellé d'un bloc mutualisé : la correction `groupe` (trim, non vide) l'emporte sur le `groupe`
+     * DÉRIVÉ de la case ; borné à {@see SharedTrainingBlock::LABEL_MAX_LENGTH} comme la colonne.
+     *
+     * @param array<string, mixed> $corrections
+     */
+    private function blockLabel(array $corrections, mixed $entry): ?string
+    {
+        $corrected = $corrections['groupe'] ?? null;
+        if (\is_string($corrected) && '' !== trim($corrected)) {
+            return $this->boundLabel(trim($corrected));
+        }
+        $raw = \is_array($entry) ? ($entry['groupe'] ?? null) : null;
+
+        return \is_string($raw) && '' !== trim($raw) ? $this->boundLabel(trim($raw)) : null;
+    }
+
+    private function boundLabel(string $label): string
+    {
+        return mb_substr($label, 0, SharedTrainingBlock::LABEL_MAX_LENGTH);
     }
 
     /**

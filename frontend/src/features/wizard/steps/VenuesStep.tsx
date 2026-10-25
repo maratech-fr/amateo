@@ -27,13 +27,12 @@ import { MatchWindowsEditor } from "@/features/matches/MatchWindowsEditor";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
-import { coachFullName } from "@/shared/lib/coachName";
 
 import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
 import { DAYS, hhmm } from "../lib/days";
 import { filterSalles } from "../lib/salleSuggestions";
 import { slotPlacementError } from "../lib/slotOverlap";
-import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesByName, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardCoaches, useWizardTeams, useWizardVenues } from "../queries";
+import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesByName, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardTeams, useWizardVenues } from "../queries";
 import { venueGeoAlertMessage } from "../lib/venueGeoAlert";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
@@ -279,7 +278,6 @@ function VenuesEditor() {
   // prompt embarque le périmètre DÉJÀ saisi (équipes/gymnases/coachs), d'où les deux lectures voisines.
   const [parcOpen, setParcOpen] = useState(false);
   const { data: parcTeams = [] } = useWizardTeams();
-  const { data: parcCoaches = [] } = useWizardCoaches();
   const parcSeasonId = useWorkingSeason()?.id;
 
   const [name, setName] = useState("");
@@ -993,7 +991,7 @@ function VenuesEditor() {
           seasonId={parcSeasonId}
           teams={parcTeams.map((t) => ({ id: t.id, name: t.name }))}
           venues={venues.map((v) => ({ id: v.id, name: v.name }))}
-          coaches={parcCoaches.map((c) => ({ id: c.id, name: coachFullName(c) }))}
+          club={{ name: me?.club?.name, city: me?.club?.city ?? undefined }}
           onClose={() => setParcOpen(false)}
         />
       ) : null}
