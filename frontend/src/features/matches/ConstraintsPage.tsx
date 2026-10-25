@@ -22,6 +22,7 @@ import { useMe } from "@/shared/session/queries";
 import type { ClubLeagueWindow, ClubLeagueWindowInput, Coach, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, PriorityTier, Team, Venue } from "./api";
 import { clockLabel, clubRuleLabel } from "./lib/clubRuleLabel";
 import { LeagueSuggestions } from "./LeagueSuggestions";
+import { MATCHES_TEXTS } from "./texts";
 import {
   useClubLeagueWindows,
   useCoaches,
@@ -768,7 +769,7 @@ function CoachsSection() {
       </p>
 
       {hasAdjointOnlyUnavailability ? (
-        <NoticeBanner tone="muted" role="status" message="un adjoint indisponible ne bloque jamais une séance" />
+        <NoticeBanner tone="muted" role="status" message={MATCHES_TEXTS.adjointNeverBlocksMatch} />
       ) : null}
 
       {0 === unavailabilities.length ? (

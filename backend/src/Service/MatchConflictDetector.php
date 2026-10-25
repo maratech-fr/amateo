@@ -298,6 +298,10 @@ final class MatchConflictDetector
      * @param array<string, DateTimeImmutable>                                                                       $deadlineByCompetition
      *                                                                                                                                      competitionId → échéance de saisie effective (club gagne, sinon défaut
      *                                                                                                                                      communautaire) ; gradue la cohérence de complétude (info vs alerte)
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}>         $coachUnavailabilities
+     *                                                                                                                                      chantier H volet matchs — indisponibilités DÉCLARÉES des coachs (scope COACH),
+     *                                                                                                                                      par jour ISO + fenêtre de coup d'envoi (bornes facultatives, intervalle FERMÉ).
+     *                                                                                                                                      Alimente la famille MATCH_COACH_UNAVAILABLE et le relief des familles personne.
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -320,6 +324,7 @@ final class MatchConflictDetector
         array $forbiddenVenuesByTeam = [],
         array $levelByTeam = [],
         array $deadlineByCompetition = [],
+        array $coachUnavailabilities = [],
     ): array {
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
@@ -447,8 +452,12 @@ final class MatchConflictDetector
             ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope),
             ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules),
             ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam),
-            ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson),
-            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule),
+            ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities),
+            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities),
+            // Chantier H volet matchs (amendement b) — coup d'envoi dans l'indispo DÉCLARÉE d'un
+            // coach principal → ROUGE (3), JAUNE (5) si l'indispo ne touche que la durée du match
+            // à domicile, ORANGE (4) si un adjoint/autre principal disponible peut couvrir.
+            ...$this->personConflicts->coachUnavailableConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities),
             ...$this->venueConflicts->venueUnavailableConflicts($activeFixtures, $unavailabilities),
             ...$this->venueConflicts->accessWindowLostConflicts($activeFixtures, $matchWindows),
             ...$this->competitionIncompleteItems($fixtures, $competitions, $deadlineByCompetition, $clubToday),

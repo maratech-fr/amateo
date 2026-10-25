@@ -254,7 +254,6 @@ final class SeasonTransitionService
             $copy->setEmail($coach->getEmail());
             $copy->setPhone($coach->getPhone());
             $copy->setMaxDaysOverride($coach->getMaxDaysOverride());
-            $copy->setAcceptableLateMinutes($coach->getAcceptableLateMinutes());
             $copy->setIsActive($coach->getIsActive());
             $copy->setIsEmployee($coach->isEmployee());
             // P4-311 — le genre (accord des libellés désignant la personne) et la case

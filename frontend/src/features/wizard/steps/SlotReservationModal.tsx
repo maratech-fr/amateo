@@ -1,6 +1,7 @@
 import { AlertTriangle, CalendarClock, Lock, Trash2, Undo2, Users } from "lucide-react";
 import { useId, useState } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -8,12 +9,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
+import { coachFullName } from "@/shared/lib/coachName";
 import { errorMessage } from "@/shared/lib/errorMessage";
+import { parseTime } from "@/shared/lib/time";
 
 import type { Closure } from "@/features/cockpit/api";
 
-import type { PriorityTier, Reservation, SharedTrainingBlock, Team, TeamCoach, TeamSoloBudget, Venue, VenueTrainingSlot } from "../api";
-import { conflictingReservation, mainCoachByTeam } from "../lib/coachDoubleBooking";
+import type { Coach, PriorityTier, Reservation, SharedTrainingBlock, Team, TeamCoach, TeamSoloBudget, Venue, VenueTrainingSlot, VenueTravelTime } from "../api";
+import { conflictingReservation, lateArrivalTolerated, mainCoachByTeam } from "../lib/coachDoubleBooking";
 import { dayLabel, hhmm } from "../lib/days";
 import { closureLabel } from "../lib/venueClosures";
 import { offerableGroups, postedGroupOnSlot } from "../lib/groupReservation";
@@ -33,6 +36,9 @@ interface Props {
   reservations: Reservation[];
   /** null = les liens ne sont pas connus (chargement ou échec) — surtout PAS un tableau vide. */
   teamCoaches: TeamCoach[] | null;
+  /** Chantier H — les coachs NOMMÉS (du club+saison) : le CTA de relais nomme l'adjoint éligible
+   *  qui ouvrira la séance (« {Prénom Nom} (adjoint) »), pas un « adjoint » générique. */
+  coaches?: Coach[];
   coachesPending: boolean;
   coachesFailed: boolean;
   onRetryCoaches: () => void;
@@ -54,6 +60,11 @@ interface Props {
   /** P2-51 — les BLOCS de mutualisation de la PORTÉE courante, posables comme une équipe à part
    *  entière : une entrée par bloc, qui réserve la case pour tous ses membres. */
   sharedTrainingBlocks?: SharedTrainingBlock[];
+  /** Chantier H — la matrice de trajet entre gymnases, servie au wizard : la modale calcule le
+   *  retard d'arrivée (fin de la séance quittée + barème − début de celle rejointe) pour PROPOSER
+   *  de le tolérer au lieu de refuser durement. Barème à vélo par défaut (le wizard n'a pas le
+   *  statut véhiculé du coach) ; le serveur reste l'autorité (récap). */
+  venueTravelTimes?: readonly Pick<VenueTravelTime, "venueAId" | "venueBId" | "drivingMinutes" | "walkingMinutes">[];
   /** P2-60 — le budget solo par équipe servi par le backend (résidu R(T), posées, appartenance à un
    *  bloc). `null` = pas connu (chargement ou échec) : la saisie est FERMÉE (fail-closed), jamais un
    *  repli sur `sessionsPerWeek`. Le sélecteur AFFICHE ce budget, il ne l'invente pas. */
@@ -90,6 +101,7 @@ export function SlotReservationModal({
   tiers,
   reservations,
   teamCoaches,
+  coaches = [],
   coachesPending,
   coachesFailed,
   onRetryCoaches,
@@ -101,6 +113,7 @@ export function SlotReservationModal({
   venueClosures = [],
   venueCanSplit,
   sharedTrainingBlocks = [],
+  venueTravelTimes = [],
   teamSoloBudgets,
   budgetsPending,
   budgetsFailed,
@@ -112,6 +125,7 @@ export function SlotReservationModal({
   const del = useDeleteReservation();
   const createGroup = useCreateGroupReservation();
   const blockedGroupsDescId = useId();
+  const relayInputId = useId();
 
   // Brouillon local : rien n'est écrit avant « Valider ».
   const [added, setAdded] = useState<string[]>([]);
@@ -123,11 +137,30 @@ export function SlotReservationModal({
   const [freeLabel, setFreeLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Chantier H — tolérance d'arrivée tardive par équipe ajoutée (0 = aucune), et l'offre de relais
+  // en attente (un dédoublement TOLÉRABLE que le gestionnaire peut accepter au lieu de subir le refus).
+  const [toleranceByTeam, setToleranceByTeam] = useState<Record<string, number>>({});
+  const [pendingRelay, setPendingRelay] = useState<{ teamId: string; lateMinutes: number; adjointName: string } | null>(null);
+  const [relayValue, setRelayValue] = useState(0);
 
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
   const venueName = new Map(venues.map((v) => [v.id, v.name]));
   const coachByTeam = mainCoachByTeam(teamCoaches ?? []);
+  // Chantier H — adjoints (ASSISTANT) par équipe : « a-t-on un adjoint qui peut ouvrir la séance
+  // rejointe en retard ? » (la disponibilité fine est vérifiée serveur). Barème de trajet à vélo.
+  const assistantsByTeam = new Map<string, string[]>();
+  for (const link of teamCoaches ?? []) {
+    if ("ASSISTANT" === link.role) {
+      assistantsByTeam.set(link.teamId, [...(assistantsByTeam.get(link.teamId) ?? []), link.coachId]);
+    }
+  }
+  const coachNameById = new Map(coaches.map((c) => [c.id, coachFullName(c)]));
+  const travelBareme = (venueA: string, venueB: string): number => {
+    const row = venueTravelTimes.find((t) => (t.venueAId === venueA && t.venueBId === venueB) || (t.venueAId === venueB && t.venueBId === venueA));
+    const walking = row?.walkingMinutes;
+    return null === walking || undefined === walking ? 20 : walking;
+  };
   // La règle ne peut pas s'appliquer sans les liens équipe→coach : une Map vide ne trouve
   // AUCUN conflit. Plutôt que d'autoriser en aveugle (fail-open), on ferme la saisie.
   const guardReady = null !== teamCoaches;
@@ -264,6 +297,16 @@ export function SlotReservationModal({
     const candidate = { teamId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes };
     const clash = conflictingReservation(candidate, draftReservations, coachByTeam);
     if (null !== clash) {
+      // Chantier H — le dédoublement est-il un RETARD TOLÉRABLE que l'adjoint peut couvrir ? On
+      // propose alors de le tolérer plutôt que de refuser durement.
+      const relay = relayOffer(candidate, clash);
+      if (null !== relay) {
+        setError(null);
+        setPendingRelay({ teamId, lateMinutes: relay.lateMinutes, adjointName: coachNameById.get(relay.adjointId) ?? "Un adjoint" });
+        setRelayValue(relay.lateMinutes);
+
+        return;
+      }
       // Le message nomme l'équipe, l'heure et le gymnase : sans ça le gestionnaire sait
       // qu'on refuse, pas ce qu'il doit changer.
       setError(
@@ -274,6 +317,35 @@ export function SlotReservationModal({
     }
     setError(null);
     setAdded((prev) => [...prev, teamId]);
+  };
+
+  /**
+   * Chantier H — ce dédoublement est-il un retard TOLÉRABLE ? Oui ssi la séance qu'on REJOINT (la
+   * plus tardive) est celle qu'on ajoute (le candidat), que le retard géométrique (fin de la séance
+   * quittée + barème de trajet − début de celle rejointe) tient dans le plafond 30, et que l'équipe
+   * rejointe a un adjoint (ASSISTANT ≠ le coach dédoublé). Rend le retard (minutes) ou null. La
+   * disponibilité FINE de l'adjoint reste vérifiée serveur (récap).
+   */
+  const relayOffer = (candidate: { teamId: string; venueId: string; startTime: string; durationMinutes: number }, clash: Reservation): { lateMinutes: number; adjointId: string } | null => {
+    const candidateStart = parseTime(candidate.startTime);
+    const clashStart = parseTime(clash.startTime);
+    if (null === candidateStart || null === clashStart || candidateStart <= clashStart) {
+      return null; // on ne tolère que la séance REJOINTE (la plus tardive) = le candidat
+    }
+    const bareme = travelBareme(clash.venueId, candidate.venueId);
+    const lateMinutes = Math.max(0, clashStart + clash.durationMinutes + bareme - candidateStart);
+    const tolerable = lateArrivalTolerated(
+      { teamId: clash.teamId ?? "", coachId: "", venueId: clash.venueId, dayOfWeek: clash.dayOfWeek, startMinutes: clashStart, durationMinutes: clash.durationMinutes },
+      { teamId: candidate.teamId, coachId: "", venueId: candidate.venueId, dayOfWeek: slot.dayOfWeek, startMinutes: candidateStart, durationMinutes: candidate.durationMinutes },
+      30,
+      bareme,
+    );
+    if (!tolerable) {
+      return null;
+    }
+    const doubledCoach = coachByTeam.get(candidate.teamId);
+    const adjointId = (assistantsByTeam.get(candidate.teamId) ?? []).find((id) => id !== doubledCoach);
+    return undefined === adjointId ? null : { lateMinutes, adjointId };
   };
 
   // Le sélecteur porte deux sémantiques d'écriture (ajouter UNE équipe, ou poser TOUT un bloc) :
@@ -306,7 +378,8 @@ export function SlotReservationModal({
         setRemoved((prev) => prev.filter((pending) => pending !== id));
       }
       for (const teamId of [...added]) {
-        await create.mutateAsync({ teamId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
+        // Chantier H — la tolérance d'arrivée tardive posée sur cet ajout voyage au backend (0 sinon).
+        await create.mutateAsync({ teamId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId, coachLateToleranceMinutes: toleranceByTeam[teamId] ?? 0 });
         setAdded((prev) => prev.filter((pending) => pending !== teamId));
       }
       // Lot 4bis — le créneau LIBRE en attente part SANS teamId (le backend garde le XOR et refuse
@@ -458,16 +531,38 @@ export function SlotReservationModal({
               </li>
             ))}
           {added.map((teamId) => (
-            <li key={`draft-${teamId}`} className="flex items-center gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
+            <li key={`draft-${teamId}`} className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
               <Lock className="size-3.5 text-accent" />
               <span className="flex-1 font-medium">{teamName.get(teamId) ?? "?"}</span>
-              <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toValidate}</span>
+              {/* Chantier H — la tolérance d'arrivée tardive posée sur cet ajout : pastille + retrait (= 0). */}
+              {(toleranceByTeam[teamId] ?? 0) > 0 ? (
+                <>
+                  <StatusPill variant="warning" icon={<CalendarClock className="size-3" aria-hidden="true" />}>
+                    {WIZARD_TEXTS.lateTolerancePill(toleranceByTeam[teamId] ?? 0)}
+                  </StatusPill>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setToleranceByTeam((prev) => ({ ...prev, [teamId]: 0 }))}
+                  >
+                    {WIZARD_TEXTS.removeLateTolerance}
+                  </Button>
+                </>
+              ) : (
+                <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toValidate}</span>
+              )}
               <button
                 type="button"
                 aria-label={`Annuler l'ajout de ${teamName.get(teamId) ?? "l'équipe"}`}
                 className="rounded p-1 text-muted-foreground hover:text-destructive"
                 onClick={() => {
                   setError(null);
+                  setToleranceByTeam((prev) => {
+                    const next = { ...prev };
+                    delete next[teamId];
+
+                    return next;
+                  });
                   setAdded((prev) => prev.filter((id) => id !== teamId));
                 }}
               >
@@ -692,6 +787,43 @@ export function SlotReservationModal({
               {WIZARD_TEXTS.placeFreeSlot}
             </Button>
           </div>
+        </div>
+      ) : null}
+
+      {/* Chantier H — l'OFFRE de relais : au lieu du refus dur, on propose de tolérer le retard, avec
+          le retard pré-rempli (modifiable 0..30) et un adjoint qui ouvrira la séance. */}
+      {null !== pendingRelay ? (
+        <div className="mt-3 flex flex-col gap-2">
+          <NoticeBanner tone="warning" role="status" message={WIZARD_TEXTS.lateRelayNotice(pendingRelay.lateMinutes, pendingRelay.adjointName)} />
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-foreground" htmlFor={relayInputId}>
+              {WIZARD_TEXTS.lateToleranceInputLabel}
+            </label>
+            <Input
+              id={relayInputId}
+              type="number"
+              min={0}
+              max={30}
+              className="w-20"
+              value={String(relayValue)}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10);
+                setRelayValue(Number.isNaN(parsed) ? 0 : Math.min(30, Math.max(0, parsed)));
+              }}
+              disabled={busy}
+            />
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              const teamId = pendingRelay.teamId;
+              setToleranceByTeam((prev) => ({ ...prev, [teamId]: relayValue }));
+              setAdded((prev) => [...prev, teamId]);
+              setPendingRelay(null);
+            }}
+          >
+            {WIZARD_TEXTS.tolerateLateArrivalCta(relayValue, pendingRelay.adjointName)}
+          </Button>
         </div>
       ) : null}
 

@@ -50,6 +50,7 @@ class ParsedConstraints(TypedDict):
     time_windows: list[dict[str, Any]]
     priority_tiers: dict[int, int]
     team_coach_map: dict[str, list[str]]
+    team_assistant_map: dict[str, list[str]]
     team_player_map: dict[str, list[str]]
     parse_warnings: list[dict[str, Any]]
 
@@ -429,14 +430,45 @@ def _locked_person_day_occupations(
         duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
         end = start + duration
         venue = str(_get(locked, "venue_id", "venueId", default="") or "") or None
+        # Chantier H — relais d'arrivée tardive : si CETTE séance verrouillée tolère un retard
+        # (``coach_late_tolerance_minutes`` > 0) ET qu'un adjoint DISPONIBLE peut l'ouvrir, le
+        # coach PRINCIPAL est autorisé à arriver jusqu'à ``tolerance`` minutes plus tard → son
+        # occupation verrouillée démarre d'autant plus tard ``[start + tolerance, end[``. Les
+        # joueurs/adjoints gardent l'occupation pleine. Tolérance 0 ou aucun adjoint éligible ⇒
+        # aucun décalage (chemin historique byte-identique, goldens intacts).
+        tolerance = int(_get(locked, "coach_late_tolerance_minutes", "coachLateToleranceMinutes", default=0) or 0)
+        coach_start = start
+        if tolerance > 0 and _late_arrival_relay_opens(model, team_id, day, start, tolerance):
+            coach_start = min(start + tolerance, end)
         roles: dict[str, str] = {}
         for coach_id in coach_map.get(team_id, ()):
             roles.setdefault(str(coach_id), "coach")
         for player_id in player_map.get(team_id, ()):
             roles[str(player_id)] = "player"  # jouer l'emporte sur coacher (D-14)
         for person, role in roles.items():
-            result[person][day].append((start, end, venue, role, team_id))
+            occ_start = coach_start if role == "coach" else start
+            result[person][day].append((occ_start, end, venue, role, team_id))
     return result
+
+
+def _late_arrival_relay_opens(model: Any, team_id: str, day: int, start: int, tolerance: int) -> bool:
+    """Chantier H — un ADJOINT DISPONIBLE peut-il ouvrir cette séance verrouillée tolérante, le
+    temps que le coach principal arrive (au plus ``tolerance`` min de retard) ?
+
+    Éligibilité STATIQUE (option dégradée assumée, cf. plan) : l'équipe a au moins un coach ADJOINT
+    (role ASSISTANT, ``model.team_assistant_map``) qui n'a AUCUNE indisponibilité déclarée couvrant
+    le début de la séance (``model.coach_unavailability``, même algèbre que ``availability``). La
+    disponibilité FINE (pas de séance MAIN chevauchante dans un autre gymnase) est vérifiée côté
+    backend (récap/radar) ; ici on ne modélise pas l'adjoint en occupant CP-SAT (il n'est pas une
+    ressource exclusive) — on autorise seulement le principal à décaler son arrivée."""
+    assistant_map = getattr(model, "team_assistant_map", None) or {}
+    blocked: Mapping[str, Any] = getattr(model, "coach_unavailability", None) or {}
+    blocked = blocked if isinstance(blocked, Mapping) else {}
+    for adjoint_id in assistant_map.get(team_id, ()):
+        intervals = blocked.get(str(adjoint_id)) or ()
+        if not any(iv_day == day and iv_from <= start < iv_to for iv_day, iv_from, iv_to in intervals):
+            return True
+    return False
 
 
 def _locked_team_days(model: Any) -> dict[str, dict[int, int]]:

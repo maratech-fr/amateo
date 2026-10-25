@@ -28,6 +28,7 @@ import { type Slot } from "./api";
 import { PLANNING_TEXTS } from "./texts";
 import { CompromiseList } from "./CompromiseList";
 import { PlacedConflictsNotice } from "./PlacedConflictsNotice";
+import { PlacedRelaysNotice } from "./PlacedRelaysNotice";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { DriftBanner } from "./DriftBanner";
 import { EvictConfirmDialog, type EvictDialogPhase } from "./EvictConfirmDialog";
@@ -816,6 +817,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           toujours la version pointée du plan SEASON) : on ne le montre que quand on REGARDE cette
           version en vigueur (`isReadOnly`), page autonome (ni embarquée, ni en portée période). */}
       {!embedded && !scoped && isReadOnly ? <PlacedConflictsNotice conflicts={placedConflicts?.conflicts ?? []} className="mb-4" /> : null}
+      {!embedded && !scoped && isReadOnly ? <PlacedRelaysNotice relays={placedConflicts?.relays ?? []} className="mb-4" /> : null}
 
 
       {scoped && (null === scopeVersions || 0 === scopeVersions.length) ? (

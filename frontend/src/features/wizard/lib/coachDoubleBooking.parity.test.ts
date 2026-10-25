@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type Booking, bookingsCollide } from "./coachDoubleBooking";
+import { type Booking, bookingsCollide, lateArrivalTolerated, teamsShareMainCoach } from "./coachDoubleBooking";
 import cases from "./coachDoubleBooking.parity.json";
 
 /**
@@ -15,6 +15,37 @@ describe("bookingsCollide — parité mécanique avec CoachDoubleBookingDetector
       expect(bookingsCollide(c.a as Booking, c.b as Booking)).toBe(c.collide);
       // Symétrique : l'ordre des deux séances ne change jamais le verdict.
       expect(bookingsCollide(c.b as Booking, c.a as Booking)).toBe(c.collide);
+    });
+  }
+});
+
+/**
+ * Chantier H — CÔTÉ FRONT de la parité de la TOLÉRANCE d'arrivée tardive.
+ * `lateArrivalTolerated(a, b, toleranceMinutes, baremeMinutes)` doit coïncider avec
+ * `CoachDoubleBookingDetector::lateArrivalTolerated` (PHP) sur `toleranceCases` :
+ * retard = max(0, fin(a) + barème − début(b)), toléré ssi 1 <= tolérance <= 30, début(b)
+ * STRICTEMENT après début(a), et retard <= tolérance (plafond 30). La disponibilité de
+ * l'adjoint reste HORS de cette règle pure (vérifiée serveur).
+ */
+describe("lateArrivalTolerated — parité mécanique de la tolérance (PHP)", () => {
+  for (const c of cases.toleranceCases) {
+    it(c.name, () => {
+      expect(lateArrivalTolerated(c.a as Booking, c.b as Booking, c.toleranceMinutes, c.baremeMinutes)).toBe(c.tolerated);
+    });
+  }
+});
+
+/**
+ * Chantier H / P4-333 — CÔTÉ FRONT de la parité du partage de coach principal.
+ * `teamsShareMainCoach(coachIdsA, coachIdsB)` doit coïncider avec
+ * `CoachDoubleBookingDetector::teamsShareMainCoach` sur `multiCoachCases` (exemple
+ * roadmap Camille/Dorian : deux équipes se dédoublent dès qu'elles partagent un principal).
+ */
+describe("teamsShareMainCoach — parité mécanique multi-coach P4-333 (PHP)", () => {
+  for (const c of cases.multiCoachCases) {
+    it(c.name, () => {
+      expect(teamsShareMainCoach(c.coachIdsA, c.coachIdsB)).toBe(c.shares);
+      expect(teamsShareMainCoach(c.coachIdsB, c.coachIdsA)).toBe(c.shares);
     });
   }
 });

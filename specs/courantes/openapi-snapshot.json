@@ -18624,6 +18624,125 @@
                         "explode": false
                     }
                 ]
+            },
+            "patch": {
+                "operationId": "api_reservations_id_patch",
+                "tags": [
+                    "Reservation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reservation resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Reservation.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Reservation"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Reservation.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Updates the Reservation resource.",
+                "description": "Updates the Reservation resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Reservation identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated Reservation resource",
+                    "content": {
+                        "application/merge-patch+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Reservation.ReservationToleranceInput.jsonMergePatch"
+                            }
+                        }
+                    },
+                    "required": true
+                }
             }
         },
         "/api/schedules": {
@@ -27866,12 +27985,6 @@
                             "null"
                         ]
                     },
-                    "acceptableLateMinutes": {
-                        "type": [
-                            "integer",
-                            "null"
-                        ]
-                    },
                     "isActive": {
                         "default": false,
                         "type": "boolean"
@@ -27940,12 +28053,6 @@
                         "minimum": 0,
                         "maximum": 6,
                         "description": "Plafond de jours/semaine (1..6). \u26a0 `0` signifie \u00ab RETIRER le plafond \u00bb :\nle PUT est partiel (null = inchang\u00e9), donc null ne peut pas porter le retrait \u2014\nun champ vid\u00e9 \u00e0 l'\u00e9cran doit pouvoir revenir \u00e0 \u00ab pas de plafond \u00bb.",
-                        "type": [
-                            "integer",
-                            "null"
-                        ]
-                    },
-                    "acceptableLateMinutes": {
                         "type": [
                             "integer",
                             "null"
@@ -28035,12 +28142,6 @@
                             "null"
                         ]
                     },
-                    "acceptableLateMinutes": {
-                        "type": [
-                            "integer",
-                            "null"
-                        ]
-                    },
                     "isActive": {
                         "default": false,
                         "type": "boolean"
@@ -28112,12 +28213,6 @@
                                 ]
                             },
                             "maxDaysOverride": {
-                                "type": [
-                                    "integer",
-                                    "null"
-                                ]
-                            },
-                            "acceptableLateMinutes": {
                                 "type": [
                                     "integer",
                                     "null"
@@ -31847,6 +31942,11 @@
                     "durationMinutes": {
                         "default": 90,
                         "type": "integer"
+                    },
+                    "coachLateToleranceMinutes": {
+                        "description": "Chantier H \u2014 tol\u00e9rance d'arriv\u00e9e tardive du coach principal sur cette s\u00e9ance (0..30, 0 = aucune).",
+                        "default": 0,
+                        "type": "integer"
                     }
                 }
             },
@@ -31904,6 +32004,15 @@
                             "null"
                         ]
                     },
+                    "coachLateToleranceMinutes": {
+                        "minimum": 0,
+                        "maximum": 30,
+                        "description": "Chantier H \u2014 tol\u00e9rance d'arriv\u00e9e tardive du coach principal sur cette s\u00e9ance (minutes, 0..30,\n0 = aucune). Accept\u00e9e d\u00e8s le POST ; aussi r\u00e9glable apr\u00e8s coup par le PATCH d\u00e9di\u00e9. Un cr\u00e9neau\nLIBRE ne la porte pas (tranch\u00e9 dans le processor). Plafond m\u00e9tier 30 (fondateur).",
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
                     "schedulePlanId": {
                         "format": "uuid",
                         "description": "NULL = base plan; set = a period overlay.",
@@ -31921,6 +32030,19 @@
                     "dayOfWeek",
                     "startTime"
                 ]
+            },
+            "Reservation.ReservationToleranceInput.jsonMergePatch": {
+                "type": "object",
+                "properties": {
+                    "coachLateToleranceMinutes": {
+                        "minimum": 0,
+                        "maximum": 30,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    }
+                }
             },
             "Reservation.html": {
                 "type": "object",
@@ -31974,6 +32096,11 @@
                     },
                     "durationMinutes": {
                         "default": 90,
+                        "type": "integer"
+                    },
+                    "coachLateToleranceMinutes": {
+                        "description": "Chantier H \u2014 tol\u00e9rance d'arriv\u00e9e tardive du coach principal sur cette s\u00e9ance (0..30, 0 = aucune).",
+                        "default": 0,
                         "type": "integer"
                     }
                 }
@@ -32035,6 +32162,11 @@
                             },
                             "durationMinutes": {
                                 "default": 90,
+                                "type": "integer"
+                            },
+                            "coachLateToleranceMinutes": {
+                                "description": "Chantier H \u2014 tol\u00e9rance d'arriv\u00e9e tardive du coach principal sur cette s\u00e9ance (0..30, 0 = aucune).",
+                                "default": 0,
                                 "type": "integer"
                             }
                         }

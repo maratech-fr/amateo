@@ -38,9 +38,6 @@ class CoachInput
     public ?int $maxDaysOverride = null;
 
     #[Groups(['write'])]
-    public ?int $acceptableLateMinutes = null;
-
-    #[Groups(['write'])]
     public ?bool $isActive = null;
 
     #[Groups(['write'])]

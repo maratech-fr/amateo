@@ -356,6 +356,71 @@ final class ReservationApiTest extends WebTestCase
         self::assertStringContainsString('plein', (string) $this->client->getResponse()->getContent());
     }
 
+    // ── Chantier H : tolérance d'arrivée tardive, posée par un PATCH limité à CE champ ──
+
+    public function testPatchSetsCoachLateToleranceWithinBounds(): void
+    {
+        // Le gestionnaire tolère un retard sur CETTE séance : PATCH limité au seul champ, 0..30.
+        $reservation = $this->makeTeamReservation();
+        self::assertSame(200, $this->patchTolerance($reservation->getId(), ['coachLateToleranceMinutes' => 30]));
+
+        $this->em->clear();
+        $fresh = $this->em->getRepository(Reservation::class)->find($reservation->getId());
+        self::assertInstanceOf(Reservation::class, $fresh);
+        self::assertSame(30, $fresh->getCoachLateToleranceMinutes(), 'la tolérance posée doit être persistée');
+
+        // Retrait : 0 (défaut) est un cran valide.
+        self::assertSame(200, $this->patchTolerance($reservation->getId(), ['coachLateToleranceMinutes' => 0]));
+    }
+
+    public function testPatchRejectsAToleranceOutsideZeroThirty(): void
+    {
+        // Plafond métier 30 (fondateur) : 31, 1000 et −1 sont refusés 422.
+        $reservation = $this->makeTeamReservation();
+        self::assertSame(422, $this->patchTolerance($reservation->getId(), ['coachLateToleranceMinutes' => 31]));
+        self::assertSame(422, $this->patchTolerance($reservation->getId(), ['coachLateToleranceMinutes' => 1000]));
+        self::assertSame(422, $this->patchTolerance($reservation->getId(), ['coachLateToleranceMinutes' => -1]));
+    }
+
+    public function testPatchToleranceOnAFreeSlotIsRejected(): void
+    {
+        // Un créneau LIBRE (teamId null) n'a pas de coach à faire arriver en retard : 422.
+        $free = (new Reservation)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId(null)->setLabel('Loto du club')
+            ->setVenueId(self::VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(90);
+        $this->em->persist($free);
+        $this->em->flush();
+
+        self::assertSame(422, $this->patchTolerance($free->getId(), ['coachLateToleranceMinutes' => 15]));
+    }
+
+    public function testPatchToleranceOnAnotherClubsReservationIs404(): void
+    {
+        // Isolation tenant : la réservation d'un AUTRE club est invisible → 404 (byte-identique à
+        // « inexistante »), jamais 403 qui révélerait son existence.
+        $otherId = $this->otherClubReservationId();
+        self::assertSame(404, $this->patchTolerance($otherId, ['coachLateToleranceMinutes' => 15]));
+    }
+
+    public function testPatchIsLimitedToTheToleranceFieldAndNeverMovesTheReservation(): void
+    {
+        // Le PATCH ne touche QUE la tolérance : une tentative de changer l'équipe ou le gymnase par
+        // le même PATCH ne déplace jamais la réservation (champ non mutable par ce rail).
+        $reservation = $this->makeTeamReservation();
+        $this->patchTolerance($reservation->getId(), [
+            'coachLateToleranceMinutes' => 15,
+            'teamId' => '99999999-9999-4999-8999-999999999999',
+            'venueId' => '88888888-8888-4888-8888-888888888888',
+        ]);
+
+        $this->em->clear();
+        $fresh = $this->em->getRepository(Reservation::class)->find($reservation->getId());
+        self::assertInstanceOf(Reservation::class, $fresh);
+        self::assertSame('11111111-1111-4111-8111-111111111111', $fresh->getTeamId(), 'le PATCH ne déplace jamais l\'équipe');
+        self::assertSame(self::VENUE, $fresh->getVenueId(), 'le PATCH ne déplace jamais le gymnase');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -400,6 +465,57 @@ final class ReservationApiTest extends WebTestCase
         $this->em->flush();
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
+    }
+
+    private function makeTeamReservation(): Reservation
+    {
+        $reservation = (new Reservation)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId('11111111-1111-4111-8111-111111111111')
+            ->setVenueId(self::VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(90);
+        $this->em->persist($reservation);
+        $this->em->flush();
+
+        return $reservation;
+    }
+
+    /** Crée une réservation sous un AUTRE club (GUC basculé puis restauré) et rend son id. */
+    private function otherClubReservationId(): string
+    {
+        $uid = uniqid('other', true);
+        $other = (new Club)->setName('Autre ' . $uid)->setSlug('autre-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        // Toutes les écritures de l'autre club se font SOUS SA portée tenant (sinon la RLS refuse).
+        $this->scopeGucToClub($other->getId());
+        $this->em->persist($other);
+        $season = new Season;
+        $season->setClubId($other->getId())->setName('2025-2026');
+        $season->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($season);
+        $reservation = (new Reservation)
+            ->setClubId($other->getId())->setSeasonId($season->getId())
+            ->setTeamId('11111111-1111-4111-8111-111111111111')
+            ->setVenueId(self::VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(90);
+        $this->em->persist($reservation);
+        $this->em->flush();
+        // Restaure la portée tenant du test (le client rejoue le JWT de ce club).
+        $this->scopeGucToClub($this->club->getId());
+
+        return $reservation->getId();
+    }
+
+    /**
+     * PATCH `application/merge-patch+json` de la tolérance ; rend le code HTTP.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function patchTolerance(string $id, array $body, ?string $token = null): int
+    {
+        $this->client->request('PATCH', '/api/reservations/' . $id, [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token),
+            'CONTENT_TYPE' => 'application/merge-patch+json',
+        ], json_encode($body, \JSON_THROW_ON_ERROR));
+
+        return $this->client->getResponse()->getStatusCode();
     }
 
     /**

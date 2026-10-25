@@ -66,6 +66,27 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Et le gestionnaire tente « Joue, ne coache pas » sur ce conflit de personne
     Alors le statut lui est refusé faute de joueur
 
+  Scénario: Le coach principal indisponible au coup d'envoi est signalé en rouge (chantier H)
+    Le radar lit l'indisponibilité DÉCLARÉE du coach principal : un match à domicile dont le coup
+    d'envoi tombe dans cette fenêtre d'indisponibilité est signalé « coach principal indisponible »,
+    en rouge — jamais bloquant pour le placement, mais dit au gestionnaire.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et une indisponibilité déclarée du coach principal couvre le coup d'envoi d'un match à domicile ce samedi
+    Quand je demande les conflits des matchs
+    Alors le radar signale le coach principal indisponible, en rouge
+
+  Scénario: Un adjoint disponible adoucit le conflit de coach en orange (chantier H)
+    Le même coup d'envoi dans l'indisponibilité du principal, mais l'équipe a un adjoint DISPONIBLE :
+    factuellement quelqu'un peut couvrir, le radar adoucit l'alerte en orange — on alerte toujours,
+    on ne bloque jamais.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et une indisponibilité déclarée du coach principal couvre le coup d'envoi d'un match à domicile ce samedi
+    Et cette équipe a un adjoint disponible ce samedi
+    Quand je demande les conflits des matchs
+    Alors le radar signale le coach principal indisponible, en orange
+
   Scénario: Une rencontre de coupe hors fenêtre de ligue est un vrai match, jamais un amical (P4-194)
     Une coupe PORTE une compétition (elle n'est jamais un amical à competitionId null) : le radar la
     soumet à l'enveloppe de ligue comme un championnat — hors de la fenêtre autorisée elle crie une

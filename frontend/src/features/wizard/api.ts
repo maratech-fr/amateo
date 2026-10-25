@@ -414,6 +414,8 @@ export interface ReservationPayload {
   startTime: string;
   durationMinutes: number;
   schedulePlanId?: string | null;
+  /** Chantier H — tolérance d'arrivée tardive du coach principal sur cette séance (0..30, 0 = aucune). */
+  coachLateToleranceMinutes?: number;
 }
 
 export const listReservations = (params?: Record<string, string>): Promise<Reservation[]> => collectionAll<Reservation>("reservations", params);

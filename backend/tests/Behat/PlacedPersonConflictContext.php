@@ -55,6 +55,13 @@ final class PlacedPersonConflictContext extends BaseContext
     /** @var list<string> ids des séances insérées à nettoyer */
     private array $slotIds = [];
 
+    private string $adjointId = '';
+
+    private string $adjointLinkId = '';
+
+    /** @var list<string> ids des lignes de trajet insérées à nettoyer */
+    private array $travelRowIds = [];
+
     #[Given('le club de démonstration, connecté, avec son planning de saison en vigueur')]
     public function leClubAvecSonPlanningEnVigueur(): void
     {
@@ -130,6 +137,36 @@ final class PlacedPersonConflictContext extends BaseContext
         }
     }
 
+    // ── Chantier H : un retard toléré ouvert par un adjoint est un RELAIS, hors du compte de conflits ──
+
+    #[When('je place deux séances qui se chevauchent dans deux gymnases, dont la seconde tolère le retard et a un adjoint disponible')]
+    public function deuxSeancesAvecRelais(): void
+    {
+        // Un adjoint DISPONIBLE de l'équipe rejointe (autre qu'Anna) qui ouvre la séance.
+        $this->adjointId = $this->createdId($this->apiPost('coaches', ['firstName' => 'Jules', 'lastName' => 'Jetable'], $this->token), 'adjoint');
+        $this->adjointLinkId = $this->createdId($this->apiPost('team_coaches', ['teamId' => $this->teamBId, 'coachId' => $this->adjointId, 'role' => 'ASSISTANT'], $this->token), 'lien adjoint');
+        // Barème de trajet gym1↔gym2 = 15 min à pied : Anna finit à 20:15 au gym1, arrive 20:30 au
+        // gym2 (séance 20:00) → retard 30, toléré.
+        $this->travelRow($this->venue1Id, $this->venue2Id, 15);
+        $this->placeSlotAt($this->teamAId, $this->venue1Id, '19:00', 75, 0);
+        $this->placeSlotAt($this->teamBId, $this->venue2Id, '20:00', 90, 30);
+    }
+
+    #[Then('le radar ne compte aucun conflit pour cette personne, mais inscrit un relais')]
+    public function leRadarInscritUnRelais(): void
+    {
+        $seen = $this->apiGet('training/placed-conflicts', $this->token);
+        if (200 !== $seen['status']) {
+            throw new RuntimeException(\sprintf('le radar a répondu HTTP %d', $seen['status']));
+        }
+        if ($this->listsCoach($seen['json']['conflicts'] ?? [])) {
+            throw new RuntimeException('un retard toléré + adjoint dispo ne doit PLUS compter comme un conflit');
+        }
+        if (!$this->listsCoach($seen['json']['relays'] ?? [])) {
+            throw new RuntimeException('le radar aurait dû inscrire un RELAIS pour cette personne (hors du compte de conflits)');
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -140,6 +177,15 @@ final class PlacedPersonConflictContext extends BaseContext
         // Les séances insérées d'abord (elles référencent équipes et gymnases).
         foreach ($this->slotIds as $slotId) {
             $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE id=\'%s\'', $slotId), admin: true);
+        }
+        foreach ($this->travelRowIds as $travelId) {
+            $this->dbalExec(\sprintf('DELETE FROM venue_travel_time WHERE id=\'%s\'', $travelId), admin: true);
+        }
+        if ('' !== $this->adjointLinkId) {
+            $this->apiDelete(\sprintf('team_coaches/%s', $this->adjointLinkId), $this->token);
+        }
+        if ('' !== $this->adjointId) {
+            $this->apiDelete(\sprintf('coaches/%s', $this->adjointId), $this->token);
         }
         foreach ([$this->linkAId, $this->linkBId] as $linkId) {
             if ('' !== $linkId) {
@@ -161,7 +207,7 @@ final class PlacedPersonConflictContext extends BaseContext
         }
     }
 
-    /** Le radar courant liste-t-il notre coach jetable ? */
+    /** Le radar courant liste-t-il notre coach jetable dans ses CONFLITS ? */
     private function radarListsCoach(): bool
     {
         $seen = $this->apiGet('training/placed-conflicts', $this->token);
@@ -172,13 +218,64 @@ final class PlacedPersonConflictContext extends BaseContext
         if (!\is_array($conflicts)) {
             throw new RuntimeException('la réponse du radar ne porte pas de liste « conflicts »');
         }
-        foreach ($conflicts as $conflict) {
-            if (\is_array($conflict) && ($conflict['personId'] ?? null) === $this->coachId) {
+
+        return $this->listsCoach($conflicts);
+    }
+
+    /** Une liste du radar (conflicts OU relays) mentionne-t-elle notre coach jetable ? */
+    private function listsCoach(mixed $list): bool
+    {
+        foreach (\is_array($list) ? $list : [] as $entry) {
+            if (\is_array($entry) && ($entry['personId'] ?? null) === $this->coachId) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /** Pose une séance PLACÉE à l'heure/durée voulues, porteuse d'une tolérance d'arrivée tardive. */
+    private function placeSlotAt(string $teamId, string $venueId, string $start, int $duration, int $tolerance): void
+    {
+        $id = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO schedule_slot_template (id, version, created_at, updated_at, club_id, season_id, schedule_id, team_id, venue_id, day_of_week, start_time, duration_minutes, lock_level, coach_late_tolerance_minutes)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', 2, \'%s:00\', %d, \'NONE\', %d)',
+                $id,
+                $this->clubId,
+                $this->seasonId,
+                $this->scheduleId,
+                $teamId,
+                $venueId,
+                $start,
+                $duration,
+                $tolerance,
+            ),
+            admin: true,
+        );
+        $this->slotIds[] = $id;
+    }
+
+    /** Un barème de trajet à pied entre deux gymnases (couple trié venue_a_id < venue_b_id). */
+    private function travelRow(string $venueIdA, string $venueIdB, int $walking): void
+    {
+        [$a, $b] = $venueIdA < $venueIdB ? [$venueIdA, $venueIdB] : [$venueIdB, $venueIdA];
+        $id = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO venue_travel_time (id, version, created_at, updated_at, club_id, season_id, venue_a_id, venue_b_id, walking_minutes)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', %d)',
+                $id,
+                $this->clubId,
+                $this->seasonId,
+                $a,
+                $b,
+                $walking,
+            ),
+            admin: true,
+        );
+        $this->travelRowIds[] = $id;
     }
 
     /**

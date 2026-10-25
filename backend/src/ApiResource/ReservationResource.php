@@ -8,8 +8,10 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
 use App\Dto\ReservationInput;
+use App\Dto\ReservationToleranceInput;
 use App\Entity\Reservation;
 use App\State\Processor\ReservationStateProcessor;
 use App\State\Provider\ReservationStateProvider;
@@ -20,6 +22,8 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new GetCollection,
     new Get,
     new Post,
+    // Chantier H — PATCH merge-patch limité à la tolérance d'arrivée tardive (input dédié, 0..30).
+    new Patch(inputFormats: ['json' => ['application/merge-patch+json']], input: ReservationToleranceInput::class),
     new Delete,
 ], input: ReservationInput::class, paginationEnabled: true, paginationItemsPerPage: 100, provider: ReservationStateProvider::class, processor: ReservationStateProcessor::class)]
 class ReservationResource
@@ -58,6 +62,10 @@ class ReservationResource
     #[Groups(['read'])]
     public int $durationMinutes = 90;
 
+    /** Chantier H — tolérance d'arrivée tardive du coach principal sur cette séance (0..30, 0 = aucune). */
+    #[Groups(['read'])]
+    public int $coachLateToleranceMinutes = 0;
+
     public static function fromEntity(Reservation $entity): self
     {
         $dto = new self;
@@ -72,6 +80,7 @@ class ReservationResource
         $dto->dayOfWeek = $entity->getDayOfWeek();
         $dto->startTime = $entity->getStartTime();
         $dto->durationMinutes = $entity->getDurationMinutes();
+        $dto->coachLateToleranceMinutes = $entity->getCoachLateToleranceMinutes();
 
         return $dto;
     }

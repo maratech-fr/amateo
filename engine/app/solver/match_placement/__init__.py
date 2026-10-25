@@ -375,9 +375,13 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         ]
         # P4-272 ⑤ — coach unavailabilities of THIS team's coaches covering this ISO day.
         match_day = _iso_day(match.match_date)
+        # Chantier H volet matchs (amendement c) — le POIDS de l'indisponibilité dépend du RÔLE du
+        # coach sur l'équipe : un principal (MAIN) pèse W_COACH_UNAVAILABLE (60), un adjoint
+        # (ASSISTANT) seulement W_COACH_ASSISTANT (10) — un adjoint indisponible ne doit pas chasser
+        # le match comme le ferait le principal. On retient donc `(role, unav)`.
         team_coach_unavailabilities = (
             [
-                unav
+                (ref.role, unav)
                 for ref in team.coaches
                 for unav in coach_unavailabilities.get(ref.coach_id, [])
                 if match_day in unav.days_of_week
@@ -447,9 +451,9 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             # P4-272 ⑤ — a coach of this team is unavailable at this candidate's kickoff
             # (a declared window on this ISO day) → W_COACH_UNAVAILABLE. SOFT: it steers
             # the match out of the window when an alternative exists, never blocks it.
-            for unav in team_coach_unavailabilities:
+            for role, unav in team_coach_unavailabilities:
                 if _kick_in_unavailability(cand.kickoff_min, unav):
-                    weight -= W_COACH_UNAVAILABLE
+                    weight -= W_COACH_UNAVAILABLE if role == "MAIN" else W_COACH_ASSISTANT
             if weight:
                 objective.append(weight * cand.var)
 

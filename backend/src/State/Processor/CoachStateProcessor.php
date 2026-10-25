@@ -49,9 +49,6 @@ class CoachStateProcessor extends AbstractStateProcessor
             // laisserait le plafond en base pour toujours.
             $entity->setMaxDaysOverride(0 === $input->maxDaysOverride ? null : $input->maxDaysOverride);
         }
-        if (null !== $input->acceptableLateMinutes) {
-            $entity->setAcceptableLateMinutes($input->acceptableLateMinutes);
-        }
         if (null !== $input->isActive) {
             $entity->setIsActive($input->isActive);
         }
@@ -94,9 +91,6 @@ class CoachStateProcessor extends AbstractStateProcessor
             // null ne peut pas porter le retrait : sans ce cas, un champ vidé à l'écran
             // laisserait le plafond en base pour toujours.
             $entity->setMaxDaysOverride(0 === $input->maxDaysOverride ? null : $input->maxDaysOverride);
-        }
-        if (null !== $input->acceptableLateMinutes) {
-            $entity->setAcceptableLateMinutes($input->acceptableLateMinutes);
         }
         if (null !== $input->isActive) {
             $entity->setIsActive($input->isActive);

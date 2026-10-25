@@ -49,12 +49,29 @@ coach MAIN, coach ASSISTANT, joueur (`CoachPlayerMembership` actif) — et réut
 réécrire, `CoachDoubleBookingDetector::bookingsCollide` (intervalles réels, gymnases
 **DIFFÉRENTS** uniquement — le même gymnase reste la mutualisation voulue, jamais un conflit).
 Périmètre V1 (fondateur 2026-09-28) : la version pointée du plan **SEASON** seulement (les plans
-de période en sont hors scope) ; indisponibilités déclarées et trajets entre gymnases hors V1.
+de période en sont hors scope).
+
+**Relais de l'adjoint (chantier H)** : une paire dédoublante où la personne est un **coach de
+séance** de l'équipe REJOINTE (la plus tardive — un joueur n'est jamais « ouvert » par un adjoint)
+n'est plus un conflit mais un **relais TOLÉRÉ** quand la séance rejointe porte une tolérance
+d'arrivée tardive (`ScheduleSlotTemplate.coachLateToleranceMinutes`, 0..30) couvrant le retard
+géométrique — fin de la 1ʳᵉ séance + barème de trajet (`VenueTravelTime`, selon véhiculé ou non) −
+début de la 2ᵉ — **et** qu'un adjoint de l'équipe rejointe est DISPONIBLE pour ouvrir la séance
+(aucune indisponibilité déclarée ni séance MAIN dans un AUTRE gymnase sur la fenêtre de retard ;
+même gymnase = mutualisation, jamais un obstacle). Indisponibilités déclarées et trajets entre
+gymnases entrent donc désormais dans le calcul, mais **seulement** pour qualifier un relais —
+jamais pour la règle de collision elle-même (`bookingsCollide`, inchangée). `App\Service\
+PlacedSessionPersonConflictDetector::detect` rend les relais à part (`relays`, détail §ci-dessous),
+jamais mélangés aux conflits.
 
 `GET /api/training/placed-conflicts` (club-scopé, réservé gestionnaire — SEC-07,
-`ManagementAccessGuard::assertManager()` tiré en premier) rend `{seasonPlanChosen, conflicts}` :
-`seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en vigueur à
-scanner » — `conflicts: []` n'y signifie alors **pas** « tout va bien ».
+`ManagementAccessGuard::assertManager()` tiré en premier) rend `{seasonPlanChosen, conflicts,
+relays}` : `seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en
+vigueur à scanner » — `conflicts: []` n'y signifie alors **pas** « tout va bien ». Un relais toléré
+sort de `conflicts` et entre dans `relays` (`{personId, personName, dayOfWeek, lateMinutes,
+adjointName, first, second}`) — **jamais compté parmi les conflits**, affiché à part
+(`PlacedRelaysNotice`, `planning/PlacedRelaysNotice.tsx`, ton `warning`, un encart par relais à côté
+du bandeau de conflits, jamais fusionné avec lui).
 
 Trois rendus de la même primitive de présentation (`PlacedConflictsNotice`,
 `planning/PlacedConflictsNotice.tsx`), consommée par `usePlacedConflicts()`

@@ -227,7 +227,7 @@ pour que l'import `.xlsx` FFBB et l'import de parc par IA le réutilisent sans l
 ### NR gatant — `CrossStack/ParcImportReservationSemanticsGateTest`
 
 Axes *constraint semantics* + *generation pipeline* (`CLAUDE.md` §7.1) : une réservation saisie par
-l'import de parc est **honorée** par le vrai moteur `/generate` (contrat 1.5), de bout en bout
+l'import de parc est **honorée** par le vrai moteur `/generate` (contrat 1.6), de bout en bout
 (texte `parc-v1` → `ParcImportExecutor` → `ScheduleConstraintBuilder` → moteur réel). Scénario
 falsifiable dans les deux sens — un gymnase a deux cases (lundi 18:00 réservée par l'import,
 mercredi 18:00 libre), l'équipe préfère (souple) le mercredi : avant l'import, le solve retombe sur

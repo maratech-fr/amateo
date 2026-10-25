@@ -82,4 +82,7 @@ export const COCKPIT_TEXTS = {
   blockAlreadyAdapted: (title: string, versions: string) => `« ${title} » a déjà été adaptée d'un bloc — ${versions}. Continuez sur ce planning, ou repartez de zéro en le découpant en semaines.`,
   splitPeriodConfirmDescription: (versions: string, count: number, title: string) =>
     `Cela supprime ${versions} déjà générée${count > 1 ? "s" : ""} d'un bloc pour « ${title} », puis permet de la découper. Les réglages de cette période repartiront de la saison. Action définitive.`,
+  // Chantier H — relais d'adjoint du planning en vigueur, résumé DISTINCT des conflits « à deux
+  // endroits » (un relais est toléré, pas un conflit).
+  relayPill: (count: number) => `${count} relais d'adjoint`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

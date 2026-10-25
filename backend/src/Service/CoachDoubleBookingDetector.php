@@ -10,6 +10,7 @@ use App\Entity\Reservation;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
+use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\TeamCoachRole;
 use Doctrine\ORM\EntityManagerInterface;
@@ -87,50 +88,219 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * @param list<Reservation> $reservations le périmètre EXACT qui partira au solveur
-     *                                        (socle : `schedulePlanId IS NULL` ; période :
-     *                                        son plan, gymnases désactivés déjà retirés)
+     * Chantier H — LA règle pure de TOLÉRANCE d'arrivée tardive, miroir MÉCANIQUE de
+     * `wizard/lib/coachDoubleBooking.ts::lateArrivalTolerated` (cas partagés
+     * `coachDoubleBooking.parity.json::toleranceCases`, gardé par `CoachDoubleBookingMirrorParityTest`).
+     * `$a` = la séance que le coach QUITTE, `$b` = celle qu'il rejoint EN RETARD ; `$baremeMinutes`
+     * = le trajet entre les deux gymnases. Le retard = `max(0, fin(a) + barème − début(b))` ; une
+     * paire géométriquement dédoublante (déjà prouvée par {@see bookingsCollide}) est TOLÉRÉE ssi la
+     * tolérance réglée est dans `[1, 30]` (plafond métier souverain, fondateur), le début de `b` est
+     * STRICTEMENT après celui de `a` (sinon le coach manquerait le début entier, pas une arrivée
+     * tardive), ET le retard ne dépasse pas la tolérance. La DISPONIBILITÉ de l'adjoint n'est PAS
+     * dans cette règle pure (vérifiée serveur) — seule la géométrie du retard l'est.
      *
-     * @return list<array{coachId: string, coachName: string, dayOfWeek: int, first: array{teamName: string, venueName: string, startTime: string}, second: array{teamName: string, venueName: string, startTime: string}}>
+     * @param array{startMinutes: int, durationMinutes: int} $a
+     * @param array{startMinutes: int, durationMinutes: int} $b
      */
-    public function detect(array $reservations, string $clubId, string $seasonId): array
+    public static function lateArrivalTolerated(array $a, array $b, int $toleranceMinutes, int $baremeMinutes): bool
     {
-        if (\count($reservations) < 2) {
-            return []; // il faut deux verrous pour se dédoubler
+        if ($toleranceMinutes < 1 || $toleranceMinutes > 30) {
+            return false;
         }
+        if ($b['startMinutes'] <= $a['startMinutes']) {
+            return false;
+        }
+        $lateness = max(0, $a['startMinutes'] + $a['durationMinutes'] + $baremeMinutes - $b['startMinutes']);
 
-        // Le BLOQUEUR de dédoublement reste mono-coach : prendre un 2ᵉ coach principal en
-        // compte ici est un item de roadmap distinct (P4-333). On aplatit donc la liste au
-        // PREMIER coach principal par équipe — comportement strictement inchangé.
-        $mainCoachByTeam = array_map(static fn (array $coachIds): string => $coachIds[0], $this->mainCoachesByTeam($clubId, $seasonId));
-        // Une équipe sans coach MAIN ne peut pas dédoubler qui que ce soit : on la sort
-        // AVANT le balayage plutôt que de la tester à chaque paire.
-        $relevant = array_values(array_filter(
-            $reservations,
-            static fn (Reservation $r): bool => isset($mainCoachByTeam[$r->getTeamId()]),
-        ));
+        return $lateness <= $toleranceMinutes;
+    }
 
-        $names = $this->displayNames($relevant, $mainCoachByTeam);
-        $conflicts = [];
+    /**
+     * Chantier H / P4-333 — deux équipes co-réservées partagent-elles AU MOINS un coach PRINCIPAL ?
+     * Miroir MÉCANIQUE de `wizard/lib/coachDoubleBooking.ts::teamsShareMainCoach` (cas partagés
+     * `coachDoubleBooking.parity.json::multiCoachCases`). Le bloqueur ne regardait que le PREMIER
+     * principal par équipe (P4-319) ; il doit regarder TOUS les principaux : deux équipes se
+     * dédoublent dès qu'elles partagent un principal (exemple roadmap Camille/Dorian).
+     *
+     * @param list<string> $coachIdsA
+     * @param list<string> $coachIdsB
+     */
+    public static function teamsShareMainCoach(array $coachIdsA, array $coachIdsB): bool
+    {
+        return [] !== array_intersect($coachIdsA, $coachIdsB);
+    }
 
-        foreach ($relevant as $i => $first) {
-            foreach (\array_slice($relevant, $i + 1) as $second) {
-                if (!$this->collide($first, $second, $mainCoachByTeam)) {
-                    continue;
+    /**
+     * Chantier H — le barème de trajet (minutes) entre deux gymnases : colonne VOITURE si le
+     * coach est véhiculé, sinon la colonne non véhiculée (à vélo), défaut 20 si le couple n'est pas
+     * arbitré ou la colonne est nulle. SOURCE PARTAGÉE du barème côté backend (récap + radar
+     * entraînements), miroir du `travelTime.default_minutes` / `_barometer` du moteur.
+     *
+     * @param array<string, array{driving: ?int, walking: ?int}> $matrix couple TRIÉ `a|b` → barèmes
+     */
+    public static function travelBaremeMinutes(array $matrix, string $venueA, string $venueB, bool $vehicled, int $default = 20): int
+    {
+        [$a, $b] = $venueA < $venueB ? [$venueA, $venueB] : [$venueB, $venueA];
+        $pair = $matrix[$a . '|' . $b] ?? null;
+        if (null === $pair) {
+            return $default;
+        }
+        $value = $vehicled ? $pair['driving'] : $pair['walking'];
+
+        return null === $value ? $default : $value;
+    }
+
+    /**
+     * Chantier H — LA maison partagée « adjoint disponible » (récap + radar entraînements) : l'id du
+     * premier adjoint qui peut OUVRIR la fenêtre `[windowStart, windowEnd[` un jour ISO, ou null.
+     * Un adjoint est éligible s'il n'a AUCUNE indisponibilité déclarée chevauchant la fenêtre NI
+     * aucune séance où il est MAIN chevauchant la fenêtre dans un AUTRE gymnase (le même gymnase est
+     * la séance qu'il ouvre, jamais un empêchement).
+     *
+     * @param list<string>                                                                                         $assistantIds        adjoints candidats (la personne dédoublée déjà écartée)
+     * @param array<string, list<array{0: int, 1: int, 2: int}>>                                                   $blockedByCoach      coachId → [(jour, de, à)]
+     * @param array<string, list<array{venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>> $mainBookingsByCoach coachId → séances où il est MAIN
+     */
+    public static function adjointOpening(array $assistantIds, array $blockedByCoach, array $mainBookingsByCoach, int $day, int $windowStart, int $windowEnd, string $windowVenueId): ?string
+    {
+        foreach ($assistantIds as $adjointId) {
+            $blocked = false;
+            foreach ($blockedByCoach[$adjointId] ?? [] as [$blockedDay, $from, $until]) {
+                if ($blockedDay === $day && $from < $windowEnd && $windowStart < $until) {
+                    $blocked = true;
+                    break;
                 }
-
-                $coachId = $mainCoachByTeam[$first->getTeamId()];
-                $conflicts[] = [
-                    'coachId' => $coachId,
-                    'coachName' => $names['coach'][$coachId] ?? 'Ce coach',
-                    'dayOfWeek' => $first->getDayOfWeek(),
-                    'first' => $this->describe($first, $names),
-                    'second' => $this->describe($second, $names),
-                ];
+            }
+            if ($blocked) {
+                continue;
+            }
+            $busyElsewhere = false;
+            foreach ($mainBookingsByCoach[$adjointId] ?? [] as $booking) {
+                if ($booking['dayOfWeek'] !== $day || $booking['venueId'] === $windowVenueId) {
+                    continue; // même gymnase = la séance qu'il ouvre, pas un empêchement
+                }
+                $start = $booking['startMinutes'];
+                $end = $start + $booking['durationMinutes'];
+                if ($start < $windowEnd && $windowStart < $end) {
+                    $busyElsewhere = true;
+                    break;
+                }
+            }
+            if (!$busyElsewhere) {
+                return $adjointId;
             }
         }
 
-        return $conflicts;
+        return null;
+    }
+
+    /**
+     * @param list<Constraint> $constraints
+     *
+     * @return array<string, list<array{0: int, 1: int, 2: int}>> coachId => [jour ISO, début min, fin min]
+     */
+    public static function blockedIntervalsByCoach(array $constraints): array
+    {
+        $blocked = [];
+        foreach ($constraints as $constraint) {
+            $coachId = $constraint->getScopeTargetId();
+            if (ConstraintFamily::COACH_AVAILABILITY !== $constraint->getFamily() || !$constraint->getIsActive() || null === $coachId) {
+                continue;
+            }
+            $config = $constraint->getConfig();
+            $fromMinutes = self::timeToMinutes($config['fromTime'] ?? null, 0);
+            $untilMinutes = self::timeToMinutes($config['untilTime'] ?? null, 1440);
+
+            foreach (self::dayIntSet($config['unavailableDays'] ?? null) as $day) {
+                $blocked[$coachId][] = [$day, $fromMinutes, $untilMinutes];
+            }
+
+            $availableSet = self::dayIntSet($config['availableDays'] ?? null);
+            if ([] !== $availableSet) {
+                foreach (range(1, 7) as $day) {
+                    if (!\in_array($day, $availableSet, true)) {
+                        $blocked[$coachId][] = [$day, 0, 1440];
+                        continue;
+                    }
+                    if ($fromMinutes > 0) {
+                        $blocked[$coachId][] = [$day, 0, $fromMinutes];
+                    }
+                    if ($untilMinutes < 1440) {
+                        $blocked[$coachId][] = [$day, $untilMinutes, 1440];
+                    }
+                }
+            }
+        }
+
+        return $blocked;
+    }
+
+    private static function timeToMinutes(mixed $time, int $default): int
+    {
+        if (!\is_string($time) || 1 !== preg_match('/^(\d{2}):(\d{2})/', $time, $matches)) {
+            return $default;
+        }
+
+        return (int) $matches[1] * 60 + (int) $matches[2];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function dayIntSet(mixed $days): array
+    {
+        if (!\is_array($days)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (mixed $day): ?int => is_numeric($day) ? (int) $day : null,
+            $days,
+        ), static fn (?int $day): bool => null !== $day));
+    }
+
+    /**
+     * @param list<Reservation> $reservations le périmètre EXACT qui partira au solveur
+     *                                        (socle : `schedulePlanId IS NULL` ; période :
+     *                                        son plan, gymnases désactivés déjà retirés)
+     * @param list<Constraint>  $constraints  le jeu de contraintes du récap (indispos coach) — sert
+     *                                        à vérifier la disponibilité de l'adjoint (chantier H)
+     *
+     * @return list<array{coachId: string, coachName: string, dayOfWeek: int, first: array{teamName: string, venueName: string, startTime: string}, second: array{teamName: string, venueName: string, startTime: string}}>
+     */
+    public function detect(array $reservations, string $clubId, string $seasonId, array $constraints = []): array
+    {
+        // Chantier H — une paire dédoublante dont la séance REJOINTE tolère le retard ET qu'un
+        // adjoint DISPONIBLE ouvre n'est plus un bloqueur : elle part en avertissement
+        // ({@see detectRelayWarnings}). Avec la tolérance par défaut (0), aucune paire n'est
+        // tolérée → comportement d'avant le chantier H strictement inchangé.
+        return array_values(array_map(
+            static fn (array $entry): array => $entry['conflict'],
+            array_filter($this->analyzePairs($reservations, $clubId, $seasonId, $constraints), static fn (array $entry): bool => !$entry['tolerated']),
+        ));
+    }
+
+    /**
+     * Chantier H — les AVERTISSEMENTS du récap pour les paires TOLÉRÉES (retard ≤ tolérance de la
+     * séance rejointe ET adjoint disponible qui l'ouvre). Un par conflit toléré, au gabarit
+     * fondateur « {Coach} arrivera ~{N} min en retard aux {Équipe} : {Adjoint} (adjoint) ouvre la
+     * séance. ».
+     *
+     * @param list<Reservation> $reservations
+     * @param list<Constraint>  $constraints
+     *
+     * @return list<string>
+     */
+    public function detectRelayWarnings(array $reservations, array $constraints, string $clubId, string $seasonId): array
+    {
+        $warnings = [];
+        foreach ($this->analyzePairs($reservations, $clubId, $seasonId, $constraints) as $entry) {
+            if ($entry['tolerated'] && null !== $entry['warning']) {
+                $warnings[] = $entry['warning'];
+            }
+        }
+
+        return $warnings;
     }
 
     /**
@@ -188,7 +358,7 @@ final class CoachDoubleBookingDetector
             return [];
         }
 
-        $blocked = $this->blockedIntervalsByCoach($constraints);
+        $blocked = self::blockedIntervalsByCoach($constraints);
         if ([] === $blocked) {
             return [];
         }
@@ -213,7 +383,7 @@ final class CoachDoubleBookingDetector
         // Nommer / afficher reste mono-coach (le coach principal de l'équipe placée) : la liste
         // ne sert qu'au verdict « tous bloqués ». Le premier coach par équipe suffit à l'habillage.
         $firstCoachByTeam = array_map(static fn (array $coachIds): string => $coachIds[0], $mainCoaches);
-        $names = $this->displayNames($relevant, $firstCoachByTeam);
+        $names = $this->displayNames($relevant, $mainCoaches);
 
         $clashes = [];
         foreach ($relevant as $reservation) {
@@ -271,6 +441,89 @@ final class CoachDoubleBookingDetector
         );
     }
 
+    /**
+     * Le CŒUR du chantier H : chaque paire dédoublante (P4-333 : TOUS les principaux partagés)
+     * classée TOLÉRÉE ou non. Une entrée par coach principal partagé, portant le conflit structuré
+     * (forme historique, pour le bloqueur), un drapeau `tolerated`, et le message de relais quand
+     * tolérée. Tolérée ssi la séance rejointe (la plus tardive) tolère un retard ≥ 1 (plafond 30),
+     * le retard géométrique (fin de la 1ʳᵉ + barème de trajet − début de la 2ᵉ) tient dans cette
+     * tolérance, ET un adjoint DISPONIBLE (lien ASSISTANT de l'équipe rejointe, sans indispo
+     * déclarée ni séance MAIN chevauchante dans un autre gymnase) ouvre la séance.
+     *
+     * @param list<Reservation> $reservations
+     * @param list<Constraint>  $constraints
+     *
+     * @return list<array{conflict: array{coachId: string, coachName: string, dayOfWeek: int, first: array{teamName: string, venueName: string, startTime: string}, second: array{teamName: string, venueName: string, startTime: string}}, tolerated: bool, warning: ?string}>
+     */
+    private function analyzePairs(array $reservations, string $clubId, string $seasonId, array $constraints): array
+    {
+        if (\count($reservations) < 2) {
+            return [];
+        }
+
+        $mainCoachesByTeam = $this->mainCoachesByTeam($clubId, $seasonId);
+        $relevant = array_values(array_filter(
+            $reservations,
+            static fn (Reservation $r): bool => [] !== ($mainCoachesByTeam[$r->getTeamId() ?? ''] ?? []),
+        ));
+
+        $names = $this->displayNames($relevant, $mainCoachesByTeam);
+        // Décor du relais : barème de trajet, statut véhiculé + nom de tout coach, adjoints par
+        // équipe, intervalles bloqués (indispo déclarée), et les séances où chaque coach est MAIN.
+        $matrix = $this->travelMatrix($clubId, $seasonId);
+        [$coachNames, $coachVehicled] = $this->coachIndex($clubId, $seasonId);
+        $assistantsByTeam = $this->assistantsByTeam($clubId, $seasonId);
+        $blockedByCoach = self::blockedIntervalsByCoach($constraints);
+        $mainBookingsByCoach = $this->mainBookingsByCoach($relevant, $mainCoachesByTeam);
+
+        $entries = [];
+        foreach ($relevant as $i => $first) {
+            foreach (\array_slice($relevant, $i + 1) as $second) {
+                $coachIdsA = $mainCoachesByTeam[$first->getTeamId() ?? ''] ?? [];
+                $coachIdsB = $mainCoachesByTeam[$second->getTeamId() ?? ''] ?? [];
+                if (!self::teamsShareMainCoach($coachIdsA, $coachIdsB) || !$this->geometricCollide($first, $second)) {
+                    continue;
+                }
+
+                [$early, $late] = $this->startMinutesOf($first) <= $this->startMinutesOf($second) ? [$first, $second] : [$second, $first];
+                $tolerance = $late->getCoachLateToleranceMinutes();
+
+                foreach (array_intersect($coachIdsA, $coachIdsB) as $coachId) {
+                    $conflict = [
+                        'coachId' => $coachId,
+                        'coachName' => $names['coach'][$coachId] ?? 'Ce coach',
+                        'dayOfWeek' => $first->getDayOfWeek(),
+                        'first' => $this->describe($first, $names),
+                        'second' => $this->describe($second, $names),
+                    ];
+
+                    $tolerated = false;
+                    $warning = null;
+                    $bareme = self::travelBaremeMinutes($matrix, $early->getVenueId(), $late->getVenueId(), $coachVehicled[$coachId] ?? false);
+                    if (self::lateArrivalTolerated($this->toBooking($early), $this->toBooking($late), $tolerance, $bareme)) {
+                        $lateMinutes = max(0, $this->startMinutesOf($early) + $early->getDurationMinutes() + $bareme - $this->startMinutesOf($late));
+                        $assistants = array_values(array_filter($assistantsByTeam[$late->getTeamId() ?? ''] ?? [], static fn (string $id): bool => $id !== $coachId));
+                        $adjointId = self::adjointOpening($assistants, $blockedByCoach, $mainBookingsByCoach, $late->getDayOfWeek(), $this->startMinutesOf($late), $this->startMinutesOf($late) + $lateMinutes, $late->getVenueId());
+                        if (null !== $adjointId) {
+                            $tolerated = true;
+                            $warning = \sprintf(
+                                '%s arrivera ~%d min en retard aux %s : %s (adjoint) ouvre la séance.',
+                                $conflict['coachName'],
+                                $lateMinutes,
+                                $names['team'][$late->getTeamId() ?? ''] ?? 'une équipe',
+                                $coachNames[$adjointId] ?? 'Un adjoint',
+                            );
+                        }
+                    }
+
+                    $entries[] = ['conflict' => $conflict, 'tolerated' => $tolerated, 'warning' => $warning];
+                }
+            }
+        }
+
+        return $entries;
+    }
+
     /** La case (gymnase, jour, minute de début) d'une réservation — clé de co-localisation. */
     private function caseKey(Reservation $reservation): string
     {
@@ -302,93 +555,30 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * @param list<Constraint> $constraints
-     *
-     * @return array<string, list<array{0: int, 1: int, 2: int}>> coachId => [jour ISO, début min, fin min]
+     * La GÉOMÉTRIE seule du dédoublement (équipes et gymnases différents, même jour, intervalles
+     * réels qui se chevauchent) — le partage d'un coach principal est jugé à part ({@see
+     * teamsShareMainCoach}), P4-333. Même algèbre demi-ouverte que {@see bookingsCollide}.
      */
-    private function blockedIntervalsByCoach(array $constraints): array
+    private function geometricCollide(Reservation $first, Reservation $second): bool
     {
-        $blocked = [];
-        foreach ($constraints as $constraint) {
-            $coachId = $constraint->getScopeTargetId();
-            if (ConstraintFamily::COACH_AVAILABILITY !== $constraint->getFamily() || !$constraint->getIsActive() || null === $coachId) {
-                continue;
-            }
-            $config = $constraint->getConfig();
-            $fromMinutes = $this->timeToMinutes($config['fromTime'] ?? null, 0);
-            $untilMinutes = $this->timeToMinutes($config['untilTime'] ?? null, 1440);
+        $a = $this->bookingOf($first);
+        $b = $this->bookingOf($second);
 
-            foreach ($this->dayIntSet($config['unavailableDays'] ?? null) as $day) {
-                $blocked[$coachId][] = [$day, $fromMinutes, $untilMinutes];
-            }
-
-            $availableSet = $this->dayIntSet($config['availableDays'] ?? null);
-            if ([] !== $availableSet) {
-                foreach (range(1, 7) as $day) {
-                    if (!\in_array($day, $availableSet, true)) {
-                        $blocked[$coachId][] = [$day, 0, 1440];
-                        continue;
-                    }
-                    if ($fromMinutes > 0) {
-                        $blocked[$coachId][] = [$day, 0, $fromMinutes];
-                    }
-                    if ($untilMinutes < 1440) {
-                        $blocked[$coachId][] = [$day, $untilMinutes, 1440];
-                    }
-                }
-            }
-        }
-
-        return $blocked;
-    }
-
-    private function timeToMinutes(mixed $time, int $default): int
-    {
-        if (!\is_string($time) || 1 !== preg_match('/^(\d{2}):(\d{2})/', $time, $matches)) {
-            return $default;
-        }
-
-        return (int) $matches[1] * 60 + (int) $matches[2];
+        return $a['teamId'] !== $b['teamId']
+            && $a['venueId'] !== $b['venueId']
+            && $a['dayOfWeek'] === $b['dayOfWeek']
+            && $a['startMinutes'] < $b['startMinutes'] + $b['durationMinutes']
+            && $b['startMinutes'] < $a['startMinutes'] + $a['durationMinutes'];
     }
 
     /**
-     * @return list<int>
+     * @return array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}
      */
-    private function dayIntSet(mixed $days): array
+    private function bookingOf(Reservation $reservation): array
     {
-        if (!\is_array($days)) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map(
-            static fn (mixed $day): ?int => is_numeric($day) ? (int) $day : null,
-            $days,
-        ), static fn (?int $day): bool => null !== $day));
-    }
-
-    /**
-     * @param array<string, string> $mainCoachByTeam
-     */
-    private function collide(Reservation $first, Reservation $second, array $mainCoachByTeam): bool
-    {
-        return self::bookingsCollide(
-            $this->bookingOf($first, $mainCoachByTeam),
-            $this->bookingOf($second, $mainCoachByTeam),
-        );
-    }
-
-    /**
-     * @param array<string, string> $mainCoachByTeam
-     *
-     * @return array{coachId: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}
-     */
-    private function bookingOf(Reservation $reservation, array $mainCoachByTeam): array
-    {
-        // Lot 4bis — un créneau LIBRE (teamId null) n'a pas de coach : il est déjà écarté en amont
-        // (le filtre `isset($mainCoachByTeam[teamId])` de `detect`), jamais une réservation passée
-        // ici. Le `?? ''` ne fait que satisfaire le typage.
+        // Lot 4bis — un créneau LIBRE (teamId null) est déjà écarté en amont (le filtre « équipe a
+        // un coach MAIN » de `detect`). Le `?? ''` ne fait que satisfaire le typage.
         return [
-            'coachId' => $mainCoachByTeam[$reservation->getTeamId() ?? ''] ?? '',
             'teamId' => $reservation->getTeamId() ?? '',
             'venueId' => $reservation->getVenueId(),
             'dayOfWeek' => $reservation->getDayOfWeek(),
@@ -398,16 +588,16 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * @param list<Reservation>     $reservations
-     * @param array<string, string> $mainCoachByTeam
+     * @param list<Reservation>           $reservations
+     * @param array<string, list<string>> $mainCoachesByTeam
      *
      * @return array{coach: array<string, string>, team: array<string, string>, venue: array<string, string>}
      */
-    private function displayNames(array $reservations, array $mainCoachByTeam): array
+    private function displayNames(array $reservations, array $mainCoachesByTeam): array
     {
         $teamIds = array_values(array_unique(array_map(static fn (Reservation $r): string => $r->getTeamId() ?? '', $reservations)));
         $venueIds = array_values(array_unique(array_map(static fn (Reservation $r): string => $r->getVenueId(), $reservations)));
-        $coachIds = array_values(array_unique(array_intersect_key($mainCoachByTeam, array_flip($teamIds))));
+        $coachIds = array_values(array_unique(array_merge(...array_values(array_intersect_key($mainCoachesByTeam, array_flip($teamIds))) ?: [[]])));
 
         $coach = [];
         foreach ([] === $coachIds ? [] : $this->entityManager->getRepository(Coach::class)->findBy(['id' => $coachIds]) as $entity) {
@@ -455,5 +645,95 @@ final class CoachDoubleBookingDetector
         }
 
         return $map;
+    }
+
+    /**
+     * teamId => coachIds des ADJOINTS (ASSISTANT), ordre d'insertion (chantier H).
+     *
+     * @return array<string, list<string>>
+     */
+    private function assistantsByTeam(string $clubId, string $seasonId): array
+    {
+        $map = [];
+        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $link) {
+            if (TeamCoachRole::ASSISTANT === $link->getRole() && !\in_array($link->getCoachId(), $map[$link->getTeamId()] ?? [], true)) {
+                $map[$link->getTeamId()][] = $link->getCoachId();
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * La matrice de trajet du club/saison, indexée par couple TRIÉ `a|b` (chantier H).
+     *
+     * @return array<string, array{driving: ?int, walking: ?int}>
+     */
+    private function travelMatrix(string $clubId, string $seasonId): array
+    {
+        $matrix = [];
+        foreach ($this->entityManager->getRepository(VenueTravelTime::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $row) {
+            [$a, $b] = $row->getVenueAId() < $row->getVenueBId() ? [$row->getVenueAId(), $row->getVenueBId()] : [$row->getVenueBId(), $row->getVenueAId()];
+            $matrix[$a . '|' . $b] = ['driving' => $row->getDrivingMinutes(), 'walking' => $row->getWalkingMinutes()];
+        }
+
+        return $matrix;
+    }
+
+    /**
+     * Noms + statut véhiculé de tous les coachs du club/saison (chantier H).
+     *
+     * @return array{0: array<string, string>, 1: array<string, bool>}
+     */
+    private function coachIndex(string $clubId, string $seasonId): array
+    {
+        $names = [];
+        $vehicled = [];
+        foreach ($this->entityManager->getRepository(Coach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $coach) {
+            $names[$coach->getId()] = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $vehicled[$coach->getId()] = $coach->isVehicled();
+        }
+
+        return [$names, $vehicled];
+    }
+
+    /**
+     * Les séances (réservations) où chaque coach est MAIN — pour vérifier qu'un adjoint n'est pas
+     * occupé ailleurs (chantier H).
+     *
+     * @param list<Reservation>           $reservations
+     * @param array<string, list<string>> $mainCoachesByTeam
+     *
+     * @return array<string, list<array{venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>>
+     */
+    private function mainBookingsByCoach(array $reservations, array $mainCoachesByTeam): array
+    {
+        $byCoach = [];
+        foreach ($reservations as $reservation) {
+            $booking = [
+                'venueId' => $reservation->getVenueId(),
+                'dayOfWeek' => $reservation->getDayOfWeek(),
+                'startMinutes' => $this->startMinutesOf($reservation),
+                'durationMinutes' => $reservation->getDurationMinutes(),
+            ];
+            foreach ($mainCoachesByTeam[$reservation->getTeamId() ?? ''] ?? [] as $coachId) {
+                $byCoach[$coachId][] = $booking;
+            }
+        }
+
+        return $byCoach;
+    }
+
+    private function startMinutesOf(Reservation $reservation): int
+    {
+        return (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i');
+    }
+
+    /**
+     * @return array{startMinutes: int, durationMinutes: int}
+     */
+    private function toBooking(Reservation $reservation): array
+    {
+        return ['startMinutes' => $this->startMinutesOf($reservation), 'durationMinutes' => $reservation->getDurationMinutes()];
     }
 }

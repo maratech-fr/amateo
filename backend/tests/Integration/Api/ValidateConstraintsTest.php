@@ -17,6 +17,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -543,6 +544,67 @@ final class ValidateConstraintsTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
     }
 
+    // ── Chantier H : le relais de l'adjoint tolère un retard au RÉCAP (ValidateConstraintsController) ──
+
+    public function testAToleratedLateArrivalWithAnAvailableAdjointWarnsInsteadOfBlocking(): void
+    {
+        // Rillieux : Sébastien finit à 20:15 au Mont Blanc (U21 19:00-20:15), rejoint le Louison
+        // Bobet (SENIORS 20:00) ; trajet 15 min à pied (non véhiculé), chevauchement 15 min →
+        // retard 30 = la tolérance posée. Jules (adjoint) ouvre la séance → le récap AVERTIT, il ne
+        // bloque PAS la paire dédoublante.
+        $ctx = $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'available');
+        $data = $this->validate();
+
+        self::assertStringNotContainsString('deux créneaux en même temps', implode(' | ', $data['blockers']), 'un retard toléré + adjoint dispo ne bloque plus la paire');
+        $warnings = implode(' | ', $data['warnings']);
+        self::assertStringContainsString('Sébastien', $warnings);
+        self::assertStringContainsString('en retard', $warnings);
+        self::assertStringContainsString('Jules', $warnings);
+        self::assertStringContainsString('adjoint', $warnings);
+        self::assertStringContainsString($ctx['seniorsName'], $warnings, 'l\'avertissement nomme la séance rejointe');
+        unset($ctx);
+    }
+
+    public function testAToleranceWithoutAnyAssistantStillBlocks(): void
+    {
+        // Abus : tolérance posée SANS aucun lien ASSISTANT sur la séance rejointe → personne ne
+        // l'ouvre, le dédoublement reste un BLOQUEUR (l'adjoint est obligatoire).
+        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'none');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testAToleranceWithAnUnavailableAdjointStillBlocks(): void
+    {
+        // Abus : l'adjoint existe mais est DÉCLARÉ indisponible sur la fenêtre d'ouverture → il ne
+        // peut pas ouvrir, le dédoublement reste bloqué (la dispo de l'adjoint est VÉRIFIÉE).
+        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'declared_unavailable');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testAToleranceWithTheAdjointBookedElsewhereStillBlocks(): void
+    {
+        // Abus : l'adjoint est lui-même coach MAIN d'une 3ᵉ séance qui chevauche, dans un AUTRE
+        // gymnase → il n'est pas libre d'ouvrir, le dédoublement reste bloqué.
+        $this->seedRelayScenario(tolerance: 30, bareme: 15, adjoint: 'booked_elsewhere');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testADelayOfThirtyOneViaTravelStillBlocks(): void
+    {
+        // Abus : chevauchement 15 + barème 16 → retard 31 > plafond 30 → au-delà de la tolérance,
+        // le dédoublement reste un bloqueur même avec un adjoint disponible.
+        $this->seedRelayScenario(tolerance: 30, bareme: 16, adjoint: 'available');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
+    public function testAZeroToleranceStillBlocks(): void
+    {
+        // Rétro-compat : tolérance 0 (défaut) = aucune tolérance → le dédoublement bloque comme
+        // avant le chantier H, adjoint ou pas.
+        $this->seedRelayScenario(tolerance: 0, bareme: 15, adjoint: 'available');
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -702,6 +764,134 @@ final class ValidateConstraintsTest extends WebTestCase
         $reservation->setStartTime(new DateTimeImmutable($start));
         $reservation->setDurationMinutes(90);
         $this->em->persist($reservation);
+        $this->em->flush();
+    }
+
+    /**
+     * @return array{blockers: list<string>, warnings: list<string>}
+     */
+    private function validate(): array
+    {
+        // Le récap répond 200 (valide) OU 422 (invalide) — on lit le corps dans les deux cas.
+        $this->client->loginUser($this->user);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        \assert(\is_array($data));
+
+        return ['blockers' => $data['blockers'] ?? [], 'warnings' => $data['warnings'] ?? []];
+    }
+
+    /**
+     * Décor du relais : U21 (Mont Blanc, mardi 19:00-20:15) + SENIORS (Louison Bobet, mardi 20:00),
+     * les DEUX réservées en dur, Sébastien principal des deux (non véhiculé → barème à pied). La
+     * séance des SENIORS porte la tolérance. `adjoint` règle Jules : dispo, absent, indispo déclarée
+     * ou occupé ailleurs. `bareme` = trajet à pied Mont Blanc↔Louison Bobet.
+     *
+     * @return array{u21: string, seniors: string, seniorsName: string, sebastien: string, jules: string}
+     */
+    private function seedRelayScenario(int $tolerance, int $bareme, string $adjoint): array
+    {
+        $gymMB = $this->venue('Mont Blanc');
+        $gymLB = $this->venue('Louison Bobet');
+        $u21 = $this->namedTeam('U21');
+        $seniors = $this->namedTeam('SENIORS');
+
+        $sebastien = $this->coachOnly('Sébastien');
+        $this->linkCoach($u21, $sebastien, TeamCoachRole::MAIN);
+        $this->linkCoach($seniors, $sebastien, TeamCoachRole::MAIN);
+
+        $jules = $this->coachOnly('Jules');
+        if ('none' !== $adjoint) {
+            $this->linkCoach($seniors, $jules, TeamCoachRole::ASSISTANT);
+        }
+        if ('declared_unavailable' === $adjoint) {
+            $this->coachUnavailable($jules, 2, '20:00', '21:30');
+        }
+        if ('booked_elsewhere' === $adjoint) {
+            // Jules principal d'une 3ᵉ équipe réservée en même temps dans un 3ᵉ gymnase.
+            $gym3 = $this->venue('Gymnase C');
+            $third = $this->namedTeam('U15');
+            $this->linkCoach($third, $jules, TeamCoachRole::MAIN);
+            $this->reservationWith($third, $gym3, 2, '20:00', 90, 0);
+        }
+
+        // Barème de trajet à pied Mont Blanc ↔ Louison Bobet (couple trié).
+        [$a, $b] = $gymMB < $gymLB ? [$gymMB, $gymLB] : [$gymLB, $gymMB];
+        $this->travel($a, $b, $bareme);
+
+        // U21 19:00-20:15 (75 min) ; SENIORS 20:00 porteuse de la tolérance.
+        $this->reservationWith($u21, $gymMB, 2, '19:00', 75, 0);
+        $this->reservationWith($seniors, $gymLB, 2, '20:00', 90, $tolerance);
+
+        return ['u21' => $u21, 'seniors' => $seniors, 'seniorsName' => 'SENIORS', 'sebastien' => $sebastien, 'jules' => $jules];
+    }
+
+    private function namedTeam(string $name): string
+    {
+        $team = new Team;
+        $team->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $team->setSportCategoryId($this->club->getId())->setPriorityTierId(3)->setName($name)->setSessionsPerWeek(2)->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team->getId();
+    }
+
+    private function coachOnly(string $firstName, bool $vehicled = false): string
+    {
+        $coach = new Coach;
+        $coach->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $coach->setFirstName($firstName)->setLastName('Dupont')->setIsVehicled($vehicled);
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        return $coach->getId();
+    }
+
+    private function linkCoach(string $teamId, string $coachId, TeamCoachRole $role): void
+    {
+        $link = new TeamCoach;
+        $link->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $link->setTeamId($teamId)->setCoachId($coachId)->setRole($role);
+        $this->em->persist($link);
+        $this->em->flush();
+    }
+
+    private function travel(string $venueIdA, string $venueIdB, int $walkingMinutes): void
+    {
+        $row = new VenueTravelTime;
+        $row->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $row->setVenueAId($venueIdA)->setVenueBId($venueIdB)->setWalkingMinutes($walkingMinutes);
+        $this->em->persist($row);
+        $this->em->flush();
+    }
+
+    private function reservationWith(string $teamId, string $venueId, int $dayOfWeek, string $start, int $duration, int $tolerance): void
+    {
+        // Le créneau qui PORTE la réservation (sinon « ne correspond à aucun créneau » bloque pour
+        // une autre raison que le dédoublement qu'on veut isoler).
+        $slot = new VenueTrainingSlot;
+        $slot->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $slot->setVenueId($venueId)->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes($duration)->setCapacity(1);
+        $this->em->persist($slot);
+
+        $reservation = new Reservation;
+        $reservation->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $reservation->setTeamId($teamId)->setVenueId($venueId)->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes($duration);
+        $reservation->setCoachLateToleranceMinutes($tolerance);
+        $this->em->persist($reservation);
+        $this->em->flush();
+    }
+
+    private function coachUnavailable(string $coachId, int $dayOfWeek, string $from, string $until): void
+    {
+        $constraint = new Constraint;
+        $constraint->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $constraint->setName('indispo')->setScope(ConstraintScope::COACH)->setScopeTargetId($coachId);
+        $constraint->setFamily(ConstraintFamily::COACH_AVAILABILITY)->setRuleType(ConstraintRuleType::HARD);
+        $constraint->setConfig(['unavailableDays' => [$dayOfWeek], 'fromTime' => $from, 'untilTime' => $until]);
+        $constraint->setIsActive(true);
+        $this->em->persist($constraint);
         $this->em->flush();
     }
 

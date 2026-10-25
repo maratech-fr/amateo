@@ -1046,6 +1046,17 @@ jobs:
       - name: SeasonSlotKeepSemanticsGateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SeasonSlotKeepSemanticsGateTest.php --group phase1'
 
+      # Chantier H (axes constraint semantics + backend↔engine contract) — « le relais de l'adjoint
+      # tolère un retard » est HONORÉ par le VRAI moteur (/generate, contrat 1.6) : la tolérance
+      # saisie (Reservation.coachLateToleranceMinutes → slotTemplates) autorise le coach principal à
+      # arriver en retard À CONDITION qu'un adjoint disponible ouvre la séance. (1) TÉMOIN — sans
+      # tolérance, le coach verrouillé interdit l'autre séance. (2) tolérance + adjoint → la séance
+      # est placée. (3) CONTRE-TÉMOIN — même tolérance SANS adjoint → toujours bloqué (l'adjoint est
+      # vérifié). Skip propre si l'engine est absent. Sans ce gate, la tolérance cesserait en silence
+      # d'être honorée par le moteur.
+      - name: CoachLateToleranceSemanticsGateTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/CoachLateToleranceSemanticsGateTest.php --group phase1'
+
       # Axe auth & memberships — le code FFBB est l'IDENTITÉ fédérale du club : un PUT
       # qui le CHANGE est refusé 422 (le même code reste idempotent). Falsifié : garde
       # désactivée → le PUT réécrit le code (200). Sans ce gate, un club pourrait migrer

@@ -175,6 +175,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
         "time_windows": [],
         "priority_tiers": {},
         "team_coach_map": {},
+        "team_assistant_map": {},
         "team_player_map": {},
         "parse_warnings": [],
     }
@@ -230,6 +231,14 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
                 team_id_str = str(team_id)
                 coach_id_str = str(coach_id)
                 result["team_coach_map"].setdefault(team_id_str, []).append(coach_id_str)
+            elif team_id and coach_id:
+                # Chantier H — l'ADJOINT n'est pas une ressource exclusive (il ne bloque rien), mais
+                # on retient le lien pour le relais d'arrivée tardive (un adjoint disponible ouvre
+                # une séance tolérante que le principal rejoint en retard).
+                team_id_str = str(team_id)
+                coach_id_str = str(coach_id)
+                if coach_id_str not in result["team_assistant_map"].setdefault(team_id_str, []):
+                    result["team_assistant_map"][team_id_str].append(coach_id_str)
 
         elif c_type == "COACH_PLAYER_UNAVAILABILITY":
             # D — l'interrupteur du lien coach-joueur. Le backend émet ``severity: HARD`` quand le

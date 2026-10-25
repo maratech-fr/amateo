@@ -7,6 +7,7 @@ namespace App\Service\Conflicts;
 use App\Entity\Fixture;
 use App\Entity\ScheduleSlotTemplate;
 use App\Enum\ConflictPersonRole;
+use App\Enum\FixtureHomeAway;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
 use DateInterval;
@@ -30,12 +31,13 @@ final class PersonConflicts
     ) {}
 
     /**
-     * @param list<FixtureView>                                $views
-     * @param array<string, array<string, ConflictPersonRole>> $roleByTeamPerson
+     * @param list<FixtureView>                                                                              $views
+     * @param array<string, array<string, ConflictPersonRole>>                                               $roleByTeamPerson
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
      *
      * @return list<array<string, mixed>>
      */
-    public function matchMatchConflicts(array $views, array $roleByTeamPerson): array
+    public function matchMatchConflicts(array $views, array $roleByTeamPerson, array $coachUnavailabilities = []): array
     {
         $conflicts = [];
         $count = \count($views);
@@ -65,9 +67,19 @@ final class PersonConflicts
                 foreach (array_intersect($left['personIds'], $right['personIds']) as $personId) {
                     $leftRole = $this->personRole($roleByTeamPerson, $left['fixture']->getTeamId(), $personId);
                     $rightRole = $this->personRole($roleByTeamPerson, $right['fixture']->getTeamId(), $personId);
+                    $severity = $this->pairSeverity($leftRole, $rightRole);
+                    // Chantier H volet matchs (amendement a) — un conflit DUR (3) s'adoucit à 5
+                    // quand, SUR UN CÔTÉ OÙ CETTE PERSONNE EST MAIN, l'équipe a un autre coach
+                    // (adjoint OU autre principal) DISPONIBLE qui peut tenir ce côté. CÔTÉ JOUEUR
+                    // jamais adouci (un joueur ne se remplace pas par un coach).
+                    $relief = 3 === $severity && (
+                        (ConflictPersonRole::MAIN === $leftRole && $this->reliefAvailable($left, $personId, $roleByTeamPerson, $coachUnavailabilities))
+                        || (ConflictPersonRole::MAIN === $rightRole && $this->reliefAvailable($right, $personId, $roleByTeamPerson, $coachUnavailabilities))
+                    );
                     $conflicts[] = [
                         'type' => 'MATCH_MATCH',
-                        'severity' => $this->pairSeverity($leftRole, $rightRole),
+                        'severity' => $relief ? 5 : $severity,
+                        'relief' => $relief,
                         'coachRole' => $this->aggregateRole($leftRole, $rightRole)->value,
                         'coachId' => $personId,
                         'start' => $overlapStart->format(ConflictMoments::WALL_CLOCK_FORMAT),
@@ -83,12 +95,13 @@ final class PersonConflicts
     }
 
     /**
-     * @param list<FixtureView>                                                                      $views
-     * @param array<string, array<string, true>>                                                     $coachesByTeam
-     * @param array<string, array<string, true>>                                                     $playersByTeam
-     * @param array<string, array<string, ConflictPersonRole>>                                       $roleByTeamPerson
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $activePeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
+     * @param list<FixtureView>                                                                              $views
+     * @param array<string, array<string, true>>                                                             $coachesByTeam
+     * @param array<string, array<string, true>>                                                             $playersByTeam
+     * @param array<string, array<string, ConflictPersonRole>>                                               $roleByTeamPerson
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>         $activePeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                                      $slotsBySchedule
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
      *
      * @return list<array<string, mixed>>
      */
@@ -100,6 +113,7 @@ final class PersonConflicts
         ?string $seasonScheduleId,
         array $activePeriods,
         array $slotsBySchedule,
+        array $coachUnavailabilities = [],
     ): array {
         $conflicts = [];
         foreach ($views as $view) {
@@ -158,9 +172,17 @@ final class PersonConflicts
                     foreach ($personIds as $personId) {
                         $matchRole = $this->personRole($roleByTeamPerson, $view['fixture']->getTeamId(), $personId);
                         $trainingRole = $this->personRole($roleByTeamPerson, $slot->getTeamId(), $personId);
+                        $severity = $this->trainingSeverity($matchRole, $trainingRole);
+                        // Chantier H volet matchs (amendement a) — un conflit DUR (3) s'adoucit à 5
+                        // si, du CÔTÉ MATCH où la personne est MAIN, l'équipe a un autre coach
+                        // disponible qui peut tenir le match (côté joueur jamais).
+                        $relief = 3 === $severity
+                            && ConflictPersonRole::MAIN === $matchRole
+                            && $this->reliefAvailable($view, $personId, $roleByTeamPerson, $coachUnavailabilities);
                         $conflicts[] = [
                             'type' => 'MATCH_TRAINING',
-                            'severity' => $this->trainingSeverity($matchRole, $trainingRole),
+                            'severity' => $relief ? 5 : $severity,
+                            'relief' => $relief,
                             'coachRole' => $this->aggregateRole($matchRole, $trainingRole)->value,
                             'coachId' => $personId,
                             'start' => ConflictMoments::maxMoment($matchWindow['start'], $trainingWindow['start'])->format(ConflictMoments::WALL_CLOCK_FORMAT),
@@ -185,6 +207,169 @@ final class PersonConflicts
         }
 
         return $conflicts;
+    }
+
+    /**
+     * Chantier H volet matchs (amendement b) — la famille MATCH_COACH_UNAVAILABLE : un match dont
+     * le coup d'envoi tombe dans l'indisponibilité DÉCLARÉE d'un coach PRINCIPAL de l'équipe. Crans
+     * (refonte fondateur, échelle `toneOf`) :
+     *  - coup d'envoi DANS l'indispo → ROUGE (3), à domicile comme à l'extérieur (le match est manqué) ;
+     *  - l'indispo ne touche QUE la durée du match (coup d'envoi libre) → JAUNE (5) à DOMICILE, mais
+     *    ROUGE (3) à l'EXTÉRIEUR (le coach doit être sur place à l'heure) ;
+     *  - un adjoint OU un autre principal DISPONIBLE peut couvrir → le ROUGE devient ORANGE (4) ;
+     *    le JAUNE reste JAUNE.
+     * L'indispo d'un coach qui n'est qu'ADJOINT ne lève JAMAIS la famille (le principal disponible
+     * reste l'entité). Empreinte (TYPE:coachId:fixtureId) : une entrée par (coach, rencontre).
+     *
+     * @param list<FixtureView>                                                                              $views
+     * @param array<string, array<string, ConflictPersonRole>>                                               $roleByTeamPerson
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function coachUnavailableConflicts(array $views, array $roleByTeamPerson, array $coachUnavailabilities): array
+    {
+        if ([] === $coachUnavailabilities) {
+            return [];
+        }
+
+        $byCoachFixture = [];
+        foreach ($views as $view) {
+            $fixture = $view['fixture'];
+            $teamId = $fixture->getTeamId();
+            $kickoff = $this->kickoffMinuteOf($view);
+            if (null === $kickoff) {
+                continue; // pas d'empreinte (aucune heure, aucune habitude empruntée)
+            }
+            $weekday = (int) $fixture->getMatchDate()->format('N');
+            $matchEnd = $kickoff + (int) $view['matchDurationMinutes'];
+            $away = FixtureHomeAway::AWAY === $fixture->getHomeAway();
+
+            foreach ($roleByTeamPerson[$teamId] ?? [] as $personId => $role) {
+                // Seul un coach PRINCIPAL indisponible lève la famille (adjoint-only → jamais).
+                if (ConflictPersonRole::MAIN !== $role) {
+                    continue;
+                }
+                foreach ($coachUnavailabilities as $unavailability) {
+                    if ($unavailability['coachId'] !== $personId || $unavailability['dayOfWeek'] !== $weekday) {
+                        continue;
+                    }
+                    $from = $this->timeToMinutes($unavailability['kickoffMin'], 0);
+                    $to = $this->timeToMinutes($unavailability['kickoffMax'], 1440);
+                    $kickoffInside = $kickoff >= $from && $kickoff <= $to;
+                    $overlapsMatch = $from < $matchEnd && $kickoff < $to;
+                    if ($kickoffInside) {
+                        $base = 3;
+                    } elseif ($overlapsMatch) {
+                        $base = $away ? 3 : 5;
+                    } else {
+                        continue;
+                    }
+                    $relief = 3 === $base
+                        && $this->coverAvailable($teamId, $personId, $weekday, $kickoff, $roleByTeamPerson, $coachUnavailabilities);
+                    $severity = 3 === $base && $relief ? 4 : $base;
+
+                    $key = $personId . '|' . $fixture->getId();
+                    if (isset($byCoachFixture[$key]) && $byCoachFixture[$key]['severity'] <= $severity) {
+                        continue; // garde la plus grave (sévérité la plus basse)
+                    }
+                    $byCoachFixture[$key] = [
+                        'type' => 'MATCH_COACH_UNAVAILABLE',
+                        'severity' => $severity,
+                        'relief' => $relief,
+                        'coachId' => $personId,
+                        'coachRole' => ConflictPersonRole::MAIN->value,
+                        'fixture' => ConflictMoments::fixtureView($view, ConflictPersonRole::MAIN),
+                    ];
+                }
+            }
+        }
+
+        return array_values($byCoachFixture);
+    }
+
+    /**
+     * Chantier H — un autre coach (adjoint OU autre principal) de CETTE équipe, autre que la
+     * personne en conflit, est-il DISPONIBLE au coup d'envoi pour tenir ce côté ? (service
+     * « adjoint disponible » du volet matchs). Les joueurs ne couvrent jamais un coach.
+     *
+     * @param FixtureView                                                                                    $view
+     * @param array<string, array<string, ConflictPersonRole>>                                               $roleByTeamPerson
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     */
+    private function reliefAvailable(array $view, string $excludePersonId, array $roleByTeamPerson, array $coachUnavailabilities): bool
+    {
+        $kickoff = $this->kickoffMinuteOf($view);
+        if (null === $kickoff) {
+            return false;
+        }
+        $weekday = (int) $view['fixture']->getMatchDate()->format('N');
+
+        return $this->coverAvailable($view['fixture']->getTeamId(), $excludePersonId, $weekday, $kickoff, $roleByTeamPerson, $coachUnavailabilities);
+    }
+
+    /**
+     * @param array<string, array<string, ConflictPersonRole>>                                               $roleByTeamPerson
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     */
+    private function coverAvailable(string $teamId, string $excludePersonId, int $weekday, int $kickoffMinute, array $roleByTeamPerson, array $coachUnavailabilities): bool
+    {
+        foreach ($roleByTeamPerson[$teamId] ?? [] as $personId => $role) {
+            if ($personId === $excludePersonId) {
+                continue;
+            }
+            // Seul un COACH (principal ou adjoint) couvre — jamais un joueur.
+            if (ConflictPersonRole::MAIN !== $role && ConflictPersonRole::ASSISTANT !== $role) {
+                continue;
+            }
+            if ($this->coachAvailableAt($personId, $weekday, $kickoffMinute, $coachUnavailabilities)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     */
+    private function coachAvailableAt(string $coachId, int $weekday, int $kickoffMinute, array $coachUnavailabilities): bool
+    {
+        foreach ($coachUnavailabilities as $unavailability) {
+            if ($unavailability['coachId'] !== $coachId || $unavailability['dayOfWeek'] !== $weekday) {
+                continue;
+            }
+            $from = $this->timeToMinutes($unavailability['kickoffMin'], 0);
+            $to = $this->timeToMinutes($unavailability['kickoffMax'], 1440);
+            if ($kickoffMinute >= $from && $kickoffMinute <= $to) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Le coup d'envoi (minutes depuis minuit) de la rencontre d'une vue : l'heure RÉELLE, ou
+     * l'heure ESTIMÉE empruntée à l'habitude (même source que les autres familles personne) ;
+     * null quand il n'y a aucune empreinte.
+     *
+     * @param FixtureView $view
+     */
+    private function kickoffMinuteOf(array $view): ?int
+    {
+        $kickoff = $view['fixture']->getKickoffTime()?->format('H:i') ?? $view['estimatedKickoffTime'];
+
+        return null === $kickoff ? null : $this->timeToMinutes($kickoff, 0);
+    }
+
+    private function timeToMinutes(?string $time, int $default): int
+    {
+        if (null === $time || 1 !== preg_match('/^(\d{1,2}):(\d{2})/', $time, $matches)) {
+            return $default;
+        }
+
+        return (int) $matches[1] * 60 + (int) $matches[2];
     }
 
     /**

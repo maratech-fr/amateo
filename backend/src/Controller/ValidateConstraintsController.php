@@ -191,6 +191,9 @@ final class ValidateConstraintsController extends AbstractController
                 fn (array $clash): string => $this->coachDoubleBookingDetector->describeUnavailabilityForRecap($clash),
                 $this->coachDoubleBookingDetector->detectUnavailabilityClashes($reservations, $constraints, $clubId, $seasonId),
             ),
+            // Chantier H — le relais de l'adjoint : une paire dédoublante dont la séance rejointe
+            // tolère le retard et qu'un adjoint disponible ouvre est un AVERTISSEMENT, pas un bloqueur.
+            ...$this->coachDoubleBookingDetector->detectRelayWarnings($reservations, $constraints, $clubId, $seasonId),
         ];
 
         // 2. Saturation des « au moins N ici » par gymnase → BLOQUEUR : le moteur exige
@@ -223,7 +226,9 @@ final class ValidateConstraintsController extends AbstractController
             ...$this->overBookedTeamBlockers($reservations, $clubId, $seasonId),
             ...array_map(
                 fn (array $conflict): string => $this->coachDoubleBookingDetector->describeForRecap($conflict),
-                $this->coachDoubleBookingDetector->detect($reservations, $clubId, $seasonId),
+                // Chantier H — `$constraints` passés : une paire tolérée + adjoint disponible n'est
+                // PLUS un bloqueur (elle part en avertissement ci-dessous).
+                $this->coachDoubleBookingDetector->detect($reservations, $clubId, $seasonId, $constraints),
             ),
         ];
 

@@ -172,4 +172,10 @@ export const MATCHES_TEXTS = {
   tabOpponents: "Adversaires",
   tabTypicalWeek: "Semaine type",
   tabConstraints: "Contraintes",
+  // Chantier H — écran MATCHS : l'indisponibilité d'un coach SEULEMENT adjoint ne bloque jamais un
+  // MATCH (le mot juste sur cet écran), elle pèse seulement un peu au placement.
+  adjointNeverBlocksMatch: "l'indisponibilité d'un adjoint ne bloque jamais un match — elle pèse peu au placement",
+  // Chantier H — le tag d'un conflit de coach ADOUCI : un adjoint disponible peut tenir ce côté.
+  // Rendu avec une icône (jamais la couleur seule, a11y).
+  coachReliefTag: "Un adjoint peut couvrir",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

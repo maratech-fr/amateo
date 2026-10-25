@@ -80,6 +80,14 @@ final class ConflictFingerprinter
                 $this->nestedStr($conflict, 'fixture', 'fixtureId'),
                 $this->str($conflict, 'unavailabilityId'),
             ),
+            // Chantier H — le coach indisponible + la rencontre qu'il manque. La SÉVÉRITÉ est
+            // EXCLUE de l'identité (le relief d'un adjoint ne crée pas un « Nouveau » conflit).
+            'MATCH_COACH_UNAVAILABLE' => \sprintf(
+                '%s:%s:%s',
+                $type,
+                $this->str($conflict, 'coachId'),
+                $this->nestedStr($conflict, 'fixture', 'fixtureId'),
+            ),
             // La compétition SEULE — jamais imported/expected (chaque import les bouge).
             'COMPETITION_INCOMPLETE' => \sprintf('%s:%s', $type, $this->str($conflict, 'competitionId')),
             // L'ÉQUIPE seule porte le litige (P4-288) : son niveau n'est pas renseigné.

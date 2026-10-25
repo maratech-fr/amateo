@@ -198,6 +198,33 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         }
     }
 
+    public function testAnAssistantOnlyUnavailabilityWeighsAsAnAssistantAndKeepsTheIdeal(): void
+    {
+        // Chantier H volet matchs (amendement c, axe « constraint semantics ») — contre le VRAI
+        // moteur : l'indisponibilité d'un coach qui n'est qu'ADJOINT (ASSISTANT) de l'équipe pèse
+        // comme un adjoint, PAS comme un principal. L'idéal 15:30 (habitude = +20) est couvert par
+        // l'indispo 14:00-16:00 de l'adjoint ; le poids ADJOINT (10) ne bat pas l'habitude (20) →
+        // le match RESTE à 15:30. TÉMOIN à MOTEUR réel : la même indispo d'un coach MAIN (poids 60)
+        // chasse le match hors de la fenêtre.
+        $assistant = $this->solve([
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [$this->venue('v1', [['13:00', '22:30']])],
+            'teams' => [$this->teamWithCoach('t1', 6, '15:30', 'v1', 'c', 'ASSISTANT')],
+            'coachUnavailabilities' => [['coachId' => 'c', 'daysOfWeek' => [6], 'kickoffMin' => '14:00', 'kickoffMax' => '16:00']],
+        ]);
+        self::assertSame([], $assistant['unplaced']);
+        self::assertStringStartsWith('15:30', (string) $assistant['placements'][0]['kickoff'], 'un adjoint indisponible (poids 10 < habitude 20) ne chasse pas le match de son idéal');
+
+        $main = $this->solve([
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [$this->venue('v1', [['13:00', '22:30']])],
+            'teams' => [$this->teamWithCoach('t1', 6, '15:30', 'v1', 'c', 'MAIN')],
+            'coachUnavailabilities' => [['coachId' => 'c', 'daysOfWeek' => [6], 'kickoffMin' => '14:00', 'kickoffMax' => '16:00']],
+        ]);
+        self::assertSame([], $main['unplaced']);
+        self::assertStringStartsNotWith('15:30', (string) $main['placements'][0]['kickoff'], 'témoin : un principal indisponible (poids 60) chasse le match hors de la fenêtre');
+    }
+
     public function testFixedMatchFinishingAfterMidnightStillPlacesTheOthers(): void
     {
         // ENG-48 (axe « constraint semantics ») — un match posé À LA MAIN (FIXED) qui démarre à
@@ -326,6 +353,7 @@ final class MatchPlacementSemanticsGateTest extends TestCase
             'teamLinks' => [],
             'trainingOccupancies' => [],
             'clubRules' => $problem['clubRules'] ?? [],
+            'coachUnavailabilities' => $problem['coachUnavailabilities'] ?? [],
         ];
 
         $client = HttpClient::create(['timeout' => 30]);
@@ -370,6 +398,23 @@ final class MatchPlacementSemanticsGateTest extends TestCase
     private function teamWithMatchMinutes(string $id, int $matchMinutes): array
     {
         return ['id' => $id, 'name' => strtoupper($id), 'leagueWindows' => [], 'habits' => [], 'coaches' => [], 'matchMinutes' => $matchMinutes];
+    }
+
+    /**
+     * Une équipe avec un créneau idéal ET un coach de rôle donné (MAIN|ASSISTANT) — chantier H
+     * volet matchs : le POIDS de l'indisponibilité d'un coach dépend de son rôle sur l'équipe.
+     *
+     * @return array<string, mixed>
+     */
+    private function teamWithCoach(string $id, int $dayOfWeek, string $kickoff, string $venueId, string $coachId, string $role): array
+    {
+        return [
+            'id' => $id,
+            'name' => strtoupper($id),
+            'leagueWindows' => [],
+            'habits' => [['dayOfWeek' => $dayOfWeek, 'kickoff' => $kickoff, 'venueId' => $venueId]],
+            'coaches' => [['coachId' => $coachId, 'role' => $role]],
+        ];
     }
 
     /** Une équipe avec un créneau idéal (habitude) {jour ISO, heure, gymnase}. @return array<string, mixed> */

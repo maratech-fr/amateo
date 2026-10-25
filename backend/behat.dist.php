@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Tests\Behat\CoachLateRelayContext;
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConflictResolutionContext;
 use App\Tests\Behat\ConflictTruthContext;
@@ -191,6 +192,11 @@ return (new Config)
                 new Suite('personne-deux-endroits')
                     ->withPaths('%paths.base%/features/une-personne-est-signalee-a-deux-endroits.feature')
                     ->withContexts(PlacedPersonConflictContext::class),
+            )
+            ->withSuite(
+                new Suite('relais-adjoint')
+                    ->withPaths('%paths.base%/features/le-relais-de-l-adjoint-tolere-un-retard.feature')
+                    ->withContexts(CoachLateRelayContext::class),
             )
             ->withSuite(
                 new Suite('demo-conservee')

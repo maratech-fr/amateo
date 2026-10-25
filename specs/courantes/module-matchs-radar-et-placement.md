@@ -36,7 +36,7 @@ sur PLAYER pour la même équipe. Chaque côté d'un conflit porte son rôle PAR
 (`left.role`/`right.role`, `fixture.role`/`training.role`) ; un `coachRole` agrégé reste servi pour
 compat, plus utilisé à l'affichage.
 
-**Deux familles** :
+**Trois familles** :
 - `MATCH_MATCH` — deux fixtures d'équipes partageant une personne dont les fenêtres de **conflit**
   se chevauchent (`MatchFootprint::personConflictOccupancy`/`personConflictOccupancyAt`, § D1
   ci-dessous — échauffement retranché, trajet conservé). Gravité `pairSeverity` : dur (MAIN×MAIN,
@@ -48,6 +48,27 @@ compat, plus utilisé à l'affichage.
   tout côté ASSISTANT = 5. L'entraînement de l'équipe qui joue CE match n'est **jamais** un conflit
   avec lui (ni coachs ni joueurs), quel que soit le gymnase — une équipe sœur reste couverte
   normalement.
+- `MATCH_COACH_UNAVAILABLE` (chantier H, relais de l'adjoint) — le coup d'envoi d'un match tombe
+  dans l'indisponibilité DÉCLARÉE d'un coach PRINCIPAL de l'équipe (`MatchConstraint` scope COACH) ;
+  l'indisponibilité d'un coach SEULEMENT adjoint ne lève JAMAIS cette famille — le principal reste
+  l'entité surveillée. Sévérité (`PersonConflicts::coachUnavailableConflicts`) : coup d'envoi DANS
+  l'indispo → 3, à domicile comme à l'extérieur ; indispo qui ne touche que la DURÉE du
+  match (coup d'envoi libre) → 5 à domicile, 3 à l'extérieur (le coach doit être sur
+  place à l'heure). Une entrée par (coach, rencontre), la plus grave retenue. ⚠ 3/4/5 partagent le
+  MÊME ton visuel `warning` (`toneOf`, `lib/diagnostic.ts` — seuls 1-2 sont `destructive` et 6-7
+  `muted`) : ce ne sont PAS trois couleurs distinctes, la gradation se lit au NUMÉRO de sévérité et,
+  pour le relief, au tag dédié ci-dessous — jamais à la teinte.
+
+**Adoucissement « relief » (chantier H, les trois familles ci-dessus)** : un conflit DUR (sévérité
+3) où la personne est MAIN sur au moins un côté retombe d'un cran (4 ou 5 selon la famille) si un
+AUTRE coach de la même équipe — adjoint OU autre principal — est DISPONIBLE au même coup d'envoi
+pour tenir ce côté (`PersonConflicts::reliefAvailable`/`coverAvailable` ; un joueur ne couvre jamais
+un coach, un côté JOUEUR n'est jamais adouci). `MATCH_COACH_UNAVAILABLE` retombe de 3 à 4 (jamais à
+5, déjà la sévérité la plus clémente de la famille) ; `MATCH_MATCH`/`MATCH_TRAINING` retombent de 3
+à 5. Le relief est porté par le champ additif `relief` (bool) — jamais déduit du seul changement de
+sévérité (3-5 partagent le même ton), l'écran affiche un TAG dédié (icône + texte « Un adjoint peut
+couvrir », `ConflictLine.tsx`) en plus du ton, jamais
+la couleur seule.
 
 **Chevauchement demi-ouvert** (créneaux jointifs = pas de conflit). Une empreinte qui passe minuit
 est vérifiée sur les deux jours. Résolution déterministe par la période la plus ÉTROITE en cas de
@@ -113,10 +134,15 @@ solveur de placement (§3, diagnostic `league_envelope_unresolved` déjà exista
 côté solveur — champ additif `rules`, les règles violées ; amicaux exemptés comme l'enveloppe
 ligue) + `TEAM_VENUE_FORBIDDEN` (P4-272 ④, même gravité — décision fondateur : un domicile placé
 dans un gymnase INTERDIT à son équipe, scope TEAM HARD, kickoff-indépendant — c'est le gymnase qui
-viole, pas l'heure ; champ additif `venueId` ; amicaux exemptés de même) · 4 `VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` (« Hors accès match » — champ additif `windows`, les
+viole, pas l'heure ; champ additif `venueId` ; amicaux exemptés de même) + `MATCH_COACH_UNAVAILABLE`
+(chantier H — coup d'envoi DANS l'indisponibilité déclarée d'un coach PRINCIPAL) · 4
+`VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` (« Hors accès match » — champ additif `windows`, les
 accès du gymnase de la fixture triés jour du match d'abord, hors identité de l'empreinte
 `TYPE:fixtureId` ; l'écran nomme le gymnase et ses fenêtres, « aucun accès match ce jour-là » sans
-aucune) · 5 clash adouci +
+aucune) + `MATCH_COACH_UNAVAILABLE` ADOUCI (chantier H — un adjoint ou un autre principal
+disponible peut couvrir, tag dédié « Un adjoint peut couvrir », § ci-dessus) · 5 clash adouci
+(`MATCH_MATCH`/`MATCH_TRAINING` avec relief, § ci-dessus) + `MATCH_COACH_UNAVAILABLE` quand
+l'indisponibilité ne touche que la DURÉE du match à DOMICILE (coup d'envoi libre, § ci-dessus) +
 `FRIENDLY_ON_MATCH_SLOT` (amical HOME placé sur un créneau de match — `reasons`:
 `MATCH_SLOT_WINDOW`/`MATCH_WEEKEND`, samedi = clé du week-end, le vendredi ne compte jamais) · 6
 `COMPETITION_INCOMPLETE` reason `OVER`/`INCOHERENT` (alerte, § « Cohérence de complétude »
@@ -159,7 +185,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.5** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.6** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
 exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
@@ -251,9 +277,13 @@ fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 **SOFT (golden-épinglés)** : conflit personne (coach MAIN ou joueuse active) −60 · indisponibilité
 de coach violée −60 (`W_COACH_UNAVAILABLE=60`, P4-272 ⑤, `match_placement/weights.py` — MÊME poids qu'un
 conflit personne ; le coup d'envoi du candidat retenu tombe dans une plage d'un coach de l'équipe,
-sur un jour couvert par cette plage ; jamais d'élagage de domaine, jamais de raison `unplaced`,
-jamais de radar — le placement l'évite quand une alternative existe, sans jamais rendre un match
-impossible) · coach ASSISTANT −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie
+sur un jour couvert par cette plage ; jamais d'élagage de domaine, jamais de raison `unplaced` — le
+placement l'évite quand une alternative existe, sans jamais rendre un match impossible) — **rôle-aware
+depuis le chantier H** : ce poids ne s'applique qu'à un coach PRINCIPAL indisponible, un ADJOINT
+indisponible ne pèse que `W_COACH_ASSISTANT=10` (`(role, unav)` porté par `team_coach_unavailabilities`,
+`engine/app/solver/match_placement/__init__.py`) ; le radar (§2, `MATCH_COACH_UNAVAILABLE`) lit
+désormais la même donnée (indisponibilités COACH) pour SIGNALER au gestionnaire, le solveur de
+placement continue de simplement pénaliser sans jamais bloquer · coach ASSISTANT −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie
 délibérée** : le radar §2 ne signale jamais cette famille, le solveur GARDE cette préférence
 souple — sens sûr, une pénalité SOFT ne bloque jamais rien, à ne pas « aligner » en la retirant) ·
 règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE=30`, P4-272 ③, `match_placement/weights.py` —

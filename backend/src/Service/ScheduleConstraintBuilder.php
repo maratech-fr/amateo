@@ -56,7 +56,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.5';
+    public const string CONTRACT_VERSION = '1.6';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -1401,7 +1401,9 @@ final class ScheduleConstraintBuilder
             // lisait jamais, ils n'ont donc plus à partir ni à se dupliquer dans les snapshots et les
             // feedbacks. `isActive` d'entité (jamais lu) retiré avec eux (ENG-53).
             'maxDaysOverride' => $coach->getMaxDaysOverride(),
-            'acceptableLateMinutes' => $coach->getAcceptableLateMinutes(),
+            // Contrat 1.6 (chantier H) — `acceptableLateMinutes` RETIRÉ : levier MORT (aucune UI,
+            // jamais lu par le moteur). La tolérance d'arrivée tardive est désormais portée par la
+            // SÉANCE (`Reservation.coachLateToleranceMinutes` → slotTemplates), pas par la personne.
             'isEmployee' => $coach->isEmployee(),
             'parentCoachId' => $coach->getParentCoachId(),
             // P2-53 RMM-8 PR-2 — statut véhiculé : décide du barème de trajet du coach
@@ -1426,6 +1428,9 @@ final class ScheduleConstraintBuilder
             'startTime' => $this->formatTime($slotTemplate->getStartTime()),
             'durationMinutes' => $slotTemplate->getDurationMinutes(),
             'lockLevel' => $slotTemplate->getLockLevel()->value,
+            // Contrat 1.6 (chantier H) — la tolérance d'arrivée tardive voyage sur le slotTemplate
+            // (recopiée de la réservation à l'import/transcription + pins hérités). 0 = aucune.
+            'coachLateToleranceMinutes' => $slotTemplate->getCoachLateToleranceMinutes(),
             'pendingConstraintSuggestion' => $pendingConstraintSuggestion,
         ];
     }
@@ -1448,6 +1453,9 @@ final class ScheduleConstraintBuilder
             'startTime' => $this->formatTime($reservation->getStartTime()),
             'durationMinutes' => $reservation->getDurationMinutes(),
             'lockLevel' => LockLevel::HARD->value,
+            // Contrat 1.6 (chantier H) — la tolérance d'arrivée tardive de CETTE séance part au
+            // moteur : elle autorise le coach principal à rejoindre en retard si un adjoint ouvre.
+            'coachLateToleranceMinutes' => $reservation->getCoachLateToleranceMinutes(),
             'pendingConstraintSuggestion' => null,
         ];
     }

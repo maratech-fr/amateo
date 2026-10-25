@@ -65,6 +65,14 @@ class ScheduleSlotTemplate implements TenantOwnedInterface
     #[ORM\Column(type: 'smallint')]
     private int $durationMinutes;
 
+    /**
+     * Chantier H — tolérance d'arrivée tardive du coach principal sur cette séance (minutes, 0..30),
+     * recopiée depuis la {@see Reservation} porteuse (import, transcription, pins hérités). 0 par
+     * défaut = aucune tolérance. Émise sur le `slotTemplate` du payload moteur (contrat 1.6).
+     */
+    #[ORM\Column(type: 'smallint', options: ['default' => 0])]
+    private int $coachLateToleranceMinutes = 0;
+
     #[ORM\Column(type: 'string', length: 10, enumType: LockLevel::class)]
     private LockLevel $lockLevel = LockLevel::NONE;
 
@@ -247,6 +255,18 @@ class ScheduleSlotTemplate implements TenantOwnedInterface
     public function setDurationMinutes(int $durationMinutes): self
     {
         $this->durationMinutes = $durationMinutes;
+
+        return $this;
+    }
+
+    public function getCoachLateToleranceMinutes(): int
+    {
+        return $this->coachLateToleranceMinutes;
+    }
+
+    public function setCoachLateToleranceMinutes(int $coachLateToleranceMinutes): self
+    {
+        $this->coachLateToleranceMinutes = $coachLateToleranceMinutes;
 
         return $this;
     }

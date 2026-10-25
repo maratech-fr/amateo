@@ -10,8 +10,10 @@ vi.mock("../queries", () => ({
   useGridSlots: () => ({ data: [] }),
   useReservations: () => ({ data: [] }),
   useSharedTrainingBlocks: () => ({ data: [] }),
+  useVenueTravelTimes: () => ({ data: [] }),
   useTeamSoloBudgets: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }),
   useWizardTeamCoaches: () => ({ data: new Map(), isPending: false, isError: false, refetch: vi.fn() }),
+  useWizardCoaches: () => ({ data: [] }),
 }));
 
 vi.mock("@/features/cockpit/queries", () => ({

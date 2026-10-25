@@ -27,6 +27,24 @@ function renderLine(props: Partial<React.ComponentProps<typeof ConflictLine>> = 
 }
 
 describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
+  it("chantier H — un conflit de coach ADOUCI (relief) montre un tag « un adjoint peut couvrir », pas seulement une couleur", () => {
+    // Amendement a : un conflit MATCH_MATCH dont une équipe a un adjoint disponible est adouci et
+    // porte `relief`. Le radar le DISTINGUE par une icône + un TAG texte (jamais la couleur seule,
+    // a11y) — le tag passe par la maison de textes `MATCHES_TEXTS` (clé, pas la phrase recopiée).
+    const relieved = {
+      type: "MATCH_MATCH",
+      severity: 5,
+      relief: true,
+      resolution: null,
+      coachId: "c1",
+      fingerprint: "fp-relief",
+      left: side("fx-1", "team-1"),
+      right: side("fx-2", "team-2"),
+    } as unknown as Conflict;
+    renderLine({ conflict: relieved, tone: "warning" });
+    expect(screen.getByText(MATCHES_TEXTS.coachReliefTag)).toBeInTheDocument();
+  });
+
   it("rend le titre et la phrase du conflit", () => {
     renderLine();
     expect(screen.getByText(MATCHES_TEXTS.venueOverlapTitle)).toBeInTheDocument();

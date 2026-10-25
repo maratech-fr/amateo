@@ -201,7 +201,6 @@ $entities = [
             ['name' => 'phone', 'type' => 'string', 'nullable' => true],
             ['name' => 'maxDaysOverride', 'type' => 'int', 'nullable' => true],
             ['name' => 'maxDaysOverrideConfirmed', 'type' => 'bool', 'required' => true],
-            ['name' => 'acceptableLateMinutes', 'type' => 'int', 'nullable' => true],
             ['name' => 'isActive', 'type' => 'bool', 'required' => true],
             ['name' => 'parentCoachId', 'type' => 'string', 'nullable' => true],
         ],

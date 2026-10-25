@@ -57,6 +57,9 @@ final class TrainingPlacedConflictsController extends AbstractController
             // des matchs (`seasonPlanChosen`).
             'seasonPlanChosen' => $result['seasonPlanChosen'],
             'conflicts' => $result['conflicts'],
+            // Chantier H — les RELAIS (paire tolérée + adjoint disponible) : hors du compte de
+            // conflits, rendus en avertissement par le front (le coach arrive en retard, l'adjoint ouvre).
+            'relays' => $result['relays'],
         ]);
     }
 }

@@ -219,6 +219,8 @@ final class PeriodPlanTranscriber
                 ->setDayOfWeek($day)
                 ->setStartTime($slot->getStartTime())
                 ->setDurationMinutes($slot->getDurationMinutes())
+                // Chantier H — la tolérance d'arrivée tardive suit la séance copiée (0 sinon).
+                ->setCoachLateToleranceMinutes($slot->getCoachLateToleranceMinutes())
                 ->setLockLevel(LockLevel::HARD)
                 ->setLockOrigin($isReserved ? LockOrigin::RESERVATION : LockOrigin::MANUAL);
             $this->entityManager->persist($copy);

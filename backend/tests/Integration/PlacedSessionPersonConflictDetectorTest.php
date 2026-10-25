@@ -15,6 +15,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
+use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\CoachDoubleBookingDetector;
@@ -202,6 +203,46 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         self::assertCount(1, $this->detector->detect($ctx2['clubId'], $ctx2['seasonId'])['conflicts']);
     }
 
+    // ── Chantier H : un retard toléré ouvert par un adjoint est un RELAIS, hors du compte de conflits ──
+
+    public function testAToleratedPairWithAnAvailableAdjointBecomesARelayNotAConflict(): void
+    {
+        // Anna coache U13F (Gymnase A, mardi 19:00-20:15) ET U11M1 (Gymnase B, mardi 20:00-21:30).
+        // La séance rejointe (B) tolère 30 min ; trajet à pied 15 min, chevauchement 15 min → retard
+        // 30 ≤ 30. Jules est adjoint DISPONIBLE de U11M1 → c'est un RELAIS, PAS un conflit : le radar
+        // l'inscrit dans `relays` (avec le retard et le nom de l'adjoint), hors du compte de conflits.
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $jules = $this->createCoach($ctx, 'Jules');
+        $this->link($ctx, $ctx['teamB'], $jules, TeamCoachRole::ASSISTANT);
+        $this->travel($ctx, $ctx['gym1'], $ctx['gym2'], 15);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 75);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, tolerance: 30);
+
+        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+
+        self::assertSame([], $result['conflicts'], 'la paire tolérée + adjoint dispo n\'est plus un conflit');
+        self::assertCount(1, $result['relays'], 'elle est inscrite comme relais, hors du compte de conflits');
+        self::assertSame(30, $result['relays'][0]['lateMinutes'], 'le relais porte le retard calculé');
+        self::assertSame('Jules Dupont', $result['relays'][0]['adjointName'], 'le relais nomme l\'adjoint qui ouvre');
+    }
+
+    public function testAToleratedPairWithoutAnAvailableAdjointStaysAConflict(): void
+    {
+        // Même tolérance, mais AUCUN adjoint sur la séance rejointe → personne ne l'ouvre : ça reste
+        // un conflit (le relais exige un adjoint disponible).
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->travel($ctx, $ctx['gym1'], $ctx['gym2'], 15);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 75);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, tolerance: 30);
+
+        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        self::assertCount(1, $result['conflicts'], 'sans adjoint disponible, la tolérance ne fait pas de relais');
+    }
+
     /** Aucune version pointée → pas de planning en vigueur : seasonPlanChosen false, rien scanné. */
     public function testNoChosenVersionMeansNoScan(): void
     {
@@ -344,7 +385,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
     /**
      * @param array{clubId: string, seasonId: string, scheduleId: string|null} $ctx
      */
-    private function place(array $ctx, string $teamId, string $venueId, int $dayOfWeek, string $start, int $minutes, ?string $coachId = null): void
+    private function place(array $ctx, string $teamId, string $venueId, int $dayOfWeek, string $start, int $minutes, ?string $coachId = null, int $tolerance = 0): void
     {
         \assert(null !== $ctx['scheduleId']);
         $slot = (new ScheduleSlotTemplate)
@@ -356,8 +397,22 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
             ->setCoachId($coachId)
             ->setDayOfWeek($dayOfWeek)
             ->setStartTime(new DateTimeImmutable($start))
-            ->setDurationMinutes($minutes);
+            ->setDurationMinutes($minutes)
+            ->setCoachLateToleranceMinutes($tolerance);
         $this->em->persist($slot);
+        $this->em->flush();
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $ctx
+     */
+    private function travel(array $ctx, string $venueIdA, string $venueIdB, int $walkingMinutes): void
+    {
+        [$a, $b] = $venueIdA < $venueIdB ? [$venueIdA, $venueIdB] : [$venueIdB, $venueIdA];
+        $row = (new VenueTravelTime)
+            ->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])
+            ->setVenueAId($a)->setVenueBId($b)->setWalkingMinutes($walkingMinutes);
+        $this->em->persist($row);
         $this->em->flush();
     }
 }
