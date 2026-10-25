@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
+use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\SportCategory;
@@ -208,11 +209,32 @@ final class ConflictRadarLoader
         // placement (D3) : les deux étendent l'empreinte AWAY de la MÊME façon.
         $roundTripByFixtureId = $this->opponentTravelProjection->roundTripByFixtureId($seasonId, $fixtures);
 
-        // Chantier H volet matchs — les indisponibilités DÉCLARÉES des coachs (scope COACH, mêmes
-        // lignes que le payload de placement), éclatées en une ligne par JOUR ISO : la famille
-        // MATCH_COACH_UNAVAILABLE lit un jour unique par entrée (fenêtre de coup d'envoi facultative).
-        $coachUnavailabilityRows = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::COACH]);
+        // Chantier H volet matchs — les indisponibilités DÉCLARÉES des coachs, en une ligne par JOUR
+        // ISO (fenêtre de coup d'envoi facultative) pour la famille MATCH_COACH_UNAVAILABLE. DEUX
+        // sources UNIES :
+        //  (1) la déclaration GÉNÉRALE d'indisponibilité du coach (`Constraint` COACH_AVAILABILITY —
+        //      « je suis indisponible tel jour de telle à telle heure ») : c'est l'indispo DÉCLARÉE
+        //      que le radar lit. Convertie par la MAISON PARTAGÉE
+        //      {@see CoachDoubleBookingDetector::blockedIntervalsByCoach} (gère unavailableDays,
+        //      la liste blanche `availableDays` par complément, et les bornes `fromTime`/`untilTime`) ;
+        //  (2) le levier de placement spécifique aux matchs (`MatchConstraint` scope COACH, P4-272 ⑤,
+        //      que le solveur `/place-matches` pénalise) — gardé pour la cohérence avec le solveur.
         $coachUnavailabilities = [];
+        $blockedByCoach = CoachDoubleBookingDetector::blockedIntervalsByCoach(
+            $this->entityManager->getRepository(Constraint::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]),
+        );
+        foreach ($blockedByCoach as $coachId => $intervals) {
+            foreach ($intervals as [$dayOfWeek, $fromMinutes, $untilMinutes]) {
+                $coachUnavailabilities[] = [
+                    'coachId' => (string) $coachId,
+                    'dayOfWeek' => $dayOfWeek,
+                    'kickoffMin' => $fromMinutes > 0 ? \sprintf('%02d:%02d', intdiv($fromMinutes, 60), $fromMinutes % 60) : null,
+                    'kickoffMax' => $untilMinutes < 1440 ? \sprintf('%02d:%02d', intdiv($untilMinutes, 60), $untilMinutes % 60) : null,
+                ];
+            }
+        }
+        /** @var list<MatchConstraint> $coachUnavailabilityRows */
+        $coachUnavailabilityRows = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::COACH]);
         foreach ($coachUnavailabilityRows as $unavailability) {
             $coachId = $unavailability->getScopeTargetId();
             if (null === $coachId) {
