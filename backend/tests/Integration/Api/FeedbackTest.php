@@ -284,6 +284,51 @@ final class FeedbackTest extends WebTestCase
         self::assertSame($payload, $context['lastClick'] ?? null, 'le HTML est conservé tel quel, comme du texte');
     }
 
+    /**
+     * PROMESSE (P4-355) : la version du front DÉCLARÉE par le client (`appVersion`) est un champ
+     * de contexte whitelisté, BORNÉ à 40 caractères et stocké VERBATIM comme du texte — un abus
+     * (HTML, 10 000 caractères) est tronqué et conservé LITTÉRAL, jamais exécuté ni dénaturé.
+     *
+     * Falsifiable : tant que `appVersion` n'est pas dans LIGHT_CONTEXT_FIELDS, elle n'atterrit pas
+     * en base → ROUGE.
+     */
+    public function testAppVersionIsWhitelistedTruncatedAndStoredVerbatim(): void
+    {
+        [$token, , $clubId] = $this->registerVerifiedMember('FBAPPV');
+        $hostile = str_repeat('<img src=x onerror=alert(1)>', 400); // ~11 200 caractères, HTML
+
+        $this->post($token, [
+            'topic' => 'bug', 'message' => 'Quelle version déjà ?',
+            'context' => ['appVersion' => $hostile],
+        ]);
+        self::assertResponseStatusCodeSame(201);
+        $context = $this->contextOf($clubId, $this->responseBody()['id']);
+
+        self::assertSame(40, mb_strlen((string) ($context['appVersion'] ?? '')), 'appVersion bornée à 40');
+        self::assertSame(mb_substr($hostile, 0, 40), $context['appVersion'] ?? null, 'tronquée et VERBATIM (littéral, jamais échappée côté serveur)');
+    }
+
+    /**
+     * PROMESSE (P4-355) : le contexte AUTOMATIQUE serveur porte la version de l'API résolue CÔTÉ
+     * SERVEUR (`auto.apiVersion`, env VERSION, repli « dev ») — le support compare « App vX · API
+     * vY » sans rien demander à l'auteur.
+     *
+     * Falsifiable : sans l'enrichisseur, la clé `apiVersion` est absente → ROUGE. (La valeur exacte
+     * dépend du déploiement ; en test, c'est le repli, donc une chaîne non vide.)
+     */
+    public function testServerContextCarriesApiVersion(): void
+    {
+        [$token, , $clubId] = $this->registerVerifiedMember('FBAPIV');
+
+        $this->post($token, ['topic' => 'bug', 'message' => 'Quelle version côté serveur ?']);
+        self::assertResponseStatusCodeSame(201);
+        $context = $this->contextOf($clubId, $this->responseBody()['id']);
+
+        $apiVersion = $context['auto']['apiVersion'] ?? null;
+        self::assertIsString($apiVersion, 'la version de l\'API est résolue côté serveur');
+        self::assertNotSame('', $apiVersion, 'une version non vide (repli « dev » hors déploiement)');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

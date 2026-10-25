@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 
 import { expect, test } from "./fixtures";
-import { forceTheme, settleVeil, watchFailedApiCalls } from "./support";
+import { firstHolidayFreeMonday, forceTheme, settleVeil, watchFailedApiCalls } from "./support";
 
 /**
  * Contraste (WCAG 1.4.3) PLEINE PAGE — élargi en P4-179 (l'aperçu D3 v2 était volontairement scopé à
@@ -192,29 +192,49 @@ test("re-dater une fermeture d'un bloc depuis le cockpit aboutit (succès annonc
  * amateo_dev.
  */
 const SPLIT_TITLE = "Indispo découpée e2e";
-// Novembre 2026, hors vacances : semaines calendaires lun→dim des 9, 16 et 23 novembre. La mère va
-// du mercredi de la semaine 1 (11/11) au samedi de la semaine 3 (28/11) — trois segments début/milieu/fin.
-const SPLIT_MOTHER_START = "2026-11-11";
-const SPLIT_MOTHER_END = "2026-11-28";
-const SPLIT_SHORT_END = "2026-11-21"; // raccourci au samedi de la semaine 2 → la semaine 3 tombe
-const SPLIT_WEEKS: [string, string][] = [
-  ["2026-11-09", "2026-11-15"],
-  ["2026-11-16", "2026-11-22"],
-  ["2026-11-23", "2026-11-29"],
-];
+
+/**
+ * La fenêtre de l'indispo découpée (mère mercredi semaine 1 → samedi semaine 3 = trois segments
+ * début·milieu·fin), FUTURE et HORS vacances scolaires — CALCULÉE depuis aujourd'hui (P4-353 : plus
+ * de novembre 2026 figé, qui rougissait dès que l'horloge réelle le dépassait). La contrainte « hors
+ * vacances » est réelle : une semaine couverte par une vacance serait retirée de la segmentation
+ * (`ClosureSegmentation`), faussant l'aperçu — d'où le feed serveur comme source (jamais un mois en dur).
+ */
+interface SplitWindow {
+  motherStart: string;
+  motherEnd: string;
+  shortEnd: string;
+  weeks: [string, string][];
+  midDay: Date;
+  monthLabel: string;
+}
+
+async function computeSplitWindow(page: import("./fixtures").Page): Promise<SplitWindow> {
+  const monday = await firstHolidayFreeMonday(page, 3, true);
+  const at = (n: number): Date => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + n);
+  const midDay = at(9); // mercredi de la semaine 2 : un jour de MILIEU ordinaire, couvert par la mère ET un enfant
+  return {
+    motherStart: toISO(at(2)), // mercredi de la semaine 1
+    motherEnd: toISO(at(19)), // samedi de la semaine 3
+    shortEnd: toISO(at(12)), // raccourci au samedi de la semaine 2 → la semaine 3 tombe
+    weeks: [0, 7, 14].map((offset) => [toISO(at(offset)), toISO(at(offset + 6))] as [string, string]),
+    midDay,
+    monthLabel: `${MONTH_LABELS[midDay.getMonth()]} ${midDay.getFullYear()}`,
+  };
+}
 
 /** Crée la mère découpée + ses 3 semaines-enfants (sans plan-bloc) → le serveur la dit `redateNeedsPreview`. */
-async function createSplitClosure(page: import("./fixtures").Page): Promise<string[]> {
+async function createSplitClosure(page: import("./fixtures").Page, win: SplitWindow): Promise<string[]> {
   const ids: string[] = [];
   const mother = await page.request.post("/api/calendar_entries", {
     headers: { "Content-Type": "application/json" },
-    data: { kind: "period", periodType: "closure", title: SPLIT_TITLE, startDate: SPLIT_MOTHER_START, endDate: SPLIT_MOTHER_END },
+    data: { kind: "period", periodType: "closure", title: SPLIT_TITLE, startDate: win.motherStart, endDate: win.motherEnd },
   });
   expect(mother.ok(), `création de la mère découpée (${mother.status()})`).toBeTruthy();
   const motherId = (await mother.json()).id as string;
   ids.push(motherId);
 
-  for (const [start, end] of SPLIT_WEEKS) {
+  for (const [start, end] of win.weeks) {
     const child = await page.request.post("/api/calendar_entries", {
       headers: { "Content-Type": "application/json" },
       data: { kind: "period", periodType: "closure", title: "Segment e2e", startDate: start, endDate: end, parentEntryId: motherId },
@@ -262,19 +282,20 @@ async function goToMonth(page: import("./fixtures").Page, label: string): Promis
 }
 
 /** Ouvre le dialogue d'un jour couvert par la mère, entre en mode re-datage et charge l'aperçu. */
-async function openSplitPreview(page: import("./fixtures").Page): Promise<void> {
-  await goToMonth(page, "Novembre 2026");
-  // Un jour de MILIEU de fenêtre, ordinaire (ni jour férié comme le 11, ni bord) — couvert par la
-  // mère ET une semaine-enfant. Le 18 novembre 2026 est un mercredi banal de la semaine 2.
-  const dayCell = page.getByRole("button", { name: new RegExp(`18 Novembre.*${SPLIT_TITLE}`) });
-  await expect(dayCell, "la case du 18/11 couverte par la mère doit être cliquable").toBeVisible({ timeout: 30_000 });
+async function openSplitPreview(page: import("./fixtures").Page, win: SplitWindow): Promise<void> {
+  await goToMonth(page, win.monthLabel);
+  // Un jour de MILIEU de fenêtre, ordinaire — couvert par la mère ET une semaine-enfant : le
+  // mercredi de la semaine 2 (calculé depuis aujourd'hui, jamais figé).
+  const dayLabel = `${win.midDay.getDate()} ${MONTH_LABELS[win.midDay.getMonth()]}`;
+  const dayCell = page.getByRole("button", { name: new RegExp(`${dayLabel}.*${SPLIT_TITLE}`) });
+  await expect(dayCell, `la case du ${dayLabel} couverte par la mère doit être cliquable`).toBeVisible({ timeout: 30_000 });
   await dayCell.click();
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: new RegExp(`Modifier les dates de.*${SPLIT_TITLE}`, "i") }).click();
   const endInput = page.getByLabel("Jusqu'au");
   await expect(endInput).toBeVisible({ timeout: 10_000 });
-  await endInput.fill(SPLIT_SHORT_END);
+  await endInput.fill(win.shortEnd);
   await page.getByRole("button", { name: "Voir les effets" }).click();
   // L'aperçu chargé : au moins un effet listé, et le bouton d'action bascule sur « Confirmer ».
   await expect(page.getByRole("listitem").first()).toBeVisible({ timeout: 20_000 });
@@ -291,19 +312,22 @@ test("re-dater une indisponibilité découpée : aperçu (contraste clair ET som
   // navigation suivante, openCockpit faisant un goto('/') qui re-boote l'app sur le thème clair.
   await forceTheme(page, "dark");
   await login(page);
+  // Fenêtre FUTURE hors vacances, calculée depuis aujourd'hui (P4-353) — après login (le feed des
+  // vacances scolaires exige la session). Partagée par les deux ouvertures (sombre puis clair).
+  const win = await computeSplitWindow(page);
   let ids: string[] = [];
   try {
-    ids = await createSplitClosure(page);
+    ids = await createSplitClosure(page, win);
 
     // --- Thème SOMBRE : la liste d'effets (dont le WarningPanel destructif) reste AA une fois RENDUE.
     await openCockpit(page);
-    await openSplitPreview(page);
+    await openSplitPreview(page, win);
     await expectNoPreviewContrastViolations(page, "cockpit · aperçu de re-datage (thème sombre)");
 
     // --- Bascule en thème CLAIR puis ré-ouverture du même aperçu (données non encore confirmées).
     await forceTheme(page, "light");
     await openCockpit(page);
-    await openSplitPreview(page);
+    await openSplitPreview(page, win);
     await expectNoPreviewContrastViolations(page, "cockpit · aperçu de re-datage (thème clair)");
 
     // --- Confirmer : la semaine 3 tombe → effet destructif → toast « plans de période ajustés ».

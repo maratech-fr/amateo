@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\Schedule;
+use App\Entity\ScheduleDiagnostic;
+use App\Enum\ScheduleDiagnosticSeverity;
+use App\Enum\ScheduleStatus;
 use App\Tests\Integration\Api\AdminFeedbackTest;
 use App\Tests\Integration\Api\FeedbackScreenshotTest;
 use App\Tests\Integration\Api\FeedbackTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -130,9 +135,83 @@ final class FeedbackContextIsolationTest extends WebTestCase
         self::assertResponseStatusCodeSame(401, 'et l\'anonyme non plus');
     }
 
+    /**
+     * NR d'axe *tenant isolation* — EXTENSION P4-355 (la RAISON d'un échec de génération jointe au
+     * contexte automatique).
+     *
+     * PROMESSE BLOQUANTE : le résumé `auto.generationFailure` est résolu depuis la DERNIÈRE
+     * génération de la saison du club AUTHENTIFIÉ. Un échec FRAIS (< 12 h) d'un AUTRE club ne doit
+     * JAMAIS apparaître dans le signalement de A — ni la clé, ni (preuve d'effet) le texte de son
+     * erreur n'importe où dans le JSON stocké. C'est l'angle tenant du résumé d'échec, DISTINCT de
+     * la couverture fonctionnelle (12 h / COMPLETED / nature) prouvée à côté dans
+     * {@see \App\Tests\Integration\Api\FeedbackGenerationFailureTest} (doublon d'angle assumé, point
+     * sensible sécurité/tenant).
+     *
+     * Témoin de falsification : si l'enrichisseur cherchait un FAILED frais SANS le scoper au club
+     * authentifié (ou faisait confiance à un id client), l'erreur de B remonterait → ROUGE.
+     */
+    public function testAForeignClubsFreshGenerationFailureNeverLeaksIntoTheContext(): void
+    {
+        // Club B : un échec FRAIS, dont on retient l'erreur DISTINCTIVE.
+        [, , $clubB] = $this->registerVerifiedMember('FBGFISOB');
+        $seasonB = $this->currentSeasonId($clubB);
+        $secret = 'erreur-secrete-du-club-b-' . bin2hex(random_bytes(6));
+        $this->seedFreshFailure($clubB, $seasonB, $secret);
+
+        // Club A : l'auteur, aucune génération. Navigateur neuf (l'identité change).
+        $this->startFreshBrowserSession($this->client);
+        [$tokenA, , $clubA] = $this->registerVerifiedMember('FBGFISOA');
+
+        $this->post($tokenA, ['topic' => 'bug', 'message' => 'Ma propre génération.']);
+        self::assertResponseStatusCodeSame(201);
+
+        $raw = $this->rawContextOf($clubA, $this->responseBody()['id']);
+        $context = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($context);
+
+        self::assertArrayNotHasKey(
+            'generationFailure',
+            $context['auto'] ?? [],
+            'le club A n\'a aucune génération — aucun résumé d\'échec joint',
+        );
+        self::assertStringNotContainsString($secret, $raw, 'un échec frais du club B ne fuit jamais dans le signalement de A');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    /** Sème pour un club un échec de génération FRAIS (< 12 h), dont le diagnostic porte $errorText. */
+    private function seedFreshFailure(string $clubId, string $seasonId, string $errorText): void
+    {
+        $this->scopeGucToClub($clubId);
+        $em = $this->em();
+
+        $schedule = new Schedule;
+        $schedule->setClubId($clubId);
+        $schedule->setSeasonId($seasonId);
+        $schedule->setSchedulePlanId(Uuid::v4()->toRfc4122());
+        $schedule->setName('Planning B');
+        $schedule->setVersionNumber(1);
+        $schedule->setStatus(ScheduleStatus::FAILED);
+        $schedule->setSolveStartedAt(new DateTimeImmutable('now')->modify('-1 hour'));
+        $schedule->setCreatedAt(new DateTimeImmutable('now')->modify('-1 hour'));
+        $em->persist($schedule);
+
+        $diagnostic = new ScheduleDiagnostic;
+        $diagnostic->setClubId($clubId);
+        $diagnostic->setSeasonId($seasonId);
+        $diagnostic->setScheduleId($schedule->getId());
+        $diagnostic->setType('engine_error');
+        $diagnostic->setSeverity(ScheduleDiagnosticSeverity::ERROR);
+        $diagnostic->setMessage($errorText);
+        $diagnostic->setSuggestions([]);
+        $em->persist($diagnostic);
+
+        $em->flush();
+        $em->clear();
+        $this->clearGuc();
     }
 
     /**
