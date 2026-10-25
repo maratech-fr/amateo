@@ -87,6 +87,49 @@ final class CoachDoubleBookingDetector
     }
 
     /**
+     * Chantier H — LA règle pure de TOLÉRANCE d'arrivée tardive, miroir MÉCANIQUE de
+     * `wizard/lib/coachDoubleBooking.ts::lateArrivalTolerated` (cas partagés
+     * `coachDoubleBooking.parity.json::toleranceCases`, gardé par `CoachDoubleBookingMirrorParityTest`).
+     * `$a` = la séance que le coach QUITTE, `$b` = celle qu'il rejoint EN RETARD ; `$baremeMinutes`
+     * = le trajet entre les deux gymnases. Le retard = `max(0, fin(a) + barème − début(b))` ; une
+     * paire géométriquement dédoublante (déjà prouvée par {@see bookingsCollide}) est TOLÉRÉE ssi la
+     * tolérance réglée est dans `[1, 30]` (plafond métier souverain, fondateur), le début de `b` est
+     * STRICTEMENT après celui de `a` (sinon le coach manquerait le début entier, pas une arrivée
+     * tardive), ET le retard ne dépasse pas la tolérance. La DISPONIBILITÉ de l'adjoint n'est PAS
+     * dans cette règle pure (vérifiée serveur) — seule la géométrie du retard l'est.
+     *
+     * @param array{startMinutes: int, durationMinutes: int} $a
+     * @param array{startMinutes: int, durationMinutes: int} $b
+     */
+    public static function lateArrivalTolerated(array $a, array $b, int $toleranceMinutes, int $baremeMinutes): bool
+    {
+        if ($toleranceMinutes < 1 || $toleranceMinutes > 30) {
+            return false;
+        }
+        if ($b['startMinutes'] <= $a['startMinutes']) {
+            return false;
+        }
+        $lateness = max(0, $a['startMinutes'] + $a['durationMinutes'] + $baremeMinutes - $b['startMinutes']);
+
+        return $lateness <= $toleranceMinutes;
+    }
+
+    /**
+     * Chantier H / P4-333 — deux équipes co-réservées partagent-elles AU MOINS un coach PRINCIPAL ?
+     * Miroir MÉCANIQUE de `wizard/lib/coachDoubleBooking.ts::teamsShareMainCoach` (cas partagés
+     * `coachDoubleBooking.parity.json::multiCoachCases`). Le bloqueur ne regardait que le PREMIER
+     * principal par équipe (P4-319) ; il doit regarder TOUS les principaux : deux équipes se
+     * dédoublent dès qu'elles partagent un principal (exemple roadmap Camille/Dorian).
+     *
+     * @param list<string> $coachIdsA
+     * @param list<string> $coachIdsB
+     */
+    public static function teamsShareMainCoach(array $coachIdsA, array $coachIdsB): bool
+    {
+        return [] !== array_intersect($coachIdsA, $coachIdsB);
+    }
+
+    /**
      * @param list<Reservation> $reservations le périmètre EXACT qui partira au solveur
      *                                        (socle : `schedulePlanId IS NULL` ; période :
      *                                        son plan, gymnases désactivés déjà retirés)
@@ -99,34 +142,38 @@ final class CoachDoubleBookingDetector
             return []; // il faut deux verrous pour se dédoubler
         }
 
-        // Le BLOQUEUR de dédoublement reste mono-coach : prendre un 2ᵉ coach principal en
-        // compte ici est un item de roadmap distinct (P4-333). On aplatit donc la liste au
-        // PREMIER coach principal par équipe — comportement strictement inchangé.
-        $mainCoachByTeam = array_map(static fn (array $coachIds): string => $coachIds[0], $this->mainCoachesByTeam($clubId, $seasonId));
+        // P4-333 — le bloqueur regarde désormais TOUS les coachs principaux (plus le seul
+        // premier, P4-319) : deux équipes se dédoublent dès qu'elles partagent AU MOINS un
+        // principal ({@see teamsShareMainCoach}), et chaque principal partagé est dédoublé.
+        $mainCoachesByTeam = $this->mainCoachesByTeam($clubId, $seasonId);
         // Une équipe sans coach MAIN ne peut pas dédoubler qui que ce soit : on la sort
         // AVANT le balayage plutôt que de la tester à chaque paire.
         $relevant = array_values(array_filter(
             $reservations,
-            static fn (Reservation $r): bool => isset($mainCoachByTeam[$r->getTeamId()]),
+            static fn (Reservation $r): bool => [] !== ($mainCoachesByTeam[$r->getTeamId() ?? ''] ?? []),
         ));
 
-        $names = $this->displayNames($relevant, $mainCoachByTeam);
+        $names = $this->displayNames($relevant, $mainCoachesByTeam);
         $conflicts = [];
 
         foreach ($relevant as $i => $first) {
             foreach (\array_slice($relevant, $i + 1) as $second) {
-                if (!$this->collide($first, $second, $mainCoachByTeam)) {
+                $coachIdsA = $mainCoachesByTeam[$first->getTeamId() ?? ''] ?? [];
+                $coachIdsB = $mainCoachesByTeam[$second->getTeamId() ?? ''] ?? [];
+                if (!self::teamsShareMainCoach($coachIdsA, $coachIdsB) || !$this->geometricCollide($first, $second)) {
                     continue;
                 }
 
-                $coachId = $mainCoachByTeam[$first->getTeamId()];
-                $conflicts[] = [
-                    'coachId' => $coachId,
-                    'coachName' => $names['coach'][$coachId] ?? 'Ce coach',
-                    'dayOfWeek' => $first->getDayOfWeek(),
-                    'first' => $this->describe($first, $names),
-                    'second' => $this->describe($second, $names),
-                ];
+                // Un conflit par coach principal PARTAGÉ — chacun est physiquement dédoublé.
+                foreach (array_intersect($coachIdsA, $coachIdsB) as $coachId) {
+                    $conflicts[] = [
+                        'coachId' => $coachId,
+                        'coachName' => $names['coach'][$coachId] ?? 'Ce coach',
+                        'dayOfWeek' => $first->getDayOfWeek(),
+                        'first' => $this->describe($first, $names),
+                        'second' => $this->describe($second, $names),
+                    ];
+                }
             }
         }
 
@@ -213,7 +260,7 @@ final class CoachDoubleBookingDetector
         // Nommer / afficher reste mono-coach (le coach principal de l'équipe placée) : la liste
         // ne sert qu'au verdict « tous bloqués ». Le premier coach par équipe suffit à l'habillage.
         $firstCoachByTeam = array_map(static fn (array $coachIds): string => $coachIds[0], $mainCoaches);
-        $names = $this->displayNames($relevant, $firstCoachByTeam);
+        $names = $this->displayNames($relevant, $mainCoaches);
 
         $clashes = [];
         foreach ($relevant as $reservation) {
@@ -367,28 +414,30 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * @param array<string, string> $mainCoachByTeam
+     * La GÉOMÉTRIE seule du dédoublement (équipes et gymnases différents, même jour, intervalles
+     * réels qui se chevauchent) — le partage d'un coach principal est jugé à part ({@see
+     * teamsShareMainCoach}), P4-333. Même algèbre demi-ouverte que {@see bookingsCollide}.
      */
-    private function collide(Reservation $first, Reservation $second, array $mainCoachByTeam): bool
+    private function geometricCollide(Reservation $first, Reservation $second): bool
     {
-        return self::bookingsCollide(
-            $this->bookingOf($first, $mainCoachByTeam),
-            $this->bookingOf($second, $mainCoachByTeam),
-        );
+        $a = $this->bookingOf($first);
+        $b = $this->bookingOf($second);
+
+        return $a['teamId'] !== $b['teamId']
+            && $a['venueId'] !== $b['venueId']
+            && $a['dayOfWeek'] === $b['dayOfWeek']
+            && $a['startMinutes'] < $b['startMinutes'] + $b['durationMinutes']
+            && $b['startMinutes'] < $a['startMinutes'] + $a['durationMinutes'];
     }
 
     /**
-     * @param array<string, string> $mainCoachByTeam
-     *
-     * @return array{coachId: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}
+     * @return array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}
      */
-    private function bookingOf(Reservation $reservation, array $mainCoachByTeam): array
+    private function bookingOf(Reservation $reservation): array
     {
-        // Lot 4bis — un créneau LIBRE (teamId null) n'a pas de coach : il est déjà écarté en amont
-        // (le filtre `isset($mainCoachByTeam[teamId])` de `detect`), jamais une réservation passée
-        // ici. Le `?? ''` ne fait que satisfaire le typage.
+        // Lot 4bis — un créneau LIBRE (teamId null) est déjà écarté en amont (le filtre « équipe a
+        // un coach MAIN » de `detect`). Le `?? ''` ne fait que satisfaire le typage.
         return [
-            'coachId' => $mainCoachByTeam[$reservation->getTeamId() ?? ''] ?? '',
             'teamId' => $reservation->getTeamId() ?? '',
             'venueId' => $reservation->getVenueId(),
             'dayOfWeek' => $reservation->getDayOfWeek(),
@@ -398,16 +447,16 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * @param list<Reservation>     $reservations
-     * @param array<string, string> $mainCoachByTeam
+     * @param list<Reservation>           $reservations
+     * @param array<string, list<string>> $mainCoachesByTeam
      *
      * @return array{coach: array<string, string>, team: array<string, string>, venue: array<string, string>}
      */
-    private function displayNames(array $reservations, array $mainCoachByTeam): array
+    private function displayNames(array $reservations, array $mainCoachesByTeam): array
     {
         $teamIds = array_values(array_unique(array_map(static fn (Reservation $r): string => $r->getTeamId() ?? '', $reservations)));
         $venueIds = array_values(array_unique(array_map(static fn (Reservation $r): string => $r->getVenueId(), $reservations)));
-        $coachIds = array_values(array_unique(array_intersect_key($mainCoachByTeam, array_flip($teamIds))));
+        $coachIds = array_values(array_unique(array_merge(...array_values(array_intersect_key($mainCoachesByTeam, array_flip($teamIds))) ?: [[]])));
 
         $coach = [];
         foreach ([] === $coachIds ? [] : $this->entityManager->getRepository(Coach::class)->findBy(['id' => $coachIds]) as $entity) {

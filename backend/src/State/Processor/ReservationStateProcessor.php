@@ -7,6 +7,7 @@ namespace App\State\Processor;
 use App\ApiResource\ReservationResource;
 use App\Controller\GroupReservationController;
 use App\Dto\ReservationInput;
+use App\Dto\ReservationToleranceInput;
 use App\Entity\Reservation;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\User;
@@ -163,6 +164,13 @@ class ReservationStateProcessor extends AbstractStateProcessor
         if (null !== $input->durationMinutes) {
             $entity->setDurationMinutes($input->durationMinutes);
         }
+        if (null !== $input->coachLateToleranceMinutes) {
+            // Chantier H — un créneau LIBRE n'a pas de coach principal à faire arriver en retard.
+            if (null === $input->teamId && $input->coachLateToleranceMinutes > 0) {
+                $this->refuse('Un créneau libre n’a pas de coach principal : il ne porte aucune tolérance d’arrivée tardive.');
+            }
+            $entity->setCoachLateToleranceMinutes($input->coachLateToleranceMinutes);
+        }
         $this->assertEndsWithinDay($input->startTime, $input->durationMinutes ?? 90);
         $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
         $this->assertVenueOpen($input->schedulePlanId, $input->venueId, $input->dayOfWeek);
@@ -178,12 +186,23 @@ class ReservationStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * @param Reservation      $entity
-     * @param ReservationInput $input
+     * Chantier H — le SEUL rail d'édition d'une réservation : un PATCH `merge-patch+json` limité à
+     * la tolérance d'arrivée tardive ({@see ReservationToleranceInput}). Il ne DÉPLACE jamais la
+     * réservation (équipe/gymnase/jour/heure ne sont pas touchés — ils ne sont même pas dans le DTO
+     * de patch). Un créneau LIBRE (sans équipe) n'a pas de coach principal → 422 nommé.
+     *
+     * @param Reservation $entity
+     * @param object      $input  {@see ReservationToleranceInput} (seul input d'une opération d'écriture d'édition)
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        // No PUT operation — reservations are created or deleted, not edited.
+        if (!$input instanceof ReservationToleranceInput || null === $input->coachLateToleranceMinutes) {
+            return;
+        }
+        if (null === $entity->getTeamId() && $input->coachLateToleranceMinutes > 0) {
+            $this->refuse('Un créneau libre n’a pas de coach principal : il ne porte aucune tolérance d’arrivée tardive.');
+        }
+        $entity->setCoachLateToleranceMinutes($input->coachLateToleranceMinutes);
     }
 
     /**

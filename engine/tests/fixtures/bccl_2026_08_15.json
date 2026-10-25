@@ -1317,7 +1317,6 @@
             "firstName": "Coach Enz",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1326,7 +1325,6 @@
             "firstName": "Coach Jor",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1335,7 +1333,6 @@
             "firstName": "Coach Jul",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1344,7 +1341,6 @@
             "firstName": "Coach PoivreSel",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1353,7 +1349,6 @@
             "firstName": "Coach Mat",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1362,7 +1357,6 @@
             "firstName": "Coach Lio",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1371,7 +1365,6 @@
             "firstName": "Coach Mae",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1380,7 +1373,6 @@
             "firstName": "Coach Chr",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1389,7 +1381,6 @@
             "firstName": "Coach Mara",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1398,7 +1389,6 @@
             "firstName": "Coach Eme",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1407,7 +1397,6 @@
             "firstName": "Coach Tho",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1416,7 +1405,6 @@
             "firstName": "Coach Marl",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1425,7 +1413,6 @@
             "firstName": "Coach Flo",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1434,7 +1421,6 @@
             "firstName": "Coach Nic",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1443,7 +1429,6 @@
             "firstName": "Coach Eth",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1452,7 +1437,6 @@
             "firstName": "Coach Ine",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1461,7 +1445,6 @@
             "firstName": "Coach Flo",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1470,7 +1453,6 @@
             "firstName": "Coach Charl",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1479,7 +1461,6 @@
             "firstName": "Coach Cyr",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1488,7 +1469,6 @@
             "firstName": "Coach Luc",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1497,7 +1477,6 @@
             "firstName": "Coach Amb",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1506,7 +1485,6 @@
             "firstName": "Coach Ann",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1515,7 +1493,6 @@
             "firstName": "Coach Tha",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1524,7 +1501,6 @@
             "firstName": "Coach Ael",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1533,7 +1509,6 @@
             "firstName": "Coach Pie",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1542,7 +1517,6 @@
             "firstName": "Coach Max",
             "lastName": "",
             "maxDaysOverride": null,
-            "acceptableLateMinutes": null,
             "isEmployee": false,
             "parentCoachId": null
         }

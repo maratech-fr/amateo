@@ -560,6 +560,10 @@ def _solve(
     # GÉNÉRÉES : on la POSE sur le modèle (idiome `locked_slots`/`slot_durations`)
     # plutôt que de re-parser les contraintes une seconde fois.
     model.team_coach_map = team_coach_map
+    # Chantier H — la carte des adjoints (role ASSISTANT) sur le modèle, pour que le relais
+    # d'arrivée tardive de `_locked_person_day_occupations` sache qui peut ouvrir une séance
+    # tolérante. Les adjoints NE sont PAS une ressource exclusive (hors `team_coach_map`).
+    model.team_assistant_map = parsed["team_assistant_map"]
     team_player_map: dict[str, list[str]] = parsed.get("team_player_map", {})
     # ENG-17 idiome : le builder de résultat lit ces cartes ET le réglage implicite depuis
     # le MODÈLE pour diagnostiquer au MÊME grain que la pose (coachs/joueurs des contraintes,

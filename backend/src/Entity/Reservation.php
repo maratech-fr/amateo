@@ -91,6 +91,17 @@ class Reservation implements TenantOwnedInterface
     #[ORM\Column(type: 'smallint')]
     private int $durationMinutes;
 
+    /**
+     * Chantier H — tolérance d'arrivée tardive du coach principal SUR CETTE séance (minutes, 0..30).
+     * 0 (défaut) = aucune tolérance (comportement historique : le coach doit être là au début).
+     * > 0 = la séance accepte que le coach principal arrive jusqu'à N min en retard À CONDITION
+     * qu'un adjoint DISPONIBLE ouvre la séance (vérifié serveur + moteur). Portée par la SÉANCE,
+     * jamais par la personne (le mort `Coach.acceptableLateMinutes` a été retiré). Voyage sur le
+     * `slotTemplate` du payload moteur (contrat 1.6).
+     */
+    #[ORM\Column(type: 'smallint', options: ['default' => 0])]
+    private int $coachLateToleranceMinutes = 0;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -236,6 +247,18 @@ class Reservation implements TenantOwnedInterface
     public function setDurationMinutes(int $durationMinutes): self
     {
         $this->durationMinutes = $durationMinutes;
+
+        return $this;
+    }
+
+    public function getCoachLateToleranceMinutes(): int
+    {
+        return $this->coachLateToleranceMinutes;
+    }
+
+    public function setCoachLateToleranceMinutes(int $coachLateToleranceMinutes): self
+    {
+        $this->coachLateToleranceMinutes = $coachLateToleranceMinutes;
 
         return $this;
     }

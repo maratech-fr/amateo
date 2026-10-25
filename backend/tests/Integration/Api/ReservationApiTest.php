@@ -421,6 +421,52 @@ final class ReservationApiTest extends WebTestCase
         self::assertSame(self::VENUE, $fresh->getVenueId(), 'le PATCH ne déplace jamais le gymnase');
     }
 
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $container = self::getContainer();
+        $this->em = $container->get(EntityManagerInterface::class);
+        $hasher = $container->get('security.user_password_hasher');
+
+        $uid = uniqid('', true);
+
+        $this->club = (new Club)
+            ->setName('Res Club ' . $uid)
+            ->setSlug('res-club-' . $uid)
+            ->setTimezone('Europe/Paris')
+            ->setLocale('fr')
+            ->setOnboardingCompleted(true);
+        $this->em->persist($this->club);
+
+        $this->user = new User;
+        $this->user->setEmail('res' . $uid . '@test.com');
+        $this->user->setFirstName('Res');
+        $this->user->setLastName('Tester');
+        $this->user->setPasswordHash($hasher->hashPassword($this->user, 'Password123!'));
+        $this->em->persist($this->user);
+        $this->em->flush();
+
+        $this->scopeGucToClub($this->club->getId());
+
+        $cu = new ClubUser;
+        $cu->setClubId($this->club->getId());
+        $cu->setUserId($this->user->getId());
+        $cu->setRole('admin');
+        $cu->setIsActive(true);
+        $this->em->persist($cu);
+
+        $this->season = new Season;
+        $this->season->setClubId($this->club->getId());
+        $this->season->setName('2025-2026');
+        $this->season->setStartDate(new DateTimeImmutable('2025-09-01'));
+        $this->season->setEndDate(new DateTimeImmutable('2026-06-30'));
+        $this->season->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($this->season);
+        $this->em->flush();
+
+        $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
+    }
+
     private function makeTeamReservation(): Reservation
     {
         $reservation = (new Reservation)
@@ -470,52 +516,6 @@ final class ReservationApiTest extends WebTestCase
         ], json_encode($body, \JSON_THROW_ON_ERROR));
 
         return $this->client->getResponse()->getStatusCode();
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $container = self::getContainer();
-        $this->em = $container->get(EntityManagerInterface::class);
-        $hasher = $container->get('security.user_password_hasher');
-
-        $uid = uniqid('', true);
-
-        $this->club = (new Club)
-            ->setName('Res Club ' . $uid)
-            ->setSlug('res-club-' . $uid)
-            ->setTimezone('Europe/Paris')
-            ->setLocale('fr')
-            ->setOnboardingCompleted(true);
-        $this->em->persist($this->club);
-
-        $this->user = new User;
-        $this->user->setEmail('res' . $uid . '@test.com');
-        $this->user->setFirstName('Res');
-        $this->user->setLastName('Tester');
-        $this->user->setPasswordHash($hasher->hashPassword($this->user, 'Password123!'));
-        $this->em->persist($this->user);
-        $this->em->flush();
-
-        $this->scopeGucToClub($this->club->getId());
-
-        $cu = new ClubUser;
-        $cu->setClubId($this->club->getId());
-        $cu->setUserId($this->user->getId());
-        $cu->setRole('admin');
-        $cu->setIsActive(true);
-        $this->em->persist($cu);
-
-        $this->season = new Season;
-        $this->season->setClubId($this->club->getId());
-        $this->season->setName('2025-2026');
-        $this->season->setStartDate(new DateTimeImmutable('2025-09-01'));
-        $this->season->setEndDate(new DateTimeImmutable('2026-06-30'));
-        $this->season->setStatus(SeasonStatus::ACTIVE);
-        $this->em->persist($this->season);
-        $this->em->flush();
-
-        $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
     }
 
     /**

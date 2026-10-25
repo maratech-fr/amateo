@@ -51,9 +51,6 @@ class Coach implements TenantOwnedInterface
     #[ORM\Column(type: 'smallint', nullable: true)]
     private ?int $maxDaysOverride = null;
 
-    #[ORM\Column(type: 'smallint', nullable: true)]
-    private ?int $acceptableLateMinutes = null;
-
     #[ORM\Column(type: 'boolean')]
     private bool $isActive = true;
 
@@ -214,18 +211,6 @@ class Coach implements TenantOwnedInterface
     public function setMaxDaysOverride(?int $maxDaysOverride): self
     {
         $this->maxDaysOverride = $maxDaysOverride;
-
-        return $this;
-    }
-
-    public function getAcceptableLateMinutes(): ?int
-    {
-        return $this->acceptableLateMinutes;
-    }
-
-    public function setAcceptableLateMinutes(?int $acceptableLateMinutes): self
-    {
-        $this->acceptableLateMinutes = $acceptableLateMinutes;
 
         return $this;
     }

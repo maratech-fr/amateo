@@ -208,6 +208,28 @@ final class ConflictRadarLoader
         // placement (D3) : les deux étendent l'empreinte AWAY de la MÊME façon.
         $roundTripByFixtureId = $this->opponentTravelProjection->roundTripByFixtureId($seasonId, $fixtures);
 
+        // Chantier H volet matchs — les indisponibilités DÉCLARÉES des coachs (scope COACH, mêmes
+        // lignes que le payload de placement), éclatées en une ligne par JOUR ISO : la famille
+        // MATCH_COACH_UNAVAILABLE lit un jour unique par entrée (fenêtre de coup d'envoi facultative).
+        $coachUnavailabilityRows = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::COACH]);
+        $coachUnavailabilities = [];
+        foreach ($coachUnavailabilityRows as $unavailability) {
+            $coachId = $unavailability->getScopeTargetId();
+            if (null === $coachId) {
+                continue;
+            }
+            $kickoffMin = $unavailability->getKickoffMin()?->format('H:i');
+            $kickoffMax = $unavailability->getKickoffMax()?->format('H:i');
+            foreach ($unavailability->getDaysOfWeek() as $dayOfWeek) {
+                $coachUnavailabilities[] = [
+                    'coachId' => $coachId,
+                    'dayOfWeek' => $dayOfWeek,
+                    'kickoffMin' => $kickoffMin,
+                    'kickoffMax' => $kickoffMax,
+                ];
+            }
+        }
+
         $conflicts = $this->detector->detect(
             $fixtures,
             $teamCoachRows,
@@ -227,6 +249,7 @@ final class ConflictRadarLoader
             $forbiddenVenuesByTeam,
             $levelByTeam,
             $deadlineByCompetition,
+            $coachUnavailabilities,
         );
 
         return [

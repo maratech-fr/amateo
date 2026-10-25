@@ -60,8 +60,6 @@ def test_slot_template_bounds_the_tolerance_to_zero_thirty() -> None:
 def test_coach_schema_no_longer_accepts_acceptable_late_minutes() -> None:
     # Le levier MORT quitte le contrat 1.6 : extra="forbid" doit le rejeter.
     with pytest.raises(ValidationError):
-        CoachSchema.model_validate(
-            {"id": "c1", "firstName": "Sébastien", "lastName": "T", "acceptableLateMinutes": 15}
-        )
+        CoachSchema.model_validate({"id": "c1", "firstName": "Sébastien", "lastName": "T", "acceptableLateMinutes": 15})
     # Le reste du schéma coach reste valide sans ce champ.
     assert CoachSchema.model_validate({"id": "c1", "firstName": "Sébastien", "lastName": "T"}).id == "c1"

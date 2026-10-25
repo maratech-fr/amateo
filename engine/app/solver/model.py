@@ -29,6 +29,12 @@ class ScheduleCpModel(cp_model.CpModel):
         # des séances GÉNÉRÉES (mêmes données que celles modélisées : exclusivité
         # coach, bonus de chaînage). Même idiome que `locked_slots` ci-dessus.
         self.team_coach_map: dict[str, list[str]] = {}
+        # Chantier H — équipe → coachs ADJOINTS (role ASSISTANT), posée par `_solve` depuis
+        # `parse_v2_constraints`. Les adjoints ne sont PAS une ressource exclusive (jamais dans
+        # `team_coach_map`) ; cette carte sert UNIQUEMENT au relais d'arrivée tardive
+        # (`_locked_person_day_occupations`) : une séance verrouillée tolérante rejointe en retard
+        # est OUVERTE par un adjoint DISPONIBLE, ce qui décale d'autant l'occupation du principal.
+        self.team_assistant_map: dict[str, list[str]] = {}
         # Idem team_coach_map : équipe → joueurs (dont coach-joueurs), posée par `_solve`.
         # Le builder de résultat diagnostique les règles implicites au MÊME grain que la pose.
         self.team_player_map: dict[str, list[str]] = {}

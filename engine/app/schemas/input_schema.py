@@ -88,7 +88,10 @@ class CoachSchema(SerializableModel):
     first_name: str = Field(alias="firstName")
     last_name: str = Field(alias="lastName")
     max_days_override: int | None = Field(default=None, alias="maxDaysOverride")
-    acceptable_late_minutes: int | None = Field(default=None, alias="acceptableLateMinutes")
+    # Chantier H (contrat 1.6) — `acceptableLateMinutes` RETIRÉ : levier MORT (aucune UI, jamais lu
+    # par le moteur). La tolérance d'arrivée tardive est portée par la SÉANCE
+    # (`ScheduleSlotTemplateSchema.coach_late_tolerance_minutes`), pas par la personne. `extra="forbid"`
+    # du modèle sérialisable rejette désormais ce champ s'il reparaît.
     parent_coach_id: str | None = Field(default=None, alias="parentCoachId")
     is_employee: bool = Field(default=False, alias="isEmployee")
     # P2-53 RMM-8 PR-2 — le coach est-il VÉHICULÉ ? Décide de SON barème de trajet
@@ -310,6 +313,12 @@ class ScheduleSlotTemplateSchema(SerializableModel):
     start_time: time = Field(alias="startTime")
     duration_minutes: int = Field(alias="durationMinutes")
     lock_level: str = Field(default="NONE", alias="lockLevel")
+    # Chantier H (contrat 1.6) — tolérance d'arrivée tardive du coach principal SUR CETTE séance
+    # (minutes, 0..30, défaut 0 = aucune). Une séance verrouillée (HARD) qui la porte autorise le
+    # coach principal à rejoindre en retard de `coach_late_tolerance_minutes` si un adjoint
+    # disponible ouvre la séance : l'occupation verrouillée du principal démarre alors d'autant plus
+    # tard (cf. `constraints.common._locked_person_day_occupations`). Absente → 0 → chemin historique.
+    coach_late_tolerance_minutes: int = Field(default=0, ge=0, le=30, alias="coachLateToleranceMinutes")
     pending_constraint_suggestion: dict[str, object] | None = Field(
         default=None,
         alias="pendingConstraintSuggestion",
@@ -321,7 +330,7 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "1.5"
+    version: str = "1.6"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")

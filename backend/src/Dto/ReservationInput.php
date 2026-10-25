@@ -52,6 +52,15 @@ class ReservationInput
     public ?int $durationMinutes = 90;
 
     /**
+     * Chantier H — tolérance d'arrivée tardive du coach principal sur cette séance (minutes, 0..30,
+     * 0 = aucune). Acceptée dès le POST ; aussi réglable après coup par le PATCH dédié. Un créneau
+     * LIBRE ne la porte pas (tranché dans le processor). Plafond métier 30 (fondateur).
+     */
+    #[Assert\Range(min: 0, max: 30)]
+    #[Groups(['write'])]
+    public ?int $coachLateToleranceMinutes = null;
+
+    /**
      * NULL = base plan; set = a period overlay.
      *
      * NotBlank(allowNull) EN PLUS de Uuid : le validateur Uuid de Symfony

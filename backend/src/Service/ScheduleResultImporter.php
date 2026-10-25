@@ -128,12 +128,18 @@ final class ScheduleResultImporter
 
     /**
      * @param array<string, mixed> $slotData
-     * @param array<string, true>  $reservationPlacements placement keys of this plan's durable pins
+     * @param array<string, int>   $reservationPlacements placement key → late-arrival tolerance of this plan's durable pins
      * @param array<string, true>  $manualPlacements      placement keys of the source version's MANUAL locks
      */
     private function hydrateSlot(ScheduleSlotTemplate $slot, Schedule $schedule, array $slotData, array $reservationPlacements, array $manualPlacements): void
     {
         $lockLevel = LockLevel::tryFrom(strtoupper((string) ($slotData['lockLevel'] ?? 'NONE'))) ?? LockLevel::NONE;
+        $placement = $this->placementKey(
+            (string) $slotData['teamId'],
+            (string) $slotData['venueId'],
+            (int) $slotData['dayOfWeek'],
+            substr((string) $slotData['startTime'], 0, 5),
+        );
         $slot
             ->setClubId($schedule->getClubId())
             ->setSeasonId($schedule->getSeasonId())
@@ -144,6 +150,9 @@ final class ScheduleResultImporter
             ->setDayOfWeek((int) $slotData['dayOfWeek'])
             ->setStartTime($this->parseStartTime((string) $slotData['startTime']))
             ->setDurationMinutes((int) $slotData['durationMinutes'])
+            // Chantier H — une séance importée hérite de la tolérance d'arrivée tardive de la
+            // réservation qui l'a épinglée (0 sinon), pour qu'elle survive à la régénération.
+            ->setCoachLateToleranceMinutes($reservationPlacements[$placement] ?? 0)
             ->setLockLevel($lockLevel)
             ->setLockOrigin($this->originForImportedLock($lockLevel, $slot, $reservationPlacements, $manualPlacements));
     }
@@ -159,7 +168,7 @@ final class ScheduleResultImporter
      *    un MANUAL hérité ressortait en UNKNOWN jusqu'ici, faussant le décompte « verrous posés ».
      *  - ni l'un ni l'autre → UNKNOWN (indécidable).
      *
-     * @param array<string, true> $reservationPlacements
+     * @param array<string, int>  $reservationPlacements
      * @param array<string, true> $manualPlacements
      */
     private function originForImportedLock(LockLevel $lockLevel, ScheduleSlotTemplate $slot, array $reservationPlacements, array $manualPlacements): ?LockOrigin
@@ -205,10 +214,13 @@ final class ScheduleResultImporter
     }
 
     /**
-     * Placement keys of the durable Reservation pins that feed THIS schedule's plan — the
-     * only source of a HARD lock in a solver result. Loaded once per import.
+     * Placement key → late-arrival tolerance (minutes) of the durable Reservation pins that feed
+     * THIS schedule's plan — the only source of a HARD lock in a solver result. Chantier H: the
+     * tolerance (0 = none) is carried onto the imported slot so it survives regeneration and
+     * inherited pins. The value is an int (incl. 0), so `isset()` still answers « is a reservation
+     * placement » for the lock-origin check. Loaded once per import.
      *
-     * @return array<string, true>
+     * @return array<string, int>
      */
     private function reservationPlacements(Schedule $schedule): array
     {
@@ -229,7 +241,7 @@ final class ScheduleResultImporter
                 $reservation->getVenueId(),
                 $reservation->getDayOfWeek(),
                 $reservation->getStartTime()->format('H:i'),
-            )] = true;
+            )] = $reservation->getCoachLateToleranceMinutes();
         }
 
         return $placements;
