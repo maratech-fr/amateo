@@ -16,13 +16,14 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
- * POST /api/clubs/{id}/parc-import — l'IMPORT RÉEL du parc (chantier G PR2). Le gestionnaire a
+ * POST /api/clubs/{id}/parc-import — l'IMPORT RÉEL du parc (lot correctif « G2 »). Le gestionnaire a
  * analysé son parc (dry-run {@see ParcImportAnalyzeController}), ajusté l'aperçu et clique
- * « Importer » ; le serveur bascule les lignes cochées en écriture TOUT-OU-RIEN.
+ * « Importer » ; le serveur DÉRIVE les sections des cases et bascule les lignes cochées en écriture
+ * TOUT-OU-RIEN.
  *
  * MÊME gate ({@see ParcImportGate}) et MÊMES bornes que l'analyse : 404 / 403 / 409 (saison et
  * socle EN VIGUEUR) / 429 / 413 / 422. Le corps est un objet `{payload, decisions}` :
- *  - `payload` : l'objet parc-v1, RE-VALIDÉ en forme ({@see ParcPayloadValidator}) et en bornes ;
+ *  - `payload` : l'objet parc-v2, RE-VALIDÉ en forme ({@see ParcPayloadValidator}) et en bornes ;
  *  - `decisions` : la liste des choix de l'aperçu.
  * L'opération est `deserialize: false` (le contrôleur lit `getContent()` lui-même) et `read: false`.
  *
@@ -32,14 +33,11 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 #[AsController]
 final class ParcImportExecuteController extends AbstractController
 {
-    /** Bornes d'abus (cadrage G) — le corps est refusé AVANT le parse au-delà de la taille. */
+    /** Bornes d'abus (cadrage G2) — le corps est refusé AVANT le parse au-delà de la taille. */
     private const int MAX_BODY_BYTES = 256 * 1024;
 
-    private const int MAX_TEAMS = 60;
-
-    private const int MAX_VENUES = 20;
-
-    private const int MAX_SLOTS_AND_RESERVATIONS = 500;
+    /** parc-v2 : une ligne par case, au plus 500 cases par import (bombe). */
+    private const int MAX_CASES = 500;
 
     public function __construct(
         private readonly ParcImportGate $gate,
@@ -124,14 +122,8 @@ final class ParcImportExecuteController extends AbstractController
     private function boundsErrors(array $parc): array
     {
         $errors = [];
-        if ($this->count($parc, 'equipes') > self::MAX_TEAMS) {
-            $errors[] = \sprintf('Trop d\'équipes : %d au maximum par import.', self::MAX_TEAMS);
-        }
-        if ($this->count($parc, 'gymnases') > self::MAX_VENUES) {
-            $errors[] = \sprintf('Trop de gymnases : %d au maximum par import.', self::MAX_VENUES);
-        }
-        if ($this->count($parc, 'creneaux') + $this->count($parc, 'reservations') > self::MAX_SLOTS_AND_RESERVATIONS) {
-            $errors[] = \sprintf('Trop de créneaux et de réservations : %d au maximum par import.', self::MAX_SLOTS_AND_RESERVATIONS);
+        if ($this->count($parc, 'cases') > self::MAX_CASES) {
+            $errors[] = \sprintf('Trop de cases : %d au maximum par import.', self::MAX_CASES);
         }
 
         return $errors;

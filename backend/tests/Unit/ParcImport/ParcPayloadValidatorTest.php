@@ -142,6 +142,23 @@ final class ParcPayloadValidatorTest extends TestCase
         yield 'équipe au nom vide' => [$emptyTeamName, 'équipe'];
     }
 
+    /**
+     * Un parc-v2 minimal recevable : 1 gymnase, 1 case (terrain, une équipe). `gymnases` est
+     * fournie ici mais OPTIONNELLE (cf. acceptedProvider).
+     *
+     * @return array<string, mixed>
+     */
+    private static function validParcV2(): array
+    {
+        return [
+            'format' => 'parc-v2',
+            'gymnases' => [['nom' => 'MATEO']],
+            'cases' => [[
+                'gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1'],
+            ]],
+        ];
+    }
+
     #[DataProvider('acceptedProvider')]
     public function testARecevableParcIsAccepted(array $parc): void
     {
@@ -227,21 +244,9 @@ final class ParcPayloadValidatorTest extends TestCase
         }
     }
 
-    /**
-     * Un parc-v2 minimal recevable : 1 gymnase, 1 case (terrain, une équipe). `gymnases` est
-     * fournie ici mais OPTIONNELLE (cf. acceptedProvider).
-     *
-     * @return array<string, mixed>
-     */
-    private static function validParcV2(): array
+    protected function setUp(): void
     {
-        return [
-            'format' => 'parc-v2',
-            'gymnases' => [['nom' => 'MATEO']],
-            'cases' => [[
-                'gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1'],
-            ]],
-        ];
+        $this->validator = new ParcPayloadValidator;
     }
 
     private function isValidJson(string $json): bool
@@ -249,10 +254,5 @@ final class ParcPayloadValidatorTest extends TestCase
         json_decode($json, true);
 
         return \JSON_ERROR_NONE === json_last_error();
-    }
-
-    protected function setUp(): void
-    {
-        $this->validator = new ParcPayloadValidator;
     }
 }

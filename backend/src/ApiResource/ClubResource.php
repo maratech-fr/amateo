@@ -37,10 +37,10 @@ use Symfony\Component\Serializer\Attribute\Groups;
         read: false,
         name: 'import_teams_analyze',
     ),
-    // Chantier G — dry-run de l'import de parc par IA. Le corps EST le texte parc-v1 BRUT
-    // (JSON), lu par le contrôleur via getContent() ; `deserialize: false` empêche API
-    // Platform de le désérialiser en ClubInput (un JSON illisible doit donner notre 422
-    // nommé, jamais un 400 de désérialisation). Écrit RIEN.
+    // Lot correctif import IA « G2 » — dry-run de l'import de parc par IA. Le corps EST le texte
+    // parc-v2 BRUT (JSON, une ligne par case), lu par le contrôleur via getContent() ;
+    // `deserialize: false` empêche API Platform de le désérialiser en ClubInput (un JSON illisible
+    // doit donner notre 422 nommé, jamais un 400 de désérialisation). Écrit RIEN.
     new Post(
         uriTemplate: '/clubs/{id}/parc-import/analyze',
         controller: 'App\Controller\ParcImportAnalyzeController',
@@ -48,9 +48,10 @@ use Symfony\Component\Serializer\Attribute\Groups;
         deserialize: false,
         name: 'parc_import_analyze',
     ),
-    // Chantier G PR2 — import RÉEL du parc. Le corps est `{payload, decisions}` (JSON brut lu par
-    // le contrôleur, `deserialize: false`) : le payload est re-validé, les lignes cochées sont
-    // basculées en écriture tout-ou-rien. Même gate et mêmes bornes que l'analyse.
+    // Lot correctif import IA « G2 » — import RÉEL du parc. Le corps est `{payload, decisions}`
+    // (JSON brut lu par le contrôleur, `deserialize: false`) : le payload parc-v2 est re-validé, ses
+    // sections dérivées, les lignes cochées basculées en écriture tout-ou-rien. Même gate et mêmes
+    // bornes que l'analyse.
     new Post(
         uriTemplate: '/clubs/{id}/parc-import',
         controller: 'App\Controller\ParcImportExecuteController',

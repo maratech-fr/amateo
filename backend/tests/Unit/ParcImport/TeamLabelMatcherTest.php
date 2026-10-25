@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\ParcImport;
 
+use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\ParcImport\TeamLabelMatcher;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -11,7 +12,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Lot correctif import IA (« G2 ») PR1 — service PUR qui APPARIE un libellé d'équipe lu dans une
  * case parc-v2 aux équipes DÉJÀ saisies du club. Le fuzzy d'origine (égalité normalisée ou
- * containment, {@see \App\Service\Basketball\VenueLabelNormalizer::fuzzyMatches}) ne rattrapait ni
+ * containment, {@see VenueLabelNormalizer::fuzzyMatches}) ne rattrapait ni
  * « Arhand » (OCR de « Armand »), ni « U15M 1 » (écrit autrement que « U15-1 »), ni un nom coupé par
  * l'OCR. Ce matcher corrige le NOMMAGE sans jamais FILTRER ce qui est trouvé (cadrage G2 D5-D7,
  * consigne fondateur « correcteur jamais filtre »).
@@ -41,21 +42,10 @@ final class TeamLabelMatcherTest extends TestCase
 {
     private TeamLabelMatcher $matcher;
 
-    /** @return list<array{id: string, nom: string}> */
-    private static function existing(string ...$names): array
-    {
-        $out = [];
-        foreach ($names as $i => $nom) {
-            $out[] = ['id' => \sprintf('11111111-1111-4111-8111-%012d', $i + 1), 'nom' => $nom];
-        }
-
-        return $out;
-    }
-
     public function testATypoWithinLevenshteinTwoIsSuggestedNeverMatchedOutright(): void
     {
         // « Arhand » (OCR) à distance 1 de « Armand » : SUGGÉRÉ, jamais apparié d'office.
-        $existing = self::existing('Armand', 'Jean Vilar');
+        $existing = $this->existing('Armand', 'Jean Vilar');
         $verdict = $this->matcher->match('Arhand', $existing);
 
         self::assertSame('suggere', $verdict['statut'], 'un fuzzy ≤ 2 est suggéré, jamais apparié sans confirmation');
@@ -68,7 +58,7 @@ final class TeamLabelMatcherTest extends TestCase
         // « U15M 1 » et « U18M 3 » sont les MÊMES équipes que « U15-1 » / « U18-3 » écrites
         // autrement (espace, marqueur de genre, tiret) — après normalisation canonique, la cible
         // est sans ambiguïté. L'important : viser la bonne équipe, jamais « à créer » un doublon.
-        $existing = self::existing('U15-1', 'U18-3', 'U15-2');
+        $existing = $this->existing('U15-1', 'U18-3', 'U15-2');
 
         $u15 = $this->matcher->match('U15M 1', $existing);
         self::assertNotSame('aCreer', $u15['statut'], '« U15M 1 » ne doit pas créer un doublon de « U15-1 »');
@@ -83,7 +73,7 @@ final class TeamLabelMatcherTest extends TestCase
     {
         // « Armond » est à distance 1 de « Armand » ET de « Armund » : deux candidats dans le seuil
         // → ambigu, décoché, aucune cible devinée.
-        $existing = self::existing('Armand', 'Armund');
+        $existing = $this->existing('Armand', 'Armund');
         $verdict = $this->matcher->match('Armond', $existing);
 
         self::assertSame('ambigu', $verdict['statut'], 'deux candidats dans le seuil = ambigu, jamais deviné');
@@ -94,7 +84,7 @@ final class TeamLabelMatcherTest extends TestCase
     {
         // Correcteur jamais filtre : un libellé hors de tout seuil reste PROPOSÉ en création,
         // jamais écarté parce qu'il ne ressemble à rien de connu.
-        $verdict = $this->matcher->match('Palais des Mille Sports', self::existing('Armand', 'U15-1'));
+        $verdict = $this->matcher->match('Palais des Mille Sports', $this->existing('Armand', 'U15-1'));
 
         self::assertSame('aCreer', $verdict['statut']);
         self::assertNull($verdict['cibleId']);
@@ -104,7 +94,7 @@ final class TeamLabelMatcherTest extends TestCase
     {
         // D6 — l'OCR a coupé « U18F Fays » en deux tokens dans la case. Pris SÉPARÉMENT, « U18F »
         // seul ne s'apparie à rien ; RECOLLÉS, « U18F Fays » s'apparie à l'équipe existante.
-        $existing = self::existing('U18F Fays', 'SM1', 'SF1');
+        $existing = $this->existing('U18F Fays', 'SM1', 'SF1');
 
         self::assertSame('aCreer', $this->matcher->match('U18F', $existing)['statut'], 'pris seul, « U18F » ne s\'apparie pas');
 
@@ -118,7 +108,7 @@ final class TeamLabelMatcherTest extends TestCase
     {
         // Témoin de la promesse ci-dessus (dans l'autre sens) : deux VRAIES équipes distinctes
         // posées dans la même case (mutualisation / terrain divisé) ne fusionnent JAMAIS en une.
-        $existing = self::existing('SM1', 'SF1');
+        $existing = $this->existing('SM1', 'SF1');
 
         self::assertNull($this->matcher->recombine(['SM1', 'SF1'], $existing), 'deux équipes connues distinctes ne se recollent pas');
     }
@@ -127,7 +117,7 @@ final class TeamLabelMatcherTest extends TestCase
     {
         // D7 — « U21 - SENIORS » : découpé en deux SEULEMENT si CHAQUE moitié s'apparie à une
         // équipe du club. Avec les deux équipes présentes, la découpe rend deux libellés.
-        $both = self::existing('U21M1', 'Seniors M');
+        $both = $this->existing('U21M1', 'Seniors M');
         $split = $this->matcher->split('U21 - SENIORS', $both);
 
         self::assertNotNull($split, 'les deux moitiés s\'apparient → découpe');
@@ -138,7 +128,7 @@ final class TeamLabelMatcherTest extends TestCase
     {
         // Témoin : si UNE SEULE moitié s'apparie, on ne découpe pas — un libellé qui « ressemble »
         // à un groupe mais dont une moitié est inconnue reste ENTIER (pas de demi-équipe inventée).
-        $onlyOne = self::existing('U21M1'); // « SENIORS » absent du club
+        $onlyOne = $this->existing('U21M1'); // « SENIORS » absent du club
 
         self::assertNull($this->matcher->split('U21 - SENIORS', $onlyOne), 'une seule moitié appariée → pas de découpe');
     }
@@ -146,5 +136,16 @@ final class TeamLabelMatcherTest extends TestCase
     protected function setUp(): void
     {
         $this->matcher = new TeamLabelMatcher;
+    }
+
+    /** @return list<array{id: string, nom: string}> */
+    private function existing(string ...$names): array
+    {
+        $out = [];
+        foreach ($names as $i => $nom) {
+            $out[] = ['id' => \sprintf('11111111-1111-4111-8111-%012d', $i + 1), 'nom' => $nom];
+        }
+
+        return $out;
     }
 }

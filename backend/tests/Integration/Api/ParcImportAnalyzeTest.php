@@ -11,9 +11,12 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SeasonStatus;
+use App\Service\ParcImport\ParcImportGate;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\ParcImport\ParcPayloadValidatorTest;
+use App\Tests\Unit\ParcImport\TeamLabelMatcherTest;
+use App\Tests\Unit\ParcImport\TeamNameInterpreterTest;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -30,7 +33,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * N'ÉCRIT RIEN.
  *
  * Contrat (défini ici, implémenté par NEO) :
- *  - MÊME gate que l'import ({@see \App\Service\ParcImport\ParcImportGate}) : 404 non-membre, 403
+ *  - MÊME gate que l'import ({@see ParcImportGate}) : 404 non-membre, 403
  *    non-gestionnaire, 409 socle EN VIGUEUR / saison archivée, 429 limiteur, bornes 256 Ko / ≤ 500 cases.
  *  - Réponse 200 :
  *      {format,
@@ -47,8 +50,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  - D8 un `groupe` de case (« CEC ») nomme un bloc mutualisé — JAMAIS une équipe à créer.
  *
  * Les RÈGLES du format sont éprouvées au plus bas par {@see ParcPayloadValidatorTest} ; la déduction
- * nom → genre/catégorie par {@see \App\Tests\Unit\ParcImport\TeamNameInterpreterTest} ; l'appariement
- * fuzzy par {@see \App\Tests\Unit\ParcImport\TeamLabelMatcherTest}. ICI on prouve le CÂBLAGE, la
+ * nom → genre/catégorie par {@see TeamNameInterpreterTest} ; l'appariement
+ * fuzzy par {@see TeamLabelMatcherTest}. ICI on prouve le CÂBLAGE, la
  * dérivation complète sur une sortie RÉELLE (t7), les alertes, la fiabilité, l'étanchéité tenant et
  * le NON-ÉCRIT.
  *
@@ -445,7 +448,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
             '/api/clubs/' . ($clubId ?? $this->club->getId()) . '/parc-import/analyze',
             [],
             [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $this->season->getId()] + $server,
+            $server + ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $this->season->getId()],
             $rawBody,
         );
         $response = $this->client->getResponse();

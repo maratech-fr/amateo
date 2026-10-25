@@ -52,6 +52,13 @@ final class TeamNameInterpreterTest extends TestCase
         yield 'SF1 → seniors / F' => ['SF1', 'F', 'senior'];
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function unrecognisedProvider(): iterable
+    {
+        yield 'section scolaire' => ['Section J.Macé'];
+        yield 'activité basket santé' => ['Basket Santé'];
+    }
+
     #[DataProvider('genderAndCategoryProvider')]
     public function testDerivesGenderAndAgeCategoryFromTheName(string $name, string $expectedGender, string $categorieContains): void
     {
@@ -74,13 +81,6 @@ final class TeamNameInterpreterTest extends TestCase
     {
         // « Vétérans » : catégorie senior sans marqueur de genre → MIXTE.
         self::assertSame('MIXTE', $this->interpreter->interpret('Vétérans')['genre'], 'un libellé senior sans marqueur de genre est MIXTE');
-    }
-
-    /** @return iterable<string, array{string}> */
-    public static function unrecognisedProvider(): iterable
-    {
-        yield 'section scolaire' => ['Section J.Macé'];
-        yield 'activité basket santé' => ['Basket Santé'];
     }
 
     #[DataProvider('unrecognisedProvider')]

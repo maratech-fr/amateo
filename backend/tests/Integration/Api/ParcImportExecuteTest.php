@@ -15,6 +15,8 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Service\ParcImport\ParcImportGate;
+use App\Service\ParcImport\TeamNameInterpreter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\TenantGucTrait;
@@ -32,13 +34,13 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * DÉRIVÉES des cases qu'il a cochées.
  *
  * Ce qui change vs parc-v1 (jamais déployé) : le `payload` est un parc-v2 (`{format, gymnases?, cases[]}`),
- * et l'appli DÉRIVE des cases les équipes (genre/catégorie par {@see \App\Service\ParcImport\TeamNameInterpreter}),
+ * et l'appli DÉRIVE des cases les équipes (genre/catégorie par {@see TeamNameInterpreter}),
  * les gymnases, les créneaux, les blocs mutualisés (label = `groupe`) et les réservations. Le CONTRAT de
  * décisions est inchangé : `decisions = [{section, index, coche, cibleId?, corrections?}]` sur les sections
  * DÉRIVÉES ; seules les lignes cochées sont écrites.
  *
  * Contrat (défini ici, implémenté par NEO) :
- *  - MÊME gate que l'analyse (patron {@see \App\Service\ParcImport\ParcImportGate}) : 404 non-membre,
+ *  - MÊME gate que l'analyse (patron {@see ParcImportGate}) : 404 non-membre,
  *    403 non-gestionnaire, 409 socle EN VIGUEUR (geste d'ONBOARDING), 429 limiteur, bornes ≤ 500 cases.
  *  - Ordre d'écriture : gymnases → équipes → créneaux → blocs → réservations ; une ligne cochée invalide
  *    AU MOMENT DE L'ÉCRITURE (chevauchement, Σ bloc, capacité, cap payant) → 422 nommant la ligne, RIEN écrit.

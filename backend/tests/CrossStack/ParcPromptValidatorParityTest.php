@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Service\ParcImport\ParcPayloadValidator;
+use App\Service\ParcImport\TeamNameInterpreter;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
@@ -25,7 +26,7 @@ use ReflectionClass;
  * {@see TsUnionsMatchPhpEnumsTest} / {@see FrontRederivationRegistryTest}) et la confronte au validateur.
  *
  * Portée : prompt ⇄ VALIDATEUR (ce que le serveur accepte). Le genre et la catégorie ne sont PLUS
- * dans le format parc-v2 (déduits par {@see \App\Service\ParcImport\TeamNameInterpreter}), ils ne
+ * dans le format parc-v2 (déduits par {@see TeamNameInterpreter}), ils ne
  * figurent donc plus ici. Les autres promesses du prompt (une entrée par équipe, contexte
  * correcteur, phrase de source) sont gardées côté front par `promptTemplate.test.ts`.
  *

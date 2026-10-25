@@ -110,8 +110,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   // Le prompt ne lit que les NOMS ; les id des entités servent au ré-appariement (D5).
   const prompt = useMemo(
-    () => buildParcPrompt({ teams: teams.map((t) => t.name), venues: venues.map((v) => v.name), coaches: coaches.map((c) => c.name) }),
-    [teams, venues, coaches],
+    () => buildParcPrompt({ teams: teams.map((t) => t.name), venues: venues.map((v) => v.name) }),
+    [teams, venues],
   );
 
   const [copied, setCopied] = useState(false);
