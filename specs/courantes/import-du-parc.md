@@ -17,8 +17,10 @@
 > par `parc-v2` : plusieurs chatbots réels ne rendaient pas de façon fiable des sections déjà
 > structurées, mais rendaient fidèlement les cases telles qu'elles apparaissent sur le document
 > source — le serveur dérive désormais lui-même le reste depuis cette structure plus simple. Les
-> **coachs ne sont plus extraits** (D11, saisis à la main). Le backend (dérivation, validateur,
-> prompt) est recalé ; l'écran `ParcImportModal` ne l'a pas encore suivi (roadmap `P4-362`, §7).
+> **coachs ne sont plus extraits** (D11, saisis à la main). Backend (dérivation, validateur, prompt,
+> PR1) **et** écran `ParcImportModal` (PR2, §7) sont désormais recalés sur `parc-v2` — reste ouvert
+> en roadmap (`P4-363`) un défaut de contrat sur la réservation de GROUPE d'une mutualisation
+> appariée, ainsi que la robustesse du re-parse du texte collé côté front (§7).
 
 ## 1. Format `parc-v2`
 
@@ -231,9 +233,9 @@ cochées en écriture. Corps `{payload, decisions}` :
   côté serveur (club ET saison, patron A10 `FbiFixtureImporter::ownedVenueForImport`) — un
   `cibleId` d'un autre club ou d'une autre saison échoue nommé, jamais une fuite tenant.
   `corrections` remplace des champs simples : `seances` pour une équipe, `jour`/`debut`/`duree`
-  pour un créneau, une mutualisation (sa case de réservation de groupe) ou une réservation. Sur
-  une équipe **appariée**, seul le nombre de séances peut bouger (`corrections.seances`) — jamais
-  le genre, la catégorie ou le niveau.
+  pour un créneau, une mutualisation (sa case de réservation de groupe, PLUS `groupe` — le
+  libellé du bloc, D8, §7) ou une réservation. Sur une équipe **appariée**, seul le nombre de
+  séances peut bouger (`corrections.seances`) — jamais le genre, la catégorie ou le niveau.
 
 **Une seule transaction, tout ou rien** (`EntityManagerInterface::wrapInTransaction`) ; une ligne
 cochée invalide au moment de l'écriture lève `UnprocessableEntityHttpException` nommant la ligne
@@ -270,8 +272,10 @@ chatbot est ignorée en silence (le dériveur ne la lit pas).
   `SharedTrainingBlock` du socle existant (`schedulePlanId` null) est apparié ; sinon la garde Σ
   séances communes ≤ séances hebdomadaires d'un membre (`SoloReservationBudget::
   forTeamsWithBlockSubstituted`, même foyer que `SharedTrainingBlockStateProcessor`) est rejouée
-  **avant** tout persist, puis le bloc (label = `groupe` de la case) et ses membres naissent au
-  socle. **Réservation de groupe** : si la case (gymnase/jour/heure, par `cibleId` ou
+  **avant** tout persist, puis le bloc naît au socle avec ses membres. Son **label** : la
+  `corrections.groupe` du gestionnaire (trim, non vide, D8, §7) l'emporte sur le `groupe` brut de
+  la case, les deux bornés à `SharedTrainingBlock::LABEL_MAX_LENGTH` (40 caractères).
+  **Réservation de groupe** : si la case (gymnase/jour/heure, par `cibleId` ou
   `corrections`) se résout, chaque membre reçoit sa réservation co-localisée via la maison du
   rail `/api/reservations/group` (`GroupReservationController::
   writeBlockReservationsAtomically`), gardée par `ReservationGroupOccupancy::
@@ -331,32 +335,52 @@ Quatre temps, dans une seule modale (jamais plusieurs écrans à cliqueter) :
    source machine-lisible côté front, gardée en parité avec le validateur, §7.1) : les noms EXACTS
    déjà saisis (équipes, gymnases) sont embarqués pour que l'assistant les réutilise au lieu d'en
    inventer des variantes — **plus les coachs** (D11) — la règle « une équipe par entrée de
-   `equipes` » et le champ `groupe` (mutualisation) sont explicites. `PRODUCT_NAME` (jamais en
-   littéral) nomme l'outil. Bouton « Copier » (`navigator.clipboard`).
+   `equipes` » et le champ `groupe` (mutualisation) sont explicites. Le **contexte du club de la
+   session** (nom, ville — `useMe().club`, câblé depuis `TeamsStep`/`VenuesStep`) est embarqué dans
+   le prompt, utile surtout quand rien n'est encore saisi (terrain vierge). `PRODUCT_NAME` (jamais
+   en littéral) nomme l'outil. Bouton « Copier » (`navigator.clipboard`).
 2. **Collage** — zone de texte, bouton « Analyser » qui appelle `useAnalyzeParc` (dry-run §3).
 3. **Aperçu** — une case par ligne (le verdict SERVEUR, affiché verbatim, jamais redérivé),
    `StatusPill` par statut, la raison serveur en texte, une mise à jour de séances proposée
-   affichée en clair. Deux corrections possibles, amorcées depuis le texte collé réellement
-   envoyé (jamais une valeur inventée côté front) :
+   affichée en clair. **Plus aucune UI coachs** (D11) — `SECTION_ORDER` ne porte plus `coachs`,
+   et une vieille section `coachs` d'un aperçu hérité est ignorée en silence si elle apparaît quand
+   même dans la réponse. Un bandeau `NoticeBanner` (D10) s'affiche si `fiabilite.bandeau` est vrai
+   (« résultat peu fiable, vérifiez chaque ligne de près ») — **jamais bloquant**, l'import reste
+   possible. Les `alertes` transverses (§1) sont affichées verbatim dans un second bandeau (D9).
+   Trois corrections possibles, amorcées depuis le texte collé réellement envoyé (jamais une
+   valeur inventée côté front) :
    - un créneau **à créer** (section `creneaux`) peut voir son jour/heure/durée corrigés sur
-     place (`SlotEditor`) ;
+     place (`SlotEditor`), ET son gymnase ré-apparié par case (D12) — un `VenueSelect` listant les
+     gymnases existants, valeur `""` = le serveur résout par le nom du parc, sinon l'id choisi
+     part en `cibleId` de la ligne `creneaux` ;
    - une ligne d'ENTITÉ (équipes/gymnases) dont le statut porte un sélecteur (`apparie`/
      `suggere`/`aCreer`) peut être **ré-appariée** à une autre entité EXISTANTE ou laissée à
      « Créer » (D5) — `TeamSelect`/`VenueSelect` respectivement, valeur `""` = créer, sinon l'id
-     choisi part en `cibleId` à l'import. Une ligne `decoche`/`alerte` n'a jamais de sélecteur :
-     la structure reste à la main.
-   Bandeau si au moins un gymnase naît à créer (« renseignez l'adresse ensuite »). Bouton
+     choisi part en `cibleId` à l'import ;
+   - une ligne de **mutualisation** affiche le `groupe` dérivé par le serveur (ex. « CEC ») dans un
+     champ texte **corrigeable** (D8) — la valeur corrigée part en `corrections.groupe` et, côté
+     executor, l'emporte sur le `groupe` brut de la case pour nommer le bloc (§6, borné à
+     `SharedTrainingBlock::LABEL_MAX_LENGTH`). Une mutualisation n'a **aucun** sélecteur de
+     gymnase (contrairement à un créneau, D12) : voir la limite de contrat notée plus bas.
+   Une ligne `decoche`/`alerte` n'a jamais de sélecteur ni de correction : la structure reste à la
+   main. Bandeau si au moins un gymnase naît à créer (« renseignez l'adresse ensuite »). Bouton
    « Importer N » désactivé à 0 coché, `disabledReason` découvrable (A11Y-30).
-4. **Import + récap** — `useImportParc` poste `{payload, decisions}` (le texte collé RE-PARSÉ,
-   jamais l'aperçu reconstruit) ; au succès, équipes/gymnases sont invalidés PARTOUT (D-25) ; le
-   récap chiffré par section (§6) s'affiche verbatim.
+4. **Import + récap** — `useImportParc` poste `{payload, decisions}` (le texte collé RE-PARSÉ par
+   un simple `JSON.parse`, jamais l'aperçu reconstruit) ; au succès, équipes/gymnases sont
+   invalidés PARTOUT (D-25) ; le récap chiffré par section (§6) s'affiche verbatim.
 
-⚠ **L'écran n'a pas suivi le recalage « G2 » du backend (§1/§3, roadmap `P4-362`)** : il référence
-encore une section `coachs` disparue du contrat serveur (sans effet visible, la clé est
-simplement absente de la réponse) ; il n'affiche ni le bandeau de fiabilité (`fiabilite.bandeau`)
-ni les alertes transverses (`alertes`, §1) de l'analyse ; une ligne de mutualisation n'offre
-aucun sélecteur de gymnase par case ni de requalification de son `groupe` dérivé — seule la
-ligne `creneaux` porte une correction sur place.
+⚠ **Deux limites de contrat restées ouvertes après PR2** (roadmap `P4-363`) :
+- le front re-décode le texte collé par un `JSON.parse` BRUT (`ParcImportModal.tsx`) alors que le
+  backend applique une passe de RÉCUPÉRATION si ce parse échoue (§1, D4 — bloc Markdown, guillemets
+  typographiques) ; un texte qui a eu BESOIN de cette récupération pour analyser avec succès envoie
+  `payload: null` à l'import (le `parc` state reste `null`), que `ParcImportExecuteController`
+  refuse en 422 — l'analyse avait réussi, l'import échoue sans rapport visible avec la cause réelle ;
+- le `cibleId` d'une ligne `mutualisations` `apparie` porte l'id du **BLOC** du socle qu'elle
+  rejoint (`ParcImportAnalyzer::analyzeMutualisations`), alors que `ParcImportExecutor::
+  poseGroupReservation` le LIT comme un id de **GYMNASE** (`ownedVenue($cibleId, …)`) pour poser la
+  réservation de groupe de la case — l'ambiguïté est inoffensive aujourd'hui (le front n'envoie
+  cette décision que pour un bloc `aCreer`, `cibleId` alors `null`) mais interdit d'exposer un futur
+  sélecteur de gymnase sur une ligne de mutualisation sans la lever d'abord.
 
 Décisions d'interaction (passe `ui-ux-pro-max`) : clôture jamais bloquée (dry-run, rien n'est
 écrit avant l'import) sauf pendant un appel en cours (double-soumission désarmée) ; chaque état
