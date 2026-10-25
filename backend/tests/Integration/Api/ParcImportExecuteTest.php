@@ -454,6 +454,134 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(2, $this->reservationCountOnVenue($venue->getId()), 'venueId vide → résolution par le nom de la case');
     }
 
+    // ───────────────────────── PR1 — appariement ambigu : refus sans choix, apparié avec choix (D5) ─────────────────────────
+    // L'aperçu refondu sert une ligne « ambigu » (≥ 2 candidats). Côté écriture, une telle ligne
+    // COCHÉE sans cible choisie ne doit JAMAIS créer un doublon en silence : refus 422 nommant la
+    // ligne, RIEN écrit. Tranchée (cibleId = un candidat), elle s'importe en APPARIEMENT, séances seules.
+    // Aperçu jumeau : {@see ParcImportAnalyzeTest::testAnAmbiguousTeamLabelIsServedAsAmbiguWithItsCandidates}.
+
+    public function testACheckedTeamLineWithAnAmbiguousLabelAndNoChoiceIsRefusedWritingNothing(): void
+    {
+        // « Armond » tombe dans le seuil flou de « Armand » ET « Armund » → ambigu. Cochée SANS cible,
+        // la ligne est REFUSÉE (422 nommant l'équipe), rien écrit — avant PR1, l'import créait « Armond »
+        // en 3e équipe en silence.
+        $this->makeTeam('Armand', sessionsPerWeek: 2);
+        $this->makeTeam('Armund', sessionsPerWeek: 2);
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Armond']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un libellé ambigu coché sans choix est refusé');
+        self::assertStringContainsString('équipe', implode(' ', $body['errors'] ?? []), 'le 422 nomme la ligne équipe fautive');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit : aucun doublon « Armond » créé');
+    }
+
+    public function testAnAmbiguousTeamLineResolvedToAChosenCandidateImportsAsAMatchMovingOnlySessions(): void
+    {
+        // Le gestionnaire TRANCHE : il choisit « Armand » parmi les candidats (cibleId) et corrige les
+        // séances. La ligne s'importe en APPARIEMENT — aucune création, SEULES les séances bougent.
+        $armand = $this->makeTeam('Armand', sessionsPerWeek: 2);
+        $this->makeTeam('Armund', sessionsPerWeek: 2);
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Armond']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'cibleId' => $armand->getId(), 'corrections' => ['seances' => 3]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'un ambigu tranché s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'appariement : aucune équipe créée');
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Team::class)->find($armand->getId());
+        self::assertInstanceOf(Team::class, $reloaded);
+        self::assertSame(3, $reloaded->getSessionsPerWeek(), 'seules les séances de l\'équipe choisie bougent');
+    }
+
+    public function testACibleIdFromAnotherClubOnAnAmbiguousTeamLineIsRefusedWritingNothing(): void
+    {
+        // Abus (patron A1 étendu à la ligne équipe) — sur une ligne ambiguë, un cibleId pointant
+        // l'équipe d'un AUTRE club ne doit JAMAIS être écrit : re-vérification tenant (ownedTeam),
+        // 422, rien écrit.
+        $this->makeTeam('Armand', sessionsPerWeek: 2);
+        $this->makeTeam('Armund', sessionsPerWeek: 2);
+        $foreign = $this->seedForeignClubWithTeam('Armand');
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Armond']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'cibleId' => $foreign['teamId']]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un cibleId d\'équipe hors tenant est refusé');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit avec une cible hors tenant');
+    }
+
+    // ───────────────────────── Abus — noms hostiles & bornes du contrôleur d'exécution ─────────────────────────
+
+    public function testHostileFormulaNamesAreNeutralizedBeforeBeingWritten(): void
+    {
+        // Abus export XLSX — un nom qui COMMENCE par =/+/-/@ (ou tab/CRLF) deviendrait une FORMULE
+        // vivante à l'ouverture de l'export. L'import NEUTRALISE le préfixe avant d'écrire : l'équipe
+        // ET le gymnase créés portent le nom DÉSAMORCÉ, jamais le littéral hostile.
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => '+Gymnase Piège', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['=SOMME(A1:A2)']],
+        ]);
+        $decisions = [
+            ['section' => 'gymnases', 'index' => 0, 'coche' => true],
+            ['section' => 'equipes', 'index' => 0, 'coche' => true],
+        ];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        self::assertNull($this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => '=SOMME(A1:A2)']), 'jamais le littéral hostile comme équipe');
+        self::assertNotNull($this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SOMME(A1:A2)']), 'l\'équipe désamorcée est stockée');
+        self::assertNull($this->em->getRepository(Venue::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => '+Gymnase Piège']), 'jamais le littéral hostile comme gymnase');
+        self::assertNotNull($this->em->getRepository(Venue::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'Gymnase Piège']), 'le gymnase désamorcé est stocké');
+    }
+
+    public function testAnOversizedExecutionBodyIsRefusedBeforeParsing(): void
+    {
+        // Abus (parité avec l'analyse) — un corps d'IMPORT > 256 Ko est refusé (413) AVANT tout parse,
+        // rien écrit.
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $huge = str_repeat('x', 256 * 1024 + 1);
+        $body = '{"payload":{"format":"parc-v2","gymnases":[],"cases":[],"pad":"' . $huge . '"},"decisions":[]}';
+
+        [$status] = $this->importRaw($body);
+        self::assertSame(413, $status, 'un corps d\'import > 256 Ko doit être refusé (413)');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit');
+    }
+
+    public function testExecutionRefuses501CasesAtTheBound(): void
+    {
+        // Abus (parité avec l'analyse) — 501 cases à l'import dépasse la borne (≤ 500) → 422 nommé.
+        $this->scopeGucToClub($this->club->getId());
+
+        $cases = array_map(
+            static fn (int $i): array => ['gymnase' => 'MATEO', 'jour' => (($i % 5) + 1), 'debut' => '18:00', 'duree' => 90, 'equipes' => ['E' . $i]],
+            range(1, 501),
+        );
+        $parc = ['format' => 'parc-v2', 'gymnases' => [['nom' => 'MATEO']], 'cases' => $cases];
+
+        [$status] = $this->import($parc, []);
+        self::assertSame(422, $status, '501 cases à l\'import doit être refusé (borne ≤ 500)');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -570,6 +698,28 @@ final class ParcImportExecuteTest extends WebTestCase
     }
 
     /**
+     * POST d'un corps BRUT sur l'endpoint d'import (pour les bornes octets : le contrôleur refuse le
+     * corps AVANT tout parse).
+     *
+     * @return array{0: int, 1: array<string, mixed>}
+     */
+    private function importRaw(string $body): array
+    {
+        $this->client->request(
+            'POST',
+            '/api/clubs/' . $this->club->getId() . '/parc-import',
+            [],
+            [],
+            ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token, 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $this->season->getId()],
+            $body,
+        );
+        $response = $this->client->getResponse();
+        $decoded = json_decode((string) $response->getContent(), true);
+
+        return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
+    }
+
+    /**
      * Analyse d'abord le parc pour connaître les lignes dérivées, coche toutes celles « à créer », puis
      * importe — le geste réel du gestionnaire sur un parc entièrement neuf.
      *
@@ -669,6 +819,40 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
 
         return ['venueId' => $venue->getId()];
+    }
+
+    /**
+     * Un club TIERS avec une équipe — pour prouver qu'un `cibleId` d'équipe hors tenant est refusé.
+     *
+     * @return array{teamId: string}
+     */
+    private function seedForeignClubWithTeam(string $teamName): array
+    {
+        $uid = uniqid('', true);
+        $otherClub = (new Club)
+            ->setName('Autre ' . $uid)->setSlug('autre-' . $uid)
+            ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($otherClub);
+        $this->em->flush();
+
+        $this->scopeGucToClub($otherClub->getId());
+        $otherSeason = (new Season)
+            ->setClubId($otherClub->getId())->setName('2026-2027')
+            ->setStartDate(new DateTimeImmutable('2026-07-01'))->setEndDate(new DateTimeImmutable('2027-06-30'))
+            ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
+        $this->em->persist($otherSeason);
+        $this->em->flush();
+
+        $team = (new Team)
+            ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
+            ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
+            ->setName($teamName)->setSessionsPerWeek(2)->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        $this->scopeGucToClub($this->club->getId());
+
+        return ['teamId' => $team->getId()];
     }
 
     private function viewerToken(): string

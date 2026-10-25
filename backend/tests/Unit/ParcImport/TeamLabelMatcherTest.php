@@ -133,6 +133,51 @@ final class TeamLabelMatcherTest extends TestCase
         self::assertNull($this->matcher->split('U21 - SENIORS', $onlyOne), 'une seule moitié appariée → pas de découpe');
     }
 
+    // ───────────────────────── PR1 — le verdict EXPOSE ses candidats (D5, aperçu refondu) ─────────────────────────
+    // Avant de pouvoir TRANCHER une ambiguïté, le gestionnaire doit VOIR les équipes candidates.
+    // Le matcher, correcteur jamais filtre, les PORTE donc dans son verdict (`candidats: list<{id,nom}>`),
+    // d'où l'analyzer alimente le groupe « Candidats possibles » du sélecteur de la ligne (option A :
+    // TANK écrit ROUGE, NEO ajoute la clé `candidats` au verdict). Jumeau côté API :
+    // {@see \App\Tests\Integration\Api\ParcImportAnalyzeTest::testAnAmbiguousTeamLabelIsServedAsAmbiguWithItsCandidates}.
+
+    public function testAnAmbiguousMatchExposesEveryCandidateToChooseFrom(): void
+    {
+        // « Armond » est à distance 1 de « Armand » ET de « Armund » : ambigu, aucune cible devinée,
+        // MAIS les DEUX candidats sont offerts au choix (id + nom, pour l'affichage).
+        $existing = $this->existing('Armand', 'Armund');
+        $verdict = $this->matcher->match('Armond', $existing);
+
+        self::assertSame('ambigu', $verdict['statut']);
+        self::assertArrayHasKey('candidats', $verdict, 'le verdict porte la liste des candidats à trancher');
+        $ids = array_map(static fn (array $c): string => $c['id'], $verdict['candidats']);
+        self::assertEqualsCanonicalizing([$existing[0]['id'], $existing[1]['id']], $ids, 'les deux équipes dans le seuil sont offertes');
+        $noms = array_map(static fn (array $c): string => $c['nom'], $verdict['candidats']);
+        self::assertEqualsCanonicalizing(['Armand', 'Armund'], $noms, 'chaque candidat porte son nom pour l\'affichage');
+    }
+
+    public function testASuggestionExposesItsSingleCandidate(): void
+    {
+        // Un unique candidat flou (« suggere ») : la cible est posée ET le seul candidat est listé —
+        // le front montre « Apparier à X (suggéré) » cohérent avec le groupe « Candidats possibles ».
+        $existing = $this->existing('Armand', 'Jean Vilar');
+        $verdict = $this->matcher->match('Arhand', $existing);
+
+        self::assertSame('suggere', $verdict['statut']);
+        self::assertArrayHasKey('candidats', $verdict);
+        self::assertSame([['id' => $existing[0]['id'], 'nom' => 'Armand']], $verdict['candidats']);
+    }
+
+    public function testAnUnknownLabelHasNoCandidate(): void
+    {
+        // Correcteur jamais filtre : « à créer » n'invente aucun candidat (le sélecteur n'offre que
+        // « Créer » / « Ignorer », pas de rapprochement fantôme).
+        $verdict = $this->matcher->match('Palais des Mille Sports', $this->existing('Armand', 'U15-1'));
+
+        self::assertSame('aCreer', $verdict['statut']);
+        self::assertArrayHasKey('candidats', $verdict);
+        self::assertSame([], $verdict['candidats'], 'rien ne ressemble → aucun candidat');
+    }
+
     protected function setUp(): void
     {
         $this->matcher = new TeamLabelMatcher;

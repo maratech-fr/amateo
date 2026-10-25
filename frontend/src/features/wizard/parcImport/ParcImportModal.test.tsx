@@ -146,13 +146,22 @@ const q = vi.hoisted(() => ({
   analyzePending: { value: false },
   importPending: { value: false },
   importResult: { value: null as unknown },
+  // Refonte PR1 — l'erreur d'IMPORT est surfacée DANS la modale (role="alert"), plus un toast (le
+  // hook garde le toast pour l'ANALYSE). Le double contrôle l'expose comme le vrai hook.
+  importError: { value: null as unknown },
   analyzeMutate: vi.fn(),
   importMutate: vi.fn(),
 }));
 
 vi.mock("./queries", () => ({
   useAnalyzeParc: () => ({ mutate: q.analyzeMutate, isPending: q.analyzePending.value, data: q.analysis.value }),
-  useImportParc: () => ({ mutate: q.importMutate, isPending: q.importPending.value, data: q.importResult.value }),
+  useImportParc: () => ({
+    mutate: q.importMutate,
+    isPending: q.importPending.value,
+    data: q.importResult.value,
+    error: q.importError.value,
+    isError: null !== q.importError.value,
+  }),
 }));
 
 import { ParcImportModal } from "./ParcImportModal";
@@ -171,14 +180,20 @@ const defaultProps = {
 beforeEach(() => {
   q.analysis.value = null;
   q.importResult.value = null;
+  q.importError.value = null;
   q.analyzePending.value = false;
   q.importPending.value = false;
   // mutate(texte, { onSuccess }) rend l'analyse mockée (pré-posée par le test) — comme l'API.
   q.analyzeMutate.mockImplementation((_text: unknown, opts?: { onSuccess?: (a: unknown) => void }) => {
     opts?.onSuccess?.(q.analysis.value);
   });
-  q.importMutate.mockImplementation((_sel: unknown, opts?: { onSuccess?: (r: unknown) => void }) => {
-    opts?.onSuccess?.(q.importResult.value);
+  // onError déclenché quand un test pré-pose une erreur d'import ; sinon onSuccess (comme l'API).
+  q.importMutate.mockImplementation((_sel: unknown, opts?: { onSuccess?: (r: unknown) => void; onError?: (e: unknown) => void }) => {
+    if (null !== q.importError.value) {
+      opts?.onError?.(q.importError.value);
+    } else {
+      opts?.onSuccess?.(q.importResult.value);
+    }
   });
 });
 
@@ -674,5 +689,186 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
 
     await screen.findByRole("checkbox", { name: "U11M1 + U11M2" });
     expect(screen.queryByRole("button", { name: venueForGroupTrigger("U11M1 + U11M2") })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ─────────── Refonte de l'aperçu (lot correctif import IA « G2 » PR1, passe ui-ux-pro-max) ───────────
+ *
+ * La modale passe d'un empilement 4-temps à un ASSISTANT en 5 étapes (StepRail : Prompt · Coller ·
+ * Équipes · Gymnases · Réservations). Nouvelles PROMESSES prouvées ici (option A — TANK écrit ROUGE,
+ * NEO implémente la modale + les nouvelles clés de `texts.ts`) :
+ *  - StepRail 5 étapes ; étapes 3-5 VERROUILLÉES tant que l'analyse n'a pas réussi ;
+ *  - analyse réussie → passage AUTO à « Équipes » ;
+ *  - une ligne AMBIGUË porte UN sélecteur `Listbox` SANS présélection (placeholder « À trancher… »)
+ *    et « Importer » est `aria-disabled` AVEC sa raison tant qu'un ambigu n'est pas tranché ;
+ *  - « Apparier à X » → `decision.cibleId = X` ; « Ignorer cette ligne » → `coche:false` ;
+ *    « Créer » → cochée, SANS cibleId ;
+ *  - une erreur d'IMPORT s'affiche DANS la modale en `role="alert"` (plus un toast — le hook garde
+ *    le toast pour l'analyse) ;
+ *  - « Revalider » reposte `{payload, decisions}` à l'analyse (rejeu avec corrections).
+ *
+ * ⚠ Clés de `texts.ts` RÉFÉRENCÉES ET PAS ENCORE CRÉÉES (rouge légitime, NEO les crée) :
+ *   `stepPaste` (« Coller »), `next`/`previous`, `lockedUntilAnalysis`, `decisionFor(libelle)`,
+ *   `matchTo(nom)`/`matchToSuggested(nom)`, `createOption(libelle)`, `ignoreLine`, `toDecide`
+ *   (placeholder « À trancher… »), `importBlocked(nAmbigu, nGenre)`, `revalidate`, `importErrorHeading`.
+ *   Les libellés d'étapes 3-5 réutilisent `sectionTitle("equipes"|"gymnases"|"reservations")` (existantes).
+ */
+
+/** Une ligne AMBIGUË (nouveau statut PR1) : décochée, aucune cible, mais PORTE ses candidats à trancher. */
+function mkAmbiguous(index: number, libelle: string, candidats: Array<{ id: string; nom: string }>): Line {
+  return {
+    index,
+    libelle,
+    statut: "ambigu",
+    coche: false,
+    cibleId: null,
+    raison: "Plusieurs correspondances possibles — à choisir à la main.",
+    candidats,
+  } as unknown as Line;
+}
+
+describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte import IA PR1)", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: never[]) => string> & Record<string, string>;
+
+  /** Matcher FONCTION (nom accessible CONTENANT le texte) — jamais une `RegExp` construite (Semgrep). */
+  const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
+
+  /** Dépose le collage sur l'étape « Coller » puis analyse (auto-avance ensuite vers « Équipes »). */
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    // Étape 2 « Coller » (verrouillée tant que ?… non : 1-2 libres, 3-5 verrouillées).
+    await user.click(screen.getByRole("button", { name: T.stepPaste as unknown as string }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+
+  it("StepRail — 5 étapes, et les étapes 3-5 (Équipes/Gymnases/Réservations) sont verrouillées avant l'analyse", () => {
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    // Avant toute analyse, les trois étapes de contenu sont présentes dans le rail MAIS verrouillées
+    // (bouton désactivé) : on ne peut pas les visiter tant que rien n'a été analysé.
+    for (const section of ["equipes", "gymnases", "reservations"] as const) {
+      const stepButton = screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) });
+      expect(stepButton).toBeDisabled();
+    }
+  });
+
+  it("analyse réussie → passage automatique à l'étape « Équipes »", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SM1", "aCreer")] }));
+
+    // L'étape « Équipes » devient l'étape courante (aria-current="step" posé par StepRail).
+    const equipesStep = screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("equipes")) });
+    expect(equipesStep).toHaveAttribute("aria-current", "step");
+  });
+
+  it("ligne ambiguë → sélecteur « À trancher… » sans présélection, et « Importer » désactivé AVEC sa raison", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    // Le sélecteur de la ligne est présent, SANS valeur présélectionnée (placeholder « À trancher… »).
+    const trigger = await screen.findByRole("button", { name: T.decisionFor("Armond") });
+    expect(within(trigger).getByText(T.toDecide as unknown as string)).toBeInTheDocument();
+
+    // Tant que l'ambigu n'est pas tranché, « Importer » est aria-disabled AVEC sa raison (A11Y-30).
+    const importBtn = screen.getByRole("button", { name: /Importer/ });
+    expect(importBtn).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText(T.importBlocked(1, 0))).toBeInTheDocument();
+  });
+
+  it("« Apparier à X » sur une ligne ambiguë → la décision porte cibleId = X", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({
+      equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])],
+      gymnases: [mkLine(0, "Palais des Sports", "aCreer")], // ligne cochée pour garder « Importer » actif
+    });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    await user.click(await screen.findByRole("button", { name: T.decisionFor("Armond") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.matchTo("Armand") }));
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
+    const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
+    expect(dec?.cibleId).toBe("t1");
+    expect(dec?.coche).toBe(true);
+  });
+
+  it("« Ignorer cette ligne » sur une ligne ambiguë → la décision porte coche:false", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({
+      equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])],
+      gymnases: [mkLine(0, "Palais des Sports", "aCreer")],
+    });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    await user.click(await screen.findByRole("button", { name: T.decisionFor("Armond") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
+    const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
+    expect(dec?.coche).toBe(false);
+    expect(dec?.cibleId ?? null).toBeNull();
+  });
+
+  it("« Créer » sur une ligne ambiguë → décision cochée, SANS cibleId (nouvelle entité)", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({
+      equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])],
+    });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    await user.click(await screen.findByRole("button", { name: T.decisionFor("Armond") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
+    const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
+    expect(dec?.coche).toBe(true);
+    expect(dec?.cibleId ?? null).toBeNull();
+  });
+
+  it("une erreur d'import s'affiche DANS la modale en role=\"alert\" (plus un toast)", async () => {
+    const user = userEvent.setup();
+    // L'import échoue : le hook expose l'erreur, la modale la surface en role="alert" (micro-décision 13).
+    q.importError.value = { response: { status: 422 }, data: { errors: ["L'équipe n°1 : appariement ambigu, à choisir."] } };
+    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(T.importErrorHeading as unknown as string)).toBeInTheDocument();
+  });
+
+  it("« Revalider » reposte { payload, decisions } à l'analyse (rejeu avec corrections)", async () => {
+    const user = userEvent.setup();
+    const payload = { format: "parc-v2", gymnases: [{ nom: "Palais des Sports" }], cases: [] };
+    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await user.click(await screen.findByRole("button", { name: T.revalidate as unknown as string }));
+
+    // La revalidation passe une ENVELOPPE { payload, decisions } (jamais le texte brut).
+    const envelopeCall = q.analyzeMutate.mock.calls.find((c) => "object" === typeof c[0] && null !== c[0]);
+    expect(envelopeCall, "revalider doit reposter un objet { payload, decisions }").toBeDefined();
+    const body = envelopeCall?.[0] as { payload: unknown; decisions: unknown };
+    expect(body).toHaveProperty("payload");
+    expect(Array.isArray(body.decisions)).toBe(true);
   });
 });
