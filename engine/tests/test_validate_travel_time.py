@@ -157,3 +157,61 @@ class TestMandatoryTravelVerdictGroupMove:
             f"le refus doit NOMMER le trajet; got {result['violations']}"
         )
         assert result["violations"][0]["coach_id"] == "c1"
+
+
+class TestRelayToleratedMoveVerdict:
+    """P4-361 — parité verdict ⇄ génération du RELAIS de l'adjoint (chantier H). Un déplacement qui
+    crée un enchaînement cross-gymnase trop serré VERS une séance VERROUILLÉE tolérante (adjoint
+    disponible) est ACCEPTÉ, comme la génération le tolère. Décor : SENIORS VERROUILLÉE 20:05 gym V2
+    (tolérance 30) ; le candidat t1 vient finir 20:00 gym V1 (battement 5, barème à vélo). Le retard
+    = max(0, barème − 5) doit rester ≤ 30. Second angle du NR solveur — on éprouve ici le VERDICT."""
+
+    def _relay_payload(self, *, tolerance: int, with_adjoint: bool, walking: int) -> dict[str, Any]:
+        constraints: list[dict[str, Any]] = [team_coach("tc1", "t1", "c1"), team_coach("tc2", "t2", "c1")]
+        coaches = [_coach("c1")]
+        if with_adjoint:
+            constraints.append(team_coach("adj", "t2", "adj1", role="ASSISTANT"))
+            coaches.append(_coach("adj1"))
+        return {
+            "clubId": "c",
+            "seasonId": "s",
+            "venues": [make_venue("V1", [(1, "18:30")]), make_venue("V2", [(1, "20:05")])],
+            "teams": [make_team("t1"), make_team("t2")],
+            "coaches": coaches,
+            "constraints": constraints,
+            "implicitRules": {"travelTime": {"intensity": "MANDATORY", "toleranceMinutes": 0}},
+            "venueTravelTimes": [_row("V1", "V2", 5, walking)],
+            # t2 VERROUILLÉE (baseline) 20:05 gym V2 avec sa tolérance ; t1 est le candidat qui vient
+            # finir 20:00 gym V1 (battement 5 min avant la séance de t2).
+            "slotTemplates": [
+                {
+                    "id": "lk",
+                    "teamId": "t2",
+                    "venueId": "V2",
+                    "dayOfWeek": 1,
+                    "startTime": "20:05",
+                    "durationMinutes": 90,
+                    "lockLevel": "HARD",
+                    "coachLateToleranceMinutes": tolerance,
+                },
+            ],
+            "candidate": {"teamId": "t1", "venueId": "V1", "dayOfWeek": 1, "startTime": "18:30", "durationMinutes": 90},
+        }
+
+    def test_move_into_a_relay_tolerated_chain_is_accepted(self) -> None:
+        # Barème 15, retard 10 ≤ 30 + adjoint : le déplacement est ACCEPTÉ (parité avec la génération
+        # qui place la paire). Sans l'exemption dans le miroir ET la pose HARD, il serait refusé.
+        result = _run(self._relay_payload(tolerance=30, with_adjoint=True, walking=15))
+        assert result["valid"] is True, f"relais toléré + adjoint → le déplacement doit être accepté; got {result}"
+
+    def test_move_without_adjoint_is_still_refused(self) -> None:
+        # TÉMOIN — tolérance 30 mais aucun adjoint : rien n'ouvre la séance, le déplacement reste
+        # REFUSÉ, motif NOMMÉ.
+        result = _run(self._relay_payload(tolerance=30, with_adjoint=False, walking=15))
+        assert result["valid"] is False
+        assert result["violations"][0]["rule"] == "travel_time_infeasible"
+
+    def test_move_beyond_tolerance_is_still_refused(self) -> None:
+        # TÉMOIN — barème 50 ⇒ retard 45 > 30 : l'exemption ne joue pas, déplacement REFUSÉ.
+        result = _run(self._relay_payload(tolerance=30, with_adjoint=True, walking=50))
+        assert result["valid"] is False

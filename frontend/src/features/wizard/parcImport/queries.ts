@@ -28,6 +28,8 @@ export interface ParcAnalysisLine {
   miseAJour?: { champ: "seances"; de: number; a: number };
   /** Mutualisations : le libellé du bloc DÉRIVÉ par le serveur (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
+  /** Mutualisations (P4-363) : le gymnase RÉSOLU du nom de la case (null si à créer) — amorce le sélecteur de gymnase de la réservation de groupe, distinct du `cibleId` (qui désigne le bloc apparié). */
+  gymnaseId?: string | null;
 }
 
 /** Le récap chiffré d'une section de l'aperçu. */
@@ -75,6 +77,8 @@ export interface ParcImportDecision {
   index: number;
   coche: boolean;
   cibleId?: string | null;
+  /** Mutualisations (P4-363) : le gymnase CHOISI de la réservation de groupe (sélecteur de la ligne), distinct du `cibleId` (bloc apparié). Absent → le serveur résout par le nom de la case. */
+  venueId?: string | null;
   corrections?: Record<string, unknown>;
 }
 

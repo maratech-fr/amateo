@@ -246,3 +246,114 @@ def test_two_locks_that_contradict_travel_are_announced_not_muted() -> None:
 
     assert result["status"] == "completed"
     assert any(d["type"] == "travel_time_infeasible" for d in result["diagnostics"])
+
+
+# --- P4-361 : le relais de l'adjoint (chantier H) EXEMPTE le trajet MANDATORY d'une paire tolérée --
+#
+# Promesse (axe « constraint semantics ») : quand la séance la plus TARDIVE d'un enchaînement
+# cross-gymnase est VERROUILLÉE avec une tolérance d'arrivée > 0 ET qu'un adjoint DISPONIBLE peut
+# l'ouvrir, le coach PRINCIPAL est autorisé à la rejoindre en retard — le battement trop court n'est
+# plus interdit DUR, TANT QUE le retard (barème BRUT − battement, borné à 0) ne dépasse pas la
+# tolérance. Miroir de `CoachDoubleBookingDetector::lateArrivalTolerated` côté backend ; la tolérance
+# de RÈGLE (`toleranceMinutes`) ne se cumule pas (ici fixée à 0 pour isoler le relais).
+# Second angle du NR BLOQUANT `backend/tests/CrossStack/CoachLateToleranceSemanticsGateTest` (point
+# sensible « solveur » — doublon VOULU) : ici on éprouve l'EXEMPTION DE TRAJET (enchaînement NON
+# chevauchant), là-bas l'occupation verrouillée décalée (chevauchement).
+
+
+def _relay_pair_payload(*, tolerance: int, with_adjoint: bool, walking: int) -> dict[str, Any]:
+    """U21 (LIBRE) finit 20:00 au gymnase A ; SENIORS est VERROUILLÉE 20:05 au gymnase B avec une
+    tolérance d'arrivée ``tolerance``. Coach c1 (non véhiculé) tient les deux, barème A↔B à vélo =
+    ``walking`` ; un adjoint ASSISTANT ouvre SENIORS si ``with_adjoint``. MANDATORY, battement 5 min
+    (20:05 − 20:00) : plus court que tout barème ≥ 6 → interdit DUR hors exemption."""
+    constraints: list[dict[str, Any]] = [
+        team_coach("tc-u21", "u21", "c1"),
+        team_coach("tc-sen", "sen", "c1"),
+        _forced_venue("fv-u21", "u21", "A"),
+    ]
+    coaches = [_coach("c1")]
+    if with_adjoint:
+        constraints.append(team_coach("tc-adj", "sen", "adj1", role="ASSISTANT"))
+        coaches.append(_coach("adj1"))
+    sen_lock = _hard_lock("sen", "B", 1, "20:05")
+    sen_lock["coachLateToleranceMinutes"] = tolerance
+    payload = make_payload(
+        teams=[make_team("u21", sessions_per_week=1), make_team("sen", sessions_per_week=1)],
+        venues=[make_venue("A", [(1, "18:30")]), make_venue("B", [])],
+        coaches=coaches,
+        constraints=constraints,
+        slot_templates=[sen_lock],
+        implicit_rules=MANDATORY_RULE,
+    )
+    payload["venueTravelTimes"] = [_row("A", "B", 5, walking)]
+    return payload
+
+
+def test_relay_tolerated_travel_pair_lets_the_free_session_be_placed() -> None:
+    # NR — barème 15, retard = max(0, 15 − 5) = 10 ≤ tolérance 30, adjoint disponible : le relais
+    # EXEMPTE le trajet MANDATORY ⇒ U21 EST placée malgré le battement de 5 min.
+    result = solve_payload(_relay_pair_payload(tolerance=30, with_adjoint=True, walking=15))
+    assert result["status"] == "completed"
+    assert _placed_count(result, "u21") == 1
+
+
+def test_relay_without_tolerance_still_forbids_the_tight_pair() -> None:
+    # TÉMOIN (falsification) — MÊME décor, tolérance 0 sur la séance verrouillée : aucun relais, le
+    # battement 5 < 15 reste INTERDIT DUR ⇒ U21 n'est PAS placée. Prouve que c'est bien la tolérance
+    # LUE qui exempte le cas ci-dessus, pas un décor trop permissif.
+    result = solve_payload(_relay_pair_payload(tolerance=0, with_adjoint=True, walking=15))
+    assert _placed_count(result, "u21") == 0
+
+
+def test_relay_without_an_available_adjoint_still_forbids_the_tight_pair() -> None:
+    # TÉMOIN — tolérance 30 mais AUCUN adjoint pour ouvrir SENIORS : le relais ne s'ouvre pas, le
+    # trajet reste dur ⇒ U21 non placée. La tolérance seule ne suffit jamais (parité chantier H).
+    result = solve_payload(_relay_pair_payload(tolerance=30, with_adjoint=False, walking=15))
+    assert _placed_count(result, "u21") == 0
+
+
+def test_relay_does_not_exempt_a_travel_longer_than_the_tolerance() -> None:
+    # TÉMOIN — barème 50, retard = max(0, 50 − 5) = 45 > tolérance 30 : le retard DÉPASSE la
+    # tolérance, l'exemption ne s'applique pas ⇒ U21 non placée. L'exemption est BORNÉE par t.
+    result = solve_payload(_relay_pair_payload(tolerance=30, with_adjoint=True, walking=50))
+    assert _placed_count(result, "u21") == 0
+
+
+def _two_lock_relay_payload(*, tolerance: int, with_adjoint: bool, walking: int) -> dict[str, Any]:
+    """Deux séances VERROUILLÉES du même coach : U21 18:30 gym A (fin 20:00), SENIORS 20:05 gym B
+    (tolérance ``tolerance``). Enchaînement cross-gymnase au battement 5 min — le seul cas qui
+    SURVIT au HARD (deux verrous), régi par le diagnostic post-solve."""
+    constraints: list[dict[str, Any]] = [team_coach("tc-u21", "u21", "c1"), team_coach("tc-sen", "sen", "c1")]
+    coaches = [_coach("c1")]
+    if with_adjoint:
+        constraints.append(team_coach("tc-adj", "sen", "adj1", role="ASSISTANT"))
+        coaches.append(_coach("adj1"))
+    sen_lock = _hard_lock("sen", "B", 1, "20:05")
+    sen_lock["coachLateToleranceMinutes"] = tolerance
+    payload = make_payload(
+        teams=[make_team("u21", sessions_per_week=1), make_team("sen", sessions_per_week=1)],
+        venues=[make_venue("A", []), make_venue("B", [])],
+        coaches=coaches,
+        constraints=constraints,
+        slot_templates=[_hard_lock("u21", "A", 1, "18:30"), sen_lock],
+        implicit_rules=MANDATORY_RULE,
+    )
+    payload["venueTravelTimes"] = [_row("A", "B", 5, walking)]
+    return payload
+
+
+def test_two_relay_tolerated_locks_raise_no_travel_diagnostic() -> None:
+    # Deux verrous enchaînés trop serré (battement 5 < barème 15) MAIS la plus tardive tolère 30 min
+    # avec un adjoint : le relais rend l'enchaînement VIVABLE ⇒ AUCUN `travel_time_infeasible`. Sans
+    # l'exemption, ce cas serait faussement annoncé infaisable.
+    result = solve_payload(_two_lock_relay_payload(tolerance=30, with_adjoint=True, walking=15))
+    assert result["status"] == "completed"
+    assert not any(d["type"] == "travel_time_infeasible" for d in result["diagnostics"])
+
+
+def test_two_locks_beyond_tolerance_still_announce_the_travel_conflict() -> None:
+    # TÉMOIN — barème 50 ⇒ retard 45 > 30 : l'exemption ne joue pas, le conflit DUR entre deux
+    # verrous est ANNONCÉ (jamais muet). Prouve que l'absence de diagnostic ci-dessus vient de
+    # l'exemption, pas d'un diagnostic éteint.
+    result = solve_payload(_two_lock_relay_payload(tolerance=30, with_adjoint=True, walking=50))
+    assert any(d["type"] == "travel_time_infeasible" for d in result["diagnostics"])

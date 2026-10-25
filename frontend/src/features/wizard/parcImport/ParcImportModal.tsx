@@ -132,6 +132,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [slotVenue, setSlotVenue] = useState<Record<number, string>>({});
   // D8 — le libellé du groupe mutualisé, corrigeable, indexé par `line.index`. Amorcé depuis `line.groupe`.
   const [groupDrafts, setGroupDrafts] = useState<Record<number, string>>({});
+  // P4-363 — le gymnase choisi pour la réservation de groupe d'une mutualisation, indexé par
+  // `line.index`. "" = aucun → le serveur résout par le nom de la case. Amorcé depuis `line.gymnaseId`.
+  const [groupVenue, setGroupVenue] = useState<Record<number, string>>({});
   const [result, setResult] = useState<ParcImportResult | null>(null);
 
   const analyzing = analyze.isPending;
@@ -149,6 +152,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     const nextRematch: Record<string, string> = {};
     const nextSlotVenue: Record<number, string> = {};
     const nextGroupDrafts: Record<number, string> = {};
+    const nextGroupVenue: Record<number, string> = {};
     for (const section of Object.keys(data.sections)) {
       for (const line of data.sections[section] ?? []) {
         nextChecked[keyOf(section, line.index)] = line.coche;
@@ -160,6 +164,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
         }
         if ("mutualisations" === section && isRematchStatus(line.statut)) {
           nextGroupDrafts[line.index] = line.groupe ?? "";
+          nextGroupVenue[line.index] = line.gymnaseId ?? "";
         }
       }
     }
@@ -167,6 +172,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setRematch(nextRematch);
     setSlotVenue(nextSlotVenue);
     setGroupDrafts(nextGroupDrafts);
+    setGroupVenue(nextGroupVenue);
 
     // Amorce des champs éditables des CRÉNEAUX depuis les CASES du parc NORMALISÉ que l'analyse
     // renvoie (relu par `ParcPayloadValidator::parse()`, G2 D4) — jamais le texte brut collé, qui peut
@@ -206,6 +212,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   const updateGroup = (index: number, value: string): void => setGroupDrafts((prev) => ({ ...prev, [index]: value }));
 
+  const updateGroupVenue = (index: number, value: string): void => setGroupVenue((prev) => ({ ...prev, [index]: value }));
+
   const count = Object.values(checked).filter(Boolean).length;
 
   const venuesToCreate = (analysis?.sections.gymnases ?? []).some((line) => "aCreer" === line.statut);
@@ -228,6 +236,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
         // D8 — le libellé du groupe mutualisé CORRIGÉ voyage dans `corrections.groupe` (le serveur
         // l'honore comme label du bloc, prioritaire sur le groupe brut de la case).
         const groupe = "mutualisations" === section && isRematchStatus(line.statut) ? (groupDrafts[line.index] ?? "").trim() : "";
+        // P4-363 — le gymnase CHOISI de la réservation de groupe (sélecteur de la ligne mutualisation)
+        // voyage en `venueId`, DISTINCT du `cibleId` (bloc apparié) et des `corrections` (libellé) ;
+        // "" / aucun → le serveur résout par le nom de la case.
+        const hasGroupVenue = "mutualisations" === section && isRematchStatus(line.statut);
+        const chosenVenue = hasGroupVenue ? groupVenue[line.index] : undefined;
+        const venueId = "" === chosenVenue || undefined === chosenVenue ? undefined : chosenVenue;
         const corrections =
           undefined !== draft
             ? { jour: draft.jour, debut: draft.debut, duree: draft.duree }
@@ -239,6 +253,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
           index: line.index,
           coche: checked[key] ?? false,
           cibleId,
+          venueId,
           corrections,
         });
       }
@@ -389,6 +404,16 @@ export function ParcImportModal(props: ParcImportModalProps) {
                           />
                         ) : null}
                         {"creneaux" === section ? <SlotEditor line={line} draft={slotDrafts[line.index]} onChange={(patch) => updateSlot(line.index, patch)} /> : null}
+                        {"mutualisations" === section && isRematchStatus(line.statut) ? (
+                          <VenueSelect
+                            aria-label={T.venueForGroup(line.libelle)}
+                            wrapperClassName="mt-1 ml-6 w-full max-w-xs"
+                            placeholder={T.rematchCreate}
+                            value={groupVenue[line.index] ?? ""}
+                            onValueChange={(v) => updateGroupVenue(line.index, v)}
+                            venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))}
+                          />
+                        ) : null}
                         {"mutualisations" === section && isRematchStatus(line.statut) ? (
                           <div className="mt-1 w-full max-w-xs pl-6">
                             <Input

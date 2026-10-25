@@ -137,8 +137,8 @@ final class ParcImportExecutor
     // ───────────────────────────── Sections ─────────────────────────────
 
     /**
-     * @param array<string, mixed>                                                                                   $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                         $derived
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -187,8 +187,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                         $derived
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -241,8 +241,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                         $derived
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -313,8 +313,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                         $derived
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -386,7 +386,10 @@ final class ParcImportExecutor
                 ++$recap['crees'];
             }
 
-            $this->poseGroupReservation($block, $teamIds, $entry, $decision['cibleId'], $decision['corrections'], $club, $seasonId, $i);
+            // P4-363 — le gymnase de la réservation de groupe vient du `venueId` CHOISI (sélecteur de
+            // la ligne), JAMAIS du `cibleId` : pour une mutualisation, `cibleId` désigne le BLOC apparié
+            // (déjà retrouvé par les équipes via `existingBlockForTeams`), pas un gymnase.
+            $this->poseGroupReservation($block, $teamIds, $entry, $decision['venueId'], $decision['corrections'], $club, $seasonId, $i);
         }
 
         return $recap;
@@ -398,10 +401,12 @@ final class ParcImportExecutor
      * @param list<string>         $teamIds
      * @param array<string, mixed> $corrections
      */
-    private function poseGroupReservation(SharedTrainingBlock $block, array $teamIds, mixed $entry, ?string $cibleId, array $corrections, Club $club, string $seasonId, int $index): void
+    private function poseGroupReservation(SharedTrainingBlock $block, array $teamIds, mixed $entry, ?string $chosenVenueId, array $corrections, Club $club, string $seasonId, int $index): void
     {
-        $venueId = null !== $cibleId
-            ? $this->ownedVenue($cibleId, $club, $seasonId, 'mutualisations', $index)->getId()
+        // Gymnase CHOISI (`venueId`), re-vérifié tenant côté serveur ; à défaut, résolution par le NOM
+        // de la case (comportement d'avant le sélecteur de gymnase de la ligne).
+        $venueId = null !== $chosenVenueId
+            ? $this->ownedVenue($chosenVenueId, $club, $seasonId, 'mutualisations', $index)->getId()
             : $this->venueIdForName($this->stringField($entry, 'gymnase'));
         $day = $this->intCorrectionOr($corrections, 'jour', $entry, 'jour');
         $start = $this->timeCorrectionOr($corrections, 'debut', $entry, 'debut');
@@ -455,8 +460,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                         $derived
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -535,8 +540,8 @@ final class ParcImportExecutor
     // ───────────────────────────── Cap payant ─────────────────────────────
 
     /**
-     * @param array<string, mixed>                                                                                   $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                         $derived
+     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      */
     private function assertTeamCapNotExceeded(array $derived, array $index, Club $club, string $seasonId): void
     {
@@ -824,7 +829,7 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array{coche: bool, cibleId: string|null, corrections: array<string, mixed>} $decision
+     * @param array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>} $decision
      */
     private function sessionsOf(mixed $entry, array $decision): int
     {
@@ -856,7 +861,7 @@ final class ParcImportExecutor
     /**
      * @param list<array<string, mixed>> $decisions
      *
-     * @return array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>>
+     * @return array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>>
      */
     private function indexDecisions(array $decisions): array
     {
@@ -868,10 +873,15 @@ final class ParcImportExecutor
                 continue;
             }
             $cibleId = $decision['cibleId'] ?? null;
+            $venueId = $decision['venueId'] ?? null;
             $corrections = $decision['corrections'] ?? null;
             $index[$section][$position] = [
                 'coche' => true === ($decision['coche'] ?? null),
                 'cibleId' => \is_string($cibleId) && '' !== $cibleId ? $cibleId : null,
+                // P4-363 — canal DISTINCT du `cibleId` : le gymnase CHOISI de la réservation de groupe
+                // d'une mutualisation (sélecteur de gymnase de la ligne). Narrowé comme `cibleId`
+                // (chaîne non vide, sinon null → résolution par le NOM de la case).
+                'venueId' => \is_string($venueId) && '' !== $venueId ? $venueId : null,
                 'corrections' => \is_array($corrections) ? $corrections : [],
             ];
         }

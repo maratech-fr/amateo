@@ -352,6 +352,108 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertGreaterThan(0, $this->rowCount('team'), 'des équipes sont dérivées et créées');
     }
 
+    // ───────────────────────── Gymnase de la réservation de groupe (P4-363) ─────────────────────────
+
+    public function testGroupReservationUsesDecisionVenueId(): void
+    {
+        // Le gymnase de la réservation de groupe d'une mutualisation est choisi par le NOUVEAU champ
+        // `venueId` de la décision (sélecteur de gymnase sur la ligne), JAMAIS par le `cibleId`
+        // (réservé au BLOC apparié). Le nom de la case pointe « Gymnase A » mais le gestionnaire a
+        // choisi « Gymnase B » : la réservation de groupe naît sur B, jamais sur A.
+        $this->makeTeam('U9M1', sessionsPerWeek: 2);
+        $this->makeTeam('U11F2', sessionsPerWeek: 2);
+        $venueA = $this->makeVenue('Gymnase A', canSplit: true);
+        $venueB = $this->makeVenue('Gymnase B', canSplit: true);
+        $this->makeSlot($venueA->getId(), 3, '16:00', capacity: 2);
+        $this->makeSlot($venueB->getId(), 3, '16:00', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase A', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'venueId' => $venueB->getId()]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        self::assertSame(2, $this->reservationCountOnVenue($venueB->getId()), 'la réservation de groupe naît sur le gymnase CHOISI (venueId)');
+        self::assertSame(0, $this->reservationCountOnVenue($venueA->getId()), 'jamais sur le gymnase du nom de la case quand un venueId est choisi');
+    }
+
+    public function testAppariedMutualisationReimportSucceeds(): void
+    {
+        // BUG RÉEL — réimporter une mutualisation APPARIÉE à un bloc existant : la décision porte le
+        // `cibleId` du BLOC (ce que l'aperçu émet pour un appariement). Aujourd'hui l'executor lit ce
+        // `cibleId` comme un GYMNASE (`ownedVenue`) → 422 « Gymnase introuvable pour cet appariement ».
+        // Le réimport idempotent doit ABOUTIR (le gymnase se résout par le nom de la case, le `cibleId`
+        // ne désigne QUE le bloc).
+        $this->makeTeam('U9M1', sessionsPerWeek: 2);
+        $this->makeTeam('U11F2', sessionsPerWeek: 2);
+        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+
+        // 1er import (à créer, cibleId null) : le bloc et sa réservation de groupe naissent.
+        [$first] = $this->import($parc, [['section' => 'mutualisations', 'index' => 0, 'coche' => true]]);
+        self::assertSame(200, $first);
+
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+
+        // Réimport : l'aperçu apparie désormais la ligne au bloc existant → `cibleId` = id du BLOC.
+        $this->scopeGucToClub($this->club->getId());
+        [$second, $body] = $this->import($parc, [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'cibleId' => $block->getId()]]);
+        self::assertSame(200, $second, 'réimporter une mutualisation appariée ne doit pas 422 « Gymnase introuvable » : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+    }
+
+    public function testGroupReservationVenueIdFromAnotherClubIsRefusedWithoutWriting(): void
+    {
+        // Patron A1 étendu au nouveau canal `venueId` : un gymnase d'un AUTRE club ne doit JAMAIS
+        // être écrit — re-vérification tenant côté serveur, 422, RIEN écrit (tout-ou-rien).
+        $this->makeTeam('U9M1', sessionsPerWeek: 2);
+        $this->makeTeam('U11F2', sessionsPerWeek: 2);
+        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
+        $foreign = $this->seedForeignClubWithVenue('Palais Étranger');
+        $this->scopeGucToClub($this->club->getId());
+        $reservationsBefore = $this->rowCount('reservation');
+        $blocksBefore = $this->rowCount('shared_training_block');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'venueId' => $foreign['venueId']]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un venueId hors tenant est refusé');
+        self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'rien écrit avec un gymnase hors tenant');
+        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'aucun bloc écrit non plus (tout-ou-rien)');
+    }
+
+    public function testBlankGroupReservationVenueIdFallsBackToNameResolution(): void
+    {
+        // Narrowing du nouveau canal : un `venueId` vide (ou non-chaîne) vaut `null` — la réservation
+        // de groupe retombe sur la résolution par le NOM de la case, comme avant le sélecteur.
+        $this->makeTeam('U9M1', sessionsPerWeek: 2);
+        $this->makeTeam('U11F2', sessionsPerWeek: 2);
+        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'venueId' => '']];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'un venueId vide n\'empêche pas l\'import : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(2, $this->reservationCountOnVenue($venue->getId()), 'venueId vide → résolution par le nom de la case');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -597,6 +699,14 @@ final class ParcImportExecuteTest extends WebTestCase
         return (int) $this->em->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM ' . $table . ' WHERE club_id = :c',
             ['c' => $this->club->getId()],
+        );
+    }
+
+    private function reservationCountOnVenue(string $venueId): int
+    {
+        return (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM reservation WHERE club_id = :c AND venue_id = :v',
+            ['c' => $this->club->getId(), 'v' => $venueId],
         );
     }
 

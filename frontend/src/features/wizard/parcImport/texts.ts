@@ -56,6 +56,8 @@ export const PARC_IMPORT_TEXTS = {
   // Requalification d'une mutualisation (D8) — nommer/corriger le libellé du groupe mutualisé.
   groupLabel: (libelle: string) => `Nom du groupe mutualisé — ${libelle}`,
   groupLabelPlaceholder: "Nom du groupe (ex. « CEC »)",
+  /** P4-363 — sélecteur de gymnase de la réservation de groupe d'une mutualisation (aria-label). */
+  venueForGroup: (libelle: string) => `Gymnase de la réservation de groupe — ${libelle}`,
 
   /** Le libellé HUMAIN d'un statut de ligne (enum serveur → libellé). Table inline. */
   statusLabel: (statut: string): string => {

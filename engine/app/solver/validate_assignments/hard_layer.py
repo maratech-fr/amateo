@@ -64,6 +64,12 @@ def _apply_hard(
     et rend le déplacement fautif INFEASIBLE. Un cran HARD bloque le déplacement qui le
     casse ; un cran PREFERRED ne bloque pas (ses littéraux de violation sont posés mais
     sans objectif ici — feasibility check seul)."""
+    # P4-361 — relais de l'adjoint (chantier H) : la pose HARD du trajet EXEMPTE un enchaînement
+    # vers un verrou tolérant dont l'adjoint ouvre la séance. `add_travel_time_hard_constraints` lit
+    # ces cartes sur le modèle (`late_relay_tolerances`) ; on les câble ici pour que le verdict pose
+    # EXACTEMENT la même couche HARD que `/generate` (parité `test_hard_layer_parity_registry`).
+    model.team_assistant_map = parsed["team_assistant_map"]
+    model.coach_unavailability = parsed["coach_unavailability"]
     min_by_team: dict[str, int] = {str(t.get("id")): 0 for t in data.get("teams", []) if t.get("id")}
     stats = add_level_1_hard_constraints(
         model,

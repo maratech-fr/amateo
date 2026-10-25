@@ -286,6 +286,10 @@ final class ParcImportAnalyzer
         foreach ($mutualisations as $i => $entry) {
             $libelle = $this->mutualisationLabel($entry);
             $groupe = $entry['groupe'];
+            // P4-363 — gymnase RÉSOLU depuis le NOM de la case (null si à créer) : amorce le sélecteur
+            // de gymnase de la ligne côté front, SANS jamais confondre ce gymnase avec le `cibleId`
+            // (qui, pour une mutualisation, désigne le BLOC apparié).
+            $extra = ['groupe' => $groupe, 'gymnaseId' => $this->resolveVenueId($this->stringField($entry, 'gymnase'))];
             $teamNames = $this->stringList($entry['equipes']);
             $commonSessions = $entry['seances_communes'];
 
@@ -314,17 +318,17 @@ final class ParcImportAnalyzer
 
             if ($allResolved && [] !== $teamIds && '' !== $seasonId
                 && $this->blockExceedsMemberSessions($teamIds, $clubId, $seasonId, $commonSessions, $matchedBlockId)) {
-                $out[] = $this->line($i, $libelle, 'alerte', null, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes — à ajuster à la main.', ['groupe' => $groupe]);
+                $out[] = $this->line($i, $libelle, 'alerte', null, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes — à ajuster à la main.', $extra);
 
                 continue;
             }
 
             if (null !== $matchedBlockId) {
-                $out[] = $this->line($i, $libelle, 'apparie', $matchedBlockId, null, ['groupe' => $groupe]);
+                $out[] = $this->line($i, $libelle, 'apparie', $matchedBlockId, null, $extra);
 
                 continue;
             }
-            $out[] = $this->line($i, $libelle, 'aCreer', null, null, ['groupe' => $groupe]);
+            $out[] = $this->line($i, $libelle, 'aCreer', null, null, $extra);
         }
 
         return $out;

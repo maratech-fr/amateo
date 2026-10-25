@@ -61,6 +61,8 @@ interface Line {
   miseAJour?: { champ: "seances"; de: number; a: number };
   /** Mutualisation : le libellé du bloc dérivé (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
+  /** Mutualisation (P4-363) : le gymnase résolu du nom de la case (null si à créer) — amorce le sélecteur de gymnase. */
+  gymnaseId?: string | null;
 }
 
 interface Recap {
@@ -125,6 +127,18 @@ function analysisOf(
 
 function checkedCount(a: Analysis): number {
   return Object.values(a.sections).reduce((n, lines) => n + lines.filter((l) => l.coche).length, 0);
+}
+
+/**
+ * Le nom accessible du trigger `Listbox` = aria-label SUIVI de la valeur/placeholder (patron
+ * `listbox.tsx`, `aria-labelledby=[labelId, valueId]`) : « Gymnase … — U11M1 + U11M2 Créer » au
+ * repos. On matche donc le PRÉFIXE `venueForGroup(libelle)` (clé `texts.ts` gardée comme source) via
+ * un matcher FONCTION de testing-library — pas de `RegExp` construite (convention du dépôt, Semgrep
+ * `detect-non-literal-regexp` ; cf. `accentTokenParity.test.ts`).
+ */
+function venueForGroupTrigger(libelle: string): (accessibleName: string) => boolean {
+  const prefix = PARC_IMPORT_TEXTS.venueForGroup(libelle);
+  return (accessibleName) => accessibleName.startsWith(prefix);
 }
 
 const q = vi.hoisted(() => ({
@@ -461,9 +475,11 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
     // Aucune UI coachs : ni case à cocher, ni titre de section « Coachs ».
     expect(screen.queryByRole("checkbox", { name: "Coach Zed" })).not.toBeInTheDocument();
     expect(screen.queryByText(PARC_IMPORT_TEXTS.sectionTitle("coachs"))).not.toBeInTheDocument();
-    // Réservation et mutualisation ne portent AUCUN sélecteur de ré-appariement d'entité.
+    // Réservation et mutualisation ne portent AUCUN sélecteur de ré-appariement d'ENTITÉ (le
+    // sélecteur de GYMNASE de la mutualisation, P4-363, porte un autre nom — `venueForGroup` — et
+    // n'est pas un ré-appariement de l'entité elle-même ; testé plus bas).
     expect(screen.queryByRole("button", { name: /Gymnase X 18:00/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /A \+ B/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: PARC_IMPORT_TEXTS.rematchLabel("A + B") })).not.toBeInTheDocument();
   });
 
   // ─────────── Lot correctif import IA « G2 » PR2 — nouvelles promesses d'aperçu ───────────
@@ -618,5 +634,45 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
     for (const assistant of ["GPT", "Gemini", "Claude", "Copilot"]) {
       expect(PARC_IMPORT_TEXTS.promptHelp).toContain(assistant);
     }
+  });
+
+  // ─────────── P4-363 — sélecteur de gymnase sur une ligne de mutualisation ───────────
+
+  it("P4-363 — une ligne mutualisation porte un sélecteur de gymnase ; le gymnase choisi part en venueId, distinct du cibleId", async () => {
+    // Le gestionnaire choisit le gymnase de la réservation de groupe dans un `VenueSelect` nommé
+    // `venueForGroup(libelle)` ; son choix voyage en `venueId` de la décision — JAMAIS en `cibleId`
+    // (réservé au bloc apparié), ni en `corrections` (réservé au libellé du groupe).
+    const user = userEvent.setup();
+    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
+    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null })] });
+    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
+
+    await paste(user, analysis);
+
+    await user.click(await screen.findByRole("button", { name: venueForGroupTrigger("U11M1 + U11M2") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Salle Mont Blanc" }));
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as {
+      decisions: Array<{ section: string; index: number; cibleId?: string | null; venueId?: string | null; corrections?: Record<string, unknown> }>;
+    };
+    const dec = body.decisions.find((d) => "mutualisations" === d.section && 0 === d.index);
+    expect(dec?.venueId).toBe("v2");
+    expect(dec?.cibleId ?? null).toBeNull();
+    expect(dec?.corrections?.venueId).toBeUndefined();
+  });
+
+  it("P4-363 — pas de sélecteur de gymnase sur une mutualisation en alerte (non cochée)", async () => {
+    // Le sélecteur de gymnase ne s'affiche que sur une ligne COCHÉE (apparié/suggéré/à créer) ;
+    // une mutualisation en alerte se décoche et renvoie à la saisie manuelle — aucun sélecteur.
+    const user = userEvent.setup();
+    const raison = "Les séances communes de cette mutualisation dépassent les séances hebdomadaires d'une des équipes — à ajuster à la main.";
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await paste(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { raison })] }));
+
+    await screen.findByRole("checkbox", { name: "U11M1 + U11M2" });
+    expect(screen.queryByRole("button", { name: venueForGroupTrigger("U11M1 + U11M2") })).not.toBeInTheDocument();
   });
 });

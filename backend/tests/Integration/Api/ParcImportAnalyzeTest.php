@@ -277,6 +277,29 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertContains('cec', $groupeLabels, '« CEC » nomme un bloc mutualisé dérivé');
     }
 
+    public function testAMutualisationLineExposesTheResolvedVenueId(): void
+    {
+        // P4-363 — l'aperçu expose sur une ligne de mutualisation un `gymnaseId` résolu depuis le NOM
+        // de la case (null si le gymnase est à créer) : il amorce le sélecteur de gymnase de la ligne,
+        // SANS jamais confondre ce gymnase avec le `cibleId` (qui, pour une mutualisation, désigne le
+        // bloc apparié). Une case pointe un gymnase EXISTANT, l'autre un gymnase inconnu.
+        $venue = $this->makeVenue('Gymnase Mateo');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+            ['gymnase' => 'Lieu Inconnu', 'jour' => 4, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U13M1', 'U13M2'], 'groupe' => 'CTC'],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $mutualisations = $body['sections']['mutualisations'];
+        self::assertCount(2, $mutualisations, 'une mutualisation par case à plusieurs équipes');
+        $gymnaseIds = array_map(static fn (array $l): mixed => \array_key_exists('gymnaseId', $l) ? $l['gymnaseId'] : '__absent__', $mutualisations);
+        self::assertContains($venue->getId(), $gymnaseIds, 'le gymnase résolu du nom de la case est exposé');
+        self::assertContains(null, $gymnaseIds, 'un gymnase à créer → gymnaseId null (jamais absent)');
+    }
+
     public function testASameTeamInTwoPlacesAtOnceRaisesAnAlertNamingIt(): void
     {
         // t7 : SM2 est lu le JEUDI à 19:00 dans DEUX gymnases (Armand ET JDR) — impossible. L'analyse

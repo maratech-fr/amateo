@@ -41,7 +41,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Any
 
 from ..compromise import FAMILY_TRAVEL, CompromiseTermInfo
-from ..model import _format_time
+from ..model import _format_time, _time_to_minutes
 from .common import (
     AssignmentInput,
     AssignmentVariable,
@@ -50,6 +50,7 @@ from .common import (
     _enforce_closure,
     _get,
     _intervals_overlap,
+    _late_arrival_relay_opens,
     _source_key,
 )
 from .targeting import team_link_placements_by_team
@@ -177,6 +178,85 @@ def is_travel_too_tight(
         return False
     barometer = _barometer(matrix, pa[3], pb[3], driving=driving, default_minutes=default_minutes)
     return gap < required_gap(barometer, tolerance_minutes)
+
+
+# P4-361 — EXEMPTION « relais de l'adjoint » (chantier H). Clé de lookup d'un verrou tolérant :
+# (jour, début en minutes, gymnase) → tolérance EFFECTIVE (minutes). Une clé présente = la séance la
+# plus tardive de l'enchaînement est un verrou dont le relais s'OUVRE (un adjoint disponible), donc le
+# coach principal peut arriver en retard — c'est le MÊME prédicat que ``CoachDoubleBookingDetector::
+# lateArrivalTolerated`` côté backend et que ``_late_arrival_relay_opens`` (common.py) côté occupation.
+_LateToleranceLookup = Mapping[tuple[int, int, str], int]
+
+
+def late_relay_tolerances(model: Any) -> dict[tuple[int, int, str], int]:
+    """Construit le lookup des verrous TOLÉRANTS dont le relais s'ouvre, depuis ``model.locked_slots``
+    (porte ``coachLateToleranceMinutes``), ``model.team_assistant_map`` et ``model.coach_unavailability``
+    — réutilise ``_late_arrival_relay_opens`` (jamais recopié). Un verrou sans tolérance (> 0) ou sans
+    adjoint disponible est ABSENT : pas d'exemption. SOURCE UNIQUE partagée par la pose HARD/SOFT, le
+    diagnostic et le miroir /validate-assignments (parité)."""
+    result: dict[tuple[int, int, str], int] = {}
+    for locked in getattr(model, "locked_slots", ()) or ():
+        tolerance = int(_get(locked, "coach_late_tolerance_minutes", "coachLateToleranceMinutes", default=0) or 0)
+        if tolerance <= 0:
+            continue
+        team_id = _get(locked, "team_id", "teamId", default=None)
+        venue_id = _get(locked, "venue_id", "venueId", default=None)
+        day = _get(locked, "day_of_week", "dayOfWeek", default=None)
+        start = _get(locked, "start_time", "startTime", default=None)
+        if team_id is None or venue_id is None or day is None or start is None:
+            continue
+        start_min = _time_to_minutes(str(start)[:5])
+        if not _late_arrival_relay_opens(model, str(team_id), int(day), start_min, tolerance):
+            continue
+        result[(int(day), start_min, str(venue_id))] = tolerance
+    return result
+
+
+def _relay_exempts_pair(
+    *,
+    traveler_is_coach: bool,
+    gap: int,
+    barometer: int,
+    pa: TravelPlacement,
+    pb: TravelPlacement,
+    tolerances: _LateToleranceLookup,
+) -> bool:
+    """``True`` ssi l'enchaînement cross-gymnase (``pa``, ``pb``) est EXEMPTÉ du battement par le
+    relais de l'adjoint : le voyageur est un COACH (jamais une passerelle), la séance la plus
+    TARDIVE est un VERROU (``var`` None) dont le relais s'ouvre (clé présente dans ``tolerances``) et
+    le retard = ``max(0, barème BRUT − battement)`` ≤ la tolérance effective. Le barème est le BRUT
+    (la tolérance de règle ne se cumule pas — arbitrage plan)."""
+    if not traveler_is_coach:
+        return False
+    later = pb if pb[0] >= pa[0] else pa
+    if later[4] is not None:
+        return False
+    tolerance = tolerances.get((later[2], later[0], later[3]))
+    if tolerance is None:
+        return False
+    return max(0, barometer - gap) <= tolerance
+
+
+def is_relay_exempt_pair(
+    pa: TravelPlacement,
+    pb: TravelPlacement,
+    *,
+    traveler_is_coach: bool,
+    driving: bool,
+    matrix: Mapping[frozenset[str], tuple[int | None, int | None]],
+    default_minutes: int,
+    tolerances: _LateToleranceLookup,
+) -> bool:
+    """Variante du prédicat d'exemption qui RECALCULE gap + barème depuis les deux primitives
+    (``_cross_venue_gap`` / ``_barometer``), pour les appelants qui n'ont pas déjà ces valeurs sous la
+    main (diagnostic post-solve). Même sémantique que ``_relay_exempts_pair``."""
+    gap = _cross_venue_gap(pa, pb)
+    if gap is None:
+        return False
+    barometer = _barometer(matrix, pa[3], pb[3], driving=driving, default_minutes=default_minutes)
+    return _relay_exempts_pair(
+        traveler_is_coach=traveler_is_coach, gap=gap, barometer=barometer, pa=pa, pb=pb, tolerances=tolerances
+    )
 
 
 def _coach_teams(team_coach_map: Mapping[str, list[str]] | None) -> dict[str, list[str]]:
@@ -322,6 +402,7 @@ def add_travel_time_hard_constraints(
     # n'a pas d'id de contrainte saisie) rejoint le noyau d'infaisabilité s'il y participe.
     cause = {"kind": "travel_time", "constraintId": None, "label": None}
     travel_literal = _assume(model, _source_key("travel_time", None, "travelTime"), cause)
+    tolerances = late_relay_tolerances(model)
     for _traveler_key, gap, barometer, pa, pb in _iter_travel_pairs(
         assignments,
         getattr(model, "locked_slots", ()) or (),
@@ -333,6 +414,15 @@ def add_travel_time_hard_constraints(
     ):
         if gap >= required_gap(barometer, tolerance_minutes):
             continue
+        if _relay_exempts_pair(
+            traveler_is_coach=_traveler_key.startswith("coach:"),
+            gap=gap,
+            barometer=barometer,
+            pa=pa,
+            pb=pb,
+            tolerances=tolerances,
+        ):
+            continue  # relais de l'adjoint (chantier H) : le coach arrive en retard, pas d'interdit.
         a_var, b_var = pa[4], pb[4]
         if a_var is not None and b_var is not None:
             mutual = model.Add(a_var + b_var <= 1)
@@ -374,6 +464,7 @@ def add_travel_time_penalty(
 
     terms: list[tuple[BoolVarLike, int]] = []
     index = 0
+    tolerances = late_relay_tolerances(model)
     for traveler_key, gap, barometer, pa, pb in _iter_travel_pairs(
         assignments,
         getattr(model, "locked_slots", ()) or (),
@@ -385,6 +476,15 @@ def add_travel_time_penalty(
     ):
         if gap >= required_gap(barometer, tolerance_minutes):
             continue
+        if _relay_exempts_pair(
+            traveler_is_coach=traveler_key.startswith("coach:"),
+            gap=gap,
+            barometer=barometer,
+            pa=pa,
+            pb=pb,
+            tolerances=tolerances,
+        ):
+            continue  # relais de l'adjoint (chantier H) : aucun malus de battement sur cette paire.
         literal = _both_placed_literal(model, pa, pb, f"travel_batt_{traveler_key}_{index}")
         if literal is None:
             continue
@@ -455,6 +555,8 @@ __all__ = [
     "add_travel_time_hard_constraints",
     "add_travel_time_penalty",
     "build_travel_matrix",
+    "is_relay_exempt_pair",
     "is_travel_too_tight",
     "iter_travel_pairs_from_placements",
+    "late_relay_tolerances",
 ]
