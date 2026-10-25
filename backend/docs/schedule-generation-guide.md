@@ -343,20 +343,20 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | | Détail |
 |---|---|
 | **Symptôme** | Le statut passe à `FAILED`. Le diagnostic indique que le moteur a dépassé le temps imparti. |
-| **Cause** | Le problème est trop complexe pour le solveur CP-SAT. Le budget est **adaptatif** selon la taille du problème (`n_teams × n_venues`) : 60 s (≤ 50), 180 s (≤ 200), 600 s au-delà — plafonné par `solverTimeoutSeconds` (650). Trop d'équipes, trop de contraintes dures, pas assez de salles. |
-| **Vérification** | `make logs SERVICE=engine` — tu verras le budget retenu et un abandon. |
-| **Correction** | Réduis le nombre d'équipes dans le planning, assouplis des contraintes `HARD` en `PREFERRED`, ou ajoute des salles disponibles. |
-| **Prévention** | Surveille les métriques du moteur. Pour les clubs très complexes, envisage de scinder le planning en plusieurs sous-planning. |
+| **Cause** | Toute erreur de TRANSPORT HTTP (`TransportExceptionInterface`, Symfony HttpClient) retombe sur ce même diagnostic — pas seulement un solveur trop lent : un dépassement du budget CP-SAT **adaptatif** (`n_teams × n_venues` : 60 s ≤ 50, 180 s ≤ 200, 600 s au-delà, plafonné par `solverTimeoutSeconds` = 650), MAIS AUSSI un conteneur `engine` arrêté, un réseau coupé, ou un DNS cassé — Symfony lève la MÊME exception de transport dans les deux cas. |
+| **Vérification** | `docker ps \| grep engine` (conteneur vivant ?) puis `make logs SERVICE=engine` — tu verras soit le budget retenu et un abandon, soit rien du tout si le conteneur est down. |
+| **Correction** | Si le conteneur est arrêté : `docker compose up -d engine`. Sinon : réduis le nombre d'équipes dans le planning, assouplis des contraintes `HARD` en `PREFERRED`, ou ajoute des salles disponibles. |
+| **Prévention** | Surveille les métriques du moteur et configure un healthcheck Docker sur le conteneur engine. Pour les clubs très complexes, envisage de scinder le planning en plusieurs sous-planning. |
 
 ### Cas 4 : FAILED + diagnostic "engine_error"
 
 | | Détail |
 |---|---|
-| **Symptôme** | Le statut passe à `FAILED`. Le diagnostic indique que le moteur est injoignable. |
-| **Cause** | Le conteneur `engine` est arrêté ou a crashé. |
-| **Vérification** | `docker ps \| grep engine` puis `make logs SERVICE=engine` |
-| **Correction** | `docker compose up -d engine`, puis relis les logs pour comprendre le crash. |
-| **Prévention** | Configure un healthcheck Docker sur le conteneur engine. |
+| **Symptôme** | Le statut passe à `FAILED`. Le diagnostic porte un libellé stable (« Le moteur de calcul n'a pas pu traiter la demande de génération. Réessayez ; si le problème persiste, signalez-le. ») — jamais une URL ni un détail technique. |
+| **Cause** | Une exception du moteur NON traduite par les deux branches voisines : ni une erreur de TRANSPORT (→ `engine_timeout` ci-dessus), ni un refus de CONTRAT 422 (→ `engine_rejected`, Cas 6b ci-dessous). Exemple : le moteur (ou un proxy devant lui) répond `200 OK` avec un corps non-JSON (page d'erreur HTML) — `EngineClient::solve()` échoue à le décoder et lève une exception générique. |
+| **Vérification** | La substance technique (type d'exception, message brut — jamais recopié dans le diagnostic ni à l'écran) est dans le log serveur : `make logs SERVICE=messenger-worker`, niveau `error`. |
+| **Correction** | Lire le log serveur pour identifier la cause réelle (proxy, réponse malformée du moteur…), corriger côté infra. |
+| **Prévention** | — |
 
 ### Cas 5 : FAILED + diagnostic "conflict"
 

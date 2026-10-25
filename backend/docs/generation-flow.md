@@ -261,8 +261,8 @@ Note importante sur les réponses HTTP : `EngineClient` lit la réponse avec `to
 | `422 Unprocessable Entity` sur `/generate` (refus de contrat Pydantic) | Détecté par `EngineClient::solve()`, statut `FAILED` | `engine_rejected` (lisible, champ nommé) |
 | `422 Unprocessable Entity` sur `/place-matches` ou `/validate-assignments` (corps sans `status`) | Traité comme `failed`, statut `FAILED` | `engine_failed` |
 | `500 Internal Server Error` (corps sans `status`) | Traité comme `failed`, statut `FAILED` | `engine_failed` |
-| Timeout HTTP (> 650 s) | Statut `FAILED` | `engine_timeout` |
-| Host unreachable | Statut `FAILED` | `engine_error` |
+| Timeout HTTP ou erreur de TRANSPORT (> 650 s, hôte injoignable, connexion refusée — `TransportExceptionInterface`) | Statut `FAILED` | `engine_timeout` |
+| Exception moteur NON traduite (ni transport, ni 422 de contrat) — ex. réponse `200 OK` au corps non-JSON | Statut `FAILED` | `engine_error` (libellé stable sans URL ni détail d'infra ; substance technique dans le log serveur) |
 
 > Exemple concret : si le BCCL ajoute une contrainte `HARD` "SM3 uniquement le mercredi après 20h" et que le mercredi soir est déjà saturé par SM1, SM2, SF1 et SF2, le solveur peut déclarer le problème infaisable (INFEASIBLE côté CP-SAT). Il retourne alors `status: "failed"` avec un diagnostic listant SM3 comme équipe non placée.
 
@@ -307,14 +307,28 @@ Le moteur n'a pas pu produire de planning complet.
 
 3. **Préservation des créneaux** : contrairement au cas `completed`, **aucun créneau existant n'est supprimé**. L'administrateur conserve son ancien planning et peut l'ajuster pour résoudre le conflit.
 
-### 5.3 Cas : engine inaccessible
+### 5.3 Cas : engine inaccessible, en timeout, ou réponse non interprétable
 
-Si l'engine ne répond pas du tout (conteneur arrêté, réseau coupé), le handler attrape l'exception `TransportException` et :
+Deux branches distinctes dans `GenerateScheduleHandler`, selon la NATURE de l'exception :
 
-1. Crée un `ScheduleDiagnostic` de type `engine_error` (ou `engine_timeout` si c'est un timeout).
+- **`TransportExceptionInterface`** (Symfony HttpClient) : couvre aussi bien un dépassement de
+  délai (> 650 s) qu'un engine injoignable (conteneur arrêté, réseau coupé, DNS cassé) — les deux
+  lèvent la MÊME exception de transport, donc le MÊME diagnostic `engine_timeout` (pas de
+  distinction « trop lent » vs « injoignable » côté diagnostic).
+- **Toute autre exception non traduite** — ni une erreur de transport, ni un refus de contrat 422
+  (`EngineRequestRejectedException`, §4.2) — par exemple une réponse `200 OK` au corps non-JSON
+  (page d'erreur HTML d'un proxy devant l'engine) : diagnostic `engine_error`, avec un libellé
+  STABLE qui ne recopie jamais l'URL/l'hôte interne du moteur ni le message brut de l'exception
+  (celui-ci irait sinon jusqu'à `auto.generationFailure.firstError` d'un signalement, lisible par
+  le support). La substance technique (type d'exception, message d'origine) est journalisée
+  côté serveur (`make logs SERVICE=messenger-worker`).
+
+Dans les deux cas :
+
+1. Crée un `ScheduleDiagnostic` du type retenu ci-dessus.
 2. Met à jour `Schedule.status` → `FAILED`.
 3. Libère le verrou Redis.
-4. Publie l'échec via Mercure.
+4. Publie l'échec via Mercure (même libellé stable que le diagnostic).
 
 ---
 
