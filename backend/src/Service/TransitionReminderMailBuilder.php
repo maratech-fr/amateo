@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Club;
 use App\Mail\ClubBusinessMail;
 use App\Mail\ClubMailMetadata;
+use App\Mail\EmailTemplateRenderer;
 use DateTimeImmutable;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
@@ -37,9 +38,10 @@ final class TransitionReminderMailBuilder
             'La saison suivante n\'est pas encore préparée.',
             'Ouvre l\'app et lance « Préparer la saison suivante » pour copier la structure (gymnases, équipes, coachs, contraintes) dans un brouillon librement modifiable.',
         ];
-        if ('' !== $this->frontendBaseUrl) {
+        $link = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/' : null;
+        if (null !== $link) {
             $lines[] = '';
-            $lines[] = rtrim($this->frontendBaseUrl, '/') . '/';
+            $lines[] = $link;
         }
 
         // E-mail MÉTIER club : candidat à l'interception « boîte aux lettres » (cf. ClubBusinessMail).
@@ -50,6 +52,12 @@ final class TransitionReminderMailBuilder
                 ->subject($subject)
                 ->text(implode("\n", $lines)),
         );
+        // Bouton CTA du HTML (D1) — posé seulement quand le lien est cliquable (base front configurée).
+        if (null !== $link) {
+            $headers = $email->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Ouvrir l\'application');
+        }
         // Identité du club (logo + nom court) sur la carte d'e-mail (D1), quand elle est connue.
         if ($club instanceof Club) {
             ClubMailMetadata::mark($email, $club);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Mail\EmailTemplateRenderer;
 use Symfony\Component\Mime\Email;
 
 /**
@@ -62,20 +63,30 @@ final class FeedbackMailBuilder
             'Votre signalement a été traité.',
             'Merci d\'avoir contribué à l\'amélioration de l\'application.',
         ];
-        if ('' !== $this->frontendBaseUrl) {
+        $link = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/nouveautes' : null;
+        if (null !== $link) {
             $lines[] = '';
             $lines[] = 'Retrouvez les nouveautés de l\'application :';
-            $lines[] = rtrim($this->frontendBaseUrl, '/') . '/nouveautes';
+            $lines[] = $link;
         }
         $lines[] = '';
         $lines[] = 'Inutile de répondre à ce message.';
         $lines[] = '';
         $lines[] = "L'équipe {$product}";
 
-        return (new Email)
+        $email = (new Email)
             ->from($this->mailFrom->address())
             ->to($to)
             ->subject('Votre signalement a été traité')
             ->text(implode("\n", $lines));
+
+        // Bouton CTA du HTML (D1) — posé seulement quand le lien est cliquable (base front configurée).
+        if (null !== $link) {
+            $headers = $email->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Voir les nouveautés');
+        }
+
+        return $email;
     }
 }

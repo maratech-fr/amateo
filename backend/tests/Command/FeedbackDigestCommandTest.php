@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Command;
 
 use App\Command\FeedbackDigestCommand;
+use App\Mail\EmailTemplateRenderer;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\Attributes\Group;
@@ -71,6 +72,27 @@ final class FeedbackDigestCommandTest extends KernelTestCase
         self::assertStringNotContainsString($secret, $body, 'le digest ne recopie jamais le texte des messages');
         // Corps bref (~3 lignes) : jamais une ligne par signalement.
         self::assertLessThanOrEqual(6, substr_count(trim($body), "\n") + 1, 'un corps bref (~3 lignes), pas une ligne par item');
+    }
+
+    public function testDigestCarriesTheConsoleCtaToTheSingleLink(): void
+    {
+        // PROMESSE (D1) : le digest porte un bouton « Traiter les signalements » vers le lien
+        // UNIQUE de la console (le même que le corps). ROUGE tant que le producteur ne pose pas
+        // l'en-tête CTA.
+        $club = $this->seedClub('Kilo');
+        $this->seedFeedback($club, 'bug', 'à traiter', 'untreated', '2026-08-12T09:00:00+00:00');
+
+        $mailer = $this->recordingMailer();
+        $tester = new CommandTester($this->command($mailer, 'support@example.test'));
+        self::assertSame(Command::SUCCESS, $tester->execute(['--date' => '2026-08-13']));
+
+        self::assertCount(1, $mailer->sent);
+        $email = $mailer->sent[0];
+        self::assertInstanceOf(Email::class, $email);
+        $headers = $email->getHeaders();
+        self::assertTrue($headers->has(EmailTemplateRenderer::CTA_URL_HEADER), 'ROUGE tant que le digest ne pose pas le bouton console');
+        self::assertSame(self::EXPECTED_LINK, $headers->getHeaderBody(EmailTemplateRenderer::CTA_URL_HEADER), 'le CTA pointe le lien UNIQUE de la console');
+        self::assertSame('Traiter les signalements', $headers->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
     }
 
     public function testNoNewUntreatedYesterdaySendsNoEmail(): void

@@ -114,7 +114,7 @@ final class CoachWishMailBuilder
         ];
         $lines = [...$lines, ...$this->cockpitFooter()];
 
-        return $this->email($to, $subject, $lines, $club);
+        return $this->withCockpitCta($this->email($to, $subject, $lines, $club));
     }
 
     /**
@@ -139,7 +139,23 @@ final class CoachWishMailBuilder
         ];
         $lines = [...$lines, ...$this->cockpitFooter()];
 
-        return $this->email($to, $subject, $lines, $club);
+        return $this->withCockpitCta($this->email($to, $subject, $lines, $club));
+    }
+
+    /**
+     * Pose le bouton CTA « Ouvrir le cockpit » sur le digest/récap, vers le lien du pied
+     * (cockpitFooter) — seulement quand la base front est configurée (sinon pas de lien cliquable).
+     */
+    private function withCockpitCta(Email $email): Email
+    {
+        if ('' === $this->frontendBaseUrl) {
+            return $email;
+        }
+        $headers = $email->getHeaders();
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, rtrim($this->frontendBaseUrl, '/') . '/');
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Ouvrir le cockpit');
+
+        return $email;
     }
 
     /** Lien public absolu, ou null si aucune base front n'est configurée (lien non cliquable). */

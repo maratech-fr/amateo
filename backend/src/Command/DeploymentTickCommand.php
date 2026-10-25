@@ -8,6 +8,7 @@ use App\Entity\ScheduledDeployment;
 use App\Enum\DeploymentStatus;
 use App\Enum\MatchPlacementRunStatus;
 use App\Enum\ScheduleStatus;
+use App\Mail\EmailTemplateRenderer;
 use App\Repository\ScheduledDeploymentRepository;
 use App\Service\GitHubDeployClient;
 use App\Service\GitHubDeployException;
@@ -64,6 +65,9 @@ final class DeploymentTickCommand extends Command
         private readonly MailFrom $mailFrom,
         private readonly ProductIdentity $productIdentity,
         private readonly ClockInterface $clock,
+        // Origine navigateur pour l'URL ABSOLUE de la console — bind global `$frontendBaseUrl`
+        // (%env(FRONTEND_BASE_URL)%) ; un chemin relatif « /admin » serait inutilisable en client mail.
+        private readonly string $frontendBaseUrl = '',
     ) {
         parent::__construct();
     }
@@ -241,10 +245,16 @@ final class DeploymentTickCommand extends Command
         if (null !== $note && '' !== $note) {
             $text .= "\n\n" . $note;
         }
+        // Console en URL ABSOLUE (jamais « /admin » relatif, inutilisable en client mail), sur sa
+        // propre ligne pour être rendue en bouton par le gabarit HTML (patron FeedbackDigestCommand).
+        $consoleLink = rtrim($this->frontendBaseUrl, '/') . '/admin';
         $email = (new Email)
             ->from($this->mailFrom->address())
             ->subject(\sprintf('%s — %s', $this->productIdentity->name(), $subject))
-            ->text($text . "\n\nConsole : /admin");
+            ->text($text . "\n\nConsole :\n" . $consoleLink);
+        $headers = $email->getHeaders();
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $consoleLink);
+        $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Ouvrir la console');
         foreach ($recipients as $recipient) {
             $email->addTo($recipient);
         }

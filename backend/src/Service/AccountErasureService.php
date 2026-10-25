@@ -10,6 +10,7 @@ use App\Entity\EmailVerificationToken;
 use App\Entity\ResetPasswordRequest;
 use App\Entity\User;
 use App\Mail\ClubMailMetadata;
+use App\Mail\EmailTemplateRenderer;
 use App\Repository\ClubUserRepository;
 use App\Service\Basketball\FfbbClubDirectory;
 use DateTimeImmutable;
@@ -61,6 +62,9 @@ final class AccountErasureService
         private readonly MailFrom $mailFrom,
         private readonly ProductIdentity $productIdentity,
         private readonly LoggerInterface $logger,
+        // Origine navigateur pour le lien d'inscription du préavis orphelin — bind global
+        // `$frontendBaseUrl` (%env(FRONTEND_BASE_URL)%) ; vide → lien omis (patron des crons).
+        private readonly string $frontendBaseUrl = '',
     ) {}
 
     /**
@@ -227,16 +231,26 @@ final class AccountErasureService
             }
 
             $product = $this->productIdentity->name();
+            // Lien d'inscription (reprendre le club) sur sa propre ligne, omis sans base front.
+            $registerLink = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/register' : null;
+            $registerBlock = null !== $registerLink ? "\n\nInscrire un gestionnaire :\n" . $registerLink : '';
             try {
                 $email = (new Email)
                     ->from($this->mailFrom->address())
                     ->to($to)
                     ->subject(\sprintf('L\'espace %s du club %s va être supprimé', $product, $club->getName()))
                     ->text(\sprintf(
-                        "Bonjour,\n\nLe dernier gestionnaire de l'espace {$product} du club %s vient de supprimer son compte : cet espace n'a plus de gestionnaire.\n\nSans reprise, il sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.\n\n{$product}",
+                        "Bonjour,\n\nLe dernier gestionnaire de l'espace {$product} du club %s vient de supprimer son compte : cet espace n'a plus de gestionnaire.\n\nSans reprise, il sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.%s\n\n{$product}",
                         $club->getName(),
                         $deadline->format('d/m/Y'),
+                        $registerBlock,
                     ));
+                // Bouton CTA du HTML (D1) : s'inscrire pour reprendre le club (seulement si lien cliquable).
+                if (null !== $registerLink) {
+                    $headers = $email->getHeaders();
+                    $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $registerLink);
+                    $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Inscrire un gestionnaire');
+                }
                 // Identité du club (logo + nom court) sur la carte d'e-mail (D1).
                 ClubMailMetadata::mark($email, $club);
                 $this->mailer->send($email);

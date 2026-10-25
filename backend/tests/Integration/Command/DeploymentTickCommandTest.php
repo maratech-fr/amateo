@@ -8,6 +8,7 @@ use App\Command\DeploymentTickCommand;
 use App\Command\HealthAlertCommand;
 use App\Enum\MatchPlacementRunStatus;
 use App\Enum\ScheduleStatus;
+use App\Mail\EmailTemplateRenderer;
 use App\Service\GitHubDeployClient;
 use App\Service\MailFrom;
 use App\Service\ProductIdentity;
@@ -72,6 +73,9 @@ final class DeploymentTickCommandTest extends KernelTestCase
 
     /** @var list<string> */
     private array $sentBodies = [];
+
+    /** @var list<Email> les e-mails CAPTÉS entiers (en-têtes compris), pour l'assertion du bouton CTA. */
+    private array $sentEmails = [];
 
     private ?string $adminId = null;
 
@@ -162,6 +166,28 @@ final class DeploymentTickCommandTest extends KernelTestCase
 
         self::assertSame('succeeded', $this->statusOf($id), 'run success → SUCCEEDED');
         self::assertContains($this->adminEmail, $this->sentTo, 'un e-mail de succès part aux superadmins');
+    }
+
+    public function testTheDeploymentEmailCarriesAConsoleCtaWithAnAbsoluteUrl(): void
+    {
+        // PROMESSE (D1) : l'e-mail de transition porte un bouton « Ouvrir la console » vers une URL
+        // ABSOLUE de la console (plus « Console : /admin » relatif, inutilisable en client mail).
+        // ROUGE tant que le producteur ne pose pas l'en-tête CTA ni l'URL absolue.
+        GitHubDeployHttpClientStub::$runConclusion = 'success';
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $this->tickAt(self::NOW);
+
+        self::assertSame('succeeded', $this->statusOf($id));
+        self::assertNotSame([], $this->sentEmails, 'un e-mail de transition a bien été émis');
+        $email = $this->sentEmails[array_key_last($this->sentEmails)];
+        $headers = $email->getHeaders();
+        self::assertTrue(
+            $headers->has(EmailTemplateRenderer::CTA_URL_HEADER),
+            'ROUGE tant que l\'e-mail de déploiement ne pose pas le bouton console',
+        );
+        self::assertSame('Ouvrir la console', $headers->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        self::assertMatchesRegularExpression('~^https?://\S+/admin$~', (string) $headers->getHeaderBody(EmailTemplateRenderer::CTA_URL_HEADER), 'la console en URL ABSOLUE');
     }
 
     public function testADispatchedRunThatFailsIsMarkedFailedAndMailsThatMaintenanceIsLeftOn(): void
@@ -372,6 +398,7 @@ final class DeploymentTickCommandTest extends KernelTestCase
         GitHubDeployHttpClientStub::reset();
         $this->sentTo = [];
         $this->sentBodies = [];
+        $this->sentEmails = [];
         $this->seededScheduleIds = [];
         $this->seededRunIds = [];
         $this->seededPlanIds = [];
@@ -415,6 +442,7 @@ final class DeploymentTickCommandTest extends KernelTestCase
             self::getContainer()->get(MailFrom::class),
             self::getContainer()->get(ProductIdentity::class),
             new MockClock(new DateTimeImmutable($now)),
+            'https://app.example.test',
         );
 
         new CommandTester($command)->execute([]);
@@ -533,6 +561,7 @@ final class DeploymentTickCommandTest extends KernelTestCase
                     $this->sentTo[] = $address->getAddress();
                 }
                 $this->sentBodies[] = (string) $message->getTextBody();
+                $this->sentEmails[] = $message;
             }
         });
 

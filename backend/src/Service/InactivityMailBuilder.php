@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Mail\EmailTemplateRenderer;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
 
@@ -35,15 +36,26 @@ final class InactivityMailBuilder
             '',
             'Un simple login suffit à conserver votre compte.',
         ];
-        if ('' !== $this->frontendBaseUrl) {
+        $link = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/login' : null;
+        if (null !== $link) {
             $lines[] = '';
-            $lines[] = rtrim($this->frontendBaseUrl, '/') . '/login';
+            $lines[] = $link;
         }
 
-        return (new Email)
+        $email = (new Email)
             ->from($this->mailFrom->address())
             ->to($to)
             ->subject('⏳ Compte inactif — anonymisation dans un mois (RGPD)')
             ->text(implode("\n", $lines));
+
+        // Bouton CTA du HTML : en-têtes internes lus/retirés au worker par EmailSignatureListener.
+        // L'URL EST le lien du corps (jamais dupliqué sous le bouton) — patron CoachWishMailBuilder.
+        if (null !== $link) {
+            $headers = $email->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Me connecter');
+        }
+
+        return $email;
     }
 }

@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\ClubCreationRequest;
 use App\Entity\User;
 use App\Enum\ClubRole;
+use App\Mail\EmailTemplateRenderer;
 use App\Message\Basketball\PopulateClubFromFfbbMessage;
 use App\Repository\ClubCreationRequestRepository;
 use App\Repository\ClubRepository;
@@ -95,21 +96,24 @@ final class ClubApprovalService
         $requesterName = trim($requester->getFirstName() . ' ' . $requester->getLastName());
         $product = $this->productIdentity->name();
         try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($clubEmail)
-                    ->subject(($reminder ? 'Rappel — ' : '') . \sprintf('%s demande à créer l\'espace %s de %s', $requesterName, $product, $request->getClubName()))
-                    ->text(\sprintf(
-                        "Bonjour,\n\n%s (%s) demande à créer et gérer l'espace {$product} du club %s (code FFBB %s).\n\nSi cette personne est bien un gestionnaire de votre club, approuvez sa demande :\n%s\n\nSinon, refusez-la depuis la même page. Sans réponse, la demande expire le %s.\n\n{$product}",
-                        $requesterName,
-                        $requester->getEmail(),
-                        $request->getClubName(),
-                        $request->getAra(),
-                        $link,
-                        $request->getExpiresAt()->format('d/m/Y'),
-                    )),
-            );
+            $email = (new Email)
+                ->from($this->mailFrom->address())
+                ->to($clubEmail)
+                ->subject(($reminder ? 'Rappel — ' : '') . \sprintf('%s demande à créer l\'espace %s de %s', $requesterName, $product, $request->getClubName()))
+                ->text(\sprintf(
+                    "Bonjour,\n\n%s (%s) demande à créer et gérer l'espace {$product} du club %s (code FFBB %s).\n\nSi cette personne est bien un gestionnaire de votre club, approuvez sa demande :\n%s\n\nSinon, refusez-la depuis la même page. Sans réponse, la demande expire le %s.\n\n{$product}",
+                    $requesterName,
+                    $requester->getEmail(),
+                    $request->getClubName(),
+                    $request->getAra(),
+                    $link,
+                    $request->getExpiresAt()->format('d/m/Y'),
+                ));
+            // Bouton CTA du HTML (D1) : l'URL EST le lien d'examen de la demande.
+            $headers = $email->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Examiner la demande');
+            $this->mailer->send($email);
         } catch (Throwable $e) {
             // Best-effort : la demande vit, le superadmin reste la voie de secours.
             $this->logger->warning('Club approval email failed', ['requestId' => $request->getId(), 'error' => $e->getMessage()]);
@@ -260,16 +264,25 @@ final class ClubApprovalService
             return;
         }
         $product = $this->productIdentity->name();
+        // Lien de connexion mis SUR SA PROPRE LIGNE (« Connectez-vous :\n<lien> ») : le gabarit HTML
+        // (D1) retire la ligne « URL nue » du corps pour la rendre en bouton — sans ligne dédiée, le
+        // lien ferait doublon (texte + bouton). Le lien reste cliquable dans un client sans HTML.
+        $loginLink = rtrim($this->frontendBaseUrl, '/') . '/login';
         try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($requester->getEmail())
-                    ->subject($approved ? \sprintf('Votre espace %s est prêt', $request->getClubName()) : \sprintf('Demande refusée — %s', $request->getClubName()))
-                    ->text($approved
-                        ? \sprintf("Bonjour,\n\nVotre demande a été approuvée : l'espace {$product} de %s est créé et vous en êtes gestionnaire.\n\nConnectez-vous : %s\n\n{$product}", $request->getClubName(), rtrim($this->frontendBaseUrl, '/') . '/login')
-                        : \sprintf("Bonjour,\n\nVotre demande de création de l'espace %s a été refusée par le club.\n\nSi vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club.\n\n{$product}", $request->getClubName())),
-            );
+            $email = (new Email)
+                ->from($this->mailFrom->address())
+                ->to($requester->getEmail())
+                ->subject($approved ? \sprintf('Votre espace %s est prêt', $request->getClubName()) : \sprintf('Demande refusée — %s', $request->getClubName()))
+                ->text($approved
+                    ? \sprintf("Bonjour,\n\nVotre demande a été approuvée : l'espace {$product} de %s est créé et vous en êtes gestionnaire.\n\nConnectez-vous :\n%s\n\n{$product}", $request->getClubName(), $loginLink)
+                    : \sprintf("Bonjour,\n\nVotre demande de création de l'espace %s a été refusée par le club.\n\nSi vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club.\n\n{$product}", $request->getClubName()));
+            // Bouton CTA du HTML (D1) : seulement sur l'APPROBATION (le refus n'a aucune action à offrir).
+            if ($approved) {
+                $headers = $email->getHeaders();
+                $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $loginLink);
+                $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Me connecter');
+            }
+            $this->mailer->send($email);
         } catch (Throwable $e) {
             $this->logger->warning('Club approval requester notification failed', ['requestId' => $request->getId(), 'error' => $e->getMessage()]);
         }

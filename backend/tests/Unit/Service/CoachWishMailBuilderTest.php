@@ -9,6 +9,7 @@ use App\Entity\CoachWishCampaign;
 use App\Mail\EmailTemplateRenderer;
 use App\Service\CoachWishMailBuilder;
 use App\Service\ProductIdentity;
+use App\Tests\AssertsActionMailCta;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -21,6 +22,8 @@ use PHPUnit\Framework\TestCase;
 #[Group('phase1')]
 final class CoachWishMailBuilderTest extends TestCase
 {
+    use AssertsActionMailCta;
+
     public function testCoachLinkEmailEmbedsTheAbsoluteLinkWhenBaseIsSet(): void
     {
         $builder = new CoachWishMailBuilder('https://app.example.test');
@@ -134,6 +137,23 @@ final class CoachWishMailBuilderTest extends TestCase
         self::assertStringContainsString('Ont répondu (1)', $digest);
         // Le récap final porte bien le compteur « à traiter » (un nombre, pas le détail).
         self::assertStringContainsString('à traiter : 3', $recap);
+    }
+
+    public function testDigestCarriesTheCockpitCta(): void
+    {
+        // PROMESSE (D1) : le digest 7h au gestionnaire porte un bouton « Ouvrir le cockpit » vers
+        // le lien du pied (cockpitFooter). ROUGE tant que buildDigest ne pose pas l'en-tête CTA.
+        $email = new CoachWishMailBuilder('https://app.example.test')->buildDigest('m@x.fr', 'Club', 'Toussaint', ['Anna Martin'], ['Anna Martin'], ['Bob Durand']);
+
+        $this->assertCtaHeadersPointToBodyLink($email, 'https://app.example.test/', 'Ouvrir le cockpit');
+    }
+
+    public function testFinalRecapCarriesTheCockpitCta(): void
+    {
+        // PROMESSE (D1) : le récap final porte le même bouton « Ouvrir le cockpit ».
+        $email = new CoachWishMailBuilder('https://app.example.test')->buildFinalRecap('m@x.fr', 'Club', 'Toussaint', ['Anna Martin'], ['Bob Durand'], 3);
+
+        $this->assertCtaHeadersPointToBodyLink($email, 'https://app.example.test/', 'Ouvrir le cockpit');
     }
 
     private function campaign(): CoachWishCampaign

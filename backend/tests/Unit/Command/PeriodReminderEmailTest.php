@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Service\PeriodReminderMailBuilder;
+use App\Tests\AssertsActionMailCta;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -15,6 +16,17 @@ use PHPUnit\Framework\TestCase;
 #[Group('phase1')]
 final class PeriodReminderEmailTest extends TestCase
 {
+    use AssertsActionMailCta;
+
+    public function testReminderCarriesTheCockpitCta(): void
+    {
+        // PROMESSE (D1) : le rappel « période sans plan » porte un bouton « Ouvrir le cockpit »
+        // vers le lien du corps. ROUGE tant que le builder ne pose pas l'en-tête CTA.
+        $email = new PeriodReminderMailBuilder('http://localhost:5173')->build('admin@club.fr', 'BCCL', $this->period(), 14);
+
+        $this->assertCtaHeadersPointToBodyLink($email, 'http://localhost:5173/', 'Ouvrir le cockpit');
+    }
+
     public function testSubjectAndBodyAtJ14(): void
     {
         $email = new PeriodReminderMailBuilder('http://localhost:5173')->build('admin@club.fr', 'BCCL', $this->period(), 14);
