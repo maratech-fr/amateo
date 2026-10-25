@@ -129,6 +129,16 @@ function checkedCount(a: Analysis): number {
   return Object.values(a.sections).reduce((n, lines) => n + lines.filter((l) => l.coche).length, 0);
 }
 
+/**
+ * Le nom accessible du trigger `Listbox` = aria-label SUIVI de la valeur/placeholder (patron
+ * `listbox.tsx`, `aria-labelledby=[labelId, valueId]`) : « Gymnase … — U11M1 + U11M2 Créer » au
+ * repos. On matche donc le PRÉFIXE `venueForGroup(libelle)` (clé `texts.ts` gardée comme source),
+ * en échappant ses métacaractères (« + » du libellé), comme les sélecteurs frères (D12, ré-appariement).
+ */
+function venueForGroupTrigger(libelle: string): RegExp {
+  return new RegExp(PARC_IMPORT_TEXTS.venueForGroup(libelle).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+}
+
 const q = vi.hoisted(() => ({
   analysis: { value: null as unknown },
   analyzePending: { value: false },
@@ -637,7 +647,7 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
 
     await paste(user, analysis);
 
-    await user.click(await screen.findByRole("button", { name: PARC_IMPORT_TEXTS.venueForGroup("U11M1 + U11M2") }));
+    await user.click(await screen.findByRole("button", { name: venueForGroupTrigger("U11M1 + U11M2") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Salle Mont Blanc" }));
 
     await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
@@ -661,6 +671,6 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
     await paste(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { raison })] }));
 
     await screen.findByRole("checkbox", { name: "U11M1 + U11M2" });
-    expect(screen.queryByRole("button", { name: PARC_IMPORT_TEXTS.venueForGroup("U11M1 + U11M2") })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: venueForGroupTrigger("U11M1 + U11M2") })).not.toBeInTheDocument();
   });
 });
