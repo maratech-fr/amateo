@@ -415,8 +415,8 @@ paths:
   fin — une fenêtre qui en chevauche une fausse l'aperçu). Maison unique des helpers, jamais
   réécrits spec par spec : `tests/e2e/support.ts` (`firstHolidayFreeMonday`,
   `schoolHolidayWindows` — feed serveur `GET /api/school-holidays`, jamais un calendrier recopié
-  en dur —, `isoLocal`, `frMonthLabel`), repris par `redate-closure.spec.ts`/`mutualize.spec.ts`/
-  `matches.spec.ts` (P4-353, 2026-10-25).
+  en dur —, `isoLocal`, `frMonthLabel`), repris par `redate-closure.spec.ts`/`mutualize.spec.ts` (P4-353, 2026-10-25) ;
+  `matches.spec.ts` reste à convertir (P4-360 — la vue Semaine ne navigue qu'entre week-ends à rencontres).
 - **Superadmin : jamais de login dans une spec** — le projet Playwright `setup`
   (`tests/e2e/superadmin.setup.ts`) fige UNE session par run (`storageState`), réutilisée sans
   retry par le projet `superadmin` ; un login par spec, multiplié par les retries, brûle le
