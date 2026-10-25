@@ -9,6 +9,7 @@ use App\Entity\ScheduleDiagnostic;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
 use App\Tests\Integration\Api\AdminFeedbackTest;
+use App\Tests\Integration\Api\FeedbackGenerationFailureTest;
 use App\Tests\Integration\Api\FeedbackScreenshotTest;
 use App\Tests\Integration\Api\FeedbackTest;
 use App\Tests\StartsFreshBrowserSession;
@@ -144,7 +145,7 @@ final class FeedbackContextIsolationTest extends WebTestCase
      * JAMAIS apparaître dans le signalement de A — ni la clé, ni (preuve d'effet) le texte de son
      * erreur n'importe où dans le JSON stocké. C'est l'angle tenant du résumé d'échec, DISTINCT de
      * la couverture fonctionnelle (12 h / COMPLETED / nature) prouvée à côté dans
-     * {@see \App\Tests\Integration\Api\FeedbackGenerationFailureTest} (doublon d'angle assumé, point
+     * {@see FeedbackGenerationFailureTest} (doublon d'angle assumé, point
      * sensible sécurité/tenant).
      *
      * Témoin de falsification : si l'enrichisseur cherchait un FAILED frais SANS le scoper au club

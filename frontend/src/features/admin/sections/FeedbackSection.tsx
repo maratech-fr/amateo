@@ -336,6 +336,14 @@ function ContextBlocks({ context, onCopy, copied }: { context: AdminFeedbackCont
   if (auto?.versions && (auto.versions.displayed || auto.versions.pointed)) {
     planningRows.push({ label: T.feedbackAutoVersions, value: T.feedbackVersionsValue(auto.versions.displayed?.number ?? null, auto.versions.pointed?.number ?? null) });
   }
+  // P4-355 (amendement) — la RAISON d'un échec de génération récent, dans le bloc Planning :
+  // la nature + le type (lead) et le 1ᵉʳ message d'erreur, sans copier le JSON.
+  const failure = auto?.generationFailure ?? null;
+
+  // P4-355 — versions App (front déclaré) / API (serveur) + mention d'écart (cache du bundle).
+  const appVersion = context.appVersion ?? null;
+  const apiVersion = auto?.apiVersion ?? null;
+  const versionMismatch = Boolean(appVersion && apiVersion && appVersion !== apiVersion);
 
   const screenLead = context.screenLabel ?? context.screen;
   const screenRows: Row[] = [];
@@ -356,13 +364,23 @@ function ContextBlocks({ context, onCopy, copied }: { context: AdminFeedbackCont
   if (auto?.counters) technicalRows.push({ label: T.feedbackAutoCounters, value: T.feedbackCountersValue(auto.counters.teams, auto.counters.venues) });
   if (auto?.role) technicalRows.push({ label: T.feedbackAutoRole, value: auto.role });
   if (auto?.generation) technicalRows.push({ label: T.feedbackAutoGeneration, value: T.feedbackGenerationValue(auto.generation.running) });
+  if (appVersion || apiVersion) technicalRows.push({ label: T.feedbackAutoVersion, value: T.feedbackVersionValue(appVersion, apiVersion) });
   if (auto?.simulatedToday) technicalRows.push({ label: T.feedbackAutoClock, value: auto.simulatedToday });
   if (context.scheduleStatus) technicalRows.push({ label: T.feedbackMetaScheduleStatus, value: context.scheduleStatus });
   if (context.userAgent) technicalRows.push({ label: T.feedbackMetaBrowser, value: context.userAgent });
 
   return (
     <div className="space-y-4">
-      <ContextSection title={T.feedbackBlockPlanning} rows={planningRows} />
+      <ContextSection title={T.feedbackBlockPlanning} rows={planningRows}>
+        {null !== failure ? (
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-foreground">{T.feedbackAutoGenerationFailure}</p>
+            <p className="break-words text-xs font-medium text-foreground">{T.feedbackFailureLead(T.feedbackFailureKindLabel(failure.kind), failure.type, failure.version.number)}</p>
+            {"" !== failure.firstError ? <p className="break-words text-xs text-muted-foreground">{failure.firstError}</p> : null}
+            <p className="text-xs text-muted-foreground">{fmtDate(failure.failedAt)}</p>
+          </div>
+        ) : null}
+      </ContextSection>
       {auto?.period ? (
         <ContextSection title={T.feedbackBlockPeriod} rows={[]}>
           <p className="break-words text-xs font-medium">{T.feedbackPeriodValue(auto.period.name, auto.period.startDate, auto.period.endDate, Math.round(auto.period.progress * 100))}</p>
@@ -373,6 +391,7 @@ function ContextBlocks({ context, onCopy, copied }: { context: AdminFeedbackCont
       </ContextSection>
       <ContextSection title={T.feedbackBlockLastAction} rows={lastActionRows} />
       <ContextSection title={T.feedbackBlockTechnical} rows={technicalRows}>
+        {versionMismatch ? <p className="break-words text-xs text-muted-foreground">{T.feedbackVersionMismatch}</p> : null}
         {hasHeavy ? (
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span>{T.feedbackSnapshotMeta(snapshotBytes.toLocaleString("fr-FR"), diagnosticsCount)}</span>

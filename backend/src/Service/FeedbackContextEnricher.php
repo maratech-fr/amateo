@@ -6,10 +6,13 @@ namespace App\Service;
 
 use App\Entity\Club;
 use App\Entity\Schedule;
+use App\Entity\ScheduleDiagnostic;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\Venue;
+use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\SchedulePlanType;
+use App\Enum\ScheduleStatus;
 use App\Repository\ClubRepository;
 use App\Repository\ClubUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,6 +39,26 @@ use Throwable;
  */
 final readonly class FeedbackContextEnricher
 {
+    /**
+     * Diagnostics d'INFRASTRUCTURE émis par le backend (le moteur a planté, timeout,
+     * entrée disparue…) — nature « technical ». Tout autre type (`conflict`,
+     * `session_below_effective_min`, `implicit_rule_not_honored`…) est une INFÉASIBILITÉ
+     * du solveur, donc « business » : le gestionnaire a posé des contraintes incompatibles.
+     *
+     * @var list<string>
+     */
+    private const array TECHNICAL_FAILURE_TYPES = [
+        'engine_timeout', 'engine_error', 'engine_rejected', 'internal_error',
+        'engine_status', 'engine_failed', 'stuck_timeout', 'overlay_entry_missing',
+        'club_mismatch', 'generation_failed',
+    ];
+
+    /** Un échec n'est joint que s'il est FRAIS — au-delà, il embrouille le support (pensé pour ~20 clubs). */
+    private const int FRESH_FAILURE_WINDOW_HOURS = 12;
+
+    /** Le 1ᵉʳ message d'erreur est borné : un message moteur peut faire des milliers de caractères. */
+    private const int FIRST_ERROR_MAX = 300;
+
     public function __construct(
         private ClubRepository $clubRepository,
         private ClubUserRepository $clubUserRepository,
@@ -46,6 +69,7 @@ final readonly class FeedbackContextEnricher
         private RequestStack $requestStack,
         private ClockInterface $clock,
         private LoggerInterface $logger,
+        private string $apiVersion,
     ) {}
 
     /**
@@ -100,9 +124,19 @@ final readonly class FeedbackContextEnricher
             'period' => $this->period($season),
             'versions' => $this->versions($clubId, $season, $context),
             'generation' => ['running' => $this->generationLock->isGenerating($clubId)],
+            // Version de l'API résolue CÔTÉ SERVEUR (env VERSION, repli « dev ») — le support
+            // compare « App vX · API vY » sans rien demander à l'auteur.
+            'apiVersion' => $this->apiVersion,
             // Horloge simulée du club (démos/dev) — null pour tout club à l'heure réelle.
             'simulatedToday' => $club?->getSimulatedToday()?->format('Y-m-d'),
         ];
+
+        // La RAISON d'un échec de génération RÉCENT (< 12 h), résolue côté serveur depuis la
+        // dernière génération de la saison AUTHENTIFIÉE — jointe seulement s'il y en a une.
+        $failure = $this->generationFailure($clubId, $season);
+        if (null !== $failure) {
+            $auto['generationFailure'] = $failure;
+        }
 
         // L'offre EFFECTIVE (Découverte par défaut) — même calcul que /api/me.
         if ($club instanceof Club && $season instanceof Season) {
@@ -240,6 +274,85 @@ final readonly class FeedbackContextEnricher
             'id' => $schedule->getId(),
             'number' => $schedule->getVersionNumber(),
             'name' => $schedule->getName(),
+        ];
+    }
+
+    /**
+     * La RAISON d'un échec de génération récent, résumée pour le support. Résout CÔTÉ
+     * SERVEUR la DERNIÈRE génération terminée (FAILED|COMPLETED) de la saison du club
+     * AUTHENTIFIÉ, datée par COALESCE(solveStartedAt, createdAt) — un échec AVANT le
+     * passage en GENERATING (club_mismatch/overlay_entry_missing) n'a pas de
+     * solveStartedAt et retombe sur createdAt.
+     *
+     * Joint seulement si cette dernière version est FAILED ET fraîche (< 12 h) : une
+     * COMPLETED postérieure l'efface (le gestionnaire a re-généré avec succès). La requête
+     * est scopée au `clubId` (défense en profondeur AU-DESSUS du filtre tenant / RLS) : un
+     * échec frais d'un AUTRE club ne doit jamais remonter — angle tenant prouvé bloquant par
+     * un NR de sécurité dédié (tests/Security/FeedbackContextIsolationTest, hors src).
+     *
+     * @return array{status: string, kind: string, type: string, failedAt: string, version: array{number: int, name: string}, firstError: string, countsByType: array<string, int>}|null
+     */
+    private function generationFailure(string $clubId, ?Season $season): ?array
+    {
+        if (!$season instanceof Season) {
+            return null;
+        }
+
+        $last = $this->entityManager->createQueryBuilder()
+            ->select('s', 'COALESCE(s.solveStartedAt, s.createdAt) AS HIDDEN failedAtSort')
+            ->from(Schedule::class, 's')
+            ->where('s.clubId = :cid')
+            ->andWhere('s.seasonId = :sid')
+            ->andWhere('s.status IN (:statuses)')
+            ->setParameter('cid', $clubId)
+            ->setParameter('sid', $season->getId())
+            ->setParameter('statuses', [ScheduleStatus::FAILED, ScheduleStatus::COMPLETED])
+            ->orderBy('failedAtSort', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        if (!$last instanceof Schedule || ScheduleStatus::FAILED !== $last->getStatus()) {
+            return null;
+        }
+
+        $failedAt = $last->getSolveStartedAt() ?? $last->getCreatedAt();
+        if ($failedAt < $this->clock->now()->modify('-' . self::FRESH_FAILURE_WINDOW_HOURS . ' hours')) {
+            return null;
+        }
+
+        $diagnostics = $this->entityManager->getRepository(ScheduleDiagnostic::class)
+            ->findBy(['scheduleId' => $last->getId()]);
+
+        $countsByType = [];
+        $firstError = '';
+        $firstErrorType = null;
+        foreach ($diagnostics as $diagnostic) {
+            $type = $diagnostic->getType();
+            $countsByType[$type] = ($countsByType[$type] ?? 0) + 1;
+            // Le 1ᵉʳ message d'erreur (severity ERROR) — le reste n'est qu'un agrégat par type.
+            if ('' === $firstError && ScheduleDiagnosticSeverity::ERROR === $diagnostic->getSeverity()) {
+                $firstError = mb_substr($diagnostic->getMessage(), 0, self::FIRST_ERROR_MAX);
+                $firstErrorType = $type;
+            }
+        }
+
+        // Repli si (improbable) un FAILED ne porte aucun diagnostic ERROR : le 1ᵉʳ diagnostic.
+        if ('' === $firstError && [] !== $diagnostics) {
+            $firstError = mb_substr($diagnostics[0]->getMessage(), 0, self::FIRST_ERROR_MAX);
+            $firstErrorType ??= $diagnostics[0]->getType();
+        }
+
+        $type = $firstErrorType ?? 'unknown';
+
+        return [
+            'status' => 'failed',
+            'kind' => \in_array($type, self::TECHNICAL_FAILURE_TYPES, true) ? 'technical' : 'business',
+            'type' => $type,
+            'failedAt' => $failedAt->format(\DATE_ATOM),
+            'version' => ['number' => $last->getVersionNumber(), 'name' => $last->getName()],
+            'firstError' => $firstError,
+            'countsByType' => $countsByType,
         ];
     }
 

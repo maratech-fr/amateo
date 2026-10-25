@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import { Modal } from "@/shared/components/ui/modal";
 import { Select } from "@/shared/components/ui/select";
+import { APP_VERSION } from "@/shared/lib/appVersion";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -69,6 +70,9 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
       screen,
       url: window.location.href,
       userAgent: navigator.userAgent,
+      // Version du bundle jointe au contexte de BASE (les DEUX portes) — le support
+      // compare « App vX · API vY » (la version de l'API est ajoutée côté serveur).
+      appVersion: APP_VERSION,
     };
     if (contextual) {
       // La porte CONTEXTUELLE joint les repères que seul le front connaît. La porte LIBRE

@@ -208,6 +208,7 @@ jobs:
           # build fails on purpose (tooling/sentryCspGuard.ts).
           build-args: |
             VITE_SENTRY_DSN=${{ secrets.VITE_SENTRY_DSN }}
+            VITE_APP_VERSION=${{ steps.meta.outputs.version }}
           tags: |
             ghcr.io/${{ steps.meta.outputs.owner }}/scheduler-frontend:${{ steps.meta.outputs.version }}
             ${{ steps.meta.outputs.push_latest == 'true' && format('ghcr.io/{0}/scheduler-frontend:latest', steps.meta.outputs.owner) || '' }}

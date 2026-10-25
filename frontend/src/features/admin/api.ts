@@ -461,6 +461,19 @@ export interface AdminFeedbackAuto {
   generation?: { running: boolean };
   simulatedToday?: string | null;
   offer?: { plan: string; name: string } | null;
+  // P4-355 — version de l'API résolue côté serveur (« App vX · API vY »).
+  apiVersion?: string | null;
+  // P4-355 (amendement) — la RAISON d'un échec de génération RÉCENT (< 12 h) de la saison :
+  // nature métier/technique, type du diagnostic, 1ᵉʳ message d'erreur borné, agrégat par type.
+  generationFailure?: {
+    status: string;
+    kind: "technical" | "business";
+    type: string;
+    failedAt: string;
+    version: { number: number; name: string };
+    firstError: string;
+    countsByType: Record<string, number>;
+  } | null;
 }
 
 export interface AdminFeedbackContext {
@@ -477,6 +490,8 @@ export interface AdminFeedbackContext {
   screenLabel?: string;
   activeFilters?: string;
   displayedRange?: string;
+  // P4-355 — version du bundle front déclarée par le client (porte de base).
+  appVersion?: string;
   lastClick?: string;
   incidentStatus?: number | string;
   incidentUrl?: string;

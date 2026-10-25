@@ -8,6 +8,8 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
+use App\Tests\Integration\Command\FeedbackPurgeCommandTest;
+use App\Tests\Security\FeedbackContextIsolationTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -44,9 +46,9 @@ use Symfony\Component\Uid\Uuid;
  *
  * L'étanchéité tenant de ce résumé (un échec FRAIS du club B ne fuit jamais dans le
  * signalement de A) est prouvée BLOQUANTE à part — point sensible, doublon d'angle
- * assumé : {@see \App\Tests\Security\FeedbackContextIsolationTest::testAForeignClubsFreshGenerationFailureNeverLeaksIntoTheContext}.
+ * assumé : {@see FeedbackContextIsolationTest::testAForeignClubsFreshGenerationFailureNeverLeaksIntoTheContext}.
  * La purge RGPD du résumé (il vit dans `context`, détruit 30 j après « traité ») est
- * prouvée par {@see \App\Tests\Integration\Command\FeedbackPurgeCommandTest::testTreatedGenerationFailureSummaryIsPurgedWithTheContext}.
+ * prouvée par {@see FeedbackPurgeCommandTest::testTreatedGenerationFailureSummaryIsPurgedWithTheContext}.
  */
 #[Group('integration')]
 final class FeedbackGenerationFailureTest extends WebTestCase
@@ -245,9 +247,9 @@ final class FeedbackGenerationFailureTest extends WebTestCase
         $schedule->setVersionNumber($versionNumber);
         $schedule->setStatus($status);
         $schedule->setSolveStartedAt($solveStartedAt);
-        if (null !== $createdAt) {
+        if ($createdAt instanceof DateTimeImmutable) {
             $schedule->setCreatedAt($createdAt);
-        } elseif (null !== $solveStartedAt) {
+        } elseif ($solveStartedAt instanceof DateTimeImmutable) {
             // Sans createdAt explicite, l'aligner sur l'échec pour que COALESCE soit cohérent.
             $schedule->setCreatedAt($solveStartedAt);
         }

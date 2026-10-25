@@ -24,6 +24,9 @@ export interface FeedbackContext {
   incidentStatus?: number;
   incidentUrl?: string;
   incidentCode?: string;
+  // P4-355 — version du bundle front (foyer `shared/lib/appVersion.ts`), jointe au
+  // contexte de BASE des deux portes ; bornée serveur à 40 caractères.
+  appVersion?: string;
 }
 
 export interface FeedbackPayload {

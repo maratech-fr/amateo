@@ -64,6 +64,9 @@ const MIGRATED_FILES = [
   "features/matches/ConflictLine.tsx",
   "features/matches/OpponentsPage.tsx",
   "features/matches/FfbbEngagementsDialog.tsx",
+  // P4-356 — l'en-tête + la navigation du module matchs, migrés en même temps que les deux props
+  // de contexte (filtres actifs / plage affichée) jointes au « Signaler ».
+  "features/matches/MatchesLayout.tsx",
   // Chantier A PR 2 — la modale d'import FBI, migrée en même temps que la section « Salles à domicile ».
   "features/matches/ImportFbiDialog.tsx",
   "features/wizard/steps/SlotReservationModal.tsx",
