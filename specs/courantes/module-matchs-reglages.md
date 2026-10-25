@@ -114,7 +114,11 @@ cette section — `ClubRuleCoherenceChecker` ne croise que les règles CLUB. **B
 indisponible ne bloque jamais une séance » — le moteur de placement traite déjà toute
 indisponibilité coach en SOFT (§1/§3), la phrase reste donc vraie ici ; même nuance côté
 entraînement (`GET /api/constraints/validate` récap, `backend/docs/constraint-coverage.md`) où
-l'indisponibilité d'un adjoint n'est, elle, carrément jamais lue par le moteur.
+l'indisponibilité d'un adjoint n'est, elle, jamais lue pour PLACER une séance — ⚠ **exception
+chantier H** : le moteur de génération lit désormais l'indisponibilité déclarée d'un adjoint pour
+UNE SEULE décision, le relais d'arrivée tardive (`coachLateToleranceMinutes` sur une séance
+VERROUILLÉE, `engine/app/solver/constraints/common.py::_late_arrival_relay_opens`) — sans
+tolérance posée (chemin historique, défaut), elle reste bien jamais lue.
 
 ## 10. Écran Semaine type (`/matchs/semaine-type`)
 

@@ -10,7 +10,7 @@ Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le
 
 ```json
 {
-  "version": "1.5",
+  "version": "1.6",
   "clubId": "550e8400-e29b-41d4-a716-446655440000",
   "seasonId": "660e8400-e29b-41d4-a716-446655440001",
 

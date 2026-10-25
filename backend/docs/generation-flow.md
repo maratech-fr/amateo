@@ -168,7 +168,7 @@ POST http://engine:8000/generate
 Content-Type: application/json
 
 {
-  "version": "1.5",
+  "version": "1.6",
   "clubId": "bccl-uuid",
   "seasonId": "2025-2026-uuid",
   "solverSeed": 42,
