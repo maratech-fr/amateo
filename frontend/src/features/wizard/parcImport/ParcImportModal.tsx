@@ -118,8 +118,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState("");
   const [analysis, setAnalysis] = useState<ParcAnalysis | null>(null);
-  // Le parc collé, re-décodé une fois l'analyse réussie : il amorce les corrections sur place et
-  // repart tel quel comme `payload` à l'import (le serveur réécrit depuis la source, pas l'aperçu).
+  // Le parc NORMALISÉ renvoyé par l'analyse (relu par `ParcPayloadValidator::parse`, G2 D4) : il
+  // amorce les corrections sur place et repart tel quel comme `payload` à l'import (le serveur
+  // réécrit depuis la source, pas l'aperçu) — jamais le texte brut collé re-parsé côté front.
   const [parc, setParc] = useState<unknown>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [slotDrafts, setSlotDrafts] = useState<Record<number, SlotDraft>>({});
@@ -140,7 +141,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     void navigator.clipboard.writeText(prompt).then(() => setCopied(true));
   };
 
-  const applyAnalysis = (data: ParcAnalysis, text: string): void => {
+  const applyAnalysis = (data: ParcAnalysis): void => {
     setAnalysis(data);
     setResult(null);
 
@@ -167,17 +168,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setSlotVenue(nextSlotVenue);
     setGroupDrafts(nextGroupDrafts);
 
-    // Amorce des champs éditables des CRÉNEAUX depuis les CASES du parc collé (correction sur place).
-    let parsed: ParsedParc | null = null;
-    try {
-      const raw: unknown = JSON.parse(text);
-      if (null !== raw && "object" === typeof raw) {
-        parsed = raw as ParsedParc;
-      }
-    } catch {
-      parsed = null;
-    }
-    setParc(parsed);
+    // Amorce des champs éditables des CRÉNEAUX depuis les CASES du parc NORMALISÉ que l'analyse
+    // renvoie (relu par `ParcPayloadValidator::parse()`, G2 D4) — jamais le texte brut collé, qui peut
+    // n'être lisible QUE par la passe de récupération serveur (guillemets typographiques, bloc ```json).
+    const payload = data.payload;
+    const parsed: ParsedParc | null = null !== payload && "object" === typeof payload ? (payload as ParsedParc) : null;
+    setParc(payload ?? null);
     const drafts: Record<number, SlotDraft> = {};
     const cases: ParsedCase[] = null !== parsed && Array.isArray(parsed.cases) ? parsed.cases : [];
     for (const line of data.sections.creneaux ?? []) {
@@ -194,8 +190,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
   };
 
   const doAnalyze = (): void => {
-    const text = rawText;
-    analyze.mutate(text, { onSuccess: (data) => applyAnalysis(data, text) });
+    analyze.mutate(rawText, { onSuccess: applyAnalysis });
   };
 
   const toggle = (section: string, index: number): void =>

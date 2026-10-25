@@ -60,6 +60,13 @@ export interface ParcAnalysis {
   recap: Record<string, ParcSectionRecap>;
   sections: Record<string, ParcAnalysisLine[]>;
   alertes: ParcAnalysisAlert[];
+  /**
+   * Le parc NORMALISÉ relu côté serveur par `ParcPayloadValidator::parse()` (G2 D4) : le front
+   * l'amorce pour les brouillons ET le reposte à l'import, au lieu de re-parser le texte collé — qui
+   * peut n'être lisible QUE par la passe de récupération serveur (guillemets typographiques, bloc
+   * ```json). Forme loose (parc-v2, décidée côté serveur), narrowée par la modale.
+   */
+  payload?: unknown;
 }
 
 /** Une décision ligne par ligne, envoyée à l'import (contrat PR2). */
