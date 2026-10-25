@@ -23,6 +23,7 @@ export const CONFLICT_FAMILY_LABEL: Record<ConflictType, string> = {
   TEAM_VENUE_FORBIDDEN: "Gymnase interdit",
   MATCH_MATCH: "Personne en double",
   MATCH_TRAINING: "Match × entraînement",
+  MATCH_COACH_UNAVAILABLE: "Coach principal indisponible",
   ACCESS_WINDOW_LOST: "Hors accès match",
   COMPETITION_INCOMPLETE: "Calendrier incomplet",
   VENUE_UNAVAILABLE: "Gymnase indisponible",

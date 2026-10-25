@@ -185,4 +185,11 @@ export const WIZARD_TEXTS = {
   ctcLabel: "Entente (CTC)",
   ctcPartnerLabel: "Partenaire(s)",
   ctcPartnerPlaceholder: "Avec qui ? (facultatif)",
+  // Chantier H — le relais de l'adjoint : au refus d'un dédoublement TOLÉRABLE, on propose de
+  // tolérer le retard plutôt que de bloquer. Un adjoint disponible ouvrira la séance.
+  tolerateLateArrivalCta: (minutes: number) => `Tolérer ce retard (~${minutes} minutes) — un adjoint ouvrira la séance`,
+  lateRelayNotice: (minutes: number) => `Le coach enchaîne deux séances : il arrivera ~${minutes} minutes en retard ici. Un adjoint disponible peut ouvrir la séance le temps qu'il arrive.`,
+  lateToleranceInputLabel: "Retard toléré (minutes)",
+  lateTolerancePill: (minutes: number) => `Retard toléré · ${minutes} minutes`,
+  removeLateTolerance: "Retirer la tolérance",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

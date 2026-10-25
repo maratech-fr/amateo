@@ -77,6 +77,10 @@ export type ConflictType =
   | "TEAM_VENUE_FORBIDDEN"
   | "MATCH_MATCH"
   | "MATCH_TRAINING"
+  // Chantier H — coup d'envoi dans l'indisponibilité DÉCLARÉE d'un coach principal
+  // (rouge 3 / orange 4 si un adjoint couvre / jaune 5 si l'indispo ne touche que la
+  // durée du match à domicile). Jamais bloquant pour le placement.
+  | "MATCH_COACH_UNAVAILABLE"
   | "VENUE_UNAVAILABLE"
   | "ACCESS_WINDOW_LOST"
   | "COMPETITION_INCOMPLETE"
@@ -148,6 +152,13 @@ export interface Conflict {
    * PAR CÔTÉ vit sur `left`/`right` (ou `fixture`/`training`). */
   coachRole?: ConflictSideRole;
   coachId?: string;
+  /**
+   * Chantier H — un conflit de coach ADOUCI : une équipe a un adjoint (ou un autre
+   * principal) disponible qui peut tenir ce côté. Sur MATCH_MATCH/MATCH_TRAINING il fait
+   * passer un conflit dur (3) à 5 ; sur MATCH_COACH_UNAVAILABLE un rouge (3) à orange (4).
+   * Rendu par un TAG texte + icône (jamais la couleur seule, a11y).
+   */
+  relief?: boolean;
   /**
    * Overlap segment — coach conflicts only. ISO datetimes carrying the club's
    * WALL-CLOCK time WITHOUT an offset (`2026-10-03T20:45:00`): the UI parses

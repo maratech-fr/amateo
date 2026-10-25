@@ -11,7 +11,7 @@ import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
 import { completeBlockOnCase } from "../lib/blockOccupancy";
 import { occupantsBySlot, effectiveSlotCapacity, reservedTeamsBySlot, slotKey } from "../lib/reservationSlots";
 import { closuresByVenue, closurePeriodLabel, isSlotClosed } from "../lib/venueClosures";
-import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useWizardTeamCoaches } from "../queries";
+import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useVenueTravelTimes, useWizardTeamCoaches } from "../queries";
 import { ReservationGrid } from "./ReservationGrid";
 import { SlotReservationModal } from "./SlotReservationModal";
 
@@ -53,6 +53,8 @@ export function ReservationPanel({
   // créneau libre comme une équipe. En portée socle le provider renvoie socle ET périodes : on ne
   // garde que le socle.
   const { data: allSharedBlocks = [] } = useSharedTrainingBlocks(schedulePlanId);
+  // Chantier H — la matrice de trajet alimente le calcul du retard d'arrivée dans la modale.
+  const { data: venueTravelTimes = [] } = useVenueTravelTimes();
   const sharedBlocks = null === schedulePlanId ? allSharedBlocks.filter((b) => null === b.schedulePlanId) : allSharedBlocks;
   // P2-22 D2 — les fermetures de gymnase de la période. Hors période (entryId null) le hook
   // est désactivé → aucune fermeture, socle inchangé.
@@ -186,6 +188,7 @@ export function ReservationPanel({
           venueClosures={closuresOfVenue}
           venueCanSplit={venueCanSplit}
           sharedTrainingBlocks={sharedBlocks}
+          venueTravelTimes={venueTravelTimes}
           teamSoloBudgets={teamSoloBudgets ?? null}
           budgetsPending={budgetsPending}
           budgetsFailed={budgetsFailed}

@@ -1,4 +1,4 @@
-import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, MapPin, Sparkles } from "lucide-react";
+import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, MapPin, Sparkles, UserCheck } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -437,6 +437,13 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         {isNew ? (
           <StatusPill variant="accent" className="border-accent/30 px-1.5 text-[0.65rem] uppercase tracking-wide" icon={<Sparkles className="size-3 text-accent" aria-hidden="true" />}>
             {MATCHES_TEXTS.newChip}
+          </StatusPill>
+        ) : null}
+        {/* Chantier H — un conflit de coach ADOUCI porte un TAG (icône + texte), jamais la couleur
+            seule : « Un adjoint peut couvrir ». Distingue l'orange/jaune du rouge sans se fier au ton. */}
+        {true === conflict.relief ? (
+          <StatusPill variant="warning" className="px-1.5 text-[0.65rem]" icon={<UserCheck className="size-3" aria-hidden="true" />}>
+            {MATCHES_TEXTS.coachReliefTag}
           </StatusPill>
         ) : null}
       </p>
