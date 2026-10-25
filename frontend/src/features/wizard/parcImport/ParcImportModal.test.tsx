@@ -132,11 +132,13 @@ function checkedCount(a: Analysis): number {
 /**
  * Le nom accessible du trigger `Listbox` = aria-label SUIVI de la valeur/placeholder (patron
  * `listbox.tsx`, `aria-labelledby=[labelId, valueId]`) : « Gymnase … — U11M1 + U11M2 Créer » au
- * repos. On matche donc le PRÉFIXE `venueForGroup(libelle)` (clé `texts.ts` gardée comme source),
- * en échappant ses métacaractères (« + » du libellé), comme les sélecteurs frères (D12, ré-appariement).
+ * repos. On matche donc le PRÉFIXE `venueForGroup(libelle)` (clé `texts.ts` gardée comme source) via
+ * un matcher FONCTION de testing-library — pas de `RegExp` construite (convention du dépôt, Semgrep
+ * `detect-non-literal-regexp` ; cf. `accentTokenParity.test.ts`).
  */
-function venueForGroupTrigger(libelle: string): RegExp {
-  return new RegExp(PARC_IMPORT_TEXTS.venueForGroup(libelle).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+function venueForGroupTrigger(libelle: string): (accessibleName: string) => boolean {
+  const prefix = PARC_IMPORT_TEXTS.venueForGroup(libelle);
+  return (accessibleName) => accessibleName.startsWith(prefix);
 }
 
 const q = vi.hoisted(() => ({
