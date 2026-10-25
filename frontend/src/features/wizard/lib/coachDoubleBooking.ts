@@ -85,6 +85,42 @@ export function bookingsCollide(a: Booking, b: Booking): boolean {
 }
 
 /**
+ * Chantier H — LA règle pure de TOLÉRANCE d'arrivée tardive, miroir MÉCANIQUE de
+ * `App\Service\CoachDoubleBookingDetector::lateArrivalTolerated` (PHP). Les MÊMES cas la traversent
+ * des deux côtés (`coachDoubleBooking.parity.json::toleranceCases`, gardé par
+ * `CoachDoubleBookingMirrorParityTest`). `a` = la séance que le coach QUITTE, `b` = celle qu'il
+ * rejoint EN RETARD ; `baremeMinutes` = le trajet entre les deux gymnases. Le retard =
+ * `max(0, fin(a) + barème − début(b))` ; une paire géométriquement dédoublante (déjà prouvée par
+ * {@link bookingsCollide}) est TOLÉRÉE ssi `1 <= toleranceMinutes <= 30` (plafond métier souverain),
+ * le début de `b` est STRICTEMENT après celui de `a`, et le retard ne dépasse pas la tolérance. La
+ * DISPONIBILITÉ de l'adjoint n'est PAS dans cette règle pure (vérifiée serveur).
+ */
+export function lateArrivalTolerated(a: Booking, b: Booking, toleranceMinutes: number, baremeMinutes: number): boolean {
+  if (toleranceMinutes < 1 || toleranceMinutes > 30) {
+    return false;
+  }
+  if (b.startMinutes <= a.startMinutes) {
+    return false;
+  }
+  const lateness = Math.max(0, a.startMinutes + a.durationMinutes + baremeMinutes - b.startMinutes);
+
+  return lateness <= toleranceMinutes;
+}
+
+/**
+ * Chantier H / P4-333 — deux équipes co-réservées partagent-elles AU MOINS un coach PRINCIPAL ?
+ * Miroir MÉCANIQUE de `App\Service\CoachDoubleBookingDetector::teamsShareMainCoach` (cas partagés
+ * `coachDoubleBooking.parity.json::multiCoachCases`). Le bloqueur ne regardait que le PREMIER
+ * principal par équipe (P4-319) ; il doit regarder TOUS les principaux : deux équipes se dédoublent
+ * dès qu'elles partagent un principal (exemple roadmap Camille/Dorian).
+ */
+export function teamsShareMainCoach(coachIdsA: string[], coachIdsB: string[]): boolean {
+  const first = new Set(coachIdsA);
+
+  return coachIdsB.some((id) => first.has(id));
+}
+
+/**
  * La réservation DÉJÀ posée qui empêche `candidate`, ou null si le geste est légitime.
  * Rendre la réservation fautive (et non un booléen) permet à l'appelant de nommer
  * l'équipe, le gymnase et l'heure — « Emerick coache déjà les U15F à 17h à Debarros ».
