@@ -80,6 +80,12 @@ interface Analysis {
   recap: Record<string, Recap>;
   sections: Record<string, Line[]>;
   alertes: Array<{ type: string; message: string }>;
+  /**
+   * Le parc NORMALISÉ renvoyé par l'analyse (relu par `ParcPayloadValidator::parse()`, G2 D4) : le
+   * front l'amorce pour les brouillons ET le poste à l'import, au lieu de re-parser le texte collé
+   * (qui peut n'être lisible QUE par la passe de récupération serveur). Le mock le porte comme l'API.
+   */
+  payload?: unknown;
 }
 
 function mkLine(index: number, libelle: string, statut: Line["statut"], extra: Partial<Line> = {}): Line {
@@ -97,7 +103,7 @@ function recapOf(lines: Line[]): Recap {
 
 function analysisOf(
   partial: Partial<Record<Section, Line[]>>,
-  meta: { fiabilite?: Partial<Analysis["fiabilite"]>; alertes?: Analysis["alertes"] } = {},
+  meta: { fiabilite?: Partial<Analysis["fiabilite"]>; alertes?: Analysis["alertes"]; payload?: unknown } = {},
 ): Analysis {
   const sections: Record<string, Line[]> = { equipes: [], gymnases: [], creneaux: [], mutualisations: [], reservations: [] };
   for (const key of Object.keys(sections) as Section[]) {
@@ -113,6 +119,7 @@ function analysisOf(
     recap,
     sections,
     alertes: meta.alertes ?? [],
+    payload: meta.payload,
   };
 }
 
@@ -282,15 +289,17 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
     // dérivé est amorcé depuis la case correspondante. Si la passe de design change la forme, NEO le
     // signale à 💊 TANK.
     const user = userEvent.setup();
-    const parc = JSON.stringify({
+    // Le brouillon de créneau s'amorce depuis le payload NORMALISÉ de l'analyse (G2 D4), pas depuis le
+    // texte collé : le mock porte ce payload comme l'API, et le colle AUSSI en brut (JSON déjà valide ici).
+    const payload = {
       format: "parc-v2",
       gymnases: [{ nom: "Gymnase Léon-Blum" }],
       cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
-    });
-    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] });
+    };
+    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] }, { payload });
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
-    await paste(user, analysis, parc);
+    await paste(user, analysis, JSON.stringify(payload));
 
     const startField = await screen.findByDisplayValue("18:00");
     fireEvent.change(startField, { target: { value: "19:00" } });
@@ -552,6 +561,39 @@ describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () 
     for (const alerte of alertes) {
       expect(await screen.findByText(alerte.message)).toBeInTheDocument();
     }
+  });
+
+  it("D4 — un collage que seule la récupération serveur relit (guillemets typographiques) amorce les brouillons depuis le payload normalisé de l'analyse et l'import poste ce payload (jamais null)", async () => {
+    // Le défaut G2 D4 : le front re-parsait le TEXTE collé (`JSON.parse` brut) pour amorcer les
+    // brouillons et le payload d'import. Un collage à guillemets typographiques — que seule la passe
+    // de récupération du serveur sait relire — faisait échouer ce parse : aucun brouillon, et l'import
+    // postait `payload: null` (→ 422). Le front doit s'amorcer sur le payload NORMALISÉ que l'analyse
+    // renvoie, jamais re-parser le texte brut.
+    const user = userEvent.setup();
+    // Le payload normalisé que le serveur renvoie (relu par `ParcPayloadValidator::parse`, guillemets droits).
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Léon-Blum" }],
+      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
+    };
+    // Le collage RÉEL : des guillemets typographiques que `JSON.parse` brut REFUSE (seule la
+    // récupération serveur le relit) — le front ne doit PAS tenter de le re-parser.
+    const typographicPaste = "{\u201cformat\u201d:\u201cparc-v2\u201d,\u201ccases\u201d:[]}";
+    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] }, { payload });
+    q.importResult.value = { recap: {} };
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await paste(user, analysis, typographicPaste);
+
+    // Brouillon de créneau présent : amorcé depuis payload.cases, PAS depuis le texte (illisible brut).
+    expect(await screen.findByDisplayValue("18:00")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
+
+    // L'import poste le payload NORMALISÉ, jamais null.
+    const body = q.importMutate.mock.calls[0]?.[0] as { payload: unknown };
+    expect(body.payload).not.toBeNull();
+    expect(body.payload).toEqual(payload);
   });
 
   it("le prompt copié embarque le contexte club (nom, ville) quand le club existe", async () => {
