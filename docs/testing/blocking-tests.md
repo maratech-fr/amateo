@@ -244,8 +244,9 @@ lot reste le RATTRAPAGE [l'échéance qui tombe APRÈS le dépôt]. Sans ce gate
 de valider au dépôt, ou qui validerait à tort un championnat non commencé / un domicile sans heure / en
 terrain neutre / dévié, passerait tous les checks requis).
 `CrossStack/ParcImportReservationSemanticsGateTest` (axes *constraint semantics* + *generation pipeline*,
-chantier G PR2 — une RÉSERVATION saisie par l'IMPORT DE PARC est HONORÉE par le solveur, de bout en bout :
-texte parc-v1 → import réel (`ParcImportExecutor`) → vrai builder (`ScheduleConstraintBuilder`) → vrai
+lot correctif import IA « G2 » PR1 — une RÉSERVATION DÉRIVÉE d'une CASE parc-v2 par l'IMPORT DE PARC est
+HONORÉE par le solveur, de bout en bout : texte parc-v2 → dérivation + import réel (`ParcImportExecutor`)
+→ vrai builder (`ScheduleConstraintBuilder`) → vrai
 moteur `/generate` (contrat 1.6). Une réservation d'équipe pré-génération est un verrou HARD : un gymnase
 a deux cases (lundi 18:00 réservée, mercredi 18:00 libre) et l'équipe PRÉFÈRE (souple) le mercredi —
 AVANT l'import la séance tombe le mercredi, APRÈS la réservation du lundi elle tombe sur la case réservée

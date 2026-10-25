@@ -1,0 +1,101 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Unit\ParcImport;
+
+use App\Service\ParcImport\TeamNameInterpreter;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Lot correctif import IA (« G2 ») PR1 — service PUR qui DÉDUIT, du seul NOM d'une équipe écrit dans
+ * une case parc-v2, son GENRE (M / F / MIXTE) et sa CATÉGORIE d'âge. En parc-v2 le chatbot ne rend
+ * plus de section `equipes` structurée : l'appli reconstruit chaque équipe à partir du libellé lu
+ * dans la case (cadrage G2 D1). Ce service est le cœur de cette déduction.
+ *
+ * Promesses gardées (option A — TANK écrit ROUGE, NEO implémente {@see TeamNameInterpreter}) :
+ *  - un token d'âge FFBB « U<n> » suivi d'un marqueur de genre « F »/« M » → catégorie « U<n> »,
+ *    genre déduit du marqueur (« U18F3 » → U18 / F) ;
+ *  - un préfixe senior « SM »/« SF » → catégorie seniors, genre M / F (« SM2 » → seniors/M,
+ *    « SF1 » → seniors/F) ;
+ *  - un token d'âge SANS marqueur de genre → MIXTE (« U13 » → U13 / MIXTE) — on ne DEVINE jamais
+ *    un genre absent ;
+ *  - un libellé senior sans marqueur de genre (« Vétérans ») → MIXTE ;
+ *  - un libellé qui n'est PAS une équipe reconnaissable (activité, section : « Section J.Macé »,
+ *    « Basket Santé ») → catégorie « À classer », genre MIXTE — un repère explicite que le
+ *    gestionnaire reclasse, jamais une catégorie devinée qui mentirait sur l'âge/le genre.
+ *
+ * Signature proposée (NEO) :
+ *   interpret(string $name): array{genre: 'M'|'F'|'MIXTE', categorie: string}
+ * `categorie` est un libellé HUMAIN ; « À classer » est la valeur-repère quand rien n'est reconnu.
+ *
+ * Service PUR : aucune DB, aucun appariement aux entités du club (ça, c'est {@see TeamLabelMatcher}).
+ */
+#[Group('phase1')]
+final class TeamNameInterpreterTest extends TestCase
+{
+    private TeamNameInterpreter $interpreter;
+
+    /** @return iterable<string, array{string, string, string}> name, genre attendu, sous-chaîne attendue (minuscule) de la catégorie */
+    public static function genderAndCategoryProvider(): iterable
+    {
+        // Jeunes FFBB : U<n> + marqueur de genre.
+        yield 'U18F3 → U18 / F' => ['U18F3', 'F', 'u18'];
+        yield 'U18M1 → U18 / M' => ['U18M1', 'M', 'u18'];
+        yield 'U8F3 → U8 / F' => ['U8F3', 'F', 'u8'];
+        yield 'U11M2 → U11 / M' => ['U11M2', 'M', 'u11'];
+
+        // Seniors : SM / SF.
+        yield 'SM2 → seniors / M' => ['SM2', 'M', 'senior'];
+        yield 'SF1 → seniors / F' => ['SF1', 'F', 'senior'];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function unrecognisedProvider(): iterable
+    {
+        yield 'section scolaire' => ['Section J.Macé'];
+        yield 'activité basket santé' => ['Basket Santé'];
+    }
+
+    #[DataProvider('genderAndCategoryProvider')]
+    public function testDerivesGenderAndAgeCategoryFromTheName(string $name, string $expectedGender, string $categorieContains): void
+    {
+        $out = $this->interpreter->interpret($name);
+
+        self::assertSame($expectedGender, $out['genre'], 'le genre est déduit du marqueur du nom, jamais deviné');
+        self::assertStringContainsString($categorieContains, mb_strtolower($out['categorie']), 'la catégorie d\'âge est déduite du token du nom');
+    }
+
+    public function testAnAgeTokenWithoutAGenderMarkerIsMixte(): void
+    {
+        // « U13 » sans F/M : on ne devine pas un genre absent → MIXTE, catégorie U13 conservée.
+        $out = $this->interpreter->interpret('U13');
+
+        self::assertSame('MIXTE', $out['genre'], 'un token d\'âge sans marqueur de genre est MIXTE, jamais deviné M ou F');
+        self::assertStringContainsString('u13', mb_strtolower($out['categorie']));
+    }
+
+    public function testAnUngenderedSeniorLabelIsMixte(): void
+    {
+        // « Vétérans » : catégorie senior sans marqueur de genre → MIXTE.
+        self::assertSame('MIXTE', $this->interpreter->interpret('Vétérans')['genre'], 'un libellé senior sans marqueur de genre est MIXTE');
+    }
+
+    #[DataProvider('unrecognisedProvider')]
+    public function testAnUnrecognisedActivityIsFiledUnderAClasserAndMixte(string $name): void
+    {
+        // Ni token d'âge, ni préfixe senior : rien à déduire sans risque de mentir.
+        // Repère explicite « À classer » + MIXTE, jamais une catégorie devinée.
+        $out = $this->interpreter->interpret($name);
+
+        self::assertSame('À classer', $out['categorie'], 'un libellé non reconnu est classé « À classer », jamais deviné');
+        self::assertSame('MIXTE', $out['genre'], 'genre non déductible → MIXTE');
+    }
+
+    protected function setUp(): void
+    {
+        $this->interpreter = new TeamNameInterpreter;
+    }
+}

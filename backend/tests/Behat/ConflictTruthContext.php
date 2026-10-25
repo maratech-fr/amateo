@@ -431,15 +431,19 @@ final class ConflictTruthContext extends BaseContext
             'venueId' => $this->venueId,
         ], $this->token), 'match à domicile');
 
-        // Le coach principal est DÉCLARÉ indisponible le samedi 14:00-16:00 : 15:00 y tombe.
-        $this->coachUnavailabilityId = $this->idOf($this->apiPost('constraints', [
-            'name' => 'Indispo coach principal (chantier H)',
+        // Correctif fondateur : l'alerte radar de match ne lit QUE les contraintes coach du MODULE
+        // MATCHS. On déclare donc l'indispo par l'API des contraintes de matchs (MatchConstraint scope
+        // COACH, onglet Contraintes des matchs), PAS par une COACH_AVAILABILITY du wizard (qui ne vaut
+        // que pour les entraînements et ne doit jamais lever cette alerte). Samedi 14:00-16:00 : 15:00 y tombe.
+        $this->coachUnavailabilityId = $this->idOf($this->apiPost('match_constraints', [
             'scope' => 'COACH',
             'scopeTargetId' => $this->coachId,
-            'family' => 'COACH_AVAILABILITY',
-            'ruleType' => 'HARD',
-            'config' => ['unavailableDays' => [6], 'fromTime' => '14:00', 'untilTime' => '16:00'],
-        ], $this->token), 'indisponibilité coach');
+            // Une indisponibilité d'entraîneur de match est TOUJOURS une préférence (MatchConstraintStateProcessor refuse HARD en 422).
+            'ruleType' => 'PREFERRED',
+            'daysOfWeek' => [6],
+            'kickoffMin' => '14:00',
+            'kickoffMax' => '16:00',
+        ], $this->token), 'indisponibilité coach (module Matchs)');
     }
 
     #[Given('cette équipe a un adjoint disponible ce samedi')]
@@ -667,9 +671,10 @@ final class ConflictTruthContext extends BaseContext
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
-        // Chantier H : l'indispo déclarée + le lien adjoint (avant l'équipe/le coach qu'ils référencent).
+        // Chantier H : l'indispo déclarée (contrainte du module Matchs) + le lien adjoint (avant
+        // l'équipe/le coach qu'ils référencent).
         if ('' !== $this->coachUnavailabilityId) {
-            $this->apiDelete(\sprintf('constraints/%s', $this->coachUnavailabilityId), $this->token);
+            $this->apiDelete(\sprintf('match_constraints/%s', $this->coachUnavailabilityId), $this->token);
         }
         // Les compétitions (championnat + coupe) sont portées par l'équipe jetable :
         // elles partent avec elle (cascade teams → competitions), les matchs ayant été

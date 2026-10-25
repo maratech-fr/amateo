@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Service\ParcImport;
 
 use App\Entity\Club;
-use App\Entity\Coach;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -19,31 +18,28 @@ use App\Service\SoloReservationBudget;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * Chantier G — le DRY-RUN de l'import de parc : il prend un parc `parc-v1` DÉJÀ validé
- * (forme) par {@see ParcPayloadValidator} et rend, PAR SECTION, le statut d'appariement de
- * chaque ligne plus un récap chiffré. Il N'ÉCRIT RIEN — c'est l'aperçu cochable sur lequel
- * le gestionnaire tranche avant l'import réel (PR suivante). L'écriture transactionnelle et
- * le rejeu complet des gardes de persistance sont le métier de cette PR suivante.
+ * Lot correctif import IA (« G2 ») PR1 — le DRY-RUN de l'import de parc, RECALÉ sur `parc-v2`. Il
+ * prend un parc parc-v2 DÉJÀ validé (forme) par {@see ParcPayloadValidator}, en DÉRIVE les sections
+ * via {@see ParcCaseDeriver} (contrat de décisions INCHANGÉ : gymnases / equipes / creneaux /
+ * mutualisations / reservations), puis rend PAR SECTION le statut d'appariement de chaque ligne, un
+ * récap chiffré, un bloc de FIABILITÉ et les ALERTES transverses. Il N'ÉCRIT RIEN — c'est l'aperçu
+ * cochable sur lequel le gestionnaire tranche avant l'import réel ({@see ParcImportExecutor}).
  *
  * Statuts d'une ligne :
- *  - `apparie`  : un unique existant correspond (nom normalisé exact), coché, cibleId posé ;
- *  - `suggere`  : un unique candidat flou, coché, cibleId posé (le gestionnaire confirme) ;
- *  - `aCreer`   : aucun existant, coché, cibleId null (il sera créé) ;
- *  - `decoche`  : rien à faire sans décision humaine — ambiguïté (plusieurs candidats) ou
- *                 idempotence (déjà présent) — décoché, avec une raison ;
- *  - `alerte`   : collision à trancher à la main (deux équipes sur une même case non déclarée,
- *                 chevauchement de créneaux) — décoché, jamais un 500.
+ *  - `apparie`  : un unique existant correspond (exact), coché, cibleId posé ;
+ *  - `suggere`  : un unique candidat flou (Levenshtein ≤ 2, {@see TeamLabelMatcher}), coché, cibleId posé ;
+ *  - `aCreer`   : aucun existant, coché, cibleId null ;
+ *  - `decoche`  : ambiguïté (plusieurs candidats) ou idempotence (déjà présent) — décoché, avec raison ;
+ *  - `alerte`   : collision à trancher à la main — décoché, jamais un 500.
  *
- * Appariement : gymnases via {@see VenueAliasResolver} (nom/alias, exact puis flou unique) ;
- * équipes et coachs via la MÊME normalisation ({@see VenueLabelNormalizer}). L'étanchéité
- * tenant est assurée par Doctrine/RLS (les dépôts ne voient que le club+saison résolus) :
- * un homonyme d'un autre club ne s'apparie jamais.
+ * Appariement : gymnases via {@see VenueAliasResolver} ; équipes via {@see TeamLabelMatcher}
+ * (correcteur de nommage, jamais filtre). L'étanchéité tenant est assurée par Doctrine/RLS.
  */
 final class ParcImportAnalyzer
 {
-    private const string FORMAT = 'parc-v1';
+    private const string FORMAT = 'parc-v2';
 
-    /** @var list<array{id: string, name: string}>|null */
+    /** @var list<array{id: string, nom: string}>|null */
     private ?array $teamPool = null;
 
     /** @var list<Team>|null */
@@ -55,30 +51,27 @@ final class ParcImportAnalyzer
         private readonly VenueLabelNormalizer $normalizer,
         private readonly SoloReservationBudget $soloReservationBudget,
         private readonly PlanEntitlements $planEntitlements,
+        private readonly ParcCaseDeriver $deriver,
+        private readonly TeamLabelMatcher $matcher,
     ) {}
 
     /**
-     * @param array<string, mixed> $parc     le parc décodé, déjà validé en FORME
-     * @param string               $seasonId la saison résolue ('' si aucune) — pour le cap payant
-     *                                       et le rejeu des gardes de mutualisation
+     * @param array<string, mixed> $parc     le parc parc-v2 décodé, déjà validé en FORME
+     * @param string               $seasonId la saison résolue ('' si aucune)
      *
-     * @return array{format: string, recap: array<string, array<string, int>>, sections: array<string, list<array<string, mixed>>>}
+     * @return array{format: string, fiabilite: array{taux: float, anomalies: int, bandeau: bool}, recap: array<string, array<string, int>>, sections: array<string, list<array<string, mixed>>>, alertes: list<array{type: string, message: string}>}
      */
     public function analyze(array $parc, Club $club, string $seasonId): array
     {
+        $derived = $this->deriver->derive($parc);
         $season = '' !== $seasonId ? $this->entityManager->find(Season::class, $seasonId) : null;
 
         $sections = [
-            'equipes' => $this->analyzeTeams($this->section($parc, 'equipes'), $club, $season),
-            'gymnases' => $this->analyzeVenues($this->section($parc, 'gymnases')),
-            'creneaux' => $this->analyzeSlots($this->section($parc, 'creneaux')),
-            'mutualisations' => $this->analyzeMutualisations($this->section($parc, 'mutualisations'), $club->getId(), $seasonId),
-            'coachs' => $this->analyzeCoaches($this->section($parc, 'coachs')),
-            'reservations' => $this->analyzeReservations(
-                $this->section($parc, 'reservations'),
-                $this->section($parc, 'creneaux'),
-                $this->section($parc, 'mutualisations'),
-            ),
+            'gymnases' => $this->analyzeVenues($derived['gymnases']),
+            'equipes' => $this->analyzeTeams($derived['equipes'], $club, $season),
+            'creneaux' => $this->analyzeSlots($derived['creneaux']),
+            'mutualisations' => $this->analyzeMutualisations($derived['mutualisations'], $club->getId(), $seasonId),
+            'reservations' => $this->analyzeReservations($derived['reservations'], $derived['creneaux'], $derived['mutualisations']),
         ];
 
         $recap = [];
@@ -86,23 +79,60 @@ final class ParcImportAnalyzer
             $recap[$name] = $this->recap($lines);
         }
 
-        return ['format' => self::FORMAT, 'recap' => $recap, 'sections' => $sections];
+        $alertes = $derived['alertes'];
+
+        return [
+            'format' => self::FORMAT,
+            'fiabilite' => $this->fiabilite($sections, $alertes),
+            'recap' => $recap,
+            'sections' => $sections,
+            'alertes' => $alertes,
+        ];
     }
 
     /**
-     * @param array<string, mixed> $parc
+     * D10 — le bloc de fiabilité. `taux` = part des lignes appariables (équipes + gymnases) apparié
+     * ou suggéré ; `anomalies` = nombre d'alertes transverses ; `bandeau` « peu fiable » si le taux
+     * < 50 % OU au moins 3 anomalies (jamais bloquant).
      *
-     * @return list<mixed>
+     * @param array<string, list<array<string, mixed>>>  $sections
+     * @param list<array{type: string, message: string}> $alertes
+     *
+     * @return array{taux: float, anomalies: int, bandeau: bool}
      */
-    private function section(array $parc, string $name): array
+    private function fiabilite(array $sections, array $alertes): array
     {
-        $value = $parc[$name] ?? null;
+        $appariable = array_merge($sections['equipes'], $sections['gymnases']);
+        $total = \count($appariable);
+        $matched = \count(array_filter(
+            $appariable,
+            static fn (array $line): bool => \in_array($line['statut'] ?? null, ['apparie', 'suggere'], true),
+        ));
+        $taux = $total > 0 ? round($matched / $total, 4) : 1.0;
+        $anomalies = \count($alertes);
 
-        return \is_array($value) && array_is_list($value) ? $value : [];
+        return ['taux' => $taux, 'anomalies' => $anomalies, 'bandeau' => $taux < 0.5 || $anomalies >= 3];
     }
 
     /**
-     * @param list<mixed> $teams
+     * @param list<array{nom: string}> $venues
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function analyzeVenues(array $venues): array
+    {
+        $out = [];
+        foreach ($venues as $i => $entry) {
+            $nom = $this->stringField($entry, 'nom');
+            [$statut, $cibleId, $raison] = $this->verdict($this->venueResolver->exactMatch($nom), $this->venueResolver->candidates($nom));
+            $out[] = $this->line($i, $nom, $statut, $cibleId, $raison);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<array{nom: string, genre: string, categorie: string, seances: int}> $teams
      *
      * @return list<array<string, mixed>>
      */
@@ -113,22 +143,16 @@ final class ParcImportAnalyzer
             $byId[$team->getId()] = $team;
         }
 
-        // On calcule d'abord le verdict d'appariement de chaque ligne, puis on applique le cap
-        // payant aux SEULES lignes « à créer » (une équipe appariée existe déjà, elle ne consomme
-        // aucune place neuve). Le cap vient du MÊME foyer que le refus d'écriture (PlanEntitlements) :
-        // les équipes en surplus sont DÉCOCHÉES avec une raison qui nomme l'offre — dire par ligne
-        // lesquelles ne seront pas créées, plutôt qu'une alerte de récap sans ancrage.
         $rows = [];
         foreach ($teams as $i => $entry) {
             $nom = $this->stringField($entry, 'nom');
-            [$statut, $cibleId, $raison] = $this->poolVerdict($nom, $this->teamPool());
+            [$statut, $cibleId, $raison] = $this->teamVerdict($nom);
 
             $extra = [];
-            $seances = \is_array($entry) ? ($entry['seances'] ?? null) : null;
-            if ('apparie' === $statut && null !== $cibleId && \is_int($seances)) {
+            if ('apparie' === $statut && null !== $cibleId && isset($byId[$cibleId])) {
                 $current = $byId[$cibleId]->getSessionsPerWeek();
-                if ($current !== $seances) {
-                    $extra['miseAJour'] = ['champ' => 'seances', 'de' => $current, 'a' => $seances];
+                if ($current !== $entry['seances']) {
+                    $extra['miseAJour'] = ['champ' => 'seances', 'de' => $current, 'a' => $entry['seances']];
                 }
             }
 
@@ -144,10 +168,23 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * Passe les équipes « à créer » au-delà des places restantes de l'offre en DÉCOCHÉ, avec le
-     * message de l'offre. `remainingTeamSlots` null = offre illimitée → rien à borner. La raison
-     * réutilise {@see PlanEntitlements::teamCapExceededMessage} (le même texte que le refus à
-     * l'écriture, même palier supérieur nommé).
+     * Le verdict d'une équipe via {@see TeamLabelMatcher} (correcteur, jamais filtre) : apparié /
+     * suggéré / à créer tels quels ; une AMBIGUÏTÉ (≥ 2 candidats dans le seuil) devient `decoche`.
+     *
+     * @return array{0: string, 1: string|null, 2: string|null} [statut, cibleId, raison]
+     */
+    private function teamVerdict(string $label): array
+    {
+        $verdict = $this->matcher->match($label, $this->teamPool());
+        if ('ambigu' === $verdict['statut']) {
+            return ['decoche', null, 'Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.'];
+        }
+
+        return [$verdict['statut'], $verdict['cibleId'], null];
+    }
+
+    /**
+     * Passe les équipes « à créer » au-delà des places restantes de l'offre en DÉCOCHÉ.
      *
      * @param list<array{index: int, nom: string, statut: string, cibleId: string|null, raison: string|null, extra: array<string, mixed>}> $rows
      */
@@ -175,6 +212,7 @@ final class ParcImportAnalyzer
             }
             if ($allowed > 0) {
                 --$allowed;
+
                 continue;
             }
             $row['statut'] = 'decoche';
@@ -185,24 +223,7 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * @param list<mixed> $venues
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function analyzeVenues(array $venues): array
-    {
-        $out = [];
-        foreach ($venues as $i => $entry) {
-            $nom = $this->stringField($entry, 'nom');
-            [$statut, $cibleId, $raison] = $this->verdict($this->venueResolver->exactMatch($nom), $this->venueResolver->candidates($nom));
-            $out[] = $this->line($i, $nom, $statut, $cibleId, $raison);
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param list<mixed> $slots
+     * @param list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}> $slots
      *
      * @return list<array<string, mixed>>
      */
@@ -218,10 +239,12 @@ final class ParcImportAnalyzer
             $libelle = $this->slotLabel($slot);
             if ($this->slotOverlapsAnother($i, $windows)) {
                 $out[] = $this->line($i, $libelle, 'alerte', null, 'Ce créneau en chevauche un autre du même gymnase le même jour — à trancher à la main.');
+
                 continue;
             }
             if ($this->splitOnNonSplittableVenue($slot)) {
                 $out[] = $this->line($i, $libelle, 'alerte', null, 'Ce créneau accueille 2 équipes ou plus, mais le gymnase existant n\'est pas déclaré divisible — rendez-le divisible ou ramenez la capacité à 1.');
+
                 continue;
             }
             $out[] = $this->line($i, $libelle, 'aCreer', null, null);
@@ -230,13 +253,6 @@ final class ParcImportAnalyzer
         return $out;
     }
 
-    /**
-     * La garde de capacité ({@see VenueTrainingSlotStateProcessor}) rejouée au dry-run : une
-     * capacité ≥ 2 n'est permise que sur un gymnase divisible. On ne l'applique qu'à un gymnase
-     * qui EXISTE DÉJÀ et dont `canSplit` est false ; un gymnase À CRÉER dérivera `canSplit` de la
-     * capacité demandée (il naîtra divisible), donc aucune alerte — sinon on bloquerait un terrain
-     * qu'on s'apprête justement à créer divisible.
-     */
     private function splitOnNonSplittableVenue(mixed $slot): bool
     {
         if (!\is_array($slot)) {
@@ -258,7 +274,7 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * @param list<mixed> $mutualisations
+     * @param list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}> $mutualisations
      *
      * @return list<array<string, mixed>>
      */
@@ -269,11 +285,10 @@ final class ParcImportAnalyzer
         $out = [];
         foreach ($mutualisations as $i => $entry) {
             $libelle = $this->mutualisationLabel($entry);
-            $teamNames = \is_array($entry) ? $this->stringList($entry['equipes'] ?? null) : [];
-            $commonSessions = \is_array($entry) && \is_int($entry['seances_communes'] ?? null) ? $entry['seances_communes'] : 1;
+            $groupe = $entry['groupe'];
+            $teamNames = $this->stringList($entry['equipes']);
+            $commonSessions = $entry['seances_communes'];
 
-            // Appariement : un groupe dont l'ensemble d'équipes RÉSOUT exactement un bloc existant
-            // s'apparie à ce bloc. Si une équipe membre reste à créer, aucun bloc ne peut matcher.
             $teamIds = [];
             $allResolved = true;
             foreach ($teamNames as $name) {
@@ -291,34 +306,31 @@ final class ParcImportAnalyzer
                 foreach ($existingBlocks as $block) {
                     if ($block['members'] === $set) {
                         $matchedBlockId = $block['blockId'];
+
                         break;
                     }
                 }
             }
 
-            // Garde du bloc (Σ séances communes ≤ séances d'un membre) rejouée depuis sa MAISON
-            // ({@see SoloReservationBudget}, celle que SharedTrainingBlockStateProcessor consulte) :
-            // une violation passe en alerte, jamais un 500.
             if ($allResolved && [] !== $teamIds && '' !== $seasonId
                 && $this->blockExceedsMemberSessions($teamIds, $clubId, $seasonId, $commonSessions, $matchedBlockId)) {
-                $out[] = $this->line($i, $libelle, 'alerte', null, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes — à ajuster à la main.');
+                $out[] = $this->line($i, $libelle, 'alerte', null, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes — à ajuster à la main.', ['groupe' => $groupe]);
+
                 continue;
             }
 
             if (null !== $matchedBlockId) {
-                $out[] = $this->line($i, $libelle, 'apparie', $matchedBlockId, null);
+                $out[] = $this->line($i, $libelle, 'apparie', $matchedBlockId, null, ['groupe' => $groupe]);
+
                 continue;
             }
-            $out[] = $this->line($i, $libelle, 'aCreer', null, null);
+            $out[] = $this->line($i, $libelle, 'aCreer', null, null, ['groupe' => $groupe]);
         }
 
         return $out;
     }
 
     /**
-     * Les blocs de mutualisation du SOCLE (plan null) avec leur ensemble d'équipes trié — pour
-     * apparier un groupe du parc à un bloc déjà formé.
-     *
      * @return list<array{blockId: string, members: list<string>}>
      */
     private function socleBlocks(string $clubId, string $seasonId): array
@@ -340,10 +352,6 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * La garde centrale B(T) ≤ S(T) rejouée pour un bloc proposé : vraie si, pour une équipe du
-     * groupe, la somme des séances communes de ses blocs (celui-ci substitué) dépasse ses séances
-     * effectives. Délègue au foyer unique {@see SoloReservationBudget::forTeamsWithBlockSubstituted}.
-     *
      * @param list<string> $teamIds
      */
     private function blockExceedsMemberSessions(array $teamIds, string $clubId, string $seasonId, int $commonSessions, ?string $matchedBlockId): bool
@@ -366,31 +374,9 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * @param list<mixed> $coaches
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function analyzeCoaches(array $coaches): array
-    {
-        $pool = [];
-        foreach ($this->activeCoaches() as $coach) {
-            $pool[] = ['id' => $coach->getId(), 'name' => trim($coach->getFirstName() . ' ' . $coach->getLastName())];
-        }
-
-        $out = [];
-        foreach ($coaches as $i => $entry) {
-            $nom = $this->stringField($entry, 'nom');
-            [$statut, $cibleId, $raison] = $this->poolVerdict($nom, $pool);
-            $out[] = $this->line($i, $nom, $statut, $cibleId, $raison);
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param list<mixed> $reservations
-     * @param list<mixed> $slots
-     * @param list<mixed> $mutualisations
+     * @param list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>                                                    $reservations
+     * @param list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>                                         $slots
+     * @param list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}> $mutualisations
      *
      * @return list<array<string, mixed>>
      */
@@ -427,11 +413,13 @@ final class ParcImportAnalyzer
                     null,
                     'Deux équipes sur la même case sans mutualisation ni terrain divisé déclaré : mutualisation ? terrain divisé en deux ? erreur de lecture ? À trancher à la main.',
                 );
+
                 continue;
             }
 
             if ($this->reservationAlreadyExists($ctx)) {
                 $out[] = $this->line($i, $libelle, 'decoche', null, 'Réservation déjà présente dans le planning.');
+
                 continue;
             }
 
@@ -442,12 +430,12 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * Le verdict d'appariement commun : exact unique → apparié ; sinon un candidat flou →
-     * suggéré ; deux candidats ou plus → décoché (ambigu) ; aucun → à créer.
+     * Le verdict d'appariement commun aux gymnases : exact unique → apparié ; un candidat flou →
+     * suggéré ; deux ou plus → décoché (ambigu) ; aucun → à créer.
      *
      * @param list<string> $candidates
      *
-     * @return array{0: string, 1: string|null, 2: string|null} [statut, cibleId, raison]
+     * @return array{0: string, 1: string|null, 2: string|null}
      */
     private function verdict(?string $exact, array $candidates): array
     {
@@ -464,38 +452,6 @@ final class ParcImportAnalyzer
         }
 
         return ['aCreer', null, null];
-    }
-
-    /**
-     * Le verdict sur un POOL (équipes, coachs) : même décision que {@see verdict}, l'exact et
-     * le flou calculés sur la MÊME normalisation que les gymnases (jamais un second repli).
-     *
-     * @param list<array{id: string, name: string}> $pool
-     *
-     * @return array{0: string, 1: string|null, 2: string|null}
-     */
-    private function poolVerdict(string $label, array $pool): array
-    {
-        $key = $this->normalizer->normalize($label);
-        if ('' === $key) {
-            return ['aCreer', null, null];
-        }
-
-        $exact = [];
-        $fuzzy = [];
-        foreach ($pool as $candidate) {
-            $normalized = $this->normalizer->normalize($candidate['name']);
-            if ($normalized === $key) {
-                $exact[$candidate['id']] = true;
-            }
-            if ($normalized === $key || $this->normalizer->fuzzyMatches($candidate['name'], $label)) {
-                $fuzzy[$candidate['id']] = true;
-            }
-        }
-
-        $exactId = 1 === \count($exact) ? array_key_first($exact) : null;
-
-        return $this->verdict($exactId, array_keys($fuzzy));
     }
 
     /**
@@ -547,12 +503,7 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * Les clés de case (gymnase+jour+heure) d'une liste de créneaux ou de mutualisations.
-     * `onlySplit` ne retient que les créneaux déclarés divisibles (`equipes_en_parallele >= 2`),
-     * qui AUTORISENT plusieurs équipes sur la même case ; appliqué aux mutualisations, il prend
-     * toute case nommée (une mutualisation déclare le partage).
-     *
-     * @param list<mixed> $entries
+     * @param list<array<string, mixed>> $entries
      *
      * @return list<string>
      */
@@ -560,9 +511,6 @@ final class ParcImportAnalyzer
     {
         $keys = [];
         foreach ($entries as $entry) {
-            if (!\is_array($entry)) {
-                continue;
-            }
             if ($onlySplit) {
                 $parallel = $entry['equipes_en_parallele'] ?? null;
                 if (!\is_int($parallel) || $parallel < 2) {
@@ -639,9 +587,12 @@ final class ParcImportAnalyzer
 
     private function resolveTeamId(string $name): ?string
     {
-        [$statut, $cibleId] = $this->poolVerdict($name, $this->teamPool());
+        // Résolution AUTOMATIQUE (contexte des blocs / réservations) : SEUL un appariement EXACT
+        // résout l'équipe. Un candidat FLOU (« suggere ») ne s'applique jamais d'office (D5) — il
+        // n'apparie une ligne qu'avec la confirmation du gestionnaire (cibleId de la décision).
+        $verdict = $this->matcher->match($name, $this->teamPool());
 
-        return \in_array($statut, ['apparie', 'suggere'], true) ? $cibleId : null;
+        return 'apparie' === $verdict['statut'] ? $verdict['cibleId'] : null;
     }
 
     private function venueKey(string $gym): string
@@ -736,9 +687,6 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * Les chaînes non vides d'une valeur brute (ignore le reste) — pour lire une liste de noms
-     * d'équipes sans dépendre de sa validité de forme.
-     *
      * @return list<string>
      */
     private function stringList(mixed $value): array
@@ -771,13 +719,13 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * @return list<array{id: string, name: string}>
+     * @return list<array{id: string, nom: string}>
      */
     private function teamPool(): array
     {
         if (null === $this->teamPool) {
             $this->teamPool = array_map(
-                static fn (Team $team): array => ['id' => $team->getId(), 'name' => $team->getName()],
+                static fn (Team $team): array => ['id' => $team->getId(), 'nom' => $team->getName()],
                 $this->activeTeams(),
             );
         }
@@ -798,16 +746,5 @@ final class ParcImportAnalyzer
         }
 
         return $this->teams;
-    }
-
-    /**
-     * @return list<Coach>
-     */
-    private function activeCoaches(): array
-    {
-        return array_values(array_filter(
-            $this->entityManager->getRepository(Coach::class)->findAll(),
-            static fn (Coach $coach): bool => $coach->getIsActive(),
-        ));
     }
 }

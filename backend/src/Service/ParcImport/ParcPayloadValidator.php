@@ -5,95 +5,82 @@ declare(strict_types=1);
 namespace App\Service\ParcImport;
 
 use App\Service\ConstraintConfigValidator;
-use JsonException;
 
 /**
- * Chantier G — LE validateur du format `parc-v1` : le texte brut qu'un chatbot rend
- * et que le gestionnaire colle pour saisir tout son parc d'un coup (équipes, gymnases,
- * créneaux, mutualisations, coachs, réservations). C'est un ACCÉLÉRATEUR DE SAISIE, pas
- * la vérité : on refuse seulement ce qui ne peut pas être lu sans ambiguïté, et on NOMME
- * le fautif par élément (« équipe n°3 : genre inconnu ») pour que le gestionnaire corrige
- * dans l'aperçu sans jamais ouvrir le code.
+ * Lot correctif import IA (« G2 ») PR1 — LE validateur du format `parc-v2`, qui REMPLACE parc-v1
+ * (jamais déployé). Le gestionnaire colle le texte brut qu'un chatbot (GPT / Gemini / Claude /
+ * Copilot) rend à partir de l'Excel / image / PDF de son club. parc-v2 n'a plus de sections
+ * `equipes`/`creneaux`/`mutualisations`/`reservations` structurées : UNE LIGNE PAR CASE
+ * (`{gymnase, jour, debut, duree?, equipes[], groupe?, terrains_separes?}`), et l'appli DÉDUIT
+ * équipes / séances / genre / catégorie / mutualisations / réservations (cadrage G2 D1).
  *
- * Décisions (cadrage G v2, 2026-10-23) :
- *  - `format` est un VERROU de version : seule « parc-v1 » est lue — une version inconnue
- *    (« parc-v2 », un ancien « socle-v1 ») est refusée, jamais lue « au mieux ».
- *  - Sections REQUISES (listes, éventuellement VIDES) : `equipes`, `gymnases`, `creneaux`,
- *    `mutualisations`, `reservations`. `coachs` est OPTIONNELLE (absente = aucun coach).
- *  - Champs HORS PÉRIMÈTRE (niveau, adresse, effectif, toute clé ou section inconnue) :
- *    IGNORÉS, jamais une erreur — le chatbot n'est pas sous notre contrôle et peut enrichir
- *    sa sortie ; on ne lit QUE la liste blanche, le reste tombe en silence.
+ * Décisions (cadrage G2, 2026-10-25) :
+ *  - `format` est un VERROU de version : seul « parc-v2 » est lu — « parc-v1 » (l'ancien) et toute
+ *    autre version sont REFUSÉS en nommant « parc-v2 », jamais lus « au mieux » ;
+ *  - `cases` est REQUISE (liste) ; `gymnases` est OPTIONNELLE (plusieurs chatbots réels l'omettent,
+ *    l'appli déduit alors les gymnases des cases) ;
+ *  - D4 normalisation de RÉCUPÉRATION (guillemets typographiques « “ ” ‘ ’ » + dé-habillage d'un
+ *    bloc Markdown ```json) SEULEMENT si le parse BRUT échoue : un JSON déjà valide n'est JAMAIS
+ *    retouché ({@see parse}) ;
+ *  - plafond de {@see MAX_TEAMS_PER_CASE} équipes par case (bombe) : au-delà → refus nommant la case ;
+ *  - champs / sections HORS PÉRIMÈTRE (une vieille section `coachs`, une clé inconnue par case,
+ *    `groupe` / `terrains_separes` optionnels) : IGNORÉS, jamais une erreur.
  *
- * Patron {@see ConstraintConfigValidator} : le validateur POSSÈDE le décodage
- * (il prend le JSON BRUT), est PUR (aucune DB), et rend la liste des motifs de refus, VIDE
- * si le parc est recevable. L'appariement aux entités existantes vit, lui, dans l'analyzer.
+ * Patron {@see ConstraintConfigValidator} : le validateur POSSÈDE le décodage (il prend le JSON
+ * BRUT), est PUR (aucune DB), et rend la liste des motifs de refus, VIDE si le parc est recevable.
+ * La dérivation et l'appariement aux entités existantes vivent, eux, dans l'analyzer / l'executor.
  */
 final class ParcPayloadValidator
 {
-    private const string FORMAT = 'parc-v1';
+    private const string FORMAT = 'parc-v2';
 
-    /** Sections requises : présentes et listes (éventuellement vides). */
-    private const array REQUIRED_SECTIONS = ['equipes', 'gymnases', 'creneaux', 'mutualisations', 'reservations'];
-
-    private const array GENDERS = ['M', 'F', 'MIXTE'];
-
-    /** Le nom HUMAIN de chaque section, pour préfixer un motif par le rang de l'élément. */
-    private const array ITEM_LABELS = [
-        'equipes' => 'équipe',
-        'gymnases' => 'gymnase',
-        'creneaux' => 'créneau',
-        'reservations' => 'réservation',
-        'coachs' => 'coach',
-    ];
+    /** Plafond d'équipes par case (bombe) — gardé côté prompt par PARC_V2_SPEC.maxTeamsPerCase. */
+    private const int MAX_TEAMS_PER_CASE = 6;
 
     /**
      * @return list<string> les motifs de refus, vide si le parc est recevable
      */
     public function errors(string $json): array
     {
-        try {
-            /** @var mixed $data */
-            $data = json_decode($json, true, flags: \JSON_THROW_ON_ERROR);
-        } catch (JsonException) {
+        $data = $this->parse($json);
+        if (null === $data) {
             return ['Le contenu collé n\'est pas du JSON valide — collez le texte rendu par l\'assistant sans le modifier.'];
-        }
-
-        if (!\is_array($data)) {
-            return ['Le contenu collé n\'est pas un parc ' . self::FORMAT . ' : un objet est attendu.'];
         }
 
         $errors = [];
 
         if (self::FORMAT !== ($data['format'] ?? null)) {
-            // Le message NOMME « format » (cas absent) ET « parc-v1 » (cas version inconnue).
+            // Le message NOMME « parc-v2 » (cas absent ET cas version inconnue, « parc-v1 » compris).
             $errors[] = 'Le champ « format » doit valoir « ' . self::FORMAT . ' ».';
         }
 
-        foreach (self::REQUIRED_SECTIONS as $section) {
-            if (!\array_key_exists($section, $data)) {
-                $errors[] = \sprintf('La section « %s » est requise.', $section);
-                continue;
-            }
-            if (!\is_array($data[$section]) || !array_is_list($data[$section])) {
-                $errors[] = \sprintf('La section « %s » doit être une liste.', $section);
+        if (!\array_key_exists('cases', $data)) {
+            $errors[] = 'La section « cases » est requise.';
+
+            return $errors;
+        }
+        if (!\is_array($data['cases']) || !array_is_list($data['cases'])) {
+            $errors[] = 'La section « cases » doit être une liste.';
+
+            return $errors;
+        }
+
+        foreach ($data['cases'] as $i => $case) {
+            foreach ($this->caseErrors($case) as $motif) {
+                $errors[] = \sprintf('case n°%d : %s', (int) $i + 1, $motif);
             }
         }
 
-        $errors = array_merge(
-            $errors,
-            $this->listErrors($data, 'equipes', $this->teamErrors(...)),
-            $this->listErrors($data, 'gymnases', $this->venueErrors(...)),
-            $this->listErrors($data, 'creneaux', $this->slotErrors(...)),
-            $this->listErrors($data, 'reservations', $this->reservationErrors(...)),
-        );
-
-        // `coachs` est optionnelle : absente, aucun contrôle ; présente, elle doit être une
-        // liste d'éléments nommés comme le reste.
-        if (\array_key_exists('coachs', $data)) {
-            if (!\is_array($data['coachs']) || !array_is_list($data['coachs'])) {
-                $errors[] = 'La section « coachs » doit être une liste.';
+        // `gymnases` est optionnelle ; présente, elle doit être une liste de gymnases nommés.
+        if (\array_key_exists('gymnases', $data)) {
+            if (!\is_array($data['gymnases']) || !array_is_list($data['gymnases'])) {
+                $errors[] = 'La section « gymnases » doit être une liste.';
             } else {
-                $errors = array_merge($errors, $this->listErrors($data, 'coachs', $this->coachErrors(...)));
+                foreach ($data['gymnases'] as $i => $venue) {
+                    if (!$this->hasName($venue)) {
+                        $errors[] = \sprintf('gymnase n°%d : le nom est requis.', (int) $i + 1);
+                    }
+                }
             }
         }
 
@@ -101,115 +88,90 @@ final class ParcPayloadValidator
     }
 
     /**
-     * Applique un contrôle par élément à une section-liste, en préfixant chaque motif par le
-     * rang HUMAIN (1-based) de l'élément — « équipe n°3 : … ». Une section absente ou mal
-     * formée est ignorée ici : son motif de forme a déjà été relevé plus haut.
+     * Décode le JSON BRUT. La RÉCUPÉRATION (guillemets typographiques, dé-habillage d'un bloc
+     * Markdown ```json) ne tourne QUE si le parse brut échoue — un JSON déjà valide est rendu TEL
+     * QUEL (ses valeurs, guillemets typographiques compris, survivent intactes, D4). Rend le payload
+     * décodé en tableau, ou null s'il reste illisible après récupération.
      *
-     * @param array<string, mixed>          $data
-     * @param callable(mixed): list<string> $check rend les motifs (sans le préfixe de rang)
-     *
-     * @return list<string>
+     * @return array<string, mixed>|null
      */
-    private function listErrors(array $data, string $section, callable $check): array
+    public function parse(string $json): ?array
     {
-        $list = $data[$section] ?? null;
-        if (!\is_array($list) || !array_is_list($list)) {
-            return [];
+        $decoded = json_decode($json, true);
+        if (\JSON_ERROR_NONE === json_last_error() && \is_array($decoded)) {
+            return $decoded;
         }
 
-        $label = self::ITEM_LABELS[$section];
-        $errors = [];
-        foreach ($list as $i => $item) {
-            foreach ($check($item) as $motif) {
-                $errors[] = \sprintf('%s n°%d : %s', $label, $i + 1, $motif);
-            }
+        // Récupération : seulement maintenant que le parse brut a échoué.
+        $recovered = $this->unwrapMarkdownFence($json);
+        $recovered = strtr($recovered, ['“' => '"', '”' => '"', '‘' => '\'', '’' => '\'']);
+
+        $decoded = json_decode($recovered, true);
+        if (\JSON_ERROR_NONE === json_last_error() && \is_array($decoded)) {
+            return $decoded;
         }
 
-        return $errors;
+        return null;
     }
 
     /**
-     * @return list<string>
+     * Retire un habillage Markdown ```json … ``` (ou ``` … ```) autour du JSON — un chatbot qui
+     * désobéit à « rends UNIQUEMENT le JSON ». Sans habillage, la chaîne revient telle quelle.
      */
-    private function teamErrors(mixed $team): array
+    private function unwrapMarkdownFence(string $text): string
     {
-        $errors = [];
-        if (!$this->hasName($team)) {
-            $errors[] = 'le nom est requis.';
-        }
-        if (\is_array($team) && \array_key_exists('genre', $team) && !\in_array($team['genre'], self::GENDERS, true)) {
-            $errors[] = 'genre inconnu (attendu M, F ou MIXTE).';
-        }
-        // `categorie` (déduite par le chatbot) est OPTIONNELLE ; mais si elle est présente, ce doit
-        // être une chaîne NON VIDE — une chaîne vide (le chatbot n'a rien déduit) est refusée plutôt
-        // que lue « au mieux » puis mal classée à l'import. Absente = aucun contrôle.
-        if (\is_array($team) && \array_key_exists('categorie', $team) && !$this->isNonEmptyString($team['categorie'])) {
-            $errors[] = 'la catégorie doit être une chaîne non vide.';
+        $trimmed = trim($text);
+        if (1 === preg_match('/^```(?:json)?\s*\n(.*)\n```$/s', $trimmed, $m)) {
+            return $m[1];
         }
 
-        return $errors;
+        return $text;
     }
 
     /**
-     * @return list<string>
+     * @return list<string> les motifs (sans le préfixe de rang de case)
      */
-    private function venueErrors(mixed $venue): array
+    private function caseErrors(mixed $case): array
     {
-        return $this->hasName($venue) ? [] : ['le nom est requis.'];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function slotErrors(mixed $slot): array
-    {
-        $slot = \is_array($slot) ? $slot : [];
+        $c = \is_array($case) ? $case : [];
         $errors = [];
-        if (!$this->isWeekday($slot['jour'] ?? null)) {
-            $errors[] = 'le jour doit être un entier de 1 à 7 (lundi = 1).';
-        }
-        if (!$this->isTime($slot['debut'] ?? null)) {
-            $errors[] = 'l\'heure de début doit être au format HH:MM.';
-        }
-        if (!$this->isPositiveInt($slot['duree'] ?? null)) {
-            $errors[] = 'la durée doit être un entier de minutes d\'au moins 1.';
-        }
-        if (\array_key_exists('equipes_en_parallele', $slot) && !$this->isParallelCount($slot['equipes_en_parallele'])) {
-            $errors[] = 'le nombre d\'équipes en parallèle doit être de 1 à 3.';
-        }
 
-        return $errors;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function reservationErrors(mixed $reservation): array
-    {
-        $r = \is_array($reservation) ? $reservation : [];
-        $errors = [];
-        if (!$this->isNonEmptyString($r['equipe'] ?? null)) {
-            $errors[] = 'l\'équipe est requise.';
-        }
-        if (!$this->isNonEmptyString($r['gymnase'] ?? null)) {
+        if (!$this->isNonEmptyString($c['gymnase'] ?? null)) {
             $errors[] = 'le gymnase est requis.';
         }
-        if (!$this->isWeekday($r['jour'] ?? null)) {
+        if (!$this->isWeekday($c['jour'] ?? null)) {
             $errors[] = 'le jour doit être un entier de 1 à 7 (lundi = 1).';
         }
-        if (!$this->isTime($r['debut'] ?? null)) {
+        if (!$this->isTime($c['debut'] ?? null)) {
             $errors[] = 'l\'heure de début doit être au format HH:MM.';
+        }
+        // `duree` est OPTIONNELLE (défaut 90 déduit en aval) ; présente, un entier de minutes ≥ 1.
+        if (\array_key_exists('duree', $c) && !$this->isPositiveInt($c['duree'])) {
+            $errors[] = 'la durée doit être un entier de minutes d\'au moins 1.';
+        }
+        // `groupe` est OPTIONNEL (label d'un bloc mutualisé, ex. « CEC ») ; présent, un libellé texte.
+        if (\array_key_exists('groupe', $c) && null !== $c['groupe'] && !\is_string($c['groupe'])) {
+            $errors[] = 'le groupe doit être un libellé texte.';
+        }
+
+        $equipes = $c['equipes'] ?? null;
+        if (null !== $equipes) {
+            if (!\is_array($equipes) || !array_is_list($equipes)) {
+                $errors[] = 'le champ « equipes » doit être une liste de noms.';
+            } else {
+                if (\count($equipes) > self::MAX_TEAMS_PER_CASE) {
+                    $errors[] = \sprintf('%d équipes au maximum par case (%d).', self::MAX_TEAMS_PER_CASE, self::MAX_TEAMS_PER_CASE);
+                }
+                foreach ($equipes as $team) {
+                    if (!$this->isNonEmptyString($team)) {
+                        $errors[] = 'un nom d\'équipe est vide — retirez-le ou nommez l\'équipe.';
+                        break;
+                    }
+                }
+            }
         }
 
         return $errors;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function coachErrors(mixed $coach): array
-    {
-        return $this->hasName($coach) ? [] : ['le nom est requis.'];
     }
 
     private function hasName(mixed $item): bool
@@ -224,8 +186,8 @@ final class ParcPayloadValidator
 
     private function isWeekday(mixed $value): bool
     {
-        // `is_int` strict : "2" passerait un test lâche puis casserait côté métier, qui
-        // compare des entiers de jour.
+        // `is_int` strict : "2" passerait un test lâche puis casserait côté métier, qui compare des
+        // entiers de jour.
         return \is_int($value) && $value >= 1 && $value <= 7;
     }
 
@@ -237,10 +199,5 @@ final class ParcPayloadValidator
     private function isPositiveInt(mixed $value): bool
     {
         return \is_int($value) && $value >= 1;
-    }
-
-    private function isParallelCount(mixed $value): bool
-    {
-        return \is_int($value) && $value >= 1 && $value <= 3;
     }
 }

@@ -5,32 +5,33 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Service\ParcImport\ParcPayloadValidator;
+use App\Service\ParcImport\TeamNameInterpreter;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 
 /**
- * Chantier G PR3 — LE garde de parité prompt ⇄ validateur. Le gabarit front
- * (`frontend/src/features/wizard/parcImport/promptTemplate.ts`) dicte au chatbot le format
- * `parc-v1` ; le validateur backend ({@see ParcPayloadValidator}) décide ce qui est recevable.
- * Si les deux dérivent — une version, une section, une énumération de genre ou un champ change
- * d'un côté sans l'autre — le chatbot produit un JSON que le serveur refuse (ou l'app perd des
- * données), en silence. Ce test rend la dérive OPPOSABLE, dans les DEUX sens.
+ * Lot correctif import IA (« G2 ») PR1 — LE garde de parité prompt ⇄ validateur, RECALÉ sur le
+ * format `parc-v2`. Le gabarit front
+ * (`frontend/src/features/wizard/parcImport/promptTemplate.ts`) dicte au chatbot le format parc-v2 ;
+ * le validateur backend ({@see ParcPayloadValidator}) décide ce qui est recevable. Si les deux
+ * dérivent — la version, un champ de case, le plafond d'équipes par case — le chatbot produit un
+ * JSON que le serveur refuse (ou l'app perd des données), en silence. Ce test rend la dérive
+ * OPPOSABLE, dans les DEUX sens.
  *
- * VÉRITÉ = le validateur (reflection sur ses constantes privées `FORMAT`/`REQUIRED_SECTIONS`/
- * `GENDERS`, plus ses littéraux de champs). Le gabarit front EXPOSE une constante machine-lisible
- * `PARC_V1_SPEC` (version, sections requises/optionnelles, genres, champs par section) QUE
- * `buildParcPrompt` consomme pour rédiger le prompt — ainsi le prompt et la spec ne peuvent pas
- * diverger côté front. Ce test lit cette constante dans la SOURCE TS (pas d'import JS depuis PHP,
- * patron {@see TsUnionsMatchPhpEnumsTest} / {@see FrontRederivationRegistryTest}) et la confronte
- * au validateur.
+ * VÉRITÉ = le validateur (reflection sur `FORMAT`/`MAX_TEAMS_PER_CASE`, plus ses littéraux de champ
+ * de case). Le gabarit front EXPOSE une constante machine-lisible `PARC_V2_SPEC` (version, champs
+ * de case, plafond) que `buildParcPrompt` consomme — prompt et spec ne peuvent pas diverger côté
+ * front. Ce test lit cette constante dans la SOURCE TS (pas d'import JS depuis PHP, patron
+ * {@see TsUnionsMatchPhpEnumsTest} / {@see FrontRederivationRegistryTest}) et la confronte au validateur.
  *
- * Portée : prompt ⇄ VALIDATEUR (ce que le serveur accepte). Les champs lus par l'ANALYZER seul
- * (`seances`, `seances_communes`, `equipes` d'une mutualisation) que le prompt doit AUSSI enseigner
- * sont gardés côté front par `promptTemplate.test.ts`, pas ici.
+ * Portée : prompt ⇄ VALIDATEUR (ce que le serveur accepte). Le genre et la catégorie ne sont PLUS
+ * dans le format parc-v2 (déduits par {@see TeamNameInterpreter}), ils ne
+ * figurent donc plus ici. Les autres promesses du prompt (une entrée par équipe, contexte
+ * correcteur, phrase de source) sont gardées côté front par `promptTemplate.test.ts`.
  *
  * Régime : garde de FRONTIÈRE statique — groupe `contract` / job `engine-semantics`, PAS un step
- * `blocking-tests` (aucun invariant runtime multi-tenant).
+ * `blocking-tests`.
  */
 #[Group('contract')]
 final class ParcPromptValidatorParityTest extends TestCase
@@ -38,105 +39,75 @@ final class ParcPromptValidatorParityTest extends TestCase
     private const string TEMPLATE = __DIR__ . '/../../../frontend/src/features/wizard/parcImport/promptTemplate.ts';
 
     /**
-     * Les champs que le VALIDATEUR nomme — sa liste blanche opposable. Chacun est vérifié
-     * présent À LA FOIS dans la source du validateur (dérive backend) ET dans la spec front
-     * (dérive front) : la liste ne peut pas diverger en silence d'un côté.
+     * Les champs de CASE que le VALIDATEUR nomme — sa liste blanche opposable. Chacun est vérifié
+     * présent À LA FOIS dans la source du validateur (dérive backend) ET dans la spec front (dérive
+     * front) : la liste ne peut pas diverger en silence d'un côté.
      *
      * @var list<string>
      */
-    private const array VALIDATOR_FIELDS = ['nom', 'genre', 'categorie', 'jour', 'debut', 'duree', 'equipes_en_parallele', 'equipe', 'gymnase'];
+    private const array CASE_FIELDS = ['gymnase', 'jour', 'debut', 'duree', 'equipes', 'groupe'];
 
-    public function testTemplateExposesTheParcV1Spec(): void
+    public function testTemplateExposesTheParcV2Spec(): void
     {
         self::assertFileExists(self::TEMPLATE, 'le gabarit promptTemplate.ts doit exister');
-        self::assertNotSame('', $this->specBlock(), 'promptTemplate.ts doit exporter une constante PARC_V1_SPEC');
+        self::assertNotSame('', $this->specBlock(), 'promptTemplate.ts doit exporter une constante PARC_V2_SPEC');
     }
 
     public function testVersionMatchesTheValidatorFormat(): void
     {
         $block = $this->specBlock();
-        self::assertSame(1, preg_match('/version\s*:\s*[\'"]([^\'"]+)[\'"]/', $block, $m), 'PARC_V1_SPEC doit déclarer une « version »');
+        self::assertSame(1, preg_match('/version\s*:\s*[\'"]([^\'"]+)[\'"]/', $block, $m), 'PARC_V2_SPEC doit déclarer une « version »');
+        self::assertSame('parc-v2', $m[1], 'la version du gabarit doit être parc-v2');
         self::assertSame($this->validatorString('FORMAT'), $m[1], 'la version du gabarit doit égaler ParcPayloadValidator::FORMAT');
     }
 
-    public function testRequiredSectionsMatchTheValidator(): void
-    {
-        $expected = $this->validatorList('REQUIRED_SECTIONS');
-        $actual = $this->tsList($this->specBlock(), 'requiredSections');
-        sort($expected);
-        sort($actual);
-        self::assertSame($expected, $actual, 'les sections requises du gabarit et du validateur doivent coïncider exactement');
-    }
-
-    public function testCoachsIsDeclaredOptional(): void
-    {
-        // `coachs` est la SEULE section optionnelle (le validateur ne la vérifie que si présente).
-        $optional = $this->tsList($this->specBlock(), 'optionalSections');
-        self::assertContains('coachs', $optional, 'le gabarit doit déclarer « coachs » comme section optionnelle');
-    }
-
-    public function testGendersMatchTheValidator(): void
-    {
-        $expected = $this->validatorList('GENDERS');
-        $actual = $this->tsList($this->specBlock(), 'genders');
-        sort($expected);
-        sort($actual);
-        self::assertSame($expected, $actual, 'l\'énumération de genre du gabarit et du validateur doivent coïncider (M/F/MIXTE)');
-    }
-
-    public function testEachValidatorFieldIsTaughtByTheTemplate(): void
+    public function testEachValidatorCaseFieldIsTaughtByTheTemplate(): void
     {
         $block = $this->specBlock();
-        foreach (self::VALIDATOR_FIELDS as $field) {
+        foreach (self::CASE_FIELDS as $field) {
             self::assertSame(
                 1,
                 preg_match('/[\'"]' . preg_quote($field, '/') . '[\'"]/', $block),
-                \sprintf('le gabarit doit enseigner le champ « %s » que le validateur impose', $field),
+                \sprintf('le gabarit doit enseigner le champ de case « %s » que le validateur impose', $field),
             );
         }
     }
 
-    public function testValidatorStillNamesEachCanonicalField(): void
+    public function testValidatorStillNamesEachCanonicalCaseField(): void
     {
-        // Sens inverse : si le validateur RENOMME un champ, la liste canonique ci-dessus devient
-        // fausse et doit rougir ici — avant que le gabarit ne continue d'enseigner un champ mort.
+        // Sens inverse : si le validateur RENOMME un champ de case, la liste canonique devient fausse
+        // et rougit ici — avant que le gabarit ne continue d'enseigner un champ mort.
         $source = (string) file_get_contents((string) new ReflectionClass(ParcPayloadValidator::class)->getFileName());
-        foreach (self::VALIDATOR_FIELDS as $field) {
+        foreach (self::CASE_FIELDS as $field) {
             self::assertStringContainsString(
                 '\'' . $field . '\'',
                 $source,
-                \sprintf('ParcPayloadValidator doit toujours nommer le champ « %s » (sinon réaligner VALIDATOR_FIELDS)', $field),
+                \sprintf('ParcPayloadValidator doit toujours nommer le champ « %s » (sinon réaligner CASE_FIELDS)', $field),
             );
         }
     }
 
+    public function testTeamsPerCaseCapIsTheSameOnBothSides(): void
+    {
+        // Le plafond d'équipes par case (bombe) : le prompt doit l'enseigner EXACTEMENT comme le
+        // validateur l'applique, sinon le chatbot produit une case que le serveur refuse.
+        $block = $this->specBlock();
+        self::assertSame(1, preg_match('/maxTeamsPerCase\s*:\s*(\d+)/', $block, $m), 'PARC_V2_SPEC doit déclarer « maxTeamsPerCase »');
+        self::assertSame($this->validatorInt('MAX_TEAMS_PER_CASE'), (int) $m[1], 'le plafond d\'équipes par case doit coïncider des deux côtés');
+    }
+
     /**
-     * Le corps de la constante `PARC_V1_SPEC` (entre le `{` d'ouverture et le `} as const` final),
+     * Le corps de la constante `PARC_V2_SPEC` (entre le `{` d'ouverture et le `} as const` final),
      * ou '' si elle est absente.
      */
     private function specBlock(): string
     {
         $source = (string) file_get_contents(self::TEMPLATE);
-        if (1 !== preg_match('/PARC_V1_SPEC\s*=\s*\{(.*?)\}\s*as const/s', $source, $m)) {
+        if (1 !== preg_match('/PARC_V2_SPEC\s*=\s*\{(.*?)\}\s*as const/s', $source, $m)) {
             return '';
         }
 
         return $m[1];
-    }
-
-    /**
-     * Les chaînes citées d'un tableau `clé: [ "a", "b" ]` dans la spec TS.
-     *
-     * @return list<string>
-     */
-    private function tsList(string $block, string $key): array
-    {
-        if (1 !== preg_match('/' . preg_quote($key, '/') . '\s*:\s*\[([^\]]*)\]/s', $block, $m)) {
-            self::fail(\sprintf('la clé « %s » est absente de PARC_V1_SPEC', $key));
-        }
-        preg_match_all('/[\'"]([^\'"]+)[\'"]/', $m[1], $items);
-
-        return $items[1];
     }
 
     private function validatorString(string $const): string
@@ -147,19 +118,11 @@ final class ParcPromptValidatorParityTest extends TestCase
         return $value;
     }
 
-    /**
-     * @return list<string>
-     */
-    private function validatorList(string $const): array
+    private function validatorInt(string $const): int
     {
         $value = new ReflectionClass(ParcPayloadValidator::class)->getConstant($const);
-        self::assertIsArray($value, \sprintf('ParcPayloadValidator::%s doit être un tableau', $const));
-        $out = [];
-        foreach ($value as $item) {
-            self::assertIsString($item);
-            $out[] = $item;
-        }
+        self::assertIsInt($value, \sprintf('ParcPayloadValidator::%s doit être un entier', $const));
 
-        return $out;
+        return $value;
     }
 }

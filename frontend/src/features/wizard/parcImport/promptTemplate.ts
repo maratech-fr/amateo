@@ -1,87 +1,79 @@
 import { PRODUCT_NAME } from "@/shared/lib/product";
 
 /**
- * Chantier G (import du parc par IA), PR3 — le GABARIT du prompt que le gestionnaire colle dans un
- * chatbot externe pour qu'il rende tout son parc au format `parc-v1`.
+ * Lot correctif import IA (« G2 ») PR1 — le GABARIT du prompt que le gestionnaire colle dans un
+ * chatbot externe (GPT / Gemini / Claude / Copilot) pour qu'il rende tout son parc au format
+ * `parc-v2` : UNE ENTRÉE PAR CASE. L'appli déduit ensuite équipes / séances / genre / catégorie /
+ * mutualisations / réservations des cases (cadrage G2 D1). Les coachs ne sont PLUS extraits (D11).
  *
- * `PARC_V1_SPEC` est la source machine-lisible du format côté front : version, sections (requises
- * et optionnelle), énumération de genre, champs par section. `buildParcPrompt` en DÉRIVE le texte —
- * le prompt et la spec ne peuvent donc pas diverger côté front. La parité spec ⇄ VALIDATEUR backend
+ * `PARC_V2_SPEC` est la source machine-lisible du format côté front : version, champs de case,
+ * plafond d'équipes par case. `buildParcPrompt` en DÉRIVE le texte — le prompt et la spec ne peuvent
+ * donc pas diverger côté front. La parité spec ⇄ VALIDATEUR backend
  * (`App\Service\ParcImport\ParcPayloadValidator`, la vérité de ce qui est recevable) est tenue par
- * `ParcPromptValidatorParityTest` (CrossStack, groupe `contract`) : toute dérive de version, de
- * section, de genre ou de champ, d'un côté ou de l'autre, rougit.
+ * `ParcPromptValidatorParityTest` (CrossStack, groupe `contract`).
  */
-export const PARC_V1_SPEC = {
-  version: "parc-v1",
-  requiredSections: ["equipes", "gymnases", "creneaux", "mutualisations", "reservations"],
-  optionalSections: ["coachs"],
-  genders: ["M", "F", "MIXTE"],
-  fields: {
-    equipes: ["nom", "genre", "categorie", "seances"],
-    gymnases: ["nom"],
-    creneaux: ["gymnase", "jour", "debut", "duree", "equipes_en_parallele"],
-    mutualisations: ["equipes", "seances_communes"],
-    coachs: ["nom"],
-    reservations: ["equipe", "gymnase", "jour", "debut"],
-  },
+export const PARC_V2_SPEC = {
+  version: "parc-v2",
+  caseFields: ["gymnase", "jour", "debut", "duree", "equipes", "groupe"],
+  maxTeamsPerCase: 6,
 } as const;
-
-type ParcSection = keyof typeof PARC_V1_SPEC.fields;
-
-/** Les hints HUMAINS par section — purs libellés explicatifs, les NOMS de champ viennent de la spec. */
-const SECTION_HINTS: Record<ParcSection, string> = {
-  equipes: "les équipes du club",
-  gymnases: "les gymnases où le club s'entraîne",
-  creneaux: "les créneaux d'entraînement récurrents (jour 1 = lundi … 7 = dimanche, debut au format HH:MM, duree en minutes, equipes_en_parallele de 1 à 3)",
-  mutualisations: "les groupes d'équipes qui s'entraînent ensemble (equipes = la liste de leurs noms, seances_communes = combien de séances par semaine en commun)",
-  coachs: "les entraîneurs",
-  reservations: "les cases déjà posées pour une équipe donnée (equipe, gymnase, jour, heure de début)",
-};
-
-/** Une ligne « - section : champ1, champ2 … (explication) », dérivée de la spec. */
-function describeSection(section: ParcSection, optional: boolean): string {
-  const fields = PARC_V1_SPEC.fields[section].join(", ");
-  const tag = optional ? " — section FACULTATIVE (absente si le club n'en a aucun)" : "";
-  return `- "${section}" : ${SECTION_HINTS[section]}. Champs de chaque élément : ${fields}.${tag}`;
-}
 
 /** Les noms déjà saisis d'une catégorie, ou une mention « aucun » si la liste est vide. */
 function listOrNone(names: readonly string[]): string {
   return names.length > 0 ? names.map((n) => `  • ${n}`).join("\n") : "  (aucun pour l'instant)";
 }
 
+/** Le contexte du club (nom / ville / sport), utile surtout quand aucun nom n'est encore saisi. */
+function clubContext(club?: { name?: string; city?: string; sport?: string }): string {
+  const parts: string[] = [];
+  if (club?.name) {
+    parts.push(`le club « ${club.name} »`);
+  }
+  if (club?.city) {
+    parts.push(`à ${club.city}`);
+  }
+  parts.push(`sport : ${club?.sport ?? "basket"}`);
+  return parts.join(", ");
+}
+
 /**
- * Fabrique le texte du prompt à coller dans le chatbot. Les noms EXACTS déjà saisis sont embarqués
- * pour que l'assistant les réutilise au lieu d'en inventer des variantes. Tolère des listes vides
- * (club neuf). Fonction PURE : aucune lecture réseau, aucun effet.
+ * Fabrique le texte du prompt à coller dans le chatbot. Fonction PURE : aucune lecture réseau, aucun
+ * effet. Tolère des listes vides (club neuf — le contexte club prend alors le relais). Les noms déjà
+ * saisis servent de CORRECTEUR d'orthographe, jamais de filtre : le chatbot garde AUSSI ce qu'il
+ * détecte au-delà de cette liste.
  */
-export function buildParcPrompt(input: { teams: readonly string[]; venues: readonly string[]; coaches: readonly string[] }): string {
-  const sections = [
-    ...PARC_V1_SPEC.requiredSections.map((s) => describeSection(s as ParcSection, false)),
-    ...PARC_V1_SPEC.optionalSections.map((s) => describeSection(s as ParcSection, true)),
-  ].join("\n");
+export function buildParcPrompt(input: {
+  teams: readonly string[];
+  venues: readonly string[];
+  club?: { name?: string; city?: string; sport?: string };
+}): string {
+  const fields = PARC_V2_SPEC.caseFields.join(", ");
 
   return [
-    `Vous aidez un gestionnaire de club de basket à décrire tout son planning d'entraînement pour l'outil ${PRODUCT_NAME}.`,
+    `Vous aidez un gestionnaire de club de basket à transcrire tout son planning d'entraînement pour l'outil ${PRODUCT_NAME}, à partir de son document.`,
+    `Contexte : ${clubContext(input.club)}.`,
     "",
-    `Rendez UNIQUEMENT un objet JSON au format « ${PARC_V1_SPEC.version} », et RIEN D'AUTRE : aucune phrase avant ou après, aucun commentaire, seulement le JSON.`,
+    `Le meilleur support est un fichier Excel du planning ; une image (photo, capture) ou un PDF conviennent aussi.`,
     "",
-    "L'objet porte le champ « format » valant exactement « " + PARC_V1_SPEC.version + " », puis ces sections (chacune une liste, éventuellement vide) :",
-    sections,
+    `Rendez UNIQUEMENT un objet JSON au format « ${PARC_V2_SPEC.version} », et RIEN D'AUTRE : aucune phrase avant ou après, aucun commentaire, aucun bloc Markdown — seulement le JSON.`,
     "",
-    `Le genre d'une équipe (champ « genre ») vaut exactement l'une de ces valeurs : ${PARC_V1_SPEC.genders.join(", ")}.`,
-    "Le champ « categorie » d'une équipe est la catégorie d'âge déduite (ex. U13, Séniors) ; il est optionnel : omettez-le si vous ne le connaissez pas.",
+    `L'objet porte le champ « format » valant exactement « ${PARC_V2_SPEC.version} », une liste « gymnases » (chacun { "nom": … }) et une liste « cases ». UNE ENTRÉE PAR CASE réellement écrite sur le document, avec ces champs : ${fields}.`,
     "",
-    "Noms déjà saisis dans l'outil — réutilisez EXACTEMENT ces noms (même orthographe, mêmes accents) dès que le planning les mentionne, n'en inventez aucune variante :",
+    "Détail des champs d'une case :",
+    `- "gymnase" : le nom du gymnase de la case (en France, souvent le nom d'une personnalité : « Jean Vilar », « Matéo »).`,
+    `- "jour" : le numéro du jour — lundi = 1, mardi = 2, mercredi = 3, jeudi = 4, vendredi = 5, samedi = 6, dimanche = 7.`,
+    `- "debut" : l'heure de début au format 24 h « HH:MM ». "duree" : la durée en minutes.`,
+    `- "equipes" : TOUTES les équipes écrites dans la case, chacune par son nom (une entrée par équipe, ex. ["U9F1", "U9F2"]) ; au plus ${PARC_V2_SPEC.maxTeamsPerCase} équipes par case. Une case sans équipe (créneau vide du gymnase) porte une liste vide.`,
+    `- "groupe" : si les équipes de la case s'entraînent ENSEMBLE (mutualisation, ex. « CEC »), mettez ce libellé de groupe ici ; sinon omettez ce champ.`,
+    "",
+    "Noms déjà saisis dans l'outil — réutilisez EXACTEMENT ces noms (même orthographe, mêmes accents) pour CORRIGER le nommage dès que le planning les mentionne :",
     "Équipes :",
     listOrNone(input.teams),
     "Gymnases :",
     listOrNone(input.venues),
-    "Coachs :",
-    listOrNone(input.coaches),
     "",
-    "Règle importante : si deux équipes occupent la même case (même gymnase, même jour, même heure), c'est forcément soit une mutualisation (déclarez-les dans « mutualisations »), soit un terrain divisé en deux (posez « equipes_en_parallele » ≥ 2 sur le créneau). Ne mettez jamais deux équipes sur la même case sans l'une de ces deux déclarations.",
+    "Important : cette liste CORRIGE le nommage, elle ne FILTRE rien. Gardez AUSSI toutes les équipes et tous les gymnases que vous détectez au-delà de cette liste, même absents de l'outil — ne jetez jamais une case lisible.",
     "",
-    "Tout champ que vous ne connaissez pas peut être omis. N'ajoutez pas de section hors de cette liste.",
+    "Le jour d'une case vient UNIQUEMENT de la colonne où elle se trouve, jamais du nom de l'équipe ni de la couleur. Une case mal placée se corrige ; une case oubliée est perdue. Rendez uniquement le JSON.",
   ].join("\n");
 }

@@ -29,16 +29,19 @@ use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
- * Chantier G PR 2 — NR BLOQUANT (axes §7.1 « constraint semantics » + « generation pipeline ») : une
- * RÉSERVATION saisie par l'IMPORT DE PARC est HONORÉE par le solveur. Le chemin complet est prouvé de
- * bout en bout — texte JSON `parc-v1` → IMPORT RÉEL ({@see ParcImportExecutor}, le métier de cette PR)
- * → VRAI builder ({@see ScheduleConstraintBuilder}) → VRAI moteur `/generate` (contrat 1.5) :
+ * Lot correctif import IA (« G2 ») PR1 — NR BLOQUANT (axes §7.1 « constraint semantics » +
+ * « generation pipeline »), RECALÉ sur le format `parc-v2` : une RÉSERVATION DÉRIVÉE D'UNE CASE
+ * parc-v2 par l'IMPORT DE PARC est HONORÉE par le solveur. Le chemin complet est prouvé de bout en
+ * bout — texte JSON `parc-v2` (une ligne par case) → DÉRIVATION + IMPORT RÉEL
+ * ({@see ParcImportExecutor}) → VRAI builder ({@see ScheduleConstraintBuilder}) → VRAI moteur
+ * `/generate` (contrat 1.5) :
  *
  *  une réservation d'équipe pré-génération est un VERROU HARD (invariant socle, `Reservation.php:12-17`).
  *  Un gymnase a DEUX cases (lundi 18:00 réservée, mercredi 18:00 libre) et l'équipe PRÉFÈRE (souple) le
  *  mercredi. AVANT l'import — SANS réservation — le solveur suit la préférence et pose la séance le
- *  MERCREDI. L'import du parc écrit la réservation du LUNDI ; le builder la transporte en HARD, et le
- *  moteur pose désormais la séance le LUNDI, sur la case réservée, malgré la préférence contraire.
+ *  MERCREDI. L'import du parc parc-v2 porte une CASE « SM1 lundi 18:00 » ; l'appli en DÉRIVE la
+ *  réservation du LUNDI, le builder la transporte en HARD, et le moteur pose désormais la séance le
+ *  LUNDI, sur la case réservée, malgré la préférence contraire.
  *
  * TÉMOIN falsifiable (dans les deux sens) : le MÊME décor résolu AVANT l'import pose la séance le
  * mercredi (la préférence). C'est donc bien la réservation IMPORTÉE — et elle seule — qui déplace la
@@ -88,14 +91,13 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
         $witness = $this->solve($this->build($club, $season));
         self::assertSame(3, $this->dayOfTeam($witness, $team->getId()), 'témoin cassé : sans la réservation importée, l\'équipe doit suivre sa préférence (mercredi)');
 
-        // IMPORT RÉEL du parc : une seule ligne cochée, la réservation lundi 18:00 pour SM1.
+        // IMPORT RÉEL du parc parc-v2 : UNE CASE « SM1 lundi 18:00 » dans le gymnase existant. L'appli
+        // apparie SM1/« Gymnase Matéo » aux entités du socle et en DÉRIVE la réservation du lundi ;
+        // seule cette réservation dérivée est cochée.
         $parc = [
-            'format' => 'parc-v1',
-            'gymnases' => [],
-            'equipes' => [],
-            'creneaux' => [],
-            'mutualisations' => [],
-            'reservations' => [['equipe' => 'SM1', 'gymnase' => 'Gymnase Matéo', 'jour' => 1, 'debut' => '18:00']],
+            'format' => 'parc-v2',
+            'gymnases' => [['nom' => 'Gymnase Matéo']],
+            'cases' => [['gymnase' => 'Gymnase Matéo', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']]],
         ];
         $decisions = [['section' => 'reservations', 'index' => 0, 'coche' => true]];
         $this->scopeGucToClub($club->getId());

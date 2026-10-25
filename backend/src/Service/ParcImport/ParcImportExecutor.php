@@ -6,7 +6,6 @@ namespace App\Service\ParcImport;
 
 use App\Controller\GroupReservationController;
 use App\Entity\Club;
-use App\Entity\Coach;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -14,11 +13,9 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\Gender;
-use App\Enum\TeamCoachRole;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\PlanEntitlements;
@@ -30,38 +27,32 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
- * Chantier G PR 2 — l'IMPORT RÉEL transactionnel du parc. L'aperçu (dry-run) est le métier de
- * {@see ParcImportAnalyzer} ; ICI c'est l'ÉCRITURE : le gestionnaire a tranché l'aperçu
- * (cocher/décocher, ré-apparier, corriger), et {@see import} bascule les lignes cochées en base
- * en UNE SEULE transaction TOUT-OU-RIEN.
+ * Lot correctif import IA (« G2 ») PR1 — l'IMPORT RÉEL transactionnel du parc, RECALÉ sur `parc-v2`.
+ * L'aperçu (dry-run) est le métier de {@see ParcImportAnalyzer} ; ICI c'est l'ÉCRITURE : le parc
+ * parc-v2 (une ligne par CASE) est DÉRIVÉ en sections par {@see ParcCaseDeriver} (contrat de
+ * décisions INCHANGÉ), le gestionnaire a tranché l'aperçu, et {@see import} bascule les lignes
+ * cochées en base en UNE SEULE transaction TOUT-OU-RIEN.
  *
- * Ordre d'écriture : gymnases → équipes → créneaux → blocs → coachs + `TeamCoach` MAIN →
- * réservations. Un gymnase naît SANS adresse ; son `canSplit` est DÉRIVÉ (vrai si un créneau du
- * parc y demande ≥ 2 équipes en parallèle). Les gardes EXISTANTES sont REJOUÉES depuis leurs
- * maisons — jamais recopiées ni contournées :
+ * Ordre d'écriture : gymnases → équipes → créneaux → blocs → réservations. Un gymnase naît SANS
+ * adresse ; son `canSplit` est DÉRIVÉ (vrai si un créneau du parc y demande ≥ 2 équipes en
+ * parallèle). La DURÉE d'une case est TRANSPORTÉE au créneau ; un bloc mutualisé porte le `groupe`
+ * de la case en LABEL. Les COACHS ne sont plus extraits (D11) : une vieille section `coachs` d'un
+ * ancien chatbot est IGNORÉE en silence (le dériveur ne la lit pas). Les gardes EXISTANTES sont
+ * REJOUÉES depuis leurs maisons — jamais recopiées :
  *  - cap payant : {@see PlanEntitlements} (refus AVANT tout persist, tout-ou-rien) ;
- *  - capacité / occupation d'une réservation : {@see ReservationGroupOccupancy} ;
+ *  - occupation d'une réservation : {@see ReservationGroupOccupancy} ;
  *  - Σ des séances communes d'un bloc : {@see SoloReservationBudget} ;
  *  - chevauchement / capacité d'un créneau : même règle que {@see VenueTrainingSlotStateProcessor}.
  * Une ligne cochée invalide au moment de l'écriture → {@see UnprocessableEntityHttpException}
  * nommant la ligne (section + rang), et la transaction est annulée (rien écrit).
  *
- * Décisions : `[{section, index, coche, cibleId?, corrections?}]`. Seules les lignes `coche:true`
- * sont écrites ; `cibleId` apparie à une entité EXISTANTE, RE-VÉRIFIÉE tenant côté serveur (même
- * club ET même saison, patron A10 {@see FbiFixtureImporter::ownedVenueForImport}) ; `corrections`
- * remplace des champs simples (équipes : `seances` ; créneaux/réservations : `jour`, `debut`,
- * `duree`). Sur une équipe appariée, seul le nombre de séances peut bouger (genre/catégorie/niveau
- * jamais), et seulement si `corrections.seances` est présent.
- *
- * Idempotence : une entité déjà présente (nom normalisé, ou triplet pour un créneau / une
- * réservation) est RÉUTILISÉE, jamais recréée — rejouer le même import n'ajoute aucun doublon.
+ * `cibleId` apparie à une entité EXISTANTE, RE-VÉRIFIÉE tenant côté serveur (même club ET même
+ * saison, patron A1/A10). Idempotence : une entité déjà présente est RÉUTILISÉE, jamais recréée.
  * Noms hostiles : tout `=`/`+`/`-`/`@` et toute tabulation ou retour-ligne de TÊTE sont retirés
  * avant écriture (le nom stocké ne déclenche jamais une formule à l'ouverture de l'export XLSX).
  *
  * Service PUR de contexte HTTP : il reçoit le club et la saison en paramètres (le NR bloquant
- * {@see ParcImportReservationSemanticsGateTest} l'appelle hors requête), et ne lit ni le
- * `RequestStack` ni la session de sécurité. L'auth/rôle/socle sont gardés en amont par
- * {@see ParcImportGate} dans le contrôleur.
+ * {@see ParcImportReservationSemanticsGateTest} l'appelle hors requête).
  */
 final class ParcImportExecutor
 {
@@ -72,8 +63,6 @@ final class ParcImportExecutor
     private const string LABEL_CRENEAUX = 'créneau';
 
     private const string LABEL_MUTUALISATIONS = 'mutualisation';
-
-    private const string LABEL_COACHS = 'coach';
 
     private const string LABEL_RESERVATIONS = 'réservation';
 
@@ -107,10 +96,12 @@ final class ParcImportExecutor
         private readonly PlanEntitlements $planEntitlements,
         private readonly SportCategoryResolver $sportCategoryResolver,
         private readonly GroupReservationController $groupReservationWriter,
+        private readonly ParcCaseDeriver $deriver,
+        private readonly TeamLabelMatcher $matcher,
     ) {}
 
     /**
-     * @param array<string, mixed>       $parc      le parc-v1 décodé, déjà validé en FORME et en bornes
+     * @param array<string, mixed>       $parc      le parc-v2 décodé, déjà validé en FORME et en bornes
      * @param list<array<string, mixed>> $decisions les choix de l'aperçu
      *
      * @return array{recap: array<string, array<string, int>>}
@@ -121,20 +112,20 @@ final class ParcImportExecutor
         $this->teamByName = [];
         $this->sportId = null;
 
+        $derived = $this->deriver->derive($parc);
         $index = $this->indexDecisions($decisions);
 
         /** @var array{recap: array<string, array<string, int>>} $result */
-        $result = $this->entityManager->wrapInTransaction(function () use ($club, $seasonId, $parc, $index): array {
+        $result = $this->entityManager->wrapInTransaction(function () use ($club, $seasonId, $derived, $index): array {
             // Cap payant AVANT tout persist (tout-ou-rien) : jamais « les premières passent ».
-            $this->assertTeamCapNotExceeded($parc, $index, $club, $seasonId);
+            $this->assertTeamCapNotExceeded($derived, $index, $club, $seasonId);
 
             $recap = [
-                'gymnases' => $this->importVenues($parc, $index, $club, $seasonId),
-                'equipes' => $this->importTeams($parc, $index, $club, $seasonId),
-                'creneaux' => $this->importSlots($parc, $index, $club, $seasonId),
-                'mutualisations' => $this->importBlocks($parc, $index, $club, $seasonId),
-                'coachs' => $this->importCoaches($parc, $index, $club, $seasonId),
-                'reservations' => $this->importReservations($parc, $index, $club, $seasonId),
+                'gymnases' => $this->importVenues($derived, $index, $club, $seasonId),
+                'equipes' => $this->importTeams($derived, $index, $club, $seasonId),
+                'creneaux' => $this->importSlots($derived, $index, $club, $seasonId),
+                'mutualisations' => $this->importBlocks($derived, $index, $club, $seasonId),
+                'reservations' => $this->importReservations($derived, $index, $club, $seasonId),
             ];
 
             return ['recap' => $recap];
@@ -146,15 +137,15 @@ final class ParcImportExecutor
     // ───────────────────────────── Sections ─────────────────────────────
 
     /**
-     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, mixed>                                                                                   $derived
      * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
-    private function importVenues(array $parc, array $index, Club $club, string $seasonId): array
+    private function importVenues(array $derived, array $index, Club $club, string $seasonId): array
     {
         $recap = $this->emptyRecap();
-        foreach ($this->lines($parc, 'gymnases') as $i => $entry) {
+        foreach ($this->lines($derived, 'gymnases') as $i => $entry) {
             $decision = $index['gymnases'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
                 ++$recap['ignores'];
@@ -185,7 +176,7 @@ final class ParcImportExecutor
                 ->setName($nom)
                 ->setSource('manual')
                 ->setIsActive(true)
-                ->setCanSplit($this->venueCanSplit($parc, $nom));
+                ->setCanSplit($this->venueCanSplit($derived, $nom));
             $this->entityManager->persist($venue);
             $this->entityManager->flush();
             $this->venueByName[$this->normalizer->normalize($nom)] = $venue->getId();
@@ -196,15 +187,15 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, mixed>                                                                                   $derived
      * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
-    private function importTeams(array $parc, array $index, Club $club, string $seasonId): array
+    private function importTeams(array $derived, array $index, Club $club, string $seasonId): array
     {
         $recap = $this->emptyRecap();
-        foreach ($this->lines($parc, 'equipes') as $i => $entry) {
+        foreach ($this->lines($derived, 'equipes') as $i => $entry) {
             $decision = $index['equipes'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
                 ++$recap['ignores'];
@@ -250,15 +241,15 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, mixed>                                                                                   $derived
      * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
-    private function importSlots(array $parc, array $index, Club $club, string $seasonId): array
+    private function importSlots(array $derived, array $index, Club $club, string $seasonId): array
     {
         $recap = $this->emptyRecap();
-        foreach ($this->lines($parc, 'creneaux') as $i => $entry) {
+        foreach ($this->lines($derived, 'creneaux') as $i => $entry) {
             $decision = $index['creneaux'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
                 ++$recap['ignores'];
@@ -322,15 +313,15 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, mixed>                                                                                   $derived
      * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
-    private function importBlocks(array $parc, array $index, Club $club, string $seasonId): array
+    private function importBlocks(array $derived, array $index, Club $club, string $seasonId): array
     {
         $recap = $this->emptyRecap();
-        foreach ($this->lines($parc, 'mutualisations') as $i => $entry) {
+        foreach ($this->lines($derived, 'mutualisations') as $i => $entry) {
             $decision = $index['mutualisations'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
                 ++$recap['ignores'];
@@ -358,6 +349,7 @@ final class ParcImportExecutor
                 continue;
             }
             $commonSessions = \is_int($entry['seances_communes'] ?? null) ? $entry['seances_communes'] : 1;
+            $label = \is_string($entry['groupe'] ?? null) && '' !== trim($entry['groupe']) ? trim($entry['groupe']) : null;
 
             $block = $this->existingBlockForTeams($club->getId(), $seasonId, $teamIds);
             if ($block instanceof SharedTrainingBlock) {
@@ -376,7 +368,8 @@ final class ParcImportExecutor
                     ->setClubId($club->getId())
                     ->setSeasonId($seasonId)
                     ->setSchedulePlanId(null)
-                    ->setCommonSessions($commonSessions);
+                    ->setCommonSessions($commonSessions)
+                    ->setLabel($label);
                 $this->entityManager->persist($block);
                 foreach ($teamIds as $teamId) {
                     $member = (new SharedTrainingBlockTeam)
@@ -391,9 +384,6 @@ final class ParcImportExecutor
                 ++$recap['crees'];
             }
 
-            // Réservation de GROUPE : chaque membre reçoit une réservation socle co-localisée sur la
-            // case, posée par la maison du rail /api/reservations/group (jamais recopiée). Idempotent
-            // (déjà posée → rien) et sans effet si la case ne se résout pas (gymnase/jour/heure).
             $this->poseGroupReservation($block, $teamIds, $entry, $decision['cibleId'], $decision['corrections'], $club, $seasonId, $i);
         }
 
@@ -401,10 +391,7 @@ final class ParcImportExecutor
     }
 
     /**
-     * Pose la réservation de groupe du bloc sur sa case, via {@see GroupReservationController} (rail
-     * /api/reservations/group) : garde d'occupation {@see ReservationGroupOccupancy::assertBlockReservationAllowed}
-     * puis écriture atomique N-réservations/1-flush. Ne fait rien si la case ne se résout pas, ou si
-     * tous les membres y sont déjà réservés (idempotence) — un rejeu ne crée aucun doublon.
+     * Pose la réservation de groupe du bloc sur sa case, via {@see GroupReservationController}.
      *
      * @param list<string>         $teamIds
      * @param array<string, mixed> $corrections
@@ -466,68 +453,15 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, mixed>                                                                                   $derived
      * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
-    private function importCoaches(array $parc, array $index, Club $club, string $seasonId): array
+    private function importReservations(array $derived, array $index, Club $club, string $seasonId): array
     {
         $recap = $this->emptyRecap();
-        foreach ($this->lines($parc, 'coachs') as $i => $entry) {
-            $decision = $index['coachs'][$i] ?? null;
-            if (null === $decision || !$decision['coche']) {
-                ++$recap['ignores'];
-
-                continue;
-            }
-            $nom = $this->neutralize($this->stringField($entry, 'nom'));
-            $teamName = $this->stringField($entry, 'equipe');
-            $teamId = $this->teamIdForName($teamName);
-            if (null === $teamId) {
-                $this->fail('coachs', $i, 'L\'équipe de ce coach est introuvable.');
-            }
-
-            $existingId = $decision['cibleId'] ?? $this->resolveExistingCoachId($nom);
-            if (null !== $existingId) {
-                $coach = $this->ownedCoach($existingId, $club, $seasonId, 'coachs', $i);
-                $created = false;
-            } else {
-                [$firstName, $lastName] = $this->splitName($nom);
-                $coach = (new Coach)
-                    ->setClubId($club->getId())
-                    ->setSeasonId($seasonId)
-                    ->setFirstName($firstName)
-                    ->setLastName($lastName)
-                    ->setIsActive(true);
-                $this->entityManager->persist($coach);
-                $this->entityManager->flush();
-                $created = true;
-            }
-
-            $linked = $this->linkCoachMain($coach->getId(), $teamId, $club->getId(), $seasonId);
-            if ($created) {
-                ++$recap['crees'];
-            } elseif ($linked) {
-                ++$recap['apparies'];
-            } else {
-                ++$recap['ignores'];
-            }
-        }
-
-        return $recap;
-    }
-
-    /**
-     * @param array<string, mixed>                                                                                   $parc
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
-     *
-     * @return array<string, int>
-     */
-    private function importReservations(array $parc, array $index, Club $club, string $seasonId): array
-    {
-        $recap = $this->emptyRecap();
-        foreach ($this->lines($parc, 'reservations') as $i => $entry) {
+        foreach ($this->lines($derived, 'reservations') as $i => $entry) {
             $decision = $index['reservations'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
                 ++$recap['ignores'];
@@ -599,10 +533,10 @@ final class ParcImportExecutor
     // ───────────────────────────── Cap payant ─────────────────────────────
 
     /**
-     * @param array<string, mixed>                                                                                   $parc
+     * @param array<string, mixed>                                                                                   $derived
      * @param array<string, array<int, array{coche: bool, cibleId: string|null, corrections: array<string, mixed>}>> $index
      */
-    private function assertTeamCapNotExceeded(array $parc, array $index, Club $club, string $seasonId): void
+    private function assertTeamCapNotExceeded(array $derived, array $index, Club $club, string $seasonId): void
     {
         $season = $this->entityManager->find(Season::class, $seasonId);
         if (!$season instanceof Season) {
@@ -614,7 +548,7 @@ final class ParcImportExecutor
         }
 
         $toCreate = 0;
-        foreach ($this->lines($parc, 'equipes') as $i => $entry) {
+        foreach ($this->lines($derived, 'equipes') as $i => $entry) {
             $decision = $index['equipes'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
                 continue;
@@ -681,48 +615,18 @@ final class ParcImportExecutor
         return 1 === \count($candidates) ? $candidates[0] : null;
     }
 
+    /**
+     * Résolution AUTOMATIQUE d'une équipe (sans décision humaine) : via {@see TeamLabelMatcher},
+     * SEUL un appariement EXACT (canonique) la résout. Un candidat FLOU (« suggere ») ne s'applique
+     * JAMAIS d'office (cadrage G2 D5 « suggéré, à confirmer ») — sinon deux équipes distinctes
+     * écrites de façon proche (« U15M 1 » / « U15 M2 », distance 1) se fondraient à l'import. Une
+     * suggestion que le gestionnaire a confirmée arrive par le `cibleId` de la décision, pas ici.
+     */
     private function resolveExistingTeamId(string $name): ?string
     {
-        return $this->resolveInPool($name, $this->activeTeamPool());
-    }
+        $verdict = $this->matcher->match($name, $this->activeTeamPool());
 
-    private function resolveExistingCoachId(string $name): ?string
-    {
-        return $this->resolveInPool($name, $this->activeCoachPool());
-    }
-
-    /**
-     * Même décision d'appariement que l'aperçu ({@see ParcImportAnalyzer::poolVerdict}) : exact
-     * unique, sinon un unique candidat flou. Un pool ambigu (≥ 2) n'apparie à RIEN (la ligne
-     * serait « à créer » faute d'exact, ou décochée dans l'aperçu).
-     *
-     * @param list<array{id: string, name: string}> $pool
-     */
-    private function resolveInPool(string $label, array $pool): ?string
-    {
-        $key = $this->normalizer->normalize($label);
-        if ('' === $key) {
-            return null;
-        }
-
-        $exact = [];
-        $fuzzy = [];
-        foreach ($pool as $candidate) {
-            $normalized = $this->normalizer->normalize($candidate['name']);
-            if ($normalized === $key) {
-                $exact[$candidate['id']] = true;
-            }
-            if ($normalized === $key || $this->normalizer->fuzzyMatches($candidate['name'], $label)) {
-                $fuzzy[$candidate['id']] = true;
-            }
-        }
-
-        if (1 === \count($exact)) {
-            return array_key_first($exact);
-        }
-        $fuzzyIds = array_keys($fuzzy);
-
-        return 1 === \count($fuzzyIds) ? $fuzzyIds[0] : null;
+        return 'apparie' === $verdict['statut'] ? $verdict['cibleId'] : null;
     }
 
     private function ownedVenue(string $venueId, Club $club, string $seasonId, string $section, int $index): Venue
@@ -743,16 +647,6 @@ final class ParcImportExecutor
         }
 
         return $team;
-    }
-
-    private function ownedCoach(string $coachId, Club $club, string $seasonId, string $section, int $index): Coach
-    {
-        $coach = $this->entityManager->getRepository(Coach::class)->find($coachId);
-        if (!$coach instanceof Coach || $coach->getClubId() !== $club->getId() || $coach->getSeasonId() !== $seasonId) {
-            $this->fail($section, $index, 'Coach introuvable pour cet appariement.');
-        }
-
-        return $coach;
     }
 
     // ───────────────────────────── Idempotence ─────────────────────────────
@@ -842,43 +736,18 @@ final class ParcImportExecutor
         return null;
     }
 
-    /** Pose le lien `TeamCoach` MAIN s'il n'existe pas déjà ; rend true s'il vient d'être posé. */
-    private function linkCoachMain(string $coachId, string $teamId, string $clubId, string $seasonId): bool
-    {
-        $existing = $this->entityManager->getRepository(TeamCoach::class)->findOneBy([
-            'coachId' => $coachId,
-            'teamId' => $teamId,
-            'role' => TeamCoachRole::MAIN,
-        ]);
-        if ($existing instanceof TeamCoach) {
-            return false;
-        }
-
-        $link = (new TeamCoach)
-            ->setClubId($clubId)
-            ->setSeasonId($seasonId)
-            ->setTeamId($teamId)
-            ->setCoachId($coachId)
-            ->setRole(TeamCoachRole::MAIN)
-            ->setIsRequired(false);
-        $this->entityManager->persist($link);
-        $this->entityManager->flush();
-
-        return true;
-    }
-
     // ───────────────────────────── Dérivations ─────────────────────────────
 
     /**
      * `canSplit` dérivé : vrai si un créneau du parc vise ce gymnase (par nom) avec ≥ 2 équipes
      * en parallèle. Un gymnase créé naît donc divisible pile quand un créneau l'exige.
      *
-     * @param array<string, mixed> $parc
+     * @param array<string, mixed> $derived
      */
-    private function venueCanSplit(array $parc, string $venueName): bool
+    private function venueCanSplit(array $derived, string $venueName): bool
     {
         $target = $this->normalizer->normalize($venueName);
-        foreach ($this->lines($parc, 'creneaux') as $slot) {
+        foreach ($this->lines($derived, 'creneaux') as $slot) {
             if (!\is_array($slot)) {
                 continue;
             }
@@ -892,16 +761,14 @@ final class ParcImportExecutor
     }
 
     /**
-     * La catégorie d'une équipe CRÉÉE. Si le texte porte « categorie » (déduite par le chatbot),
-     * elle est appariée par NOM NORMALISÉ (casse/accents repliés) à une catégorie EXISTANTE du club,
-     * sinon créée (maison partagée {@see SportCategoryResolver::findOrCreate}). Sans catégorie,
-     * l'équipe est classée « À classer » (repère explicite à reclasser) — jamais un rattachement
-     * muet à une catégorie du catalogue qui mentirait sur l'âge/le genre.
+     * La catégorie d'une équipe CRÉÉE. Si le libellé porte une catégorie déduite, elle est appariée
+     * par NOM NORMALISÉ à une catégorie EXISTANTE du club, sinon créée (maison partagée
+     * {@see SportCategoryResolver::findOrCreate}). Sans catégorie, l'équipe est classée « À classer ».
      */
     private function categoryIdForCreatedTeam(mixed $entry, Club $club): string
     {
         $categorie = \is_array($entry) ? ($entry['categorie'] ?? null) : null;
-        if (\is_string($categorie) && '' !== trim($categorie)) {
+        if (\is_string($categorie) && '' !== trim($categorie) && self::UNFILED_CATEGORY !== trim($categorie)) {
             $name = trim($categorie);
             $matched = $this->matchCategoryByNormalizedName($name, $club->getId());
 
@@ -928,8 +795,7 @@ final class ParcImportExecutor
 
     /**
      * Le sport auquel rattacher une catégorie créée : celui du club s'il en porte un, sinon le
-     * sport actif existant, sinon le basket par défaut créé une fois (patron
-     * {@see App\Service\ClubProvisioner}). Mémorisé pour le run.
+     * sport actif existant, sinon le basket par défaut créé une fois. Mémorisé pour le run.
      */
     private function defaultSportId(Club $club): string
     {
@@ -1012,13 +878,13 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed> $parc
+     * @param array<string, mixed> $derived
      *
      * @return array<int, mixed>
      */
-    private function lines(array $parc, string $section): array
+    private function lines(array $derived, string $section): array
     {
-        $value = $parc[$section] ?? null;
+        $value = $derived[$section] ?? null;
 
         return \is_array($value) && array_is_list($value) ? $value : [];
     }
@@ -1070,19 +936,6 @@ final class ParcImportExecutor
         return (string) preg_replace('/^[=+\-@\t\r\n]+/', '', $name);
     }
 
-    /**
-     * @return array{0: string, 1: string} prénom, nom
-     */
-    private function splitName(string $name): array
-    {
-        $parts = preg_split('/\s+/', trim($name), 2);
-        if (false === $parts || '' === ($parts[0] ?? '')) {
-            return [$name, $name];
-        }
-
-        return [$parts[0], $parts[1] ?? $parts[0]];
-    }
-
     private function stringField(mixed $entry, string $field): string
     {
         if (\is_array($entry) && \is_string($entry[$field] ?? null)) {
@@ -1124,29 +977,14 @@ final class ParcImportExecutor
     }
 
     /**
-     * @return list<array{id: string, name: string}>
+     * @return list<array{id: string, nom: string}>
      */
     private function activeTeamPool(): array
     {
         $pool = [];
         foreach ($this->entityManager->getRepository(Team::class)->findAll() as $team) {
             if ($team->getIsActive()) {
-                $pool[] = ['id' => $team->getId(), 'name' => $team->getName()];
-            }
-        }
-
-        return $pool;
-    }
-
-    /**
-     * @return list<array{id: string, name: string}>
-     */
-    private function activeCoachPool(): array
-    {
-        $pool = [];
-        foreach ($this->entityManager->getRepository(Coach::class)->findAll() as $coach) {
-            if ($coach->getIsActive()) {
-                $pool[] = ['id' => $coach->getId(), 'name' => trim($coach->getFirstName() . ' ' . $coach->getLastName())];
+                $pool[] = ['id' => $team->getId(), 'nom' => $team->getName()];
             }
         }
 
@@ -1173,7 +1011,6 @@ final class ParcImportExecutor
             'gymnases' => self::LABEL_GYMNASES,
             'creneaux' => self::LABEL_CRENEAUX,
             'mutualisations' => self::LABEL_MUTUALISATIONS,
-            'coachs' => self::LABEL_COACHS,
             'reservations' => self::LABEL_RESERVATIONS,
             default => $section,
         };

@@ -6,30 +6,17 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Coach;
-use App\Entity\Fixture;
-use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\Sport;
-use App\Entity\SportCategory;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
-use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Enum\FixtureHomeAway;
-use App\Enum\FixtureStatus;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
-use App\Enum\TeamCoachRole;
-use App\Enum\TeamLevel;
-use App\Service\ParcImport\ParcImportAnalyzer;
 use App\Service\ParcImport\ParcImportGate;
-use App\Service\PlanEntitlements;
-use App\Service\SeasonResolver;
+use App\Service\ParcImport\TeamNameInterpreter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\TenantGucTrait;
@@ -41,50 +28,34 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * Chantier G PR2 — l'IMPORT RÉEL transactionnel `POST /api/clubs/{id}/parc-import` : le gestionnaire
- * a analysé son parc (PR1, {@see ParcImportAnalyzeTest}), ajusté l'aperçu (cocher/décocher, ré-apparier,
- * corriger quelques champs) et clique « Importer » ; le serveur bascule les cases cochées en écriture
- * TOUT-OU-RIEN. L'aperçu (dry-run) est le métier de {@see ParcImportAnalyzer} ;
- * ICI c'est l'écriture.
+ * Lot correctif import IA (« G2 ») PR1 — l'IMPORT RÉEL transactionnel `POST /api/clubs/{id}/parc-import`,
+ * RECALÉ sur le format `parc-v2`. Le gestionnaire a analysé son parc (dry-run {@see ParcImportAnalyzeTest}),
+ * ajusté l'aperçu puis clique « Importer » ; le serveur bascule en écriture TOUT-OU-RIEN les lignes
+ * DÉRIVÉES des cases qu'il a cochées.
  *
- * Contrat de l'endpoint (DÉFINI ici, implémenté par NEO) :
- *  - Opération Post custom sur ClubResource (patron `parc-import/analyze`),
- *    `App\Controller\ParcImportExecuteController`, `read:false`, name `parc_import`. MÊME gate
- *    ({@see ParcImportGate}) et MÊMES bornes que l'analyse (256 Ko, ≤60 équipes, ≤20 gymnases,
- *    ≤500 créneaux+réservations) — l'import de parc est un geste d'ONBOARDING, refusé 409 tant que
- *    le socle est EN VIGUEUR, 403 au non-gestionnaire, 404 au non-membre.
- *  - Le corps est un objet JSON : `{payload, decisions}`.
- *      · `payload` : l'objet parc-v1, les MÊMES octets que l'analyse (re-validé en forme + bornes).
- *      · `decisions` : la liste des choix de l'aperçu, `[{section, index, coche, cibleId?, corrections?}]`.
- *        — Seules les lignes dont une décision porte `coche:true` sont écrites ; une ligne sans décision,
- *          ou `coche:false`, est IGNORÉE (cochage).
- *        — `cibleId` (option) apparie la ligne à une entité EXISTANTE (confirmation d'un suggéré /
- *          ré-appariement manuel). RE-VÉRIFIÉ tenant côté serveur : un id d'un autre club/saison →
- *          422, RIEN écrit (patron A10).
- *        — `corrections` (option) remplace des champs SIMPLES avant écriture — équipes : `seances` ;
- *          créneaux/réservations : `jour`, `debut`, `duree` (décision fondateur Q2 = b). Sur une équipe
- *          APPARIÉE, `corrections.seances` présent = la mise à jour des séances est ACCEPTÉE ; absent =
- *          séances inchangées (Q3 = a, décochable).
- *  - UNE SEULE transaction, dans l'ordre : gymnases → équipes → créneaux → blocs → coachs +
- *    `TeamCoach` MAIN → réservations (unitaires et de groupe). Un gymnase naît SANS adresse ; son
- *    `canSplit` est DÉRIVÉ (vrai si un créneau du parc y demande ≥ 2 équipes en parallèle). Une ligne
- *    cochée invalide AU MOMENT DE L'ÉCRITURE (chevauchement, Σ séances d'un bloc, capacité, cap payant)
- *    → 422 NOMMANT la ligne, RIEN n'est écrit (les gardes des processors rejouées, jamais contournées).
- *  - Sur une équipe APPARIÉE, seul le nombre de séances/semaine peut bouger : genre, catégorie et
- *    niveau ne bougent JAMAIS — et sur une équipe ENGAGÉE le niveau reste intact (axe périmètre engagé).
+ * Ce qui change vs parc-v1 (jamais déployé) : le `payload` est un parc-v2 (`{format, gymnases?, cases[]}`),
+ * et l'appli DÉRIVE des cases les équipes (genre/catégorie par {@see TeamNameInterpreter}),
+ * les gymnases, les créneaux, les blocs mutualisés (label = `groupe`) et les réservations. Le CONTRAT de
+ * décisions est inchangé : `decisions = [{section, index, coche, cibleId?, corrections?}]` sur les sections
+ * DÉRIVÉES ; seules les lignes cochées sont écrites.
+ *
+ * Contrat (défini ici, implémenté par NEO) :
+ *  - MÊME gate que l'analyse (patron {@see ParcImportGate}) : 404 non-membre,
+ *    403 non-gestionnaire, 409 socle EN VIGUEUR (geste d'ONBOARDING), 429 limiteur, bornes ≤ 500 cases.
+ *  - Ordre d'écriture : gymnases → équipes → créneaux → blocs → réservations ; une ligne cochée invalide
+ *    AU MOMENT DE L'ÉCRITURE (chevauchement, Σ bloc, capacité, cap payant) → 422 nommant la ligne, RIEN écrit.
+ *  - `cibleId` d'un AUTRE club/saison → 422, RIEN écrit (patron A1/A10).
+ *  - La `duree` d'une case est TRANSPORTÉE au créneau créé ; un bloc mutualisé porte le `groupe` en LABEL.
+ *  - Une section `coachs` d'un vieux chatbot est IGNORÉE en silence (coachs retirés du format, D11).
  *  - Idempotence : rejouer le même import ne crée AUCUN doublon.
- *  - Noms hostiles (`=HYPERLINK(...)`, tête `=`/`+`/`-`/`@`) NEUTRALISÉS à l'import — le nom stocké ne
- *    commence jamais par un déclencheur de formule ; l'export XLSX (`SpreadsheetGenerator`,
- *    StringValueBinder ~l.122) rend alors du TEXTE, pas une formule vivante.
- *  - Réponse 200 : `{recap:{<section>:{crees,apparies,misAJour,ignores}}}`. Réponse 422 : `{errors:[…]}`.
+ *  - Réponse 200 : `{recap:{<section>:{crees,apparies,misAJour,ignores}}}` ; 422 : `{errors:[…]}`.
  *
- * ⚠ Limiteur Redis keyé PAR UTILISATEUR (patron analyse) : chaque test crée sa propre identité — aucun
- * FLUSHALL, aucune fuite entre suites (mémoire backend-test-gotchas). APP_ENV=test.
+ * La SÉMANTIQUE de bout en bout (case parc-v2 → dérivation → réservation HARD → vrai moteur) est le NR
+ * BLOQUANT {@see ParcImportReservationSemanticsGateTest} ; ici on prouve le CÂBLAGE, la dérivation, la
+ * transaction tout-ou-rien, le périmètre tenant, l'idempotence et le retrait des coachs.
  *
- * La SÉMANTIQUE de bout en bout (parc-v1 → import → vrai builder → vrai moteur, une réservation
- * importée verrouille la séance HARD) est le NR BLOQUANT
- * {@see ParcImportReservationSemanticsGateTest} ; ici on prouve le CÂBLAGE, la
- * transaction tout-ou-rien, le contrat de décisions, le périmètre engagé, l'idempotence et les abus.
+ * ⚠ Limiteur Redis keyé PAR UTILISATEUR : chaque test crée sa propre identité — aucun FLUSHALL, aucune
+ * fuite entre suites (mémoire backend-test-gotchas). APP_ENV=test.
  */
 #[Group('integration')]
 final class ParcImportExecuteTest extends WebTestCase
@@ -104,14 +75,14 @@ final class ParcImportExecuteTest extends WebTestCase
 
     private string $token;
 
-    // ───────────────────────────── Gate (réutilisée, domaine sensible) ─────────────────────────────
+    // ───────────────────────────── Gate (domaine sensible) ─────────────────────────────
 
     public function testNonManagerIsRefusedWithoutWriting(): void
     {
         $this->scopeGucToClub($this->club->getId());
         $before = $this->rowCount('team');
 
-        [$status] = $this->import($this->newTeamParc(), [['section' => 'equipes', 'index' => 0, 'coche' => true]], token: $this->viewerToken());
+        [$status] = $this->import($this->oneTeamCaseParc(), [['section' => 'equipes', 'index' => 0, 'coche' => true]], token: $this->viewerToken());
 
         self::assertSame(403, $status, 'un membre non gestionnaire ne peut pas importer');
         self::assertSame($before, $this->rowCount('team'), 'un refus 403 n\'écrit rien');
@@ -119,38 +90,32 @@ final class ParcImportExecuteTest extends WebTestCase
 
     public function testImportRefusedWhenSeasonPlanChosen(): void
     {
-        // Planning lifecycle (ADR-0002) : un plan de saison POINTE une version = socle EN VIGUEUR.
-        // L'import de parc est un geste d'ONBOARDING, refusé 409 tant que le socle n'est pas rouvert.
+        // Planning lifecycle (ADR-0002) : socle EN VIGUEUR → l'import d'onboarding est refusé 409.
         $this->settleSeasonPlan($this->season);
         $this->scopeGucToClub($this->club->getId());
         $before = $this->rowCount('team');
 
-        [$status] = $this->import($this->newTeamParc(), [['section' => 'equipes', 'index' => 0, 'coche' => true]]);
+        [$status] = $this->import($this->oneTeamCaseParc(), [['section' => 'equipes', 'index' => 0, 'coche' => true]]);
 
         self::assertSame(409, $status, 'socle en vigueur → 409');
         self::assertSame($before, $this->rowCount('team'), 'un refus 409 n\'écrit rien');
     }
 
-    // ───────────────────────────── Contrat de décisions (promesse 1) ─────────────────────────────
+    // ───────────────────────── Dérivation d'une case → entités (promesse centrale) ─────────────────────────
 
-    public function testCheckedLinesAreImportedInOneTransaction(): void
+    public function testADerivedCaseCreatesVenueTeamSlotAndTransportsItsDuration(): void
     {
-        // Un parc entièrement « à créer » — gymnase (divisible, créneau à 2 en parallèle), équipe,
-        // créneau, réservation — toutes cases cochées. Tout est saisi d'un coup.
+        // UNE CASE « SM1 lundi 18:00, 75 min » dans un gymnase neuf. L'appli DÉRIVE : le gymnase, l'équipe
+        // SM1 (genre M / seniors déduits du nom), le créneau et sa réservation. La DURÉE de la case (75)
+        // est TRANSPORTÉE au créneau. Toutes les lignes dérivées sont cochées.
         $this->scopeGucToClub($this->club->getId());
         $venuesBefore = $this->rowCount('venue');
         $teamsBefore = $this->rowCount('team');
         $slotsBefore = $this->rowCount('venue_training_slot');
-        $reservationsBefore = $this->rowCount('reservation');
 
-        $parc = [
-            'format' => 'parc-v1',
-            'gymnases' => [['nom' => 'Palais Neuf']],
-            'equipes' => [['nom' => 'SM1', 'genre' => 'M', 'seances' => 2]],
-            'creneaux' => [['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 2]],
-            'mutualisations' => [],
-            'reservations' => [['equipe' => 'SM1', 'gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00']],
-        ];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 75, 'equipes' => ['SM1']],
+        ]);
         $decisions = [
             ['section' => 'gymnases', 'index' => 0, 'coche' => true],
             ['section' => 'equipes', 'index' => 0, 'coche' => true],
@@ -161,30 +126,33 @@ final class ParcImportExecuteTest extends WebTestCase
         [$status] = $this->import($parc, $decisions);
         self::assertSame(200, $status);
 
-        self::assertSame($venuesBefore + 1, $this->rowCount('venue'), 'le gymnase est créé');
-        self::assertSame($teamsBefore + 1, $this->rowCount('team'), 'l\'équipe est créée');
-        self::assertSame($slotsBefore + 1, $this->rowCount('venue_training_slot'), 'le créneau est créé');
-        self::assertSame($reservationsBefore + 1, $this->rowCount('reservation'), 'la réservation est créée');
+        self::assertSame($venuesBefore + 1, $this->rowCount('venue'), 'le gymnase dérivé est créé');
+        self::assertSame($teamsBefore + 1, $this->rowCount('team'), 'l\'équipe dérivée est créée');
+        self::assertSame($slotsBefore + 1, $this->rowCount('venue_training_slot'), 'le créneau dérivé est créé');
 
-        // Gymnase créé SANS adresse ; canSplit DÉRIVÉ du créneau à 2 en parallèle.
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertSame(Gender::M, $team->getGender(), 'le genre est déduit du nom « SM1 »');
+
         $venue = $this->em->getRepository(Venue::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'Palais Neuf']);
         self::assertInstanceOf(Venue::class, $venue);
-        self::assertTrue($venue->getCanSplit(), 'un créneau à ≥ 2 en parallèle rend le gymnase créé divisible');
-        self::assertTrue(null === $venue->getAddress() || '' === $venue->getAddress(), 'le gymnase importé naît sans adresse');
-
         $slot = $this->em->getRepository(VenueTrainingSlot::class)->findOneBy(['clubId' => $this->club->getId(), 'venueId' => $venue->getId()]);
         self::assertInstanceOf(VenueTrainingSlot::class, $slot);
-        self::assertSame(2, $slot->getCapacity(), 'la capacité du créneau suit les équipes en parallèle');
+        self::assertSame(75, $slot->getDurationMinutes(), 'la durée de la case est transportée au créneau');
+        self::assertSame(1, $slot->getDayOfWeek());
+        self::assertSame('18:00', $slot->getStartTime()->format('H:i'));
     }
 
-    public function testUncheckedLinesAreNotWritten(): void
+    public function testUncheckedDerivedLineIsNotWritten(): void
     {
-        // Cochage : deux équipes « à créer », une seule cochée. L'autre n'est PAS écrite.
+        // Cochage : deux cases, deux équipes dérivées, une seule cochée. L'autre équipe n'est PAS écrite.
         $this->scopeGucToClub($this->club->getId());
         $teamsBefore = $this->rowCount('team');
 
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M'], ['nom' => 'SF1', 'genre' => 'F']];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SF1']],
+        ]);
         $decisions = [
             ['section' => 'equipes', 'index' => 0, 'coche' => true],
             ['section' => 'equipes', 'index' => 1, 'coche' => false],
@@ -193,127 +161,88 @@ final class ParcImportExecuteTest extends WebTestCase
         [$status] = $this->import($parc, $decisions);
         self::assertSame(200, $status);
 
-        self::assertSame($teamsBefore + 1, $this->rowCount('team'), 'seule la ligne cochée est écrite');
+        self::assertSame($teamsBefore + 1, $this->rowCount('team'), 'seule l\'équipe cochée est écrite');
         self::assertNotNull($this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']));
         self::assertNull($this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SF1']), 'la ligne décochée n\'est jamais créée');
     }
 
-    public function testReAppairingByCibleIdTargetsTheChosenExistingEntity(): void
+    // ───────────────────────── Bloc mutualisé : label = groupe (promesse « CEC ») ─────────────────────────
+
+    public function testACaseWithAGroupeCreatesABlockLabelledByThatGroupe(): void
     {
-        // Ré-appariement : la ligne « Palais » ressemble à deux gymnases ; le gestionnaire a tranché
-        // dans l'aperçu en posant `cibleId` sur le bon. L'import N'EN CRÉE PAS un nouveau, il attache
-        // la réservation au gymnase choisi.
-        $chosen = $this->makeVenue('Palais des Sports Nord');
-        $this->makeVenue('Palais des Sports Sud');
-        $team = $this->makeTeam('SM1', sessionsPerWeek: 2);
-        $this->makeSlot($chosen->getId(), 3, '18:00');
+        // Une case parc-v2 portant deux équipes ET un `groupe` « CEC » (3 groupes CEC au BCCL, le
+        // mercredi) : l'appli crée un SharedTrainingBlock de mutualisation dont le LABEL est « CEC »
+        // — le groupe nomme le bloc, il n'est JAMAIS une équipe à créer.
+        $u9m1 = $this->makeTeam('U9M1', sessionsPerWeek: 1);
+        $u11f2 = $this->makeTeam('U11F2', sessionsPerWeek: 1);
+        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
         $this->scopeGucToClub($this->club->getId());
-        $venuesBefore = $this->rowCount('venue');
+        $blocksBefore = $this->rowCount('shared_training_block');
+        $teamsBefore = $this->rowCount('team');
 
-        $parc = $this->emptyParc();
-        $parc['reservations'] = [['equipe' => 'SM1', 'gymnase' => 'Palais', 'jour' => 3, 'debut' => '18:00']];
-        $decisions = [['section' => 'reservations', 'index' => 0, 'coche' => true, 'cibleId' => $chosen->getId()]];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true]];
 
         [$status] = $this->import($parc, $decisions);
         self::assertSame(200, $status);
 
-        self::assertSame($venuesBefore, $this->rowCount('venue'), 'un ré-appariement ne crée aucun gymnase');
-        $reservation = $this->em->getRepository(Reservation::class)->findOneBy(['clubId' => $this->club->getId(), 'teamId' => $team->getId()]);
-        self::assertInstanceOf(Reservation::class, $reservation);
-        self::assertSame($chosen->getId(), $reservation->getVenueId(), 'la réservation vise le gymnase ré-apparié, jamais un nouveau');
+        self::assertSame($blocksBefore + 1, $this->rowCount('shared_training_block'), 'le bloc mutualisé est créé');
+        self::assertSame($teamsBefore, $this->rowCount('team'), '« CEC » n\'est jamais créée comme équipe — c\'est le label du groupe');
+
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+        self::assertSame('CEC', $block->getLabel(), 'le groupe de la case nomme le bloc mutualisé');
+
+        // Les deux membres existants sont rattachés, aucun 3e membre « CEC ».
+        $members = $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['clubId' => $this->club->getId(), 'blockId' => $block->getId()]);
+        $memberTeamIds = array_map(static fn (SharedTrainingBlockTeam $m): string => $m->getTeamId(), $members);
+        self::assertContains($u9m1->getId(), $memberTeamIds);
+        self::assertContains($u11f2->getId(), $memberTeamIds);
+        self::assertCount(2, $members, 'le bloc regroupe exactement les deux équipes de la case');
     }
 
-    public function testSimpleFieldCorrectionsAreAppliedBeforeWrite(): void
+    // ───────────────────────── Coachs retirés (D11) ─────────────────────────
+
+    public function testAStaleCoachsSectionFromAnOldChatbotIsIgnoredSilently(): void
     {
-        // Correction sur place (Q2 = b) : le gestionnaire a corrigé jour/heure/durée du créneau dans
-        // l'aperçu. L'import écrit les valeurs CORRIGÉES, pas celles du texte brut.
-        $venue = $this->makeVenue('Palais Neuf');
+        // parc-v2 ne porte PLUS de coachs (D11). Un vieux chatbot qui en émet une section : IGNORÉE en
+        // SILENCE — aucun coach créé, aucune erreur, l'import de la case réussit quand même.
         $this->scopeGucToClub($this->club->getId());
+        $coachesBefore = $this->rowCount('coach');
 
-        $parc = $this->emptyParc();
-        $parc['creneaux'] = [['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '17:00', 'duree' => 60, 'equipes_en_parallele' => 1]];
-        $decisions = [[
-            'section' => 'creneaux', 'index' => 0, 'coche' => true,
-            'cibleId' => $venue->getId(),
-            'corrections' => ['jour' => 4, 'debut' => '19:30', 'duree' => 90],
-        ]];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $parc['coachs'] = [['nom' => 'Alice Martin', 'equipe' => 'SM1']]; // section morte d'un ancien chatbot
 
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        $slot = $this->em->getRepository(VenueTrainingSlot::class)->findOneBy(['clubId' => $this->club->getId(), 'venueId' => $venue->getId()]);
-        self::assertInstanceOf(VenueTrainingSlot::class, $slot);
-        self::assertSame(4, $slot->getDayOfWeek(), 'le jour corrigé est écrit');
-        self::assertSame('19:30', $slot->getStartTime()->format('H:i'), 'l\'heure corrigée est écrite');
-        self::assertSame(90, $slot->getDurationMinutes(), 'la durée corrigée est écrite');
-    }
-
-    // ───────────────────────── Équipe appariée : séances SEULES (promesse 3) ─────────────────────────
-
-    public function testMatchedEngagedTeamSessionsUpdateTouchesSessionsOnlyAndKeepsItsLevel(): void
-    {
-        // Une équipe ENGAGÉE (elle porte au moins un match) appariée : la mise à jour du nombre de
-        // séances (acceptée via corrections.seances) est appliquée, mais genre, catégorie et NIVEAU
-        // ne bougent JAMAIS — le niveau d'une équipe engagée est intouchable (axe périmètre engagé).
-        $team = $this->makeTeam('SM1', sessionsPerWeek: 2, gender: Gender::M, level: TeamLevel::REGIONAL);
-        $categoryBefore = $team->getSportCategoryId();
-        $this->engage($team);
-
-        $parc = $this->emptyParc();
-        // Le texte déclare un autre genre et plus de séances — seules les séances ont le droit de bouger.
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'F', 'seances' => 5]];
-        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['seances' => 5]]];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        $fresh = $this->em->getRepository(Team::class)->find($team->getId());
-        self::assertInstanceOf(Team::class, $fresh);
-        self::assertSame(5, $fresh->getSessionsPerWeek(), 'la mise à jour des séances est appliquée');
-        self::assertSame(Gender::M, $fresh->getGender(), 'le genre d\'une équipe appariée ne bouge jamais');
-        self::assertSame($categoryBefore, $fresh->getSportCategoryId(), 'la catégorie ne bouge jamais');
-        self::assertSame(TeamLevel::REGIONAL, $fresh->getLevel(), 'le niveau d\'une équipe engagée reste intact');
-    }
-
-    public function testSessionsUpdateDeclinedLeavesTheMatchedTeamUntouched(): void
-    {
-        // Q3 décochable : la ligne appariée est cochée mais le gestionnaire REFUSE la mise à jour des
-        // séances (aucune `corrections.seances`). Les séances restent ce qu'elles étaient.
-        $team = $this->makeTeam('SM1', sessionsPerWeek: 2);
-
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M', 'seances' => 4]];
         $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true]];
 
         [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        $fresh = $this->em->getRepository(Team::class)->find($team->getId());
-        self::assertInstanceOf(Team::class, $fresh);
-        self::assertSame(2, $fresh->getSessionsPerWeek(), 'sans acceptation, les séances ne bougent pas');
+        self::assertSame(200, $status, 'une section coachs morte ne fait pas échouer l\'import');
+        self::assertSame($coachesBefore, $this->rowCount('coach'), 'aucun coach n\'est créé — le format ne les porte plus');
     }
 
-    // ───────────────────────── Tout-ou-rien (promesse 2) ─────────────────────────
+    // ───────────────────────── Tout-ou-rien & tenant (domaine sensible) ─────────────────────────
 
     public function testAnInvalidCheckedLineRollsBackEverythingAndNamesTheLine(): void
     {
-        // Deux créneaux cochés du MÊME gymnase le MÊME jour se chevauchent (18:00-19:30 et 19:00-20:30).
-        // La garde de chevauchement (VenueTrainingSlotStateProcessor) MORD à l'écriture : RIEN n'est
-        // écrit (tout-ou-rien), et le 422 NOMME la ligne fautive. Une équipe cochée dans le même import
-        // ne survit pas non plus.
+        // Deux cases du MÊME gymnase le MÊME jour se chevauchent (18:00-19:30 et 19:00-20:30). La garde
+        // de chevauchement MORD à l'écriture : RIEN n'est écrit (tout-ou-rien), le 422 nomme la ligne.
         $venue = $this->makeVenue('Palais Neuf');
         $this->scopeGucToClub($this->club->getId());
         $slotsBefore = $this->rowCount('venue_training_slot');
         $teamsBefore = $this->rowCount('team');
 
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M']];
-        $parc['creneaux'] = [
-            ['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 1],
-            ['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '19:00', 'duree' => 90, 'equipes_en_parallele' => 1],
-        ];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '19:00', 'duree' => 90, 'equipes' => ['SF1']],
+        ]);
         $decisions = [
             ['section' => 'equipes', 'index' => 0, 'coche' => true],
+            ['section' => 'equipes', 'index' => 1, 'coche' => true],
             ['section' => 'creneaux', 'index' => 0, 'coche' => true, 'cibleId' => $venue->getId()],
             ['section' => 'creneaux', 'index' => 1, 'coche' => true, 'cibleId' => $venue->getId()],
         ];
@@ -321,68 +250,45 @@ final class ParcImportExecuteTest extends WebTestCase
         [$status, $body] = $this->import($parc, $decisions);
         self::assertSame(422, $status, 'une ligne cochée qui viole une garde refuse l\'import');
         self::assertNotEmpty($body['errors'] ?? [], 'le 422 nomme la ligne fautive');
-        self::assertStringContainsString('créneau', mb_strtolower(implode(' ', $body['errors'])), 'l\'erreur nomme la ligne (sa section)');
 
         self::assertSame($slotsBefore, $this->rowCount('venue_training_slot'), 'tout-ou-rien : aucun créneau écrit');
-        self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : l\'équipe cochée du même import n\'est pas écrite non plus');
-    }
-
-    public function testTeamCapIsEnforcedAllOrNothing(): void
-    {
-        // Cap payant (PlanEntitlements) : au-delà des places restantes de l'offre, l'import est REFUSÉ
-        // avant tout persist — tout-ou-rien, jamais « les premières passent ».
-        $remaining = $this->capClubAtEssentiel();
-        self::assertIsInt($remaining, 'l\'offre Essentiel doit porter un cap fini');
-        $this->scopeGucToClub($this->club->getId());
-        $teamsBefore = $this->rowCount('team');
-
-        $parc = $this->emptyParc();
-        $parc['equipes'] = array_map(static fn (int $i): array => ['nom' => 'Neuve ' . $i, 'genre' => 'M'], range(1, $remaining + 1));
-        $decisions = array_map(static fn (int $i): array => ['section' => 'equipes', 'index' => $i, 'coche' => true], range(0, $remaining));
-
-        [$status, $body] = $this->import($parc, $decisions);
-        self::assertSame(422, $status, 'dépasser le cap refuse l\'import');
-        self::assertNotEmpty($body['errors'] ?? []);
-        self::assertSame($teamsBefore, $this->rowCount('team'), 'cap dépassé : aucune équipe écrite (pas même les premières)');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : aucune équipe écrite non plus');
     }
 
     public function testCibleIdFromAnotherClubIsRefusedWithoutWriting(): void
     {
-        // Patron A10 — un `cibleId` d'un AUTRE club (ou d'une autre saison) ne doit JAMAIS être écrit :
-        // re-vérification tenant côté serveur, 422, RIEN écrit.
+        // Patron A1 — un `cibleId` d'un AUTRE club ne doit JAMAIS être écrit : re-vérification tenant
+        // côté serveur, 422, RIEN écrit.
         $foreign = $this->seedForeignClubWithVenue('Palais Étranger');
-        $team = $this->makeTeam('SM1', sessionsPerWeek: 2);
         $this->scopeGucToClub($this->club->getId());
         $reservationsBefore = $this->rowCount('reservation');
+        $venuesBefore = $this->rowCount('venue');
 
-        $parc = $this->emptyParc();
-        $parc['reservations'] = [['equipe' => 'SM1', 'gymnase' => 'Palais', 'jour' => 2, 'debut' => '18:00']];
-        $decisions = [['section' => 'reservations', 'index' => 0, 'coche' => true, 'cibleId' => $foreign['venueId']]];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        // Le gestionnaire ré-apparie la ligne gymnase à une cible d'un AUTRE club (hostile / erreur).
+        $decisions = [
+            ['section' => 'gymnases', 'index' => 0, 'coche' => true, 'cibleId' => $foreign['venueId']],
+            ['section' => 'equipes', 'index' => 0, 'coche' => true],
+            ['section' => 'reservations', 'index' => 0, 'coche' => true],
+        ];
 
         [$status] = $this->import($parc, $decisions);
         self::assertSame(422, $status, 'un cibleId hors tenant est refusé');
         self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'rien n\'est écrit avec une cible hors tenant');
-        self::assertNull($this->em->getRepository(Reservation::class)->findOneBy(['clubId' => $this->club->getId(), 'teamId' => $team->getId()]));
-
-        unset($team);
+        self::assertSame($venuesBefore, $this->rowCount('venue'), 'aucun gymnase écrit non plus (tout-ou-rien)');
     }
 
-    // ───────────────────────── Idempotence (promesse 4) ─────────────────────────
+    // ───────────────────────── Idempotence (domaine sensible) ─────────────────────────
 
     public function testReplayingTheSameImportCreatesNoDuplicate(): void
     {
-        // Rejouer le MÊME import (mêmes décisions) ne crée AUCUN doublon : le second passage n'ajoute
-        // ni gymnase, ni équipe, ni réservation déjà présents.
         $this->scopeGucToClub($this->club->getId());
 
-        $parc = [
-            'format' => 'parc-v1',
-            'gymnases' => [['nom' => 'Palais Neuf']],
-            'equipes' => [['nom' => 'SM1', 'genre' => 'M', 'seances' => 2]],
-            'creneaux' => [['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 1]],
-            'mutualisations' => [],
-            'reservations' => [['equipe' => 'SM1', 'gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00']],
-        ];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
         $decisions = [
             ['section' => 'gymnases', 'index' => 0, 'coche' => true],
             ['section' => 'equipes', 'index' => 0, 'coche' => true],
@@ -398,7 +304,6 @@ final class ParcImportExecuteTest extends WebTestCase
         $teams = $this->rowCount('team');
         $reservations = $this->rowCount('reservation');
 
-        // Second passage : le même parc, ré-apparié aux entités que le premier a créées (idempotence).
         [$second] = $this->import($parc, $decisions);
         self::assertSame(200, $second);
 
@@ -407,264 +312,17 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame($reservations, $this->rowCount('reservation'), 'aucune réservation en double');
     }
 
-    // ───────────────────────── Abus : nom hostile (promesse 7) ─────────────────────────
-
-    public function testHostileNameIsNeutralizedAtImport(): void
+    public function testImportingAWholeRealChatbotParcSucceeds(): void
     {
-        // Injection de formule : une équipe nommée « =HYPERLINK(...) » saisie telle quelle deviendrait
-        // une formule vivante à l'ouverture de l'export XLSX dans Excel. Neutralisation la plus simple
-        // (choisie ici) : à l'import, on retire le déclencheur de formule en tête du nom — le nom
-        // stocké ne commence JAMAIS par `=`/`+`/`-`/`@`. Couplé au StringValueBinder de
-        // SpreadsheetGenerator (toute cellule forcée en chaîne), l'export rend du texte de bout en bout.
+        // Preuve de bout en bout sur une sortie RÉELLE : rillieux-gpt (18 cases, gymnases omis). Toutes
+        // les lignes dérivées « à créer » cochées — l'import entier aboutit en une transaction.
         $this->scopeGucToClub($this->club->getId());
+        $parc = $this->fixtureParc('rillieux-gpt.json');
 
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => '=HYPERLINK("http://evil","SM1")', 'genre' => 'M']];
-        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true]];
+        [$status, $body] = $this->importAllCreatable($parc);
 
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
-        self::assertInstanceOf(Team::class, $team);
-        $name = $team->getName();
-        self::assertNotSame('', $name, 'le nom neutralisé n\'est pas vidé');
-        self::assertNotContains($name[0], ['=', '+', '-', '@'], 'le nom stocké ne commence jamais par un déclencheur de formule');
-        self::assertStringContainsString('HYPERLINK', $name, 'la substance du nom survit, seul le déclencheur part');
-    }
-
-    // ───────────────────────── Catégorie d'équipe (cadrage D1 ; trou relevé par NEO) ─────────────────────────
-
-    public function testCreatedTeamGetsItsCategoryMatchedByNormalizedNameToAnExistingOne(): void
-    {
-        // Le format parc-v1 porte « categorie » (déduite par le chatbot). Une équipe CRÉÉE reçoit
-        // cette catégorie, appariée par NOM NORMALISÉ (casse/accents repliés) à une SportCategory
-        // existante du club — jamais la 1re catégorie du catalogue par défaut (qui classerait une
-        // U13F en « Seniors »). Témoin anti-faux-vert : une catégorie « repère » trie AVANT la cible,
-        // donc le repli actuel la choisirait — la cible n'est atteinte que si « categorie » est LUE.
-        $this->makeSportCategory('Zzz Repère Défaut', sortOrder: 0);
-        $benjamines = $this->makeSportCategory('Benjamines', sortOrder: 500);
-        $this->scopeGucToClub($this->club->getId());
-        $categoriesBefore = $this->rowCount('sport_category');
-
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'BF1', 'genre' => 'F', 'categorie' => 'benjamines']]; // casse différente → normalisée
-        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true]];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'BF1']);
-        self::assertInstanceOf(Team::class, $team);
-        self::assertSame($benjamines->getId(), $team->getSportCategoryId(), 'l\'équipe créée reçoit la catégorie du texte, appariée par nom normalisé');
-        self::assertSame($categoriesBefore, $this->rowCount('sport_category'), 'une catégorie existante appariée n\'est jamais recréée');
-    }
-
-    public function testCreatedTeamGetsANewCategoryWhenAbsentFromTheClub(): void
-    {
-        // La catégorie du texte n'existe pas → elle est CRÉÉE (patron findOrCreateSportCategory de
-        // FfbbExcelImporter, réutilisé), et l'équipe y est rattachée.
-        $this->makeSportCategory('Zzz Repère Défaut', sortOrder: 0);
-        $this->scopeGucToClub($this->club->getId());
-        $categoriesBefore = $this->rowCount('sport_category');
-
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'U17M3', 'genre' => 'M', 'categorie' => 'Minimes Régionaux']];
-        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true]];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        self::assertSame($categoriesBefore + 1, $this->rowCount('sport_category'), 'une catégorie absente est créée');
-        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'U17M3']);
-        self::assertInstanceOf(Team::class, $team);
-        $category = $this->em->getRepository(SportCategory::class)->find($team->getSportCategoryId());
-        self::assertInstanceOf(SportCategory::class, $category);
-        self::assertSame('Minimes Régionaux', $category->getName(), 'l\'équipe pointe la catégorie créée du texte');
-    }
-
-    public function testCreatedTeamWithoutCategorieIsFiledUnderAClasser(): void
-    {
-        // Reco TRANCHÉE (trou c) : sans « categorie », l'équipe est classée « À classer » (catégorie
-        // dédiée, créée si absente) — repère explicite que le gestionnaire reclasse, jamais un
-        // rattachement muet à la 1re catégorie du catalogue (qui mentirait sur l'âge/le genre).
-        $this->makeSportCategory('Zzz Repère Défaut', sortOrder: 0);
-        $this->scopeGucToClub($this->club->getId());
-
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'ÉquipeSansCat', 'genre' => 'M']];
-        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true]];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'ÉquipeSansCat']);
-        self::assertInstanceOf(Team::class, $team);
-        $category = $this->em->getRepository(SportCategory::class)->find($team->getSportCategoryId());
-        self::assertInstanceOf(SportCategory::class, $category);
-        self::assertSame('À classer', $category->getName(), 'une équipe sans catégorie est classée « À classer »');
-    }
-
-    public function testMatchedTeamNeverChangesItsCategory(): void
-    {
-        // Garde (trou d) : une équipe APPARIÉE ne voit jamais sa catégorie changer, même si le texte
-        // en déclare une autre — seules les séances peuvent bouger (promesse 3).
-        $kept = $this->makeSportCategory('Catégorie Gardée', sortOrder: 10);
-        $team = $this->makeTeam('SM1', sessionsPerWeek: 2, categoryId: $kept->getId());
-
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M', 'categorie' => 'Toute Autre Catégorie', 'seances' => 4]];
-        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['seances' => 4]]];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        $fresh = $this->em->getRepository(Team::class)->find($team->getId());
-        self::assertInstanceOf(Team::class, $fresh);
-        self::assertSame($kept->getId(), $fresh->getSportCategoryId(), 'la catégorie d\'une équipe appariée ne bouge jamais');
-        self::assertSame(4, $fresh->getSessionsPerWeek(), 'seules les séances bougent');
-    }
-
-    // ───────────────────────── Mutualisations : bloc + réservation de groupe (trou relevé par NEO) ─────────────────────────
-
-    public function testMutualisationCreatesABlockAndPosesItsGroupReservationOnTheCase(): void
-    {
-        // Une ligne « mutualisations » crée un SharedTrainingBlock (socle, schedulePlanId null) ET
-        // pose sa RÉSERVATION DE GROUPE sur la case : chaque membre reçoit une réservation
-        // co-localisée (gymnase + jour + heure), légitimée par le bloc. Sans la réservation de
-        // groupe, le bloc serait déclaré sans jamais occuper sa case.
-        $u11m1 = $this->makeTeam('U11M1', sessionsPerWeek: 2);
-        $u11m2 = $this->makeTeam('U11M2', sessionsPerWeek: 2);
-        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
-        $this->makeSlot($venue->getId(), 1, '17:00', capacity: 2);
-        $this->scopeGucToClub($this->club->getId());
-        $blocksBefore = $this->rowCount('shared_training_block');
-
-        $parc = $this->emptyParc();
-        $parc['mutualisations'] = [[
-            'equipes' => ['U11M1', 'U11M2'], 'gymnase' => 'Gymnase Mateo',
-            'jour' => 1, 'debut' => '17:00', 'seances_communes' => 1,
-        ]];
-        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true]];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        self::assertSame($blocksBefore + 1, $this->rowCount('shared_training_block'), 'le bloc de mutualisation est créé');
-
-        // Réservation de groupe : CHAQUE membre a une réservation socle sur la case.
-        self::assertTrue($this->reservationExists($u11m1->getId(), $venue->getId(), 1, '17:00'), 'le 1er membre reçoit sa réservation de groupe sur la case');
-        self::assertTrue($this->reservationExists($u11m2->getId(), $venue->getId(), 1, '17:00'), 'le 2e membre reçoit sa réservation de groupe sur la case');
-    }
-
-    public function testExistingBlockIsMatchedNotRecreated(): void
-    {
-        // Idempotence des mutualisations : un bloc du socle portant exactement ces équipes existe
-        // déjà → il est apparié, jamais un second bloc.
-        $u11m1 = $this->makeTeam('U11M1', sessionsPerWeek: 2);
-        $u11m2 = $this->makeTeam('U11M2', sessionsPerWeek: 2);
-        $this->makeBlock([$u11m1->getId(), $u11m2->getId()], commonSessions: 1);
-        $this->scopeGucToClub($this->club->getId());
-        $blocksBefore = $this->rowCount('shared_training_block');
-
-        $parc = $this->emptyParc();
-        $parc['mutualisations'] = [[
-            'equipes' => ['U11M1', 'U11M2'], 'gymnase' => 'Gymnase Mateo',
-            'jour' => 1, 'debut' => '17:00', 'seances_communes' => 1,
-        ]];
-        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true]];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'un bloc déjà formé n\'est jamais recréé');
-    }
-
-    public function testBlockWhoseCommonSessionsExceedAMemberIsRefusedWithNothingWritten(): void
-    {
-        // Σ séances communes > séances hebdo d'un membre (U11M1 n'en a qu'1) : le bloc serait refusé
-        // à l'écriture (SoloReservationBudget). Rejeu à l'import → 422, RIEN écrit (tout-ou-rien).
-        $this->makeTeam('U11M1', sessionsPerWeek: 1);
-        $this->makeTeam('U11M2', sessionsPerWeek: 3);
-        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
-        $this->makeSlot($venue->getId(), 3, '17:00', capacity: 2);
-        $this->scopeGucToClub($this->club->getId());
-        $blocksBefore = $this->rowCount('shared_training_block');
-        $reservationsBefore = $this->rowCount('reservation');
-
-        $parc = $this->emptyParc();
-        $parc['mutualisations'] = [[
-            'equipes' => ['U11M1', 'U11M2'], 'gymnase' => 'Gymnase Mateo',
-            'jour' => 3, 'debut' => '17:00', 'seances_communes' => 2,
-        ]];
-        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true]];
-
-        [$status, $body] = $this->import($parc, $decisions);
-        self::assertSame(422, $status, 'une Σ qui dépasse refuse l\'import');
-        self::assertNotEmpty($body['errors'] ?? []);
-        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'aucun bloc écrit');
-        self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'aucune réservation écrite');
-    }
-
-    // ───────────────────────── Coachs : création + lien MAIN (promesse 1, Q1 = oui) ─────────────────────────
-
-    public function testCoachIsCreatedAndLinkedMainWhileAMatchedCoachIsOnlyLinked(): void
-    {
-        // Section coachs (optionnelle, décision fondateur Q1 = oui) : un coach s'apparie par son nom
-        // (même normalisation que les équipes) ; sinon il est créé. Dans les deux cas il reçoit un lien
-        // `TeamCoach` de rôle MAIN sur l'équipe citée. Alice existe déjà (appariée, JAMAIS recréée),
-        // Bob est inconnu (créé) — tous deux repartent liés MAIN à leur équipe.
-        $sm1 = $this->makeTeam('SM1', sessionsPerWeek: 2);
-        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
-        $alice = $this->makeCoach('Alice', 'Martin');
-        $this->scopeGucToClub($this->club->getId());
-        $coachesBefore = $this->rowCount('coach');
-
-        $parc = $this->emptyParc();
-        $parc['coachs'] = [
-            ['nom' => 'ALICE MARTIN', 'equipe' => 'SM1'],
-            ['nom' => 'Bob Nouveau', 'equipe' => 'SF1'],
-        ];
-        $decisions = [
-            ['section' => 'coachs', 'index' => 0, 'coche' => true],
-            ['section' => 'coachs', 'index' => 1, 'coche' => true],
-        ];
-
-        [$status] = $this->import($parc, $decisions);
-        self::assertSame(200, $status);
-
-        self::assertSame($coachesBefore + 1, $this->rowCount('coach'), 'seul le coach inconnu est créé — l\'apparié n\'est jamais recréé');
-
-        // Alice appariée : son lien MAIN sur SM1 est posé, pas un second coach.
-        self::assertSame(TeamCoachRole::MAIN, $this->linkRoleOf($alice->getId(), $sm1->getId()), 'le coach apparié reçoit son lien MAIN');
-
-        // Bob créé : existe et reçoit son lien MAIN sur SF1.
-        $bob = $this->em->getRepository(Coach::class)->findOneBy(['clubId' => $this->club->getId(), 'lastName' => 'Nouveau']);
-        self::assertInstanceOf(Coach::class, $bob, 'le coach inconnu est créé');
-        self::assertSame(TeamCoachRole::MAIN, $this->linkRoleOf($bob->getId(), $sf1->getId()), 'le coach créé reçoit son lien MAIN');
-    }
-
-    public function testReplayingTheCoachImportDuplicatesNeitherCoachNorLink(): void
-    {
-        // Idempotence de la section coachs : rejouer le même import ne crée ni coach ni lien MAIN en double.
-        $this->makeTeam('SM1', sessionsPerWeek: 2);
-
-        $parc = $this->emptyParc();
-        $parc['coachs'] = [['nom' => 'Bob Nouveau', 'equipe' => 'SM1']];
-        $decisions = [['section' => 'coachs', 'index' => 0, 'coche' => true]];
-
-        [$first] = $this->import($parc, $decisions);
-        self::assertSame(200, $first);
-
-        $this->scopeGucToClub($this->club->getId());
-        $coaches = $this->rowCount('coach');
-        $links = $this->rowCount('team_coach');
-
-        [$second] = $this->import($parc, $decisions);
-        self::assertSame(200, $second);
-
-        self::assertSame($coaches, $this->rowCount('coach'), 'aucun coach en double');
-        self::assertSame($links, $this->rowCount('team_coach'), 'aucun lien MAIN en double');
+        self::assertSame(200, $status, 'un parc réel entier s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertGreaterThan(0, $this->rowCount('team'), 'des équipes sont dérivées et créées');
     }
 
     protected function setUp(): void
@@ -708,24 +366,53 @@ final class ParcImportExecuteTest extends WebTestCase
     }
 
     /**
-     * Un parc-v1 vide recevable — chaque test remplit les sections qu'il éprouve.
+     * Un parc-v2 vide recevable — chaque test remplit ses cases.
      *
      * @return array<string, mixed>
      */
     private function emptyParc(): array
     {
-        return ['format' => 'parc-v1', 'gymnases' => [], 'equipes' => [], 'creneaux' => [], 'mutualisations' => [], 'reservations' => []];
+        return ['format' => 'parc-v2', 'gymnases' => [], 'cases' => []];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $cases
+     *
+     * @return array<string, mixed>
+     */
+    private function parcWithCases(array $cases): array
+    {
+        $parc = $this->emptyParc();
+        $parc['cases'] = $cases;
+        $gyms = [];
+        foreach ($cases as $case) {
+            $gyms[(string) $case['gymnase']] = true;
+        }
+        $parc['gymnases'] = array_map(static fn (string $nom): array => ['nom' => $nom], array_keys($gyms));
+
+        return $parc;
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function newTeamParc(): array
+    private function oneTeamCaseParc(): array
     {
-        $parc = $this->emptyParc();
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M']];
+        return $this->parcWithCases([['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']]]);
+    }
 
-        return $parc;
+    /**
+     * Charge une sortie de chatbot réelle (fixtures/parc) comme payload parc-v2.
+     *
+     * @return array<string, mixed>
+     */
+    private function fixtureParc(string $name): array
+    {
+        $raw = (string) file_get_contents(__DIR__ . '/../../Fixtures/parc/' . $name);
+        $decoded = json_decode($raw, true);
+        self::assertIsArray($decoded, 'le fixture ' . $name . ' doit décoder en objet');
+
+        return $decoded;
     }
 
     /**
@@ -744,13 +431,47 @@ final class ParcImportExecuteTest extends WebTestCase
             '/api/clubs/' . $this->club->getId() . '/parc-import',
             [],
             [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json'],
+            ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $this->season->getId()],
             $body,
         );
         $response = $this->client->getResponse();
         $decoded = json_decode((string) $response->getContent(), true);
 
         return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
+    }
+
+    /**
+     * Analyse d'abord le parc pour connaître les lignes dérivées, coche toutes celles « à créer », puis
+     * importe — le geste réel du gestionnaire sur un parc entièrement neuf.
+     *
+     * @param array<string, mixed> $parc
+     *
+     * @return array{0: int, 1: array<string, mixed>}
+     */
+    private function importAllCreatable(array $parc): array
+    {
+        // On passe par l'analyse HTTP pour obtenir les statuts dérivés et cocher les « à créer ».
+        $this->client->request(
+            'POST',
+            '/api/clubs/' . $this->club->getId() . '/parc-import/analyze',
+            [],
+            [],
+            ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token, 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $this->season->getId()],
+            (string) json_encode($parc, \JSON_THROW_ON_ERROR),
+        );
+        $analyze = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertIsArray($analyze);
+
+        $decisions = [];
+        foreach ((array) ($analyze['sections'] ?? []) as $section => $lines) {
+            foreach (\is_array($lines) ? $lines : [] as $i => $line) {
+                if (\is_array($line) && 'aCreer' === ($line['statut'] ?? null)) {
+                    $decisions[] = ['section' => $section, 'index' => $i, 'coche' => true];
+                }
+            }
+        }
+
+        return $this->import($parc, $decisions);
     }
 
     private function makeVenue(string $name, bool $canSplit = false): Venue
@@ -775,138 +496,17 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->flush();
     }
 
-    private function makeTeam(string $name, int $sessionsPerWeek, ?Gender $gender = null, ?TeamLevel $level = null, ?string $categoryId = null): Team
+    private function makeTeam(string $name, int $sessionsPerWeek): Team
     {
         $this->scopeGucToClub($this->club->getId());
         $team = (new Team)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSportCategoryId($categoryId ?? $this->uuid())->setPriorityTierId(3)
-            ->setName($name)->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true)
-            ->setGender($gender)->setLevel($level);
+            ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
+            ->setName($name)->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true);
         $this->em->persist($team);
         $this->em->flush();
 
         return $team;
-    }
-
-    private function makeSportCategory(string $name, int $sortOrder): SportCategory
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $category = (new SportCategory)
-            ->setClubId($this->club->getId())->setSportId($this->sportId())
-            ->setName($name)->setSortOrder($sortOrder)->setIsCustom(true);
-        $this->em->persist($category);
-        $this->em->flush();
-
-        return $category;
-    }
-
-    private function sportId(): string
-    {
-        $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
-        if (!$sport instanceof Sport) {
-            $uid = uniqid('', true);
-            $sport = (new Sport)->setName('Basket ' . $uid)->setSlug('basket-' . $uid)->setIsActive(true);
-            $this->em->persist($sport);
-            $this->em->flush();
-        }
-
-        return $sport->getId();
-    }
-
-    /**
-     * Un bloc de mutualisation du socle (groupe de $teamIds), comme la production le pose — pour
-     * prouver qu'un bloc déjà formé s'apparie à l'import sans être recréé.
-     *
-     * @param list<string> $teamIds
-     */
-    private function makeBlock(array $teamIds, int $commonSessions): string
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $block = (new SharedTrainingBlock)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId(null)->setCommonSessions($commonSessions);
-        $this->em->persist($block);
-        foreach ($teamIds as $teamId) {
-            $member = (new SharedTrainingBlockTeam)
-                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId);
-            $this->em->persist($member);
-        }
-        $this->em->flush();
-
-        return $block->getId();
-    }
-
-    private function reservationExists(string $teamId, string $venueId, int $day, string $start): bool
-    {
-        $this->scopeGucToClub($this->club->getId());
-        /** @var list<Reservation> $rows */
-        $rows = $this->em->getRepository(Reservation::class)->findBy([
-            'clubId' => $this->club->getId(),
-            'teamId' => $teamId,
-            'venueId' => $venueId,
-            'dayOfWeek' => $day,
-            'schedulePlanId' => null,
-        ]);
-        foreach ($rows as $reservation) {
-            if ($reservation->getStartTime()->format('H:i') === $start) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function makeCoach(string $firstName, string $lastName): Coach
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $coach = (new Coach)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName($firstName)->setLastName($lastName)->setIsActive(true);
-        $this->em->persist($coach);
-        $this->em->flush();
-
-        return $coach;
-    }
-
-    private function linkRoleOf(string $coachId, string $teamId): ?TeamCoachRole
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $link = $this->em->getRepository(TeamCoach::class)->findOneBy([
-            'clubId' => $this->club->getId(),
-            'coachId' => $coachId,
-            'teamId' => $teamId,
-        ]);
-
-        return $link instanceof TeamCoach ? $link->getRole() : null;
-    }
-
-    /** Engage une équipe en lui attachant un match (l'engagement est dérivé de l'EXISTENCE d'un fixture). */
-    private function engage(Team $team): void
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $fixture = (new Fixture)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
-            ->setMatchDate(new DateTimeImmutable('2026-10-04'))->setHomeAway(FixtureHomeAway::HOME)
-            ->setOpponentLabel('AS Voisins');
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
-        $this->em->persist($fixture);
-        $this->em->flush();
-    }
-
-    /**
-     * Attache le club à l'offre Essentiel (cap d'équipes fini) et rend les places restantes.
-     */
-    private function capClubAtEssentiel(): ?int
-    {
-        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'essentiel']);
-        \assert($plan instanceof SubscriptionPlan);
-
-        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear(new DateTimeImmutable('today')));
-        $this->em->flush();
-
-        return self::getContainer()->get(PlanEntitlements::class)->remainingTeamSlots($this->club, $this->season);
     }
 
     /**

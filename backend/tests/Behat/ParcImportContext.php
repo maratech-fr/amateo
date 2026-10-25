@@ -13,51 +13,46 @@ use Behat\Step\When;
 use RuntimeException;
 
 /**
- * Chantier G PR 4/4 — l'import du parc par IA « en un geste », de bout en bout sur la stack qui
- * tourne : le gestionnaire colle le texte parc-v1, l'ANALYSE lui rend l'aperçu cochable (dry-run),
- * puis l'IMPORT fait naître équipes/gymnase/créneau/coach et POSE la réservation au socle — le tout
- * par le vrai rail HTTP /api/clubs/{id}/parc-import(/analyze). C'est une PREUVE DE ZONE de
- * l'ENCHAÎNEMENT (analyse → import → socle), pas une règle isolée.
+ * Lot correctif import IA (« G2 ») PR1 — l'import du parc par IA « en un geste », de bout en bout sur
+ * la stack qui tourne, RECALÉ sur le format `parc-v2` : le gestionnaire colle le texte parc-v2 (une
+ * ligne par CASE), l'ANALYSE lui rend l'aperçu cochable des sections DÉRIVÉES (équipes, gymnase,
+ * créneaux, bloc mutualisé, réservations), puis l'IMPORT les fait naître et POSE la réservation au
+ * socle — le tout par le vrai rail HTTP /api/clubs/{id}/parc-import(/analyze). Les coachs ne sont PLUS
+ * extraits (D11). C'est une PREUVE DE ZONE de l'ENCHAÎNEMENT (analyse → import → socle), pas une règle
+ * isolée.
  *
- * Les règles isolées sont déjà prouvées plus bas, au niveau PHPUnit (noyau + DB) :
+ * Les règles isolées sont déjà prouvées plus bas :
  *  - socle EN VIGUEUR → 409 sans rien écrire : {@see ParcImportExecuteTest::testImportRefusedWhenSeasonPlanChosen} ;
  *  - idempotence « aucun doublon » : {@see ParcImportExecuteTest::testReplayingTheSameImportCreatesNoDuplicate} ;
- *  - réservation importée → HONORÉE par le VRAI moteur /generate (verrou HARD) :
- *    {@see ParcImportReservationSemanticsGateTest} (NR bloquant).
- * Ce dernier gate porte déjà le smoke sémantique « la case réservée l'emporte sur la préférence
- * souple » contre le moteur réel : cette feature ne REGÉNÈRE donc pas (un solve sur le club de démo,
- * 11 équipes, serait lourd ET exigerait de rouvrir/restaurer le socle) — elle prouve que l'import
- * réel POSE bien la réservation au socle (schedulePlanId null), la jointure que le gate suppose.
+ *  - case parc-v2 → réservation dérivée HONORÉE par le VRAI moteur /generate :
+ *    {@see ParcImportReservationSemanticsGateTest} (NR bloquant) ;
+ *  - case à 2 équipes + groupe → bloc mutualisé nommé : {@see ParcImportExecuteTest::testACaseWithAGroupeCreatesABlockLabelledByThatGroupe}.
+ * Cette feature prouve l'ENCHAÎNEMENT réel : l'aperçu dérivé, l'import qui pose la réservation au socle
+ * (schedulePlanId null) ET crée le bloc mutualisé nommé de la case à deux équipes.
  *
- * Décor : club de démonstration (patron {@see TeamsImportContext} + {@see SoclePlansContext}). Tout
- * ce que l'import crée porte un nom jetable (préfixe « PARC BEHAT ») ou un nom de coach distinctif,
- * purgé en fin de scénario. Le pointeur du socle est piloté (rouvert pour l'onboarding, en vigueur
- * pour le refus) puis RESTAURÉ « en vigueur » — le contrat des autres scénarios sur ce club.
+ * Décor : club de démonstration (patron {@see TeamsImportContext} + {@see SoclePlansContext}). Tout ce
+ * que l'import crée porte un nom jetable (préfixe « ZZQWXYBEHAT »), purgé en fin de scénario. Le socle
+ * est rouvert pour l'onboarding puis RESTAURÉ « en vigueur ».
  */
 final class ParcImportContext extends BaseContext
 {
     private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
-    // Noms VOLONTAIREMENT inertes (préfixe « ZZQWXYBEHAT », aucun token de basket comme « SF1 » /
-    // « U13 ») : sur le décor BCCL, un token réel ferait un appariement FLOU (« suggere ») au lieu
-    // du « aCreer » attendu à l'onboarding. Le préfixe unique rend aussi la purge sûre.
+    // Noms VOLONTAIREMENT inertes (préfixe « ZZQWXYBEHAT », aucun token de basket) : sur le décor BCCL
+    // un token réel ferait un appariement FLOU au lieu du « aCreer » attendu à l'onboarding.
     private const string TEAM_A = 'ZZQWXYBEHAT UN';
 
     private const string TEAM_B = 'ZZQWXYBEHAT DEUX';
 
     private const string VENUE = 'ZZQWXYBEHAT SALLE';
 
-    private const string COACH_FIRST = 'Zzqwxybehat';
-
-    private const string COACH_LAST = 'Zzcoachbehat';
+    private const string GROUP_LABEL = 'PARC BEHAT GROUPE';
 
     private string $token = '';
 
     private string $clubId = '';
 
     private string $seasonId = '';
-
-    private string $categoryName = '';
 
     /** Version que le socle pointait à l'entrée du scénario (à restaurer « en vigueur »). */
     private string $chosenAtEntry = '';
@@ -78,7 +73,6 @@ final class ParcImportContext extends BaseContext
     public function leClubSocleRouvert(): void
     {
         $this->prepareClub();
-        // Import = geste d'ONBOARDING : le socle NE DOIT PAS être en vigueur (sinon 409).
         $this->pointSocleTo('');
     }
 
@@ -104,7 +98,7 @@ final class ParcImportContext extends BaseContext
 
     // ───────────────────────────── Analyse ─────────────────────────────
 
-    #[When('j\'analyse mon parc de deux équipes, un gymnase, un créneau, un coach et une réservation')]
+    #[When('j\'analyse mon parc de deux équipes, un gymnase, deux cases dont une mutualisée')]
     public function jAnalyseMonParc(): void
     {
         $response = $this->apiPost(
@@ -123,42 +117,24 @@ final class ParcImportContext extends BaseContext
     #[Then('l\'aperçu propose de tout créer')]
     public function lApercuProposeDeToutCreer(): void
     {
-        foreach (['gymnases', 'equipes', 'creneaux', 'coachs', 'reservations'] as $section) {
+        foreach (['gymnases', 'equipes', 'creneaux', 'mutualisations', 'reservations'] as $section) {
             foreach ($this->sectionLines($section) as $i => $line) {
                 if ('aCreer' !== ($line['statut'] ?? null)) {
-                    throw new RuntimeException(\sprintf('section « %s », ligne %d : statut « %s » attendu « aCreer » (tout est neuf à l\'onboarding)', $section, $i + 1, var_export($line['statut'] ?? null, true)));
-                }
-                if (true !== ($line['coche'] ?? null)) {
-                    throw new RuntimeException(\sprintf('section « %s », ligne %d : une ligne « à créer » doit être cochée', $section, $i + 1));
+                    throw new RuntimeException(\sprintf('section « %s », ligne %d : statut « %s » attendu « aCreer »', $section, $i + 1, var_export($line['statut'] ?? null, true)));
                 }
             }
         }
     }
 
-    #[Then('l\'aperçu reconnaît les équipes, le gymnase et le coach déjà présents')]
+    #[Then('l\'aperçu reconnaît les équipes et le gymnase déjà présents')]
     public function lApercuReconnaitDejaPresents(): void
     {
-        foreach (['gymnases', 'equipes', 'coachs'] as $section) {
+        foreach (['gymnases', 'equipes'] as $section) {
             foreach ($this->sectionLines($section) as $i => $line) {
                 if ('apparie' !== ($line['statut'] ?? null)) {
                     throw new RuntimeException(\sprintf('section « %s », ligne %d : statut « %s » attendu « apparie » (déjà présent après le premier import)', $section, $i + 1, var_export($line['statut'] ?? null, true)));
                 }
-                if (!\is_string($line['cibleId'] ?? null) || '' === $line['cibleId']) {
-                    throw new RuntimeException(\sprintf('section « %s », ligne %d : un appariement doit pointer une cible', $section, $i + 1));
-                }
             }
-        }
-    }
-
-    #[Then('la réservation déjà posée ressort « déjà présente »')]
-    public function laReservationRessortDejaPresente(): void
-    {
-        $line = $this->sectionLines('reservations')[0] ?? null;
-        if (!\is_array($line) || 'decoche' !== ($line['statut'] ?? null)) {
-            throw new RuntimeException('la réservation déjà posée doit ressortir « décochée »');
-        }
-        if (!str_contains(mb_strtolower((string) ($line['raison'] ?? '')), 'déjà présent')) {
-            throw new RuntimeException(\sprintf('la raison devrait dire « déjà présent », reçu « %s »', $line['raison'] ?? ''));
         }
     }
 
@@ -178,7 +154,7 @@ final class ParcImportContext extends BaseContext
         }
     }
 
-    #[Then('les deux équipes, le gymnase, le créneau et le coach existent')]
+    #[Then('les deux équipes et le gymnase existent')]
     public function lesEntitesExistent(): void
     {
         if ($this->teamCount(self::TEAM_A) < 1 || $this->teamCount(self::TEAM_B) < 1) {
@@ -187,19 +163,24 @@ final class ParcImportContext extends BaseContext
         if ($this->venueCount() < 1) {
             throw new RuntimeException('le gymnase importé doit exister en base');
         }
-        if ($this->slotCount() < 1) {
-            throw new RuntimeException('le créneau importé doit exister en base');
+    }
+
+    #[Then('le bloc mutualisé « PARC BEHAT GROUPE » existe avec ses deux équipes')]
+    public function leBlocMutualiseExiste(): void
+    {
+        if (1 !== $this->namedBlockCount()) {
+            throw new RuntimeException('la case à deux équipes + groupe doit créer exactement un bloc mutualisé nommé « ' . self::GROUP_LABEL . ' »');
         }
-        if ($this->coachCount() < 1) {
-            throw new RuntimeException('le coach importé doit exister en base');
+        if (2 !== $this->namedBlockMemberCount()) {
+            throw new RuntimeException('le bloc mutualisé nommé doit regrouper exactement les deux équipes de la case');
         }
     }
 
-    #[Then('la réservation de « PARC BEHAT SF1 » est posée au socle sur sa case réservée du lundi')]
+    #[Then('la réservation de ma première équipe est posée au socle sur sa case réservée du lundi')]
     public function laReservationEstPoseeAuSocle(): void
     {
         if ($this->socleReservationCount() < 1) {
-            throw new RuntimeException('la réservation importée doit être posée au socle (schedule_plan_id NULL) sur le lundi 18:00');
+            throw new RuntimeException('la réservation dérivée doit être posée au socle (schedule_plan_id NULL) sur le lundi 18:00');
         }
     }
 
@@ -219,26 +200,22 @@ final class ParcImportContext extends BaseContext
                 throw new RuntimeException(\sprintf('un refus 409 n\'écrit rien : « %s » ne doit pas exister', $name));
             }
         }
-        if (0 !== $this->venueCount() || 0 !== $this->coachCount() || 0 !== $this->socleReservationCount()) {
-            throw new RuntimeException('un refus 409 n\'écrit rien : aucun gymnase, coach ni réservation jetable ne doit exister');
+        if (0 !== $this->venueCount() || 0 !== $this->socleReservationCount() || 0 !== $this->namedBlockCount()) {
+            throw new RuntimeException('un refus 409 n\'écrit rien : aucun gymnase, bloc ni réservation jetable ne doit exister');
         }
     }
 
     #[Then('aucun doublon n\'est créé')]
     public function aucunDoublonNestCree(): void
     {
-        // Après deux imports du même parc : exactement une occurrence de chaque entité jetable.
         if (1 !== $this->teamCount(self::TEAM_A) || 1 !== $this->teamCount(self::TEAM_B)) {
             throw new RuntimeException('recoller le parc ne doit pas doubler les équipes');
         }
         if (1 !== $this->venueCount()) {
             throw new RuntimeException('recoller le parc ne doit pas doubler le gymnase');
         }
-        if (1 !== $this->slotCount()) {
-            throw new RuntimeException('recoller le parc ne doit pas doubler le créneau');
-        }
-        if (1 !== $this->coachCount()) {
-            throw new RuntimeException('recoller le parc ne doit pas doubler le coach');
+        if (1 !== $this->namedBlockCount()) {
+            throw new RuntimeException('recoller le parc ne doit pas doubler le bloc mutualisé');
         }
         if (1 !== $this->socleReservationCount()) {
             throw new RuntimeException('recoller le parc ne doit pas doubler la réservation');
@@ -256,7 +233,6 @@ final class ParcImportContext extends BaseContext
 
         $this->purgeDisposable();
 
-        // Restaure « socle en vigueur » (contrat des autres scénarios sur le club de démo).
         $target = '';
         if ('' !== $this->chosenAtEntry
             && '1' === $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule WHERE id=\'%s\'', $this->chosenAtEntry), admin: true)) {
@@ -300,60 +276,58 @@ final class ParcImportContext extends BaseContext
             $this->chosenAtEntry = '';
         }
 
-        // Une catégorie EXISTANTE du club : la nommer dans le parc évite une catégorie orpheline
-        // (le résolveur la retrouve par nom normalisé, aucune création).
-        $categories = $this->members($this->apiGet('sport_categories', $this->token)['json']);
-        $categoryName = $categories[0]['name'] ?? null;
-        if (!\is_string($categoryName) || '' === $categoryName) {
-            throw new RuntimeException('aucune catégorie sportive pour bâtir le parc');
-        }
-        $this->categoryName = $categoryName;
-
-        // Départ propre : aucune entité jetable résiduelle d'un run interrompu.
         $this->purgeDisposable();
     }
 
     /**
-     * Le parc parc-v1 : deux équipes, un gymnase, un créneau, un coach, une réservation — tout
-     * jetable. La réservation vise la case du créneau (lundi 18:00).
+     * Le parc parc-v2 : un gymnase jetable, DEUX cases — une simple (TEAM_A, lundi 18:00 → réservation
+     * au socle) et une mutualisée (TEAM_A + TEAM_B, mardi 17:00, `groupe` = le label du bloc). L'appli
+     * DÉDUIT les équipes, le gymnase, les créneaux, le bloc et les réservations.
      *
      * @return array<string, mixed>
      */
     private function parc(): array
     {
         return [
-            'format' => 'parc-v1',
+            'format' => 'parc-v2',
             'gymnases' => [['nom' => self::VENUE]],
-            'equipes' => [
-                ['nom' => self::TEAM_A, 'genre' => 'F', 'categorie' => $this->categoryName, 'seances' => 1],
-                ['nom' => self::TEAM_B, 'genre' => 'M', 'categorie' => $this->categoryName, 'seances' => 1],
+            'cases' => [
+                ['gymnase' => self::VENUE, 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => [self::TEAM_A]],
+                ['gymnase' => self::VENUE, 'jour' => 2, 'debut' => '17:00', 'duree' => 90, 'equipes' => [self::TEAM_A, self::TEAM_B], 'groupe' => self::GROUP_LABEL],
             ],
-            'creneaux' => [['gymnase' => self::VENUE, 'jour' => 1, 'debut' => '18:00', 'duree' => 90]],
-            'mutualisations' => [],
-            'coachs' => [['nom' => self::COACH_FIRST . ' ' . self::COACH_LAST, 'equipe' => self::TEAM_A]],
-            'reservations' => [['equipe' => self::TEAM_A, 'gymnase' => self::VENUE, 'jour' => 1, 'debut' => '18:00']],
         ];
     }
 
     /**
-     * Toutes les lignes du parc cochées — l'import réel écrit tout. La réservation déjà présente
-     * (re-import) est tolérée : l'executor la réutilise par triplet (idempotence).
+     * Analyse le parc puis coche toutes les lignes DÉRIVÉES « à créer », et importe — le geste réel du
+     * gestionnaire sur un parc neuf. Sur un socle en vigueur, l'analyse 409 : on importe alors sans
+     * décision (le gate refuse avant toute écriture).
      *
      * @return array{0: int, 1: array<mixed>}
      */
     private function postImport(): array
     {
-        $parc = $this->parc();
+        $analyze = $this->apiPost(
+            \sprintf('clubs/%s/parc-import/analyze', $this->clubId),
+            $this->parc(),
+            $this->token,
+            ['X-Season-Id' => $this->seasonId],
+        );
+
         $decisions = [];
-        foreach (['gymnases', 'equipes', 'creneaux', 'mutualisations', 'coachs', 'reservations'] as $section) {
-            foreach (\is_array($parc[$section]) ? $parc[$section] : [] as $i => $_) {
-                $decisions[] = ['section' => $section, 'index' => $i, 'coche' => true];
+        if (200 === $analyze['status']) {
+            foreach ((array) ($analyze['json']['sections'] ?? []) as $section => $lines) {
+                foreach (\is_array($lines) ? $lines : [] as $i => $line) {
+                    if (\is_array($line) && 'aCreer' === ($line['statut'] ?? null)) {
+                        $decisions[] = ['section' => $section, 'index' => $i, 'coche' => true];
+                    }
+                }
             }
         }
 
         $response = $this->apiPost(
             \sprintf('clubs/%s/parc-import', $this->clubId),
-            ['payload' => $parc, 'decisions' => $decisions],
+            ['payload' => $this->parc(), 'decisions' => $decisions],
             $this->token,
             ['X-Season-Id' => $this->seasonId],
         );
@@ -388,27 +362,29 @@ final class ParcImportContext extends BaseContext
         );
     }
 
-    private function slotCount(): int
+    private function namedBlockCount(): int
+    {
+        return (int) $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM shared_training_block WHERE club_id=\'%s\' AND label=\'%s\'', $this->clubId, self::GROUP_LABEL),
+            admin: true,
+        );
+    }
+
+    private function namedBlockMemberCount(): int
     {
         return (int) $this->dbalScalar(
             \sprintf(
-                'SELECT COUNT(*) AS behatval FROM venue_training_slot s JOIN venue v ON v.id=s.venue_id WHERE v.club_id=\'%s\' AND v.name=\'%s\'',
+                'SELECT COUNT(*) AS behatval FROM shared_training_block_team m'
+                . ' JOIN shared_training_block b ON b.id=m.block_id'
+                . ' WHERE b.club_id=\'%s\' AND b.label=\'%s\'',
                 $this->clubId,
-                self::VENUE,
+                self::GROUP_LABEL,
             ),
             admin: true,
         );
     }
 
-    private function coachCount(): int
-    {
-        return (int) $this->dbalScalar(
-            \sprintf('SELECT COUNT(*) AS behatval FROM coach WHERE club_id=\'%s\' AND first_name=\'%s\' AND last_name=\'%s\'', $this->clubId, self::COACH_FIRST, self::COACH_LAST),
-            admin: true,
-        );
-    }
-
-    /** Réservations SOCLE (schedule_plan_id NULL) de SF1 sur la case lundi 18:00 du gymnase jetable. */
+    /** Réservations SOCLE (schedule_plan_id NULL) de TEAM_A sur la case lundi 18:00 du gymnase jetable. */
     private function socleReservationCount(): int
     {
         return (int) $this->dbalScalar(
@@ -430,11 +406,12 @@ final class ParcImportContext extends BaseContext
     {
         $teams = \sprintf('SELECT id FROM team WHERE club_id=\'%s\' AND name LIKE \'ZZQWXYBEHAT%%\'', $this->clubId);
         $venues = \sprintf('SELECT id FROM venue WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::VENUE);
+        $blocks = \sprintf('SELECT id FROM shared_training_block WHERE club_id=\'%s\' AND label=\'%s\'', $this->clubId, self::GROUP_LABEL);
 
         $this->dbalExec(\sprintf('DELETE FROM reservation WHERE club_id=\'%s\' AND (team_id IN (%s) OR venue_id IN (%s))', $this->clubId, $teams, $venues), admin: true);
-        $this->dbalExec(\sprintf('DELETE FROM team_coach WHERE team_id IN (%s)', $teams), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM shared_training_block_team WHERE block_id IN (%s) OR team_id IN (%s)', $blocks, $teams), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM shared_training_block WHERE club_id=\'%s\' AND label=\'%s\'', $this->clubId, self::GROUP_LABEL), admin: true);
         $this->dbalExec(\sprintf('DELETE FROM venue_training_slot WHERE venue_id IN (%s)', $venues), admin: true);
-        $this->dbalExec(\sprintf('DELETE FROM coach WHERE club_id=\'%s\' AND first_name=\'%s\' AND last_name=\'%s\'', $this->clubId, self::COACH_FIRST, self::COACH_LAST), admin: true);
         $this->dbalExec(\sprintf('DELETE FROM team WHERE club_id=\'%s\' AND name LIKE \'ZZQWXYBEHAT%%\'', $this->clubId), admin: true);
         $this->dbalExec(\sprintf('DELETE FROM venue WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::VENUE), admin: true);
     }
@@ -456,17 +433,5 @@ final class ParcImportContext extends BaseContext
             \sprintf('UPDATE schedule_plan SET chosen_schedule_id=%s WHERE club_id=\'%s\' AND type=\'SEASON\'', $value, $this->clubId),
             admin: true,
         );
-    }
-
-    /**
-     * @param array<mixed> $json
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function members(array $json): array
-    {
-        $members = $json['member'] ?? $json;
-
-        return array_values(array_filter(\is_array($members) ? $members : [], 'is_array'));
     }
 }
