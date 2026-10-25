@@ -402,6 +402,34 @@ describe("PlanningPage (integration)", () => {
     expect(await screen.findByText("Anna Dupont est à deux endroits le mardi à 18h00 (U13F · Gymnase B / U11M1 · Gymnase A)")).toBeInTheDocument();
   });
 
+  it("chantier H — affiche un RELAIS en avertissement, sans le compter comme un conflit", async () => {
+    // Le radar sert un `relays` (retard toléré ouvert par un adjoint) : il s'AFFICHE en avertissement
+    // (« Sébastien arrivera ~30 min en retard aux U21 : Jules (adjoint) ouvre la séance. »), MAIS il
+    // n'est PAS un conflit « personne à deux endroits » — zéro conflit ici, donc aucun bandeau de conflit.
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
+    vi.mocked(getPlacedConflicts).mockResolvedValue({
+      clubId: "club-1",
+      seasonId: "s1",
+      seasonPlanChosen: true,
+      conflicts: [],
+      relays: [{
+        personId: "sebastien",
+        personName: "Sébastien",
+        lateMinutes: 30,
+        adjointName: "Jules",
+        dayOfWeek: 2,
+        first: { teamId: "tM", teamName: "SENIORS", venueId: "vMB", venueName: "Mont Blanc", startTime: "19h00" },
+        second: { teamId: "tU", teamName: "U21", venueId: "vLB", venueName: "Louison Bobet", startTime: "20h00" },
+      }],
+    });
+    renderWithProviders(<PlanningPage />);
+
+    // Le relais est AFFICHÉ (nomme la personne, le retard, l'équipe rejointe et l'adjoint qui ouvre).
+    expect(await screen.findByText(/Sébastien arrivera.*30.*en retard aux U21.*Jules.*adjoint.*ouvre la séance/i)).toBeInTheDocument();
+    // …mais il n'est JAMAIS compté comme un conflit « à deux endroits ».
+    expect(screen.queryByText(/à deux endroits/i)).toBeNull();
+  });
+
   it("lit les créneaux du SOCLE quand la version affichée est celle de la saison", async () => {
     // Revue #8 round 4 — l'écran calculait ses cases vides sur la grille de SAISON quelle
     // que soit la version affichée, alors que l'export PDF remis aux coachs lit celle de

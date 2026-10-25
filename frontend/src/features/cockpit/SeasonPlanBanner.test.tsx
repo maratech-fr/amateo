@@ -18,7 +18,7 @@ vi.mock("./seasonPlannings", () => ({ seasonPlanCounts: () => ({ total: 2, overl
 let plansData: unknown[] = [];
 vi.mock("./queries", () => ({ useSchedulePlans: () => ({ data: plansData }) }));
 // P4-269 — le bandeau résume le radar « personne à deux endroits » du planning en vigueur.
-let placedConflictsData: { conflicts: { personId: string }[] } | undefined = { conflicts: [] };
+let placedConflictsData: { conflicts: { personId: string }[]; relays?: { personId: string; personName: string; lateMinutes: number; adjointName: string }[] } | undefined = { conflicts: [] };
 vi.mock("@/features/planning/queries", () => ({ usePlacedConflicts: () => ({ data: placedConflictsData }) }));
 // Le bandeau lit le NOM du plan sur me.seasonPlan (retour fondateur 2026-07-18).
 vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { seasonPlan: { name: "Planning de la saison 2026-2027" } } }) }));
@@ -112,5 +112,15 @@ describe("SeasonPlanBanner", () => {
     placedConflictsData = { conflicts: [] };
     renderBanner();
     expect(screen.queryByText(/à deux endroits/)).not.toBeInTheDocument();
+  });
+
+  it("chantier H — surface les RELAIS d'adjoint, sans les compter comme des conflits", () => {
+    // Un relais (retard toléré ouvert par un adjoint) : le bandeau le signale, MAIS il n'entre PAS
+    // dans le compte des conflits « à deux endroits » (zéro conflit ici → aucune pastille conflit).
+    placedConflictsData = { conflicts: [], relays: [{ personId: "sebastien", personName: "Sébastien", lateMinutes: 30, adjointName: "Jules" }] };
+    renderBanner();
+    expect(screen.queryByText(/à deux endroits/)).not.toBeInTheDocument();
+    expect(screen.getByText(/relais/i)).toBeInTheDocument();
+    placedConflictsData = { conflicts: [] };
   });
 });

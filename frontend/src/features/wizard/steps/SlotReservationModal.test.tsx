@@ -7,7 +7,7 @@ import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 import { WIZARD_TEXTS } from "../texts";
 
-import type { PriorityTier, Reservation, SharedTrainingBlock, Team, TeamSoloBudget, Venue, VenueTrainingSlot } from "../api";
+import type { Coach, PriorityTier, Reservation, SharedTrainingBlock, Team, TeamSoloBudget, Venue, VenueTrainingSlot } from "../api";
 
 // Les mutations sont mockées : le test porte sur le GESTE (quel rail est appelé, dans quel ordre),
 // pas sur react-query.
@@ -103,10 +103,17 @@ describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
     { id: "tc-j", teamId: "d", coachId: "j", role: "ASSISTANT" as const },
   ];
   const V2: Venue = { id: "v2", name: "Gymnase B", color: null, canSplit: false, isActive: true };
+  // Les coachs NOMMÉS, comme `useWizardCoaches`/`listCoaches` les sert : le CTA de relais doit
+  // nommer l'adjoint éligible (« Jules Martin »), pas un « adjoint » générique.
+  const COACHES: Coach[] = [
+    { id: "m", firstName: "Maxime", lastName: "Durand" } as Coach,
+    { id: "j", firstName: "Jules", lastName: "Martin" } as Coach,
+  ];
 
   function renderRelay(extra: Partial<Parameters<typeof SlotReservationModal>[0]> = {}) {
     return renderModal({
       teamCoaches: SHARED_COACHES,
+      coaches: COACHES,
       reservations: [resa("c", "v2", 1, "17:00")],
       venues: [VENUE, V2],
       sharedTrainingBlocks: [],
@@ -127,6 +134,15 @@ describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
     expect(screen.getByRole("spinbutton", { name: /retard toléré/i })).toBeInTheDocument();
     // Un bandeau d'avertissement (role=status), jamais le refus dur « ne peut pas être ajoutée ».
     expect(screen.queryByText(/ne peut pas être ajoutée/i)).toBeNull();
+  });
+
+  it("le CTA NOMME l'adjoint éligible, jamais un « adjoint » générique", async () => {
+    // Promesse validée : « Tolérer ce retard (~N minutes) — Jules Martin (adjoint) ouvrira la
+    // séance ». Le CTA porte le PRÉNOM NOM de l'adjoint qui ouvrira (SM4 → adjoint Jules Martin).
+    renderRelay();
+    await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
+
+    expect(screen.getByRole("button", { name: /tolérer ce retard.*Jules Martin.*adjoint.*ouvrira la séance/i })).toBeInTheDocument();
   });
 
   it("une fois le retard toléré, une pastille l'affiche et un bouton texte le retire", async () => {
