@@ -1165,9 +1165,9 @@ jobs:
       - name: ImportLeagueAutoValidationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/ImportLeagueAutoValidationTest.php --group phase1'
 
-      # NR d'axe CONSTRAINT SEMANTICS + GENERATION PIPELINE (chantier G PR2) — une RÉSERVATION
-      # saisie par l'IMPORT DE PARC est HONORÉE par le solveur, de bout en bout : texte parc-v1 →
-      # import réel (ParcImportExecutor) → vrai builder → vrai moteur /generate (contrat 1.5). Une
+      # NR d'axe CONSTRAINT SEMANTICS + GENERATION PIPELINE (lot correctif import IA « G2 » PR1) —
+      # une RÉSERVATION DÉRIVÉE d'une CASE parc-v2 par l'IMPORT DE PARC est HONORÉE par le solveur, de
+      # bout en bout : texte parc-v2 → dérivation + import réel (ParcImportExecutor) → vrai builder → vrai moteur /generate. Une
       # réservation d'équipe pré-génération est un verrou HARD : AVANT l'import l'équipe suit une
       # préférence souple (mercredi) ; APRÈS, la réservation du lundi pose sa séance sur la case
       # réservée malgré la préférence contraire. TÉMOIN falsifiable — le même décor sans la

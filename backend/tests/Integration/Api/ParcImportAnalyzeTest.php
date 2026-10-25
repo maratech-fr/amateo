@@ -6,22 +6,11 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Coach;
-use App\Entity\Reservation;
 use App\Entity\Season;
-use App\Entity\SharedTrainingBlock;
-use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SeasonStatus;
-use App\Service\Basketball\VenueAliasResolver;
-use App\Service\Basketball\VenueLabelNormalizer;
-use App\Service\PlanEntitlements;
-use App\Service\SeasonResolver;
-use App\Service\SocleGuard;
-use App\Service\TeamImportGate;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\ParcImport\ParcPayloadValidatorTest;
@@ -33,45 +22,45 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * Chantier G PR1 — le DRY-RUN `POST /api/clubs/{id}/parc-import/analyze` : le
- * gestionnaire colle le texte parc-v1 rendu par son chatbot, le serveur lui répond,
- * PAR SECTION, le statut de chaque ligne (apparié / suggéré / décoché avec raison /
- * à créer / alerte) et un récap chiffré — et il N'ÉCRIT RIEN. C'est l'aperçu cochable
- * sur lequel il tranche avant l'import (PR2).
+ * Lot correctif import IA (« G2 ») PR1 — le DRY-RUN `POST /api/clubs/{id}/parc-import/analyze`,
+ * RECALÉ sur le format `parc-v2`. Le gestionnaire colle le texte parc-v2 (une ligne par case) rendu
+ * par son chatbot ; le serveur DÉRIVE équipes / séances / genre / catégorie / mutualisations /
+ * réservations des cases, lui répond PAR SECTION le statut de chaque ligne dérivée (apparié /
+ * suggéré / décoché / à créer / alerte) + un bloc de FIABILITÉ et des ALERTES transverses — et il
+ * N'ÉCRIT RIEN.
  *
- * Contrat de l'endpoint (défini ici, implémenté par NEO) :
- *  - Opération Post custom sur ClubResource (patron `import-teams/analyze`),
- *    `App\Controller\ParcImportAnalyzeController`, `read:false`, name
- *    `parc_import_analyze`. Le corps de la requête EST le texte parc-v1 BRUT
- *    (Content-Type application/json) — le contrôleur le lit via `getContent()` et le
- *    passe au validateur, pour qu'un JSON illisible produise un 422 nommé (et jamais
- *    un 400 de désérialisation API Platform avant nous).
- *  - Gate `App\Service\ParcImport\ParcImportGate` (patron {@see TeamImportGate})
- *    keyée sur le `{id}` du chemin : pas d'adhésion active → 404 byte-identique (jamais
- *    403, qui fuiterait l'existence du club) ; membre non gestionnaire → 403 ; saison
- *    archivée → 409 ; socle EN VIGUEUR → 409 ({@see SocleGuard::assertSeasonPlanNotChosen})
- *    car l'import de parc est un geste d'ONBOARDING, AVANT qu'un plan de saison soit pointé ;
- *    limiteur `parcImportLimiter` PAR UTILISATEUR → 429 ; bornes ≤256 Ko / ≤60 équipes /
- *    ≤20 gymnases / ≤500 (créneaux + réservations).
- *  - Réponse 200 : {format, recap:{<section>:{total,apparie,suggere,aCreer,decoche,alerte}},
- *    sections:{<section>:[{index,libelle,statut,coche,cibleId,raison, …}]}}.
+ * Contrat (défini ici, implémenté par NEO) :
+ *  - MÊME gate que l'import ({@see \App\Service\ParcImport\ParcImportGate}) : 404 non-membre, 403
+ *    non-gestionnaire, 409 socle EN VIGUEUR / saison archivée, 429 limiteur, bornes 256 Ko / ≤ 500 cases.
+ *  - Réponse 200 :
+ *      {format,
+ *       fiabilite:{taux:float(0..1), anomalies:int, bandeau:bool},
+ *       recap:{<section>:{total,apparie,suggere,aCreer,decoche,alerte}},
+ *       sections:{<section>:[{index,libelle,statut,coche,cibleId,raison, groupe?, miseAJour?}]},
+ *       alertes:[{type, message, …}]}.
  *    Réponse 422 (validateur) : {errors:[…]}.
+ *  - D10 `bandeau` = résultat PEU FIABLE (jamais bloquant) : (apparié+suggéré) < 50 % OU ≥ 3 alertes.
+ *  - D9 alertes transverses : une équipe dans DEUX endroits au même moment, une heure implausible
+ *    (début hors [07:00, 23:30]), un gymnase DÉCLARÉ sans aucune case.
+ *  - D3 contexte CORRECTEUR, jamais filtre : un gymnase connu CORRIGE le nommage, mais les gymnases
+ *    détectés inconnus restent PROPOSÉS (jamais écartés).
+ *  - D8 un `groupe` de case (« CEC ») nomme un bloc mutualisé — JAMAIS une équipe à créer.
  *
- * Appariement des noms : foyer {@see VenueLabelNormalizer}
- * / {@see VenueAliasResolver} (casse et accents repliés) pour
- * les gymnases, MÊME normalisation pour équipes et coachs. Les RÈGLES du format sont
- * éprouvées au plus bas par {@see ParcPayloadValidatorTest}
- * (jumeau unitaire) ; ici on prouve seulement le CÂBLAGE du validateur à l'endpoint
- * (un seul cas), les statuts d'appariement, l'étanchéité tenant, et le NON-ÉCRIT.
+ * Les RÈGLES du format sont éprouvées au plus bas par {@see ParcPayloadValidatorTest} ; la déduction
+ * nom → genre/catégorie par {@see \App\Tests\Unit\ParcImport\TeamNameInterpreterTest} ; l'appariement
+ * fuzzy par {@see \App\Tests\Unit\ParcImport\TeamLabelMatcherTest}. ICI on prouve le CÂBLAGE, la
+ * dérivation complète sur une sortie RÉELLE (t7), les alertes, la fiabilité, l'étanchéité tenant et
+ * le NON-ÉCRIT.
  *
- * ⚠ Limiteur Redis keyé PAR UTILISATEUR : chaque test crée sa propre identité — aucun
- * FLUSHALL, aucune fuite entre suites (mémoire backend-test-gotchas).
+ * ⚠ Limiteur Redis keyé PAR UTILISATEUR : chaque test crée sa propre identité — aucun FLUSHALL.
  */
 #[Group('integration')]
 final class ParcImportAnalyzeTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
     use TenantGucTrait;
+
+    private const string FIXTURES = __DIR__ . '/../../Fixtures/parc/';
 
     private KernelBrowser $client;
 
@@ -85,13 +74,10 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
     private string $token;
 
-    // ───────────────────────────── Gate (promesse 3) ─────────────────────────────
+    // ───────────────────────────── Gate ─────────────────────────────
 
     public function testNonMemberGets404WithTheClubNotFoundBody(): void
     {
-        // Un uuid dont l'appelant n'est pas membre : 404 (jamais 403, qui fuiterait
-        // l'existence). On assert le CORPS exact de la gate — un 404 de ROUTAGE (route
-        // absente) a un autre corps, donc ce test rougit tant que l'endpoint n'existe pas.
         $stranger = '99999999-9999-4999-8999-999999999999';
         [$status, $body] = $this->analyze($this->validParc(), clubId: $stranger);
 
@@ -101,7 +87,6 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
     public function testNonManagerIsRefused(): void
     {
-        // Un membre ACTIF mais non-gestionnaire (viewer) : 403 — jamais l'analyse.
         [$status, $body] = $this->analyze($this->validParc(), token: $this->viewerToken());
 
         self::assertSame(403, $status);
@@ -110,8 +95,6 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
     public function testSocleEnVigueurIsRefusedWith409(): void
     {
-        // Le plan de saison POINTE une version = socle en vigueur. Importer un parc est
-        // un geste d'onboarding : il est refusé (409) tant que le socle n'est pas rouvert.
         $this->settleSeasonPlan($this->season);
 
         [$status] = $this->analyze($this->validParc());
@@ -121,7 +104,6 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
     public function testArchivedSeasonIsRefusedWith409(): void
     {
-        // Une saison PASSÉE est en lecture seule : l'analyser (geste d'écriture) → 409.
         $this->scopeGucToClub($this->club->getId());
         $old = (new Season)->setClubId($this->club->getId())->setName('2000-2001')
             ->setStartDate(new DateTimeImmutable('2000-07-15'))->setEndDate(new DateTimeImmutable('2001-07-14'))
@@ -134,26 +116,25 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertSame(409, $status);
     }
 
-    // ───────────────────────────── Abus (promesse 4) ─────────────────────────────
+    // ───────────────────────────── Bornes & débit (abus) ─────────────────────────────
 
     public function testPayloadBeyondBoundsIsRefused(): void
     {
-        // Octets : un corps au-delà de 256 Ko est refusé (413) AVANT tout parse.
+        // Octets : un corps > 256 Ko refusé (413) AVANT tout parse.
         $huge = str_repeat('x', 256 * 1024 + 1);
-        [$oversized] = $this->analyzeRaw('{"format":"parc-v1","pad":"' . $huge . '"}');
+        [$oversized] = $this->analyzeRaw('{"format":"parc-v2","pad":"' . $huge . '"}');
         self::assertSame(413, $oversized, 'un corps > 256 Ko doit être refusé (413)');
 
-        // Dénombrement : 61 équipes dépasse la borne (≤ 60) → 422 nommé.
-        $tooManyTeams = $this->validParc();
-        $tooManyTeams['equipes'] = array_map(
-            static fn (int $i): array => ['nom' => 'E' . $i, 'genre' => 'M'],
-            range(1, 61),
+        // Dénombrement : 501 cases dépasse la borne (≤ 500) → 422 nommé.
+        $tooManyCases = $this->validParc();
+        $tooManyCases['cases'] = array_map(
+            static fn (int $i): array => ['gymnase' => 'MATEO', 'jour' => (($i % 5) + 1), 'debut' => '18:00', 'duree' => 90, 'equipes' => ['E' . $i]],
+            range(1, 501),
         );
-        [$teamsStatus] = $this->analyze($tooManyTeams);
-        self::assertSame(422, $teamsStatus, '61 équipes doit être refusé (borne ≤ 60)');
+        [$casesStatus] = $this->analyze($tooManyCases);
+        self::assertSame(422, $casesStatus, '501 cases doit être refusé (borne ≤ 500)');
 
-        // Débit : le limiteur `parc_import` (override when@test, patron xlsxImport) borne
-        // PAR UTILISATEUR — après la borne, 429. On consomme le budget puis on dépasse.
+        // Débit : le limiteur `parc_import` borne PAR UTILISATEUR — après la borne, 429.
         $accepted = 0;
         for ($i = 1; $i <= 30; ++$i) {
             [$status] = $this->analyze($this->validParc());
@@ -167,16 +148,29 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::fail('le limiteur parc_import n\'a jamais rendu 429 en 30 analyses');
     }
 
+    public function testBadFormatIsRefusedWith422NamingParcV2(): void
+    {
+        // CÂBLAGE du validateur à l'endpoint (règles au niveau unitaire). parc-v1 (l'ancien) → 422
+        // nommant parc-v2, jamais un 200.
+        $parc = $this->validParc();
+        $parc['format'] = 'parc-v1';
+
+        [$status, $body] = $this->analyze($parc);
+
+        self::assertSame(422, $status);
+        self::assertNotEmpty($body['errors'] ?? [], 'le 422 doit porter des erreurs nommées');
+        self::assertStringContainsString('parc-v2', implode(' ', $body['errors']));
+    }
+
     public function testMatchingNeverReachesAnotherClub(): void
     {
-        // Un AUTRE club possède un gymnase « Gymnase Mateo » et une équipe « SM1 ».
-        // L'analyse de NOTRE club ne doit JAMAIS les apparier (filtre tenant) : la ligne
-        // ressort « à créer », cibleId null — jamais l'id d'une entité hors tenant.
+        // Un AUTRE club possède un gymnase « Gymnase Mateo » et une équipe « SM1 ». L'analyse de NOTRE
+        // club ne les apparie JAMAIS (filtre tenant) : la ligne ressort « à créer », jamais l'id hors tenant.
         $other = $this->seedForeignClubWithVenueAndTeam('Gymnase Mateo', 'SM1');
 
-        $parc = $this->validParc();
-        $parc['gymnases'] = [['nom' => 'Gymnase Mateo']];
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M']];
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
 
         [$status, $body] = $this->analyze($parc);
         self::assertSame(200, $status);
@@ -190,348 +184,127 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertNotSame($other['teamId'], $teamLine['cibleId'] ?? null, 'jamais la cible d\'un autre club');
     }
 
-    // ───────────────────────── Appariement & statuts (promesse 2) ─────────────────
-
-    public function testEachGymnaseLineGetsItsMatchingVerdictPlusARecap(): void
+    public function testDryRunWritesNothing(): void
     {
-        // Décor : « Gymnase Mateo » (match exact), plus « Gymnase Nord » et « Gymnase
-        // Sud » (tous deux contiennent le mot « gymnase » → ambiguïté sur « Gymnase »).
-        $mateo = $this->makeVenue('Gymnase Mateo');
-        $this->makeVenue('Gymnase Nord');
-        $this->makeVenue('Gymnase Sud');
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [
-            ['nom' => 'GYMNASE MATÉO'],      // casse + accent repliés → apparié, cible = Mateo
-            ['nom' => 'Mateo'],              // mot unique de « gymnase mateo » → suggéré
-            ['nom' => 'Gymnase'],            // mot commun aux trois → ambigu → décoché
-            ['nom' => 'Palais des Sports'],  // inconnu → à créer
-        ];
-        // Les créneaux/réservations pointent le 1er gymnase connu (hors sujet ici).
-        $parc['creneaux'] = [];
-        $parc['reservations'] = [];
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status);
-
-        $lines = $body['sections']['gymnases'];
-
-        self::assertSame('apparie', $lines[0]['statut']);
-        self::assertSame($mateo->getId(), $lines[0]['cibleId'], 'l\'exact normalisé pointe le bon gymnase');
-        self::assertTrue($lines[0]['coche']);
-
-        self::assertSame('suggere', $lines[1]['statut'], 'un match flou unique est suggéré');
-        self::assertSame($mateo->getId(), $lines[1]['cibleId']);
-
-        self::assertSame('decoche', $lines[2]['statut'], 'une ambiguïté est décochée, jamais devinée');
-        self::assertFalse($lines[2]['coche']);
-        self::assertStringContainsString('ambig', mb_strtolower((string) ($lines[2]['raison'] ?? '')));
-
-        self::assertSame('aCreer', $lines[3]['statut']);
-        self::assertTrue($lines[3]['coche']);
-        self::assertNull($lines[3]['cibleId']);
-
-        // Récap chiffré de la section.
-        $recap = $body['recap']['gymnases'];
-        self::assertSame(4, $recap['total']);
-        self::assertSame(1, $recap['apparie']);
-        self::assertSame(1, $recap['suggere']);
-        self::assertSame(1, $recap['decoche']);
-        self::assertSame(1, $recap['aCreer']);
-    }
-
-    public function testAlreadyPresentReservationIsDecochedForIdempotence(): void
-    {
-        // Le gymnase, l'équipe ET la réservation (même case) existent déjà : relancer le
-        // même parc ne re-propose rien — la ligne ressort « déjà présent », décochée.
-        $venue = $this->makeVenue('Gymnase Mateo');
-        $team = $this->makeTeam('SM1', sessionsPerWeek: 3);
-        $this->persistReservation($team->getId(), $venue->getId(), 2, '18:00');
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [['nom' => 'Gymnase Mateo']];
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M', 'seances' => 3]];
-        $parc['reservations'] = [['equipe' => 'SM1', 'gymnase' => 'Gymnase Mateo', 'jour' => 2, 'debut' => '18:00']];
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status);
-
-        $line = $body['sections']['reservations'][0];
-        self::assertSame('decoche', $line['statut']);
-        self::assertFalse($line['coche']);
-        self::assertStringContainsString('déjà présent', mb_strtolower((string) ($line['raison'] ?? '')));
-    }
-
-    public function testMatchedTeamWithDifferentSessionsProposesAnUpdate(): void
-    {
-        // L'équipe existe à 2 séances/sem ; le parc en déclare 3. L'analyse propose une
-        // MISE À JOUR 2→3 (cochée) — et rien d'autre de l'équipe n'est touché.
-        $this->makeTeam('SM1', sessionsPerWeek: 2);
-
-        $parc = $this->validParc();
-        $parc['equipes'] = [['nom' => 'SM1', 'genre' => 'M', 'seances' => 3]];
-        $parc['gymnases'] = [];
-        $parc['creneaux'] = [];
-        $parc['reservations'] = [];
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status);
-
-        $line = $body['sections']['equipes'][0];
-        self::assertSame('apparie', $line['statut'], 'une équipe connue reste appariée');
-        self::assertTrue($line['coche'], 'la mise à jour est proposée cochée');
-        self::assertSame(['champ' => 'seances', 'de' => 2, 'a' => 3], $line['miseAJour'] ?? null);
-    }
-
-    public function testTwoTeamsOnTheSameCaseRaiseAnAlertNamingTheCauses(): void
-    {
-        // Deux équipes réservent la MÊME case (même gymnase/jour/heure) sans mutualisation
-        // ni terrain divisé déclaré : on ne pose RIEN et on alerte en nommant les causes
-        // possibles (mutualisation / terrain divisé / erreur de lecture). Le gestionnaire tranche.
-        $this->makeVenue('Gymnase Mateo');
-        $this->makeTeam('U11M1', sessionsPerWeek: 1);
-        $this->makeTeam('U11M2', sessionsPerWeek: 1);
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [['nom' => 'Gymnase Mateo']];
-        $parc['equipes'] = [['nom' => 'U11M1', 'genre' => 'M'], ['nom' => 'U11M2', 'genre' => 'M']];
-        $parc['creneaux'] = [['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '17:00', 'duree' => 90, 'equipes_en_parallele' => 1]];
-        $parc['mutualisations'] = [];
-        $parc['reservations'] = [
-            ['equipe' => 'U11M1', 'gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '17:00'],
-            ['equipe' => 'U11M2', 'gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '17:00'],
-        ];
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status, 'une collision déclarée est une ALERTE, jamais un 500');
-
-        foreach ($body['sections']['reservations'] as $line) {
-            self::assertSame('alerte', $line['statut'], 'aucune réservation posée sur la case contestée');
-            self::assertFalse($line['coche']);
-            $raison = mb_strtolower((string) ($line['raison'] ?? ''));
-            self::assertStringContainsString('mutualisation', $raison);
-            self::assertStringContainsString('divis', $raison);
-            self::assertStringContainsString('lecture', $raison);
-        }
-    }
-
-    public function testAnExistingGuardReplayTurnsTheLineToAlertNeverA500(): void
-    {
-        // Deux créneaux du MÊME gymnase le MÊME jour se chevauchent (18:00-19:30 et
-        // 19:00-20:30). La garde de chevauchement (VenueTrainingSlotStateProcessor) est
-        // rejouée AU DRY-RUN : la ligne fautive passe en alerte/décoché, et surtout
-        // l'analyse répond 200 — une violation ne devient jamais un 500.
-        $this->makeVenue('Gymnase Mateo');
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [['nom' => 'Gymnase Mateo']];
-        $parc['equipes'] = [];
-        $parc['creneaux'] = [
-            ['gymnase' => 'Gymnase Mateo', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 1],
-            ['gymnase' => 'Gymnase Mateo', 'jour' => 2, 'debut' => '19:00', 'duree' => 90, 'equipes_en_parallele' => 1],
-        ];
-        $parc['reservations'] = [];
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status, 'une garde rejouée ne doit jamais faire un 500');
-
-        $statuts = array_column($body['sections']['creneaux'], 'statut');
-        self::assertContains('alerte', $statuts, 'le chevauchement rejoué marque la ligne, sans bloquer le reste');
-    }
-
-    public function testDryRunWritesNothingToTheDatabase(): void
-    {
-        // Un parc entièrement « à créer » (gymnases, équipes, réservations inconnus) :
-        // l'analyse décrit ce qui SERAIT créé mais ne persiste RIEN. On compte en base
-        // avant/après — le dry-run est inerte (l'écriture est le métier de PR2).
         $this->scopeGucToClub($this->club->getId());
         $venuesBefore = $this->rowCount('venue');
         $teamsBefore = $this->rowCount('team');
-        $reservationsBefore = $this->rowCount('reservation');
 
-        $parc = $this->validParc();
-        $parc['gymnases'] = [['nom' => 'Tout Neuf']];
-        $parc['equipes'] = [['nom' => 'ToutNeuf', 'genre' => 'M', 'seances' => 2]];
-        $parc['creneaux'] = [['gymnase' => 'Tout Neuf', 'jour' => 4, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 1]];
-        $parc['reservations'] = [['equipe' => 'ToutNeuf', 'gymnase' => 'Tout Neuf', 'jour' => 4, 'debut' => '18:00']];
-
-        [$status] = $this->analyze($parc);
+        [$status] = $this->analyze($this->fixtureParc('t7.json'));
         self::assertSame(200, $status);
 
         self::assertSame($venuesBefore, $this->rowCount('venue'), 'le dry-run ne crée aucun gymnase');
         self::assertSame($teamsBefore, $this->rowCount('team'), 'le dry-run ne crée aucune équipe');
-        self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'le dry-run ne crée aucune réservation');
     }
 
-    public function testBadFormatIsRefusedWith422NamingParcV1(): void
+    // ───────────────────────── Dérivation complète sur une sortie RÉELLE (t7) ─────────────────────────
+
+    public function testDerivesEverySectionFromTheRealT7Output(): void
     {
-        // CÂBLAGE du validateur à l'endpoint (les règles elles-mêmes sont au niveau
-        // unitaire — {@see \App\Tests\Unit\ParcImport\ParcPayloadValidatorTest}). Une
-        // version inconnue → 422 avec des erreurs qui nomment parc-v1, jamais un 200.
-        $parc = $this->validParc();
-        $parc['format'] = 'parc-v2';
+        // t7 (GPT, image BCCL médiocre) : 73 cases, 9 gymnases. L'appli DÉRIVE toutes les sections —
+        // chacune présente, avec un récap chiffré non vide.
+        [$status, $body] = $this->analyze($this->fixtureParc('t7.json'));
+        self::assertSame(200, $status, 'une sortie réelle parc-v2 s\'analyse');
 
-        [$status, $body] = $this->analyze($parc);
+        foreach (['gymnases', 'equipes', 'creneaux', 'reservations', 'mutualisations'] as $section) {
+            self::assertArrayHasKey($section, $body['sections'], 'la section dérivée « ' . $section . ' » est présente');
+            self::assertGreaterThan(0, $body['recap'][$section]['total'] ?? 0, 'la section « ' . $section . ' » dérive au moins une ligne');
+        }
 
-        self::assertSame(422, $status);
-        self::assertNotEmpty($body['errors'] ?? [], 'le 422 doit porter des erreurs nommées');
-        self::assertStringContainsString('parc-v1', implode(' ', $body['errors']));
+        // Une équipe au nom gendré est dérivée avec son genre (contrôle de bout en bout du dériveur).
+        $teamLabels = array_map(static fn (array $l): string => (string) $l['libelle'], $body['sections']['equipes']);
+        self::assertContains('SM2', $teamLabels, 'une équipe lue dans une case est dérivée');
     }
 
-    // ───────────── Gardes rejouées au dry-run : alerte avant l'import, jamais un 422 en cours ─────────────
-    // L'import (PR suivante) écrit tout-ou-rien ; une ligne qui violerait une garde de persistance
-    // DOIT être signalée dans l'APERÇU (alerte / décoché), pas découverte au milieu de l'écriture.
-
-    public function testSplitOnANonSplittableExistingVenueRaisesAnAlert(): void
+    public function testCecIsAGroupLabelNeverADerivedTeam(): void
     {
-        // Le gymnase EXISTE et n'est pas divisible (`canSplit:false`). Un créneau qui demande
-        // 2 équipes en parallèle y est impossible (garde VenueTrainingSlotStateProcessor sur la
-        // capacité). Rejouée au dry-run : la ligne passe en alerte, 200, jamais un 500.
-        $this->makeVenue('Gymnase Mateo', canSplit: false);
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [['nom' => 'Gymnase Mateo']];
-        $parc['equipes'] = [];
-        $parc['creneaux'] = [['gymnase' => 'Gymnase Mateo', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 2]];
-        $parc['reservations'] = [];
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status, 'une garde de capacité rejouée ne fait jamais un 500');
-
-        $line = $body['sections']['creneaux'][0];
-        self::assertSame('alerte', $line['statut'], 'capacité ≥ 2 sur un gymnase non divisible = alerte');
-        self::assertFalse($line['coche']);
-        self::assertNotNull($line['raison'] ?? null, 'l\'alerte doit dire pourquoi');
-    }
-
-    public function testSplitOnAVenueToCreateRaisesNoAlert(): void
-    {
-        // TÉMOIN de la garde ci-dessus : pour un gymnase À CRÉER, `canSplit` est DÉRIVÉ de la
-        // capacité demandée (il naîtra divisible). Donc PAS d'alerte — sinon la garde serait
-        // sur-appliquée et bloquerait un terrain qu'on s'apprête justement à créer divisible.
-        $parc = $this->validParc();
-        $parc['gymnases'] = [['nom' => 'Palais Tout Neuf']];
-        $parc['equipes'] = [];
-        $parc['creneaux'] = [['gymnase' => 'Palais Tout Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 2]];
-        $parc['reservations'] = [];
-
-        [$status, $body] = $this->analyze($parc);
+        // t7 : « CEC » ouvre deux cases du mercredi (groupes mutualisés). Il nomme le GROUPE, jamais
+        // une équipe : aucune équipe dérivée « CEC », et une mutualisation porte « CEC » en label.
+        [$status, $body] = $this->analyze($this->fixtureParc('t7.json'));
         self::assertSame(200, $status);
 
-        self::assertNotSame('alerte', $body['sections']['creneaux'][0]['statut'], 'un gymnase à créer dérive canSplit : aucune alerte');
-    }
+        $teamLabels = array_map(static fn (array $l): string => (string) $l['libelle'], $body['sections']['equipes']);
+        self::assertNotContains('CEC', $teamLabels, '« CEC » n\'est jamais dérivé comme équipe');
 
-    public function testBlockCommonSessionsExceedingAMemberRaisesAnAlert(): void
-    {
-        // Mutualisation dont les séances communes (2) dépassent les séances d'une équipe membre
-        // (U11M1 n'en a qu'1) : le bloc serait refusé à l'écriture (SharedTrainingBlockStateProcessor,
-        // Σ séances communes > séances hebdo d'un membre). Rejouée au dry-run → alerte, 200.
-        $this->makeTeam('U11M1', sessionsPerWeek: 1);
-        $this->makeTeam('U11M2', sessionsPerWeek: 3);
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [];
-        $parc['equipes'] = [['nom' => 'U11M1', 'genre' => 'M'], ['nom' => 'U11M2', 'genre' => 'M']];
-        $parc['creneaux'] = [];
-        $parc['mutualisations'] = [[
-            'equipes' => ['U11M1', 'U11M2'], 'gymnase' => 'Gymnase Mateo',
-            'jour' => 3, 'debut' => '17:00', 'seances_communes' => 2,
-        ]];
-        $parc['reservations'] = [];
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status, 'une garde de bloc rejouée ne fait jamais un 500');
-
-        $line = $body['sections']['mutualisations'][0];
-        self::assertSame('alerte', $line['statut'], 'Σ séances communes > séances d\'un membre = alerte');
-        self::assertFalse($line['coche']);
-        self::assertNotNull($line['raison'] ?? null);
-    }
-
-    public function testTeamsBeyondThePaidCapAreDecochedWithAReason(): void
-    {
-        // Cap payant (PlanEntitlements::remainingTeamSlots) : on ne peut créer plus d'équipes que
-        // de places restantes dans l'offre. RECO la plus simple (tranchée ici) : les équipes EN
-        // SURPLUS ressortent DÉCOCHÉES avec une raison nommant l'offre — préféré à une alerte de
-        // récap sans ancrage, car le décochage par ligne dit AU GESTIONNAIRE lesquelles ne seront
-        // pas créées, et réutilise le modèle de statut existant.
-        $remaining = $this->capClubAtEssentiel();
-        self::assertIsInt($remaining, 'l\'offre Essentiel doit porter un cap fini');
-        self::assertGreaterThanOrEqual(1, $remaining);
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [];
-        $parc['creneaux'] = [];
-        $parc['reservations'] = [];
-        $parc['equipes'] = array_map(
-            static fn (int $i): array => ['nom' => 'Neuve ' . $i, 'genre' => 'M'],
-            range(1, $remaining + 1),
+        $groupeLabels = array_map(
+            static fn (array $l): string => mb_strtolower((string) ($l['groupe'] ?? $l['libelle'] ?? '')),
+            $body['sections']['mutualisations'],
         );
-
-        [$status, $body] = $this->analyze($parc);
-        self::assertSame(200, $status);
-
-        $statuts = array_column($body['sections']['equipes'], 'statut');
-        self::assertSame($remaining, \count(array_filter($statuts, static fn (string $s): bool => 'aCreer' === $s)), 'autant d\'équipes créables que de places');
-
-        $surplus = array_values(array_filter($body['sections']['equipes'], static fn (array $l): bool => 'decoche' === $l['statut']));
-        self::assertCount(1, $surplus, 'l\'équipe au-delà du cap est décochée');
-        self::assertNotNull($surplus[0]['raison'] ?? null, 'la raison doit nommer la limite de l\'offre');
+        self::assertContains('cec', $groupeLabels, '« CEC » nomme un bloc mutualisé dérivé');
     }
 
-    // ───────────── Couverture des sections coachs & mutualisations (apparié + à créer) ─────────────
-
-    public function testCoachSectionMatchesAnExistingCoachAndCreatesANewOne(): void
+    public function testASameTeamInTwoPlacesAtOnceRaisesAnAlertNamingIt(): void
     {
-        // Coachs : même normalisation que les gymnases/équipes. « ALICE MARTIN » (casse repliée)
-        // s'apparie au coach existant ; « Bob Nouveau » est à créer.
-        $alice = $this->makeCoach('Alice', 'Martin');
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [];
-        $parc['equipes'] = [];
-        $parc['creneaux'] = [];
-        $parc['reservations'] = [];
-        $parc['coachs'] = [
-            ['nom' => 'ALICE MARTIN', 'equipe' => 'SM1'],
-            ['nom' => 'Bob Nouveau'],
-        ];
-
-        [$status, $body] = $this->analyze($parc);
+        // t7 : SM2 est lu le JEUDI à 19:00 dans DEUX gymnases (Armand ET JDR) — impossible. L'analyse
+        // lève une alerte transverse qui NOMME l'équipe, sans jamais faire un 500.
+        [$status, $body] = $this->analyze($this->fixtureParc('t7.json'));
         self::assertSame(200, $status);
 
-        self::assertSame('apparie', $body['sections']['coachs'][0]['statut']);
-        self::assertSame($alice->getId(), $body['sections']['coachs'][0]['cibleId']);
-        self::assertSame('aCreer', $body['sections']['coachs'][1]['statut']);
-        self::assertNull($body['sections']['coachs'][1]['cibleId']);
+        $alertes = $body['alertes'] ?? [];
+        $dualPlace = array_values(array_filter(
+            \is_array($alertes) ? $alertes : [],
+            static fn (array $a): bool => 'equipe_deux_endroits' === ($a['type'] ?? null),
+        ));
+        self::assertNotEmpty($dualPlace, 'une équipe dans deux gymnases au même moment est signalée');
+        self::assertStringContainsString('SM2', implode(' ', array_map(static fn (array $a): string => (string) ($a['message'] ?? ''), $dualPlace)), 'l\'alerte nomme l\'équipe (SM2)');
     }
 
-    public function testMutualisationSectionMatchesAnExistingBlockAndCreatesANewOne(): void
+    public function testAnImplausibleHourRaisesAnAlert(): void
     {
-        // Mutualisations : un groupe dont les équipes membres forment un bloc DÉJÀ existant
-        // s'apparie (cibleId = bloc) ; un groupe sans bloc est à créer.
-        $u11m1 = $this->makeTeam('U11M1', sessionsPerWeek: 2);
-        $u11m2 = $this->makeTeam('U11M2', sessionsPerWeek: 2);
-        $this->makeTeam('U13F1', sessionsPerWeek: 2);
-        $this->makeTeam('U13F2', sessionsPerWeek: 2);
-        $blockId = $this->makeBlock([$u11m1->getId(), $u11m2->getId()], commonSessions: 1);
-
-        $parc = $this->validParc();
-        $parc['gymnases'] = [];
-        $parc['equipes'] = [];
-        $parc['creneaux'] = [];
-        $parc['reservations'] = [];
-        $parc['mutualisations'] = [
-            ['equipes' => ['U11M1', 'U11M2'], 'gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '17:00', 'seances_communes' => 1],
-            ['equipes' => ['U13F1', 'U13F2'], 'gymnase' => 'Gymnase Mateo', 'jour' => 4, 'debut' => '17:00', 'seances_communes' => 1],
-        ];
+        // D9 heure implausible : un début hors [07:00, 23:30] (ici 05:30) est signalé. (Décision TANK,
+        // appliquée faute de seuil explicite dans le plan — cf. rapport : le « 22:00 » de t9-deepseek
+        // ne franchit PAS ce seuil ; le témoin contrôlé le prouve sans ambiguïté.)
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '05:30', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
 
         [$status, $body] = $this->analyze($parc);
         self::assertSame(200, $status);
 
-        self::assertSame('apparie', $body['sections']['mutualisations'][0]['statut'], 'un groupe déjà formé en bloc s\'apparie');
-        self::assertSame($blockId, $body['sections']['mutualisations'][0]['cibleId']);
-        self::assertSame('aCreer', $body['sections']['mutualisations'][1]['statut'], 'un groupe sans bloc est à créer');
+        $types = array_map(static fn (array $a): string => (string) ($a['type'] ?? ''), (array) ($body['alertes'] ?? []));
+        self::assertContains('heure_implausible', $types, 'un début à 05:30 est signalé comme implausible');
+    }
+
+    public function testADeclaredVenueWithoutAnyCaseRaisesAnAlert(): void
+    {
+        // D9 gymnase sans case : un gymnase DÉCLARÉ qu'aucune case n'utilise est signalé — sans bloquer.
+        $parc = $this->validParc();
+        $parc['gymnases'] = [['nom' => 'MATEO'], ['nom' => 'Gymnase Fantôme']];
+        $parc['cases'] = [['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']]];
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $types = array_map(static fn (array $a): string => (string) ($a['type'] ?? ''), (array) ($body['alertes'] ?? []));
+        self::assertContains('gymnase_sans_case', $types, 'un gymnase déclaré sans case est signalé');
+    }
+
+    public function testFiabiliteBlockReportsRateAndAnomaliesAndRaisesTheBanner(): void
+    {
+        // D10 — le bloc `fiabilite` porte un taux d'appariement, un compte d'anomalies et un drapeau
+        // `bandeau` (jamais bloquant). t7 accumule ≥ 3 anomalies (doublon SM2, etc.) → bandeau levé.
+        [$status, $body] = $this->analyze($this->fixtureParc('t7.json'));
+        self::assertSame(200, $status);
+
+        self::assertArrayHasKey('fiabilite', $body, 'la réponse porte un bloc de fiabilité');
+        self::assertIsNumeric($body['fiabilite']['taux'] ?? null, 'le taux d\'appariement est chiffré');
+        self::assertIsInt($body['fiabilite']['anomalies'] ?? null);
+        self::assertIsBool($body['fiabilite']['bandeau'] ?? null);
+        self::assertTrue($body['fiabilite']['bandeau'], 't7 cumule ≥ 3 anomalies → bandeau « peu fiable » levé');
+    }
+
+    public function testAKnownVenueCorrectsNamingButNeverFiltersDetectedOnes(): void
+    {
+        // D3 contexte correcteur jamais filtre : « Armand » existe au club ; t7 détecte 9 gymnases.
+        // L'existant CORRIGE le nommage (Armand apparié) mais les 8 autres restent PROPOSÉS — aucun écarté.
+        $this->makeVenue('Armand');
+
+        $body = $this->analyze($this->fixtureParc('t7.json'))[1];
+
+        $gymStatuts = array_column($body['sections']['gymnases'], 'statut');
+        self::assertContains('apparie', $gymStatuts, '« Armand » connu est apparié (nommage corrigé)');
+        self::assertGreaterThanOrEqual(9, \count($body['sections']['gymnases']), 'les 9 gymnases détectés restent tous proposés — aucun filtré par l\'existant');
+        self::assertContains('aCreer', $gymStatuts, 'les gymnases détectés inconnus restent proposés en création');
     }
 
     protected function setUp(): void
@@ -575,26 +348,46 @@ final class ParcImportAnalyzeTest extends WebTestCase
     }
 
     /**
-     * Un parc-v1 minimal recevable — chaque test l'adapte à la promesse qu'il prouve.
+     * Un parc-v2 minimal recevable — chaque test l'adapte.
      *
      * @return array<string, mixed>
      */
     private function validParc(): array
     {
+        return $this->parcWithCases([['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']]]);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $cases
+     *
+     * @return array<string, mixed>
+     */
+    private function parcWithCases(array $cases): array
+    {
+        $gyms = [];
+        foreach ($cases as $case) {
+            $gyms[(string) $case['gymnase']] = true;
+        }
+
         return [
-            'format' => 'parc-v1',
-            'gymnases' => [['nom' => 'Gymnase Mateo']],
-            'equipes' => [['nom' => 'SM1', 'genre' => 'M', 'seances' => 3]],
-            'creneaux' => [['gymnase' => 'Gymnase Mateo', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes_en_parallele' => 1]],
-            'mutualisations' => [],
-            'reservations' => [['equipe' => 'SM1', 'gymnase' => 'Gymnase Mateo', 'jour' => 2, 'debut' => '18:00']],
+            'format' => 'parc-v2',
+            'gymnases' => array_map(static fn (string $nom): array => ['nom' => $nom], array_keys($gyms)),
+            'cases' => $cases,
         ];
     }
 
     /**
-     * POST le parc (encodé en JSON) sur l'endpoint d'analyse. Le corps EST le texte
-     * parc-v1 brut (Content-Type application/json).
-     *
+     * @return array<string, mixed>
+     */
+    private function fixtureParc(string $name): array
+    {
+        $decoded = json_decode((string) file_get_contents(self::FIXTURES . $name), true);
+        self::assertIsArray($decoded, 'le fixture ' . $name . ' doit décoder en objet');
+
+        return $decoded;
+    }
+
+    /**
      * @param array<string, mixed>  $parc
      * @param array<string, string> $server
      *
@@ -602,7 +395,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
      */
     private function analyze(array $parc, ?string $clubId = null, ?string $token = null, array $server = []): array
     {
-        return $this->analyzeRaw((string) json_encode($parc, \JSON_THROW_ON_ERROR), $clubId, $token, $server);
+        return $this->analyzeRaw((string) json_encode($parc, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE), $clubId, $token, $server);
     }
 
     /**
@@ -617,7 +410,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
             '/api/clubs/' . ($clubId ?? $this->club->getId()) . '/parc-import/analyze',
             [],
             [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json'] + $server,
+            ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $this->season->getId()] + $server,
             $rawBody,
         );
         $response = $this->client->getResponse();
@@ -626,98 +419,19 @@ final class ParcImportAnalyzeTest extends WebTestCase
         return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
     }
 
-    private function makeVenue(string $name, bool $canSplit = false): Venue
+    private function makeVenue(string $name): Venue
     {
         $this->scopeGucToClub($this->club->getId());
         $venue = (new Venue)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual')->setIsActive(true)->setCanSplit($canSplit);
+            ->setName($name)->setSource('manual')->setIsActive(true)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
 
         return $venue;
     }
 
-    private function makeCoach(string $firstName, string $lastName): Coach
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $coach = (new Coach)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName($firstName)->setLastName($lastName)->setIsActive(true);
-        $this->em->persist($coach);
-        $this->em->flush();
-
-        return $coach;
-    }
-
     /**
-     * Un bloc de mutualisation (groupe de $teamIds), comme la production le pose — pour
-     * prouver qu'une mutualisation déjà formée s'apparie au dry-run.
-     *
-     * @param list<string> $teamIds
-     */
-    private function makeBlock(array $teamIds, int $commonSessions): string
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $block = (new SharedTrainingBlock)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId(null)->setCommonSessions($commonSessions);
-        $this->em->persist($block);
-        foreach ($teamIds as $teamId) {
-            $member = (new SharedTrainingBlockTeam)
-                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId);
-            $this->em->persist($member);
-        }
-        $this->em->flush();
-
-        return $block->getId();
-    }
-
-    /**
-     * Attache le club à l'offre Essentiel (cap d'équipes fini) pour la saison courante et
-     * rend les places restantes avant le cap.
-     */
-    private function capClubAtEssentiel(): ?int
-    {
-        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'essentiel']);
-        \assert($plan instanceof SubscriptionPlan);
-
-        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear(new DateTimeImmutable('today')));
-        $this->em->flush();
-
-        return self::getContainer()->get(PlanEntitlements::class)->remainingTeamSlots($this->club, $this->season);
-    }
-
-    private function makeTeam(string $name, int $sessionsPerWeek): Team
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $team = (new Team)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName($name)->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true);
-        $this->em->persist($team);
-        $this->em->flush();
-
-        return $team;
-    }
-
-    private function persistReservation(string $teamId, string $venueId, int $dayOfWeek, string $startTime): void
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $reservation = (new Reservation)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setTeamId($teamId)->setVenueId($venueId)
-            ->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($startTime))
-            ->setDurationMinutes(90)->setSchedulePlanId(null);
-        $this->em->persist($reservation);
-        $this->em->flush();
-    }
-
-    /**
-     * Un club TIERS (autre tenant) avec un gymnase et une équipe homonymes — pour
-     * prouver que l'appariement ne franchit jamais la frontière de tenant.
-     *
      * @return array{venueId: string, teamId: string}
      */
     private function seedForeignClubWithVenueAndTeam(string $venueName, string $teamName): array
@@ -729,7 +443,6 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->em->persist($otherClub);
         $this->em->flush();
 
-        // RLS WITH CHECK : scoper le GUC sur l'AUTRE club avant d'y insérer saison/gymnase/équipe.
         $this->scopeGucToClub($otherClub->getId());
         $otherSeason = (new Season)
             ->setClubId($otherClub->getId())->setName('2026-2027')
@@ -749,7 +462,6 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->em->persist($team);
         $this->em->flush();
 
-        // On rescope sur NOTRE club pour la suite du test (les requêtes HTTP rescopent seules).
         $this->scopeGucToClub($this->club->getId());
 
         return ['venueId' => $venue->getId(), 'teamId' => $team->getId()];
