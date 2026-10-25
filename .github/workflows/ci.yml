@@ -1134,6 +1134,17 @@ jobs:
       - name: SlidingSessionTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlidingSessionTest.php --group phase1'
 
+      # Axe auth & memberships (+ tenant isolation, D3) — un cookie JWT MORT ne bloque plus les pages
+      # publiques : un neutraliseur (kernel.request, AVANT le firewall) retire cookie/Authorization
+      # sur les routes du firewall `api` publiques, et un purgeur efface un cookie BEARER mort au 401
+      # d'une route protégée (jamais sur un échec Bearer en-tête). Byte-identique avec/sans jeton
+      # pourri (expiré/signature/compte supprimé, cookie ET Bearer) ; logout d'une session morte ;
+      # 404 des pages à token préservé ; un jeton valide ne pose aucun GUC tenant sur route publique ;
+      # firewall admin intact. Sans ce gate, un vieux cookie rendrait indéconnectable et illisible une
+      # page publique — invisible aux autres checks, qui n'exercent pas le jeton mort sur route publique.
+      - name: PublicRouteStaleJwtTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PublicRouteStaleJwtTest.php --group phase1'
+
       # Axe planning lifecycle (P2-63 PR 5) — « Transférer au planning » n'écrit QUE des objets de
       # période (overrides d'équipe, contraintes datées), ne fait JAMAIS naître un plan (semaine sans
       # plan → ignorée) et ne touche ni le socle ni sa version choisie ; idempotence par
