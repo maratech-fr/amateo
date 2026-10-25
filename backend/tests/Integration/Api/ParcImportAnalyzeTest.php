@@ -251,9 +251,9 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
     public function testAnImplausibleHourRaisesAnAlert(): void
     {
-        // D9 heure implausible : un début hors [07:00, 23:30] (ici 05:30) est signalé. (Décision TANK,
-        // appliquée faute de seuil explicite dans le plan — cf. rapport : le « 22:00 » de t9-deepseek
-        // ne franchit PAS ce seuil ; le témoin contrôlé le prouve sans ambiguïté.)
+        // D9 heure implausible — SEUIL tranché par l'orchestrateur (défaut, signalé au fondateur,
+        // 2026-10-25) : alerte si DÉBUT < 07:00, OU DÉBUT > 22:00 (strict), OU FIN > 23:30.
+        // Un début matinal 05:30 (< 07:00) est signalé.
         $parc = $this->parcWithCases([
             ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '05:30', 'duree' => 90, 'equipes' => ['SM1']],
         ]);
@@ -261,8 +261,31 @@ final class ParcImportAnalyzeTest extends WebTestCase
         [$status, $body] = $this->analyze($parc);
         self::assertSame(200, $status);
 
-        $types = array_map(static fn (array $a): string => (string) ($a['type'] ?? ''), (array) ($body['alertes'] ?? []));
-        self::assertContains('heure_implausible', $types, 'un début à 05:30 est signalé comme implausible');
+        self::assertContains('heure_implausible', $this->alertTypes($body), 'un début à 05:30 (< 07:00) est signalé');
+    }
+
+    public function testTheRealT9DeepseekLateNightCaseRaisesAnImplausibleHour(): void
+    {
+        // Sur la sortie RÉELLE t9-deepseek (horaires décalés en bloc), la case vendredi MATEO 22:30
+        // a un DÉBUT > 22:00 → l'analyse lève une alerte d'heure implausible. Preuve terrain du seuil.
+        [$status, $body] = $this->analyze($this->fixtureParc('t9-deepseek.json'));
+        self::assertSame(200, $status);
+
+        self::assertContains('heure_implausible', $this->alertTypes($body), 't9-deepseek a une case 22:30 (> 22:00) → heure implausible');
+    }
+
+    public function testARealisticLateEveningCaseIsNotFlagged(): void
+    {
+        // Témoin (dans l'autre sens) : une vraie case de soirée 20:30 → 22:30 (duree 120) est NORMALE
+        // au basket — début ≤ 22:00 ET fin ≤ 23:30 : elle ne lève JAMAIS l'alerte d'heure implausible.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 5, 'debut' => '20:30', 'duree' => 120, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        self::assertNotContains('heure_implausible', $this->alertTypes($body), 'une soirée 20:30-22:30 est normale, jamais signalée');
     }
 
     public function testADeclaredVenueWithoutAnyCaseRaisesAnAlert(): void
@@ -374,6 +397,18 @@ final class ParcImportAnalyzeTest extends WebTestCase
             'gymnases' => array_map(static fn (string $nom): array => ['nom' => $nom], array_keys($gyms)),
             'cases' => $cases,
         ];
+    }
+
+    /**
+     * Les `type` des alertes transverses de la réponse d'analyse.
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return list<string>
+     */
+    private function alertTypes(array $body): array
+    {
+        return array_map(static fn (array $a): string => (string) ($a['type'] ?? ''), (array) ($body['alertes'] ?? []));
     }
 
     /**
