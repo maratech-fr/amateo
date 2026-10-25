@@ -136,6 +136,32 @@ final class ExportScheduleTest extends WebTestCase
         }
     }
 
+    /**
+     * P4-359 (hygiène, point sensible : export) — le classeur XLSX porte les noms COMPLETS des
+     * coachs : une réponse NOMINATIVE. PROMESSE : elle n'est jamais mise en cache (ni navigateur, ni
+     * cache partagé), comme le PDF authentifié (P4-357, {@see \App\Tests\Security\ExportPdfDownloadIsolationTest}) —
+     * `Cache-Control` contient `no-store` ET `private`, jamais `public`. Sinon le fichier survit
+     * dans le cache d'un poste partagé du club après la déconnexion du gestionnaire.
+     *
+     * Falsifiable : sans directive explicite, Symfony calcule `no-cache, private` par défaut — donc
+     * `no-store` est ABSENT → ROUGE. Avec `setPrivate()` + `no-store` dans le contrôleur → VERT.
+     */
+    public function testXlsxExportResponseIsNotCacheable(): void
+    {
+        [$club, $user, $season] = $this->seedClub('nc');
+        $scheduleId = $this->seedSchedule($club, $season)->getId();
+        $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
+        $this->em->clear();
+
+        $this->requestAs($token, '/api/schedules/' . $scheduleId . '/export-xlsx', '{}');
+        self::assertResponseStatusCodeSame(200, 'l\'export XLSX d\'un planning du club courant aboutit');
+
+        $cacheControl = (string) $this->client->getResponse()->headers->get('Cache-Control');
+        self::assertStringContainsString('no-store', $cacheControl, 'une réponse nominative ne doit jamais être stockée en cache');
+        self::assertStringContainsString('private', $cacheControl, 'jamais mise en cache partagée');
+        self::assertStringNotContainsString('public', $cacheControl, 'jamais « public »');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
