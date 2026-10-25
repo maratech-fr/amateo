@@ -249,3 +249,71 @@ class TestDepartagePose:
             )
             == []
         )
+
+
+class TestRelayToleratedTravelExemption:
+    """P4-361 — une paire de trajet TOLÉRÉE par le relais de l'adjoint (chantier H) est EXEMPTÉE du
+    HARD et du MALUS SOFT, mais garde son DÉPARTAGE (arbitrage : départage CONSERVÉ).
+
+    Prédicat (défini par le plan, miroir de `CoachDoubleBookingDetector::lateArrivalTolerated`) : la
+    séance la plus TARDIVE de l'enchaînement est VERROUILLÉE avec `coachLateToleranceMinutes` > 0, un
+    adjoint (`model.team_assistant_map`) sans indisponibilité (`model.coach_unavailability`) peut
+    l'ouvrir, et le retard = max(0, barème BRUT − battement) ≤ tolérance. Décor : U21 LIBRE 18:30-20:00
+    gym A ; SENIORS VERROUILLÉE 20:05 gym B (battement 5), coach c1 non véhiculé (barème à vélo).
+    La SÉMANTIQUE de bout en bout (solve réel) vit dans `tests/semantic/test_travel_time_semantics.py`."""
+
+    def _model_with_tolerant_lock(self, *, tolerance: int, assistant: bool) -> tuple[Any, AssignmentVariable]:
+        model = cp_model.CpModel()
+        model.locked_slots = (
+            {
+                "teamId": "sen",
+                "venueId": "B",
+                "dayOfWeek": 1,
+                "startTime": "20:05",
+                "durationMinutes": 90,
+                "coachLateToleranceMinutes": tolerance,
+            },
+        )
+        model.team_assistant_map = {"sen": ["adj1"]} if assistant else {}
+        model.coach_unavailability = {}
+        free = _assign(model, "u21", "u21", "A", 1, 1110, 1200)  # 18:30 → 20:00
+        return model, free
+
+    def test_tolerated_pair_posts_no_hard_constraint(self) -> None:
+        # Barème 15, retard 10 ≤ tolérance 30, adjoint présent : le HARD n'est PAS posé (exempté).
+        model, free = self._model_with_tolerant_lock(tolerance=30, assistant=True)
+        added = add_travel_time_hard_constraints(
+            model,
+            [free],
+            coaches=[{"id": "c1", "isVehicled": False}],
+            team_coach_map={"u21": ["c1"], "sen": ["c1"]},
+            venue_travel_times=[_matrix_row("A", "B", 5, 15)],
+        )
+        assert added == 0
+
+    def test_tolerated_pair_yields_no_soft_malus(self) -> None:
+        # Même exemption côté PREFERRED : aucun malus de battement sur la paire tolérée.
+        model, free = self._model_with_tolerant_lock(tolerance=30, assistant=True)
+        terms = add_travel_time_penalty(
+            model,
+            [free],
+            coaches=[{"id": "c1", "isVehicled": False}],
+            team_coach_map={"u21": ["c1"], "sen": ["c1"]},
+            venue_travel_times=[_matrix_row("A", "B", 5, 15)],
+        )
+        assert terms == []
+
+    def test_tolerated_pair_keeps_its_departage(self) -> None:
+        # DÉPARTAGE CONSERVÉ (arbitrage) : la paire tolérée garde son malus de « moindre trajet »
+        # (palier 1 pour un barème 15), même exemptée du battement. C'est la non-régression du
+        # départage — il juge le TRAJET, jamais le battement.
+        model, free = self._model_with_tolerant_lock(tolerance=30, assistant=True)
+        terms = add_travel_departage_penalty(
+            model,
+            [free],
+            coaches=[{"id": "c1", "isVehicled": False}],
+            team_coach_map={"u21": ["c1"], "sen": ["c1"]},
+            venue_travel_times=[_matrix_row("A", "B", 5, 15)],
+        )
+        assert len(terms) == 1
+        assert terms[0][1] == -1
