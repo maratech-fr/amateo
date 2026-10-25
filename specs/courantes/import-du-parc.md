@@ -18,9 +18,7 @@
 > structurées, mais rendaient fidèlement les cases telles qu'elles apparaissent sur le document
 > source — le serveur dérive désormais lui-même le reste depuis cette structure plus simple. Les
 > **coachs ne sont plus extraits** (D11, saisis à la main). Backend (dérivation, validateur, prompt,
-> PR1) **et** écran `ParcImportModal` (PR2, §7) sont désormais recalés sur `parc-v2` — reste ouvert
-> en roadmap (`P4-363`) un défaut de contrat sur la réservation de GROUPE d'une mutualisation
-> appariée (§7).
+> PR1) **et** écran `ParcImportModal` (PR2, §7) sont désormais recalés sur `parc-v2`.
 
 ## 1. Format `parc-v2`
 
@@ -145,7 +143,9 @@ Succès → **200**, le corps rendu par l'analyzer (§3) ou par l'executor (§6)
 L'analyzer n'écrit rien. Il DÉRIVE les sections (`ParcCaseDeriver`, §1) puis rend, par section
 (`gymnases`, `equipes`, `creneaux`, `mutualisations`, `reservations` — **plus de section
 `coachs`**), une liste de lignes `{index, libelle, statut, coche, cibleId, raison}` (plus
-`extra.miseAJour`/`extra.groupe` selon la section) plus un récap chiffré par section
+`extra.miseAJour`/`extra.groupe`/`extra.gymnaseId` selon la section — une mutualisation porte
+`gymnaseId` : le gymnase RÉSOLU du nom de la case, `null` si à créer, amorce le sélecteur de
+gymnase de la réservation de groupe, §6) plus un récap chiffré par section
 (`{total, apparie, suggere, aCreer, decoche, alerte}`), un bloc `fiabilite`, les `alertes`
 transverses (§1) et en tête `{format: "parc-v2"}`.
 
@@ -236,14 +236,17 @@ cochées en écriture. Corps `{payload, decisions}` :
 - `payload` : l'objet `parc-v2`, **re-validé en forme** (`ParcPayloadValidator`, sur les mêmes
   octets que l'analyse) et en bornes (§2, points 7-8) — une analyse acceptée peut quand même être
   rejouée tard, l'exécuteur ne fait confiance à rien venu du client ;
-- `decisions` : `[{section, index, coche, cibleId?, corrections?}]`. Seules les lignes
+- `decisions` : `[{section, index, coche, cibleId?, venueId?, corrections?}]`. Seules les lignes
   `coche: true` sont écrites. `cibleId` apparie à une entité **existante**, **re-vérifiée tenant**
   côté serveur (club ET saison, patron A10 `FbiFixtureImporter::ownedVenueForImport`) — un
-  `cibleId` d'un autre club ou d'une autre saison échoue nommé, jamais une fuite tenant.
+  `cibleId` d'un autre club ou d'une autre saison échoue nommé, jamais une fuite tenant. Pour une
+  ligne `mutualisations`, `cibleId` désigne le **BLOC** apparié — JAMAIS un gymnase ; le gymnase de
+  la réservation de groupe de cette ligne voyage dans le canal **distinct** `venueId` (sélecteur de
+  la ligne, §7), lui aussi re-vérifié tenant, vide/absent → résolution par le nom de la case.
   `corrections` remplace des champs simples : `seances` pour une équipe, `jour`/`debut`/`duree`
-  pour un créneau, une mutualisation (sa case de réservation de groupe, PLUS `groupe` — le
-  libellé du bloc, D8, §7) ou une réservation. Sur une équipe **appariée**, seul le nombre de
-  séances peut bouger (`corrections.seances`) — jamais le genre, la catégorie ou le niveau.
+  pour un créneau, une mutualisation (PLUS `groupe` — le libellé du bloc, D8, §7) ou une
+  réservation. Sur une équipe **appariée**, seul le nombre de séances peut bouger
+  (`corrections.seances`) — jamais le genre, la catégorie ou le niveau.
 
 **Une seule transaction, tout ou rien** (`EntityManagerInterface::wrapInTransaction`) ; une ligne
 cochée invalide au moment de l'écriture lève `UnprocessableEntityHttpException` nommant la ligne
@@ -283,8 +286,10 @@ chatbot est ignorée en silence (le dériveur ne la lit pas).
   **avant** tout persist, puis le bloc naît au socle avec ses membres. Son **label** : la
   `corrections.groupe` du gestionnaire (trim, non vide, D8, §7) l'emporte sur le `groupe` brut de
   la case, les deux bornés à `SharedTrainingBlock::LABEL_MAX_LENGTH` (40 caractères).
-  **Réservation de groupe** : si la case (gymnase/jour/heure, par `cibleId` ou
-  `corrections`) se résout, chaque membre reçoit sa réservation co-localisée via la maison du
+  **Réservation de groupe** : le gymnase vient du `venueId` **CHOISI** de la décision
+  (re-vérifié tenant), sinon de la résolution par le **NOM** de la case — jamais du `cibleId`, qui
+  désigne le bloc apparié, pas un gymnase (P4-363). Si ce gymnase et le jour/heure (`corrections`)
+  se résolvent, chaque membre reçoit sa réservation co-localisée via la maison du
   rail `/api/reservations/group` (`GroupReservationController::
   writeBlockReservationsAtomically`), gardée par `ReservationGroupOccupancy::
   assertBlockReservationAllowed` ; idempotente (tous les membres déjà réservés sur cette case →
@@ -368,8 +373,11 @@ Quatre temps, dans une seule modale (jamais plusieurs écrans à cliqueter) :
    - une ligne de **mutualisation** affiche le `groupe` dérivé par le serveur (ex. « CEC ») dans un
      champ texte **corrigeable** (D8) — la valeur corrigée part en `corrections.groupe` et, côté
      executor, l'emporte sur le `groupe` brut de la case pour nommer le bloc (§6, borné à
-     `SharedTrainingBlock::LABEL_MAX_LENGTH`). Une mutualisation n'a **aucun** sélecteur de
-     gymnase (contrairement à un créneau, D12) : voir la limite de contrat notée plus bas.
+     `SharedTrainingBlock::LABEL_MAX_LENGTH`). Une ligne **cochée** (apparié/suggéré/à créer) porte
+     en plus son propre sélecteur de gymnase pour la réservation de groupe (P4-363, `VenueSelect`,
+     amorcé depuis `gymnaseId`, valeur `""` = le serveur résout par le nom de la case) — le choix
+     part en `venueId` de la décision, **jamais** en `cibleId` (réservé au bloc apparié) ; absente
+     sur une ligne `decoche`/`alerte`.
    Une ligne `decoche`/`alerte` n'a jamais de sélecteur ni de correction : la structure reste à la
    main. Bandeau si au moins un gymnase naît à créer (« renseignez l'adresse ensuite »). Bouton
    « Importer N » désactivé à 0 coché, `disabledReason` découvrable (A11Y-30).
@@ -377,14 +385,6 @@ Quatre temps, dans une seule modale (jamais plusieurs écrans à cliqueter) :
    **normalisé** renvoyé par l'analyse (`data.payload`, §3, D4) — jamais le texte brut re-décodé
    côté front — ni l'aperçu reconstruit ; au succès, équipes/gymnases sont invalidés PARTOUT
    (D-25) ; le récap chiffré par section (§6) s'affiche verbatim.
-
-⚠ **Une limite de contrat restée ouverte après PR2** (roadmap `P4-363`) : le `cibleId` d'une
-ligne `mutualisations` `apparie` porte l'id du **BLOC** du socle qu'elle rejoint
-(`ParcImportAnalyzer::analyzeMutualisations`), alors que `ParcImportExecutor::
-poseGroupReservation` le LIT comme un id de **GYMNASE** (`ownedVenue($cibleId, …)`) pour poser la
-réservation de groupe de la case — l'ambiguïté est inoffensive aujourd'hui (le front n'envoie
-cette décision que pour un bloc `aCreer`, `cibleId` alors `null`) mais interdit d'exposer un futur
-sélecteur de gymnase sur une ligne de mutualisation sans la lever d'abord.
 
 Décisions d'interaction (passe `ui-ux-pro-max`) : clôture jamais bloquée (dry-run, rien n'est
 écrit avant l'import) sauf pendant un appel en cours (double-soumission désarmée) ; chaque état

@@ -345,6 +345,19 @@ fondateur 2026-09-30, `engine/app/solver/constraints/travel.py:146`) :
 diagnostic (jamais par le départage, qui garde le barème BRUT pour son palier). `toleranceMinutes ≥
 barème` ⇒ 0 exigé — un enchaînement collé est accepté.
 
+**Exemption « relais de l'adjoint » (P4-361, chantier H)** : une paire cross-gymnase dont la séance
+la plus TARDIVE est VERROUILLÉE avec `coachLateToleranceMinutes > 0` et qu'un adjoint DISPONIBLE
+(`model.team_assistant_map`, sans indisponibilité couvrant le début, `model.coach_unavailability`)
+peut l'ouvrir est EXEMPTÉE du HARD **et** du malus SOFT de `travelTime`, tant que le retard
+(`max(0, barème BRUT − battement)`) reste ≤ cette tolérance — le DÉPARTAGE « moindre trajet » est
+lui CONSERVÉ sur la paire exemptée. Jamais pour une passerelle (`teamLinks`), seulement un coach.
+Lookup unique `late_relay_tolerances` (`engine/app/solver/constraints/travel.py`), source partagée
+par la pose HARD/SOFT, le diagnostic `travel_time_infeasible` (jamais annoncé sur une paire
+exemptée) et le miroir `/validate-assignments` (parité génération⇄verdict). Contrat **inchangé**
+(1.6) : la tolérance et l'adjoint voyagent déjà au titre du relais d'arrivée tardive
+(`engine-inventory.md` §4.3, mapping `TEAM_COACH`/role ASSISTANT), seule la LECTURE moteur de
+`travelTime` change.
+
 Deux termes, jamais le même rôle :
 
 | Terme | Mécanisme | Poids/portée |
