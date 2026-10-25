@@ -20,7 +20,7 @@
 > **coachs ne sont plus extraits** (D11, saisis à la main). Backend (dérivation, validateur, prompt,
 > PR1) **et** écran `ParcImportModal` (PR2, §7) sont désormais recalés sur `parc-v2` — reste ouvert
 > en roadmap (`P4-363`) un défaut de contrat sur la réservation de GROUPE d'une mutualisation
-> appariée, ainsi que la robustesse du re-parse du texte collé côté front (§7).
+> appariée (§7).
 
 ## 1. Format `parc-v2`
 
@@ -148,6 +148,14 @@ L'analyzer n'écrit rien. Il DÉRIVE les sections (`ParcCaseDeriver`, §1) puis 
 `extra.miseAJour`/`extra.groupe` selon la section) plus un récap chiffré par section
 (`{total, apparie, suggere, aCreer, decoche, alerte}`), un bloc `fiabilite`, les `alertes`
 transverses (§1) et en tête `{format: "parc-v2"}`.
+
+La réponse porte en plus `payload` : le parc **re-tendu** tel que `ParcPayloadValidator::parse()`
+l'a relu (même passe de récupération que §1 D4 — bloc Markdown, guillemets typographiques), pas le
+texte brut collé. Le front l'embarque pour amorcer ses corrections sur place (jour/heure/durée
+d'un créneau, D12) et le reposte **tel quel** comme `payload` à l'import (§6) plutôt que de
+re-décoder le texte collé lui-même — un collage qui n'a été lisible QUE grâce à la récupération
+serveur reste ainsi exploitable à l'import (`ParcImportModal.tsx`, lot correctif « G2 » PR 2/2 D4,
+2026-10-25).
 
 ### Statuts d'une ligne
 
@@ -365,22 +373,18 @@ Quatre temps, dans une seule modale (jamais plusieurs écrans à cliqueter) :
    Une ligne `decoche`/`alerte` n'a jamais de sélecteur ni de correction : la structure reste à la
    main. Bandeau si au moins un gymnase naît à créer (« renseignez l'adresse ensuite »). Bouton
    « Importer N » désactivé à 0 coché, `disabledReason` découvrable (A11Y-30).
-4. **Import + récap** — `useImportParc` poste `{payload, decisions}` (le texte collé RE-PARSÉ par
-   un simple `JSON.parse`, jamais l'aperçu reconstruit) ; au succès, équipes/gymnases sont
-   invalidés PARTOUT (D-25) ; le récap chiffré par section (§6) s'affiche verbatim.
+4. **Import + récap** — `useImportParc` poste `{payload, decisions}`, `payload` étant le parc
+   **normalisé** renvoyé par l'analyse (`data.payload`, §3, D4) — jamais le texte brut re-décodé
+   côté front — ni l'aperçu reconstruit ; au succès, équipes/gymnases sont invalidés PARTOUT
+   (D-25) ; le récap chiffré par section (§6) s'affiche verbatim.
 
-⚠ **Deux limites de contrat restées ouvertes après PR2** (roadmap `P4-363`) :
-- le front re-décode le texte collé par un `JSON.parse` BRUT (`ParcImportModal.tsx`) alors que le
-  backend applique une passe de RÉCUPÉRATION si ce parse échoue (§1, D4 — bloc Markdown, guillemets
-  typographiques) ; un texte qui a eu BESOIN de cette récupération pour analyser avec succès envoie
-  `payload: null` à l'import (le `parc` state reste `null`), que `ParcImportExecuteController`
-  refuse en 422 — l'analyse avait réussi, l'import échoue sans rapport visible avec la cause réelle ;
-- le `cibleId` d'une ligne `mutualisations` `apparie` porte l'id du **BLOC** du socle qu'elle
-  rejoint (`ParcImportAnalyzer::analyzeMutualisations`), alors que `ParcImportExecutor::
-  poseGroupReservation` le LIT comme un id de **GYMNASE** (`ownedVenue($cibleId, …)`) pour poser la
-  réservation de groupe de la case — l'ambiguïté est inoffensive aujourd'hui (le front n'envoie
-  cette décision que pour un bloc `aCreer`, `cibleId` alors `null`) mais interdit d'exposer un futur
-  sélecteur de gymnase sur une ligne de mutualisation sans la lever d'abord.
+⚠ **Une limite de contrat restée ouverte après PR2** (roadmap `P4-363`) : le `cibleId` d'une
+ligne `mutualisations` `apparie` porte l'id du **BLOC** du socle qu'elle rejoint
+(`ParcImportAnalyzer::analyzeMutualisations`), alors que `ParcImportExecutor::
+poseGroupReservation` le LIT comme un id de **GYMNASE** (`ownedVenue($cibleId, …)`) pour poser la
+réservation de groupe de la case — l'ambiguïté est inoffensive aujourd'hui (le front n'envoie
+cette décision que pour un bloc `aCreer`, `cibleId` alors `null`) mais interdit d'exposer un futur
+sélecteur de gymnase sur une ligne de mutualisation sans la lever d'abord.
 
 Décisions d'interaction (passe `ui-ux-pro-max`) : clôture jamais bloquée (dry-run, rien n'est
 écrit avant l'import) sauf pendant un appel en cours (double-soumission désarmée) ; chaque état
