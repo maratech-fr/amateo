@@ -21,13 +21,18 @@ use Symfony\Component\HttpFoundation\Response;
  * re-échoue. Ce listener EFFACE ce cookie dès le 401, aux attributs EXACTS de la pose
  * ({@see JwtCookieFactory::clear()}), pour que le navigateur reparte propre.
  *
- * Les trois événements d'échec lexik couvrent les trois morts d'un jeton :
+ * SEULS les deux événements de l'authentificateur JWT du firewall `api` couvrent les morts d'un
+ * jeton porté par le navigateur :
  *  - {@see Events::JWT_EXPIRED} : jeton expiré ;
  *  - {@see Events::JWT_INVALID} : signature invalide, charge malformée, ET compte supprimé
  *    (`UserNotFoundException` levée par le provider → l'authentificateur la route en JWT_INVALID,
- *    pas en expiré) ;
- *  - {@see Events::AUTHENTICATION_FAILURE} : filet pour tout autre échec d'auth portant le cookie.
+ *    pas en expiré).
  * Jamais `JWT_NOT_FOUND` : sans jeton, il n'y a rien à purger.
+ *
+ * ⚠ Jamais `Events::AUTHENTICATION_FAILURE` : le handler d'échec du json_login (`/api/login`,
+ * firewall `login`) le dispatche AUSSI. Un mot de passe raté — depuis un onglet qui porte un
+ * cookie `BEARER` VALIDE — poserait alors un cookie d'effacement sur la 401 et détruirait une
+ * session parfaitement ouverte, que le JS (httpOnly) ne peut même pas restaurer.
  *
  * ⚠ SEULEMENT le cookie du NAVIGATEUR : on purge SSI le cookie `BEARER` est présent ET aucun
  * en-tête `Authorization` n'accompagne la requête. Le flux Bearer (scripts d'ops, contexts
@@ -36,7 +41,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 #[AsEventListener(event: Events::JWT_INVALID, method: 'onAuthenticationFailure')]
 #[AsEventListener(event: Events::JWT_EXPIRED, method: 'onAuthenticationFailure')]
-#[AsEventListener(event: Events::AUTHENTICATION_FAILURE, method: 'onAuthenticationFailure')]
 final readonly class StaleJwtCookiePurgeListener
 {
     public function __construct(

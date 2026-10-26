@@ -51,15 +51,20 @@ final class PublicApiRouteCatalog
 
     /**
      * Le matcher runtime du neutraliseur : une requête est-elle une route publique du
-     * firewall `api` ? Les `path` sont des regexes `access_control` (délimiteur `{}` comme
-     * le matcher Symfony — aucun des motifs ne contient d'accolade).
+     * firewall `api` ? Les `path` sont des regexes `access_control`, appliquées EXACTEMENT
+     * comme le matcher Symfony ({@see \Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher})
+     * sur `access_control` : chemin `rawurldecode()` d'abord, puis délimiteur `{}` et flag `s`
+     * (aucun des motifs ne contient d'accolade). Sans ce décodage, le neutraliseur divergerait du
+     * firewall — soit en ne reconnaissant plus une route publique écrite encodée, soit en élargissant
+     * une route protégée via un `%2F` que `[^/]+` laisserait passer avant décodage.
      */
     public static function matches(string $pathInfo, string $method): bool
     {
         $method = strtoupper($method);
+        $pathInfo = rawurldecode($pathInfo);
 
         foreach (self::RULES as $rule) {
-            if (1 !== preg_match('{' . $rule['path'] . '}', $pathInfo)) {
+            if (1 !== preg_match('{' . $rule['path'] . '}s', $pathInfo)) {
                 continue;
             }
 

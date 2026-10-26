@@ -187,14 +187,17 @@ bloqués par un cookie que le JS ne peut même pas effacer** (httpOnly). Deux pi
   sienne pour `me/email/confirm`), donc rien n'est perdu, et un jeton valide ne
   résout **aucun tenant** (le GUC `app.club_id` reste vide, pas de session glissante).
 - **Routes protégées — purge au premier refus.**
-  `App\EventListener\StaleJwtCookiePurgeListener` écoute les trois échecs lexik
-  **`JWT_INVALID` / `JWT_EXPIRED` / `AUTHENTICATION_FAILURE`** (jamais `JWT_NOT_FOUND`
-  — sans jeton, rien à purger) et ajoute `JwtCookieFactory::clear()` au 401 **SSI**
-  la requête porte le cookie `BEARER` **ET aucun en-tête `Authorization`**. Le flux
-  **Bearer** (scripts d'ops, Behat, helpers e2e) **n'est jamais purgé** : un script
-  re-signe lui-même son jeton, et la seule présence de l'en-tête suspend la purge,
-  cookie mort à côté ou non. Le compte supprimé arrive par `JWT_INVALID`
-  (`UserNotFoundException` → l'authentificateur la route en invalide, pas en expiré).
+  `App\EventListener\StaleJwtCookiePurgeListener` écoute les deux échecs de
+  l'authentificateur JWT du firewall `api` **`JWT_INVALID` / `JWT_EXPIRED`** (jamais
+  `JWT_NOT_FOUND` — sans jeton, rien à purger ; et **jamais `AUTHENTICATION_FAILURE`**,
+  que le handler d'échec du json_login dispatche aussi : un mot de passe raté depuis un
+  onglet porteur d'un cookie `BEARER` valide détruirait cette session ouverte) et ajoute
+  `JwtCookieFactory::clear()` au 401 **SSI** la requête porte le cookie `BEARER` **ET
+  aucun en-tête `Authorization`**. Le flux **Bearer** (scripts d'ops, Behat, helpers
+  e2e) **n'est jamais purgé** : un script re-signe lui-même son jeton, et la seule
+  présence de l'en-tête suspend la purge, cookie mort à côté ou non. Le compte supprimé
+  arrive par `JWT_INVALID` (`UserNotFoundException` → l'authentificateur la route en
+  invalide, pas en expiré).
 
 `PublicApiRouteCatalog` est la **maison unique** des règles `PUBLIC_ACCESS` du
 firewall `api` (hors `^/api/admin/auth/*` et `^/api/login`, qui relèvent d'autres
