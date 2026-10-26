@@ -562,6 +562,32 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertSame('alerte', $body['sections']['creneaux'][1]['statut'], 'la correction d\'heure crée un chevauchement');
     }
 
+    // ───────────────────── PR1 refonte — l'appariement ne confond jamais le GENRE (défaut D, câblage) ─────────────────────
+    // Règle au plus bas : {@see TeamLabelMatcherTest::testSpacesDoNotCountAndTheRightGenderIsMatchedNeverTheOpposite}
+    // (+ ses témoins numéro/catégorie). ICI, le CÂBLAGE de bout en bout : un libellé de case espacé
+    // apparié au bon GENRE à travers l'analyzer réel.
+
+    public function testASpacedTeamLabelMatchesTheRightGenderNeverTheOpposite(): void
+    {
+        // Capture Rillieux : le club a « U15M1 » ET « U15F1 ». Une case porte « U15M 1 » (espace) →
+        // l'analyse l'apparie au MASCULIN, jamais au féminin, jamais « ambigu ». Avant correctif :
+        // la clé canonique effaçait le marqueur de genre → ambigu entre les deux (voire apparié au
+        // mauvais genre pour « U15 M2 »).
+        $male = $this->makeTeam('U15M1');
+        $this->makeTeam('U15F1');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U15M 1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame('apparie', $teamLine['statut'], '« U15M 1 » ≡ « U15M1 » : apparié, jamais ambigu entre les genres');
+        self::assertSame($male->getId(), $teamLine['cibleId'], 'vise le MASCULIN U15M1, jamais le féminin U15F1');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

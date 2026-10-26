@@ -311,6 +311,22 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(screen.getByText(T.importBlocked(1, 0))).toBeInTheDocument();
   });
 
+  it("une ligne ambiguë n'affiche sa raison QU'UNE fois (la ligne ⚠), jamais en double (défaut C)", async () => {
+    // Capture réelle 03-equipes.png : sur une ligne ambiguë, la raison SERVEUR s'affichait DEUX fois
+    // — en gris sous le libellé ET sur la ligne ⚠. Une seule doit rester (la ligne ⚠). La raison est
+    // une DONNÉE serveur (affichée verbatim) : le test l'assert telle quelle, pas une clé de texts.
+    const user = userEvent.setup();
+    const raison = "Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.";
+    const line = { ...mkAmbiguous(0, "U15M 1", [{ id: "t1", nom: "U15F1" }, { id: "t2", nom: "U15M1" }]), raison };
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysisOf({ equipes: [line] }));
+
+    // La ligne est rendue (son sélecteur de décision est là) puis la raison n'apparaît qu'UNE fois.
+    await screen.findByRole("button", { name: decisionTrigger("U15M 1") });
+    expect(screen.getAllByText(raison)).toHaveLength(1);
+  });
+
   it("« Apparier à X » sur une ligne ambiguë → la décision porte cibleId = X", async () => {
     const user = userEvent.setup();
     const analysis = analysisOf({
