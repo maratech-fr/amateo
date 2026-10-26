@@ -85,6 +85,15 @@ final class ParcImportExecutor
     /** @var array<string, string> nom normalisé → teamId */
     private array $teamByName = [];
 
+    /**
+     * Les équipes actives du club AVANT l'import (snapshot pris à l'entrée). L'ambiguïté d'un libellé
+     * (D5) se juge sur CE pool, PAS sur le pool vivant : sans ça, deux équipes-sœurs créées DANS le
+     * même run (« U11M1 »/« U11M3 », distance 1) rendraient la seconde faussement « ambiguë ».
+     *
+     * @var list<array{id: string, nom: string}>
+     */
+    private array $preImportTeamPool = [];
+
     private ?string $sportId = null;
 
     public function __construct(
@@ -111,6 +120,9 @@ final class ParcImportExecutor
         $this->venueByName = [];
         $this->teamByName = [];
         $this->sportId = null;
+        // Snapshot AVANT toute écriture : l'ambiguïté se mesure sur l'état d'avant l'import (comme
+        // l'analyzer), jamais sur les équipes créées au fil de ce run.
+        $this->preImportTeamPool = $this->activeTeamPool();
 
         $derived = $this->deriver->derive($parc);
         $index = $this->indexDecisions($decisions);
@@ -205,6 +217,14 @@ final class ParcImportExecutor
             $nom = $this->neutralize($this->stringField($entry, 'nom'));
 
             $existingId = $decision['cibleId'] ?? $this->resolveExistingTeamId($nom);
+
+            // PR1 (D5) — un libellé AMBIGU (≥ 2 candidats dans le seuil) coché SANS cible choisie ne
+            // doit JAMAIS créer un doublon en silence : refus 422 nommant la ligne, rien écrit. Tranché
+            // (le gestionnaire a choisi un candidat, `cibleId`), il passe par l'appariement ci-dessous.
+            if (null === $existingId && null === $decision['cibleId'] && $this->labelIsAmbiguous($nom)) {
+                $this->fail('equipes', $i, 'appariement ambigu — choisissez l\'équipe à apparier dans l\'aperçu, ou corrigez le nom.');
+            }
+
             if (null !== $existingId) {
                 $team = $this->ownedTeam($existingId, $club, $seasonId, 'equipes', $i);
                 $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
@@ -634,6 +654,16 @@ final class ParcImportExecutor
         $verdict = $this->matcher->match($name, $this->activeTeamPool());
 
         return 'apparie' === $verdict['statut'] ? $verdict['cibleId'] : null;
+    }
+
+    /**
+     * Vrai si le libellé tombe dans le seuil flou de DEUX équipes ou plus du club (verdict `ambigu`
+     * de {@see TeamLabelMatcher}) : le serveur ne peut alors ni l'apparier d'office ni le créer en
+     * silence — le gestionnaire doit trancher dans l'aperçu (PR1 D5).
+     */
+    private function labelIsAmbiguous(string $name): bool
+    {
+        return 'ambigu' === $this->matcher->match($name, $this->preImportTeamPool)['statut'];
     }
 
     private function ownedVenue(string $venueId, Club $club, string $seasonId, string $section, int $index): Venue

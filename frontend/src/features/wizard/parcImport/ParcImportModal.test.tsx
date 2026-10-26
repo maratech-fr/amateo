@@ -729,16 +729,27 @@ function mkAmbiguous(index: number, libelle: string, candidats: Array<{ id: stri
 }
 
 describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte import IA PR1)", () => {
-  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: never[]) => string> & Record<string, string>;
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
 
   /** Matcher FONCTION (nom accessible CONTENANT le texte) — jamais une `RegExp` construite (Semgrep). */
   const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
 
+  /**
+   * Trigger `Listbox` d'une ligne de décision : son nom accessible = aria-label SUIVI de la
+   * valeur/placeholder (patron `listbox.tsx`, `aria-labelledby=[labelId, valueId]` — « Décision pour
+   * « Armond » À trancher… » au repos), exactement comme `venueForGroupTrigger` plus haut. On matche
+   * donc le PRÉFIXE `decisionFor(libelle)` via un matcher FONCTION (adaptation MÉCANIQUE de la query
+   * au contrat réel du primitive partagé — cf. rapport NEO), jamais une string exacte.
+   */
+  const decisionTrigger = (libelle: string) => (accessibleName: string) => accessibleName.startsWith(T.decisionFor(libelle));
+
   /** Dépose le collage sur l'étape « Coller » puis analyse (auto-avance ensuite vers « Équipes »). */
   async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
     q.analysis.value = analysis;
-    // Étape 2 « Coller » (verrouillée tant que ?… non : 1-2 libres, 3-5 verrouillées).
-    await user.click(screen.getByRole("button", { name: T.stepPaste as unknown as string }));
+    // Étape 2 « Coller » : le bouton du rail porte son NUMÉRO dans le nom accessible (« 2 Coller »,
+    // patron `step-rail.tsx`), d'où le matcher FONCTION `stepNamed` (adaptation MÉCANIQUE de la query
+    // au contrat réel du primitive partagé — cf. rapport NEO), comme le test « StepRail » plus bas.
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepPaste as unknown as string) }));
     fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
     await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
   }
@@ -773,7 +784,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     await analyzeThen(user, analysis);
 
     // Le sélecteur de la ligne est présent, SANS valeur présélectionnée (placeholder « À trancher… »).
-    const trigger = await screen.findByRole("button", { name: T.decisionFor("Armond") });
+    const trigger = await screen.findByRole("button", { name: decisionTrigger("Armond") });
     expect(within(trigger).getByText(T.toDecide as unknown as string)).toBeInTheDocument();
 
     // Tant que l'ambigu n'est pas tranché, « Importer » est aria-disabled AVEC sa raison (A11Y-30).
@@ -792,7 +803,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
     await analyzeThen(user, analysis);
 
-    await user.click(await screen.findByRole("button", { name: T.decisionFor("Armond") }));
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.matchTo("Armand") }));
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
@@ -812,7 +823,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
     await analyzeThen(user, analysis);
 
-    await user.click(await screen.findByRole("button", { name: T.decisionFor("Armond") }));
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
@@ -831,7 +842,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
     await analyzeThen(user, analysis);
 
-    await user.click(await screen.findByRole("button", { name: T.decisionFor("Armond") }));
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 

@@ -28,7 +28,7 @@ import { ParcCaseGrid } from "./ParcCaseGrid";
  * (« … · à vérifier : <raison> »).
  */
 
-const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: never[]) => string> & Record<string, string>;
+const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
 
 /** Le contrat de données que NEO consomme (une case dérivée par réservation/créneau, par gymnase). */
 interface GridCase {

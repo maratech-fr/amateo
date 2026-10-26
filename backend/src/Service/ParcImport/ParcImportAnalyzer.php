@@ -29,7 +29,9 @@ use Doctrine\ORM\EntityManagerInterface;
  *  - `apparie`  : un unique existant correspond (exact), coché, cibleId posé ;
  *  - `suggere`  : un unique candidat flou (Levenshtein ≤ 2, {@see TeamLabelMatcher}), coché, cibleId posé ;
  *  - `aCreer`   : aucun existant, coché, cibleId null ;
- *  - `decoche`  : ambiguïté (plusieurs candidats) ou idempotence (déjà présent) — décoché, avec raison ;
+ *  - `ambigu`   : plusieurs candidats (≥ 2) — décoché, cibleId null, PORTE ses candidats `{id, nom}`
+ *                 pour le sélecteur « À trancher… » de la ligne (PR1 D5) ;
+ *  - `decoche`  : idempotence (déjà présent) ou cap d'offre dépassé — décoché, avec raison ;
  *  - `alerte`   : collision à trancher à la main — décoché, jamais un 500.
  *
  * Appariement : gymnases via {@see VenueAliasResolver} ; équipes via {@see TeamLabelMatcher}
@@ -56,14 +58,21 @@ final class ParcImportAnalyzer
     ) {}
 
     /**
-     * @param array<string, mixed> $parc     le parc parc-v2 décodé, déjà validé en FORME
-     * @param string               $seasonId la saison résolue ('' si aucune)
+     * @param array<string, mixed>       $parc      le parc parc-v2 décodé, déjà validé en FORME
+     * @param string                     $seasonId  la saison résolue ('' si aucune)
+     * @param list<array<string, mixed>> $decisions PR1 — les corrections de l'aperçu (revalidation) :
+     *                                              l'analyse REJOUE en appliquant jour/heure/durée d'un
+     *                                              créneau/réservation/mutualisation, si bien qu'une
+     *                                              alerte de chevauchement peut tomber ou naître
      *
      * @return array{format: string, fiabilite: array{taux: float, anomalies: int, bandeau: bool}, recap: array<string, array<string, int>>, sections: array<string, list<array<string, mixed>>>, alertes: list<array{type: string, message: string}>}
      */
-    public function analyze(array $parc, Club $club, string $seasonId): array
+    public function analyze(array $parc, Club $club, string $seasonId, array $decisions = []): array
     {
         $derived = $this->deriver->derive($parc);
+        if ([] !== $decisions) {
+            $this->applyTimeCorrections($derived, $decisions);
+        }
         $season = '' !== $seasonId ? $this->entityManager->find(Season::class, $seasonId) : null;
 
         $sections = [
@@ -88,6 +97,51 @@ final class ParcImportAnalyzer
             'sections' => $sections,
             'alertes' => $alertes,
         ];
+    }
+
+    /**
+     * PR1 (revalidation) — applique les corrections de l'aperçu (jour / heure / durée) aux sections
+     * TEMPORELLES dérivées, par index de décision, AVANT l'analyse : le rejeu voit les cases
+     * corrigées, si bien qu'une alerte de chevauchement peut TOMBER (correction qui sépare deux
+     * créneaux) ou NAÎTRE (correction qui les superpose). Ne touche QUE jour / debut / duree (les
+     * seuls champs simples d'une case) ; une correction de libellé de groupe reste pour l'import.
+     *
+     * @param array{gymnases: list<array{nom: string}>, equipes: list<array{nom: string, genre: string, categorie: string, seances: int}>, creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>, reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>, mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>, alertes: list<array{type: string, message: string}>} $derived
+     * @param list<array<string, mixed>>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          $decisions
+     */
+    private function applyTimeCorrections(array &$derived, array $decisions): void
+    {
+        foreach ($decisions as $decision) {
+            $section = $decision['section'] ?? null;
+            $index = $decision['index'] ?? null;
+            $corrections = $decision['corrections'] ?? null;
+            if (!\is_int($index) || !\is_array($corrections)) {
+                continue;
+            }
+            $jour = \is_int($corrections['jour'] ?? null) ? $corrections['jour'] : null;
+            $duree = \is_int($corrections['duree'] ?? null) && $corrections['duree'] >= 1 ? $corrections['duree'] : null;
+            $debut = \is_string($corrections['debut'] ?? null) && null !== $this->minutesOfTime($corrections['debut']) ? $corrections['debut'] : null;
+
+            if ('creneaux' === $section && isset($derived['creneaux'][$index])) {
+                $slot = $derived['creneaux'][$index];
+                $slot['jour'] = $jour ?? $slot['jour'];
+                $slot['debut'] = $debut ?? $slot['debut'];
+                $slot['duree'] = $duree ?? $slot['duree'];
+                $derived['creneaux'][$index] = $slot;
+            } elseif ('reservations' === $section && isset($derived['reservations'][$index])) {
+                $reservation = $derived['reservations'][$index];
+                $reservation['jour'] = $jour ?? $reservation['jour'];
+                $reservation['debut'] = $debut ?? $reservation['debut'];
+                $reservation['duree'] = $duree ?? $reservation['duree'];
+                $derived['reservations'][$index] = $reservation;
+            } elseif ('mutualisations' === $section && isset($derived['mutualisations'][$index])) {
+                $mutualisation = $derived['mutualisations'][$index];
+                $mutualisation['jour'] = $jour ?? $mutualisation['jour'];
+                $mutualisation['debut'] = $debut ?? $mutualisation['debut'];
+                $mutualisation['duree'] = $duree ?? $mutualisation['duree'];
+                $derived['mutualisations'][$index] = $mutualisation;
+            }
+        }
     }
 
     /**
@@ -124,8 +178,8 @@ final class ParcImportAnalyzer
         $out = [];
         foreach ($venues as $i => $entry) {
             $nom = $this->stringField($entry, 'nom');
-            [$statut, $cibleId, $raison] = $this->verdict($this->venueResolver->exactMatch($nom), $this->venueResolver->candidates($nom));
-            $out[] = $this->line($i, $nom, $statut, $cibleId, $raison);
+            [$statut, $cibleId, $raison, $candidats] = $this->verdict($this->venueResolver->exactMatch($nom), $this->venueResolver->candidates($nom));
+            $out[] = $this->line($i, $nom, $statut, $cibleId, $raison, ['candidats' => $candidats]);
         }
 
         return $out;
@@ -146,9 +200,9 @@ final class ParcImportAnalyzer
         $rows = [];
         foreach ($teams as $i => $entry) {
             $nom = $this->stringField($entry, 'nom');
-            [$statut, $cibleId, $raison] = $this->teamVerdict($nom);
+            [$statut, $cibleId, $raison, $candidats] = $this->teamVerdict($nom);
 
-            $extra = [];
+            $extra = ['candidats' => $candidats];
             if ('apparie' === $statut && null !== $cibleId && isset($byId[$cibleId])) {
                 $current = $byId[$cibleId]->getSessionsPerWeek();
                 if ($current !== $entry['seances']) {
@@ -169,18 +223,19 @@ final class ParcImportAnalyzer
 
     /**
      * Le verdict d'une équipe via {@see TeamLabelMatcher} (correcteur, jamais filtre) : apparié /
-     * suggéré / à créer tels quels ; une AMBIGUÏTÉ (≥ 2 candidats dans le seuil) devient `decoche`.
+     * suggéré / à créer tels quels ; une AMBIGUÏTÉ (≥ 2 candidats dans le seuil) ressort `ambigu`
+     * (décoché, à trancher) PORTANT ses candidats — PR1 (D5), au lieu du « decoche » muet d'avant.
      *
-     * @return array{0: string, 1: string|null, 2: string|null} [statut, cibleId, raison]
+     * @return array{0: string, 1: string|null, 2: string|null, 3: list<array{id: string, nom: string}>} [statut, cibleId, raison, candidats]
      */
     private function teamVerdict(string $label): array
     {
         $verdict = $this->matcher->match($label, $this->teamPool());
         if ('ambigu' === $verdict['statut']) {
-            return ['decoche', null, 'Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.'];
+            return ['ambigu', null, 'Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.', $verdict['candidats']];
         }
 
-        return [$verdict['statut'], $verdict['cibleId'], null];
+        return [$verdict['statut'], $verdict['cibleId'], null, $verdict['candidats']];
     }
 
     /**
@@ -435,27 +490,50 @@ final class ParcImportAnalyzer
 
     /**
      * Le verdict d'appariement commun aux gymnases : exact unique → apparié ; un candidat flou →
-     * suggéré ; deux ou plus → décoché (ambigu) ; aucun → à créer.
+     * suggéré ; deux ou plus → `ambigu` (décoché, à trancher) + la liste des candidats ; aucun → à
+     * créer. PR1 (D5) : l'ambiguïté PORTE désormais ses candidats (`{id, nom}`) pour le sélecteur de
+     * la ligne, au lieu de tomber en « decoche » muet.
      *
      * @param list<string> $candidates
      *
-     * @return array{0: string, 1: string|null, 2: string|null}
+     * @return array{0: string, 1: string|null, 2: string|null, 3: list<array{id: string, nom: string}>}
      */
     private function verdict(?string $exact, array $candidates): array
     {
         if (null !== $exact) {
-            return ['apparie', $exact, null];
+            return ['apparie', $exact, null, $this->venueCandidats([$exact])];
         }
 
         $candidates = array_values(array_unique($candidates));
         if (1 === \count($candidates)) {
-            return ['suggere', $candidates[0], null];
+            return ['suggere', $candidates[0], null, $this->venueCandidats($candidates)];
         }
         if (\count($candidates) >= 2) {
-            return ['decoche', null, 'Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.'];
+            return ['ambigu', null, 'Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.', $this->venueCandidats($candidates)];
         }
 
-        return ['aCreer', null, null];
+        return ['aCreer', null, null, []];
+    }
+
+    /**
+     * Les candidats gymnase (`{id, nom}`) d'un ensemble d'ids résolus — pour le groupe « Candidats
+     * possibles » du sélecteur de la ligne. Un id qui ne charge pas (course tenant) est ignoré.
+     *
+     * @param list<string> $ids
+     *
+     * @return list<array{id: string, nom: string}>
+     */
+    private function venueCandidats(array $ids): array
+    {
+        $out = [];
+        foreach ($ids as $id) {
+            $venue = $this->entityManager->find(Venue::class, $id);
+            if ($venue instanceof Venue) {
+                $out[] = ['id' => $id, 'nom' => $venue->getName()];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -642,7 +720,7 @@ final class ParcImportAnalyzer
      */
     private function recap(array $lines): array
     {
-        $recap = ['total' => \count($lines), 'apparie' => 0, 'suggere' => 0, 'aCreer' => 0, 'decoche' => 0, 'alerte' => 0];
+        $recap = ['total' => \count($lines), 'apparie' => 0, 'suggere' => 0, 'aCreer' => 0, 'ambigu' => 0, 'decoche' => 0, 'alerte' => 0];
         foreach ($lines as $line) {
             $statut = $line['statut'] ?? null;
             if (\is_string($statut) && isset($recap[$statut])) {

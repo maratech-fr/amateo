@@ -31,13 +31,13 @@ final class TeamLabelMatcher
     /**
      * @param list<array{id: string, nom: string}> $existing
      *
-     * @return array{statut: string, cibleId: string|null, cibleNom: string|null}
+     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, candidats: list<array{id: string, nom: string}>}
      */
     public function match(string $label, array $existing): array
     {
         $key = $this->canonical($label);
         if ('' === $key) {
-            return $this->verdict('aCreer', null, null);
+            return $this->verdict('aCreer', null, null, []);
         }
 
         $exact = [];
@@ -55,20 +55,28 @@ final class TeamLabelMatcher
             }
         }
 
+        // PR1 (D5) — le verdict PORTE ses candidats (`{id, nom}`), pour que l'aperçu refondu offre au
+        // gestionnaire le groupe « Candidats possibles » du sélecteur de la ligne. Les candidats sont
+        // les exacts quand il y en a (une égalité canonique prime), sinon les flous ; « à créer »
+        // n'invente aucun candidat (correcteur jamais filtre). Toujours re-listés (`list`) pour que le
+        // JSON les sérialise en tableau.
+        $matched = [] !== $exact ? $exact : $fuzzy;
+        $candidats = array_map(static fn (array $c): array => ['id' => $c['id'], 'nom' => $c['nom']], $matched);
+
         if (1 === \count($exact)) {
-            return $this->verdict('apparie', $exact[0]['id'], $exact[0]['nom']);
+            return $this->verdict('apparie', $exact[0]['id'], $exact[0]['nom'], $candidats);
         }
         if (\count($exact) >= 2) {
-            return $this->verdict('ambigu', null, null);
+            return $this->verdict('ambigu', null, null, $candidats);
         }
         if (1 === \count($fuzzy)) {
-            return $this->verdict('suggere', $fuzzy[0]['id'], $fuzzy[0]['nom']);
+            return $this->verdict('suggere', $fuzzy[0]['id'], $fuzzy[0]['nom'], $candidats);
         }
         if (\count($fuzzy) >= 2) {
-            return $this->verdict('ambigu', null, null);
+            return $this->verdict('ambigu', null, null, $candidats);
         }
 
-        return $this->verdict('aCreer', null, null);
+        return $this->verdict('aCreer', null, null, []);
     }
 
     /**
@@ -104,7 +112,7 @@ final class TeamLabelMatcher
      * @param list<string>                         $tokens
      * @param list<array{id: string, nom: string}> $existing
      *
-     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, recolle: string}|null
+     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, candidats: list<array{id: string, nom: string}>, recolle: string}|null
      */
     public function recombine(array $tokens, array $existing): ?array
     {
@@ -121,11 +129,13 @@ final class TeamLabelMatcher
     }
 
     /**
-     * @return array{statut: string, cibleId: string|null, cibleNom: string|null}
+     * @param list<array{id: string, nom: string}> $candidats
+     *
+     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, candidats: list<array{id: string, nom: string}>}
      */
-    private function verdict(string $statut, ?string $cibleId, ?string $cibleNom): array
+    private function verdict(string $statut, ?string $cibleId, ?string $cibleNom, array $candidats): array
     {
-        return ['statut' => $statut, 'cibleId' => $cibleId, 'cibleNom' => $cibleNom];
+        return ['statut' => $statut, 'cibleId' => $cibleId, 'cibleNom' => $cibleNom, 'candidats' => $candidats];
     }
 
     /**

@@ -86,4 +86,68 @@ export const PARC_IMPORT_TEXTS = {
   /** Le récap d'une section importée (contrat PR2, provisoire). */
   sectionRecap: (crees: number, apparies: number, misAJour: number, ignores: number): string =>
     `${crees} créé(s) · ${apparies} rattaché(s) · ${misAJour} mis à jour · ${ignores} ignoré(s)`,
+
+  // ─────────── Refonte PR1 — assistant en 5 étapes (passe ui-ux-pro-max) ───────────
+  /** Libellés des 2 premières étapes du rail (les 3 suivantes réutilisent `sectionTitle`). */
+  stepPrompt: "Prompt",
+  stepPaste: "Coller",
+  /** Phrase sous l'étape « Coller » : les étapes de contenu attendent l'analyse. */
+  lockedUntilAnalysis: "Les étapes suivantes s'ouvrent après l'analyse.",
+  next: "Suivant",
+  previous: "Précédent",
+  /** En-tête d'étape focalisé au changement d'étape (`<h3 tabIndex={-1}>`). */
+  stepHeading: (n: number, total: number, title: string): string => `Étape ${n}/${total} · ${title}`,
+  /** Désactivation d'« Analyser » tant que rien n'est collé (A11Y-30). */
+  analyzeDisabledHint: "Collez d'abord la réponse de l'assistant.",
+
+  // Décision d'une ligne équipe / gymnase (sélecteur `Listbox` brut, groupes ordonnés)
+  decisionFor: (libelle: string): string => `Décision pour « ${libelle} »`,
+  /** Placeholder d'une ligne AMBIGUË — sans présélection, à trancher à la main. */
+  toDecide: "À trancher…",
+  matchTo: (nom: string): string => `Apparier à « ${nom} »`,
+  matchToSuggested: (nom: string): string => `Apparier à « ${nom} » (suggéré)`,
+  createOption: (libelle: string): string => `Créer « ${libelle} »`,
+  ignoreLine: "Ignorer cette ligne",
+  suggestionGroup: "Suggestion de l'analyse",
+  candidatesGroup: "Candidats possibles",
+  otherChoiceGroup: "Autre choix",
+  allTeamsGroup: "Toutes les équipes du club",
+  allVenuesGroup: "Tous les gymnases du club",
+
+  // Import bloqué / erreur / revalidation
+  /** Raison de désactivation d'« Importer » : nombre de lignes à trancher (+ sans genre, PR2). */
+  importBlocked: (nAmbigu: number, nGenre: number): string => {
+    const parts: string[] = [];
+    if (nAmbigu > 0) {
+      parts.push(`${nAmbigu} ligne${nAmbigu > 1 ? "s" : ""} à trancher`);
+    }
+    if (nGenre > 0) {
+      parts.push(`${nGenre} équipe${nGenre > 1 ? "s" : ""} sans genre`);
+    }
+    return 0 === parts.length ? "Cochez au moins une ligne pour pouvoir importer." : `Impossible d'importer : ${parts.join(" · ")}.`;
+  },
+  revalidate: "Revalider l'aperçu",
+  /** Bandeau « aperçu périmé » après une modification (tone accent, sans role). */
+  staleHint: (n: number): string => `Vous avez modifié ${n} ligne${n > 1 ? "s" : ""} : les alertes affichées datent de l'analyse précédente.`,
+  importErrorHeading: "L'import n'a pas abouti",
+  importErrorGeneric: "Une erreur est survenue pendant l'import. Réessayez plus tard.",
+  goToLine: "Aller à la ligne",
+
+  // Grille de réservations par gymnase (`ParcCaseGrid`) + éditeur de créneau
+  /** En-tête d'une grille de gymnase ENCORE À CRÉER. */
+  gridVenueToCreate: (name: string): string => `${name} (à créer)`,
+  /** Nom accessible d'une case EN ALERTE : la raison serveur, jamais la couleur seule. */
+  caseToVerify: (raison: string): string => `Créneau à vérifier : ${raison}`,
+  gridGoTo: "Aller à :",
+  editCaseTitle: "Corriger le créneau",
+  editVenue: (libelle: string): string => `Gymnase du créneau — ${libelle}`,
+  save: "Enregistrer",
+  cancel: "Annuler",
+
+  // Récap (remplace le contenu de l'aperçu, pas de 6ᵉ étape)
+  recapNext: "Et maintenant : vos équipes, gymnases et réservations sont dans l'assistant. Poursuivez la saisie.",
+  recapCreated: "Créées",
+  recapMatched: "Appariées",
+  recapUpdated: "Mises à jour",
+  recapIgnored: "Ignorées",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

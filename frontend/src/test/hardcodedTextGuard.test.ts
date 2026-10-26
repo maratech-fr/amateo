@@ -78,6 +78,8 @@ const MIGRATED_FILES = [
   "features/wizard/steps/TravelMatrixModal.tsx",
   // Chantier G PR3 — la modale d'import du parc par IA naît migrée (texts.ts de parcImport).
   "features/wizard/parcImport/ParcImportModal.tsx",
+  // Refonte PR1 — la grille de réservations par gymnase naît migrée (texts.ts de parcImport).
+  "features/wizard/parcImport/ParcCaseGrid.tsx",
   "features/club/ClubPage.tsx",
   "features/planning/ClubViewTable.tsx",
   // P4-346 PR A — coquille de la console superadmin migrée dans features/admin/texts/dashboard.ts.
