@@ -969,16 +969,21 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
     expect(await screen.findByText(T.mutualisationsEmpty as unknown as string)).toBeInTheDocument();
   });
 
-  it("3 — l'en-tête de l'étape Mutualisations résume leur nombre (sans alerte : clé mutualisationsReadCount)", async () => {
+  it("3 — l'en-tête de l'étape Mutualisations EN ALERTE résume leur nombre « à vérifier » (clé mutualisationsCount)", async () => {
+    // Finition 2c — le pendant du cas SANS alerte (« 2c » du describe « finitions », clé
+    // `mutualisationsReadCount`) : dès qu'UNE mutualisation est en alerte, le compteur bascule sur
+    // « N … à vérifier. » (branche `hasAlert` de `ParcImportModal.tsx:1021`). Sans ce test, le bras
+    // ALERTE du ternaire reste non prouvé (ailleurs `mutualisationsCount` n'est asserté qu'ABSENT,
+    // cf. :1188) — point SENSIBLE (mutualisation, charte §1).
     const user = userEvent.setup();
-    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })] });
+    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { groupe: "CEC", gymnaseId: null, raison: "À ajuster.", position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })] });
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
     await goToStep(user, "mutualisations");
 
-    // Finition 2c — SANS alerte, le compteur dit « N mutualisations lues » (« à vérifier » réservé aux alertes).
-    expect(await screen.findByText(T.mutualisationsReadCount(1))).toBeInTheDocument();
+    // AVEC alerte, le compteur dit « N mutualisations à vérifier. » (« lues » réservé au cas sans alerte).
+    expect(await screen.findByText(T.mutualisationsCount(1))).toBeInTheDocument();
   });
 
   it("3 — une mutualisation EN ALERTE marque l'étape Mutualisations du rail comme « à vérifier » (⚠)", async () => {
