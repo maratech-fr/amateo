@@ -78,6 +78,19 @@ final class ParcImportExecuteTest extends WebTestCase
 
     private string $token;
 
+    /**
+     * Un `corrections.tierId` de TYPE aberrant (jamais un id de rang valide) : chaque forme doit être
+     * refusée 422 AVANT persist, jamais repliée en silence sur la suggestion.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function aberrantTierIdProvider(): iterable
+    {
+        yield 'un flottant (5.5) n\'est pas un id de rang' => [5.5];
+        yield 'un entier négatif (-1) n\'est pas un id de rang' => [-1];
+        yield 'une chaîne non numérique (« abc ») n\'est pas un id de rang' => ['abc'];
+    }
+
     // ───────────────────────────── Gate (domaine sensible) ─────────────────────────────
 
     public function testNonManagerIsRefusedWithoutWriting(): void
@@ -383,19 +396,6 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(422, $status, 'un club partenaire > 120 caractères est refusé (jamais un 500 de troncature)');
         self::assertStringContainsString('équipe', implode(' ', $body['errors'] ?? []), 'le 422 nomme la ligne équipe fautive');
         self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : aucune équipe créée avec un partenaire trop long');
-    }
-
-    /**
-     * Un `corrections.tierId` de TYPE aberrant (jamais un id de rang valide) : chaque forme doit être
-     * refusée 422 AVANT persist, jamais repliée en silence sur la suggestion.
-     *
-     * @return iterable<string, array{0: mixed}>
-     */
-    public static function aberrantTierIdProvider(): iterable
-    {
-        yield 'un flottant (5.5) n\'est pas un id de rang' => [5.5];
-        yield 'un entier négatif (-1) n\'est pas un id de rang' => [-1];
-        yield 'une chaîne non numérique (« abc ») n\'est pas un id de rang' => ['abc'];
     }
 
     #[DataProvider('aberrantTierIdProvider')]
