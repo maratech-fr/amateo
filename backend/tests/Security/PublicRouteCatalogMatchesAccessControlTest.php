@@ -92,6 +92,28 @@ final class PublicRouteCatalogMatchesAccessControlTest extends TestCase
     }
 
     /**
+     * Le matcher doit décoder le pour-cent AVANT d'appliquer la regex, comme `access_control` qui
+     * matche sur `rawurldecode($request->getPathInfo())` ({@see \Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher}).
+     * Sans ce décodage, il DIVERGE du firewall dans les deux sens — les deux cloués ici :
+     *  - une route publique écrite ENCODÉE n'est plus reconnue → un cookie mort la rebloque (le bug
+     *    D3 qui revient par l'encodage) ;
+     *  - un `%2F` (slash encodé) laisse le motif `[^/]+` d'une route protégée matcher un segment qui,
+     *    décodé, contient des slashes → le neutraliseur élargirait une route que `access_control`,
+     *    lui, ne tient PAS pour publique après décodage.
+     */
+    public function testTheMatcherDecodesPercentEncodingLikeAccessControl(): void
+    {
+        self::assertTrue(
+            PublicApiRouteCatalog::matches('/api/regist%65r/config', 'GET'),
+            '`%65` = `e` : `/api/register/config` écrit encodé reste une route publique, comme pour access_control',
+        );
+        self::assertFalse(
+            PublicApiRouteCatalog::matches('/api/clubs/a%2F..%2Fb/logo', 'GET'),
+            '`%2F` décodé = `/` : le slash brise `[^/]+`, donc PAS public — le matcher ne doit pas élargir une route protégée via l\'encodage',
+        );
+    }
+
+    /**
      * Les règles PUBLIC_ACCESS du firewall `api`, lues de security.yaml, moins les exclusions
      * nominatives. Clé = `path|METHODES` (méthodes triées majuscules, `*` = toutes).
      *

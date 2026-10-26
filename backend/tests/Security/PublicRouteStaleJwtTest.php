@@ -257,6 +257,73 @@ final class PublicRouteStaleJwtTest extends WebTestCase
         self::assertSame(401, $this->client->getResponse()->getStatusCode(), 'un jeton de club ne franchit jamais le firewall admin, que le neutraliseur tourne ou non');
     }
 
+    /**
+     * Un login RATÉ (mauvais mot de passe) ne doit JAMAIS détruire une session valide déjà ouverte.
+     *
+     * Le piège : {@see \App\EventListener\StaleJwtCookiePurgeListener} écoute
+     * `Events::AUTHENTICATION_FAILURE`, que le handler d'échec du json_login dispatche AUSSI
+     * ({@see \Lexik\Bundle\JWTAuthenticationBundle\Security\Http\Authentication\AuthenticationFailureHandler}
+     * ligne 48, câblé `failure_handler` du firewall `login` dans security.yaml). `^/api/login` est
+     * EXCLU du catalogue : le neutraliseur n'y retire donc PAS le cookie, et le `BEARER` VALIDE
+     * porté par l'onglet est présent sur la requête d'échec. Le purgeur voit « cookie présent, pas
+     * d'en-tête Authorization » et pose un cookie d'EFFACEMENT (path `/api`) sur la 401 — un simple
+     * mot de passe raté (le sien de travers, ou celui d'un tiers) déconnecte une session parfaitement
+     * valide, le cookie httpOnly que le JS ne peut même pas restaurer.
+     *
+     * Souverain : la réponse d'échec ne porte AUCUN effacement du cookie JWT. Conséquence prouvée
+     * dans la foulée : la session réelle survit, le cookie reste accepté (`GET /api/me` → 200).
+     */
+    public function testAFailedLoginNeverWipesAValidSession(): void
+    {
+        $user = $this->persistVerifiedUserWithClub('login-keep');
+        $valid = $this->forge($user, time() - 60, time() + 3000);
+
+        $this->freshSession();
+        // Domaine = l'hôte de test : un éventuel cookie d'effacement de la réponse (dérivé du même
+        // hôte) COLLISIONNE alors avec celui-ci dans le jar — comme dans un vrai navigateur, il
+        // l'efface vraiment. Sans ce domaine explicite, la survie de la session ne prouverait rien.
+        $this->client->getCookieJar()->set(new BrowserKitCookie('BEARER', $valid, null, '/api', 'localhost', false, true));
+
+        // Login RATÉ : bon e-mail (json_login lit `email`/`password`), mot de passe faux.
+        $this->client->request('POST', '/api/login', [], [], ['CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $this->ip()], (string) json_encode([
+            'email' => $user->getEmail(),
+            'password' => 'wrong-' . self::PASSWORD,
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertSame(401, $this->client->getResponse()->getStatusCode(), 'un mot de passe erroné reste un échec de connexion');
+        self::assertNull($this->responseBearerCookie(), 'un login raté ne doit JAMAIS poser de cookie d\'effacement : il détruirait une session valide ouverte dans l\'onglet');
+
+        // Le cookie valide est toujours là et toujours accepté : la session a survécu à l'échec.
+        $this->client->request('GET', '/api/me', [], [], ['CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $this->ip()]);
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'la session valide reste utilisable après un login raté');
+    }
+
+    /**
+     * Un chemin public écrit ENCODÉ (`/api/regist%65r/config`, soit `/api/register/config` une fois
+     * `%65`=`e` décodé — une page publique en GET) reste byte-identique sous un cookie mort. Symfony
+     * décode le chemin avant de router ET avant `access_control` (`rawurldecode`,
+     * {@see \Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher}), donc l'anonyme a
+     * 200. Le neutraliseur, qui matche sur le chemin BRUT via {@see \App\Security\PublicApiRouteCatalog},
+     * doit décoder PAREIL : sinon il ne reconnaît pas la route publique sous sa forme encodée, laisse
+     * passer le cookie mort, et l'authentificateur lexik la rebloque en 401 (le bug D3 par l'encodage).
+     * Jumeau unitaire : {@see PublicRouteCatalogMatchesAccessControlTest::testTheMatcherDecodesPercentEncodingLikeAccessControl}.
+     */
+    public function testAnEncodedPublicPathStaysByteIdenticalUnderARottenCookie(): void
+    {
+        $encodedPath = '/api/regist%65r/config';
+
+        [$baselineStatus, $baselineBody] = $this->getWithNoCredentials($encodedPath);
+        self::assertSame(200, $baselineStatus, 'la page publique /api/register/config répond 200 sans jeton, même écrite encodée');
+
+        $dead = $this->forge($this->persistVerifiedUser('encoded-public'), time() - 7200, time() - 3600);
+        $this->freshSession();
+        $this->setBearerCookie($dead);
+        $this->client->request('GET', $encodedPath, [], [], ['CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $this->ip()]);
+
+        self::assertSame($baselineStatus, $this->client->getResponse()->getStatusCode(), 'un chemin public encodé ne doit pas se faire rebloquer en 401 par un cookie mort');
+        self::assertSame($baselineBody, (string) $this->client->getResponse()->getContent(), 'la réponse d\'un chemin public reste byte-identique sous sa forme encodée');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
