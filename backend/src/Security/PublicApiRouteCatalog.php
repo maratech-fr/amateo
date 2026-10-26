@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Security;
 
+use App\EventListener\PublicApiCredentialNeutralizer;
+use App\Tests\Security\PublicRouteCatalogMatchesAccessControlTest;
+use Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher;
+
 /**
  * D3 — LA MAISON UNIQUE des routes publiques du firewall `api`, pour le neutraliseur de
- * crédentiels ({@see \App\EventListener\PublicApiCredentialNeutralizer}).
+ * crédentiels ({@see PublicApiCredentialNeutralizer}).
  *
  * ⚠ POURQUOI CETTE CLASSE EXISTE : le firewall `api` (stateless, `jwt: ~`) fait tourner
  * l'authentificateur lexik dès qu'un jeton est PRÉSENT — même sur une route `PUBLIC_ACCESS`.
@@ -16,7 +20,7 @@ namespace App\Security;
  * `Authorization` sur une requête publique ; pour savoir CE QUI est public, il lui faut la
  * liste des règles `PUBLIC_ACCESS` du firewall `api`. Une liste tenue à la main dériverait en
  * silence de `config/packages/security.yaml` : ces entrées en sont le MIROIR, et
- * {@see \App\Tests\Security\PublicRouteCatalogMatchesAccessControlTest} les y cloue dans les
+ * {@see PublicRouteCatalogMatchesAccessControlTest} les y cloue dans les
  * DEUX sens (une règle publique sans entrée = le bug D3 qui revient ; une entrée de trop =
  * une route protégée dont les crédentiels seraient neutralisés).
  *
@@ -52,7 +56,7 @@ final class PublicApiRouteCatalog
     /**
      * Le matcher runtime du neutraliseur : une requête est-elle une route publique du
      * firewall `api` ? Les `path` sont des regexes `access_control`, appliquées EXACTEMENT
-     * comme le matcher Symfony ({@see \Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher})
+     * comme le matcher Symfony ({@see PathRequestMatcher})
      * sur `access_control` : chemin `rawurldecode()` d'abord, puis délimiteur `{}` et flag `s`
      * (aucun des motifs ne contient d'accolade). Sans ce décodage, le neutraliseur divergerait du
      * firewall — soit en ne reconnaissant plus une route publique écrite encodée, soit en élargissant

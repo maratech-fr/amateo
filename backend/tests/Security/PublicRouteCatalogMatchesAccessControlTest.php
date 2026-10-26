@@ -7,6 +7,7 @@ namespace App\Tests\Security;
 use App\Security\PublicApiRouteCatalog;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -14,7 +15,7 @@ use Symfony\Component\Yaml\Yaml;
  *
  * Le neutraliseur de crédentiels (D-a) retire cookie/Authorization sur une requête qui matche une
  * route publique. Il ne peut pas tenir une liste à la main : elle dériverait silencieusement de
- * `config/packages/security.yaml`. {@see \App\Security\PublicApiRouteCatalog} est cette maison
+ * `config/packages/security.yaml`. {@see PublicApiRouteCatalog} est cette maison
  * unique, et ce test la cloue à `access_control` dans les DEUX sens — une route `PUBLIC_ACCESS`
  * ajoutée à security.yaml sans entrée au catalogue reste bloquée par un cookie mort (le bug D3 qui
  * revient) ; une entrée au catalogue sans règle `PUBLIC_ACCESS` neutraliserait une route protégée.
@@ -93,7 +94,7 @@ final class PublicRouteCatalogMatchesAccessControlTest extends TestCase
 
     /**
      * Le matcher doit décoder le pour-cent AVANT d'appliquer la regex, comme `access_control` qui
-     * matche sur `rawurldecode($request->getPathInfo())` ({@see \Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher}).
+     * matche sur `rawurldecode($request->getPathInfo())` ({@see PathRequestMatcher}).
      * Sans ce décodage, il DIVERGE du firewall dans les deux sens — les deux cloués ici :
      *  - une route publique écrite ENCODÉE n'est plus reconnue → un cookie mort la rebloque (le bug
      *    D3 qui revient par l'encodage) ;

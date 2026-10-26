@@ -7,16 +7,20 @@ namespace App\Tests\Security;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\User;
+use App\EventListener\StaleJwtCookiePurgeListener;
+use App\Security\PublicApiRouteCatalog;
 use App\Service\TenantConnectionContext;
 use App\Tests\StartsFreshBrowserSession;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Security\Http\Authentication\AuthenticationFailureHandler;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\BrowserKit\Cookie as BrowserKitCookie;
 use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
@@ -33,7 +37,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *
  * Le correctif (NEO) tient en trois pièces, chacune protégée ici :
  *  - D-a/D-b `PublicApiCredentialNeutralizer` (`kernel.request` priority 9, AVANT le firewall) :
- *    une requête qui matche {@see \App\Security\PublicApiRouteCatalog} voit son cookie `BEARER`
+ *    une requête qui matche {@see PublicApiRouteCatalog} voit son cookie `BEARER`
  *    ET son en-tête `Authorization` RETIRÉS — INCONDITIONNELLEMENT, même un jeton VALIDE (aucune
  *    route publique ne lit l'identité, D-b). La réponse redevient byte-identique au cas sans jeton.
  *  - D-c `StaleJwtCookiePurgeListener` (événements lexik JWT_INVALID / JWT_EXPIRED /
@@ -260,9 +264,9 @@ final class PublicRouteStaleJwtTest extends WebTestCase
     /**
      * Un login RATÉ (mauvais mot de passe) ne doit JAMAIS détruire une session valide déjà ouverte.
      *
-     * Le piège : {@see \App\EventListener\StaleJwtCookiePurgeListener} écoute
+     * Le piège : {@see StaleJwtCookiePurgeListener} écoute
      * `Events::AUTHENTICATION_FAILURE`, que le handler d'échec du json_login dispatche AUSSI
-     * ({@see \Lexik\Bundle\JWTAuthenticationBundle\Security\Http\Authentication\AuthenticationFailureHandler}
+     * ({@see AuthenticationFailureHandler}
      * ligne 48, câblé `failure_handler` du firewall `login` dans security.yaml). `^/api/login` est
      * EXCLU du catalogue : le neutraliseur n'y retire donc PAS le cookie, et le `BEARER` VALIDE
      * porté par l'onglet est présent sur la requête d'échec. Le purgeur voit « cookie présent, pas
@@ -302,8 +306,8 @@ final class PublicRouteStaleJwtTest extends WebTestCase
      * Un chemin public écrit ENCODÉ (`/api/regist%65r/config`, soit `/api/register/config` une fois
      * `%65`=`e` décodé — une page publique en GET) reste byte-identique sous un cookie mort. Symfony
      * décode le chemin avant de router ET avant `access_control` (`rawurldecode`,
-     * {@see \Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher}), donc l'anonyme a
-     * 200. Le neutraliseur, qui matche sur le chemin BRUT via {@see \App\Security\PublicApiRouteCatalog},
+     * {@see PathRequestMatcher}), donc l'anonyme a
+     * 200. Le neutraliseur, qui matche sur le chemin BRUT via {@see PublicApiRouteCatalog},
      * doit décoder PAREIL : sinon il ne reconnaît pas la route publique sous sa forme encodée, laisse
      * passer le cookie mort, et l'authentificateur lexik la rebloque en 401 (le bug D3 par l'encodage).
      * Jumeau unitaire : {@see PublicRouteCatalogMatchesAccessControlTest::testTheMatcherDecodesPercentEncodingLikeAccessControl}.
