@@ -2,8 +2,10 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { dayLabelLongCap, dayLabelShort } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
 import { tierGroupLabel } from "@/shared/lib/teamTiers";
+import { endTime, formatMinutes } from "@/shared/lib/time";
 import { renderWithProviders } from "@/test/utils";
 
 import { PARC_IMPORT_TEXTS } from "./texts";
@@ -1013,5 +1015,290 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
 
     // Le clic bascule le rail sur l'étape Mutualisations (retour en arrière assumé), sur cette ligne.
     expect(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")) })).toHaveAttribute("aria-current", "step");
+  });
+});
+
+/**
+ * ─────────── Finitions de l'aperçu (captures réelles 04-07, 2026-10-26) — contrats ROUGES (option A) ───────────
+ *
+ * Quatre finitions CONSTATÉES sur les captures du club Rillieux, à intégrer à la refonte PR1 (TANK
+ * écrit ROUGE, NEO implémente la modale + les nouvelles clés de `texts.ts`) :
+ *  1. JOURS EN CLAIR (étape Gymnases) : un créneau d'ouverture s'affichait « jour 3 16:00 » (indice
+ *     BRUT) dans la case ET le bouton de saut du bandeau. Promesse : le libellé d'un créneau est une
+ *     PLAGE HORAIRE (`shared/lib/time.ts::formatMinutes`/`endTime`), et tout jour nommé passe par le
+ *     foyer `shared/lib/days.ts` (`dayLabelShort`) — jamais l'indice « jour N ».
+ *  2. MUTUALISATIONS : (a) le sélecteur de gymnase porte un libellé VISIBLE (clé `venueForGroupVisible`)
+ *     et est PRÉ-REMPLI du gymnase de la `position` (« MONT BLANC (à créer) » via `gridVenueToCreate`),
+ *     jamais le placeholder nu « Créer » ; (b) l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 ·
+ *     MONT BLANC ») ; (c) sans alerte, le compteur dit « N mutualisations lues » (clé
+ *     `mutualisationsReadCount`), « à vérifier » restant réservé aux alertes ; (d) le placeholder du nom
+ *     de groupe est COURT (non tronqué dans le champ).
+ *  3. ÉDITEUR DE CRÉNEAU : (a) le sélecteur de gymnase en tête porte un libellé VISIBLE (clé
+ *     `editVenueVisible`) et est PRÉ-REMPLI du gymnase de la case, jamais « Créer » nu ; (b) Garder/
+ *     Ignorer via le MÊME contrôle segmenté (`SegmentedControl`) que l'étape Mutualisations — AUCUNE
+ *     case à cocher ; (c) l'heure se saisit avec le MÊME contrôle que l'éditeur de créneau du wizard
+ *     (`steps/slotFields.tsx` : native `<input type="time">` de `VenuesStep`/`PeriodVenues` + la DURÉE
+ *     via `slotFields.DurationSelect`, et la FIN calculée `slotFields.SlotEndField`/`endTime`).
+ *  4. RAISON D'IMPORTER VISIBLE : quand « Importer » est désactivé, la raison comptée
+ *     (`importBlocked`) est affichée EN TEXTE au pied (pas seulement dans le `<span class="sr-only">`
+ *     du bouton `disabledReason`), avec un bouton « Voir » (clé `seeBlockingLine`) qui mène à la 1ʳᵉ
+ *     ligne à trancher (étape + focus).
+ *
+ * Clés de `texts.ts` RÉFÉRENCÉES ET PAS ENCORE CRÉÉES (rouge légitime, NEO les crée, option A) :
+ *   `venueForGroupVisible` (libellé visible), `mutualisationsReadCount(n)` (« N … lues »),
+ *   `groupNamePlaceholder` (placeholder court), `editVenueVisible` (libellé visible), `seeBlockingLine`
+ *   (« Voir »). Le gymnase « MONT BLANC » et la raison d'import sont des DONNÉES/clés existantes, non
+ *   des phrases recopiées.
+ *
+ * ⚠ Collatéral MÉCANIQUE pour NEO (finition 1) : trois matchers de cases-créneaux EXISTANTS ciblent le
+ * libellé BRUT `/jour 2 18:00/` (tests « 1 — … grille de ses créneaux », « D12 + heure », « 3c … ») —
+ * ils devront viser le TEMPS (`/18:00/`) une fois le libellé passé en plage horaire.
+ */
+describe("ParcImportModal — finitions de l'aperçu (captures 04-07, 2026-10-26)", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
+
+  /** Matcher FONCTION (nom accessible CONTENANT le texte) — jamais une `RegExp` construite (Semgrep). */
+  const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
+  /** Trigger `Listbox` d'une ligne de décision (préfixe `decisionFor(libelle)`, cf. describes ci-dessus). */
+  const decisionTrigger = (libelle: string) => (accessibleName: string) => accessibleName.startsWith(T.decisionFor(libelle));
+
+  /** Dépose le collage puis analyse (auto-avance ensuite vers « Équipes »). */
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepPaste as unknown as string) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+
+  /** Visite une étape de CONTENU du rail (déverrouillée après l'analyse). */
+  const goToStep = async (user: ReturnType<typeof userEvent.setup>, section: "equipes" | "gymnases" | "mutualisations" | "reservations"): Promise<void> => {
+    await user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) }));
+  };
+
+  // ─────────── 1. Jours en clair à l'étape Gymnases (plus de « jour N » brut) ───────────
+
+  it("1 — le libellé d'un créneau à l'étape Gymnases est une PLAGE HORAIRE (formatMinutes), jamais l'indice brut « jour N »", async () => {
+    const user = userEvent.setup();
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "LOUISON BOBET" }],
+      cases: [{ gymnase: "LOUISON BOBET", jour: 3, debut: "16:00", duree: 90, equipes: [] }],
+    };
+    // Le libellé SERVEUR d'un créneau est l'indice brut (« … · jour 3 16:00 ») — c'est ce que la case
+    // NE DOIT PLUS afficher : elle est en colonne « Mer », son texte = la plage « 16:00 → 17:30 ».
+    const analysis = analysisOf({ gymnases: [mkLine(0, "LOUISON BOBET", "aCreer")], creneaux: [mkLine(0, "LOUISON BOBET · jour 3 16:00", "aCreer")] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "gymnases");
+
+    // La case du créneau porte la PLAGE (début ET fin, via le foyer `formatMinutes`/`endTime`).
+    const start = formatMinutes(16 * 60); // « 16:00 »
+    const end = endTime("16:00", 90); // « 17:30 »
+    await screen.findByRole("button", { name: (n: string) => n.includes(start) && n.includes(end) });
+    // Et nulle part à l'étape Gymnases le texte brut « jour 3 » ne subsiste.
+    expect(screen.queryAllByText((content: string) => content.includes("jour 3"))).toHaveLength(0);
+  });
+
+  it("1 — le bandeau « créneaux à vérifier » nomme le JOUR via le foyer days.ts (dayLabelShort), jamais « jour N »", async () => {
+    const user = userEvent.setup();
+    const raison = "Ce créneau en chevauche un autre du même gymnase ce jour-là.";
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "LOUISON BOBET" }],
+      cases: [{ gymnase: "LOUISON BOBET", jour: 3, debut: "16:00", duree: 90, equipes: [] }],
+    };
+    const analysis = analysisOf({ gymnases: [mkLine(0, "LOUISON BOBET", "aCreer")], creneaux: [mkLine(0, "LOUISON BOBET · jour 3 16:00", "alerte", { raison })] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "gymnases");
+
+    // Le bouton de saut du bandeau (préfixe `goToLine`) nomme le jour EN CLAIR (« Mer »), jamais « jour 3 ».
+    const jump = await screen.findByRole("button", { name: (n: string) => n.startsWith(T.goToLine as unknown as string) });
+    expect(jump.textContent ?? "").toContain(dayLabelShort(3)); // « Mer »
+    expect(jump.textContent ?? "").not.toContain("jour 3");
+  });
+
+  // ─────────── 2. Mutualisations — sélecteur de gymnase, en-tête, compteur, placeholder ───────────
+
+  /** Une mutualisation « à créer » (gymnase MONT BLANC non encore existant), sur sa `position` serveur. */
+  const mutualAnalysis = (statut: "aCreer" | "alerte" = "aCreer", raison: string | null = null) => {
+    const libelle = "U15M 1 + U15 M2";
+    const position = { gymnase: "MONT BLANC", jour: 1, debut: "17:30", duree: 90 };
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "MONT BLANC" }],
+      cases: [{ gymnase: "MONT BLANC", jour: 1, debut: "17:30", duree: 90, equipes: ["U15M 1", "U15 M2"], groupe: "" }],
+    };
+    return { libelle, analysis: analysisOf({ mutualisations: [mkLine(0, libelle, statut, { groupe: "", gymnaseId: null, position, raison })] }, { payload }) };
+  };
+
+  it("2a — le sélecteur de gymnase d'une mutualisation porte un libellé VISIBLE et est PRÉ-REMPLI (« MONT BLANC (à créer) »), jamais « Créer » nu", async () => {
+    const user = userEvent.setup();
+    const { libelle, analysis } = mutualAnalysis();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    // (a1) Un libellé VISIBLE du sélecteur (nouvelle clé `venueForGroupVisible`), pas qu'un aria-label.
+    expect(typeof T.venueForGroupVisible, "clé `venueForGroupVisible` à créer (libellé visible, option A)").toBe("string");
+    expect(screen.getByText(T.venueForGroupVisible as unknown as string)).toBeInTheDocument();
+
+    // (a2) Pré-rempli du gymnase de la `position` : « MONT BLANC (à créer) » (clé `gridVenueToCreate`),
+    // jamais le placeholder nu « Créer » (`rematchCreate`).
+    const line = screen.getByText(libelle).closest("li");
+    expect(line, "la ligne de mutualisation doit exister").not.toBeNull();
+    const scope = within(line as HTMLElement);
+    expect(scope.getByText(T.gridVenueToCreate("MONT BLANC"))).toBeInTheDocument();
+    expect(scope.queryByText(T.rematchCreate)).not.toBeInTheDocument();
+  });
+
+  it("2b — l'en-tête d'une ligne de mutualisation inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »)", async () => {
+    const user = userEvent.setup();
+    const { libelle, analysis } = mutualAnalysis();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    const line = screen.getByText(libelle).closest("li");
+    const scope = within(line as HTMLElement);
+    // L'élément d'en-tête (le <span> jour+heure, feuille) doit porter AUSSI le gymnase — pas seulement
+    // le sélecteur (qui, lui, n'inclut jamais « Lundi 17:30 »). On exige donc jour + heure + gymnase
+    // réunis dans UN même <span> de l'en-tête.
+    const hits = scope.queryAllByText(
+      (content: string, el: Element | null) =>
+        "SPAN" === el?.tagName && content.includes(dayLabelLongCap(1)) && content.includes(formatMinutes(17 * 60 + 30)) && content.includes("MONT BLANC"),
+    );
+    expect(hits.length, "l'en-tête de ligne doit inclure le gymnase (« Lundi 17:30 · MONT BLANC »)").toBeGreaterThan(0);
+  });
+
+  it("2c — sans alerte, le compteur dit « N mutualisations lues » (« à vérifier » réservé aux alertes)", async () => {
+    const user = userEvent.setup();
+    const { analysis } = mutualAnalysis("aCreer");
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    // Le compteur d'ALERTE (« … à vérifier. ») ne doit PAS apparaître quand aucune n'est en alerte.
+    expect(screen.queryByText(T.mutualisationsCount(1))).not.toBeInTheDocument();
+    // Il dit « lues » (nouvelle clé `mutualisationsReadCount`).
+    expect(typeof T.mutualisationsReadCount, "clé `mutualisationsReadCount(n)` à créer (option A)").toBe("function");
+    expect(screen.getByText(T.mutualisationsReadCount(1))).toBeInTheDocument();
+  });
+
+  it("2d — le placeholder du nom de groupe est COURT (non tronqué), sans l'exemple « (ex. … ) »", async () => {
+    const user = userEvent.setup();
+    const { libelle, analysis } = mutualAnalysis();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    const line = screen.getByText(libelle).closest("li");
+    const scope = within(line as HTMLElement);
+    const nameInput = scope.getByRole("textbox", { name: (n: string) => n.startsWith(T.groupLabel(libelle)) });
+    const placeholder = nameInput.getAttribute("placeholder") ?? "";
+    // Placeholder COURT, non tronqué dans le champ : plus l'exemple « (ex. « CEC ») » qui se fait couper.
+    expect(placeholder).not.toContain("(ex.");
+    expect(placeholder.length, "placeholder du nom de groupe trop long (tronqué dans le champ)").toBeLessThanOrEqual(20);
+  });
+
+  // ─────────── 3. Éditeur de créneau — gymnase pré-rempli, pas de case à cocher, contrôles du wizard ───────────
+
+  /** Ouvre l'éditeur d'une RÉSERVATION sur un gymnase EXISTANT, et rend le dialog de l'éditeur. */
+  async function openReservationEditor(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }] as const;
+    const libelle = "SM1 · Gymnase Léon-Blum 18:00";
+    const position = { gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90 };
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Léon-Blum" }],
+      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: ["SM1"] }],
+    };
+    const analysis = analysisOf({ reservations: [mkLine(0, libelle, "aCreer", { gymnaseId: "v1", position })] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+    await user.click(await screen.findByRole("button", { name: "SM1 · 18:00" }));
+    return screen.getByRole("dialog", { name: T.editCaseTitle as unknown as string });
+  }
+
+  it("3a — le sélecteur de gymnase de l'éditeur porte un libellé VISIBLE et est PRÉ-REMPLI du gymnase de la case, jamais « Créer » nu", async () => {
+    const user = userEvent.setup();
+    const dialog = await openReservationEditor(user);
+    const scope = within(dialog);
+
+    // Un libellé VISIBLE (nouvelle clé `editVenueVisible`), pas qu'un aria-label.
+    expect(typeof T.editVenueVisible, "clé `editVenueVisible` à créer (libellé visible, option A)").toBe("string");
+    expect(scope.getByText(T.editVenueVisible as unknown as string)).toBeInTheDocument();
+    // Pré-rempli du gymnase de la case (« Gymnase Léon-Blum »), jamais le placeholder nu « Créer ».
+    expect(scope.getByText("Gymnase Léon-Blum")).toBeInTheDocument();
+    expect(scope.queryByText(T.rematchCreate)).not.toBeInTheDocument();
+  });
+
+  it("3b — l'éditeur n'a AUCUNE case à cocher : Garder/Ignorer via le contrôle segmenté de l'étape Mutualisations", async () => {
+    const user = userEvent.setup();
+    const dialog = await openReservationEditor(user);
+    const scope = within(dialog);
+
+    // Plus de case à cocher « Garder cette ligne » : le même contrôle segmenté (role=group) que les mutualisations.
+    expect(scope.queryByRole("checkbox")).not.toBeInTheDocument();
+    const keep = scope.getByRole("button", { name: T.mutualKeep as unknown as string });
+    expect(scope.getByRole("button", { name: T.mutualIgnore as unknown as string })).toBeInTheDocument();
+    expect(keep.closest('[role="group"]'), "Garder/Ignorer doivent vivre dans UN contrôle segmenté").not.toBeNull();
+  });
+
+  it("3c — l'heure se saisit avec le contrôle du wizard (native <input type=\"time\">) et l'éditeur affiche la FIN calculée (slotFields.SlotEndField)", async () => {
+    const user = userEvent.setup();
+    const dialog = await openReservationEditor(user);
+    const scope = within(dialog);
+
+    // La case « Début » est bien le contrôle natif `type="time"` (celui de `VenuesStep`/`PeriodVenues`),
+    // pré-rempli depuis le payload (18:00) — verrou contre un retour à un champ texte ad hoc.
+    const startInput = scope.getByDisplayValue("18:00");
+    expect(startInput).toHaveAttribute("type", "time");
+    // La FIN calculée (foyer `shared/lib/time.ts::endTime`, 18:00 + 1h30 = 19:30) est affichée, comme
+    // l'éditeur de créneau du wizard (`slotFields.SlotEndField`) — absente à la capture 07.
+    expect(scope.getByText(endTime("18:00", 90))).toBeInTheDocument(); // « 19:30 »
+  });
+
+  // ─────────── 4. Raison d'« Importer » VISIBLE + bouton « Voir » vers la 1ʳᵉ ligne à trancher ───────────
+
+  it("4 — quand « Importer » est bloqué, la raison comptée est affichée EN TEXTE (pas seulement en sr-only du bouton)", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis); // atterrit sur « Équipes », import bloqué (1 ligne à trancher)
+
+    const reason = T.importBlocked(1, 0); // « Impossible d'importer : 1 ligne à trancher. »
+    // Le seul nœud portant la raison aujourd'hui est le `<span class="sr-only">` frère du bouton
+    // `disabledReason` : il en faut un AUTRE, VISIBLE (sans classe `sr-only`), au pied de la modale.
+    const nodes = screen.getAllByText(reason);
+    const visible = nodes.some((n) => !n.classList.contains("sr-only"));
+    expect(visible, "la raison d'import bloqué doit être affichée en texte visible, pas qu'en sr-only").toBe(true);
+  });
+
+  it("4 — un bouton « Voir » mène à la 1ʳᵉ ligne à trancher : il bascule l'étape ET lui donne le focus", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "gymnases"); // on s'éloigne de la ligne à trancher (sur « Équipes »)
+
+    // Le bouton « Voir » du pied (nouvelle clé `seeBlockingLine`) ramène à la ligne à trancher.
+    expect(typeof T.seeBlockingLine, "clé `seeBlockingLine` à créer (« Voir », option A)").toBe("string");
+    await user.click(screen.getByRole("button", { name: T.seeBlockingLine as unknown as string }));
+
+    // Étape : l'assistant bascule sur « Équipes » (où vit la ligne ambiguë).
+    expect(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("equipes")) })).toHaveAttribute("aria-current", "step");
+    // Focus : le sélecteur de décision de la ligne à trancher reçoit le focus (pas l'en-tête d'étape).
+    expect(screen.getByRole("button", { name: decisionTrigger("Armond") })).toHaveFocus();
   });
 });
