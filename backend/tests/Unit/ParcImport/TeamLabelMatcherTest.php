@@ -133,9 +133,153 @@ final class TeamLabelMatcherTest extends TestCase
         self::assertNull($this->matcher->split('U21 - SENIORS', $onlyOne), 'une seule moitié appariée → pas de découpe');
     }
 
+    // ───────────────────────── PR1 — le verdict EXPOSE ses candidats (D5, aperçu refondu) ─────────────────────────
+    // Avant de pouvoir TRANCHER une ambiguïté, le gestionnaire doit VOIR les équipes candidates.
+    // Le matcher, correcteur jamais filtre, les PORTE donc dans son verdict (`candidats: list<{id,nom}>`),
+    // d'où l'analyzer alimente le groupe « Candidats possibles » du sélecteur de la ligne (option A :
+    // TANK écrit ROUGE, NEO ajoute la clé `candidats` au verdict). Jumeau côté API :
+    // {@see \App\Tests\Integration\Api\ParcImportAnalyzeTest::testAnAmbiguousTeamLabelIsServedAsAmbiguWithItsCandidates}.
+
+    public function testAnAmbiguousMatchExposesEveryCandidateToChooseFrom(): void
+    {
+        // « Armond » est à distance 1 de « Armand » ET de « Armund » : ambigu, aucune cible devinée,
+        // MAIS les DEUX candidats sont offerts au choix (id + nom, pour l'affichage).
+        $existing = $this->existing('Armand', 'Armund');
+        $verdict = $this->matcher->match('Armond', $existing);
+
+        self::assertSame('ambigu', $verdict['statut']);
+        self::assertArrayHasKey('candidats', $verdict, 'le verdict porte la liste des candidats à trancher');
+        $ids = array_map(static fn (array $c): string => $c['id'], $verdict['candidats']);
+        self::assertEqualsCanonicalizing([$existing[0]['id'], $existing[1]['id']], $ids, 'les deux équipes dans le seuil sont offertes');
+        $noms = array_map(static fn (array $c): string => $c['nom'], $verdict['candidats']);
+        self::assertEqualsCanonicalizing(['Armand', 'Armund'], $noms, 'chaque candidat porte son nom pour l\'affichage');
+    }
+
+    public function testASuggestionExposesItsSingleCandidate(): void
+    {
+        // Un unique candidat flou (« suggere ») : la cible est posée ET le seul candidat est listé —
+        // le front montre « Apparier à X (suggéré) » cohérent avec le groupe « Candidats possibles ».
+        $existing = $this->existing('Armand', 'Jean Vilar');
+        $verdict = $this->matcher->match('Arhand', $existing);
+
+        self::assertSame('suggere', $verdict['statut']);
+        self::assertArrayHasKey('candidats', $verdict);
+        self::assertSame([['id' => $existing[0]['id'], 'nom' => 'Armand']], $verdict['candidats']);
+    }
+
+    public function testAnUnknownLabelHasNoCandidate(): void
+    {
+        // Correcteur jamais filtre : « à créer » n'invente aucun candidat (le sélecteur n'offre que
+        // « Créer » / « Ignorer », pas de rapprochement fantôme).
+        $verdict = $this->matcher->match('Palais des Mille Sports', $this->existing('Armand', 'U15-1'));
+
+        self::assertSame('aCreer', $verdict['statut']);
+        self::assertArrayHasKey('candidats', $verdict);
+        self::assertSame([], $verdict['candidats'], 'rien ne ressemble → aucun candidat');
+    }
+
+    // ───────── PR1 refonte — l'appariement ne CONFOND jamais genre / numéro / catégorie (défaut D, « le plus grave ») ─────────
+    // Capture RÉELLE (club Rillieux, analyse à blanc) contre un club aux équipes gendrées
+    // {U15F1, U15M1, U15F2, U18F1, U18M1, SM1} : « U15 M2 » était apparié à « U15F2 » (genre INVERSÉ !),
+    // « U15M 1 » ambigu entre « U15F1 » et « U15M1 ». Cause : la clé canonique EFFACE le marqueur de genre
+    // coincé entre deux chiffres (« u15m1 » → « u151 »), si bien que U15M1 et U15F1 collapsent sur la même
+    // clé. Règles attendues (cadrage fondateur, option A — TANK écrit ROUGE, NEO corrige {@see TeamLabelMatcher}) :
+    //  (1) les ESPACES ne comptent pas (« U15M 1 » ≡ « U15M1 » → apparié exact) ;
+    //  (2) une différence de GENRE (M/F), de CATÉGORIE d'âge (U15 vs U13) ou de NUMÉRO d'équipe n'est
+    //      JAMAIS une faute de frappe : un tel candidat est EXCLU dès que les DEUX libellés se parsent
+    //      (s'appuyer sur {@see \App\Service\ParcImport\TeamNameInterpreter} ou équivalent pour la
+    //      catégorie/le genre, et extraire le numéro) ;
+    //  (3) la tolérance Levenshtein RESTE pour les vraies fautes de frappe sur le RESTE du libellé — témoin
+    //      INCHANGÉ {@see self::testATypoWithinLevenshteinTwoIsSuggestedNeverMatchedOutright} (Arhand→Armand,
+    //      aucune des deux ne se parse en équipe FFBB → repli Levenshtein), et {@see self::testACanonicalRewriteTargetsTheRightTeam}
+    //      (pool SANS genre {U15-1, U18-3, U15-2} : genre MIXTE ≠ conflit M/F → appariement conservé).
+    // Jumeau API (le câblage de bout en bout) :
+    // {@see \App\Tests\Integration\Api\ParcImportAnalyzeTest::testASpacedTeamLabelMatchesTheRightGenderNeverTheOpposite}.
+
+    public function testSpacesDoNotCountAndTheRightGenderIsMatchedNeverTheOpposite(): void
+    {
+        // (1) + (2) « U15M 1 » ≡ « U15M1 » (espaces ignorés) ET vise le MASCULIN — « U15F1 » (genre F)
+        // n'est jamais un candidat de « U15M 1 » (genre M). Avant correctif : ambigu entre les deux.
+        $pool = $this->genderedPool();
+        $verdict = $this->matcher->match('U15M 1', $pool);
+
+        self::assertSame('apparie', $verdict['statut'], '« U15M 1 » ≡ « U15M1 » : apparié sans ambiguïté, jamais « ambigu »');
+        self::assertSame($this->idOf($pool, 'U15M1'), $verdict['cibleId'], 'vise le MASCULIN U15M1');
+        $noms = array_map(static fn (array $c): string => $c['nom'], $verdict['candidats']);
+        self::assertNotContains('U15F1', $noms, 'un candidat de genre OPPOSÉ est exclu, jamais offert à l\'appariement');
+    }
+
+    public function testAGenderMismatchIsNeverATypoSoTheOppositeGenderIsNotMatched(): void
+    {
+        // Le défaut « le plus grave » : « U15 M2 » (genre M, n°2) était apparié à « U15F2 » (genre F).
+        // Aucune équipe masculine n°2 n'existe au club → la ligne reste « à créer », JAMAIS le féminin.
+        $pool = $this->genderedPool();
+        $verdict = $this->matcher->match('U15 M2', $pool);
+
+        self::assertSame('aCreer', $verdict['statut'], '« U15 M2 » n\'a pas d\'équipe masculine n°2 au club → à créer');
+        self::assertNull($verdict['cibleId'], 'jamais une cible de genre opposé (« U15F2 »)');
+        self::assertSame([], $verdict['candidats'], '« U15F2 » (genre F) n\'est pas un candidat de « U15 M2 » (genre M)');
+    }
+
+    public function testANumberMismatchIsNeverATypoSoAnotherNumberedTeamIsNotMatched(): void
+    {
+        // Un NUMÉRO d'équipe différent n'est pas une faute de frappe : « U18M 3 » (n°3) ne s'apparie
+        // JAMAIS à « U18M1 » (n°1). Aucune M3 au club → à créer.
+        $pool = $this->genderedPool();
+        $verdict = $this->matcher->match('U18M 3', $pool);
+
+        self::assertSame('aCreer', $verdict['statut'], '« U18M 3 » (n°3) ne s\'apparie pas à « U18M1 » (n°1)');
+        self::assertNull($verdict['cibleId']);
+    }
+
+    public function testACategoryMismatchIsNeverATypo(): void
+    {
+        // Une CATÉGORIE d'âge absente du club n'est pas une faute de frappe : « U13M2 » (pool U15/U18/SM)
+        // ne se rapproche jamais d'un U15/U18 voisin par Levenshtein → à créer.
+        $pool = $this->genderedPool();
+        $verdict = $this->matcher->match('U13M2', $pool);
+
+        self::assertSame('aCreer', $verdict['statut'], 'une catégorie absente (U13) → à créer, jamais un U15/U18 deviné');
+        self::assertNull($verdict['cibleId']);
+    }
+
+    public function testSpaceInsensitiveGenderedMatchAlsoResolvesU18(): void
+    {
+        // Témoin jumeau de la désambiguïsation par genre, sur U18 : « U18 M1 » ≡ « U18M1 », vise le
+        // masculin, « U18F1 » exclu. Avant correctif : ambigu entre « U18F1 » et « U18M1 ».
+        $pool = $this->genderedPool();
+        $verdict = $this->matcher->match('U18 M1', $pool);
+
+        self::assertSame('apparie', $verdict['statut'], '« U18 M1 » ≡ « U18M1 » : apparié, jamais ambigu');
+        self::assertSame($this->idOf($pool, 'U18M1'), $verdict['cibleId'], 'vise « U18M1 », jamais « U18F1 »');
+    }
+
     protected function setUp(): void
     {
         $this->matcher = new TeamLabelMatcher;
+    }
+
+    /**
+     * Le club de la capture réelle : des équipes GENDRÉES où la confusion de genre/numéro mord.
+     *
+     * @return list<array{id: string, nom: string}>
+     */
+    private function genderedPool(): array
+    {
+        return $this->existing('U15F1', 'U15M1', 'U15F2', 'U18F1', 'U18M1', 'SM1');
+    }
+
+    /**
+     * @param list<array{id: string, nom: string}> $pool
+     */
+    private function idOf(array $pool, string $nom): string
+    {
+        foreach ($pool as $candidate) {
+            if ($candidate['nom'] === $nom) {
+                return $candidate['id'];
+            }
+        }
+        self::fail('équipe « ' . $nom . ' » absente du pool de test');
     }
 
     /** @return list<array{id: string, nom: string}> */

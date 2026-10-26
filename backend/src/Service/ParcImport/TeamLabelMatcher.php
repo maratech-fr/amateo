@@ -28,23 +28,35 @@ final class TeamLabelMatcher
 {
     private const int MAX_DISTANCE = 2;
 
+    public function __construct(private readonly TeamNameInterpreter $interpreter = new TeamNameInterpreter) {}
+
     /**
      * @param list<array{id: string, nom: string}> $existing
      *
-     * @return array{statut: string, cibleId: string|null, cibleNom: string|null}
+     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, candidats: list<array{id: string, nom: string}>}
      */
     public function match(string $label, array $existing): array
     {
         $key = $this->canonical($label);
         if ('' === $key) {
-            return $this->verdict('aCreer', null, null);
+            return $this->verdict('aCreer', null, null, []);
         }
+
+        $query = $this->parse($label);
 
         $exact = [];
         $fuzzy = [];
         foreach ($existing as $candidate) {
             $ck = $this->canonical($candidate['nom']);
             if ('' === $ck) {
+                continue;
+            }
+            // Un candidat dont le GENRE (M/F), la CATÉGORIE d'âge ou le NUMÉRO d'équipe diffère n'est
+            // JAMAIS une faute de frappe : exclu dès que les DEUX libellés se parsent en équipe FFBB
+            // (MIXTE / libellé non parsé ≠ conflit). Sans ce filtre, la clé canonique — qui efface le
+            // marqueur de genre pour absorber « U15M 1 » ≡ « U15-1 » — fait collapser « U15M1 » et
+            // « U15F1 » sur la même clé : U15M1/U15F1 confondus, « U15 M2 » apparié au féminin « U15F2 ».
+            if ($this->conflicts($query, $this->parse($candidate['nom']))) {
                 continue;
             }
             $distance = levenshtein($key, $ck);
@@ -55,20 +67,28 @@ final class TeamLabelMatcher
             }
         }
 
+        // PR1 (D5) — le verdict PORTE ses candidats (`{id, nom}`), pour que l'aperçu refondu offre au
+        // gestionnaire le groupe « Candidats possibles » du sélecteur de la ligne. Les candidats sont
+        // les exacts quand il y en a (une égalité canonique prime), sinon les flous ; « à créer »
+        // n'invente aucun candidat (correcteur jamais filtre). Toujours re-listés (`list`) pour que le
+        // JSON les sérialise en tableau.
+        $matched = [] !== $exact ? $exact : $fuzzy;
+        $candidats = array_map(static fn (array $c): array => ['id' => $c['id'], 'nom' => $c['nom']], $matched);
+
         if (1 === \count($exact)) {
-            return $this->verdict('apparie', $exact[0]['id'], $exact[0]['nom']);
+            return $this->verdict('apparie', $exact[0]['id'], $exact[0]['nom'], $candidats);
         }
         if (\count($exact) >= 2) {
-            return $this->verdict('ambigu', null, null);
+            return $this->verdict('ambigu', null, null, $candidats);
         }
         if (1 === \count($fuzzy)) {
-            return $this->verdict('suggere', $fuzzy[0]['id'], $fuzzy[0]['nom']);
+            return $this->verdict('suggere', $fuzzy[0]['id'], $fuzzy[0]['nom'], $candidats);
         }
         if (\count($fuzzy) >= 2) {
-            return $this->verdict('ambigu', null, null);
+            return $this->verdict('ambigu', null, null, $candidats);
         }
 
-        return $this->verdict('aCreer', null, null);
+        return $this->verdict('aCreer', null, null, []);
     }
 
     /**
@@ -104,7 +124,7 @@ final class TeamLabelMatcher
      * @param list<string>                         $tokens
      * @param list<array{id: string, nom: string}> $existing
      *
-     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, recolle: string}|null
+     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, candidats: list<array{id: string, nom: string}>, recolle: string}|null
      */
     public function recombine(array $tokens, array $existing): ?array
     {
@@ -121,11 +141,13 @@ final class TeamLabelMatcher
     }
 
     /**
-     * @return array{statut: string, cibleId: string|null, cibleNom: string|null}
+     * @param list<array{id: string, nom: string}> $candidats
+     *
+     * @return array{statut: string, cibleId: string|null, cibleNom: string|null, candidats: list<array{id: string, nom: string}>}
      */
-    private function verdict(string $statut, ?string $cibleId, ?string $cibleNom): array
+    private function verdict(string $statut, ?string $cibleId, ?string $cibleNom, array $candidats): array
     {
-        return ['statut' => $statut, 'cibleId' => $cibleId, 'cibleNom' => $cibleNom];
+        return ['statut' => $statut, 'cibleId' => $cibleId, 'cibleNom' => $cibleNom, 'candidats' => $candidats];
     }
 
     /**
@@ -140,5 +162,65 @@ final class TeamLabelMatcher
         $compact = (string) preg_replace('/[^a-z0-9]+/', '', $lower);
 
         return (string) preg_replace('/(\d)[mf](\d)/', '$1$2', $compact);
+    }
+
+    /**
+     * Lit d'un libellé d'équipe les attributs qui, s'ils DIFFÈRENT, excluent une faute de frappe :
+     * genre + catégorie via {@see TeamNameInterpreter}, numéro d'équipe extrait ici. `parse` dit si le
+     * libellé se lit en équipe FFBB (catégorie connue) — sinon aucun conflit n'est opposable (repli
+     * Levenshtein, cf. « Arhand » → « Armand »).
+     *
+     * @return array{genre: 'M'|'F'|'MIXTE', categorie: string, numero: int|null, parse: bool}
+     */
+    private function parse(string $label): array
+    {
+        $interpreted = $this->interpreter->interpret($label);
+
+        return [
+            'genre' => $interpreted['genre'],
+            'categorie' => $interpreted['categorie'],
+            'numero' => $this->teamNumber($label),
+            'parse' => TeamNameInterpreter::UNFILED !== $interpreted['categorie'],
+        ];
+    }
+
+    /**
+     * Vrai si deux libellés qui se PARSENT tous deux diffèrent par le genre (M vs F — MIXTE n'entre
+     * jamais en conflit), la catégorie d'âge ou le numéro d'équipe (deux numéros présents et distincts).
+     *
+     * @param array{genre: 'M'|'F'|'MIXTE', categorie: string, numero: int|null, parse: bool} $a
+     * @param array{genre: 'M'|'F'|'MIXTE', categorie: string, numero: int|null, parse: bool} $b
+     */
+    private function conflicts(array $a, array $b): bool
+    {
+        if (!$a['parse'] || !$b['parse']) {
+            return false;
+        }
+        if ('MIXTE' !== $a['genre'] && 'MIXTE' !== $b['genre'] && $a['genre'] !== $b['genre']) {
+            return true;
+        }
+        if ($a['categorie'] !== $b['categorie']) {
+            return true;
+        }
+
+        return null !== $a['numero'] && null !== $b['numero'] && $a['numero'] !== $b['numero'];
+    }
+
+    /**
+     * Le numéro d'équipe d'un libellé FFBB : il SUIT l'âge et le marqueur de genre (« U15M1 » → 1,
+     * « U15M 1 » → 1, « U15-1 » → 1), jamais collé à l'âge sans marqueur ni séparateur (« U21 » → null,
+     * pas « U2 » n°1) ; « SM2 »/« SF1 » → le numéro du senior. Absent → null.
+     */
+    private function teamNumber(string $label): ?int
+    {
+        $trimmed = trim($label);
+        if (1 === preg_match('/^U\s*\d{1,2}[\s\-MFmf]+(\d+)/u', $trimmed, $m)) {
+            return (int) $m[1];
+        }
+        if (1 === preg_match('/^S\s*[MF]\s*(\d+)/ui', $trimmed, $m)) {
+            return (int) $m[1];
+        }
+
+        return null;
     }
 }

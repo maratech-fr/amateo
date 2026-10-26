@@ -1,17 +1,25 @@
-import { useMemo, useState } from "react";
+import { AlertTriangle, Link2 } from "lucide-react";
+import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
+import { Listbox, type ListboxGroup } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
-import { TeamSelect } from "@/shared/components/ui/team-select";
-import { VenueSelect } from "@/shared/components/ui/venue-select";
+import { StepRail, type StepRailState, type StepRailStep } from "@/shared/components/ui/step-rail";
 import { DAYS, dayLabelLongCap } from "@/shared/lib/days";
+import { groupTeamsByTier, type TeamLike, type TierLike, tierGroupLabel } from "@/shared/lib/teamTiers";
+import { formatMinutes } from "@/shared/lib/time";
 
+import { usePriorityTiers, useWizardTeams } from "@/features/wizard/queries";
+
+import { DurationSelect, SlotEndField } from "../steps/slotFields";
+import { ParcCaseGrid, type ParcCaseGridCase, type ParcCaseGridVenue } from "./ParcCaseGrid";
 import { buildParcPrompt } from "./promptTemplate";
 import {
   useAnalyzeParc,
@@ -20,7 +28,6 @@ import {
   type ParcAnalysisLine,
   type ParcImportDecision,
   type ParcImportResult,
-  type ParcLineStatus,
 } from "./queries";
 import { PARC_IMPORT_TEXTS as T } from "./texts";
 
@@ -43,34 +50,35 @@ interface ParcImportModalProps {
   onClose: () => void;
 }
 
-/** L'ordre d'affichage des sections de l'aperçu (fixe, indépendant de l'ordre des clés serveur). */
-const SECTION_ORDER = ["equipes", "gymnases", "creneaux", "mutualisations", "reservations"] as const;
+// Retours fondateur 2026-10-26 — « plus on découpe, plus c'est simple » : les mutualisations ont leur
+// PROPRE étape, et les Réservations passent EN FIN. Ordre : Prompt · Coller · Équipes · Gymnases ·
+// Mutualisations · Réservations. Les étapes de CONTENU sont verrouillées avant l'analyse.
+type StepId = "prompt" | "paste" | "equipes" | "gymnases" | "mutualisations" | "reservations";
+const STEP_ORDER: StepId[] = ["prompt", "paste", "equipes", "gymnases", "mutualisations", "reservations"];
+const CONTENT_STEPS = new Set<StepId>(["equipes", "gymnases", "mutualisations", "reservations"]);
 
-/** Les sections d'ENTITÉS : une ligne apparie/suggere/aCreer y porte un sélecteur de ré-appariement (D5). */
+/** Les sections d'ENTITÉS : une ligne y porte le sélecteur de décision (apparier / créer / ignorer). */
 const REMATCH_SECTIONS = new Set(["equipes", "gymnases"]);
 
-/** Un statut dont la ligne est cochée par défaut — seul cas qui porte un sélecteur de ré-appariement. */
-const isRematchStatus = (statut: ParcLineStatus): boolean => "apparie" === statut || "suggere" === statut || "aCreer" === statut;
+/** Les sections de CASES : rendues en GRILLE par gymnase (plus de case à cocher), clic → éditeur. */
+const CASE_SECTIONS = ["creneaux", "reservations", "mutualisations"] as const;
+const CASE_SECTION_SET = new Set<string>(CASE_SECTIONS);
 
-/** La teinte de la pastille par statut — PRÉSENTATION du verdict serveur (le texte le porte aussi). */
-const STATUS_VARIANT: Record<ParcLineStatus, "success" | "accent" | "warning" | "neutral"> = {
-  apparie: "success",
-  suggere: "accent",
-  aCreer: "accent",
-  decoche: "neutral",
-  alerte: "warning",
-};
+/** Sentinelles de décision du sélecteur de ligne (valeurs du `Listbox`, jamais un id réel). */
+const CREATE = "__create__";
+const IGNORE = "__ignore__";
+/**
+ * Finitions — valeur du sélecteur de gymnase d'une case quand le gymnase est ENCORE À CRÉER (option
+ * « <nom> (à créer) ») : elle affiche le nom lu, mais ne porte AUCUN id. L'import la résout comme un
+ * `venueId`/`cibleId` VIDE (l'executor rattache alors par le NOM de la case — aucun contrat serveur
+ * nouveau), exactement comme l'absence de choix.
+ */
+const VENUE_TO_CREATE = "__venue_to_create__";
+const resolveVenueId = (chosen: string | undefined): string | undefined =>
+  undefined !== chosen && "" !== chosen && VENUE_TO_CREATE !== chosen ? chosen : undefined;
 
-/** La forme (partielle) du parc collé — on ne lit que ce qui amorce une correction sur place. */
-interface ParsedCase {
-  jour?: unknown;
-  debut?: unknown;
-  duree?: unknown;
-}
-interface ParsedParc {
-  /** parc-v2 porte des CASES (plus de section `creneaux`) : le brouillon du créneau dérivé s'y amorce. */
-  cases?: ParsedCase[];
-}
+/** Id STABLE du déclencheur du sélecteur de décision d'une ligne (pour le focus « Voir », finition 4). */
+const decisionTriggerId = (section: string, index: number): string => `parc-decision-${section}-${index}`;
 
 interface SlotDraft {
   jour: number;
@@ -78,436 +86,1220 @@ interface SlotDraft {
   duree: number;
 }
 
+interface ParsedCase {
+  gymnase?: unknown;
+  jour?: unknown;
+  debut?: unknown;
+  duree?: unknown;
+}
+interface ParsedParc {
+  cases?: ParsedCase[];
+}
+
+/** La case en cours d'édition (section + rang de ligne), résolue depuis la grille. */
+interface EditingCase {
+  section: string;
+  index: number;
+}
+
 const keyOf = (section: string, index: number): string => `${section}:${index}`;
 
+/** Séances hebdomadaires : défaut (quand le fichier n'en donne pas) et bornes FRONT 1..7 (P4 PeriodTeams). */
+const DEFAULT_SESSIONS = 2;
+const MIN_SESSIONS = 1;
+const MAX_SESSIONS = 7;
+const clampSessions = (n: number): number => (Number.isFinite(n) ? Math.min(MAX_SESSIONS, Math.max(MIN_SESSIONS, Math.round(n))) : DEFAULT_SESSIONS);
+
 /**
- * Chantier G PR3 — la modale d'import du parc par IA (onboarding, SAISON seule). Quatre temps dans
- * UNE modale : (1) copier le prompt pré-rempli du périmètre déjà saisi, (2) coller la réponse de
- * l'assistant et l'analyser, (3) vérifier l'aperçu cochable rendu par le serveur (dry-run), (4)
- * importer les lignes cochées et lire le récap.
+ * Lot correctif import IA « G2 » PR1 — la modale d'import du parc par IA est un ASSISTANT en 6 étapes
+ * (StepRail : Prompt · Coller · Équipes · Gymnases · Mutualisations · Réservations). Le gestionnaire
+ * (1) copie le prompt, (2) colle la réponse de l'assistant et l'analyse, puis tranche l'aperçu par
+ * étape : (3) ses équipes, (4) ses gymnases et leurs créneaux (grille par gymnase), (5) ses
+ * mutualisations, (6) ses réservations (grille par gymnase). Les étapes 3-6 restent VERROUILLÉES tant
+ * que l'analyse n'a pas réussi ; une analyse réussie ouvre et passe à « Équipes ».
  *
- * Le front n'invente AUCUNE règle : les verdicts (apparié / suggéré / à créer / décoché / alerte),
- * les raisons et les libellés viennent du serveur et sont affichés verbatim. La correction sur place
- * ne concerne QUE les champs simples d'un créneau À CRÉER (jour / heure / durée, amorcés depuis le
- * parc collé) — jamais la composition d'une structure (une mutualisation en alerte se décoche et
- * renvoie à la saisie manuelle), jamais les valeurs d'une entité déjà appariée.
- *
- * Décisions d'interaction (passe `ui-ux-pro-max`, corpus a11y/feedback) :
- *  - CLÔTURE jamais bloquée (dry-run, rien n'est écrit avant l'import) : « Fermer » + Esc + overlay
- *    restent ouverts ; seule la double-soumission est empêchée (champs/boutons désarmés pendant un appel).
- *  - FOCUS : initial + piège par la primitive `Modal` (`useModalA11y`) ; aucun vol de focus entre les
- *    temps — chaque état nouveau s'ANNONCE en `aria-live` (role="status", poli) plutôt que de voler le focus.
- *  - ANNONCES : « Analyse en cours », l'aperçu prêt et le récap final sont `role="status"` ; les erreurs
- *    HTTP vivent au niveau HOOK (toast, une fois) ; les raisons serveur sont du TEXTE (jamais couleur seule).
- *  - BOUTON : « Importer N », compte vivant ; à 0 il est désactivé AVEC une raison découvrable
- *    (`disabledReason` → `aria-disabled` focalisable + annonce, A11Y-30), pas un clic mort.
+ * Le front n'invente AUCUNE règle : verdicts, raisons et libellés viennent du serveur, affichés
+ * verbatim. Une ligne équipe/gymnase AMBIGUË (≥ 2 candidats) porte un sélecteur `Listbox` SANS
+ * présélection (« À trancher… ») et bloque « Importer » tant qu'elle n'est pas tranchée (apparier à
+ * un candidat, CRÉER explicitement — `creer:true` — ou ignorer). Le groupe « Toutes les équipes du
+ * club » du sélecteur d'équipe est rangé PAR RANG (`groupTeamsByTier`, équipes + rangs lus via les
+ * queries du wizard). Réservations ET mutualisations vivent dans la GRILLE (plus de case à cocher) ;
+ * une mise à jour de séances proposée sur une équipe APPARIÉE s'accepte par une case dédiée.
+ * L'erreur d'import est surfacée DANS la modale (NoticeBanner `role="alert"`), pas en toast — le
+ * toast reste la conduite de l'ANALYSE (hook).
  */
 export function ParcImportModal(props: ParcImportModalProps) {
-  // `origin` et `seasonId` font partie du contrat (la saison voyage dans l'en-tête `X-Season-Id`,
-  // l'origine servira au récap de PR2) ; ils ne pilotent encore aucun comportement ici.
   const { clubId, teams, venues, club, onClose } = props;
   const analyze = useAnalyzeParc(clubId);
   const importMut = useImportParc(clubId);
+  // 3d — équipes COMPLÈTES + rangs du club, lus DANS la modale (sans changer ses props d'ouverture) :
+  // le groupe « Toutes les équipes du club » du sélecteur d'équipe est rangé par rang.
+  const allTeams = (useWizardTeams().data ?? []) as TeamLike[];
+  const tiers = (usePriorityTiers().data ?? []) as TierLike[];
 
-  // Le prompt ne lit que les NOMS (+ le contexte club) ; les id des entités servent au ré-appariement (D5).
   const prompt = useMemo(
     () => buildParcPrompt({ teams: teams.map((t) => t.name), venues: venues.map((v) => v.name), club }),
     [teams, venues, club],
   );
 
+  const [step, setStep] = useState<StepId>("prompt");
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState("");
   const [analysis, setAnalysis] = useState<ParcAnalysis | null>(null);
-  // Le parc NORMALISÉ renvoyé par l'analyse (relu par `ParcPayloadValidator::parse`, G2 D4) : il
-  // amorce les corrections sur place et repart tel quel comme `payload` à l'import (le serveur
-  // réécrit depuis la source, pas l'aperçu) — jamais le texte brut collé re-parsé côté front.
   const [parc, setParc] = useState<unknown>(null);
+  // Décision par ligne équipe/gymnase (valeur du `Listbox`) : id (apparier) · CREATE · IGNORE · ""
+  // (ambigu non tranché). Indexée par `section:index`, amorcée depuis le verdict serveur.
+  const [decisions, setDecisions] = useState<Record<string, string>>({});
+  // Lignes gardées des sections de CASES (créneaux / réservations / mutualisations), par `section:index`.
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [slotDrafts, setSlotDrafts] = useState<Record<number, SlotDraft>>({});
-  // Ré-appariement par ligne (D5) — l'id choisi pour une ligne équipe/gymnase. "" = « Créer »
-  // (aucun cibleId envoyé). Amorcé depuis `line.cibleId` du verdict serveur.
-  const [rematch, setRematch] = useState<Record<string, string>>({});
-  // D12 — le gymnase choisi pour une CASE (ligne créneau), indexé par `line.index`. "" = aucun →
-  // le serveur résout par le nom du parc. Amorcé depuis `line.cibleId`.
-  const [slotVenue, setSlotVenue] = useState<Record<number, string>>({});
-  // D8 — le libellé du groupe mutualisé, corrigeable, indexé par `line.index`. Amorcé depuis `line.groupe`.
-  const [groupDrafts, setGroupDrafts] = useState<Record<number, string>>({});
-  // P4-363 — le gymnase choisi pour la réservation de groupe d'une mutualisation, indexé par
-  // `line.index`. "" = aucun → le serveur résout par le nom de la case. Amorcé depuis `line.gymnaseId`.
-  const [groupVenue, setGroupVenue] = useState<Record<number, string>>({});
+  // Brouillons d'édition d'une case, par `section:index`.
+  const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
+  const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
+  const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({});
+  // Retours fondateur 2026-10-26 — le nombre de séances d'une ligne équipe, en CHAMP éditable
+  // (pré-rempli de la valeur LUE), par `equipes:index`. Remplace l'ancienne case « mise à jour ».
+  const [sessionDrafts, setSessionDrafts] = useState<Record<string, number>>({});
+  const [editingCase, setEditingCase] = useState<EditingCase | null>(null);
+  // Cases corrigées depuis la dernière analyse (clés `section:index`) → aperçu périmé (« Revalider »).
+  const [dirtyCases, setDirtyCases] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<ParcImportResult | null>(null);
+
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Finition 4 — « Voir » vise une ligne à trancher : on mémorise SON sélecteur (ref, pas d'état — pas
+  // de setState dans l'effet) pour le focaliser à la place de l'en-tête une fois la ligne rendue.
+  const pendingFocusRef = useRef<{ section: string; index: number } | null>(null);
 
   const analyzing = analyze.isPending;
   const importing = importMut.isPending;
+  const isRecap = null !== result;
+
+  // Focus au changement d'étape : le sélecteur de la ligne visée par « Voir » (finition 4) s'il y en a
+  // un en attente, sinon l'en-tête d'étape (jamais de vol ailleurs). Le `ref` se désarme ici (pas de
+  // setState dans un effet).
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (null !== pending) {
+      pendingFocusRef.current = null;
+      document.getElementById(decisionTriggerId(pending.section, pending.index))?.focus();
+      return;
+    }
+    headingRef.current?.focus();
+  }, [step, isRecap]);
 
   const copyPrompt = (): void => {
     void navigator.clipboard.writeText(prompt).then(() => setCopied(true));
   };
 
+  const parsedCasesOf = (payload: unknown): ParsedCase[] => {
+    const parsed: ParsedParc | null = null !== payload && "object" === typeof payload ? (payload as ParsedParc) : null;
+
+    return null !== parsed && Array.isArray(parsed.cases) ? parsed.cases : [];
+  };
+
   const applyAnalysis = (data: ParcAnalysis): void => {
     setAnalysis(data);
     setResult(null);
+    setDirtyCases(new Set());
 
+    const cases = parsedCasesOf(data.payload);
+    setParc(data.payload ?? null);
+
+    const nextDecisions: Record<string, string> = {};
     const nextChecked: Record<string, boolean> = {};
-    const nextRematch: Record<string, string> = {};
-    const nextSlotVenue: Record<number, string> = {};
-    const nextGroupDrafts: Record<number, string> = {};
-    const nextGroupVenue: Record<number, string> = {};
+    const nextSlotDrafts: Record<string, SlotDraft> = {};
+    const nextCaseVenue: Record<string, string> = {};
+    const nextGroupDrafts: Record<string, string> = {};
+    const nextSessionDrafts: Record<string, number> = {};
     for (const section of Object.keys(data.sections)) {
       for (const line of data.sections[section] ?? []) {
-        nextChecked[keyOf(section, line.index)] = line.coche;
-        if (REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut)) {
-          nextRematch[keyOf(section, line.index)] = line.cibleId ?? "";
+        const key = keyOf(section, line.index);
+        if (REMATCH_SECTIONS.has(section)) {
+          nextDecisions[key] = initialDecision(line);
+        } else {
+          nextChecked[key] = line.coche;
         }
-        if ("creneaux" === section && isRematchStatus(line.statut)) {
-          nextSlotVenue[line.index] = line.cibleId ?? "";
+        // Champ « Séances » d'une équipe : pré-rempli de la valeur LUE (ce qui SERA importé), défaut 2.
+        if ("equipes" === section) {
+          nextSessionDrafts[key] = clampSessions(line.seances ?? DEFAULT_SESSIONS);
         }
-        if ("mutualisations" === section && isRematchStatus(line.statut)) {
-          nextGroupDrafts[line.index] = line.groupe ?? "";
-          nextGroupVenue[line.index] = line.gymnaseId ?? "";
+        if (CASE_SECTION_SET.has(section)) {
+          // Amorce du brouillon de case. Les créneaux restent indexés sur la case du parc normalisé
+          // (`payload.cases[index]`, relu par `ParcPayloadValidator::parse()`, G2 D4). Réservations et
+          // mutualisations s'amorcent EXCLUSIVEMENT d'après leur `position` SERVEUR (le créneau de leur
+          // case dérivée) — leur index est le rang dans la liste dérivée, pas celui de la case.
+          const pos = "creneaux" === section ? undefined : line.position;
+          const slot = cases[line.index];
+          nextSlotDrafts[key] = pos
+            ? { jour: pos.jour, debut: pos.debut, duree: pos.duree }
+            : {
+                jour: "number" === typeof slot?.jour ? slot.jour : 1,
+                debut: "string" === typeof slot?.debut ? slot.debut : "",
+                duree: "number" === typeof slot?.duree ? slot.duree : 0,
+              };
+          // Gymnase pré-rempli de la case (finitions 2a/3a) : l'id résolu par le serveur s'il existe,
+          // sinon la sentinelle « à créer » (affiche le nom lu, reste un venueId VIDE à l'import).
+          const slotGym = "string" === typeof slot?.gymnase ? slot.gymnase : "";
+          const posGym = pos ? pos.gymnase : "";
+          if ("creneaux" === section) {
+            nextCaseVenue[key] = line.cibleId ?? ("" !== slotGym ? VENUE_TO_CREATE : "");
+          } else if ("mutualisations" === section) {
+            nextCaseVenue[key] = line.gymnaseId ?? ("" !== posGym ? VENUE_TO_CREATE : "");
+            nextGroupDrafts[key] = line.groupe ?? "";
+          } else {
+            // Réservations : même amorce « gymnase de la case » que les autres sections de cases.
+            nextCaseVenue[key] = line.gymnaseId ?? ("" !== posGym ? VENUE_TO_CREATE : "");
+          }
         }
       }
     }
+    setDecisions(nextDecisions);
     setChecked(nextChecked);
-    setRematch(nextRematch);
-    setSlotVenue(nextSlotVenue);
+    setSlotDrafts(nextSlotDrafts);
+    setCaseVenue(nextCaseVenue);
     setGroupDrafts(nextGroupDrafts);
-    setGroupVenue(nextGroupVenue);
-
-    // Amorce des champs éditables des CRÉNEAUX depuis les CASES du parc NORMALISÉ que l'analyse
-    // renvoie (relu par `ParcPayloadValidator::parse()`, G2 D4) — jamais le texte brut collé, qui peut
-    // n'être lisible QUE par la passe de récupération serveur (guillemets typographiques, bloc ```json).
-    const payload = data.payload;
-    const parsed: ParsedParc | null = null !== payload && "object" === typeof payload ? (payload as ParsedParc) : null;
-    setParc(payload ?? null);
-    const drafts: Record<number, SlotDraft> = {};
-    const cases: ParsedCase[] = null !== parsed && Array.isArray(parsed.cases) ? parsed.cases : [];
-    for (const line of data.sections.creneaux ?? []) {
-      const slot = cases[line.index];
-      if (undefined !== slot) {
-        drafts[line.index] = {
-          jour: "number" === typeof slot.jour ? slot.jour : 1,
-          debut: "string" === typeof slot.debut ? slot.debut : "",
-          duree: "number" === typeof slot.duree ? slot.duree : 0,
-        };
-      }
-    }
-    setSlotDrafts(drafts);
+    setSessionDrafts(nextSessionDrafts);
   };
 
   const doAnalyze = (): void => {
-    analyze.mutate(rawText, { onSuccess: applyAnalysis });
+    analyze.mutate(rawText, {
+      onSuccess: (data) => {
+        applyAnalysis(data);
+        setStep("equipes");
+      },
+    });
   };
 
-  const toggle = (section: string, index: number): void =>
-    setChecked((prev) => ({ ...prev, [keyOf(section, index)]: !prev[keyOf(section, index)] }));
-
-  const updateSlot = (index: number, patch: Partial<SlotDraft>): void =>
-    setSlotDrafts((prev) => ({ ...prev, [index]: { ...prev[index], ...patch } }));
-
-  const updateRematch = (section: string, index: number, value: string): void =>
-    setRematch((prev) => ({ ...prev, [keyOf(section, index)]: value }));
-
-  const updateSlotVenue = (index: number, value: string): void => setSlotVenue((prev) => ({ ...prev, [index]: value }));
-
-  const updateGroup = (index: number, value: string): void => setGroupDrafts((prev) => ({ ...prev, [index]: value }));
-
-  const updateGroupVenue = (index: number, value: string): void => setGroupVenue((prev) => ({ ...prev, [index]: value }));
-
-  const count = Object.values(checked).filter(Boolean).length;
-
-  const venuesToCreate = (analysis?.sections.gymnases ?? []).some((line) => "aCreer" === line.statut);
-
-  const doImport = (): void => {
+  const buildDecisions = (): ParcImportDecision[] => {
     if (null === analysis) {
-      return;
+      return [];
     }
-    const decisions: ParcImportDecision[] = [];
+    const out: ParcImportDecision[] = [];
     for (const section of Object.keys(analysis.sections)) {
       for (const line of analysis.sections[section] ?? []) {
         const key = keyOf(section, line.index);
-        const hasRematch = REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut);
-        // D12 — une case (créneau) porte son propre sélecteur de gymnase ; son choix pilote le cibleId.
-        const hasSlotVenue = "creneaux" === section && isRematchStatus(line.statut);
-        // Cible choisie ("" = « Créer » / aucun → le serveur résout par le nom) ; sinon le verdict serveur.
-        const chosen = hasRematch ? rematch[key] : hasSlotVenue ? slotVenue[line.index] : undefined;
-        const cibleId = hasRematch || hasSlotVenue ? ("" === chosen || undefined === chosen ? undefined : chosen) : line.cibleId;
-        const draft = "creneaux" === section ? slotDrafts[line.index] : undefined;
-        // D8 — le libellé du groupe mutualisé CORRIGÉ voyage dans `corrections.groupe` (le serveur
-        // l'honore comme label du bloc, prioritaire sur le groupe brut de la case).
-        const groupe = "mutualisations" === section && isRematchStatus(line.statut) ? (groupDrafts[line.index] ?? "").trim() : "";
-        // P4-363 — le gymnase CHOISI de la réservation de groupe (sélecteur de la ligne mutualisation)
-        // voyage en `venueId`, DISTINCT du `cibleId` (bloc apparié) et des `corrections` (libellé) ;
-        // "" / aucun → le serveur résout par le nom de la case.
-        const hasGroupVenue = "mutualisations" === section && isRematchStatus(line.statut);
-        const chosenVenue = hasGroupVenue ? groupVenue[line.index] : undefined;
-        const venueId = "" === chosenVenue || undefined === chosenVenue ? undefined : chosenVenue;
-        const corrections =
-          undefined !== draft
-            ? { jour: draft.jour, debut: draft.debut, duree: draft.duree }
-            : "" !== groupe
-              ? { groupe }
-              : undefined;
-        decisions.push({
-          section,
-          index: line.index,
-          coche: checked[key] ?? false,
-          cibleId,
-          venueId,
-          corrections,
-        });
+        if (REMATCH_SECTIONS.has(section)) {
+          const value = decisionValue(section, line);
+          // Champ « Séances » (équipes seulement) : la valeur du champ, bornée 1..7.
+          const seances = "equipes" === section ? clampSessions(sessionDrafts[key] ?? line.seances ?? DEFAULT_SESSIONS) : null;
+          if (CREATE === value) {
+            // « Créer » explicite (3a) : coché, sans cible, signal `creer:true` (lève le refus d'ambiguïté).
+            // La CRÉATION utilise le nombre de séances du champ (ce que l'IA crée, corrigé).
+            out.push({ section, index: line.index, coche: true, creer: true, corrections: null !== seances ? { seances } : undefined });
+          } else if (IGNORE === value || "" === value) {
+            out.push({ section, index: line.index, coche: false });
+          } else {
+            // Appariement à un candidat : le champ « Séances » ne part en corrections QUE s'il DIFFÈRE
+            // des séances actuelles de l'équipe visée (valeur = actuelle → rien à corriger).
+            const decision: ParcImportDecision = { section, index: line.index, coche: true, cibleId: value };
+            if (null !== seances && undefined !== line.seancesActuelles && seances !== line.seancesActuelles) {
+              decision.corrections = { seances };
+            }
+            out.push(decision);
+          }
+        } else if ("mutualisations" === section) {
+          const groupe = (groupDrafts[key] ?? "").trim();
+          out.push({
+            section,
+            index: line.index,
+            coche: checked[key] ?? line.coche,
+            venueId: resolveVenueId(caseVenue[key]),
+            corrections: "" !== groupe ? { groupe } : undefined,
+          });
+        } else if (CASE_SECTION_SET.has(section)) {
+          const draft = slotDrafts[key];
+          out.push({
+            section,
+            index: line.index,
+            coche: checked[key] ?? line.coche,
+            cibleId: resolveVenueId(caseVenue[key]),
+            corrections: undefined !== draft ? { jour: draft.jour, debut: draft.debut, duree: draft.duree } : undefined,
+          });
+        } else {
+          out.push({ section, index: line.index, coche: checked[key] ?? line.coche });
+        }
       }
     }
-    importMut.mutate({ payload: parc, decisions }, { onSuccess: setResult });
+    return out;
   };
 
-  const showPreview = null !== analysis && null === result;
+  const decisionValue = (section: string, line: ParcAnalysisLine): string => decisions[keyOf(section, line.index)] ?? initialDecision(line);
+
+  const setDecision = (section: string, index: number, value: string): void =>
+    setDecisions((prev) => ({ ...prev, [keyOf(section, index)]: value }));
+
+  const setSessionDraft = (index: number, value: number): void =>
+    setSessionDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: value }));
+
+  // Compte des lignes équipe/gymnase AMBIGUËS non tranchées (valeur "") — elles bloquent l'import.
+  const pendingAmbiguous = useMemo(() => {
+    if (null === analysis) {
+      return 0;
+    }
+    let n = 0;
+    for (const section of ["equipes", "gymnases"]) {
+      for (const line of analysis.sections[section] ?? []) {
+        if ("" === decisionValue(section, line)) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis, decisions]);
+
+  const importDecisions = buildDecisions();
+  const count = importDecisions.filter((d) => d.coche).length;
+  const blocked = pendingAmbiguous > 0 || 0 === count;
+
+  const doImport = (): void => {
+    if (null === analysis || blocked) {
+      return;
+    }
+    importMut.mutate({ payload: parc, decisions: buildDecisions() }, { onSuccess: setResult });
+  };
+
+  const doRevalidate = (): void => {
+    if (null === analysis) {
+      return;
+    }
+    analyze.mutate({ payload: parc, decisions: buildDecisions() }, { onSuccess: applyAnalysis });
+  };
+
+  // Finition 4 — « Voir » : aller à l'étape de la 1ʳᵉ ligne à trancher et donner le focus à SON sélecteur.
+  const seeBlocking = (): void => {
+    if (null === analysis) {
+      return;
+    }
+    for (const section of ["equipes", "gymnases"] as const) {
+      for (const line of analysis.sections[section] ?? []) {
+        if ("" === decisionValue(section, line)) {
+          if (section === step) {
+            // Déjà sur la bonne étape : la ligne est rendue, focalisons-la directement.
+            document.getElementById(decisionTriggerId(section, line.index))?.focus();
+          } else {
+            pendingFocusRef.current = { section, index: line.index };
+            setStep(section);
+          }
+          return;
+        }
+      }
+    }
+  };
+
+  const goTo = (direction: 1 | -1): void => {
+    const current = STEP_ORDER.indexOf(step);
+    for (let i = current + direction; i >= 0 && i < STEP_ORDER.length; i += direction) {
+      if (!isLocked(STEP_ORDER[i])) {
+        setStep(STEP_ORDER[i]);
+        return;
+      }
+    }
+  };
+
+  const isLocked = (id: StepId): boolean => (CONTENT_STEPS.has(id) ? null === analysis : false) || isRecap;
+
+  const stepStateOf = (id: StepId): StepRailState | undefined => {
+    if (isRecap) {
+      return "done";
+    }
+    if (null === analysis || !CONTENT_STEPS.has(id)) {
+      return null === analysis ? undefined : "done";
+    }
+    if (importMut.isError && id === step) {
+      return "error";
+    }
+    return hasPending(id) ? "warning" : "done";
+  };
+
+  const hasPending = (id: StepId): boolean => {
+    if (null === analysis) {
+      return false;
+    }
+    // Les CRÉNEAUX vivent à l'étape Gymnases (leurs alertes la marquent) ; les Réservations et les
+    // Mutualisations ont désormais chacune leur propre étape (retours fondateur 2026-10-26).
+    if ("gymnases" === id) {
+      return (analysis.sections.gymnases ?? []).some((l) => "alerte" === l.statut || "" === decisionValue("gymnases", l)) || (analysis.sections.creneaux ?? []).some((l) => "alerte" === l.statut);
+    }
+    if ("mutualisations" === id) {
+      return (analysis.sections.mutualisations ?? []).some((l) => "alerte" === l.statut);
+    }
+    if ("reservations" === id) {
+      return (analysis.sections.reservations ?? []).some((l) => "alerte" === l.statut);
+    }
+    return (analysis.sections[id] ?? []).some((l) => "alerte" === l.statut || "" === decisionValue(id, l));
+  };
+
+  const steps: StepRailStep<StepId>[] = STEP_ORDER.map((id) => ({
+    id,
+    label: "prompt" === id ? T.stepPrompt : "paste" === id ? T.stepPaste : T.sectionTitle(id),
+    state: stepStateOf(id),
+    locked: isLocked(id),
+  }));
+
+  const stepNumber = STEP_ORDER.indexOf(step) + 1;
+  const stepTitle = "prompt" === step ? T.promptHeading : "paste" === step ? T.pasteHeading : T.sectionTitle(step);
+
+  // Grilles des CASES, avec un index SYNTHÉTIQUE par case (`ParcCaseGrid` ne connaît qu'un index
+  // numérique) remonté à sa (section, rang) par `ref`. Retours fondateur 2026-10-26 — deux grilles
+  // distinctes : les CRÉNEAUX (ouvertures) vivent à l'étape Gymnases (iso-wizard), les RÉSERVATIONS
+  // et les mutualisations (marquées) à l'étape Réservations.
+  const { creneauxGrid, reservationsGrid } = useMemo(() => {
+    const build = (sectionsToUse: readonly string[]): { gridCases: ParcCaseGridCase[]; gridVenues: ParcCaseGridVenue[]; ref: Record<number, EditingCase> } => {
+      const gridCases: ParcCaseGridCase[] = [];
+      const ref: Record<number, EditingCase> = {};
+      const venueToCreate = new Map<string, boolean>();
+      if (null !== analysis) {
+        const cases = parsedCasesOf(parc);
+        const gymLines = analysis.sections.gymnases ?? [];
+        let gid = 0;
+        for (const section of sectionsToUse) {
+          for (const line of analysis.sections[section] ?? []) {
+            const key = keyOf(section, line.index);
+            // Créneaux : la case du parc (index = case). Réservations/mutualisations : la `position`
+            // SERVEUR de leur case dérivée — jamais `payload.cases[index]` (index décalé, bug grille).
+            const pos = "creneaux" === section ? undefined : line.position;
+            const slot = cases[line.index];
+            const venueName = pos ? pos.gymnase : "string" === typeof slot?.gymnase ? slot.gymnase : "";
+            const draft = slotDrafts[key];
+            const g = gid++;
+            ref[g] = { section, index: line.index };
+            gridCases.push({
+              index: g,
+              venueName,
+              jour: draft?.jour ?? 1,
+              debut: draft?.debut ?? "",
+              duree: draft?.duree ?? 0,
+              libelle: line.libelle,
+              alerte: "alerte" === line.statut ? line.raison : null,
+              mutual: "mutualisations" === section,
+              groupe: "mutualisations" === section ? (line.groupe ?? null) : null,
+              // Les CRÉNEAUX (ouvertures) s'affichent par leur plage horaire, pas par « jour N » (finition 1).
+              opening: "creneaux" === section,
+            });
+            if ("" !== venueName && !venueToCreate.has(venueName)) {
+              const gymLine = gymLines.find((gl) => gl.libelle === venueName);
+              venueToCreate.set(venueName, undefined !== gymLine && "aCreer" === gymLine.statut);
+            }
+          }
+        }
+      }
+      const gridVenues: ParcCaseGridVenue[] = [...venueToCreate].map(([name, toCreate]) => ({ name, toCreate }));
+      return { gridCases, gridVenues, ref };
+    };
+    return { creneauxGrid: build(["creneaux"]), reservationsGrid: build(["reservations", "mutualisations"]) };
+  }, [analysis, parc, slotDrafts]);
+
+  // Éditeur de case (Modal imbriquée) — brouillon transactionnel, clé stable `section:index`.
+  let caseEditor: ReactNode = null;
+  if (null !== editingCase) {
+    const { section, index } = editingCase;
+    const key = keyOf(section, index);
+    const line = analysis?.sections[section]?.find((l) => l.index === index);
+    // Pour une MUTUALISATION, le gymnase et le nom de groupe se corrigent EN LIGNE à l'étape
+    // Mutualisations (retours fondateur 2026-10-26) ; l'éditeur ne porte que le créneau (jour/heure/
+    // durée). Il ne réécrit donc ni le gymnase ni l'inclusion de ces lignes.
+    const isMutualCase = "mutualisations" === section;
+    // Gymnase de la case pour l'option « <nom> (à créer) » : la `position` serveur (réservation), ou
+    // le gymnase de la case du parc (créneau). Finition 3a — le sélecteur est pré-rempli, jamais « Créer » nu.
+    const editorVenueToCreate = "creneaux" === section ? (() => {
+      const sc = parsedCasesOf(parc)[index];
+      return "string" === typeof sc?.gymnase ? sc.gymnase : "";
+    })() : (line?.position?.gymnase ?? "");
+    caseEditor = (
+      <CaseEditor
+        key={key}
+        section={section}
+        libelle={line?.libelle ?? ""}
+        draft={slotDrafts[key]}
+        venueId={caseVenue[key] ?? ""}
+        venueToCreateName={editorVenueToCreate}
+        keep={checked[key] ?? line?.coche ?? true}
+        venues={venues}
+        onCancel={() => setEditingCase(null)}
+        onSave={(next) => {
+          setSlotDrafts((prev) => ({ ...prev, [key]: next.draft }));
+          if (!isMutualCase) {
+            setCaseVenue((prev) => ({ ...prev, [key]: next.venueId }));
+            setChecked((prev) => ({ ...prev, [key]: next.keep }));
+          }
+          setDirtyCases((prev) => new Set(prev).add(key));
+          setEditingCase(null);
+        }}
+      />
+    );
+  }
+
+  const hasVenueToCreate = null !== analysis && (analysis.sections.gymnases ?? []).some((l) => "aCreer" === l.statut);
 
   return (
     <Modal
       label={T.modalTitle}
       title={T.modalTitle}
-      size="lg"
+      size="xl"
       onClose={onClose}
       footer={
-        <>
-          <Button variant="outline" size="sm" onClick={onClose}>
+        isRecap ? (
+          <Button size="sm" onClick={onClose}>
             {T.close}
           </Button>
-          {showPreview ? (
-            <Button
-              size="sm"
-              disabled={0 === count || importing}
-              disabledReason={0 === count ? T.nothingToImport : undefined}
-              onClick={doImport}
-            >
-              {importing ? <Spinner className="size-4" /> : null}
-              {T.importAction(count)}
+        ) : (
+          <>
+            <Button variant="outline" size="sm" onClick={onClose}>
+              {T.close}
             </Button>
-          ) : null}
+            {"prompt" !== step ? (
+              <Button variant="ghost" size="sm" onClick={() => goTo(-1)}>
+                {T.previous}
+              </Button>
+            ) : null}
+            {"paste" === step ? (
+              <Button
+                size="sm"
+                disabled={analyzing || "" === rawText.trim()}
+                disabledReason={"" === rawText.trim() ? T.analyzeDisabledHint : undefined}
+                onClick={doAnalyze}
+              >
+                {analyzing ? <Spinner className="size-4" /> : null}
+                {T.analyze}
+              </Button>
+            ) : null}
+            {"prompt" === step ? (
+              <Button size="sm" onClick={() => goTo(1)}>
+                {T.next}
+              </Button>
+            ) : null}
+            {CONTENT_STEPS.has(step) ? (
+              <>
+                {/* Finition 4 — la raison d'import bloqué est VISIBLE au pied (pas qu'en sr-only du
+                    bouton), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher. */}
+                {blocked ? (
+                  <span className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{T.importBlocked(pendingAmbiguous, 0)}</span>
+                    {pendingAmbiguous > 0 ? (
+                      <Button variant="ghost" size="sm" onClick={seeBlocking}>
+                        {T.seeBlockingLine}
+                      </Button>
+                    ) : null}
+                  </span>
+                ) : null}
+                {"reservations" !== step ? (
+                  <Button variant="outline" size="sm" onClick={() => goTo(1)}>
+                    {T.next}
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  disabled={blocked || importing}
+                  disabledReason={blocked ? T.importDisabledHint : undefined}
+                  onClick={doImport}
+                >
+                  {importing ? <Spinner className="size-4" /> : null}
+                  <span className="tabular-nums">{T.importAction(count)}</span>
+                </Button>
+              </>
+            ) : null}
+          </>
+        )
+      }
+    >
+      <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+        <StepRail steps={steps} currentId={step} onSelect={setStep} />
+        <div className="min-w-0 flex-1">
+          {isRecap ? (
+            <RecapView result={result} headingRef={headingRef} />
+          ) : (
+            <div className="flex flex-col gap-4">
+              {/* En-tête d'étape, focalisé au changement d'étape. */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 ref={headingRef} tabIndex={-1} className="text-sm font-semibold outline-none">
+                  {CONTENT_STEPS.has(step) ? T.stepHeading(stepNumber, STEP_ORDER.length, stepTitle) : stepTitle}
+                </h3>
+                {CONTENT_STEPS.has(step) ? (
+                  <Button variant="ghost" size="sm" onClick={doRevalidate} disabled={analyzing}>
+                    {analyzing ? <Spinner className="size-4" /> : null}
+                    {T.revalidate}
+                  </Button>
+                ) : null}
+              </div>
+
+              {/* Erreur d'import — dans la modale, jamais un toast (le hook garde le toast à l'analyse). */}
+              {CONTENT_STEPS.has(step) && importMut.isError ? <ImportErrorBanner error={importMut.error} /> : null}
+
+              {/* D10 — résultat peu fiable (informatif, jamais bloquant), en tête de l'aperçu. */}
+              {CONTENT_STEPS.has(step) && null !== analysis && analysis.fiabilite.bandeau ? (
+                <NoticeBanner tone="warning">{T.unreliableResult}</NoticeBanner>
+              ) : null}
+
+              {/* D9 — les alertes transverses du serveur, affichées verbatim (points à vérifier). */}
+              {CONTENT_STEPS.has(step) && null !== analysis && analysis.alertes.length > 0 ? (
+                <NoticeBanner tone="warning">
+                  <p className="font-medium">{T.alertsHeading}</p>
+                  <ul className="flex list-disc flex-col gap-1 pl-5">
+                    {analysis.alertes.map((alerte, i) => (
+                      <li key={`${alerte.type}:${i}`}>{alerte.message}</li>
+                    ))}
+                  </ul>
+                </NoticeBanner>
+              ) : null}
+
+              {/* Un gymnase « à créer » naîtra sans adresse — à renseigner ensuite (étape Gymnases). */}
+              {"gymnases" === step && hasVenueToCreate ? <NoticeBanner tone="accent">{T.venuesCreatedWithoutAddress}</NoticeBanner> : null}
+
+              {/* Aperçu périmé après une correction : inviter à revalider (sans bloquer l'import). */}
+              {CONTENT_STEPS.has(step) && dirtyCases.size > 0 ? (
+                <NoticeBanner tone="accent">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>{T.staleHint(dirtyCases.size)}</span>
+                    <Button variant="outline" size="sm" onClick={doRevalidate} disabled={analyzing}>
+                      {T.revalidate}
+                    </Button>
+                  </div>
+                </NoticeBanner>
+              ) : null}
+
+              {"prompt" === step ? <PromptStep prompt={prompt} copied={copied} onCopy={copyPrompt} /> : null}
+              {"paste" === step ? <PasteStep rawText={rawText} analyzing={analyzing} onChange={setRawText} /> : null}
+              {"equipes" === step ? (
+                <EntitySection
+                  section="equipes"
+                  lines={analysis?.sections.equipes ?? []}
+                  venues={venues}
+                  allTeams={allTeams}
+                  tiers={tiers}
+                  decisionValue={decisionValue}
+                  onDecision={setDecision}
+                  sessionDrafts={sessionDrafts}
+                  onSessionChange={setSessionDraft}
+                />
+              ) : null}
+              {/* Retours fondateur 2026-10-26 — l'étape Gymnases montre, par gymnase, SA décision EN
+                  TÊTE puis la grille de ses créneaux (iso-wizard), clic sur un créneau → éditeur. */}
+              {"gymnases" === step && null !== analysis ? (
+                <GymnasesStep
+                  lines={analysis.sections.gymnases ?? []}
+                  grid={creneauxGrid}
+                  venues={venues}
+                  allTeams={allTeams}
+                  tiers={tiers}
+                  decisionValue={decisionValue}
+                  onDecision={setDecision}
+                  onEditCase={(g) => setEditingCase(creneauxGrid.ref[g] ?? null)}
+                />
+              ) : null}
+              {/* Retours fondateur 2026-10-26 — les mutualisations ont leur PROPRE étape (le
+                  gestionnaire doit VOIR qu'il y en a à vérifier). */}
+              {"mutualisations" === step && null !== analysis ? (
+                <MutualisationsStep
+                  lines={analysis.sections.mutualisations ?? []}
+                  venues={venues}
+                  caseVenue={caseVenue}
+                  groupDrafts={groupDrafts}
+                  checked={checked}
+                  onVenueChange={(index, v) => setCaseVenue((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
+                  onGroupChange={(index, v) => setGroupDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
+                  onKeepChange={(index, keep) => setChecked((prev) => ({ ...prev, [keyOf("mutualisations", index)]: keep }))}
+                  onEditSlot={(index) => setEditingCase({ section: "mutualisations", index })}
+                />
+              ) : null}
+              {"reservations" === step && null !== analysis ? (
+                reservationsGrid.gridCases.length > 0 ? (
+                  <ParcCaseGrid
+                    venues={reservationsGrid.gridVenues}
+                    cases={reservationsGrid.gridCases}
+                    onEditCase={(g) => {
+                      const target = reservationsGrid.ref[g];
+                      if (undefined === target) {
+                        return;
+                      }
+                      // Une case de MUTUALISATION ne s'édite pas ici : son clic bascule sur l'étape
+                      // Mutualisations (retour en arrière assumé), sur sa ligne.
+                      if ("mutualisations" === target.section) {
+                        setStep("mutualisations");
+                      } else {
+                        setEditingCase(target);
+                      }
+                    }}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">{T.previewHelp}</p>
+                )
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {caseEditor}
+    </Modal>
+  );
+}
+
+/** La valeur initiale du sélecteur d'une ligne équipe/gymnase, d'après son verdict serveur. */
+function initialDecision(line: ParcAnalysisLine): string {
+  if ("ambigu" === line.statut) {
+    return "";
+  }
+  if ("apparie" === line.statut || "suggere" === line.statut) {
+    return line.cibleId ?? CREATE;
+  }
+  if ("aCreer" === line.statut) {
+    return CREATE;
+  }
+  return IGNORE;
+}
+
+function PromptStep({ prompt, copied, onCopy }: { prompt: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <p className="text-sm text-muted-foreground">{T.promptHelp}</p>
+      <pre className="overflow-auto rounded-md border border-border bg-muted px-3 py-2 text-xs whitespace-pre-wrap text-foreground">{prompt}</pre>
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={onCopy}>
+          {T.copyPrompt}
+        </Button>
+        {copied ? (
+          <span role="status" className="text-xs text-muted-foreground">
+            {T.promptCopied}
+          </span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function PasteStep({ rawText, analyzing, onChange }: { rawText: string; analyzing: boolean; onChange: (value: string) => void }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-muted-foreground">{T.pasteLabel}</span>
+        <textarea
+          aria-label={T.pasteLabel}
+          placeholder={T.pastePlaceholder}
+          className={FIELD_CLASS}
+          rows={12}
+          value={rawText}
+          disabled={analyzing}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </label>
+      <p className="text-xs text-muted-foreground">{T.lockedUntilAnalysis}</p>
+      {analyzing ? (
+        <span role="status" className="text-xs text-muted-foreground">
+          {T.analyzing}
+        </span>
+      ) : null}
+    </section>
+  );
+}
+
+/** Une étape équipes/gymnases : la liste des lignes, chacune avec son sélecteur de décision. */
+function EntitySection({
+  section,
+  lines,
+  venues,
+  allTeams,
+  tiers,
+  decisionValue,
+  onDecision,
+  sessionDrafts,
+  onSessionChange,
+}: {
+  section: "equipes" | "gymnases";
+  lines: ParcAnalysisLine[];
+  venues: readonly ParcEntity[];
+  allTeams: TeamLike[];
+  tiers: TierLike[];
+  decisionValue: (section: string, line: ParcAnalysisLine) => string;
+  onDecision: (section: string, index: number, value: string) => void;
+  /** Champ « Séances » éditable (équipes) : brouillon par ligne + sa mise à jour. Absent pour gymnases. */
+  sessionDrafts?: Record<string, number>;
+  onSessionChange?: (index: number, value: number) => void;
+}) {
+  if (0 === lines.length) {
+    return <p className="text-sm text-muted-foreground">{T.previewHelp}</p>;
+  }
+  return (
+    <ul className="flex flex-col">
+      {lines.map((line) => (
+        <DecisionRow
+          key={line.index}
+          section={section}
+          line={line}
+          venues={venues}
+          allTeams={allTeams}
+          tiers={tiers}
+          value={decisionValue(section, line)}
+          onChange={(value) => onDecision(section, line.index, value)}
+          sessionValue={sessionDrafts?.[keyOf(section, line.index)] ?? line.seances ?? DEFAULT_SESSIONS}
+          onSessionChange={onSessionChange}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function DecisionRow({
+  section,
+  line,
+  venues,
+  allTeams,
+  tiers,
+  value,
+  onChange,
+  sessionValue,
+  onSessionChange,
+}: {
+  section: "equipes" | "gymnases";
+  line: ParcAnalysisLine;
+  venues: readonly ParcEntity[];
+  allTeams: TeamLike[];
+  tiers: TierLike[];
+  value: string;
+  onChange: (value: string) => void;
+  sessionValue: number;
+  onSessionChange?: (index: number, value: number) => void;
+}) {
+  const reasonId = useId();
+  const groups = useMemo(() => decisionGroups(section, line, venues, allTeams, tiers), [section, line, venues, allTeams, tiers]);
+  const pending = "ambigu" === line.statut && "" === value;
+
+  return (
+    <li className="grid gap-x-4 gap-y-1 border-b border-border/60 py-2 md:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-sm font-medium text-foreground">{line.libelle}</span>
+        {/* Défaut C — la raison n'est rendue QU'UNE fois : la ligne ⚠ (ci-dessous) la porte dès qu'on
+            est « à trancher », sinon la ligne grise. Les deux ensemble la doublaient (capture 03-equipes). */}
+        {null === line.raison || pending ? null : <span className="text-xs text-muted-foreground">{line.raison}</span>}
+        {pending ? (
+          <span id={reasonId} className="flex items-center gap-1 text-xs text-foreground">
+            <AlertTriangle aria-hidden className="size-3.5 text-warning" />
+            {line.raison ?? T.toDecide}
+          </span>
+        ) : null}
+        {/* Retours fondateur 2026-10-26 — « Séances » est un CHAMP éditable (équipes), lisible d'un
+            coup d'œil et corrigeable AVANT l'import (ce qui SERA importé) ; « actuellement N » pour une
+            équipe appariée. Plus aucune case à cocher de séances. */}
+        {"equipes" === section && undefined !== onSessionChange ? (
+          <label className="mt-0.5 flex items-center gap-2 text-xs text-foreground">
+            <span>{T.sessionsLabel}</span>
+            <Input
+              type="number"
+              compact
+              min={MIN_SESSIONS}
+              max={MAX_SESSIONS}
+              aria-label={T.sessionsFieldLabel(line.libelle)}
+              className="w-16"
+              value={sessionValue}
+              onChange={(e) => onSessionChange(line.index, Number(e.target.value))}
+            />
+            {undefined !== line.seancesActuelles ? <span className="text-muted-foreground">{T.sessionsCurrent(line.seancesActuelles)}</span> : null}
+          </label>
+        ) : null}
+      </div>
+      <Listbox
+        id={decisionTriggerId(section, line.index)}
+        aria-label={T.decisionFor(line.libelle)}
+        aria-describedby={pending ? reasonId : undefined}
+        wrapperClassName="w-full"
+        placeholder={T.toDecide}
+        value={value}
+        onValueChange={onChange}
+        groups={groups}
+      />
+    </li>
+  );
+}
+
+/**
+ * Étape Gymnases (retours fondateur 2026-10-26, iso-wizard) — par gymnase : SA décision (`DecisionRow`)
+ * EN TÊTE de son bloc, puis la grille de ses créneaux d'ouverture (`ParcCaseGrid`), clic → éditeur.
+ * Les créneaux d'un gymnase sont ceux de la grille dont le `venueName` est le libellé du gymnase.
+ */
+function GymnasesStep({
+  lines,
+  grid,
+  venues,
+  allTeams,
+  tiers,
+  decisionValue,
+  onDecision,
+  onEditCase,
+}: {
+  lines: ParcAnalysisLine[];
+  grid: { gridCases: ParcCaseGridCase[]; gridVenues: ParcCaseGridVenue[] };
+  venues: readonly ParcEntity[];
+  allTeams: TeamLike[];
+  tiers: TierLike[];
+  decisionValue: (section: string, line: ParcAnalysisLine) => string;
+  onDecision: (section: string, index: number, value: string) => void;
+  onEditCase: (index: number) => void;
+}) {
+  // Un bloc par gymnase : les gymnases DÉCIDABLES (lignes serveur) d'abord, dans leur ordre, puis les
+  // gymnases qui n'existent que par leurs créneaux (sans ligne de décision — ex. un parc tout en
+  // créneaux). Chaque bloc = la décision EN TÊTE (si elle existe) + la grille des créneaux du gymnase.
+  const venueNames: string[] = [];
+  const add = (name: string): void => {
+    if ("" !== name && !venueNames.includes(name)) {
+      venueNames.push(name);
+    }
+  };
+  for (const line of lines) {
+    add(line.libelle);
+  }
+  for (const v of grid.gridVenues) {
+    add(v.name);
+  }
+
+  if (0 === venueNames.length) {
+    return <p className="text-sm text-muted-foreground">{T.previewHelp}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {venueNames.map((name) => {
+        const line = lines.find((l) => l.libelle === name);
+        const venueCases = grid.gridCases.filter((c) => c.venueName === name);
+        const toCreate = undefined !== line ? "aCreer" === line.statut : (grid.gridVenues.find((v) => v.name === name)?.toCreate ?? false);
+        return (
+          <section key={name} className="flex flex-col gap-2">
+            {undefined !== line ? (
+              <ul className="flex flex-col">
+                <DecisionRow
+                  section="gymnases"
+                  line={line}
+                  venues={venues}
+                  allTeams={allTeams}
+                  tiers={tiers}
+                  value={decisionValue("gymnases", line)}
+                  onChange={(value) => onDecision("gymnases", line.index, value)}
+                  sessionValue={DEFAULT_SESSIONS}
+                />
+              </ul>
+            ) : null}
+            {venueCases.length > 0 ? <ParcCaseGrid venues={[{ name, toCreate }]} cases={venueCases} onEditCase={onEditCase} /> : null}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Étape Mutualisations (retours fondateur 2026-10-26) — une ligne par mutualisation (picto lien + nom
+ * de groupe + équipes + créneau, raison ⚠ une seule fois) : Garder/Ignorer SANS case à cocher
+ * (`SegmentedControl`), sélecteur de gymnase de la réservation de groupe (P4-363, → `venueId`), nom de
+ * groupe (D8, → `corrections.groupe`) et accès à l'éditeur de créneau (jour/heure/durée). Vide →
+ * `EmptyHint`. Le gestionnaire novice doit VOIR qu'il y a des mutualisations à vérifier.
+ */
+function MutualisationsStep({
+  lines,
+  venues,
+  caseVenue,
+  groupDrafts,
+  checked,
+  onVenueChange,
+  onGroupChange,
+  onKeepChange,
+  onEditSlot,
+}: {
+  lines: ParcAnalysisLine[];
+  venues: readonly ParcEntity[];
+  caseVenue: Record<string, string>;
+  groupDrafts: Record<string, string>;
+  checked: Record<string, boolean>;
+  onVenueChange: (index: number, value: string) => void;
+  onGroupChange: (index: number, value: string) => void;
+  onKeepChange: (index: number, keep: boolean) => void;
+  onEditSlot: (index: number) => void;
+}) {
+  if (0 === lines.length) {
+    return <EmptyHint>{T.mutualisationsEmpty}</EmptyHint>;
+  }
+  // Finition 2c — « à vérifier » réservé aux alertes ; sinon « N mutualisations lues ».
+  const hasAlert = lines.some((l) => "alerte" === l.statut);
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground tabular-nums">{hasAlert ? T.mutualisationsCount(lines.length) : T.mutualisationsReadCount(lines.length)}</p>
+      <ul className="flex flex-col gap-3">
+        {lines.map((line) => {
+          const key = keyOf("mutualisations", line.index);
+          const keep = checked[key] ?? line.coche;
+          const inAlert = "alerte" === line.statut;
+          const pos = line.position;
+          // Finition 2a — sélecteur de gymnase pré-rempli : l'id résolu, ou l'option « <nom> (à créer) »
+          // (valeur `VENUE_TO_CREATE`, affiche le nom lu sans porter d'id) pour un gymnase pas encore existant.
+          const posGym = pos?.gymnase ?? "";
+          const venueOptions = [
+            ...(null == line.gymnaseId && "" !== posGym ? [{ value: VENUE_TO_CREATE, label: T.gridVenueToCreate(posGym), swatch: null }] : []),
+            ...venues.map((v) => ({ value: v.id, label: v.name, swatch: null })),
+          ];
+          return (
+            <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
+                {null === (line.groupe ?? null) || "" === line.groupe ? null : <span className="text-sm font-semibold text-foreground">{line.groupe}</span>}
+                <span className="text-sm font-medium text-foreground">{line.libelle}</span>
+                {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}
+                {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))} · ${pos.gymnase}`}</span> : null}
+              </div>
+              {/* Défaut C — la raison serveur n'est rendue QU'UNE fois (⚠). */}
+              {inAlert && null !== line.raison ? (
+                <span className="flex items-center gap-1 text-xs text-foreground">
+                  <AlertTriangle aria-hidden className="size-3.5 text-warning" />
+                  {line.raison}
+                </span>
+              ) : null}
+              <div className="flex flex-wrap items-end gap-2">
+                <SegmentedControl
+                  mode="single"
+                  label={T.mutualDecision(line.libelle)}
+                  value={keep ? "keep" : "ignore"}
+                  onValueChange={(v) => onKeepChange(line.index, "keep" === v)}
+                  options={[
+                    { key: "keep", label: T.mutualKeep },
+                    { key: "ignore", label: T.mutualIgnore },
+                  ]}
+                />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">{T.venueForGroupVisible}</span>
+                  <Listbox
+                    aria-label={T.venueForGroup(line.libelle)}
+                    wrapperClassName="w-56"
+                    value={caseVenue[key] ?? ""}
+                    onValueChange={(v) => onVenueChange(line.index, v)}
+                    options={venueOptions}
+                  />
+                </div>
+                <Input
+                  aria-label={T.groupLabel(line.libelle)}
+                  placeholder={T.groupNamePlaceholder}
+                  className="w-48"
+                  value={groupDrafts[key] ?? ""}
+                  onChange={(e) => onGroupChange(line.index, e.target.value)}
+                />
+                <Button variant="outline" size="sm" onClick={() => onEditSlot(line.index)}>
+                  {T.editCaseTitle}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** Minutes d'un « HH:MM » (foyer d'affichage `formatMinutes`), 0 en repli (gouttière tolérante). */
+function minutesOfSlot(hhmm: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  return null === m ? 0 : Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** Les groupes du sélecteur d'une ligne, dans l'ordre : suggestion · candidats · autre choix · tout. */
+function decisionGroups(
+  section: "equipes" | "gymnases",
+  line: ParcAnalysisLine,
+  venues: readonly ParcEntity[],
+  allTeams: TeamLike[],
+  tiers: TierLike[],
+): ListboxGroup[] {
+  const groups: ListboxGroup[] = [];
+  const candidats = line.candidats ?? [];
+  const suggested = ("suggere" === line.statut || "apparie" === line.statut) && null !== line.cibleId ? line.cibleId : null;
+
+  if (null !== suggested) {
+    const nom = candidats.find((c) => c.id === suggested)?.nom ?? line.libelle;
+    groups.push({
+      id: "suggestion",
+      label: T.suggestionGroup,
+      options: [{ value: suggested, label: T.matchToSuggested(nom), sub: line.raison ?? undefined }],
+    });
+  }
+
+  const others = candidats.filter((c) => c.id !== suggested);
+  if (others.length > 0) {
+    groups.push({ id: "candidats", label: T.candidatesGroup, options: others.map((c) => ({ value: c.id, label: T.matchTo(c.nom) })) });
+  }
+
+  groups.push({
+    id: "autre",
+    label: T.otherChoiceGroup,
+    options: [
+      { value: CREATE, label: T.createOption(line.libelle) },
+      { value: IGNORE, label: T.ignoreLine },
+    ],
+  });
+
+  const excluded = (id: string): boolean => candidats.some((c) => c.id === id) || id === suggested;
+  if ("equipes" === section) {
+    // 3d — « Toutes les équipes du club » rangé PAR RANG (une maison unique `groupTeamsByTier`).
+    for (const tierGroup of groupTeamsByTier(allTeams.filter((t) => !excluded(t.id)), tiers)) {
+      groups.push({
+        id: `tier:${tierGroup.tier?.id ?? "autres"}`,
+        label: tierGroupLabel(tierGroup.tier),
+        options: tierGroup.teams.map((t) => ({ value: t.id, label: t.name })),
+      });
+    }
+  } else {
+    const all = [...venues].filter((e) => !excluded(e.id)).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+    if (all.length > 0) {
+      groups.push({ id: "all", label: T.allVenuesGroup, options: all.map((e) => ({ value: e.id, label: e.name, swatch: null })) });
+    }
+  }
+
+  return groups;
+}
+
+/**
+ * Éditeur de case (Modal imbriquée, brouillon transactionnel) — le CRÉNEAU : jour · heure · durée
+ * (`DurationSelect`). Pour un créneau/une réservation, il porte aussi le gymnase (P4-363/D12, →
+ * `cibleId`) et Garder/Ignorer. Pour une MUTUALISATION, le gymnase et le nom de groupe se corrigent
+ * EN LIGNE à l'étape Mutualisations (retours fondateur 2026-10-26) — l'éditeur n'édite alors que le
+ * créneau, sans réécrire le gymnase ni l'inclusion de la ligne.
+ */
+function CaseEditor({
+  section,
+  libelle,
+  draft,
+  venueId,
+  venueToCreateName,
+  keep,
+  venues,
+  onCancel,
+  onSave,
+}: {
+  section: string;
+  libelle: string;
+  draft: SlotDraft | undefined;
+  venueId: string;
+  /** Nom du gymnase de la case pour l'option « <nom> (à créer) » (pré-remplissage, finition 3a). */
+  venueToCreateName: string;
+  keep: boolean;
+  venues: readonly ParcEntity[];
+  onCancel: () => void;
+  onSave: (next: { draft: SlotDraft; venueId: string; keep: boolean }) => void;
+}) {
+  const [local, setLocal] = useState<SlotDraft>(draft ?? { jour: 1, debut: "", duree: 0 });
+  const [venue, setVenue] = useState(venueId);
+  const [keepLocal, setKeepLocal] = useState(keep);
+  const isMutual = "mutualisations" === section;
+  // Finition 3a — sélecteur pré-rempli : option « <nom> (à créer) » (pas d'id) + les gymnases existants.
+  const venueOptions = [
+    ...("" !== venueToCreateName ? [{ value: VENUE_TO_CREATE, label: T.gridVenueToCreate(venueToCreateName), swatch: null }] : []),
+    ...venues.map((v) => ({ value: v.id, label: v.name, swatch: null })),
+  ];
+
+  return (
+    <Modal
+      label={T.editCaseTitle}
+      title={T.editCaseTitle}
+      size="md"
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            {T.cancel}
+          </Button>
+          <Button size="sm" onClick={() => onSave({ draft: local, venueId: venue, keep: keepLocal })}>
+            {T.save}
+          </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-5">
-        {/* Temps 1 — le prompt pré-rempli du périmètre déjà saisi, à copier dans un assistant. */}
-        <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">{T.promptHeading}</h3>
-          <p className="text-sm text-muted-foreground">{T.promptHelp}</p>
-          <pre className="max-h-40 overflow-auto rounded-md border border-border bg-muted px-3 py-2 text-xs whitespace-pre-wrap text-foreground">{prompt}</pre>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={copyPrompt}>
-              {T.copyPrompt}
-            </Button>
-            {copied ? (
-              <span role="status" className="text-xs text-muted-foreground">
-                {T.promptCopied}
-              </span>
-            ) : null}
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">{libelle}</p>
+        {isMutual ? null : (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted-foreground">{T.editVenueVisible}</span>
+            <Listbox aria-label={T.editVenue(libelle)} wrapperClassName="w-full" value={venue} onValueChange={setVenue} options={venueOptions} />
           </div>
-        </section>
-
-        {/* Temps 2 — collage de la réponse de l'assistant + analyse (dry-run). */}
-        <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">{T.pasteHeading}</h3>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">{T.pasteLabel}</span>
-            <textarea
-              aria-label={T.pasteLabel}
-              placeholder={T.pastePlaceholder}
-              className={FIELD_CLASS}
-              rows={4}
-              value={rawText}
-              disabled={analyzing}
-              onChange={(e) => setRawText(e.target.value)}
-            />
+        )}
+        {/* Même disposition que l'éditeur de créneau du wizard (`VenuesStep`) : Jour · Début · Durée · Fin calculée. */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs text-muted-foreground">
+            {T.editDayLabel}
+            <Select aria-label={T.editDay(libelle)} className="mt-0.5 h-9" wrapperClassName="w-28" value={local.jour} onChange={(e) => setLocal((p) => ({ ...p, jour: Number(e.target.value) }))}>
+              {DAYS.map((d) => (
+                <option key={d.n} value={d.n}>
+                  {dayLabelLongCap(d.n)}
+                </option>
+              ))}
+            </Select>
           </label>
-          <div className="flex items-center gap-2">
-            <Button size="sm" disabled={analyzing || "" === rawText.trim()} onClick={doAnalyze}>
-              {analyzing ? <Spinner className="size-4" /> : null}
-              {T.analyze}
-            </Button>
-            {analyzing ? (
-              <span role="status" className="text-xs text-muted-foreground">
-                {T.analyzing}
-              </span>
-            ) : null}
-          </div>
-        </section>
-
-        {/* Temps 3 — l'aperçu cochable (verdicts du serveur, affichés verbatim). */}
-        {showPreview ? (
-          <section className="flex flex-col gap-3" role="status">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-semibold">{T.previewHeading}</h3>
-              <p className="text-sm text-muted-foreground">{T.previewHelp}</p>
-            </div>
-            {/* D10 — fiabilité peu sûre : on prévient, on ne bloque JAMAIS l'import. */}
-            {analysis.fiabilite.bandeau ? <NoticeBanner tone="warning" role="status" message={T.unreliableResult} /> : null}
-            {/* D9 — alertes transverses : les messages sont des DONNÉES serveur, affichés verbatim. */}
-            {0 === analysis.alertes.length ? null : (
-              <NoticeBanner tone="warning" role="status">
-                <p className="font-medium">{T.alertsHeading}</p>
-                <ul className="flex list-disc flex-col gap-1 pl-5">
-                  {analysis.alertes.map((alerte, i) => (
-                    <li key={`${alerte.type}:${i}`}>{alerte.message}</li>
-                  ))}
-                </ul>
-              </NoticeBanner>
-            )}
-            {venuesToCreate ? <NoticeBanner tone="warning" role="status" message={T.venuesCreatedWithoutAddress} /> : null}
-            {SECTION_ORDER.map((section) => {
-              const lines = analysis.sections[section] ?? [];
-              if (0 === lines.length) {
-                return null;
-              }
-              return (
-                <div key={section} className="flex flex-col gap-1">
-                  <h4 className="text-xs font-semibold text-muted-foreground uppercase">{T.sectionTitle(section)}</h4>
-                  <ul className="flex flex-col gap-1">
-                    {lines.map((line) => (
-                      <li key={line.index} className="rounded px-1 py-1">
-                        <label className="flex items-start gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            aria-label={line.libelle}
-                            className="mt-1 size-4 shrink-0"
-                            checked={checked[keyOf(section, line.index)] ?? false}
-                            onChange={() => toggle(section, line.index)}
-                          />
-                          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                            <StatusPill variant={STATUS_VARIANT[line.statut]}>{T.statusLabel(line.statut)}</StatusPill>
-                            <span>{line.libelle}</span>
-                            {undefined === line.miseAJour ? null : (
-                              <span className="text-xs text-muted-foreground">{T.sessionsUpdate(line.miseAJour.de, line.miseAJour.a)}</span>
-                            )}
-                          </span>
-                        </label>
-                        {null === line.raison ? null : <p className="mt-0.5 pl-6 text-xs text-muted-foreground">{line.raison}</p>}
-                        {REMATCH_SECTIONS.has(section) && isRematchStatus(line.statut) ? (
-                          <RematchRow
-                            section={section}
-                            line={line}
-                            value={rematch[keyOf(section, line.index)] ?? ""}
-                            teams={teams}
-                            venues={venues}
-                            onChange={(v) => updateRematch(section, line.index, v)}
-                          />
-                        ) : null}
-                        {"creneaux" === section && isRematchStatus(line.statut) ? (
-                          <VenueSelect
-                            aria-label={T.venueForSlot(line.libelle)}
-                            wrapperClassName="mt-1 ml-6 w-full max-w-xs"
-                            placeholder={T.rematchCreate}
-                            value={slotVenue[line.index] ?? ""}
-                            onValueChange={(v) => updateSlotVenue(line.index, v)}
-                            venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))}
-                          />
-                        ) : null}
-                        {"creneaux" === section ? <SlotEditor line={line} draft={slotDrafts[line.index]} onChange={(patch) => updateSlot(line.index, patch)} /> : null}
-                        {"mutualisations" === section && isRematchStatus(line.statut) ? (
-                          <VenueSelect
-                            aria-label={T.venueForGroup(line.libelle)}
-                            wrapperClassName="mt-1 ml-6 w-full max-w-xs"
-                            placeholder={T.rematchCreate}
-                            value={groupVenue[line.index] ?? ""}
-                            onValueChange={(v) => updateGroupVenue(line.index, v)}
-                            venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))}
-                          />
-                        ) : null}
-                        {"mutualisations" === section && isRematchStatus(line.statut) ? (
-                          <div className="mt-1 w-full max-w-xs pl-6">
-                            <Input
-                              aria-label={T.groupLabel(line.libelle)}
-                              placeholder={T.groupLabelPlaceholder}
-                              value={groupDrafts[line.index] ?? ""}
-                              onChange={(e) => updateGroup(line.index, e.target.value)}
-                            />
-                          </div>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </section>
-        ) : null}
-
-        {/* Temps 4 — le récap de l'import réel (contrat PR2, provisoire). */}
-        {null === result ? null : (
-          <section role="status" className="flex flex-col gap-2 text-sm">
-            <p className="font-medium">{result.message ?? T.importDone}</p>
-            {undefined === result.recap ? null : (
-              <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {Object.entries(result.recap).map(([section, r]) => (
-                  <li key={section}>
-                    {T.sectionTitle(section)} — {T.sectionRecap(r.crees, r.apparies, r.misAJour, r.ignores)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <label className="text-xs text-muted-foreground">
+            {T.editStartLabel}
+            <Input type="time" aria-label={T.editStart(libelle)} className="mt-0.5 h-9 w-28" value={local.debut} onChange={(e) => setLocal((p) => ({ ...p, debut: e.target.value }))} />
+          </label>
+          <label className="text-xs text-muted-foreground">
+            {T.editDurationLabel}
+            <DurationSelect aria-label={T.editDurationLabel} className="mt-0.5 h-9" wrapperClassName="w-28" value={local.duree} present={[local.duree]} startTime={local.debut} onChange={(minutes) => setLocal((p) => ({ ...p, duree: minutes }))} />
+          </label>
+          <SlotEndField startTime={local.debut} duration={local.duree} />
+        </div>
+        {isMutual ? null : (
+          <SegmentedControl
+            mode="single"
+            label={T.caseKeep}
+            value={keepLocal ? "keep" : "ignore"}
+            onValueChange={(v) => setKeepLocal("keep" === v)}
+            options={[
+              { key: "keep", label: T.mutualKeep },
+              { key: "ignore", label: T.mutualIgnore },
+            ]}
+          />
         )}
       </div>
     </Modal>
   );
 }
 
-/** Correction sur place des champs simples d'un créneau À CRÉER — jour / heure / durée. */
-function SlotEditor({ line, draft, onChange }: { line: ParcAnalysisLine; draft: SlotDraft | undefined; onChange: (patch: Partial<SlotDraft>) => void }) {
-  if (undefined === draft) {
-    return null;
-  }
+/** La bannière d'erreur d'import — dans la modale, `role="alert"`, avec la liste des `errors[]`. */
+function ImportErrorBanner({ error }: { error: unknown }) {
+  const errors = extractErrors(error);
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 pl-6">
-      <Select
-        aria-label={T.editDay(line.libelle)}
-        wrapperClassName="w-32"
-        value={draft.jour}
-        onChange={(e) => onChange({ jour: Number(e.target.value) })}
-      >
-        {DAYS.map((d) => (
-          <option key={d.n} value={d.n}>
-            {dayLabelLongCap(d.n)}
-          </option>
-        ))}
-      </Select>
-      <div className="w-28">
-        <Input type="time" aria-label={T.editStart(line.libelle)} value={draft.debut} onChange={(e) => onChange({ debut: e.target.value })} />
-      </div>
-      <div className="w-24">
-        <Input type="number" min={1} aria-label={T.editDuration(line.libelle)} value={draft.duree} onChange={(e) => onChange({ duree: Number(e.target.value) })} />
-      </div>
-    </div>
+    <NoticeBanner tone="destructive" role="alert">
+      <p className="font-medium">{T.importErrorHeading}</p>
+      {errors.length > 0 ? (
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          {errors.map((message, i) => (
+            <li key={`${i}:${message}`}>{message}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{T.importErrorGeneric}</p>
+      )}
+    </NoticeBanner>
   );
 }
 
-/**
- * Ré-appariement d'une ligne d'entité (D5) : un sélecteur riche listant les entités EXISTANTES de la
- * section (par nom, valeur = id) plus « Créer » (le placeholder, valeur ""). Équipes → `TeamSelect`,
- * gymnases → `VenueSelect`. Le nom accessible du déclencheur est contextualisé par le libellé de la
- * ligne (A11Y-28). Choisir une entité envoie son id ; « Créer » n'envoie rien.
- */
-function RematchRow({
-  section,
-  line,
-  value,
-  teams,
-  venues,
-  onChange,
-}: {
-  section: string;
-  line: ParcAnalysisLine;
-  value: string;
-  teams: readonly ParcEntity[];
-  venues: readonly ParcEntity[];
-  onChange: (value: string) => void;
-}) {
-  const label = T.rematchLabel(line.libelle);
-  const common = { value, onValueChange: onChange, placeholder: T.rematchCreate, "aria-label": label, wrapperClassName: "mt-1 ml-6 w-full max-w-xs" } as const;
-
-  if ("equipes" === section) {
-    return <TeamSelect {...common} teams={teams.map((t) => ({ id: t.id, name: t.name, priorityTierId: 0, tierOrder: 0 }))} tiers={[]} />;
+/** Lit la liste `errors[]` d'une erreur ky (4xx), sinon aucune (repli générique). */
+function extractErrors(error: unknown): string[] {
+  const status = (error as { response?: { status?: number } } | null)?.response?.status;
+  if ("number" === typeof status && status >= 500) {
+    return [];
   }
-  return <VenueSelect {...common} venues={venues.map((v) => ({ id: v.id, name: v.name, color: null }))} />;
+  const data = (error as { data?: { errors?: unknown } } | null)?.data;
+  const errors = data?.errors;
+  return Array.isArray(errors) ? errors.filter((m): m is string => "string" === typeof m && "" !== m.trim()) : [];
+}
+
+/** Le récap de l'import réel — remplace le contenu, pied « Fermer » primaire (pas de 6ᵉ étape). */
+function RecapView({ result, headingRef }: { result: ParcImportResult; headingRef: RefObject<HTMLHeadingElement | null> }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 ref={headingRef} tabIndex={-1} className="text-base font-semibold outline-none">
+        {result.message ?? T.importDone}
+      </h3>
+      {undefined === result.recap ? null : (
+        <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+          {Object.entries(result.recap).map(([section, r]) => (
+            <li key={section}>
+              {T.sectionTitle(section)} — {T.sectionRecap(r.crees, r.apparies, r.misAJour, r.ignores)}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-sm text-muted-foreground">{T.recapNext}</p>
+    </section>
+  );
 }

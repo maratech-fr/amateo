@@ -56,7 +56,13 @@ final class ParcImportAnalyzeController extends AbstractController
             );
         }
 
-        $errors = $this->validator->errors($raw);
+        // PR1 — REVALIDATION : « Revalider » reposte une enveloppe `{payload, decisions}`. Le `payload`
+        // est le parc-v2 DÉJÀ normalisé (rendu par `parse()` à la première analyse) ; on le re-valide
+        // par la MÊME passe, puis on rejoue l'analyse EN APPLIQUANT les corrections de l'aperçu. Un
+        // collage brut (première analyse) n'a pas de clé `payload` → on relit le texte tel quel.
+        [$parcJson, $decisions] = $this->unwrapEnvelope($raw);
+
+        $errors = $this->validator->errors($parcJson);
         if ([] !== $errors) {
             return $this->json(['errors' => $errors], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
@@ -65,7 +71,7 @@ final class ParcImportAnalyzeController extends AbstractController
         // RÉCUPÉRATION (guillemets typographiques, bloc ```json), jamais le JSON brut (D4) — sans quoi
         // un collage lisible seulement après récupération échappait à `json_decode($raw)` et
         // atteignait `boundsErrors(null)` → TypeError → 500.
-        $parc = $this->validator->parse($raw);
+        $parc = $this->validator->parse($parcJson);
         if (null === $parc) {
             // Inatteignable après `errors()` vide (qui refuse déjà un parse null) ; garde le type array.
             return $this->json(
@@ -84,9 +90,32 @@ final class ParcImportAnalyzeController extends AbstractController
         return $this->json(
             // Le `payload` NORMALISÉ (relu par `parse()`) voyage à côté de l'aperçu : le front l'amorce
             // pour les brouillons ET le reposte à l'import, au lieu de re-parser le texte brut collé.
-            ['payload' => $parc] + $this->analyzer->analyze($parc, $club, \is_string($seasonId) ? $seasonId : ''),
+            ['payload' => $parc] + $this->analyzer->analyze($parc, $club, \is_string($seasonId) ? $seasonId : '', $decisions),
             Response::HTTP_OK,
         );
+    }
+
+    /**
+     * Détache l'enveloppe de REVALIDATION `{payload, decisions}` d'un collage brut. Avec un objet
+     * portant une clé `payload` tableau, rend le payload RÉ-ENCODÉ (la même passe de validation/parse
+     * le relit) et ses décisions ; sinon le corps brut tel quel, sans décisions. Un corps illisible
+     * (collage à récupérer) retombe donc sur le chemin brut.
+     *
+     * @return array{0: string, 1: list<array<string, mixed>>}
+     */
+    private function unwrapEnvelope(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (\is_array($decoded) && \array_key_exists('payload', $decoded) && \is_array($decoded['payload'])) {
+            $decisions = $decoded['decisions'] ?? null;
+            $decisions = \is_array($decisions) && array_is_list($decisions)
+                ? array_values(array_filter($decisions, 'is_array'))
+                : [];
+
+            return [(string) json_encode($decoded['payload'], \JSON_UNESCAPED_UNICODE), $decisions];
+        }
+
+        return [$raw, []];
     }
 
     /**

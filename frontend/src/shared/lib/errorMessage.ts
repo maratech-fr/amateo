@@ -5,6 +5,12 @@ interface ApiErrorBody {
   message?: string;
   detail?: string;
   violations?: { message?: string }[];
+  /**
+   * Liste de messages NOMMÉS, écrits pour être lus (import du parc analyze/execute : « L'équipe n°3 :
+   * appariement ambigu… »). ⚠ `ValidateConstraintsController` renvoie `errors` en OBJET, pas une
+   * liste : le garde `Array.isArray` l'écarte (jamais « [object Object] » à l'écran). 4xx seulement.
+   */
+  errors?: unknown;
 }
 
 // P4-263 — le backend francise les messages ATTEIGNABLES par un gestionnaire, mais un 4xx nu
@@ -63,6 +69,15 @@ export async function errorMessage(error: unknown): Promise<string> {
           .map((v) => v.message)
           .filter((m): m is string => typeof m === "string" && m.trim() !== "")
           .join(" · ");
+        if (joined !== "") {
+          return joined;
+        }
+      }
+      // Import du parc : un corps `{ errors: string[] }` nomme chaque ligne fautive — on les JOINT
+      // comme les violations. Un `errors` OBJET (ValidateConstraintsController) n'est pas une liste :
+      // `Array.isArray` l'écarte, on retombe alors sur le repli par statut.
+      if (Array.isArray(body.errors) && body.errors.length > 0) {
+        const joined = body.errors.filter((m): m is string => typeof m === "string" && m.trim() !== "").join(" · ");
         if (joined !== "") {
           return joined;
         }

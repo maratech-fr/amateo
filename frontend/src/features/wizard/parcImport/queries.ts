@@ -13,8 +13,11 @@ import { invalidateEverywhere } from "../queries";
  * `mutateOnErrorToastGuard`) : la modale ne passe JAMAIS d'`onError` à `mutate()`.
  */
 
-/** Statut servi par l'analyzer pour une ligne (`App\Service\ParcImport\ParcImportAnalyzer`). */
-export type ParcLineStatus = "apparie" | "suggere" | "aCreer" | "decoche" | "alerte";
+/**
+ * Statut servi par l'analyzer pour une ligne (`App\Service\ParcImport\ParcImportAnalyzer`). PR1 (D5) :
+ * `ambigu` — ≥ 2 candidats dans le seuil, décoché, cibleId null, PORTE ses `candidats` à trancher.
+ */
+export type ParcLineStatus = "apparie" | "suggere" | "aCreer" | "ambigu" | "decoche" | "alerte";
 
 /** Une ligne d'aperçu — tout vient du serveur, affiché verbatim (`libelle`, `raison`). */
 export interface ParcAnalysisLine {
@@ -24,12 +27,34 @@ export interface ParcAnalysisLine {
   coche: boolean;
   cibleId: string | null;
   raison: string | null;
+  /** PR1 (D5) : les candidats (`{id, nom}`) d'un appariement suggéré/ambigu — alimentent le groupe
+   *  « Candidats possibles » du sélecteur de la ligne. Absent/vide pour une ligne « à créer ». */
+  candidats?: Array<{ id: string; nom: string }>;
   /** Équipes : une mise à jour de séances PROPOSÉE (pas appliquée). */
   miseAJour?: { champ: "seances"; de: number; a: number };
+  /**
+   * Équipes (retours fondateur 2026-10-26) : le nombre de séances LU dans le fichier (nombre de cases
+   * dérivé), servi sur CHAQUE ligne équipe — amorce le champ « Séances » éditable (ce qui SERA importé).
+   */
+  seances?: number;
+  /**
+   * Équipe APPARIÉE (retours fondateur 2026-10-26) : les séances ACTUELLES de l'équipe visée —
+   * l'indication « actuellement N » et la base de comparaison du champ (valeur = actuelle → pas de
+   * `corrections.seances` ; valeur ≠ actuelle → la correction part).
+   */
+  seancesActuelles?: number;
   /** Mutualisations : le libellé du bloc DÉRIVÉ par le serveur (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
   /** Mutualisations (P4-363) : le gymnase RÉSOLU du nom de la case (null si à créer) — amorce le sélecteur de gymnase de la réservation de groupe, distinct du `cibleId` (qui désigne le bloc apparié). */
   gymnaseId?: string | null;
+  /**
+   * Réservations / mutualisations (refonte PR1) : la POSITION du créneau de SA case DÉRIVÉE
+   * (gymnase · jour · heure · durée, + le gymnase résolu). Le front place la case de la grille et
+   * amorce l'éditeur EXCLUSIVEMENT d'après elle — JAMAIS `payload.cases[index]`, car l'index d'une
+   * ligne de ces deux sections est son rang dans la liste dérivée, décalé du rang des cases du parc
+   * (une case à 2 équipes sur terrains séparés donne 2 réservations et décale tout le reste).
+   */
+  position?: { gymnase: string; jour: number; debut: string; duree: number; gymnaseId?: string | null };
 }
 
 /** Le récap chiffré d'une section de l'aperçu. */
@@ -76,6 +101,8 @@ export interface ParcImportDecision {
   section: string;
   index: number;
   coche: boolean;
+  /** Création EXPLICITE (3a) : « Créer « X » » sur une ligne AMBIGUË — lève le refus d'ambiguïté serveur. */
+  creer?: boolean;
   cibleId?: string | null;
   /** Mutualisations (P4-363) : le gymnase CHOISI de la réservation de groupe (sélecteur de la ligne), distinct du `cibleId` (bloc apparié). Absent → le serveur résout par le nom de la case. */
   venueId?: string | null;
@@ -95,14 +122,28 @@ export interface ParcImportSelection {
 }
 
 /**
- * Dry-run : poste le texte BRUT rendu par l'assistant (`application/json`, lu côté serveur via
+ * L'entrée de l'analyse : le texte BRUT collé (première analyse), OU l'enveloppe `{payload, decisions}`
+ * de la REVALIDATION (PR1) — le serveur rejoue l'analyse en appliquant les corrections de l'aperçu.
+ */
+export type ParcAnalyzeInput = string | { payload: unknown; decisions: ParcImportDecision[] };
+
+/**
+ * Dry-run : poste soit le texte BRUT rendu par l'assistant (première analyse), soit l'enveloppe
+ * `{payload, decisions}` de la revalidation (`application/json`, lu côté serveur via
  * `$request->getContent()`, pas de désérialisation API Platform). Aucune écriture, aucune
  * invalidation de cache. La saison de travail voyage dans l'en-tête `X-Season-Id` (client).
  */
 export function useAnalyzeParc(clubId: string) {
   return useMutation({
-    mutationFn: (text: string) =>
-      api.post(`clubs/${clubId}/parc-import/analyze`, { body: text, headers: { "Content-Type": "application/json" } }).json<ParcAnalysis>(),
+    mutationFn: (input: ParcAnalyzeInput) =>
+      api
+        .post(
+          `clubs/${clubId}/parc-import/analyze`,
+          "string" === typeof input
+            ? { body: input, headers: { "Content-Type": "application/json" } }
+            : { json: input },
+        )
+        .json<ParcAnalysis>(),
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
@@ -111,6 +152,11 @@ export function useAnalyzeParc(clubId: string) {
  * Import réel des lignes cochées. Au succès on invalide équipes/gymnases/coachs PARTOUT (D-25) :
  * l'import fait naître/rattacher ces entités, les écrans voisins doivent les voir sans attendre
  * le `staleTime`.
+ *
+ * PR1 — l'erreur d'import est surfacée DANS la modale (`NoticeBanner role="alert"`, qui lit le state
+ * `error`/`isError` du hook), PAS en toast : le `onError` de niveau HOOK existe pour DÉSARMER le filet
+ * global `MutationCache.onError` (qui, sinon, doublerait la bannière d'un toast) — il ne toaste rien.
+ * Le toast d'erreur reste la conduite de l'ANALYSE (`useAnalyzeParc`).
  */
 export function useImportParc(clubId: string) {
   const queryClient = useQueryClient();
@@ -121,6 +167,6 @@ export function useImportParc(clubId: string) {
       void invalidateEverywhere(queryClient, "venues");
       void invalidateEverywhere(queryClient, "coaches");
     },
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+    onError: (error) => void error,
   });
 }

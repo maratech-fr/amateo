@@ -133,3 +133,37 @@ describe("errorMessage — filet status-text anglais (P4-263)", () => {
     expect(await errorMessage(httpError(405))).toBe("Action non autorisée.");
   });
 });
+
+describe("errorMessage — liste d'erreurs serveur { errors: string[] } (refonte import IA PR1)", () => {
+  // L'import du parc (analyze / execute) refuse en 4xx avec un corps `{ errors: string[] }` qui
+  // NOMME chaque ligne fautive — des messages écrits pour être lus. errorMessage doit les JOINDRE
+  // (« a · b »), comme les violations API Platform. 4xx SEULEMENT (un 5xx ne dit rien d'actionnable).
+  // ⚠ `ValidateConstraintsController` renvoie `errors` en OBJET, pas une liste : le garde
+  // `Array.isArray` l'écarte (jamais « [object Object] » à l'écran).
+
+  it("joint les messages d'un { errors: string[] } en 4xx", async () => {
+    expect(
+      await errorMessage(
+        httpError(422, { errors: ["L'équipe n°3 : appariement ambigu, à choisir.", "case n°5 : l'heure de début est illisible."] }),
+      ),
+    ).toBe("L'équipe n°3 : appariement ambigu, à choisir. · case n°5 : l'heure de début est illisible.");
+  });
+
+  it("rend le message unique d'un { errors: [msg] } (413 corps trop grand)", async () => {
+    expect(await errorMessage(httpError(413, { errors: ["Le parc collé dépasse la taille autorisée — réduisez-le avant de réessayer."] }))).toBe(
+      "Le parc collé dépasse la taille autorisée — réduisez-le avant de réessayer.",
+    );
+  });
+
+  it("n'expose jamais un { errors } de 5xx — repli générique", async () => {
+    expect(await errorMessage(httpError(500, { errors: ["engine:8000 unreachable"] }))).toBe("Erreur serveur. Réessayez plus tard.");
+  });
+
+  it("ignore un { errors } OBJET (forme ValidateConstraintsController) et retombe sur le repli 422", async () => {
+    expect(await errorMessage(httpError(422, { errors: { preferredDays: ["hors bornes"] } }))).toBe("Données invalides. Vérifiez votre saisie.");
+  });
+
+  it("un { errors: [] } vide retombe sur le repli du statut", async () => {
+    expect(await errorMessage(httpError(422, { errors: [] }))).toBe("Données invalides. Vérifiez votre saisie.");
+  });
+});

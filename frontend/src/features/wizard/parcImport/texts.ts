@@ -35,6 +35,12 @@ export const PARC_IMPORT_TEXTS = {
   alertsHeading: "Points à vérifier",
   /** Mise à jour de séances PROPOSÉE sur une équipe appariée (cochée, décochable). */
   sessionsUpdate: (de: number, a: number) => `Séances : ${de} → ${a} (mise à jour proposée)`,
+  /** Libellé VISIBLE du champ « Séances » éditable d'une ligne équipe. */
+  sessionsLabel: "Séances",
+  /** Nom accessible CONTEXTUALISÉ du champ « Séances » d'une équipe (A11Y-28). */
+  sessionsFieldLabel: (libelle: string): string => `Séances de ${libelle}`,
+  /** Indication « actuellement N » à côté du champ d'une équipe APPARIÉE (ce qu'elle a aujourd'hui). */
+  sessionsCurrent: (n: number): string => `actuellement ${n}`,
 
   // Temps 4 — l'import
   /** Le bouton d'import chiffre ce qui sera posé (lignes cochées). */
@@ -56,8 +62,12 @@ export const PARC_IMPORT_TEXTS = {
   // Requalification d'une mutualisation (D8) — nommer/corriger le libellé du groupe mutualisé.
   groupLabel: (libelle: string) => `Nom du groupe mutualisé — ${libelle}`,
   groupLabelPlaceholder: "Nom du groupe (ex. « CEC »)",
+  /** Finitions 2d — placeholder COURT du champ de nom de groupe (non tronqué dans le champ). */
+  groupNamePlaceholder: "Nom du groupe",
   /** P4-363 — sélecteur de gymnase de la réservation de groupe d'une mutualisation (aria-label). */
   venueForGroup: (libelle: string) => `Gymnase de la réservation de groupe — ${libelle}`,
+  /** Finitions 2a — libellé VISIBLE du sélecteur de gymnase d'une mutualisation (pas qu'un aria-label). */
+  venueForGroupVisible: "Gymnase",
 
   /** Le libellé HUMAIN d'un statut de ligne (enum serveur → libellé). Table inline. */
   statusLabel: (statut: string): string => {
@@ -86,4 +96,98 @@ export const PARC_IMPORT_TEXTS = {
   /** Le récap d'une section importée (contrat PR2, provisoire). */
   sectionRecap: (crees: number, apparies: number, misAJour: number, ignores: number): string =>
     `${crees} créé(s) · ${apparies} rattaché(s) · ${misAJour} mis à jour · ${ignores} ignoré(s)`,
+
+  // ─────────── Refonte PR1 — assistant en 5 étapes (passe ui-ux-pro-max) ───────────
+  /** Libellés des 2 premières étapes du rail (les 3 suivantes réutilisent `sectionTitle`). */
+  stepPrompt: "Prompt",
+  stepPaste: "Coller",
+  /** Phrase sous l'étape « Coller » : les étapes de contenu attendent l'analyse. */
+  lockedUntilAnalysis: "Les étapes suivantes s'ouvrent après l'analyse.",
+  next: "Suivant",
+  previous: "Précédent",
+  /** En-tête d'étape focalisé au changement d'étape (`<h3 tabIndex={-1}>`). */
+  stepHeading: (n: number, total: number, title: string): string => `Étape ${n}/${total} · ${title}`,
+  /** Désactivation d'« Analyser » tant que rien n'est collé (A11Y-30). */
+  analyzeDisabledHint: "Collez d'abord la réponse de l'assistant.",
+
+  // Décision d'une ligne équipe / gymnase (sélecteur `Listbox` brut, groupes ordonnés)
+  decisionFor: (libelle: string): string => `Décision pour « ${libelle} »`,
+  /** Placeholder d'une ligne AMBIGUË — sans présélection, à trancher à la main. */
+  toDecide: "À trancher…",
+  matchTo: (nom: string): string => `Apparier à « ${nom} »`,
+  matchToSuggested: (nom: string): string => `Apparier à « ${nom} » (suggéré)`,
+  createOption: (libelle: string): string => `Créer « ${libelle} »`,
+  ignoreLine: "Ignorer cette ligne",
+  suggestionGroup: "Suggestion de l'analyse",
+  candidatesGroup: "Candidats possibles",
+  otherChoiceGroup: "Autre choix",
+  allTeamsGroup: "Toutes les équipes du club",
+  allVenuesGroup: "Tous les gymnases du club",
+
+  // Import bloqué / erreur / revalidation
+  /** Raison de désactivation d'« Importer » : nombre de lignes à trancher (+ sans genre, PR2). */
+  importBlocked: (nAmbigu: number, nGenre: number): string => {
+    const parts: string[] = [];
+    if (nAmbigu > 0) {
+      parts.push(`${nAmbigu} ligne${nAmbigu > 1 ? "s" : ""} à trancher`);
+    }
+    if (nGenre > 0) {
+      parts.push(`${nGenre} équipe${nGenre > 1 ? "s" : ""} sans genre`);
+    }
+    return 0 === parts.length ? "Cochez au moins une ligne pour pouvoir importer." : `Impossible d'importer : ${parts.join(" · ")}.`;
+  },
+  revalidate: "Revalider l'aperçu",
+  /** Finitions 4 — raison concise de désactivation d'« Importer » (le DÉTAIL compté est, lui, VISIBLE au
+   *  pied via `importBlocked`) : évite de doubler à l'identique l'annonce lecteur d'écran (A11Y-30). */
+  importDisabledHint: "Importer n'est pas encore possible — voir la raison affichée.",
+  /** Finitions 4 — bouton qui mène à la 1ʳᵉ ligne à trancher (change d'étape + focus son sélecteur). */
+  seeBlockingLine: "Voir",
+  /** Bandeau « aperçu périmé » après une modification (tone accent, sans role). */
+  staleHint: (n: number): string => `Vous avez modifié ${n} ligne${n > 1 ? "s" : ""} : les alertes affichées datent de l'analyse précédente.`,
+  importErrorHeading: "L'import n'a pas abouti",
+  importErrorGeneric: "Une erreur est survenue pendant l'import. Réessayez plus tard.",
+  goToLine: "Aller à la ligne",
+
+  // Grille de réservations par gymnase (`ParcCaseGrid`) + éditeur de créneau
+  /** En-tête d'une grille de gymnase ENCORE À CRÉER. */
+  gridVenueToCreate: (name: string): string => `${name} (à créer)`,
+  /** Nom accessible d'une case EN ALERTE : la raison serveur, jamais la couleur seule. */
+  caseToVerify: (raison: string): string => `Créneau à vérifier : ${raison}`,
+  /** Bandeau récapitulatif en tête de la grille : combien de cases sont à vérifier avant l'import. */
+  gridAlertSummary: (n: number): string => `${n} créneau${n > 1 ? "x" : ""} à vérifier avant d'importer.`,
+  gridGoTo: "Aller à :",
+  editCaseTitle: "Corriger le créneau",
+  editVenue: (libelle: string): string => `Gymnase du créneau — ${libelle}`,
+  /** Finitions 3a — libellé VISIBLE du sélecteur de gymnase de l'éditeur de créneau (pas qu'un aria-label). */
+  editVenueVisible: "Gymnase",
+  /** Finitions 3c — libellés VISIBLES des champs de l'éditeur, iso-wizard (`VenuesStep`). */
+  editDayLabel: "Jour",
+  editStartLabel: "Début",
+  editDurationLabel: "Durée",
+  /** Nom accessible d'une case de MUTUALISATION dans la grille (lien + nom de groupe + équipes). */
+  mutualisationCaseLabel: (groupe: string, equipes: string): string =>
+    "" === groupe ? `Mutualisation · ${equipes}` : `Mutualisation · Groupe ${groupe} · ${equipes}`,
+  /** Éditeur de case — Garder/Ignorer : cochée, la ligne est importée ; décochée, elle est ignorée. */
+  caseKeep: "Garder cette ligne (l'importer)",
+  save: "Enregistrer",
+  cancel: "Annuler",
+
+  // Étape Mutualisations (retours fondateur 2026-10-26) — sa propre étape du rail.
+  /** EmptyHint de l'étape Mutualisations vide (jamais sautée). */
+  mutualisationsEmpty: "Aucune mutualisation lue dans votre planning.",
+  /** En-tête de l'étape Mutualisations quand AU MOINS une est en alerte : combien à vérifier. */
+  mutualisationsCount: (n: number): string => `${n} mutualisation${n > 1 ? "s" : ""} à vérifier.`,
+  /** Finitions 2c — en-tête SANS alerte : « N mutualisations lues » (« à vérifier » réservé aux alertes). */
+  mutualisationsReadCount: (n: number): string => `${n} mutualisation${n > 1 ? "s" : ""} lue${n > 1 ? "s" : ""}.`,
+  /** Nom accessible du contrôle Garder/Ignorer d'une mutualisation. */
+  mutualDecision: (libelle: string): string => `Garder ou ignorer la mutualisation « ${libelle} »`,
+  mutualKeep: "Garder",
+  mutualIgnore: "Ignorer",
+
+  // Récap (remplace le contenu de l'aperçu, pas de 6ᵉ étape)
+  recapNext: "Et maintenant : vos équipes, gymnases et réservations sont dans l'assistant. Poursuivez la saisie.",
+  recapCreated: "Créées",
+  recapMatched: "Appariées",
+  recapUpdated: "Mises à jour",
+  recapIgnored: "Ignorées",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

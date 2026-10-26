@@ -300,6 +300,112 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertContains(null, $gymnaseIds, 'un gymnase à créer → gymnaseId null (jamais absent)');
     }
 
+    // ───────────────────────── Retours fondateur 2026-10-26 — « Séances » en champ éditable (données servies) ─────────────────────────
+    // Le champ « Séances » de l'aperçu est pré-rempli avec la valeur LUE dans le fichier pour TOUTE
+    // équipe (pas seulement quand elle DIFFÈRE de l'actuelle, comme le fait `miseAJour`), avec une
+    // indication « actuellement N » pour une équipe appariée. L'analyse doit donc servir, sur chaque
+    // ligne équipe, `seances` (le nombre de séances LU = nombre de cases dérivé), et sur une ligne
+    // APPARIÉE `seancesActuelles` (les séances actuelles de l'équipe visée). ROUGE aujourd'hui :
+    // l'analyzer ne sert QUE `miseAJour` (et seulement quand ça diffère). Jumeaux front : les tests
+    // « Séances » de ParcImportModal.test.tsx. NEO expose ces deux champs.
+
+    public function testEveryTeamLineCarriesTheReadSessionsCount(): void
+    {
+        // Deux cases de la MÊME équipe « SM1 » → le dériveur compte 2 séances. L'analyse sert `seances`
+        // = 2 sur la ligne équipe (le champ éditable s'en pré-remplit), équipe À CRÉER ou appariée.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame(2, $teamLine['seances'] ?? null, 'la ligne équipe porte le nombre de séances LU (2 cases pour SM1)');
+    }
+
+    public function testAnAppariedTeamLineAlsoCarriesItsCurrentSessionsCount(): void
+    {
+        // SM1 existe déjà au club (makeTeam → 2 séances/semaine). Une seule case → séances LUES = 1.
+        // La ligne appariée porte `seances` = 1 (valeur du fichier) ET `seancesActuelles` = 2 (actuelle,
+        // pour l'indication « actuellement N » et la comparaison du champ).
+        $this->makeTeam('SM1');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame('apparie', $teamLine['statut'], 'SM1 existant → ligne appariée');
+        self::assertSame(1, $teamLine['seances'] ?? null, 'la valeur LUE du fichier (1 case) est servie');
+        self::assertSame(2, $teamLine['seancesActuelles'] ?? null, 'les séances ACTUELLES de l\'équipe visée sont servies (« actuellement N »)');
+    }
+
+    // ───────────── PR1 refonte — la grille place chaque case sur SON créneau (position servie) ─────────────
+    // Bug grille : la grille « qui fait foi » plaçait réservations/mutualisations d'après
+    // `payload.cases[index]`, or l'`index` d'une ligne `reservations` (resp. `mutualisations`) est son
+    // rang dans la liste DÉRIVÉE (`ParcCaseDeriver::deriveReservations`/`deriveMutualisations`), PAS
+    // l'index de la case du parc : une case à 2 équipes (terrains séparés) donne 2 réservations, donc
+    // tout décale dès la case multi-équipes suivante — la grille affichait alors les réservations au
+    // mauvais jour/heure/gymnase. Le contrat : l'analyse sert sur chaque ligne `reservations` et
+    // `mutualisations` une `position` {gymnase, jour, debut:"HH:MM", duree} issue de SON entrée dérivée,
+    // dont le front place la case EXCLUSIVEMENT. Deux angles VOULUS (dérivation réservations ≠
+    // mutualisations) sur la même promesse. Prouvé ROUGE ici, implémenté par NEO.
+
+    public function testEachReservationLineCarriesThePositionOfItsOwnDerivedCase(): void
+    {
+        // Case 1 : 2 équipes sur TERRAINS SÉPARÉS (non mutualisée) → 2 réservations (index 0, 1).
+        // Case 2 : 1 équipe, AUTRE gymnase / jour / heure → la 3ᵉ réservation (index 2). Cette ligne
+        // doit porter la position EXACTE de la 2ᵉ case — c'est précisément le créneau que
+        // `payload.cases[index]` (index 2 = aucune case, le décalage) donnait faux côté front.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Alpha', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1', 'SF1'], 'terrains_separes' => true],
+            ['gymnase' => 'Gymnase Beta', 'jour' => 4, 'debut' => '20:30', 'duree' => 60, 'equipes' => ['U13M1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $reservations = $body['sections']['reservations'];
+        self::assertCount(3, $reservations, '2 réservations pour la case à terrains séparés + 1 pour la case suivante');
+
+        $third = $reservations[2];
+        self::assertArrayHasKey('position', $third, 'chaque réservation porte la position de SA case dérivée');
+        self::assertSame('Gymnase Beta', $third['position']['gymnase'], 'le gymnase est celui de SA case (la 2ᵉ), jamais une case décalée');
+        self::assertSame(4, $third['position']['jour']);
+        self::assertSame('20:30', $third['position']['debut']);
+        self::assertSame(60, $third['position']['duree']);
+    }
+
+    public function testEachMutualisationLineCarriesThePositionOfItsOwnDerivedCase(): void
+    {
+        // Case 1 : 1 équipe (non mutualisée) → 0 mutualisation, mais elle DÉCALE le rang des cases par
+        // rapport au rang des mutualisations. Case 2 : 2 équipes mutualisées, AUTRE gymnase / jour /
+        // heure → la 1ʳᵉ mutualisation (index 0). Sa position doit être celle de la 2ᵉ case, PAS
+        // `payload.cases[0]` (la 1ʳᵉ case) que la grille lisait.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Alpha', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'Gymnase Gamma', 'jour' => 5, 'debut' => '19:15', 'duree' => 120, 'equipes' => ['U9M1', 'U9M2']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $mutualisations = $body['sections']['mutualisations'];
+        self::assertCount(1, $mutualisations, 'une seule case mutualisée');
+
+        $first = $mutualisations[0];
+        self::assertArrayHasKey('position', $first, 'chaque mutualisation porte la position de SA case dérivée');
+        self::assertSame('Gymnase Gamma', $first['position']['gymnase'], 'le gymnase est celui de SA case (la 2ᵉ), jamais payload.cases[0]');
+        self::assertSame(5, $first['position']['jour']);
+        self::assertSame('19:15', $first['position']['debut']);
+        self::assertSame(120, $first['position']['duree']);
+    }
+
     public function testASameTeamInTwoPlacesAtOnceRaisesAnAlertNamingIt(): void
     {
         // t7 : SM2 est lu le JEUDI à 19:00 dans DEUX gymnases (Armand ET JDR) — impossible. L'analyse
@@ -395,6 +501,136 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertContains('apparie', $gymStatuts, '« Armand » connu est apparié (nommage corrigé)');
         self::assertGreaterThanOrEqual(9, \count($body['sections']['gymnases']), 'les 9 gymnases détectés restent tous proposés — aucun filtré par l\'existant');
         self::assertContains('aCreer', $gymStatuts, 'les gymnases détectés inconnus restent proposés en création');
+    }
+
+    // ───────────────────────── PR1 — l'aperçu refondu sert « ambigu » + les candidats (D5) ─────────────────────────
+    // Avant PR1, une ambiguïté (≥ 2 candidats) tombait en « decoche » SANS candidats : le gestionnaire
+    // ne pouvait pas trancher. L'aperçu refondu sert le statut « ambigu » ET la liste des candidats
+    // (équipes ET gymnases), pour le sélecteur « À trancher… » de la ligne. Règle au plus bas :
+    // {@see TeamLabelMatcherTest::testAnAmbiguousMatchExposesEveryCandidateToChooseFrom} ; ICI le CÂBLAGE.
+
+    public function testAnAmbiguousTeamLabelIsServedAsAmbiguWithItsCandidates(): void
+    {
+        // Deux équipes du club tombent dans le seuil flou de « Armond » (distance 1 de « Armand » ET
+        // de « Armund ») : la ligne ressort « ambigu », DÉCOCHÉE, sans cible devinée, mais porte les
+        // DEUX candidats (à trancher à la main).
+        $this->makeTeam('Armand');
+        $this->makeTeam('Armund');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Armond']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame('ambigu', $teamLine['statut'], 'deux candidats dans le seuil → ambigu, jamais deviné');
+        self::assertFalse($teamLine['coche'], 'un ambigu n\'est jamais coché par défaut');
+        self::assertNull($teamLine['cibleId'], 'un ambigu ne pointe aucune cible');
+        $noms = array_map(static fn (array $c): string => (string) $c['nom'], $teamLine['candidats']);
+        self::assertEqualsCanonicalizing(['Armand', 'Armund'], $noms, 'les deux équipes candidates sont offertes au choix');
+    }
+
+    public function testAnAmbiguousVenueLabelIsServedAsAmbiguWithItsCandidates(): void
+    {
+        // Même promesse côté GYMNASES : deux gymnases du club se rapprochent (containment par mot) du
+        // libellé « Gymnase Mateo » collé. La ligne ressort « ambigu » + ses deux candidats — jamais
+        // un pari, jamais un simple « decoche » muet.
+        $a = $this->makeVenue('Gymnase Mateo A');
+        $b = $this->makeVenue('Gymnase Mateo B');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $gymLine = $body['sections']['gymnases'][0];
+        self::assertSame('ambigu', $gymLine['statut'], 'deux gymnases candidats → ambigu');
+        self::assertFalse($gymLine['coche']);
+        self::assertNull($gymLine['cibleId']);
+        $noms = array_map(static fn (array $c): string => (string) $c['nom'], $gymLine['candidats']);
+        self::assertEqualsCanonicalizing([$a->getName(), $b->getName()], $noms, 'les deux gymnases candidats sont offerts au choix');
+    }
+
+    // ───────────────────────── PR1 — revalidation : /analyze rejoue avec les corrections (D4 étendu) ─────────────────────────
+    // Le bouton « Revalider » reposte `{payload, decisions}` : l'analyse REJOUE sur le parc en
+    // APPLIQUANT les corrections de l'aperçu (jour/heure/durée d'un créneau), si bien qu'une alerte de
+    // chevauchement peut TOMBER (correction qui sépare deux créneaux) ou NAÎTRE (correction qui les
+    // superpose). Deux angles VOULUS d'une même promesse sensible (pipeline d'import) :
+    // `testRevalidationMakesAnOverlapAlertFall` ⇄ `testRevalidationMakesAnOverlapAlertBorn`.
+
+    public function testRevalidationMakesAnOverlapAlertFall(): void
+    {
+        // Deux cases du MÊME gymnase le MÊME jour se chevauchent (18:00 et 19:00, 90 min) → l'analyse
+        // BRUTE lève une alerte de chevauchement sur le créneau. Le gestionnaire CORRIGE l'heure du 2e
+        // (20:30) et REVALIDE : l'alerte tombe (plus de chevauchement).
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '19:00', 'duree' => 90, 'equipes' => ['SF1']],
+        ]);
+
+        // Précondition : l'analyse brute voit bien le chevauchement.
+        [$rawStatus, $raw] = $this->analyze($parc);
+        self::assertSame(200, $rawStatus);
+        self::assertSame('alerte', $raw['sections']['creneaux'][1]['statut'], 'précondition : deux créneaux superposés → alerte');
+
+        // Revalidation : la correction d'heure du 2e créneau sépare les deux cases.
+        $decisions = [['section' => 'creneaux', 'index' => 1, 'coche' => true, 'corrections' => ['debut' => '20:30']]];
+        [$status, $body] = $this->revalidate($parc, $decisions);
+
+        self::assertSame(200, $status, 'revalider reposte {payload, decisions} et rejoue l\'analyse');
+        self::assertNotSame('alerte', $body['sections']['creneaux'][1]['statut'], 'la correction d\'heure lève le chevauchement');
+        self::assertNotSame('alerte', $body['sections']['creneaux'][0]['statut'], 'le premier créneau n\'est plus en conflit non plus');
+    }
+
+    public function testRevalidationMakesAnOverlapAlertBorn(): void
+    {
+        // L'autre sens (jumeau du test ci-dessus) : deux cases NE se chevauchent PAS (18:00 et 20:00) →
+        // aucune alerte à l'analyse brute. Le gestionnaire CORRIGE l'heure du 2e (18:30) et REVALIDE :
+        // l'alerte de chevauchement NAÎT de la correction.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '20:00', 'duree' => 90, 'equipes' => ['SF1']],
+        ]);
+
+        [$rawStatus, $raw] = $this->analyze($parc);
+        self::assertSame(200, $rawStatus);
+        self::assertNotSame('alerte', $raw['sections']['creneaux'][1]['statut'], 'précondition : deux créneaux séparés → aucune alerte');
+
+        $decisions = [['section' => 'creneaux', 'index' => 1, 'coche' => true, 'corrections' => ['debut' => '18:30']]];
+        [$status, $body] = $this->revalidate($parc, $decisions);
+
+        self::assertSame(200, $status);
+        self::assertSame('alerte', $body['sections']['creneaux'][1]['statut'], 'la correction d\'heure crée un chevauchement');
+    }
+
+    // ───────────────────── PR1 refonte — l'appariement ne confond jamais le GENRE (défaut D, câblage) ─────────────────────
+    // Règle au plus bas : {@see TeamLabelMatcherTest::testSpacesDoNotCountAndTheRightGenderIsMatchedNeverTheOpposite}
+    // (+ ses témoins numéro/catégorie). ICI, le CÂBLAGE de bout en bout : un libellé de case espacé
+    // apparié au bon GENRE à travers l'analyzer réel.
+
+    public function testASpacedTeamLabelMatchesTheRightGenderNeverTheOpposite(): void
+    {
+        // Capture Rillieux : le club a « U15M1 » ET « U15F1 ». Une case porte « U15M 1 » (espace) →
+        // l'analyse l'apparie au MASCULIN, jamais au féminin, jamais « ambigu ». Avant correctif :
+        // la clé canonique effaçait le marqueur de genre → ambigu entre les deux (voire apparié au
+        // mauvais genre pour « U15 M2 »).
+        $male = $this->makeTeam('U15M1');
+        $this->makeTeam('U15F1');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U15M 1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame('apparie', $teamLine['statut'], '« U15M 1 » ≡ « U15M1 » : apparié, jamais ambigu entre les genres');
+        self::assertSame($male->getId(), $teamLine['cibleId'], 'vise le MASCULIN U15M1, jamais le féminin U15F1');
     }
 
     protected function setUp(): void
@@ -531,6 +767,34 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->em->flush();
 
         return $venue;
+    }
+
+    private function makeTeam(string $name): Team
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $team = (new Team)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
+            ->setName($name)->setSessionsPerWeek(2)->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team;
+    }
+
+    /**
+     * Revalidation (PR1) : reposte l'enveloppe `{payload, decisions}` sur /analyze — le serveur rejoue
+     * l'analyse sur le parc EN APPLIQUANT les corrections de l'aperçu (distinct du collage brut, que
+     * le front envoie à la PREMIÈRE analyse).
+     *
+     * @param array<string, mixed>       $parc
+     * @param list<array<string, mixed>> $decisions
+     *
+     * @return array{0: int, 1: array<string, mixed>}
+     */
+    private function revalidate(array $parc, array $decisions): array
+    {
+        return $this->analyzeRaw((string) json_encode(['payload' => $parc, 'decisions' => $decisions], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE));
     }
 
     /**

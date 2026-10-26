@@ -85,6 +85,24 @@ final class ParcImportExecutor
     /** @var array<string, string> nom normalisé → teamId */
     private array $teamByName = [];
 
+    /**
+     * Les équipes actives du club AVANT l'import (snapshot pris à l'entrée). L'ambiguïté d'un libellé
+     * (D5) se juge sur CE pool, PAS sur le pool vivant : sans ça, deux équipes-sœurs créées DANS le
+     * même run (« U11M1 »/« U11M3 », distance 1) rendraient la seconde faussement « ambiguë ».
+     *
+     * @var list<array{id: string, nom: string}>
+     */
+    private array $preImportTeamPool = [];
+
+    /**
+     * Les gymnases AMBIGUS (≥ 2 candidats dans le seuil) par index de ligne « gymnases », jugés sur
+     * l'état d'AVANT l'import (même parti pris que {@see $preImportTeamPool} pour les équipes) : sans
+     * ça, un gymnase créé plus tôt dans le run rendrait une ligne suivante faussement « ambiguë ».
+     *
+     * @var array<int, bool>
+     */
+    private array $venueAmbiguousByIndex = [];
+
     private ?string $sportId = null;
 
     public function __construct(
@@ -111,9 +129,15 @@ final class ParcImportExecutor
         $this->venueByName = [];
         $this->teamByName = [];
         $this->sportId = null;
+        // Snapshot AVANT toute écriture : l'ambiguïté se mesure sur l'état d'avant l'import (comme
+        // l'analyzer), jamais sur les équipes créées au fil de ce run.
+        $this->preImportTeamPool = $this->activeTeamPool();
 
         $derived = $this->deriver->derive($parc);
         $index = $this->indexDecisions($decisions);
+        // Ambiguïté gymnase jugée AVANT toute écriture (rien n'est encore persisté ici) : snapshot de
+        // l'état d'avant l'import, comme le pool d'équipes.
+        $this->venueAmbiguousByIndex = $this->snapshotVenueAmbiguity($derived);
 
         /** @var array{recap: array<string, array<string, int>>} $result */
         $result = $this->entityManager->wrapInTransaction(function () use ($club, $seasonId, $derived, $index): array {
@@ -137,8 +161,8 @@ final class ParcImportExecutor
     // ───────────────────────────── Sections ─────────────────────────────
 
     /**
-     * @param array<string, mixed>                                                                                                         $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                                      $derived
+     * @param array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -170,6 +194,13 @@ final class ParcImportExecutor
                 continue;
             }
 
+            // Symétrie gymnase du refus d'ambiguïté équipe (3a) : un libellé qui tombe dans le seuil
+            // flou de ≥ 2 gymnases, coché SANS cible NI création explicite, ne doit jamais créer un
+            // doublon en silence (422 nommant la ligne). « Créer » explicite (`creer`) lève le refus.
+            if (true !== $decision['creer'] && ($this->venueAmbiguousByIndex[$i] ?? false)) {
+                $this->fail('gymnases', $i, 'appariement ambigu — choisissez le gymnase à apparier dans l\'aperçu, ou corrigez le nom.');
+            }
+
             $venue = (new Venue)
                 ->setClubId($club->getId())
                 ->setSeasonId($seasonId)
@@ -187,8 +218,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                                         $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                                      $derived
+     * @param array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -205,6 +236,15 @@ final class ParcImportExecutor
             $nom = $this->neutralize($this->stringField($entry, 'nom'));
 
             $existingId = $decision['cibleId'] ?? $this->resolveExistingTeamId($nom);
+
+            // PR1 (D5) — un libellé AMBIGU (≥ 2 candidats dans le seuil) coché SANS cible choisie ne
+            // doit JAMAIS créer un doublon en silence : refus 422 nommant la ligne, rien écrit. Tranché
+            // (le gestionnaire a choisi un candidat, `cibleId`), il passe par l'appariement ci-dessous.
+            // « Créer » explicite (`creer`) ASSUME la création : il lève le refus d'ambiguïté (3a).
+            if (null === $existingId && null === $decision['cibleId'] && true !== $decision['creer'] && $this->labelIsAmbiguous($nom)) {
+                $this->fail('equipes', $i, 'appariement ambigu — choisissez l\'équipe à apparier dans l\'aperçu, ou corrigez le nom.');
+            }
+
             if (null !== $existingId) {
                 $team = $this->ownedTeam($existingId, $club, $seasonId, 'equipes', $i);
                 $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
@@ -241,8 +281,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                                         $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                                      $derived
+     * @param array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -313,8 +353,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                                         $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                                      $derived
+     * @param array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -460,8 +500,8 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array<string, mixed>                                                                                                         $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                                      $derived
+     * @param array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      *
      * @return array<string, int>
      */
@@ -540,8 +580,8 @@ final class ParcImportExecutor
     // ───────────────────────────── Cap payant ─────────────────────────────
 
     /**
-     * @param array<string, mixed>                                                                                                         $derived
-     * @param array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
+     * @param array<string, mixed>                                                                                                                      $derived
+     * @param array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      */
     private function assertTeamCapNotExceeded(array $derived, array $index, Club $club, string $seasonId): void
     {
@@ -634,6 +674,41 @@ final class ParcImportExecutor
         $verdict = $this->matcher->match($name, $this->activeTeamPool());
 
         return 'apparie' === $verdict['statut'] ? $verdict['cibleId'] : null;
+    }
+
+    /**
+     * Vrai si le libellé tombe dans le seuil flou de DEUX équipes ou plus du club (verdict `ambigu`
+     * de {@see TeamLabelMatcher}) : le serveur ne peut alors ni l'apparier d'office ni le créer en
+     * silence — le gestionnaire doit trancher dans l'aperçu (PR1 D5).
+     */
+    private function labelIsAmbiguous(string $name): bool
+    {
+        return 'ambigu' === $this->matcher->match($name, $this->preImportTeamPool)['statut'];
+    }
+
+    /**
+     * Pour chaque ligne « gymnases » DÉRIVÉE, mémorise si son nom est ambigu (≥ 2 candidats flous, et
+     * aucun appariement exact) d'après l'état d'AVANT l'import — même verdict que {@see ParcImportAnalyzer::verdict}.
+     * Calculé hors transaction, donc jamais contaminé par un gymnase créé au fil du run.
+     *
+     * @param array<string, mixed> $derived
+     *
+     * @return array<int, bool>
+     */
+    private function snapshotVenueAmbiguity(array $derived): array
+    {
+        $out = [];
+        foreach ($this->lines($derived, 'gymnases') as $i => $entry) {
+            $nom = $this->neutralize($this->stringField($entry, 'nom'));
+            if ('' === $nom || null !== $this->venueResolver->exactMatch($nom)) {
+                $out[$i] = false;
+
+                continue;
+            }
+            $out[$i] = \count(array_values(array_unique($this->venueResolver->candidates($nom)))) >= 2;
+        }
+
+        return $out;
     }
 
     private function ownedVenue(string $venueId, Club $club, string $seasonId, string $section, int $index): Venue
@@ -829,7 +904,7 @@ final class ParcImportExecutor
     }
 
     /**
-     * @param array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>} $decision
+     * @param array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>} $decision
      */
     private function sessionsOf(mixed $entry, array $decision): int
     {
@@ -861,7 +936,7 @@ final class ParcImportExecutor
     /**
      * @param list<array<string, mixed>> $decisions
      *
-     * @return array<string, array<int, array{coche: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>>
+     * @return array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>>
      */
     private function indexDecisions(array $decisions): array
     {
@@ -877,6 +952,9 @@ final class ParcImportExecutor
             $corrections = $decision['corrections'] ?? null;
             $index[$section][$position] = [
                 'coche' => true === ($decision['coche'] ?? null),
+                // Signal de création EXPLICITE (3a) : le gestionnaire a choisi « Créer « X » » sur une
+                // ligne AMBIGUË — il assume la création et lève le refus d'ambiguïté (équipe ET gymnase).
+                'creer' => true === ($decision['creer'] ?? null),
                 'cibleId' => \is_string($cibleId) && '' !== $cibleId ? $cibleId : null,
                 // P4-363 — canal DISTINCT du `cibleId` : le gymnase CHOISI de la réservation de groupe
                 // d'une mutualisation (sélecteur de gymnase de la ligne). Narrowé comme `cibleId`
