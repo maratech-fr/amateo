@@ -209,6 +209,9 @@ export function BrandSplash({
           position: "relative",
           width: SCENE_W,
           height: SCENE_H,
+          // Item flex du conteneur `fixed inset-0 flex` : sans ça il rétrécit à la largeur du
+          // viewport alors que ses enfants sont posés en coordonnées 1920 → logo décalé à droite.
+          flexShrink: 0,
           // Ordre: `scale` puis `translateX` → la translation s'applique AVANT la mise à l'échelle,
           // donc en unités SCÈNE (le recentrage sur l'encre est exprimé dans le repère du handoff).
           transform: `scale(${fit}) translateX(${sceneGroupDx}px)`,
