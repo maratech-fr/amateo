@@ -142,11 +142,15 @@ Succès → **200**, le corps rendu par l'analyzer (§3) ou par l'executor (§6)
 
 L'analyzer n'écrit rien. Il DÉRIVE les sections (`ParcCaseDeriver`, §1) puis rend, par section
 (`gymnases`, `equipes`, `creneaux`, `mutualisations`, `reservations` — **plus de section
-`coachs`**), une liste de lignes `{index, libelle, statut, coche, cibleId, raison}` (plus
-`extra.miseAJour`/`extra.groupe`/`extra.gymnaseId` selon la section — une mutualisation porte
-`gymnaseId` : le gymnase RÉSOLU du nom de la case, `null` si à créer, amorce le sélecteur de
-gymnase de la réservation de groupe, §6) plus un récap chiffré par section
-(`{total, apparie, suggere, aCreer, decoche, alerte}`), un bloc `fiabilite`, les `alertes`
+`coachs`**), une liste de lignes `{index, libelle, statut, coche, cibleId, raison}` plus, selon la
+section, `candidats` (équipes/gymnases — les candidats `{id, nom}` d'un verdict `suggere`/`ambigu`,
+pour le sélecteur de la ligne, §7), `seances`/`seancesActuelles` (équipes — ci-dessous),
+`extra.miseAJour`/`extra.groupe`/`extra.gymnaseId`/`extra.position` (une mutualisation ou une
+réservation porte `position` : le créneau de **sa case dérivée**, gymnase/jour/heure/durée + le
+gymnase résolu — le front place la case de la grille et amorce l'éditeur **exclusivement** d'après
+cette position, jamais `payload.cases[index]`, car l'index d'une ligne de ces deux sections est son
+rang dans la liste dérivée, décalé du rang des cases du parc) plus un récap chiffré par section
+(`{total, apparie, suggere, aCreer, ambigu, decoche, alerte}`), un bloc `fiabilite`, les `alertes`
 transverses (§1) et en tête `{format: "parc-v2"}`.
 
 La réponse porte en plus `payload` : le parc **re-tendu** tel que `ParcPayloadValidator::parse()`
@@ -164,8 +168,10 @@ serveur reste ainsi exploitable à l'import (`ParcImportModal.tsx`, lot correcti
   §1 ; gymnases : candidat flou via `VenueAliasResolver`) : cochée, `cibleId` posé, le
   gestionnaire confirme.
 - `aCreer` — aucun existant, exact ou flou : cochée, `cibleId` nul, l'élément naîtra à l'import.
-- `decoche` — rien à faire sans décision humaine : ambiguïté (≥ 2 candidats) ou idempotence
-  (déjà présent) — décochée, `raison` posée.
+- `ambigu` — ≥ 2 candidats dans le seuil (équipes/gymnases) : décochée, `cibleId` nul, `raison`
+  posée, et **porte ses `candidats`** (`{id, nom}`) pour le sélecteur « À trancher… » de la ligne
+  (§7) — un correcteur qui refuse de choisir à la place du gestionnaire, jamais un `decoche` muet.
+- `decoche` — idempotence (déjà présent) ou cap d'offre dépassé — décochée, `raison` posée.
 - `alerte` — collision à trancher à la main (deux équipes sur la même case non déclarée,
   chevauchement de créneaux, capacité ≥ 2 sur un gymnase existant non divisible, Σ séances
   communes dépassant une équipe membre) — décochée, jamais un 500.
@@ -179,18 +185,20 @@ bloquant) est vrai si `taux < 0.5` **ou** `anomalies ≥ 3`.
 
 ### Par section
 
-- **Équipes** — appariement par `TeamLabelMatcher` (§1) ; un verdict `ambigu` devient `decoche`
-  (« Plusieurs correspondances possibles — appariement ambigu, à choisir à la main. »). Si une
-  ligne appariée porte un `seances` (dérivé du nombre de cases) différent des séances
-  hebdomadaires actuelles de l'équipe, la ligne porte en plus `extra.miseAJour = {champ:
-  "seances", de, a}` — une mise à jour **proposée**, pas appliquée. Le **cap payant** de l'offre
+- **Équipes** — appariement par `TeamLabelMatcher` (§1), verdict `ambigu` tel quel (ci-dessus).
+  Chaque ligne porte `seances` : le nombre de séances **lu** dans le parc (dérivé du nombre de
+  cases) — amorce le champ « Séances » éditable de l'aperçu (ce qui *sera* importé, corrigeable
+  avant import, aussi sur une ligne « Créer », §7). Une ligne **appariée** porte en plus
+  `seancesActuelles` (les séances actuelles de l'équipe visée) pour l'indication « actuellement N »
+  et la base de comparaison : le champ ne part en `corrections.seances` à l'import (§6) que s'il
+  diffère de `seancesActuelles`. Le **cap payant** de l'offre
   (`App\Service\PlanEntitlements::remainingTeamSlots`/`teamCapExceededMessage`, même foyer que le
   refus à l'écriture ailleurs) s'applique seulement aux lignes `aCreer` : au-delà des places
   restantes, les lignes en surplus sont **décochées**, `raison` = le message de l'offre. Une
   offre illimitée (`remainingTeamSlots` null) ne borne rien ; sans saison résolue, le cap n'est
   pas appliqué.
 - **Gymnases** — appariement seul (exact/flou/à créer/ambigu, `VenueAliasResolver::exactMatch`/
-  `candidates`).
+  `candidates`), verdict `ambigu` portant ses `candidats` comme pour une équipe.
 - **Créneaux** — `aCreer` par défaut ; `alerte` si le créneau chevauche un autre créneau du
   **même gymnase le même jour** dans ce parc, ou si `equipes_en_parallele ≥ 2` vise un gymnase
   **existant** dont `canSplit` est faux (garde de capacité de
@@ -236,17 +244,24 @@ cochées en écriture. Corps `{payload, decisions}` :
 - `payload` : l'objet `parc-v2`, **re-validé en forme** (`ParcPayloadValidator`, sur les mêmes
   octets que l'analyse) et en bornes (§2, points 7-8) — une analyse acceptée peut quand même être
   rejouée tard, l'exécuteur ne fait confiance à rien venu du client ;
-- `decisions` : `[{section, index, coche, cibleId?, venueId?, corrections?}]`. Seules les lignes
-  `coche: true` sont écrites. `cibleId` apparie à une entité **existante**, **re-vérifiée tenant**
-  côté serveur (club ET saison, patron A10 `FbiFixtureImporter::ownedVenueForImport`) — un
+- `decisions` : `[{section, index, coche, creer?, cibleId?, venueId?, corrections?}]`. Seules les
+  lignes `coche: true` sont écrites. `cibleId` apparie à une entité **existante**, **re-vérifiée
+  tenant** côté serveur (club ET saison, patron A10 `FbiFixtureImporter::ownedVenueForImport`) — un
   `cibleId` d'un autre club ou d'une autre saison échoue nommé, jamais une fuite tenant. Pour une
   ligne `mutualisations`, `cibleId` désigne le **BLOC** apparié — JAMAIS un gymnase ; le gymnase de
   la réservation de groupe de cette ligne voyage dans le canal **distinct** `venueId` (sélecteur de
   la ligne, §7), lui aussi re-vérifié tenant, vide/absent → résolution par le nom de la case.
-  `corrections` remplace des champs simples : `seances` pour une équipe, `jour`/`debut`/`duree`
-  pour un créneau, une mutualisation (PLUS `groupe` — le libellé du bloc, D8, §7) ou une
-  réservation. Sur une équipe **appariée**, seul le nombre de séances peut bouger
-  (`corrections.seances`) — jamais le genre, la catégorie ou le niveau.
+  `corrections` remplace des champs simples : `seances` pour une équipe (y compris une ligne
+  **créée**, §7), `jour`/`debut`/`duree` pour un créneau, une mutualisation (PLUS `groupe` — le
+  libellé du bloc, D8, §7) ou une réservation. Sur une équipe **appariée**, seul le nombre de
+  séances peut bouger (`corrections.seances`) — jamais le genre, la catégorie ou le niveau.
+  `creer: true` (PR1 D5) signale une **création EXPLICITE** assumée par le gestionnaire sur une
+  ligne équipe/gymnase **cochée sans `cibleId`** : il lève le refus d'ambiguïté ci-dessous. Une
+  ligne équipe/gymnase cochée sans `cibleId` **ni** `creer` dont le libellé tombe dans le seuil
+  flou de ≥ 2 candidats (ambiguïté jugée sur l'état **d'avant import** — un doublon créé plus tôt
+  dans le même run ne peut jamais rendre une ligne suivante faussement ambiguë) est **refusée
+  (422, rien écrit)**, nommant la ligne : le serveur ne crée ni n'apparie JAMAIS en silence un
+  libellé ambigu, le gestionnaire doit trancher dans l'aperçu.
 
 **Une seule transaction, tout ou rien** (`EntityManagerInterface::wrapInTransaction`) ; une ligne
 cochée invalide au moment de l'écriture lève `UnprocessableEntityHttpException` nommant la ligne
@@ -330,7 +345,7 @@ mercredi : avant l'import, le solve retombe sur le mercredi ; après, la réserv
 verrou HARD qui pose la séance le lundi malgré la préférence contraire. Bloquant — step `ci.yml`
 et ligne `docs/testing/blocking-tests.md`.
 
-## 7. L'écran — `ParcImportModal` (chantier G PR 3)
+## 7. L'écran — `ParcImportModal` (refonte PR1)
 
 Bouton « Importer mon parc avec l'IA » (`WIZARD_TEXTS.importParcWithAi`), affiché au-dessus du
 formulaire d'ajout des étapes **Équipes** (`TeamsStep`/`TeamsEditor`) et **Gymnases**
@@ -339,9 +354,15 @@ formulaire d'ajout des étapes **Équipes** (`TeamsStep`/`TeamsEditor`) et **Gym
 (`frontend/src/features/wizard/parcImport/ParcImportModal.tsx`) est le MÊME composant depuis les
 deux entrées (prop `origin: "teams" | "venues"`, pas encore consommée pour varier le
 comportement) ; il reçoit les équipes/gymnases déjà saisis (`{id, name}`) pour nourrir le prompt
-et le ré-appariement (point 3 ci-dessous).
+et le ré-appariement (ci-dessous).
 
-Quatre temps, dans une seule modale (jamais plusieurs écrans à cliqueter) :
+C'est un **assistant à 6 étapes** (`StepRail`, `ParcImportModal.tsx:56-58`) : **Prompt · Coller ·
+Équipes · Gymnases · Mutualisations · Réservations** — « Ententes (CTC) » viendra après Équipes en
+PR2. Les 4 étapes de contenu (Équipes/Gymnases/Mutualisations/Réservations) restent verrouillées
+tant que l'analyse n'a pas réussi ; une analyse réussie ouvre et bascule sur Équipes. Les
+Réservations viennent volontairement **en dernier** (« plus on découpe, plus c'est simple » —
+décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisations ont chacun leur
+étape dédiée avant d'arriver aux réservations individuelles.
 
 1. **Prompt** — `buildParcPrompt` (`frontend/src/features/wizard/parcImport/promptTemplate.ts`)
    dérive le texte depuis `PARC_V2_SPEC` (version, champs d'une case, plafond d'équipes par case —
@@ -352,44 +373,66 @@ Quatre temps, dans une seule modale (jamais plusieurs écrans à cliqueter) :
    session** (nom, ville — `useMe().club`, câblé depuis `TeamsStep`/`VenuesStep`) est embarqué dans
    le prompt, utile surtout quand rien n'est encore saisi (terrain vierge). `PRODUCT_NAME` (jamais
    en littéral) nomme l'outil. Bouton « Copier » (`navigator.clipboard`).
-2. **Collage** — zone de texte, bouton « Analyser » qui appelle `useAnalyzeParc` (dry-run §3).
-3. **Aperçu** — une case par ligne (le verdict SERVEUR, affiché verbatim, jamais redérivé),
-   `StatusPill` par statut, la raison serveur en texte, une mise à jour de séances proposée
-   affichée en clair. **Plus aucune UI coachs** (D11) — `SECTION_ORDER` ne porte plus `coachs`,
-   et une vieille section `coachs` d'un aperçu hérité est ignorée en silence si elle apparaît quand
-   même dans la réponse. Un bandeau `NoticeBanner` (D10) s'affiche si `fiabilite.bandeau` est vrai
-   (« résultat peu fiable, vérifiez chaque ligne de près ») — **jamais bloquant**, l'import reste
-   possible. Les `alertes` transverses (§1) sont affichées verbatim dans un second bandeau (D9).
-   Trois corrections possibles, amorcées depuis le texte collé réellement envoyé (jamais une
-   valeur inventée côté front) :
-   - un créneau **à créer** (section `creneaux`) peut voir son jour/heure/durée corrigés sur
-     place (`SlotEditor`), ET son gymnase ré-apparié par case (D12) — un `VenueSelect` listant les
-     gymnases existants, valeur `""` = le serveur résout par le nom du parc, sinon l'id choisi
-     part en `cibleId` de la ligne `creneaux` ;
-   - une ligne d'ENTITÉ (équipes/gymnases) dont le statut porte un sélecteur (`apparie`/
-     `suggere`/`aCreer`) peut être **ré-appariée** à une autre entité EXISTANTE ou laissée à
-     « Créer » (D5) — `TeamSelect`/`VenueSelect` respectivement, valeur `""` = créer, sinon l'id
-     choisi part en `cibleId` à l'import ;
-   - une ligne de **mutualisation** affiche le `groupe` dérivé par le serveur (ex. « CEC ») dans un
-     champ texte **corrigeable** (D8) — la valeur corrigée part en `corrections.groupe` et, côté
-     executor, l'emporte sur le `groupe` brut de la case pour nommer le bloc (§6, borné à
-     `SharedTrainingBlock::LABEL_MAX_LENGTH`). Une ligne **cochée** (apparié/suggéré/à créer) porte
-     en plus son propre sélecteur de gymnase pour la réservation de groupe (P4-363, `VenueSelect`,
-     amorcé depuis `gymnaseId`, valeur `""` = le serveur résout par le nom de la case) — le choix
-     part en `venueId` de la décision, **jamais** en `cibleId` (réservé au bloc apparié) ; absente
-     sur une ligne `decoche`/`alerte`.
-   Une ligne `decoche`/`alerte` n'a jamais de sélecteur ni de correction : la structure reste à la
-   main. Bandeau si au moins un gymnase naît à créer (« renseignez l'adresse ensuite »). Bouton
-   « Importer N » désactivé à 0 coché, `disabledReason` découvrable (A11Y-30).
-4. **Import + récap** — `useImportParc` poste `{payload, decisions}`, `payload` étant le parc
-   **normalisé** renvoyé par l'analyse (`data.payload`, §3, D4) — jamais le texte brut re-décodé
-   côté front — ni l'aperçu reconstruit ; au succès, équipes/gymnases sont invalidés PARTOUT
-   (D-25) ; le récap chiffré par section (§6) s'affiche verbatim.
+2. **Collage** — zone de texte, bouton « Analyser » qui appelle `useAnalyzeParc` (dry-run §3) ;
+   succès → bascule automatique sur Équipes, échec → reste sur Coller, erreur près du champ.
+3. **Équipes / Gymnases** — **une ligne = le libellé lu (donnée serveur, verbatim) + UN sélecteur
+   de décision** (`Listbox`, plus de case à cocher ni de pastille de statut) : groupes « Suggestion
+   de l'analyse » (apparier au candidat suggéré), « Candidats possibles » (les autres candidats du
+   verdict), « Autre choix » (Créer « … » explicitement, Ignorer cette ligne), puis toutes les
+   équipes du club rangées par rang / tous les gymnases. Une ligne **ambiguë** (`statut: "ambigu"`,
+   §3) n'a **aucune présélection** (placeholder « À trancher… ») et bloque « Importer » tant
+   qu'elle n'est pas tranchée — choisir un candidat, choisir « Créer » (qui part en `creer: true`,
+   §6) ou « Ignorer ». Un libellé ambigu coché sans choix est **impossible à poster en doublon** :
+   le serveur refuse (422) toute ligne équipe/gymnase ambiguë sans `cibleId` ni `creer` (§6). Sur
+   une ligne équipe, un **champ « Séances »** numérique (`sessionsLabel`) est pré-rempli de ce qui
+   *sera* importé (`line.seances`, ce qui est lu dans le fichier) et reste corrigeable avant import
+   — y compris sur une ligne « Créer » (la création utilise la valeur corrigée) ; une ligne
+   **appariée** affiche en plus « actuellement N » (`line.seancesActuelles`) et ne pose
+   `corrections.seances` que si la valeur diffère de l'actuelle.
+4. **Gymnases (grille)** — sous les lignes de décision, `ParcCaseGrid` (géométrie partagée
+   `wizard/lib/weekGrid.ts`, patron `steps/VenueAvailabilityGrid.tsx` du wizard) rend, par gymnase,
+   la grille de ses **ouvertures** (les créneaux dérivés des cases) : une case = une ouverture,
+   libellée par sa plage horaire ; cliquer ouvre l'éditeur de créneau (point 6).
+5. **Mutualisations** — étape dédiée : une ligne par mutualisation (picto lien + nom de groupe +
+   équipes + sa position en clair « Lundi 18:00 · Gymnase X », raison ⚠ une seule fois si alerte) ;
+   Garder/Ignorer (`SegmentedControl`, pas de case à cocher), un sélecteur de gymnase pour sa
+   réservation de groupe (P4-363, → `venueId`), un champ pour le nom du groupe (D8, →
+   `corrections.groupe`) et un accès à l'éditeur de créneau pour le jour/heure/durée. Vide →
+   `EmptyHint`. Dans la grille des Réservations (point suivant), la case d'une mutualisation reste
+   marquée (picto lien + groupe) et son clic mène à cette ligne.
+6. **Réservations (grille)** — `ParcCaseGrid` rend, par gymnase, les réservations individuelles ET
+   les cases mutualisées marquées ; une case en alerte porte ⚠ et la raison serveur dans son nom
+   accessible (jamais la couleur seule). Cliquer une case ouvre un **éditeur de créneau imbriqué**
+   (`Modal size="md"`, brouillon transactionnel, clé de case stable `case:${index}`) iso au patron
+   du wizard : Gymnase (`Listbox`, absente pour une mutualisation — son gymnase se corrige à
+   l'étape Mutualisations), Jour, Début, Durée, Fin calculée. Une réservation/une mutualisation
+   s'amorce **exclusivement** d'après sa `position` servie par l'analyse (§3), jamais
+   `payload.cases[index]` — son index est son rang dans la section dérivée, pas celui de la case du
+   parc.
+
+   Partout dans l'aperçu : un bandeau `NoticeBanner` (D10) s'affiche si `fiabilite.bandeau` est
+   vrai (« résultat peu fiable, vérifiez chaque ligne de près ») — **jamais bloquant** ; les
+   `alertes` transverses (§1) s'affichent verbatim dans un second bandeau (D9) ; un gymnase naissant
+   porte « renseignez l'adresse ensuite ». Une correction (séances, créneau, gymnase, groupe) périme
+   l'aperçu (bandeau « Vous avez modifié N lignes : les alertes affichées datent de l'analyse
+   précédente », bouton « Revalider » qui reposte `{payload, decisions}` à `/parc-import/analyze`
+   pour rejouer l'analyse avec les corrections — §3) ; l'import reste possible SANS revalider, seul
+   un ambigu non tranché (ou aucune ligne cochée) bloque. Bouton « Importer N » en pied,
+   `disabledReason` découvrable (A11Y-30) qui chiffre les lignes ambiguës en attente.
+
+**Import + récap** — `useImportParc` poste `{payload, decisions}`, `payload` étant le parc
+**normalisé** renvoyé par l'analyse (`data.payload`, §3, D4) — jamais le texte brut re-décodé côté
+front ni l'aperçu reconstruit ; une erreur serveur (422 `{errors: […]}`, §6) s'affiche **dans la
+modale** (`NoticeBanner tone="destructive" role="alert"`, jamais un toast) avec, par ligne fautive,
+un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher et lui donne le focus ; au succès,
+équipes/gymnases sont invalidés PARTOUT et le récap chiffré par section (§6) remplace le contenu de
+la modale.
 
 Décisions d'interaction (passe `ui-ux-pro-max`) : clôture jamais bloquée (dry-run, rien n'est
 écrit avant l'import) sauf pendant un appel en cours (double-soumission désarmée) ; chaque état
 nouveau s'annonce en `aria-live` (`role="status"`) plutôt que de voler le focus ; le toast
-d'erreur vit au niveau HOOK (`mutateOnErrorToastGuard`), jamais passé à `mutate()`.
+d'erreur du hook d'analyse (`mutateOnErrorToastGuard`) reste la conduite de l'ANALYSE, jamais
+passé à `mutate()` — l'erreur d'IMPORT, elle, vit dans la bannière `role="alert"` ci-dessus.
 
 ### 7.1 Parité prompt ⇄ validateur
 

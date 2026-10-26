@@ -1,4 +1,4 @@
-# Roadmap (39) — ce qui reste à faire
+# Roadmap (40) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -85,6 +85,7 @@
 | P4-76 | **UX Membre : les boutons d'écriture restent visibles (403 serveur au clic)** | ⚪ | M | Assumé à la livraison de P1-1 (2026-08-10, décision de plan) : le serveur refuse TOUTES les écritures d'un Membre (gate PR A), mais le front ne masque que les sections déjà keyées `isManagement` (page club). Un Membre voit ailleurs des boutons Générer/éditer qui rendront 403. Polish : consommer `me.role` pour griser/masquer écran par écran — sans jamais recalculer une règle (P2-8) |
 | P4-332 | **Nouveautés en éditeur RICHE façon Word/CKEditor** (gras, italique, couleurs, mise en forme) | 🟡 | M/L | Demande fondateur 2026-10-12. Aujourd'hui texte brut : `ReleaseNotesPage.tsx:35` et `WhatsNewModal.tsx:66` rendent en `whitespace-pre-line`, la saisie est un `<textarea>` (`features/admin/sections/ReleaseNotesSection.tsx:86`). Le choix de l'outil est une étude ; dès lors qu'on stocke du HTML, un assainissement SERVEUR par allowlist devient OBLIGATOIRE et `/security-review` s'impose le jour venu. **PAS de Markdown** (décision fondateur 2026-10-12). Non cadré |
 | P4-352 | **`ConfirmDialog` : passer en `role="alertdialog"` (sémantique juste d'une confirmation)** | ⚪ | XS | Constat de la passe design 2026-10-22 (lot bugs Rillieux PR4 #15, 3e action `primaryAction`) : `shared/components/ui/confirm-dialog.tsx` rend `role="dialog"` comme la primitive `Modal` dont elle est le panneau jumeau, alors qu'une confirmation (destructive ou à 3 issues) relève plutôt du patron APG `alertdialog`. Touche ~20 tests `getByRole("dialog")` sur toute l'app (ex. `WizardPage.test.tsx`) — à traiter en PASSE dédiée, pas en aparté d'une autre PR |
+| P4-366 | **Import du parc par IA : champ `miseAJour`/texte `sessionsUpdate` morts depuis la refonte de l'aperçu (PR1)** | ⚪ | XS | Constat `documentation-update` 2026-10-26 : `ParcImportAnalyzer` calcule encore `extra.miseAJour = {champ: "seances", de, a}` sur une ligne équipe appariée (`backend/src/Service/ParcImport/ParcImportAnalyzer.php`) et le front type toujours le champ (`frontend/src/features/wizard/parcImport/queries.ts:34`), mais `ParcImportModal.tsx` ne le lit plus nulle part — la mise à jour de séances est désormais un champ éditable (`seances`/`seancesActuelles`), le texte `PARC_IMPORT_TEXTS.sessionsUpdate` (`texts.ts:37`) n'est plus référencé. À retirer (backend ET front) dans une passe de nettoyage |
 
 ### Sécurité & données
 
