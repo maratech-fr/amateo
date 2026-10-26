@@ -66,6 +66,14 @@ interface Line {
    * liste dérivée `reservations`/`mutualisations`, pas l'index de la case du parc).
    */
   position?: { gymnase: string; jour: number; debut: string; duree: number };
+  /**
+   * Équipe « Créer » (refonte PR2, D9) : les SUGGESTIONS de la règle FBI unique qui pré-remplissent
+   * les Select Rang + Genre et la case Entente. `suggestedGender` est `null` quand aucun motif clair
+   * ne le donne (« plus MIXTE ») — le gestionnaire doit alors trancher (genre obligatoire).
+   */
+  suggestedTierId?: number;
+  suggestedGender?: "M" | "F" | "MIXTE" | null;
+  suggestedCtc?: boolean;
 }
 
 interface Recap {
@@ -1306,5 +1314,146 @@ describe("ParcImportModal — finitions de l'aperçu (captures 04-07, 2026-10-26
     expect(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("equipes")) })).toHaveAttribute("aria-current", "step");
     // Focus : le sélecteur de décision de la ligne à trancher reçoit le focus (pas l'en-tête d'étape).
     expect(screen.getByRole("button", { name: decisionTrigger("Armond") })).toHaveFocus();
+  });
+});
+
+/**
+ * ─────────── Refonte import IA PR2 (D9) — règle unique, genre obligatoire, étape Ententes ───────────
+ *
+ * Nouvelles PROMESSES (option A — TANK écrit ROUGE, NEO implémente) :
+ *  - une ligne équipe « Créer » porte un Select Rang + un Select Genre PRÉ-REMPLIS depuis la règle FBI
+ *    unique (le champ Séances existe déjà) ;
+ *  - le GENRE est OBLIGATOIRE (§0 point 1 AMENDÉ, « plus MIXTE ») : une ligne « Créer » sans genre a un
+ *    Select « À choisir » `aria-invalid` + ⚠ « Genre requis », et « Importer » est désactivé AVEC sa
+ *    raison comptée (clé `importBlocked(nAmbigu, nGenre)`, déjà prête côté texts) ;
+ *  - une NOUVELLE étape « Ententes (CTC) » suit « Équipes » dans le rail : les équipes « Créer » y ont
+ *    une case Entente (pré-cochée si suggérée) → `corrections.ctc` ; les appariées affichent leur
+ *    entente actuelle en LECTURE SEULE (l'import ne modifie pas l'existant).
+ *
+ * Clés texts à CRÉER par NEO (contrat, cf. rapport TANK) : `stepEntentes` (libellé d'étape),
+ * `tierOf(libelle)`/`genderOf(libelle)` (noms accessibles des deux Select), `genderRequired`
+ * (⚠ « Genre requis »), l'option vide « À choisir », `ententeFor(libelle)` (case Entente de l'étape).
+ */
+describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ententes)", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
+
+  const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
+
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepPaste as unknown as string) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+
+  /** Une ligne équipe « Créer » portant ses suggestions (règle FBI unique). */
+  function mkCreate(index: number, libelle: string, s: { suggestedTierId?: number; suggestedGender?: Line["suggestedGender"]; suggestedCtc?: boolean } = {}): Line {
+    return mkLine(index, libelle, "aCreer", {
+      suggestedTierId: s.suggestedTierId ?? 5,
+      suggestedGender: "suggestedGender" in s ? s.suggestedGender : null,
+      suggestedCtc: s.suggestedCtc ?? false,
+    });
+  }
+
+  it("le rail porte une étape « Ententes (CTC) » juste après « Équipes » (testée par NOM, jamais par compte)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "SM1", { suggestedGender: "M" })] }));
+
+    expect(typeof T.stepEntentes, "clé `stepEntentes` à créer (libellé de l'étape, option A)").toBe("string");
+
+    const buttons = screen.getAllByRole("button");
+    const equipes = screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("equipes")) });
+    const ententes = screen.getByRole("button", { name: stepNamed(T.stepEntentes as unknown as string) });
+    const gymnases = screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("gymnases")) });
+
+    // Ordre du rail (position dans le DOM) : Équipes → Ententes → Gymnases.
+    expect(buttons.indexOf(equipes), "Ententes suit Équipes").toBeLessThan(buttons.indexOf(ententes));
+    expect(buttons.indexOf(ententes), "Gymnases suit Ententes").toBeLessThan(buttons.indexOf(gymnases));
+  });
+
+  it("une ligne équipe « Créer » porte un Select Rang + un Select Genre, pré-remplis par la suggestion", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    // SM1 à créer, suggéré rang S (id 1 dans les tiers mockés) + genre M.
+    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "SM1", { suggestedTierId: 1, suggestedGender: "M" })] }));
+
+    expect(typeof T.tierOf, "clé `tierOf(libelle)` à créer").toBe("function");
+    expect(typeof T.genderOf, "clé `genderOf(libelle)` à créer").toBe("function");
+
+    const tier = screen.getByRole("combobox", { name: T.tierOf("SM1") });
+    const gender = screen.getByRole("combobox", { name: T.genderOf("SM1") });
+    expect(tier, "le rang suggéré (S = id 1) pré-remplit le Select").toHaveValue("1");
+    expect(gender, "le genre suggéré (M) pré-remplit le Select").toHaveValue("M");
+  });
+
+  it("genre obligatoire — une ligne « Créer » sans genre : Select « À choisir » aria-invalid, ⚠ « Genre requis », « Importer » désactivé « N équipes sans genre »", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "Loisir Détente", { suggestedGender: null })] }));
+
+    expect(typeof T.genderOf, "clé `genderOf` à créer").toBe("function");
+    expect(typeof T.genderRequired, "clé `genderRequired` (⚠ « Genre requis ») à créer").toBe("string");
+
+    const gender = screen.getByRole("combobox", { name: T.genderOf("Loisir Détente") });
+    expect(gender).toHaveValue("");
+    expect(gender, "un genre manquant est signalé invalide (aria-invalid)").toBeInvalid();
+    expect(screen.getByText(T.genderRequired as unknown as string), "⚠ « Genre requis » sous le Select").toBeInTheDocument();
+
+    // « Importer » bloqué AVEC sa raison comptée — la clé importBlocked gère déjà nGenre.
+    const importBtn = screen.getByRole("button", { name: /Importer/ });
+    expect(importBtn).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText(T.importBlocked(0, 1)), "la raison compte « 1 équipe sans genre »").toBeInTheDocument();
+  });
+
+  it("genre tranché sur une ligne « Créer » → « Importer » réarmé, et corrections.genre + tierId partent à la création", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "Loisir Détente", { suggestedTierId: 5, suggestedGender: null })] }));
+
+    expect(typeof T.genderOf, "clé `genderOf` à créer").toBe("function");
+    await user.selectOptions(screen.getByRole("combobox", { name: T.genderOf("Loisir Détente") }), "MIXTE");
+
+    const importBtn = screen.getByRole("button", { name: /Importer/ });
+    expect(importBtn).not.toHaveAttribute("aria-disabled", "true");
+    await user.click(importBtn);
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; creer?: boolean; corrections?: { genre?: string; tierId?: number } }> };
+    const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
+    expect(dec?.creer, "une ligne « Créer » porte creer:true").toBe(true);
+    expect(dec?.corrections?.genre, "le genre tranché part en corrections.genre à la création").toBe("MIXTE");
+    expect(dec?.corrections?.tierId, "le rang (suggéré ou édité) part en corrections.tierId à la création").toBe(5);
+  });
+
+  it("étape Ententes — une équipe « Créer » suggérée en entente est pré-cochée et décochable (→ corrections.ctc) ; une appariée est en LECTURE SEULE", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(
+      user,
+      analysisOf({
+        equipes: [mkCreate(0, "U15F CTC", { suggestedGender: "F", suggestedCtc: true }), mkLine(1, "SM1", "apparie", { cibleId: "t1" })],
+      }),
+    );
+
+    expect(typeof T.stepEntentes, "clé `stepEntentes` à créer").toBe("string");
+    expect(typeof T.ententeFor, "clé `ententeFor(libelle)` à créer").toBe("function");
+
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepEntentes as unknown as string) }));
+
+    // L'équipe « Créer » suggérée en entente a une case COCHÉE ; l'appariée n'a PAS de case éditable.
+    const ctc = screen.getByRole("checkbox", { name: T.ententeFor("U15F CTC") });
+    expect(ctc, "l'entente suggérée arrive pré-cochée").toBeChecked();
+    expect(
+      screen.queryByRole("checkbox", { name: T.ententeFor("SM1") }),
+      "une équipe appariée affiche son entente en LECTURE SEULE, jamais une case modifiable (l'import ne touche pas l'existant)",
+    ).toBeNull();
+
+    // Décocher → corrections.ctc:false à l'import (jamais d'office, décision du gestionnaire).
+    await user.click(ctc);
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: { ctc?: boolean } }> };
+    const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
+    expect(dec?.corrections?.ctc, "l'entente décochée part ctc:false").toBe(false);
   });
 });

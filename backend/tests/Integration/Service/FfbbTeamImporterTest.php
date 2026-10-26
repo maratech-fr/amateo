@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
+use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbEngagementReader;
@@ -28,6 +30,20 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * P2-21 lot A — la création automatique des équipes engagées à l'onboarding.
  * FFBB simulée en MockHttpClient (patron FfbbClubPopulatorTest) : un jeu
  * BCCL-like — senior structuré, jeune « Brassage » à décoder, coupe à sauter.
+ *
+ * Refonte import IA PR2 (D9, décision #3) — l'import FFBB par API abandonne son barème LEVEL_TIER
+ * (PN→rang 1 d'office) pour la RÈGLE FBI unique ({@see \App\Service\Basketball\TeamCreationSuggester},
+ * rang par catégorie + numéro). Promesses re-exprimées ici (option A, TANK ROUGE → NEO) :
+ *  - le RANG suit la règle FBI, résolu PAR LABEL via le repo `PriorityTier` : un engagement PN ne
+ *    donne PLUS le rang 1 d'office (c'est le NUMÉRO dans la catégorie qui décide — SM1/SF1 = n°1 → S,
+ *    U13M1 = jeune n°1 → A) ;
+ *  - le GENRE STRUCTURÉ fédéral (« Masculin »/« Féminin ») reste PRIORITAIRE sur le genre lu au code/nom ;
+ *  - le `level` décodé est TOUJOURS stocké (NATIONAL/REGIONAL/DEPARTEMENTAL).
+ *
+ * ⚠ Assertions par NOM (jamais par position) : le rang change l'ordre de tri — un couplage positionnel
+ * casserait pour la mauvaise raison. L'exact numérotage des seniors par flux de genre (SM1 & SF1 tous
+ * deux « n°1 ») est le barème FBI LITTÉRAL (décision #1) ; flaggé au rapport TANK comme point à
+ * confirmer fondateur/NEO.
  */
 #[Group('integration')]
 final class FfbbTeamImporterTest extends KernelTestCase
@@ -40,37 +56,59 @@ final class FfbbTeamImporterTest extends KernelTestCase
 
     private Club $club;
 
-    public function testCreatesTeamsFromEngagementsWithDecodeRankingAndNames(): void
+    public function testCreatesTeamsWithFbiRankStructuredGenderAndStoredLevel(): void
     {
+        // Refonte PR2 (#3) — rang par la RÈGLE FBI (catégorie + numéro), résolu PAR LABEL ; genre
+        // STRUCTURÉ prioritaire ; `level` toujours stocké. Assertions par NOM (le rang change l'ordre).
+        $this->seedPriorityTiers();
         $importer = $this->buildImporter();
 
         self::assertSame(3, $importer->importEngagedTeams($this->club));
+        self::assertCount(3, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]));
 
-        /** @var list<Team> $teams */
-        $teams = $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()], ['tierOrder' => 'ASC']);
-        self::assertCount(3, $teams);
+        // SM1 — senior masculin (structuré « Masculin »), PN. La règle FBI le classe « senior n°1 → S »
+        // (le NUMÉRO, pas le niveau PN) : un engagement PN ne donne PLUS le rang 1 d'office — ici S
+        // coïncide avec n°1, mais c'est le numéro qui le dit. Niveau NATIONAL stocké.
+        $sm1 = $this->teamNamed('SM1');
+        self::assertSame($this->tierIdForLabel('S'), $sm1->getPriorityTierId(), 'senior n°1 → rang S (règle FBI, jamais le niveau PN d\'office)');
+        self::assertSame('NATIONAL', $sm1->getLevel()?->value, 'le level décodé est stocké');
+        self::assertSame(Gender::M, $sm1->getGender(), 'genre structuré « Masculin » → M');
+        self::assertSame(2, $sm1->getSessionsPerWeek(), 'décision fondateur : 2 séances par défaut');
 
-        // Rang S (PN) d'abord — le fanion se détecte par le NIVEAU.
-        self::assertSame('SM1', $teams[0]->getName());
-        self::assertSame(1, $teams[0]->getPriorityTierId());
-        self::assertSame('NATIONAL', $teams[0]->getLevel()?->value);
-        self::assertSame('M', $teams[0]->getGender()?->value);
-        self::assertSame(2, $teams[0]->getSessionsPerWeek(), 'décision fondateur : 2 séances par défaut');
+        // U13M1 — jeune « RMU13 Brassage », structuré VIDE : tout vient du code (R/M/U13). Jeune n°1 → A.
+        $u13 = $this->teamNamed('U13M1');
+        self::assertSame($this->tierIdForLabel('A'), $u13->getPriorityTierId(), 'jeune n°1 → rang A');
+        self::assertSame('REGIONAL', $u13->getLevel()?->value, 'le level décodé est stocké');
+        self::assertSame(Gender::M, $u13->getGender(), 'genre lu au code (structuré vide) → M');
 
-        // Le jeune « RMU13 Brassage » : champs structurés VIDES, tout vient du
-        // décodage du code (décision fondateur : R/M/U13) → catégorie U13 du club.
-        self::assertSame('U13M1', $teams[1]->getName());
-        self::assertSame(2, $teams[1]->getPriorityTierId(), 'R → rang A');
-        self::assertSame('REGIONAL', $teams[1]->getLevel()?->value);
+        // SF1 — senior féminine (structuré « Féminin »), départementale. La règle FBI la classe
+        // « senior n°1 → S » (le numéro décide), là où LEVEL_TIER la mettait rang C/D d'office : c'est
+        // la preuve que le NIVEAU ne pilote PLUS le rang. Niveau DEPARTEMENTAL stocké.
+        $sf1 = $this->teamNamed('SF1');
+        self::assertSame($this->tierIdForLabel('S'), $sf1->getPriorityTierId(), 'senior n°1 → rang S (jamais le niveau départemental d\'office)');
+        self::assertSame('DEPARTEMENTAL', $sf1->getLevel()?->value, 'le level décodé est TOUJOURS stocké');
+        self::assertSame(Gender::F, $sf1->getGender(), 'genre structuré « Féminin » → F');
 
-        // La sénior D : rang C, nom féminin.
-        self::assertSame('SF1', $teams[2]->getName());
-        self::assertSame(4, $teams[2]->getPriorityTierId());
-
-        // Vérité serveur : le marqueur qui autorise la modale « équipes
-        // importées » côté wizard — sans lui, un club à saisie manuelle la
-        // verrait mentir (et chaque spec e2e restait coincée dessus).
+        // Vérité serveur : le marqueur qui autorise la modale « équipes importées » côté wizard.
         self::assertNotNull($this->club->getFfbbTeamsImportedAt());
+    }
+
+    public function testStructuredFederalGenderBeatsTheGenderReadFromTheCode(): void
+    {
+        // #3 — le genre STRUCTURÉ fédéral est PRIORITAIRE sur le genre lu au code/nom. Un engagement
+        // dont le code dit « M » (RMU13 → masculin) mais dont le champ fédéral dit « Féminin » doit
+        // créer une équipe FÉMININE : le structuré l'emporte (jamais le code qui le contredit).
+        $this->seedPriorityTiers();
+        $importer = $this->buildImporter([
+            ['codeClub' => self::CLUB_CODE, 'sexe' => 'Féminin', 'categorie' => null,
+                'idCompetition' => ['id' => 'C-RMU13', 'code' => 'RMU13', 'nom' => 'RMU13 Brassage'], 'idPoule' => ['id' => 'P-RMU13', 'nom' => 'Poule A']],
+        ]);
+
+        self::assertSame(1, $importer->importEngagedTeams($this->club));
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId()]);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertSame(Gender::F, $team->getGender(), 'le genre structuré « Féminin » l\'emporte sur le « M » lu dans le code RMU13');
     }
 
     public function testNonEmptyClubIsNeverTouched(): void
@@ -126,10 +164,13 @@ final class FfbbTeamImporterTest extends KernelTestCase
         return (string) $this->em->getRepository(SportCategory::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => $name])?->getId();
     }
 
-    private function buildImporter(): FfbbTeamImporter
+    /**
+     * @param list<array<string, mixed>>|null $engagements null = le jeu BCCL-like par défaut
+     */
+    private function buildImporter(?array $engagements = null): FfbbTeamImporter
     {
         $seasonCode = \sprintf('%02d-%02d', SeasonResolver::seasonYear(new DateTimeImmutable) % 100, (SeasonResolver::seasonYear(new DateTimeImmutable) + 1) % 100);
-        $engagements = [
+        $engagements ??= [
             // Sénior structuré (les champs FFBB remplis — le cas 7/14).
             ['codeClub' => self::CLUB_CODE, 'sexe' => 'Masculin', 'categorie' => ['libelle' => 'Seniors'],
                 'idCompetition' => ['id' => 'C-PNM', 'code' => 'PNM', 'nom' => 'Pré nationale masculine'], 'idPoule' => ['id' => 'P-PNM', 'nom' => 'Poule D']],
@@ -175,5 +216,38 @@ final class FfbbTeamImporterTest extends KernelTestCase
         $reader = new FfbbEngagementReader($api);
 
         return new FfbbTeamImporter($this->em, $reader, self::getContainer()->get(SeasonResolver::class), new NullLogger, self::getContainer()->get(PlanEntitlements::class));
+    }
+
+    private function teamNamed(string $name): Team
+    {
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => $name]);
+        self::assertInstanceOf(Team::class, $team, \sprintf('l\'équipe « %s » doit être créée', $name));
+
+        return $team;
+    }
+
+    /**
+     * Les 5 rangs de référence (mapping canonique label→id), idempotents : `priority_tier` est GLOBAL.
+     * Patron {@see FfbbExcelImporterTest::seedPriorityTiers}.
+     */
+    private function seedPriorityTiers(): void
+    {
+        foreach ([[1, 'S', 'Elite'], [2, 'A', 'Régional+'], [3, 'B', 'Régional'], [4, 'C', 'Départemental'], [5, 'D', 'Loisir']] as [$id, $label, $name]) {
+            if ($this->em->getRepository(PriorityTier::class)->find($id) instanceof PriorityTier) {
+                continue;
+            }
+            $tier = (new PriorityTier)->setId($id)->setLabel($label)->setName($name)
+                ->setColor('#000000')->setOrToolsWeight(1)->setDefaultMinSessions(1);
+            $this->em->persist($tier);
+        }
+        $this->em->flush();
+    }
+
+    private function tierIdForLabel(string $label): int
+    {
+        $tier = $this->em->getRepository(PriorityTier::class)->findOneBy(['label' => $label]);
+        self::assertInstanceOf(PriorityTier::class, $tier, \sprintf('le rang « %s » doit être seedé', $label));
+
+        return $tier->getId();
     }
 }

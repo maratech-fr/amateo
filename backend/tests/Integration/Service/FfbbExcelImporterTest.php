@@ -35,6 +35,14 @@ use Throwable;
  * des catégories en pleine boucle laissait des écritures partielles quand une
  * ligne ultérieure jetait (422 code club étranger avec la moitié du fichier en
  * base). La correspondance UI persistée, elle, attend l'écran P3-7.
+ *
+ * Refonte import IA PR2 (D9) — l'importeur DÉLÈGUE désormais ses suggestions (rang/genre/entente) à
+ * la maison unique {@see \App\Service\Basketball\TeamCreationSuggester} (le barème y vit, prouvé par
+ * {@see TeamCreationSuggesterTest}). PARITÉ : `testAnalyzeSuggestsRankFromCategoryAndNumberAndGenderFromName`
+ * et `testAnalyzeSuggestsCtcWhenTheTeamLabelCarriesCtcOrEntente` ci-dessous restent VERTS après la
+ * délégation — ils sont le filet de parité (les suggestions servies == celles du suggester).
+ * PR2 ajoute aussi : un override COCHÉ sans genre est REFUSÉ (genre obligatoire, §0 point 1 AMENDÉ) —
+ * {@see testACheckedRowOverrideWithAnEmptyGenderIsRefusedNamingTheLineWritingNothing}.
  */
 #[Group('integration')]
 final class FfbbExcelImporterTest extends KernelTestCase
@@ -361,6 +369,34 @@ final class FfbbExcelImporterTest extends KernelTestCase
         }
 
         self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'tout-ou-rien : rien créé');
+    }
+
+    public function testACheckedRowOverrideWithAnEmptyGenderIsRefusedNamingTheLineWritingNothing(): void
+    {
+        // Refonte PR2 (§0 point 1 AMENDÉ, « genre OBLIGATOIRE à l'import ») — un override COCHÉ dont
+        // le genre est VIDE (« ») ne doit JAMAIS créer une équipe sans genre en silence : refus 422
+        // nommant la LIGNE (le numéro Excel), AVANT tout persist (tout-ou-rien). ROUGE aujourd'hui :
+        // `resolveOverride` replie un genre vide en `null` et crée l'équipe (created=1, 200). Le genre
+        // vide ignoré en silence par `ScheduleConstraintBuilder`/`TeamTagService`/`LeagueEnvelopeResolver`
+        // est précisément le défaut que PR2 ferme.
+        //
+        // ⚠ Contrat distinct du genre FORGÉ (« Z » → 400, badRequest ci-dessus) : un genre VIDE est un
+        // choix MANQUANT (le gestionnaire doit trancher) → 422 (unprocessable), nommant la ligne.
+        $this->seedPriorityTiers();
+        $org = self::CLUB_CODE . ' - MON CLUB';
+        $file = $this->xlsx([['SM2', 'Seniors', '2', $org]]); // ligne 2
+
+        try {
+            $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2], [
+                2 => ['tierId' => $this->tierIdForLabel('A'), 'gender' => ''],
+            ]);
+            self::fail('un override coché sans genre doit faire refuser l\'import (genre obligatoire)');
+        } catch (ImportRejectedException $e) {
+            self::assertSame(422, $e->getStatusCode(), 'un genre manquant est un choix à trancher (422), pas une requête malformée (400)');
+            self::assertStringContainsString('2', $e->getMessage(), 'le refus nomme la LIGNE fautive (numéro Excel)');
+        }
+
+        self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'tout-ou-rien : aucune équipe sans genre créée');
     }
 
     public function testAnalyzeSuggestsCtcWhenTheTeamLabelCarriesCtcOrEntente(): void

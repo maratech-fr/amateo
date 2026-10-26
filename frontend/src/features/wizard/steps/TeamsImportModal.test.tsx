@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HTTPError } from "ky";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -342,5 +342,55 @@ describe("TeamsImportModal", () => {
     await user.click(screen.getByRole("button", { name: /^Importer/ }));
 
     expect(sentOverrides()[2]?.ctc, "l'entente décochée part ctc:false").toBe(false);
+  });
+
+  // --- Refonte PR2 (§0 point 1 AMENDÉ) : genre OBLIGATOIRE à l'import FBI (« plus MIXTE ») ---
+  // Une équipe dont le serveur n'a lu AUCUN genre (`suggestedGender: null`) arrive avec un menu
+  // Genre VIDE qu'il faut trancher : « À choisir » + ⚠, `aria-invalid`, « Importer » désarmé AVEC sa
+  // raison comptée (« 1 équipe sans genre »). Option A — TANK écrit ROUGE, NEO implémente.
+
+  /** Une analyse d'une seule équipe SANS genre lisible (le serveur rend `suggestedGender: null`). */
+  const ONE_ROW_NO_GENDER: TeamImportAnalysis = {
+    rows: [{ row: 2, name: "Loisir Détente", category: "Loisir", number: "1", alreadyPresent: false, suggestedTierId: 5, suggestedGender: null, suggestedCtc: false }],
+    errors: [],
+    total: 1,
+  };
+
+  it("genre obligatoire — une équipe cochée SANS genre désarme « Importer » avec sa raison, et le menu Genre est « À choisir » + aria-invalid", async () => {
+    wireApi({ analysis: ONE_ROW_NO_GENDER });
+    const user = userEvent.setup();
+    renderModal();
+    await user.upload(screen.getByLabelText("Fichier FBI (.xlsx)"), xlsx());
+    await screen.findByRole("checkbox", { name: /^Loisir Détente/ });
+
+    // La ligne est cochée (neuve) MAIS sans genre : « Importer » est désarmé AVEC sa raison (A11Y-30,
+    // prop `disabledReason` → aria-disabled, patron ParcImportModal), la raison compte « 1 équipe sans genre ».
+    const importBtn = screen.getByRole("button", { name: /^Importer/ });
+    expect(importBtn).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText(/sans genre/i), "la raison comptée nomme le manque de genre").toBeInTheDocument();
+
+    // Le menu Genre : option vide « À choisir » (plus « — »), valeur vide, et signalé invalide.
+    const gender = screen.getByRole("combobox", { name: "Genre de Loisir Détente" });
+    expect(gender).toHaveValue("");
+    expect(gender, "un genre manquant est signalé invalide (aria-invalid)").toBeInvalid();
+    expect(within(gender).getByRole("option", { name: "À choisir" }), "l'option vide porte « À choisir », jamais « — »").toBeInTheDocument();
+  });
+
+  it("genre obligatoire — choisir un genre lève l'invalidité, réarme « Importer » et part dans overrides", async () => {
+    wireApi({ analysis: ONE_ROW_NO_GENDER, result: { message: "ok", created: 1, skipped: 0, errors: [] } });
+    const user = userEvent.setup();
+    renderModal();
+    await user.upload(screen.getByLabelText("Fichier FBI (.xlsx)"), xlsx());
+    await screen.findByRole("checkbox", { name: /^Loisir Détente/ });
+
+    const gender = screen.getByRole("combobox", { name: "Genre de Loisir Détente" });
+    await user.selectOptions(gender, "F");
+    expect(gender).toBeValid();
+
+    const importBtn = screen.getByRole("button", { name: /^Importer/ });
+    expect(importBtn).not.toHaveAttribute("aria-disabled", "true");
+
+    await user.click(importBtn);
+    expect(sentOverrides()[2]?.gender, "le genre tranché part dans l'override").toBe("F");
   });
 });

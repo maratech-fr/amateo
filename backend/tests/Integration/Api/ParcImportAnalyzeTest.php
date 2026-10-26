@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
@@ -343,6 +344,49 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertSame('apparie', $teamLine['statut'], 'SM1 existant → ligne appariée');
         self::assertSame(1, $teamLine['seances'] ?? null, 'la valeur LUE du fichier (1 case) est servie');
         self::assertSame(2, $teamLine['seancesActuelles'] ?? null, 'les séances ACTUELLES de l\'équipe visée sont servies (« actuellement N »)');
+    }
+
+    // ───────────── PR2 (D9) — une ligne équipe « Créer » porte les suggestions rang/genre/entente ─────────────
+    // Refonte import IA PR2 : l'aperçu pré-remplit les Select Rang + Genre + case Entente d'une ligne
+    // « Créer » depuis la RÈGLE FBI unique ({@see \App\Service\Basketball\TeamCreationSuggester}). La
+    // ligne `aCreer` porte donc `suggestedTierId` (int, résolu PAR LABEL), `suggestedGender` (?string,
+    // null si aucun motif clair — « plus MIXTE ») et `suggestedCtc` (bool). ROUGE aujourd'hui :
+    // l'analyzer ne sert aucun de ces trois champs sur une ligne équipe. Jumeaux : le barème au plus bas
+    // {@see \App\Tests\Integration\Service\TeamCreationSuggesterTest} ; l'écran {@see ParcImportModal.test.tsx}.
+
+    public function testACreatedTeamLineCarriesRankGenderAndCtcSuggestions(): void
+    {
+        $this->seedPriorityTiers();
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],            // senior n°1 → S, M, hors entente
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U15F CTC']],       // genre F, entente suggérée
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Loisir Détente']], // aucun marqueur → genre null
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $byLabel = [];
+        foreach ($body['sections']['equipes'] as $line) {
+            $byLabel[$line['libelle']] = $line;
+        }
+
+        // SM1 — « Créer », rang S (senior n°1, résolu PAR LABEL), genre M, entente non suggérée.
+        self::assertSame('aCreer', $byLabel['SM1']['statut'] ?? null, 'SM1 novel → ligne à créer');
+        self::assertSame($this->tierIdForLabel('S'), $byLabel['SM1']['suggestedTierId'] ?? null, 'la ligne « Créer » porte le rang suggéré (senior n°1 → S)');
+        self::assertSame('M', $byLabel['SM1']['suggestedGender'] ?? null, 'genre lu dans « SM1 » → M');
+        self::assertFalse($byLabel['SM1']['suggestedCtc'] ?? null, 'aucun marqueur CTC → entente non suggérée');
+
+        // « U15F CTC » — genre F lu au nom, entente suggérée par le marqueur « CTC ».
+        self::assertSame('F', $byLabel['U15F CTC']['suggestedGender'] ?? null, 'genre lu dans « U15F CTC » → F');
+        self::assertTrue($byLabel['U15F CTC']['suggestedCtc'] ?? null, '« CTC » dans le libellé → entente suggérée');
+
+        // « Loisir Détente » — aucun marqueur de genre → suggestedGender null (plus MIXTE d'office) ;
+        // la clé est PRÉSENTE (pré-remplit le Select « À choisir »), avec un rang suggéré entier.
+        self::assertArrayHasKey('suggestedGender', $byLabel['Loisir Détente'], 'la ligne « Créer » porte toujours le champ suggestedGender');
+        self::assertNull($byLabel['Loisir Détente']['suggestedGender'], 'aucun marqueur → genre null, à trancher à l\'import');
+        self::assertIsInt($byLabel['Loisir Détente']['suggestedTierId'] ?? null, 'la ligne porte un rang suggéré entier (pré-remplit le Select Rang)');
     }
 
     // ───────────── PR1 refonte — la grille place chaque case sur SON créneau (position servie) ─────────────
@@ -780,6 +824,31 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->em->flush();
 
         return $team;
+    }
+
+    /**
+     * Les 5 rangs de référence (mapping canonique label→id), idempotents : `priority_tier` est GLOBAL.
+     * Patron {@see \App\Tests\Integration\Service\FfbbExcelImporterTest::seedPriorityTiers}.
+     */
+    private function seedPriorityTiers(): void
+    {
+        foreach ([[1, 'S', 'Elite'], [2, 'A', 'Régional+'], [3, 'B', 'Régional'], [4, 'C', 'Départemental'], [5, 'D', 'Loisir']] as [$id, $label, $name]) {
+            if ($this->em->getRepository(PriorityTier::class)->find($id) instanceof PriorityTier) {
+                continue;
+            }
+            $tier = (new PriorityTier)->setId($id)->setLabel($label)->setName($name)
+                ->setColor('#000000')->setOrToolsWeight(1)->setDefaultMinSessions(1);
+            $this->em->persist($tier);
+        }
+        $this->em->flush();
+    }
+
+    private function tierIdForLabel(string $label): int
+    {
+        $tier = $this->em->getRepository(PriorityTier::class)->findOneBy(['label' => $label]);
+        self::assertInstanceOf(PriorityTier::class, $tier, \sprintf('le rang « %s » doit être seedé', $label));
+
+        return $tier->getId();
     }
 
     /**
