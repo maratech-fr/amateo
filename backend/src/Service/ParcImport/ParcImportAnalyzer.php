@@ -216,16 +216,19 @@ final class ParcImportAnalyzer
                     $extra['miseAJour'] = ['champ' => 'seances', 'de' => $current, 'a' => $entry['seances']];
                 }
             }
-            // Refonte PR2 (D9) — une ligne « à créer » porte les SUGGESTIONS de la règle FBI unique
+            // Refonte PR2 (D9) — CHAQUE ligne équipe (quel que soit son statut d'appariement : apparié /
+            // suggéré / ambigu / à créer) porte les SUGGESTIONS de la règle FBI unique
             // ({@see TeamCreationSuggester}) : rang (id résolu par label), genre (?string, null si aucun
             // motif clair — « plus MIXTE ») et entente. Elles pré-remplissent les Select Rang + Genre et
-            // la case Entente de l'aperçu. Le genre reste tranché par le gestionnaire (obligatoire).
-            if ('aCreer' === $statut) {
-                $suggestion = $this->suggester->suggest($nom, $this->stringField($entry, 'categorie'), '');
-                $extra['suggestedTierId'] = $suggestion['tierId'];
-                $extra['suggestedGender'] = $suggestion['gender']?->value;
-                $extra['suggestedCtc'] = $suggestion['ctc'];
-            }
+            // la case Entente DÈS que le gestionnaire choisit « Créer » sur CETTE ligne — depuis n'importe
+            // quel statut, car le front se câble sur `suggestedTierId` ; les servir sur la seule ligne
+            // « aCreer » n'ouvrait aucun Select Genre sur une création depuis un autre statut, et
+            // l'executor refusait alors la création sans genre (422). Le genre reste tranché par le
+            // gestionnaire (obligatoire).
+            $suggestion = $this->suggester->suggest($nom, $this->stringField($entry, 'categorie'), '');
+            $extra['suggestedTierId'] = $suggestion['tierId'];
+            $extra['suggestedGender'] = $suggestion['gender']?->value;
+            $extra['suggestedCtc'] = $suggestion['ctc'];
 
             $rows[] = ['index' => $i, 'nom' => $nom, 'statut' => $statut, 'cibleId' => $cibleId, 'raison' => $raison, 'extra' => $extra];
         }
