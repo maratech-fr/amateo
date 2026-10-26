@@ -393,15 +393,18 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
   it("« Créer » sur une ligne ambiguë → décision cochée, SANS cibleId (nouvelle entité)", async () => {
     const user = userEvent.setup();
-    const analysis = analysisOf({
-      equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])],
-    });
+    // PR2 — la ligne ambiguë porte désormais ses suggestions (l'analyzer les sert sur TOUTE ligne) :
+    // « Créer » ouvre le Select Genre OBLIGATOIRE ; le gestionnaire tranche un genre avant d'importer
+    // (changement de contrat voulu — genre obligatoire —, pas un affaiblissement).
+    const line = { ...mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }]), suggestedTierId: 5, suggestedGender: null, suggestedCtc: false } as Line;
+    const analysis = analysisOf({ equipes: [line] });
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
 
     await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
+    await user.selectOptions(screen.getByRole("combobox", { name: T.genderOf("Armond") }), "MIXTE");
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
@@ -750,13 +753,17 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
   it("3a — « Créer « … » » sur une ligne ambiguë envoie le signal de création explicite creer:true", async () => {
     const user = userEvent.setup();
-    const analysis = analysisOf({ equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])] });
+    // PR2 — la ligne ambiguë porte ses suggestions (servies sur TOUTE ligne) : « Créer » ouvre le
+    // Select Genre OBLIGATOIRE, tranché avant d'importer (changement de contrat voulu, genre obligatoire).
+    const line = { ...mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }]), suggestedTierId: 5, suggestedGender: null, suggestedCtc: false } as Line;
+    const analysis = analysisOf({ equipes: [line] });
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
 
     await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
+    await user.selectOptions(screen.getByRole("combobox", { name: T.genderOf("Armond") }), "MIXTE");
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null; creer?: boolean }> };
@@ -1455,5 +1462,46 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: { ctc?: boolean } }> };
     const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
     expect(dec?.corrections?.ctc, "l'entente décochée part ctc:false").toBe(false);
+  });
+
+  it("genre obligatoire aussi sur une ligne AMBIGUË : « Créer « … » » montre Select Rang + Genre (suggestions servies sur TOUTE ligne), genre vide bloque, genre choisi → corrections.{tierId,genre} + creer:true", async () => {
+    // NEO signale le trou : les suggestions n'étaient servies QUE sur une ligne « aCreer », donc
+    // choisir « Créer » sur une ligne AMBIGUË n'ouvrait aucun Select Genre → l'executor refusait à
+    // l'import (422), piège. L'analyzer sert désormais `suggestedTierId`/`suggestedGender` sur CHAQUE
+    // ligne (jumeau backend : ParcImportAnalyzeTest). Sur une ambiguë « Créer », le front montre donc
+    // les MÊMES Select que sur une « aCreer » (il se câble sur `suggestedTierId`, jamais sur le statut),
+    // bloque tant que le genre manque, et poste corrections.{tierId,genre} + creer:true une fois tranché.
+    const user = userEvent.setup();
+    // Ligne AMBIGUË PORTANT ses suggestions (ce que l'analyzer corrigé sert) : rang 5, genre null.
+    const line = { ...mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }]), suggestedTierId: 5, suggestedGender: null, suggestedCtc: false } as Line;
+    const decisionTrigger = (libelle: string) => (accessibleName: string) => accessibleName.startsWith(T.decisionFor(libelle));
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [line] }));
+
+    // Choisir « Créer « Armond » » dans le sélecteur de décision de la ligne ambiguë.
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
+
+    // Les deux Select apparaissent (comme sur une « aCreer ») ; genre vide → invalide + ⚠ + Importer bloqué.
+    expect(screen.getByRole("combobox", { name: T.tierOf("Armond") }), "le rang suggéré (5) pré-remplit le Select").toHaveValue("5");
+    const gender = screen.getByRole("combobox", { name: T.genderOf("Armond") });
+    expect(gender).toHaveValue("");
+    expect(gender, "un genre manquant est signalé invalide").toBeInvalid();
+    expect(screen.getByText(T.genderRequired as unknown as string)).toBeInTheDocument();
+    const importBtn = screen.getByRole("button", { name: /Importer/ });
+    expect(importBtn).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText(T.importBlocked(0, 1)), "la raison compte « 1 équipe sans genre »").toBeInTheDocument();
+
+    // Genre tranché → Importer réarmé ; corrections.{tierId,genre} + creer:true partent (jamais appariée).
+    await user.selectOptions(gender, "MIXTE");
+    expect(importBtn).not.toHaveAttribute("aria-disabled", "true");
+    await user.click(importBtn);
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; creer?: boolean; cibleId?: string | null; corrections?: { genre?: string; tierId?: number } }> };
+    const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
+    expect(dec?.creer, "« Créer » explicite sur une ambiguë porte creer:true").toBe(true);
+    expect(dec?.cibleId ?? null, "jamais apparié à un candidat").toBeNull();
+    expect(dec?.corrections?.genre, "le genre tranché part en corrections.genre").toBe("MIXTE");
+    expect(dec?.corrections?.tierId, "le rang suggéré part en corrections.tierId").toBe(5);
   });
 });

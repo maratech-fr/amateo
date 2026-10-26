@@ -223,6 +223,58 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertTrue($team->getIsCtc(), 'l\'entente cochée à la création naît true');
     }
 
+    public function testACreatedTeamHonorsTheCtcPartnerAtCreation(): void
+    {
+        // Refonte PR2 (D9) — une équipe CRÉÉE en entente (ctc=true) naît avec le CLUB PARTENAIRE saisi
+        // (corrections.ctcPartner), tel qu'il voyage depuis le champ « club partenaire » de l'étape
+        // Ententes. VERROUILLE l'honneur du partenaire à la création (falsifiable : si l'executor
+        // oubliait corrections.ctcPartner, le partenaire resterait null → rouge). Jumeau front : « étape
+        // Ententes » ({@see ParcImportModal.test.tsx}) ; jumeau rang/genre/entente :
+        // testACreatedTeamHonorsCorrectionsForTierGenderAndCtc.
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'M', 'ctc' => true, 'ctcPartner' => 'Basket Club Partenaire']]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'une création en entente avec partenaire s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertTrue($team->getIsCtc(), 'l\'équipe créée est bien en entente');
+        self::assertSame('Basket Club Partenaire', $team->getCtcPartner(), 'le club partenaire saisi est honoré à la création');
+    }
+
+    public function testTheCtcPartnerIsIgnoredOnAnAppariedTeam(): void
+    {
+        // Invariant « appariée = séances seules » étendu au club partenaire : sur une équipe EXISTANTE
+        // (appariée), corrections.ctcPartner est IGNORÉ — l'import ne touche JAMAIS l'entente de
+        // l'existant (ni le drapeau ctc, ni le partenaire). Filet qui VERROUILLE l'invariant
+        // (falsifiable : s'il fuyait au branche appariée, le partenaire changerait → rouge). Jumeau de la
+        // CRÉATION : testACreatedTeamHonorsTheCtcPartnerAtCreation.
+        $this->seedPriorityTiers();
+        $existing = $this->makeTeam('SM1', sessionsPerWeek: 2); // ctcPartner null, hors entente
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['ctc' => true, 'ctcPartner' => 'Club Intrus', 'seances' => 3]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'un appariement avec corrections s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Team::class)->find($existing->getId());
+        self::assertInstanceOf(Team::class, $reloaded);
+        self::assertNull($reloaded->getCtcPartner(), 'appariée : le club partenaire ne bouge PAS (corrections.ctcPartner ignorée)');
+        self::assertFalse($reloaded->getIsCtc(), 'appariée : l\'entente ne bouge PAS (corrections.ctc ignorée)');
+        self::assertSame(3, $reloaded->getSessionsPerWeek(), 'SEULES les séances bougent sur une appariée');
+    }
+
     public function testACreatedTeamWithoutAKnownGenderIsRefusedNamingTheLineWritingNothing(): void
     {
         // §0 point 1 AMENDÉ — genre OBLIGATOIRE. Une ligne « Créer » dont le nom ne porte AUCUN

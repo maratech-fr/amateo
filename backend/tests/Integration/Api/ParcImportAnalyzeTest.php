@@ -390,6 +390,63 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertIsInt($byLabel['Loisir Détente']['suggestedTierId'] ?? null, 'la ligne porte un rang suggéré entier (pré-remplit le Select Rang)');
     }
 
+    public function testEveryTeamLineCarriesRankGenderAndCtcSuggestionsWhateverItsStatut(): void
+    {
+        // NEO signale le trou : les suggestions rang/genre/entente n'étaient servies QUE sur une ligne
+        // « aCreer ». Choisir « Créer » sur une ligne AMBIGUË (ou suggérée / appariée) n'ouvrait alors
+        // AUCUN Select Genre côté front (il se câble sur `suggestedTierId`), et l'executor refusait la
+        // création sans genre (422) : le gestionnaire est piégé. Promesse : CHAQUE ligne équipe porte
+        // les trois suggestions (une éventuelle création depuis N'IMPORTE QUEL statut est pré-remplie),
+        // pas seulement « aCreer ». ROUGE aujourd'hui : {@see ParcImportAnalyzer::analyzeTeams} ne les
+        // pose que si `'aCreer' === $statut`. Jumeaux : l'écran {@see ParcImportModal.test.tsx} (bloc
+        // PR2, ligne ambiguë « Créer ») ; le barème au plus bas {@see TeamCreationSuggesterTest}.
+        $this->seedPriorityTiers();
+        $this->makeTeam('SM1');      // apparié (exact)
+        $this->makeTeam('Leopards'); // suggéré (un seul candidat flou de « Leoprds »)
+        $this->makeTeam('Armand');   // ambigu (avec « Armund » : deux candidats flous de « Armond »)
+        $this->makeTeam('Armund');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],      // apparie
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Leoprds']],  // suggere
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Armond']],   // ambigu
+            ['gymnase' => 'MATEO', 'jour' => 4, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U13F CTC']], // aCreer
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $byLabel = [];
+        foreach ($body['sections']['equipes'] as $line) {
+            $byLabel[$line['libelle']] = $line;
+        }
+
+        // Précondition : les quatre statuts attendus sont bien produits (sinon le test ne prouverait pas
+        // « quel que soit le statut »).
+        self::assertSame('apparie', $byLabel['SM1']['statut'] ?? null, 'SM1 existant → apparié');
+        self::assertSame('suggere', $byLabel['Leoprds']['statut'] ?? null, '« Leoprds » ≈ « Leopards » (un seul candidat flou) → suggéré');
+        self::assertSame('ambigu', $byLabel['Armond']['statut'] ?? null, '« Armond » entre « Armand » et « Armund » → ambigu');
+        self::assertSame('aCreer', $byLabel['U13F CTC']['statut'] ?? null, 'nouvelle équipe → à créer');
+
+        // CHAQUE ligne équipe (pas seulement « aCreer ») porte les trois suggestions : elles
+        // pré-remplissent le Select Rang + Genre + case Entente dès que le gestionnaire choisit
+        // « Créer » sur CETTE ligne, quel que soit son statut d'appariement.
+        foreach (['SM1', 'Leoprds', 'Armond', 'U13F CTC'] as $label) {
+            $line = $byLabel[$label];
+            self::assertArrayHasKey('suggestedTierId', $line, \sprintf('la ligne « %s » (%s) porte un rang suggéré', $label, (string) ($line['statut'] ?? '')));
+            self::assertIsInt($line['suggestedTierId'], \sprintf('le rang suggéré de « %s » est un entier (pré-remplit le Select Rang)', $label));
+            self::assertArrayHasKey('suggestedGender', $line, \sprintf('la ligne « %s » (%s) porte le champ genre suggéré (string|null)', $label, (string) ($line['statut'] ?? '')));
+            self::assertArrayHasKey('suggestedCtc', $line, \sprintf('la ligne « %s » (%s) porte l\'entente suggérée', $label, (string) ($line['statut'] ?? '')));
+            self::assertIsBool($line['suggestedCtc'], \sprintf('l\'entente suggérée de « %s » est un booléen', $label));
+        }
+
+        // Témoin de SENS : la ligne AMBIGUË lit son genre/entente comme une création le ferait — « Armond »
+        // n'a aucun marqueur (genre null, entente false), là où « U13F CTC » (aCreer) lit F + entente.
+        self::assertNull($byLabel['Armond']['suggestedGender'], '« Armond » sans marqueur → genre suggéré null (à trancher au Select)');
+        self::assertFalse($byLabel['Armond']['suggestedCtc'], '« Armond » sans marqueur CTC → entente non suggérée');
+        self::assertTrue($byLabel['U13F CTC']['suggestedCtc'], '« CTC » dans le libellé → entente suggérée');
+    }
+
     // ───────────── PR1 refonte — la grille place chaque case sur SON créneau (position servie) ─────────────
     // Bug grille : la grille « qui fait foi » plaçait réservations/mutualisations d'après
     // `payload.cases[index]`, or l'`index` d'une ligne `reservations` (resp. `mutualisations`) est son
