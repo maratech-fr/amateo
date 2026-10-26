@@ -20,16 +20,18 @@ use PHPUnit\Framework\TestCase;
  *    genre déduit du marqueur (« U18F3 » → U18 / F) ;
  *  - un préfixe senior « SM »/« SF » → catégorie seniors, genre M / F (« SM2 » → seniors/M,
  *    « SF1 » → seniors/F) ;
- *  - un token d'âge SANS marqueur de genre → MIXTE (« U13 » → U13 / MIXTE) — on ne DEVINE jamais
- *    un genre absent ;
- *  - un libellé senior sans marqueur de genre (« Vétérans ») → MIXTE ;
+ *  - un token d'âge SANS marqueur de genre → genre NULL (« U13 » → U13 / null) — refonte PR2
+ *    (§0 point 1 AMENDÉ, « plus MIXTE ») : on ne DEVINE jamais un genre absent, et on ne le replie
+ *    JAMAIS en MIXTE d'office (le genre est désormais OBLIGATOIRE, tranché à l'import) ;
+ *  - un libellé senior sans marqueur de genre (« Vétérans ») → genre NULL (idem) ;
  *  - un libellé qui n'est PAS une équipe reconnaissable (activité, section : « Section J.Macé »,
- *    « Basket Santé ») → catégorie « À classer », genre MIXTE — un repère explicite que le
- *    gestionnaire reclasse, jamais une catégorie devinée qui mentirait sur l'âge/le genre.
+ *    « Basket Santé ») → catégorie « À classer », genre NULL — un repère explicite que le
+ *    gestionnaire reclasse ET un genre qu'il tranchera, jamais une catégorie/un genre devinés.
  *
- * Signature proposée (NEO) :
- *   interpret(string $name): array{genre: 'M'|'F'|'MIXTE', categorie: string}
- * `categorie` est un libellé HUMAIN ; « À classer » est la valeur-repère quand rien n'est reconnu.
+ * Signature proposée (NEO, refonte PR2) :
+ *   interpret(string $name): array{genre: 'M'|'F'|null, categorie: string}
+ * `categorie` est un libellé HUMAIN ; « À classer » est la valeur-repère quand rien n'est reconnu ;
+ * `genre` est `null` dès qu'aucun marqueur clair ne le donne (plus jamais MIXTE par défaut).
  *
  * Service PUR : aucune DB, aucun appariement aux entités du club (ça, c'est {@see TeamLabelMatcher}).
  */
@@ -68,30 +70,34 @@ final class TeamNameInterpreterTest extends TestCase
         self::assertStringContainsString($categorieContains, mb_strtolower($out['categorie']), 'la catégorie d\'âge est déduite du token du nom');
     }
 
-    public function testAnAgeTokenWithoutAGenderMarkerIsMixte(): void
+    public function testAnAgeTokenWithoutAGenderMarkerHasNoGender(): void
     {
-        // « U13 » sans F/M : on ne devine pas un genre absent → MIXTE, catégorie U13 conservée.
+        // Refonte PR2 (§0 point 1 AMENDÉ) — « U13 » sans F/M : on ne devine pas un genre absent, et
+        // on ne le replie PLUS en MIXTE d'office → genre NULL (à trancher à l'import, désormais
+        // OBLIGATOIRE). La catégorie d'âge U13, elle, reste conservée.
         $out = $this->interpreter->interpret('U13');
 
-        self::assertSame('MIXTE', $out['genre'], 'un token d\'âge sans marqueur de genre est MIXTE, jamais deviné M ou F');
+        self::assertNull($out['genre'], 'un token d\'âge sans marqueur de genre n\'a PAS de genre (null) — jamais deviné, jamais MIXTE d\'office');
         self::assertStringContainsString('u13', mb_strtolower($out['categorie']));
     }
 
-    public function testAnUngenderedSeniorLabelIsMixte(): void
+    public function testAnUngenderedSeniorLabelHasNoGender(): void
     {
-        // « Vétérans » : catégorie senior sans marqueur de genre → MIXTE.
-        self::assertSame('MIXTE', $this->interpreter->interpret('Vétérans')['genre'], 'un libellé senior sans marqueur de genre est MIXTE');
+        // Refonte PR2 — « Vétérans » : catégorie senior sans marqueur de genre → genre NULL
+        // (plus MIXTE d'office), le gestionnaire tranchera.
+        self::assertNull($this->interpreter->interpret('Vétérans')['genre'], 'un libellé senior sans marqueur de genre n\'a pas de genre (null)');
     }
 
     #[DataProvider('unrecognisedProvider')]
-    public function testAnUnrecognisedActivityIsFiledUnderAClasserAndMixte(string $name): void
+    public function testAnUnrecognisedActivityIsFiledUnderAClasserWithNoGender(string $name): void
     {
         // Ni token d'âge, ni préfixe senior : rien à déduire sans risque de mentir.
-        // Repère explicite « À classer » + MIXTE, jamais une catégorie devinée.
+        // Repère explicite « À classer » + genre NULL (refonte PR2, plus MIXTE), jamais une
+        // catégorie NI un genre devinés.
         $out = $this->interpreter->interpret($name);
 
         self::assertSame('À classer', $out['categorie'], 'un libellé non reconnu est classé « À classer », jamais deviné');
-        self::assertSame('MIXTE', $out['genre'], 'genre non déductible → MIXTE');
+        self::assertNull($out['genre'], 'genre non déductible → null (plus MIXTE d\'office)');
     }
 
     protected function setUp(): void

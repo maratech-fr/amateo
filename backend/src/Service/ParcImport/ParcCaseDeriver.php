@@ -45,7 +45,7 @@ final class ParcCaseDeriver
      *
      * @return array{
      *     gymnases: list<array{nom: string}>,
-     *     equipes: list<array{nom: string, genre: string, categorie: string, seances: int}>,
+     *     equipes: list<array{nom: string, genre: ?string, categorie: string, seances: int}>,
      *     creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>,
      *     reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>,
      *     mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>,
@@ -211,7 +211,7 @@ final class ParcCaseDeriver
     /**
      * @param list<array{gymnase: string, jour: int|null, debut: string, duree: int, separes: bool, teams: list<string>, groupe: string|null, mutual: bool}> $info
      *
-     * @return list<array{nom: string, genre: string, categorie: string, seances: int}>
+     * @return list<array{nom: string, genre: ?string, categorie: string, seances: int}>
      */
     private function deriveTeams(array $info): array
     {

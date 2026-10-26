@@ -184,6 +184,38 @@ export const PARC_IMPORT_TEXTS = {
   mutualKeep: "Garder",
   mutualIgnore: "Ignorer",
 
+  // ─────────── Refonte PR2 (D9) — règle unique, genre obligatoire, étape Ententes ───────────
+  /** Libellé de l'étape « Ententes (CTC) » du rail (juste après Équipes). */
+  stepEntentes: "Ententes (CTC)",
+  /** Nom accessible du Select Rang d'une ligne « Créer » (A11Y-28, contextualisé). */
+  tierOf: (libelle: string): string => `Rang de « ${libelle} »`,
+  /** Nom accessible du Select Genre d'une ligne « Créer » (A11Y-28, contextualisé). */
+  genderOf: (libelle: string): string => `Genre de « ${libelle} »`,
+  /** Libellés VISIBLES courts des deux Select de la ligne « Créer ». */
+  tierFieldLabel: "Rang",
+  genderFieldLabel: "Genre",
+  /** Option vide du Select Genre — le genre est OBLIGATOIRE, à trancher. */
+  genderPlaceholder: "À choisir",
+  /** Libellés VISIBLES des options du Select Genre. */
+  genderMasculin: "Masculin",
+  genderFeminin: "Féminin",
+  genderMixte: "Mixte",
+  /** ⚠ sous un Select Genre vide — le genre manque, il bloque l'import (obligatoire). */
+  genderRequired: "Genre requis",
+  /** Phrase d'intro de l'étape Ententes. */
+  ententesHelp: "Cochez les équipes à créer en entente (CTC) avec un autre club, et précisez le club partenaire.",
+  /** Nom accessible de la case Entente (CTC) d'une équipe à créer (pré-cochée si suggérée). */
+  ententeFor: (libelle: string): string => `Entente (CTC) pour « ${libelle} »`,
+  /** Texte VISIBLE de la case Entente. */
+  ententeCheckboxLabel: "En entente (CTC)",
+  /** Nom accessible du champ « club partenaire » d'une entente. */
+  ententePartnerFor: (libelle: string): string => `Club partenaire de l'entente — « ${libelle} »`,
+  ententePartnerPlaceholder: "Club partenaire",
+  /** Note en LECTURE SEULE pour une équipe déjà au club (l'import ne touche pas son entente). */
+  ententeExistingManaged: "Déjà au club — l'entente se gère dans sa fiche, l'import ne la change pas.",
+  /** EmptyHint de l'étape Ententes quand aucune équipe n'est à créer. */
+  ententesNoCreations: "Aucune équipe à créer : rien à mettre en entente ici.",
+
   // Récap (remplace le contenu de l'aperçu, pas de 6ᵉ étape)
   recapNext: "Et maintenant : vos équipes, gymnases et réservations sont dans l'assistant. Poursuivez la saisie.",
   recapCreated: "Créées",

@@ -14,11 +14,14 @@ use App\Service\Basketball\CategoryCatalog;
  *
  * Règles :
  *  - un token d'âge FFBB « U<n> » suivi d'un marqueur de genre « F »/« M » → catégorie « U<n> »,
- *    genre déduit du marqueur (« U18F3 » → U18 / F) ; sans marqueur → MIXTE (« U13 » → U13 / MIXTE) ;
+ *    genre déduit du marqueur (« U18F3 » → U18 / F) ; sans marqueur → genre NULL (« U13 » → U13 / null) ;
  *  - un préfixe senior « SM »/« SF » → catégorie seniors, genre M / F (« SM2 » → Senior / M) ;
- *  - un libellé senior/vétéran sans marqueur de genre (« Vétérans ») → MIXTE ;
- *  - tout le reste (activité, section : « Section J.Macé », « Basket Santé ») → « À classer », MIXTE —
- *    un repère explicite que le gestionnaire reclasse, jamais une catégorie devinée qui mentirait.
+ *  - un libellé senior/vétéran sans marqueur de genre (« Vétérans ») → genre NULL ;
+ *  - tout le reste (activité, section : « Section J.Macé », « Basket Santé ») → « À classer », genre NULL —
+ *    un repère explicite que le gestionnaire reclasse, jamais une catégorie NI un genre devinés.
+ *
+ * Refonte PR2 (§0 point 1 AMENDÉ, « plus MIXTE ») : on ne DEVINE jamais un genre absent et on ne le
+ * replie JAMAIS en MIXTE d'office — le genre est désormais OBLIGATOIRE, tranché à l'import.
  *
  * La catégorie rendue est un libellé HUMAIN : le nom CANONIQUE du {@see CategoryCatalog} quand le
  * token y correspond (« Senior », « U18 »), sinon le token brut (« U8 » hors catalogue) ou le repère
@@ -31,7 +34,7 @@ final class TeamNameInterpreter
     public const string UNFILED = 'À classer';
 
     /**
-     * @return array{genre: 'M'|'F'|'MIXTE', categorie: string}
+     * @return array{genre: 'M'|'F'|null, categorie: string}
      */
     public function interpret(string $name): array
     {
@@ -43,7 +46,7 @@ final class TeamNameInterpreter
             $marker = isset($m[2]) ? strtoupper($m[2]) : null;
 
             return [
-                'genre' => 'M' === $marker ? 'M' : ('F' === $marker ? 'F' : 'MIXTE'),
+                'genre' => 'M' === $marker ? 'M' : ('F' === $marker ? 'F' : null),
                 'categorie' => $this->catalogNameFor($age) ?? $age,
             ];
         }
@@ -53,15 +56,15 @@ final class TeamNameInterpreter
             return ['genre' => $m[1], 'categorie' => $this->catalogNameFor('Senior') ?? 'Senior'];
         }
 
-        // Libellé senior / vétéran sans marqueur de genre → MIXTE.
+        // Libellé senior / vétéran sans marqueur de genre → genre NULL (plus MIXTE d'office).
         if (1 === preg_match('/^(s[ée]nior|v[ée]t[ée]ran)/ui', $this->fold($trimmed))) {
             $isVeteran = str_starts_with($this->fold($trimmed), 'veteran');
             $category = $isVeteran ? 'Vétéran' : 'Senior';
 
-            return ['genre' => 'MIXTE', 'categorie' => $this->catalogNameFor($category) ?? $category];
+            return ['genre' => null, 'categorie' => $this->catalogNameFor($category) ?? $category];
         }
 
-        return ['genre' => 'MIXTE', 'categorie' => self::UNFILED];
+        return ['genre' => null, 'categorie' => self::UNFILED];
     }
 
     /**

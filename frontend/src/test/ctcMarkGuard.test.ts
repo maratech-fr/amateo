@@ -48,6 +48,9 @@ const TEAM_LABEL = /teamLabel/;
 // Surfaces qui affichent un nom d'équipe comme ÉTIQUETTE autonome pour le gestionnaire — chacune DOIT
 // référencer CtcMark (le nom servi par le serveur reste la donnée ; le picto le PRÉCÈDE).
 const CTC_SURFACES = [
+  // Import IA — l'étape « Ententes (CTC) » montre, équipe par équipe, qui est en entente : le repère
+  // y vit comme partout ailleurs (le picto de LIEN `Link2` réservé aux mutualisations n'y a plus sa place).
+  "features/wizard/parcImport/ParcImportModal.tsx",
   // Wizard — saisie et récap du parc d'équipes.
   "features/wizard/steps/TeamsStep.tsx",
   "features/wizard/steps/PeriodTeams.tsx",

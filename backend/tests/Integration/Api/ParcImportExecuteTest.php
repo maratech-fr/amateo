@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -19,10 +20,12 @@ use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
+use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -74,6 +77,19 @@ final class ParcImportExecuteTest extends WebTestCase
     private Season $season;
 
     private string $token;
+
+    /**
+     * Un `corrections.tierId` de TYPE aberrant (jamais un id de rang valide) : chaque forme doit être
+     * refusée 422 AVANT persist, jamais repliée en silence sur la suggestion.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function aberrantTierIdProvider(): iterable
+    {
+        yield 'un flottant (5.5) n\'est pas un id de rang' => [5.5];
+        yield 'un entier négatif (-1) n\'est pas un id de rang' => [-1];
+        yield 'une chaîne non numérique (« abc ») n\'est pas un id de rang' => ['abc'];
+    }
 
     // ───────────────────────────── Gate (domaine sensible) ─────────────────────────────
 
@@ -187,6 +203,222 @@ final class ParcImportExecuteTest extends WebTestCase
         $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $team);
         self::assertSame(3, $team->getSessionsPerWeek(), 'l\'équipe créée porte le nombre de séances corrigé (3), jamais le défaut');
+    }
+
+    // ───────────────────────── PR2 (D9) — rang/genre/entente d'une équipe CRÉÉE (corrections) ─────────────────────────
+    // Refonte import IA PR2 : l'aperçu porte sur une ligne équipe « Créer » des SUGGESTIONS (rang,
+    // genre, entente) que le gestionnaire ajuste ; l'executor honore `corrections.{tierId, genre, ctc}`
+    // à la CRÉATION SEULEMENT. Le genre est OBLIGATOIRE (§0 point 1 AMENDÉ, « plus MIXTE ») : une
+    // création sans genre connu (ni dérivé, ni corrigé) refuse l'import. Abus : tierId/genre forgés →
+    // 422 AVANT persist. L'invariant « appariée = séances seules » interdit que ces corrections
+    // touchent une équipe appariée. Aperçu jumeau (suggestions servies) : {@see ParcImportAnalyzeTest}.
+
+    public function testACreatedTeamHonorsCorrectionsForTierGenderAndCtc(): void
+    {
+        // Ligne « Créer » : le gestionnaire force le rang A, CORRIGE le genre (de M dérivé vers F) et
+        // coche l'entente. L'équipe créée porte les TROIS. ROUGE aujourd'hui : l'executor fige le rang
+        // à 5 en dur, lit le genre DÉRIVÉ (M) et n'a pas d'entente. Rangs résolus PAR LABEL (jamais un
+        // id en dur).
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['tierId' => $this->tierIdForLabel('A'), 'genre' => 'F', 'ctc' => true]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'une création avec corrections rang/genre/entente s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertSame($this->tierIdForLabel('A'), $team->getPriorityTierId(), 'le rang corrigé (A) est appliqué, jamais le 5 en dur');
+        self::assertSame(Gender::F, $team->getGender(), 'le genre CORRIGÉ (F) l\'emporte sur le genre dérivé du nom (M)');
+        self::assertTrue($team->getIsCtc(), 'l\'entente cochée à la création naît true');
+    }
+
+    public function testACreatedTeamHonorsTheCtcPartnerAtCreation(): void
+    {
+        // Refonte PR2 (D9) — une équipe CRÉÉE en entente (ctc=true) naît avec le CLUB PARTENAIRE saisi
+        // (corrections.ctcPartner), tel qu'il voyage depuis le champ « club partenaire » de l'étape
+        // Ententes. VERROUILLE l'honneur du partenaire à la création (falsifiable : si l'executor
+        // oubliait corrections.ctcPartner, le partenaire resterait null → rouge). Jumeau front : « étape
+        // Ententes » ({@see ParcImportModal.test.tsx}) ; jumeau rang/genre/entente :
+        // testACreatedTeamHonorsCorrectionsForTierGenderAndCtc.
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'M', 'ctc' => true, 'ctcPartner' => 'Basket Club Partenaire']]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'une création en entente avec partenaire s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertTrue($team->getIsCtc(), 'l\'équipe créée est bien en entente');
+        self::assertSame('Basket Club Partenaire', $team->getCtcPartner(), 'le club partenaire saisi est honoré à la création');
+    }
+
+    public function testTheCtcPartnerIsIgnoredOnAnAppariedTeam(): void
+    {
+        // Invariant « appariée = séances seules » étendu au club partenaire : sur une équipe EXISTANTE
+        // (appariée), corrections.ctcPartner est IGNORÉ — l'import ne touche JAMAIS l'entente de
+        // l'existant (ni le drapeau ctc, ni le partenaire). Filet qui VERROUILLE l'invariant
+        // (falsifiable : s'il fuyait au branche appariée, le partenaire changerait → rouge). Jumeau de la
+        // CRÉATION : testACreatedTeamHonorsTheCtcPartnerAtCreation.
+        $this->seedPriorityTiers();
+        $existing = $this->makeTeam('SM1', sessionsPerWeek: 2); // ctcPartner null, hors entente
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['ctc' => true, 'ctcPartner' => 'Club Intrus', 'seances' => 3]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'un appariement avec corrections s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Team::class)->find($existing->getId());
+        self::assertInstanceOf(Team::class, $reloaded);
+        self::assertNull($reloaded->getCtcPartner(), 'appariée : le club partenaire ne bouge PAS (corrections.ctcPartner ignorée)');
+        self::assertFalse($reloaded->getIsCtc(), 'appariée : l\'entente ne bouge PAS (corrections.ctc ignorée)');
+        self::assertSame(3, $reloaded->getSessionsPerWeek(), 'SEULES les séances bougent sur une appariée');
+    }
+
+    public function testACreatedTeamWithoutAKnownGenderIsRefusedNamingTheLineWritingNothing(): void
+    {
+        // §0 point 1 AMENDÉ — genre OBLIGATOIRE. Une ligne « Créer » dont le nom ne porte AUCUN
+        // marqueur de genre (« Loisir Détente ») et qui n'a PAS de `corrections.genre` ne doit jamais
+        // créer une équipe sans genre en silence : 422 nommant la ligne équipe, RIEN écrit. ROUGE
+        // aujourd'hui : le dériveur replie en MIXTE et l'équipe naît (200).
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Loisir Détente']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true]]; // aucune corrections.genre
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'une création sans genre connu est refusée (genre obligatoire)');
+        self::assertStringContainsString('équipe', implode(' ', $body['errors'] ?? []), 'le 422 nomme la ligne équipe fautive');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : aucune équipe sans genre créée');
+    }
+
+    public function testCorrectionsTierGenderAndCtcAreIgnoredOnAnAppariedTeamOnlySessionsMove(): void
+    {
+        // Invariant « appariée = séances seules » : sur une équipe EXISTANTE (appariée), les corrections
+        // rang/genre/entente sont IGNORÉES — seules les séances bougent. Un `corrections` hostile/erroné
+        // ne doit JAMAIS re-rank, re-genrer ou mettre en entente une équipe déjà en base. Filet VERT
+        // qui VERROUILLE l'invariant (falsifiable : s'il fuyait au branche appariée, rang/genre/entente
+        // changeraient → rouge). Jumeau de la CRÉATION : testACreatedTeamHonorsCorrectionsForTierGenderAndCtc.
+        $this->seedPriorityTiers();
+        $existing = $this->makeTeam('SM1', sessionsPerWeek: 2); // rang 3, genre null, hors entente
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['tierId' => $this->tierIdForLabel('S'), 'genre' => 'F', 'ctc' => true, 'seances' => 4]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'un appariement avec corrections s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Team::class)->find($existing->getId());
+        self::assertInstanceOf(Team::class, $reloaded);
+        self::assertSame(3, $reloaded->getPriorityTierId(), 'appariée : le rang ne bouge PAS (corrections.tierId ignorée)');
+        self::assertNull($reloaded->getGender(), 'appariée : le genre ne bouge PAS (corrections.genre ignorée)');
+        self::assertFalse($reloaded->getIsCtc(), 'appariée : l\'entente ne bouge PAS (corrections.ctc ignorée)');
+        self::assertSame(4, $reloaded->getSessionsPerWeek(), 'SEULES les séances bougent sur une appariée');
+    }
+
+    public function testACreatedTeamWithAForgedTierIdIsRefusedBeforePersist(): void
+    {
+        // Abus — un `corrections.tierId` inconnu (forgé) ne doit jamais devenir un rang en base :
+        // 422 AVANT tout persist, rien écrit. ROUGE aujourd'hui : l'executor ne valide pas le tierId
+        // des corrections (rang figé à 5 en dur).
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['tierId' => 999999, 'genre' => 'M']]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un tierId forgé est refusé');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit avec un tierId forgé (tout-ou-rien)');
+    }
+
+    public function testACreatedTeamWithAGenderOutsideTheEnumIsRefusedBeforePersist(): void
+    {
+        // Abus — un `corrections.genre` hors enum (« Z ») ne doit jamais devenir un genre en base :
+        // 422 AVANT tout persist, rien écrit. ROUGE aujourd'hui : l'executor ignore corrections.genre
+        // (lit le genre dérivé) et ne valide rien.
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'Z']]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un genre hors enum est refusé');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit avec un genre forgé (tout-ou-rien)');
+    }
+
+    public function testACreatedTeamWithAnOverlongCtcPartnerIsRefusedNamingTheLineWritingNothing(): void
+    {
+        // Revue sécurité PR2 — le club partenaire d'une entente est un varchar(120) ({@see Team::$ctcPartner}).
+        // Un `corrections.ctcPartner` > 120 caractères ne doit jamais atteindre la colonne : 422 nommant la
+        // ligne équipe, RIEN écrit (tout-ou-rien). ROUGE aujourd'hui : l'executor pose le partenaire sans le
+        // borner ({@see ParcImportExecutor} branche création) → la base tronque/explose (PostgreSQL 22001,
+        // 500). Jumeau front (défense de surface, maxLength 120) : « étape Ententes » ({@see ParcImportModal.test.tsx}).
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'M', 'ctc' => true, 'ctcPartner' => str_repeat('é', 121)]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un club partenaire > 120 caractères est refusé (jamais un 500 de troncature)');
+        self::assertStringContainsString('équipe', implode(' ', $body['errors'] ?? []), 'le 422 nomme la ligne équipe fautive');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : aucune équipe créée avec un partenaire trop long');
+    }
+
+    #[DataProvider('aberrantTierIdProvider')]
+    public function testACreatedTeamWithAnAberrantTierIdTypeIsRefusedBeforePersist(mixed $tierId): void
+    {
+        // Abus — un `corrections.tierId` qui n'est PAS un id de rang entier non négatif (flottant,
+        // négatif, chaîne non numérique) ne doit jamais devenir un rang en base : 422 AVANT tout persist,
+        // rien écrit. ROUGE aujourd'hui pour le flottant et la chaîne : {@see ParcImportExecutor::createdTeamTierId}
+        // n'accepte que `int`/chaîne de chiffres et REPLIE SILENCIEUSEMENT toute autre forme sur la
+        // suggestion de rang (l'équipe naît avec un rang deviné, 200) — une valeur forgée doit être
+        // REJETÉE, pas devinée. Le genre est fourni pour isoler la cause (seul le tierId est fautif).
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['tierId' => $tierId, 'genre' => 'M']]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un tierId de type aberrant est refusé avant persist');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit avec un tierId aberrant (tout-ou-rien)');
     }
 
     // ───────────────────────── Bloc mutualisé : label = groupe (promesse « CEC ») ─────────────────────────
@@ -571,7 +803,9 @@ final class ParcImportExecuteTest extends WebTestCase
         $parc = $this->parcWithCases([
             ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Armond']],
         ]);
-        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'creer' => true]];
+        // PR2 — « Armond » ne porte aucun marqueur de genre : la création explicite exige un genre
+        // (obligatoire). On tranche MIXTE ; le test porte sur « Créer » explicite, pas sur le genre.
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'creer' => true, 'corrections' => ['genre' => 'MIXTE']]];
 
         [$status, $body] = $this->import($parc, $decisions);
         self::assertSame(200, $status, 'un ambigu avec « Créer » explicite s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
@@ -642,9 +876,12 @@ final class ParcImportExecuteTest extends WebTestCase
         $parc = $this->parcWithCases([
             ['gymnase' => '+Gymnase Piège', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['=SOMME(A1:A2)']],
         ]);
+        // PR2 — le nom neutralisé « SOMME(A1:A2) » ne porte aucun marqueur de genre : la création
+        // exige un genre (obligatoire). On tranche MIXTE à l'aperçu ; le test porte sur la NEUTRALISATION,
+        // pas sur le genre.
         $decisions = [
             ['section' => 'gymnases', 'index' => 0, 'coche' => true],
-            ['section' => 'equipes', 'index' => 0, 'coche' => true],
+            ['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'MIXTE']],
         ];
 
         [$status, $body] = $this->import($parc, $decisions);
@@ -848,9 +1085,17 @@ final class ParcImportExecuteTest extends WebTestCase
         $decisions = [];
         foreach ((array) ($analyze['sections'] ?? []) as $section => $lines) {
             foreach (\is_array($lines) ? $lines : [] as $i => $line) {
-                if (\is_array($line) && 'aCreer' === ($line['statut'] ?? null)) {
-                    $decisions[] = ['section' => $section, 'index' => $i, 'coche' => true];
+                if (!\is_array($line) || 'aCreer' !== ($line['statut'] ?? null)) {
+                    continue;
                 }
+                $decision = ['section' => $section, 'index' => $i, 'coche' => true];
+                // PR2 — le genre est OBLIGATOIRE à la création d'une équipe : on tranche l'aperçu comme
+                // le gestionnaire (le genre suggéré s'il y en a un, sinon MIXTE à défaut de motif clair).
+                if ('equipes' === $section) {
+                    $genre = \is_string($line['suggestedGender'] ?? null) ? $line['suggestedGender'] : 'MIXTE';
+                    $decision['corrections'] = ['genre' => $genre];
+                }
+                $decisions[] = $decision;
             }
         }
 
@@ -1011,5 +1256,30 @@ final class ParcImportExecuteTest extends WebTestCase
             random_int(0, 0xFFFF),
             random_int(0, 0xFFFF),
         );
+    }
+
+    /**
+     * Les 5 rangs de référence (mapping canonique label→id), idempotents : `priority_tier` est GLOBAL.
+     * Patron {@see FfbbExcelImporterTest::seedPriorityTiers}.
+     */
+    private function seedPriorityTiers(): void
+    {
+        foreach ([[1, 'S', 'Elite'], [2, 'A', 'Régional+'], [3, 'B', 'Régional'], [4, 'C', 'Départemental'], [5, 'D', 'Loisir']] as [$id, $label, $name]) {
+            if ($this->em->getRepository(PriorityTier::class)->find($id) instanceof PriorityTier) {
+                continue;
+            }
+            $tier = (new PriorityTier)->setId($id)->setLabel($label)->setName($name)
+                ->setColor('#000000')->setOrToolsWeight(1)->setDefaultMinSessions(1);
+            $this->em->persist($tier);
+        }
+        $this->em->flush();
+    }
+
+    private function tierIdForLabel(string $label): int
+    {
+        $tier = $this->em->getRepository(PriorityTier::class)->findOneBy(['label' => $label]);
+        self::assertInstanceOf(PriorityTier::class, $tier, \sprintf('le rang « %s » doit être seedé', $label));
+
+        return $tier->getId();
     }
 }

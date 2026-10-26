@@ -19,6 +19,14 @@
 > source — le serveur dérive désormais lui-même le reste depuis cette structure plus simple. Les
 > **coachs ne sont plus extraits** (D11, saisis à la main). Backend (dérivation, validateur, prompt,
 > PR1) **et** écran `ParcImportModal` (PR2, §7) sont désormais recalés sur `parc-v2`.
+>
+> **Refonte PR2 (D9, 2026-10-26) : une règle UNIQUE de création d'équipe.** `App\Service\
+> Basketball\TeamCreationSuggester` (§1) est désormais la maison unique du rang/genre/entente
+> suggérés à la création — partagée par les TROIS imports (parc IA ici, FBI Excel et API FFBB,
+> `specs/courantes/module-matchs-import-fbi.md`/`backend/docs/backend-controllers.md`). Le genre
+> est désormais **OBLIGATOIRE** à la création (plus de « MIXTE » d'office) : `TeamNameInterpreter`
+> ne rend plus qu'un genre lu sur un motif clair ou `null`, et une équipe « à créer » sans genre
+> connu (ni déduit ni corrigé) refuse l'import (422 nommant la ligne).
 
 ## 1. Format `parc-v2`
 
@@ -84,14 +92,38 @@ Pour chaque case :
 
 ### `TeamNameInterpreter` — genre et catégorie déduits du nom
 
-Service pur qui déduit, du seul nom d'une équipe lu dans une case, son **genre** (M/F/MIXTE) et sa
-**catégorie** d'âge : un token jeune FFBB `U<n>` suivi d'un marqueur de genre (`U18F3` → U18/F),
-sans marqueur (`U13` → U13/MIXTE) ; un préfixe senior gendré `SM`/`SF` (`SM2` → Senior/M) ; un
-libellé senior/vétéran sans marqueur de genre → MIXTE ; tout le reste (activité, section, nom de
-groupe) → **« À classer »**, MIXTE — un repère explicite à reclasser à la main, jamais une
-catégorie devinée qui mentirait sur l'âge ou le genre. La catégorie rendue est le nom canonique du
-catalogue club (`CategoryCatalog`) quand le token y correspond, sinon le token brut ou le repère
-« À classer ».
+Service pur qui déduit, du seul nom d'une équipe lu dans une case, son **genre** (`M`/`F`/`null`)
+et sa **catégorie** d'âge : un token jeune FFBB `U<n>` suivi d'un marqueur de genre (`U18F3` →
+U18/F), sans marqueur (`U13` → U13/`null`) ; un préfixe senior gendré `SM`/`SF` (`SM2` →
+Senior/M) ; un libellé senior/vétéran sans marqueur de genre → genre `null` ; tout le reste
+(activité, section, nom de groupe) → **« À classer »**, genre `null` — un repère explicite à
+reclasser à la main, jamais une catégorie devinée qui mentirait sur l'âge, ni un genre deviné
+(**refonte PR2, D9, « plus MIXTE d'office »** : le genre est désormais **OBLIGATOIRE** à la
+création, tranché par le gestionnaire quand le nom ne porte aucun motif clair — §1/§7). La
+catégorie rendue est le nom canonique du catalogue club (`CategoryCatalog`) quand le token y
+correspond, sinon le token brut ou le repère « À classer ».
+
+### `TeamCreationSuggester` — la règle UNIQUE de création d'équipe (D9)
+
+`App\Service\Basketball\TeamCreationSuggester` est la maison **unique** du rang/genre/entente
+suggérés à la création d'une équipe, partagée par les TROIS imports (parc IA ici — l'analyzer
+l'appelle pour CHAQUE ligne équipe quel que soit son statut d'appariement, pas seulement
+`aCreer` : le gestionnaire peut faire basculer n'importe quelle ligne sur « Créer » — ; FBI Excel ;
+API FFBB, détail `backend/docs/backend-controllers.md`/`module-matchs-import-fbi.md`) :
+
+- **rang** par catégorie + numéro — seniors n°1/2/3/4+ → S/A/B/C, jeunes (toute catégorie d'âge)
+  n°1/2/3+ → A/B/C, loisir → D, **sans numéro → C** (jamais le défaut D) ; le numéro est lu dans le
+  **nom** quand la colonne/donnée dédiée est absente (le groupe de chiffres qui suit le marqueur de
+  genre, « U18F3 » → 3) ; labels résolus en ids via le repository `PriorityTier` (jamais un id en
+  dur) ;
+- **genre** lu au nom sur un motif clair (`U13F1`/`SF2` → F, `U18M1`/`SM1` → M), `null` sinon —
+  **OBLIGATOIRE** à la création (ci-dessus) ;
+- **entente (CTC)** suggérée quand le libellé porte « CTC » ou « ENTENTE » (casse indifférente),
+  sans jamais rien décider.
+
+Suggestions servies sur chaque ligne équipe de l'analyse (`suggestedTierId`, `suggestedGender`,
+`suggestedCtc`) : elles pré-remplissent les contrôles de création de l'aperçu (§7) dès que le
+gestionnaire choisit « Créer », quelle que soit la ligne de départ.
 
 ### `TeamLabelMatcher` — correcteur de nommage, jamais filtre
 
@@ -254,7 +286,13 @@ cochées en écriture. Corps `{payload, decisions}` :
   `corrections` remplace des champs simples : `seances` pour une équipe (y compris une ligne
   **créée**, §7), `jour`/`debut`/`duree` pour un créneau, une mutualisation (PLUS `groupe` — le
   libellé du bloc, D8, §7) ou une réservation. Sur une équipe **appariée**, seul le nombre de
-  séances peut bouger (`corrections.seances`) — jamais le genre, la catégorie ou le niveau.
+  séances peut bouger (`corrections.seances`) — jamais le genre, la catégorie ou le niveau. Sur une
+  équipe **créée** (refonte PR2, D9), `corrections.{tierId, genre, ctc, ctcPartner}` remplace les
+  suggestions de `TeamCreationSuggester` (§1) : `tierId` inconnu ou de type aberrant (flottant,
+  négatif, chaîne non numérique) → 422 avant persist ; `genre` hors `Gender::cases()` → 422 ; le
+  genre est **OBLIGATOIRE** — ni corrigé ni déduit du nom → 422 nommant la ligne (jamais une équipe
+  créée sans genre, « plus MIXTE ») ; `ctcPartner` (≤ 120 caractères, au-delà → 422) n'est posé que
+  si `ctc` est cochée.
   `creer: true` (PR1 D5) signale une **création EXPLICITE** assumée par le gestionnaire sur une
   ligne équipe/gymnase **cochée sans `cibleId`** : il lève le refus d'ambiguïté ci-dessous. Une
   ligne équipe/gymnase cochée sans `cibleId` **ni** `creer` dont le libellé tombe dans le seuil
@@ -345,7 +383,7 @@ mercredi : avant l'import, le solve retombe sur le mercredi ; après, la réserv
 verrou HARD qui pose la séance le lundi malgré la préférence contraire. Bloquant — step `ci.yml`
 et ligne `docs/testing/blocking-tests.md`.
 
-## 7. L'écran — `ParcImportModal` (refonte PR1)
+## 7. L'écran — `ParcImportModal` (refonte PR1 + PR2)
 
 Bouton « Importer mon parc avec l'IA » (`WIZARD_TEXTS.importParcWithAi`), affiché au-dessus du
 formulaire d'ajout des étapes **Équipes** (`TeamsStep`/`TeamsEditor`) et **Gymnases**
@@ -356,11 +394,12 @@ deux entrées (prop `origin: "teams" | "venues"`, pas encore consommée pour var
 comportement) ; il reçoit les équipes/gymnases déjà saisis (`{id, name}`) pour nourrir le prompt
 et le ré-appariement (ci-dessous).
 
-C'est un **assistant à 6 étapes** (`StepRail`, `ParcImportModal.tsx:56-58`) : **Prompt · Coller ·
-Équipes · Gymnases · Mutualisations · Réservations** — « Ententes (CTC) » viendra après Équipes en
-PR2. Les 4 étapes de contenu (Équipes/Gymnases/Mutualisations/Réservations) restent verrouillées
-tant que l'analyse n'a pas réussi ; une analyse réussie ouvre et bascule sur Équipes. Les
-Réservations viennent volontairement **en dernier** (« plus on découpe, plus c'est simple » —
+C'est un **assistant à 7 étapes** (`StepRail`, `ParcImportModal.tsx:59-61`) : **Prompt · Coller ·
+Équipes · Ententes (CTC) · Gymnases · Mutualisations · Réservations** — « Ententes (CTC) » (refonte
+PR2, D9) vient juste après Équipes, car elle dépend des suggestions de `TeamCreationSuggester`
+(§1). Les 5 étapes de contenu (Équipes/Ententes/Gymnases/Mutualisations/Réservations) restent
+verrouillées tant que l'analyse n'a pas réussi ; une analyse réussie ouvre et bascule sur Équipes.
+Les Réservations viennent volontairement **en dernier** (« plus on découpe, plus c'est simple » —
 décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisations ont chacun leur
 étape dédiée avant d'arriver aux réservations individuelles.
 
@@ -388,19 +427,34 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    *sera* importé (`line.seances`, ce qui est lu dans le fichier) et reste corrigeable avant import
    — y compris sur une ligne « Créer » (la création utilise la valeur corrigée) ; une ligne
    **appariée** affiche en plus « actuellement N » (`line.seancesActuelles`) et ne pose
-   `corrections.seances` que si la valeur diffère de l'actuelle.
-4. **Gymnases (grille)** — sous les lignes de décision, `ParcCaseGrid` (géométrie partagée
+   `corrections.seances` que si la valeur diffère de l'actuelle. **Refonte PR2 (D9)** — sur une
+   ligne équipe passée à « Créer », une **2ᵉ rangée** porte un **Select Rang** et un **Select
+   Genre** (pré-remplis par `suggestedTierId`/`suggestedGender`, §1, édités en
+   `corrections.tierId`/`corrections.genre`, §6) : le genre est **OBLIGATOIRE**, l'option vide
+   porte « À choisir » et déclenche ⚠ « Genre requis » (`aria-invalid`, `border-warning`) — elle
+   compte dans le `disabledReason` d'« Importer » (comptée SÉPARÉMENT des lignes ambiguës) tant
+   qu'elle n'est pas tranchée. La case Entente (CTC) de cette même ligne a migré vers l'étape
+   dédiée (point 4) à la refonte PR2.
+4. **Ententes (CTC)** (refonte PR2, D9) — une ligne par équipe « à créer » (celles qui portent des
+   suggestions, `suggestedTierId` défini) : case Entente pré-cochée si `TeamCreationSuggester` la
+   suggère (libellé portant « CTC »/« ENTENTE ») → `corrections.ctc`, décochable ; cochée, un champ
+   « club partenaire » (texte libre, ≤ 120 caractères, §6) → `corrections.ctcPartner`, avec le
+   repère `CtcMark` devant le nom dès que la case est cochée. Les équipes **déjà au club**
+   (appariées/suggérées) s'affichent en **lecture seule** — l'import ne touche jamais l'entente
+   d'une équipe existante. Aucune équipe à créer → `EmptyHint`, étape jamais bloquante (pas de
+   décision en attente comptée).
+5. **Gymnases (grille)** — sous les lignes de décision, `ParcCaseGrid` (géométrie partagée
    `wizard/lib/weekGrid.ts`, patron `steps/VenueAvailabilityGrid.tsx` du wizard) rend, par gymnase,
    la grille de ses **ouvertures** (les créneaux dérivés des cases) : une case = une ouverture,
-   libellée par sa plage horaire ; cliquer ouvre l'éditeur de créneau (point 6).
-5. **Mutualisations** — étape dédiée : une ligne par mutualisation (picto lien + nom de groupe +
+   libellée par sa plage horaire ; cliquer ouvre l'éditeur de créneau (point 7).
+6. **Mutualisations** — étape dédiée : une ligne par mutualisation (picto lien + nom de groupe +
    équipes + sa position en clair « Lundi 18:00 · Gymnase X », raison ⚠ une seule fois si alerte) ;
    Garder/Ignorer (`SegmentedControl`, pas de case à cocher), un sélecteur de gymnase pour sa
    réservation de groupe (P4-363, → `venueId`), un champ pour le nom du groupe (D8, →
    `corrections.groupe`) et un accès à l'éditeur de créneau pour le jour/heure/durée. Vide →
    `EmptyHint`. Dans la grille des Réservations (point suivant), la case d'une mutualisation reste
    marquée (picto lien + groupe) et son clic mène à cette ligne.
-6. **Réservations (grille)** — `ParcCaseGrid` rend, par gymnase, les réservations individuelles ET
+7. **Réservations (grille)** — `ParcCaseGrid` rend, par gymnase, les réservations individuelles ET
    les cases mutualisées marquées ; une case en alerte porte ⚠ et la raison serveur dans son nom
    accessible (jamais la couleur seule). Cliquer une case ouvre un **éditeur de créneau imbriqué**
    (`Modal size="md"`, brouillon transactionnel, clé de case stable `case:${index}`) iso au patron
@@ -416,9 +470,10 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    porte « renseignez l'adresse ensuite ». Une correction (séances, créneau, gymnase, groupe) périme
    l'aperçu (bandeau « Vous avez modifié N lignes : les alertes affichées datent de l'analyse
    précédente », bouton « Revalider » qui reposte `{payload, decisions}` à `/parc-import/analyze`
-   pour rejouer l'analyse avec les corrections — §3) ; l'import reste possible SANS revalider, seul
-   un ambigu non tranché (ou aucune ligne cochée) bloque. Bouton « Importer N » en pied,
-   `disabledReason` découvrable (A11Y-30) qui chiffre les lignes ambiguës en attente.
+   pour rejouer l'analyse avec les corrections — §3) ; l'import reste possible SANS revalider —
+   bloquent seulement un ambigu non tranché, une création sans genre tranché (point 3, refonte
+   PR2), ou aucune ligne cochée. Bouton « Importer N » en pied, `disabledReason` découvrable
+   (A11Y-30) qui chiffre SÉPARÉMENT les lignes à trancher et les équipes sans genre.
 
 **Import + récap** — `useImportParc` poste `{payload, decisions}`, `payload` étant le parc
 **normalisé** renvoyé par l'analyse (`data.payload`, §3, D4) — jamais le texte brut re-décodé côté

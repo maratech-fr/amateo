@@ -318,9 +318,18 @@ final class ParcImportContext extends BaseContext
         if (200 === $analyze['status']) {
             foreach ((array) ($analyze['json']['sections'] ?? []) as $section => $lines) {
                 foreach (\is_array($lines) ? $lines : [] as $i => $line) {
-                    if (\is_array($line) && 'aCreer' === ($line['statut'] ?? null)) {
-                        $decisions[] = ['section' => $section, 'index' => $i, 'coche' => true];
+                    if (!\is_array($line) || 'aCreer' !== ($line['statut'] ?? null)) {
+                        continue;
                     }
+                    $decision = ['section' => $section, 'index' => $i, 'coche' => true];
+                    // Refonte import IA PR2 — le genre est OBLIGATOIRE à la création d'une équipe
+                    // (§0 point 1 AMENDÉ, « plus MIXTE »). Les équipes du parc jetable (« ZZQWXYBEHAT … »)
+                    // sont inertes (aucun marqueur de genre) : on tranche MIXTE comme le ferait le
+                    // gestionnaire au menu « Genre » de l'aperçu, sinon l'import refuserait (422).
+                    if ('equipes' === $section) {
+                        $decision['corrections'] = ['genre' => 'MIXTE'];
+                    }
+                    $decisions[] = $decision;
                 }
             }
         }

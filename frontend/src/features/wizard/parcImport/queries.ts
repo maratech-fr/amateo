@@ -55,6 +55,18 @@ export interface ParcAnalysisLine {
    * (une case à 2 équipes sur terrains séparés donne 2 réservations et décale tout le reste).
    */
   position?: { gymnase: string; jour: number; debut: string; duree: number; gymnaseId?: string | null };
+  /**
+   * Équipe (refonte PR2, D9) : les SUGGESTIONS de la règle FBI unique
+   * (`App\Service\Basketball\TeamCreationSuggester`), servies sur TOUTE ligne équipe quel que soit
+   * son statut (apparié / suggéré / ambigu / à créer) — le gestionnaire peut « Créer » depuis
+   * n'importe quel statut. Elles pré-remplissent les Select Rang + Genre de la ligne et la case
+   * Entente de l'étape « Ententes » dès que « Créer » est choisi sur cette ligne. `suggestedGender`
+   * vaut `null` quand aucun motif clair ne le donne (« plus MIXTE », jamais deviné) — le genre est
+   * alors à trancher (obligatoire).
+   */
+  suggestedTierId?: number;
+  suggestedGender?: "M" | "F" | null;
+  suggestedCtc?: boolean;
 }
 
 /** Le récap chiffré d'une section de l'aperçu. */

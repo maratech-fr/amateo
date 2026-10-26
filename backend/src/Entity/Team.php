@@ -20,6 +20,9 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\HasLifecycleCallbacks]
 class Team implements TenantOwnedInterface
 {
+    /** Longueur max du club partenaire d'entente (TEXTE LIBRE) — borne de la colonne ET de toute saisie. */
+    public const int CTC_PARTNER_MAX_LENGTH = 120;
+
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]
     private string $id;
@@ -88,11 +91,11 @@ class Team implements TenantOwnedInterface
     private bool $isCtc = false;
 
     /**
-     * Le ou les partenaires de l'entente, en TEXTE LIBRE (≤ 120). Jamais une référence vers un
-     * autre club/organisme : le serveur ne résout rien, c'est du texte opaque. null quand il n'y
-     * a pas d'entente (ou qu'aucun partenaire n'est encore nommé).
+     * Le ou les partenaires de l'entente, en TEXTE LIBRE (≤ CTC_PARTNER_MAX_LENGTH). Jamais une
+     * référence vers un autre club/organisme : le serveur ne résout rien, c'est du texte opaque.
+     * null quand il n'y a pas d'entente (ou qu'aucun partenaire n'est encore nommé).
      */
-    #[ORM\Column(type: 'string', length: 120, nullable: true)]
+    #[ORM\Column(type: 'string', length: self::CTC_PARTNER_MAX_LENGTH, nullable: true)]
     private ?string $ctcPartner = null;
 
     public function __construct()

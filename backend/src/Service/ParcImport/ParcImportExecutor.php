@@ -6,6 +6,7 @@ namespace App\Service\ParcImport;
 
 use App\Controller\GroupReservationController;
 use App\Entity\Club;
+use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -16,6 +17,7 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\Gender;
+use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\PlanEntitlements;
@@ -66,8 +68,6 @@ final class ParcImportExecutor
 
     private const string LABEL_RESERVATIONS = 'réservation';
 
-    private const int DEFAULT_PRIORITY_TIER_ID = 5;
-
     private const int DEFAULT_SESSIONS_PER_WEEK = 2;
 
     private const int DEFAULT_RESERVATION_DURATION = 90;
@@ -105,6 +105,9 @@ final class ParcImportExecutor
 
     private ?string $sportId = null;
 
+    /** @var array<int, true>|null rangs valides (PriorityTier), chargés une fois pour valider un corrections.tierId. */
+    private ?array $validTierIds = null;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly VenueAliasResolver $venueResolver,
@@ -116,6 +119,7 @@ final class ParcImportExecutor
         private readonly GroupReservationController $groupReservationWriter,
         private readonly ParcCaseDeriver $deriver,
         private readonly TeamLabelMatcher $matcher,
+        private readonly TeamCreationSuggester $suggester,
     ) {}
 
     /**
@@ -262,15 +266,27 @@ final class ParcImportExecutor
                 continue;
             }
 
+            // Refonte PR2 (D9) — une équipe CRÉÉE honore corrections.{tierId, genre, ctc, ctcPartner} ;
+            // les défauts viennent de la règle FBI unique ({@see TeamCreationSuggester}, plus de rang 5
+            // en dur). Le genre est OBLIGATOIRE : une création sans genre connu (ni dérivé ni corrigé)
+            // refuse l'import (422 nommant la ligne) ; un tierId/genre forgé → 422 — tout AVANT persist.
+            $corrections = $decision['corrections'];
+            $gender = $this->createdTeamGender($corrections, $entry, $i);
+            $tierId = $this->createdTeamTierId($corrections, $nom, $this->stringField($entry, 'categorie'), $i);
+            $isCtc = true === ($corrections['ctc'] ?? null);
+            $ctcPartner = $this->createdTeamCtcPartner($corrections, $isCtc, $i);
+
             $team = (new Team)
                 ->setClubId($club->getId())
                 ->setSeasonId($seasonId)
                 ->setSportCategoryId($this->categoryIdForCreatedTeam($entry, $club))
-                ->setPriorityTierId(self::DEFAULT_PRIORITY_TIER_ID)
+                ->setPriorityTierId($tierId)
                 ->setName($nom)
                 ->setSessionsPerWeek($this->sessionsOf($entry, $decision))
                 ->setIsActive(true)
-                ->setGender($this->genderOf($entry));
+                ->setGender($gender)
+                ->setIsCtc($isCtc)
+                ->setCtcPartner($ctcPartner);
             $this->entityManager->persist($team);
             $this->entityManager->flush();
             $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
@@ -922,6 +938,94 @@ final class ParcImportExecutor
         $genre = \is_array($entry) ? ($entry['genre'] ?? null) : null;
 
         return \is_string($genre) && null !== Gender::tryFrom($genre) ? Gender::from($genre) : null;
+    }
+
+    /**
+     * Le GENRE d'une équipe créée (refonte PR2) : `corrections.genre` s'il est fourni (hors enum → 422
+     * AVANT persist), sinon le genre DÉRIVÉ du nom. Le genre est OBLIGATOIRE : ni corrigé ni dérivé →
+     * refus 422 nommant la ligne équipe (jamais une équipe sans genre créée en silence — « plus MIXTE »).
+     *
+     * @param array<string, mixed> $corrections
+     */
+    private function createdTeamGender(array $corrections, mixed $entry, int $index): Gender
+    {
+        $raw = $corrections['genre'] ?? null;
+        if (\is_string($raw) && '' !== $raw) {
+            $gender = Gender::tryFrom($raw);
+            if (!$gender instanceof Gender) {
+                $this->fail('equipes', $index, \sprintf('genre inconnu (%s).', $raw));
+            }
+
+            return $gender;
+        }
+
+        $derived = $this->genderOf($entry);
+        if (!$derived instanceof Gender) {
+            $this->fail('equipes', $index, 'le genre est obligatoire pour créer une équipe — choisissez-le dans l\'aperçu.');
+        }
+
+        return $derived;
+    }
+
+    /**
+     * Le RANG d'une équipe créée (refonte PR2) : `corrections.tierId` s'il est fourni (inconnu, ou de
+     * type aberrant — flottant / négatif / chaîne non numérique → 422 AVANT persist), sinon la
+     * SUGGESTION de la règle FBI unique ({@see TeamCreationSuggester}) — plus aucun rang 5 en dur.
+     *
+     * @param array<string, mixed> $corrections
+     */
+    private function createdTeamTierId(array $corrections, string $name, string $category, int $index): int
+    {
+        $raw = $corrections['tierId'] ?? null;
+        // Absente → la règle FBI unique tranche (cas normal). FOURNIE mais pas un id de rang entier non
+        // négatif (flottant, négatif, chaîne non numérique) → 422 AVANT persist : une valeur forgée est
+        // REJETÉE, jamais repliée en silence sur une suggestion (l'équipe naîtrait avec un rang deviné).
+        if (null === $raw) {
+            return $this->suggester->suggest($name, $category, '')['tierId'];
+        }
+        if (!\is_int($raw) && (!\is_string($raw) || !ctype_digit($raw))) {
+            $this->fail('equipes', $index, 'le rang choisi n\'est pas valide.');
+        }
+        $tierId = (int) $raw;
+        if (!$this->tierExists($tierId)) {
+            $this->fail('equipes', $index, \sprintf('rang inconnu (%d).', $tierId));
+        }
+
+        return $tierId;
+    }
+
+    /**
+     * Le club partenaire d'une entente (CTC) d'une équipe CRÉÉE : `corrections.ctcPartner` (trim, non
+     * vide) quand l'entente est cochée, sinon null. Borné à {@see Team::CTC_PARTNER_MAX_LENGTH} comme
+     * la colonne — un partenaire plus long refuse l'import (422 nommant la ligne) AVANT persist, jamais
+     * une troncature serveur (PostgreSQL 22001 → 500).
+     *
+     * @param array<string, mixed> $corrections
+     */
+    private function createdTeamCtcPartner(array $corrections, bool $isCtc, int $index): ?string
+    {
+        $raw = $corrections['ctcPartner'] ?? null;
+        if (!$isCtc || !\is_string($raw) || '' === trim($raw)) {
+            return null;
+        }
+        $partner = trim($raw);
+        if (mb_strlen($partner) > Team::CTC_PARTNER_MAX_LENGTH) {
+            $this->fail('equipes', $index, \sprintf('le club partenaire de l\'entente dépasse %d caractères.', Team::CTC_PARTNER_MAX_LENGTH));
+        }
+
+        return $partner;
+    }
+
+    private function tierExists(int $id): bool
+    {
+        if (null === $this->validTierIds) {
+            $this->validTierIds = [];
+            foreach ($this->entityManager->getRepository(PriorityTier::class)->findAll() as $tier) {
+                $this->validTierIds[$tier->getId()] = true;
+            }
+        }
+
+        return isset($this->validTierIds[$id]);
     }
 
     private function parallelOf(mixed $slot): int
