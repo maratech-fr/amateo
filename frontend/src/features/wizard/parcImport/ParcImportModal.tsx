@@ -111,11 +111,12 @@ const MAX_SESSIONS = 7;
 const clampSessions = (n: number): number => (Number.isFinite(n) ? Math.min(MAX_SESSIONS, Math.max(MIN_SESSIONS, Math.round(n))) : DEFAULT_SESSIONS);
 
 /**
- * Lot correctif import IA « G2 » PR1 — la modale d'import du parc par IA est un ASSISTANT en 5 étapes
- * (StepRail : Prompt · Coller · Équipes · Gymnases · Réservations). Le gestionnaire (1) copie le
- * prompt, (2) colle la réponse de l'assistant et l'analyse, puis tranche l'aperçu par étape : (3) ses
- * équipes, (4) ses gymnases, (5) ses réservations (grille par gymnase). Les étapes 3-5 restent
- * VERROUILLÉES tant que l'analyse n'a pas réussi ; une analyse réussie ouvre et passe à « Équipes ».
+ * Lot correctif import IA « G2 » PR1 — la modale d'import du parc par IA est un ASSISTANT en 6 étapes
+ * (StepRail : Prompt · Coller · Équipes · Gymnases · Mutualisations · Réservations). Le gestionnaire
+ * (1) copie le prompt, (2) colle la réponse de l'assistant et l'analyse, puis tranche l'aperçu par
+ * étape : (3) ses équipes, (4) ses gymnases et leurs créneaux (grille par gymnase), (5) ses
+ * mutualisations, (6) ses réservations (grille par gymnase). Les étapes 3-6 restent VERROUILLÉES tant
+ * que l'analyse n'a pas réussi ; une analyse réussie ouvre et passe à « Équipes ».
  *
  * Le front n'invente AUCUNE règle : verdicts, raisons et libellés viennent du serveur, affichés
  * verbatim. Une ligne équipe/gymnase AMBIGUË (≥ 2 candidats) porte un sélecteur `Listbox` SANS
