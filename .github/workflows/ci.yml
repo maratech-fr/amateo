@@ -443,6 +443,16 @@ jobs:
       - name: ExportPdfDownloadIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ExportPdfDownloadIsolationTest.php --group phase1'
 
+      # Axes auth & memberships + tenant isolation (D3) — un cookie de session JWT mort ne bloque
+      # plus les pages publiques : sur une route PUBLIC_ACCESS du firewall `api`, le cookie BEARER et
+      # l'en-tête Authorization sont neutralisés AVANT le firewall (réponse byte-identique au cas sans
+      # jeton, même sous un jeton VALIDE — aucune identité résolue, aucun GUC tenant posé), et sur une
+      # route protégée un cookie mort est purgé au 401 (jamais sur un échec Bearer). Sans ce gate, un
+      # retrait du neutraliseur ou du purgeur rendrait « Se déconnecter » / l'inscription impossibles
+      # sur une session expirée, en silence, en passant tous les checks requis de `main`.
+      - name: PublicRouteStaleJwtTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PublicRouteStaleJwtTest.php --group phase1'
+
       # Axe auth & memberships — le seed BCCL de PROD pose des gestionnaires PRÉ-VÉRIFIÉS,
       # rattachés au bon club, avec des mots de passe pilotés par options (les mots de passe
       # dev du dépôt n'ouvrent pas les comptes prod), refuse sans credentials, create-only.

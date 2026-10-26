@@ -84,6 +84,20 @@ même route. Sans ce gate, un rendu PDF d'un autre club serait téléchargeable 
 rattachés au bon club [ARA0069036, jamais la démo], avec des mots de passe pilotés par options —
 les mots de passe DEV du dépôt n'ouvrent PAS les comptes prod — refuse sans credentials ou avec un
 mot de passe < 12, create-only [second run no-op]) ·
+`Security/PublicRouteStaleJwtTest` (axes *auth & memberships* + *tenant isolation*, D3 — un cookie
+de session JWT MORT ne bloque plus les pages publiques. Le firewall `api` [stateless, `jwt: ~`]
+authentifie dès qu'un jeton est PRÉSENT, même sur une route `PUBLIC_ACCESS` : un jeton pourri
+[expiré, signature invalide, compte supprimé] y 401-ait AVANT que `access_control` n'accorde l'accès
+public. Correctif en deux pièces, gardées ici : (a) sur une route publique du firewall `api`, cookie
+`BEARER` + en-tête `Authorization` sont neutralisés AVANT le firewall [réponse BYTE-IDENTIQUE au cas
+sans jeton, y compris sous un jeton VALIDE — aucune identité résolue, aucun GUC tenant posé, aucune
+session glissante ; une page À TOKEN garde son 404 anti-oracle] ; (b) sur une route PROTÉGÉE un
+cookie mort est PURGÉ au 401 aux attributs EXACTS de la pose [vide, expiré, path /api, httpOnly,
+SameSite strict], JAMAIS sur un échec Bearer [un script re-signe lui-même son jeton]. L'inscription
+suit le rail anonyme sous n'importe quel cookie, le firewall admin SA0 reste hors de portée.
+Falsifié des deux côtés : retirer le neutraliseur rougit le byte-identique + le GUC, retirer le
+purgeur rougit l'effacement. Sans ce gate, « Se déconnecter » / l'inscription redeviendraient
+impossibles sur une session expirée, en silence, en passant tous les checks requis de `main`) ·
 `Unit/NoMergeConflictMarkerTest` (aucun marqueur de conflit Git commité — dépôt entier, `git grep` sur les fichiers SUIVIS ; écrit après que trois marqueurs de `stash pop` ont atteint `main` dans un journal Markdown, invisibles au linter comme à la revue) ·
 `Security/TenantIsolationTest` (isolation club) ·
 `Security/FeedbackContextIsolationTest` (axe *tenant isolation*, Chantier F PR1 « contexte automatique
