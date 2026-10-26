@@ -42,8 +42,12 @@ test("splash de connexion : l'union mot + icône est centrée sur son encre (±4
   await expect(page.getByTestId("splash-icon"), 'le svg du splash doit porter data-testid="splash-icon"').toBeVisible();
 
   // Union des boîtes d'ENCRE visibles (mot + les 3 arcs), centrée dans le viewport (±4 px). On attend
-  // un état POSÉ (position de l'icône stable entre deux lectures à 90 ms) pour ne pas mesurer une
-  // image transitoire du glissé d'intro — sinon le poll redemande.
+  // un état POSÉ (position de l'icône stable entre deux lectures à 200 ms) pour ne pas mesurer une
+  // image transitoire — sinon le poll redemande. Deux sources de mouvement APRÈS le clic : le glissé
+  // d'intro (grand déplacement, bien au-delà du seuil) et, en respiration, le décalage UNIQUE du
+  // groupe quand la fonte « Poppins Signature » charge et que la largeur du mot mesurée au runtime
+  // (`wordW`) redéfinit `groupDx` → `translateX` de la scène. 200 ms laissent cette bascule se poser
+  // entre deux lectures ; la tolérance 1 px absorbe le sub-pixel du `scale`, sans toucher le ±4 px final.
   await expect
     .poll(
       async () =>
@@ -60,10 +64,10 @@ test("splash de connexion : l'union mot + icône est centrée sur son encre (±4
             return { left, right, anchor: svg.getBoundingClientRect().left };
           };
           const a = inkUnion();
-          await new Promise((resolve) => setTimeout(resolve, 90));
+          await new Promise((resolve) => setTimeout(resolve, 200));
           const b = inkUnion();
-          if (Math.abs(a.anchor - b.anchor) > 0.5) {
-            return null; // intro encore en mouvement → on redemande plutôt que mesurer un transitoire
+          if (Math.abs(a.anchor - b.anchor) > 1) {
+            return null; // scène encore en mouvement (glissé d'intro ou bascule wordW) → on redemande
           }
           return Math.round(Math.abs((b.left + b.right) / 2 - window.innerWidth / 2));
         }),
