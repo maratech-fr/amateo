@@ -1,23 +1,35 @@
 import { AlertTriangle } from "lucide-react";
 
+import { Button } from "@/shared/components/ui/button";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { dayLabelShort } from "@/shared/lib/days";
+import { assignLanes, type LaneCell } from "@/shared/lib/gridLayout";
+import { formatMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
-import { gridTemplateColumns, gridTemplateRows, START_MIN, STEP, WEEK } from "../lib/weekGrid";
+import { END_MIN, gridTemplateColumns, ROW_H, START_MIN, STEP, WEEK } from "../lib/weekGrid";
 import { PARC_IMPORT_TEXTS as T } from "./texts";
 
 /**
  * Lot correctif import IA « G2 » PR1 (micro-décisions 9-10) — l'étape « Réservations » de l'assistant
- * d'import rend UNE grille par gymnase (géométrie partagée `wizard/lib/weekGrid.ts`), empilées. Le
- * front n'invente aucune règle : les libellés et les RAISONS d'alerte sont des DONNÉES serveur,
- * affichées verbatim.
+ * d'import rend UNE grille par gymnase, empilées, au MÊME niveau que la grille du wizard
+ * (`steps/ReservationGrid.tsx`) : géométrie partagée `wizard/lib/weekGrid.ts`, gouttière d'heures via
+ * le foyer unique `formatMinutes` (`shared/lib/time.ts`), voies des cases qui se chevauchent via le
+ * foyer partagé `shared/lib/gridLayout.ts::assignLanes`. Le front n'invente aucune règle : les
+ * libellés et les RAISONS d'alerte sont des DONNÉES serveur, affichées verbatim.
  *
+ *  - PLAGE DYNAMIQUE : chaque grille ne couvre que les heures OCCUPÉES de son gymnase (plus de vide
+ *    pleine journée) ; repli sur la plage fixe 08–23 si le gymnase n'a aucune case ;
  *  - l'en-tête porte le nom du gymnase (donnée), suffixé « (à créer) » pour un gymnase pas encore
- *    existant (`gridVenueToCreate`) ;
+ *    existant (`gridVenueToCreate`) — le libellé de case ne RÉPÈTE donc pas ce nom ;
  *  - une CASE est un BOUTON (son nom accessible = le libellé) ; cliquer OUVRE l'éditeur de créneau
  *    pré-rempli (`onEditCase(index)`), la clé de case étant STABLE (`case:${index}`) ;
+ *  - deux cases qui se chevauchent le même jour prennent des VOIES côte à côte (left/width inline),
+ *    jamais superposées ;
  *  - une case EN ALERTE porte ⚠ ET la raison serveur dans son NOM ACCESSIBLE (`caseToVerify(raison)`),
- *    jamais la couleur seule (a11y) ; sa teinte d'alerte vit sur une surface opaque + anneau warning.
+ *    jamais la couleur seule (a11y) ; sa teinte d'alerte vit sur une surface opaque + anneau warning ;
+ *  - un BANDEAU récapitulatif (`NoticeBanner` warning) chiffre les cases à vérifier et offre un
+ *    bouton de saut par case en alerte (`goToLine` → `onEditCase(index)`).
  */
 export interface ParcCaseGridVenue {
   name: string;
@@ -38,9 +50,37 @@ export interface ParcCaseGridCase {
   alerte?: string | null;
 }
 
+interface CaseLaneCell extends LaneCell {
+  readonly case: ParcCaseGridCase;
+  readonly start: number;
+  readonly col: number;
+}
+
 function minutesOf(hhmm: string): number | null {
   const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
   return null === m ? null : Number(m[1]) * 60 + Number(m[2]);
+}
+
+function isInAlert(c: ParcCaseGridCase): boolean {
+  return "string" === typeof c.alerte && "" !== c.alerte;
+}
+
+/**
+ * Le libellé de case SANS le nom de son gymnase — il est déjà en en-tête (`reservationLabel` serveur
+ * = « équipe · gymnase heure »). On retire le nom puis on resserre les séparateurs orphelins ; si rien
+ * ne reste, on garde le libellé entier (ne jamais rendre une case muette).
+ */
+function withoutVenue(libelle: string, venueName: string): string {
+  if ("" === venueName) {
+    return libelle;
+  }
+  const stripped = libelle
+    .split(venueName)
+    .join("")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s·]+|[\s·]+$/g, "")
+    .trim();
+  return "" === stripped ? libelle : stripped;
 }
 
 export function ParcCaseGrid({
@@ -52,44 +92,100 @@ export function ParcCaseGrid({
   cases: ParcCaseGridCase[];
   onEditCase: (index: number) => void;
 }) {
+  const alertCases = cases.filter(isInAlert);
+
   return (
     <div className="flex flex-col gap-4">
+      {alertCases.length > 0 ? (
+        <NoticeBanner tone="warning" role="status" icon={<AlertTriangle className="size-4 text-warning" />} message={T.gridAlertSummary(alertCases.length)}>
+          <div className="flex flex-wrap gap-2">
+            {alertCases.map((c) => (
+              <Button key={`jump:${c.index}`} type="button" size="sm" variant="outline" onClick={() => onEditCase(c.index)} aria-label={`${T.goToLine} — ${withoutVenue(c.libelle, c.venueName)}`}>
+                {withoutVenue(c.libelle, c.venueName)}
+              </Button>
+            ))}
+          </div>
+        </NoticeBanner>
+      ) : null}
+
       {venues.map((venue) => {
         const venueCases = cases.filter((c) => c.venueName === venue.name);
+
+        // Voies des cases qui se chevauchent : assignLanes groupe par colonne (jour) et pose
+        // lane/laneCount sur chaque cellule (left/width côte à côte ci-dessous).
+        const laneCells: CaseLaneCell[] = [];
+        for (const c of venueCases) {
+          const col = WEEK.findIndex((d) => d.n === c.jour);
+          const start = minutesOf(c.debut);
+          if (col < 0 || null === start) {
+            continue;
+          }
+          laneCells.push({ case: c, start, col, gridColumn: col + 2 });
+        }
+        assignLanes(laneCells.map((cell) => ({ startMin: cell.start, endMin: cell.start + cell.case.duree, cell })));
+
+        // Plage verticale réduite à l'occupé (repli 08–23 si le gymnase n'a aucune case placée).
+        const starts = laneCells.map((cell) => cell.start);
+        const ends = laneCells.map((cell) => cell.start + cell.case.duree);
+        const gridStart = laneCells.length > 0 ? Math.floor(Math.min(...starts) / 60) * 60 : START_MIN;
+        const gridEnd = laneCells.length > 0 ? Math.ceil(Math.max(...ends) / 60) * 60 : END_MIN;
+        const gridRows = Array.from({ length: Math.max(1, (gridEnd - gridStart) / STEP) }, (_, i) => gridStart + i * STEP);
+        const gridTemplateRows = `1.5rem repeat(${gridRows.length}, ${ROW_H}px)`;
+
         return (
           <section key={venue.name} className="flex flex-col gap-2">
             <h4 className="text-sm font-semibold text-foreground">{venue.toCreate ? T.gridVenueToCreate(venue.name) : venue.name}</h4>
-            <div className="overflow-x-auto">
-              <div className="grid min-w-[36rem] gap-px" style={{ gridTemplateColumns, gridTemplateRows }}>
-                <div aria-hidden="true" />
-                {WEEK.map((d) => (
-                  <div key={d.n} className="text-center text-xs font-medium text-muted-foreground">
+            <div className="overflow-x-auto rounded-lg border border-border bg-card">
+              <div className="grid min-w-[36rem] text-xs" style={{ gridTemplateColumns, gridTemplateRows }}>
+                <div className="sticky left-0 top-0 z-40 border-b border-r border-border bg-card" style={{ gridColumn: 1, gridRow: 1 }} />
+                {WEEK.map((d, i) => (
+                  <div key={d.n} className="sticky top-0 z-30 border-b border-l border-border bg-card py-0.5 text-center font-medium text-muted-foreground" style={{ gridColumn: 2 + i, gridRow: 1 }}>
                     {dayLabelShort(d.n)}
                   </div>
                 ))}
-                {venueCases.map((c) => {
-                  const col = WEEK.findIndex((d) => d.n === c.jour);
-                  const start = minutesOf(c.debut);
-                  if (col < 0 || null === start) {
-                    return null;
-                  }
-                  const rowStart = Math.max(0, Math.round((start - START_MIN) / STEP)) + 2;
+
+                {/* Gouttière — libellé sur l'heure pleine, via le foyer unique `formatMinutes`. */}
+                {gridRows.map((m, i) => (
+                  <div key={`t${m}`} className="sticky left-0 z-20 border-r border-border bg-card pr-1 text-right text-[10px] text-muted-foreground" style={{ gridColumn: 1, gridRow: 2 + i }}>
+                    {0 === m % 60 ? formatMinutes(m) : ""}
+                  </div>
+                ))}
+
+                {/* Lignes de grille inertes. */}
+                {WEEK.map((d, di) =>
+                  gridRows.map((m, ri) => <div key={`g${d.n}-${m}`} className={cn("border-l border-t border-border/40", 0 === m % 60 ? "border-t-border/70" : "")} style={{ gridColumn: 2 + di, gridRow: 2 + ri }} aria-hidden="true" />),
+                )}
+
+                {/* Cases. */}
+                {laneCells.map((cell) => {
+                  const c = cell.case;
+                  const rowStart = Math.max(0, Math.round((cell.start - gridStart) / STEP)) + 2;
                   const span = Math.max(1, Math.round(c.duree / STEP));
-                  const inAlert = "string" === typeof c.alerte && "" !== c.alerte;
+                  const laneCount = cell.laneCount ?? 1;
+                  const lane = cell.lane ?? 0;
+                  const inAlert = isInAlert(c);
+                  const display = withoutVenue(c.libelle, c.venueName);
                   return (
                     <button
                       key={`case:${c.index}`}
                       type="button"
                       onClick={() => onEditCase(c.index)}
+                      title={display}
                       aria-label={inAlert ? T.caseToVerify(c.alerte as string) : undefined}
-                      style={{ gridColumn: col + 2, gridRow: `${rowStart} / span ${span}` }}
+                      style={{
+                        gridColumn: cell.col + 2,
+                        gridRow: `${rowStart} / span ${span}`,
+                        justifySelf: "start",
+                        width: `${100 / laneCount}%`,
+                        left: `${(lane * 100) / laneCount}%`,
+                      }}
                       className={cn(
-                        "flex min-h-0 flex-col items-start gap-0.5 overflow-hidden rounded border px-1 py-0.5 text-left text-xs",
+                        "relative z-10 m-px flex min-h-0 flex-col items-start gap-0.5 overflow-hidden rounded border px-1 py-0.5 text-left text-[10px] leading-tight",
                         inAlert ? "border-warning bg-surface-warning text-foreground ring-2 ring-warning" : "border-border bg-card text-foreground hover:bg-muted",
                       )}
                     >
-                      {inAlert ? <AlertTriangle aria-hidden className="size-3 text-warning" /> : null}
-                      <span className="truncate">{c.libelle}</span>
+                      {inAlert ? <AlertTriangle aria-hidden className="size-3 shrink-0 text-warning" /> : null}
+                      <span className="w-full whitespace-normal break-words font-medium text-foreground">{display}</span>
                     </button>
                   );
                 })}

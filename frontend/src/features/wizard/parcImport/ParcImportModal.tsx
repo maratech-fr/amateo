@@ -714,7 +714,9 @@ function DecisionRow({
     <li className="grid gap-x-4 gap-y-1 border-b border-border/60 py-2 md:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="flex flex-col gap-0.5">
         <span className="text-sm font-medium text-foreground">{line.libelle}</span>
-        {null === line.raison ? null : <span className="text-xs text-muted-foreground">{line.raison}</span>}
+        {/* Défaut C — la raison n'est rendue QU'UNE fois : la ligne ⚠ (ci-dessous) la porte dès qu'on
+            est « à trancher », sinon la ligne grise. Les deux ensemble la doublaient (capture 03-equipes). */}
+        {null === line.raison || pending ? null : <span className="text-xs text-muted-foreground">{line.raison}</span>}
         {pending ? (
           <span id={reasonId} className="flex items-center gap-1 text-xs text-foreground">
             <AlertTriangle aria-hidden className="size-3.5 text-warning" />

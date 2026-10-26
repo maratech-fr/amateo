@@ -701,8 +701,9 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(screen.queryByRole("heading", { name: "Gymnase Alpha" })).not.toBeInTheDocument();
 
     // L'éditeur s'amorce avec le jour / l'heure / la durée de `position` (jeudi 20:30 / 1h), jamais
-    // ceux de cases[0] (lundi 18:00 / 1h30).
-    await user.click(await screen.findByRole("button", { name: libelle }));
+    // ceux de cases[0] (lundi 18:00 / 1h30). La case ne RÉPÈTE plus le gymnase (déjà en en-tête,
+    // défaut A refondu) : son nom accessible est le libellé sans « Gymnase Beta ».
+    await user.click(await screen.findByRole("button", { name: "SM1 · 20:30" }));
     expect(screen.getByDisplayValue("20:30")).toBeInTheDocument();
     expect(screen.getByLabelText(T.editDay(libelle))).toHaveValue("4");
     expect(within(screen.getByRole("combobox", { name: "Durée" })).getByRole("option", { name: formatDuration(60) })).toBeInTheDocument();

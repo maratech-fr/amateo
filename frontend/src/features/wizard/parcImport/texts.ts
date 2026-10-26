@@ -138,6 +138,8 @@ export const PARC_IMPORT_TEXTS = {
   gridVenueToCreate: (name: string): string => `${name} (à créer)`,
   /** Nom accessible d'une case EN ALERTE : la raison serveur, jamais la couleur seule. */
   caseToVerify: (raison: string): string => `Créneau à vérifier : ${raison}`,
+  /** Bandeau récapitulatif en tête de la grille : combien de cases sont à vérifier avant l'import. */
+  gridAlertSummary: (n: number): string => `${n} créneau${n > 1 ? "x" : ""} à vérifier avant d'importer.`,
   gridGoTo: "Aller à :",
   editCaseTitle: "Corriger le créneau",
   editVenue: (libelle: string): string => `Gymnase du créneau — ${libelle}`,
