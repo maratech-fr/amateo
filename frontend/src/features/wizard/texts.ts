@@ -119,6 +119,11 @@ export const WIZARD_TEXTS = {
   communeCodeHelp: "Les salles proposées sont celles de cette commune — changez le code postal pour une salle voisine.",
   cpPlaceholder: "CP",
   addVenueButton: "Ajouter un gymnase",
+  // D10 — la ligne d'ajout de gymnase déborde à l'étroit avec le libellé long : on garde le NOM
+  // ACCESSIBLE complet (`addVenueButton`) mais on n'AFFICHE que « Ajouter » (`addVenueButtonShort`),
+  // le complément étant lu uniquement par le lecteur d'écran (`addVenueButtonSrSuffix`, sr-only).
+  addVenueButtonShort: "Ajouter",
+  addVenueButtonSrSuffix: " un gymnase",
   sallesAtLabel: (cp: string) => `Salles FFBB à ${cp}`,
   alreadyLinkedTag: "déjà lié ✓",
   nearbyVenuesTitle: (radiusKm: number | null) =>

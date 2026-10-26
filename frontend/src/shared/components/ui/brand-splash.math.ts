@@ -79,6 +79,9 @@ export interface SignatureLayout {
 /**
  * L'état géométrique pour un avancement de glissé `p` (0 = icône centrée → 1 = position logo) et
  * une émergence du mot `w` (0 = mot rentré dans le trait teal → 1 = mot sorti). Formules `glisse`.
+ * AUCUNE translation de groupe (D11, 2026-10-26) : le centrage du logo vient de la scène NON
+ * RÉTRÉCIE (`flexShrink: 0` côté composant), pas d'un décalage de groupe — l'hypothèse d'une encre
+ * décalée à droite était fausse (mesure Playwright réelle), sans correction le logo est centré au pixel.
  */
 export function signatureLayout(p: number, w: number): SignatureLayout {
   const iconX = SCENE_W / 2 + LOGO.dx * p;

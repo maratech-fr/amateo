@@ -173,6 +173,11 @@ export function BrandSplash({
           position: "relative",
           width: SCENE_W,
           height: SCENE_H,
+          // Item flex du conteneur `fixed inset-0 flex` : sans ça il rétrécit à la largeur du
+          // viewport alors que ses enfants sont posés en coordonnées 1920 → logo décalé à droite.
+          // C'est `flexShrink: 0`, en gardant la scène à 1920 AVANT le `scale`, qui centre le logo
+          // au pixel (plus de translation de groupe — D11, mesure Playwright réelle).
+          flexShrink: 0,
           transform: `scale(${fit})`,
           transformOrigin: "center center",
           opacity: logoOpacity,
@@ -205,6 +210,7 @@ export function BrandSplash({
         </div>
         {/* L'icône : 3 arcs pleins (aucune orbite), translatée + mise à l'échelle. */}
         <svg
+          data-testid="splash-icon"
           viewBox="0 0 1000 1000"
           width={ICON_BOX}
           height={ICON_BOX}

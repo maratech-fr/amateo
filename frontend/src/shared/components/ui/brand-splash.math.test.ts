@@ -119,3 +119,28 @@ describe("prefersReducedMotion", () => {
     expect(prefersReducedMotion()).toBe(false);
   });
 });
+
+describe("signatureLayout — aucune translation de groupe (D11, 2026-10-26)", () => {
+  // PROMESSE : le logo du splash est centré par la scène NON RÉTRÉCIE (flex-shrink: 0), PAS par une
+  // translation de groupe. `signatureLayout` ne renvoie donc AUCUN décalage de groupe (ni `groupDx`
+  // ni `groupDy`) : seule la paire scale(fit) centre la scène de 1920 dans le viewport.
+  //
+  // Pourquoi le contrat `groupDx ≈ −16` a été RETIRÉ : mesure Playwright RÉELLE (:5173, splash forcé
+  // via le store, après le correctif flex-shrink c69759fb0) du centre de l'union d'encre (boîtes du
+  // mot + des 3 `<circle>`, exactement la méthode de l'e2e) = 633 vs 640 à 1280 px, 953 vs 960 à
+  // 1920, 505 vs 512 à 1024 → décalage CONSTANT de −7 px = EXACTEMENT la translation `groupDx`
+  // (−14 unités × fit 0,5). SANS `groupDx`, le logo serait centré au pixel. L'ancienne estimation
+  // « encre décalée de ~16 unités à DROITE » était fausse (largeur d'encre des cercles mal estimée).
+  //
+  // FILET de ce retrait (règle « suppression = filet cité, vert avant ») : l'e2e de centrage RÉEL
+  // `tests/e2e/login-splash.spec.ts` (union mot + icône centrée sur son encre, ±4 px) + la mesure
+  // ci-dessus restent le juge du rendu — jsdom n'a aucun moteur de layout, il ne jugeait jamais le
+  // centrage lui-même, seulement le CÂBLAGE d'une translation qui n'a plus lieu d'être.
+  it("ne renvoie plus aucune translation horizontale de groupe (groupDx absent)", () => {
+    expect("groupDx" in signatureLayout(1, 1)).toBe(false);
+  });
+
+  it("ne renvoie aucune translation verticale de groupe non plus (groupDy absent)", () => {
+    expect("groupDy" in signatureLayout(1, 1)).toBe(false);
+  });
+});

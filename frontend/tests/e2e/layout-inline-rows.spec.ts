@@ -234,3 +234,65 @@ test("builder wizard (contraintes) : la ligne d'ajout est sur DEUX rangées, con
   expect(await row2.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   expect(await block.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
 });
+
+/**
+ * D10 — la ligne d'ajout d'un gymnase (étape 2 du wizard) ne déborde plus à l'étroit.
+ *
+ * ⚠ MÉCANISME RÉEL (vérifié par mesure, 2026-10-26) : le `Button` porte DÉJÀ `whitespace-nowrap`
+ * (`button.tsx:20`) ET `size="sm"` lui fixe une hauteur `h-9` (36 px). Le bouton ne peut donc NI
+ * passer sur plusieurs lignes (texte `nowrap`) NI grandir en hauteur (hauteur fixe) : « hauteur bbox »
+ * n'attrape RIEN ici. La régression est un DÉBORDEMENT HORIZONTAL de la rangée `flex items-end gap-2`
+ * (`VenuesStep.tsx:519`, SANS `flex-wrap`) : le libellé long « Ajouter un gymnase » rend le bouton
+ * incompressible à ~188 px (sous `white-space:nowrap`, son `min-width:auto` = la largeur PLEINE du
+ * texte), et à largeur réduite la rangée (CP 80 px + bouton 188 px + marges + champ nom) dépasse le
+ * formulaire. Le correctif — libellé visible court « Ajouter » (~97 px) + complément sr-only +
+ * `shrink-0` — fait rentrer la rangée. On MESURE donc le débordement horizontal, pas une hauteur.
+ *
+ * Largeur de reproduction : 320 px (bien en deçà du garde-fou 360 px — patron de reflow sr-only
+ * d'`OpponentsPage`) pour une marge franche de part et d'autre (rouge avant, vert après). jsdom ne
+ * calcule aucune mise en page : ce débordement ne se voit qu'en Playwright. Le jumeau jsdom
+ * (`VenuesStep.addButtonLabel.test.tsx`) prouve, lui, le libellé court + sr-only + nom accessible.
+ */
+test("étape Gymnases : la ligne « Ajouter » ne déborde pas à 320 px (reflow du libellé)", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const ara = uniqueAra("E2EV");
+  await registerAndVerify(page, { email: `venueadd-${ara}@e2e.fr`, ara, firstName: "Ven", lastName: "Add", clubName: "E2E Venue Add" });
+  await expect(page.getByRole("heading", { name: /Étape 1\/6/ })).toBeVisible({ timeout: 15_000 });
+
+  // Étape 1 — une équipe (sinon « Suivant » ne mène pas à l'étape 2), puis on avance.
+  await page.getByLabel("Nom de l'équipe").fill("SM1");
+  await page.getByLabel("Catégorie").selectOption({ label: "Senior" });
+  await page.getByRole("button", { name: "Ajouter l'équipe" }).click();
+  await expect(page.locator('input[value="SM1"]')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Suivant" }).click();
+
+  // Étape 2 — SANS gymnase, l'accordéon « Ajouter des gymnases » est ouvert par défaut : la ligne
+  // d'ajout (et son bouton) est rendue directement, sans clic.
+  await expect(page.getByRole("heading", { name: /Étape 2\/6/ })).toBeVisible();
+
+  // On RÉTRÉCIT à une largeur qui crée la pression : à 1280 px la ligne tient trivialement.
+  await page.setViewportSize({ width: 320, height: 800 });
+
+  const addButton = page.getByRole("button", { name: "Ajouter un gymnase" });
+  await expect(addButton).toBeVisible({ timeout: 15_000 });
+  // Témoin : le champ de nom (flex-1) est bien présent sur la ligne — sinon on ne mesurerait pas
+  // le vrai reflow, et le test serait vert par vacuité.
+  await expect(page.getByRole("textbox", { name: "Nom du gymnase" })).toBeVisible();
+
+  // La rangée d'ajout tient dans son formulaire SANS débordement horizontal à 320 px.
+  const form = addButton.locator("xpath=ancestor::form");
+  const overflow = await form.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+
+  // Second angle : le bouton ne dépasse pas le bord droit du CONTENU du formulaire (padding/bordure
+  // retirés) — le débordement du libellé long poussait son bord droit au-delà.
+  const buttonFits = await addButton.evaluate((btn) => {
+    const f = btn.closest("form");
+    if (null === f) return false;
+    const cs = getComputedStyle(f);
+    const rightInset = (parseFloat(cs.paddingRight) || 0) + (parseFloat(cs.borderRightWidth) || 0);
+    return btn.getBoundingClientRect().right <= f.getBoundingClientRect().right - rightInset + 1;
+  });
+  expect(buttonFits).toBe(true);
+});
