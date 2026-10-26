@@ -72,4 +72,24 @@ describe("BrandSplash — rendu", () => {
     expect(region).toHaveAttribute("aria-busy", "false");
     expect(region).toHaveStyle({ pointerEvents: "none" });
   });
+
+  // D11 — la scène applique une TRANSLATION DE GROUPE (`translateX(groupDx)`) en plus du `scale(fit)`
+  // au viewport, pour recentrer le logo sur son encre. jsdom ne mesure aucune mise en page (le
+  // centrage réel se prouve en Playwright, `tests/e2e/login-splash.spec.ts`) : ici on vérifie le
+  // CÂBLAGE — que la scène porte bien une `translateX`, en mouvement normal ET en mouvement réduit.
+  // Le conteneur de scène est le parent du mot (`splash-word`).
+  it("la scène translate le groupe (translateX) en plus du scale(fit) — câblage du recentrage", () => {
+    mockReducedMotion(false);
+    render(<BrandSplash phase="breathing" {...inertProps} />);
+    const scene = screen.getByTestId("splash-word").parentElement;
+    expect(scene?.style.transform).toContain("scale(");
+    expect(scene?.style.transform).toContain("translateX(");
+  });
+
+  it("reduced-motion : la correction de centrage (translateX) est appliquée aussi (FULL_LAYOUT)", () => {
+    mockReducedMotion(true);
+    render(<BrandSplash phase="breathing" {...inertProps} />);
+    const scene = screen.getByTestId("splash-word").parentElement;
+    expect(scene?.style.transform).toContain("translateX(");
+  });
 });

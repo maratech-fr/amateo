@@ -119,3 +119,33 @@ describe("prefersReducedMotion", () => {
     expect(prefersReducedMotion()).toBe(false);
   });
 });
+
+describe("signatureLayout — groupDx recentre l'ENCRE du logo (D11)", () => {
+  // PROMESSE : le logo de chargement est centré sur son ENCRE, pas sur la boîte nominale. La scène
+  // ajoute une translation de groupe `groupDx = p × (centre scène 960 − centre de la boîte d'ENCRE
+  // finale)` : encre de l'icône = rayon MAX des arcs (`r + w/2`, `LOGO_ARCS`) × ICON_BOX/1000 ×
+  // LOGO.scale autour d'`iconX` ; mot = [wordLeft, wordLeft + wordW]. Mesure réelle (Poppins
+  // Signature, 2026-10-26) : boîte d'encre ≈ [410, 1542] → centre ≈ 976 → décalée de ~16 unités à
+  // DROITE → groupDx ≈ −16. (L'hypothèse initiale « décalé à gauche » — calcul sur ICON_BOX — était
+  // fausse : c'est l'ENCRE qu'il faut centrer.) AUCUN groupDy : le décalage vertical du mot sous
+  // l'icône est le dessin du graphiste, conservé.
+
+  it("p=0 : aucune translation de groupe (l'intro reste intacte)", () => {
+    expect(signatureLayout(0, 0).groupDx).toBe(0);
+  });
+
+  it("à pleine ouverture, largeur de mot MESURÉE (837) : l'encre est recentrée (~−16, ±2)", () => {
+    const gd = signatureLayout(1, 1, 837).groupDx;
+    expect(Math.abs(gd - -16)).toBeLessThanOrEqual(2);
+  });
+
+  it("sans mesure de mot : repli constant documenté, un nombre FINI, jamais NaN (jsdom/SSR)", () => {
+    const gd = signatureLayout(1, 1).groupDx;
+    expect(Number.isNaN(gd)).toBe(false);
+    expect(Number.isFinite(gd)).toBe(true);
+  });
+
+  it("aucune translation VERTICALE de groupe (groupDy absent — dessin du graphiste conservé)", () => {
+    expect("groupDy" in signatureLayout(1, 1, 837)).toBe(false);
+  });
+});
