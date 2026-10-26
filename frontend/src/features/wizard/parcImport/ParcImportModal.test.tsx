@@ -2,53 +2,37 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formatDuration } from "@/shared/lib/duration";
+import { tierGroupLabel } from "@/shared/lib/teamTiers";
 import { renderWithProviders } from "@/test/utils";
 
 import { PARC_IMPORT_TEXTS } from "./texts";
 
 /**
- * Chantier G PR3 — PROMESSES de la modale d'import du parc (`ParcImportModal`). Elle consomme
- * l'APERÇU (dry-run) servi par `POST /api/clubs/{id}/parc-import/analyze` (PR1 #1252) et laisse le
- * gestionnaire trancher, ligne par ligne, avant l'import réel (PR2, écriture).
+ * PROMESSES de la modale d'import du parc (`ParcImportModal`) — ASSISTANT en 5 étapes (StepRail :
+ * Prompt · Coller · Équipes · Gymnases · Réservations, refonte « G2 » PR1). Elle consomme l'APERÇU
+ * (dry-run) servi par `POST /api/clubs/{id}/parc-import/analyze` et laisse le gestionnaire TRANCHER
+ * par étape avant l'import réel. Le front n'invente AUCUNE règle : verdicts, raisons et libellés
+ * viennent du serveur, affichés verbatim.
  *
- * Contrat servi (RECALÉ « G2 » sur parc-v2, mocké ICI au format EXACT de l'analyzer réel) :
- *   { format: "parc-v2",
- *     fiabilite: { taux, anomalies, bandeau },
- *     recap: { <section>: { total, apparie, suggere, aCreer, decoche, alerte } },
- *     sections: { <section>: [ { index, libelle, statut, coche, cibleId, raison, miseAJour?, groupe? } ] },
- *     alertes: [ { type, message } ] }
- *   sections = gymnases | equipes | creneaux | mutualisations | reservations — PLUS de section coachs (D11).
- *   statut ∈ apparie | suggere | aCreer | decoche | alerte ;
- *   coche = statut ∈ { apparie, suggere, aCreer } ; miseAJour = { champ:"seances", de, a } (équipes) ;
- *   groupe = libellé du bloc mutualisé (ex. « CEC »), sur les lignes de mutualisation.
- *   `libelle` et `raison` sont des DONNÉES serveur (affichées verbatim, jamais un littéral FR du front).
+ * Contrat servi (mocké ICI au format EXACT de l'analyzer réel) :
+ *   { format, fiabilite:{taux,anomalies,bandeau}, recap, alertes:[{type,message}],
+ *     sections:{ <section>:[ {index,libelle,statut,coche,cibleId,raison,miseAJour?,groupe?,gymnaseId?,candidats?} ] } }
+ *   sections = equipes | gymnases | creneaux | mutualisations | reservations (plus de coachs, D11) ;
+ *   statut ∈ apparie | suggere | aCreer | ambigu | decoche | alerte ; `libelle`/`raison` = DONNÉES serveur.
  *
- * Contrat du composant (défini ici, implémenté par NEO) :
- *   ParcImportModal({ origin: "teams" | "venues"; clubId; seasonId;
- *                     teams/venues: readonly {id,name}[]; club?: {name?,city?}; onClose })
- *   — le prompt n'utilise que les NOMS (+ le contexte club) ; les id servent au ré-appariement (D5).
- *   - Temps 1 — prompt : rend `buildParcPrompt({teams,venues,club?})` — PLUS de coachs (D11), le
- *     contexte club (nom/ville) est embarqué quand il existe — bouton PARC_IMPORT_TEXTS.copyPrompt
- *     (→ navigator.clipboard.writeText(prompt)).
- *   - Temps 2 — collage : zone de texte nommée PARC_IMPORT_TEXTS.pasteLabel + bouton
- *     PARC_IMPORT_TEXTS.analyze → useAnalyzeParc().mutate(texte, { onSuccess(analysis) }).
- *   - Temps 3 — aperçu : par section, chaque ligne = une case à cocher dont le NOM ACCESSIBLE est
- *     `libelle` et l'état coché est `coche` ; `raison` affichée pour decoche/alerte ; `miseAJour`
- *     affichée via PARC_IMPORT_TEXTS.sessionsUpdate(de,a) ; bandeau PARC_IMPORT_TEXTS.venuesCreatedWithoutAddress
- *     dès qu'un gymnase est `aCreer` ; bouton PARC_IMPORT_TEXTS.importAction(nbCoché) — grisé AVEC
- *     disabledReason PARC_IMPORT_TEXTS.nothingToImport quand rien n'est coché.
- *   - Temps 4 — import : au clic, useImportParc().mutate({ payload, decisions }, { onSuccess(result) }),
- *     contrat RÉEL de PR2 (#1253) : `payload` = le parc collé, `decisions` =
- *     `[{section, index, coche, cibleId?, corrections?}]` ; réponse `{recap:{<section>:{crees,apparies,misAJour,ignores}}}`.
- *   - Ré-appariement (D5 « SM1 → Senior 1 ▾ ») : pour les sections équipes / gymnases, une ligne
- *     apparie / suggere / aCreer porte un SÉLECTEUR (primitive riche TeamSelect / VenueSelect) listant
- *     les entités EXISTANTES de la section (par nom, valeur = id) + une option « Créer ». Choisir une
- *     entité envoie son `cibleId` dans la décision ; choisir « Créer » n'en envoie pas. Une CASE
- *     (ligne créneaux) porte EN PLUS un sélecteur de GYMNASE (D12) → `cibleId` du créneau ; une
- *     MUTUALISATION affiche et laisse corriger son `groupe` (D8) → `corrections.groupe`.
+ * Contrat du composant : `ParcImportModal({ origin:"teams"|"venues"; clubId; seasonId;
+ *   teams/venues: readonly {id,name}[]; club?; onClose })`. Une ligne équipe/gymnase porte UN
+ * sélecteur `Listbox` de décision (apparier à un candidat / créer / ignorer) ; les réservations et
+ * mutualisations vivent dans une GRILLE par gymnase (`ParcCaseGrid`), clic → éditeur de case.
  *
- * On mute la PROD (le vrai composant) : seules les deux hooks de données (`./queries`) sont des
+ * On mute la PROD (le vrai composant) : seuls les deux hooks de données (`./queries`) et, pour le
+ * groupement par rang (3d), les queries d'équipes du wizard (`@/features/wizard/queries`) sont des
  * doubles contrôlables ; `buildParcPrompt`/`PARC_IMPORT_TEXTS` sont les vrais modules de la PR.
+ *
+ * Deux describe : (1) l'assistant 5 étapes & lignes ambiguës ; (2) les promesses TRANSVERSES
+ * ré-exprimées sur la nouvelle UI après le retrait de l'ancien describe à cases (table promesse→test
+ * dans le rapport TANK) + les écarts au plan (contrats ROUGES 3a-3d, option A).
  */
 
 interface Line {
@@ -125,10 +109,6 @@ function analysisOf(
   };
 }
 
-function checkedCount(a: Analysis): number {
-  return Object.values(a.sections).reduce((n, lines) => n + lines.filter((l) => l.coche).length, 0);
-}
-
 /**
  * Le nom accessible du trigger `Listbox` = aria-label SUIVI de la valeur/placeholder (patron
  * `listbox.tsx`, `aria-labelledby=[labelId, valueId]`) : « Gymnase … — U11M1 + U11M2 Créer » au
@@ -162,6 +142,27 @@ vi.mock("./queries", () => ({
     error: q.importError.value,
     isError: null !== q.importError.value,
   }),
+}));
+
+// 3d — le groupe « Toutes les équipes du club » du sélecteur est rangé PAR RANG via `groupTeamsByTier`.
+// NEO lit les équipes COMPLÈTES (+ rangs) via les queries EXISTANTES du wizard (`useWizardTeams` /
+// `usePriorityTiers`) SANS changer les props d'ouverture de la modale (`teams: {id,name}[]`). On mute
+// donc ces deux hooks (rien d'autre dans l'arbre de la modale ne les importe). Fixtures via `vi.hoisted`
+// (la factory `vi.mock` est hoistée) : des équipes de rangs DIFFÉRENTS (S et D).
+const w = vi.hoisted(() => ({
+  tiers: [
+    { id: 1, label: "S", name: "Fanion" },
+    { id: 5, label: "D", name: "Départemental" },
+  ],
+  teams: [
+    { id: "wt1", name: "SM1", priorityTierId: 1, tierOrder: 0 },
+    { id: "wt2", name: "U13 Masculins", priorityTierId: 5, tierOrder: 0 },
+  ],
+}));
+
+vi.mock("@/features/wizard/queries", () => ({
+  useWizardTeams: () => ({ data: w.teams }),
+  usePriorityTiers: () => ({ data: w.tiers }),
 }));
 
 import { ParcImportModal } from "./ParcImportModal";
@@ -202,495 +203,6 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-/** Dépose un texte dans la zone de collage puis lance l'analyse (le double rend `analysis`). */
-async function paste(user: ReturnType<typeof userEvent.setup>, analysis: Analysis, rawText = '{"format":"parc-v2","cases":[]}'): Promise<void> {
-  q.analysis.value = analysis;
-  fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: rawText } });
-  await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
-}
-
-describe("ParcImportModal — aperçu de l'import du parc (chantier G PR3)", () => {
-  it("temps 1 — le prompt pré-rempli embarque le périmètre du club et se copie", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.copyPrompt }));
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const copied = writeText.mock.calls[0]?.[0] as string;
-    expect(copied).toContain("Séniors Garçons 1");
-    expect(copied).toContain("Gymnase Léon-Blum");
-  });
-
-  it("temps 2 — colle le JSON, lance l'analyse et affiche l'aperçu cochable", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-
-    expect(q.analyzeMutate).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("checkbox", { name: "Palais des Sports" })).toBeChecked();
-    // Le bouton d'import chiffre ce qui sera posé (une ligne cochée).
-    expect(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) })).toBeInTheDocument();
-  });
-
-  it("temps 3 — chaque ligne reflète son statut : apparié/suggéré/à créer cochés, décoché/alerte non cochés avec leur raison", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({
-      gymnases: [
-        mkLine(0, "Gymnase Léon-Blum", "apparie", { cibleId: "v1" }),
-        mkLine(1, "Mateo", "suggere", { cibleId: "v2" }),
-        mkLine(2, "Palais des Sports", "aCreer"),
-        mkLine(3, "Gymnase", "decoche", { raison: "Plusieurs correspondances possibles — appariement ambigu, à choisir à la main." }),
-      ],
-    });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-
-    expect(await screen.findByRole("checkbox", { name: "Gymnase Léon-Blum" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Mateo" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Palais des Sports" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Gymnase" })).not.toBeChecked();
-    // La raison (donnée serveur) est affichée telle quelle pour la ligne décochée.
-    expect(screen.getByText("Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.")).toBeInTheDocument();
-  });
-
-  it("gymnase « à créer » : un bandeau prévient qu'il naîtra sans adresse", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    // Avec un gymnase aCreer, le bandeau est là.
-    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
-    expect(await screen.findByText(PARC_IMPORT_TEXTS.venuesCreatedWithoutAddress)).toBeInTheDocument();
-  });
-
-  it("sans aucun gymnase à créer, pas de bandeau d'adresse", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysisOf({ gymnases: [mkLine(0, "Gymnase Léon-Blum", "apparie", { cibleId: "v1" })] }));
-    await screen.findByRole("checkbox", { name: "Gymnase Léon-Blum" });
-    expect(screen.queryByText(PARC_IMPORT_TEXTS.venuesCreatedWithoutAddress)).not.toBeInTheDocument();
-  });
-
-  it("une ligne décochée (appariement ambigu) nomme sa raison et reste cochable", async () => {
-    const user = userEvent.setup();
-    const raison = "Plusieurs correspondances possibles — appariement ambigu, à choisir à la main.";
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysisOf({ gymnases: [mkLine(0, "Gymnase", "decoche", { raison })] }));
-
-    const box = await screen.findByRole("checkbox", { name: "Gymnase" });
-    expect(box).not.toBeChecked();
-    expect(screen.getByText(raison)).toBeInTheDocument();
-    // « décochable » dans les deux sens : le gestionnaire peut la RÉ-INCLURE.
-    await user.click(box);
-    expect(box).toBeChecked();
-  });
-
-  it("équipe appariée avec un nombre de séances différent : la mise à jour est proposée, cochée, décochable", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({
-      equipes: [mkLine(0, "SM1", "apparie", { cibleId: "t1", miseAJour: { champ: "seances", de: 2, a: 3 } })],
-    });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-
-    const box = await screen.findByRole("checkbox", { name: "SM1" });
-    expect(box).toBeChecked();
-    expect(screen.getByText(PARC_IMPORT_TEXTS.sessionsUpdate(2, 3))).toBeInTheDocument();
-    // La mise à jour reste refusable sans toucher au reste de l'équipe : on la décoche.
-    await user.click(box);
-    expect(box).not.toBeChecked();
-  });
-
-  it("correction sur place d'un champ simple : l'heure d'un créneau est éditable dans l'aperçu", async () => {
-    // ⚠ Contrat PROVISOIRE côté interaction (la passe ui-ux-pro-max fige QUELS champs simples —
-    // jour/heure/durée/séances — sont éditables inline et avec quel contrôle). On garde ici le
-    // REPRÉSENTANT : l'heure de début d'un créneau, amorcée depuis le parc collé, est modifiable sur
-    // place. En parc-v2 le parc porte des CASES (plus de section `creneaux`) : le brouillon du créneau
-    // dérivé est amorcé depuis la case correspondante. Si la passe de design change la forme, NEO le
-    // signale à 💊 TANK.
-    const user = userEvent.setup();
-    // Le brouillon de créneau s'amorce depuis le payload NORMALISÉ de l'analyse (G2 D4), pas depuis le
-    // texte collé : le mock porte ce payload comme l'API, et le colle AUSSI en brut (JSON déjà valide ici).
-    const payload = {
-      format: "parc-v2",
-      gymnases: [{ nom: "Gymnase Léon-Blum" }],
-      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
-    };
-    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] }, { payload });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis, JSON.stringify(payload));
-
-    const startField = await screen.findByDisplayValue("18:00");
-    fireEvent.change(startField, { target: { value: "19:00" } });
-    expect(screen.getByDisplayValue("19:00")).toBeInTheDocument();
-  });
-
-  it("une structure complexe (mutualisation) en alerte se décoche et renvoie à la saisie manuelle — pas d'édition inline de sa composition", async () => {
-    const user = userEvent.setup();
-    const raison = "Les séances communes de cette mutualisation dépassent les séances hebdomadaires d'une des équipes — à ajuster à la main.";
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { raison })] }));
-
-    const box = await screen.findByRole("checkbox", { name: "U11M1 + U11M2" });
-    expect(box).not.toBeChecked();
-    expect(screen.getByText(raison)).toBeInTheDocument();
-    // Sa composition n'est pas corrigeable sur place : aucun champ amorcé sur l'ensemble d'équipes.
-    expect(screen.queryByDisplayValue("U11M1 + U11M2")).not.toBeInTheDocument();
-  });
-
-  it("deux équipes sur la même case non déclarées : la ligne alerte nomme les causes possibles", async () => {
-    const user = userEvent.setup();
-    const raison = "Deux équipes sur la même case sans mutualisation ni terrain divisé déclaré : mutualisation ? terrain divisé en deux ? erreur de lecture ? À trancher à la main.";
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysisOf({
-      reservations: [
-        mkLine(0, "U11M1 · Gymnase Léon-Blum 17:00", "alerte", { raison }),
-        mkLine(1, "U11M2 · Gymnase Léon-Blum 17:00", "alerte", { raison }),
-      ],
-    }));
-
-    const boxes = await screen.findAllByRole("checkbox", { name: /Gymnase Léon-Blum 17:00/ });
-    for (const box of boxes) {
-      expect(box).not.toBeChecked();
-    }
-    // La raison serveur nomme les trois pistes — on l'affiche verbatim.
-    expect(screen.getAllByText(raison).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("une réservation déjà présente (idempotence) est décochée avec sa raison", async () => {
-    const user = userEvent.setup();
-    const raison = "Réservation déjà présente dans le planning.";
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysisOf({ reservations: [mkLine(0, "SM1 · Gymnase Léon-Blum 18:00", "decoche", { raison })] }));
-
-    expect(await screen.findByRole("checkbox", { name: "SM1 · Gymnase Léon-Blum 18:00" })).not.toBeChecked();
-    expect(screen.getByText(raison)).toBeInTheDocument();
-  });
-
-  it("le bouton Importer est grisé AVEC une raison tant qu'aucune ligne n'est cochée", async () => {
-    const user = userEvent.setup();
-    // Un aperçu où tout est en alerte/décoché → rien de cochable par défaut.
-    const analysis = analysisOf({ gymnases: [mkLine(0, "Gymnase", "decoche", { raison: "ambigu" })] });
-    expect(checkedCount(analysis)).toBe(0);
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-    await screen.findByRole("checkbox", { name: "Gymnase" });
-
-    const importBtn = screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(0) });
-    // disabledReason → aria-disabled (focalisable) + raison découvrable (A11Y-30).
-    expect(importBtn).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText(PARC_IMPORT_TEXTS.nothingToImport)).toBeInTheDocument();
-  });
-
-  it("au clic Importer, l'import reçoit { payload, decisions } au format PR2 et le récap s'affiche", async () => {
-    const user = userEvent.setup();
-    q.importResult.value = { recap: { gymnases: { crees: 1, apparies: 0, misAJour: 0, ignores: 0 } } };
-    const parc = JSON.stringify({ format: "parc-v2", gymnases: [{ nom: "Palais des Sports" }], cases: [] });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }), parc);
-    await user.click(await screen.findByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
-
-    expect(q.importMutate).toHaveBeenCalledTimes(1);
-    const body = q.importMutate.mock.calls[0]?.[0] as { payload: unknown; decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
-    expect(body).toHaveProperty("payload");
-    expect(Array.isArray(body.decisions)).toBe(true);
-    const dec = body.decisions.find((d) => "gymnases" === d.section && 0 === d.index);
-    expect(dec?.coche).toBe(true);
-    // Le récap PR2 s'affiche (données serveur) — le libellé de section et le compte vivent dans le
-    // MÊME <li> (« Gymnases — 1 créé(s) … »), d'où le match par sous-chaîne.
-    expect(await screen.findByText(PARC_IMPORT_TEXTS.sectionRecap(1, 0, 0, 0), { exact: false })).toBeInTheDocument();
-  });
-
-  it("s'ouvre aussi bien depuis l'étape Équipes que depuis l'étape Gymnases", async () => {
-    // Le même composant, deux portes d'entrée (D13) : la zone de collage est présente des deux côtés.
-    const { unmount } = renderWithProviders(<ParcImportModal {...defaultProps} origin="teams" />);
-    expect(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel })).toBeInTheDocument();
-    unmount();
-
-    renderWithProviders(<ParcImportModal {...defaultProps} origin="venues" />);
-    expect(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel })).toBeInTheDocument();
-  });
-
-  // ─────────── Ré-appariement par sélecteur (D5 « SM1 → Senior 1 ▾ ») ───────────
-  // Le sélecteur porte un NOM ACCESSIBLE contextualisé incluant le libellé de la ligne (A11Y-28),
-  // d'où la recherche du trigger par le libellé. Primitive riche (TeamSelect/VenueSelect/Listbox) :
-  // trigger = bouton, panneau = listbox, choix = option (patron ConstraintStep/PeriodSteps).
-
-  it("ré-appariement — une ligne gymnase liste les gymnases existants + « Créer » ; choisir un gymnase envoie son cibleId", async () => {
-    const user = userEvent.setup();
-    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
-    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
-
-    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
-
-    await user.click(await screen.findByRole("button", { name: /Palais des Sports/ }));
-    const list = screen.getByRole("listbox");
-    expect(within(list).getByRole("option", { name: "Salle Mont Blanc" })).toBeInTheDocument();
-    expect(within(list).getByRole("option", { name: PARC_IMPORT_TEXTS.rematchCreate })).toBeInTheDocument();
-    await user.click(within(list).getByRole("option", { name: "Gymnase Léon-Blum" }));
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
-
-    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null }> };
-    const dec = body.decisions.find((d) => "gymnases" === d.section && 0 === d.index);
-    expect(dec?.cibleId).toBe("v1");
-  });
-
-  it("ré-appariement — revenir sur « Créer » efface le cibleId (choisir « Créer » n'en envoie pas)", async () => {
-    const user = userEvent.setup();
-    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
-    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
-    await paste(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
-
-    const open = async (): Promise<void> => void (await user.click(await screen.findByRole("button", { name: /Palais des Sports/ })));
-    await open();
-    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Gymnase Léon-Blum" }));
-    await open();
-    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: PARC_IMPORT_TEXTS.rematchCreate }));
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
-    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null }> };
-    const dec = body.decisions.find((d) => "gymnases" === d.section && 0 === d.index);
-    expect(dec?.cibleId ?? null).toBeNull();
-  });
-
-  it("ré-appariement : sélecteur pour équipes / gymnases, pas pour réservations ni mutualisations ; plus aucune UI coachs (D11)", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({
-      equipes: [mkLine(0, "SM1", "aCreer")],
-      gymnases: [mkLine(0, "Palais des Sports", "aCreer")],
-      reservations: [mkLine(0, "SM1 · Gymnase X 18:00", "alerte", { raison: "collision" })],
-      mutualisations: [mkLine(0, "A + B", "aCreer", { groupe: null })],
-    });
-    // Une section `coachs` héritée d'un vieil aperçu : le serveur n'en envoie plus (D11), l'écran ne
-    // doit JAMAIS la rendre — on l'injecte ici pour prouver qu'elle est ignorée en silence.
-    (analysis.sections as Record<string, Line[]>).coachs = [mkLine(0, "Coach Zed", "decoche", { raison: "section héritée" })];
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-
-    // Les deux sections d'entités portent leur sélecteur (trigger = bouton nommé par le libellé).
-    expect(await screen.findByRole("button", { name: /SM1/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Palais des Sports/ })).toBeInTheDocument();
-    // Aucune UI coachs : ni case à cocher, ni titre de section « Coachs ».
-    expect(screen.queryByRole("checkbox", { name: "Coach Zed" })).not.toBeInTheDocument();
-    expect(screen.queryByText(PARC_IMPORT_TEXTS.sectionTitle("coachs"))).not.toBeInTheDocument();
-    // Réservation et mutualisation ne portent AUCUN sélecteur de ré-appariement d'ENTITÉ (le
-    // sélecteur de GYMNASE de la mutualisation, P4-363, porte un autre nom — `venueForGroup` — et
-    // n'est pas un ré-appariement de l'entité elle-même ; testé plus bas).
-    expect(screen.queryByRole("button", { name: /Gymnase X 18:00/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: PARC_IMPORT_TEXTS.rematchLabel("A + B") })).not.toBeInTheDocument();
-  });
-
-  // ─────────── Lot correctif import IA « G2 » PR2 — nouvelles promesses d'aperçu ───────────
-
-  it("D12 — une case (ligne créneau) porte un sélecteur de gymnase ; corriger un gymnase mal lu part en cibleId du créneau", async () => {
-    // Le gestionnaire voit une case dont le gymnase a été mal lu ; il choisit le BON gymnase existant
-    // dans un sélecteur par case, et la correction part à l'import comme `cibleId` du créneau (le
-    // backend honore déjà un `cibleId` de gymnase sur la ligne créneaux, ParcImportExecutor:261-263).
-    const user = userEvent.setup();
-    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v9", name: "Palais des Sports" }] as const;
-    const parc = JSON.stringify({
-      format: "parc-v2",
-      gymnases: [{ nom: "Gymnaze Leon Blum" }],
-      cases: [{ gymnase: "Gymnaze Leon Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
-    });
-    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnaze Leon Blum · jour 2 18:00", "aCreer")] });
-    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
-
-    await paste(user, analysis, parc);
-
-    // Le sélecteur de gymnase de la case (trigger = bouton nommé par le libellé du créneau).
-    await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
-    const list = screen.getByRole("listbox");
-    await user.click(within(list).getByRole("option", { name: "Gymnase Léon-Blum" }));
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
-
-    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null }> };
-    const dec = body.decisions.find((d) => "creneaux" === d.section && 0 === d.index);
-    expect(dec?.cibleId).toBe("v1");
-  });
-
-  it("D8 — une mutualisation affiche son groupe dérivé « CEC » et le laisse corriger ; la correction part en corrections.groupe", async () => {
-    // ⚠ Contrat PROVISOIRE côté interaction (la passe ui-ux-pro-max fige le contrôle exact). Le groupe
-    // DÉRIVÉ par le serveur (donnée `groupe` de la ligne) est montré comme nom du bloc et corrigeable ;
-    // la valeur corrigée voyage dans `corrections.groupe` de la décision (le backend l'honore comme
-    // label du bloc, cf. ParcImportExecuteTest::testACorrectedGroupeOverridesTheBlockLabel).
-    const user = userEvent.setup();
-    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC" })] });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-
-    // Le groupe dérivé « CEC » est montré, amorcé dans un champ corrigeable.
-    const groupField = await screen.findByDisplayValue("CEC");
-    fireEvent.change(groupField, { target: { value: "Section Loisirs" } });
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
-
-    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
-    const dec = body.decisions.find((d) => "mutualisations" === d.section && 0 === d.index);
-    expect(dec?.corrections?.groupe).toBe("Section Loisirs");
-  });
-
-  it("D10 — un résultat peu fiable affiche un bandeau, sans jamais bloquer l'import", async () => {
-    // `fiabilite.bandeau` vrai → bandeau « résultat peu fiable » ; l'import reste POSSIBLE (jamais
-    // bloquant) : le bouton n'est grisé qu'à zéro coché, pas par la fiabilité.
-    const user = userEvent.setup();
-    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { fiabilite: { taux: 0.2, anomalies: 4, bandeau: true } });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-
-    expect(await screen.findByText(PARC_IMPORT_TEXTS.unreliableResult)).toBeInTheDocument();
-    // L'import n'est PAS bloqué par la fiabilité : une ligne cochée → bouton actif.
-    const importBtn = screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) });
-    expect(importBtn).not.toHaveAttribute("aria-disabled", "true");
-    expect(importBtn).toBeEnabled();
-  });
-
-  it("D10 — un résultat fiable n'affiche aucun bandeau de fiabilité", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { fiabilite: { taux: 1, anomalies: 0, bandeau: false } });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-    await screen.findByRole("checkbox", { name: "Palais des Sports" });
-
-    expect(screen.queryByText(PARC_IMPORT_TEXTS.unreliableResult)).not.toBeInTheDocument();
-  });
-
-  it("D9 — les alertes transverses sont affichées lisiblement (message serveur verbatim)", async () => {
-    // Les alertes du serveur (équipe à deux endroits, heure implausible, gymnase sans case) sont des
-    // DONNÉES affichées telles quelles — jamais un littéral FR du front.
-    const user = userEvent.setup();
-    const alertes = [
-      { type: "equipe_deux_endroits", message: "L'équipe « U11M1 » est placée dans deux gymnases au même moment — à trancher à la main." },
-      { type: "heure_implausible", message: "Un créneau commence à 06:00 (gymnase « Palais des Sports ») — horaire inhabituel à vérifier." },
-    ];
-    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { fiabilite: { taux: 1, anomalies: 2, bandeau: false }, alertes });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis);
-
-    for (const alerte of alertes) {
-      expect(await screen.findByText(alerte.message)).toBeInTheDocument();
-    }
-  });
-
-  it("D4 — un collage que seule la récupération serveur relit (guillemets typographiques) amorce les brouillons depuis le payload normalisé de l'analyse et l'import poste ce payload (jamais null)", async () => {
-    // Le défaut G2 D4 : le front re-parsait le TEXTE collé (`JSON.parse` brut) pour amorcer les
-    // brouillons et le payload d'import. Un collage à guillemets typographiques — que seule la passe
-    // de récupération du serveur sait relire — faisait échouer ce parse : aucun brouillon, et l'import
-    // postait `payload: null` (→ 422). Le front doit s'amorcer sur le payload NORMALISÉ que l'analyse
-    // renvoie, jamais re-parser le texte brut.
-    const user = userEvent.setup();
-    // Le payload normalisé que le serveur renvoie (relu par `ParcPayloadValidator::parse`, guillemets droits).
-    const payload = {
-      format: "parc-v2",
-      gymnases: [{ nom: "Gymnase Léon-Blum" }],
-      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
-    };
-    // Le collage RÉEL : des guillemets typographiques que `JSON.parse` brut REFUSE (seule la
-    // récupération serveur le relit) — le front ne doit PAS tenter de le re-parser.
-    const typographicPaste = "{\u201cformat\u201d:\u201cparc-v2\u201d,\u201ccases\u201d:[]}";
-    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] }, { payload });
-    q.importResult.value = { recap: {} };
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysis, typographicPaste);
-
-    // Brouillon de créneau présent : amorcé depuis payload.cases, PAS depuis le texte (illisible brut).
-    expect(await screen.findByDisplayValue("18:00")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
-
-    // L'import poste le payload NORMALISÉ, jamais null.
-    const body = q.importMutate.mock.calls[0]?.[0] as { payload: unknown };
-    expect(body.payload).not.toBeNull();
-    expect(body.payload).toEqual(payload);
-  });
-
-  it("le prompt copié embarque le contexte club (nom, ville) quand le club existe", async () => {
-    // Promise 6 — l'écran appelant passe le contexte club à `buildParcPrompt({teams,venues,club})` ;
-    // il aide l'assistant sur les noms, surtout en terrain vierge. `buildParcPrompt` est le VRAI module.
-    const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-
-    renderWithProviders(<ParcImportModal {...defaultProps} club={{ name: "Basket Club Réaliste", city: "Rillieux" }} />);
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.copyPrompt }));
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const copied = writeText.mock.calls[0]?.[0] as string;
-    expect(copied).toContain("Basket Club Réaliste");
-    expect(copied).toContain("Rillieux");
-  });
-
-  it("l'aide de collage recommande les assistants GPT, Gemini, Claude et Copilot", () => {
-    // Promise 6 — chatbots recommandés (dont Copilot) : contenu de la clé de texte centralisée.
-    for (const assistant of ["GPT", "Gemini", "Claude", "Copilot"]) {
-      expect(PARC_IMPORT_TEXTS.promptHelp).toContain(assistant);
-    }
-  });
-
-  // ─────────── P4-363 — sélecteur de gymnase sur une ligne de mutualisation ───────────
-
-  it("P4-363 — une ligne mutualisation porte un sélecteur de gymnase ; le gymnase choisi part en venueId, distinct du cibleId", async () => {
-    // Le gestionnaire choisit le gymnase de la réservation de groupe dans un `VenueSelect` nommé
-    // `venueForGroup(libelle)` ; son choix voyage en `venueId` de la décision — JAMAIS en `cibleId`
-    // (réservé au bloc apparié), ni en `corrections` (réservé au libellé du groupe).
-    const user = userEvent.setup();
-    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
-    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null })] });
-    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
-
-    await paste(user, analysis);
-
-    await user.click(await screen.findByRole("button", { name: venueForGroupTrigger("U11M1 + U11M2") }));
-    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Salle Mont Blanc" }));
-
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.importAction(1) }));
-
-    const body = q.importMutate.mock.calls[0]?.[0] as {
-      decisions: Array<{ section: string; index: number; cibleId?: string | null; venueId?: string | null; corrections?: Record<string, unknown> }>;
-    };
-    const dec = body.decisions.find((d) => "mutualisations" === d.section && 0 === d.index);
-    expect(dec?.venueId).toBe("v2");
-    expect(dec?.cibleId ?? null).toBeNull();
-    expect(dec?.corrections?.venueId).toBeUndefined();
-  });
-
-  it("P4-363 — pas de sélecteur de gymnase sur une mutualisation en alerte (non cochée)", async () => {
-    // Le sélecteur de gymnase ne s'affiche que sur une ligne COCHÉE (apparié/suggéré/à créer) ;
-    // une mutualisation en alerte se décoche et renvoie à la saisie manuelle — aucun sélecteur.
-    const user = userEvent.setup();
-    const raison = "Les séances communes de cette mutualisation dépassent les séances hebdomadaires d'une des équipes — à ajuster à la main.";
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await paste(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { raison })] }));
-
-    await screen.findByRole("checkbox", { name: "U11M1 + U11M2" });
-    expect(screen.queryByRole("button", { name: venueForGroupTrigger("U11M1 + U11M2") })).not.toBeInTheDocument();
-  });
-});
 
 /**
  * ─────────── Refonte de l'aperçu (lot correctif import IA « G2 » PR1, passe ui-ux-pro-max) ───────────
@@ -881,5 +393,294 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     const body = envelopeCall?.[0] as { payload: unknown; decisions: unknown };
     expect(body).toHaveProperty("payload");
     expect(Array.isArray(body.decisions)).toBe(true);
+  });
+
+  // Visite une étape de CONTENU du rail (déverrouillée après l'analyse) — bouton nommé par son titre.
+  const goToStep = async (user: ReturnType<typeof userEvent.setup>, section: "equipes" | "gymnases" | "reservations"): Promise<void> => {
+    await user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) }));
+  };
+
+  // ─────────── Promesses transverses ré-exprimées sur la nouvelle UI (retrait de l'ancien describe) ───────────
+
+  it("le prompt pré-rempli embarque le périmètre du club et se copie (étape Prompt)", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.copyPrompt }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const copied = writeText.mock.calls[0]?.[0] as string;
+    expect(copied).toContain("Séniors Garçons 1");
+    expect(copied).toContain("Gymnase Léon-Blum");
+  });
+
+  it("le prompt copié embarque le contexte club (nom, ville) quand le club existe", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    renderWithProviders(<ParcImportModal {...defaultProps} club={{ name: "Basket Club Réaliste", city: "Rillieux" }} />);
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.copyPrompt }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const copied = writeText.mock.calls[0]?.[0] as string;
+    expect(copied).toContain("Basket Club Réaliste");
+    expect(copied).toContain("Rillieux");
+  });
+
+  it("l'aide de collage recommande les assistants GPT, Gemini, Claude et Copilot", () => {
+    // Contenu de la CLÉ de texte centralisée (jamais une phrase recopiée).
+    for (const assistant of ["GPT", "Gemini", "Claude", "Copilot"]) {
+      expect(PARC_IMPORT_TEXTS.promptHelp).toContain(assistant);
+    }
+  });
+
+  it("s'ouvre aussi bien depuis Équipes que depuis Gymnases (deux portes, même assistant)", () => {
+    const { unmount } = renderWithProviders(<ParcImportModal {...defaultProps} origin="teams" />);
+    expect(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.copyPrompt })).toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<ParcImportModal {...defaultProps} origin="venues" />);
+    expect(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.copyPrompt })).toBeInTheDocument();
+  });
+
+  it("au clic Importer, l'import reçoit { payload, decisions } au format PR2 et le récap s'affiche", async () => {
+    const user = userEvent.setup();
+    q.importResult.value = { recap: { gymnases: { crees: 1, apparies: 0, misAJour: 0, ignores: 0 } } };
+    const payload = { format: "parc-v2", gymnases: [{ nom: "Palais des Sports" }], cases: [] };
+    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    expect(q.importMutate).toHaveBeenCalledTimes(1);
+    const body = q.importMutate.mock.calls[0]?.[0] as { payload: unknown; decisions: Array<{ section: string; index: number; coche: boolean }> };
+    expect(body).toHaveProperty("payload");
+    expect(Array.isArray(body.decisions)).toBe(true);
+    const dec = body.decisions.find((d) => "gymnases" === d.section && 0 === d.index);
+    expect(dec?.coche).toBe(true);
+    // Le récap PR2 (données serveur) s'affiche ; section + compte dans le MÊME <li> → match par sous-chaîne.
+    expect(await screen.findByText(PARC_IMPORT_TEXTS.sectionRecap(1, 0, 0, 0), { exact: false })).toBeInTheDocument();
+  });
+
+  it("D4 — un collage que seule la récupération serveur relit (guillemets typographiques) : l'import poste le payload NORMALISÉ de l'analyse (jamais null)", async () => {
+    const user = userEvent.setup();
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Léon-Blum" }],
+      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
+    };
+    q.importResult.value = { recap: {} };
+    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    // L'import poste le payload NORMALISÉ (que le serveur a relu), jamais le texte brut ni null.
+    const body = q.importMutate.mock.calls[0]?.[0] as { payload: unknown };
+    expect(body.payload).not.toBeNull();
+    expect(body.payload).toEqual(payload);
+  });
+
+  it("D12 + heure — l'éditeur de case s'amorce depuis le payload (18:00), corrige gymnase et heure → cibleId + corrections.debut du créneau", async () => {
+    const user = userEvent.setup();
+    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v9", name: "Palais des Sports" }] as const;
+    const libelle = "Gymnaze Leon Blum · jour 2 18:00";
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnaze Leon Blum" }],
+      cases: [{ gymnase: "Gymnaze Leon Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
+    };
+    const analysis = analysisOf({ creneaux: [mkLine(0, libelle, "aCreer")] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+
+    // La case du créneau est un BOUTON de la grille (nom accessible = le libellé) ; clic → éditeur.
+    await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
+    // Amorce depuis payload.cases : l'heure de début est déjà 18:00 (jamais re-parsée du texte brut).
+    expect(screen.getByDisplayValue("18:00")).toBeInTheDocument();
+
+    // Corriger le gymnase (sélecteur de case → cibleId du créneau, D12) et l'heure.
+    await user.click(screen.getByRole("button", { name: (n: string) => n.startsWith(T.editVenue(libelle)) }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Gymnase Léon-Blum" }));
+    fireEvent.change(screen.getByLabelText(T.editStart(libelle)), { target: { value: "19:00" } });
+    await user.click(screen.getByRole("button", { name: T.save as unknown as string }));
+
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null; corrections?: Record<string, unknown> }> };
+    const dec = body.decisions.find((d) => "creneaux" === d.section && 0 === d.index);
+    expect(dec?.cibleId).toBe("v1");
+    expect(dec?.corrections?.debut).toBe("19:00");
+  });
+
+  // ─────────── Promesses transverses MANQUANTES dans la refonte → contrats ROUGES (à ré-ajouter) ───────────
+
+  it("bandeau — un gymnase « à créer » prévient qu'il naîtra sans adresse (ROUGE : bandeau retiré à la refonte)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+    await goToStep(user, "gymnases");
+
+    expect(await screen.findByText(PARC_IMPORT_TEXTS.venuesCreatedWithoutAddress)).toBeInTheDocument();
+  });
+
+  it("D9 — les alertes transverses du serveur sont affichées verbatim (ROUGE : plus rendues à la refonte)", async () => {
+    const user = userEvent.setup();
+    const alertes = [
+      { type: "equipe_deux_endroits", message: "L'équipe « U11M1 » est placée dans deux gymnases au même moment — à trancher à la main." },
+      { type: "heure_implausible", message: "Un créneau commence à 06:00 (gymnase « Palais des Sports ») — horaire inhabituel à vérifier." },
+    ];
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    // Les alertes sont un résumé « points à vérifier » montré sur l'étape de contenu où l'on atterrit.
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SM1", "aCreer")] }, { alertes }));
+
+    for (const alerte of alertes) {
+      expect(await screen.findByText(alerte.message)).toBeInTheDocument();
+    }
+  });
+
+  it("D10 — un résultat peu fiable affiche un bandeau, sans jamais bloquer l'import (ROUGE : bandeau retiré à la refonte)", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { fiabilite: { taux: 0.2, anomalies: 4, bandeau: true } });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    expect(await screen.findByText(PARC_IMPORT_TEXTS.unreliableResult)).toBeInTheDocument();
+    // L'import n'est PAS bloqué par la fiabilité : une ligne cochée → bouton actif.
+    expect(screen.getByRole("button", { name: /Importer/ })).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  // ─────────── Écart au plan 3b — réservations & mutualisations en GRILLE, plus de case à cocher (ROUGE) ───────────
+
+  it("3b — l'étape Réservations ne porte AUCUNE case à cocher (la grille fait foi)", async () => {
+    const user = userEvent.setup();
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Léon-Blum" }],
+      cases: [
+        { gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: ["SM1"] },
+        { gymnase: "Gymnase Léon-Blum", jour: 3, debut: "17:00", duree: 90, equipes: ["U11M1", "U11M2"] },
+      ],
+    };
+    const analysis = analysisOf(
+      {
+        reservations: [mkLine(0, "SM1 · Gymnase Léon-Blum 18:00", "decoche", { raison: "Réservation déjà présente dans le planning." })],
+        mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { raison: "Les séances communes dépassent les séances hebdomadaires — à ajuster à la main." })],
+      },
+      { payload },
+    );
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+
+    // Décision fondateur : réservations ET mutualisations en GRILLE par gymnase, plus de case à cocher.
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    // La composition d'une mutualisation n'est pas corrigeable inline (pas de champ amorcé sur l'ensemble).
+    expect(screen.queryByDisplayValue("U11M1 + U11M2")).not.toBeInTheDocument();
+  });
+
+  it("3b/D8/P4-363 — une mutualisation s'édite dans l'éditeur de case : gymnase (→ venueId) + nom de groupe (→ corrections.groupe), jamais via une case à cocher", async () => {
+    const user = userEvent.setup();
+    const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
+    const libelle = "U11M1 + U11M2";
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Léon-Blum" }],
+      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 3, debut: "17:00", duree: 90, equipes: ["U11M1", "U11M2"], groupe: "CEC" }],
+    };
+    const analysis = analysisOf({ mutualisations: [mkLine(0, libelle, "aCreer", { groupe: "CEC", gymnaseId: null })] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+
+    // La mutualisation est une case de la grille (bouton nommé par son libellé) → clic → éditeur.
+    await user.click(await screen.findByRole("button", { name: /U11M1 \+ U11M2/ }));
+    // Dans l'éditeur : le sélecteur de gymnase de la réservation de groupe (P4-363) → venueId ≠ cibleId.
+    await user.click(screen.getByRole("button", { name: venueForGroupTrigger(libelle) }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Salle Mont Blanc" }));
+    // Et le nom de groupe (D8) → corrections.groupe.
+    fireEvent.change(screen.getByRole("textbox", { name: (n: string) => n.startsWith(T.groupLabel(libelle)) }), { target: { value: "Section Loisirs" } });
+    await user.click(screen.getByRole("button", { name: T.save as unknown as string }));
+
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null; venueId?: string | null; corrections?: Record<string, unknown> }> };
+    const dec = body.decisions.find((d) => "mutualisations" === d.section && 0 === d.index);
+    expect(dec?.venueId).toBe("v2");
+    expect(dec?.cibleId ?? null).toBeNull();
+    expect(dec?.corrections?.groupe).toBe("Section Loisirs");
+  });
+
+  // ─────────── Écart au plan 3a — signal de création EXPLICITE sur une ligne ambiguë (ROUGE) ───────────
+
+  it("3a — « Créer « … » » sur une ligne ambiguë envoie le signal de création explicite creer:true", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null; creer?: boolean }> };
+    const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
+    // Distinct du refus d'ambiguïté serveur : « Créer » explicite porte creer:true (coché, sans cibleId).
+    expect(dec?.creer).toBe(true);
+    expect(dec?.coche).toBe(true);
+    expect(dec?.cibleId ?? null).toBeNull();
+  });
+
+  // ─────────── Écart au plan 3c — l'éditeur de case réutilise le contrôle de durée partagé (ROUGE) ───────────
+
+  it("3c — la durée d'une case se choisit via le contrôle partagé DurationSelect (combobox « Durée »), le même que la modale de réservation du wizard — pas un champ nombre ad hoc", async () => {
+    const user = userEvent.setup();
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Léon-Blum" }],
+      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
+    };
+    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+    await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
+
+    // `slotFields.DurationSelect` : un combobox « Durée » dont les options sont formatées par
+    // `formatDuration` (« 1h30 ») + une option « Autre… » — jamais un `<input type="number">` ad hoc.
+    const durationControl = screen.getByRole("combobox", { name: "Durée" });
+    expect(within(durationControl).getByRole("option", { name: formatDuration(90) })).toBeInTheDocument();
+    expect(within(durationControl).getByRole("option", { name: "Autre…" })).toBeInTheDocument();
+  });
+
+  // ─────────── Écart au plan 3d — « Toutes les équipes du club » rangé PAR RANG (ROUGE) ───────────
+
+  it("3d — le groupe « Toutes les équipes du club » du sélecteur est rangé PAR RANG (groupTeamsByTier)", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkLine(0, "Nouvelle Équipe", "aCreer")] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("Nouvelle Équipe") }));
+
+    // Les équipes du club (lues via useWizardTeams + usePriorityTiers, mockées avec des rangs S et D)
+    // produisent un TITRE de groupe par rang, jamais une liste plate « Toutes les équipes du club ».
+    const list = screen.getByRole("listbox");
+    expect(within(list).getByText(tierGroupLabel(w.tiers[0]))).toBeInTheDocument();
+    expect(within(list).getByText(tierGroupLabel(w.tiers[1]))).toBeInTheDocument();
   });
 });

@@ -526,6 +526,87 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit avec une cible hors tenant');
     }
 
+    // ───────────────────────── Écart au plan (contrat NEO, 3a) — « Créer » explicite sur un ambigu ─────────────────────────
+    // L'aperçu refusait un libellé AMBIGU coché sans cible (doublon silencieux interdit). Il manque le
+    // geste symétrique : le gestionnaire ASSUME la création (« Créer « X » » dans le sélecteur). Signal
+    // de création EXPLICITE nommé `creer: true` (top-level de la décision, frère de `coche`/`cibleId`) :
+    // il lève le refus d'ambiguïté et crée l'entité. Pour les ÉQUIPES la garde d'ambiguïté existe déjà
+    // (→ ce test est ROUGE tant que NEO n'honore pas `creer`) ; pour les GYMNASES NEO doit AUSSI poser la
+    // garde (refus sans signal), sans quoi `creer` serait un no-op silencieux.
+
+    public function testACheckedTeamLineWithAnAmbiguousLabelAndAnExplicitCreateDecisionCreatesANewTeam(): void
+    {
+        // « Armond » est ambigu (seuil flou de « Armand » ET « Armund »). Décoché/sans cible il serait
+        // refusé (cf. testACheckedTeamLineWithAnAmbiguousLabelAndNoChoiceIsRefusedWritingNothing). Le
+        // gestionnaire a choisi « Créer « Armond » » → `creer: true` : l'équipe est CRÉÉE (3e équipe),
+        // jamais fondue dans un candidat, sans 422.
+        $this->makeTeam('Armand', sessionsPerWeek: 2);
+        $this->makeTeam('Armund', sessionsPerWeek: 2);
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['Armond']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'creer' => true]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'un ambigu avec « Créer » explicite s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame($teamsBefore + 1, $this->rowCount('team'), '« Créer » explicite crée la nouvelle équipe');
+        self::assertNotNull(
+            $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'Armond']),
+            'l\'équipe « Armond » naît telle quelle (jamais appariée à un candidat)',
+        );
+    }
+
+    public function testACheckedGymnaseLineWithAnAmbiguousLabelAndNoChoiceIsRefusedWritingNothing(): void
+    {
+        // Symétrie gymnase du refus d'ambiguïté : « Mateo » tombe dans le seuil flou de « Mateo Un » ET
+        // « Mateo Deux » (deux candidats) → coché SANS cible ni signal, il ne doit JAMAIS créer un
+        // doublon en silence (422, RIEN écrit). ROUGE aujourd'hui : l'executor n'a aucune garde
+        // d'ambiguïté côté gymnases, il crée « Mateo » en silence (NEO doit poser `labelIsVenueAmbiguous`).
+        $this->makeVenue('Mateo Un');
+        $this->makeVenue('Mateo Deux');
+        $this->scopeGucToClub($this->club->getId());
+        $venuesBefore = $this->rowCount('venue');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Mateo', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => []],
+        ]);
+        $decisions = [['section' => 'gymnases', 'index' => 0, 'coche' => true]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un gymnase ambigu coché sans choix est refusé');
+        self::assertNotEmpty($body['errors'] ?? [], 'le 422 nomme la ligne gymnase fautive');
+        self::assertSame($venuesBefore, $this->rowCount('venue'), 'rien écrit : aucun doublon « Mateo » créé');
+    }
+
+    public function testACheckedGymnaseLineWithAnAmbiguousLabelAndAnExplicitCreateDecisionCreatesANewVenue(): void
+    {
+        // L'échappatoire assumée côté gymnase : « Mateo » ambigu, mais le gestionnaire a choisi
+        // « Créer « Mateo » » → `creer: true` crée le gymnase, sans 422. Jumeau de falsification de
+        // testACheckedGymnaseLineWithAnAmbiguousLabelAndNoChoiceIsRefusedWritingNothing (sans la garde
+        // d'ambiguïté que NEO pose, ce test est vert vacuement ; il PINCE l'échappatoire une fois la
+        // garde en place — une garde trop zélée qui refuserait aussi `creer` le ferait ROUGIR).
+        $this->makeVenue('Mateo Un');
+        $this->makeVenue('Mateo Deux');
+        $this->scopeGucToClub($this->club->getId());
+        $venuesBefore = $this->rowCount('venue');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Mateo', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => []],
+        ]);
+        $decisions = [['section' => 'gymnases', 'index' => 0, 'coche' => true, 'creer' => true]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'un gymnase ambigu avec « Créer » explicite s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame($venuesBefore + 1, $this->rowCount('venue'), '« Créer » explicite crée le nouveau gymnase');
+        self::assertNotNull(
+            $this->em->getRepository(Venue::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'Mateo']),
+            'le gymnase « Mateo » naît tel quel (jamais apparié à un candidat)',
+        );
+    }
+
     // ───────────────────────── Abus — noms hostiles & bornes du contrôleur d'exécution ─────────────────────────
 
     public function testHostileFormulaNamesAreNeutralizedBeforeBeingWritten(): void
