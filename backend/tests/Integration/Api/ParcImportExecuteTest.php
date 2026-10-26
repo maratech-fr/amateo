@@ -25,6 +25,7 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -360,6 +361,64 @@ final class ParcImportExecuteTest extends WebTestCase
         [$status] = $this->import($parc, $decisions);
         self::assertSame(422, $status, 'un genre hors enum est refusé');
         self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit avec un genre forgé (tout-ou-rien)');
+    }
+
+    public function testACreatedTeamWithAnOverlongCtcPartnerIsRefusedNamingTheLineWritingNothing(): void
+    {
+        // Revue sécurité PR2 — le club partenaire d'une entente est un varchar(120) ({@see Team::$ctcPartner}).
+        // Un `corrections.ctcPartner` > 120 caractères ne doit jamais atteindre la colonne : 422 nommant la
+        // ligne équipe, RIEN écrit (tout-ou-rien). ROUGE aujourd'hui : l'executor pose le partenaire sans le
+        // borner ({@see ParcImportExecutor} branche création) → la base tronque/explose (PostgreSQL 22001,
+        // 500). Jumeau front (défense de surface, maxLength 120) : « étape Ententes » ({@see ParcImportModal.test.tsx}).
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'M', 'ctc' => true, 'ctcPartner' => str_repeat('é', 121)]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un club partenaire > 120 caractères est refusé (jamais un 500 de troncature)');
+        self::assertStringContainsString('équipe', implode(' ', $body['errors'] ?? []), 'le 422 nomme la ligne équipe fautive');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : aucune équipe créée avec un partenaire trop long');
+    }
+
+    /**
+     * Un `corrections.tierId` de TYPE aberrant (jamais un id de rang valide) : chaque forme doit être
+     * refusée 422 AVANT persist, jamais repliée en silence sur la suggestion.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function aberrantTierIdProvider(): iterable
+    {
+        yield 'un flottant (5.5) n\'est pas un id de rang' => [5.5];
+        yield 'un entier négatif (-1) n\'est pas un id de rang' => [-1];
+        yield 'une chaîne non numérique (« abc ») n\'est pas un id de rang' => ['abc'];
+    }
+
+    #[DataProvider('aberrantTierIdProvider')]
+    public function testACreatedTeamWithAnAberrantTierIdTypeIsRefusedBeforePersist(mixed $tierId): void
+    {
+        // Abus — un `corrections.tierId` qui n'est PAS un id de rang entier non négatif (flottant,
+        // négatif, chaîne non numérique) ne doit jamais devenir un rang en base : 422 AVANT tout persist,
+        // rien écrit. ROUGE aujourd'hui pour le flottant et la chaîne : {@see ParcImportExecutor::createdTeamTierId}
+        // n'accepte que `int`/chaîne de chiffres et REPLIE SILENCIEUSEMENT toute autre forme sur la
+        // suggestion de rang (l'équipe naît avec un rang deviné, 200) — une valeur forgée doit être
+        // REJETÉE, pas devinée. Le genre est fourni pour isoler la cause (seul le tierId est fautif).
+        $this->seedPriorityTiers();
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['tierId' => $tierId, 'genre' => 'M']]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'un tierId de type aberrant est refusé avant persist');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit avec un tierId aberrant (tout-ou-rien)');
     }
 
     // ───────────────────────── Bloc mutualisé : label = groupe (promesse « CEC ») ─────────────────────────

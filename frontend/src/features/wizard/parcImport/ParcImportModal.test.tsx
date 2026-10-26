@@ -1464,6 +1464,43 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
     expect(dec?.corrections?.ctc, "l'entente décochée part ctc:false").toBe(false);
   });
 
+  it("étape Ententes — une équipe en entente porte le pictogramme CtcMark (role img « Entente (CTC) … »), jamais une icône de LIEN (réservée aux mutualisations)", async () => {
+    // Revue fondateur 2026-10-26 (capture 03c-ententes) — l'étape posait un picto de LIEN (`Link2`)
+    // devant CHAQUE équipe. Décision : le repère d'entente est le CtcMark PARTAGÉ (poignée de main),
+    // posé partout où une entente est montrée ; l'icône de lien, réservée aux MUTUALISATIONS, disparaît
+    // de l'étape Ententes. On vérifie les DEUX moitiés de la promesse : le repère EST là (la primitive
+    // partagée `CtcMark` — role img dont le nom accessible est son propre contrat « Entente (CTC) … »,
+    // gardé par ctc-mark.test.tsx, pas un texte d'écran), et AUCUNE icône de lien ne subsiste.
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "U15F CTC", { suggestedGender: "F", suggestedCtc: true })] }));
+
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepEntentes as unknown as string) }));
+
+    // La case est pré-cochée (entente suggérée) : l'équipe est EN entente, donc son repère CtcMark est rendu.
+    expect(screen.getByRole("checkbox", { name: T.ententeFor("U15F CTC") })).toBeChecked();
+    // Le CtcMark (role img) est présent, nom accessible = le contrat de la primitive « Entente (CTC) … ».
+    const mark = screen.getByRole("img", { name: (n: string) => n.startsWith("Entente (CTC)") });
+    expect(mark, "une équipe en entente porte le repère CtcMark à l'étape Ententes").toBeInTheDocument();
+    // Et PLUS aucune icône de lien (`Link2` → svg.lucide-link-2) : elle est réservée aux mutualisations.
+    expect(container.querySelector("svg.lucide-link-2"), "le picto de LIEN ne doit plus apparaître à l'étape Ententes").toBeNull();
+  });
+
+  it("étape Ententes — le champ « club partenaire » borne la saisie à 120 caractères (colonne varchar(120) côté serveur)", async () => {
+    // Revue sécurité PR2 — la colonne `Team.ctcPartner` est un varchar(120) : au-delà, le serveur
+    // 500 (PostgreSQL 22001). Le champ de saisie borne donc l'entrée à 120 (maxLength), en défense de
+    // surface — le jumeau serveur (`ParcImportExecuteTest`) refuse proprement une saisie forgée > 120.
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "U15F CTC", { suggestedGender: "F", suggestedCtc: true })] }));
+
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepEntentes as unknown as string) }));
+
+    // Le champ partenaire (visible dès que l'entente est cochée) borne à 120 caractères.
+    const partner = screen.getByRole("textbox", { name: T.ententePartnerFor("U15F CTC") });
+    expect(partner).toHaveAttribute("maxlength", "120");
+  });
+
   it("genre obligatoire aussi sur une ligne AMBIGUË : « Créer « … » » montre Select Rang + Genre (suggestions servies sur TOUTE ligne), genre vide bloque, genre choisi → corrections.{tierId,genre} + creer:true", async () => {
     // NEO signale le trou : les suggestions n'étaient servies QUE sur une ligne « aCreer », donc
     // choisir « Créer » sur une ligne AMBIGUË n'ouvrait aucun Select Genre → l'executor refusait à
