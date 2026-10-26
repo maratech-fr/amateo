@@ -18,7 +18,7 @@ import { formatMinutes } from "@/shared/lib/time";
 
 import { usePriorityTiers, useWizardTeams } from "@/features/wizard/queries";
 
-import { DurationSelect } from "../steps/slotFields";
+import { DurationSelect, SlotEndField } from "../steps/slotFields";
 import { ParcCaseGrid, type ParcCaseGridCase, type ParcCaseGridVenue } from "./ParcCaseGrid";
 import { buildParcPrompt } from "./promptTemplate";
 import {
@@ -67,6 +67,18 @@ const CASE_SECTION_SET = new Set<string>(CASE_SECTIONS);
 /** Sentinelles de décision du sélecteur de ligne (valeurs du `Listbox`, jamais un id réel). */
 const CREATE = "__create__";
 const IGNORE = "__ignore__";
+/**
+ * Finitions — valeur du sélecteur de gymnase d'une case quand le gymnase est ENCORE À CRÉER (option
+ * « <nom> (à créer) ») : elle affiche le nom lu, mais ne porte AUCUN id. L'import la résout comme un
+ * `venueId`/`cibleId` VIDE (l'executor rattache alors par le NOM de la case — aucun contrat serveur
+ * nouveau), exactement comme l'absence de choix.
+ */
+const VENUE_TO_CREATE = "__venue_to_create__";
+const resolveVenueId = (chosen: string | undefined): string | undefined =>
+  undefined !== chosen && "" !== chosen && VENUE_TO_CREATE !== chosen ? chosen : undefined;
+
+/** Id STABLE du déclencheur du sélecteur de décision d'une ligne (pour le focus « Voir », finition 4). */
+const decisionTriggerId = (section: string, index: number): string => `parc-decision-${section}-${index}`;
 
 interface SlotDraft {
   jour: number;
@@ -152,13 +164,24 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [result, setResult] = useState<ParcImportResult | null>(null);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // Finition 4 — « Voir » vise une ligne à trancher : on mémorise SON sélecteur (ref, pas d'état — pas
+  // de setState dans l'effet) pour le focaliser à la place de l'en-tête une fois la ligne rendue.
+  const pendingFocusRef = useRef<{ section: string; index: number } | null>(null);
 
   const analyzing = analyze.isPending;
   const importing = importMut.isPending;
   const isRecap = null !== result;
 
-  // Focus l'en-tête d'étape au changement d'étape (jamais de vol ailleurs).
+  // Focus au changement d'étape : le sélecteur de la ligne visée par « Voir » (finition 4) s'il y en a
+  // un en attente, sinon l'en-tête d'étape (jamais de vol ailleurs). Le `ref` se désarme ici (pas de
+  // setState dans un effet).
   useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (null !== pending) {
+      pendingFocusRef.current = null;
+      document.getElementById(decisionTriggerId(pending.section, pending.index))?.focus();
+      return;
+    }
     headingRef.current?.focus();
   }, [step, isRecap]);
 
@@ -212,11 +235,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
                 debut: "string" === typeof slot?.debut ? slot.debut : "",
                 duree: "number" === typeof slot?.duree ? slot.duree : 0,
               };
+          // Gymnase pré-rempli de la case (finitions 2a/3a) : l'id résolu par le serveur s'il existe,
+          // sinon la sentinelle « à créer » (affiche le nom lu, reste un venueId VIDE à l'import).
+          const slotGym = "string" === typeof slot?.gymnase ? slot.gymnase : "";
+          const posGym = pos ? pos.gymnase : "";
           if ("creneaux" === section) {
-            nextCaseVenue[key] = line.cibleId ?? "";
+            nextCaseVenue[key] = line.cibleId ?? ("" !== slotGym ? VENUE_TO_CREATE : "");
           } else if ("mutualisations" === section) {
-            nextCaseVenue[key] = line.gymnaseId ?? "";
+            nextCaseVenue[key] = line.gymnaseId ?? ("" !== posGym ? VENUE_TO_CREATE : "");
             nextGroupDrafts[key] = line.groupe ?? "";
+          } else {
+            // Réservations : même amorce « gymnase de la case » que les autres sections de cases.
+            nextCaseVenue[key] = line.gymnaseId ?? ("" !== posGym ? VENUE_TO_CREATE : "");
           }
         }
       }
@@ -267,22 +297,20 @@ export function ParcImportModal(props: ParcImportModalProps) {
           }
         } else if ("mutualisations" === section) {
           const groupe = (groupDrafts[key] ?? "").trim();
-          const chosenVenue = caseVenue[key];
           out.push({
             section,
             index: line.index,
             coche: checked[key] ?? line.coche,
-            venueId: undefined !== chosenVenue && "" !== chosenVenue ? chosenVenue : undefined,
+            venueId: resolveVenueId(caseVenue[key]),
             corrections: "" !== groupe ? { groupe } : undefined,
           });
         } else if (CASE_SECTION_SET.has(section)) {
           const draft = slotDrafts[key];
-          const chosen = caseVenue[key];
           out.push({
             section,
             index: line.index,
             coche: checked[key] ?? line.coche,
-            cibleId: undefined !== chosen && "" !== chosen ? chosen : undefined,
+            cibleId: resolveVenueId(caseVenue[key]),
             corrections: undefined !== draft ? { jour: draft.jour, debut: draft.debut, duree: draft.duree } : undefined,
           });
         } else {
@@ -334,6 +362,27 @@ export function ParcImportModal(props: ParcImportModalProps) {
       return;
     }
     analyze.mutate({ payload: parc, decisions: buildDecisions() }, { onSuccess: applyAnalysis });
+  };
+
+  // Finition 4 — « Voir » : aller à l'étape de la 1ʳᵉ ligne à trancher et donner le focus à SON sélecteur.
+  const seeBlocking = (): void => {
+    if (null === analysis) {
+      return;
+    }
+    for (const section of ["equipes", "gymnases"] as const) {
+      for (const line of analysis.sections[section] ?? []) {
+        if ("" === decisionValue(section, line)) {
+          if (section === step) {
+            // Déjà sur la bonne étape : la ligne est rendue, focalisons-la directement.
+            document.getElementById(decisionTriggerId(section, line.index))?.focus();
+          } else {
+            pendingFocusRef.current = { section, index: line.index };
+            setStep(section);
+          }
+          return;
+        }
+      }
+    }
   };
 
   const goTo = (direction: 1 | -1): void => {
@@ -423,6 +472,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
               alerte: "alerte" === line.statut ? line.raison : null,
               mutual: "mutualisations" === section,
               groupe: "mutualisations" === section ? (line.groupe ?? null) : null,
+              // Les CRÉNEAUX (ouvertures) s'affichent par leur plage horaire, pas par « jour N » (finition 1).
+              opening: "creneaux" === section,
             });
             if ("" !== venueName && !venueToCreate.has(venueName)) {
               const gymLine = gymLines.find((gl) => gl.libelle === venueName);
@@ -447,6 +498,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
     // Mutualisations (retours fondateur 2026-10-26) ; l'éditeur ne porte que le créneau (jour/heure/
     // durée). Il ne réécrit donc ni le gymnase ni l'inclusion de ces lignes.
     const isMutualCase = "mutualisations" === section;
+    // Gymnase de la case pour l'option « <nom> (à créer) » : la `position` serveur (réservation), ou
+    // le gymnase de la case du parc (créneau). Finition 3a — le sélecteur est pré-rempli, jamais « Créer » nu.
+    const editorVenueToCreate = "creneaux" === section ? (() => {
+      const sc = parsedCasesOf(parc)[index];
+      return "string" === typeof sc?.gymnase ? sc.gymnase : "";
+    })() : (line?.position?.gymnase ?? "");
     caseEditor = (
       <CaseEditor
         key={key}
@@ -454,6 +511,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
         libelle={line?.libelle ?? ""}
         draft={slotDrafts[key]}
         venueId={caseVenue[key] ?? ""}
+        venueToCreateName={editorVenueToCreate}
         keep={checked[key] ?? line?.coche ?? true}
         venues={venues}
         onCancel={() => setEditingCase(null)}
@@ -511,6 +569,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
             ) : null}
             {CONTENT_STEPS.has(step) ? (
               <>
+                {/* Finition 4 — la raison d'import bloqué est VISIBLE au pied (pas qu'en sr-only du
+                    bouton), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher. */}
+                {blocked ? (
+                  <span className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{T.importBlocked(pendingAmbiguous, 0)}</span>
+                    {pendingAmbiguous > 0 ? (
+                      <Button variant="ghost" size="sm" onClick={seeBlocking}>
+                        {T.seeBlockingLine}
+                      </Button>
+                    ) : null}
+                  </span>
+                ) : null}
                 {"reservations" !== step ? (
                   <Button variant="outline" size="sm" onClick={() => goTo(1)}>
                     {T.next}
@@ -519,7 +589,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
                 <Button
                   size="sm"
                   disabled={blocked || importing}
-                  disabledReason={blocked ? T.importBlocked(pendingAmbiguous, 0) : undefined}
+                  disabledReason={blocked ? T.importDisabledHint : undefined}
                   onClick={doImport}
                 >
                   {importing ? <Spinner className="size-4" /> : null}
@@ -826,6 +896,7 @@ function DecisionRow({
         ) : null}
       </div>
       <Listbox
+        id={decisionTriggerId(section, line.index)}
         aria-label={T.decisionFor(line.libelle)}
         aria-describedby={pending ? reasonId : undefined}
         wrapperClassName="w-full"
@@ -943,22 +1014,32 @@ function MutualisationsStep({
   if (0 === lines.length) {
     return <EmptyHint>{T.mutualisationsEmpty}</EmptyHint>;
   }
+  // Finition 2c — « à vérifier » réservé aux alertes ; sinon « N mutualisations lues ».
+  const hasAlert = lines.some((l) => "alerte" === l.statut);
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground tabular-nums">{T.mutualisationsCount(lines.length)}</p>
+      <p className="text-sm text-muted-foreground tabular-nums">{hasAlert ? T.mutualisationsCount(lines.length) : T.mutualisationsReadCount(lines.length)}</p>
       <ul className="flex flex-col gap-3">
         {lines.map((line) => {
           const key = keyOf("mutualisations", line.index);
           const keep = checked[key] ?? line.coche;
           const inAlert = "alerte" === line.statut;
           const pos = line.position;
+          // Finition 2a — sélecteur de gymnase pré-rempli : l'id résolu, ou l'option « <nom> (à créer) »
+          // (valeur `VENUE_TO_CREATE`, affiche le nom lu sans porter d'id) pour un gymnase pas encore existant.
+          const posGym = pos?.gymnase ?? "";
+          const venueOptions = [
+            ...(null == line.gymnaseId && "" !== posGym ? [{ value: VENUE_TO_CREATE, label: T.gridVenueToCreate(posGym), swatch: null }] : []),
+            ...venues.map((v) => ({ value: v.id, label: v.name, swatch: null })),
+          ];
           return (
             <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
                 {null === (line.groupe ?? null) || "" === line.groupe ? null : <span className="text-sm font-semibold text-foreground">{line.groupe}</span>}
                 <span className="text-sm font-medium text-foreground">{line.libelle}</span>
-                {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))}`}</span> : null}
+                {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}
+                {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))} · ${pos.gymnase}`}</span> : null}
               </div>
               {/* Défaut C — la raison serveur n'est rendue QU'UNE fois (⚠). */}
               {inAlert && null !== line.raison ? (
@@ -978,17 +1059,19 @@ function MutualisationsStep({
                     { key: "ignore", label: T.mutualIgnore },
                   ]}
                 />
-                <Listbox
-                  aria-label={T.venueForGroup(line.libelle)}
-                  wrapperClassName="w-56"
-                  placeholder={T.rematchCreate}
-                  value={caseVenue[key] ?? ""}
-                  onValueChange={(v) => onVenueChange(line.index, v)}
-                  options={venues.map((v) => ({ value: v.id, label: v.name, swatch: null }))}
-                />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">{T.venueForGroupVisible}</span>
+                  <Listbox
+                    aria-label={T.venueForGroup(line.libelle)}
+                    wrapperClassName="w-56"
+                    value={caseVenue[key] ?? ""}
+                    onValueChange={(v) => onVenueChange(line.index, v)}
+                    options={venueOptions}
+                  />
+                </div>
                 <Input
                   aria-label={T.groupLabel(line.libelle)}
-                  placeholder={T.groupLabelPlaceholder}
+                  placeholder={T.groupNamePlaceholder}
                   className="w-48"
                   value={groupDrafts[key] ?? ""}
                   onChange={(e) => onGroupChange(line.index, e.target.value)}
@@ -1078,6 +1161,7 @@ function CaseEditor({
   libelle,
   draft,
   venueId,
+  venueToCreateName,
   keep,
   venues,
   onCancel,
@@ -1087,6 +1171,8 @@ function CaseEditor({
   libelle: string;
   draft: SlotDraft | undefined;
   venueId: string;
+  /** Nom du gymnase de la case pour l'option « <nom> (à créer) » (pré-remplissage, finition 3a). */
+  venueToCreateName: string;
   keep: boolean;
   venues: readonly ParcEntity[];
   onCancel: () => void;
@@ -1096,6 +1182,11 @@ function CaseEditor({
   const [venue, setVenue] = useState(venueId);
   const [keepLocal, setKeepLocal] = useState(keep);
   const isMutual = "mutualisations" === section;
+  // Finition 3a — sélecteur pré-rempli : option « <nom> (à créer) » (pas d'id) + les gymnases existants.
+  const venueOptions = [
+    ...("" !== venueToCreateName ? [{ value: VENUE_TO_CREATE, label: T.gridVenueToCreate(venueToCreateName), swatch: null }] : []),
+    ...venues.map((v) => ({ value: v.id, label: v.name, swatch: null })),
+  ];
 
   return (
     <Modal
@@ -1117,33 +1208,44 @@ function CaseEditor({
       <div className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">{libelle}</p>
         {isMutual ? null : (
-          <Listbox
-            aria-label={T.editVenue(libelle)}
-            wrapperClassName="w-full"
-            placeholder={T.rematchCreate}
-            value={venue}
-            onValueChange={setVenue}
-            options={venues.map((v) => ({ value: v.id, label: v.name, swatch: null }))}
-          />
-        )}
-        <div className="flex flex-wrap items-end gap-2">
-          <Select aria-label={T.editDay(libelle)} wrapperClassName="w-32" value={local.jour} onChange={(e) => setLocal((p) => ({ ...p, jour: Number(e.target.value) }))}>
-            {DAYS.map((d) => (
-              <option key={d.n} value={d.n}>
-                {dayLabelLongCap(d.n)}
-              </option>
-            ))}
-          </Select>
-          <div className="w-28">
-            <Input type="time" aria-label={T.editStart(libelle)} value={local.debut} onChange={(e) => setLocal((p) => ({ ...p, debut: e.target.value }))} />
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted-foreground">{T.editVenueVisible}</span>
+            <Listbox aria-label={T.editVenue(libelle)} wrapperClassName="w-full" value={venue} onValueChange={setVenue} options={venueOptions} />
           </div>
-          <DurationSelect value={local.duree} present={[local.duree]} onChange={(minutes) => setLocal((p) => ({ ...p, duree: minutes }))} />
+        )}
+        {/* Même disposition que l'éditeur de créneau du wizard (`VenuesStep`) : Jour · Début · Durée · Fin calculée. */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs text-muted-foreground">
+            {T.editDayLabel}
+            <Select aria-label={T.editDay(libelle)} className="mt-0.5 h-9" wrapperClassName="w-28" value={local.jour} onChange={(e) => setLocal((p) => ({ ...p, jour: Number(e.target.value) }))}>
+              {DAYS.map((d) => (
+                <option key={d.n} value={d.n}>
+                  {dayLabelLongCap(d.n)}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-xs text-muted-foreground">
+            {T.editStartLabel}
+            <Input type="time" aria-label={T.editStart(libelle)} className="mt-0.5 h-9 w-28" value={local.debut} onChange={(e) => setLocal((p) => ({ ...p, debut: e.target.value }))} />
+          </label>
+          <label className="text-xs text-muted-foreground">
+            {T.editDurationLabel}
+            <DurationSelect aria-label={T.editDurationLabel} className="mt-0.5 h-9" wrapperClassName="w-28" value={local.duree} present={[local.duree]} startTime={local.debut} onChange={(minutes) => setLocal((p) => ({ ...p, duree: minutes }))} />
+          </label>
+          <SlotEndField startTime={local.debut} duration={local.duree} />
         </div>
         {isMutual ? null : (
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input type="checkbox" className="size-4 shrink-0" checked={keepLocal} onChange={() => setKeepLocal((v) => !v)} />
-            <span>{T.caseKeep}</span>
-          </label>
+          <SegmentedControl
+            mode="single"
+            label={T.caseKeep}
+            value={keepLocal ? "keep" : "ignore"}
+            onValueChange={(v) => setKeepLocal("keep" === v)}
+            options={[
+              { key: "keep", label: T.mutualKeep },
+              { key: "ignore", label: T.mutualIgnore },
+            ]}
+          />
         )}
       </div>
     </Modal>

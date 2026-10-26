@@ -62,8 +62,12 @@ export const PARC_IMPORT_TEXTS = {
   // Requalification d'une mutualisation (D8) — nommer/corriger le libellé du groupe mutualisé.
   groupLabel: (libelle: string) => `Nom du groupe mutualisé — ${libelle}`,
   groupLabelPlaceholder: "Nom du groupe (ex. « CEC »)",
+  /** Finitions 2d — placeholder COURT du champ de nom de groupe (non tronqué dans le champ). */
+  groupNamePlaceholder: "Nom du groupe",
   /** P4-363 — sélecteur de gymnase de la réservation de groupe d'une mutualisation (aria-label). */
   venueForGroup: (libelle: string) => `Gymnase de la réservation de groupe — ${libelle}`,
+  /** Finitions 2a — libellé VISIBLE du sélecteur de gymnase d'une mutualisation (pas qu'un aria-label). */
+  venueForGroupVisible: "Gymnase",
 
   /** Le libellé HUMAIN d'un statut de ligne (enum serveur → libellé). Table inline. */
   statusLabel: (statut: string): string => {
@@ -133,6 +137,11 @@ export const PARC_IMPORT_TEXTS = {
     return 0 === parts.length ? "Cochez au moins une ligne pour pouvoir importer." : `Impossible d'importer : ${parts.join(" · ")}.`;
   },
   revalidate: "Revalider l'aperçu",
+  /** Finitions 4 — raison concise de désactivation d'« Importer » (le DÉTAIL compté est, lui, VISIBLE au
+   *  pied via `importBlocked`) : évite de doubler à l'identique l'annonce lecteur d'écran (A11Y-30). */
+  importDisabledHint: "Importer n'est pas encore possible — voir la raison affichée.",
+  /** Finitions 4 — bouton qui mène à la 1ʳᵉ ligne à trancher (change d'étape + focus son sélecteur). */
+  seeBlockingLine: "Voir",
   /** Bandeau « aperçu périmé » après une modification (tone accent, sans role). */
   staleHint: (n: number): string => `Vous avez modifié ${n} ligne${n > 1 ? "s" : ""} : les alertes affichées datent de l'analyse précédente.`,
   importErrorHeading: "L'import n'a pas abouti",
@@ -149,6 +158,12 @@ export const PARC_IMPORT_TEXTS = {
   gridGoTo: "Aller à :",
   editCaseTitle: "Corriger le créneau",
   editVenue: (libelle: string): string => `Gymnase du créneau — ${libelle}`,
+  /** Finitions 3a — libellé VISIBLE du sélecteur de gymnase de l'éditeur de créneau (pas qu'un aria-label). */
+  editVenueVisible: "Gymnase",
+  /** Finitions 3c — libellés VISIBLES des champs de l'éditeur, iso-wizard (`VenuesStep`). */
+  editDayLabel: "Jour",
+  editStartLabel: "Début",
+  editDurationLabel: "Durée",
   /** Nom accessible d'une case de MUTUALISATION dans la grille (lien + nom de groupe + équipes). */
   mutualisationCaseLabel: (groupe: string, equipes: string): string =>
     "" === groupe ? `Mutualisation · ${equipes}` : `Mutualisation · Groupe ${groupe} · ${equipes}`,
@@ -160,8 +175,10 @@ export const PARC_IMPORT_TEXTS = {
   // Étape Mutualisations (retours fondateur 2026-10-26) — sa propre étape du rail.
   /** EmptyHint de l'étape Mutualisations vide (jamais sautée). */
   mutualisationsEmpty: "Aucune mutualisation lue dans votre planning.",
-  /** En-tête de l'étape Mutualisations : combien de mutualisations à vérifier. */
+  /** En-tête de l'étape Mutualisations quand AU MOINS une est en alerte : combien à vérifier. */
   mutualisationsCount: (n: number): string => `${n} mutualisation${n > 1 ? "s" : ""} à vérifier.`,
+  /** Finitions 2c — en-tête SANS alerte : « N mutualisations lues » (« à vérifier » réservé aux alertes). */
+  mutualisationsReadCount: (n: number): string => `${n} mutualisation${n > 1 ? "s" : ""} lue${n > 1 ? "s" : ""}.`,
   /** Nom accessible du contrôle Garder/Ignorer d'une mutualisation. */
   mutualDecision: (libelle: string): string => `Garder ou ignorer la mutualisation « ${libelle} »`,
   mutualKeep: "Garder",

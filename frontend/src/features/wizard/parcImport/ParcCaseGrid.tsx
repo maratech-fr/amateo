@@ -4,7 +4,7 @@ import { Button } from "@/shared/components/ui/button";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { dayLabelShort } from "@/shared/lib/days";
 import { assignLanes, type LaneCell } from "@/shared/lib/gridLayout";
-import { formatMinutes } from "@/shared/lib/time";
+import { formatMinutes, formatTimeRange } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
 import { END_MIN, gridTemplateColumns, ROW_H, START_MIN, STEP, WEEK } from "../lib/weekGrid";
@@ -52,6 +52,13 @@ export interface ParcCaseGridCase {
   mutual?: boolean;
   /** Le nom du groupe mutualisé porté par la case marquée (donnée serveur), sinon null. */
   groupe?: string | null;
+  /**
+   * Finitions (captures 04/2026-10-26) — la case est une OUVERTURE de gymnase (étape Gymnases) : son
+   * libellé est la PLAGE HORAIRE (« 16:00 – 17:30 ») lue du créneau, jamais l'indice BRUT serveur
+   * « jour N 16:00 » (le jour vit déjà dans la colonne). Le bouton de saut du bandeau nomme EN PLUS le
+   * jour en clair (`dayLabelShort`). Une réservation garde son libellé serveur (équipe · heure).
+   */
+  opening?: boolean;
 }
 
 interface CaseLaneCell extends LaneCell {
@@ -87,6 +94,32 @@ function withoutVenue(libelle: string, venueName: string): string {
   return "" === stripped ? libelle : stripped;
 }
 
+/**
+ * Le texte d'une case DANS la grille. Une OUVERTURE (`opening`) se dit par sa PLAGE HORAIRE — foyer
+ * `shared/lib/time.ts::formatTimeRange` (début ET fin), jamais l'indice brut « jour N » — le jour
+ * étant déjà en colonne ; repli sur le libellé serveur si l'heure est illisible. Une réservation
+ * garde son libellé serveur sans le gymnase (déjà en en-tête).
+ */
+function caseGridText(c: ParcCaseGridCase): string {
+  if (true !== c.opening) {
+    return withoutVenue(c.libelle, c.venueName);
+  }
+  const range = formatTimeRange(c.debut, c.duree);
+  return "" === range ? withoutVenue(c.libelle, c.venueName) : range;
+}
+
+/**
+ * Le texte du bouton de SAUT (bandeau) — hors colonne, donc il nomme EN PLUS le jour en clair
+ * (`dayLabelShort`) pour une ouverture (« Mer 16:00 – 17:30 »), jamais « jour N ».
+ */
+function caseJumpText(c: ParcCaseGridCase): string {
+  if (true !== c.opening) {
+    return withoutVenue(c.libelle, c.venueName);
+  }
+  const range = formatTimeRange(c.debut, c.duree);
+  return "" === range ? withoutVenue(c.libelle, c.venueName) : `${dayLabelShort(c.jour)} ${range}`.trim();
+}
+
 export function ParcCaseGrid({
   venues,
   cases,
@@ -104,8 +137,8 @@ export function ParcCaseGrid({
         <NoticeBanner tone="warning" role="status" icon={<AlertTriangle className="size-4 text-warning" />} message={T.gridAlertSummary(alertCases.length)}>
           <div className="flex flex-wrap gap-2">
             {alertCases.map((c) => (
-              <Button key={`jump:${c.index}`} type="button" size="sm" variant="outline" onClick={() => onEditCase(c.index)} aria-label={`${T.goToLine} — ${withoutVenue(c.libelle, c.venueName)}`}>
-                {withoutVenue(c.libelle, c.venueName)}
+              <Button key={`jump:${c.index}`} type="button" size="sm" variant="outline" onClick={() => onEditCase(c.index)} aria-label={`${T.goToLine} — ${caseJumpText(c)}`}>
+                {caseJumpText(c)}
               </Button>
             ))}
           </div>
@@ -168,7 +201,7 @@ export function ParcCaseGrid({
                   const laneCount = cell.laneCount ?? 1;
                   const lane = cell.lane ?? 0;
                   const inAlert = isInAlert(c);
-                  const display = withoutVenue(c.libelle, c.venueName);
+                  const display = caseGridText(c);
                   const isMutual = true === c.mutual;
                   // Nom accessible : l'alerte prime (raison serveur), sinon une mutualisation se dit
                   // « Mutualisation · Groupe … · … » (lien + groupe), une réservation simple garde son

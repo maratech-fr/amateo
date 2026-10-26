@@ -580,7 +580,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     await goToStep(user, "gymnases");
 
     // La case du créneau est un BOUTON de la grille (nom accessible = le libellé) ; clic → éditeur.
-    await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
+    await user.click(await screen.findByRole("button", { name: /18:00/ }));
     // Amorce depuis payload.cases : l'heure de début est déjà 18:00 (jamais re-parsée du texte brut).
     expect(screen.getByDisplayValue("18:00")).toBeInTheDocument();
 
@@ -774,7 +774,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     await analyzeThen(user, analysis);
     // Retours fondateur 2026-10-26 — un créneau se corrige à l'étape GYMNASES (grille iso-wizard).
     await goToStep(user, "gymnases");
-    await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
+    await user.click(await screen.findByRole("button", { name: /18:00/ }));
 
     // `slotFields.DurationSelect` : un combobox « Durée » dont les options sont formatées par
     // `formatDuration` (« 1h30 ») + une option « Autre… » — jamais un `<input type="number">` ad hoc.
@@ -867,7 +867,7 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
 
     // Le créneau du gymnase est une CASE cliquable de la grille (comme l'étape Réservations), plus une
     // case de l'étape Réservations : clic → éditeur pré-rempli (18:00 amorcé depuis le payload).
-    await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
+    await user.click(await screen.findByRole("button", { name: /18:00/ }));
     expect(screen.getByDisplayValue("18:00")).toBeInTheDocument();
   });
 
@@ -969,7 +969,7 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
     expect(await screen.findByText(T.mutualisationsEmpty as unknown as string)).toBeInTheDocument();
   });
 
-  it("3 — l'en-tête de l'étape Mutualisations résume leur nombre (clé mutualisationsCount)", async () => {
+  it("3 — l'en-tête de l'étape Mutualisations résume leur nombre (sans alerte : clé mutualisationsReadCount)", async () => {
     const user = userEvent.setup();
     const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })] });
     renderWithProviders(<ParcImportModal {...defaultProps} />);
@@ -977,7 +977,8 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
     await analyzeThen(user, analysis);
     await goToStep(user, "mutualisations");
 
-    expect(await screen.findByText(T.mutualisationsCount(1))).toBeInTheDocument();
+    // Finition 2c — SANS alerte, le compteur dit « N mutualisations lues » (« à vérifier » réservé aux alertes).
+    expect(await screen.findByText(T.mutualisationsReadCount(1))).toBeInTheDocument();
   });
 
   it("3 — une mutualisation EN ALERTE marque l'étape Mutualisations du rail comme « à vérifier » (⚠)", async () => {
