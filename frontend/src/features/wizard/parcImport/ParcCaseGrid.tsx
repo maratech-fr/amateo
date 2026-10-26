@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Link2 } from "lucide-react";
 
 import { Button } from "@/shared/components/ui/button";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -48,6 +48,10 @@ export interface ParcCaseGridCase {
   libelle: string;
   /** Raison serveur si la case est en alerte (chevauchement, capacité…), sinon null/absente. */
   alerte?: string | null;
+  /** Retours fondateur 2026-10-26 — la case est une MUTUALISATION (marquée lien + nom de groupe). */
+  mutual?: boolean;
+  /** Le nom du groupe mutualisé porté par la case marquée (donnée serveur), sinon null. */
+  groupe?: string | null;
 }
 
 interface CaseLaneCell extends LaneCell {
@@ -165,13 +169,18 @@ export function ParcCaseGrid({
                   const lane = cell.lane ?? 0;
                   const inAlert = isInAlert(c);
                   const display = withoutVenue(c.libelle, c.venueName);
+                  const isMutual = true === c.mutual;
+                  // Nom accessible : l'alerte prime (raison serveur), sinon une mutualisation se dit
+                  // « Mutualisation · Groupe … · … » (lien + groupe), une réservation simple garde son
+                  // libellé nu. Jamais la couleur/l'icône seules (a11y).
+                  const ariaLabel = inAlert ? T.caseToVerify(c.alerte as string) : isMutual ? T.mutualisationCaseLabel(c.groupe ?? "", display) : undefined;
                   return (
                     <button
                       key={`case:${c.index}`}
                       type="button"
                       onClick={() => onEditCase(c.index)}
                       title={display}
-                      aria-label={inAlert ? T.caseToVerify(c.alerte as string) : undefined}
+                      aria-label={ariaLabel}
                       style={{
                         gridColumn: cell.col + 2,
                         gridRow: `${rowStart} / span ${span}`,
@@ -184,7 +193,7 @@ export function ParcCaseGrid({
                         inAlert ? "border-warning bg-surface-warning text-foreground ring-2 ring-warning" : "border-border bg-card text-foreground hover:bg-muted",
                       )}
                     >
-                      {inAlert ? <AlertTriangle aria-hidden className="size-3 shrink-0 text-warning" /> : null}
+                      {inAlert ? <AlertTriangle aria-hidden className="size-3 shrink-0 text-warning" /> : isMutual ? <Link2 aria-hidden className="size-3 shrink-0 text-accent" /> : null}
                       <span className="w-full whitespace-normal break-words font-medium text-foreground">{display}</span>
                     </button>
                   );

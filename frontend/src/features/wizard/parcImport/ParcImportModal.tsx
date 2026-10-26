@@ -1,17 +1,20 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Link2 } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
 import { Listbox, type ListboxGroup } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { StepRail, type StepRailState, type StepRailStep } from "@/shared/components/ui/step-rail";
 import { DAYS, dayLabelLongCap } from "@/shared/lib/days";
 import { groupTeamsByTier, type TeamLike, type TierLike, tierGroupLabel } from "@/shared/lib/teamTiers";
+import { formatMinutes } from "@/shared/lib/time";
 
 import { usePriorityTiers, useWizardTeams } from "@/features/wizard/queries";
 
@@ -47,10 +50,12 @@ interface ParcImportModalProps {
   onClose: () => void;
 }
 
-/** Les étapes du rail, dans l'ordre. 1-2 toujours libres ; 3-5 verrouillées avant l'analyse. */
-type StepId = "prompt" | "paste" | "equipes" | "gymnases" | "reservations";
-const STEP_ORDER: StepId[] = ["prompt", "paste", "equipes", "gymnases", "reservations"];
-const CONTENT_STEPS = new Set<StepId>(["equipes", "gymnases", "reservations"]);
+// Retours fondateur 2026-10-26 — « plus on découpe, plus c'est simple » : les mutualisations ont leur
+// PROPRE étape, et les Réservations passent EN FIN. Ordre : Prompt · Coller · Équipes · Gymnases ·
+// Mutualisations · Réservations. Les étapes de CONTENU sont verrouillées avant l'analyse.
+type StepId = "prompt" | "paste" | "equipes" | "gymnases" | "mutualisations" | "reservations";
+const STEP_ORDER: StepId[] = ["prompt", "paste", "equipes", "gymnases", "mutualisations", "reservations"];
+const CONTENT_STEPS = new Set<StepId>(["equipes", "gymnases", "mutualisations", "reservations"]);
 
 /** Les sections d'ENTITÉS : une ligne y porte le sélecteur de décision (apparier / créer / ignorer). */
 const REMATCH_SECTIONS = new Set(["equipes", "gymnases"]);
@@ -86,6 +91,12 @@ interface EditingCase {
 }
 
 const keyOf = (section: string, index: number): string => `${section}:${index}`;
+
+/** Séances hebdomadaires : défaut (quand le fichier n'en donne pas) et bornes FRONT 1..7 (P4 PeriodTeams). */
+const DEFAULT_SESSIONS = 2;
+const MIN_SESSIONS = 1;
+const MAX_SESSIONS = 7;
+const clampSessions = (n: number): number => (Number.isFinite(n) ? Math.min(MAX_SESSIONS, Math.max(MIN_SESSIONS, Math.round(n))) : DEFAULT_SESSIONS);
 
 /**
  * Lot correctif import IA « G2 » PR1 — la modale d'import du parc par IA est un ASSISTANT en 5 étapes
@@ -132,8 +143,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
   const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({});
-  // Acceptation de la mise à jour de séances proposée sur une équipe APPARIÉE, par `section:index`.
-  const [sessionAccepted, setSessionAccepted] = useState<Record<string, boolean>>({});
+  // Retours fondateur 2026-10-26 — le nombre de séances d'une ligne équipe, en CHAMP éditable
+  // (pré-rempli de la valeur LUE), par `equipes:index`. Remplace l'ancienne case « mise à jour ».
+  const [sessionDrafts, setSessionDrafts] = useState<Record<string, number>>({});
   const [editingCase, setEditingCase] = useState<EditingCase | null>(null);
   // Cases corrigées depuis la dernière analyse (clés `section:index`) → aperçu périmé (« Revalider »).
   const [dirtyCases, setDirtyCases] = useState<Set<string>>(new Set());
@@ -164,7 +176,6 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setAnalysis(data);
     setResult(null);
     setDirtyCases(new Set());
-    setSessionAccepted({});
 
     const cases = parsedCasesOf(data.payload);
     setParc(data.payload ?? null);
@@ -174,6 +185,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     const nextSlotDrafts: Record<string, SlotDraft> = {};
     const nextCaseVenue: Record<string, string> = {};
     const nextGroupDrafts: Record<string, string> = {};
+    const nextSessionDrafts: Record<string, number> = {};
     for (const section of Object.keys(data.sections)) {
       for (const line of data.sections[section] ?? []) {
         const key = keyOf(section, line.index);
@@ -181,6 +193,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
           nextDecisions[key] = initialDecision(line);
         } else {
           nextChecked[key] = line.coche;
+        }
+        // Champ « Séances » d'une équipe : pré-rempli de la valeur LUE (ce qui SERA importé), défaut 2.
+        if ("equipes" === section) {
+          nextSessionDrafts[key] = clampSessions(line.seances ?? DEFAULT_SESSIONS);
         }
         if (CASE_SECTION_SET.has(section)) {
           // Amorce du brouillon de case. Les créneaux restent indexés sur la case du parc normalisé
@@ -210,6 +226,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setSlotDrafts(nextSlotDrafts);
     setCaseVenue(nextCaseVenue);
     setGroupDrafts(nextGroupDrafts);
+    setSessionDrafts(nextSessionDrafts);
   };
 
   const doAnalyze = (): void => {
@@ -231,16 +248,20 @@ export function ParcImportModal(props: ParcImportModalProps) {
         const key = keyOf(section, line.index);
         if (REMATCH_SECTIONS.has(section)) {
           const value = decisionValue(section, line);
+          // Champ « Séances » (équipes seulement) : la valeur du champ, bornée 1..7.
+          const seances = "equipes" === section ? clampSessions(sessionDrafts[key] ?? line.seances ?? DEFAULT_SESSIONS) : null;
           if (CREATE === value) {
             // « Créer » explicite (3a) : coché, sans cible, signal `creer:true` (lève le refus d'ambiguïté).
-            out.push({ section, index: line.index, coche: true, creer: true });
+            // La CRÉATION utilise le nombre de séances du champ (ce que l'IA crée, corrigé).
+            out.push({ section, index: line.index, coche: true, creer: true, corrections: null !== seances ? { seances } : undefined });
           } else if (IGNORE === value || "" === value) {
             out.push({ section, index: line.index, coche: false });
           } else {
-            // Appariement à un candidat : la mise à jour de séances proposée part SI elle a été acceptée.
+            // Appariement à un candidat : le champ « Séances » ne part en corrections QUE s'il DIFFÈRE
+            // des séances actuelles de l'équipe visée (valeur = actuelle → rien à corriger).
             const decision: ParcImportDecision = { section, index: line.index, coche: true, cibleId: value };
-            if ((sessionAccepted[key] ?? false) && undefined !== line.miseAJour) {
-              decision.corrections = { seances: line.miseAJour.a };
+            if (null !== seances && undefined !== line.seancesActuelles && seances !== line.seancesActuelles) {
+              decision.corrections = { seances };
             }
             out.push(decision);
           }
@@ -277,8 +298,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const setDecision = (section: string, index: number, value: string): void =>
     setDecisions((prev) => ({ ...prev, [keyOf(section, index)]: value }));
 
-  const toggleSession = (section: string, index: number): void =>
-    setSessionAccepted((prev) => ({ ...prev, [keyOf(section, index)]: !(prev[keyOf(section, index)] ?? false) }));
+  const setSessionDraft = (index: number, value: number): void =>
+    setSessionDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: value }));
 
   // Compte des lignes équipe/gymnase AMBIGUËS non tranchées (valeur "") — elles bloquent l'import.
   const pendingAmbiguous = useMemo(() => {
@@ -344,8 +365,16 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if (null === analysis) {
       return false;
     }
+    // Les CRÉNEAUX vivent à l'étape Gymnases (leurs alertes la marquent) ; les Réservations et les
+    // Mutualisations ont désormais chacune leur propre étape (retours fondateur 2026-10-26).
+    if ("gymnases" === id) {
+      return (analysis.sections.gymnases ?? []).some((l) => "alerte" === l.statut || "" === decisionValue("gymnases", l)) || (analysis.sections.creneaux ?? []).some((l) => "alerte" === l.statut);
+    }
+    if ("mutualisations" === id) {
+      return (analysis.sections.mutualisations ?? []).some((l) => "alerte" === l.statut);
+    }
     if ("reservations" === id) {
-      return ["creneaux", "reservations", "mutualisations"].some((s) => (analysis.sections[s] ?? []).some((l) => "alerte" === l.statut));
+      return (analysis.sections.reservations ?? []).some((l) => "alerte" === l.statut);
     }
     return (analysis.sections[id] ?? []).some((l) => "alerte" === l.statut || "" === decisionValue(id, l));
   };
@@ -360,45 +389,52 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const stepNumber = STEP_ORDER.indexOf(step) + 1;
   const stepTitle = "prompt" === step ? T.promptHeading : "paste" === step ? T.pasteHeading : T.sectionTitle(step);
 
-  // Grille des CASES (créneaux + réservations + mutualisations), avec un index SYNTHÉTIQUE par case
-  // (`ParcCaseGrid` ne connaît qu'un index numérique) remonté à sa (section, rang) par `ref`.
-  const gridData = useMemo(() => {
-    const gridCases: ParcCaseGridCase[] = [];
-    const ref: Record<number, EditingCase> = {};
-    const venueToCreate = new Map<string, boolean>();
-    if (null !== analysis) {
-      const cases = parsedCasesOf(parc);
-      const gymLines = analysis.sections.gymnases ?? [];
-      let gid = 0;
-      for (const section of CASE_SECTIONS) {
-        for (const line of analysis.sections[section] ?? []) {
-          const key = keyOf(section, line.index);
-          // Créneaux : la case du parc (index = case). Réservations/mutualisations : la `position`
-          // SERVEUR de leur case dérivée — jamais `payload.cases[index]` (index décalé, bug grille).
-          const pos = "creneaux" === section ? undefined : line.position;
-          const slot = cases[line.index];
-          const venueName = pos ? pos.gymnase : "string" === typeof slot?.gymnase ? slot.gymnase : "";
-          const draft = slotDrafts[key];
-          const g = gid++;
-          ref[g] = { section, index: line.index };
-          gridCases.push({
-            index: g,
-            venueName,
-            jour: draft?.jour ?? 1,
-            debut: draft?.debut ?? "",
-            duree: draft?.duree ?? 0,
-            libelle: line.libelle,
-            alerte: "alerte" === line.statut ? line.raison : null,
-          });
-          if ("" !== venueName && !venueToCreate.has(venueName)) {
-            const gymLine = gymLines.find((gl) => gl.libelle === venueName);
-            venueToCreate.set(venueName, undefined !== gymLine && "aCreer" === gymLine.statut);
+  // Grilles des CASES, avec un index SYNTHÉTIQUE par case (`ParcCaseGrid` ne connaît qu'un index
+  // numérique) remonté à sa (section, rang) par `ref`. Retours fondateur 2026-10-26 — deux grilles
+  // distinctes : les CRÉNEAUX (ouvertures) vivent à l'étape Gymnases (iso-wizard), les RÉSERVATIONS
+  // et les mutualisations (marquées) à l'étape Réservations.
+  const { creneauxGrid, reservationsGrid } = useMemo(() => {
+    const build = (sectionsToUse: readonly string[]): { gridCases: ParcCaseGridCase[]; gridVenues: ParcCaseGridVenue[]; ref: Record<number, EditingCase> } => {
+      const gridCases: ParcCaseGridCase[] = [];
+      const ref: Record<number, EditingCase> = {};
+      const venueToCreate = new Map<string, boolean>();
+      if (null !== analysis) {
+        const cases = parsedCasesOf(parc);
+        const gymLines = analysis.sections.gymnases ?? [];
+        let gid = 0;
+        for (const section of sectionsToUse) {
+          for (const line of analysis.sections[section] ?? []) {
+            const key = keyOf(section, line.index);
+            // Créneaux : la case du parc (index = case). Réservations/mutualisations : la `position`
+            // SERVEUR de leur case dérivée — jamais `payload.cases[index]` (index décalé, bug grille).
+            const pos = "creneaux" === section ? undefined : line.position;
+            const slot = cases[line.index];
+            const venueName = pos ? pos.gymnase : "string" === typeof slot?.gymnase ? slot.gymnase : "";
+            const draft = slotDrafts[key];
+            const g = gid++;
+            ref[g] = { section, index: line.index };
+            gridCases.push({
+              index: g,
+              venueName,
+              jour: draft?.jour ?? 1,
+              debut: draft?.debut ?? "",
+              duree: draft?.duree ?? 0,
+              libelle: line.libelle,
+              alerte: "alerte" === line.statut ? line.raison : null,
+              mutual: "mutualisations" === section,
+              groupe: "mutualisations" === section ? (line.groupe ?? null) : null,
+            });
+            if ("" !== venueName && !venueToCreate.has(venueName)) {
+              const gymLine = gymLines.find((gl) => gl.libelle === venueName);
+              venueToCreate.set(venueName, undefined !== gymLine && "aCreer" === gymLine.statut);
+            }
           }
         }
       }
-    }
-    const gridVenues: ParcCaseGridVenue[] = [...venueToCreate].map(([name, toCreate]) => ({ name, toCreate }));
-    return { gridCases, gridVenues, ref };
+      const gridVenues: ParcCaseGridVenue[] = [...venueToCreate].map(([name, toCreate]) => ({ name, toCreate }));
+      return { gridCases, gridVenues, ref };
+    };
+    return { creneauxGrid: build(["creneaux"]), reservationsGrid: build(["reservations", "mutualisations"]) };
   }, [analysis, parc, slotDrafts]);
 
   // Éditeur de case (Modal imbriquée) — brouillon transactionnel, clé stable `section:index`.
@@ -407,6 +443,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
     const { section, index } = editingCase;
     const key = keyOf(section, index);
     const line = analysis?.sections[section]?.find((l) => l.index === index);
+    // Pour une MUTUALISATION, le gymnase et le nom de groupe se corrigent EN LIGNE à l'étape
+    // Mutualisations (retours fondateur 2026-10-26) ; l'éditeur ne porte que le créneau (jour/heure/
+    // durée). Il ne réécrit donc ni le gymnase ni l'inclusion de ces lignes.
+    const isMutualCase = "mutualisations" === section;
     caseEditor = (
       <CaseEditor
         key={key}
@@ -414,15 +454,15 @@ export function ParcImportModal(props: ParcImportModalProps) {
         libelle={line?.libelle ?? ""}
         draft={slotDrafts[key]}
         venueId={caseVenue[key] ?? ""}
-        groupe={groupDrafts[key] ?? ""}
         keep={checked[key] ?? line?.coche ?? true}
         venues={venues}
         onCancel={() => setEditingCase(null)}
         onSave={(next) => {
           setSlotDrafts((prev) => ({ ...prev, [key]: next.draft }));
-          setCaseVenue((prev) => ({ ...prev, [key]: next.venueId }));
-          setGroupDrafts((prev) => ({ ...prev, [key]: next.groupe }));
-          setChecked((prev) => ({ ...prev, [key]: next.keep }));
+          if (!isMutualCase) {
+            setCaseVenue((prev) => ({ ...prev, [key]: next.venueId }));
+            setChecked((prev) => ({ ...prev, [key]: next.keep }));
+          }
           setDirtyCases((prev) => new Set(prev).add(key));
           setEditingCase(null);
         }}
@@ -548,25 +588,66 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
               {"prompt" === step ? <PromptStep prompt={prompt} copied={copied} onCopy={copyPrompt} /> : null}
               {"paste" === step ? <PasteStep rawText={rawText} analyzing={analyzing} onChange={setRawText} /> : null}
-              {"equipes" === step || "gymnases" === step ? (
+              {"equipes" === step ? (
                 <EntitySection
-                  section={step}
-                  lines={analysis?.sections[step] ?? []}
+                  section="equipes"
+                  lines={analysis?.sections.equipes ?? []}
                   venues={venues}
                   allTeams={allTeams}
                   tiers={tiers}
                   decisionValue={decisionValue}
                   onDecision={setDecision}
-                  sessionAccepted={sessionAccepted}
-                  onSessionToggle={toggleSession}
+                  sessionDrafts={sessionDrafts}
+                  onSessionChange={setSessionDraft}
+                />
+              ) : null}
+              {/* Retours fondateur 2026-10-26 — l'étape Gymnases montre, par gymnase, SA décision EN
+                  TÊTE puis la grille de ses créneaux (iso-wizard), clic sur un créneau → éditeur. */}
+              {"gymnases" === step && null !== analysis ? (
+                <GymnasesStep
+                  lines={analysis.sections.gymnases ?? []}
+                  grid={creneauxGrid}
+                  venues={venues}
+                  allTeams={allTeams}
+                  tiers={tiers}
+                  decisionValue={decisionValue}
+                  onDecision={setDecision}
+                  onEditCase={(g) => setEditingCase(creneauxGrid.ref[g] ?? null)}
+                />
+              ) : null}
+              {/* Retours fondateur 2026-10-26 — les mutualisations ont leur PROPRE étape (le
+                  gestionnaire doit VOIR qu'il y en a à vérifier). */}
+              {"mutualisations" === step && null !== analysis ? (
+                <MutualisationsStep
+                  lines={analysis.sections.mutualisations ?? []}
+                  venues={venues}
+                  caseVenue={caseVenue}
+                  groupDrafts={groupDrafts}
+                  checked={checked}
+                  onVenueChange={(index, v) => setCaseVenue((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
+                  onGroupChange={(index, v) => setGroupDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
+                  onKeepChange={(index, keep) => setChecked((prev) => ({ ...prev, [keyOf("mutualisations", index)]: keep }))}
+                  onEditSlot={(index) => setEditingCase({ section: "mutualisations", index })}
                 />
               ) : null}
               {"reservations" === step && null !== analysis ? (
-                gridData.gridCases.length > 0 ? (
+                reservationsGrid.gridCases.length > 0 ? (
                   <ParcCaseGrid
-                    venues={gridData.gridVenues}
-                    cases={gridData.gridCases}
-                    onEditCase={(g) => setEditingCase(gridData.ref[g] ?? null)}
+                    venues={reservationsGrid.gridVenues}
+                    cases={reservationsGrid.gridCases}
+                    onEditCase={(g) => {
+                      const target = reservationsGrid.ref[g];
+                      if (undefined === target) {
+                        return;
+                      }
+                      // Une case de MUTUALISATION ne s'édite pas ici : son clic bascule sur l'étape
+                      // Mutualisations (retour en arrière assumé), sur sa ligne.
+                      if ("mutualisations" === target.section) {
+                        setStep("mutualisations");
+                      } else {
+                        setEditingCase(target);
+                      }
+                    }}
                   />
                 ) : (
                   <p className="text-sm text-muted-foreground">{T.previewHelp}</p>
@@ -649,8 +730,8 @@ function EntitySection({
   tiers,
   decisionValue,
   onDecision,
-  sessionAccepted,
-  onSessionToggle,
+  sessionDrafts,
+  onSessionChange,
 }: {
   section: "equipes" | "gymnases";
   lines: ParcAnalysisLine[];
@@ -659,8 +740,9 @@ function EntitySection({
   tiers: TierLike[];
   decisionValue: (section: string, line: ParcAnalysisLine) => string;
   onDecision: (section: string, index: number, value: string) => void;
-  sessionAccepted: Record<string, boolean>;
-  onSessionToggle: (section: string, index: number) => void;
+  /** Champ « Séances » éditable (équipes) : brouillon par ligne + sa mise à jour. Absent pour gymnases. */
+  sessionDrafts?: Record<string, number>;
+  onSessionChange?: (index: number, value: number) => void;
 }) {
   if (0 === lines.length) {
     return <p className="text-sm text-muted-foreground">{T.previewHelp}</p>;
@@ -677,8 +759,8 @@ function EntitySection({
           tiers={tiers}
           value={decisionValue(section, line)}
           onChange={(value) => onDecision(section, line.index, value)}
-          sessionAccepted={sessionAccepted[keyOf(section, line.index)] ?? false}
-          onSessionToggle={() => onSessionToggle(section, line.index)}
+          sessionValue={sessionDrafts?.[keyOf(section, line.index)] ?? line.seances ?? DEFAULT_SESSIONS}
+          onSessionChange={onSessionChange}
         />
       ))}
     </ul>
@@ -693,8 +775,8 @@ function DecisionRow({
   tiers,
   value,
   onChange,
-  sessionAccepted,
-  onSessionToggle,
+  sessionValue,
+  onSessionChange,
 }: {
   section: "equipes" | "gymnases";
   line: ParcAnalysisLine;
@@ -703,8 +785,8 @@ function DecisionRow({
   tiers: TierLike[];
   value: string;
   onChange: (value: string) => void;
-  sessionAccepted: boolean;
-  onSessionToggle: () => void;
+  sessionValue: number;
+  onSessionChange?: (index: number, value: number) => void;
 }) {
   const reasonId = useId();
   const groups = useMemo(() => decisionGroups(section, line, venues, allTeams, tiers), [section, line, venues, allTeams, tiers]);
@@ -723,12 +805,23 @@ function DecisionRow({
             {line.raison ?? T.toDecide}
           </span>
         ) : null}
-        {/* Équipe APPARIÉE dont le parc propose un autre nombre de séances : la mise à jour est
-            PROPOSÉE sur la ligne, acceptée par cette case dédiée (→ corrections.seances à l'import). */}
-        {undefined !== line.miseAJour ? (
+        {/* Retours fondateur 2026-10-26 — « Séances » est un CHAMP éditable (équipes), lisible d'un
+            coup d'œil et corrigeable AVANT l'import (ce qui SERA importé) ; « actuellement N » pour une
+            équipe appariée. Plus aucune case à cocher de séances. */}
+        {"equipes" === section && undefined !== onSessionChange ? (
           <label className="mt-0.5 flex items-center gap-2 text-xs text-foreground">
-            <input type="checkbox" className="size-4 shrink-0" checked={sessionAccepted} onChange={onSessionToggle} />
-            <span>{T.sessionsUpdate(line.miseAJour.de, line.miseAJour.a)}</span>
+            <span>{T.sessionsLabel}</span>
+            <Input
+              type="number"
+              compact
+              min={MIN_SESSIONS}
+              max={MAX_SESSIONS}
+              aria-label={T.sessionsFieldLabel(line.libelle)}
+              className="w-16"
+              value={sessionValue}
+              onChange={(e) => onSessionChange(line.index, Number(e.target.value))}
+            />
+            {undefined !== line.seancesActuelles ? <span className="text-muted-foreground">{T.sessionsCurrent(line.seancesActuelles)}</span> : null}
           </label>
         ) : null}
       </div>
@@ -743,6 +836,179 @@ function DecisionRow({
       />
     </li>
   );
+}
+
+/**
+ * Étape Gymnases (retours fondateur 2026-10-26, iso-wizard) — par gymnase : SA décision (`DecisionRow`)
+ * EN TÊTE de son bloc, puis la grille de ses créneaux d'ouverture (`ParcCaseGrid`), clic → éditeur.
+ * Les créneaux d'un gymnase sont ceux de la grille dont le `venueName` est le libellé du gymnase.
+ */
+function GymnasesStep({
+  lines,
+  grid,
+  venues,
+  allTeams,
+  tiers,
+  decisionValue,
+  onDecision,
+  onEditCase,
+}: {
+  lines: ParcAnalysisLine[];
+  grid: { gridCases: ParcCaseGridCase[]; gridVenues: ParcCaseGridVenue[] };
+  venues: readonly ParcEntity[];
+  allTeams: TeamLike[];
+  tiers: TierLike[];
+  decisionValue: (section: string, line: ParcAnalysisLine) => string;
+  onDecision: (section: string, index: number, value: string) => void;
+  onEditCase: (index: number) => void;
+}) {
+  // Un bloc par gymnase : les gymnases DÉCIDABLES (lignes serveur) d'abord, dans leur ordre, puis les
+  // gymnases qui n'existent que par leurs créneaux (sans ligne de décision — ex. un parc tout en
+  // créneaux). Chaque bloc = la décision EN TÊTE (si elle existe) + la grille des créneaux du gymnase.
+  const venueNames: string[] = [];
+  const add = (name: string): void => {
+    if ("" !== name && !venueNames.includes(name)) {
+      venueNames.push(name);
+    }
+  };
+  for (const line of lines) {
+    add(line.libelle);
+  }
+  for (const v of grid.gridVenues) {
+    add(v.name);
+  }
+
+  if (0 === venueNames.length) {
+    return <p className="text-sm text-muted-foreground">{T.previewHelp}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {venueNames.map((name) => {
+        const line = lines.find((l) => l.libelle === name);
+        const venueCases = grid.gridCases.filter((c) => c.venueName === name);
+        const toCreate = undefined !== line ? "aCreer" === line.statut : (grid.gridVenues.find((v) => v.name === name)?.toCreate ?? false);
+        return (
+          <section key={name} className="flex flex-col gap-2">
+            {undefined !== line ? (
+              <ul className="flex flex-col">
+                <DecisionRow
+                  section="gymnases"
+                  line={line}
+                  venues={venues}
+                  allTeams={allTeams}
+                  tiers={tiers}
+                  value={decisionValue("gymnases", line)}
+                  onChange={(value) => onDecision("gymnases", line.index, value)}
+                  sessionValue={DEFAULT_SESSIONS}
+                />
+              </ul>
+            ) : null}
+            {venueCases.length > 0 ? <ParcCaseGrid venues={[{ name, toCreate }]} cases={venueCases} onEditCase={onEditCase} /> : null}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Étape Mutualisations (retours fondateur 2026-10-26) — une ligne par mutualisation (picto lien + nom
+ * de groupe + équipes + créneau, raison ⚠ une seule fois) : Garder/Ignorer SANS case à cocher
+ * (`SegmentedControl`), sélecteur de gymnase de la réservation de groupe (P4-363, → `venueId`), nom de
+ * groupe (D8, → `corrections.groupe`) et accès à l'éditeur de créneau (jour/heure/durée). Vide →
+ * `EmptyHint`. Le gestionnaire novice doit VOIR qu'il y a des mutualisations à vérifier.
+ */
+function MutualisationsStep({
+  lines,
+  venues,
+  caseVenue,
+  groupDrafts,
+  checked,
+  onVenueChange,
+  onGroupChange,
+  onKeepChange,
+  onEditSlot,
+}: {
+  lines: ParcAnalysisLine[];
+  venues: readonly ParcEntity[];
+  caseVenue: Record<string, string>;
+  groupDrafts: Record<string, string>;
+  checked: Record<string, boolean>;
+  onVenueChange: (index: number, value: string) => void;
+  onGroupChange: (index: number, value: string) => void;
+  onKeepChange: (index: number, keep: boolean) => void;
+  onEditSlot: (index: number) => void;
+}) {
+  if (0 === lines.length) {
+    return <EmptyHint>{T.mutualisationsEmpty}</EmptyHint>;
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground tabular-nums">{T.mutualisationsCount(lines.length)}</p>
+      <ul className="flex flex-col gap-3">
+        {lines.map((line) => {
+          const key = keyOf("mutualisations", line.index);
+          const keep = checked[key] ?? line.coche;
+          const inAlert = "alerte" === line.statut;
+          const pos = line.position;
+          return (
+            <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
+                {null === (line.groupe ?? null) || "" === line.groupe ? null : <span className="text-sm font-semibold text-foreground">{line.groupe}</span>}
+                <span className="text-sm font-medium text-foreground">{line.libelle}</span>
+                {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))}`}</span> : null}
+              </div>
+              {/* Défaut C — la raison serveur n'est rendue QU'UNE fois (⚠). */}
+              {inAlert && null !== line.raison ? (
+                <span className="flex items-center gap-1 text-xs text-foreground">
+                  <AlertTriangle aria-hidden className="size-3.5 text-warning" />
+                  {line.raison}
+                </span>
+              ) : null}
+              <div className="flex flex-wrap items-end gap-2">
+                <SegmentedControl
+                  mode="single"
+                  label={T.mutualDecision(line.libelle)}
+                  value={keep ? "keep" : "ignore"}
+                  onValueChange={(v) => onKeepChange(line.index, "keep" === v)}
+                  options={[
+                    { key: "keep", label: T.mutualKeep },
+                    { key: "ignore", label: T.mutualIgnore },
+                  ]}
+                />
+                <Listbox
+                  aria-label={T.venueForGroup(line.libelle)}
+                  wrapperClassName="w-56"
+                  placeholder={T.rematchCreate}
+                  value={caseVenue[key] ?? ""}
+                  onValueChange={(v) => onVenueChange(line.index, v)}
+                  options={venues.map((v) => ({ value: v.id, label: v.name, swatch: null }))}
+                />
+                <Input
+                  aria-label={T.groupLabel(line.libelle)}
+                  placeholder={T.groupLabelPlaceholder}
+                  className="w-48"
+                  value={groupDrafts[key] ?? ""}
+                  onChange={(e) => onGroupChange(line.index, e.target.value)}
+                />
+                <Button variant="outline" size="sm" onClick={() => onEditSlot(line.index)}>
+                  {T.editCaseTitle}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** Minutes d'un « HH:MM » (foyer d'affichage `formatMinutes`), 0 en repli (gouttière tolérante). */
+function minutesOfSlot(hhmm: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  return null === m ? 0 : Number(m[1]) * 60 + Number(m[2]);
 }
 
 /** Les groupes du sélecteur d'une ligne, dans l'ordre : suggestion · candidats · autre choix · tout. */
@@ -801,17 +1067,17 @@ function decisionGroups(
 }
 
 /**
- * Éditeur de case (Modal imbriquée, brouillon transactionnel) : Garder/Ignorer pour toute case ;
- * pour un créneau/une réservation, gymnase · jour · heure · durée (`DurationSelect`) ; pour une
- * mutualisation, le gymnase de la réservation de groupe (P4-363, → `venueId`) et le nom de groupe
- * (D8, → `corrections.groupe`).
+ * Éditeur de case (Modal imbriquée, brouillon transactionnel) — le CRÉNEAU : jour · heure · durée
+ * (`DurationSelect`). Pour un créneau/une réservation, il porte aussi le gymnase (P4-363/D12, →
+ * `cibleId`) et Garder/Ignorer. Pour une MUTUALISATION, le gymnase et le nom de groupe se corrigent
+ * EN LIGNE à l'étape Mutualisations (retours fondateur 2026-10-26) — l'éditeur n'édite alors que le
+ * créneau, sans réécrire le gymnase ni l'inclusion de la ligne.
  */
 function CaseEditor({
   section,
   libelle,
   draft,
   venueId,
-  groupe,
   keep,
   venues,
   onCancel,
@@ -821,15 +1087,13 @@ function CaseEditor({
   libelle: string;
   draft: SlotDraft | undefined;
   venueId: string;
-  groupe: string;
   keep: boolean;
   venues: readonly ParcEntity[];
   onCancel: () => void;
-  onSave: (next: { draft: SlotDraft; venueId: string; groupe: string; keep: boolean }) => void;
+  onSave: (next: { draft: SlotDraft; venueId: string; keep: boolean }) => void;
 }) {
   const [local, setLocal] = useState<SlotDraft>(draft ?? { jour: 1, debut: "", duree: 0 });
   const [venue, setVenue] = useState(venueId);
-  const [group, setGroup] = useState(groupe);
   const [keepLocal, setKeepLocal] = useState(keep);
   const isMutual = "mutualisations" === section;
 
@@ -844,7 +1108,7 @@ function CaseEditor({
           <Button variant="outline" size="sm" onClick={onCancel}>
             {T.cancel}
           </Button>
-          <Button size="sm" onClick={() => onSave({ draft: local, venueId: venue, groupe: group, keep: keepLocal })}>
+          <Button size="sm" onClick={() => onSave({ draft: local, venueId: venue, keep: keepLocal })}>
             {T.save}
           </Button>
         </>
@@ -852,40 +1116,35 @@ function CaseEditor({
     >
       <div className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">{libelle}</p>
-        <Listbox
-          aria-label={isMutual ? T.venueForGroup(libelle) : T.editVenue(libelle)}
-          wrapperClassName="w-full"
-          placeholder={T.rematchCreate}
-          value={venue}
-          onValueChange={setVenue}
-          options={venues.map((v) => ({ value: v.id, label: v.name, swatch: null }))}
-        />
-        {isMutual ? (
-          <Input
-            aria-label={T.groupLabel(libelle)}
-            placeholder={T.groupLabelPlaceholder}
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
+        {isMutual ? null : (
+          <Listbox
+            aria-label={T.editVenue(libelle)}
+            wrapperClassName="w-full"
+            placeholder={T.rematchCreate}
+            value={venue}
+            onValueChange={setVenue}
+            options={venues.map((v) => ({ value: v.id, label: v.name, swatch: null }))}
           />
-        ) : (
-          <div className="flex flex-wrap items-end gap-2">
-            <Select aria-label={T.editDay(libelle)} wrapperClassName="w-32" value={local.jour} onChange={(e) => setLocal((p) => ({ ...p, jour: Number(e.target.value) }))}>
-              {DAYS.map((d) => (
-                <option key={d.n} value={d.n}>
-                  {dayLabelLongCap(d.n)}
-                </option>
-              ))}
-            </Select>
-            <div className="w-28">
-              <Input type="time" aria-label={T.editStart(libelle)} value={local.debut} onChange={(e) => setLocal((p) => ({ ...p, debut: e.target.value }))} />
-            </div>
-            <DurationSelect value={local.duree} present={[local.duree]} onChange={(minutes) => setLocal((p) => ({ ...p, duree: minutes }))} />
-          </div>
         )}
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <input type="checkbox" className="size-4 shrink-0" checked={keepLocal} onChange={() => setKeepLocal((v) => !v)} />
-          <span>{T.caseKeep}</span>
-        </label>
+        <div className="flex flex-wrap items-end gap-2">
+          <Select aria-label={T.editDay(libelle)} wrapperClassName="w-32" value={local.jour} onChange={(e) => setLocal((p) => ({ ...p, jour: Number(e.target.value) }))}>
+            {DAYS.map((d) => (
+              <option key={d.n} value={d.n}>
+                {dayLabelLongCap(d.n)}
+              </option>
+            ))}
+          </Select>
+          <div className="w-28">
+            <Input type="time" aria-label={T.editStart(libelle)} value={local.debut} onChange={(e) => setLocal((p) => ({ ...p, debut: e.target.value }))} />
+          </div>
+          <DurationSelect value={local.duree} present={[local.duree]} onChange={(minutes) => setLocal((p) => ({ ...p, duree: minutes }))} />
+        </div>
+        {isMutual ? null : (
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input type="checkbox" className="size-4 shrink-0" checked={keepLocal} onChange={() => setKeepLocal((v) => !v)} />
+            <span>{T.caseKeep}</span>
+          </label>
+        )}
       </div>
     </Modal>
   );

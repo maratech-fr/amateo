@@ -202,9 +202,14 @@ final class ParcImportAnalyzer
             $nom = $this->stringField($entry, 'nom');
             [$statut, $cibleId, $raison, $candidats] = $this->teamVerdict($nom);
 
-            $extra = ['candidats' => $candidats];
+            // Retours fondateur 2026-10-26 — le nombre de séances LU (nombre de cases dérivé) est servi
+            // sur CHAQUE ligne équipe : il amorce le champ « Séances » éditable de l'aperçu (ce qui SERA
+            // importé). Une ligne APPARIÉE porte en plus `seancesActuelles` (les séances actuelles de
+            // l'équipe visée) pour l'indication « actuellement N » et la base de comparaison du champ.
+            $extra = ['candidats' => $candidats, 'seances' => $entry['seances']];
             if ('apparie' === $statut && null !== $cibleId && isset($byId[$cibleId])) {
                 $current = $byId[$cibleId]->getSessionsPerWeek();
+                $extra['seancesActuelles'] = $current;
                 if ($current !== $entry['seances']) {
                     $extra['miseAJour'] = ['champ' => 'seances', 'de' => $current, 'a' => $entry['seances']];
                 }

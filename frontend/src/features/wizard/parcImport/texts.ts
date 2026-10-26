@@ -35,6 +35,12 @@ export const PARC_IMPORT_TEXTS = {
   alertsHeading: "Points à vérifier",
   /** Mise à jour de séances PROPOSÉE sur une équipe appariée (cochée, décochable). */
   sessionsUpdate: (de: number, a: number) => `Séances : ${de} → ${a} (mise à jour proposée)`,
+  /** Libellé VISIBLE du champ « Séances » éditable d'une ligne équipe. */
+  sessionsLabel: "Séances",
+  /** Nom accessible CONTEXTUALISÉ du champ « Séances » d'une équipe (A11Y-28). */
+  sessionsFieldLabel: (libelle: string): string => `Séances de ${libelle}`,
+  /** Indication « actuellement N » à côté du champ d'une équipe APPARIÉE (ce qu'elle a aujourd'hui). */
+  sessionsCurrent: (n: number): string => `actuellement ${n}`,
 
   // Temps 4 — l'import
   /** Le bouton d'import chiffre ce qui sera posé (lignes cochées). */
@@ -143,10 +149,23 @@ export const PARC_IMPORT_TEXTS = {
   gridGoTo: "Aller à :",
   editCaseTitle: "Corriger le créneau",
   editVenue: (libelle: string): string => `Gymnase du créneau — ${libelle}`,
+  /** Nom accessible d'une case de MUTUALISATION dans la grille (lien + nom de groupe + équipes). */
+  mutualisationCaseLabel: (groupe: string, equipes: string): string =>
+    "" === groupe ? `Mutualisation · ${equipes}` : `Mutualisation · Groupe ${groupe} · ${equipes}`,
   /** Éditeur de case — Garder/Ignorer : cochée, la ligne est importée ; décochée, elle est ignorée. */
   caseKeep: "Garder cette ligne (l'importer)",
   save: "Enregistrer",
   cancel: "Annuler",
+
+  // Étape Mutualisations (retours fondateur 2026-10-26) — sa propre étape du rail.
+  /** EmptyHint de l'étape Mutualisations vide (jamais sautée). */
+  mutualisationsEmpty: "Aucune mutualisation lue dans votre planning.",
+  /** En-tête de l'étape Mutualisations : combien de mutualisations à vérifier. */
+  mutualisationsCount: (n: number): string => `${n} mutualisation${n > 1 ? "s" : ""} à vérifier.`,
+  /** Nom accessible du contrôle Garder/Ignorer d'une mutualisation. */
+  mutualDecision: (libelle: string): string => `Garder ou ignorer la mutualisation « ${libelle} »`,
+  mutualKeep: "Garder",
+  mutualIgnore: "Ignorer",
 
   // Récap (remplace le contenu de l'aperçu, pas de 6ᵉ étape)
   recapNext: "Et maintenant : vos équipes, gymnases et réservations sont dans l'assistant. Poursuivez la saisie.",

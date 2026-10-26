@@ -32,6 +32,17 @@ export interface ParcAnalysisLine {
   candidats?: Array<{ id: string; nom: string }>;
   /** Équipes : une mise à jour de séances PROPOSÉE (pas appliquée). */
   miseAJour?: { champ: "seances"; de: number; a: number };
+  /**
+   * Équipes (retours fondateur 2026-10-26) : le nombre de séances LU dans le fichier (nombre de cases
+   * dérivé), servi sur CHAQUE ligne équipe — amorce le champ « Séances » éditable (ce qui SERA importé).
+   */
+  seances?: number;
+  /**
+   * Équipe APPARIÉE (retours fondateur 2026-10-26) : les séances ACTUELLES de l'équipe visée —
+   * l'indication « actuellement N » et la base de comparaison du champ (valeur = actuelle → pas de
+   * `corrections.seances` ; valeur ≠ actuelle → la correction part).
+   */
+  seancesActuelles?: number;
   /** Mutualisations : le libellé du bloc DÉRIVÉ par le serveur (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
   /** Mutualisations (P4-363) : le gymnase RÉSOLU du nom de la case (null si à créer) — amorce le sélecteur de gymnase de la réservation de groupe, distinct du `cibleId` (qui désigne le bloc apparié). */
