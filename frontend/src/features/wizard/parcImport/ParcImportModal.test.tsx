@@ -364,6 +364,35 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(dec?.cibleId ?? null).toBeNull();
   });
 
+  it("une équipe appariée dont le parc propose un autre nombre de séances : la mise à jour est proposée sur la ligne et, acceptée, part en corrections.seances", async () => {
+    // Régression du chantier G à RESTAURER (la refonte a perdu la proposition de mise à jour des
+    // séances d'une équipe APPARIÉE — le back honore toujours `corrections.seances`). La ligne doit
+    // AFFICHER la proposition (clé `sessionsUpdate`) et offrir une case d'acceptation dédiée (la ligne
+    // équipe est un `Listbox`, plus une case d'inclusion comme avant G — d'où une case « Mettre à jour »
+    // NOMMÉE par la proposition). Non acceptée → aucune `corrections.seances` ; acceptée → `=3`.
+    const mkApparied = (): Analysis => analysisOf({ equipes: [mkLine(0, "SM1", "apparie", { cibleId: "t1", miseAJour: { champ: "seances", de: 2, a: 3 } })] });
+
+    // (1) non acceptée → la décision ne porte PAS corrections.seances.
+    const user1 = userEvent.setup();
+    const { unmount } = renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user1, mkApparied());
+    expect(screen.getByText(PARC_IMPORT_TEXTS.sessionsUpdate(2, 3))).toBeInTheDocument();
+    await user1.click(screen.getByRole("button", { name: /Importer/ }));
+    const body1 = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
+    expect(body1.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBeUndefined();
+    unmount();
+    q.importMutate.mockClear();
+
+    // (2) acceptée (case dédiée) → corrections.seances = 3.
+    const user2 = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user2, mkApparied());
+    await user2.click(screen.getByRole("checkbox", { name: PARC_IMPORT_TEXTS.sessionsUpdate(2, 3) }));
+    await user2.click(screen.getByRole("button", { name: /Importer/ }));
+    const body2 = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
+    expect(body2.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBe(3);
+  });
+
   it("une erreur d'import s'affiche DANS la modale en role=\"alert\" (plus un toast)", async () => {
     const user = userEvent.setup();
     // L'import échoue : le hook expose l'erreur, la modale la surface en role="alert" (micro-décision 13).
