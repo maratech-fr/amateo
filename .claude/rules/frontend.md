@@ -142,6 +142,13 @@ paths:
   tenir à 360 px, le libellé peut être masqué VISUELLEMENT sous le palier conteneur (`<span className="sr-only
   @md:not-sr-only">`, icône « + » seule en dessous) — le nom accessible est CONSERVÉ (le texte reste dans le
   DOM), le bouton n'est pas `size="icon"`, donc le garde reste vert (patron `OpponentsPage`, reflow 360 px).
+  Variante SŒUR en rangée de FORMULAIRE desktop (patron `VenuesStep`, D10 2026-10-26) : quand une
+  ligne d'ajout `flex` SANS `flex-wrap` déborde à l'étroit à cause d'un libellé long, on RACCOURCIT
+  le texte visible à un verbe (« Ajouter ») et on reporte le complément dans un `<span className="sr-only">`
+  PERMANENT (pas conditionnel), le bouton prenant `shrink-0` — le nom accessible COMPLET
+  (« Ajouter un gymnase ») est préservé. ⚠ Le calcul du nom accessible en jsdom ROGNE l'espace de
+  tête du span sr-only et ne sépare pas le texte voisin du span : intercaler un séparateur explicite
+  `{" "}` entre le libellé court et le span, sinon le nom sort collé (« Ajouterun gymnase »).
 - 🔴 **Tout bandeau d'information passe par `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`
   — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
   boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de

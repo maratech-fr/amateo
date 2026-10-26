@@ -75,19 +75,49 @@ export interface SignatureLayout {
   iconScale: number;
   wordDx: number;
   clipLeft: number;
+  /**
+   * Translation HORIZONTALE du GROUPE (icône + mot) à appliquer sur la scène pour recentrer le logo
+   * sur son ENCRE (D11, 2026-10-26) : le dessin du handoff a le centre de son encre à ~976 pour une
+   * scène de 1920 (centre 960), soit ~16 unités à DROITE. `groupDx = p × (960 − centre de l'encre)`
+   * → nul à p=0 (intro intacte), pleine correction à p=1. AUCUN `groupDy` : le décalage vertical du
+   * mot sous l'icône est le dessin du graphiste, conservé.
+   */
+  groupDx: number;
 }
+/**
+ * Largeur MESURÉE du mot « Amateo » (Poppins Signature, 210 px, letter-spacing −0.01em) au runtime
+ * le 2026-10-26 (≈ 837,4 px, arrondi) : repli utilisé pour le recentrage quand la mesure runtime est
+ * indisponible (jsdom/SSR) ou nulle. Le composant mesure l'`offsetWidth` réel quand il le peut.
+ */
+export const MEASURED_WORD_W = 837;
+/**
+ * Rayon d'ENCRE max de l'icône en unités de scène : `max(r + w/2)` des arcs (bord extérieur du trait
+ * le plus débordant) rapporté à la boîte icône (ICON_BOX/1000) et mis à l'échelle du logo.
+ */
+const ICON_INK_RADIUS = Math.max(...LOGO_ARCS.map((a) => a.r + a.w / 2)) * (ICON_BOX / 1000) * LOGO.scale;
 /**
  * L'état géométrique pour un avancement de glissé `p` (0 = icône centrée → 1 = position logo) et
  * une émergence du mot `w` (0 = mot rentré dans le trait teal → 1 = mot sorti). Formules `glisse`.
+ * `wordW` = largeur runtime du mot (repli `MEASURED_WORD_W` si 0/indisponible) : sert UNIQUEMENT au
+ * calcul de `groupDx` (l'encre du mot va de `wordLeft` à `wordLeft + wordW`).
  */
-export function signatureLayout(p: number, w: number): SignatureLayout {
+export function signatureLayout(p: number, w: number, wordW: number = MEASURED_WORD_W): SignatureLayout {
   const iconX = SCENE_W / 2 + LOGO.dx * p;
   const iconScale = 1 + (LOGO.scale - 1) * p;
   const finalEdge = SCENE_W / 2 + LOGO.dx + TEAL_EDGE * LOGO.scale;
   const hide = LOGO.wordLeft + LOGO.wordW + 20 - finalEdge;
   const wordDx = -hide * (1 - w);
   const clipLeft = clamp(iconX + TEAL_EDGE * iconScale - (LOGO.wordLeft + wordDx), 0, LOGO.wordW + 80);
-  return { iconX, iconScale, wordDx, clipLeft };
+  // Boîte d'ENCRE du logo FINAL (p=1) : union de l'encre de l'icône (autour de son `iconX` final) et
+  // de l'encre du mot. On centre cette encre, pas la boîte nominale. Une mesure 0/NaN retombe sur le repli.
+  const ww = wordW > 0 ? wordW : MEASURED_WORD_W;
+  const iconXFinal = SCENE_W / 2 + LOGO.dx;
+  const inkLeft = Math.min(iconXFinal - ICON_INK_RADIUS, LOGO.wordLeft);
+  const inkRight = Math.max(iconXFinal + ICON_INK_RADIUS, LOGO.wordLeft + ww);
+  const inkCenter = (inkLeft + inkRight) / 2;
+  // `|| 0` normalise le `-0` (p=0 × valeur négative) en `+0` et verrouille un éventuel NaN à 0.
+  const groupDx = p * (SCENE_W / 2 - inkCenter) || 0;
+  return { iconX, iconScale, wordDx, clipLeft, groupDx };
 }
 
 export const FULL_LAYOUT = signatureLayout(1, 1);

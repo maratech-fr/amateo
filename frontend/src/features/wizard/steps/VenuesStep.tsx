@@ -547,9 +547,13 @@ function VenuesEditor() {
             value={cp}
             onChange={(e) => setSalleCp(e.target.value.replace(/\D/g, ""))}
           />
-          <Button type="submit" size="sm" disabled={create.isPending}>
+          <Button type="submit" size="sm" disabled={create.isPending} className="shrink-0">
             <Plus className="size-3.5" />
-            {WIZARD_TEXTS.addVenueButton}
+            {WIZARD_TEXTS.addVenueButtonShort}
+            {/* Séparateur explicite : sans lui, le calcul du nom accessible colle « Ajouter » au
+                complément (« Ajouterun gymnase ») — l'espace de tête du span sr-only est rogné. */}
+            {" "}
+            <span className="sr-only">{WIZARD_TEXTS.addVenueButtonSrSuffix}</span>
           </Button>
         </div>
         {/* Suggestions FFBB (P2-20) — la liste PROPOSE, n'impose jamais : la
