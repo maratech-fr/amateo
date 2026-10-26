@@ -181,10 +181,6 @@ export const WIZARD_TEXTS = {
   travelMatrixCaption: "Temps de trajet entre gymnases, en voiture et à vélo, du gymnase de la ligne vers celui de la colonne. Cliquez une case pour la modifier.",
   travelMatrixCorner: "Depuis \\ vers",
 
-  // TeamsStep — entente (CTC) : repère interne au club, texte libre (chantier D PR1)
-  ctcLabel: "Entente (CTC)",
-  ctcPartnerLabel: "Partenaire(s)",
-  ctcPartnerPlaceholder: "Avec qui ? (facultatif)",
   // Chantier H — le relais de l'adjoint : au refus d'un dédoublement TOLÉRABLE, on propose de
   // tolérer le retard plutôt que de bloquer. Un adjoint disponible ouvrira la séance.
   tolerateLateArrivalCta: (minutes: number, adjointName: string) => `Tolérer ce retard (~${minutes} minutes) — ${adjointName} (adjoint) ouvrira la séance`,

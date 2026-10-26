@@ -358,7 +358,9 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
 
       {/* P2-45 — la modale Liens d'une équipe de la période. Passerelles en LECTURE SEULE (la saison
           seule les déclare) ; mutualisation ancrée au PLAN de la période (schedulePlanId). Les
-          équipes en pause ne sont pas offertes comme candidates à la mutualisation. */}
+          équipes en pause ne sont pas offertes comme candidates à la mutualisation. D4 — l'onglet
+          « Entente (CTC) », lui, reste ÉDITABLE même ici : il n'hérite pas de `readOnlyLinks` (repère
+          de club valable toute la saison, sans effet moteur). */}
       {null !== linksTeam ? (
         <TeamLinksModal
           team={linksTeam}

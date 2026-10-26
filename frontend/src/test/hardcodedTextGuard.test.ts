@@ -72,6 +72,11 @@ const MIGRATED_FILES = [
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",
+  // Chantier D (CTC) D4 — l'éditeur d'équipes et la modale Liens migrés dans
+  // features/wizard/texts/teams.ts (TEAMS_TEXTS) en même temps que l'entente passe dans l'onglet
+  // Liens. RED naturellement tant que NEO n'a pas extrait les littéraux. La migration ne recule jamais.
+  "features/wizard/steps/TeamsStep.tsx",
+  "features/wizard/steps/TeamLinksModal.tsx",
   // PR F (P4-279) — migré en même temps que la PR qui pose les toasts trajets ; la migration ne recule jamais.
   "features/wizard/steps/VenuesStep.tsx",
   // Lot 5 PR E (P4-284) : les 3 écrans dont le `<table>` passe à la primitive sont migrés en même temps.

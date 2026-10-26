@@ -11,6 +11,9 @@ import { TEAM_COLUMNS } from "../lib/teamColumns";
 import type { TeamLink } from "@/features/matches/api";
 
 import type { SharedTrainingBlock, Team } from "../api";
+// D4 — TeamsStep est MIGRÉ : les assertions de texte visent les CLÉS centralisées, jamais une
+// phrase recopiée (charte § Sélecteurs front). Module créé par NEO (option A : ROUGE tant qu'absent).
+import { TEAMS_TEXTS } from "../texts/teams";
 
 const baseTeam: Team = {
   id: "t1", name: "SM3", sportCategoryId: "cat1", priorityTierId: 5, tierOrder: 0,
@@ -656,46 +659,45 @@ describe("TeamsStep", () => {
     expect(TEAM_COLUMNS.gender).not.toBe("w-24");
   });
 
-  // ── Chantier D (CTC) PR1 — déclarer une entente dans l'éditeur d'équipe ──
-  // Retour Rillieux #6 : rendre visible qu'une équipe est en entente (CTC). La saisie vit dans
-  // l'éditeur de l'étape Équipes (pas un 3ᵉ onglet Liens) : une case « Entente (CTC) » + un champ
-  // « Partenaire(s) » en texte libre, enregistrés par le même `onField` → PUT {isCtc, ctcPartner}.
-  // Le partenaire est FACULTATIF même case cochée ; aucune référence vers un autre club (texte libre).
+  // ── Chantier D (CTC) D4 — l'entente se RÈGLE dans la modale Liens ; la ligne n'en garde que le REPÈRE ──
+  // Décision fondateur 2026-10-25 : la SAISIE (case + partenaire) a quitté la ligne pour un 3ᵉ onglet
+  // « Entente (CTC) » de la modale Liens — ses promesses vivent désormais dans
+  // `TeamLinksModal.test.tsx` (« onglet Entente (CTC) (D4) » : cocher PUT isCtc, partenaire au blur,
+  // champ pré-rempli). La LIGNE n'affiche plus que le REPÈRE : le picto CtcMark devant le nom + un
+  // segment en tête de la sous-ligne. (Remplace les ex-tests de saisie :665-699.)
 
-  it("offre une case « Entente (CTC) » sur la ligne, et l'enregistre au clic", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TeamsStep />);
-
-    const ctc = within(teamRow()).getByRole("checkbox", { name: /Entente \(CTC\)/ });
-    expect(ctc).not.toBeChecked();
-    await user.click(ctc);
-
-    expect(updateMut).toHaveBeenCalled();
-    expect(updateMut.mock.calls[0][0].body.isCtc).toBe(true);
-  });
-
-  it("montre le champ « Partenaire(s) » (pré-rempli) quand l'équipe est déjà en entente", () => {
+  it("ne porte plus de case « Entente (CTC) » sur la ligne (la saisie a migré dans la modale Liens)", () => {
     team = { ...baseTeam, isCtc: true, ctcPartner: "AS Voisine" };
     renderWithProviders(<TeamsStep />);
-    const row = teamRow();
-
-    expect(within(row).getByRole("checkbox", { name: /Entente \(CTC\)/ })).toBeChecked();
-    const partner = within(row).getByRole("textbox", { name: /Partenaire/ });
-    expect((partner as HTMLInputElement).value).toBe("AS Voisine");
+    // Plus aucune case à cocher d'entente, ni sur la ligne ni ailleurs sur l'écran Équipes.
+    expect(screen.queryByRole("checkbox", { name: /entente/i })).toBeNull();
   });
 
-  it("envoie le partenaire saisi (texte libre) à l'enregistrement", async () => {
-    team = { ...baseTeam, isCtc: true, ctcPartner: null };
-    const user = userEvent.setup();
+  it("affiche le repère CtcMark DEVANT le nom sur la ligne d'une équipe en entente", () => {
+    team = { ...baseTeam, isCtc: true, ctcPartner: "AS Voisine" };
+    renderWithProviders(<TeamsStep />);
+    // Le repère partagé (role="img") porte le partenaire dans son nom accessible (contrat CtcMark).
+    expect(within(teamRow()).getByRole("img", { name: /Entente \(CTC\) avec AS Voisine/ })).toBeInTheDocument();
+  });
+
+  it("met le segment d'entente EN TÊTE de la sous-ligne (avant la passerelle)", () => {
+    // CTC + une passerelle : la sous-ligne combine les deux, l'entente en premier (décision D4).
+    teamsState.data = [
+      { ...baseTeam, isCtc: true, ctcPartner: "AS Voisine" },
+      { ...baseTeam, id: "t2", name: "SM4" },
+    ];
+    teamLinksState.data = [{ id: "l1", teamAId: "t1", teamBId: "t2", linkType: "NOT_SIMULTANEOUS", trainingIntensity: "PREFERRED" }];
     renderWithProviders(<TeamsStep />);
 
-    const partner = within(teamRow()).getByRole("textbox", { name: /Partenaire/ });
-    await user.type(partner, "Entente des 3 Rivières");
-    await user.tab(); // blur → enregistrement
+    // La sous-ligne COMMENCE par le segment d'entente (clé TEAMS_TEXTS) ; le « · » prouve qu'un
+    // second segment (la passerelle) suit — donc l'entente est bien EN TÊTE, pas la seule.
+    expect(screen.getByText((content) => content.startsWith(`${TEAMS_TEXTS.ctcSublineWith("AS Voisine")} · `))).toBeInTheDocument();
+  });
 
-    expect(updateMut).toHaveBeenCalled();
-    const body = updateMut.mock.calls.at(-1)?.[0].body;
-    expect(body.ctcPartner).toBe("Entente des 3 Rivières");
+  it("n'affiche ni segment ni repère d'entente pour une équipe SANS entente", () => {
+    renderWithProviders(<TeamsStep />); // baseTeam : isCtc absent
+    expect(screen.queryByText((content) => content.startsWith(TEAMS_TEXTS.ctcSubline))).toBeNull();
+    expect(screen.queryByRole("img", { name: /Entente \(CTC\)/ })).toBeNull();
   });
 });
 

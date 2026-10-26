@@ -257,7 +257,10 @@ paths:
   viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
   `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`, matchs `ConflictLine`, assistant
   `SlotReservationModal`/`ConstraintsStep`/`RecapStep`. Depuis (progressif, lot 5) : matchs
-  `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`. La
+  `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`, puis
+  (D4, 2026-10-26) wizard `TeamsStep`/`TeamLinksModal` — scindés dans leur propre
+  `features/wizard/texts/teams.ts` (`TEAMS_TEXTS`) plutôt que le `texts.ts` commun de la feature
+  (le volume de l'étape Équipes dépassait le seuil de scission). La
   **console superadmin** (`features/admin/**`) a sa propre maison SCINDÉE par module —
   `features/admin/texts/<module>.ts` (pas un `texts.ts` unique), **entièrement migrée**
   (P4-346, PR A + PR B, 2026-10-19) : `texts/dashboard.ts` (`ADMIN_DASHBOARD_TEXTS`) couvre
