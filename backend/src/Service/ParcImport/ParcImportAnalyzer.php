@@ -343,8 +343,11 @@ final class ParcImportAnalyzer
             $groupe = $entry['groupe'];
             // P4-363 — gymnase RÉSOLU depuis le NOM de la case (null si à créer) : amorce le sélecteur
             // de gymnase de la ligne côté front, SANS jamais confondre ce gymnase avec le `cibleId`
-            // (qui, pour une mutualisation, désigne le BLOC apparié).
-            $extra = ['groupe' => $groupe, 'gymnaseId' => $this->resolveVenueId($this->stringField($entry, 'gymnase'))];
+            // (qui, pour une mutualisation, désigne le BLOC apparié). `position` = le créneau de SA case
+            // dérivée (la grille place la case EXCLUSIVEMENT d'après elle, jamais `payload.cases[index]`,
+            // car l'index d'une mutualisation est son rang dans la liste dérivée, pas celui de la case).
+            $position = $this->positionOf($entry);
+            $extra = ['groupe' => $groupe, 'gymnaseId' => $position['gymnaseId'], 'position' => $position];
             $teamNames = $this->stringList($entry['equipes']);
             $commonSessions = $entry['seances_communes'];
 
@@ -458,6 +461,10 @@ final class ParcImportAnalyzer
         foreach ($reservations as $i => $entry) {
             $ctx = $contexts[$i];
             $libelle = $this->reservationLabel($entry);
+            // `position` = le créneau de SA case dérivée (la grille place la case EXCLUSIVEMENT d'après
+            // elle) : l'index d'une réservation est son rang dans la liste dérivée, PAS celui de la case
+            // du parc — une case à 2 équipes sur terrains séparés donne 2 réservations et décale tout.
+            $extra = ['position' => $this->positionOf($entry)];
             $case = $ctx['caseKey'];
 
             $contested = null !== $case
@@ -471,18 +478,19 @@ final class ParcImportAnalyzer
                     'alerte',
                     null,
                     'Deux équipes sur la même case sans mutualisation ni terrain divisé déclaré : mutualisation ? terrain divisé en deux ? erreur de lecture ? À trancher à la main.',
+                    $extra,
                 );
 
                 continue;
             }
 
             if ($this->reservationAlreadyExists($ctx)) {
-                $out[] = $this->line($i, $libelle, 'decoche', null, 'Réservation déjà présente dans le planning.');
+                $out[] = $this->line($i, $libelle, 'decoche', null, 'Réservation déjà présente dans le planning.', $extra);
 
                 continue;
             }
 
-            $out[] = $this->line($i, $libelle, 'aCreer', null, null);
+            $out[] = $this->line($i, $libelle, 'aCreer', null, null, $extra);
         }
 
         return $out;
@@ -654,6 +662,29 @@ final class ParcImportAnalyzer
         }
 
         return false;
+    }
+
+    /**
+     * La POSITION d'une réservation/mutualisation = le créneau de SA case dérivée (gymnase · jour ·
+     * heure · durée) + le gymnase RÉSOLU (null si à créer). Le front place la case de la grille et
+     * amorce l'éditeur EXCLUSIVEMENT d'après elle, jamais `payload.cases[index]` : l'index d'une ligne
+     * de ces deux sections est son rang dans la liste DÉRIVÉE, décalé du rang des cases du parc.
+     *
+     * @param array<string, mixed> $entry
+     *
+     * @return array{gymnase: string, jour: int, debut: string, duree: int, gymnaseId: string|null}
+     */
+    private function positionOf(array $entry): array
+    {
+        $gymnase = $this->stringField($entry, 'gymnase');
+
+        return [
+            'gymnase' => $gymnase,
+            'jour' => \is_int($entry['jour'] ?? null) ? $entry['jour'] : 0,
+            'debut' => $this->stringField($entry, 'debut'),
+            'duree' => \is_int($entry['duree'] ?? null) ? $entry['duree'] : 0,
+            'gymnaseId' => $this->resolveVenueId($gymnase),
+        ];
     }
 
     private function resolveVenueId(string $gym): ?string

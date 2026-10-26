@@ -36,6 +36,14 @@ export interface ParcAnalysisLine {
   groupe?: string | null;
   /** Mutualisations (P4-363) : le gymnase RÉSOLU du nom de la case (null si à créer) — amorce le sélecteur de gymnase de la réservation de groupe, distinct du `cibleId` (qui désigne le bloc apparié). */
   gymnaseId?: string | null;
+  /**
+   * Réservations / mutualisations (refonte PR1) : la POSITION du créneau de SA case DÉRIVÉE
+   * (gymnase · jour · heure · durée, + le gymnase résolu). Le front place la case de la grille et
+   * amorce l'éditeur EXCLUSIVEMENT d'après elle — JAMAIS `payload.cases[index]`, car l'index d'une
+   * ligne de ces deux sections est son rang dans la liste dérivée, décalé du rang des cases du parc
+   * (une case à 2 équipes sur terrains séparés donne 2 réservations et décale tout le reste).
+   */
+  position?: { gymnase: string; jour: number; debut: string; duree: number; gymnaseId?: string | null };
 }
 
 /** Le récap chiffré d'une section de l'aperçu. */

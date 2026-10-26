@@ -183,14 +183,19 @@ export function ParcImportModal(props: ParcImportModalProps) {
           nextChecked[key] = line.coche;
         }
         if (CASE_SECTION_SET.has(section)) {
-          // Amorce de la case (position + brouillons) depuis le parc NORMALISÉ renvoyé par l'analyse
-          // (relu par `ParcPayloadValidator::parse()`, G2 D4) — jamais le texte brut collé.
+          // Amorce du brouillon de case. Les créneaux restent indexés sur la case du parc normalisé
+          // (`payload.cases[index]`, relu par `ParcPayloadValidator::parse()`, G2 D4). Réservations et
+          // mutualisations s'amorcent EXCLUSIVEMENT d'après leur `position` SERVEUR (le créneau de leur
+          // case dérivée) — leur index est le rang dans la liste dérivée, pas celui de la case.
+          const pos = "creneaux" === section ? undefined : line.position;
           const slot = cases[line.index];
-          nextSlotDrafts[key] = {
-            jour: "number" === typeof slot?.jour ? slot.jour : 1,
-            debut: "string" === typeof slot?.debut ? slot.debut : "",
-            duree: "number" === typeof slot?.duree ? slot.duree : 0,
-          };
+          nextSlotDrafts[key] = pos
+            ? { jour: pos.jour, debut: pos.debut, duree: pos.duree }
+            : {
+                jour: "number" === typeof slot?.jour ? slot.jour : 1,
+                debut: "string" === typeof slot?.debut ? slot.debut : "",
+                duree: "number" === typeof slot?.duree ? slot.duree : 0,
+              };
           if ("creneaux" === section) {
             nextCaseVenue[key] = line.cibleId ?? "";
           } else if ("mutualisations" === section) {
@@ -368,8 +373,11 @@ export function ParcImportModal(props: ParcImportModalProps) {
       for (const section of CASE_SECTIONS) {
         for (const line of analysis.sections[section] ?? []) {
           const key = keyOf(section, line.index);
+          // Créneaux : la case du parc (index = case). Réservations/mutualisations : la `position`
+          // SERVEUR de leur case dérivée — jamais `payload.cases[index]` (index décalé, bug grille).
+          const pos = "creneaux" === section ? undefined : line.position;
           const slot = cases[line.index];
-          const venueName = "string" === typeof slot?.gymnase ? slot.gymnase : "";
+          const venueName = pos ? pos.gymnase : "string" === typeof slot?.gymnase ? slot.gymnase : "";
           const draft = slotDrafts[key];
           const g = gid++;
           ref[g] = { section, index: line.index };
