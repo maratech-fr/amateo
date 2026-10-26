@@ -47,6 +47,12 @@ interface Line {
   groupe?: string | null;
   /** Mutualisation (P4-363) : le gymnase résolu du nom de la case (null si à créer) — amorce le sélecteur de gymnase. */
   gymnaseId?: string | null;
+  /**
+   * Réservation / mutualisation (bug grille) : la POSITION du créneau de SA case dérivée. Le front
+   * place la case EXCLUSIVEMENT d'après elle, jamais `payload.cases[index]` (index = rang dans la
+   * liste dérivée `reservations`/`mutualisations`, pas l'index de la case du parc).
+   */
+  position?: { gymnase: string; jour: number; debut: string; duree: number };
 }
 
 interface Recap {
@@ -650,6 +656,40 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(dec?.venueId).toBe("v2");
     expect(dec?.cibleId ?? null).toBeNull();
     expect(dec?.corrections?.groupe).toBe("Section Loisirs");
+  });
+
+  // ─────────── Bug grille — chaque réservation est placée sur SON créneau (position serveur, ROUGE) ───────────
+
+  it("bug grille — une réservation est placée d'après sa `position` serveur, jamais payload.cases[index]", async () => {
+    const user = userEvent.setup();
+    const venues = [{ id: "v1", name: "Gymnase Alpha" }, { id: "v2", name: "Gymnase Beta" }] as const;
+    // La ligne réservation porte l'index 0, mais SA position (créneau dérivé) est « Gymnase Beta jeudi
+    // 20:30 / 1h » — DIFFÉRENTE de payload.cases[0] (« Gymnase Alpha lundi 18:00 / 1h30 »). Le front
+    // doit placer la case d'après `position`, jamais `payload.cases[index]` (index = rang dans
+    // derived['reservations'], pas la case : une case à 2 équipes séparées décale tout le reste).
+    const libelle = "SM1 · Gymnase Beta 20:30";
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Alpha" }, { nom: "Gymnase Beta" }],
+      cases: [{ gymnase: "Gymnase Alpha", jour: 1, debut: "18:00", duree: 90, equipes: ["SM1", "SF1"], terrains_separes: true }],
+    };
+    const position = { gymnase: "Gymnase Beta", jour: 4, debut: "20:30", duree: 60 };
+    const analysis = analysisOf({ reservations: [mkLine(0, libelle, "aCreer", { position })] }, { payload });
+    renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+
+    // La case tombe sous le gymnase de `position` (Beta), jamais celui de cases[0] (Alpha).
+    expect(await screen.findByRole("heading", { name: "Gymnase Beta" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Gymnase Alpha" })).not.toBeInTheDocument();
+
+    // L'éditeur s'amorce avec le jour / l'heure / la durée de `position` (jeudi 20:30 / 1h), jamais
+    // ceux de cases[0] (lundi 18:00 / 1h30).
+    await user.click(await screen.findByRole("button", { name: libelle }));
+    expect(screen.getByDisplayValue("20:30")).toBeInTheDocument();
+    expect(screen.getByLabelText(T.editDay(libelle))).toHaveValue("4");
+    expect(within(screen.getByRole("combobox", { name: "Durée" })).getByRole("option", { name: formatDuration(60) })).toBeInTheDocument();
   });
 
   // ─────────── Écart au plan 3a — signal de création EXPLICITE sur une ligne ambiguë (ROUGE) ───────────

@@ -300,6 +300,67 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertContains(null, $gymnaseIds, 'un gymnase à créer → gymnaseId null (jamais absent)');
     }
 
+    // ───────────── PR1 refonte — la grille place chaque case sur SON créneau (position servie) ─────────────
+    // Bug grille : la grille « qui fait foi » plaçait réservations/mutualisations d'après
+    // `payload.cases[index]`, or l'`index` d'une ligne `reservations` (resp. `mutualisations`) est son
+    // rang dans la liste DÉRIVÉE (`ParcCaseDeriver::deriveReservations`/`deriveMutualisations`), PAS
+    // l'index de la case du parc : une case à 2 équipes (terrains séparés) donne 2 réservations, donc
+    // tout décale dès la case multi-équipes suivante — la grille affichait alors les réservations au
+    // mauvais jour/heure/gymnase. Le contrat : l'analyse sert sur chaque ligne `reservations` et
+    // `mutualisations` une `position` {gymnase, jour, debut:"HH:MM", duree} issue de SON entrée dérivée,
+    // dont le front place la case EXCLUSIVEMENT. Deux angles VOULUS (dérivation réservations ≠
+    // mutualisations) sur la même promesse. Prouvé ROUGE ici, implémenté par NEO.
+
+    public function testEachReservationLineCarriesThePositionOfItsOwnDerivedCase(): void
+    {
+        // Case 1 : 2 équipes sur TERRAINS SÉPARÉS (non mutualisée) → 2 réservations (index 0, 1).
+        // Case 2 : 1 équipe, AUTRE gymnase / jour / heure → la 3ᵉ réservation (index 2). Cette ligne
+        // doit porter la position EXACTE de la 2ᵉ case — c'est précisément le créneau que
+        // `payload.cases[index]` (index 2 = aucune case, le décalage) donnait faux côté front.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Alpha', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1', 'SF1'], 'terrains_separes' => true],
+            ['gymnase' => 'Gymnase Beta', 'jour' => 4, 'debut' => '20:30', 'duree' => 60, 'equipes' => ['U13M1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $reservations = $body['sections']['reservations'];
+        self::assertCount(3, $reservations, '2 réservations pour la case à terrains séparés + 1 pour la case suivante');
+
+        $third = $reservations[2];
+        self::assertArrayHasKey('position', $third, 'chaque réservation porte la position de SA case dérivée');
+        self::assertSame('Gymnase Beta', $third['position']['gymnase'], 'le gymnase est celui de SA case (la 2ᵉ), jamais une case décalée');
+        self::assertSame(4, $third['position']['jour']);
+        self::assertSame('20:30', $third['position']['debut']);
+        self::assertSame(60, $third['position']['duree']);
+    }
+
+    public function testEachMutualisationLineCarriesThePositionOfItsOwnDerivedCase(): void
+    {
+        // Case 1 : 1 équipe (non mutualisée) → 0 mutualisation, mais elle DÉCALE le rang des cases par
+        // rapport au rang des mutualisations. Case 2 : 2 équipes mutualisées, AUTRE gymnase / jour /
+        // heure → la 1ʳᵉ mutualisation (index 0). Sa position doit être celle de la 2ᵉ case, PAS
+        // `payload.cases[0]` (la 1ʳᵉ case) que la grille lisait.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Alpha', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'Gymnase Gamma', 'jour' => 5, 'debut' => '19:15', 'duree' => 120, 'equipes' => ['U9M1', 'U9M2']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $mutualisations = $body['sections']['mutualisations'];
+        self::assertCount(1, $mutualisations, 'une seule case mutualisée');
+
+        $first = $mutualisations[0];
+        self::assertArrayHasKey('position', $first, 'chaque mutualisation porte la position de SA case dérivée');
+        self::assertSame('Gymnase Gamma', $first['position']['gymnase'], 'le gymnase est celui de SA case (la 2ᵉ), jamais payload.cases[0]');
+        self::assertSame(5, $first['position']['jour']);
+        self::assertSame('19:15', $first['position']['debut']);
+        self::assertSame(120, $first['position']['duree']);
+    }
+
     public function testASameTeamInTwoPlacesAtOnceRaisesAnAlertNamingIt(): void
     {
         // t7 : SM2 est lu le JEUDI à 19:00 dans DEUX gymnases (Armand ET JDR) — impossible. L'analyse
