@@ -14,6 +14,7 @@ use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Service\ParcImport\ParcImportGate;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\ParcImport\ParcPayloadValidatorTest;
 use App\Tests\Unit\ParcImport\TeamLabelMatcherTest;
@@ -828,7 +829,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
     /**
      * Les 5 rangs de référence (mapping canonique label→id), idempotents : `priority_tier` est GLOBAL.
-     * Patron {@see \App\Tests\Integration\Service\FfbbExcelImporterTest::seedPriorityTiers}.
+     * Patron {@see FfbbExcelImporterTest::seedPriorityTiers}.
      */
     private function seedPriorityTiers(): void
     {

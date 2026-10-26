@@ -26,6 +26,7 @@ final class FfbbExcelImporter
         private readonly EntityManagerInterface $entityManager,
         private readonly PlanEntitlements $planEntitlements,
         private readonly SportCategoryResolver $sportCategoryResolver,
+        private readonly TeamCreationSuggester $suggester,
     ) {}
 
     /**
@@ -151,7 +152,7 @@ final class FfbbExcelImporter
             // genre vide, hors entente). Un override invalide jette AVANT tout persist
             // (tout-ou-rien). L'entente (chantier D) n'est posée que si l'override la coche —
             // jamais déduite du libellé — et le partenaire reste toujours vide (texte libre).
-            [$tierId, $gender, $isCtc] = $this->resolveOverride($overrides[$rowIndex + 2] ?? null, $validTierIds);
+            [$tierId, $gender, $isCtc] = $this->resolveOverride($overrides[$rowIndex + 2] ?? null, $validTierIds, $rowIndex + 2);
 
             $team = (new Team)
                 ->setClubId($clubId)
@@ -246,13 +247,6 @@ final class FfbbExcelImporter
             $knownNames[mb_strtolower($team->getName(), 'UTF-8')] = true;
         }
 
-        // #4 — le rang suggéré est résolu PAR LABEL (jamais un id en dur) : on charge
-        // la table canonique label→id une fois pour tout l'analyse.
-        $tierIdByLabel = [];
-        foreach ($this->entityManager->getRepository(PriorityTier::class)->findAll() as $tier) {
-            $tierIdByLabel[$tier->getLabel()] = $tier->getId();
-        }
-
         $out = [];
         $errors = [];
         $total = 0;
@@ -286,8 +280,9 @@ final class FfbbExcelImporter
             $alreadyPresent = isset($knownNames[$nameKey]);
             $knownNames[$nameKey] = true;
 
-            $suggestedLabel = $this->suggestedTierLabel($categorie, $numero);
-            $suggestedGender = $this->readGender($nom);
+            // Refonte PR2 (D9) — la règle de suggestion (rang/genre/entente) vit DÉSORMAIS dans la
+            // maison unique {@see TeamCreationSuggester} ; l'importeur la DÉLÈGUE (parité stricte).
+            $suggestion = $this->suggester->suggest($nom, $categorie, $numero);
 
             $out[] = [
                 'row' => $excelRow,
@@ -295,9 +290,9 @@ final class FfbbExcelImporter
                 'category' => $categorie,
                 'number' => $numero,
                 'alreadyPresent' => $alreadyPresent,
-                'suggestedTierId' => $tierIdByLabel[$suggestedLabel] ?? self::DEFAULT_PRIORITY_TIER_ID,
-                'suggestedGender' => $suggestedGender?->value,
-                'suggestedCtc' => $this->suggestsCtc($nom),
+                'suggestedTierId' => $suggestion['tierId'],
+                'suggestedGender' => $suggestion['gender']?->value,
+                'suggestedCtc' => $suggestion['ctc'],
             ];
         }
 
@@ -307,16 +302,20 @@ final class FfbbExcelImporter
     /**
      * Résout un override (rang + genre + entente édités dans l'aperçu) en valeurs de
      * l'équipe. `null` = pas d'override → défaut historique (rang D, genre vide, hors
-     * entente). Un rang inconnu ou un genre hors `Gender::cases()` → 400 nommé, AVANT
-     * tout persist. L'entente (chantier D) n'est posée que si l'override la coche
-     * explicitement (`ctc: true`) — jamais d'office, même quand le libellé porte « CTC ».
+     * entente — le chemin SANS override reste inchangé). Un rang inconnu ou un genre hors
+     * `Gender::cases()` → 400 nommé, AVANT tout persist. Un override COCHÉ dont le genre
+     * est VIDE → 422 (genre OBLIGATOIRE, refonte PR2 §0 point 1 AMENDÉ) nommant la LIGNE,
+     * AVANT tout persist : distinct du genre FORGÉ (400, requête malformée), un genre VIDE
+     * est un choix MANQUANT (le gestionnaire doit trancher). L'entente (chantier D) n'est
+     * posée que si l'override la coche explicitement (`ctc: true`) — jamais d'office, même
+     * quand le libellé porte « CTC ».
      *
      * @param array{tierId: int, gender: string, ctc?: bool}|null $override
      * @param array<int, true>                                    $validTierIds
      *
      * @return array{0: int, 1: ?Gender, 2: bool}
      */
-    private function resolveOverride(?array $override, array $validTierIds): array
+    private function resolveOverride(?array $override, array $validTierIds, int $excelRow): array
     {
         if (null === $override) {
             return [self::DEFAULT_PRIORITY_TIER_ID, null, false];
@@ -331,7 +330,7 @@ final class FfbbExcelImporter
 
         $genderRaw = $override['gender'];
         if ('' === $genderRaw) {
-            return [$tierId, null, $isCtc];
+            throw ImportRejectedException::unprocessable(\sprintf('Ligne %d : le genre est obligatoire pour créer une équipe — choisissez-le dans l\'aperçu.', $excelRow));
         }
 
         $gender = Gender::tryFrom($genderRaw);
@@ -340,71 +339,6 @@ final class FfbbExcelImporter
         }
 
         return [$tierId, $gender, $isCtc];
-    }
-
-    /**
-     * Chantier D — l'analyse SUGGÈRE l'entente (CTC) pour une équipe dont le libellé
-     * porte « CTC » ou « ENTENTE » (casse indifférente), sans RIEN décider : le
-     * gestionnaire reste libre de décocher. Aucun marqueur → jamais suggérée.
-     */
-    private function suggestsCtc(string $name): bool
-    {
-        $upper = mb_strtoupper($name, 'UTF-8');
-
-        return str_contains($upper, 'CTC') || str_contains($upper, 'ENTENTE');
-    }
-
-    /**
-     * #4 — le LABEL de rang suggéré pour une équipe, d'après sa catégorie et son
-     * numéro. Seniors n°1/2/3/4+ → S/A/B/C ; jeunes n°1/2/3+ → A/B/C ; loisir → D ;
-     * sans numéro → C (jamais le défaut D). Le label est ensuite résolu en id via le
-     * repository `PriorityTier` (jamais un id en dur).
-     */
-    private function suggestedTierLabel(string $category, string $number): string
-    {
-        $cat = mb_strtolower($category, 'UTF-8');
-        if (str_contains($cat, 'loisir')) {
-            return 'D';
-        }
-
-        $rank = ctype_digit($number) ? (int) $number : 0; // sans numéro → 0
-
-        if (str_contains($cat, 'senior')) {
-            return match (true) {
-                1 === $rank => 'S',
-                2 === $rank => 'A',
-                3 === $rank => 'B',
-                default => 'C', // n°4 et +, ET sans numéro
-            };
-        }
-
-        // Jeunes (toute catégorie d'âge) : n°1/2/3+ → A/B/C ; sans numéro → C.
-        return match (true) {
-            1 === $rank => 'A',
-            2 === $rank => 'B',
-            default => 'C',
-        };
-    }
-
-    /**
-     * #4 — le genre LU dans le nom, seulement dans un motif clair : une catégorie
-     * d'âge suivie de la lettre (`U13F1`, `U18M`), ou `SM…`/`SF…`. Jamais la 1re
-     * lettre M/F trouvée au hasard (« Mercredi Basket » n'est pas masculin), jamais
-     * MIXTE en automatique : à défaut de motif, `null` (le gestionnaire tranche).
-     */
-    private function readGender(string $name): ?Gender
-    {
-        // Catégorie d'âge suivie de la lettre : U13F1, U18M.
-        if (1 === preg_match('/\bU\d+\s*([MF])/i', $name, $matches)) {
-            return Gender::from(mb_strtoupper($matches[1], 'UTF-8'));
-        }
-
-        // SM… → M, SF… → F (code FFBB « Senior Masculin/Féminin »).
-        if (1 === preg_match('/\bS([MF])/i', $name, $matches)) {
-            return Gender::from(mb_strtoupper($matches[1], 'UTF-8'));
-        }
-
-        return null;
     }
 
     /**

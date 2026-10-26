@@ -20,6 +20,7 @@ use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
+use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -1148,7 +1149,7 @@ final class ParcImportExecuteTest extends WebTestCase
 
     /**
      * Les 5 rangs de référence (mapping canonique label→id), idempotents : `priority_tier` est GLOBAL.
-     * Patron {@see \App\Tests\Integration\Service\FfbbExcelImporterTest::seedPriorityTiers}.
+     * Patron {@see FfbbExcelImporterTest::seedPriorityTiers}.
      */
     private function seedPriorityTiers(): void
     {

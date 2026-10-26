@@ -53,9 +53,11 @@ interface ParcImportModalProps {
 // Retours fondateur 2026-10-26 — « plus on découpe, plus c'est simple » : les mutualisations ont leur
 // PROPRE étape, et les Réservations passent EN FIN. Ordre : Prompt · Coller · Équipes · Gymnases ·
 // Mutualisations · Réservations. Les étapes de CONTENU sont verrouillées avant l'analyse.
-type StepId = "prompt" | "paste" | "equipes" | "gymnases" | "mutualisations" | "reservations";
-const STEP_ORDER: StepId[] = ["prompt", "paste", "equipes", "gymnases", "mutualisations", "reservations"];
-const CONTENT_STEPS = new Set<StepId>(["equipes", "gymnases", "mutualisations", "reservations"]);
+// Refonte PR2 (D9) — une étape « Ententes (CTC) » vient juste APRÈS Équipes (dépend de la règle de
+// suggestion de PR2 : équipes « Créer » cochables en entente).
+type StepId = "prompt" | "paste" | "equipes" | "ententes" | "gymnases" | "mutualisations" | "reservations";
+const STEP_ORDER: StepId[] = ["prompt", "paste", "equipes", "ententes", "gymnases", "mutualisations", "reservations"];
+const CONTENT_STEPS = new Set<StepId>(["equipes", "ententes", "gymnases", "mutualisations", "reservations"]);
 
 /** Les sections d'ENTITÉS : une ligne y porte le sélecteur de décision (apparier / créer / ignorer). */
 const REMATCH_SECTIONS = new Set(["equipes", "gymnases"]);
@@ -111,8 +113,9 @@ const MAX_SESSIONS = 7;
 const clampSessions = (n: number): number => (Number.isFinite(n) ? Math.min(MAX_SESSIONS, Math.max(MIN_SESSIONS, Math.round(n))) : DEFAULT_SESSIONS);
 
 /**
- * Lot correctif import IA « G2 » PR1 — la modale d'import du parc par IA est un ASSISTANT en 6 étapes
- * (StepRail : Prompt · Coller · Équipes · Gymnases · Mutualisations · Réservations). Le gestionnaire
+ * Lot correctif import IA « G2 » — la modale d'import du parc par IA est un ASSISTANT en 7 étapes
+ * (StepRail : Prompt · Coller · Équipes · Ententes (CTC) · Gymnases · Mutualisations · Réservations ;
+ * l'étape « Ententes » est ajoutée par la refonte PR2, D9). Le gestionnaire
  * (1) copie le prompt, (2) colle la réponse de l'assistant et l'analyse, puis tranche l'aperçu par
  * étape : (3) ses équipes, (4) ses gymnases et leurs créneaux (grille par gymnase), (5) ses
  * mutualisations, (6) ses réservations (grille par gymnase). Les étapes 3-6 restent VERROUILLÉES tant
@@ -159,6 +162,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
   // Retours fondateur 2026-10-26 — le nombre de séances d'une ligne équipe, en CHAMP éditable
   // (pré-rempli de la valeur LUE), par `equipes:index`. Remplace l'ancienne case « mise à jour ».
   const [sessionDrafts, setSessionDrafts] = useState<Record<string, number>>({});
+  // Refonte PR2 (D9) — rang / genre / entente d'une ligne équipe « Créer », par `equipes:index`,
+  // pré-remplis des suggestions de la règle FBI unique. Le genre "" est le « À choisir » obligatoire.
+  const [tierDrafts, setTierDrafts] = useState<Record<string, number>>({});
+  const [genderDrafts, setGenderDrafts] = useState<Record<string, string>>({});
+  const [ctcDrafts, setCtcDrafts] = useState<Record<string, boolean>>({});
+  const [ctcPartnerDrafts, setCtcPartnerDrafts] = useState<Record<string, string>>({});
   const [editingCase, setEditingCase] = useState<EditingCase | null>(null);
   // Cases corrigées depuis la dernière analyse (clés `section:index`) → aperçu périmé (« Revalider »).
   const [dirtyCases, setDirtyCases] = useState<Set<string>>(new Set());
@@ -210,6 +219,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
     const nextCaseVenue: Record<string, string> = {};
     const nextGroupDrafts: Record<string, string> = {};
     const nextSessionDrafts: Record<string, number> = {};
+    const nextTier: Record<string, number> = {};
+    const nextGender: Record<string, string> = {};
+    const nextCtc: Record<string, boolean> = {};
+    const nextCtcPartner: Record<string, string> = {};
     for (const section of Object.keys(data.sections)) {
       for (const line of data.sections[section] ?? []) {
         const key = keyOf(section, line.index);
@@ -221,6 +234,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
         // Champ « Séances » d'une équipe : pré-rempli de la valeur LUE (ce qui SERA importé), défaut 2.
         if ("equipes" === section) {
           nextSessionDrafts[key] = clampSessions(line.seances ?? DEFAULT_SESSIONS);
+          // Refonte PR2 — rang / genre / entente pré-remplis des suggestions (lignes « à créer »).
+          if (undefined !== line.suggestedTierId) {
+            nextTier[key] = line.suggestedTierId;
+            nextGender[key] = line.suggestedGender ?? "";
+            nextCtc[key] = line.suggestedCtc ?? false;
+          }
         }
         if (CASE_SECTION_SET.has(section)) {
           // Amorce du brouillon de case. Les créneaux restent indexés sur la case du parc normalisé
@@ -258,6 +277,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setCaseVenue(nextCaseVenue);
     setGroupDrafts(nextGroupDrafts);
     setSessionDrafts(nextSessionDrafts);
+    setTierDrafts(nextTier);
+    setGenderDrafts(nextGender);
+    setCtcDrafts(nextCtc);
+    setCtcPartnerDrafts(nextCtcPartner);
   };
 
   const doAnalyze = (): void => {
@@ -283,8 +306,27 @@ export function ParcImportModal(props: ParcImportModalProps) {
           const seances = "equipes" === section ? clampSessions(sessionDrafts[key] ?? line.seances ?? DEFAULT_SESSIONS) : null;
           if (CREATE === value) {
             // « Créer » explicite (3a) : coché, sans cible, signal `creer:true` (lève le refus d'ambiguïté).
-            // La CRÉATION utilise le nombre de séances du champ (ce que l'IA crée, corrigé).
-            out.push({ section, index: line.index, coche: true, creer: true, corrections: null !== seances ? { seances } : undefined });
+            // La CRÉATION utilise le nombre de séances du champ (ce que l'IA crée, corrigé) et, pour une
+            // ligne PR2 (le serveur a servi des suggestions `suggestedTierId`), le rang / genre / entente
+            // édités — `corrections.{tierId, genre, ctc, ctcPartner}` (le genre obligatoire est posé ici).
+            const corrections: Record<string, unknown> = {};
+            if (null !== seances) {
+              corrections.seances = seances;
+            }
+            if ("equipes" === section && undefined !== line.suggestedTierId) {
+              corrections.tierId = tierDrafts[key] ?? line.suggestedTierId;
+              const g = genderDrafts[key] ?? line.suggestedGender ?? "";
+              if ("" !== g) {
+                corrections.genre = g;
+              }
+              const ctc = ctcDrafts[key] ?? line.suggestedCtc ?? false;
+              corrections.ctc = ctc;
+              const partner = (ctcPartnerDrafts[key] ?? "").trim();
+              if (ctc && "" !== partner) {
+                corrections.ctcPartner = partner;
+              }
+            }
+            out.push({ section, index: line.index, coche: true, creer: true, corrections: Object.keys(corrections).length > 0 ? corrections : undefined });
           } else if (IGNORE === value || "" === value) {
             out.push({ section, index: line.index, coche: false });
           } else {
@@ -330,6 +372,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const setSessionDraft = (index: number, value: number): void =>
     setSessionDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: value }));
 
+  const setTierDraft = (index: number, value: number): void =>
+    setTierDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: value }));
+
+  const setGenderDraft = (index: number, value: string): void =>
+    setGenderDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: value }));
+
   // Compte des lignes équipe/gymnase AMBIGUËS non tranchées (valeur "") — elles bloquent l'import.
   const pendingAmbiguous = useMemo(() => {
     if (null === analysis) {
@@ -347,9 +395,26 @@ export function ParcImportModal(props: ParcImportModalProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysis, decisions]);
 
+  // Refonte PR2 — compte des lignes équipe « Créer » (PR2, avec suggestions) dont le genre OBLIGATOIRE
+  // n'est pas tranché ("") : elles bloquent l'import, avec la raison comptée.
+  const pendingGender = useMemo(() => {
+    if (null === analysis) {
+      return 0;
+    }
+    let n = 0;
+    for (const line of analysis.sections.equipes ?? []) {
+      const key = keyOf("equipes", line.index);
+      if (undefined !== line.suggestedTierId && CREATE === decisionValue("equipes", line) && "" === (genderDrafts[key] ?? line.suggestedGender ?? "")) {
+        n += 1;
+      }
+    }
+    return n;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis, decisions, genderDrafts]);
+
   const importDecisions = buildDecisions();
   const count = importDecisions.filter((d) => d.coche).length;
-  const blocked = pendingAmbiguous > 0 || 0 === count;
+  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || 0 === count;
 
   const doImport = (): void => {
     if (null === analysis || blocked) {
@@ -426,18 +491,31 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if ("reservations" === id) {
       return (analysis.sections.reservations ?? []).some((l) => "alerte" === l.statut);
     }
+    // L'étape Ententes (CTC) est optionnelle : jamais une décision EN ATTENTE (pas de warning rail).
+    if ("ententes" === id) {
+      return false;
+    }
+    // Équipes : alerte, ambigu non tranché, OU un genre OBLIGATOIRE manquant sur une ligne « Créer » (PR2).
+    if ("equipes" === id) {
+      return (analysis.sections.equipes ?? []).some(
+        (l) =>
+          "alerte" === l.statut ||
+          "" === decisionValue("equipes", l) ||
+          (undefined !== l.suggestedTierId && CREATE === decisionValue("equipes", l) && "" === (genderDrafts[keyOf("equipes", l.index)] ?? l.suggestedGender ?? "")),
+      );
+    }
     return (analysis.sections[id] ?? []).some((l) => "alerte" === l.statut || "" === decisionValue(id, l));
   };
 
   const steps: StepRailStep<StepId>[] = STEP_ORDER.map((id) => ({
     id,
-    label: "prompt" === id ? T.stepPrompt : "paste" === id ? T.stepPaste : T.sectionTitle(id),
+    label: "prompt" === id ? T.stepPrompt : "paste" === id ? T.stepPaste : "ententes" === id ? T.stepEntentes : T.sectionTitle(id),
     state: stepStateOf(id),
     locked: isLocked(id),
   }));
 
   const stepNumber = STEP_ORDER.indexOf(step) + 1;
-  const stepTitle = "prompt" === step ? T.promptHeading : "paste" === step ? T.pasteHeading : T.sectionTitle(step);
+  const stepTitle = "prompt" === step ? T.promptHeading : "paste" === step ? T.pasteHeading : "ententes" === step ? T.stepEntentes : T.sectionTitle(step);
 
   // Grilles des CASES, avec un index SYNTHÉTIQUE par case (`ParcCaseGrid` ne connaît qu'un index
   // numérique) remonté à sa (section, rang) par `ref`. Retours fondateur 2026-10-26 — deux grilles
@@ -574,7 +652,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
                     bouton), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher. */}
                 {blocked ? (
                   <span className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{T.importBlocked(pendingAmbiguous, 0)}</span>
+                    <span>{T.importBlocked(pendingAmbiguous, pendingGender)}</span>
                     {pendingAmbiguous > 0 ? (
                       <Button variant="ghost" size="sm" onClick={seeBlocking}>
                         {T.seeBlockingLine}
@@ -670,6 +748,20 @@ export function ParcImportModal(props: ParcImportModalProps) {
                   onDecision={setDecision}
                   sessionDrafts={sessionDrafts}
                   onSessionChange={setSessionDraft}
+                  tierDrafts={tierDrafts}
+                  genderDrafts={genderDrafts}
+                  onTierChange={setTierDraft}
+                  onGenderChange={setGenderDraft}
+                />
+              ) : null}
+              {"ententes" === step && null !== analysis ? (
+                <EntentesStep
+                  lines={analysis.sections.equipes ?? []}
+                  decisionValue={decisionValue}
+                  ctcDrafts={ctcDrafts}
+                  ctcPartnerDrafts={ctcPartnerDrafts}
+                  onCtcChange={(index, v) => setCtcDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: v }))}
+                  onCtcPartnerChange={(index, v) => setCtcPartnerDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: v }))}
                 />
               ) : null}
               {/* Retours fondateur 2026-10-26 — l'étape Gymnases montre, par gymnase, SA décision EN
@@ -803,6 +895,10 @@ function EntitySection({
   onDecision,
   sessionDrafts,
   onSessionChange,
+  tierDrafts,
+  genderDrafts,
+  onTierChange,
+  onGenderChange,
 }: {
   section: "equipes" | "gymnases";
   lines: ParcAnalysisLine[];
@@ -814,6 +910,11 @@ function EntitySection({
   /** Champ « Séances » éditable (équipes) : brouillon par ligne + sa mise à jour. Absent pour gymnases. */
   sessionDrafts?: Record<string, number>;
   onSessionChange?: (index: number, value: number) => void;
+  /** Rang / genre d'une ligne « Créer » (équipes, PR2) : brouillons + setters. Absent pour gymnases. */
+  tierDrafts?: Record<string, number>;
+  genderDrafts?: Record<string, string>;
+  onTierChange?: (index: number, value: number) => void;
+  onGenderChange?: (index: number, value: string) => void;
 }) {
   if (0 === lines.length) {
     return <p className="text-sm text-muted-foreground">{T.previewHelp}</p>;
@@ -832,6 +933,10 @@ function EntitySection({
           onChange={(value) => onDecision(section, line.index, value)}
           sessionValue={sessionDrafts?.[keyOf(section, line.index)] ?? line.seances ?? DEFAULT_SESSIONS}
           onSessionChange={onSessionChange}
+          tierValue={tierDrafts?.[keyOf(section, line.index)]}
+          genderValue={genderDrafts?.[keyOf(section, line.index)]}
+          onTierChange={onTierChange}
+          onGenderChange={onGenderChange}
         />
       ))}
     </ul>
@@ -848,6 +953,10 @@ function DecisionRow({
   onChange,
   sessionValue,
   onSessionChange,
+  tierValue,
+  genderValue,
+  onTierChange,
+  onGenderChange,
 }: {
   section: "equipes" | "gymnases";
   line: ParcAnalysisLine;
@@ -858,10 +967,19 @@ function DecisionRow({
   onChange: (value: string) => void;
   sessionValue: number;
   onSessionChange?: (index: number, value: number) => void;
+  tierValue?: number;
+  genderValue?: string;
+  onTierChange?: (index: number, value: number) => void;
+  onGenderChange?: (index: number, value: string) => void;
 }) {
   const reasonId = useId();
   const groups = useMemo(() => decisionGroups(section, line, venues, allTeams, tiers), [section, line, venues, allTeams, tiers]);
   const pending = "ambigu" === line.statut && "" === value;
+  // Refonte PR2 (D9) — une ligne équipe « Créer » PORTANT des suggestions (le serveur a servi
+  // `suggestedTierId`) montre un Select Rang + un Select Genre (le genre est OBLIGATOIRE : vide = ⚠).
+  const showCreateFields = "equipes" === section && CREATE === value && undefined !== line.suggestedTierId && undefined !== onGenderChange && undefined !== onTierChange;
+  const genderVal = genderValue ?? line.suggestedGender ?? "";
+  const genderMissing = "" === genderVal;
 
   return (
     <li className="grid gap-x-4 gap-y-1 border-b border-border/60 py-2 md:grid-cols-[minmax(0,1fr)_20rem]">
@@ -906,7 +1024,122 @@ function DecisionRow({
         onValueChange={onChange}
         groups={groups}
       />
+      {showCreateFields ? (
+        <div className="flex flex-wrap items-end justify-end gap-2 md:col-span-2">
+          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+            <span>{T.tierFieldLabel}</span>
+            <Select
+              aria-label={T.tierOf(line.libelle)}
+              wrapperClassName="w-32"
+              value={String(tierValue ?? line.suggestedTierId)}
+              onChange={(e) => onTierChange?.(line.index, Number(e.target.value))}
+            >
+              {tiers.map((t) => (
+                <option key={t.id} value={String(t.id)}>
+                  {tierGroupLabel(t)}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+            <span>{T.genderFieldLabel}</span>
+            <Select
+              aria-label={T.genderOf(line.libelle)}
+              wrapperClassName="w-32"
+              aria-invalid={genderMissing || undefined}
+              value={genderVal}
+              onChange={(e) => onGenderChange?.(line.index, e.target.value)}
+            >
+              <option value="">{T.genderPlaceholder}</option>
+              <option value="M">{T.genderMasculin}</option>
+              <option value="F">{T.genderFeminin}</option>
+              <option value="MIXTE">{T.genderMixte}</option>
+            </Select>
+            {genderMissing ? (
+              <span className="flex items-center gap-1 text-foreground">
+                <AlertTriangle aria-hidden className="size-3.5 text-warning" />
+                {T.genderRequired}
+              </span>
+            ) : null}
+          </label>
+        </div>
+      ) : null}
     </li>
+  );
+}
+
+/**
+ * Étape Ententes (CTC) (refonte PR2, D9) — juste après Équipes. Les équipes « à créer » y portent une
+ * case Entente (pré-cochée si la règle FBI la suggère) + un champ « club partenaire » → `corrections.ctc`
+ * / `corrections.ctcPartner`. Les équipes DÉJÀ au club (appariées/suggérées) s'affichent en LECTURE
+ * SEULE : l'import ne touche jamais l'entente de l'existant. Aucune équipe à créer → `EmptyHint`.
+ */
+function EntentesStep({
+  lines,
+  decisionValue,
+  ctcDrafts,
+  ctcPartnerDrafts,
+  onCtcChange,
+  onCtcPartnerChange,
+}: {
+  lines: ParcAnalysisLine[];
+  decisionValue: (section: string, line: ParcAnalysisLine) => string;
+  ctcDrafts: Record<string, boolean>;
+  ctcPartnerDrafts: Record<string, string>;
+  onCtcChange: (index: number, value: boolean) => void;
+  onCtcPartnerChange: (index: number, value: string) => void;
+}) {
+  const isCreate = (line: ParcAnalysisLine): boolean => CREATE === decisionValue("equipes", line) && undefined !== line.suggestedTierId;
+  const createLines = lines.filter(isCreate);
+  const otherLines = lines.filter((l) => !isCreate(l));
+  if (0 === createLines.length) {
+    return <EmptyHint>{T.ententesNoCreations}</EmptyHint>;
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">{T.ententesHelp}</p>
+      <ul className="flex flex-col gap-2">
+        {createLines.map((line) => {
+          const key = keyOf("equipes", line.index);
+          const ctc = ctcDrafts[key] ?? line.suggestedCtc ?? false;
+          return (
+            <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  className="size-4 shrink-0"
+                  aria-label={T.ententeFor(line.libelle)}
+                  checked={ctc}
+                  onChange={() => onCtcChange(line.index, !ctc)}
+                />
+                <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
+                <span className="font-medium">{line.libelle}</span>
+                <span className="text-muted-foreground">{T.ententeCheckboxLabel}</span>
+              </label>
+              {ctc ? (
+                <Input
+                  aria-label={T.ententePartnerFor(line.libelle)}
+                  placeholder={T.ententePartnerPlaceholder}
+                  className="w-64"
+                  value={ctcPartnerDrafts[key] ?? ""}
+                  onChange={(e) => onCtcPartnerChange(line.index, e.target.value)}
+                />
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {otherLines.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {otherLines.map((line) => (
+            <li key={line.index} className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium text-foreground">{line.libelle}</span>
+              <span className="text-muted-foreground">{T.ententeExistingManaged}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

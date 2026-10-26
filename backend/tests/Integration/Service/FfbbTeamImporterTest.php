@@ -15,6 +15,7 @@ use App\Enum\SeasonStatus;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbEngagementReader;
 use App\Service\Basketball\FfbbTeamImporter;
+use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -32,7 +33,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * BCCL-like — senior structuré, jeune « Brassage » à décoder, coupe à sauter.
  *
  * Refonte import IA PR2 (D9, décision #3) — l'import FFBB par API abandonne son barème LEVEL_TIER
- * (PN→rang 1 d'office) pour la RÈGLE FBI unique ({@see \App\Service\Basketball\TeamCreationSuggester},
+ * (PN→rang 1 d'office) pour la RÈGLE FBI unique ({@see TeamCreationSuggester},
  * rang par catégorie + numéro). Promesses re-exprimées ici (option A, TANK ROUGE → NEO) :
  *  - le RANG suit la règle FBI, résolu PAR LABEL via le repo `PriorityTier` : un engagement PN ne
  *    donne PLUS le rang 1 d'office (c'est le NUMÉRO dans la catégorie qui décide — SM1/SF1 = n°1 → S,
@@ -215,7 +216,7 @@ final class FfbbTeamImporterTest extends KernelTestCase
         $api = new FfbbApiClient($http);
         $reader = new FfbbEngagementReader($api);
 
-        return new FfbbTeamImporter($this->em, $reader, self::getContainer()->get(SeasonResolver::class), new NullLogger, self::getContainer()->get(PlanEntitlements::class));
+        return new FfbbTeamImporter($this->em, $reader, self::getContainer()->get(SeasonResolver::class), new NullLogger, self::getContainer()->get(PlanEntitlements::class), self::getContainer()->get(TeamCreationSuggester::class));
     }
 
     private function teamNamed(string $name): Team

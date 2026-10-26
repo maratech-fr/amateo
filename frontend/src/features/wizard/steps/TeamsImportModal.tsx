@@ -12,9 +12,13 @@ import { tierGroupLabel } from "@/shared/lib/teamTiers";
 import type { Gender, TeamImportAnalysis, TeamImportOverride, TeamImportResult } from "../api";
 import { useAnalyzeTeamsImport, useImportTeams, usePriorityTiers } from "../queries";
 
-/** Les options du contrôle Genre, miroir de `GENDERS` de l'éditeur d'équipes (vide = indéterminé). */
+/**
+ * Les options du contrôle Genre, miroir de `GENDERS` de l'éditeur d'équipes. Refonte PR2 (§0 point 1
+ * AMENDÉ) : le genre est OBLIGATOIRE à l'import — l'option vide porte « À choisir » (plus « — »), et
+ * tant qu'elle est sélectionnée sur une ligne cochée, « Importer » est désarmé avec sa raison.
+ */
 const GENDER_OPTIONS: { value: Gender | ""; label: string }[] = [
-  { value: "", label: "—" },
+  { value: "", label: "À choisir" },
   { value: "M", label: "Homme" },
   { value: "F", label: "Femme" },
   { value: "MIXTE", label: "Mixte" },
@@ -141,6 +145,12 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
 
   const count = checked.size;
   const showSelection = null !== analysis && null === result;
+  // Refonte PR2 — genre OBLIGATOIRE : une ligne COCHÉE dont le genre final est vide désarme « Importer »
+  // avec sa raison comptée (le serveur refuse de toute façon, 422). Le genre final = édité ?? suggéré ?? "".
+  const missingGenderCount = rows.filter(
+    (r) => checked.has(r.row) && "" === (genderByRow[r.row] ?? r.suggestedGender ?? ""),
+  ).length;
+  const importDisabledReason = missingGenderCount > 0 ? `${missingGenderCount} équipe${missingGenderCount > 1 ? "s" : ""} sans genre` : undefined;
 
   return (
     <Modal
@@ -154,7 +164,12 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
             Fermer
           </Button>
           {showSelection ? (
-            <Button size="sm" disabled={0 === count || importing} onClick={doImport}>
+            <Button
+              size="sm"
+              disabled={0 === count || importing || missingGenderCount > 0}
+              disabledReason={importDisabledReason}
+              onClick={doImport}
+            >
               {importing ? <Spinner className="size-4" /> : null}
               Importer {count} équipe{count > 1 ? "s" : ""}
             </Button>
@@ -221,6 +236,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                     aria-label={`Genre de ${r.name}`}
                     compact
                     wrapperClassName="w-24 shrink-0"
+                    aria-invalid={(checked.has(r.row) && "" === (genderByRow[r.row] ?? r.suggestedGender ?? "")) || undefined}
                     value={genderByRow[r.row] ?? r.suggestedGender ?? ""}
                     onChange={(e) => setGenderByRow((prev) => ({ ...prev, [r.row]: e.target.value as Gender | "" }))}
                   >

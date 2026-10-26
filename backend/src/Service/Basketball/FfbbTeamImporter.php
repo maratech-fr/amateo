@@ -41,8 +41,12 @@ use Psr\Log\LoggerInterface;
  */
 final class FfbbTeamImporter
 {
-    /** Niveau décodé → rang proposé (S=1 … D=5). Le fanion se détecte tout seul. */
-    private const LEVEL_TIER = ['PN' => 1, 'R' => 2, 'PR' => 3, 'D' => 4];
+    /**
+     * Niveau décodé → ordinal de TRI (PN d'abord). N'EST PLUS un rang (refonte PR2 D9 : le rang suit
+     * la règle FBI unique {@see TeamCreationSuggester}, par catégorie + numéro) — juste l'ordre dans
+     * lequel on numérote les équipes d'un même moule (le plus haut niveau prend le n°1).
+     */
+    private const LEVEL_SORT = ['PN' => 0, 'R' => 1, 'PR' => 2, 'D' => 3];
 
     private const LEVEL_ENUM = ['PN' => TeamLevel::NATIONAL, 'R' => TeamLevel::REGIONAL, 'PR' => TeamLevel::PRE_REGION, 'D' => TeamLevel::DEPARTEMENTAL];
 
@@ -52,6 +56,7 @@ final class FfbbTeamImporter
         private readonly SeasonResolver $seasonResolver,
         private readonly LoggerInterface $logger,
         private readonly PlanEntitlements $planEntitlements,
+        private readonly TeamCreationSuggester $suggester,
     ) {}
 
     /**
@@ -78,8 +83,9 @@ final class FfbbTeamImporter
         /** @var list<SportCategory> $categories */
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy(['clubId' => $club->getId()]);
 
-        // Décodage + tri : niveau (PN > R > PR > D) puis âge décroissant — les
-        // seniors du plus haut niveau d'abord, c'est l'ordre des rangs S→D.
+        // Décodage + tri : niveau (PN > R > PR > D) puis âge décroissant — les plus hauts d'abord,
+        // pour que la NUMÉROTATION des équipes d'un même moule donne le n°1 au plus haut niveau (le
+        // rang, lui, suit ensuite la règle FBI par catégorie + numéro).
         $decoded = [];
         foreach ($rows as $row) {
             $parsed = $this->decode($row);
@@ -98,7 +104,7 @@ final class FfbbTeamImporter
             }
             $decoded[] = [...$parsed, 'category' => $category, 'competitionName' => $row['competitionName']];
         }
-        usort($decoded, static fn (array $a, array $b): int => [$a['tierRank'], -$a['ageMax']] <=> [$b['tierRank'], -$b['ageMax']]);
+        usort($decoded, static fn (array $a, array $b): int => [$a['levelSort'], -$a['ageMax']] <=> [$b['levelSort'], -$b['ageMax']]);
 
         // P1-3 — cap payant : n'importe que jusqu'au cap, le reste est sauté et loggé. Ce chemin
         // ne tourne que sur un club VIDE (borne ci-dessus), donc teamsUsed = 0 → remaining = cap.
@@ -117,8 +123,17 @@ final class FfbbTeamImporter
         $created = 0;
         $usedNames = [];
         foreach ($decoded as $order => $entry) {
-            $name = $this->uniqueName($this->baseName($entry), $usedNames);
+            $base = $this->baseName($entry);
+            $name = $this->uniqueName($base, $usedNames);
             $usedNames[$name] = true;
+
+            // Refonte PR2 (D9) — le RANG suit la règle FBI unique ({@see TeamCreationSuggester}, par
+            // catégorie + numéro), plus le niveau PN/R/D d'office. Le numéro est le suffixe que vient
+            // d'apposer `uniqueName` (SM1 → 1). Le GENRE reste le STRUCTURÉ fédéral décodé (prioritaire
+            // sur ce que lirait le suggester au nom) ; le `level` décodé est TOUJOURS stocké.
+            $number = (string) (int) substr($name, \strlen($base));
+            $categoryLabel = 'SE' === $entry['categoryToken'] ? 'Seniors' : $entry['categoryToken'];
+            $suggestion = $this->suggester->suggest($name, $categoryLabel, $number);
 
             $team = new Team;
             $team->setClubId($club->getId());
@@ -127,7 +142,7 @@ final class FfbbTeamImporter
             $team->setName($name);
             $team->setGender($entry['gender']);
             $team->setLevel($entry['level']);
-            $team->setPriorityTierId($entry['tierRank']);
+            $team->setPriorityTierId($suggestion['tierId']);
             $team->setTierOrder($order);
             // sessionsPerWeek : défaut d'entité = 2 (décision fondateur 2026-08-04).
             $this->entityManager->persist($team);
@@ -149,7 +164,7 @@ final class FfbbTeamImporter
      *
      * @param array{ffbbCompetitionCode: string, category: ?string, level: ?string, gender: ?string} $row
      *
-     * @return array{categoryToken: string, gender: ?Gender, level: ?TeamLevel, tierRank: int, ageMax: int}|null
+     * @return array{categoryToken: string, gender: ?Gender, level: ?TeamLevel, levelSort: int, ageMax: int}|null
      */
     private function decode(array $row): ?array
     {
@@ -179,7 +194,7 @@ final class FfbbTeamImporter
             'categoryToken' => $category,
             'gender' => $gender,
             'level' => null !== $levelToken ? self::LEVEL_ENUM[$levelToken] : null,
-            'tierRank' => null !== $levelToken ? self::LEVEL_TIER[$levelToken] : 5,
+            'levelSort' => null !== $levelToken ? self::LEVEL_SORT[$levelToken] : 4,
             'ageMax' => 'SE' === $category ? 99 : (int) substr($category, 1),
         ];
     }

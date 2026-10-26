@@ -11,6 +11,7 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\PlanEntitlements;
@@ -55,6 +56,7 @@ final class ParcImportAnalyzer
         private readonly PlanEntitlements $planEntitlements,
         private readonly ParcCaseDeriver $deriver,
         private readonly TeamLabelMatcher $matcher,
+        private readonly TeamCreationSuggester $suggester,
     ) {}
 
     /**
@@ -106,8 +108,8 @@ final class ParcImportAnalyzer
      * créneaux) ou NAÎTRE (correction qui les superpose). Ne touche QUE jour / debut / duree (les
      * seuls champs simples d'une case) ; une correction de libellé de groupe reste pour l'import.
      *
-     * @param array{gymnases: list<array{nom: string}>, equipes: list<array{nom: string, genre: string, categorie: string, seances: int}>, creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>, reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>, mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>, alertes: list<array{type: string, message: string}>} $derived
-     * @param list<array<string, mixed>>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          $decisions
+     * @param array{gymnases: list<array{nom: string}>, equipes: list<array{nom: string, genre: ?string, categorie: string, seances: int}>, creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>, reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>, mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>, alertes: list<array{type: string, message: string}>} $derived
+     * @param list<array<string, mixed>>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           $decisions
      */
     private function applyTimeCorrections(array &$derived, array $decisions): void
     {
@@ -186,7 +188,7 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * @param list<array{nom: string, genre: string, categorie: string, seances: int}> $teams
+     * @param list<array{nom: string, genre: ?string, categorie: string, seances: int}> $teams
      *
      * @return list<array<string, mixed>>
      */
@@ -213,6 +215,16 @@ final class ParcImportAnalyzer
                 if ($current !== $entry['seances']) {
                     $extra['miseAJour'] = ['champ' => 'seances', 'de' => $current, 'a' => $entry['seances']];
                 }
+            }
+            // Refonte PR2 (D9) — une ligne « à créer » porte les SUGGESTIONS de la règle FBI unique
+            // ({@see TeamCreationSuggester}) : rang (id résolu par label), genre (?string, null si aucun
+            // motif clair — « plus MIXTE ») et entente. Elles pré-remplissent les Select Rang + Genre et
+            // la case Entente de l'aperçu. Le genre reste tranché par le gestionnaire (obligatoire).
+            if ('aCreer' === $statut) {
+                $suggestion = $this->suggester->suggest($nom, $this->stringField($entry, 'categorie'), '');
+                $extra['suggestedTierId'] = $suggestion['tierId'];
+                $extra['suggestedGender'] = $suggestion['gender']?->value;
+                $extra['suggestedCtc'] = $suggestion['ctc'];
             }
 
             $rows[] = ['index' => $i, 'nom' => $nom, 'statut' => $statut, 'cibleId' => $cibleId, 'raison' => $raison, 'extra' => $extra];

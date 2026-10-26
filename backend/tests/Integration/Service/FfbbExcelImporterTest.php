@@ -15,6 +15,7 @@ use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
+use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use App\Service\SportCategoryResolver;
@@ -37,7 +38,7 @@ use Throwable;
  * base). La correspondance UI persistée, elle, attend l'écran P3-7.
  *
  * Refonte import IA PR2 (D9) — l'importeur DÉLÈGUE désormais ses suggestions (rang/genre/entente) à
- * la maison unique {@see \App\Service\Basketball\TeamCreationSuggester} (le barème y vit, prouvé par
+ * la maison unique {@see TeamCreationSuggester} (le barème y vit, prouvé par
  * {@see TeamCreationSuggesterTest}). PARITÉ : `testAnalyzeSuggestsRankFromCategoryAndNumberAndGenderFromName`
  * et `testAnalyzeSuggestsCtcWhenTheTeamLabelCarriesCtcOrEntente` ci-dessous restent VERTS après la
  * délégation — ils sont le filet de parité (les suggestions servies == celles du suggester).
@@ -503,6 +504,7 @@ final class FfbbExcelImporterTest extends KernelTestCase
             $this->em,
             self::getContainer()->get(PlanEntitlements::class),
             self::getContainer()->get(SportCategoryResolver::class),
+            self::getContainer()->get(TeamCreationSuggester::class),
         );
     }
 

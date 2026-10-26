@@ -170,7 +170,7 @@ final class TeamLabelMatcher
      * libellé se lit en équipe FFBB (catégorie connue) — sinon aucun conflit n'est opposable (repli
      * Levenshtein, cf. « Arhand » → « Armand »).
      *
-     * @return array{genre: 'M'|'F'|'MIXTE', categorie: string, numero: int|null, parse: bool}
+     * @return array{genre: 'M'|'F'|null, categorie: string, numero: int|null, parse: bool}
      */
     private function parse(string $label): array
     {
@@ -185,18 +185,20 @@ final class TeamLabelMatcher
     }
 
     /**
-     * Vrai si deux libellés qui se PARSENT tous deux diffèrent par le genre (M vs F — MIXTE n'entre
-     * jamais en conflit), la catégorie d'âge ou le numéro d'équipe (deux numéros présents et distincts).
+     * Vrai si deux libellés qui se PARSENT tous deux diffèrent par le genre (M vs F — un genre ABSENT,
+     * null, n'entre jamais en conflit), la catégorie d'âge ou le numéro d'équipe (deux numéros présents
+     * et distincts). Refonte PR2 : le genre vaut désormais null (plus MIXTE) quand aucun marqueur clair
+     * ne le donne — même rôle non-conflictuel qu'avait MIXTE.
      *
-     * @param array{genre: 'M'|'F'|'MIXTE', categorie: string, numero: int|null, parse: bool} $a
-     * @param array{genre: 'M'|'F'|'MIXTE', categorie: string, numero: int|null, parse: bool} $b
+     * @param array{genre: 'M'|'F'|null, categorie: string, numero: int|null, parse: bool} $a
+     * @param array{genre: 'M'|'F'|null, categorie: string, numero: int|null, parse: bool} $b
      */
     private function conflicts(array $a, array $b): bool
     {
         if (!$a['parse'] || !$b['parse']) {
             return false;
         }
-        if ('MIXTE' !== $a['genre'] && 'MIXTE' !== $b['genre'] && $a['genre'] !== $b['genre']) {
+        if (null !== $a['genre'] && null !== $b['genre'] && $a['genre'] !== $b['genre']) {
             return true;
         }
         if ($a['categorie'] !== $b['categorie']) {
