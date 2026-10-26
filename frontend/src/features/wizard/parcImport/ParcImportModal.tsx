@@ -2,6 +2,7 @@ import { AlertTriangle, Link2 } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
@@ -1030,7 +1031,7 @@ function DecisionRow({
             <span>{T.tierFieldLabel}</span>
             <Select
               aria-label={T.tierOf(line.libelle)}
-              wrapperClassName="w-32"
+              wrapperClassName="w-44"
               value={String(tierValue ?? line.suggestedTierId)}
               onChange={(e) => onTierChange?.(line.index, Number(e.target.value))}
             >
@@ -1112,7 +1113,7 @@ function EntentesStep({
                   checked={ctc}
                   onChange={() => onCtcChange(line.index, !ctc)}
                 />
-                <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
+                {ctc ? <CtcMark partner={ctcPartnerDrafts[key]} /> : null}
                 <span className="font-medium">{line.libelle}</span>
                 <span className="text-muted-foreground">{T.ententeCheckboxLabel}</span>
               </label>
@@ -1121,6 +1122,7 @@ function EntentesStep({
                   aria-label={T.ententePartnerFor(line.libelle)}
                   placeholder={T.ententePartnerPlaceholder}
                   className="w-64"
+                  maxLength={120}
                   value={ctcPartnerDrafts[key] ?? ""}
                   onChange={(e) => onCtcPartnerChange(line.index, e.target.value)}
                 />

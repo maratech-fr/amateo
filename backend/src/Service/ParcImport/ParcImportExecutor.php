@@ -274,8 +274,7 @@ final class ParcImportExecutor
             $gender = $this->createdTeamGender($corrections, $entry, $i);
             $tierId = $this->createdTeamTierId($corrections, $nom, $this->stringField($entry, 'categorie'), $i);
             $isCtc = true === ($corrections['ctc'] ?? null);
-            $ctcPartnerRaw = $corrections['ctcPartner'] ?? null;
-            $ctcPartner = $isCtc && \is_string($ctcPartnerRaw) && '' !== trim($ctcPartnerRaw) ? trim($ctcPartnerRaw) : null;
+            $ctcPartner = $this->createdTeamCtcPartner($corrections, $isCtc, $i);
 
             $team = (new Team)
                 ->setClubId($club->getId())
@@ -969,25 +968,52 @@ final class ParcImportExecutor
     }
 
     /**
-     * Le RANG d'une équipe créée (refonte PR2) : `corrections.tierId` s'il est fourni (inconnu → 422
-     * AVANT persist), sinon la SUGGESTION de la règle FBI unique ({@see TeamCreationSuggester}) — plus
-     * aucun rang 5 en dur.
+     * Le RANG d'une équipe créée (refonte PR2) : `corrections.tierId` s'il est fourni (inconnu, ou de
+     * type aberrant — flottant / négatif / chaîne non numérique → 422 AVANT persist), sinon la
+     * SUGGESTION de la règle FBI unique ({@see TeamCreationSuggester}) — plus aucun rang 5 en dur.
      *
      * @param array<string, mixed> $corrections
      */
     private function createdTeamTierId(array $corrections, string $name, string $category, int $index): int
     {
         $raw = $corrections['tierId'] ?? null;
-        if (\is_int($raw) || (\is_string($raw) && ctype_digit($raw))) {
-            $tierId = (int) $raw;
-            if (!$this->tierExists($tierId)) {
-                $this->fail('equipes', $index, \sprintf('rang inconnu (%d).', $tierId));
-            }
-
-            return $tierId;
+        // Absente → la règle FBI unique tranche (cas normal). FOURNIE mais pas un id de rang entier non
+        // négatif (flottant, négatif, chaîne non numérique) → 422 AVANT persist : une valeur forgée est
+        // REJETÉE, jamais repliée en silence sur une suggestion (l'équipe naîtrait avec un rang deviné).
+        if (null === $raw) {
+            return $this->suggester->suggest($name, $category, '')['tierId'];
+        }
+        if (!\is_int($raw) && (!\is_string($raw) || !ctype_digit($raw))) {
+            $this->fail('equipes', $index, 'le rang choisi n\'est pas valide.');
+        }
+        $tierId = (int) $raw;
+        if (!$this->tierExists($tierId)) {
+            $this->fail('equipes', $index, \sprintf('rang inconnu (%d).', $tierId));
         }
 
-        return $this->suggester->suggest($name, $category, '')['tierId'];
+        return $tierId;
+    }
+
+    /**
+     * Le club partenaire d'une entente (CTC) d'une équipe CRÉÉE : `corrections.ctcPartner` (trim, non
+     * vide) quand l'entente est cochée, sinon null. Borné à {@see Team::CTC_PARTNER_MAX_LENGTH} comme
+     * la colonne — un partenaire plus long refuse l'import (422 nommant la ligne) AVANT persist, jamais
+     * une troncature serveur (PostgreSQL 22001 → 500).
+     *
+     * @param array<string, mixed> $corrections
+     */
+    private function createdTeamCtcPartner(array $corrections, bool $isCtc, int $index): ?string
+    {
+        $raw = $corrections['ctcPartner'] ?? null;
+        if (!$isCtc || !\is_string($raw) || '' === trim($raw)) {
+            return null;
+        }
+        $partner = trim($raw);
+        if (mb_strlen($partner) > Team::CTC_PARTNER_MAX_LENGTH) {
+            $this->fail('equipes', $index, \sprintf('le club partenaire de l\'entente dépasse %d caractères.', Team::CTC_PARTNER_MAX_LENGTH));
+        }
+
+        return $partner;
     }
 
     private function tierExists(int $id): bool
