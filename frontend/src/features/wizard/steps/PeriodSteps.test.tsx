@@ -118,6 +118,9 @@ vi.mock("../queries", () => ({
   useCreateTeamPeriodOverride: () => ({ mutate: createOverride, mutateAsync: createOverride, isPending: false }),
   useUpdateTeamPeriodOverride: () => ({ mutate: updateOverride, mutateAsync: updateOverride, isPending: false }),
   useDeleteTeamPeriodOverride: () => ({ mutate: deleteOverride, mutateAsync: deleteOverride, isPending: false }),
+  // D4 — la modale Liens ouverte depuis PeriodTeams monte désormais l'onglet « Entente (CTC) »
+  // (TeamCtcPanel), qui appelle useUpdateTeam : le mock doit l'exposer (adaptation mécanique).
+  useUpdateTeam: () => ({ mutate: vi.fn() }),
   useWizardVenues: () => ({ data: [{ id: "v1", name: "Gymnase A", color: "#ff0000", canSplit: venueCanSplitState.value, isActive: true }, ...extraVenuesState.value] }),
   useVenueSlots: () => ({ data: [] }),
   usePeriodSlots: (anchor: string | null) => {

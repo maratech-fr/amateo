@@ -27,40 +27,27 @@ import { mutualisedTeammateLabel } from "../lib/sharedTraining";
 import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingBlocks, useSportCategories, useUpdateTeam, useWizardTeams, useWizardVenues } from "../queries";
 import { useWizardStore } from "../store";
 import { WIZARD_TEXTS } from "../texts";
+import { TEAMS_TEXTS } from "../texts/teams";
+import { payload } from "../lib/teamPayload";
 import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { PeriodTeams } from "./PeriodTeams";
 import { TeamLinksModal } from "./TeamLinksModal";
 import { TeamsImportModal } from "./TeamsImportModal";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 
-const GENDERS: { value: Gender | ""; label: string }[] = [
-  { value: "", label: "—" },
-  { value: "M", label: "Homme" },
-  { value: "F", label: "Femme" },
-  { value: "MIXTE", label: "Mixte" },
-];
-
-// FFBB competition levels (backend App\Enum\TeamLevel). "" = non renseigné.
-const LEVELS: { value: TeamLevel | ""; label: string }[] = [
-  { value: "", label: "—" },
-  { value: "ELITE", label: "Élite" },
-  { value: "NATIONAL", label: "National" },
-  { value: "REGIONAL", label: "Régional" },
-  { value: "PRE_REGION", label: "Pré-région" },
-  { value: "DEPARTEMENTAL", label: "Départemental" },
-  { value: "HONNEUR", label: "Honneur" },
-  { value: "PROMOTION", label: "Promotion" },
-  { value: "LOISIR_ADULTE", label: "Loisir adulte" },
-  { value: "LOISIR_JEUNE", label: "Loisir jeune" },
-];
+// Les libellés de Genre/Niveau vivent dans TEAMS_TEXTS (genderLabel/levelLabel — migration texts
+// D4, le niveau déléguant à la maison partagée LEVEL_LABEL) ; ici, seuls les VALEURS et leur ORDRE.
+// Le niveau garde l'ordre car il sert aussi au tri `levelRank`. "" = non renseigné.
+const GENDER_VALUES: (Gender | "")[] = ["", "M", "F", "MIXTE"];
+// FFBB competition levels (backend App\Enum\TeamLevel).
+const LEVEL_VALUES: (TeamLevel | "")[] = ["", "ELITE", "NATIONAL", "REGIONAL", "PRE_REGION", "DEPARTEMENTAL", "HONNEUR", "PROMOTION", "LOISIR_ADULTE", "LOISIR_JEUNE"];
 
 /**
  * Une équipe qui JOUE déjà est inscrite sous son niveau auprès de la fédération : on
  * ne la supprime plus (ses matchs partiraient avec elle) et son niveau ne bouge plus.
  * Le serveur refuse les deux ; l'écran ne les propose donc pas, plutôt que d'offrir un
- * geste qui finira en 409.
+ * geste qui finira en 409. Le POURQUOI affiché = `TEAMS_TEXTS.engagedReason`.
  */
-const ENGAGED_REASON = "Cette équipe joue en compétition : ses matchs sont engagés auprès de la fédération.";
 
 /**
  * « Modifier les données du club » (décision fondateur 2026-09-28) : par ce chemin (mode saison,
@@ -69,9 +56,8 @@ const ENGAGED_REASON = "Cette équipe joue en compétition : ses matchs sont eng
  * modèle (niveau, rang, mutualisation) sans rouvrir ; pour changer les séances, il faut rouvrir le
  * planning de saison. La CRÉATION d'une équipe reste libre (son formulaire porte son propre champ,
  * jamais verrouillé — sinon on ne pourrait plus créer d'équipe utile). Sans socle validé (onboarding,
- * ou après « Rouvrir »), rien n'est verrouillé. Cohérent avec le bandeau d'en-tête du wizard.
+ * ou après « Rouvrir »), rien n'est verrouillé. Le texte affiché = `TEAMS_TEXTS.sessionsLockHint`.
  */
-const SESSIONS_LOCK_HINT = "Rouvrez le planning de saison pour modifier le nombre de séances.";
 
 /** A team is "competitive" unless it plays at a loisir level (or has none set). */
 const isCompetitive = (level: TeamLevel | null): boolean =>
@@ -80,22 +66,6 @@ const isCompetitive = (level: TeamLevel | null): boolean =>
 /** The "Bonus" tier is identified by its label ("D"), not a fixture row id. */
 const isBonusTier = (tiers: PriorityTier[], tierId: number): boolean =>
   tiers.find((t) => t.id === tierId)?.label === "D";
-
-function payload(team: Team, patch: Partial<TeamPayload>): TeamPayload {
-  return {
-    name: team.name,
-    sportCategoryId: team.sportCategoryId,
-    priorityTierId: team.priorityTierId,
-    tierOrder: team.tierOrder,
-    gender: team.gender,
-    level: team.level,
-    sessionsPerWeek: team.sessionsPerWeek,
-    isActive: team.isActive,
-    isCtc: team.isCtc,
-    ctcPartner: team.ctcPartner,
-    ...patch,
-  };
-}
 
 const nextOrder = (teams: Team[], tierId: number): number => {
   const group = teamsOfTier(teams, tierId);
@@ -128,10 +98,10 @@ interface RowProps {
 }
 
 function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLinks, rankLabel, canUp, canDown, onMove, linksLabel, sessionsLocked }: RowProps) {
-  // Local edit buffers (saved on blur). name/sessions/ctcPartner only change through this row.
+  // Local edit buffers (saved on blur). name/sessions only change through this row ; l'entente
+  // (CTC) a migré dans la modale Liens (D4), la ligne n'en porte plus que le REPÈRE.
   const [name, setName] = useState(team.name);
   const [sessions, setSessions] = useState(String(team.sessionsPerWeek));
-  const [ctcPartner, setCtcPartner] = useState(team.ctcPartner ?? "");
 
   // Competitive team ranked "Bonus" (D) is likely a mistake — it will be
   // scheduled last. Non-blocking warning (the solver stays the authority).
@@ -154,59 +124,61 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
             plutôt qu'inertes — un bouton désactivé sans raison lisible est pire. */}
         {undefined !== onMove ? (
           <span className="flex shrink-0">
-            <Button size="icon" variant="ghost" className="size-7" aria-label={`Monter ${team.name}`} disabled={true !== canUp} onClick={() => onMove(-1)}>
+            <Button size="icon" variant="ghost" className="size-7" aria-label={TEAMS_TEXTS.moveUpTeam(team.name)} disabled={true !== canUp} onClick={() => onMove(-1)}>
               <ChevronUp className="size-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="size-7" aria-label={`Descendre ${team.name}`} disabled={true !== canDown} onClick={() => onMove(1)}>
+            <Button size="icon" variant="ghost" className="size-7" aria-label={TEAMS_TEXTS.moveDownTeam(team.name)} disabled={true !== canDown} onClick={() => onMove(1)}>
               <ChevronDown className="size-4" />
             </Button>
           </span>
         ) : null}
+        {/* Repère d'entente (CTC), DEVANT le nom — « d'un coup d'œil » (D4, décision fondateur). */}
+        {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
         <Input
-          aria-label="Nom"
+          aria-label={TEAMS_TEXTS.colNameAria}
           compact
           className={TEAM_COLUMNS.name}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => name.trim() && name !== team.name && onField(team, { name: name.trim() })}
         />
-        <Select aria-label="Catégorie" compact className={TEAM_COLUMNS.category} value={team.sportCategoryId} onChange={(e) => onField(team, { sportCategoryId: e.target.value })}>
+        <Select aria-label={TEAMS_TEXTS.colCategory} compact className={TEAM_COLUMNS.category} value={team.sportCategoryId} onChange={(e) => onField(team, { sportCategoryId: e.target.value })}>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
         </Select>
-        <Select aria-label="Genre" compact className={TEAM_COLUMNS.gender} value={team.gender ?? ""} onChange={(e) => onField(team, { gender: (e.target.value || null) as Gender | null })}>
-          {GENDERS.map((g) => (
-            <option key={g.value} value={g.value}>
-              {g.label}
+        <Select aria-label={TEAMS_TEXTS.colGender} compact className={TEAM_COLUMNS.gender} value={team.gender ?? ""} onChange={(e) => onField(team, { gender: (e.target.value || null) as Gender | null })}>
+          {GENDER_VALUES.map((g) => (
+            <option key={g} value={g}>
+              {TEAMS_TEXTS.genderLabel(g)}
             </option>
           ))}
         </Select>
         <Select
-            aria-label="Niveau de jeu"
+            aria-label={TEAMS_TEXTS.colLevel}
             compact
             className={TEAM_COLUMNS.level}
             value={team.level ?? ""}
             disabled={engaged}
             onChange={(e) => onField(team, { level: (e.target.value || null) as TeamLevel | null })}
           >
-            {LEVELS.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
+            {LEVEL_VALUES.map((l) => (
+              <option key={l} value={l}>
+                {TEAMS_TEXTS.levelLabel(l)}
               </option>
             ))}
           </Select>
         <Input
-          aria-label="Séances/sem"
+          aria-label={TEAMS_TEXTS.colSessionsAria}
           type="number"
           min={1}
           // Socle en vigueur : la valeur reste VISIBLE (readOnly, pas disabled — un champ
           // désactivé sort de l'ordre de tabulation et n'est plus lu) mais non éditable. Le
           // onBlur est verrouillé aussi (ceinture + bretelles : readOnly bloque déjà la frappe).
           readOnly={true === sessionsLocked}
-          title={true === sessionsLocked ? SESSIONS_LOCK_HINT : undefined}
+          title={true === sessionsLocked ? TEAMS_TEXTS.sessionsLockHint : undefined}
           compact
           className={cn(TEAM_COLUMNS.sessions, true === sessionsLocked && "cursor-not-allowed bg-muted/40 text-muted-foreground")}
           value={sessions}
@@ -217,48 +189,25 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
             "Trier" mode (drag & drop between S/A/B/C/D zones). */}
         {/* P2-45 — l'affordance « Liens » : une icône muette par ligne (densité nominale), à côté
             de la corbeille. Elle ouvre passerelles + mutualisation de CETTE équipe. */}
-        <Button size="icon" variant="ghost" className="size-8" aria-label={`Liens de ${team.name}`} onClick={() => onOpenLinks(team)}>
+        {/* P2-45 — l'affordance « Liens » (passerelles · mutualisation · entente CTC depuis D4). */}
+        <Button size="icon" variant="ghost" className="size-8" aria-label={TEAMS_TEXTS.linksOfTeam(team.name)} onClick={() => onOpenLinks(team)}>
           <Link2 className="size-4" />
         </Button>
-        <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label={`Supprimer l'équipe ${team.name}`} disabled={engaged} onClick={() => onDelete(team)}>
+        <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label={TEAMS_TEXTS.deleteTeam(team.name)} disabled={engaged} onClick={() => onDelete(team)}>
           <Trash2 className="size-4" />
         </Button>
-        {/* Entente (CTC) — repère interne au club, texte libre (chantier D PR1). `w-full` → cette
-            rangée passe sous les contrôles (le conteneur est `flex-wrap`), mais reste DANS la même
-            ligne logique d'équipe. La case s'enregistre au clic (contrôlée par le serveur, comme
-            Genre/Catégorie) ; le champ « Partenaire(s) » n'apparaît QUE cochée (divulgation
-            progressive) et s'enregistre au blur. Partenaire FACULTATIF même coché ; texte libre. */}
-        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 pl-8">
-          <label className="flex items-center gap-1.5 text-xs text-foreground">
-            <input type="checkbox" className="size-4 shrink-0" checked={true === team.isCtc} onChange={(e) => onField(team, { isCtc: e.target.checked })} />
-            {WIZARD_TEXTS.ctcLabel}
-          </label>
-          {true === team.isCtc ? (
-            <label className="flex items-center gap-1.5 text-xs text-foreground">
-              {WIZARD_TEXTS.ctcPartnerLabel}
-              <Input
-                compact
-                className="w-48"
-                placeholder={WIZARD_TEXTS.ctcPartnerPlaceholder}
-                value={ctcPartner}
-                onChange={(e) => setCtcPartner(e.target.value)}
-                onBlur={() => ctcPartner !== (team.ctcPartner ?? "") && onField(team, { ctcPartner: ctcPartner.trim() || null })}
-              />
-            </label>
-          ) : null}
-        </div>
       </div>
       {engaged && (
         // Marqueur COURT, mais du TEXTE : un `title` de survol ne suffisait pas — un
         // contrôle `disabled` sort de l'ordre de tabulation ET ne reçoit aucun événement
         // souris, donc au clavier comme au lecteur d'écran deux contrôles disparaissaient
         // sans la moindre raison. Le POURQUOI est dit une fois au-dessus de la liste.
-        <p className="ml-8 mt-1 text-xs text-muted-foreground">Engagée en compétition — niveau et suppression verrouillés.</p>
+        <p className="ml-8 mt-1 text-xs text-muted-foreground">{TEAMS_TEXTS.engagedRowMarker}</p>
       )}
       {linksLabel ? <p className="ml-8 mt-1 text-xs text-muted-foreground">{linksLabel}</p> : null}
       {bonusCompetitionWarning && (
         <p role="alert" className="ml-8 mt-1 text-xs text-warning">
-          Équipe en compétition classée Bonus (D) — elle passera en dernier ; vérifiez le rang.
+          {TEAMS_TEXTS.bonusWarning}
         </p>
       )}
     </div>
@@ -275,7 +224,7 @@ type SortColumn = "rang" | "name" | "category" | "gender" | "level" | "sessions"
  */
 /** Rang d'un niveau dans la hiérarchie FFBB affichée ; sans niveau ⇒ en fin. */
 function levelRank(level: TeamLevel | null): number {
-  const index = LEVELS.findIndex((l) => l.value === level);
+  const index = LEVEL_VALUES.findIndex((v) => v === level);
 
   return index < 0 ? Number.MAX_SAFE_INTEGER : index;
 }
@@ -290,7 +239,7 @@ function compareOn(column: SortColumn, a: Team, b: Team, categoryRank: Map<strin
     case "gender":
       return (a.gender ?? "").localeCompare(b.gender ?? "", "fr") || byName;
     case "level":
-      // ⚠ Sur la HIÉRARCHIE déclarée (`LEVELS`), pas sur l'alphabet : comparer les codes
+      // ⚠ Sur la HIÉRARCHIE déclarée (`LEVEL_VALUES`), pas sur l'alphabet : comparer les codes
       // de l'enum plaçait Départemental avant Élite, et les équipes sans niveau en tête
       // (revue #347). Sans niveau = en fin de liste, là où on va les compléter.
       return levelRank(a.level) - levelRank(b.level) || byName;
@@ -328,13 +277,13 @@ function SortHeader({
   // en collision avec le champ du formulaire qui porte déjà ce nom — deux contrôles
   // différents, un seul nom, et un lecteur d'écran n'a plus de quoi les distinguer. Le test
   // l'a montré en trouvant deux éléments là où il en attendait un.
-  const state = active ? (1 === sort.dir ? ", trié croissant" : ", trié décroissant") : "";
+  const state = active ? (1 === sort.dir ? TEAMS_TEXTS.sortedAsc : TEAMS_TEXTS.sortedDesc) : "";
 
   return (
     <span className={className}>
       <button
         type="button"
-        aria-label={`Trier par ${label.toLocaleLowerCase("fr")}${state}`}
+        aria-label={TEAMS_TEXTS.sortByAria(label, state)}
         className={cn("inline-flex items-center gap-1 hover:text-foreground", active && "text-foreground")}
         onClick={() => onSort({ column, dir: active && 1 === sort.dir ? -1 : 1 })}
       >
@@ -360,17 +309,17 @@ function SortableTeamRow({ team, canUp, canDown, onArrow }: SortRowProps) {
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
     <div ref={setNodeRef} style={style} className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-2">
-      <button type="button" className="-m-1 cursor-grab touch-none rounded p-1 text-muted-foreground hover:text-foreground" aria-label="Déplacer l'équipe" {...attributes} {...listeners}>
+      <button type="button" className="-m-1 cursor-grab touch-none rounded p-1 text-muted-foreground hover:text-foreground" aria-label={TEAMS_TEXTS.dragHandleAria} {...attributes} {...listeners}>
         <GripVertical className="size-4" />
       </button>
       <span className="flex flex-1 items-center text-sm">
         {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
         {team.name}
       </span>
-      <Button size="icon" variant="ghost" className="size-7" aria-label="Monter" disabled={!canUp} onClick={() => onArrow(-1)}>
+      <Button size="icon" variant="ghost" className="size-7" aria-label={TEAMS_TEXTS.moveUp} disabled={!canUp} onClick={() => onArrow(-1)}>
         <ChevronUp className="size-4" />
       </Button>
-      <Button size="icon" variant="ghost" className="size-7" aria-label="Descendre" disabled={!canDown} onClick={() => onArrow(1)}>
+      <Button size="icon" variant="ghost" className="size-7" aria-label={TEAMS_TEXTS.moveDown} disabled={!canDown} onClick={() => onArrow(1)}>
         <ChevronDown className="size-4" />
       </Button>
     </div>
@@ -396,16 +345,16 @@ function TierZone({ tier, teamIds, teamById, onArrow, onReverse }: TierZoneProps
         {/* #7 — un bouton par zone : inverse l'ordre de CE rang seul. Nom accessible
             CONTEXTUALISÉ par le rang (A11Y-28), le libellé visible restant court. */}
         {teamIds.length > 1 ? (
-          <Button size="sm" variant="ghost" aria-label={`Inverser l'ordre du rang ${tier.label}`} onClick={() => onReverse(tier.id)}>
+          <Button size="sm" variant="ghost" aria-label={TEAMS_TEXTS.reverseRankOrder(tier.label)} onClick={() => onReverse(tier.id)}>
             <ArrowUpDown className="size-4" />
-            Inverser l'ordre
+            {TEAMS_TEXTS.reverseOrder}
           </Button>
         ) : null}
       </div>
       <SortableContext items={teamIds} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className={cn("flex min-h-14 flex-col gap-1.5 rounded-lg border-2 border-dashed p-2 transition-colors", isOver ? "border-accent bg-accent/5" : "border-border")}>
           {0 === teamIds.length ? (
-            <p className="py-2 text-center text-xs text-muted-foreground">Glissez une équipe ici</p>
+            <p className="py-2 text-center text-xs text-muted-foreground">{TEAMS_TEXTS.dropHere}</p>
           ) : (
             teamIds.map((id, i) => {
               const team = teamById.get(id);
@@ -426,7 +375,7 @@ export function TeamsStep() {
   // Period mode NEVER renders the seasonal editor (which mutates the base plan) —
   // a null entryId (stale/partial store) shows a recovery hint, not TeamsEditor.
   if ("period" === mode) {
-    return calendarEntryId ? <PeriodTeams calendarEntryId={calendarEntryId} /> : <EmptyHint>Période introuvable — revenez au cockpit pour l'ouvrir.</EmptyHint>;
+    return calendarEntryId ? <PeriodTeams calendarEntryId={calendarEntryId} /> : <EmptyHint>{WIZARD_TEXTS.periodNotFound}</EmptyHint>;
   }
   return <TeamsEditor />;
 }
@@ -555,10 +504,19 @@ function TeamsEditor() {
       });
     return parts.length > 0 ? `Passerelle avec ${parts.join(", ")}` : null;
   };
-  // La sous-ligne combinée : « Mutualisée avec … · Passerelle avec … (Préféré) ». Sans lien ni
-  // groupe, `null` → aucun texte (densité nominale, l'icône Liens suffit).
-  const linksLabelOf = (teamId: string): string | null => {
-    const combined = [mutualiseLabelOf(teamId), bridgeLabelOf(teamId)].filter((x): x is string => null !== x);
+  // D4 — le segment d'entente (CTC), EN TÊTE de la sous-ligne : « Entente (CTC) avec … » (ou
+  // « Entente (CTC) » sans partenaire). Repère de club, jamais une règle moteur.
+  const ctcLabelOf = (team: Team): string | null => {
+    if (true !== team.isCtc) {
+      return null;
+    }
+    const partner = team.ctcPartner?.trim();
+    return partner ? TEAMS_TEXTS.ctcSublineWith(partner) : TEAMS_TEXTS.ctcSubline;
+  };
+  // La sous-ligne combinée : « Entente (CTC) avec … · Mutualisée avec … · Passerelle avec … (Préféré) ».
+  // Sans entente, lien ni groupe, `null` → aucun texte (densité nominale, l'icône Liens suffit).
+  const linksLabelOf = (team: Team): string | null => {
+    const combined = [ctcLabelOf(team), mutualiseLabelOf(team.id), bridgeLabelOf(team.id)].filter((x): x is string => null !== x);
     return combined.length > 0 ? combined.join(" · ") : null;
   };
   const categoryRank = new Map(categories.map((c, index) => [c.id, index]));
@@ -695,7 +653,7 @@ function TeamsEditor() {
       teams.length > 0 ? (
         <Button size="sm" variant={sortMode ? "default" : "outline"} onClick={toggleSort}>
           <ArrowUpDown className="size-4" />
-          {sortMode ? "Terminer le tri" : "Trier"}
+          {sortMode ? TEAMS_TEXTS.sortFinish : TEAMS_TEXTS.sortTrier}
         </Button>
       ) : null,
     );
@@ -790,8 +748,11 @@ function TeamsEditor() {
       {/* No inner "Équipes" heading: the sticky wizard header already shows
           "Étape 1/6 · Équipes" (WizardLayout). Keep the contextual description. */}
       <p className="mb-2 text-sm text-muted-foreground">
-        Listez vos équipes et donnez à chacune un <strong>rang</strong> : il tranche quand les créneaux manquent — les mieux classées passent d'abord.
-        Le <strong>niveau de jeu</strong> (division FFBB) est indépendant : il décrit la compétition, pas la priorité de placement.
+        {TEAMS_TEXTS.introLead}
+        <strong>{TEAMS_TEXTS.introRankWord}</strong>
+        {TEAMS_TEXTS.introRankRest} {TEAMS_TEXTS.introLevelLead}
+        <strong>{TEAMS_TEXTS.introLevelWord}</strong>
+        {TEAMS_TEXTS.introLevelRest}
       </p>
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {(Object.entries(TIER_MEANING) as [string, string][]).map(([label, meaning]) => (
@@ -804,7 +765,9 @@ function TeamsEditor() {
       {sortMode ? (
         <>
           <p className="mb-3 text-sm text-muted-foreground">
-            Glissez une équipe par sa poignée pour la réordonner <strong>ou la déplacer dans un autre niveau</strong>. Les flèches restent disponibles.
+            {TEAMS_TEXTS.sortModeIntroLead}
+            <strong>{TEAMS_TEXTS.sortModeIntroStrong}</strong>
+            {TEAMS_TEXTS.sortModeIntroRest}
           </p>
           <DndContext
             sensors={sensors}
@@ -831,7 +794,7 @@ function TeamsEditor() {
           <div className="mb-4 flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
               <FileUp className="size-4" />
-              Importer depuis FBI
+              {TEAMS_TEXTS.importFromFbi}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setParcOpen(true)}>
               <Sparkles className="size-4" />
@@ -844,21 +807,21 @@ function TeamsEditor() {
               FORMULAIRE, dont les colonnes diffèrent de celles de la liste (rang ici,
               numéro et suppression là-bas). */}
           <div aria-hidden="true" className="mb-1 flex flex-wrap items-end gap-2 px-3 text-xs font-medium text-muted-foreground">
-            <span className={TEAM_COLUMNS.name}>Nom de l'équipe</span>
-            <span className={TEAM_COLUMNS.category}>Catégorie</span>
-            <span className={TEAM_COLUMNS.gender}>Genre</span>
-            <span className={TEAM_COLUMNS.level}>Niveau de jeu</span>
-            <span className={TEAM_COLUMNS.sessions}>Séances</span>
-            <span className={TEAM_COLUMNS.tier}>Rang</span>
+            <span className={TEAM_COLUMNS.name}>{TEAMS_TEXTS.colName}</span>
+            <span className={TEAM_COLUMNS.category}>{TEAMS_TEXTS.colCategory}</span>
+            <span className={TEAM_COLUMNS.gender}>{TEAMS_TEXTS.colGender}</span>
+            <span className={TEAM_COLUMNS.level}>{TEAMS_TEXTS.colLevel}</span>
+            <span className={TEAM_COLUMNS.sessions}>{TEAMS_TEXTS.colSessions}</span>
+            <span className={TEAM_COLUMNS.tier}>{TEAMS_TEXTS.colRank}</span>
             <span className="ml-auto w-8" />
           </div>
           <form onSubmit={addTeam} className="mb-6 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-3 text-sm">
             <Input
               ref={nameRef}
-              aria-label="Nom de l'équipe"
+              aria-label={TEAMS_TEXTS.colName}
               aria-invalid={nameError}
               aria-describedby={nameError ? "team-name-error" : undefined}
-              placeholder="Nom de l'équipe"
+              placeholder={TEAMS_TEXTS.colName}
               compact
               className={cn(TEAM_COLUMNS.name, nameError ? "border-destructive focus-visible:ring-destructive" : "")}
               value={name}
@@ -870,7 +833,7 @@ function TeamsEditor() {
               }}
             />
             <Select
-              aria-label="Catégorie"
+              aria-label={TEAMS_TEXTS.colCategory}
               aria-invalid={catError}
               aria-describedby={catError ? "team-cat-error" : undefined}
               compact
@@ -881,29 +844,29 @@ function TeamsEditor() {
                 setCatError(false);
               }}
             >
-              <option value="">— catégorie —</option>
+              <option value="">{TEAMS_TEXTS.categoryPlaceholderOption}</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </Select>
-            <Select aria-label="Genre" compact className={TEAM_COLUMNS.gender} value={gender} onChange={(e) => setGender(e.target.value as Gender | "")}>
-              {GENDERS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
+            <Select aria-label={TEAMS_TEXTS.colGender} compact className={TEAM_COLUMNS.gender} value={gender} onChange={(e) => setGender(e.target.value as Gender | "")}>
+              {GENDER_VALUES.map((g) => (
+                <option key={g} value={g}>
+                  {TEAMS_TEXTS.genderLabel(g)}
                 </option>
               ))}
             </Select>
-            <Select aria-label="Niveau de jeu" compact className={TEAM_COLUMNS.level} value={level} onChange={(e) => setLevel(e.target.value as TeamLevel | "")}>
-              {LEVELS.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
+            <Select aria-label={TEAMS_TEXTS.colLevel} compact className={TEAM_COLUMNS.level} value={level} onChange={(e) => setLevel(e.target.value as TeamLevel | "")}>
+              {LEVEL_VALUES.map((l) => (
+                <option key={l} value={l}>
+                  {TEAMS_TEXTS.levelLabel(l)}
                 </option>
               ))}
             </Select>
-            <Input aria-label="Séances/sem" type="number" min={1} compact className={TEAM_COLUMNS.sessions} value={sessions} onChange={(e) => setSessions(e.target.value)} />
-            <Select aria-label="Rang" compact className={TEAM_COLUMNS.tier} value={tierId} onChange={(e) => setTierId(Number(e.target.value))}>
+            <Input aria-label={TEAMS_TEXTS.colSessionsAria} type="number" min={1} compact className={TEAM_COLUMNS.sessions} value={sessions} onChange={(e) => setSessions(e.target.value)} />
+            <Select aria-label={TEAMS_TEXTS.colRank} compact className={TEAM_COLUMNS.tier} value={tierId} onChange={(e) => setTierId(Number(e.target.value))}>
               {tiers.map((t) => (
                 <option key={t.id} value={t.id}>
                   {tierGroupLabel(t)}
@@ -914,7 +877,7 @@ function TeamsEditor() {
                 enverrait sportCategoryId undefined → 422 (course vue en e2e). */}
             <Button type="submit" size="sm" className="ml-auto" disabled={create.isPending || categoriesLoading}>
               <Plus className="size-3.5" />
-              Ajouter l'équipe
+              {TEAMS_TEXTS.addTeam}
             </Button>
           </form>
           {/* AUD-A11Y-13 — `aria-invalid` disait « ce champ est fautif » sans jamais dire
@@ -924,17 +887,17 @@ function TeamsEditor() {
           `aria-describedby` le rattache : le motif se relit avec le champ, à volonté. */}
           {nameError ? (
             <p id="team-name-error" role="alert" className="-mt-4 mb-4 text-sm text-destructive">
-              Le nom de l'équipe est obligatoire.
+              {TEAMS_TEXTS.nameRequired}
             </p>
           ) : null}
           {catError ? (
             <p id="team-cat-error" role="alert" className="-mt-4 mb-4 text-sm text-destructive">
-              Choisissez la catégorie de l'équipe.
+              {TEAMS_TEXTS.categoryRequired}
             </p>
           ) : null}
 
           {0 === teams.length ? (
-            <EmptyHint>Aucune équipe pour le moment.</EmptyHint>
+            <EmptyHint>{TEAMS_TEXTS.noTeamsYet}</EmptyHint>
           ) : (
             <div className="flex flex-col gap-4">
               {teams.some((t) => true === t.isEngaged) && (
@@ -942,15 +905,16 @@ function TeamsEditor() {
                 // sont engagées — répéter les deux phrases sous chacune en ferait du bruit
                 // qu'on ne lit plus. Chaque ligne porte son propre marqueur court.
                 <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  {ENGAGED_REASON} Leur niveau de jeu et leur suppression sont verrouillés ; le reste (nom, rang, créneaux, gymnase) se modifie librement.
-                  {" "}Pour (re)poser le niveau d'une équipe jeune depuis sa division, passez par Matchs › Importer › « Engagements FFBB ».
+                  {TEAMS_TEXTS.engagedReason}
+                  {TEAMS_TEXTS.engagedListRest}
                 </p>
               )}
               {sessionsLocked && (
                 // « Modifier les données du club » (socle en vigueur) : le POURQUOI, UNE fois pour la
                 // liste — chaque champ « Séances/sem » d'une équipe existante est en lecture seule.
                 <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  Le nombre de séances par semaine fait partie du planning de saison en vigueur : il reste visible mais verrouillé. {SESSIONS_LOCK_HINT}
+                  {TEAMS_TEXTS.sessionsLockedNoticeLead}
+                  {TEAMS_TEXTS.sessionsLockHint}
                 </p>
               )}
               <div className="flex items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
@@ -958,14 +922,14 @@ function TeamsEditor() {
                     lirait 7, 3, 14, 1… soit comme un défaut d'affichage (revue #347). Il
                     sort avec les sections ; le badge, lui, garde le rang sur chaque ligne. */}
                 {byRank ? <span className="w-6 text-center">#</span> : null}
-                <SortHeader column="rang" sort={sort} onSort={setSort} className="w-6 text-center" label="Rang" />
+                <SortHeader column="rang" sort={sort} onSort={setSort} className="w-6 text-center" label={TEAMS_TEXTS.colRank} />
                 {byRank ? <span className="w-14" /> : null}
-                <SortHeader column="name" sort={sort} onSort={setSort} className={TEAM_COLUMNS.name} label="Nom de l'équipe" />
-                <SortHeader column="category" sort={sort} onSort={setSort} className={TEAM_COLUMNS.category} label="Catégorie" />
-                <SortHeader column="gender" sort={sort} onSort={setSort} className={TEAM_COLUMNS.gender} label="Genre" />
-                <SortHeader column="level" sort={sort} onSort={setSort} className={TEAM_COLUMNS.level} label="Niveau de jeu" />
-                <SortHeader column="sessions" sort={sort} onSort={setSort} className={TEAM_COLUMNS.sessions} label="Séances" />
-                <span className="w-8 text-right">Suppr.</span>
+                <SortHeader column="name" sort={sort} onSort={setSort} className={TEAM_COLUMNS.name} label={TEAMS_TEXTS.colName} />
+                <SortHeader column="category" sort={sort} onSort={setSort} className={TEAM_COLUMNS.category} label={TEAMS_TEXTS.colCategory} />
+                <SortHeader column="gender" sort={sort} onSort={setSort} className={TEAM_COLUMNS.gender} label={TEAMS_TEXTS.colGender} />
+                <SortHeader column="level" sort={sort} onSort={setSort} className={TEAM_COLUMNS.level} label={TEAMS_TEXTS.colLevel} />
+                <SortHeader column="sessions" sort={sort} onSort={setSort} className={TEAM_COLUMNS.sessions} label={TEAMS_TEXTS.colSessions} />
+                <span className="w-8 text-right">{TEAMS_TEXTS.colDelete}</span>
               </div>
               {byRank ? (
                 // Le SENS s'applique aussi au rang (revue #347) : sans ça, un second clic
@@ -989,7 +953,7 @@ function TeamsEditor() {
                           canUp={index > 0 && !reorderBusy}
                           canDown={index < group.length - 1 && !reorderBusy}
                           onMove={null === tier ? undefined : (dir) => moveInTier(team, dir)}
-                          linksLabel={linksLabelOf(team.id)}
+                          linksLabel={linksLabelOf(team)}
                           sessionsLocked={sessionsLocked}
                         />
                       ))}
@@ -1001,7 +965,7 @@ function TeamsEditor() {
                 // et le badge de rang par ligne porte l'information qu'elles donnaient.
                 <div className="rounded-lg border border-border bg-card px-2">
                   {flatTeams.map((team) => (
-                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} onOpenLinks={setLinksTeam} rankLabel={rankLabelOf(team)} linksLabel={linksLabelOf(team.id)} sessionsLocked={sessionsLocked} />
+                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} onOpenLinks={setLinksTeam} rankLabel={rankLabelOf(team)} linksLabel={linksLabelOf(team)} sessionsLocked={sessionsLocked} />
                   ))}
                 </div>
               )}
@@ -1013,10 +977,10 @@ function TeamsEditor() {
       {/* P2-21 lot A — l'annonce de l'import automatique, dans les mots du fondateur. */}
       <ConfirmDialog
         open={importNotice}
-        title="Équipes importées depuis la FFBB"
-        description="Les équipes ont été importées automatiquement depuis la FFBB. Des erreurs ont pu se glisser — merci de corriger et de compléter cet écran (vos équipes loisir et école de basket ne sont pas connues de la fédération)."
-        confirmLabel="Compris"
-        cancelLabel="Fermer"
+        title={TEAMS_TEXTS.importNoticeTitle}
+        description={TEAMS_TEXTS.importNoticeDescription}
+        confirmLabel={TEAMS_TEXTS.importNoticeConfirm}
+        cancelLabel={TEAMS_TEXTS.importNoticeCancel}
         onConfirm={dismissImportNotice}
         onCancel={dismissImportNotice}
       />
