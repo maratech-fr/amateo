@@ -41,6 +41,10 @@ interface GridCase {
   libelle: string;
   /** Raison serveur si la case est en alerte (chevauchement, capacité…), sinon null. */
   alerte?: string | null;
+  /** Retours fondateur 2026-10-26 — la case est une MUTUALISATION (marquée lien + nom de groupe). */
+  mutual?: boolean;
+  /** Le nom du groupe mutualisé porté par la case marquée (donnée serveur), sinon null. */
+  groupe?: string | null;
 }
 
 const venues = [
@@ -164,5 +168,32 @@ describe("ParcCaseGrid — gouttière, voies, libellé & bandeau au niveau du wi
     expect(onEditCase).toHaveBeenCalledWith(expect.any(Number));
     // L'index remonté désigne bien une case EN ALERTE (1 ou 2), jamais la case saine (0).
     expect([1, 2]).toContain(onEditCase.mock.calls[0]?.[0]);
+  });
+});
+
+/**
+ * Retours fondateur 2026-10-26 — dans la grille (étape Réservations), une case de MUTUALISATION doit
+ * se DISTINGUER d'une réservation simple : pictogramme de lien (`Link2`) + nom de groupe, porté dans
+ * son NOM ACCESSIBLE (jamais la couleur/l'icône seules, a11y). Clé de texte centralisée RÉFÉRENCÉE ET
+ * PAS ENCORE CRÉÉE (rouge légitime, NEO la crée) : `mutualisationCaseLabel(groupe, equipes)` — ex.
+ * « Mutualisation · Groupe U13F-U11F · U13F + U11F ». Le ROUTAGE du clic (bascule vers l'étape
+ * Mutualisations) est prouvé côté modale (`ParcImportModal.test.tsx`) ; ici, le MARQUAGE de la case.
+ */
+describe("ParcCaseGrid — une case de mutualisation est marquée (refonte import IA PR1, retours 2026-10-26)", () => {
+  it("rend une case de mutualisation avec un nom accessible de MUTUALISATION (lien + nom de groupe), distinct d'une réservation", () => {
+    const onEditCase = vi.fn();
+    const venues = [{ name: "Gymnase Mistral", toCreate: false }];
+    const cases: GridCase[] = [
+      { index: 0, venueName: "Gymnase Mistral", jour: 1, debut: "18:00", duree: 90, libelle: "SM1 · 18:00" },
+      { index: 1, venueName: "Gymnase Mistral", jour: 3, debut: "17:00", duree: 90, libelle: "U13F + U11F", mutual: true, groupe: "U13F-U11F" },
+    ];
+    renderWithProviders(<ParcCaseGrid venues={venues} cases={cases} onEditCase={onEditCase} />);
+
+    // La case mutualisée est atteignable par son nom accessible enrichi (clé centralisée), jamais par
+    // son seul libellé nu — c'est ainsi qu'un lecteur d'écran la distingue d'une réservation simple.
+    const mutual = screen.getByRole("button", { name: T.mutualisationCaseLabel("U13F-U11F", "U13F + U11F") });
+    expect(mutual).toBeInTheDocument();
+    // Une réservation simple garde un nom nu (jamais le préfixe « Mutualisation »).
+    expect(screen.getByRole("button", { name: "SM1 · 18:00" })).toBeInTheDocument();
   });
 });

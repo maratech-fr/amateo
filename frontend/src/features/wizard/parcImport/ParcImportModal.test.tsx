@@ -43,6 +43,17 @@ interface Line {
   cibleId: string | null;
   raison: string | null;
   miseAJour?: { champ: "seances"; de: number; a: number };
+  /**
+   * Équipe (retours fondateur 2026-10-26) : le nombre de séances LU dans le fichier, servi sur
+   * CHAQUE ligne équipe (pas seulement quand il diffère) — amorce le champ « Séances » éditable.
+   */
+  seances?: number;
+  /**
+   * Équipe APPARIÉE (retours fondateur 2026-10-26) : le nombre de séances ACTUEL de l'équipe visée
+   * — l'indication « actuellement N » et la base de comparaison du champ (valeur = actuelle → pas
+   * de correction ; valeur ≠ actuelle → `corrections.seances`).
+   */
+  seancesActuelles?: number;
   /** Mutualisation : le libellé du bloc dérivé (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
   /** Mutualisation (P4-363) : le gymnase résolu du nom de la case (null si à créer) — amorce le sélecteur de gymnase. */
@@ -272,12 +283,15 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
   }
 
-  it("StepRail — 5 étapes, et les étapes 3-5 (Équipes/Gymnases/Réservations) sont verrouillées avant l'analyse", () => {
+  it("StepRail — les étapes de contenu (Équipes/Gymnases/Mutualisations/Réservations) sont verrouillées avant l'analyse", () => {
+    // Retours fondateur 2026-10-26 — les mutualisations ont désormais leur PROPRE étape de contenu,
+    // et les réservations passent EN FIN : Prompt · Coller · Équipes · Gymnases · Mutualisations ·
+    // Réservations. On teste par NOMS d'étapes (jamais par un compte figé : une étape « Ententes »
+    // viendra en PR2 après Équipes) — chaque étape de contenu est présente MAIS verrouillée avant
+    // l'analyse (bouton désactivé) : on ne peut pas la visiter tant que rien n'a été analysé.
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
-    // Avant toute analyse, les trois étapes de contenu sont présentes dans le rail MAIS verrouillées
-    // (bouton désactivé) : on ne peut pas les visiter tant que rien n'a été analysé.
-    for (const section of ["equipes", "gymnases", "reservations"] as const) {
+    for (const section of ["equipes", "gymnases", "mutualisations", "reservations"] as const) {
       const stepButton = screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) });
       expect(stepButton).toBeDisabled();
     }
@@ -386,33 +400,42 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(dec?.cibleId ?? null).toBeNull();
   });
 
-  it("une équipe appariée dont le parc propose un autre nombre de séances : la mise à jour est proposée sur la ligne et, acceptée, part en corrections.seances", async () => {
-    // Régression du chantier G à RESTAURER (la refonte a perdu la proposition de mise à jour des
-    // séances d'une équipe APPARIÉE — le back honore toujours `corrections.seances`). La ligne doit
-    // AFFICHER la proposition (clé `sessionsUpdate`) et offrir une case d'acceptation dédiée (la ligne
-    // équipe est un `Listbox`, plus une case d'inclusion comme avant G — d'où une case « Mettre à jour »
-    // NOMMÉE par la proposition). Non acceptée → aucune `corrections.seances` ; acceptée → `=3`.
-    const mkApparied = (): Analysis => analysisOf({ equipes: [mkLine(0, "SM1", "apparie", { cibleId: "t1", miseAJour: { champ: "seances", de: 2, a: 3 } })] });
-
-    // (1) non acceptée → la décision ne porte PAS corrections.seances.
-    const user1 = userEvent.setup();
-    const { unmount } = renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user1, mkApparied());
-    expect(screen.getByText(PARC_IMPORT_TEXTS.sessionsUpdate(2, 3))).toBeInTheDocument();
-    await user1.click(screen.getByRole("button", { name: /Importer/ }));
-    const body1 = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
-    expect(body1.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBeUndefined();
-    unmount();
-    q.importMutate.mockClear();
-
-    // (2) acceptée (case dédiée) → corrections.seances = 3.
-    const user2 = userEvent.setup();
+  it("équipe appariée — « Séances » est un CHAMP éditable pré-rempli de la valeur du fichier, « actuellement N », et la valeur ≠ actuelle part en corrections.seances (plus de case à cocher)", async () => {
+    // Retours fondateur 2026-10-26 CONFIRMÉS : la case « Séances : 2 → 1 (mise à jour proposée) » est
+    // remplacée par un CHAMP NUMÉRIQUE lisible d'un coup d'œil, pré-rempli avec ce qui SERA importé (la
+    // valeur du FICHIER, `seances`), corrigeable avant import, avec l'indication « actuellement N »
+    // (clé `sessionsCurrent`). Fichier (3) ≠ actuelle (2) → la correction part telle quelle : l'import
+    // porte `corrections.seances = 3`. Le nom accessible du champ est CONTEXTUALISÉ (clé
+    // `sessionsFieldLabel`, « Séances de SM1 »). PLUS aucune case à cocher de séances.
+    const user = userEvent.setup();
     renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user2, mkApparied());
-    await user2.click(screen.getByRole("checkbox", { name: PARC_IMPORT_TEXTS.sessionsUpdate(2, 3) }));
-    await user2.click(screen.getByRole("button", { name: /Importer/ }));
-    const body2 = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
-    expect(body2.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBe(3);
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SM1", "apparie", { cibleId: "t1", seances: 3, seancesActuelles: 2 })] }));
+
+    // Le champ (rôle spinbutton = <input type="number">) est pré-rempli avec la valeur du FICHIER (3).
+    const field = screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SM1") });
+    expect(field).toHaveValue(3);
+    // L'indication « actuellement N » (clé centralisée), jamais la phrase recopiée.
+    expect(screen.getByText(T.sessionsCurrent(2))).toBeInTheDocument();
+    // Plus de case à cocher de séances sur la ligne.
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
+    expect(body.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBe(3);
+  });
+
+  it("équipe appariée — ramener le champ « Séances » à la valeur ACTUELLE n'émet aucune corrections.seances", async () => {
+    // Le pendant : fichier (3), actuelle (2) → pré-rempli 3. Le gestionnaire ramène le champ à 2
+    // (= l'actuelle) : aucune correction ne part (valeur = actuelle → rien à corriger).
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SM1", "apparie", { cibleId: "t1", seances: 3, seancesActuelles: 2 })] }));
+
+    fireEvent.change(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SM1") }), { target: { value: "2" } });
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
+    expect(body.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBeUndefined();
   });
 
   it("une erreur d'import s'affiche DANS la modale en role=\"alert\" (plus un toast)", async () => {
@@ -447,7 +470,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
   });
 
   // Visite une étape de CONTENU du rail (déverrouillée après l'analyse) — bouton nommé par son titre.
-  const goToStep = async (user: ReturnType<typeof userEvent.setup>, section: "equipes" | "gymnases" | "reservations"): Promise<void> => {
+  const goToStep = async (user: ReturnType<typeof userEvent.setup>, section: "equipes" | "gymnases" | "mutualisations" | "reservations"): Promise<void> => {
     await user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) }));
   };
 
@@ -550,7 +573,9 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
 
     await analyzeThen(user, analysis);
-    await goToStep(user, "reservations");
+    // Retours fondateur 2026-10-26 — les CRÉNEAUX (ouvertures de gymnase) vivent désormais à l'étape
+    // GYMNASES (une grille par gymnase, iso-wizard), plus à l'étape Réservations.
+    await goToStep(user, "gymnases");
 
     // La case du créneau est un BOUTON de la grille (nom accessible = le libellé) ; clic → éditeur.
     await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
@@ -641,7 +666,11 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(screen.queryByDisplayValue("U11M1 + U11M2")).not.toBeInTheDocument();
   });
 
-  it("3b/D8/P4-363 — une mutualisation s'édite dans l'éditeur de case : gymnase (→ venueId) + nom de groupe (→ corrections.groupe), jamais via une case à cocher", async () => {
+  it("3b/D8/P4-363 — une mutualisation se corrige à l'étape MUTUALISATIONS : gymnase (→ venueId) + nom de groupe (→ corrections.groupe), jamais via une case à cocher", async () => {
+    // Retours fondateur 2026-10-26 — les mutualisations ont leur PROPRE étape (le gestionnaire doit
+    // VOIR qu'il y a des mutualisations à vérifier). Les contrôles P4-363 (sélecteur de gymnase de la
+    // réservation de groupe → `venueId`) et D8 (nom du groupe → `corrections.groupe`) vivent sur la
+    // ligne de cette étape (clés EXISTANTES `venueForGroup`/`groupLabel`), pas dans un éditeur de case.
     const user = userEvent.setup();
     const venues = [{ id: "v1", name: "Gymnase Léon-Blum" }, { id: "v2", name: "Salle Mont Blanc" }] as const;
     const libelle = "U11M1 + U11M2";
@@ -650,20 +679,18 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
       gymnases: [{ nom: "Gymnase Léon-Blum" }],
       cases: [{ gymnase: "Gymnase Léon-Blum", jour: 3, debut: "17:00", duree: 90, equipes: ["U11M1", "U11M2"], groupe: "CEC" }],
     };
-    const analysis = analysisOf({ mutualisations: [mkLine(0, libelle, "aCreer", { groupe: "CEC", gymnaseId: null })] }, { payload });
+    const position = { gymnase: "Gymnase Léon-Blum", jour: 3, debut: "17:00", duree: 90 };
+    const analysis = analysisOf({ mutualisations: [mkLine(0, libelle, "aCreer", { groupe: "CEC", gymnaseId: null, position })] }, { payload });
     renderWithProviders(<ParcImportModal {...defaultProps} venues={venues} />);
 
     await analyzeThen(user, analysis);
-    await goToStep(user, "reservations");
+    await goToStep(user, "mutualisations");
 
-    // La mutualisation est une case de la grille (bouton nommé par son libellé) → clic → éditeur.
-    await user.click(await screen.findByRole("button", { name: /U11M1 \+ U11M2/ }));
-    // Dans l'éditeur : le sélecteur de gymnase de la réservation de groupe (P4-363) → venueId ≠ cibleId.
-    await user.click(screen.getByRole("button", { name: venueForGroupTrigger(libelle) }));
+    // Le sélecteur de gymnase de la réservation de groupe (P4-363) sur la ligne → venueId ≠ cibleId.
+    await user.click(await screen.findByRole("button", { name: venueForGroupTrigger(libelle) }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Salle Mont Blanc" }));
     // Et le nom de groupe (D8) → corrections.groupe.
     fireEvent.change(screen.getByRole("textbox", { name: (n: string) => n.startsWith(T.groupLabel(libelle)) }), { target: { value: "Section Loisirs" } });
-    await user.click(screen.getByRole("button", { name: T.save as unknown as string }));
 
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
@@ -743,7 +770,8 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
-    await goToStep(user, "reservations");
+    // Retours fondateur 2026-10-26 — un créneau se corrige à l'étape GYMNASES (grille iso-wizard).
+    await goToStep(user, "gymnases");
     await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
 
     // `slotFields.DurationSelect` : un combobox « Durée » dont les options sont formatées par
@@ -768,5 +796,222 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     const list = screen.getByRole("listbox");
     expect(within(list).getByText(tierGroupLabel(w.tiers[0]))).toBeInTheDocument();
     expect(within(list).getByText(tierGroupLabel(w.tiers[1]))).toBeInTheDocument();
+  });
+});
+
+/**
+ * ─────────── Retours fondateur sur captures (2026-10-26) — contrats ROUGES (option A) ───────────
+ *
+ * Trois évolutions CONFIRMÉES par le fondateur, à intégrer à la PR1 :
+ *  1. Étape GYMNASES iso-wizard : chaque gymnase montre la GRILLE de ses créneaux (ouvertures), clic
+ *     sur un créneau → éditeur ; la décision du gymnase (Listbox) reste en tête de son bloc. Les
+ *     CRÉNEAUX quittent l'étape Réservations comme cases ÉDITABLES.
+ *  2. SÉANCES en CHAMP numérique éditable (apparié ET « Créer »), remplace la case « Séances : 2 → 1 ».
+ *  3. MUTUALISATIONS = leur PROPRE étape du rail (le gestionnaire doit VOIR qu'il y en a à vérifier) ;
+ *     ordre final : Prompt · Coller · Équipes · Gymnases · Mutualisations · Réservations. Une case de
+ *     mutualisation reste MARQUÉE (lien + nom de groupe) dans la grille Réservations ; cliquer bascule
+ *     vers sa ligne à l'étape Mutualisations.
+ *
+ * On teste par NOMS d'étapes (jamais un compte figé : une étape « Ententes » viendra en PR2). Clés de
+ * `texts.ts` RÉFÉRENCÉES ET PAS ENCORE CRÉÉES (rouge légitime, NEO les crée) : `sessionsFieldLabel(libelle)`
+ * (« Séances de … », nom accessible contextualisé), `sessionsCurrent(n)` (« actuellement N »),
+ * `mutualisationsEmpty` (« Aucune mutualisation lue »), `mutualisationsCount(n)`, `mutualisationCaseLabel(groupe, equipes)`
+ * (nom accessible de la case marquée). Nouveaux champs de LIGNE servis par l'analyse : `seances` (valeur
+ * lue, toutes les équipes), `seancesActuelles` (équipe appariée) — jumeaux backend dans
+ * `ParcImportAnalyzeTest` ; l'honneur de `corrections.seances` à la création dans `ParcImportExecuteTest`.
+ */
+describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, séances en champ, étape mutualisations)", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
+
+  /** Matcher FONCTION (nom accessible CONTENANT le texte) — jamais une `RegExp` construite (Semgrep). */
+  const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
+
+  /** Trigger `Listbox` d'une ligne de décision (préfixe `decisionFor(libelle)`, cf. 1er describe). */
+  const decisionTrigger = (libelle: string) => (accessibleName: string) => accessibleName.startsWith(T.decisionFor(libelle));
+
+  /** Dépose le collage puis analyse (auto-avance ensuite vers « Équipes »). */
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepPaste as unknown as string) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+
+  /** Visite une étape de CONTENU du rail (déverrouillée après l'analyse). */
+  const goToStep = async (user: ReturnType<typeof userEvent.setup>, section: "equipes" | "gymnases" | "mutualisations" | "reservations"): Promise<void> => {
+    await user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) }));
+  };
+
+  // ─────────── 1. Étape Gymnases iso-wizard : décision EN TÊTE + grille des créneaux ───────────
+
+  it("1 — l'étape Gymnases montre, par gymnase, SA décision (Listbox) ET la grille de ses créneaux ; clic sur un créneau → éditeur pré-rempli", async () => {
+    const user = userEvent.setup();
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Léon-Blum" }],
+      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
+    };
+    const analysis = analysisOf(
+      { gymnases: [mkLine(0, "Gymnase Léon-Blum", "aCreer")], creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] },
+      { payload },
+    );
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "gymnases");
+
+    // La décision du gymnase reste accessible (Listbox nommé par `decisionFor`) EN TÊTE de son bloc.
+    expect(screen.getByRole("button", { name: decisionTrigger("Gymnase Léon-Blum") })).toBeInTheDocument();
+
+    // Le créneau du gymnase est une CASE cliquable de la grille (comme l'étape Réservations), plus une
+    // case de l'étape Réservations : clic → éditeur pré-rempli (18:00 amorcé depuis le payload).
+    await user.click(await screen.findByRole("button", { name: /jour 2 18:00/ }));
+    expect(screen.getByDisplayValue("18:00")).toBeInTheDocument();
+  });
+
+  it("1 — l'étape Réservations ne montre PLUS les créneaux comme cases éditables (ils vivent à l'étape Gymnases)", async () => {
+    const user = userEvent.setup();
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Zénith" }],
+      cases: [{ gymnase: "Gymnase Zénith", jour: 2, debut: "18:00", duree: 90, equipes: ["SM1"] }],
+    };
+    const analysis = analysisOf(
+      {
+        creneaux: [mkLine(0, "Gymnase Zénith · jour 2 18:00", "aCreer")],
+        reservations: [mkLine(0, "SM1 · Gymnase Zénith 18:00", "aCreer", { position: { gymnase: "Gymnase Zénith", jour: 2, debut: "18:00", duree: 90 } })],
+      },
+      { payload },
+    );
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+
+    // La réservation reste une case éditable ici (son libellé sans le gymnase, déjà en en-tête).
+    expect(await screen.findByRole("button", { name: /SM1/ })).toBeInTheDocument();
+    // Le CRÉNEAU n'est plus une case ÉDITABLE (cliquable) de cette étape (contrat nommé : les
+    // créneaux peuvent rester en fond non interactif, mais jamais un bouton d'édition ici).
+    expect(screen.queryByRole("button", { name: /jour 2 18:00/ })).not.toBeInTheDocument();
+  });
+
+  // ─────────── 2. Séances en CHAMP éditable — ligne « Créer » & bornes ───────────
+
+  it("2b — ligne « Créer » : « Séances » est un champ pré-rempli de la valeur LUE (parc), corrigeable → corrections.seances", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkLine(0, "Nouvelle Équipe", "aCreer", { seances: 2 })] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    const field = screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("Nouvelle Équipe") });
+    expect(field).toHaveValue(2);
+    fireEvent.change(field, { target: { value: "3" } });
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
+    expect(body.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBe(3);
+  });
+
+  it("2c — le champ « Séances » est borné 1..7, porte un nom accessible contextualisé, et une valeur hors bornes n'est jamais transmise telle quelle", async () => {
+    // Bornes 1..7 : décision fondateur + précédent `PeriodTeams.tsx:337` (`max={7}`). Côté serveur
+    // `TeamInput::$sessionsPerWeek` n'est QUE `#[Assert\Positive]` (≥ 1, sans plafond) : les bornes
+    // 1..7 sont une convention FRONT. Promesse : une saisie hors bornes est refusée OU ramenée — elle
+    // n'atteint jamais `corrections.seances` hors [1, 7].
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkLine(0, "U18 M2", "apparie", { cibleId: "t1", seances: 2, seancesActuelles: 2 })] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    const field = screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("U18 M2") });
+    expect(field).toHaveAttribute("min", "1");
+    expect(field).toHaveAttribute("max", "7");
+
+    fireEvent.change(field, { target: { value: "9" } });
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
+    const s = body.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances;
+    expect(undefined === s || ("number" === typeof s && s >= 1 && s <= 7)).toBe(true);
+  });
+
+  // ─────────── 3. Mutualisations = leur PROPRE étape du rail ───────────
+
+  it("3 — l'étape Mutualisations liste chaque mutualisation (nom de groupe + équipes + raison ⚠ une seule fois), sans case à cocher", async () => {
+    const user = userEvent.setup();
+    const raison = "Les séances communes de cette mutualisation dépassent les séances hebdomadaires d'une des équipes — à ajuster à la main.";
+    const position = { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 };
+    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { groupe: "CEC", gymnaseId: null, raison, position })] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    // Le nom de groupe (donnée serveur `groupe`) ET les équipes (libellé) sont rendus verbatim.
+    expect(await screen.findByText("CEC")).toBeInTheDocument();
+    expect(screen.getByText("U11M1 + U11M2")).toBeInTheDocument();
+    // La raison serveur n'apparaît qu'UNE fois (défaut C, comme pour les lignes équipe/gymnase).
+    expect(screen.getAllByText(raison)).toHaveLength(1);
+    // Garder/Ignorer sans case à cocher (Listbox ou segmenté — jamais de checkbox).
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("3 — étape Mutualisations vide → EmptyHint « Aucune mutualisation lue » (jamais sautée)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SM1", "aCreer")] }));
+    await goToStep(user, "mutualisations");
+
+    expect(await screen.findByText(T.mutualisationsEmpty as unknown as string)).toBeInTheDocument();
+  });
+
+  it("3 — l'en-tête de l'étape Mutualisations résume leur nombre (clé mutualisationsCount)", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    expect(await screen.findByText(T.mutualisationsCount(1))).toBeInTheDocument();
+  });
+
+  it("3 — une mutualisation EN ALERTE marque l'étape Mutualisations du rail comme « à vérifier » (⚠)", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { groupe: "CEC", gymnaseId: null, raison: "À ajuster.", position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+
+    // Le rail dit l'état par le nom accessible (StepRail : suffixe « — à vérifier » en warning).
+    expect(
+      screen.getByRole("button", { name: (n: string) => n.includes(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")) && n.includes("à vérifier") }),
+    ).toBeInTheDocument();
+  });
+
+  it("3 — dans la grille Réservations, une case de MUTUALISATION reste MARQUÉE (lien + nom de groupe) et son clic bascule vers l'étape Mutualisations", async () => {
+    const user = userEvent.setup();
+    const payload = {
+      format: "parc-v2",
+      gymnases: [{ nom: "Gymnase Zénith" }],
+      cases: [{ gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90, equipes: ["U11M1", "U11M2"], groupe: "CEC" }],
+    };
+    const analysis = analysisOf(
+      { mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })] },
+      { payload },
+    );
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await analyzeThen(user, analysis);
+    await goToStep(user, "reservations");
+
+    // La case porte un nom accessible de MUTUALISATION (pictogramme lien + nom de groupe), clé centralisée.
+    const caseBtn = await screen.findByRole("button", { name: T.mutualisationCaseLabel("CEC", "U11M1 + U11M2") });
+    await user.click(caseBtn);
+
+    // Le clic bascule le rail sur l'étape Mutualisations (retour en arrière assumé), sur cette ligne.
+    expect(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")) })).toHaveAttribute("aria-current", "step");
   });
 });

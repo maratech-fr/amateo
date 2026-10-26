@@ -166,6 +166,29 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertNull($this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SF1']), 'la ligne décochée n\'est jamais créée');
     }
 
+    public function testACreatedTeamHonorsTheCorrectedSessionsCount(): void
+    {
+        // Retours fondateur 2026-10-26 — le champ « Séances » d'une ligne « Créer » voyage dans
+        // `corrections.seances` ; l'équipe CRÉÉE naît avec ce nombre, jamais le défaut. FILET VERT (pas
+        // un rouge inventé) : {@see ParcImportExecutor::sessionsOf} (backend/src/Service/ParcImport/
+        // ParcImportExecutor.php:909-918) lit DÉJÀ `corrections.seances` à la création (précédence sur
+        // le `seances` dérivé). Ce test CITE et VERROUILLE cet honneur à la création — le jumeau front
+        // est « 2b — ligne Créer » (ParcImportModal.test.tsx).
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        $decisions = [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['seances' => 3]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'une création avec corrections.seances s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertSame(3, $team->getSessionsPerWeek(), 'l\'équipe créée porte le nombre de séances corrigé (3), jamais le défaut');
+    }
+
     // ───────────────────────── Bloc mutualisé : label = groupe (promesse « CEC ») ─────────────────────────
 
     public function testACaseWithAGroupeCreatesABlockLabelledByThatGroupe(): void

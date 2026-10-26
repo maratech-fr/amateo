@@ -300,6 +300,51 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertContains(null, $gymnaseIds, 'un gymnase à créer → gymnaseId null (jamais absent)');
     }
 
+    // ───────────────────────── Retours fondateur 2026-10-26 — « Séances » en champ éditable (données servies) ─────────────────────────
+    // Le champ « Séances » de l'aperçu est pré-rempli avec la valeur LUE dans le fichier pour TOUTE
+    // équipe (pas seulement quand elle DIFFÈRE de l'actuelle, comme le fait `miseAJour`), avec une
+    // indication « actuellement N » pour une équipe appariée. L'analyse doit donc servir, sur chaque
+    // ligne équipe, `seances` (le nombre de séances LU = nombre de cases dérivé), et sur une ligne
+    // APPARIÉE `seancesActuelles` (les séances actuelles de l'équipe visée). ROUGE aujourd'hui :
+    // l'analyzer ne sert QUE `miseAJour` (et seulement quand ça diffère). Jumeaux front : les tests
+    // « Séances » de ParcImportModal.test.tsx. NEO expose ces deux champs.
+
+    public function testEveryTeamLineCarriesTheReadSessionsCount(): void
+    {
+        // Deux cases de la MÊME équipe « SM1 » → le dériveur compte 2 séances. L'analyse sert `seances`
+        // = 2 sur la ligne équipe (le champ éditable s'en pré-remplit), équipe À CRÉER ou appariée.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame(2, $teamLine['seances'] ?? null, 'la ligne équipe porte le nombre de séances LU (2 cases pour SM1)');
+    }
+
+    public function testAnAppariedTeamLineAlsoCarriesItsCurrentSessionsCount(): void
+    {
+        // SM1 existe déjà au club (makeTeam → 2 séances/semaine). Une seule case → séances LUES = 1.
+        // La ligne appariée porte `seances` = 1 (valeur du fichier) ET `seancesActuelles` = 2 (actuelle,
+        // pour l'indication « actuellement N » et la comparaison du champ).
+        $this->makeTeam('SM1');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame('apparie', $teamLine['statut'], 'SM1 existant → ligne appariée');
+        self::assertSame(1, $teamLine['seances'] ?? null, 'la valeur LUE du fichier (1 case) est servie');
+        self::assertSame(2, $teamLine['seancesActuelles'] ?? null, 'les séances ACTUELLES de l\'équipe visée sont servies (« actuellement N »)');
+    }
+
     // ───────────── PR1 refonte — la grille place chaque case sur SON créneau (position servie) ─────────────
     // Bug grille : la grille « qui fait foi » plaçait réservations/mutualisations d'après
     // `payload.cases[index]`, or l'`index` d'une ligne `reservations` (resp. `mutualisations`) est son
