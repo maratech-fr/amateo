@@ -164,6 +164,49 @@ La migration `version: 2` du store **efface** un jeton déjà persisté au lieu 
 reporter : sans elle, le JWT d'un utilisateur connecté avant le déploiement
 resterait en `localStorage` — la faille survivrait à sa propre correction.
 
+## Jeton mort : routes publiques anonymisées + purge sur 401 (D3)
+
+Le firewall `api` est **stateless** avec `jwt: ~` : l'authentificateur lexik tourne
+**dès qu'un jeton est PRÉSENT**, cookie ou en-tête — y compris sur une route
+`PUBLIC_ACCESS`. Un jeton **mort** (expiré, signature invalide, compte supprimé) y
+**échoue en 401 AVANT** qu'`access_control` n'accorde l'accès public : le handler
+d'échec court-circuite la requête. Conséquence vécue : « Se déconnecter » sur une
+session expirée, la page publique d'invitation rouverte dans un onglet où traîne un
+vieux cookie, l'inscription d'un navigateur qui rejoue un jeton mort — **tous
+bloqués par un cookie que le JS ne peut même pas effacer** (httpOnly). Deux pièces,
+à deux moments distincts :
+
+- **Routes publiques — anonymisation inconditionnelle.**
+  `App\EventListener\PublicApiCredentialNeutralizer` (`kernel.request`, **priority 9,
+  AVANT le firewall à 8**) retire le cookie `BEARER` ET l'en-tête `Authorization` de
+  toute requête qui matche `App\Security\PublicApiRouteCatalog`. L'authentificateur
+  ne voit alors plus aucun jeton, `supports()` répond faux, et la réponse redevient
+  **byte-identique au cas sans jeton** (une page à token garde son 404 anti-oracle).
+  ⚠ C'est **inconditionnel — même un jeton VALIDE est ignoré** sur une route
+  publique : **aucune route publique ne lit l'identité** (le token du corps porte la
+  sienne pour `me/email/confirm`), donc rien n'est perdu, et un jeton valide ne
+  résout **aucun tenant** (le GUC `app.club_id` reste vide, pas de session glissante).
+- **Routes protégées — purge au premier refus.**
+  `App\EventListener\StaleJwtCookiePurgeListener` écoute les deux échecs de
+  l'authentificateur JWT du firewall `api` **`JWT_INVALID` / `JWT_EXPIRED`** (jamais
+  `JWT_NOT_FOUND` — sans jeton, rien à purger ; et **jamais `AUTHENTICATION_FAILURE`**,
+  que le handler d'échec du json_login dispatche aussi : un mot de passe raté depuis un
+  onglet porteur d'un cookie `BEARER` valide détruirait cette session ouverte) et ajoute
+  `JwtCookieFactory::clear()` au 401 **SSI** la requête porte le cookie `BEARER` **ET
+  aucun en-tête `Authorization`**. Le flux **Bearer** (scripts d'ops, Behat, helpers
+  e2e) **n'est jamais purgé** : un script re-signe lui-même son jeton, et la seule
+  présence de l'en-tête suspend la purge, cookie mort à côté ou non. Le compte supprimé
+  arrive par `JWT_INVALID` (`UserNotFoundException` → l'authentificateur la route en
+  invalide, pas en expiré).
+
+`PublicApiRouteCatalog` est la **maison unique** des règles `PUBLIC_ACCESS` du
+firewall `api` (hors `^/api/admin/auth/*` et `^/api/login`, qui relèvent d'autres
+firewalls). Elle ne peut pas dériver en silence de `security.yaml` :
+`PublicRouteCatalogMatchesAccessControlTest` la cloue à `access_control` **dans les
+deux sens** (chemins ET méthodes). Le NR d'axe bloquant est
+`backend/tests/Security/PublicRouteStaleJwtTest.php` (step `blocking-tests`,
+`docs/testing/blocking-tests.md`).
+
 ## Piège de test (browser-kit et les cookies)
 
 Depuis que l'identité est un cookie, `KernelBrowser` la **rejoue tout seul** d'une

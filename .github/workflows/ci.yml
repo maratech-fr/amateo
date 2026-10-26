@@ -443,6 +443,16 @@ jobs:
       - name: ExportPdfDownloadIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ExportPdfDownloadIsolationTest.php --group phase1'
 
+      # Axes auth & memberships + tenant isolation (D3) — un cookie de session JWT mort ne bloque
+      # plus les pages publiques : sur une route PUBLIC_ACCESS du firewall `api`, le cookie BEARER et
+      # l'en-tête Authorization sont neutralisés AVANT le firewall (réponse byte-identique au cas sans
+      # jeton, même sous un jeton VALIDE — aucune identité résolue, aucun GUC tenant posé), et sur une
+      # route protégée un cookie mort est purgé au 401 (jamais sur un échec Bearer). Sans ce gate, un
+      # retrait du neutraliseur ou du purgeur rendrait « Se déconnecter » / l'inscription impossibles
+      # sur une session expirée, en silence, en passant tous les checks requis de `main`.
+      - name: PublicRouteStaleJwtTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PublicRouteStaleJwtTest.php --group phase1'
+
       # Axe auth & memberships — le seed BCCL de PROD pose des gestionnaires PRÉ-VÉRIFIÉS,
       # rattachés au bon club, avec des mots de passe pilotés par options (les mots de passe
       # dev du dépôt n'ouvrent pas les comptes prod), refuse sans credentials, create-only.
@@ -1133,6 +1143,17 @@ jobs:
       # session éternelle, ou le glissement ressusciterait un jeton expiré, en silence.
       - name: SlidingSessionTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlidingSessionTest.php --group phase1'
+
+      # Axe auth & memberships (+ tenant isolation, D3) — un cookie JWT MORT ne bloque plus les pages
+      # publiques : un neutraliseur (kernel.request, AVANT le firewall) retire cookie/Authorization
+      # sur les routes du firewall `api` publiques, et un purgeur efface un cookie BEARER mort au 401
+      # d'une route protégée (jamais sur un échec Bearer en-tête). Byte-identique avec/sans jeton
+      # pourri (expiré/signature/compte supprimé, cookie ET Bearer) ; logout d'une session morte ;
+      # 404 des pages à token préservé ; un jeton valide ne pose aucun GUC tenant sur route publique ;
+      # firewall admin intact. Sans ce gate, un vieux cookie rendrait indéconnectable et illisible une
+      # page publique — invisible aux autres checks, qui n'exercent pas le jeton mort sur route publique.
+      - name: PublicRouteStaleJwtTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PublicRouteStaleJwtTest.php --group phase1'
 
       # Axe planning lifecycle (P2-63 PR 5) — « Transférer au planning » n'écrit QUE des objets de
       # période (overrides d'équipe, contraintes datées), ne fait JAMAIS naître un plan (semaine sans

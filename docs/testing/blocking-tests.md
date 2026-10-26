@@ -84,6 +84,20 @@ même route. Sans ce gate, un rendu PDF d'un autre club serait téléchargeable 
 rattachés au bon club [ARA0069036, jamais la démo], avec des mots de passe pilotés par options —
 les mots de passe DEV du dépôt n'ouvrent PAS les comptes prod — refuse sans credentials ou avec un
 mot de passe < 12, create-only [second run no-op]) ·
+`Security/PublicRouteStaleJwtTest` (axes *auth & memberships* + *tenant isolation*, D3 — un cookie
+de session JWT MORT ne bloque plus les pages publiques. Le firewall `api` [stateless, `jwt: ~`]
+authentifie dès qu'un jeton est PRÉSENT, même sur une route `PUBLIC_ACCESS` : un jeton pourri
+[expiré, signature invalide, compte supprimé] y 401-ait AVANT que `access_control` n'accorde l'accès
+public. Correctif en deux pièces, gardées ici : (a) sur une route publique du firewall `api`, cookie
+`BEARER` + en-tête `Authorization` sont neutralisés AVANT le firewall [réponse BYTE-IDENTIQUE au cas
+sans jeton, y compris sous un jeton VALIDE — aucune identité résolue, aucun GUC tenant posé, aucune
+session glissante ; une page À TOKEN garde son 404 anti-oracle] ; (b) sur une route PROTÉGÉE un
+cookie mort est PURGÉ au 401 aux attributs EXACTS de la pose [vide, expiré, path /api, httpOnly,
+SameSite strict], JAMAIS sur un échec Bearer [un script re-signe lui-même son jeton]. L'inscription
+suit le rail anonyme sous n'importe quel cookie, le firewall admin SA0 reste hors de portée.
+Falsifié des deux côtés : retirer le neutraliseur rougit le byte-identique + le GUC, retirer le
+purgeur rougit l'effacement. Sans ce gate, « Se déconnecter » / l'inscription redeviendraient
+impossibles sur une session expirée, en silence, en passant tous les checks requis de `main`) ·
 `Unit/NoMergeConflictMarkerTest` (aucun marqueur de conflit Git commité — dépôt entier, `git grep` sur les fichiers SUIVIS ; écrit après que trois marqueurs de `stash pop` ont atteint `main` dans un journal Markdown, invisibles au linter comme à la revue) ·
 `Security/TenantIsolationTest` (isolation club) ·
 `Security/FeedbackContextIsolationTest` (axe *tenant isolation*, Chantier F PR1 « contexte automatique
@@ -221,6 +235,22 @@ deux cas) ·
 `Security/PurgeCompletenessTest` (axe *tenant isolation*, BCK-24/BCK-38 — complétude des purges : toute entité tenant doit être purgée (par saison via `SeasonDataPurger`, par club via `ErasedClubPurger::PURGED_BY_CLUB`) ou nommément exclue AVEC sa raison, pour la rétention/reset de saison ET pour l'effacement RGPD. Le test DÉRIVE des constantes des deux purgers — une entité tenant nouvelle tombe en échec par défaut, le bon défaut pour une purge légale. Falsifié : une table tenant NI purgée NI exclue (`opponent_travel` au 2026-09-18) fait rougir. Promu step bloquant — une donnée personnelle promise détruite qui survit en silence) ·
 `Security/TenantOwnedInterfaceCompletenessTest` (axe *tenant isolation*, BCK-03/BCK-38 — complétude du marqueur `TenantOwnedInterface` : l'ensemble des implémenteurs == l'ensemble des entités à colonne `club_id`, sur les métadonnées Doctrine. Les gardes applicatives (providers/processors) keyent sur ce marqueur ; un écart le rend muet (entité éditable/supprimable cross-club à la couche app, défense en profondeur perdue) ou mensonger (ligne globale déguisée en tenant). Falsifié dans les deux sens) ·
 `Security/SlidingSessionTest` (axe *auth & memberships*, P4-291 — SESSION GLISSANTE du cookie JWT de club : une requête NAVIGATEUR (cookie `BEARER` seul, hors `^/api/admin|login|logout`) dont le jeton a plus de 5 min ré-émet un cookie au TTL frais en conservant TOUS les claims (`auth_at` reporté verbatim, jamais réinitialisé) ; un jeton de moins de 5 min n'est pas re-signé. Abus falsifiés : un jeton rejoué en continu MEURT EXACTEMENT à 12 h (`exp` plafonné à `auth_at + 12 h`, puis plus aucune ré-émission), un jeton EXPIRÉ reçoit 401 et AUCUN Set-Cookie, et le flux Bearer (en-tête `Authorization`) ne glisse JAMAIS ; deux garde-fous de la revue de sécurité : une réponse qui pose DÉJÀ un cookie `BEARER` (confirmation d'e-mail, vérification d'inscription, invitation acceptée) garde le sien, jamais écrasé par l'ancien, et un compte démo à fenêtre FERMÉE ne glisse pas. La borne 12 h est mesurée sur l'horloge RÉELLE — jamais l'horloge simulée d'un club démo. Sans ce gate, retirer le plafond rendrait la session éternelle, ou le glissement ressusciterait un jeton expiré, en silence) ·
+`Security/PublicRouteStaleJwtTest` (axes *auth & memberships* + *tenant isolation*, D3 — un cookie JWT MORT ne
+bloque plus les pages publiques. Le firewall `api` fait tourner l'authentificateur lexik dès qu'un jeton est
+PRÉSENT, même sur une route PUBLIC_ACCESS : un jeton pourri y 401-ait avant l'accès public. Deux pièces
+protégées : un neutraliseur `kernel.request` (priorité 9, AVANT le firewall) retire cookie `BEARER` ET en-tête
+`Authorization` sur toute route publique du firewall `api` — INCONDITIONNELLEMENT, même un jeton VALIDE (aucune
+route publique ne lit l'identité) ; un purgeur (événements lexik JWT_INVALID/JWT_EXPIRED/AUTHENTICATION_FAILURE,
+jamais JWT_NOT_FOUND) efface un cookie `BEARER` mort au 401 d'une route PROTÉGÉE, aux attributs EXACTS de la
+pose, SSI le cookie est présent ET aucun en-tête `Authorization`. Prouvé : `GET /api/health` byte-identique
+avec/sans jeton pourri [expiré, signature invalide, compte supprimé ; cookie ET Bearer ; aucun message d'échec
+JWT ne fuit] ; `POST /api/logout` d'une session morte → 200 + cookie d'effacement ; cookie mort sur `GET /api/me`
+→ 401 + purge ; un jeton VALIDE sur route publique ne résout aucune identité [GUC `app.club_id` vide, aucune
+ré-émission glissante] ; les pages à token gardent leur 404 anti-oracle sous cookie pourri ; les voisines
+protégées exigent toujours un jeton valide ; la purge ne tire JAMAIS sur un échec Bearer en-tête ; l'inscription
+suit le rail anonyme [cookie ignoré] ; le firewall admin SA0 reste intouché. Falsifié dans les deux sens [retirer
+le neutraliseur rouvre le 401 public ; retirer le purgeur supprime l'effacement]. Sans ce gate, un vieux cookie
+rendrait indéconnectable et illisible une page publique — invisible aux autres checks) ·
 `Integration/Api/CoachWishTransferTest` (axe *planning lifecycle*, P2-63 PR 5 — « Transférer au planning » n'écrit QUE des objets de PÉRIODE (overrides d'équipe, contraintes datées sur l'entrée de la semaine/du bloc), ne fait JAMAIS naître un plan (une semaine sans plan est ignorée et le DIT) et ne touche NI le socle NI sa version choisie ; idempotence par (`source=coach_wish`, occurrence = id de la doléance) ; 409 nommé pendant une génération ; garde management SEC-07 FALSIFIÉE ; une doléance d'un AUTRE club n'est jamais convertie ; règle Q-A (mono-coach → COACH_AVAILABILITY HARD, co-coachée partielle → `forbiddenDays` TEAM HARD, tous répondants → COACH_AVAILABILITY). Sans ce gate, un transfert qui ferait naître un plan ou écrirait dans le socle passerait les checks requis) ·
 `Integration/Api/DeploymentImminentFreezeTest` (axe *generation pipeline*, P4-350 — quand une mise en production est IMMINENTE [un déploiement `scheduled`|`dispatched` dont l'heure H est atteinte, lu par `DeploymentGate::isFrozen()`], les QUATRE guichets qui enfilent un solve — générer, régénérer, combler un plan de période, placer des matchs — refusent 409 avec le message EXACT « Une mise en production est imminente — réessayez après la maintenance. », SANS rien enfiler [ni PENDING, ni V+1, ni run de placement] et SANS fuiter la version, l'acteur ou « GitHub » ; un déploiement FUTUR ou ANNULÉ ne gèle rien [génération nominale 202]. Falsifié PAR GUICHET [quatre chemins d'écriture distincts : retirer le gate d'UN seul guichet fait rougir sa méthode]. Sans ce gate, un solve lancé pendant la bascule de maintenance corromprait un run au moment du déploiement).
 `Integration/Service/ImportLeagueAutoValidationTest` (axe *constraint semantics*, chantier A — AU DÉPÔT

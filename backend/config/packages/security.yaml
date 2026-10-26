@@ -41,6 +41,10 @@ security:
             jwt: ~
 
     # Note: Only the *first* matching rule is applied
+    # D3 — toute règle PUBLIC_ACCESS du firewall `api` (hors ^/api/admin/auth/* et ^/api/login)
+    # a son miroir dans App\Security\PublicApiRouteCatalog (neutraliseur de crédentiels), cloué
+    # dans les deux sens par PublicRouteCatalogMatchesAccessControlTest : en ajouter une ici sans
+    # entrée au catalogue la laisse rebloquée par un cookie JWT mort.
     access_control:
         - { path: ^/api/admin/auth/password$, roles: PUBLIC_ACCESS }
         - { path: ^/api/admin/auth/totp$, roles: PUBLIC_ACCESS }
