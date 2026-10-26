@@ -4,13 +4,14 @@ import { SEEDED_CLUB } from "./support";
 
 /**
  * D11 — le logo « Signature » du splash de connexion est centré HORIZONTALEMENT sur son ENCRE dans
- * le viewport. Le dessin du handoff est optiquement décalé : l'ENCRE du groupe (icône + mot) a son
- * centre à ~976 pour une scène large de 1920 (centre 960), soit ~16 unités à DROITE (mesure réelle
- * Poppins Signature, 2026-10-26 — l'hypothèse initiale « décalé à gauche » était fausse). Le
- * correctif applique une translation de GROUPE (`groupDx`) sur la scène pour recentrer cette encre.
+ * le viewport. La CAUSE du décalage à droite était la scène qui RÉTRÉCISSAIT à la largeur du viewport
+ * (item flex posé en coordonnées 1920 mais collapsé par le conteneur flex) alors que ses enfants
+ * restaient posés en 1920 — corrigée par `flexShrink: 0` sur la scène. AUCUNE translation de groupe :
+ * sans décalage, le logo est centré au pixel (mesure Playwright réelle, 2026-10-26 — l'hypothèse
+ * d'une encre décalée de ~16 unités à droite, qui aurait justifié un `groupDx`, était fausse).
  *
  * Ce que seul le navigateur voit : la mise en page RÉELLE (fonte « Poppins Signature » chargée,
- * largeur du mot mesurée au runtime, encre des arcs). jsdom n'a aucun moteur de layout — le câblage
+ * largeur du mot, encre des arcs). jsdom n'a aucun moteur de layout — le câblage
  * y est prouvé par `brand-splash.test.tsx` / `brand-splash.math.test.ts`, le CENTRAGE RÉEL ici.
  *
  * On mesure l'ENCRE : `getBoundingClientRect()` des 3 `<circle>` (inclut le trait) pour l'icône, la
@@ -43,11 +44,11 @@ test("splash de connexion : l'union mot + icône est centrée sur son encre (±4
 
   // Union des boîtes d'ENCRE visibles (mot + les 3 arcs), centrée dans le viewport (±4 px). On attend
   // un état POSÉ (position de l'icône stable entre deux lectures à 200 ms) pour ne pas mesurer une
-  // image transitoire — sinon le poll redemande. Deux sources de mouvement APRÈS le clic : le glissé
-  // d'intro (grand déplacement, bien au-delà du seuil) et, en respiration, le décalage UNIQUE du
-  // groupe quand la fonte « Poppins Signature » charge et que la largeur du mot mesurée au runtime
-  // (`wordW`) redéfinit `groupDx` → `translateX` de la scène. 200 ms laissent cette bascule se poser
-  // entre deux lectures ; la tolérance 1 px absorbe le sub-pixel du `scale`, sans toucher le ±4 px final.
+  // image transitoire — sinon le poll redemande. La SEULE source de mouvement APRÈS le clic est le
+  // glissé d'intro (grand déplacement, bien au-delà du seuil) : en respiration la scène est figée
+  // (plus de bascule `wordW`/`groupDx` — le centrage vient de la scène NON RÉTRÉCIE, pas d'une
+  // translation de groupe). 200 ms laissent le glissé se poser entre deux lectures ; la tolérance
+  // 1 px absorbe le sub-pixel du `scale`, sans toucher le ±4 px final.
   await expect
     .poll(
       async () =>
@@ -67,7 +68,7 @@ test("splash de connexion : l'union mot + icône est centrée sur son encre (±4
           await new Promise((resolve) => setTimeout(resolve, 200));
           const b = inkUnion();
           if (Math.abs(a.anchor - b.anchor) > 1) {
-            return null; // scène encore en mouvement (glissé d'intro ou bascule wordW) → on redemande
+            return null; // scène encore en mouvement (glissé d'intro) → on redemande
           }
           return Math.round(Math.abs((b.left + b.right) / 2 - window.innerWidth / 2));
         }),

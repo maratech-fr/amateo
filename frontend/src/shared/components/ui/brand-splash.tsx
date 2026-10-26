@@ -20,7 +20,6 @@ import {
   type RenderFrame,
   SCENE_H,
   SCENE_W,
-  signatureLayout,
   splashWord,
   TEAL,
   TIMINGS,
@@ -75,11 +74,6 @@ export function BrandSplash({
 }: BrandSplashProps) {
   const [reduced] = useState(prefersReducedMotion);
   const [fit, setFit] = useState(computeFit);
-  // Largeur RUNTIME du mot (une fois la fonte « Poppins Signature » prête) : pilote le recentrage
-  // horizontal sur l'encre (D11). `undefined` tant que non mesurable (jsdom/SSR) → repli
-  // `MEASURED_WORD_W` dans `signatureLayout`.
-  const [wordW, setWordW] = useState<number | undefined>(undefined);
-  const wordRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState<RenderFrame>(() =>
     "cancelling" === phase ? { layout: FULL_LAYOUT, logoOpacity: 1, overlayOpacity: 1 } : introFrame(0, reduced),
   );
@@ -97,31 +91,6 @@ export function BrandSplash({
     const onResize = () => setFit(computeFit());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  // Mesure de la largeur du mot UNE FOIS la fonte chargée (`document.fonts.ready`) — `offsetWidth`
-  // n'est pas affecté par le `scale` du parent (unités scène). En jsdom `offsetWidth` vaut 0 : on ne
-  // pose rien, le repli constant tient le centrage. (Le centrage réel se prouve en Playwright.)
-  useEffect(() => {
-    let cancelled = false;
-    const measure = () => {
-      if (cancelled) {
-        return;
-      }
-      const el = wordRef.current;
-      if (null !== el && el.offsetWidth > 0) {
-        setWordW(el.offsetWidth);
-      }
-    };
-    const fonts = "undefined" !== typeof document ? document.fonts : undefined;
-    if (undefined !== fonts && "function" === typeof fonts.ready?.then) {
-      fonts.ready.then(measure).catch(() => {});
-    } else {
-      measure();
-    }
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // La boucle rAF : une par PHASE. Ne dépend QUE de la phase (et des fns injectées, stables) — pas
@@ -188,11 +157,6 @@ export function BrandSplash({
 
   const { layout, logoOpacity, overlayOpacity } = frame;
 
-  // Translation de GROUPE (unités scène) qui recentre le logo sur son encre. En respiration la
-  // géométrie est figée à p=1 : on prend la correction PLEINE avec la largeur de mot MESURÉE au
-  // runtime (sinon le repli via `layout.groupDx`, déjà mis à l'échelle de `p` pendant l'intro/outro).
-  const sceneGroupDx = "breathing" === phase && undefined !== wordW ? signatureLayout(1, 1, wordW).groupDx : layout.groupDx;
-
   return (
     <div
       data-testid="login-splash"
@@ -211,17 +175,16 @@ export function BrandSplash({
           height: SCENE_H,
           // Item flex du conteneur `fixed inset-0 flex` : sans ça il rétrécit à la largeur du
           // viewport alors que ses enfants sont posés en coordonnées 1920 → logo décalé à droite.
+          // C'est `flexShrink: 0`, en gardant la scène à 1920 AVANT le `scale`, qui centre le logo
+          // au pixel (plus de translation de groupe — D11, mesure Playwright réelle).
           flexShrink: 0,
-          // Ordre: `scale` puis `translateX` → la translation s'applique AVANT la mise à l'échelle,
-          // donc en unités SCÈNE (le recentrage sur l'encre est exprimé dans le repère du handoff).
-          transform: `scale(${fit}) translateX(${sceneGroupDx}px)`,
+          transform: `scale(${fit})`,
           transformOrigin: "center center",
           opacity: logoOpacity,
         }}
       >
         {/* Le mot SOUS l'icône (ordre de dessin du handoff) : il sort de derrière le trait teal. */}
         <div
-          ref={wordRef}
           data-testid="splash-word"
           className="text-foreground"
           style={{
