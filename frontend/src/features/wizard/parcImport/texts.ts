@@ -141,6 +141,8 @@ export const PARC_IMPORT_TEXTS = {
   gridGoTo: "Aller à :",
   editCaseTitle: "Corriger le créneau",
   editVenue: (libelle: string): string => `Gymnase du créneau — ${libelle}`,
+  /** Éditeur de case — Garder/Ignorer : cochée, la ligne est importée ; décochée, elle est ignorée. */
+  caseKeep: "Garder cette ligne (l'importer)",
   save: "Enregistrer",
   cancel: "Annuler",
 

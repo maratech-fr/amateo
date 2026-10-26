@@ -82,6 +82,8 @@ export interface ParcImportDecision {
   section: string;
   index: number;
   coche: boolean;
+  /** Création EXPLICITE (3a) : « Créer « X » » sur une ligne AMBIGUË — lève le refus d'ambiguïté serveur. */
+  creer?: boolean;
   cibleId?: string | null;
   /** Mutualisations (P4-363) : le gymnase CHOISI de la réservation de groupe (sélecteur de la ligne), distinct du `cibleId` (bloc apparié). Absent → le serveur résout par le nom de la case. */
   venueId?: string | null;
