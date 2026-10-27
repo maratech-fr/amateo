@@ -11,6 +11,7 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Fixture;
 use App\Entity\LeagueWindowInterface;
 use App\Entity\MatchConstraint;
+use App\Entity\Season;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -72,7 +73,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.6';
+    public const string CONTRACT_VERSION = '1.7';
 
     /**
      * Budget du solveur PAR SEMAINE ISO (secondes). Depuis ENG-50 le moteur découpe la
@@ -91,6 +92,7 @@ final class MatchPlacementPayloadBuilder
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
         private readonly MatchDurationResolver $matchDurationResolver,
         private readonly PlanVenueClosures $planVenueClosures,
+        private readonly ClubPublicHolidays $clubPublicHolidays,
     ) {}
 
     /**
@@ -182,6 +184,16 @@ final class MatchPlacementPayloadBuilder
             ];
         }
 
+        // PR2 — les dates FÉRIÉES du territoire du club dans la fenêtre de saison. Émises
+        // top-level `publicHolidays` : pour une date fériée le moteur utilise la ligne « Jours
+        // fériés » du gymnase (pas la fenêtre du jour de semaine) et ignore la fenêtre de ligue du
+        // jour de semaine (la ligue a posé ce jour exprès, décision fondateur 2026-10-27). Pas de
+        // saison = aucune fenêtre = aucun férié.
+        $season = null !== $seasonId ? $this->entityManager->getRepository(Season::class)->find($seasonId) : null;
+        $publicHolidays = $season instanceof Season
+            ? $this->clubPublicHolidays->datesInWindow($club->getId(), $season->getStartDate(), $season->getEndDate())
+            : [];
+
         $habitIndex = $this->awayKickoffEstimator->indexHabits($habits);
 
         // Matches.
@@ -201,10 +213,14 @@ final class MatchPlacementPayloadBuilder
         // Venues with their capacity data.
         $windowsByVenue = [];
         foreach ($matchWindows as $window) {
+            // PR2 — chaque fenêtre porte `appliesOnPublicHolidays` (additif) ; la ligne « Jours
+            // fériés » a un `dayOfWeek` NULL + ce drapeau à true, une ligne de jour de semaine le
+            // porte à false. Le moteur choisit la fenêtre à lire selon que la date du match est fériée.
             $windowsByVenue[$window->getVenueId()][] = [
                 'dayOfWeek' => $window->getDayOfWeek(),
                 'start' => $window->getStartTime()->format('H:i'),
                 'end' => $window->getEndTime()->format('H:i'),
+                'appliesOnPublicHolidays' => $window->isAppliesOnPublicHolidays(),
             ];
         }
         $unavailabilitiesByVenue = [];
@@ -356,7 +372,10 @@ final class MatchPlacementPayloadBuilder
                     'teamBId' => $link->getTeamBId(),
                     'type' => $link->getLinkType()->value,
                 ], $teamLinks),
-                'trainingOccupancies' => $this->trainingOccupancies($fixtures, $seasonId, $teamCoaches, $playerIdsByTeam),
+                'trainingOccupancies' => $this->trainingOccupancies($fixtures, $seasonId, $teamCoaches, $playerIdsByTeam, $publicHolidays),
+                // PR2 — dates fériées du club : le moteur les lit pour juger/placer un match férié
+                // contre la ligne « Jours fériés » (jamais la fenêtre du jour de semaine ni la ligue).
+                'publicHolidays' => $publicHolidays,
                 // P4-272 ③ — bloc top-level : chaque règle porte son type, ses jours
                 // ISO et sa fourchette de coup d'envoi (bornes nullables). Le solveur
                 // fait respecter les HARD et pénalise les PREFERRED violées.
@@ -464,13 +483,18 @@ final class MatchPlacementPayloadBuilder
      * replaces the other COACHES, never the players — parité MatchConflictDetector).
      * The `coachId` field carries any PERSON id (a player rides the same field).
      *
+     * PR2 — aucune occupation d'entraînement n'est projetée un jour FÉRIÉ : l'entraînement n'a
+     * pas lieu ce jour-là, donc il ne doit pas gêner le placement d'un match férié (parité radar
+     * MATCH_TRAINING). La date fériée est écartée AVANT toute projection.
+     *
      * @param list<Fixture>               $fixtures
      * @param list<TeamCoach>             $teamCoaches
      * @param array<string, list<string>> $playerIdsByTeam teamId → active player person ids (coach-excluded)
+     * @param list<string>                $publicHolidays  dates fériées (Y-m-d) à ne jamais projeter
      *
      * @return list<array<string, string>>
      */
-    private function trainingOccupancies(array $fixtures, ?string $seasonId, array $teamCoaches, array $playerIdsByTeam): array
+    private function trainingOccupancies(array $fixtures, ?string $seasonId, array $teamCoaches, array $playerIdsByTeam, array $publicHolidays = []): array
     {
         $context = $this->trainingCalendarContext->load($seasonId);
         $coachesByTeam = [];
@@ -485,6 +509,10 @@ final class MatchPlacementPayloadBuilder
 
         $occupancies = [];
         foreach ($dates as $dateKey => $date) {
+            // PR2 — un jour férié, aucun entraînement n'a lieu : on ne projette rien.
+            if (\in_array($dateKey, $publicHolidays, true)) {
+                continue;
+            }
             $scheduleId = $this->effectiveScheduleResolver->resolve(
                 $date,
                 $context['activePeriods'],

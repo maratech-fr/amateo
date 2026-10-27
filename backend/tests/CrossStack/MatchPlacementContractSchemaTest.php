@@ -68,7 +68,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
 
         $venue = $payload['venues'][0];
         self::assertArrayHasKey('matchWindows', $venue);
-        self::assertSame(['dayOfWeek' => 6, 'start' => '14:00', 'end' => '22:00'], $venue['matchWindows'][0]);
+        self::assertSame(['dayOfWeek' => 6, 'start' => '14:00', 'end' => '22:00', 'appliesOnPublicHolidays' => false], $venue['matchWindows'][0]);
         self::assertArrayHasKey('unavailabilities', $venue);
 
         $team = $payload['teams'][0];
