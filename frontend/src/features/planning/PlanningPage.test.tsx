@@ -209,6 +209,9 @@ const { meState, renameSpy, plansState, conflictsState, reservationsState, teamO
   // Enregistre les valeurs d'`enabled` reçues par le gate de capacité (preuve d'armement).
   capacityGateEnabled: [] as boolean[],
 }));
+// PR2 — la saison de travail est-elle archivée (lecture seule) ? Mutable pour prouver le garde
+// « jamais en saison archivée » du geste « Modifier les dates » (remise à false en beforeEach).
+const { seasonState } = vi.hoisted(() => ({ seasonState: { isReadonly: false } }));
 
 // P4-255 PR 2 (filet surlignage) — les blocs de mutualisation SERVIS : le déplacement de GROUPE
 // (rail move-group) en dérive. `[]` par défaut → aucune séance de bloc, comportement inchangé ;
@@ -271,7 +274,7 @@ vi.mock("@/shared/session/queries", () => ({
       seasons: [{ id: "sn1", name: "2025-2026", startDate: "2025-09-01", endDate: "2026-06-30", isCurrent: true, isReadonly: false }], currentSeasonId: "sn1",
     },
   }),
-  useWorkingSeason: () => ({ id: "sn1", name: "2025-2026", startDate: "2025-09-01", endDate: "2026-06-30", isCurrent: true, isReadonly: false }),
+  useWorkingSeason: () => ({ id: "sn1", name: "2025-2026", startDate: "2025-09-01", endDate: "2026-06-30", isCurrent: true, isReadonly: seasonState.isReadonly }),
 }));
 vi.mock("@/features/auth/queries", () => ({
   useRenamePlanning: () => ({ mutate: renameSpy, isPending: false }),
@@ -318,6 +321,7 @@ beforeEach(() => {
   // P4-269 : ré-armement — défaut « aucun conflit de personne », le cas dédié surcharge.
   vi.mocked(getPlacedConflicts).mockResolvedValue({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, conflicts: [] });
   navigate.mockClear();
+  seasonState.isReadonly = false;
   usePlanningStore.setState({ viewMode: "gymnase", selectedScheduleId: null, selectedSlotId: null, resourceFilter: [] });
 });
 
@@ -2762,5 +2766,87 @@ describe("PlanningPage — retirer une séance placée (F4)", () => {
     // que le déplacement). Texte EXACT : le bandeau « planning périmé » contient aussi « génération ».
     await waitFor(() => expect(screen.getByText("Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée.")).toBeInTheDocument());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * Tests ROUGES PR2 — bouton « Modifier les dates » sur la PAGE du planning (axe planning lifecycle).
+ *
+ * PROMESSE : quand on REGARDE le planning d'une FERMETURE modifiable, l'en-tête offre le même geste
+ * « Modifier les dates de {closureTitle} » qu'au cockpit — MAIS il disparaît dès qu'un garde tombe :
+ * saison archivée (lecture seule), génération en vol, ou vue EMBARQUÉE dans le wizard (le geste vit
+ * au cockpit/sur la page autonome, jamais dans l'étape Génération). Le front LIT `windowEditable`
+ * servi (règle d'or), il ne décide pas « est-ce modifiable ».
+ *
+ * Niveau Vitest : état d'un bouton d'en-tête selon le plan affiché + 3 gardes = jsdom (charte §2).
+ */
+describe("PlanningPage — geste « Modifier les dates » d'une fermeture (PR2)", () => {
+  const CLO_TITLE = "Gymnase Matéo indisponible";
+  const datesName = new RegExp(`Modifier les dates de.*${CLO_TITLE}`, "i");
+  // Format API réel (FrontMockDateFormatMatchesContractTest) : *Date → Y-m-d. `as unknown as`
+  // tant que NEO n'a pas élargi `SchedulePlan` (windowEditable/windowLockedReason/minEndDate/closureTitle).
+  const CLOSURE_PLAN = {
+    id: "clo-plan",
+    type: "CLOSURE",
+    name: CLO_TITLE,
+    startDate: "2026-11-16",
+    endDate: "2026-11-27",
+    minEndDate: "2026-11-02",
+    closureTitle: CLO_TITLE,
+    windowEditable: true,
+    windowLockedReason: null,
+    calendarEntryId: "e-clo",
+    chosenScheduleId: "ov-1",
+    teamSelectionInitialized: true,
+  } as unknown as SchedulePlan;
+  const closureVersion = (over: Partial<Schedule> = {}): Schedule => ({
+    id: "ov-1", name: CLO_TITLE, status: "COMPLETED", score: 10, createdAt: "2026-11-05T00:00:00Z", updatedAt: "2026-11-05T00:00:00Z", planType: "CLOSURE", schedulePlanId: "clo-plan", isChosen: true, ...over,
+  });
+
+  it("affiche « Modifier les dates de {closureTitle} » en regardant une fermeture modifiable (page autonome)", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([closureVersion()]);
+    plansState.plans = [CLOSURE_PLAN];
+    usePlanningStore.setState({ selectedScheduleId: "ov-1" });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByRole("button", { name: datesName })).toBeInTheDocument();
+  });
+
+  it("ne l'affiche PAS sur le planning de SAISON (plan non-fermeture)", async () => {
+    // Le plan de SAISON affiché (me.seasonPlan.id = "plan-1") servi windowEditable:true à DESSEIN :
+    // seul le garde de TYPE (displayedClosurePlan ne retient qu'un plan CLOSURE) doit l'écarter. Sans
+    // ce plan en state, displayedClosurePlan restait null quoi qu'il arrive et le test était vacuum
+    // (falsifié : filtre de type retiré, test resté VERT) — il ne prouvait pas la discrimination.
+    plansState.plans = [{ id: "plan-1", type: "SEASON", name: "Planning A", startDate: "2025-09-01", calendarEntryId: null, chosenScheduleId: null, teamSelectionInitialized: true, windowEditable: true, windowLockedReason: null }];
+    renderWithProviders(<PlanningPage />); // défaut = workVersion SEASON
+    await screen.findByText("U11");
+    expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
+  });
+
+  it("ne l'affiche PAS en vue EMBARQUÉE (le geste vit au cockpit / page autonome)", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([closureVersion({ isChosen: false })]);
+    plansState.plans = [CLOSURE_PLAN];
+    renderWithProviders(<PlanningPage embedded scopePlanId="clo-plan" />);
+    await screen.findByText("U11");
+    expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
+  });
+
+  it("ne l'affiche PAS quand la saison est ARCHIVÉE (lecture seule)", async () => {
+    seasonState.isReadonly = true;
+    vi.mocked(listSchedules).mockResolvedValue([closureVersion()]);
+    plansState.plans = [CLOSURE_PLAN];
+    usePlanningStore.setState({ selectedScheduleId: "ov-1" });
+    renderWithProviders(<PlanningPage />);
+    await screen.findByText("U11");
+    expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
+  });
+
+  it("ne l'affiche PAS pendant une génération en vol (écran d'attente)", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([closureVersion({ id: "ov-gen", status: "GENERATING", isChosen: false })]);
+    plansState.plans = [CLOSURE_PLAN];
+    usePlanningStore.setState({ selectedScheduleId: "ov-gen" });
+    renderWithProviders(<PlanningPage />);
+    await screen.findByText(/Génération du planning/i);
+    expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
   });
 });

@@ -18,7 +18,7 @@ const DEFAULT_PLANS = [
   { id: "p1", calendarEntryId: "entry-1", chosenScheduleId: null },
   { id: "p2", calendarEntryId: "entry-2", chosenScheduleId: null },
 ];
-let plansMock: { id: string; type?: string; name?: string; calendarEntryId: string | null; chosenScheduleId: string | null }[] = DEFAULT_PLANS;
+let plansMock: { id: string; type?: string; name?: string; calendarEntryId: string | null; chosenScheduleId: string | null; windowEditable?: boolean; windowLockedReason?: string | null; closureTitle?: string }[] = DEFAULT_PLANS;
 let seasonIsReadonly = false;
 // Entrées de calendrier servies par useCalendarEntries(saison) — la modale les interroge pour la
 // LIGNE DE DATES (fenêtre de chaque plan de période), y compris les périodes PASSÉES.
@@ -254,5 +254,66 @@ describe("SeasonSchedulesModal — plannings, not versions", () => {
     expect(retry).toBeInTheDocument();
     await userEvent.click(retry);
     expect(calendarEntriesRefetch).toHaveBeenCalled();
+  });
+});
+
+/*
+ * Tests ROUGES PR2 — « Modifier les dates » depuis « Tous les plannings » (axe planning lifecycle).
+ *
+ * PROMESSE : chaque plan-segment d'une FERMETURE modifiable offre un geste « Modifier les dates »
+ * NOMMÉ par la fermeture (son identité, servie), y compris quand l'incident est TERMINÉ (plan
+ * validé) — mais JAMAIS un plan de saison/vacances, ni une fermeture dont la fenêtre est verrouillée
+ * côté serveur (`windowLockedReason`). Le front n'invente pas « est-ce modifiable » : il LIT le
+ * prédicat `windowEditable` servi par SchedulePlanResource (règle d'or, frontend.md).
+ *
+ * Niveau Vitest : présence/état d'un bouton selon des drapeaux servis = jsdom suffit (charte §2) ;
+ * le flux du dialogue vit dans ClosureWindowDialog.test.tsx, le chemin serveur dans le NR bloquant.
+ */
+describe("SeasonSchedulesModal — geste « Modifier les dates » d'une fermeture (PR2)", () => {
+  const CLOSURE_TITLE = "Gymnase Matéo indisponible";
+  // Le bouton est NOMMÉ par la fermeture (closureTitle servi) — jamais un verbe nu répété (A11Y-28).
+  const datesName = new RegExp(`Modifier les dates de.*${CLOSURE_TITLE}`, "i");
+
+  it("offre « Modifier les dates de {closureTitle} » sur une ligne de plan CLOSURE modifiable", () => {
+    plansMock = [{ id: "p1", type: "CLOSURE", name: CLOSURE_TITLE, calendarEntryId: "entry-1", chosenScheduleId: null, windowEditable: true, windowLockedReason: null, closureTitle: CLOSURE_TITLE }];
+    open([plan({ id: "o1", name: CLOSURE_TITLE, status: "COMPLETED", planType: "CLOSURE", schedulePlanId: "p1" })]);
+    expect(screen.getByRole("button", { name: datesName })).toBeInTheDocument();
+  });
+
+  it("offre encore le geste sur une fermeture TERMINÉE (plan VALIDÉ / pointé)", () => {
+    // « le passé ne bouge pas » ≠ « déjà généré ne bouge pas » : une fermeture validée reste
+    // prolongeable tant que le serveur la sert windowEditable=true.
+    plansMock = [{ id: "p1", type: "CLOSURE", name: CLOSURE_TITLE, calendarEntryId: "entry-1", chosenScheduleId: "o1", windowEditable: true, windowLockedReason: null, closureTitle: CLOSURE_TITLE }];
+    open([plan({ id: "o1", name: CLOSURE_TITLE, status: "COMPLETED", isChosen: true, planType: "CLOSURE", schedulePlanId: "p1" })]);
+    expect(screen.getByRole("button", { name: datesName })).toBeInTheDocument();
+  });
+
+  it("n'offre JAMAIS le geste sur le plan de saison ni sur un plan HOLIDAY", () => {
+    // windowEditable:true à DESSEIN : seul le garde de TYPE doit retenir le bouton. Un fixture
+    // HOLIDAY non-éditable rendait ce test vacuum (le garde éditable/raison le retenait déjà,
+    // le garde de type n'était jamais exercé — falsifié : type retiré, test resté VERT).
+    plansMock = [
+      { id: "p-hol", type: "HOLIDAY", name: "Vacances Toussaint", calendarEntryId: "entry-hol", chosenScheduleId: "h1", windowEditable: true, windowLockedReason: null, closureTitle: "Vacances Toussaint" },
+    ];
+    open([
+      plan({ id: "v1", status: "COMPLETED", isChosen: true }), // socle (SEASON)
+      plan({ id: "h1", name: "Vacances Toussaint", status: "COMPLETED", isChosen: true, planType: "HOLIDAY", schedulePlanId: "p-hol" }),
+    ]);
+    expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
+  });
+
+  it("désactive le geste AVEC sa raison quand la fenêtre est verrouillée côté serveur", () => {
+    plansMock = [{ id: "p1", type: "CLOSURE", name: CLOSURE_TITLE, calendarEntryId: "entry-1", chosenScheduleId: null, windowEditable: false, windowLockedReason: "Une génération est en cours.", closureTitle: CLOSURE_TITLE }];
+    open([plan({ id: "o1", name: CLOSURE_TITLE, status: "GENERATING", planType: "CLOSURE", schedulePlanId: "p1" })]);
+    const btn = screen.getByRole("button", { name: datesName });
+    // disabledReason → aria-disabled (focalisable) + raison DÉCOUVRABLE au clavier (A11Y-30).
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).toHaveAttribute("aria-describedby");
+  });
+
+  it("n'offre pas le geste quand le prédicat servi est absent/faux (sans raison)", () => {
+    plansMock = [{ id: "p1", type: "CLOSURE", name: CLOSURE_TITLE, calendarEntryId: "entry-1", chosenScheduleId: null, windowEditable: false, windowLockedReason: null, closureTitle: CLOSURE_TITLE }];
+    open([plan({ id: "o1", name: CLOSURE_TITLE, status: "COMPLETED", planType: "CLOSURE", schedulePlanId: "p1" })]);
+    expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
   });
 });

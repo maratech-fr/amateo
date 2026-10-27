@@ -99,7 +99,13 @@ final class ClosureWindowApplier
         $child->setSeasonId($mother->getSeasonId());
         $child->setKind(CalendarEntryKind::PERIOD);
         $child->setPeriodType(CalendarEntryPeriodType::CLOSURE);
-        $child->setTitle($this->schedulePlanProvisioner->windowLabel($startDate, $endDate));
+        // La copie doit nommer sa fermeture dans « Tous les plannings » : « {fermeture} — {fenêtre} ».
+        $label = $this->schedulePlanProvisioner->windowLabel($startDate, $endDate);
+        $motherTitle = $mother->getTitle();
+        $base = preg_replace('/\s+—\s+du\s.+$/u', '', $motherTitle) ?? $motherTitle;
+        $suffix = ' — ' . $label;
+        $base = mb_substr($base, 0, max(0, 180 - mb_strlen($suffix)));
+        $child->setTitle($base . $suffix);
         $child->setStartDate($startDate);
         $child->setEndDate($endDate);
         $child->setIsDisruptive(false);

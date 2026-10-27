@@ -125,6 +125,20 @@ final class ClosureSegmentation
     }
 
     /**
+     * Comme {@see holidayWindowsForSeason}, mais chaque fenêtre porte AUSSI le NOM de la vacance et
+     * sa SOURCE (`feed` = vacances scolaires, `entry` = entrée HOLIDAY matérialisée) — pour que
+     * {@see ClosureWindowPlanner} NOMME la pause et préfère le libellé du feed. LECTURE pure : la
+     * sémantique de {@see holidayWindowsForSeason}/{@see holidayWindows} est inchangée (elles
+     * continuent de ne rendre que les bornes, dans le même ordre).
+     *
+     * @return list<array{start: string, end: string, label: string, source: string}>
+     */
+    public function namedHolidayWindowsForSeason(string $clubId, string $seasonId, string $seasonStart, string $seasonEnd): array
+    {
+        return $this->namedHolidayWindows($clubId, $seasonId, $seasonStart, $seasonEnd);
+    }
+
+    /**
      * Les semaines PLEINES lun→dim couvrant [motherStart, motherEnd] — clampées à la saison (une
      * semaine entièrement hors saison est omise), MOINS les semaines de vacances, MOINS les semaines
      * déjà planifiées. AUCUN filtre temporel ici (la tolérance des révolues est appliquée par les
@@ -220,18 +234,34 @@ final class ClosureSegmentation
     }
 
     /**
-     * Les fenêtres de vacances qui gouvernent des semaines, [start, end] en Y-m-d.
+     * Les fenêtres de vacances qui gouvernent des semaines, [start, end] en Y-m-d. Ne rend que les
+     * bornes — projection de {@see namedHolidayWindows} (même source, même ordre).
      *
      * @return list<array{0: string, 1: string}>
      */
     private function holidayWindows(string $clubId, string $seasonId, string $seasonStart, string $seasonEnd): array
     {
+        return array_map(
+            static fn (array $window): array => [$window['start'], $window['end']],
+            $this->namedHolidayWindows($clubId, $seasonId, $seasonStart, $seasonEnd),
+        );
+    }
+
+    /**
+     * Les fenêtres de vacances qui gouvernent des semaines, chacune avec son NOM et sa SOURCE
+     * (`entry` = entrée HOLIDAY matérialisée, `feed` = vacances scolaires de la zone). Entrées
+     * d'abord, feed ensuite — l'ordre que {@see holidayWindows} projetait déjà.
+     *
+     * @return list<array{start: string, end: string, label: string, source: string}>
+     */
+    private function namedHolidayWindows(string $clubId, string $seasonId, string $seasonStart, string $seasonEnd): array
+    {
         // Entrées calendrier de type vacances (SQL brut : season_filter épinglerait la lecture à la
         // saison active, RLS scope le club). Une IGNORÉE ne compte pas ; son schoolHolidayId retire
         // en plus la vacance scolaire correspondante du feed.
-        /** @var list<array{start_date: string, end_date: string, status: string, school_holiday_id: ?string}> $rows */
+        /** @var list<array{title: ?string, start_date: string, end_date: string, status: string, school_holiday_id: ?string}> $rows */
         $rows = $this->entityManager->getConnection()->fetchAllAssociative(
-            'SELECT start_date, end_date, status, school_holiday_id FROM calendar_entry '
+            'SELECT title, start_date, end_date, status, school_holiday_id FROM calendar_entry '
             . 'WHERE club_id = :club AND season_id = :season AND period_type = \'holiday\'',
             ['club' => $clubId, 'season' => $seasonId],
         );
@@ -245,7 +275,12 @@ final class ClosureSegmentation
 
                 continue;
             }
-            $windows[] = [mb_substr((string) $row['start_date'], 0, 10), mb_substr((string) $row['end_date'], 0, 10)];
+            $windows[] = [
+                'start' => mb_substr((string) $row['start_date'], 0, 10),
+                'end' => mb_substr((string) $row['end_date'], 0, 10),
+                'label' => (string) ($row['title'] ?? ''),
+                'source' => 'entry',
+            ];
         }
 
         // Feed des vacances scolaires de la zone du club, clampé à la saison, hors ignorées.
@@ -258,7 +293,7 @@ final class ClosureSegmentation
                 $start = max($holiday->getStartDate()->format('Y-m-d'), $seasonStart);
                 $end = min($holiday->getEndDate()->format('Y-m-d'), $seasonEnd);
                 if ($start <= $end) {
-                    $windows[] = [$start, $end];
+                    $windows[] = ['start' => $start, 'end' => $end, 'label' => $holiday->getLabel(), 'source' => 'feed'];
                 }
             }
         }

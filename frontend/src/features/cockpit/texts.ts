@@ -85,4 +85,18 @@ export const COCKPIT_TEXTS = {
   // Chantier H — relais d'adjoint du planning en vigueur, résumé DISTINCT des conflits « à deux
   // endroits » (un relais est toléré, pas un conflit).
   relayPill: (count: number) => `${count} relais d'adjoint`,
+  // PR2 « Modifier les dates d'une fermeture » (ClosureWindowDialog + geste de « Tous les plannings »
+  // et de la page du planning). Le dialogue n'invente aucune règle : il affiche l'aperçu SERVI.
+  closureWindowTitle: (title: string) => `Modifier les dates — ${title}`,
+  modifyClosureDates: (title: string) => `Modifier les dates de ${title}`,
+  closureDatesButton: "Dates",
+  seeEffects: "Voir les effets",
+  confirm: "Confirmer",
+  confirmNeedsPreview: "Voyez d'abord les effets des nouvelles dates avant de confirmer.",
+  effectsSectionTitle: "Ce qui va changer",
+  loadingEffects: "Calcul des effets en cours…",
+  startFrozenHint: "Déjà commencée — le début ne bouge plus.",
+  futurePlansWarning: "Des plannings de période futurs seraient balayés si vous validez ou rouvrez le socle ensuite.",
+  datesChangedToast: "Dates modifiées — les nouveaux plannings sont dans « Tous les plannings ».",
+  datesChangedToastFromList: "Dates modifiées.",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

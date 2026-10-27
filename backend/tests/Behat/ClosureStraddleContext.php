@@ -316,10 +316,14 @@ final class ClosureStraddleContext extends BaseContext
      * {@see ClosureWindowExtendTest}, mais FUTURE (pas de plancher à éprouver
      * ici) et réduite pour minimiser le risque de vacances scolaires sur la fenêtre :
      *   - fermeture d'origine (le « milieu », convert)  : [B, B+6]   (semaine 1 pleine) ;
-     *   - vacances (pause)                               : [B+10, B+27] (jeu. S2 → dim. S4) ;
+     *   - entrée vacances (mère des reprises)            : [B+10, B+27] (jeu. S2 → dim. S4) ;
      *   - reprises hebdo non validées, dans les vacances : [B+14, B+20] et [B+21, B+27] ;
-     *   - prolongation jusqu'à [B, B+38] (jeu. S6) → la pause découpe l'ajout en 3 copies :
-     *     [B+7, B+9] (avant pause), [B+28, B+34] (après pause), [B+35, B+38] (fin entamée).
+     *   - prolongation jusqu'à [B, B+38] (jeu. S6). La vacance entre le JEUDI B+10, mais la semaine
+     *     B+7→B+13 n'est pas DE vacances ({@see HolidayWorkweekRule}) : ses jours lun→ven restent à la
+     *     FERMETURE, la pause ne commence que le SAMEDI B+12 (règle vendredi→samedi, fondateur
+     *     2026-10-27). La pause [B+12, B+27] découpe l'ajout en 3 copies — [B+7, B+11] (avant pause,
+     *     lun→ven pleins), [B+28, B+34] (après pause), [B+35, B+38] (fin entamée) — soit, avec le
+     *     milieu conservé, QUATRE plannings (le compte, seul assuré ici, est inchangé par la règle).
      */
     private function declareValidatedClosureUpToHolidays(): string
     {

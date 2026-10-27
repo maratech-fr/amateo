@@ -12,6 +12,7 @@ use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SchoolHolidayPeriod;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
@@ -82,6 +83,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *    contrainte datée `venue_closed` étendue à TOUTE la fenêtre (début figé = plancher) ;
  *    reprises de vacances non validées qui SURVIVENT et restent travaillables (« à régénérer » =
  *    jamais validées, le gestionnaire les régénère) ; aperçu == appliqué.
+ *  • règle VENDREDI→SAMEDI (fondateur 2026-10-27) : le feed scolaire démarre le VENDREDI de fin des
+ *    cours, mais un jour lun→ven d'une semaine qui n'est PAS DE vacances ({@see HolidayWorkweekRule})
+ *    reste à la FERMETURE → la pause ne commence que le SAMEDI, et une semaine dont chaque jour est
+ *    fermeture OU vacances compte PLEINE (plus de « fin » isolée qui trouait avec la fenêtre brute) ;
  *  • raccourcir : même geste, verdicts annoncés == appliqués, le passé ne bouge pas ;
  *  • plancher : une fenêtre déjà commencée a son début FIGÉ (minEndDate servi, apply sous le plancher refusé) ;
  *  • copie figée : modifier la SOURCE après coup ne redescend pas dans les copies ;
@@ -171,7 +176,13 @@ final class ClosureWindowExtendTest extends WebTestCase
 
         // (2)(3)(4) COPIES : fin avant vacances, après-vacances, fin finale — chacune POINTÉE sur une
         // version COMPLETED, slots == source, verrous à origine VRAIE (jamais UNKNOWN).
-        foreach ([[$this->mon(2), $this->thu(2)], [$this->mon(5), $this->sun(5)], [$this->mon(6), $this->fri(6)]] as $win) {
+        //
+        // ⚠ RÈGLE vendredi→samedi (fondateur 2026-10-27) : les vacances commencent le VENDREDI fri(2)
+        // (entrée + feed), mais la semaine mon(2)→dim n'est PAS une semaine DE vacances au sens de
+        // {@see HolidayWorkweekRule::covers} (lun→jeu hors vacances) → ses jours lun→ven restent à la
+        // FERMETURE et la pause ne commence que le SAMEDI. La première copie court donc jusqu'au
+        // VENDREDI fri(2) (et non jeu. thu(2), l'ancien découpage qui troue avec la fenêtre brute).
+        foreach ([[$this->mon(2), $this->fri(2)], [$this->mon(5), $this->sun(5)], [$this->mon(6), $this->fri(6)]] as $win) {
             $child = $this->childWithWindow($club, $rootId, $win[0], $win[1]);
             self::assertNotNull($child, \sprintf('un segment-copie existe sur [%s, %s]', $win[0], $win[1]));
             $planId = $this->planOf($club, $child);
@@ -208,6 +219,110 @@ final class ClosureWindowExtendTest extends WebTestCase
         // helper lisait `structureHash`/`hash` et rendait toujours null (vacuité).
         self::assertNotNull($this->servedStructureHash($user, $r1Plan), 'la reprise 1 survit et reste travaillable (empreinte courante servie)');
         self::assertNotNull($this->servedStructureHash($user, $r2Plan), 'la reprise 2 survit et reste travaillable (empreinte courante servie)');
+    }
+
+    /**
+     * ⑥ PAUSE DÉDUPLIQUÉE ET NOMMÉE — correctif captures réelles (fondateur 2026-10-27).
+     *
+     * Une même Toussaint est décrite par TROIS sources que {@see ClosureSegmentation::holidayWindowsForSeason}
+     * rend toutes : l'entrée HOLIDAY matérialisée, le feed scolaire de la zone (mêmes dates) et les
+     * deux semaines filles. Le défaut constaté : une ligne `holiday_pause` PAR fenêtre → la Toussaint
+     * listée 4 fois, bornes anonymes. La promesse protégée :
+     *  1. EXACTEMENT UNE ligne de pause par période de vacances (fenêtres recoupées/jointives fusionnées) ;
+     *  2. le libellé NOMME les vacances et ses bornes sont clampées à la fenêtre (union [fri(2), sun(4)]) ;
+     *  3. des plans de vacances recoupent la pause (les deux reprises) → « vos plannings de vacances
+     *     restent tels quels. », jamais l'ancienne promesse « votre planning de reprise reste tel quel » ;
+     *  4. la fermeture ne COUVRE jamais les vacances — aucun segment convert/copie ne chevauche la pause.
+     *
+     * NB : le RENDU EXACT des bornes dans le libellé (format compact « (16 → 31 oct.) ») est laissé à
+     * l'implémentation — il dépend de dates calendaires, alors que l'horloge du test est pinnée en
+     * janvier. On FIGE ici les parts invariantes du format fondateur (« Pause — », le NOM des vacances,
+     * la phrase finale) et les bornes via les champs STRUCTURÉS `startDate`/`endDate`.
+     */
+    public function testHolidayPauseIsOneNamedLineEvenFromEntryFeedAndChildren(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $this->setClubSchoolZone($club, 'A');
+        // Le feed scolaire NOMME la vacance ; l'entrée HOLIDAY + ses semaines filles couvrent LA MÊME
+        // Toussaint → 4 fenêtres pour une seule période de vacances (le défaut : 4 lignes de pause).
+        $this->seedSchoolHoliday('A', 'Vacances de la Toussaint', $this->fri(2), $this->sun(4));
+
+        $rootId = $this->postPeriod($user, 'Barros en travaux', $this->mon(-2), $this->sun(1));
+        $srcPlanId = $this->adaptPeriod($user, $rootId);
+        $this->seedPointedVersionWithLockedSlots($club, $season, $srcPlanId);
+        $this->seedDatedClosure($club, $season, $rootId, $this->mon(-2), $this->sun(1));
+
+        // Entrée HOLIDAY matérialisée + deux reprises de vacances (plans de vacances) recoupant la pause.
+        $vacId = $this->postHoliday($user, 'Toussaint', $this->fri(2), $this->sun(4));
+        $r1 = $this->postWeekChild($user, $vacId, 'holiday', $this->mon(3), $this->sun(3));
+        $r2 = $this->postWeekChild($user, $vacId, 'holiday', $this->mon(4), $this->sun(4));
+        $this->seedUnchosenCompletedVersion($club, $season, $this->planOf($club, $r1));
+        $this->seedUnchosenCompletedVersion($club, $season, $this->planOf($club, $r2));
+
+        $preview = $this->preview($user, $srcPlanId, $this->mon(-2), $this->fri(6));
+        $byKind = $this->effectsByKind($preview['effects']);
+        $pauses = $byKind['holiday_pause'] ?? $byKind['holiday_takes_over'] ?? [];
+
+        // (1) UNE seule ligne, malgré entrée HOLIDAY + feed scolaire + deux semaines filles.
+        self::assertCount(1, $pauses, 'une période de vacances recoupée = exactement une ligne de pause');
+        $pause = $pauses[0];
+
+        // (2) Nommée + bornes fusionnées et clampées à la fenêtre. La vacance DÉMARRE le VENDREDI
+        // fri(2) (feed + entrée), mais la semaine mon(2)→dim n'est pas une semaine DE vacances
+        // ({@see HolidayWorkweekRule}) : ses jours lun→ven restent à la FERMETURE, donc la PAUSE ne
+        // commence que le SAMEDI sat(2) (règle vendredi→samedi, fondateur 2026-10-27).
+        self::assertStringStartsWith('Pause — Vacances de la Toussaint', $pause['label'], 'la pause nomme les vacances');
+        self::assertSame([$this->sat(2), $this->sun(4)], [$pause['startDate'], $pause['endDate']], 'la pause commence le samedi (lun→ven restent à la fermeture) et se clampe à la fenêtre');
+
+        // (3) Des plans de vacances recoupent la pause → on ne touche pas à leurs plannings.
+        self::assertStringContainsString('vos plannings de vacances restent tels quels.', $pause['label']);
+        self::assertStringNotContainsString('votre planning de reprise reste tel quel', $pause['label'], 'jamais la promesse d’un planning de reprise qui n’est pas garanti');
+
+        // (4) La fermeture ne couvre JAMAIS les vacances : aucun segment ne chevauche la pause.
+        foreach (array_merge($byKind['convert'] ?? [], $byKind['birth_copy'] ?? [], $byKind['birth_empty'] ?? []) as $run) {
+            self::assertFalse(
+                $run['startDate'] <= $pause['endDate'] && $run['endDate'] >= $pause['startDate'],
+                \sprintf('un planning de fermeture [%s, %s] chevauche les vacances', $run['startDate'], $run['endDate']),
+            );
+        }
+    }
+
+    /**
+     * ⑦ PAUSE SANS PLAN DE VACANCES — jamais la promesse d'un planning qui n'existe pas (fondateur 2026-10-27).
+     *
+     * Une vacance présente UNIQUEMENT dans le feed scolaire (aucune entrée HOLIDAY, aucun plan de
+     * vacances ne la recoupe). Promesse : la pause est nommée par le feed et annonce « les vacances
+     * gardent leur propre fonctionnement. » — jamais « restent tels quels » (il n'y a pas de planning)
+     * ni l'ancien « votre planning de reprise reste tel quel » (faux dès qu'aucune reprise ne couvre).
+     */
+    public function testHolidayPauseWithoutAnyVacationPlanMakesNoPromiseOfAPlanning(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $this->setClubSchoolZone($club, 'B');
+        // Une vacance du feed scolaire seulement : aucun plan de vacances ne la recoupe.
+        $this->seedSchoolHoliday('B', 'Vacances de printemps', $this->fri(2), $this->sun(4));
+
+        $rootId = $this->postPeriod($user, 'Barros en travaux', $this->mon(-2), $this->sun(1));
+        $planId = $this->adaptPeriod($user, $rootId);
+        $this->seedPointedVersionWithLockedSlots($club, $season, $planId);
+        $this->seedDatedClosure($club, $season, $rootId, $this->mon(-2), $this->sun(1));
+
+        $preview = $this->preview($user, $planId, $this->mon(-2), $this->fri(6));
+        $byKind = $this->effectsByKind($preview['effects']);
+        $pauses = $byKind['holiday_pause'] ?? $byKind['holiday_takes_over'] ?? [];
+
+        self::assertCount(1, $pauses, 'une vacance du feed recoupée = exactement une ligne de pause');
+        $pause = $pauses[0];
+
+        self::assertStringStartsWith('Pause — Vacances de printemps', $pause['label'], 'la pause nomme les vacances du feed');
+        // Feed démarrant le VENDREDI fri(2) → semaine mon(2) non DE vacances ({@see HolidayWorkweekRule})
+        // → lun→ven restent à la fermeture, la pause commence le SAMEDI sat(2) (fondateur 2026-10-27).
+        self::assertSame([$this->sat(2), $this->sun(4)], [$pause['startDate'], $pause['endDate']], 'la pause du feed commence le samedi, clampée à la fenêtre');
+
+        // Aucun plan de vacances ne recoupe la pause → on ne promet AUCUN planning.
+        self::assertStringContainsString('les vacances gardent leur propre fonctionnement.', $pause['label']);
+        self::assertStringNotContainsString('restent tels quels', $pause['label'], 'sans plan de vacances, aucune promesse de planning conservé');
+        self::assertStringNotContainsString('votre planning de reprise reste tel quel', $pause['label'], 'sans reprise, jamais « votre planning de reprise reste tel quel »');
     }
 
     /** ② Raccourcir : même geste, le passé ne bouge pas, verdicts annoncés == appliqués. */
@@ -532,6 +647,12 @@ final class ClosureWindowExtendTest extends WebTestCase
         return $this->today->modify(\sprintf('%+d days', 7 * $n + 4))->format('Y-m-d');
     }
 
+    /** Samedi de la semaine +n (premier jour du WEEK-END — début d'une pause de vacances). */
+    private function sat(int $n): string
+    {
+        return $this->today->modify(\sprintf('%+d days', 7 * $n + 5))->format('Y-m-d');
+    }
+
     /**
      * @param list<array{kind: string, startDate: string, endDate: string, label: string}> $effects
      *
@@ -681,6 +802,32 @@ final class ClosureWindowExtendTest extends WebTestCase
             ->setStatus(ScheduleStatus::COMPLETED);
         $this->em->persist($version);
         self::getContainer()->get(SchedulePlanProvisioner::class)->linkSchedule($version);
+        $this->em->flush();
+    }
+
+    /** Donne au club une zone scolaire — sans quoi le feed des vacances scolaires reste muet. */
+    private function setClubSchoolZone(Club $club, string $zone): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $club->setSchoolZone($zone);
+        $this->em->flush();
+    }
+
+    /**
+     * Pose une période de vacances SCOLAIRES (donnée GLOBALE, hors RLS) nommée par le feed de la zone
+     * donnée — la source du NOM d'une pause. L'horloge du test est pinnée : les bornes sont dérivées
+     * en semaines (mon/fri/sun), jamais des dates calendaires en dur.
+     */
+    private function seedSchoolHoliday(string $zone, string $label, string $start, string $end): void
+    {
+        $holiday = (new SchoolHolidayPeriod)
+            ->setZone($zone)
+            ->setLabel($label)
+            ->setHolidayType('cwx-' . substr(md5($zone . $label), 0, 12))
+            ->setStartDate(new DateTimeImmutable($start))
+            ->setEndDate(new DateTimeImmutable($end))
+            ->setSchoolYear('2025-2026');
+        $this->em->persist($holiday);
         $this->em->flush();
     }
 

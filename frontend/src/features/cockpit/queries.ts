@@ -518,3 +518,41 @@ export function useRedatePreview() {
       cockpitApi.previewRedate(vars.id, { startDate: vars.startDate, endDate: vars.endDate }),
   });
 }
+
+/**
+ * PR2 — APERÇU des effets d'une nouvelle fenêtre de fermeture (lecture pure : aucune invalidation).
+ * Le geste POSSÈDE son feedback (le 422 s'affiche dans la région live du dialogue) : un onError NO-OP
+ * de niveau hook DÉSARME le filet global `MutationCache.onError` (qui toasterait EN PLUS de l'affichage
+ * inline) sans rien faire — l'erreur est déjà normalisée en message par `previewClosureWindow`.
+ */
+export function useClosureWindowPreview() {
+  return useMutation({
+    mutationFn: (vars: { planId: string; startDate: string; endDate: string }) =>
+      cockpitApi.previewClosureWindow(vars.planId, { startDate: vars.startDate, endDate: vars.endDate }),
+    onError: () => {
+      /* le dialogue affiche le message (déjà normalisé) dans sa région live */
+    },
+  });
+}
+
+/**
+ * PR2 — APPLIQUE la nouvelle fenêtre d'une fermeture. Le serveur prolonge/raccourcit le rail de plans
+ * de période et étend la contrainte datée : on périme les mêmes clés que le re-datage (calendar-entries,
+ * schedules, entry-conflicts, planned-windows). Le hook POSSÈDE son feedback (patron
+ * `ownWindowConflictFeedback`) : les deux 409 typés sont TUS (le dialogue les affiche), tout autre échec
+ * (transport) remplace le toast du filet global.
+ */
+export function useApplyClosureWindow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { planId: string; startDate: string; endDate: string; previewToken: string }) =>
+      cockpitApi.applyClosureWindow(vars.planId, { startDate: vars.startDate, endDate: vars.endDate, previewToken: vars.previewToken }),
+    onSuccess: () => {
+      invalidateEntries(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["entry-conflicts"] });
+      invalidatePlannedWindows(queryClient);
+    },
+    onError: ownWindowConflictFeedback,
+  });
+}

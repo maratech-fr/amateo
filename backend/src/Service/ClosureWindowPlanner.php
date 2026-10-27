@@ -73,7 +73,7 @@ final class ClosureWindowPlanner
         $runs = $this->subtractWindows($newStartIso, $newEndIso, $holidayWindows);
         $segments = [];
         foreach ($runs as $run) {
-            foreach ($this->segmentsOfRun($run[0], $run[1]) as $segment) {
+            foreach ($this->segmentsOfRun($run[0], $run[1], $holidayWindows) as $segment) {
                 $segments[] = $segment;
             }
         }
@@ -102,6 +102,18 @@ final class ClosureWindowPlanner
                 ));
             }
         } else {
+            // Le MILIEU conservé == la fenêtre d'ORIGINE : le premier segment est CLAMPÉ à l'ancienne
+            // fin, le surplus (semaines ajoutées AVANT la première pause, fondues dans le run par la
+            // règle « semaine bordée de vacances compte pleine ») naît en copie. Ainsi un bloc prolongé
+            // garde sa version sur [oldStart, oldEnd] et les semaines neuves sont des copies validées.
+            if ($newEndIso > $oldEnd && $segments[0]['endDate'] > $oldEnd && $segments[0]['startDate'] <= $oldEnd) {
+                $first = $segments[0];
+                array_splice($segments, 0, 1, [
+                    ['startDate' => $first['startDate'], 'endDate' => $oldEnd, 'kind' => $first['kind']],
+                    ['startDate' => $this->addDays($oldEnd, 1), 'endDate' => $first['endDate'], 'kind' => $first['kind']],
+                ]);
+            }
+
             // Plusieurs runs : le PREMIER segment conserve le plan (convert), les autres naissent en copie.
             $convertSegment = ['startDate' => $segments[0]['startDate'], 'endDate' => $segments[0]['endDate']];
             $effects[] = $this->effect(self::KIND_CONVERT, $convertSegment['startDate'], $convertSegment['endDate'], \sprintf(
@@ -116,19 +128,12 @@ final class ClosureWindowPlanner
                     : \sprintf('%s : un planning vierge est créé, à générer.', $this->label($segment['startDate'], $segment['endDate']));
                 $effects[] = $this->effect($kind, $segment['startDate'], $segment['endDate'], $label);
             }
-            foreach ($holidayWindows as $holiday) {
-                $start = max($holiday[0], $newStartIso);
-                $end = min($holiday[1], $newEndIso);
-                if ($start > $end) {
-                    continue;
-                }
-                // La fermeture PAUSE pendant les vacances : la reprise garde son planning (la datée
-                // `venue_closed` est droppée hors fermeture par {@see PeriodConstraintSelector}, donc
-                // l'empreinte d'une reprise ne bouge pas — rien n'est « à régénérer », ne RIEN le promettre).
-                $effects[] = $this->effect(self::KIND_HOLIDAY_PAUSE, $start, $end, \sprintf(
-                    'Pause — %s : votre planning de reprise reste tel quel.',
-                    $this->label($start, $end),
-                ));
+            // La fermeture PAUSE pendant les vacances (elle ne les couvre JAMAIS, plan de vacances ou
+            // non). UNE ligne par période de vacances : les fenêtres qui se recoupent OU se touchent
+            // (entrée HOLIDAY ∪ feed scolaire ∪ semaines filles) fusionnent, bornes clampées à la
+            // nouvelle fenêtre, libellé NOMMÉ et promesse honnête (cf. {@see self::holidayPauses}).
+            foreach ($this->holidayPauses($clubId, $seasonId, $seasonStart, $seasonEnd, $newStartIso, $newEndIso) as $pause) {
+                $effects[] = $this->effect(self::KIND_HOLIDAY_PAUSE, $pause['startDate'], $pause['endDate'], $pause['label']);
             }
         }
 
@@ -237,31 +242,122 @@ final class ClosureWindowPlanner
     }
 
     /**
-     * Les segments d'un run [rs, re] : semaines calendaires clampées AU RUN, découpées par le
-     * miroir {@see WeekSegmentationRule} (début·milieu·fin). Clamp au run → une semaine entamée par
-     * un trou de vacances ou le bout de fenêtre donne un segment partiel.
+     * Les segments d'un run [rs, re] : semaines calendaires découpées par le miroir
+     * {@see WeekSegmentationRule} (début·milieu·fin), segments CLAMPÉS au run.
+     *
+     * Règle « une semaine compte PLEINE si chacun de ses jours lun→dim est fermeture OU pause de
+     * vacances » (fondateur 2026-10-27) : les bornes d'événement passées au miroir sont ÉTENDUES aux
+     * jours de pause ADJACENTS (le reste de la semaine entamée de tête/queue est en pause), de sorte
+     * qu'une semaine lun→ven bordée de vacances ne fasse plus un « début »/« fin » isolé — elle fond
+     * dans le run. La sémantique du miroir reste inchangée (autres appelants, parité front) ; le clamp
+     * au run reborde les segments.
+     *
+     * @param list<array{0: string, 1: string}> $holes les fenêtres de vacances rognées qui bordent le run
      *
      * @return list<array{startDate: string, endDate: string, kind: string}>
      */
-    private function segmentsOfRun(string $rs, string $re): array
+    private function segmentsOfRun(string $rs, string $re, array $holes): array
     {
+        $eventStart = $rs;
+        $mondayOfRs = $this->mondayOf($rs);
+        if ($mondayOfRs < $rs && $this->allDaysInHoles($mondayOfRs, $this->addDays($rs, -1), $holes)) {
+            $eventStart = $mondayOfRs;
+        }
+        $eventEnd = $re;
+        $sundayOfRe = $this->addDays($this->mondayOf($re), 6);
+        if ($sundayOfRe > $re && $this->allDaysInHoles($this->addDays($re, 1), $sundayOfRe, $holes)) {
+            $eventEnd = $sundayOfRe;
+        }
+
         $weeks = [];
-        $monday = new DateTimeImmutable($rs)->modify(\sprintf('-%d days', (int) new DateTimeImmutable($rs)->format('N') - 1));
-        while ($monday->format('Y-m-d') <= $re) {
+        $monday = new DateTimeImmutable($eventStart)->modify(\sprintf('-%d days', (int) new DateTimeImmutable($eventStart)->format('N') - 1));
+        while ($monday->format('Y-m-d') <= $eventEnd) {
             $mondayIso = $monday->format('Y-m-d');
             $sundayIso = $monday->modify('+6 days')->format('Y-m-d');
-            $start = max($mondayIso, $rs);
-            $end = min($sundayIso, $re);
+            $start = max($mondayIso, $eventStart);
+            $end = min($sundayIso, $eventEnd);
             if ($start <= $end) {
                 $weeks[] = ['monday' => $mondayIso, 'startDate' => $start, 'endDate' => $end];
             }
             $monday = $monday->modify('+7 days');
         }
 
-        return array_map(
-            static fn (array $s): array => ['startDate' => $s['startDate'], 'endDate' => $s['endDate'], 'kind' => $s['kind']],
-            WeekSegmentationRule::segments($weeks, $rs, $re),
-        );
+        $segments = [];
+        foreach (WeekSegmentationRule::segments($weeks, $eventStart, $eventEnd) as $segment) {
+            $start = max($segment['startDate'], $rs);
+            $end = min($segment['endDate'], $re);
+            if ($start <= $end) {
+                $segments[] = ['startDate' => $start, 'endDate' => $end, 'kind' => $segment['kind']];
+            }
+        }
+
+        return $segments;
+    }
+
+    /** Le lundi (Y-m-d) de la semaine calendaire lun→dim qui contient `$iso`. */
+    private function mondayOf(string $iso): string
+    {
+        $date = new DateTimeImmutable($iso);
+
+        return $date->modify(\sprintf('-%d days', (int) $date->format('N') - 1))->format('Y-m-d');
+    }
+
+    /**
+     * Tous les jours de [from, to] (inclus) sont-ils couverts par une fenêtre (trou) ? Faux si
+     * l'intervalle est vide (from > to) : aucune extension à faire.
+     *
+     * @param list<array{0: string, 1: string}> $holes
+     */
+    private function allDaysInHoles(string $from, string $to, array $holes): bool
+    {
+        if ($from > $to) {
+            return false;
+        }
+        for ($day = $from; $day <= $to; $day = $this->addDays($day, 1)) {
+            $covered = false;
+            foreach ($holes as $hole) {
+                if ($hole[0] <= $day && $day <= $hole[1]) {
+                    $covered = true;
+
+                    break;
+                }
+            }
+            if (!$covered) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Rogne la fenêtre de vacances [hs, he] à sa portion qui FAIT PAUSE : un jour lun→ven d'une
+     * semaine qui n'est PAS une semaine DE vacances ({@see HolidayWorkweekRule::covers}) reste à la
+     * FERMETURE. Le feed scolaire démarre le VENDREDI de fin des cours → la pause ne commence qu'au
+     * SAMEDI ; symétriquement un lundi de rentrée dans une semaine non-vacances reste à la fermeture.
+     * Rend [newStart, newEnd], ou null si la fenêtre ne fait plus aucune pause (fondateur 2026-10-27).
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private function trimHolidayWindowToWorkweek(string $hs, string $he, string $seasonStart, string $seasonEnd): ?array
+    {
+        $newHs = $hs;
+        $mondayOfStart = $this->mondayOf($hs);
+        if (!HolidayWorkweekRule::covers($mondayOfStart, $hs, $he, $seasonStart, $seasonEnd)) {
+            // Première semaine non-vacances : ses jours lun→ven restent fermeture, pause dès le samedi.
+            $newHs = max($newHs, $this->addDays($mondayOfStart, 5));
+        }
+
+        $newHe = $he;
+        $mondayOfEnd = $this->mondayOf($he);
+        if (!HolidayWorkweekRule::covers($mondayOfEnd, $hs, $he, $seasonStart, $seasonEnd) && $he <= $this->addDays($mondayOfEnd, 4)) {
+            // Dernière semaine non-vacances finissant un jour lun→ven (rentrée) : ces jours restent à
+            // la fermeture, la pause s'arrête au dimanche précédent. (Un samedi/dimanche resterait pause,
+            // symétrie du samedi de début.)
+            $newHe = $this->addDays($mondayOfEnd, -1);
+        }
+
+        return $newHs > $newHe ? null : [$newHs, $newHe];
     }
 
     /**
@@ -310,12 +406,170 @@ final class ClosureWindowPlanner
         }
         $windows = [];
         foreach ($this->closureSegmentation->holidayWindowsForSeason($clubId, $seasonId, $seasonStart, $seasonEnd) as $window) {
-            if ($window[0] <= $end && $window[1] >= $start) {
-                $windows[] = $window;
+            $trimmed = $this->trimHolidayWindowToWorkweek($window[0], $window[1], $seasonStart, $seasonEnd);
+            if (null === $trimmed) {
+                continue;
+            }
+            if ($trimmed[0] <= $end && $trimmed[1] >= $start) {
+                $windows[] = $trimmed;
             }
         }
 
         return $windows;
+    }
+
+    /**
+     * Les PAUSES de vacances à afficher : EXACTEMENT UNE ligne par période de vacances. Les fenêtres
+     * nommées ({@see ClosureSegmentation::namedHolidayWindowsForSeason}) qui se recoupent OU se
+     * touchent (entrée HOLIDAY ∪ feed scolaire ∪ semaines filles d'une même vacance) fusionnent en
+     * une seule pause, bornes clampées à [`$newStart`, `$newEnd`]. Le NOM vient du feed scolaire si
+     * présent, sinon du titre de l'entrée HOLIDAY (suffixe « — du … » retiré). La phrase promet « vos
+     * plannings de vacances restent tels quels. » ssi au moins un PLAN de vacances (HOLIDAY) recoupe
+     * la pause — sinon « les vacances gardent leur propre fonctionnement. » (jamais la promesse d'un
+     * planning de reprise qui n'existe pas).
+     *
+     * @return list<array{startDate: string, endDate: string, label: string}>
+     */
+    private function holidayPauses(string $clubId, string $seasonId, ?string $seasonStart, ?string $seasonEnd, string $newStart, string $newEnd): array
+    {
+        if (null === $seasonStart || null === $seasonEnd) {
+            return [];
+        }
+        $clamped = [];
+        foreach ($this->closureSegmentation->namedHolidayWindowsForSeason($clubId, $seasonId, $seasonStart, $seasonEnd) as $window) {
+            // Même rognage vendredi→samedi que pour les trous : la pause ne couvre jamais les jours
+            // lun→ven d'une semaine non-vacances (fondateur 2026-10-27).
+            $trimmed = $this->trimHolidayWindowToWorkweek($window['start'], $window['end'], $seasonStart, $seasonEnd);
+            if (null === $trimmed) {
+                continue;
+            }
+            $start = max($trimmed[0], $newStart);
+            $end = min($trimmed[1], $newEnd);
+            if ($start > $end) {
+                continue;
+            }
+            $clamped[] = ['start' => $start, 'end' => $end, 'label' => $window['label'], 'source' => $window['source']];
+        }
+        if ([] === $clamped) {
+            return [];
+        }
+        usort($clamped, static fn (array $a, array $b): int => [$a['start'], $a['end']] <=> [$b['start'], $b['end']]);
+
+        // Fusionner les fenêtres qui se recoupent OU se touchent (jointives : trou d'un jour toléré).
+        /** @var list<array{start: string, end: string, windows: list<array{start: string, end: string, label: string, source: string}>}> $groups */
+        $groups = [];
+        /** @var array{start: string, end: string, windows: list<array{start: string, end: string, label: string, source: string}>}|null $current */
+        $current = null;
+        foreach ($clamped as $window) {
+            if (null !== $current && $window['start'] <= $this->addDays($current['end'], 1)) {
+                $current['end'] = max($current['end'], $window['end']);
+                $current['windows'][] = $window;
+
+                continue;
+            }
+            if (null !== $current) {
+                $groups[] = $current;
+            }
+            $current = ['start' => $window['start'], 'end' => $window['end'], 'windows' => [$window]];
+        }
+        // $clamped est non vide (retour anticipé plus haut) → la boucle tourne, $current est posé.
+        $groups[] = $current;
+
+        $holidayPlanWindows = $this->holidayPlanWindows($clubId, $seasonId);
+        $pauses = [];
+        foreach ($groups as $group) {
+            $phrase = $this->anyOverlap($holidayPlanWindows, $group['start'], $group['end'])
+                ? 'vos plannings de vacances restent tels quels.'
+                : 'les vacances gardent leur propre fonctionnement.';
+            $pauses[] = [
+                'startDate' => $group['start'],
+                'endDate' => $group['end'],
+                'label' => \sprintf('Pause — %s (%s) : %s', $this->holidayName($group['windows']), $this->compactRange($group['start'], $group['end']), $phrase),
+            ];
+        }
+
+        return $pauses;
+    }
+
+    /**
+     * Le NOM d'une période de vacances fusionnée : le libellé du feed scolaire si l'une des fenêtres
+     * en vient, sinon le titre de l'entrée HOLIDAY débarrassé de son suffixe « — du … ».
+     *
+     * @param list<array{start: string, end: string, label: string, source: string}> $windows
+     */
+    private function holidayName(array $windows): string
+    {
+        foreach ($windows as $window) {
+            if ('feed' === $window['source'] && '' !== $window['label']) {
+                return $window['label'];
+            }
+        }
+        foreach ($windows as $window) {
+            if ('' !== $window['label']) {
+                return (string) preg_replace('/\s*—\s*du\b.*$/u', '', $window['label']);
+            }
+        }
+
+        return 'Vacances';
+    }
+
+    /**
+     * Les fenêtres des PLANS de vacances (HOLIDAY) du club+saison — décident si une pause peut
+     * promettre « vos plannings de vacances restent tels quels. ».
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function holidayPlanWindows(string $clubId, string $seasonId): array
+    {
+        /** @var list<array{start_date: string, end_date: string}> $rows */
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT start_date, end_date FROM schedule_plan WHERE club_id = :club AND season_id = :season AND type = \'HOLIDAY\'',
+            ['club' => $clubId, 'season' => $seasonId],
+        );
+
+        return array_map(
+            static fn (array $row): array => [mb_substr((string) $row['start_date'], 0, 10), mb_substr((string) $row['end_date'], 0, 10)],
+            $rows,
+        );
+    }
+
+    /**
+     * @param list<array{0: string, 1: string}> $windows
+     */
+    private function anyOverlap(array $windows, string $start, string $end): bool
+    {
+        foreach ($windows as $window) {
+            if ($window[0] <= $end && $window[1] >= $start) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Bornes compactes « à la française » : « 16 → 31 oct. », « 28 déc. → 3 janv. », « 31 août ». */
+    private function compactRange(string $start, string $end): string
+    {
+        $startDate = new DateTimeImmutable($start);
+        $endDate = new DateTimeImmutable($end);
+        if ($start === $end) {
+            return \sprintf('%s %s', $this->frDay($startDate), $this->frMonth((int) $startDate->format('n')));
+        }
+        if ($startDate->format('Y-m') === $endDate->format('Y-m')) {
+            return \sprintf('%s → %s %s', $this->frDay($startDate), $this->frDay($endDate), $this->frMonth((int) $endDate->format('n')));
+        }
+
+        return \sprintf('%s %s → %s %s', $this->frDay($startDate), $this->frMonth((int) $startDate->format('n')), $this->frDay($endDate), $this->frMonth((int) $endDate->format('n')));
+    }
+
+    private function frDay(DateTimeImmutable $d): string
+    {
+        return '1' === $d->format('j') ? '1er' : $d->format('j');
+    }
+
+    private function frMonth(int $month): string
+    {
+        return [1 => 'janv.', 2 => 'févr.', 3 => 'mars', 4 => 'avr.', 5 => 'mai', 6 => 'juin', 7 => 'juil.', 8 => 'août', 9 => 'sept.', 10 => 'oct.', 11 => 'nov.', 12 => 'déc.'][$month] ?? '';
     }
 
     /**

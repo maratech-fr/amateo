@@ -532,10 +532,35 @@ saison en cours.
     **distinct** de celui ci-dessus (pas D3 v2 / `RedatePreviewController`) : il segmente la
     fenêtre demandée en retranchant les trous de vacances, garde le run déjà travaillé (ré-ancré,
     même version) et fait naître chaque autre run en **copie VALIDÉE d'office** du même planning
-    — là où le rail ci-dessus naît toujours vide. Backend seul à ce stade (`POST
+    — là où le rail ci-dessus naît toujours vide. Backend (`POST
     /api/schedule_plans/{id}/window-preview` puis `…/window`, prédicats `windowEditable`/
-    `windowLockedReason`/`minEndDate`/`closureTitle` déjà servis sur `SchedulePlanResource`) ; la
-    surface écran (bouton, modale d'aperçu/confirmation) n'est pas encore livrée. Détail :
+    `windowLockedReason`/`minEndDate`/`closureTitle` servis sur `SchedulePlanResource`, PR1
+    #1283) et surface écran (PR2) **livrés** : un bouton **« Dates »** (icône `CalendarRange`,
+    nom accessible « Modifier les dates de {fermeture} » — A11Y-28) sur **chaque ligne de plan
+    CLOSURE** de « Tous les plannings » (`SeasonSchedulesModal`, incident terminé compris) et un
+    bouton jumeau (texte complet) sur la **page du planning** (`PlanningPage`, dans l'en-tête,
+    jamais en mode embarqué, jamais en saison archivée ni pendant une génération en vol) — les
+    deux rendus **seulement** si le serveur sert `windowEditable` ou une raison
+    (`windowLockedReason`, p. ex. « Un planning est en cours de génération. »/« Cette saison est
+    archivée — elle est en lecture seule. »), jamais recalculé côté front ; désactivé AVEC sa
+    raison sinon (`disabledReason`). Le dialogue (`features/cockpit/ClosureWindowDialog.tsx`)
+    reprend le même patron « aperçu puis confirmation » que ci-dessus — champs Du/Jusqu'au (début
+    `readOnly` si la fermeture a déjà commencé, fin plancherée à `minEndDate` servi, plafond fin
+    de saison), « Voir les effets » charge l'aperçu (liste chronologique des dates par
+    `StatusPill` + label servi tel quel ; UNE pause par période de vacances, en ligne pointillée
+    distincte, nommée et bornée — « vos plannings de vacances restent tels quels » si un plan de
+    vacances la recoupe, « les vacances gardent leur propre fonctionnement » sinon : la fermeture
+    ne couvre JAMAIS les vacances, plan ou non ; le feed scolaire commençant le vendredi de fin des
+    cours, un jour lun→ven d'une semaine qui n'est pas de vacances (`HolidayWorkweekRule`) reste à
+    la fermeture — la pause commence le samedi — et une semaine dont chaque jour est fermeture ou
+    vacances compte pleine, sans segment isolé, décision fondateur 2026-10-27) puis « Confirmer » (variante destructive si
+    l'aperçu porte une suppression) ; toute retouche de date périme l'aperçu, un jeton expiré
+    redemande l'aperçu automatiquement (confirmation restant manuelle), un conflit de fenêtre
+    (409) ouvre `WindowAlreadyPlannedNotice` — son ouverture referme le dialogue (et, ouvert
+    depuis la liste, la modale « Tous les plannings » avec lui) — et renvoie vers le planning en
+    place. Succès → toast court (« Dates modifiées. » depuis la liste, mention explicite de
+    « Tous les plannings » depuis la page) et rafraîchissement des lectures dérivées ; le focus
+    revient au bouton déclencheur. NR e2e `closure-extend.spec.ts`. Détail :
     [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) inv. 2 (amendement) ·
     [`types-de-planning.md`](types-de-planning.md) §2.
 - **L'écran dédié « calendrier secondaire »** = le wizard réutilisé en « mode période » (§6bis) :
