@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { frDateWeekdayNoYear } from "@/shared/lib/date";
+
 import type { Conflict, ConflictFixtureView, ConflictTrainingView, Team, Venue } from "../api";
 import { buildConflictSideLines } from "./conflictSideLines";
 
@@ -215,7 +217,9 @@ describe("buildConflictSideLines — VENUE_OVERLAP (collision de gymnase, détai
       kind: "home",
       place: "Gymnase Mateo",
       opponent: "vs BC Villeurbanne",
-      date: "8 nov.",
+      // M6 (BCCL 2026-10-27) : la date de la RENCONTRE porte son jour (« dim. 8 nov. »), via
+      // `frDateWeekdayNoYear` — plus `frDateShortNoYear` (« 8 nov. ») qui taisait le jour.
+      date: frDateWeekdayNoYear("2026-11-08"),
       times: { kickoff: { value: "15:30", estimated: false }, end: "17:30" },
     });
     expect(b).toEqual({
@@ -225,7 +229,7 @@ describe("buildConflictSideLines — VENUE_OVERLAP (collision de gymnase, détai
       kind: "home",
       place: "Gymnase Mateo",
       opponent: "vs ASVEL U21",
-      date: "8 nov.",
+      date: frDateWeekdayNoYear("2026-11-08"),
       times: { kickoff: { value: "16:00", estimated: false }, end: "18:00" },
     });
   });

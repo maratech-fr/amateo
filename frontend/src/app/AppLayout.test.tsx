@@ -129,6 +129,29 @@ describe("AppLayout — en-tête marque produit", () => {
     expect(home.compareDocumentPosition(demo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  // Retours Nico (BCCL, 2026-10-27), M13 — « Matchs » est trop discret (Nico ne savait pas que le
+  // module existait) : une passe design lui donnera l'ASPECT d'un bouton. Ce garde protège, À TRAVERS
+  // ce changement d'apparence, l'INVARIANT (jamais testé jusqu'ici) que la passe ne doit pas casser :
+  // « Matchs » garde son rôle de LIEN NOMMÉ, et son état VERROUILLÉ reste FOCALISABLE avec sa raison
+  // (A11Y-30). On NE teste PAS les classes CSS (l'apparence est tranchée par la passe design).
+  describe("M13 — l'entrée « Matchs » : lien nommé, verrou focalisable avec sa raison", () => {
+    it("débloqué (le plan de saison pointe une version) → un LIEN « Matchs » vers /matchs", () => {
+      meData = { club: club({ name: "BCCL" }), seasonPlan: { chosenScheduleId: "sched-1" } as unknown as MeResponse["seasonPlan"] };
+      renderLayout();
+      expect(screen.getByRole("link", { name: "Matchs" })).toHaveAttribute("href", "/matchs");
+    });
+
+    it("verrouillé (aucune version pointée) → « Matchs » reste un rôle lien FOCALISABLE, sa raison découvrable", () => {
+      meData = { club: club({ name: "BCCL" }), seasonPlan: { chosenScheduleId: null } as unknown as MeResponse["seasonPlan"] };
+      renderLayout();
+      const matchs = screen.getByRole("link", { name: "Matchs" });
+      expect(matchs).toHaveAttribute("aria-disabled", "true");
+      expect(matchs).toHaveAttribute("tabindex", "0"); // focalisable au clavier (A11Y-30)
+      // La raison est ANNONCÉE (aria-describedby → texte), pas seulement un title muet au survol.
+      expect(matchs).toHaveAccessibleDescription(/Validez le planning de saison/);
+    });
+  });
+
   it("« BÊTA » → onReport ouvre le canal de signalement (FeedbackDialog)", () => {
     meData = { club: club({ name: "BCCL", logoUrl: null }) };
     renderLayout();

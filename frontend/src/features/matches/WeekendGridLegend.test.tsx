@@ -9,15 +9,21 @@ describe("WeekendGridLegend (lot 1, 2026-09-17)", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("montre l'entrée « à confirmer » (pluriel) seulement quand la semaine en contient", () => {
+  // Retours Nico (BCCL, 2026-10-27), M3 — la légende dit « proposé par l'import » (plus « à
+  // confirmer », qui laissait croire à une action due). La tournure exacte reste à NEO ; la
+  // promesse pinée : « proposé par l'import » apparaît, « à confirmer » a disparu.
+  it("montre l'entrée « proposé par l'import » seulement quand la semaine en contient", () => {
     render(<WeekendGridLegend toConfirmCount={3} showHabits={false} />);
-    expect(screen.getByText(/3 à confirmer — gymnase et heure repris de l'import, pas encore placés/)).toBeInTheDocument();
+    expect(screen.getByText(/proposé par l'import/)).toBeInTheDocument();
+    expect(screen.queryByText(/à confirmer/)).toBeNull();
     expect(screen.queryByText(/Habitude/)).toBeNull();
   });
 
-  it("accorde au singulier (« placé », pas « placés »)", () => {
+  it("montre l'entrée pour une seule proposition (compte 1 visible)", () => {
     render(<WeekendGridLegend toConfirmCount={1} showHabits={false} />);
-    expect(screen.getByText(/1 à confirmer — gymnase et heure repris de l'import, pas encore placé$/)).toBeInTheDocument();
+    const entry = screen.getByText(/proposé par l'import/);
+    expect(entry).toBeInTheDocument();
+    expect(entry).toHaveTextContent("1");
   });
 
   it("montre l'entrée « Habitude » seulement quand « Semaine type » est active ET qu'il y a des fantômes", () => {
@@ -28,7 +34,7 @@ describe("WeekendGridLegend (lot 1, 2026-09-17)", () => {
 
   it("montre les deux entrées quand les deux sont présentes", () => {
     render(<WeekendGridLegend toConfirmCount={2} showHabits={true} />);
-    expect(screen.getByText(/2 à confirmer/)).toBeInTheDocument();
+    expect(screen.getByText(/proposé par l'import/)).toBeInTheDocument();
     expect(screen.getByText("Habitude — fenêtre protégée")).toBeInTheDocument();
   });
 

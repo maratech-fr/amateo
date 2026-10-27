@@ -159,15 +159,18 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     expect(screen.getByRole("link")).toHaveAttribute("href", "/matchs?fbi=1");
   });
 
-  it("gestionnaire + des matchs à confirmer → ligne « à confirmer » + bouton « validé ligue »", () => {
+  // Retours Nico (BCCL, 2026-10-27), M3 — la ligne cockpit dit « N matchs déjà dans FBI à
+  // confirmer » (plus « à confirmer « validé ligue » »), et le bouton « Marquer « déjà dans FBI » ».
+  it("gestionnaire + des matchs à confirmer → ligne « N matchs déjà dans FBI à confirmer » + bouton « déjà dans FBI »", () => {
     meRole = "admin";
     outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 5 };
     leagueOutlook = LEAGUE;
     renderCard();
 
     const card = screen.getByRole("status");
-    expect(card).toHaveTextContent("5 matchs à confirmer « validé ligue »");
-    expect(screen.getByRole("button", { name: /Marquer « validé ligue »/ })).toBeInTheDocument();
+    expect(card).toHaveTextContent("5 matchs déjà dans FBI à confirmer");
+    expect(card).not.toHaveTextContent("validé ligue");
+    expect(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ })).toBeInTheDocument();
   });
 
   it("Membre → jamais la ligne « à confirmer », même avec toConfirmCount > 0 (aucune écriture proposée)", () => {

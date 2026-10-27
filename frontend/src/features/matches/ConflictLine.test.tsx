@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import type { Coach, Conflict, Team, Venue } from "./api";
@@ -51,6 +52,14 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     expect(screen.getByText(/U13 et Seniors/)).toBeInTheDocument();
   });
 
+  // M6 (retours Nico, BCCL 2026-10-27) — la date de la RENCONTRE dans le résumé d'un conflit porte
+  // son jour (« sam. 3 oct. » ; 2026-10-03 = samedi) : `frDateShortNoYear` → `frDateWeekdayNoYear`.
+  it("le résumé d'un conflit porte la date de rencontre AVEC son jour de la semaine", () => {
+    renderLine();
+    // Un token de jour (lettres + point) précède « 3 oct. » — « — 3 oct. » nu échoue.
+    expect(screen.getByText(/U13 et Seniors — \p{L}+\.? 3 oct\./u)).toBeInTheDocument();
+  });
+
   it("COMPETITION_INCOMPLETE OVER : titre « Calendrier à vérifier », phrase « N matchs pour une poule de M adversaires »", () => {
     const over: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-1", competitionName: "Championnat X", imported: 12, expected: 10, reason: "OVER" };
     renderLine({ conflict: over, tone: "muted" });
@@ -72,24 +81,48 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     expect(screen.getByText(/3\/10 journées attendues : la phase n'est pas encore entièrement sortie/)).toBeInTheDocument();
   });
 
-  it("ACCESS_WINDOW_LOST : titre « Hors accès match » et phrase nommant le gymnase + les accès (jour du match d'abord)", () => {
-    const access: Conflict = {
-      type: "ACCESS_WINDOW_LOST",
-      severity: 4,
-      resolution: null,
-      fingerprint: "fp-acc",
-      venueId: "v-1",
-      fixture: { fixtureId: "fx-9", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "15:00", windowStart: "", windowEnd: "" },
-      windows: [
-        { dayOfWeek: 6, startTime: "16:00", endTime: "18:00" },
-        { dayOfWeek: 3, startTime: "18:00", endTime: "20:00" },
-      ],
-    };
-    renderLine({ conflict: access });
+  // Retours Nico (BCCL, 2026-10-27), M11 + M6 — « Hors accès match » ne disait ni QUELLE équipe ni
+  // QUAND. Le résumé NOMME désormais l'équipe (U13) et la DATE de la rencontre avec son jour
+  // (« sam. 3 oct. », M6), en plus du gymnase touché. La tournure exacte est à NEO ; les promesses
+  // pinées : l'équipe, le gymnase et une date À JOUR apparaissent dans la ligne.
+  const accessLost: Conflict = {
+    type: "ACCESS_WINDOW_LOST",
+    severity: 4,
+    resolution: null,
+    fingerprint: "fp-acc",
+    venueId: "v-1",
+    fixture: { fixtureId: "fx-9", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "15:00", windowStart: "", windowEnd: "" },
+    windows: [
+      { dayOfWeek: 6, startTime: "16:00", endTime: "18:00" },
+      { dayOfWeek: 3, startTime: "18:00", endTime: "20:00" },
+    ],
+  };
+
+  it("ACCESS_WINDOW_LOST : titre « Hors accès match » et résumé nommant l'ÉQUIPE, la DATE (jour) et le gymnase", () => {
+    const { container } = renderLine({ conflict: accessLost });
+    const li = container.querySelector("li");
     expect(screen.getByText(MATCHES_TEXTS.accessWindowLostTitle)).toBeInTheDocument();
-    expect(
-      screen.getByText(MATCHES_TEXTS.accessWindowLostPhrase("Gymnase Mateo", "samedi 16:00–18:00, mercredi 18:00–20:00")),
-    ).toBeInTheDocument();
+    // M11 : l'équipe (U13) et le gymnase touché (Gymnase Mateo) sont nommés.
+    expect(li).toHaveTextContent("U13");
+    expect(li).toHaveTextContent("Gymnase Mateo");
+    // M6 : la date de la rencontre (2026-10-03 = samedi) porte son jour — un token de jour précède « 3 oct. ».
+    expect(li).toHaveTextContent(/\p{L}+\.? 3 oct\./u);
+  });
+
+  // M11 — le résumé offre un deep-link « Configurer les accès » vers l'éditeur d'accès du GYMNASE
+  // touché : /matchs/configuration?acces=<venueId> (état dans l'URL, partageable → un vrai lien).
+  // NEO décide de l'hôte du lien ; le contrat piné : un lien nommé « Configurer les accès » porte
+  // ce href pour un ACCESS_WINDOW_LOST. (Côté consommateur : l'arrivée sur cette URL ouvre
+  // l'éditeur d'accès du gymnase — à pinner dans ConfigurationPage, voir rapport TANK.)
+  it("ACCESS_WINDOW_LOST : un deep-link « Configurer les accès » pointe le gymnase (?acces=<venueId>)", () => {
+    render(
+      <MemoryRouter>
+        <ul>
+          <ConflictLine conflict={accessLost} teams={teams} coaches={coaches} venues={venues} tone="warning" isNew={false} />
+        </ul>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: /Configurer les accès/ })).toHaveAttribute("href", "/matchs/configuration?acces=v-1");
   });
 
   it("CLUB_RULE_VIOLATION : titre « Hors règle du club » et phrase nommant la règle violée (P4-272 ③)", () => {

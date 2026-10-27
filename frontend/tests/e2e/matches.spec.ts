@@ -920,7 +920,8 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
   if (0 === openBefore) {
     await expect(page.getByText("Rien à traiter")).toBeVisible();
   } else {
-    await expect(page.getByRole("button", { name: /à valider/ }).first()).toBeVisible();
+    // M3 (BCCL 2026-10-27) : l'en-tête d'équipe de la file dit « N nouveautés à voir » (plus « à valider »).
+    await expect(page.getByRole("button", { name: /à voir/ }).first()).toBeVisible();
   }
 
   // Configuration : « une section = un écran », gabarit parti en Semaine type, données FBI/FFBB migrées.
