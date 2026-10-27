@@ -550,7 +550,10 @@ saison en cours.
     `StatusPill` + label servi tel quel ; UNE pause par période de vacances, en ligne pointillée
     distincte, nommée et bornée — « vos plannings de vacances restent tels quels » si un plan de
     vacances la recoupe, « les vacances gardent leur propre fonctionnement » sinon : la fermeture
-    ne couvre JAMAIS les vacances, plan ou non) puis « Confirmer » (variante destructive si
+    ne couvre JAMAIS les vacances, plan ou non ; le feed scolaire commençant le vendredi de fin des
+    cours, un jour lun→ven d'une semaine qui n'est pas de vacances (`HolidayWorkweekRule`) reste à
+    la fermeture — la pause commence le samedi — et une semaine dont chaque jour est fermeture ou
+    vacances compte pleine, sans segment isolé, décision fondateur 2026-10-27) puis « Confirmer » (variante destructive si
     l'aperçu porte une suppression) ; toute retouche de date périme l'aperçu, un jeton expiré
     redemande l'aperçu automatiquement (confirmation restant manuelle), un conflit de fenêtre
     (409) ouvre `WindowAlreadyPlannedNotice` — son ouverture referme le dialogue (et, ouvert
