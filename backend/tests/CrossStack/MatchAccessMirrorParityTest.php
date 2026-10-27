@@ -58,6 +58,29 @@ final class MatchAccessMirrorParityTest extends TestCase
         }
     }
 
+    /**
+     * PR2 « jours fériés » — le prédicat `kickoffInsideHolidayWindow` (front BLOQUE la pose un jour
+     * férié, backend DIAGNOSTIQUE) lit UNIQUEMENT les lignes « Jours fériés » (`appliesOnPublicHolidays`)
+     * du gymnase, intervalle demi-ouvert `[start, end[`, SANS jour de semaine. Les MÊMES cas
+     * (`matchAccess.parity.json`, section holidayCases) traversent les deux : changer l'algèbre férié
+     * d'un seul côté rougit ce côté-là.
+     */
+    public function testBackendKickoffInsideHolidayWindowMatchesTheSharedCases(): void
+    {
+        foreach ($this->holidayCases() as $case) {
+            $expected = (bool) $case['inside'];
+            self::assertSame(
+                $expected,
+                MatchConflictDetector::kickoffInsideHolidayWindow((string) $case['venueId'], (string) $case['kickoff'], $case['windows']),
+                \sprintf(
+                    "PARITÉ ROMPUE (« %s ») : l'algèbre d'accès match un jour FÉRIÉ backend diverge du front.\n"
+                    . 'Front `kickoffInsideHolidayWindow` et backend `MatchConflictDetector::kickoffInsideHolidayWindow` doivent coïncider sur matchAccess.parity.json (holidayCases).',
+                    (string) $case['name'],
+                ),
+            );
+        }
+    }
+
     /** @return list<array{name: string, venueId: string, day: int, kickoff: string, windows: list<array<string, mixed>>, inside: bool}> */
     private function cases(): array
     {
@@ -82,6 +105,20 @@ final class MatchAccessMirrorParityTest extends TestCase
         /** @var list<array{name: string, matchDate: string, startDate: string, endDate: string, inside: bool}> $list */
         $list = $decoded['closureCases'] ?? [];
         self::assertNotEmpty($list, 'matchAccess.parity.json ne porte plus aucun cas de fermeture (closureCases).');
+
+        return $list;
+    }
+
+    /** @return list<array{name: string, venueId: string, kickoff: string, windows: list<array<string, mixed>>, inside: bool}> */
+    private function holidayCases(): array
+    {
+        $raw = file_get_contents(self::CASES);
+        self::assertIsString($raw, 'Illisible : ' . self::CASES);
+        $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($decoded);
+        /** @var list<array{name: string, venueId: string, kickoff: string, windows: list<array<string, mixed>>, inside: bool}> $list */
+        $list = $decoded['holidayCases'] ?? [];
+        self::assertNotEmpty($list, 'matchAccess.parity.json ne porte plus aucun cas de jour férié (holidayCases).');
 
         return $list;
     }
