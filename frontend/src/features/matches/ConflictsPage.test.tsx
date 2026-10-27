@@ -326,13 +326,15 @@ describe("ConflictsPage — mémoire de session des filtres (URL nue vs clé, ma
     const user = userEvent.setup();
     const { unmount } = renderAt("/matchs/conflits");
     await screen.findByRole("button", { name: /Mara · 3/ });
-    await user.click(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" }));
-    expect(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" })).toBeChecked();
-    // Quitter puis revenir sur l'onglet (URL nue) : le store porte la session, la case reste cochée.
+    // M4 (BCCL 2026-10-27) : le filtre domicile est désormais un contrôle SEGMENTÉ (bouton
+    // aria-pressed), plus une case à cocher — adaptation mécanique du widget, intention inchangée.
+    await user.click(screen.getByRole("button", { name: /Avec un match à domicile/ }));
+    expect(screen.getByRole("button", { name: /Avec un match à domicile/ })).toHaveAttribute("aria-pressed", "true");
+    // Quitter puis revenir sur l'onglet (URL nue) : le store porte la session, le segment reste pressé.
     unmount();
     renderAt("/matchs/conflits");
     await screen.findByRole("group", { name: "Regrouper par" });
-    expect(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" })).toBeChecked();
+    expect(screen.getByRole("button", { name: /Avec un match à domicile/ })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("URL NUE : une puce « Traitement » décochée survit à un retour sur l'onglet", async () => {
@@ -435,7 +437,8 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     renderAt();
     await screen.findByRole("button", { name: /Mara · 1/ });
     expect(screen.getByRole("button", { name: /Autres conflits · 1/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" }));
+    // M4 (BCCL 2026-10-27) : contrôle segmenté « Avec un match à domicile » (adaptation du widget).
+    await user.click(screen.getByRole("button", { name: /Avec un match à domicile/ }));
     // Le conflit à côté domicile reste ; le COMPETITION_INCOMPLETE (aucun côté) disparaît.
     expect(screen.getByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Autres conflits/ })).not.toBeInTheDocument();

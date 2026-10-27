@@ -47,12 +47,12 @@ describe("LeagueValidationBanner — trois états servis par l'échéance (lot O
     const user = userEvent.setup();
     renderWithProviders(<LeagueValidationBanner />);
 
-    expect(screen.getByText(/à confirmer « validé ligue »/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
+    expect(screen.getByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
     const dialog = await screen.findByRole("dialog");
     // Le DÉTAIL par championnat (nom + échéance + compte).
     expect(within(dialog).getByText(/PNM — échéance .* — 12 à valider/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /Marquer « validé ligue »/ }));
+    await user.click(within(dialog).getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
     expect(confirmMutate).toHaveBeenCalledOnce();
   });
 
@@ -64,7 +64,7 @@ describe("LeagueValidationBanner — trois états servis par l'échéance (lot O
     renderWithProviders(<LeagueValidationBanner />);
 
     // Rien à valider : aucun geste de validation ne s'offre.
-    expect(screen.queryByRole("button", { name: /Marquer « validé ligue »/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Marquer « déjà dans FBI »/ })).not.toBeInTheDocument();
     // Mais la rencontre est NOMMÉE (plus écartée en silence) et atteignable dans la file.
     expect(screen.getByText(/reste à traiter/)).toBeInTheDocument();
     expect(screen.getByText(/U13 Départemental vs ASVEL/)).toBeInTheDocument();

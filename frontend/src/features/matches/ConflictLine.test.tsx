@@ -20,10 +20,14 @@ function side(fixtureId: string, teamId: string, matchDate = "2026-10-03") {
 const overlap: Conflict = { type: "VENUE_OVERLAP", severity: 1, resolution: null, fingerprint: "fp-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
 
 function renderLine(props: Partial<React.ComponentProps<typeof ConflictLine>> = {}) {
+  // M11 (BCCL 2026-10-27) : ConflictLine rend un deep-link <Link> pour ACCESS_WINDOW_LOST →
+  // il lui faut un contexte Router (adaptation mécanique du harness ; sans effet sur les autres familles).
   return render(
-    <ul>
-      <ConflictLine conflict={overlap} teams={teams} coaches={coaches} venues={venues} tone="destructive" isNew={false} {...props} />
-    </ul>,
+    <MemoryRouter>
+      <ul>
+        <ConflictLine conflict={overlap} teams={teams} coaches={coaches} venues={venues} tone="destructive" isNew={false} {...props} />
+      </ul>
+    </MemoryRouter>,
   );
 }
 

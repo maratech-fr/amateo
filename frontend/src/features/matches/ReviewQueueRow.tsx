@@ -51,12 +51,12 @@ interface ReviewQueueRowProps {
 export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onPlace, onAttach, busy }: ReviewQueueRowProps) {
   const arbitrable = fixture.pendingDeviations.filter((d) => !d.autoApplied);
   const autoApplied = fixture.pendingDeviations.filter((d) => d.autoApplied);
-  // Un geste en un clic quand il n'y a rien à arbitrer : « Valider » pour une NEW,
-  // « Pris en compte » pour une REVIEWED qui porte encore une alerte auto-appliquée
-  // (P4-199). Une REVIEWED SANS alerte n'a pas de bouton (déjà traitée) ; un
-  // OUT_OF_SYNC à écarts se tranche champ par champ.
+  // Un geste en un clic quand il n'y a rien à arbitrer : la rencontre s'ACQUITTE — « Vu »
+  // (retours Nico, BCCL 2026-10-27, M3 — même mot pour une NEW et pour une REVIEWED qui porte
+  // encore une alerte auto-appliquée, plus « Valider »/« Pris en compte » : le fondateur ne savait
+  // pas « ce que ça fait, où ça mène »). Une REVIEWED SANS alerte n'a pas de bouton (déjà traitée) ;
+  // un OUT_OF_SYNC à écarts se tranche champ par champ (il s'arbitre, il ne s'acquitte pas).
   const canValidateLine = 0 === arbitrable.length && ("REVIEWED" !== fixture.reviewState || autoApplied.length > 0);
-  const validateLabel = "REVIEWED" === fixture.reviewState ? "Pris en compte" : "Valider";
   const isHome = "HOME" === fixture.homeAway;
   // Un match déjà joué ne se replace pas (retour fondateur 2026-09-13) : comparaison de
   // dates civiles ISO, le jour = celui du navigateur du gestionnaire (`todayISO`).
@@ -96,9 +96,16 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
             </Button>
           ) : null}
           {canValidateLine ? (
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => onValidateLine(fixture.id)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              // A11Y-28 — nom accessible CONTEXTUALISÉ (contient « vu »), jamais un verbe nu répété.
+              aria-label={`Marquer vu : rencontre du ${frDateWeekdayNoYear(fixture.matchDate)} contre ${fixture.opponentLabel}`}
+              onClick={() => onValidateLine(fixture.id)}
+            >
               <Check className="size-3.5" />
-              {validateLabel}
+              Vu
             </Button>
           ) : null}
         </span>

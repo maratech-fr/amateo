@@ -1,8 +1,9 @@
 /**
  * Légende CONDITIONNELLE sous la grille week-end (lot 1, décision fondateur 2026-09-17) :
  * elle n'explique que ce que la semaine affichée contient RÉELLEMENT.
- *  - « à confirmer » (`toConfirmCount > 0`) : un échantillon hachuré + le compte + le
- *    pourquoi (gymnase et heure repris de l'import, pas encore placés).
+ *  - « proposé par l'import » (`toConfirmCount > 0`, wording BCCL 2026-10-27 M3, plus
+ *    « à confirmer » qui laissait croire à une action due) : un échantillon hachuré + le
+ *    compte + le pourquoi (gymnase et heure repris de l'import, pas encore placés).
  *  - « Habitude » (`showHabits`) : un échantillon pointillé + « fenêtre protégée » —
  *    montré seulement quand « Semaine type » est active ET qu'il y a des fantômes.
  *  - « Trajet aller-retour » (`showTravel`, correctif 10) : un échantillon hachuré `muted` +
@@ -26,7 +27,7 @@ export function WeekendGridLegend({ toConfirmCount, showHabits, showTravel = fal
             style={{ backgroundImage: "repeating-linear-gradient(45deg, color-mix(in oklch, var(--accent) 22%, transparent) 0 4px, transparent 4px 9px)" }}
           />
           <span className="tabular-nums">
-            {toConfirmCount} à confirmer — gymnase et heure repris de l'import, pas encore placé{toConfirmCount > 1 ? "s" : ""}
+            proposé par l'import ({toConfirmCount}) — gymnase et heure repris, pas encore placé{toConfirmCount > 1 ? "s" : ""}
           </span>
         </span>
       ) : null}

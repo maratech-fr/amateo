@@ -88,10 +88,21 @@ export function ConfigurationPage() {
 
   // Anciens deep-links : le gabarit et les créneaux sont désormais la Semaine type.
   const rawSection = searchParams.get("section");
-  const openSection = decodeSectionParam(searchParams);
+  // M11 (retours Nico, BCCL 2026-10-27) — deep-link depuis un conflit « Hors accès match » :
+  // `?acces=<venueId>` ouvre la section Accès match SUR l'éditeur de ce gymnase (état dans l'URL).
+  const accesVenueId = searchParams.get("acces");
+  const openSection = null !== accesVenueId ? "reglages" : decodeSectionParam(searchParams);
 
   const setOpenSection = (section: ConfigSection | null): void => {
     setSearchParams(applySectionToParams(searchParams, section), { replace: true });
+  };
+  // Fermeture de l'éditeur ouvert par le deep-link : on retire `?acces=` mais on garde la section
+  // Accès match dépliée (le gestionnaire vient d'y travailler).
+  const clearAccesDeepLink = (): void => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("acces");
+    next.set("section", "reglages");
+    setSearchParams(next, { replace: true });
   };
   const sectionProps = (key: ConfigSection) => ({
     open: openSection === key,
@@ -142,7 +153,7 @@ export function ConfigurationPage() {
       {/* 3. L'accès match des gymnases — clé URL `reglages` conservée. (Les adversaires
           ont leur propre onglet depuis C8 — `/matchs/adversaires`.) */}
       <AccordionSection {...sectionProps("reglages")} title={sectionTitle("Accès match", accessSummary(matchWindows.data, venuesData))}>
-        <SectionBody query={matchWindows} render={(windows) => <MatchAccessSection venues={venuesData} windows={windows} />} />
+        <SectionBody query={matchWindows} render={(windows) => <MatchAccessSection venues={venuesData} windows={windows} deepLinkVenueId={accesVenueId} onDeepLinkClosed={clearAccesDeepLink} />} />
       </AccordionSection>
 
       {/* 5. Les libellés FFBB des gymnases — voir/retirer les alias de salle (P4-196). */}
@@ -159,10 +170,34 @@ export function ConfigurationPage() {
  * SON gymnase en modale (une modale = un gymnase, plus de sélecteur). À la fermeture, le focus
  * revient explicitement au bouton « Modifier » de la ligne — qui peut avoir changé de liste.
  */
-function MatchAccessSection({ venues, windows }: { venues: Venue[]; windows: VenueMatchWindow[] }) {
-  const [editingVenueId, setEditingVenueId] = useState<string | null>(null);
+function MatchAccessSection({
+  venues,
+  windows,
+  deepLinkVenueId = null,
+  onDeepLinkClosed,
+}: {
+  venues: Venue[];
+  windows: VenueMatchWindow[];
+  /** M11 — gymnase à éditer d'emblée, porté par `?acces=` ; `null` = aucune ouverture profonde. */
+  deepLinkVenueId?: string | null;
+  /** Appelé à la fermeture d'un éditeur ouvert par le deep-link (nettoie `?acces=`). */
+  onDeepLinkClosed?: () => void;
+}) {
+  const [editingVenueId, setEditingVenueId] = useState<string | null>(deepLinkVenueId);
   const [showWithout, setShowWithout] = useState(false);
   const withoutListId = useId();
+
+  // Le deep-link `?acces=<venueId>` ouvre l'éditeur de ce gymnase — à l'arrivée (mount) comme sur
+  // un changement d'URL sans remontage. `null` (éditeur fermé → `?acces=` retiré) ne rouvre pas.
+  // Ajustement d'état PENDANT le rendu (patron React « info des rendus précédents », comme le
+  // `frozenRank` d'`OpponentsPage`) — jamais un `useEffect` qui déclencherait un rendu en cascade.
+  const [lastDeepLink, setLastDeepLink] = useState<string | null>(deepLinkVenueId);
+  if (deepLinkVenueId !== lastDeepLink) {
+    setLastDeepLink(deepLinkVenueId);
+    if (null !== deepLinkVenueId) {
+      setEditingVenueId(deepLinkVenueId);
+    }
+  }
 
   const windowsByVenue = useMemo(() => {
     const map = new Map<string, VenueMatchWindow[]>();
@@ -182,6 +217,10 @@ function MatchAccessSection({ venues, windows }: { venues: Venue[]; windows: Ven
   const closeEdit = (): void => {
     const id = editingVenueId;
     setEditingVenueId(null);
+    // Si l'éditeur avait été ouvert par le deep-link, on retire `?acces=` (sans quoi l'effet le rouvrirait).
+    if (null !== deepLinkVenueId) {
+      onDeepLinkClosed?.();
+    }
     if (null !== id) {
       // La ligne a pu changer de liste (gagné/perdu un accès) — refocus après commit.
       requestAnimationFrame(() => document.getElementById(`access-edit-${id}`)?.focus());

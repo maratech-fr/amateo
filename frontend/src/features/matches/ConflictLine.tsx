@@ -1,12 +1,14 @@
-import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, MapPin, Sparkles, UserCheck } from "lucide-react";
+import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, MapPin, Settings2, Sparkles, UserCheck } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
+import { Link } from "react-router";
 
 import { StatusPill } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { coachFullName } from "@/shared/lib/coachName";
 import type { CoachGender } from "@/shared/lib/coachWording";
-import { frDateShortNoYear } from "@/shared/lib/date";
+import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { dayLabelLong } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
 import { cn } from "@/shared/lib/utils";
@@ -91,7 +93,7 @@ function accessWindowsPhrase(conflict: Conflict): string {
 
 function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>, coachGender: CoachGender): string {
   if ("VENUE_OVERLAP" === conflict.type && conflict.left && conflict.right) {
-    return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDateShortNoYear(conflict.left.matchDate)}`;
+    return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDateWeekdayNoYear(conflict.left.matchDate)}`;
   }
   if ("MATCH_MATCH" === conflict.type && conflict.left && conflict.right) {
     // Tous MAIN → nu (« SF2 et SM2 ») ; sinon CHAQUE côté est annoté de son rôle
@@ -100,7 +102,7 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     const rightName = teamName(teams, conflict.right.teamId);
     const allMain = [conflict.left.role, conflict.right.role].every((role) => "MAIN" === role);
     const body = allMain ? `${leftName} et ${rightName}` : `${annotateSide(leftName, conflict.left.role, coachGender)} et ${annotateSide(rightName, conflict.right.role, coachGender)}`;
-    return `${body} — ${frDateShortNoYear(conflict.left.matchDate)}`;
+    return `${body} — ${frDateWeekdayNoYear(conflict.left.matchDate)}`;
   }
   if ("MATCH_TRAINING" === conflict.type && conflict.fixture && conflict.training) {
     // Le match d'abord, même règle d'annotation (nu si tout MAIN).
@@ -113,24 +115,26 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
       : `Match ${annotateSide(matchName, matchRole, coachGender)} × entraînement ${annotateSide(trainingName, conflict.training.role, coachGender)}`;
   }
   if ("VENUE_UNAVAILABLE" === conflict.type && conflict.fixture) {
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
   }
   if ("ACCESS_WINDOW_LOST" === conflict.type && conflict.fixture) {
     const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
-    return MATCHES_TEXTS.accessWindowLostPhrase(venueName, accessWindowsPhrase(conflict));
+    // M11 + M6 (retours Nico, BCCL 2026-10-27) : nomme l'ÉQUIPE et la DATE (avec son jour) de la
+    // rencontre, en plus du gymnase touché — « Hors accès match » ne disait ni qui ni quand.
+    return MATCHES_TEXTS.accessWindowLostPhrase(teamName(teams, conflict.fixture.teamId), frDateWeekdayNoYear(conflict.fixture.matchDate), venueName, accessWindowsPhrase(conflict));
   }
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
     const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
   }
   if ("CLUB_RULE_VIOLATION" === conflict.type && conflict.fixture) {
     const labels = (conflict.rules ?? []).map((r) => `« ${clubRuleLabel(r)} »`).join(", ");
     const bounded = "" !== labels ? ` (règle : ${labels})` : "";
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"}${bounded} — pose libre, à surveiller`;
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"}${bounded} — pose libre, à surveiller`;
   }
   if ("TEAM_VENUE_FORBIDDEN" === conflict.type && conflict.fixture) {
     const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — posé dans ${venueName}, interdit à cette équipe. Pose libre, à surveiller.`;
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} — posé dans ${venueName}, interdit à cette équipe. Pose libre, à surveiller.`;
   }
   if ("COMPETITION_INCOMPLETE" === conflict.type && undefined !== conflict.teamId) {
     const name = `${conflict.competitionName ?? "?"} (${teamName(teams, conflict.teamId)})`;
@@ -146,7 +150,7 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     return `${name} — ${n}/${twoAdv} journées attendues : la phase n'est pas encore entièrement sortie`;
   }
   if ("AWAY_NO_FOOTPRINT" === conflict.type && conflict.fixture) {
-    return `${teamName(teams, conflict.fixture.teamId)} · ${frDateShortNoYear(conflict.fixture.matchDate)} — invisible du radar, déclarez une habitude`;
+    return `${teamName(teams, conflict.fixture.teamId)} · ${frDateWeekdayNoYear(conflict.fixture.matchDate)} — invisible du radar, déclarez une habitude`;
   }
   if ("FRIENDLY_ON_MATCH_SLOT" === conflict.type && conflict.fixture) {
     const reasons = conflict.reasons ?? [];
@@ -158,7 +162,7 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
       bits.push("week-end de match");
     }
     const why = bits.length > 0 ? ` (${bits.join(", ")})` : "";
-    return `Amical ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)}${why} — placement libre, à surveiller`;
+    return `Amical ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)}${why} — placement libre, à surveiller`;
   }
   if ("TEAM_LEVEL_MISSING" === conflict.type && undefined !== conflict.teamId) {
     return MATCHES_TEXTS.teamLevelMissingSummary(teamName(teams, conflict.teamId));
@@ -452,6 +456,16 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         {/* La pastille GLOBALE « heure estimée » disparaît pour les familles à détail par côté. */}
         {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">{MATCHES_TEXTS.estimatedTimeTag}</span> : null}
       </p>
+      {/* M11 (retours Nico, BCCL 2026-10-27) — « Hors accès match » offre un deep-link vers l'éditeur
+          d'accès du GYMNASE touché : /matchs/configuration?acces=<venueId> (état dans l'URL, partageable). */}
+      {"ACCESS_WINDOW_LOST" === conflict.type && undefined !== conflict.venueId ? (
+        <Button variant="outline" size="sm" className="mt-1.5" asChild>
+          <Link to={`/matchs/configuration?acces=${conflict.venueId}`}>
+            <Settings2 className="size-4" aria-hidden="true" />
+            {MATCHES_TEXTS.accessWindowLostConfigureLink}
+          </Link>
+        </Button>
+      ) : null}
       {null !== sideModel ? (
         "venue" === sideModel.kind ? (
           <ConflictVenueDetail model={sideModel} />

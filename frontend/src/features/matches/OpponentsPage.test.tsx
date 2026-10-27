@@ -40,6 +40,7 @@ const venue = (over: Partial<OpponentVenue> & { id: string; label: string }): Op
   source: "AUTO",
   travelMinutes: 20,
   travelStatus: "done",
+  travelFailureReason: null,
   approximated: false,
   fixtureCount: 1,
   fallbackVenueName: null,

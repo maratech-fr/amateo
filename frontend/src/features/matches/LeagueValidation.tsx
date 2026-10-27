@@ -49,7 +49,7 @@ export function LeagueValidationConfirmDialog({ open, outlook, onClose }: { open
   const handleConfirm = (): void => {
     confirm.mutate(undefined, {
       onSuccess: ({ confirmed }) => {
-        toast.success(`${confirmed} ${plural(confirmed)} marquée${confirmed > 1 ? "s" : ""} « validé ligue ».`);
+        toast.success(`${confirmed} ${plural(confirmed)} marquée${confirmed > 1 ? "s" : ""} « déjà dans FBI ».`);
         onClose();
       },
     });
@@ -57,7 +57,7 @@ export function LeagueValidationConfirmDialog({ open, outlook, onClose }: { open
   return (
     <ConfirmDialog
       open={open}
-      title="Marquer « validé ligue »"
+      title="Marquer « déjà dans FBI »"
       description={
         <div className="flex flex-col gap-2 text-left">
           <p>{leagueValidationIntro(outlook.totalValidatable)}</p>
@@ -165,7 +165,7 @@ export function LeagueValidationBanner() {
           <div className="flex flex-wrap items-center gap-2">
             <BadgeCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="grow tabular-nums">
-              {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « validé ligue ».
+              {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « déjà dans FBI ».
             </span>
             <Button size="sm" className="shrink-0" onClick={() => setOpen(true)}>
               {LEAGUE_VALIDATION_CONFIRM_LABEL}
@@ -195,7 +195,7 @@ export function LeagueValidationReportEntry() {
   return (
     <div className="mt-1 flex flex-col items-start gap-1 border-t border-border pt-2">
       <p className="text-xs text-muted-foreground">
-        {total} {plural(total)} de championnats commencés (échéance dépassée ou premier match joué) {total > 1 ? "portent" : "porte"} déjà date, heure et gymnase dans FBI — à confirmer « validé ligue ».
+        {total} {plural(total)} de championnats commencés (échéance dépassée ou premier match joué) {total > 1 ? "portent" : "porte"} déjà date, heure et gymnase dans FBI — à confirmer « déjà dans FBI ».
       </p>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <BadgeCheck className="size-4" />

@@ -37,7 +37,10 @@ export const MATCHES_TEXTS = {
   awayAt: (city: string) => `extérieur à ${city}`,
   matchVsTrainingSummary: (match: string, training: string) => `Match ${match} × entraînement ${training}`,
   teamLevelMissingSummary: (team: string) => `${team} — ses matchs sont placés sans les créneaux de sa ligue`,
-  accessWindowLostPhrase: (venue: string, windows: string) => `Placé hors des accès match de ${venue} (${windows}) — déplacez le match ou ajustez l'accès dans Configuration.`,
+  // M11 + M6 (retours Nico, BCCL 2026-10-27) : nomme l'équipe, la date (avec son jour) et le gymnase.
+  accessWindowLostPhrase: (team: string, date: string, venue: string, windows: string) =>
+    `${team} — match du ${date} placé hors des accès match de ${venue} (${windows}). Déplacez le match ou ajustez l'accès.`,
+  accessWindowLostConfigureLink: "Configurer les accès",
   venueUnavailableConflictTitle: (label: string | null | undefined) => `Gymnase indisponible${null != label && "" !== label ? ` (${label})` : ""}`,
 
   // ── Onglet Adversaires (OpponentsPage) ─────────────────────────────────────────────────────
@@ -53,6 +56,24 @@ export const MATCHES_TEXTS = {
   seatNotLocated: "Trajets indisponibles : l'adresse du siège du club n'est pas localisée.",
   fillSeat: "Renseigner le siège",
   travelFailuresBanner: (n: number) => `${n} trajet${n > 1 ? "s" : ""} n'${n > 1 ? "ont" : "a"} pas pu être calculé${n > 1 ? "s" : ""} — ces matchs n'entrent pas dans le radar.`,
+  // M14 (retours Nico, BCCL 2026-10-27) — le bandeau distingue le budget worker épuisé (une relance
+  // reprend) de l'introuvable (IGN muet / gymnase mal géolocalisé — une relance seule n'y change rien).
+  travelFailuresByReason: (awaitingRetry: number, unroutable: number) => {
+    const parts: string[] = [];
+    if (awaitingRetry > 0) {
+      parts.push(`${awaitingRetry} en attente de relance`);
+    }
+    if (unroutable > 0) {
+      parts.push(`${unroutable} introuvable${unroutable > 1 ? "s" : ""}`);
+    }
+    return `Trajets non calculés : ${parts.join(", ")} — ces matchs n'entrent pas dans le radar.`;
+  },
+  // Les gymnases concernés, nommés (le gestionnaire sait lesquels corriger) — plafonnés pour rester lisibles.
+  travelFailureVenues: (names: string[]) => {
+    const shown = names.slice(0, 10);
+    const overflow = names.length - shown.length;
+    return `Gymnases : ${shown.join(", ")}${overflow > 0 ? ` + ${overflow} autre${overflow > 1 ? "s" : ""}` : ""}.`;
+  },
   retryMissing: "Réessayer les manquants",
   noAwayThisSeason: "Aucun match à l'extérieur cette saison.",
   searchOpponentOrVenue: "Rechercher un club ou un gymnase",

@@ -6,7 +6,6 @@ import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
-import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
@@ -129,18 +128,22 @@ export function ConflictsPage() {
   const treatmentCounts = useMemo(() => countByTreatment(allConflicts), [allConflicts]);
   const effectiveFamilies = conflictsFamilies ?? CONFLICT_FAMILIES;
   // B3 — ordre : familles → traitement (treatmentOf) → domicile (hasHomeSide) → pivot ;
-  // les compteurs (au-dessus) n'en bougent pas.
-  const filtered = useMemo(() => {
+  // les compteurs (au-dessus) n'en bougent pas. Le filtre domicile est séparé pour servir les
+  // comptes du contrôle segmenté (M4) : la rangée AVANT domicile donne « Tous » et son sous-ensemble
+  // à côté domicile donne « Avec un match à domicile » — comptes via `hasHomeSide`, aucune règle neuve.
+  const familyTreatmentFiltered = useMemo(() => {
     let out = applyFamilyFilter(allConflicts, effectiveFamilies);
     if (null !== treatments) {
       const active = new Set(treatments);
       out = out.filter((c) => active.has(treatmentOf(c)));
     }
-    if (homeOnly) {
-      out = out.filter(hasHomeSide);
-    }
     return out;
-  }, [allConflicts, effectiveFamilies, treatments, homeOnly]);
+  }, [allConflicts, effectiveFamilies, treatments]);
+  const homeConflictCount = useMemo(() => familyTreatmentFiltered.filter(hasHomeSide).length, [familyTreatmentFiltered]);
+  const filtered = useMemo(
+    () => (homeOnly ? familyTreatmentFiltered.filter(hasHomeSide) : familyTreatmentFiltered),
+    [familyTreatmentFiltered, homeOnly],
+  );
   const rawEntries = useMemo(() => pivotConflicts(filtered, conflictsPivot, fixturesById), [filtered, conflictsPivot, fixturesById]);
   // Il reste des conflits traités ? (pilote l'affichage du groupe « Traitement ».)
   const hasTreated = useMemo(() => allConflicts.some((c) => !isOpenConflict(c)), [allConflicts]);
@@ -455,11 +458,21 @@ export function ConflictsPage() {
   const present = familiesPresent(allConflicts);
   const familyChips = CONFLICT_FAMILIES.filter((family) => present.has(family));
 
+  // M4 (retours Nico, BCCL 2026-10-27) — le filtre domicile passe du petit interrupteur (« même moi
+  // je l'ai oublié ») à un contrôle SEGMENTÉ visible, COCHÉ sur « domicile » par défaut : c'est là que
+  // le gestionnaire peut agir. Comptes via `hasHomeSide` (aucune redérivation métier nouvelle).
   const homeToggle = (
     <div className="ml-auto">
-      <FilterToggle checked={homeOnly} onChange={onHomeOnly}>
-        Seulement avec un match à domicile
-      </FilterToggle>
+      <SegmentedControl
+        mode="single"
+        label="Conflits à afficher"
+        options={[
+          { key: "home", label: "Avec un match à domicile", count: homeConflictCount, ariaLabel: `Avec un match à domicile (${homeConflictCount})` },
+          { key: "all", label: "Tous", count: familyTreatmentFiltered.length, ariaLabel: `Tous (${familyTreatmentFiltered.length})` },
+        ]}
+        value={homeOnly ? "home" : "all"}
+        onValueChange={(key) => onHomeOnly("home" === key)}
+      />
     </div>
   );
   const allFamiliesOn = familyChips.every(isFamilyChecked);
