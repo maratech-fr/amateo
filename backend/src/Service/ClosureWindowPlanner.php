@@ -440,13 +440,18 @@ final class ClosureWindowPlanner
         $startDate = new DateTimeImmutable($start);
         $endDate = new DateTimeImmutable($end);
         if ($start === $end) {
-            return \sprintf('%d %s', (int) $startDate->format('j'), $this->frMonth((int) $startDate->format('n')));
+            return \sprintf('%s %s', $this->frDay($startDate), $this->frMonth((int) $startDate->format('n')));
         }
         if ($startDate->format('Y-m') === $endDate->format('Y-m')) {
-            return \sprintf('%d → %d %s', (int) $startDate->format('j'), (int) $endDate->format('j'), $this->frMonth((int) $endDate->format('n')));
+            return \sprintf('%s → %s %s', $this->frDay($startDate), $this->frDay($endDate), $this->frMonth((int) $endDate->format('n')));
         }
 
-        return \sprintf('%d %s → %d %s', (int) $startDate->format('j'), $this->frMonth((int) $startDate->format('n')), (int) $endDate->format('j'), $this->frMonth((int) $endDate->format('n')));
+        return \sprintf('%s %s → %s %s', $this->frDay($startDate), $this->frMonth((int) $startDate->format('n')), $this->frDay($endDate), $this->frMonth((int) $endDate->format('n')));
+    }
+
+    private function frDay(DateTimeImmutable $d): string
+    {
+        return '1' === $d->format('j') ? '1er' : $d->format('j');
     }
 
     private function frMonth(int $month): string
