@@ -547,8 +547,10 @@ saison en cours.
     reprend le même patron « aperçu puis confirmation » que ci-dessus — champs Du/Jusqu'au (début
     `readOnly` si la fermeture a déjà commencé, fin plancherée à `minEndDate` servi, plafond fin
     de saison), « Voir les effets » charge l'aperçu (liste chronologique des dates par
-    `StatusPill` + label servi tel quel, une pause de vacances en ligne pointillée distincte, un
-    plan de vacances recoupé marqué « à régénérer ») puis « Confirmer » (variante destructive si
+    `StatusPill` + label servi tel quel ; UNE pause par période de vacances, en ligne pointillée
+    distincte, nommée et bornée — « vos plannings de vacances restent tels quels » si un plan de
+    vacances la recoupe, « les vacances gardent leur propre fonctionnement » sinon : la fermeture
+    ne couvre JAMAIS les vacances, plan ou non) puis « Confirmer » (variante destructive si
     l'aperçu porte une suppression) ; toute retouche de date périme l'aperçu, un jeton expiré
     redemande l'aperçu automatiquement (confirmation restant manuelle), un conflit de fenêtre
     (409) ouvre `WindowAlreadyPlannedNotice` — son ouverture referme le dialogue (et, ouvert
