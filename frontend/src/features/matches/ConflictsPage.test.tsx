@@ -528,6 +528,41 @@ describe("ConflictsPage — filtre Traitement, domicile, resets (B)", () => {
   });
 });
 
+describe("ConflictsPage — filtre domicile SEGMENTÉ (M4, BCCL 2026-10-27)", () => {
+  // Deux conflits du coach Mara : un à DOMICILE, un extérieur/extérieur (masqué par « domicile »).
+  const homeConflict: Conflict = { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
+  const awayAwayConflict: Conflict = {
+    type: "MATCH_MATCH",
+    severity: 3,
+    resolution: null,
+    coachId: "coach-1",
+    left: { ...side("fx-3", "team-1"), homeAway: "AWAY" as const },
+    right: { ...side("fx-4", "team-2"), homeAway: "AWAY" as const },
+  };
+
+  it("domicile pressé reflète le store, les segments portent leurs comptes, « Tous » révèle l'ext/ext masqué", async () => {
+    const user = userEvent.setup();
+    state.conflicts = [homeConflict, awayAwayConflict];
+    // Le store NAÎT à true (store.test.ts) ; le beforeEach du fichier le force à false — on rétablit
+    // le défaut ici pour éprouver le REFLET du store dans l'UI du contrôle segmenté.
+    useMatchesStore.setState({ conflictsHomeOnly: true });
+    renderAt();
+
+    // Le segment « domicile » est pressé (reflète le store), « Tous » ne l'est pas ; chacun son compte.
+    const home = await screen.findByRole("button", { name: "Avec un match à domicile (1)" });
+    expect(home).toHaveAttribute("aria-pressed", "true");
+    const tous = screen.getByRole("button", { name: "Tous (2)" });
+    expect(tous).toHaveAttribute("aria-pressed", "false");
+    // Sous « domicile », Mara ne compte QUE le conflit à domicile (l'ext/ext est masqué).
+    expect(screen.getByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
+
+    // « Tous » RÉVÈLE l'ext/ext : Mara repasse à 2 et le segment « Tous » devient pressé.
+    await user.click(tous);
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tous (2)" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
 describe("ConflictsPage — lot N : lien d'import + puce de traitement conditionnelle", () => {
   it("un « Calendrier incomplet » (sans date) offre « Importer » au lieu de « Voir la semaine »", async () => {
     const user = userEvent.setup();

@@ -308,6 +308,49 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
   });
 });
 
+// ── M14 (retours Nico, BCCL 2026-10-27) — le bandeau de trajets non calculés dit DEUX comptes
+//    (en attente de relance vs introuvables) et NOMME les gymnases ; sans cause mémorisée il
+//    retombe sur le message générique. Assertions par CLÉ (MATCHES_TEXTS.*), jamais la phrase. ──
+describe("OpponentsPage — bandeau de trajets non calculés (M14)", () => {
+  it("avec cause mémorisée : le bandeau dit « N en attente, M introuvables » ET nomme les gymnases", () => {
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [
+        club({ code: "A", name: "Club A", venues: [venue({ id: "a1", label: "Gym Budget", travelStatus: "unavailable", travelMinutes: null, travelFailureReason: "awaiting_retry" })] }),
+        club({
+          code: "B",
+          name: "Club B",
+          venues: [
+            venue({ id: "b1", label: "Gym Introuvable 1", travelStatus: "unavailable", travelMinutes: null, travelFailureReason: "unroutable" }),
+            venue({ id: "b2", label: "Gym Introuvable 2", travelStatus: "unavailable", travelMinutes: null, travelFailureReason: "unroutable" }),
+          ],
+        }),
+      ],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    // 1 en attente de relance + 2 introuvables — le compte par cause, pas le total nu.
+    expect(screen.getByText(MATCHES_TEXTS.travelFailuresByReason(1, 2))).toBeInTheDocument();
+    // Les trois gymnases concernés sont nommés (ordre = flatMap des adversaires).
+    expect(screen.getByText(MATCHES_TEXTS.travelFailureVenues(["Gym Budget", "Gym Introuvable 1", "Gym Introuvable 2"]))).toBeInTheDocument();
+    // Le message générique (sans cause) ne paraît PAS quand une cause est connue.
+    expect(screen.queryByText(MATCHES_TEXTS.travelFailuresBanner(3))).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: MATCHES_TEXTS.retryMissing })).toBeInTheDocument();
+  });
+
+  it("échec SANS cause mémorisée : repli sur le message générique, aucun gymnase nommé", () => {
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "A", name: "Club A", venues: [venue({ id: "a1", label: "Gym Muet", travelStatus: "unavailable", travelMinutes: null, travelFailureReason: null })] })],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    expect(screen.getByText(MATCHES_TEXTS.travelFailuresBanner(1))).toBeInTheDocument();
+    // Sans cause servie, pas de ligne « Gymnases : … ».
+    expect(screen.queryByText(/^Gymnases :/)).not.toBeInTheDocument();
+  });
+});
+
 // ── P4-293 — le 4ᵉ segment « Trajet indisponible » (OpponentsPage non encore migré : la CLÉ
 //    `MATCHES_TEXTS.opponentFilterTravelUnavailable` porte le libellé — assertion par rôle + nom). ──
 describe("OpponentsPage — segment « Trajet indisponible » (P4-293)", () => {

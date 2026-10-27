@@ -32,7 +32,10 @@ describe("LeagueValidation — vocabulaire piloté par le démarrage du champion
     const label = maturedLabel({ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 12 });
     expect(label).toMatch(/^PNM — échéance /);
     expect(label).toMatch(/nov\./);
-    expect(label).toMatch(/— 12 à valider$/);
+    // Arbitrage fondateur 2026-10-27 (retours Nico, source §64) : « — N à valider » →
+    // « — N déjà dans FBI à confirmer » (cohérent avec le wording cockpit validé M3). ROUGE tant
+    // que leagueValidation.ts:52 n'a pas appliqué la prod (TANK est propriétaire de l'assertion).
+    expect(label).toMatch(/— 12 déjà dans FBI à confirmer$/);
   });
 
   it("championnat commencé par premier match joué → le libellé porte « 1er match joué le … », pas d'échéance", () => {
@@ -41,7 +44,8 @@ describe("LeagueValidation — vocabulaire piloté par le démarrage du champion
     expect(label).toMatch(/^RF3 — 1er match joué le /);
     expect(label).toMatch(/sept\./);
     expect(label).not.toMatch(/échéance/);
-    expect(label).toMatch(/— 4 à valider$/);
+    // Même arbitrage que ci-dessus (source §64) — ROUGE en attente de leagueValidation.ts:52.
+    expect(label).toMatch(/— 4 déjà dans FBI à confirmer$/);
   });
 
   // M6 (retours Nico, BCCL 2026-10-27) — une date de RENCONTRE porte son JOUR (« sam. 19 sept. »,

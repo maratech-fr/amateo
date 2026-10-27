@@ -186,7 +186,9 @@ describe("ImportPage — rattrapage « déjà dans FBI » piloté par l'échéan
     await user.click(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
     const dialog = await screen.findByRole("dialog");
     // La confirmation DÉTAILLE chaque championnat échu (nom + échéance + compte).
-    expect(within(dialog).getByText(/PNM — échéance .* — 3 à valider/)).toBeInTheDocument();
+    // maturedLabel — arbitrage fondateur 2026-10-27 (source §64) : « — N à valider » →
+    // « — N déjà dans FBI à confirmer ». ROUGE tant que leagueValidation.ts:52 n'est pas appliqué.
+    expect(within(dialog).getByText(/PNM — échéance .* — 3 déjà dans FBI à confirmer/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
 
     expect(confirmLeagueValidatedFixtures).toHaveBeenCalledOnce();

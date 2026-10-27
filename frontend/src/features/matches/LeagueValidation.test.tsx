@@ -50,8 +50,10 @@ describe("LeagueValidationBanner — trois états servis par l'échéance (lot O
     expect(screen.getByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
     const dialog = await screen.findByRole("dialog");
-    // Le DÉTAIL par championnat (nom + échéance + compte).
-    expect(within(dialog).getByText(/PNM — échéance .* — 12 à valider/)).toBeInTheDocument();
+    // Le DÉTAIL par championnat (nom + échéance + compte) — maturedLabel. Arbitrage fondateur
+    // 2026-10-27 (source §64) : « — N à valider » → « — N déjà dans FBI à confirmer ». ROUGE tant
+    // que leagueValidation.ts:52 n'est pas appliqué (consommateur suivi avec le test lib).
+    expect(within(dialog).getByText(/PNM — échéance .* — 12 déjà dans FBI à confirmer/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
     expect(confirmMutate).toHaveBeenCalledOnce();
   });

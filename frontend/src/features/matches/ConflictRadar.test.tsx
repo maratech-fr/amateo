@@ -2,10 +2,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Coach, Conflict, Team, Venue } from "./api";
 import { ConflictRadar } from "./ConflictRadar";
+import { useMatchesStore } from "./store";
 
 // Le radar lit `me` (rôle) pour décider s'il propose l'éditeur de traitement (P4-207).
 // Ici : membre (aucun rôle) → pastilles/éditeur absents, le radar rend ses lignes nues.
@@ -131,6 +132,62 @@ describe("ConflictRadar — personne en double, rôle PAR CÔTÉ (une personne =
     expect(screen.queryByText(/\(assistant d'un côté\)/)).toBeNull();
     // Résumé annoté par côté.
     expect(screen.getByText(/U13 \(assistant\) et Seniors \(coach\)/)).toBeInTheDocument();
+  });
+});
+
+describe("ConflictRadar — filtre domicile SEGMENTÉ (M4, BCCL 2026-10-27)", () => {
+  // Un conflit à DOMICILE (côtés HOME) + un extérieur/extérieur (côtés AWAY, masqué par « domicile »).
+  function mixedConflicts(): Conflict[] {
+    return [
+      { type: "VENUE_OVERLAP", severity: 1, resolution: null, fingerprint: "fp-home", left: side("fx-1", "team-1", "2026-10-03"), right: side("fx-2", "team-2", "2026-10-03") },
+      {
+        type: "VENUE_OVERLAP",
+        severity: 1,
+        resolution: null,
+        fingerprint: "fp-away",
+        left: { ...side("fx-5", "team-1", "2026-10-05"), homeAway: "AWAY" as const },
+        right: { ...side("fx-6", "team-2", "2026-10-05"), homeAway: "AWAY" as const },
+      },
+    ];
+  }
+
+  // Le store NAÎT à true (store.test.ts) — on le rétablit avant/après pour ne pas polluer les voisins.
+  beforeEach(() => useMatchesStore.setState({ conflictsHomeOnly: true }));
+  afterEach(() => useMatchesStore.setState({ conflictsHomeOnly: true }));
+
+  it("domicile pressé par défaut : segments comptés, SEUL le conflit à domicile affiché, « Tous » révèle l'ext/ext", async () => {
+    renderRadar(<ConflictRadar conflicts={mixedConflicts()} teams={teams} coaches={coaches} venues={venues} />);
+
+    // Comptes par segment : 1 avec match à domicile, 2 au total ; « domicile » pressé, « Tous » non.
+    const home = screen.getByRole("button", { name: "Avec un match à domicile (1)" });
+    const tous = screen.getByRole("button", { name: "Tous (2)" });
+    expect(home).toHaveAttribute("aria-pressed", "true");
+    expect(tous).toHaveAttribute("aria-pressed", "false");
+    // Sous « domicile » : un seul conflit rendu (l'ext/ext est masqué).
+    expect(screen.getAllByText("Deux matchs sur le même créneau")).toHaveLength(1);
+
+    // « Tous » RÉVÈLE l'ext/ext : deux conflits rendus.
+    await userEvent.click(tous);
+    expect(screen.getAllByText("Deux matchs sur le même créneau")).toHaveLength(2);
+  });
+
+  it("aucun conflit à domicile sous « domicile » : message invitant à basculer sur « Tous » (pas « aucun conflit »)", () => {
+    const awayOnly: Conflict[] = [
+      {
+        type: "VENUE_OVERLAP",
+        severity: 1,
+        resolution: null,
+        fingerprint: "fp-away-only",
+        left: { ...side("fx-7", "team-1", "2026-10-06"), homeAway: "AWAY" as const },
+        right: { ...side("fx-8", "team-2", "2026-10-06"), homeAway: "AWAY" as const },
+      },
+    ];
+    renderRadar(<ConflictRadar conflicts={awayOnly} teams={teams} coaches={coaches} venues={venues} />);
+
+    // Il Y A un conflit (donc pas « Aucun conflit détecté »), mais aucun à domicile sous le filtre.
+    expect(screen.getByText(/basculez sur « Tous » pour voir les autres/)).toBeInTheDocument();
+    expect(screen.queryByText("Aucun conflit détecté.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Deux matchs sur le même créneau")).not.toBeInTheDocument();
   });
 });
 
