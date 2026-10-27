@@ -28,6 +28,15 @@ function addDays(iso: string, days: number): string {
   return isoLocal(new Date(y, m - 1, d + days));
 }
 
+/** Le lundi (ISO) de la semaine calendaire lun→dim qui contient `iso`. */
+function mondayOf(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const back = (dt.getDay() + 6) % 7; // 0 = lundi
+  dt.setDate(dt.getDate() - back);
+  return isoLocal(dt);
+}
+
 interface ExtendWindow {
   start: string;
   originalEnd: string;
@@ -35,25 +44,35 @@ interface ExtendWindow {
 }
 
 /**
- * Une fenêtre FUTURE aboutant à une vraie vacance scolaire : [start, originalEnd] finit la veille
- * d'une vacance, newEnd la dépasse. Calculée depuis aujourd'hui et le feed serveur (jamais figée).
+ * Une fenêtre FUTURE aboutant à une vraie vacance scolaire. La fermeture est faite de SEMAINES
+ * PLEINES lun→dim qui finissent le dimanche AVANT la semaine d'entrée en vacances : sans cet
+ * alignement, « Adapter » refuse la création « d'un bloc » (422 « une indisponibilité a une semaine
+ * entamée », {@see SchedulePlanStateProcessor} — c'était le bug de setup de ce spec). On la prolonge
+ * ensuite jusqu'au dimanche de la semaine PLEINE qui suit la vacance → le serveur insère la pause de
+ * vacances et fait NAÎTRE des copies de part et d'autre. Tout est relatif à aujourd'hui + au feed
+ * serveur (`schoolHolidayWindows`), jamais une date figée (bombe à date P4-353).
  */
 async function computeExtendWindow(page: Page): Promise<ExtendWindow> {
-  const holidays = await schoolHolidayWindows(page);
+  const holidays = (await schoolHolidayWindows(page)).sort((a, b) => a[0].localeCompare(b[0]));
   const today = isoLocal(new Date());
-  // La 1ʳᵉ vacance dont le DÉBUT laisse ≥ 21 jours de marge pour poser la fermeture avant elle.
-  const target = holidays
-    .filter(([hs]) => hs > addDays(today, 20))
-    .sort((a, b) => a[0].localeCompare(b[0]))[0];
-  if (undefined === target) {
-    throw new Error("P4-353 : aucune vacance scolaire future servie avec 3 semaines de marge — décor injouable");
+  const overlapsHoliday = (s: string, e: string): boolean => holidays.some(([hs, he]) => s <= he && e >= hs);
+  for (const [hs, he] of holidays) {
+    const hsMonday = mondayOf(hs); // lundi de la semaine d'entrée en vacances
+    const originalEnd = addDays(hsMonday, -1); // dimanche AVANT cette semaine → fermeture « d'un bloc »
+    const start = addDays(hsMonday, -14); // lundi, deux semaines pleines plus tôt
+    const afterMonday = addDays(mondayOf(he), 7); // lundi de la semaine PLEINE après la fin des vacances
+    const newEnd = addDays(afterMonday, 6); // dimanche de cette semaine → la prolongation traverse la vacance
+    // Fenêtre d'origine FUTURE (buffer d'une semaine), elle-même SANS vacances (sinon pas « d'un
+    // bloc ») et semaine d'après hors vacances (une copie après la pause, jamais une 2ᵉ pause parasite).
+    if (start <= addDays(today, 6)) {
+      continue;
+    }
+    if (overlapsHoliday(start, originalEnd) || overlapsHoliday(afterMonday, newEnd)) {
+      continue;
+    }
+    return { start, originalEnd, newEnd };
   }
-  const [hs, he] = target;
-  return {
-    start: addDays(hs, -14), // deux semaines avant la vacance, bien futur
-    originalEnd: addDays(hs, -1), // la veille de la vacance (la fermeture aboute la vacance)
-    newEnd: addDays(he, 7), // une semaine APRÈS la vacance → la prolongation la traverse
-  };
+  throw new Error("P4-353 : aucune vacance future ABOUTABLE (2 semaines pleines avant, 1 pleine après, hors autres vacances) — décor injouable");
 }
 
 async function openAllPlannings(page: Page): Promise<void> {
