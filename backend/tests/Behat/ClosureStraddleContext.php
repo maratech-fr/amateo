@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Behat;
 
+use App\Service\PeriodConstraintSelector;
 use App\Tests\Security\ClosureWindowExtendTest;
 use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
@@ -19,8 +20,10 @@ use RuntimeException;
  * reprises de vacances NON validées posées au milieu. Il prolonge la fenêtre de la fermeture
  * par-delà les vacances via le rail NEUF (`/window-preview` puis `/window`) : le milieu est
  * conservé (même version), trois copies validées naissent (fin avant pause, après pause, fin
- * entamée), la fermeture datée court jusqu'au nouveau bout (son début figé), et les reprises
- * recoupées passent « à régénérer ». L'aperçu == l'appliqué.
+ * entamée), la fermeture datée court jusqu'au nouveau bout (son début figé), et les reprises de
+ * vacances restent INTACTES et non validées (une période HOLIDAY ignore les contraintes FACILITY,
+ * {@see PeriodConstraintSelector} — miroir du NR {@see ClosureWindowExtendTest}).
+ * L'aperçu == l'appliqué.
  *
  * Le décor part du club de démonstration et le restaure en fin de scénario. Les fenêtres sont
  * posées relativement à l'horloge du club de démo (pinnée côté seed).
@@ -153,12 +156,19 @@ final class ClosureStraddleContext extends BaseContext
     #[Then('la fermeture compte quatre plannings : le milieu conservé et trois copies validées')]
     public function laFermetureCompteQuatrePlannings(): void
     {
+        // Le comptage est scopé à CET incident (la racine ∪ ses enfants), jamais club-wide : le club
+        // de démonstration porte déjà d'AUTRES fermetures pointées (6 plans CLOSURE au total en CI).
+        // Après l'apply, les 4 plans de l'incident sont tous ancrés à des entrées-ENFANTS de la racine
+        // (le milieu ré-ancré + 3 copies validées) ; la racine elle-même ne porte plus de plan.
         $count = (int) $this->dbalScalar(\sprintf(
-            'SELECT COUNT(*) AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'CLOSURE\' AND chosen_schedule_id IS NOT NULL',
+            'SELECT COUNT(*) AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'CLOSURE\' AND chosen_schedule_id IS NOT NULL'
+            . ' AND calendar_entry_id IN (SELECT id FROM calendar_entry WHERE id=\'%s\' OR parent_entry_id=\'%s\')',
             $this->clubId,
+            $this->closureEntryId,
+            $this->closureEntryId,
         ), admin: true);
         if (4 !== $count) {
-            throw new RuntimeException(\sprintf('attendu 4 plannings de fermeture pointés, obtenu %d', $count));
+            throw new RuntimeException(\sprintf('attendu 4 plannings de fermeture pointés pour cet incident, obtenu %d', $count));
         }
     }
 
@@ -166,24 +176,39 @@ final class ClosureStraddleContext extends BaseContext
     public function laFermetureDateeSuitLaFenetre(): void
     {
         $window = $this->extendedWindow();
+        // Scopé à la datée de CET incident (accrochée à l'entrée racine — extendDatedConstraints la
+        // garde sur la racine), jamais la fermeture `venue_closed` la plus tardive du club de démo.
+        // Table réservée → quotée "constraint" (jamais `constraint_entry`, qui n'existe pas).
         $end = $this->dbalScalar(\sprintf(
-            'SELECT (config->>\'endDate\') AS behatval FROM constraint_entry WHERE club_id=\'%s\' AND config->>\'type\'=\'venue_closed\' ORDER BY (config->>\'endDate\') DESC LIMIT 1',
+            'SELECT (config->>\'endDate\') AS behatval FROM "constraint" WHERE club_id=\'%s\' AND calendar_entry_id=\'%s\' AND config->>\'type\'=\'venue_closed\' ORDER BY (config->>\'endDate\') DESC LIMIT 1',
             $this->clubId,
+            $this->closureEntryId,
         ), admin: true);
         if ($window['endDate'] !== $end) {
             throw new RuntimeException(\sprintf('la fermeture datée devait courir jusqu\'au %s, obtenu %s', $window['endDate'], $end));
         }
     }
 
-    #[Then('les deux reprises de vacances recoupées sont signalées à régénérer')]
-    public function lesReprisesSontSignaleesARegenerer(): void
+    #[Then('les deux reprises de vacances recoupées restent intactes, non validées')]
+    public function lesReprisesRestentIntactesNonValidees(): void
     {
+        // Réalité établie (miroir du NR PHPUnit {@see ClosureWindowExtendTest}) : une reprise HOLIDAY
+        // n'est PAS recoupée par la fermeture — une période HOLIDAY droppe par défaut les contraintes
+        // FACILITY ({@see PeriodConstraintSelector}), donc la datée `venue_closed` étendue n'entre
+        // jamais dans son payload et son empreinte ne bouge pas. La reprise SURVIT intacte (son plan
+        // sert encore son empreinte courante) et reste NON validée (chosen null) : le gestionnaire la
+        // régénère quand il veut. C'est le signal opposable — jamais une validation en silence.
         foreach ([$this->reprise1PlanId, $this->reprise2PlanId] as $planId) {
             $hash = $this->apiGet('schedule_plans/' . $planId . '/structure-hash', $this->token);
             if (200 !== $hash['status']) {
                 throw new RuntimeException('impossible de lire l\'empreinte d\'une reprise');
             }
-            // La reprise reste NON validée (chosen null) : le gestionnaire la régénère.
+            // Survit et reste travaillable : le plan sert encore une empreinte COURANTE non nulle.
+            $served = $hash['json']['currentStructureHash'] ?? null;
+            if (!\is_string($served) || '' === $served) {
+                throw new RuntimeException('une reprise recoupée doit survivre et rester travaillable (empreinte courante servie)');
+            }
+            // …et reste NON validée (chosen null) : le gestionnaire la régénère.
             $chosen = $this->dbalScalar(\sprintf(
                 'SELECT COALESCE(chosen_schedule_id::text, \'\') AS behatval FROM schedule_plan WHERE id=\'%s\'',
                 $planId,
@@ -194,25 +219,91 @@ final class ClosureStraddleContext extends BaseContext
         }
     }
 
-    /** Supprime les deux entrées créées (cascade plans + versions) et restaure le pointeur de socle. */
+    /**
+     * Nettoyage EXHAUSTIF et robuste, qui tourne même si le scénario a échoué en cours (hook
+     * AfterScenario). Le club de démonstration est PARTAGÉ avec les features suivantes : un résidu
+     * (fermeture étendue, enfants nés de la conversion, datée `venue_closed` prolongée) empoisonne
+     * leur décor. Cas mesuré : la suppression nue de la racine renvoyait 409 « en vigueur (lecture
+     * seule) » — la conversion fait naître des plans-enfants VALIDÉS (pointés) et le DELETE d'une
+     * période refuse d'emporter un planning en vigueur, toute la transaction rollback → racine,
+     * enfants, plans, versions ET datée survivaient tous. On DÉPOINTE donc d'abord les plans de CET
+     * incident (racine ∪ enfants), puis la suppression en cascade de l'API emporte proprement enfants,
+     * plans, versions, réglages et la contrainte datée accrochée à l'entrée.
+     */
     #[AfterScenario]
     public function nettoyer(): void
     {
         if ('' === $this->token) {
             return;
         }
+        // 1. Dépointer les plans de l'incident (racine ∪ enfants) : sinon le DELETE de la racine est
+        //    refusé 409 par le garde « planning en vigueur » et rien n'est nettoyé. Scopé à cet
+        //    incident — les AUTRES fermetures pointées du club de démo ne sont jamais touchées.
+        if ('' !== $this->clubId && '' !== $this->closureEntryId) {
+            $this->dbalExec(\sprintf(
+                'UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id=\'%s\' AND type=\'CLOSURE\''
+                . ' AND calendar_entry_id IN (SELECT id FROM calendar_entry WHERE id=\'%s\' OR parent_entry_id=\'%s\')',
+                $this->clubId,
+                $this->closureEntryId,
+                $this->closureEntryId,
+            ), admin: true);
+        }
+        // 2. La racine emporte en cascade ses enfants (le milieu ré-ancré + les copies nées de la
+        //    conversion), leurs plans, leurs versions, leurs réglages et la datée `venue_closed`
+        //    accrochée à l'entrée (CalendarEntryStateProcessor::deleteEntryAndCascade).
         if ('' !== $this->closureEntryId) {
             $this->apiDelete(\sprintf('calendar_entries/%s', $this->closureEntryId), $this->token);
         }
+        // 3. La mère des vacances emporte ses deux reprises (non validées, aucun garde à lever).
         if ('' !== $this->holidayEntryId) {
             $this->apiDelete(\sprintf('calendar_entries/%s', $this->holidayEntryId), $this->token);
         }
+        // 4. Filet DBAL : si une suppression a quand même échoué (scénario interrompu tôt, décor
+        //    partiel), on balaie les restes de l'incident à la racine en base — la datée d'abord
+        //    (aucune FK vers elle), puis le bloc entrées/plans/versions via les enfants.
+        $this->sweepIncidentResidue();
+        // 5. Restaurer le pointeur de socle si c'est nous qui l'avons posé (patron PeriodOverlayContext).
         if ($this->pointerSetBySelf && '' !== $this->clubId) {
             $this->dbalExec(
                 \sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->clubId),
                 admin: true,
             );
         }
+    }
+
+    /**
+     * Balaie en base tout résidu de l'incident (racine ∪ enfants) au cas où la cascade API a échoué —
+     * dans l'ORDRE des FK : versions (slots/diagnostics/conflits/snapshots) → schedules → plans →
+     * contrainte datée → entrées de calendrier. Scopé à CET incident et à CE club : les autres
+     * fermetures du club de démo sont intouchées. No-op si la cascade API a déjà tout emporté.
+     */
+    private function sweepIncidentResidue(): void
+    {
+        if ('' === $this->clubId || '' === $this->closureEntryId) {
+            return;
+        }
+        $entriesSubquery = \sprintf(
+            '(SELECT id FROM calendar_entry WHERE club_id=\'%s\' AND (id=\'%s\' OR parent_entry_id=\'%s\'))',
+            $this->clubId,
+            $this->closureEntryId,
+            $this->closureEntryId,
+        );
+        $plansSubquery = \sprintf(
+            '(SELECT id FROM schedule_plan WHERE club_id=\'%s\' AND type=\'CLOSURE\' AND calendar_entry_id IN %s)',
+            $this->clubId,
+            $entriesSubquery,
+        );
+        $schedulesSubquery = \sprintf('(SELECT id FROM schedule WHERE club_id=\'%s\' AND schedule_plan_id IN %s)', $this->clubId, $plansSubquery);
+        foreach (['schedule_slot_template', 'schedule_diagnostic', 'constraint_conflict', 'schedule_structure_snapshot'] as $table) {
+            $this->dbalExec(\sprintf('DELETE FROM %s WHERE schedule_id IN %s', $table, $schedulesSubquery), admin: true);
+        }
+        $this->dbalExec(\sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE id IN %s', $plansSubquery), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM schedule WHERE schedule_plan_id IN %s', $plansSubquery), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM schedule_plan WHERE id IN %s', $plansSubquery), admin: true);
+        // Table réservée → quotée "constraint" (jamais `constraint_entry`, qui n'existe pas).
+        $this->dbalExec(\sprintf('DELETE FROM "constraint" WHERE club_id=\'%s\' AND calendar_entry_id IN %s', $this->clubId, $entriesSubquery), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE club_id=\'%s\' AND parent_entry_id=\'%s\'', $this->clubId, $this->closureEntryId), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE club_id=\'%s\' AND id=\'%s\'', $this->clubId, $this->closureEntryId), admin: true);
     }
 
     /**
