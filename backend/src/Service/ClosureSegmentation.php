@@ -112,6 +112,19 @@ final class ClosureSegmentation
     }
 
     /**
+     * Les fenêtres de VACANCES qui gouvernent des semaines du club+saison, [start, end] en Y-m-d
+     * (entrées HOLIDAY non ignorées ∪ feed scolaire de la zone), clampées à la saison — accesseur
+     * public pour {@see ClosureWindowPlanner}, qui SOUSTRAIT ces fenêtres de la plage d'une fermeture
+     * prolongée (une pause dans la fermeture). Même source que le découpage interne.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public function holidayWindowsForSeason(string $clubId, string $seasonId, string $seasonStart, string $seasonEnd): array
+    {
+        return $this->holidayWindows($clubId, $seasonId, $seasonStart, $seasonEnd);
+    }
+
+    /**
      * Les semaines PLEINES lun→dim couvrant [motherStart, motherEnd] — clampées à la saison (une
      * semaine entièrement hors saison est omise), MOINS les semaines de vacances, MOINS les semaines
      * déjà planifiées. AUCUN filtre temporel ici (la tolérance des révolues est appliquée par les

@@ -528,6 +528,16 @@ saison en cours.
     suppression) — aucun des deux ne mentionne plus « à régénérer » (P4-266). Détail :
     [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) ·
     [`types-de-planning.md`](types-de-planning.md) §2.
+  - **Prolonger/raccourcir une fermeture pour qu'elle ENJAMBE des vacances** est un rail
+    **distinct** de celui ci-dessus (pas D3 v2 / `RedatePreviewController`) : il segmente la
+    fenêtre demandée en retranchant les trous de vacances, garde le run déjà travaillé (ré-ancré,
+    même version) et fait naître chaque autre run en **copie VALIDÉE d'office** du même planning
+    — là où le rail ci-dessus naît toujours vide. Backend seul à ce stade (`POST
+    /api/schedule_plans/{id}/window-preview` puis `…/window`, prédicats `windowEditable`/
+    `windowLockedReason`/`minEndDate`/`closureTitle` déjà servis sur `SchedulePlanResource`) ; la
+    surface écran (bouton, modale d'aperçu/confirmation) n'est pas encore livrée. Détail :
+    [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) inv. 2 (amendement) ·
+    [`types-de-planning.md`](types-de-planning.md) §2.
 - **L'écran dédié « calendrier secondaire »** = le wizard réutilisé en « mode période » (§6bis) :
   les mêmes 6 étapes, mais le roster/les gymnases restent **hérités** (non ré-éditables comme
   entités) — on les **surcharge pour la fenêtre** (équipe on/off + séances) via un DIFF ancré au

@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\State\Provider;
 
+use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\SchedulePlanResource;
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
+use App\Service\ClosureWindowPlanner;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 /**
@@ -17,6 +21,15 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 class SchedulePlanStateProvider extends AbstractStateProvider
 {
     use ReadsUuidQueryParamTrait;
+
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        RequestStack $requestStack,
+        Pagination $pagination,
+        private readonly ClosureWindowPlanner $closureWindowPlanner,
+    ) {
+        parent::__construct($entityManager, $requestStack, $pagination);
+    }
 
     protected function getEntityClass(): string
     {
@@ -28,7 +41,17 @@ class SchedulePlanStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): SchedulePlanResource
     {
-        return SchedulePlanResource::fromEntity($entity);
+        $dto = SchedulePlanResource::fromEntity($entity);
+
+        // Prolonger une fermeture : les prédicats de fenêtre ne concernent QU'un plan CLOSURE.
+        if (SchedulePlanType::CLOSURE === $entity->getType()) {
+            $dto->windowLockedReason = $this->closureWindowPlanner->windowLockedReason($entity);
+            $dto->windowEditable = null === $dto->windowLockedReason;
+            $dto->minEndDate = $this->closureWindowPlanner->minEndDate($entity);
+            $dto->closureTitle = $this->closureWindowPlanner->closureTitle($entity);
+        }
+
+        return $dto;
     }
 
     /**

@@ -15,6 +15,7 @@ use App\OpenApi\PathContributor\AdminJobPaths;
 use App\OpenApi\PathContributor\AdminJournalPaths;
 use App\OpenApi\PathContributor\AdminMonitoringPaths;
 use App\OpenApi\PathContributor\AdminSupportPaths;
+use App\OpenApi\PathContributor\ClosureWindowPaths;
 use App\OpenApi\PathContributor\ClubClockPaths;
 use App\OpenApi\PathContributor\CoachWishPaths;
 use App\OpenApi\PathContributor\CoachWishPreviewPaths;
@@ -92,6 +93,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             new FfbbEngagementPaths($schemas),
             new OpponentTravelPaths($schemas),
             new RedatePreviewPaths($schemas),
+            new ClosureWindowPaths($schemas),
             new VenueAliasPaths($schemas),
             new TrainingConflictPaths($schemas),
             new LeagueWindowSuggestionPaths($schemas),
