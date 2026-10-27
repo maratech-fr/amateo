@@ -649,6 +649,14 @@ jobs:
       - name: SplitMotherRedateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SplitMotherRedateTest.php --group phase1'
 
+      # Fermeture qui ENJAMBE des vacances (fondateur 2026-10-27, axe planning lifecycle) : le rail
+      # NEUF /window-preview + /window prolonge/raccourcit une fermeture d'un bloc, aperçu puis
+      # confirmation. Milieu ré-ancré (même version), fins/après-vacances en copies VALIDÉES, datée
+      # étendue (plancher « le passé ne bouge pas » servi), reprises recoupées « à régénérer », inv. 14,
+      # jeton recalculé sous verrous, et les abus (tenant 404 byte-identique, jeton, rôle, saison archivée).
+      - name: ClosureWindowExtendTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ClosureWindowExtendTest.php --group phase1'
+
       # RMM-3 (axe constraint semantics — le radar de conflits) : le gardien à l'ouverture stampe une
       # référence de VISITE et sert le delta « depuis ta dernière visite ». L'empreinte d'un conflit est
       # son IDENTITÉ stable — une nature changée (autre paire, MATCH_MATCH→MATCH_TRAINING) est signalée,

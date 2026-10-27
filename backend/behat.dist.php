@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Tests\Behat\ClosureStraddleContext;
 use App\Tests\Behat\CoachLateRelayContext;
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConflictResolutionContext;
@@ -137,6 +138,11 @@ return (new Config)
                 new Suite('fermeture-planning')
                     ->withPaths('%paths.base%/features/une-fermeture-adapte-le-planning.feature')
                     ->withContexts(VenueClosureSmallClubContext::class),
+            )
+            ->withSuite(
+                new Suite('fermeture-enjambe-vacances')
+                    ->withPaths('%paths.base%/features/une-fermeture-se-prolonge-a-travers-les-vacances.feature')
+                    ->withContexts(ClosureStraddleContext::class),
             )
             ->withSuite(
                 new Suite('export')
