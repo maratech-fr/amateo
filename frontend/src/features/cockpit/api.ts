@@ -2,6 +2,7 @@ import { HTTPError } from "ky";
 
 import { api } from "@/shared/api/client";
 import { collectionAll } from "@/shared/api/collection";
+import { errorMessage } from "@/shared/lib/errorMessage";
 
 /**
  * ADR-0002 inv. 4 (P2-38 PR3) — un AUTRE plan de période gouverne déjà tout ou partie de la
@@ -103,6 +104,20 @@ export interface SchedulePlan {
   chosenScheduleId: string | null;
   /** Period-editable structure: has this plan's team selection been configured once (seed guard)? */
   teamSelectionInitialized: boolean;
+  /**
+   * PR2 « Modifier les dates d'une fermeture » — 4 champs SERVIS par SchedulePlanResource (rail #1283).
+   * Optionnels : seul un plan CLOSURE les porte, le front les LIT (règle d'or), il ne décide RIEN.
+   *  - `endDate`/`minEndDate` : la fin COURANTE et son PLANCHER servi (le passé et les segments figés
+   *    ne reculent pas — « le passé ne bouge pas ») ;
+   *  - `closureTitle` : l'intitulé de la FERMETURE (son identité) — nomme le geste et le dialogue ;
+   *  - `windowEditable` : la fenêtre peut-elle être modifiée ? (prédicat UNIQUE côté serveur) ;
+   *  - `windowLockedReason` : si non, la RAISON prête à afficher (génération en vol, saison archivée…).
+   */
+  endDate?: string;
+  minEndDate?: string;
+  closureTitle?: string;
+  windowEditable?: boolean;
+  windowLockedReason?: string | null;
 }
 
 /** Le plan d'une période. null si l'entrée n'en porte pas (cutoff/mutualisation — inv. 9). */
@@ -375,4 +390,68 @@ export const getPlannedWindows = async (params: { start: string; end: string; en
   const response = await api.get("planned-windows", { searchParams }).json<{ windows: PlannedWindow[] }>();
 
   return response.windows;
+};
+
+/**
+ * PR2 — un effet SERVI de l'aperçu de prolongation/raccourcissement d'une fermeture. `kind` pilote
+ * l'icône + la variante de pastille (PRÉSENTATION, cf. `matches/lib/diagnostic.ts`), `startDate`/
+ * `endDate` la fenêtre de la ligne, `label` la phrase française PRÊTE À AFFICHER (aucune reformulation
+ * front — règle d'or). Les kinds connus aujourd'hui ; un kind inconnu retombe sur une présentation neutre.
+ */
+export type ClosureWindowEffectKind = "convert" | "birth_copy" | "holiday_pause" | "vanish" | "shift" | "regenerate";
+
+export interface ClosureWindowEffect {
+  kind: ClosureWindowEffectKind;
+  startDate: string;
+  endDate: string;
+  label: string;
+}
+
+/**
+ * L'aperçu SERVI par `POST /schedule_plans/{id}/window-preview` (lecture pure). `summary` = la phrase
+ * de synthèse annoncée dans la région live ; `effects` = les lignes (ordre chronologique serveur, non
+ * re-trié côté front) ; `futurePlansWarning` = des plannings de période FUTURS seraient balayés ;
+ * `token` = l'état que l'apply renverra (recalculé sous verrous côté serveur → 409 s'il a péri).
+ */
+export interface ClosureWindowPreview {
+  token: string;
+  summary: string;
+  futurePlansWarning: boolean;
+  effects: ClosureWindowEffect[];
+}
+
+/**
+ * PR2 — APERÇU des effets de la nouvelle fenêtre d'une fermeture (lecture pure, rien n'est écrit). Le
+ * 422 (hors saison / fin sous le plancher / dates mal formées) est NORMALISÉ en `Error(message serveur)`
+ * : le dialogue affiche `error.message` dans sa région live (il ne passe pas par errorMessage lui-même,
+ * pour qu'un message serveur déjà francisé arrive tel quel).
+ */
+export const previewClosureWindow = async (planId: string, dates: { startDate: string; endDate: string }): Promise<ClosureWindowPreview> => {
+  try {
+    return await api.post(`schedule_plans/${planId}/window-preview`, { json: dates }).json<ClosureWindowPreview>();
+  } catch (error) {
+    throw new Error(await errorMessage(error), { cause: error });
+  }
+};
+
+/**
+ * PR2 — APPLIQUE la nouvelle fenêtre (jeton d'aperçu obligatoire). Deux 409 TYPÉS, relayés au dialogue
+ * qui les affiche lui-même (jamais un toast) : jeton périmé ({@link PreviewTokenStaleError}, re-aperçu
+ * + confirmation manuelle) et chevauchement ({@link WindowAlreadyPlannedError}, « Ouvrir le planning en
+ * place »). Tout autre échec remonte tel quel (le hook `useApplyClosureWindow` toaste le transport).
+ */
+export const applyClosureWindow = async (planId: string, dates: { startDate: string; endDate: string; previewToken: string }): Promise<SchedulePlan> => {
+  try {
+    return await api.post(`schedule_plans/${planId}/window`, { json: dates }).json<SchedulePlan>();
+  } catch (error) {
+    const conflict = asWindowAlreadyPlanned(error);
+    if (null !== conflict) {
+      throw conflict;
+    }
+    const stale = asPreviewStale(error);
+    if (null !== stale) {
+      throw stale;
+    }
+    throw error;
+  }
 };

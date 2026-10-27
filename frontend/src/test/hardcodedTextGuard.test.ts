@@ -55,6 +55,8 @@ const MIGRATED_FILES = [
   "features/cockpit/RadarPanel.tsx",
   "features/cockpit/DayDialog.tsx",
   "features/cockpit/WeekPickerDialog.tsx",
+  // PR2 « Modifier les dates d'une fermeture » — le dialogue naît migré (COCKPIT_TEXTS).
+  "features/cockpit/ClosureWindowDialog.tsx",
   "features/planning/PlanningPage.tsx",
   // Chantier E — le menu d'export migré dans features/planning/texts.ts en même temps que la case
   // « Afficher le nom des coachs ». La migration ne recule jamais.

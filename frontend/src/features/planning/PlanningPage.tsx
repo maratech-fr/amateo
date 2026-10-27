@@ -1,6 +1,6 @@
 import { IN_FLIGHT_STATUSES } from "@/shared/lib/scheduleStatus";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, GitCompare, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
+import { AlertTriangle, CalendarRange, GitCompare, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -9,6 +9,10 @@ import { FeedbackButton } from "@/shared/feedback/FeedbackButton";
 // Same ["priority_tiers"] query key as the matches/wizard hooks — one cache entry.
 import { usePriorityTiers } from "@/features/matches/queries";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
+import { ClosureWindowDialog } from "@/features/cockpit/ClosureWindowDialog";
+import type { SchedulePlan } from "@/features/cockpit/api";
+import { COCKPIT_TEXTS } from "@/features/cockpit/texts";
+import { useWizardStore } from "@/features/wizard/store";
 import { useConstraintValidation, useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -299,6 +303,17 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Identité du plan affiché et renommage (ADR-0002 inv. 12) : nom en édition, mutation de
   // renommage, entrée de suppression d'overlay, plan affiché et son nom.
   const { editingPlanningName, setEditingPlanningName, renamePlanning, overlayDeleteEntryId, displayedPlan, displayedPlanName } = usePlanHeader(selectedSchedule, landingScheduleId, schedules, scoped, scopePlanId, allSchedulePlans, me);
+  // PR2 — le plan de FERMETURE affiché (plan COMPLET servi, pour le geste « Modifier les dates »).
+  // Le front ne décide pas « est-ce modifiable » : il LIT `windowEditable`/`windowLockedReason`
+  // servis (règle d'or). Le dialogue est une modale ; le geste vit au cockpit / sur la page autonome.
+  const displayedClosurePlan = useMemo<SchedulePlan | null>(() => {
+    if (null === displayedPlan) {
+      return null;
+    }
+    const full = (allSchedulePlans ?? []).find((p) => p.id === displayedPlan.id);
+    return undefined !== full && "CLOSURE" === full.type ? full : null;
+  }, [displayedPlan, allSchedulePlans]);
+  const [datesPlan, setDatesPlan] = useState<SchedulePlan | null>(null);
   const isGenerating = null !== selectedSchedule && IN_FLIGHT.includes(selectedSchedule.status);
   // Lot C (défaut terrain fondateur 2026-08-21) — l'écran de génération s'affiche dès qu'une
   // version DU PLAN EN PORTÉE est en vol, en saison comme en période. `isGenerating` ne dérive
@@ -765,6 +780,22 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 <Button size="sm" variant="ghost" className="px-2" aria-label={PLANNING_TEXTS.renamePlanning} title={PLANNING_TEXTS.renamePlanning} onClick={() => setEditingPlanningName(displayedPlan.name)}>
                   <Pencil className="size-4" />
                 </Button>
+              ) : null}
+              {/* PR2 — « Modifier les dates » d'une FERMETURE : jamais embarqué (le geste vit au
+                  cockpit / page autonome), jamais en saison archivée ni pendant une génération en vol ;
+                  texte complet (nom accessible = la fermeture). Piloté par `windowEditable`/`windowLockedReason`. */}
+              {!embedded && null !== displayedClosurePlan && workingSeason && !workingSeason.isReadonly && !showGenerationWaiting && (true === displayedClosurePlan.windowEditable || Boolean(displayedClosurePlan.windowLockedReason)) ? (
+                true === displayedClosurePlan.windowEditable ? (
+                  <Button size="sm" variant="ghost" className="px-2" onClick={() => setDatesPlan(displayedClosurePlan)}>
+                    <CalendarRange className="size-4" />
+                    {COCKPIT_TEXTS.modifyClosureDates(displayedClosurePlan.closureTitle ?? displayedPlanName ?? "")}
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" className="px-2" disabled disabledReason={displayedClosurePlan.windowLockedReason ?? undefined}>
+                    <CalendarRange className="size-4" />
+                    {COCKPIT_TEXTS.modifyClosureDates(displayedClosurePlan.closureTitle ?? displayedPlanName ?? "")}
+                  </Button>
+                )
               ) : null}
               {/* Supprimer : plannings SECONDAIRES uniquement (jamais le socle), et
                   jamais pendant une génération en vol (la cascade emporterait la version
@@ -1571,6 +1602,27 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 },
               },
             );
+          }}
+        />
+      ) : null}
+      {/* PR2 — « Modifier les dates » d'une fermeture : modale (restaure le focus au bouton à la fermeture). */}
+      {null !== datesPlan ? (
+        <ClosureWindowDialog
+          plan={{
+            id: datesPlan.id,
+            startDate: datesPlan.startDate,
+            endDate: datesPlan.endDate ?? datesPlan.startDate,
+            minEndDate: datesPlan.minEndDate ?? datesPlan.startDate,
+            closureTitle: datesPlan.closureTitle ?? datesPlan.name,
+          }}
+          onClose={() => setDatesPlan(null)}
+          onApplied={() => setDatesPlan(null)}
+          onOpenConflict={(entryId) => {
+            // Chevauchement : ouvrir le planning en place (mode période), en fermant la modale.
+            setDatesPlan(null);
+            setSelectedScheduleId(null);
+            useWizardStore.getState().startPeriodMode(entryId);
+            navigate("/wizard");
           }}
         />
       ) : null}

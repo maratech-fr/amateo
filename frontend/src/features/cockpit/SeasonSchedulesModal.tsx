@@ -1,4 +1,4 @@
-import { Download, Eye, Pencil, Star } from "lucide-react";
+import { CalendarRange, Download, Eye, Pencil, Star } from "lucide-react";
 
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useState } from "react";
@@ -16,9 +16,11 @@ import { readFailed } from "@/shared/lib/readState";
 import { getShowCoaches } from "@/features/planning/lib/exportPrefs";
 import { frDateNumeric } from "./lib/date";
 import { useCalendarEntries, useSchedulePlans } from "./queries";
-import type { CalendarEntry } from "./api";
+import type { CalendarEntry, SchedulePlan } from "./api";
+import { ClosureWindowDialog } from "./ClosureWindowDialog";
 import { DeletePlanningButton } from "./DeletePlanningButton";
 import { type PlanningRow, seasonPlannings } from "./seasonPlannings";
+import { COCKPIT_TEXTS } from "./texts";
 
 interface SeasonSchedulesModalProps {
   schedules: Schedule[];
@@ -90,6 +92,24 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
   // (le wizard mode période s'ancre sur l'ENTRÉE, pas sur le plan).
   const { data: plans } = useSchedulePlans();
   const entryByPlan = new Map((plans ?? []).filter((p) => null !== p.calendarEntryId).map((p) => [p.id, p.calendarEntryId as string]));
+  const planById = new Map((plans ?? []).map((p) => [p.id, p]));
+  // PR2 — le geste « Modifier les dates » d'une FERMETURE : ouvert depuis une ligne, le dialogue est
+  // une modale EMPILÉE ; à sa fermeture, le focus retourne au bouton déclencheur (restauration de
+  // focus de `Modal`, pas de câblage manuel). Le front n'invente pas « est-ce modifiable » : il LIT
+  // `windowEditable`/`windowLockedReason` servis par SchedulePlanResource (règle d'or).
+  const [datesPlan, setDatesPlan] = useState<SchedulePlan | null>(null);
+  // Une ligne de plan CLOSURE porte-t-elle le geste ? Oui ssi le serveur sert soit `windowEditable`,
+  // soit une raison de verrouillage (bouton désactivé AVEC sa raison, A11Y-30) — jamais autrement.
+  const closurePlanOf = (row: PlanningRow): SchedulePlan | null => {
+    if (!row.isOverlay || null === row.schedulePlanId) {
+      return null;
+    }
+    const p = planById.get(row.schedulePlanId);
+    if (undefined === p || "CLOSURE" !== p.type || (true !== p.windowEditable && !p.windowLockedReason)) {
+      return null;
+    }
+    return p;
+  };
   const rows = seasonPlannings(schedules, me?.seasonPlan?.name ?? null, plans ?? [], entries, schedulesResolved);
   // Suppression d'un planning SECONDAIRE : jamais le socle, jamais en saison archivée
   // (409 SeasonReadonly — revue B2 F2), jamais une version en vol (la cascade
@@ -208,6 +228,26 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
                     <CompactExport scheduleId={row.id} label={row.label} clubId={me?.club?.id ?? null} />
                   </>
                 )}
+                {/* PR2 — « Modifier les dates » d'une FERMETURE (incident terminé/validé compris) : nommé
+                    par la fermeture (A11Y-28), désactivé AVEC sa raison si la fenêtre est verrouillée. */}
+                {(() => {
+                  const closure = closurePlanOf(row);
+                  if (null === closure) {
+                    return null;
+                  }
+                  const name = COCKPIT_TEXTS.modifyClosureDates(closure.closureTitle ?? row.label);
+                  return true === closure.windowEditable ? (
+                    <Button variant="ghost" size="sm" aria-label={name} title={name} onClick={() => setDatesPlan(closure)}>
+                      <CalendarRange className="size-4" />
+                      {COCKPIT_TEXTS.closureDatesButton}
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="sm" aria-label={name} disabled disabledReason={closure.windowLockedReason ?? undefined}>
+                      <CalendarRange className="size-4" />
+                      {COCKPIT_TEXTS.closureDatesButton}
+                    </Button>
+                  );
+                })()}
                 {/* Suppression : plannings SECONDAIRES uniquement (jamais le socle). */}
                 {deletableEntryId(row) ? <DeletePlanningButton calendarEntryId={deletableEntryId(row) as string} schedulePlanId={row.schedulePlanId} title={row.label} iconOnly /> : null}
               </div>
@@ -215,6 +255,28 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
           );
         })}
       </ul>
+      {null !== datesPlan ? (
+        <ClosureWindowDialog
+          plan={{
+            id: datesPlan.id,
+            startDate: datesPlan.startDate,
+            endDate: datesPlan.endDate ?? datesPlan.startDate,
+            minEndDate: datesPlan.minEndDate ?? datesPlan.startDate,
+            closureTitle: datesPlan.closureTitle ?? datesPlan.name,
+          }}
+          fromList
+          onClose={() => setDatesPlan(null)}
+          onApplied={() => setDatesPlan(null)}
+          onOpenConflict={(entryId) => {
+            // Chevauchement : on ferme les DEUX modales et on ouvre le planning en place (mode période).
+            setDatesPlan(null);
+            setSelectedScheduleId(null);
+            useWizardStore.getState().startPeriodMode(entryId);
+            onClose();
+            navigate("/wizard");
+          }}
+        />
+      ) : null}
     </Modal>
   );
 }
