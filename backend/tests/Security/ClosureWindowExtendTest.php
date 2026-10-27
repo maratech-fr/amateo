@@ -5,21 +5,28 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\Clock\DevClockStore;
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
 use App\Entity\Schedule;
+use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
+use App\Enum\CalendarEntryStatus;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
+use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
+use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Integration\Api\SchedulePlanStructureHashTest;
 use App\Tests\TenantGucTrait;
@@ -73,8 +80,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *      - la fin entamée FINALE = copie VALIDÉE ;
  *    slots des copies == version en vigueur du milieu source ; verrous HARD à ORIGINE VRAIE ;
  *    contrainte datée `venue_closed` étendue à TOUTE la fenêtre (début figé = plancher) ;
- *    reprises non validées → divergence d'empreinte « à régénérer » (le datée les recoupe) ;
- *    aperçu == appliqué.
+ *    reprises de vacances non validées qui SURVIVENT et restent travaillables (« à régénérer » =
+ *    jamais validées, le gestionnaire les régénère) ; aperçu == appliqué.
  *  • raccourcir : même geste, verdicts annoncés == appliqués, le passé ne bouge pas ;
  *  • plancher : une fenêtre déjà commencée a son début FIGÉ (minEndDate servi, apply sous le plancher refusé) ;
  *  • copie figée : modifier la SOURCE après coup ne redescend pas dans les copies ;
@@ -86,9 +93,11 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *    LUNDI connu ; toute date de fenêtre se dérive en semaines depuis ce « today » (`mon(n)`), jamais
  *    de date calendaire en dur. Les vacances sont posées PAR LE TEST lui-même.
  *
- * Doublon ASSUMÉ (domaine sensible = planning lifecycle) : la divergence d'empreinte « à régénérer »
- * d'une reprise recoupée par la datée est prouvée en détail par {@see SchedulePlanStructureHashTest}
- * (empreinte servie ⇄ snapshot figé) ; ici on prouve la CAUSE (la datée recoupe la reprise) de bout en bout.
+ * ⚠ Une reprise de vacances n'est PAS signalée « à régénérer » par divergence d'empreinte : une période
+ * HOLIDAY droppe par défaut les contraintes FACILITY ({@see PeriodConstraintSelector}), donc la datée
+ * `venue_closed` étendue n'entre jamais dans son payload et son empreinte ne bouge pas. Le signal
+ * opposable est « reste NON validée » (miroir du Behat {@see ClosureStraddleContext}). La mécanique
+ * d'empreinte « à régénérer » (empreinte servie ⇄ snapshot figé) vit dans {@see SchedulePlanStructureHashTest}.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -133,8 +142,8 @@ final class ClosureWindowExtendTest extends WebTestCase
         $r2 = $this->postWeekChild($user, $vacId, 'holiday', $this->mon(4), $this->sun(4));
         $r1Plan = $this->planOf($club, $r1);
         $r2Plan = $this->planOf($club, $r2);
-        $r1Hash = $this->seedUnchosenCompletedVersion($club, $season, $r1Plan);
-        $r2Hash = $this->seedUnchosenCompletedVersion($club, $season, $r2Plan);
+        $this->seedUnchosenCompletedVersion($club, $season, $r1Plan);
+        $this->seedUnchosenCompletedVersion($club, $season, $r2Plan);
 
         // ── APERÇU : prolonger la fin jusqu'au vendredi fri(+6) (le début reste figé par le plancher).
         $preview = $this->preview($user, $srcPlanId, $this->mon(-2), $this->fri(6));
@@ -182,13 +191,23 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertSame($this->mon(-2), $dated->getConfig()['startDate'], 'le début de la fermeture datée ne bouge pas (le passé est figé)');
         self::assertSame($this->fri(6), $dated->getConfig()['endDate'], 'la fermeture datée court jusqu’au nouveau bout de fenêtre');
 
-        // (6) REPRISES non validées : recoupées par la datée → leur empreinte DIVERGE de leur snapshot
-        // figé (signal « à régénérer », cf. doublon assumé SchedulePlanStructureHashTest). Elles
-        // SURVIVENT et restent NON pointées (le gestionnaire les régénère).
-        self::assertNull($this->chosenScheduleId($club, $r1Plan), 'la reprise 1 reste non validée');
-        self::assertNull($this->chosenScheduleId($club, $r2Plan), 'la reprise 2 reste non validée');
-        self::assertNotSame($r1Hash, $this->servedStructureHash($user, $r1Plan), 'la reprise 1 recoupée par la datée diverge de son empreinte (à régénérer)');
-        self::assertNotSame($r2Hash, $this->servedStructureHash($user, $r2Plan), 'la reprise 2 recoupée par la datée diverge de son empreinte (à régénérer)');
+        // (6) REPRISES de vacances : la fermeture PAUSE pendant les vacances (les segments-copies
+        // sautent la pause), donc les reprises SURVIVENT et restent NON pointées — « à régénérer » au
+        // sens du gestionnaire, qui ne les a jamais validées et les (re)générera. C'est le signal
+        // opposable, miroir exact du Behat {@see ClosureStraddleContext} (chosen null).
+        //
+        // ⚠ PAS de divergence d'EMPREINTE ici : une période HOLIDAY DROPPE par défaut les contraintes
+        // FACILITY ({@see PeriodConstraintSelector}, « les FACILITY étaient déjà droppées hors
+        // fermeture »), donc la datée `venue_closed` étendue n'entre JAMAIS dans le payload d'une
+        // reprise de vacances — son empreinte ne peut pas bouger. La mécanique d'empreinte « à
+        // régénérer » vit, elle, dans {@see SchedulePlanStructureHashTest} (empreinte servie ⇄ snapshot).
+        self::assertNull($this->chosenScheduleId($club, $r1Plan), 'la reprise 1 reste non validée (à régénérer)');
+        self::assertNull($this->chosenScheduleId($club, $r2Plan), 'la reprise 2 reste non validée (à régénérer)');
+        // Les reprises SURVIVENT et restent travaillables : le plan sert encore son empreinte courante
+        // (non nulle). Cette assertion s'appuie sur la bonne clé `currentStructureHash` — l'ancien
+        // helper lisait `structureHash`/`hash` et rendait toujours null (vacuité).
+        self::assertNotNull($this->servedStructureHash($user, $r1Plan), 'la reprise 1 survit et reste travaillable (empreinte courante servie)');
+        self::assertNotNull($this->servedStructureHash($user, $r2Plan), 'la reprise 2 survit et reste travaillable (empreinte courante servie)');
     }
 
     /** ② Raccourcir : même geste, le passé ne bouge pas, verdicts annoncés == appliqués. */
@@ -384,26 +403,38 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertResponseStatusCodeSame(403, 'un non-gestionnaire ne prolonge pas une fermeture');
     }
 
-    /** A4 — saison archivée : lecture seule, l'apply est refusé (409). */
+    /**
+     * A4 — saison archivée : l'apply est refusé 409 par le mécanisme GLOBAL.
+     *
+     * « Archivée » se dérive de l'ANNÉE, jamais du statut : {@see SeasonResolver} fait foi (une
+     * saison d'année N-1 est en lecture seule même avec `status = ACTIVE`). On pose donc une VRAIE
+     * saison passée (patron {@see SeasonReadonlyTest}) et on y ancre la fermeture ciblée ; sans
+     * header `X-Season-Id`, la saison SÉLECTIONNÉE est la courante (writable), mais la RESSOURCE
+     * visée vit dans la saison archivée → {@see SeasonReadonlyGuardListener} dérive la saison de la
+     * cible (SEC-13) et 409 — AVANT même que le contrôleur ne soit invoqué.
+     *
+     * ⚠ Le levier est le STATUT, pas le libellé : la page d'erreur HTML du harnais de test recopie
+     * la SOURCE du test (l'assertion incluse), donc chercher le message du garde dans le corps est
+     * VACUE (il s'y trouve toujours). On envoie donc un jeton d'aperçu VIDE : le seul 409 atteignable
+     * est celui du garde saison (kernel.controller) ; sans lui, le contrôleur rend 422 « demandez
+     * l'aperçu » (le garde retiré → ROUGE sur le statut). Un jeton bidon rendrait un 409 de
+     * jeton-périmé qui MASQUERAIT la disparition du garde.
+     */
     public function testApplyOnAnArchivedSeasonIsRefused(): void
     {
-        [$user, $club, $season] = $this->createClubWithSeason();
-        $rootId = $this->postPeriod($user, 'Barros en travaux', $this->mon(-2), $this->sun(1));
-        $planId = $this->adaptPeriod($user, $rootId);
-        $this->seedPointedVersionWithLockedSlots($club, $season, $planId);
-        $preview = $this->preview($user, $planId, $this->mon(-2), $this->sun(1));
+        [$user, $club] = $this->createClubWithSeason();
+        // Une seconde saison, d'année N-1 : le club devient multi-saison et la passée est en
+        // lecture seule par l'année (status ACTIVE à dessein — ce n'est PAS le statut qui décide).
+        $past = $this->createPastSeason($club);
+        $planId = $this->seedClosurePlanInSeason($club, $past);
 
-        $this->scopeGucToClub($club->getId());
-        $this->em->clear();
-        $archived = $this->em->getRepository(Season::class)->find($season->getId());
-        self::assertInstanceOf(Season::class, $archived);
-        $archived->setStatus(SeasonStatus::ARCHIVED);
-        $this->em->flush();
-
+        // Pas de header X-Season-Id (saison sélectionnée = courante, writable) ni de jeton d'aperçu :
+        // seule la dérivation « saison de la ressource » peut refuser → prouve le garde GLOBAL.
+        $pastYear = (int) $past->getStartDate()->format('Y');
         $this->client->request('POST', '/api/schedule_plans/' . $planId . '/window', [], [], $this->authHeaders($user) + [
             'CONTENT_TYPE' => 'application/json',
-        ], json_encode(['startDate' => $this->mon(-2), 'endDate' => $this->sun(1), 'previewToken' => $preview['token']], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(409, 'une saison archivée est en lecture seule');
+        ], json_encode(['startDate' => $pastYear . '-11-10', 'endDate' => $pastYear . '-11-23'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(409, 'une saison passée (archivée par l’année) est refusée par le garde saison GLOBAL avant le contrôleur');
     }
 
     protected function setUp(): void
@@ -421,6 +452,60 @@ final class ClosureWindowExtendTest extends WebTestCase
     {
         self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
+    }
+
+    /** Une VRAIE saison passée (année N-1 relative à l’horloge), ACTIVE : archivée par l’ANNÉE seule. */
+    private function createPastSeason(Club $club): Season
+    {
+        $pastYear = SeasonResolver::seasonYear($this->today) - 1;
+        $this->scopeGucToClub($club->getId());
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName($pastYear . '-' . ($pastYear + 1));
+        $season->setStartDate(new DateTimeImmutable($pastYear . '-08-01'));
+        $season->setEndDate(new DateTimeImmutable(($pastYear + 1) . '-07-15'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+        $this->em->flush();
+
+        return $season;
+    }
+
+    /**
+     * Une fermeture ancrée dans la saison donnée : l’entrée de calendrier `closure` + son plan
+     * CLOSURE pointé par calendarEntryId — tout ce que le garde doit voir pour dériver la saison
+     * de la cible. Le geste réel (Adapter) vit dans la saison COURANTE ; ici la cible est passée,
+     * donc on l’ancre directement (le garde refuse AVANT que le contrôleur ne lise le corps).
+     */
+    private function seedClosurePlanInSeason(Club $club, Season $season): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $year = (int) $season->getStartDate()->format('Y');
+        $entry = (new CalendarEntry)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)
+            ->setTitle('Barros en travaux (saison passée)')
+            ->setStartDate(new DateTimeImmutable($year . '-11-10'))
+            ->setEndDate(new DateTimeImmutable($year . '-11-23'))
+            ->setIsDisruptive(true)
+            ->setPeriodType(CalendarEntryPeriodType::CLOSURE)
+            ->setStatus(CalendarEntryStatus::ACTIVE);
+        $this->em->persist($entry);
+
+        $plan = (new SchedulePlan)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setType(SchedulePlanType::CLOSURE)
+            ->setName('Barros en travaux (saison passée)')
+            ->setStartDate(new DateTimeImmutable($year . '-11-10'))
+            ->setEndDate(new DateTimeImmutable($year . '-11-23'))
+            ->setCalendarEntryId($entry->getId());
+        $this->em->persist($plan);
+        $this->em->flush();
+
+        return $plan->getId();
     }
 
     /** Lundi n semaines depuis « today » (n négatif = passé), au format Y-m-d. */
@@ -525,7 +610,9 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $payload = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
         self::assertIsArray($payload);
-        $hash = $payload['structureHash'] ?? $payload['hash'] ?? null;
+        // La route /structure-hash sert la clé `currentStructureHash` (SchedulePlanStructureHashController) —
+        // lire `structureHash`/`hash` rendait TOUJOURS null (l'assertion de survie passait alors pour rien).
+        $hash = $payload['currentStructureHash'] ?? null;
 
         return null === $hash ? null : (string) $hash;
     }
@@ -581,13 +668,8 @@ final class ClosureWindowExtendTest extends WebTestCase
         return $version->getId();
     }
 
-    /**
-     * Une reprise : une version COMPLETED NON pointée (non validée) + son empreinte figée servie
-     * AVANT l'extension de la datée.
-     *
-     * @return string|null l'empreinte servie à la naissance (pour prouver la divergence ensuite)
-     */
-    private function seedUnchosenCompletedVersion(Club $club, Season $season, ?string $planId): ?string
+    /** Une reprise : une version COMPLETED NON pointée (non validée), que le gestionnaire régénérera. */
+    private function seedUnchosenCompletedVersion(Club $club, Season $season, ?string $planId): void
     {
         self::assertIsString($planId);
         $this->scopeGucToClub($club->getId());
@@ -600,8 +682,6 @@ final class ClosureWindowExtendTest extends WebTestCase
         $this->em->persist($version);
         self::getContainer()->get(SchedulePlanProvisioner::class)->linkSchedule($version);
         $this->em->flush();
-
-        return self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($planId);
     }
 
     /** @return string l'id de la contrainte datée `venue_closed` accrochée à la racine */
