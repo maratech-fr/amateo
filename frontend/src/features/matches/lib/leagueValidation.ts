@@ -37,8 +37,8 @@ export function leagueValidationIntro(total: number): string {
 
 /**
  * Le libellé d'un championnat commencé dans la confirmation — le motif de démarrage décide :
- * « PNM — échéance mar. 10 nov. — 12 à valider » (échéance passée) ou « PNM — 1er match joué le
- * sam. 19 sept. — 12 à valider » (premier match joué, sans échéance renseignée).
+ * « PNM — échéance mar. 10 nov. — 12 déjà dans FBI à confirmer » (échéance passée) ou « PNM — 1er match joué le
+ * sam. 19 sept. — 12 déjà dans FBI à confirmer » (premier match joué, sans échéance renseignée).
  *
  * M6 (retours Nico, BCCL 2026-10-27) — « jour partout » : les deux bornes de date portent leur
  * jour de la semaine (`frDateWeekdayNoYear`) — le premier match joué EST une rencontre, et
@@ -49,7 +49,7 @@ export function maturedLabel(competition: MaturedCompetition): string {
     "firstMatchPlayed" === competition.maturedBy && null !== competition.firstMatchDate
       ? `1er match joué le ${frDateWeekdayNoYear(competition.firstMatchDate)}`
       : `échéance ${frDateWeekdayNoYear(competition.deadline ?? "")}`;
-  return `${competition.name} — ${anchor} — ${competition.validatableCount} à valider`;
+  return `${competition.name} — ${anchor} — ${competition.validatableCount} déjà dans FBI à confirmer`;
 }
 
 const REASON_LABELS: Record<LeagueToTreatReason, string> = {
