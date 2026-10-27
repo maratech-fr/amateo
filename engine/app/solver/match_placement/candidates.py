@@ -25,6 +25,11 @@ def _candidate_kickoffs(
     day = _iso_day(match.match_date)
     team = next((t for t in input_data.teams if t.id == match.team_id), None)
     match_min, _ = _durations(team)
+    # PR2 « jours fériés » — un match fixé par la ligue un jour FÉRIÉ n'est pas un week-end libre :
+    # la ligue a posé ce jour exprès. Pour une date fériée le domaine se construit sur la ligne
+    # « Jours fériés » du gymnase (appliesOnPublicHolidays), JAMAIS la fenêtre du jour de semaine,
+    # et la fenêtre de LIGUE indexée sur ce jour de semaine est ignorée.
+    is_holiday = match.match_date in set(input_data.public_holidays)
     league = [w for w in (team.league_windows if team else []) if w.day_of_week == day]
     league_mapped = team is not None and len(team.league_windows) > 0
     # P4-272 ③ — HARD club rules covering this ISO day. Every one must accept the
@@ -46,7 +51,13 @@ def _candidate_kickoffs(
         saw_open_venue = True
         kicks: list[int] = []
         for window in venue.match_windows:
-            if window.day_of_week != day:
+            # Un jour férié : SEULES les lignes « Jours fériés » comptent (la fenêtre du jour de
+            # semaine ne s'applique pas). Un jour ordinaire : SEULES les lignes de jour de semaine
+            # de ce jour (une ligne férié, dayOfWeek nul, ne fuit jamais sur un jour ordinaire).
+            if is_holiday:
+                if not window.applies_on_public_holidays:
+                    continue
+            elif window.applies_on_public_holidays or window.day_of_week != day:
                 continue
             # The venue is held for the MATCH only (D1): kickoff ≥ start and
             # kickoff + matchMinutes ≤ end. The warm-up no longer reserves the
@@ -57,9 +68,13 @@ def _candidate_kickoffs(
             while kick <= last:
                 saw_access_candidate = True
                 # League HARD only when the team maps: the kickoff must fall in
-                # SOME league window of that day.
-                league_ok = not league_mapped or any(
-                    _minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league
+                # SOME league window of that day. PR2 — un jour FÉRIÉ, la fenêtre de ligue du jour
+                # de semaine est IGNORÉE (la ligue a posé ce jour férié exprès, hors de sa grille
+                # hebdomadaire) : le coup d'envoi n'est cadré que par la ligne « Jours fériés ».
+                league_ok = (
+                    is_holiday
+                    or not league_mapped
+                    or any(_minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league)
                 )
                 if league_ok:
                     saw_league_candidate = True

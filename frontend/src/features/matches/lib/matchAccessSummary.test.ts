@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { VenueMatchWindow } from "../api";
 import { formatMatchAccessWindows } from "./matchAccessSummary";
 
-const win = (over: Partial<VenueMatchWindow> & { dayOfWeek: number; startTime: string; endTime: string }): VenueMatchWindow => ({
-  id: `${over.dayOfWeek}-${over.startTime}`,
+const win = (over: Partial<VenueMatchWindow> & { startTime: string; endTime: string }): VenueMatchWindow => ({
+  id: `${over.dayOfWeek ?? "holiday"}-${over.startTime}`,
   venueId: "v1",
+  dayOfWeek: null,
+  appliesOnPublicHolidays: false,
   ...over,
 });
 

@@ -183,11 +183,13 @@ export function useSchoolHolidays(from?: string, to?: string) {
   });
 }
 
-export function usePublicHolidays(from: string, to: string) {
+export function usePublicHolidays(from: string, to: string, enabled = true) {
   return useQuery({
     queryKey: ["public-holidays", from, to],
     queryFn: () => cockpitApi.getPublicHolidays(from, to),
     staleTime: 3_600_000,
+    // L'endpoint 400 sans fenêtre : désactiver tant qu'aucune saison n'est résolue (from/to vides).
+    enabled,
   });
 }
 

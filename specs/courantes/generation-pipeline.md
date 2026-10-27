@@ -111,7 +111,7 @@ via `POST /generate` ; backend → frontend via Mercure SSE `/clubs/{clubId}/sch
 ## 4. Engine — ce qu'il répond
 
 - Solveur CP-SAT, **pas de fallback de relaxation** (toutes les contraintes HARD à
-  chaque tentative). Réponse conforme au contrat Pydantic (`engine/CONTRACT_VERSION` = `1.6`,
+  chaque tentative). Réponse conforme au contrat Pydantic (`engine/CONTRACT_VERSION` = `1.7`,
   gardé par `ContractSchemaTest`) : `status`, `slots[]` (placements), `diagnostics[]`.
 - INFEASIBLE → `status="failed"` + diagnostics. COMPLETED possible **avec** des
   warnings (un plan sous-optimal reste un plan).

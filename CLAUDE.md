@@ -106,7 +106,7 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   today`), PAS l'avancement : un plan futur DÉJÀ généré est balayé aussi. Corollaire : la grille
   copiée ne peut périmer en silence que pour une période **déjà commencée**. Même bascule emporte
   aussi la collecte de doléances des vacances à venir (`FutureHolidayCollectePurger`).
-- **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**1.6**, un seul
+- **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**1.7**, un seul
   contrat pour `/generate` · `/place-matches` · `/validate-assignments`), **sync manuelle, pas de
   codegen** — gardé par les 3 `*ContractSchemaTest`.
 - **FFBB outbound** : hosts hard-codés (SSRF-safe), best-effort, le frontend n'appelle jamais FFBB.

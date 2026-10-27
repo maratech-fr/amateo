@@ -50,6 +50,8 @@ interface Overrides {
   matchWindows?: VenueMatchWindow[];
   unavailabilities?: VenueUnavailability[];
   closures?: VenueClosure[];
+  /** PR2 — les dates `Y-m-d` fériées (feed GET /api/public-holidays) portées par les gardes. */
+  holidays?: string[];
   guardState?: "loading" | "failed" | "ready";
   retry?: () => void;
   habits?: TeamMatchHabit[];
@@ -73,6 +75,7 @@ function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Ove
         matchWindows: overrides.matchWindows ?? [],
         unavailabilities: overrides.unavailabilities ?? [],
         closures: overrides.closures ?? [],
+        holidays: overrides.holidays ?? [],
         retry: overrides.retry ?? vi.fn(),
       }}
       habits={overrides.habits ?? []}
@@ -154,7 +157,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       // venue-1 is a match venue on Saturdays 14:00-18:00; venue-2 is training-only.
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
     });
 
     // The selector masks the CHOICE: training-only venue-2 is not offered (open the listbox to see).
@@ -171,7 +174,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     // Sunday-only window; the fixture is on a Saturday.
     renderPanel(openEnvelope, vi.fn(), {
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 7, startTime: "09:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 7, appliesOnPublicHolidays: false, startTime: "09:00", endTime: "18:00" }],
     });
 
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
@@ -224,7 +227,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       fixture: friendly,
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
     });
 
     const list = await openListbox(user, "Gymnase");
@@ -244,7 +247,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       fixture: { ...fixture, competitionId: "comp-1" },
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
     });
 
     const list = await openListbox(user, "Gymnase");
@@ -488,7 +491,7 @@ describe("PlacementPanel — D2 : le geste de placement suspendu tant que les ga
 });
 
 describe("PlacementPanel — gymnase fermé ou indisponible grisé (P4-300)", () => {
-  const windowVenue1: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }];
+  const windowVenue1: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }];
 
   it("grise l'option d'un gymnase fermé par le calendrier à la date du match, avec la raison", async () => {
     const user = userEvent.setup();
@@ -518,5 +521,78 @@ describe("PlacementPanel — gymnase fermé ou indisponible grisé (P4-300)", ()
 
     const list = await openListbox(user, "Gymnase");
     expect(within(list).getByRole("option", { name: /Gymnase Alpha/ })).not.toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+// ── Pose manuelle un JOUR FÉRIÉ (PR2) ───────────────────────────────────────
+// Promesse fondateur : un match posé un jour férié se juge sur la ligne « Jours fériés » du
+// gymnase (feed GET /api/public-holidays, porté par guards.holidays), JAMAIS la fenêtre du jour
+// de semaine. venueAccessError sait déjà le faire ; ce bloc prouve que le PANNEAU lui passe bien
+// les fériés. Décor : le 11 nov. 2026 est un MERCREDI férié ; venue-1 ouvre le mercredi
+// 18:00–22:00 (fenêtre jour-de-semaine) ET les jours fériés 10:00–18:00 (ligne « Jours fériés »).
+describe("PlacementPanel — pose manuelle un jour férié (PR2)", () => {
+  const WED_HOLIDAY = "2026-11-11"; // mercredi (ISO 3) ET jour férié
+  const WED_ORDINARY = "2026-11-18"; // mercredi ordinaire, pas férié
+  const holidayVenueWindows: VenueMatchWindow[] = [
+    { id: "w-wed", venueId: "venue-1", dayOfWeek: 3, appliesOnPublicHolidays: false, startTime: "18:00", endTime: "22:00" },
+    { id: "w-hol", venueId: "venue-1", dayOfWeek: null, appliesOnPublicHolidays: true, startTime: "10:00", endTime: "18:00" },
+  ];
+  const holidayFixture: Fixture = { ...fixture, matchDate: WED_HOLIDAY };
+
+  it("un férié : coup d'envoi dans la ligne « Jours fériés » (14:00) est ACCEPTÉ — jugé sur le férié, pas le mercredi", async () => {
+    const user = userEvent.setup();
+    const onPlace = renderPanel(openEnvelope, vi.fn(), {
+      fixture: holidayFixture,
+      matchWindows: holidayVenueWindows,
+      holidays: [WED_HOLIDAY],
+    });
+
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
+
+    // 14:00 ∈ [10:00, 18:00[ de la ligne férié → aucune raison d'accès, pose autorisée.
+    expect(screen.queryByText(/Hors fenêtre d'accès match/)).toBeNull();
+    const place = screen.getByRole("button", { name: "Placer" });
+    expect(place).toBeEnabled();
+    await user.click(place);
+    expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-1", kickoffTime: "14:00" });
+  });
+
+  it("un férié : coup d'envoi HORS ligne férié (20:00) est REFUSÉ avec la raison d'accès de la ligne férié", async () => {
+    const user = userEvent.setup();
+    const onPlace = renderPanel(openEnvelope, vi.fn(), {
+      fixture: holidayFixture,
+      matchWindows: holidayVenueWindows,
+      holidays: [WED_HOLIDAY],
+    });
+
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
+
+    // 20:00 ∉ [10:00, 18:00[ → la raison cite la ligne férié (10:00–18:00), PAS la fenêtre
+    // du mercredi (18:00–22:00), et le bouton est désactivé.
+    expect(screen.getByText(/Hors fenêtre d'accès match \(10:00–18:00\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it("témoin : un mercredi ORDINAIRE reste jugé sur la fenêtre du mercredi (20:00 accepté, 14:00 refusé)", async () => {
+    const user = userEvent.setup();
+    const onPlace = renderPanel(openEnvelope, vi.fn(), {
+      fixture: { ...fixture, matchDate: WED_ORDINARY },
+      matchWindows: holidayVenueWindows,
+      holidays: [], // aucun férié ce jour-là
+    });
+
+    const kickoff = screen.getByLabelText("Heure de coup d'envoi");
+    // 20:00 ∈ [18:00, 22:00[ de la fenêtre du mercredi → accepté (la ligne férié reste ignorée).
+    await user.type(kickoff, "20:00");
+    expect(screen.queryByText(/Hors fenêtre d'accès match/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Placer" })).toBeEnabled();
+
+    // 14:00 ∉ [18:00, 22:00[ → refusé sur la fenêtre du mercredi (pas sur la ligne férié).
+    await user.clear(kickoff);
+    await user.type(kickoff, "14:00");
+    expect(screen.getByText(/Hors fenêtre d'accès match \(18:00–22:00\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    expect(onPlace).not.toHaveBeenCalled();
   });
 });

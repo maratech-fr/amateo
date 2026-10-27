@@ -107,6 +107,9 @@ final class ConflictTruthContext extends BaseContext
 
     private string $cupSaturday = '';
 
+    /** PR2 « jours fériés » — rencontre à domicile un jour férié, cadrée par une fenêtre de ligue. */
+    private string $holidayCupFixtureId = '';
+
     /** Décor du scénario coach↔joueuse (une personne = ses équipes coachées + jouées). */
     private string $coachedTeamId = '';
 
@@ -369,6 +372,66 @@ final class ConflictTruthContext extends BaseContext
             ], $this->token),
             'rencontre de coupe',
         );
+    }
+
+    #[Given('une rencontre à domicile un jour férié, cadrée par une fenêtre de ligue que son coup d\'envoi viole un jour ordinaire')]
+    public function uneRencontreADomicileUnJourFerie(): void
+    {
+        // Même mapping que la coupe (catégorie DISTINCTIVE + niveau REGIONAL) : l'équipe est CADRÉE
+        // par l'enveloppe de ligue, sans collision avec une vraie équipe. Date = VENDREDI 25 déc.
+        // 2026 (Noël), jour férié NATIONAL seedé (`app:public-holidays:seed`), POSTÉRIEUR à l'horloge
+        // épinglée (01/12/2026) donc jamais tari par la règle 3 (match passé) de D1.
+        $seasonId = $this->prepareCupTeamAndCategory();
+
+        $clubLeague = $this->dbalScalar(\sprintf('SELECT COALESCE(league, \'\') AS behatval FROM club WHERE id=\'%s\'', $this->clubId), admin: true);
+        $hasWindows = '' !== $this->dbalScalar(\sprintf('SELECT id AS behatval FROM league_match_window WHERE league=\'%s\' LIMIT 1', $clubLeague), admin: true);
+        $effectiveLeague = ('' !== $clubLeague && $hasWindows) ? $clubLeague : 'AURA';
+
+        // Fenêtre étroite VENDREDI (ISO 5) 10:00-10:30 : un coup d'envoi le soir la viole un jour
+        // ORDINAIRE. Mais le 25/12 est férié → le radar ne doit JAMAIS crier hors fenêtre de ligue.
+        $this->cupWindowId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
+        $this->dbalExec(\sprintf(
+            'INSERT INTO club_league_window (id, version, created_at, updated_at, club_id, season_id, league, category, level, gender, day_of_week, kickoff_min, kickoff_max)'
+            . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'REGIONAL\', NULL, 5, \'10:00\', \'10:30\')',
+            $this->cupWindowId,
+            $this->clubId,
+            $seasonId,
+            $effectiveLeague,
+            self::CUP_CATEGORY_NAME,
+        ), admin: true);
+
+        // Une rencontre de championnat (PORTE une compétition → soumise à la ligue, jamais un
+        // amical) à domicile le 25/12, coup d'envoi 18:00 — hors de la fenêtre 10:00-10:30.
+        $this->cupCompetitionId = $this->idOf(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat férié (vérité conflits)', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition férié',
+        );
+        $this->holidayCupFixtureId = $this->idOf(
+            $this->apiPost('fixtures', [
+                'teamId' => $this->teamId,
+                'matchDate' => '2026-12-25',
+                'homeAway' => 'HOME',
+                'opponentLabel' => 'Adversaire férié',
+                'competitionId' => $this->cupCompetitionId,
+                'kickoffTime' => '18:00',
+            ], $this->token),
+            'rencontre un jour férié',
+        );
+    }
+
+    #[Then('le radar ne signale jamais ce match férié hors fenêtre de ligue')]
+    public function leRadarNeSignaleJamaisCeMatchFerieHorsFenetre(): void
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'LEAGUE_WINDOW_VIOLATION' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            $fixtureId = \is_array($fixtureBlock) ? ($fixtureBlock['fixtureId'] ?? null) : null;
+            if ($fixtureId === $this->holidayCupFixtureId) {
+                throw new RuntimeException('le radar a crié LEAGUE_WINDOW_VIOLATION sur un match un jour férié — la ligue a pourtant posé ce jour exprès');
+            }
+        }
     }
 
     #[Given('une personne qui coache une équipe et joue dans une autre, leurs deux matchs se chevauchant')]
@@ -666,7 +729,7 @@ final class ConflictTruthContext extends BaseContext
             $this->apiDelete($this->resolutionPath($this->resolvedFingerprint), $this->token);
         }
 
-        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId, $this->matchCoachFixtureId] as $id) {
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->holidayCupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId, $this->matchCoachFixtureId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }

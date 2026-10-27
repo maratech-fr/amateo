@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\CrossStack;
 
+use App\Controller\PublicHolidaysController;
 use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\Fixture;
@@ -67,7 +68,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
 
         $venue = $payload['venues'][0];
         self::assertArrayHasKey('matchWindows', $venue);
-        self::assertSame(['dayOfWeek' => 6, 'start' => '14:00', 'end' => '22:00'], $venue['matchWindows'][0]);
+        self::assertSame(['dayOfWeek' => 6, 'start' => '14:00', 'end' => '22:00', 'appliesOnPublicHolidays' => false], $venue['matchWindows'][0]);
         self::assertArrayHasKey('unavailabilities', $venue);
 
         $team = $payload['teams'][0];
@@ -96,6 +97,33 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
      * sinon défaut de famille. Le moteur en dépend pour tenir la salle sur la
      * seule durée du match (D1).
      */
+    /**
+     * PR2 « jours fériés » (axe §7.1 « backend↔engine contract », CONTRACT_VERSION 1.6→1.7) — le
+     * payload de placement porte DEUX ajouts additifs que le moteur consomme pour une date fériée :
+     *   - `publicHolidays` : les dates fériées du territoire du club dans la fenêtre de saison
+     *     (résolution zone comme {@see PublicHolidaysController}) ;
+     *   - chaque fenêtre d'accès de gymnase porte `appliesOnPublicHolidays` (la 8ᵉ ligne
+     *     « Jours fériés » a un `dayOfWeek` nul + ce booléen à true ; une ligne de jour de semaine
+     *     le porte à false).
+     * ROUGE aujourd'hui : le builder n'émet ni la clé `publicHolidays`, ni `appliesOnPublicHolidays`
+     * sur les fenêtres. NEO rend VERT en synchronisant la forme Pydantic ⇄ payload (sync manuelle).
+     */
+    #[Group('phase1')]
+    public function testPayloadCarriesThePublicHolidayContract(): void
+    {
+        [$built] = $this->buildFromSeededClub();
+        $payload = $built['payload'];
+
+        self::assertArrayHasKey('publicHolidays', $payload, 'le payload porte les dates fériées du club (le moteur en a besoin pour juger une date fériée)');
+        self::assertIsArray($payload['publicHolidays']);
+
+        foreach ($payload['venues'] as $venue) {
+            foreach ($venue['matchWindows'] as $window) {
+                self::assertArrayHasKey('appliesOnPublicHolidays', $window, 'chaque fenêtre d\'accès porte le drapeau « Jours fériés » (additif)');
+            }
+        }
+    }
+
     #[Group('phase1')]
     public function testPerTeamDurationsCarryClubOverrideElseFamilyDefault(): void
     {

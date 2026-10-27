@@ -49,9 +49,22 @@ class VenueMatchWindow implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $venueId;
 
-    /** ISO 1 (Monday) .. 7 (Sunday) — NOT weekend-restricted (Friday-night matches exist). */
-    #[ORM\Column(type: 'smallint')]
-    private int $dayOfWeek;
+    /**
+     * ISO 1 (Monday) .. 7 (Sunday) — NOT weekend-restricted (Friday-night matches exist).
+     * NULL for the « Jours fériés » line (PR2, Q1 option c) : that line carries no weekday
+     * and applies to every official public holiday instead. Exactly one of dayOfWeek /
+     * appliesOnPublicHolidays is set (enforced by the state processor).
+     */
+    #[ORM\Column(type: 'smallint', nullable: true)]
+    private ?int $dayOfWeek = null;
+
+    /**
+     * PR2 (Q1 option c, décision fondateur 2026-10-27) — the « Jours fériés » line: TRUE means
+     * the window applies to any official public holiday of the club's territory (table
+     * public_holiday) instead of a weekday. A weekday line carries FALSE + a dayOfWeek.
+     */
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $appliesOnPublicHolidays = false;
 
     #[ORM\Column(type: 'time_immutable')]
     private DateTimeImmutable $startTime;
@@ -151,14 +164,26 @@ class VenueMatchWindow implements TenantOwnedInterface
         return $this;
     }
 
-    public function getDayOfWeek(): int
+    public function getDayOfWeek(): ?int
     {
         return $this->dayOfWeek;
     }
 
-    public function setDayOfWeek(int $dayOfWeek): self
+    public function setDayOfWeek(?int $dayOfWeek): self
     {
         $this->dayOfWeek = $dayOfWeek;
+
+        return $this;
+    }
+
+    public function isAppliesOnPublicHolidays(): bool
+    {
+        return $this->appliesOnPublicHolidays;
+    }
+
+    public function setAppliesOnPublicHolidays(bool $appliesOnPublicHolidays): self
+    {
+        $this->appliesOnPublicHolidays = $appliesOnPublicHolidays;
 
         return $this;
     }

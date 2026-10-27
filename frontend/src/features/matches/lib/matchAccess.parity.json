@@ -45,6 +45,52 @@
       "venueId": "v1", "day": 6, "kickoff": "14:30",
       "windows": [],
       "inside": false
+    },
+    {
+      "name": "PR2 — une ligne « Jours fériés » ne matche JAMAIS un appel jour-de-semaine",
+      "_comment": "La 8ᵉ ligne « Jours fériés » (appliesOnPublicHolidays) ne sert qu'un appel sur une date FÉRIÉE, jamais le prédicat jour-de-semaine — même quand son dayOfWeek coïnciderait et que l'heure tombe dedans. ROUGE aujourd'hui des DEUX côtés (le prédicat ne lit pas encore appliesOnPublicHolidays → true), VERT quand NEO écarte les lignes férié du prédicat jour-de-semaine.",
+      "venueId": "v1", "day": 6, "kickoff": "14:30",
+      "windows": [{ "venueId": "v1", "dayOfWeek": 6, "appliesOnPublicHolidays": true, "startTime": "14:00", "endTime": "18:00" }],
+      "inside": false
+    }
+  ],
+  "_holidayComment": "PR2 — cas de PARITÉ MÉCANIQUE du prédicat « le coup d'envoi tombe-t-il dans une ligne « Jours fériés » (appliesOnPublicHolidays) du gymnase ? », intervalle DEMI-OUVERT [start, end[, filtré sur le DRAPEAU férié SANS jour de semaine (une ligne férié vaut tout jour férié). Consommé par matchAccess.parity.test.ts (front, matchAccess.ts::kickoffInsideHolidayWindow) ET MatchAccessMirrorParityTest.php (backend, MatchConflictDetector::kickoffInsideHolidayWindow). `inside` = le verdict des deux implémentations. Une fenêtre jour-de-semaine (appliesOnPublicHolidays:false) n'est JAMAIS lue par ce prédicat — même quand son dayOfWeek coïnciderait.",
+  "holidayCases": [
+    {
+      "name": "coup d'envoi dans la ligne férié — dedans",
+      "venueId": "v1", "kickoff": "14:00",
+      "windows": [{ "venueId": "v1", "appliesOnPublicHolidays": true, "startTime": "10:00", "endTime": "18:00" }],
+      "inside": true
+    },
+    {
+      "name": "borne d'ouverture INCLUSE",
+      "venueId": "v1", "kickoff": "10:00",
+      "windows": [{ "venueId": "v1", "appliesOnPublicHolidays": true, "startTime": "10:00", "endTime": "18:00" }],
+      "inside": true
+    },
+    {
+      "name": "juste avant la fermeture — dedans (dernier coup d'envoi valide)",
+      "venueId": "v1", "kickoff": "17:59",
+      "windows": [{ "venueId": "v1", "appliesOnPublicHolidays": true, "startTime": "10:00", "endTime": "18:00" }],
+      "inside": true
+    },
+    {
+      "name": "borne de fermeture EXCLUE (demi-ouvert)",
+      "venueId": "v1", "kickoff": "18:00",
+      "windows": [{ "venueId": "v1", "appliesOnPublicHolidays": true, "startTime": "10:00", "endTime": "18:00" }],
+      "inside": false
+    },
+    {
+      "name": "après la fermeture — dehors",
+      "venueId": "v1", "kickoff": "20:00",
+      "windows": [{ "venueId": "v1", "appliesOnPublicHolidays": true, "startTime": "10:00", "endTime": "18:00" }],
+      "inside": false
+    },
+    {
+      "name": "aucune ligne férié (une fenêtre jour-de-semaine ne compte pas) — dehors",
+      "venueId": "v1", "kickoff": "14:00",
+      "windows": [{ "venueId": "v1", "dayOfWeek": 3, "appliesOnPublicHolidays": false, "startTime": "10:00", "endTime": "18:00" }],
+      "inside": false
     }
   ],
   "_closureComment": "P4-300 — cas de PARITÉ MÉCANIQUE du prédicat « la date d'un match tombe dans l'intervalle d'une fermeture de gymnase [startDate, endDate] », bornes INCLUSES. Consommé par matchAccess.parity.test.ts (front, matchAccess.ts::dateInsideClosure) ET MatchAccessMirrorParityTest.php (backend, MatchConflictDetector::dateInsideClosure). `inside` = le verdict des deux implémentations.",

@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\PublicHoliday;
-use App\Repository\ClubRepository;
-use App\Repository\PublicHolidayRepository;
+use App\Service\ClubPublicHolidays;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -27,8 +26,7 @@ final class PublicHolidaysController extends AbstractController
     use ResolvesCurrentClubTrait;
 
     public function __construct(
-        private readonly PublicHolidayRepository $holidayRepository,
-        private readonly ClubRepository $clubRepository,
+        private readonly ClubPublicHolidays $clubPublicHolidays,
         private readonly SeasonResolver $seasonResolver,
         private readonly RequestStack $requestStack,
     ) {}
@@ -42,8 +40,6 @@ final class PublicHolidaysController extends AbstractController
         }
 
         $request = $this->requestStack->getCurrentRequest();
-        $club = $this->clubRepository->find($clubId);
-        $zone = $club?->getSchoolZone();
 
         // Default window = the SELECTED season, else the current one.
         $season = $this->seasonResolver->selectedOrCurrent($request, $clubId);
@@ -59,6 +55,9 @@ final class PublicHolidaysController extends AbstractController
             return $this->json(['error' => 'No window: pass from/to or have an active season.'], Response::HTTP_BAD_REQUEST);
         }
 
+        // Zone du club + fériés nationaux/territoriaux : MAISON UNIQUE partagée avec le radar
+        // et le placement (ClubPublicHolidays), le feed cockpit la décore seulement.
+        $resolved = $this->clubPublicHolidays->inWindow($clubId, $from, $to);
         $items = array_map(
             static fn (PublicHoliday $h): array => [
                 'id' => $h->getId(),
@@ -66,10 +65,10 @@ final class PublicHolidaysController extends AbstractController
                 'label' => $h->getLabel(),
                 'national' => $h->isNational(),
             ],
-            $this->holidayRepository->findNationalAndZoneInWindow($zone, $from, $to),
+            $resolved['holidays'],
         );
 
-        return $this->json(['zone' => $zone, 'items' => $items]);
+        return $this->json(['zone' => $resolved['zone'], 'items' => $items]);
     }
 
     /**

@@ -1,6 +1,6 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only — jamais consommé par le solveur** : si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite.
+Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only** pour les ENTRAÎNEMENTS — si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite ; le solveur d'emploi du temps hebdomadaire ne lit jamais ces référentiels. **Exception MATCHS (décision fondateur 2026-10-27, PR2 « jours fériés »)** : les jours fériés SONT consommés par le radar de conflits des matchs ET par le placement des matchs — un match fixé par la ligue un jour férié n'est pas un week-end libre (la ligue a posé ce jour exprès). Le radar tait alors MATCH_TRAINING (pas d'entraînement un férié) et LEAGUE_WINDOW_VIOLATION (la fenêtre du jour de semaine ne s'applique pas), et juge l'accès match contre la ligne « Jours fériés » du gymnase (`VenueMatchWindow.appliesOnPublicHolidays`) ; le placement utilise cette même ligne et ignore la fenêtre de ligue du jour de semaine. Les dates fériées voyagent dans le payload `/place-matches` (`publicHolidays`, `CONTRACT_VERSION` 1.7).
 
 ## Modèle
 

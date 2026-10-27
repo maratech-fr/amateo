@@ -11346,6 +11346,18 @@
                                                                     ],
                                                                     "description": "Server-computed: done (minutes present), pending (a computation is in flight for this club), unavailable"
                                                                 },
+                                                                "travelFailureReason": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ],
+                                                                    "enum": [
+                                                                        "awaiting_retry",
+                                                                        "unroutable",
+                                                                        null
+                                                                    ],
+                                                                    "description": "Why the last computation left this gym without a travel time: awaiting_retry (the worker budget ran out before reaching it \u2014 a retry resumes), unroutable (routing mute / no itinerary / gym mislocated \u2014 a retry alone will not help); null when computed, in flight, or never attempted"
+                                                                },
                                                                 "approximated": {
                                                                     "type": "boolean",
                                                                     "description": "Always false for a link (an exact gym); the approximate fallback lives in the per-fixture projection"
@@ -33382,6 +33394,29 @@
                         "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "windowEditable": {
+                        "description": "La fen\u00eatre de cette fermeture est-elle modifiable (geste \u00ab Modifier les dates \u00bb) ?",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "windowLockedReason": {
+                        "description": "Pourquoi la fen\u00eatre n'est pas modifiable (g\u00e9n\u00e9ration en vol, saison archiv\u00e9e\u2026), sinon null.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "minEndDate": {
+                        "description": "Le PLANCHER \u00ab le pass\u00e9 ne bouge pas \u00bb : la fin ne descend jamais sous cette date (AAAA-MM-JJ).",
+                        "default": "",
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "closureTitle": {
+                        "description": "L'identit\u00e9 de la FERMETURE (titre de la racine), partag\u00e9e par tous ses plans-segments.",
+                        "default": "",
+                        "type": "string"
                     }
                 }
             },
@@ -33478,6 +33513,29 @@
                         "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "windowEditable": {
+                        "description": "La fen\u00eatre de cette fermeture est-elle modifiable (geste \u00ab Modifier les dates \u00bb) ?",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "windowLockedReason": {
+                        "description": "Pourquoi la fen\u00eatre n'est pas modifiable (g\u00e9n\u00e9ration en vol, saison archiv\u00e9e\u2026), sinon null.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "minEndDate": {
+                        "description": "Le PLANCHER \u00ab le pass\u00e9 ne bouge pas \u00bb : la fin ne descend jamais sous cette date (AAAA-MM-JJ).",
+                        "default": "",
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "closureTitle": {
+                        "description": "L'identit\u00e9 de la FERMETURE (titre de la racine), partag\u00e9e par tous ses plans-segments.",
+                        "default": "",
+                        "type": "string"
                     }
                 }
             },
@@ -33547,6 +33605,29 @@
                                 "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
                                 "default": false,
                                 "type": "boolean"
+                            },
+                            "windowEditable": {
+                                "description": "La fen\u00eatre de cette fermeture est-elle modifiable (geste \u00ab Modifier les dates \u00bb) ?",
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "windowLockedReason": {
+                                "description": "Pourquoi la fen\u00eatre n'est pas modifiable (g\u00e9n\u00e9ration en vol, saison archiv\u00e9e\u2026), sinon null.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "minEndDate": {
+                                "description": "Le PLANCHER \u00ab le pass\u00e9 ne bouge pas \u00bb : la fin ne descend jamais sous cette date (AAAA-MM-JJ).",
+                                "default": "",
+                                "type": "string",
+                                "format": "date"
+                            },
+                            "closureTitle": {
+                                "description": "L'identit\u00e9 de la FERMETURE (titre de la racine), partag\u00e9e par tous ses plans-segments.",
+                                "default": "",
+                                "type": "string"
                             }
                         }
                     }
@@ -37105,8 +37186,16 @@
                         "type": "string"
                     },
                     "dayOfWeek": {
-                        "default": 0,
-                        "type": "integer"
+                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2).",
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "appliesOnPublicHolidays": {
+                        "description": "PR2 \u2014 TRUE for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
+                        "default": false,
+                        "type": "boolean"
                     },
                     "startTime": {
                         "description": "HH:MM",
@@ -37125,7 +37214,6 @@
                 "description": "Match access window of a venue \u2014 \u2265 1 window makes it a MATCH venue (derived flag).",
                 "required": [
                     "venueId",
-                    "dayOfWeek",
                     "startTime",
                     "endTime"
                 ],
@@ -37143,8 +37231,16 @@
                     "dayOfWeek": {
                         "minimum": 1,
                         "maximum": 7,
+                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2). Exactly one of\ndayOfWeek / appliesOnPublicHolidays must be set \u2014 enforced in the state processor\nvia `$this->refuse(...)` (a 422 with a violation, never a muet one).",
                         "type": [
                             "integer",
+                            "null"
+                        ]
+                    },
+                    "appliesOnPublicHolidays": {
+                        "description": "PR2 (Q1 option c) \u2014 TRUE marks the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
+                        "type": [
+                            "boolean",
                             "null"
                         ]
                     },
@@ -37189,8 +37285,16 @@
                         "type": "string"
                     },
                     "dayOfWeek": {
-                        "default": 0,
-                        "type": "integer"
+                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2).",
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "appliesOnPublicHolidays": {
+                        "description": "PR2 \u2014 TRUE for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
+                        "default": false,
+                        "type": "boolean"
                     },
                     "startTime": {
                         "description": "HH:MM",
@@ -37233,8 +37337,16 @@
                                 "type": "string"
                             },
                             "dayOfWeek": {
-                                "default": 0,
-                                "type": "integer"
+                                "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2).",
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "appliesOnPublicHolidays": {
+                                "description": "PR2 \u2014 TRUE for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
+                                "default": false,
+                                "type": "boolean"
                             },
                             "startTime": {
                                 "description": "HH:MM",

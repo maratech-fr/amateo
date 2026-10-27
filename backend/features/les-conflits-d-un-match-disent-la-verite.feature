@@ -87,6 +87,17 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors le radar signale le coach principal indisponible, en orange
 
+  Scénario: Un match un jour férié ne crie jamais hors fenêtre de ligue (PR2)
+    Un match fixé par la ligue un jour férié n'est pas un week-end libre : la ligue a posé ce jour
+    exprès. Le radar ne lève donc jamais de violation de fenêtre de ligue pour un match un jour
+    férié, là où le même coup d'envoi un jour ordinaire serait hors de la fenêtre autorisée. Décor
+    identique à la coupe hors fenêtre, mais la rencontre tombe un jour férié officiel du territoire.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et une rencontre à domicile un jour férié, cadrée par une fenêtre de ligue que son coup d'envoi viole un jour ordinaire
+    Quand je demande les conflits des matchs
+    Alors le radar ne signale jamais ce match férié hors fenêtre de ligue
+
   Scénario: Une rencontre de coupe hors fenêtre de ligue est un vrai match, jamais un amical (P4-194)
     Une coupe PORTE une compétition (elle n'est jamais un amical à competitionId null) : le radar la
     soumet à l'enveloppe de ligue comme un championnat — hors de la fenêtre autorisée elle crie une

@@ -118,12 +118,18 @@ final class VenueConflicts
      * placement. PANEL rule mirrored exactly (kickoff point, half-open end,
      * no window anywhere = data not adopted = nothing to enforce).
      *
+     * PR2 — un match un jour FÉRIÉ se juge contre la seule ligne « Jours fériés »
+     * (`appliesOnPublicHolidays`) du gymnase, JAMAIS contre la fenêtre du jour de semaine (la
+     * ligue a posé ce jour exprès). Sans ligne férié déclarée ce jour-là, le coup d'envoi n'est
+     * dans aucune fenêtre applicable ⇒ ACCESS_WINDOW_LOST (« Hors accès match », vraie info).
+     *
      * @param list<Fixture>          $fixtures
      * @param list<VenueMatchWindow> $matchWindows
+     * @param list<string>           $publicHolidays dates fériées (Y-m-d)
      *
      * @return list<array<string, mixed>>
      */
-    public function accessWindowLostConflicts(array $fixtures, array $matchWindows): array
+    public function accessWindowLostConflicts(array $fixtures, array $matchWindows, array $publicHolidays = []): array
     {
         if ([] === $matchWindows) {
             return [];
@@ -138,26 +144,33 @@ final class VenueConflicts
             }
             $day = (int) $fixture->getMatchDate()->format('N');
             $kickoff = $kickoffTime->format('H:i');
+            $isHoliday = \in_array($fixture->getMatchDate()->format('Y-m-d'), $publicHolidays, true);
             $windowArrays = array_map(static fn (VenueMatchWindow $w): array => [
                 'venueId' => $w->getVenueId(),
                 'dayOfWeek' => $w->getDayOfWeek(),
                 'startTime' => $w->getStartTime()->format('H:i'),
                 'endTime' => $w->getEndTime()->format('H:i'),
+                'appliesOnPublicHolidays' => $w->isAppliesOnPublicHolidays(),
             ], $matchWindows);
-            if (MatchConflictDetector::kickoffInsideWindow($venueId, $day, $kickoff, $windowArrays)) {
+            $inside = $isHoliday
+                ? MatchConflictDetector::kickoffInsideHolidayWindow($venueId, $kickoff, $windowArrays)
+                : MatchConflictDetector::kickoffInsideWindow($venueId, $day, $kickoff, $windowArrays);
+            if ($inside) {
                 continue;
             }
-            // Les accès match du GYMNASE de la fixture, jour du match d'abord — de quoi
-            // dire à l'écran « placé hors des accès (samedi 14:00–18:00, …) ». Champ
-            // ADDITIF (hors identité : l'empreinte reste TYPE:fixtureId).
+            // Les accès match du GYMNASE de la fixture, de quoi dire à l'écran « placé hors des
+            // accès (samedi 14:00–18:00, …) ». Un jour FÉRIÉ on montre les lignes « Jours fériés »
+            // du gymnase (les seules applicables ce jour) ; sinon les lignes de jour de semaine,
+            // jour du match d'abord. Champ ADDITIF (hors identité : l'empreinte reste TYPE:fixtureId).
             $venueWindows = array_values(array_filter(
                 $windowArrays,
-                static fn (array $w): bool => $w['venueId'] === $venueId,
+                static fn (array $w): bool => $w['venueId'] === $venueId
+                    && ($isHoliday ? $w['appliesOnPublicHolidays'] : !$w['appliesOnPublicHolidays']),
             ));
             usort($venueWindows, static fn (array $a, array $b): int => [
-                $a['dayOfWeek'] === $day ? 0 : 1, $a['dayOfWeek'], $a['startTime'],
+                $a['dayOfWeek'] === $day ? 0 : 1, $a['dayOfWeek'] ?? 8, $a['startTime'],
             ] <=> [
-                $b['dayOfWeek'] === $day ? 0 : 1, $b['dayOfWeek'], $b['startTime'],
+                $b['dayOfWeek'] === $day ? 0 : 1, $b['dayOfWeek'] ?? 8, $b['startTime'],
             ]);
             $conflicts[] = [
                 'type' => 'ACCESS_WINDOW_LOST',
@@ -168,6 +181,7 @@ final class VenueConflicts
                     'dayOfWeek' => $w['dayOfWeek'],
                     'startTime' => $w['startTime'],
                     'endTime' => $w['endTime'],
+                    'appliesOnPublicHolidays' => $w['appliesOnPublicHolidays'],
                 ], $venueWindows),
             ];
         }

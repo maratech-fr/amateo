@@ -239,6 +239,8 @@ final class SeasonTransitionService
             $copy->setSeasonId($target->getId());
             $copy->setVenueId($newVenueId);
             $copy->setDayOfWeek($window->getDayOfWeek());
+            // PR2 — la ligne « Jours fériés » (dayOfWeek nul + ce drapeau) se recopie comme les autres.
+            $copy->setAppliesOnPublicHolidays($window->isAppliesOnPublicHolidays());
             $copy->setStartTime($window->getStartTime());
             $copy->setEndTime($window->getEndTime());
             $this->entityManager->persist($copy);

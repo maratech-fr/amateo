@@ -12,10 +12,16 @@ import type { VenueMatchWindow } from "../api";
  * plages le MÊME jour se rejoignent par une virgule (« sam. 12:00–14:00, 16:00–23:00 »). Les
  * jours viennent du foyer unique `days.ts` (« sam. » minuscule, abrégé, avec point) ; les heures
  * telles que servies (HH:MM), séparées d'un tiret demi-cadratin. Sans fenêtre : « aucun accès match ».
+ *
+ * PR2 — la ligne « Jours fériés » (dayOfWeek nul, `appliesOnPublicHolidays`) est regroupée à part,
+ * libellée « fériés » et placée EN DERNIER (après dimanche).
  */
 
 /** Abréviation minuscule d'un jour ISO depuis le foyer unique (« Sam » → « sam. »). */
 const DAY_ABBR = new Map(DAYS.map((d) => [d.n, `${d.label.toLowerCase()}.`]));
+
+/** Clé de regroupement des lignes « Jours fériés » : sort après dimanche (7). */
+const HOLIDAY_KEY = 8;
 
 export function formatMatchAccessWindows(windows: VenueMatchWindow[]): string {
   if (0 === windows.length) {
@@ -23,9 +29,10 @@ export function formatMatchAccessWindows(windows: VenueMatchWindow[]): string {
   }
   const byDay = new Map<number, VenueMatchWindow[]>();
   for (const window of windows) {
-    const bucket = byDay.get(window.dayOfWeek) ?? [];
+    const key = window.appliesOnPublicHolidays ? HOLIDAY_KEY : (window.dayOfWeek ?? HOLIDAY_KEY);
+    const bucket = byDay.get(key) ?? [];
     bucket.push(window);
-    byDay.set(window.dayOfWeek, bucket);
+    byDay.set(key, bucket);
   }
   return [...byDay.keys()]
     .sort((a, b) => a - b)
@@ -35,7 +42,8 @@ export function formatMatchAccessWindows(windows: VenueMatchWindow[]): string {
         .sort((a, b) => a.startTime.localeCompare(b.startTime))
         .map((w) => `${w.startTime}–${w.endTime}`)
         .join(", ");
-      return `${DAY_ABBR.get(day) ?? "?"} ${ranges}`;
+      const label = HOLIDAY_KEY === day ? "fériés" : (DAY_ABBR.get(day) ?? "?");
+      return `${label} ${ranges}`;
     })
     .join(" · ");
 }

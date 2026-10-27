@@ -44,8 +44,13 @@ class VenueMatchWindowResource
     #[Groups(['read'])]
     public string $venueId = '';
 
+    /** Weekday line: ISO 1..7. NULL for the « Jours fériés » line (PR2). */
     #[Groups(['read'])]
-    public int $dayOfWeek = 0;
+    public ?int $dayOfWeek = null;
+
+    /** PR2 — TRUE for the « Jours fériés » line (no weekday). */
+    #[Groups(['read'])]
+    public bool $appliesOnPublicHolidays = false;
 
     /** HH:MM */
     #[Groups(['read'])]
@@ -64,6 +69,7 @@ class VenueMatchWindowResource
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->venueId = $entity->getVenueId();
         $dto->dayOfWeek = $entity->getDayOfWeek();
+        $dto->appliesOnPublicHolidays = $entity->isAppliesOnPublicHolidays();
         $dto->startTime = $entity->getStartTime()->format('H:i');
         $dto->endTime = $entity->getEndTime()->format('H:i');
 
