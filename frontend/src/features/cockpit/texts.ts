@@ -99,4 +99,9 @@ export const COCKPIT_TEXTS = {
   futurePlansWarning: "Des plannings de période futurs seraient balayés si vous validez ou rouvrez le socle ensuite.",
   datesChangedToast: "Dates modifiées — les nouveaux plannings sont dans « Tous les plannings ».",
   datesChangedToastFromList: "Dates modifiées.",
+  // FbiDeadlineCard (carte « Saisie FBI » du cockpit) — migrée au lot lisibilité BCCL (PR1, 2026-10-27).
+  fbiDeadlineProposed: "proposée",
+  fbiSinceLastVisit: "Depuis votre dernière visite :",
+  fbiOpenList: "Ouvrir la liste FBI",
+  fbiPlaceMatches: "Placer les matchs",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

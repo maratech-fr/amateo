@@ -13,6 +13,7 @@ import { isManagementRole } from "@/shared/lib/roles";
 import { useMe } from "@/shared/session/queries";
 
 import { todayISO } from "./lib/date";
+import { COCKPIT_TEXTS } from "./texts";
 
 /**
  * La carte « Saisie FBI » du cockpit — le rappel de tout ce qui reste à porter dans le
@@ -104,7 +105,7 @@ export function FbiDeadlineCard() {
                   {overdue ? `échéance dépassée — ${body}` : `${body} avant le ${frShortDate(window.deadline)}`}
                 </span>
                 {window.competitionNames.length > 0 ? <span className="text-muted-foreground"> · {window.competitionNames.join(", ")}</span> : null}
-                {"community" === window.source ? <span className="text-muted-foreground"> · proposée</span> : null}
+                {"community" === window.source ? <span className="text-muted-foreground"> · {COCKPIT_TEXTS.fbiDeadlineProposed}</span> : null}
               </li>
             );
           })}
@@ -113,7 +114,7 @@ export function FbiDeadlineCard() {
 
       {deltaSegments.length > 0 ? (
         <p className="mt-2 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Depuis votre dernière visite :</span> {deltaSegments.join(" · ")}
+          <span className="font-medium text-foreground">{COCKPIT_TEXTS.fbiSinceLastVisit}</span> {deltaSegments.join(" · ")}
         </p>
       ) : null}
 
@@ -132,12 +133,12 @@ export function FbiDeadlineCard() {
       <Button variant="outline" size="sm" className="mt-3" asChild>
         {fbiListHasContent ? (
           <Link to="/matchs?fbi=1">
-            Ouvrir la liste FBI
+            {COCKPIT_TEXTS.fbiOpenList}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         ) : (
           <Link to="/matchs">
-            Placer les matchs
+            {COCKPIT_TEXTS.fbiPlaceMatches}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         )}

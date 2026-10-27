@@ -17,6 +17,7 @@ import {
   toTreatLabel,
 } from "./lib/leagueValidation";
 import { useConfirmLeagueValidatedFixtures, useLeagueValidationOutlook } from "./queries";
+import { MATCHES_TEXTS } from "./texts";
 
 /**
  * Lot O — « validé ligue » en lot, PILOTÉ PAR L'ÉCHÉANCE du championnat. Un club qui
@@ -57,7 +58,7 @@ export function LeagueValidationConfirmDialog({ open, outlook, onClose }: { open
   return (
     <ConfirmDialog
       open={open}
-      title="Marquer « déjà dans FBI »"
+      title={LEAGUE_VALIDATION_CONFIRM_LABEL}
       description={
         <div className="flex flex-col gap-2 text-left">
           <p>{leagueValidationIntro(outlook.totalValidatable)}</p>
@@ -110,7 +111,7 @@ function LeagueToTreatNotice({ fixtures }: { fixtures: LeagueToTreatFixture[] })
           </ul>
         </div>
         <Button variant="outline" size="sm" className="shrink-0" onClick={scrollToQueue}>
-          Traiter dans la file
+          {MATCHES_TEXTS.leagueTreatInQueue}
           <ArrowRight className="size-4" aria-hidden="true" />
         </Button>
       </div>
@@ -134,7 +135,7 @@ function MissingDeadlineNotice({ competitions }: { competitions: MissingDeadline
           {competitions.length} championnat{competitions.length > 1 ? "s" : ""} sans échéance {competitions.length > 1 ? "ont" : "a"} des rencontres prêtes ({names}) — renseignez leur échéance de saisie pour les valider.
         </span>
         <Button variant="outline" size="sm" className="shrink-0" onClick={() => void navigate(ENTRY_DEADLINES_PATH)}>
-          Échéances de saisie
+          {MATCHES_TEXTS.entryDeadlinesLink}
           <ArrowRight className="size-4" aria-hidden="true" />
         </Button>
       </div>
@@ -215,9 +216,9 @@ export function EntryDeadlinesLink() {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
       <CalendarClock className="size-4 shrink-0" aria-hidden="true" />
-      <span className="grow">Des échéances de saisie à renseigner ? Complétez-les pour ne rien manquer.</span>
+      <span className="grow">{MATCHES_TEXTS.entryDeadlinesPrompt}</span>
       <Button variant="ghost" size="sm" className="shrink-0" onClick={() => void navigate(ENTRY_DEADLINES_PATH)}>
-        Échéances de saisie
+        {MATCHES_TEXTS.entryDeadlinesLink}
         <ArrowRight className="size-4" aria-hidden="true" />
       </Button>
     </div>

@@ -16,6 +16,7 @@ import { DEFAULT_KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { applyConsultToParams } from "./lib/urlState";
 import { useAttachVenueLabel, useCompetitions, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
 import { buildReviewQueue, byMatchDateAsc } from "./lib/reviewQueue";
+import { MATCHES_TEXTS } from "./texts";
 import { ReviewQueueRow } from "./ReviewQueueRow";
 import { useMatchesStore } from "./store";
 import { weekendKeyOf } from "./lib/weekendGrid";
@@ -185,14 +186,14 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {hasTreated ? (
             <FilterToggle checked={showTreated} onChange={toggleTreated}>
-              Afficher les traitées
+              {MATCHES_TEXTS.reviewShowTreated}
             </FilterToggle>
           ) : null}
           <FilterToggle checked={hideAway} onChange={toggleHideAway}>
-            Masquer les extérieurs
+            {MATCHES_TEXTS.reviewHideAway}
           </FilterToggle>
         </div>
-        <EmptyState icon={Inbox} title="Rien à traiter" description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles." />
+        <EmptyState icon={Inbox} title={MATCHES_TEXTS.reviewNothingToTreatTitle} description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles." />
       </div>
     );
   }
@@ -205,10 +206,10 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <FilterToggle checked={showTreated} onChange={toggleTreated}>
-          Afficher les traitées
+          {MATCHES_TEXTS.reviewShowTreated}
         </FilterToggle>
         <FilterToggle checked={hideAway} onChange={toggleHideAway}>
-          Masquer les extérieurs
+          {MATCHES_TEXTS.reviewHideAway}
         </FilterToggle>
       </div>
       {visibleQueues.map((queue) => {

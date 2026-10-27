@@ -15,6 +15,7 @@ import { isFocusableConflict } from "./lib/conflictFocus";
 import { openConflictCount } from "./lib/conflictResolution";
 import { hasHomeSide } from "./lib/consultFilter";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 interface ConflictRadarProps {
   conflicts: Conflict[];
@@ -71,7 +72,7 @@ export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprin
           {openCount > 0 ? (
             <StatusPill variant="warning" className="py-0">
               {openCount}
-              <span className="sr-only"> à traiter</span>
+              <span className="sr-only"> {MATCHES_TEXTS.radarToTreatSr}</span>
             </StatusPill>
           ) : null}
         </CardTitle>
@@ -80,7 +81,7 @@ export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprin
         {conflicts.length > 0 ? (
           <SegmentedControl
             mode="single"
-            label="Conflits à afficher"
+            label={MATCHES_TEXTS.homeFilterGroupLabel}
             className="self-start"
             options={[
               { key: "home", label: "Avec un match à domicile", count: homeConflictCount, ariaLabel: `Avec un match à domicile (${homeConflictCount})` },

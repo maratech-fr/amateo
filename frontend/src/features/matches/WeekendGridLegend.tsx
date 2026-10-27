@@ -1,3 +1,5 @@
+import { MATCHES_TEXTS } from "./texts";
+
 /**
  * Légende CONDITIONNELLE sous la grille week-end (lot 1, décision fondateur 2026-09-17) :
  * elle n'explique que ce que la semaine affichée contient RÉELLEMENT.
@@ -34,7 +36,7 @@ export function WeekendGridLegend({ toConfirmCount, showHabits, showTravel = fal
       {showHabits ? (
         <span className="flex items-center gap-1.5">
           <span aria-hidden="true" className="size-3 shrink-0 rounded border border-dashed border-border" />
-          <span>Habitude — fenêtre protégée</span>
+          <span>{MATCHES_TEXTS.legendHabit}</span>
         </span>
       ) : null}
       {showTravel ? (
@@ -44,7 +46,7 @@ export function WeekendGridLegend({ toConfirmCount, showHabits, showTravel = fal
             className="size-3 shrink-0 rounded border border-border bg-surface-muted"
             style={{ backgroundImage: "repeating-linear-gradient(45deg, color-mix(in oklch, var(--muted-foreground) 14%, transparent) 0 2px, transparent 2px 7px)" }}
           />
-          <span>Trajet aller-retour — depuis/vers le siège du club</span>
+          <span>{MATCHES_TEXTS.legendTravel}</span>
         </span>
       ) : null}
     </div>

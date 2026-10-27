@@ -27,6 +27,7 @@ import { applyConflictFocusToParams, applyConflictsToParams, applyConsultToParam
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
 import { useCoaches, useCompetitions, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
@@ -382,7 +383,7 @@ export function ConflictsPage() {
   const renderConflictAction = (conflict: Conflict): ReactNode => {
     if ("COMPETITION_INCOMPLETE" === conflict.type) {
       return (
-        <Button variant="outline" size="sm" title="Importer les matchs manquants" onClick={() => navigate("/matchs/importer")}>
+        <Button variant="outline" size="sm" title={MATCHES_TEXTS.conflictsImportMissingTitle} onClick={() => navigate("/matchs/importer")}>
           <Download className="size-4" aria-hidden="true" />
           Importer
         </Button>
@@ -447,7 +448,7 @@ export function ConflictsPage() {
     return (
       <EmptyState
         icon={ShieldCheck}
-        title="Aucun conflit sur la saison"
+        title={MATCHES_TEXTS.noSeasonConflictsTitle}
         description="Tous les matchs placés respectent les gymnases, les coachs et les fenêtres ligue."
       />
     );
@@ -465,7 +466,7 @@ export function ConflictsPage() {
     <div className="ml-auto">
       <SegmentedControl
         mode="single"
-        label="Conflits à afficher"
+        label={MATCHES_TEXTS.homeFilterGroupLabel}
         options={[
           { key: "home", label: "Avec un match à domicile", count: homeConflictCount, ariaLabel: `Avec un match à domicile (${homeConflictCount})` },
           { key: "all", label: "Tous", count: familyTreatmentFiltered.length, ariaLabel: `Tous (${familyTreatmentFiltered.length})` },
@@ -484,7 +485,7 @@ export function ConflictsPage() {
           vit sur le SegmentedControl ; ce div n'est qu'une rangée de mise en page. */}
       <div className="flex flex-wrap items-center gap-2">
         <span id="conflicts-pivot-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
-          Regrouper par
+          {MATCHES_TEXTS.groupByLabel}
         </span>
         <SegmentedControl
           mode="single"
@@ -513,7 +514,7 @@ export function ConflictsPage() {
         {/* Familles de conflits (présentes) avec compteur À TRAITER. */}
         <div role="group" aria-labelledby="conflicts-familles-label" className="flex flex-wrap items-center gap-1.5">
           <span id="conflicts-familles-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
-            Familles
+            {MATCHES_TEXTS.familiesGroupLabel}
           </span>
           {familyChips.map((family) => (
             <FilterChip key={family} pressed={isFamilyChecked(family)} count={familyCounts.get(family) ?? 0} onPress={() => toggleFamily(family)}>
@@ -541,7 +542,7 @@ export function ConflictsPage() {
         {hasTreated ? (
           <div role="group" aria-labelledby="conflicts-traitement-label" className="flex flex-wrap items-center gap-1.5">
             <span id="conflicts-traitement-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
-              Traitement
+              {MATCHES_TEXTS.treatmentGroupLabel}
             </span>
             {treatmentChipKeys(allConflicts).map((key) => {
               const meta = TREATMENT_META[key];

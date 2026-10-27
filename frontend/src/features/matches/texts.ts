@@ -199,4 +199,34 @@ export const MATCHES_TEXTS = {
   // Chantier H — le tag d'un conflit de coach ADOUCI : un adjoint disponible peut tenir ce côté.
   // Rendu avec une icône (jamais la couleur seule, a11y).
   coachReliefTag: "Un adjoint peut couvrir",
+
+  // ── Lisibilité BCCL (PR1, 2026-10-27) — écrans migrés dans le même lot (la migration ne recule jamais) ──
+  // WeekendGridLegend
+  legendHabit: "Habitude — fenêtre protégée",
+  legendTravel: "Trajet aller-retour — depuis/vers le siège du club",
+  // LeagueValidation (rattrapage « déjà dans FBI »)
+  leagueTreatInQueue: "Traiter dans la file",
+  entryDeadlinesLink: "Échéances de saisie",
+  entryDeadlinesPrompt: "Des échéances de saisie à renseigner ? Complétez-les pour ne rien manquer.",
+  // ReviewQueue (file d'import = acquittement)
+  reviewShowTreated: "Afficher les traitées",
+  reviewHideAway: "Masquer les extérieurs",
+  reviewNothingToTreatTitle: "Rien à traiter",
+  // ReviewQueueRow
+  rowKickoffNotPublished: "heure non publiée",
+  rowNeutralGround: "Terrain neutre",
+  rowAmateoColumn: "Amateo",
+  rowKeepAmateo: "Garder Amateo",
+  rowChooseVenue: "Choisir un gymnase",
+  rowAttach: "Rattacher",
+  rowConfirm: "Confirmer",
+  rowCancel: "Annuler",
+  // ConflictsPage / ConflictRadar
+  conflictsImportMissingTitle: "Importer les matchs manquants",
+  noSeasonConflictsTitle: "Aucun conflit sur la saison",
+  homeFilterGroupLabel: "Conflits à afficher",
+  groupByLabel: "Regrouper par",
+  familiesGroupLabel: "Familles",
+  treatmentGroupLabel: "Traitement",
+  radarToTreatSr: "à traiter",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;
