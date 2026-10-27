@@ -10,7 +10,7 @@ function read<T>(data: T[] | undefined, isError = false) {
   return { data, isError, refetch: vi.fn() };
 }
 
-const win: VenueMatchWindow = { id: "w1", venueId: "v1", dayOfWeek: 6, startTime: "10:00", endTime: "12:00" };
+const win: VenueMatchWindow = { id: "w1", venueId: "v1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "10:00", endTime: "12:00" };
 const unavail: VenueUnavailability = { id: "u1", venueId: "v1", startDate: "2026-10-03", endDate: "2026-10-03", label: null };
 const closure: VenueClosure = { id: "c1", venueId: "v1", title: "Travaux", startDate: "2026-10-03", endDate: "2026-10-16" };
 

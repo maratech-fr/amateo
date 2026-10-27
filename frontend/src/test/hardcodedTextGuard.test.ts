@@ -80,6 +80,8 @@ const MIGRATED_FILES = [
   "features/matches/MatchesLayout.tsx",
   // Chantier A PR 2 — la modale d'import FBI, migrée en même temps que la section « Salles à domicile ».
   "features/matches/ImportFbiDialog.tsx",
+  // PR2 « jours fériés » — l'éditeur des accès match d'un gymnase, migré en ajoutant la 8ᵉ ligne « Jours fériés ».
+  "features/matches/MatchWindowsEditor.tsx",
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",

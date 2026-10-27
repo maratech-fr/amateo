@@ -26,7 +26,22 @@ export function matchVenueIds(windows: VenueMatchWindow[]): Set<string> {
  * figure au registre `FrontRederivationRegistryTest`.
  */
 export function kickoffInsideWindow(venueId: string, day: number, kickoff: string, windows: VenueMatchWindow[]): boolean {
-  return windows.some((w) => w.venueId === venueId && w.dayOfWeek === day && kickoff >= w.startTime && kickoff < w.endTime);
+  // PR2 — une ligne « Jours fériés » (appliesOnPublicHolidays) ne sert JAMAIS un appel
+  // jour-de-semaine, même si son dayOfWeek coïncidait : elle n'est lue qu'un jour férié par
+  // `kickoffInsideHolidayWindow`.
+  return windows.some((w) => !w.appliesOnPublicHolidays && w.venueId === venueId && w.dayOfWeek === day && kickoff >= w.startTime && kickoff < w.endTime);
+}
+
+/**
+ * PR2 « jours fériés » — LE prédicat pur d'accès match UN JOUR FÉRIÉ : le coup d'envoi tombe-t-il
+ * dans une ligne « Jours fériés » (`appliesOnPublicHolidays`) du gymnase ? Même algèbre
+ * DEMI-OUVERTE `[start, end[` que {@link kickoffInsideWindow}, mais filtrée sur le DRAPEAU férié
+ * (pas sur un jour de semaine). MIROIR MÉCANIQUE de
+ * `App\Service\MatchConflictDetector::kickoffInsideHolidayWindow` (même fichier déclaré au registre
+ * `FrontRederivationRegistryTest`).
+ */
+export function kickoffInsideHolidayWindow(venueId: string, kickoff: string, windows: VenueMatchWindow[]): boolean {
+  return windows.some((w) => w.appliesOnPublicHolidays && w.venueId === venueId && kickoff >= w.startTime && kickoff < w.endTime);
 }
 
 /**
@@ -65,6 +80,10 @@ export interface VenueAccessIssue {
  * 2. the club declares match windows but this venue has none on that day;
  * 3. a kickoff outside every window of (venue, day).
  * A club with NO window anywhere has not adopted the data → nothing to enforce.
+ *
+ * PR2 « jours fériés » — quand `matchDate` est un jour férié (`holidays`, feed `GET public-holidays`),
+ * l'accès se juge contre la ligne « Jours fériés » du gymnase (`appliesOnPublicHolidays`), JAMAIS
+ * la fenêtre du jour de semaine : la ligue a posé ce match ce jour férié exprès.
  */
 export function venueAccessError(
   venueId: string,
@@ -75,6 +94,7 @@ export function venueAccessError(
   unavailabilities: VenueUnavailability[],
   isFriendly: boolean,
   closures: VenueClosure[] = [],
+  holidays: string[] = [],
 ): VenueAccessIssue | null {
   for (const unavailability of unavailabilities) {
     if (unavailability.venueId === venueId && matchDate >= unavailability.startDate && matchDate <= unavailability.endDate) {
@@ -105,12 +125,18 @@ export function venueAccessError(
   const friendlyOffSlot: VenueAccessIssue = { level: "warning", message: "Amical hors créneau match — placement libre." };
 
   const day = isoDayOf(matchDate);
-  const dayWindows = windows.filter((w) => w.venueId === venueId && w.dayOfWeek === day);
-  if (0 === dayWindows.length) {
-    return isFriendly ? friendlyOffSlot : { level: "error", message: `Pas d'accès match le ${dayLabelLong(day) || "?"} à ${venueName}.` };
+  // PR2 — un jour férié on lit la ligne « Jours fériés » ; un jour ordinaire la fenêtre du jour.
+  const isHoliday = holidays.includes(matchDate);
+  const relevantWindows = isHoliday
+    ? windows.filter((w) => w.venueId === venueId && w.appliesOnPublicHolidays)
+    : windows.filter((w) => w.venueId === venueId && !w.appliesOnPublicHolidays && w.dayOfWeek === day);
+  if (0 === relevantWindows.length) {
+    const when = isHoliday ? "les jours fériés" : `le ${dayLabelLong(day) || "?"}`;
+    return isFriendly ? friendlyOffSlot : { level: "error", message: `Pas d'accès match ${when} à ${venueName}.` };
   }
-  if (null !== kickoff && "" !== kickoff && !kickoffInsideWindow(venueId, day, kickoff, windows)) {
-    const ranges = dayWindows.map((w) => `${w.startTime}–${w.endTime}`).join(", ");
+  const inside = isHoliday ? kickoffInsideHolidayWindow(venueId, kickoff ?? "", windows) : kickoffInsideWindow(venueId, day, kickoff ?? "", windows);
+  if (null !== kickoff && "" !== kickoff && !inside) {
+    const ranges = relevantWindows.map((w) => `${w.startTime}–${w.endTime}`).join(", ");
     return isFriendly ? friendlyOffSlot : { level: "error", message: `Hors fenêtre d'accès match (${ranges}).` };
   }
 

@@ -229,4 +229,21 @@ export const MATCHES_TEXTS = {
   familiesGroupLabel: "Familles",
   treatmentGroupLabel: "Traitement",
   radarToTreatSr: "à traiter",
+  // MatchWindowsEditor (accès match d'un gymnase) — PR2 « jours fériés » (8ᵉ ligne)
+  matchWindowsLoadError: "Les fenêtres d’accès match n’ont pas pu être chargées.",
+  matchWindowsEmpty:
+    "Aucune fenêtre d’accès match — ce gymnase n’accueille pas de matchs. Ajoutez les créneaux qui vous sont accordés les jours de match.",
+  matchWindowDayLabel: "Jour",
+  matchWindowStartLabel: "Début",
+  matchWindowEndLabel: "Fin",
+  matchWindowDayFieldName: "Jour de la fenêtre match",
+  matchWindowStartFieldName: "Début de la fenêtre match",
+  matchWindowEndFieldName: "Fin de la fenêtre match",
+  matchWindowHolidayOption: "Jours fériés",
+  matchWindowAdd: "Ajouter la fenêtre match",
+  matchWindowRangeInvalid: "La fenêtre doit finir après son début, le même jour.",
+  matchWindowDelete: (what: string) => `Supprimer la fenêtre ${what}`,
+  matchWindowDeleteTitle: "Supprimer cette fenêtre d’accès match ?",
+  matchWindowDeleteDescription: (what: string) => `La fenêtre ${what} sera retirée de ce gymnase.`,
+  matchWindowDeleteConfirm: "Supprimer",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;
