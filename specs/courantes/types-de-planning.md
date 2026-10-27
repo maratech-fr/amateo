@@ -148,18 +148,19 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   Détail technique (endpoints, prédicats, jeton d'aperçu) : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md),
   `backend/docs/backend-inventory.md`, `accueil-cockpit-temporel.md` §5bis.
 - **Prolonger/raccourcir un bloc pour qu'il ENJAMBE des vacances, en reprenant le planning validé**
-  (rail backend distinct, fondateur 2026-10-27 — surface écran prévue en PR2) : contrairement aux
-  deux gestes ci-dessus (qui ne connaissent pas le trou de vacances), celui-ci **segmente** la
-  fenêtre demandée en runs en retranchant les fenêtres de vacances recoupées, puis chaque run en
-  semaines ; une seule fenêtre résultante glisse/rétrécit sans se découper. Sinon, la racine-bloc
-  validée devient une mère découpée **sans destruction** : le run déjà travaillé (le « milieu »)
-  garde sa version (ré-ancrée, slots intacts), et **chaque autre run naît en COPIE VALIDÉE
-  D'OFFICE** de cette même version — amendant, bornée à CE rail, la règle « un segment neuf naît
-  vide » du geste « Déjà découpée en semaines-enfants » ci-dessus, qui reste par ailleurs
-  inchangée. Le passé ne bouge jamais (début figé si déjà commencée, fin jamais sous aujourd'hui) ;
-  aperçu et application partagent le même calcul, jeton recalculé sous verrous. Détail technique :
-  [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) inv. 2 (amendement) ·
-  `backend/docs/backend-controllers.md`.
+  (rail distinct, fondateur 2026-10-27) : contrairement aux deux gestes ci-dessus (qui ne
+  connaissent pas le trou de vacances), celui-ci **segmente** la fenêtre demandée en runs en
+  retranchant les fenêtres de vacances recoupées, puis chaque run en semaines ; une seule fenêtre
+  résultante glisse/rétrécit sans se découper. Sinon, la racine-bloc validée devient une mère
+  découpée **sans destruction** : le run déjà travaillé (le « milieu ») garde sa version
+  (ré-ancrée, slots intacts), et **chaque autre run naît en COPIE VALIDÉE D'OFFICE** de cette même
+  version — amendant, bornée à CE rail, la règle « un segment neuf naît vide » du geste « Déjà
+  découpée en semaines-enfants » ci-dessus, qui reste par ailleurs inchangée. Le passé ne bouge
+  jamais (début figé si déjà commencée, fin jamais sous aujourd'hui) ; aperçu et application
+  partagent le même calcul, jeton recalculé sous verrous. Geste écran : bouton « Dates » sur la
+  ligne de plan CLOSURE de « Tous les plannings » et sur la page du planning (`ClosureWindowDialog`).
+  Détail technique : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) inv. 2
+  (amendement) · `backend/docs/backend-controllers.md` · `accueil-cockpit-temporel.md` §5bis.
 - **État** : rodé — découpage hebdomadaire (E1) avec granularité JOUR, contraintes héritées
   cochables, séances par équipe ajustables dans l'écran (champ 1–7 + bascule = 0 séance), défaut =
   tout le club actif, nom auto = le titre de l'entrée (E6). Reste ouvert, non cadré en roadmap : la
