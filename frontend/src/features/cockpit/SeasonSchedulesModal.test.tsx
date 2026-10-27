@@ -289,8 +289,11 @@ describe("SeasonSchedulesModal — geste « Modifier les dates » d'une fermetur
   });
 
   it("n'offre JAMAIS le geste sur le plan de saison ni sur un plan HOLIDAY", () => {
+    // windowEditable:true à DESSEIN : seul le garde de TYPE doit retenir le bouton. Un fixture
+    // HOLIDAY non-éditable rendait ce test vacuum (le garde éditable/raison le retenait déjà,
+    // le garde de type n'était jamais exercé — falsifié : type retiré, test resté VERT).
     plansMock = [
-      { id: "p-hol", type: "HOLIDAY", name: "Vacances Toussaint", calendarEntryId: "entry-hol", chosenScheduleId: "h1", windowEditable: false, windowLockedReason: null, closureTitle: "" },
+      { id: "p-hol", type: "HOLIDAY", name: "Vacances Toussaint", calendarEntryId: "entry-hol", chosenScheduleId: "h1", windowEditable: true, windowLockedReason: null, closureTitle: "Vacances Toussaint" },
     ];
     open([
       plan({ id: "v1", status: "COMPLETED", isChosen: true }), // socle (SEASON)

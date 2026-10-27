@@ -2813,7 +2813,12 @@ describe("PlanningPage — geste « Modifier les dates » d'une fermeture (PR2)"
   });
 
   it("ne l'affiche PAS sur le planning de SAISON (plan non-fermeture)", async () => {
-    renderWithProviders(<PlanningPage />); // défaut = workVersion SEASON, aucun plan de période
+    // Le plan de SAISON affiché (me.seasonPlan.id = "plan-1") servi windowEditable:true à DESSEIN :
+    // seul le garde de TYPE (displayedClosurePlan ne retient qu'un plan CLOSURE) doit l'écarter. Sans
+    // ce plan en state, displayedClosurePlan restait null quoi qu'il arrive et le test était vacuum
+    // (falsifié : filtre de type retiré, test resté VERT) — il ne prouvait pas la discrimination.
+    plansState.plans = [{ id: "plan-1", type: "SEASON", name: "Planning A", startDate: "2025-09-01", calendarEntryId: null, chosenScheduleId: null, teamSelectionInitialized: true, windowEditable: true, windowLockedReason: null }];
+    renderWithProviders(<PlanningPage />); // défaut = workVersion SEASON
     await screen.findByText("U11");
     expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
   });

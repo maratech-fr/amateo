@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -219,9 +219,14 @@ describe("ClosureWindowDialog — « Confirmer » n'applique QUE l'aperçu vu", 
 
     // On RE-change la fin pendant que la 1ʳᵉ requête est en vol → son résultat devient caduc.
     fireEvent.change(screen.getByLabelText("Jusqu'au"), { target: { value: "2026-12-11" } });
-    resolveStale(PREVIEW); // la réponse (dates du 18) arrive en retard
-
-    await Promise.resolve();
+    // La réponse (dates du 18) arrive en retard : on la résout DANS `act` et on laisse React traiter
+    // la mise à jour d'état qui en découlerait (flush des microtâches + rendu). Sans ce flush, un
+    // `setLoaded` caduc ne serait jamais OBSERVÉ et l'assertion négative passerait pour la mauvaise
+    // raison (le rendu non abouti) — le garde de course (reqId) resterait intestable.
+    await act(async () => {
+      resolveStale(PREVIEW);
+      await Promise.resolve();
+    });
     // La liste caduque ne s'affiche jamais, « Confirmer » reste verrouillé.
     expect(screen.queryByText(PREVIEW.effects[0].label)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirmer" })).toHaveAttribute("aria-disabled", "true");
