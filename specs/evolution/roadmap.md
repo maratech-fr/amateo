@@ -1,4 +1,4 @@
-# Roadmap (43) — ce qui reste à faire
+# Roadmap (44) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -79,6 +79,7 @@
 | P4-367 | **M10 — envoyer au coach les conflits qui le concernent** | 🟡 | M | Retours Nico (BCCL 2026-10-27, M10) : aujourd'hui les conflits ne vivent que dans l'app ; le coach ne les voit pas. Besoin : lui pousser (e-mail, à cadrer) les conflits de SES équipes/créneaux. ⚠ **Nouveau canal SORTANT** → `/security-review` obligatoire le jour venu (destinataire, contenu minimal, opt-out, RGPD). Évolution, pas urgent (le fondateur : urgent = voir clair dans les conflits, pas les envoyer). Non cadré |
 | P4-368 | **M12 — échéance de saisie FBI OBLIGATOIRE dans la modale d'import, applicable en masse** | 🟡 | M | Retours Nico (BCCL 2026-10-27, M12) : rendre la date d'échéance de saisie FBI obligatoire au moment de l'import, applicable en masse (ex. tous les championnats départementaux), modifiable dans la modale, date déjà passée tolérée. Constat : l'échéance par championnat existe déjà (`EntryDeadlinesEditor`, édition en masse) — ce ticket la remonte DANS la modale d'import et la rend obligatoire. ⚠ Le fondateur n'est **pas encore sûr** de la vouloir obligatoire → à re-trancher avant de coder. Non cadré |
 | P4-369 | **Ouvertures EXCEPTIONNELLES datées d'un gymnase pour les matchs** | 🟡 | M | Retours Nico (BCCL 2026-10-27) : un gymnase peut s'ouvrir un jour précis hors de ses accès habituels (ex. tournoi un dimanche). Besoin d'une ouverture d'accès match DATÉE (une date, pas un jour de semaine), distincte de la grille hebdomadaire. Idée à ne pas perdre ; recoupe la ligne « Jours fériés » de l'éditeur d'accès (PR2 fériés). Non cadré |
+| P4-370 | **Adversaires : « Ajouter un gymnase » s'enroule sur 3 lignes dans le tableau** | ⚪ | XS | Constat captures réelles 2026-10-27 (BCCL, 1440 px) : sur l'onglet Adversaires, le bouton « Ajouter un gymnase » de chaque ligne club s'affiche sur trois lignes (« Ajouter / un / gymnase ») dans sa colonne — même famille que D10 (`VenuesStep`, #1282). Piste : patron « libellé court visible + complément `sr-only` » ou `whitespace-nowrap` + `shrink-0`, nom accessible complet conservé (`.claude/rules/frontend.md`, bouton d'ajout). Non cadré |
 
 ### UI & accessibilité
 
