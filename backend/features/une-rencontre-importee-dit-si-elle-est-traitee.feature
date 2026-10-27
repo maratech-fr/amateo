@@ -51,6 +51,15 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Quand je valide la rencontre d'un geste
     Alors la rencontre est « traitée » et l'alerte de déplacement a disparu
 
+  Scénario: Le 2ᵉ tour réutilise un numéro — l'historique de la 1ʳᵉ phase est intact
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et un accès match le samedi sur « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à domicile au gymnase « GYM BEHAT » à 15h30
+    Et je place la rencontre dans le gymnase « GYM BEHAT » à 15h30
+    Et je dépose un second championnat qui réutilise le même numéro de match
+    Alors les deux rencontres coexistent et la première garde sa date, son adversaire et son placement
+
   Scénario: Le suffixe FFBB « (n) » est retiré du libellé de l'adversaire
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »

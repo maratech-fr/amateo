@@ -31,6 +31,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -481,6 +482,190 @@ final class FbiFixtureImporterTest extends KernelTestCase
         );
 
         self::assertSame(2, $result['created']);
+    }
+
+    // ── Identité d'une rencontre = équipe + DIVISION + numéro (D1/D2, M15) ──
+
+    public function testANumberReusedUnderAnotherDivisionOfTheSameTeamCreatesANewMatchAndLeavesTheFirstIntact(): void
+    {
+        // M15 (retours BCCL 2026-10-27) : l'équipe joue DFU18-3 n°22 (phase 1, placé),
+        // puis RFU18-3 n°22 (phase 2) — DEUX championnats de la MÊME équipe réutilisent le
+        // n°22. Ce sont DEUX rencontres distinctes ; le dépôt de la phase 2 ne doit JAMAIS
+        // réécrire la rencontre de la phase 1. Aujourd'hui la clé « équipe|numéro » les
+        // confond → la phase 2 dé-place / dé-phase le match de la phase 1.
+        $this->importMapped([['DFU18-3', '22', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $venueId = $this->place('22'); // phase 1 : PLACÉE (venue + statut PLACED)
+
+        $result = $this->importMapped([['RFU18-3', '22', 'BC TESTVILLE - 1', 'AS Voisins', '14/11/2026', '15:30', 'Gymnase Y']]);
+
+        self::assertSame(1, $result['created'], 'le n°22 de la 2ᵉ division est une NOUVELLE rencontre');
+        $this->em->clear();
+
+        self::assertCount(2, $this->em->getRepository(Fixture::class)->findBy(['teamId' => $this->team->getId(), 'externalRef' => '22']), 'les deux phases coexistent');
+
+        $phase1 = $this->fixtureUnderDivision('22', 'DFU18-3');
+        self::assertNotNull($phase1);
+        self::assertSame('2026-10-10', $phase1->getMatchDate()->format('Y-m-d'), 'la phase 1 garde SA date');
+        self::assertSame('AS Voisins', $phase1->getOpponentLabel());
+        self::assertSame(FixtureStatus::PLACED, $phase1->getStatus(), 'la phase 1 reste placée');
+        self::assertSame($venueId, $phase1->getVenueId(), 'la phase 1 garde son gymnase');
+        self::assertSame(FixtureReviewState::REVIEWED, $phase1->getReviewState(), 'la phase 1 n\'est pas dé-phasée par la phase 2');
+        self::assertSame([], $phase1->getPendingDeviations());
+
+        $phase2 = $this->fixtureUnderDivision('22', 'RFU18-3');
+        self::assertNotNull($phase2, 'la phase 2 existe bien sous SON championnat');
+        self::assertSame('2026-11-14', $phase2->getMatchDate()->format('Y-m-d'));
+    }
+
+    public function testBothPhasesInOneFileKeepBothFixturesNeverSilentlySkippingALine(): void
+    {
+        // U13F3 (prod BCCL) : les deux phases dans le MÊME fichier, même numéro, même équipe,
+        // divisions différentes → DEUX matchs. La dédup intra-fichier « équipe|numéro »
+        // (seenInFile) saute aujourd'hui la 2ᵉ ligne EN SILENCE ; elle doit porter sur
+        // « équipe|division|numéro ».
+        $result = $this->importMapped([
+            ['DFU13-3', '10', 'BC TESTVILLE - 1', 'AS Un', '03/10/2026', '15:30', 'Gymnase X'],
+            ['DFU13-3-P2', '10', 'BC TESTVILLE - 1', 'AS Deux', '14/11/2026', '15:30', 'Gymnase X'],
+        ]);
+
+        self::assertSame(2, $result['created'], 'les deux divisions produisent deux matchs — aucune ligne sautée en silence');
+        $this->em->clear();
+        self::assertNotNull($this->fixtureUnderDivision('10', 'DFU13-3'));
+        self::assertNotNull($this->fixtureUnderDivision('10', 'DFU13-3-P2'));
+    }
+
+    public function testReDepositingTheSameDivisionAndNumberIsIdempotentNeverASecondFixture(): void
+    {
+        // « même division (normalisée) + même numéro = même match » : un re-dépôt, même avec
+        // une graphie de division qui ne diffère que par la casse/les espaces, ne crée jamais
+        // de doublon (la division entre dans la clé NORMALISÉE).
+        $first = $this->importMapped([['DFU18-3', '22', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        self::assertSame(1, $first['created']);
+
+        $again = $this->importMapped([['  dfu18-3 ', '22', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        self::assertSame(0, $again['created'], 'même division normalisée + même numéro → aucun nouveau match');
+        $this->em->clear();
+        self::assertCount(1, $this->em->getRepository(Fixture::class)->findBy(['teamId' => $this->team->getId(), 'externalRef' => '22']));
+    }
+
+    public function testADuplicateDivisionAndNumberIsRejectedButTheSameNumberUnderAnotherDivisionCoexists(): void
+    {
+        // La contrainte d'unicité porte sur (club, saison, équipe, division, ref) : deux
+        // rencontres de la même équipe partageant le n°22 sous DEUX divisions coexistent ;
+        // un vrai doublon (même équipe, même division, même ref) est refusé par l'index.
+        $this->em->persist($this->rawReferencedFixture('22', 'DFU18-3', 'AS Voisins', '2026-10-10'));
+        $this->em->persist($this->rawReferencedFixture('22', 'RFU18-3', 'AS Autres', '2026-11-14'));
+        $this->em->flush(); // le même numéro sous deux divisions coexiste
+
+        $this->expectException(UniqueConstraintViolationException::class);
+        $this->em->persist($this->rawReferencedFixture('22', 'DFU18-3', 'AS Encore', '2026-12-05'));
+        $this->em->flush();
+    }
+
+    // ── Adversaire différent = ANOMALIE, jamais un écrasement (décision fondateur) ──
+
+    public function testSameDivisionAndNumberWithADifferentOpponentIsAnAnomalyLeftIntactAndWarned(): void
+    {
+        // Décision fondateur 2026-10-27 : « un match ne change pas d'adversaire ; si ça arrive
+        // c'est un bug FFBB ». Même division + même numéro mais adversaire différent dans le
+        // fichier = ANOMALIE — la rencontre existante n'est PAS modifiée (ni adversaire, ni
+        // date, ni statut) ; la ligne est écartée et SIGNALÉE au rapport. Aujourd'hui
+        // `opponentLabel` est écrasé en silence (FbiFixtureImporter l.1280-1283 / 1360-1363).
+        $this->importMapped([['D2', '5', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('5');
+
+        $result = $this->importMapped([['D2', '5', 'BC TESTVILLE - 1', 'AS Autres', '03/10/2026', '15:30', 'Gymnase X']]);
+
+        self::assertSame(0, $result['created']);
+        self::assertSame(0, $result['updated'], 'une anomalie n\'écrit RIEN');
+        $warning = array_values(array_filter($result['warnings'], static fn (array $w): bool => 'OPPONENT_CHANGED' === $w['type']));
+        self::assertCount(1, $warning, 'l\'anomalie est signalée au rapport');
+        self::assertStringContainsString('AS Autres', $warning[0]['message']);
+        self::assertStringContainsString('AS Voisins', $warning[0]['message']);
+
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => '5']);
+        self::assertSame('AS Voisins', $fixture?->getOpponentLabel(), 'l\'adversaire d\'origine est intact');
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+    }
+
+    // ── D4 : interdire de greffer une 2ᵉ phase sur le championnat de la 1ʳᵉ ──
+
+    public function testMappingADivisionOntoACompetitionAlreadyFilledWithFbiRencontresUnderAnotherLabelIsRefused(): void
+    {
+        // D4 (M15 / U13F3, décision fondateur « ce sont deux championnats différents ») :
+        // rattacher la division de la 2ᵉ phase (« DFU13-3-P2 ») au championnat DÉJÀ peuplé de
+        // rencontres FBI de la 1ʳᵉ (« DFU13-3 ») = refus NOMMÉ, division sautée, le championnat
+        // d'origine ni renommé ni absorbé. Aujourd'hui le mapping porteur du competitionId
+        // RENOMME le championnat (FbiFixtureImporter l.1543-1553) → absorption.
+        $this->importMapped([['DFU13-3', '1', 'BC TESTVILLE - 1', 'AS Un', '03/10/2026', '15:30', 'Gymnase X']]);
+        $c1 = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => 'DFU13-3']);
+        self::assertNotNull($c1);
+        $c1Id = $c1->getId();
+
+        $result = $this->importer->import(
+            $this->xlsx([['DFU13-3-P2', '2', 'AS Deux', 'BC TESTVILLE - 1', '14/11/2026', '15:30', '']]),
+            $this->club,
+            [['division' => 'DFU13-3-P2', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $c1Id]],
+            [], null, [], [],
+        );
+
+        $refusals = array_filter($result['errors'], static fn (string $e): bool => str_contains($e, 'DFU13-3') && str_contains($e, 'championnat'));
+        self::assertNotSame([], $refusals, 'la 2ᵉ phase refuse de se greffer sur le championnat de la 1ʳᵉ');
+        $this->em->clear();
+        self::assertSame('DFU13-3', $this->em->getRepository(Competition::class)->find($c1Id)?->getName(), 'le championnat de la 1ʳᵉ phase n\'est ni renommé ni absorbé');
+        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['teamId' => $this->team->getId(), 'externalRef' => '2']), 'la rencontre de la 2ᵉ phase n\'est pas greffée');
+        self::assertNotNull($this->em->getRepository(Fixture::class)->findOneBy(['competitionId' => $c1Id, 'externalRef' => '1']), 'la 1ʳᵉ phase reste intacte');
+    }
+
+    public function testMappingOntoACompetitionFilledOnlyByApiRencontresIsAccepted(): void
+    {
+        // Contre-cas D4 (le garde ne sur-bloque pas) : une compétition peuplée UNIQUEMENT de
+        // rencontres du canal API (external_ref NULL, ffbb_rencontre_id posé) n'est PAS un
+        // championnat FBI — un mapping de division s'y rattache légitimement.
+        $cup = $this->rawCompetition('Coupe API');
+        $apiFixture = new Fixture;
+        $apiFixture->setClubId($this->club->getId());
+        $apiFixture->setSeasonId($this->team->getSeasonId());
+        $apiFixture->setTeamId($this->team->getId());
+        $apiFixture->setCompetitionId($cup->getId());
+        $apiFixture->setMatchDate(new DateTimeImmutable('2026-11-01'));
+        $apiFixture->setHomeAway(FixtureHomeAway::AWAY);
+        $apiFixture->setOpponentLabel('AS API');
+        $apiFixture->setFfbbRencontreId('RENC-API-1'); // canal API, external_ref reste NULL
+        $this->em->persist($apiFixture);
+        $this->em->flush();
+
+        $result = $this->importer->import(
+            $this->xlsx([['Coupe API', '9', 'AS Away', 'BC TESTVILLE - 1', '14/11/2026', '15:30', '']]),
+            $this->club,
+            [['division' => 'Coupe API', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $cup->getId()]],
+            [], null, [], [],
+        );
+
+        self::assertSame([], array_filter($result['errors'], static fn (string $e): bool => str_contains($e, 'championnat')), 'une compétition du canal API seul ne bloque pas');
+        self::assertSame(1, $result['created']);
+    }
+
+    public function testAForgedCompetitionIdNeverHijacksAChampionshipThroughTheImportOrTheGuard(): void
+    {
+        // Abus nommé (tenant) : un mapping forgé portant un competitionId qui ne résout PAS sous
+        // le filtre tenant (étranger ou inexistant) n'écrit jamais ailleurs — l'import crée le
+        // PROPRE championnat du club courant, et le garde D4 (qui lit les rencontres de la cible)
+        // n'ouvre aucune porte cross-tenant. L'isolation stricte de bout en bout est prouvée par
+        // {@see App\Tests\Security\MatchTenantIsolationTest} + {@see testForeignTeamInMappingIsRejected}.
+        $result = $this->importer->import(
+            $this->xlsx([['DX', '7', 'AS Away', 'BC TESTVILLE - 1', '14/11/2026', '15:30', '']]),
+            $this->club,
+            [['division' => 'DX', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => 'ffffffff-ffff-4fff-8fff-ffffffffffff']],
+            [], null, [], [],
+        );
+
+        self::assertSame(1, $result['created']);
+        $comp = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => 'DX']);
+        self::assertNotNull($comp, 'l\'import crée le championnat du club courant, jamais sur un id forgé');
+        self::assertSame($comp?->getId(), $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => '7'])?->getCompetitionId());
     }
 
     // ── Reconciliation FBI (RMM-4) ─────────────────────────────────────────
@@ -1235,10 +1420,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     public function testPlacedHomeDeviationWithAPastAppDateIsAppliedAtOnceAndStaysTreated(): void
     {
-        // Décision 3 — la date Amateo est dans la fenêtre (passée) : la source est
-        // appliquée D'OFFICE (dé-placée), une entrée autoApplied allume le bandeau,
-        // la rencontre reste traitée (jamais un arbitrage OUT_OF_SYNC).
-        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        // Décision 3 (D3) — la date de la SOURCE (19/09) tombe dans la semaine ISO en cours
+        // (14/09 → 20/09) : la source est appliquée D'OFFICE (dé-placée), une entrée autoApplied
+        // allume le bandeau, la rencontre reste traitée (jamais un arbitrage OUT_OF_SYNC).
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // semaine ISO 14/09 → 20/09
         $this->importMapped([['D2', 'RW9', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // date app passée
         $this->place('RW9'); // PLACED + REVIEWED
 
@@ -1257,21 +1442,26 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame('2026-09-19', $entry['sourceValue']);
     }
 
-    public function testPlacedHomeDeviationWithAFutureAppButPastSourceDateIsAppliedAtOnce(): void
+    public function testPlacedHomeDeviationWhoseSourceFallsBeforeTheCurrentWeekStaysAnArbitration(): void
     {
-        // Décision 3 — « app OU source » : la date Amateo est future hors fenêtre, mais
-        // la date de la SOURCE est passée → la source fait foi quand même.
-        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        // D3 (M15) — RESTREINT à la semaine ISO en cours : une date de source PASSÉE mais
+        // ANTÉRIEURE au lundi de la semaine courante ne fait PLUS foi d'office (régime d'avant :
+        // tout « ≤ dimanche » passait). App 26/09 (future hors semaine) et source 12/09 (avant
+        // le lundi 14/09) → les deux hors fenêtre → écart à trancher, valeur app GARDÉE.
+        // Angle « borne basse » (sensible : matchs) de la fenêtre, jumeau de bout en bout du
+        // témoin unitaire {@see FbiArrivalReviewWindowTest::testTheDayBeforeTheCurrentIsoMondayIsOutsideTheWindow} ;
+        // distinct de {@see testPlacedHomeDeviationFullyOutsideTheWeekStaysAnArbitration} (deux dates futures).
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // semaine ISO 14/09 → 20/09
         $this->importMapped([['D2', 'RW8', 'BC TESTVILLE - 1', 'AS Voisins', '26/09/2026', '15:30', '']]); // date app future hors semaine
         $this->place('RW8');
 
-        $result = $this->importMapped([['D2', 'RW8', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // source passée
-        self::assertSame([], $result['unresolvedDeviations']);
+        $result = $this->importMapped([['D2', 'RW8', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // source avant le lundi courant
+        self::assertCount(1, $result['unresolvedDeviations'], 'source hors de la semaine ISO → écart à trancher');
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RW8']);
-        self::assertSame('2026-09-12', $fixture?->getMatchDate()->format('Y-m-d'));
-        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
-        self::assertTrue($fixture?->getPendingDeviation('date')['autoApplied'] ?? false);
+        self::assertSame('2026-09-26', $fixture?->getMatchDate()->format('Y-m-d'), 'valeur app gardée, jamais écrasée');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        self::assertFalse($fixture?->getPendingDeviation('date')['autoApplied'] ?? true, 'écart à arbitrer, pas auto-appliqué');
     }
 
     public function testPlacedHomeDeviationFullyOutsideTheWeekStaysAnArbitration(): void
@@ -1318,6 +1508,29 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $entry = $reloaded?->getPendingDeviation('venue');
         self::assertNotNull($entry, 'l\'écart de salle est ouvert');
         self::assertFalse($entry['autoApplied'] ?? true, 'la salle n\'est pas appliquée d\'office — c\'est un écart à trancher');
+    }
+
+    public function testAPlacedHomeWeeksOldReDatedFarAheadBecomesAnEcartNeverRewritten(): void
+    {
+        // D3 (M15) — le bug : un domicile PLACÉ de plusieurs semaines (10/10), que le dépôt
+        // re-date loin devant (14/11), était réécrit D'OFFICE (« FBI fait foi ») parce que la
+        // borne n'était qu'un plafond. Restreint à la semaine ISO en cours : AUCUNE des deux
+        // dates n'y tombe → écart À TRANCHER, le placement est CONSERVÉ (jamais réécrit).
+        // Jumeau de bout en bout du témoin unitaire {@see FbiArrivalReviewWindowTest} (sensible : matchs).
+        $this->pinClock(new DateTimeImmutable('2026-10-28 10:00:00')); // semaine ISO 26/10 → 01/11
+        $this->importMapped([['D2', '22', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $venueId = $this->place('22');
+
+        $result = $this->importMapped([['D2', '22', 'BC TESTVILLE - 1', 'AS Voisins', '14/11/2026', '15:30', 'Gymnase X']]);
+
+        self::assertCount(1, $result['unresolvedDeviations'], 'hors semaine ISO → écart à trancher, jamais « FBI fait foi »');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => '22']);
+        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'), 'la date d\'origine est intacte — jamais re-datée d\'office');
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus(), 'le placement est conservé');
+        self::assertSame($venueId, $fixture?->getVenueId());
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        self::assertFalse($fixture?->getPendingDeviation('date')['autoApplied'] ?? true, 'un écart à arbitrer, pas une application d\'office');
     }
 
     // ── P4-199 : retrait du suffixe FFBB « (n) » ────────────────────────────
@@ -2179,6 +2392,55 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertNotNull($fixture);
         $fixture->setReviewState($state);
         $this->em->flush();
+    }
+
+    /**
+     * La rencontre importée de $this->team portant ce numéro SOUS cette division (son
+     * championnat résolu par le nom) — pour distinguer deux phases qui partagent le numéro.
+     */
+    private function fixtureUnderDivision(string $externalRef, string $divisionName): ?Fixture
+    {
+        $competition = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => $divisionName]);
+        if (!$competition instanceof Competition) {
+            return null;
+        }
+
+        return $this->em->getRepository(Fixture::class)->findOneBy(['competitionId' => $competition->getId(), 'externalRef' => $externalRef]);
+    }
+
+    /** Une compétition brute de $this->team, sans appariement de poule. */
+    private function rawCompetition(string $name): Competition
+    {
+        $competition = new Competition;
+        $competition->setClubId($this->club->getId());
+        $competition->setSeasonId($this->team->getSeasonId());
+        $competition->setTeamId($this->team->getId());
+        $competition->setName($name);
+        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $this->em->persist($competition);
+        $this->em->flush();
+
+        return $competition;
+    }
+
+    /**
+     * Une rencontre FBI-référencée brute de $this->team, portant une division (colonne
+     * {@see Fixture::setExternalDivision}, D1) — pour éprouver l'index unique
+     * (club, saison, équipe, division, ref) au niveau base.
+     */
+    private function rawReferencedFixture(string $externalRef, string $division, string $opponent, string $dateYmd): Fixture
+    {
+        $fixture = new Fixture;
+        $fixture->setClubId($this->club->getId());
+        $fixture->setSeasonId($this->team->getSeasonId());
+        $fixture->setTeamId($this->team->getId());
+        $fixture->setMatchDate(new DateTimeImmutable($dateYmd));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel($opponent);
+        $fixture->setExternalRef($externalRef);
+        $fixture->setExternalDivision($division);
+
+        return $fixture;
     }
 
     /** A real Venue of the club+season; returns its id. */

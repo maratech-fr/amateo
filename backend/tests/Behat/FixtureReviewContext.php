@@ -52,6 +52,8 @@ final class FixtureReviewContext extends BaseContext
 
     private string $fixtureId = '';
 
+    private string $secondFixtureId = '';
+
     private string $controlFixtureId = '';
 
     private string $competitionId = '';
@@ -348,13 +350,44 @@ final class FixtureReviewContext extends BaseContext
         }
     }
 
+    #[When('je dépose un second championnat qui réutilise le même numéro de match')]
+    public function jeDeposeUnSecondChampionnat(): void
+    {
+        // M15 — un 2ᵉ tour (autre championnat de la MÊME équipe) réutilise le numéro de la
+        // 1ʳᵉ phase. Autre division, MÊME external_ref, autre adversaire, autre date.
+        $this->depositSecondPhase();
+    }
+
+    #[Then('les deux rencontres coexistent et la première garde sa date, son adversaire et son placement')]
+    public function lesDeuxRencontresCoexistent(): void
+    {
+        $count = $this->dbalScalar(
+            \sprintf('SELECT count(*) AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\'', $this->clubId, self::EXTERNAL_REF),
+            admin: true,
+        );
+        if ('2' !== $count) {
+            throw new RuntimeException(\sprintf('le 2ᵉ tour aurait dû créer une rencontre distincte : %s rencontre(s) portent le numéro, 2 attendues', $count));
+        }
+
+        $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json'] ?? [];
+        if (($json['matchDate'] ?? null) !== $this->matchDate) {
+            throw new RuntimeException(\sprintf('la 1ʳᵉ phase a été re-datée : %s au lieu de %s', \is_string($json['matchDate'] ?? null) ? $json['matchDate'] : 'inconnue', $this->matchDate));
+        }
+        if ('Adversaire Behat' !== ($json['opponentLabel'] ?? null)) {
+            throw new RuntimeException(\sprintf('l\'adversaire de la 1ʳᵉ phase a été écrasé : « %s »', \is_string($json['opponentLabel'] ?? null) ? $json['opponentLabel'] : 'inconnu'));
+        }
+        if ('PLACED' !== ($json['status'] ?? null)) {
+            throw new RuntimeException(\sprintf('le placement de la 1ʳᵉ phase a été perdu (statut « %s »)', \is_string($json['status'] ?? null) ? $json['status'] : 'inconnu'));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
         if ('' === $this->token) {
             return;
         }
-        foreach ([$this->fixtureId, $this->controlFixtureId] as $id) {
+        foreach ([$this->fixtureId, $this->secondFixtureId, $this->controlFixtureId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
@@ -466,6 +499,36 @@ final class FixtureReviewContext extends BaseContext
         if (200 !== $status) {
             throw new RuntimeException(\sprintf('le dépôt FBI a répondu %d (200 attendu) : %s', $status, $response->getContent(false)));
         }
+    }
+
+    /**
+     * Dépose, comme le dialog, le 2ᵉ tour : AUTRE championnat de la même équipe, MÊME numéro
+     * de match (self::EXTERNAL_REF), autre adversaire, autre date — à DOMICILE au GYM BEHAT.
+     * Capture l'id de la rencontre créée sous le 2ᵉ championnat (pour le nettoyage).
+     */
+    private function depositSecondPhase(): void
+    {
+        $division2 = self::DIVISION . ' 2';
+        $date = date('d/m/Y', (int) strtotime($this->matchDate . ' +14 days'));
+        $path = $this->writeXlsx([[$division2, self::EXTERNAL_REF, $this->clubName, 'Autre Adversaire', $date, '15:30', self::VENUE_NAME]]);
+        $form = new FormDataPart([
+            'file' => DataPart::fromPath($path),
+            'mappings' => json_encode([['division' => $division2, 'teamId' => $this->teamId]], \JSON_THROW_ON_ERROR),
+            'venueMappings' => json_encode([['label' => self::VENUE_NAME, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR),
+        ]);
+        $response = $this->client->request('POST', 'fixtures/import', [
+            'headers' => array_merge(['Authorization' => 'Bearer ' . $this->token], $form->getPreparedHeaders()->toArray()),
+            'body' => $form->bodyToIterable(),
+        ]);
+        $status = $response->getStatusCode();
+        @unlink($path);
+        if (200 !== $status) {
+            throw new RuntimeException(\sprintf('le dépôt du 2ᵉ tour a répondu %d (200 attendu) : %s', $status, $response->getContent(false)));
+        }
+        $this->secondFixtureId = $this->dbalScalar(
+            \sprintf('SELECT f.id AS behatval FROM fixture f JOIN competition c ON c.id=f.competition_id WHERE f.club_id=\'%s\' AND c.name=\'%s\' LIMIT 1', $this->clubId, $division2),
+            admin: true,
+        );
     }
 
     /**
