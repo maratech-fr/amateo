@@ -138,8 +138,12 @@ viole, pas l'heure ; champ additif `venueId` ; amicaux exemptés de même) + `MA
 (chantier H — coup d'envoi DANS l'indisponibilité déclarée d'un coach PRINCIPAL) · 4
 `VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` (« Hors accès match » — champ additif `windows`, les
 accès du gymnase de la fixture triés jour du match d'abord, hors identité de l'empreinte
-`TYPE:fixtureId` ; l'écran nomme le gymnase et ses fenêtres, « aucun accès match ce jour-là » sans
-aucune) + `MATCH_COACH_UNAVAILABLE` ADOUCI (chantier H — un adjoint ou un autre principal
+`TYPE:fixtureId` ; l'écran nomme l'ÉQUIPE, la DATE (avec son jour de semaine) et le gymnase, ses
+fenêtres ou « aucun accès match ce jour-là » sans aucune — retours Nico BCCL 2026-10-27, M6 + M11 :
+avant, seuls le gymnase et les fenêtres étaient nommés — et porte un bouton **« Configurer les
+accès »** vers `/matchs/configuration?acces=<venueId>` (deep-link d'état dans l'URL, `ConfigurationPage`
+ouvre directement l'éditeur d'accès de ce gymnase, § `module-matchs-reglages.md`)) +
+`MATCH_COACH_UNAVAILABLE` ADOUCI (chantier H — un adjoint ou un autre principal
 disponible peut couvrir, tag dédié « Un adjoint peut couvrir », § ci-dessus) · 5 clash adouci
 (`MATCH_MATCH`/`MATCH_TRAINING` avec relief, § ci-dessus) + `MATCH_COACH_UNAVAILABLE` quand
 l'indisponibilité ne touche que la DURÉE du match à DOMICILE (coup d'envoi libre, § ci-dessus) +
@@ -369,11 +373,12 @@ sous `SeasonPlanBanner`) fusionne le résumé du gardien dans la même carte (ja
 distingue trois régimes : une échéance en fenêtre J-7 → ton accent (warning si dépassée) avec la
 ligne globale au-dessus des échéances, chaque échéance segmentant « N match(s) à placer » et « N à
 saisir dans FBI » ; hors fenêtre mais `fbiTodo` > 0 → ton NEUTRE, la seule ligne globale (« N FBI à
-faire, dont M à corriger ») ; rien à faire, aucune fenêtre ET rien à confirmer « validé ligue » →
+faire, dont M à corriger ») ; rien à faire, aucune fenêtre ET rien à confirmer « déjà dans FBI » →
 muette. Le bouton n'ouvre « Ouvrir la liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du
 contenu (`fbiTodo.toEnter + fbiTodo.toCorrect > 0`) ; sinon (tout reste à placer) il renvoie au
 Calendrier (`/matchs`, « Placer les matchs ») — la liste FBI serait sinon une modale vide. Quand
-`toConfirmCount > 0` ET l'utilisateur est gestionnaire, la carte ajoute une ligne dédiée « N à
-confirmer « validé ligue » » + un bouton qui ouvre la confirmation chiffrée partagée (§ « Validé
-ligue » en lot) — jamais affichée à un Membre.
+`toConfirmCount > 0` ET l'utilisateur est gestionnaire, la carte ajoute une ligne dédiée « N matchs
+déjà dans FBI à confirmer » (plus « N à confirmer « validé ligue » », retours Nico BCCL 2026-10-27
+M3) + un bouton qui ouvre la confirmation chiffrée partagée (§ « Validé ligue » en lot) — jamais
+affichée à un Membre.
 

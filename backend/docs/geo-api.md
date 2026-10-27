@@ -256,6 +256,27 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   approché) ; dédupliquées par coordonnées arrondies (deux libellés du même gymnase = une paire).
   « Réessayer les manquants » côté écran (`specs/courantes/module-matchs-adversaires.md` § Écran Adversaires)
   est donc littéralement ce même `POST /resolve`.
+- **M14 (retours Nico, BCCL 2026-10-27) — la cause du dernier échec, par gymnase.** Un trajet non
+  résolu ne dit pas, par lui-même, POURQUOI : `App\Service\Geo\OpponentTravelFailureStore` mémorise
+  la carte des causes du DERNIER run (clé d'appariement adversaire → `awaiting_retry`\|`unroutable`)
+  dans **Redis** — pas une table, l'information est volatile et n'a de sens que pour le run en
+  cours. Clé `opponent_travel_failures:{clubId}:{seasonId}` (même connexion Redis que
+  `TravelComputeLock`), `SETEX` TTL **30 jours** (le budget worker/IGN peut rester muet des
+  semaines), carte **écrasée en entier** à chaque appel de `OpponentTravelResolver::resolve`
+  (`record()` — vide ⇒ `DEL`, jamais un cumul : un code résolu depuis disparaît de la carte).
+  `awaiting_retry` = la paire n'a pas été TENTÉE, le budget mural (`budgetExceeded`, § ci-dessus)
+  s'est arrêté avant de l'atteindre — une relance reprend. `unroutable` = la paire a été tentée,
+  IGN n'a rendu aucune `duration` exploitable (muet / pas d'itinéraire / gymnase mal géolocalisé) —
+  une relance seule n'y changera rien tant que la donnée ne bouge pas. **Condition GLOBALE
+  (siège non localisé) : aucune cause par ligne** — la carte est effacée (`record($clubId,
+  $seasonId, [])`), le bandeau global du front (`useClubGeolocated`) couvre déjà ce cas. Lu par
+  `OpponentTravelController::venueView` (`reasonsFor($clubId, $seasonId)`, une fois par requête) et
+  servi par ligne sur `GET /api/opponents/travel` (`venues[].travelFailureReason`, `null` si calculé,
+  en cours — un calcul en vol n'a pas de « pourquoi » à montrer —, ou jamais tenté) ; le front agrège
+  les deux causes et nomme les gymnases concernés dans le bandeau d'échec partiel de l'écran
+  Adversaires (`specs/courantes/module-matchs-adversaires.md` § Écran Adversaires). ⚠ **Jamais de
+  FLUSHALL** sur cette clé Redis, comme pour tout autre verrou/cache du club — `SET`/`GET`/`DEL`
+  ciblés seulement.
 
 ### Poser le siège invalide les trajets dérivés (`PATCH /api/club/siege`)
 

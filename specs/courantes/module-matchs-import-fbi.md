@@ -238,14 +238,17 @@ silencieux)**, même confirmation chiffrée partagée (`LeagueValidationConfirmD
   l'onglet Importer le voit quand même.
 - La section du rapport de fin d'import (`LeagueValidationReportEntry`) ouvre la même confirmation,
   muette si `totalValidatable` est nul.
-- Le **cockpit** (`FbiDeadlineCard`, §4) porte une ligne dédiée « N à confirmer « validé ligue » »
-  (compte `toConfirmCount`, servi par `EntryDeadlineOutlook`) + son propre bouton qui ouvre la MÊME
-  confirmation — réservée au gestionnaire, jamais affichée à un Membre.
+- Le **cockpit** (`FbiDeadlineCard`, §4) porte une ligne dédiée « N matchs déjà dans FBI à
+  confirmer » (compte `toConfirmCount`, servi par `EntryDeadlineOutlook`) + son propre bouton qui
+  ouvre la MÊME confirmation — réservée au gestionnaire, jamais affichée à un Membre.
 
 Le front n'a **aucune règle** : c'est le backend qui décide QUOI est proposé (championnat commencé),
-le front affiche la lecture servie (`useLeagueValidationOutlook`). Vocabulaire : la pastille de
-statut ne change pas (`VALIDATED` reste « Attesté FBI », §7 « Workflow de traitement ») — seule
-cette confirmation emploie les mots du fondateur, « validé ligue ».
+le front affiche la lecture servie (`useLeagueValidationOutlook`). **Vocabulaire (retours Nico,
+BCCL 2026-10-27, M3)** : la pastille de statut EMPLOIE désormais les mêmes mots — `VALIDATED` se dit
+« Déjà dans FBI » (plus « Attesté FBI », §7 « Workflow de traitement »), et cette confirmation
+« Marquer « déjà dans FBI » » (`LEAGUE_VALIDATION_CONFIRM_LABEL`, `lib/leagueValidation.ts`, plus
+« validé ligue ») — le fondateur a demandé à revoir toute la table après l'avoir lui-même trouvée
+peu parlante.
 
 **Deux faits mesurés** : l'échéance d'un championnat est **saisie à la main** par le gestionnaire
 (`EntryDeadlinesEditor`) — jamais reprise automatiquement du fichier fédéral, rien dans FBI ne la
@@ -341,10 +344,12 @@ sont sautées et NOMMÉES, jamais tranchées en masse) ; `POST /api/fixtures/rev
 (`{fixtureId, field, choice: keep_app|take_source, venueId?}`, rejoue le moteur partagé depuis la
 valeur PERSISTÉE — `venueId` OPTIONNEL sur `field: 'venue'` + `take_source`, l'appariement INLINE
 ci-dessus, chantier A PR 4). `ReviewQueueRow` : icône domicile/extérieur, heure ou « heure non publiée », salle
-résolue ; bouton « Valider » (NEW sans écart), « Pris en compte » (alerte `autoApplied` seule — une
-phrase UNIQUE, maison `lib/autoAppliedPhrase.ts` : date+heure reprogrammées fusionnent en « {source} a
-déplacé ce match : {ancienne date} → {nouvelle date} à {heure} », un seul champ garde sa forme
-« (champ) : ancien → nouveau », une combinaison rare liste chaque champ dans le même bloc — jamais des
-dates ISO brutes à l'écran), tranche champ par champ sinon (deux colonnes Amateo/source) ; « Replacer »
-seulement sur un domicile À VENIR.
+résolue ; bouton **« Vu »** (NEW sans écart, OU REVIEWED qui porte encore une alerte `autoApplied`
+seule — même mot pour les deux cas, retours Nico BCCL 2026-10-27 M3, remplace « Valider »/« Pris en
+compte » : la ligne ne « valide » rien, elle ACQUITTE une mise à jour déjà appliquée par l'import),
+une phrase UNIQUE pour l'alerte `autoApplied` (maison `lib/autoAppliedPhrase.ts` : date+heure
+reprogrammées fusionnent en « {source} a déplacé ce match : {ancienne date} → {nouvelle date} à
+{heure} », un seul champ garde sa forme « (champ) : ancien → nouveau », une combinaison rare liste
+chaque champ dans le même bloc — jamais des dates ISO brutes à l'écran), tranche champ par champ
+sinon (deux colonnes Amateo/source) ; « Replacer » seulement sur un domicile À VENIR.
 

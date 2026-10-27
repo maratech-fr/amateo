@@ -204,9 +204,14 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
   Dérogation demandée · Réglé en interne · Sans solution pour l'instant), plus jusqu'à 3 puces
   CONDITIONNELLES propres à une famille (Importer les matchs manquants ·
   Erreur FBI · Match à déplacer), rendues seulement si au moins un conflit les porte (même patron
-  que les chips familles, `treatmentChipKeys`). Plus le filtre « Seulement avec un match à
-  domicile » (critère descriptif, pas « où je peux agir » — décision fermée). Ordre d'application :
-  familles → traitement → domicile → pivot.
+  que les chips familles, `treatmentChipKeys`). Plus le filtre domicile — `SegmentedControl` deux
+  segments « Avec un match à domicile » / « Tous », compteurs via `hasHomeSide` (retours Nico BCCL
+  2026-10-27, M4, remplace le `FilterToggle` « Seulement avec un match à domicile ») — **coché sur
+  « domicile » par défaut** (`conflictsHomeOnly: true`, `store.ts`) : décision RENVERSÉE (c'est
+  désormais « où le gestionnaire peut agir », pas un critère descriptif passif — « même moi je
+  l'ai oubliée », fondateur). Ordre d'application : familles → traitement → domicile → pivot. Le
+  radar de la vue Semaine (`ConflictRadar`, §5) partage le MÊME réglage de session
+  (`conflictsHomeOnly`) via le même `SegmentedControl`.
 - **Accordéon par entrée** (une seule ouverte) rend `ConflictSeverityGroups`/`ConflictLine` — même
   maison que le radar du Calendrier, gravité 7 repliée derrière un compte, conflits triés par date
   croissante dans un groupe de gravité. Bouton « Voir la semaine » sur un conflit daté : un conflit
