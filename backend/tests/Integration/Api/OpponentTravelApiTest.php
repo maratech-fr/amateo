@@ -19,6 +19,7 @@ use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\OpponentTravelFailureStore;
 use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
@@ -112,6 +113,71 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertNull($noCode['code']);
         self::assertStringStartsWith('X', (string) $noCode['pairingKey'], 'un adversaire sans code reçoit une clé sentinelle');
         self::assertSame([], $noCode['venues']);
+    }
+
+    /**
+     * M14 — le GET sert `travelFailureReason` PAR LIGNE de gymnase : une ligne au trajet non
+     * calculé porte sa cause mémorisée (« en attente de relance » vs « introuvable »), une ligne
+     * dont le trajet est en cache n'en porte aucune (la cause éventuellement restée du dernier run
+     * est PÉRIMÉE puisqu'un trajet est là). Promesse « la bonne cause sur la bonne ligne ».
+     */
+    public function testTheReadFeedServesTheFailureCausePerVenueLine(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        // F01 : gymnase apparié SANS trajet en cache → ligne « unavailable », doit porter sa cause.
+        $this->awayFixture($club, $season, 'ARA0069F01', 'Budget', 'SALLE BUDGET');
+        $this->link($club, 'ARA0069F01', 'SALLE BUDGET', 'Gym Budget', '166900F01', 45.80, 5.00, OpponentVenueLinkSource::AUTO);
+        // F02 : gymnase apparié AVEC trajet en cache → ligne « done », AUCUNE cause (même si le store en garde une).
+        $this->awayFixture($club, $season, 'ARA0069F02', 'Resolu', 'SALLE RESOLUE');
+        $this->link($club, 'ARA0069F02', 'SALLE RESOLUE', 'Gym Resolu', '166900F02', 45.81, 5.01, OpponentVenueLinkSource::AUTO);
+        $this->cacheTravel($club, 45.81, 5.01, 25);
+
+        // Le dernier run a mémorisé : F01 « en attente de relance », F02 « introuvable » (périmée).
+        $this->failureStore()->record($club->getId(), $season->getId(), [
+            'ARA0069F01' => OpponentTravelFailureStore::REASON_AWAITING_RETRY,
+            'ARA0069F02' => OpponentTravelFailureStore::REASON_UNROUTABLE,
+        ]);
+        try {
+            $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($user));
+            self::assertResponseStatusCodeSame(200);
+
+            $f01 = $this->venuesOf('ARA0069F01')[0];
+            self::assertNull($f01['travelMinutes']);
+            self::assertSame('unavailable', $f01['travelStatus']);
+            self::assertSame('awaiting_retry', $f01['travelFailureReason'], 'la ligne non calculée porte sa cause « en attente de relance »');
+
+            $f02 = $this->venuesOf('ARA0069F02')[0];
+            self::assertSame(25, $f02['travelMinutes']);
+            self::assertSame('done', $f02['travelStatus']);
+            self::assertNull($f02['travelFailureReason'], 'une ligne au trajet présent n\'a pas de « pourquoi » (cause périmée ignorée)');
+        } finally {
+            $this->failureStore()->record($club->getId(), $season->getId(), []); // DEL ciblé
+        }
+    }
+
+    /**
+     * M14 — pendant qu'un calcul tourne (verrou tenu), aucune cause n'est servie par ligne : le
+     * run n'a pas encore tranché, la ligne est « pending », son `travelFailureReason` reste null.
+     */
+    public function testAPendingComputeHidesTheFailureCause(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $this->awayFixture($club, $season, 'ARA0069F05', 'Pending', 'SALLE PENDING');
+        $this->link($club, 'ARA0069F05', 'SALLE PENDING', 'Gym Pending', '166900F05', 45.80, 5.00, OpponentVenueLinkSource::AUTO);
+        $this->failureStore()->record($club->getId(), $season->getId(), ['ARA0069F05' => OpponentTravelFailureStore::REASON_UNROUTABLE]);
+
+        $lock = self::getContainer()->get(TravelComputeLock::class);
+        $token = $lock->acquire($club->getId(), 60);
+        self::assertNotNull($token);
+        try {
+            $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($user));
+            $venue = $this->venuesOf('ARA0069F05')[0];
+            self::assertSame('pending', $venue['travelStatus'], 'un calcul tourne');
+            self::assertNull($venue['travelFailureReason'], 'pendant un run, aucune cause n\'est montrée');
+        } finally {
+            $lock->release($club->getId(), $token);
+            $this->failureStore()->record($club->getId(), $season->getId(), []); // DEL ciblé
+        }
     }
 
     public function testACodeLessOpponentIsPairedViaItsSentinelKeyAndGetsTravel(): void
@@ -461,6 +527,14 @@ final class OpponentTravelApiTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    private function failureStore(): OpponentTravelFailureStore
+    {
+        $store = self::getContainer()->get(OpponentTravelFailureStore::class);
+        self::assertInstanceOf(OpponentTravelFailureStore::class, $store);
+
+        return $store;
     }
 
     private function suggestions(): OpponentVenueSuggestionRepository

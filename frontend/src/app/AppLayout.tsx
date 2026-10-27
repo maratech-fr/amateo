@@ -9,6 +9,7 @@ import { FeedbackDialog } from "@/shared/feedback/FeedbackDialog";
 import { WhatsNewModal } from "@/features/release-notes/WhatsNewModal";
 import { BrandIcon } from "@/shared/components/ui/brand-icon";
 import { Button } from "@/shared/components/ui/button";
+import { buttonVariants } from "@/shared/components/ui/button-variants";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { CreditBadge } from "@/shared/credits/CreditBadge";
 import { CreditsBanner } from "@/shared/credits/CreditsBanner";
@@ -28,13 +29,19 @@ import { DevClock } from "./DevClock";
 import { SeasonSelector } from "./SeasonSelector";
 import { SeasonTransitionBanner } from "./SeasonTransitionBanner";
 
+/**
+ * M13 (retours Nico, BCCL 2026-10-27) — « Matchs » était trop discret (Nico ne savait pas que le
+ * module existait) : il prend l'ASPECT d'un bouton SECONDAIRE (variante `outline` du système, aucune
+ * couleur neuve) pour ressortir du bandeau, sans monter au niveau visuel du sélecteur de saison (qui,
+ * lui, est plein). Il GARDE son rôle de lien (NavLink → `<a>`) et son état actif (fond accent sur /matchs).
+ */
 function NavItem({ to, children }: { to: string; children: string }) {
   return (
     <NavLink
       to={to}
       end
       className={({ isActive }) =>
-        cn("rounded-md px-3 py-1.5 text-sm transition-colors", isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground")
+        cn(buttonVariants({ variant: "outline", size: "sm" }), isActive ? "bg-accent text-accent-foreground hover:enabled:bg-accent-hover" : "text-muted-foreground")
       }
     >
       {children}
@@ -113,7 +120,10 @@ export function AppLayout() {
                   aria-disabled="true"
                   tabIndex={0}
                   aria-describedby={matchsLockReasonId}
-                  className="cursor-not-allowed rounded-md px-3 py-1.5 text-sm text-muted-foreground/40"
+                  // M13 — même aspect de bouton secondaire (outline) que l'état débloqué, mais éteint
+                  // (opacité réduite, curseur interdit) ; l'invariant A11Y-30 (focalisable + raison
+                  // annoncée) est préservé.
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "cursor-not-allowed text-muted-foreground opacity-50")}
                   title="Validez le planning de saison pour débloquer les matchs"
                 >
                   Matchs

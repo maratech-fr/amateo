@@ -95,10 +95,19 @@ compteur chiffré frère, dérivée de `travelStatus` (rafraîchi par Mercure vi
 Cache de trajets et calcul asynchrone) ; bouton « Mettre à jour » désactivé pendant le calcul,
 aucun spinner par ligne. Le compte « N indisponibles » de la phrase d'échec partiel est un bouton
 qui pose directement le filtre « Trajet indisponible » (P4-293) — du constat au recadrage de la
-liste en un clic. **Échec partiel** : `NoticeBanner` « n trajets n'ont pas pu être calculés » +
+liste en un clic. **Échec partiel** : `NoticeBanner` qui, depuis M14 (retours Nico BCCL
+2026-10-27), distingue la CAUSE quand le serveur la connaît — « N en attente de relance, M
+introuvable(s) » (`MATCHES_TEXTS.travelFailuresByReason`) plutôt que le générique « n trajets n'ont
+pas pu être calculé(s) » (gardé en repli, ex. siège non localisé — cause GLOBALE, sans ligne à
+nommer) — suivi des gymnases concernés, nommés (`travelFailureVenues`, plafonné à 10 + reliquat) ;
 bouton « Réessayer les manquants » (`POST /api/opponents/travel/resolve`, qui ne route déjà que
-les paires siège→gymnase manquantes). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet
-AUTO) réutilisé tel quel. **Garde anti-double-dispatch** : si un calcul de trajets tourne déjà pour
+les paires siège→gymnase manquantes). « En attente de relance » (`awaiting_retry`) = le budget
+worker s'est épuisé avant d'atteindre la paire, une relance la reprend ; « introuvable »
+(`unroutable`) = IGN muet/pas d'itinéraire/gymnase mal géolocalisé — une relance seule n'y change
+rien tant que la donnée ne bouge pas. Détail serveur (`travelFailureReason` par ligne de gymnase,
+`OpponentTravelFailureStore`) : [`module-matchs-modele-donnees.md`](module-matchs-modele-donnees.md)
+§ Cache de trajets et calcul asynchrone, `backend/docs/geo-api.md` §2. Bandeau siège
+(`useClubGeolocated`, § Prérequis du trajet AUTO) réutilisé tel quel. **Garde anti-double-dispatch** : si un calcul de trajets tourne déjà pour
 le club (verrou tenu), « Réessayer les manquants »/« Mettre à jour » ne redispatche rien — toast « Un calcul de
 trajets est déjà en cours. » (`alreadyRunning` servi par la route, § Cache de trajets et calcul
 asynchrone).

@@ -273,6 +273,10 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   //    est distinct du bouton du rail « Conflits (n) » de Placer (role=button).
   const matchesNav = page.getByRole("navigation", { name: "Espaces matchs" });
   await matchesNav.getByRole("link", { name: "Conflits" }).click();
+  // M4 (retours BCCL 2026-10-27) : l'onglet s'ouvre filtré « Avec un match à domicile ». Nos
+  // conflits sont des AWAY_NO_FOOTPRINT (matchs à l'extérieur) — on bascule sur « Tous » pour
+  // les voir ; le défaut domicile lui-même est gardé par ConflictsPage.test.tsx/store.test.ts.
+  await page.getByRole("button", { name: /^Tous \(\d+\)$/ }).click();
 
   // Témoin : au moins une entrée d'accordéon « <libellé> · <n> » (n ≥ 1 par
   // construction — une entrée à 0 conflit n'existe pas). Un écran vide rend
@@ -920,7 +924,8 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
   if (0 === openBefore) {
     await expect(page.getByText("Rien à traiter")).toBeVisible();
   } else {
-    await expect(page.getByRole("button", { name: /à valider/ }).first()).toBeVisible();
+    // M3 (BCCL 2026-10-27) : l'en-tête d'équipe de la file dit « N nouveautés à voir » (plus « à valider »).
+    await expect(page.getByRole("button", { name: /à voir/ }).first()).toBeVisible();
   }
 
   // Configuration : « une section = un écran », gabarit parti en Semaine type, données FBI/FFBB migrées.

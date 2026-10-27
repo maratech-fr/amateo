@@ -217,6 +217,18 @@ describe("ConfigurationPage — la section « Accès match » (PR 2a)", () => {
     expect(within(dialog).getByRole("button", { name: "Ajouter la fenêtre match" })).toBeInTheDocument();
   });
 
+  it("deep-link ?acces=<venueId> (M11) : ouvre D'EMBLÉE l'éditeur d'accès de CE gymnase", async () => {
+    // M11 (retours Nico, BCCL 2026-10-27) — le conflit « Hors accès match » porte un lien
+    // `/matchs/configuration?acces=<venueId>` : l'arrivée sur cette URL doit déplier la section
+    // Accès match ET ouvrir l'éditeur du gymnase visé, sans clic « Modifier ». (Producteur du lien
+    // prouvé côté ConflictLine ; ici le CONSOMMATEUR.)
+    renderWithProviders(<Harness />, { route: "/matchs/configuration?acces=venue-1" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+    expect(within(dialog).getByRole("heading", { name: "Accès match · Gymnase Alpha" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Ajouter la fenêtre match" })).toBeInTheDocument();
+  });
+
   it("à la fermeture, le focus revient au « Modifier » de la ligne (refocus explicite)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<Harness />, { route: "/matchs/configuration?section=reglages" });

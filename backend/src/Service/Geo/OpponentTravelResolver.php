@@ -48,6 +48,7 @@ final class OpponentTravelResolver
         private readonly FixtureRepository $fixtures,
         private readonly TravelTimeCache $travelCache,
         private readonly OpponentPairingKey $pairingKey,
+        private readonly OpponentTravelFailureStore $failureStore,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -94,23 +95,30 @@ final class OpponentTravelResolver
 
         $pairs = $this->pairsToRoute($clubId, $seasonId);
         $unresolved = [];
+        // M14 — carte clé d'appariement → cause d'échec de CE run (budget épuisé vs introuvable),
+        // mémorisée pour le bandeau Adversaires. Écrase le run précédent (reflète le dernier calcul).
+        $failures = [];
 
         // Sans siège localisé, rien n'est calculable : toutes les paires restent non
-        // résolues (best-effort, jamais une erreur).
+        // résolues (best-effort, jamais une erreur). Le siège non localisé est une condition
+        // GLOBALE (le front la signale à part) : aucune cause par ligne — on efface la carte.
         if (null === $clubLat || null === $clubLon) {
             foreach ($pairs as $pair) {
                 $unresolved[] = $pair['code'];
             }
+            $this->failureStore->record($clubId, $seasonId, []);
 
             return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => 0];
         }
         $clubLatF = (float) $clubLat;
         $clubLonF = (float) $clubLon;
 
-        // Cap dur : l'excès part en `unresolved` sans aucun appel réseau.
+        // Cap dur : l'excès part en `unresolved` sans aucun appel réseau — non tenté, une relance
+        // (passe suivante) le reprendra → « en attente de relance ».
         if (\count($pairs) > self::MAX_OPPONENTS) {
             foreach (\array_slice($pairs, self::MAX_OPPONENTS) as $excess) {
                 $unresolved[] = $excess['code'];
+                $failures[$excess['pairingKey']] = OpponentTravelFailureStore::REASON_AWAITING_RETRY;
             }
             $pairs = \array_slice($pairs, 0, self::MAX_OPPONENTS);
         }
@@ -158,21 +166,27 @@ final class OpponentTravelResolver
                 continue; // déjà compté résolu
             }
             if (isset($budgetExceeded[$key])) {
-                // Le budget s'est arrêté AVANT cette paire : non tentée, relance pour finir.
+                // Le budget s'est arrêté AVANT cette paire : non tentée, relance pour finir →
+                // « en attente de relance ».
                 $unresolved[] = $pair['code'];
+                $failures[$pair['pairingKey']] = OpponentTravelFailureStore::REASON_AWAITING_RETRY;
 
                 continue;
             }
             $minutes = $batch['minutes'][$key] ?? null;
             if (null === $minutes) {
-                // IGN muet : jamais mis en cache (il pourrait réussir plus tard).
+                // IGN muet / pas d'itinéraire / gymnase mal géolocalisé : jamais mis en cache (il
+                // pourrait réussir plus tard, mais une relance seule n'y change rien) → « introuvable ».
                 $unresolved[] = $pair['code'];
+                $failures[$pair['pairingKey']] = OpponentTravelFailureStore::REASON_UNROUTABLE;
 
                 continue;
             }
             $this->travelCache->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $pair['lat'], $pair['lon'], $minutes);
             ++$resolved;
         }
+
+        $this->failureStore->record($clubId, $seasonId, $failures);
 
         return ['resolved' => $resolved, 'unresolved' => $unresolved, 'skippedManual' => 0];
     }
@@ -323,7 +337,7 @@ final class OpponentTravelResolver
      * a besoin de ce trajet approché). Dédupliquées par coordonnées arrondies (deux libellés
      * du même gymnase = une paire). Le `code` est gardé pour reporter un `unresolved` parlant.
      *
-     * @return list<array{key: string, code: string, lat: float, lon: float}>
+     * @return list<array{key: string, pairingKey: string, code: string, lat: float, lon: float}>
      */
     private function pairsToRoute(string $clubId, string $seasonId): array
     {
@@ -345,7 +359,9 @@ final class OpponentTravelResolver
                 continue;
             }
             $seen[$key] = true;
-            $pairs[] = ['key' => $key, 'code' => $pairingKeys[$linkKey], 'lat' => $link->getLatitude(), 'lon' => $link->getLongitude()];
+            // `pairingKey` = la clé d'appariement du lien (code fédéral OU sentinelle) — celle que
+            // le contrôleur relit pour attacher la cause d'échec à la ligne de gymnase (M14).
+            $pairs[] = ['key' => $key, 'pairingKey' => $linkKey, 'code' => $pairingKeys[$linkKey], 'lat' => $link->getLatitude(), 'lon' => $link->getLongitude()];
         }
 
         // (2) Repli VILLE : les codes FÉDÉRAUX joués cette saison SANS aucun lien apparié — on
@@ -369,7 +385,8 @@ final class OpponentTravelResolver
                 continue;
             }
             $seen[$key] = true;
-            $pairs[] = ['key' => $key, 'code' => (string) $code, 'lat' => $lat, 'lon' => $lon];
+            // Repli VILLE : réservé aux codes fédéraux → la clé d'appariement EST le code.
+            $pairs[] = ['key' => $key, 'pairingKey' => (string) $code, 'code' => (string) $code, 'lat' => $lat, 'lon' => $lon];
         }
 
         return $pairs;

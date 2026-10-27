@@ -216,7 +216,7 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(screen.getByLabelText("Chargement")).toHaveClass("size-8");
   });
 
-  it("gestionnaire → le bandeau « validé ligue » (championnats commencés) est monté", async () => {
+  it("gestionnaire → le bandeau « déjà dans FBI » (championnats commencés) est monté", async () => {
     meState.role = "admin";
     vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
       matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
@@ -225,10 +225,10 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
       totalValidatable: 3,
     });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    expect(await screen.findByText(/à confirmer « validé ligue »/)).toBeInTheDocument();
+    expect(await screen.findByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
   });
 
-  it("Membre → le bandeau « validé ligue » n'est jamais monté", async () => {
+  it("Membre → le bandeau « déjà dans FBI » n'est jamais monté", async () => {
     meState.role = "member";
     vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
       matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
@@ -238,7 +238,7 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     await screen.findByRole("group", { name: "Semaine affichée" });
-    expect(screen.queryByText(/à confirmer « validé ligue »/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/à confirmer « déjà dans FBI »/)).not.toBeInTheDocument();
   });
 
   it("rend la barre « Semaine affichée » (3 compteurs) ET l'établi (grille + radar) SANS rail", async () => {

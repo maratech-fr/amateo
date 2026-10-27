@@ -326,13 +326,15 @@ describe("ConflictsPage — mémoire de session des filtres (URL nue vs clé, ma
     const user = userEvent.setup();
     const { unmount } = renderAt("/matchs/conflits");
     await screen.findByRole("button", { name: /Mara · 3/ });
-    await user.click(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" }));
-    expect(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" })).toBeChecked();
-    // Quitter puis revenir sur l'onglet (URL nue) : le store porte la session, la case reste cochée.
+    // M4 (BCCL 2026-10-27) : le filtre domicile est désormais un contrôle SEGMENTÉ (bouton
+    // aria-pressed), plus une case à cocher — adaptation mécanique du widget, intention inchangée.
+    await user.click(screen.getByRole("button", { name: /Avec un match à domicile/ }));
+    expect(screen.getByRole("button", { name: /Avec un match à domicile/ })).toHaveAttribute("aria-pressed", "true");
+    // Quitter puis revenir sur l'onglet (URL nue) : le store porte la session, le segment reste pressé.
     unmount();
     renderAt("/matchs/conflits");
     await screen.findByRole("group", { name: "Regrouper par" });
-    expect(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" })).toBeChecked();
+    expect(screen.getByRole("button", { name: /Avec un match à domicile/ })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("URL NUE : une puce « Traitement » décochée survit à un retour sur l'onglet", async () => {
@@ -435,7 +437,8 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     renderAt();
     await screen.findByRole("button", { name: /Mara · 1/ });
     expect(screen.getByRole("button", { name: /Autres conflits · 1/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" }));
+    // M4 (BCCL 2026-10-27) : contrôle segmenté « Avec un match à domicile » (adaptation du widget).
+    await user.click(screen.getByRole("button", { name: /Avec un match à domicile/ }));
     // Le conflit à côté domicile reste ; le COMPETITION_INCOMPLETE (aucun côté) disparaît.
     expect(screen.getByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Autres conflits/ })).not.toBeInTheDocument();
@@ -522,6 +525,41 @@ describe("ConflictsPage — filtre Traitement, domicile, resets (B)", () => {
     expect(search).toMatch(/[?&]type=[^&]*amical/);
     expect(search).toMatch(/[?&]semaine=2026-10-03/);
     expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
+  });
+});
+
+describe("ConflictsPage — filtre domicile SEGMENTÉ (M4, BCCL 2026-10-27)", () => {
+  // Deux conflits du coach Mara : un à DOMICILE, un extérieur/extérieur (masqué par « domicile »).
+  const homeConflict: Conflict = { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
+  const awayAwayConflict: Conflict = {
+    type: "MATCH_MATCH",
+    severity: 3,
+    resolution: null,
+    coachId: "coach-1",
+    left: { ...side("fx-3", "team-1"), homeAway: "AWAY" as const },
+    right: { ...side("fx-4", "team-2"), homeAway: "AWAY" as const },
+  };
+
+  it("domicile pressé reflète le store, les segments portent leurs comptes, « Tous » révèle l'ext/ext masqué", async () => {
+    const user = userEvent.setup();
+    state.conflicts = [homeConflict, awayAwayConflict];
+    // Le store NAÎT à true (store.test.ts) ; le beforeEach du fichier le force à false — on rétablit
+    // le défaut ici pour éprouver le REFLET du store dans l'UI du contrôle segmenté.
+    useMatchesStore.setState({ conflictsHomeOnly: true });
+    renderAt();
+
+    // Le segment « domicile » est pressé (reflète le store), « Tous » ne l'est pas ; chacun son compte.
+    const home = await screen.findByRole("button", { name: "Avec un match à domicile (1)" });
+    expect(home).toHaveAttribute("aria-pressed", "true");
+    const tous = screen.getByRole("button", { name: "Tous (2)" });
+    expect(tous).toHaveAttribute("aria-pressed", "false");
+    // Sous « domicile », Mara ne compte QUE le conflit à domicile (l'ext/ext est masqué).
+    expect(screen.getByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
+
+    // « Tous » RÉVÈLE l'ext/ext : Mara repasse à 2 et le segment « Tous » devient pressé.
+    await user.click(tous);
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tous (2)" })).toHaveAttribute("aria-pressed", "true");
   });
 });
 

@@ -62,7 +62,7 @@ describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () =>
     expect(screen.getByText("U13")).toBeInTheDocument();
     expect(screen.getByText("Voisins")).toBeInTheDocument();
     expect(screen.getByText("Gymnase Alpha")).toBeInTheDocument();
-    expect(screen.getByText("Placé")).toBeInTheDocument();
+    expect(screen.getByText("Placé — à saisir dans FBI")).toBeInTheDocument();
     expect(screen.getByText(/16:00/)).toBeInTheDocument();
   });
 

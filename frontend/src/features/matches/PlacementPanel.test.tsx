@@ -380,7 +380,7 @@ describe("PlacementPanel", () => {
     const onReopen = vi.fn();
     renderPanel(openEnvelope, vi.fn(), { fixture: { ...placedFixture, status: "VALIDATED" }, onReopen });
 
-    expect(screen.getByText("Attesté FBI")).toBeInTheDocument();
+    expect(screen.getByText("Déjà dans FBI")).toBeInTheDocument();
     expect(screen.getByText(/ancré sur les date, heure et salle enregistrées côté ligue/)).toBeInTheDocument();
 
     // The edit gestures stay blocked while validated.

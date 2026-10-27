@@ -13,6 +13,7 @@ import { autoAppliedPhrase } from "./lib/autoAppliedPhrase";
 import { DEPOSITED_WARNING, FIELD_LABEL, fieldConsequence, isDeposited } from "./lib/deviationConsequence";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { isUnattachedHome } from "./lib/reviewQueue";
+import { MATCHES_TEXTS } from "./texts";
 
 const HOME_AWAY_LABEL = { HOME: "Domicile", AWAY: "Extérieur" } as const;
 
@@ -51,12 +52,12 @@ interface ReviewQueueRowProps {
 export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onPlace, onAttach, busy }: ReviewQueueRowProps) {
   const arbitrable = fixture.pendingDeviations.filter((d) => !d.autoApplied);
   const autoApplied = fixture.pendingDeviations.filter((d) => d.autoApplied);
-  // Un geste en un clic quand il n'y a rien à arbitrer : « Valider » pour une NEW,
-  // « Pris en compte » pour une REVIEWED qui porte encore une alerte auto-appliquée
-  // (P4-199). Une REVIEWED SANS alerte n'a pas de bouton (déjà traitée) ; un
-  // OUT_OF_SYNC à écarts se tranche champ par champ.
+  // Un geste en un clic quand il n'y a rien à arbitrer : la rencontre s'ACQUITTE — « Vu »
+  // (retours Nico, BCCL 2026-10-27, M3 — même mot pour une NEW et pour une REVIEWED qui porte
+  // encore une alerte auto-appliquée, plus « Valider »/« Pris en compte » : le fondateur ne savait
+  // pas « ce que ça fait, où ça mène »). Une REVIEWED SANS alerte n'a pas de bouton (déjà traitée) ;
+  // un OUT_OF_SYNC à écarts se tranche champ par champ (il s'arbitre, il ne s'acquitte pas).
   const canValidateLine = 0 === arbitrable.length && ("REVIEWED" !== fixture.reviewState || autoApplied.length > 0);
-  const validateLabel = "REVIEWED" === fixture.reviewState ? "Pris en compte" : "Valider";
   const isHome = "HOME" === fixture.homeAway;
   // Un match déjà joué ne se replace pas (retour fondateur 2026-09-13) : comparaison de
   // dates civiles ISO, le jour = celui du navigateur du gestionnaire (`todayISO`).
@@ -77,14 +78,14 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
         </span>
         <span className="text-sm text-muted-foreground">vs {fixture.opponentLabel}</span>
         <span className="text-sm">
-          {null !== fixture.kickoffTime ? <span className="tabular-nums">{fixture.kickoffTime}</span> : <span className="text-muted-foreground">heure non publiée</span>}
+          {null !== fixture.kickoffTime ? <span className="tabular-nums">{fixture.kickoffTime}</span> : <span className="text-muted-foreground">{MATCHES_TEXTS.rowKickoffNotPublished}</span>}
           {null !== venueText ? <span className="text-muted-foreground"> · {venueText}</span> : null}
         </span>
         <StatusPill>{FIXTURE_STATUS_LABEL[fixture.status]}</StatusPill>
         {/* Chantier A — un domicile sur terrain neutre (« pas chez nous ») : pastille NEUTRE, jamais une salle à rattacher. */}
         {fixture.neutralGround ? (
           <StatusPill variant="neutral" icon={<MapPinOff className="size-3.5" aria-hidden="true" />}>
-            Terrain neutre
+            {MATCHES_TEXTS.rowNeutralGround}
           </StatusPill>
         ) : null}
         <span className="text-xs text-muted-foreground">{treatmentLabel(fixture)}</span>
@@ -96,9 +97,16 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
             </Button>
           ) : null}
           {canValidateLine ? (
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => onValidateLine(fixture.id)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              // A11Y-28 — nom accessible CONTEXTUALISÉ (contient « vu »), jamais un verbe nu répété.
+              aria-label={`Marquer vu : rencontre du ${frDateWeekdayNoYear(fixture.matchDate)} contre ${fixture.opponentLabel}`}
+              onClick={() => onValidateLine(fixture.id)}
+            >
               <Check className="size-3.5" />
-              {validateLabel}
+              Vu
             </Button>
           ) : null}
         </span>
@@ -129,7 +137,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="flex flex-col">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">Amateo</span>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">{MATCHES_TEXTS.rowAmateoColumn}</span>
                 <span className="tabular-nums">{d.appValue ?? "—"}</span>
               </div>
               <div className="flex flex-col">
@@ -141,7 +149,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="flex flex-1 flex-col gap-1">
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => onResolve({ fixtureId: fixture.id, field: d.field, choice: "keep_app" })}>
-                  Garder Amateo
+                  {MATCHES_TEXTS.rowKeepAmateo}
                 </Button>
                 <span className="text-xs text-muted-foreground">{consequence.keepApp}</span>
               </div>
@@ -189,7 +197,7 @@ function VenueTakeSourceColumn({ fixture, venues, src, consequence, busy, onReso
         venues={venues}
         value={choice}
         onValueChange={setChoice}
-        placeholder="Choisir un gymnase"
+        placeholder={MATCHES_TEXTS.rowChooseVenue}
         leadingOptions={[{ value: NEUTRAL_GROUND_VENUE, label: NEUTRAL_GROUND_OPTION }]}
         aria-label={`Choisir le gymnase pour la salle du fichier de la rencontre du ${frDateWeekdayNoYear(fixture.matchDate)} contre ${fixture.opponentLabel}`}
       />
@@ -243,7 +251,7 @@ function AttachVenueBlock({ fixture, venues, onAttach, busy }: { fixture: Fixtur
           <MapPin className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="text-muted-foreground">{label} · non rattaché</span>
           <Button variant="outline" size="sm" className="ml-auto" onClick={open}>
-            Rattacher
+            {MATCHES_TEXTS.rowAttach}
           </Button>
         </div>
       ) : (
@@ -252,16 +260,16 @@ function AttachVenueBlock({ fixture, venues, onAttach, busy }: { fixture: Fixtur
             venues={venues}
             value={attachVenueId}
             onValueChange={setAttachVenueId}
-            placeholder="Choisir un gymnase"
+            placeholder={MATCHES_TEXTS.rowChooseVenue}
             wrapperClassName="sm:flex-1"
             aria-label={`Choisir le gymnase pour la rencontre du ${frDateWeekdayNoYear(fixture.matchDate)} contre ${fixture.opponentLabel}`}
           />
           <div className="flex gap-2">
             <Button variant="default" size="sm" disabled={"" === attachVenueId || busy} onClick={() => onAttach({ venueId: attachVenueId, label })}>
-              Confirmer
+              {MATCHES_TEXTS.rowConfirm}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setAttachVenueId(null)}>
-              Annuler
+              {MATCHES_TEXTS.rowCancel}
             </Button>
           </div>
         </div>

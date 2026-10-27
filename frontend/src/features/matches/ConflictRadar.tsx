@@ -1,8 +1,10 @@
 import { AlertTriangle, Eye, ShieldCheck } from "lucide-react";
+import { useMemo } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { isManagementRole } from "@/shared/lib/roles";
 import { useMe } from "@/shared/session/queries";
 
@@ -11,6 +13,9 @@ import { ConflictSeverityGroups } from "./ConflictLine";
 import { ConflictResolutionControl } from "./ConflictResolutionControl";
 import { isFocusableConflict } from "./lib/conflictFocus";
 import { openConflictCount } from "./lib/conflictResolution";
+import { hasHomeSide } from "./lib/consultFilter";
+import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 interface ConflictRadarProps {
   conflicts: Conflict[];
@@ -45,9 +50,16 @@ interface ConflictRadarProps {
 export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprints, onFocusConflict }: ConflictRadarProps) {
   const { data: me } = useMe();
   const canManage = isManagementRole(me?.role);
+  // M4 (retours Nico, BCCL 2026-10-27) — le radar de la vue Semaine filtre lui aussi « avec un match
+  // à domicile » (COCHÉ par défaut, même préférence de session que l'onglet Conflits), là où le
+  // gestionnaire peut agir. Comptes via `hasHomeSide` (aucune redérivation métier nouvelle).
+  const homeOnly = useMatchesStore((s) => s.conflictsHomeOnly);
+  const setHomeOnly = useMatchesStore((s) => s.setConflictsHomeOnly);
+  const homeConflictCount = useMemo(() => conflicts.filter(hasHomeSide).length, [conflicts]);
+  const displayed = useMemo(() => (homeOnly ? conflicts.filter(hasHomeSide) : conflicts), [conflicts, homeOnly]);
   // Le badge ne compte que l'À TRAITER (P4-207) — un conflit annoté reste listé, mais
-  // ne pèse plus sur le compteur.
-  const openCount = openConflictCount(conflicts);
+  // ne pèse plus sur le compteur ; il suit la sélection domicile/tous affichée.
+  const openCount = openConflictCount(displayed);
   return (
     <Card>
       <CardHeader>
@@ -60,20 +72,33 @@ export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprin
           {openCount > 0 ? (
             <StatusPill variant="warning" className="py-0">
               {openCount}
-              <span className="sr-only"> à traiter</span>
+              <span className="sr-only"> {MATCHES_TEXTS.radarToTreatSr}</span>
             </StatusPill>
           ) : null}
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        {0 === conflicts.length ? (
+      <CardContent className="flex flex-col gap-3">
+        {conflicts.length > 0 ? (
+          <SegmentedControl
+            mode="single"
+            label={MATCHES_TEXTS.homeFilterGroupLabel}
+            className="self-start"
+            options={[
+              { key: "home", label: "Avec un match à domicile", count: homeConflictCount, ariaLabel: `Avec un match à domicile (${homeConflictCount})` },
+              { key: "all", label: "Tous", count: conflicts.length, ariaLabel: `Tous (${conflicts.length})` },
+            ]}
+            value={homeOnly ? "home" : "all"}
+            onValueChange={(key) => setHomeOnly("home" === key)}
+          />
+        ) : null}
+        {0 === displayed.length ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <ShieldCheck className="size-4 text-success" />
-            Aucun conflit détecté.
+            {0 === conflicts.length ? "Aucun conflit détecté." : "Aucun conflit avec un match à domicile — basculez sur « Tous » pour voir les autres."}
           </p>
         ) : (
           <ConflictSeverityGroups
-            conflicts={conflicts}
+            conflicts={displayed}
             teams={teams}
             coaches={coaches}
             venues={venues}

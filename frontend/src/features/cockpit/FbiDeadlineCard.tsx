@@ -13,6 +13,7 @@ import { isManagementRole } from "@/shared/lib/roles";
 import { useMe } from "@/shared/session/queries";
 
 import { todayISO } from "./lib/date";
+import { COCKPIT_TEXTS } from "./texts";
 
 /**
  * La carte « Saisie FBI » du cockpit — le rappel de tout ce qui reste à porter dans le
@@ -27,8 +28,8 @@ import { todayISO } from "./lib/date";
  * Trois régimes : (1) une échéance en fenêtre → ton ACCENT (rappel calme), escaladé en
  * WARNING si dépassée, avec la ligne globale au-dessus des échéances ; (2) hors fenêtre
  * mais du travail (`fbiTodo` > 0) → ton NEUTRE, la seule ligne globale ; (3) rien à faire,
- * aucune fenêtre ET rien à confirmer « validé ligue » → `null` (le cockpit reste muet).
- * Une ligne « N à confirmer « validé ligue » » + son bouton (ouvre la confirmation chiffrée
+ * aucune fenêtre ET rien à confirmer « déjà dans FBI » → `null` (le cockpit reste muet).
+ * Une ligne « N matchs déjà dans FBI à confirmer » + son bouton (ouvre la confirmation chiffrée
  * partagée) n'apparaissent QUE pour un gestionnaire (`toConfirmCount` = BACKEND). Chaque échéance distingue « à placer »
  * (au calendrier) et « à saisir dans FBI ». Le bouton mène à la liste « FBI — à faire »
  * (`/matchs?fbi=1`) SEULEMENT si cette liste a du contenu (à saisir/corriger) ; sinon tout est
@@ -39,7 +40,7 @@ export function FbiDeadlineCard() {
   const { data } = useDeadlineOutlook();
   const { data: me } = useMe();
   const canManage = isManagementRole(me?.role);
-  // La lecture détaillée « validé ligue » n'est chargée que pour un gestionnaire (la route
+  // La lecture détaillée « déjà dans FBI » n'est chargée que pour un gestionnaire (la route
   // est en 403 pour un Membre) : elle alimente la confirmation chiffrée.
   const leagueOutlook = useLeagueValidationOutlook(canManage);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -49,7 +50,7 @@ export function FbiDeadlineCard() {
   const toEnter = data?.fbiTodo?.toEnter ?? 0;
   const toCorrect = data?.fbiTodo?.toCorrect ?? 0;
   const total = toEnter + toCorrect;
-  // « Validé ligue » à confirmer : compte BACKEND (`toConfirmCount`), bouton réservé au
+  // « Déjà dans FBI » à confirmer : compte BACKEND (`toConfirmCount`), bouton réservé au
   // gestionnaire (un Membre ne fait jamais écrire la base).
   const toConfirm = data?.toConfirmCount ?? 0;
   const canConfirm = canManage && toConfirm > 0;
@@ -104,7 +105,7 @@ export function FbiDeadlineCard() {
                   {overdue ? `échéance dépassée — ${body}` : `${body} avant le ${frShortDate(window.deadline)}`}
                 </span>
                 {window.competitionNames.length > 0 ? <span className="text-muted-foreground"> · {window.competitionNames.join(", ")}</span> : null}
-                {"community" === window.source ? <span className="text-muted-foreground"> · proposée</span> : null}
+                {"community" === window.source ? <span className="text-muted-foreground"> · {COCKPIT_TEXTS.fbiDeadlineProposed}</span> : null}
               </li>
             );
           })}
@@ -113,14 +114,14 @@ export function FbiDeadlineCard() {
 
       {deltaSegments.length > 0 ? (
         <p className="mt-2 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Depuis votre dernière visite :</span> {deltaSegments.join(" · ")}
+          <span className="font-medium text-foreground">{COCKPIT_TEXTS.fbiSinceLastVisit}</span> {deltaSegments.join(" · ")}
         </p>
       ) : null}
 
       {canConfirm ? (
         <div className="mt-3 border-t border-border/60 pt-2">
           <p className="font-medium">
-            {toConfirm} match{toConfirm > 1 ? "s" : ""} à confirmer « validé ligue »
+            {toConfirm} match{toConfirm > 1 ? "s" : ""} déjà dans FBI à confirmer
           </p>
           <Button variant="outline" size="sm" className="mt-2" onClick={() => setConfirmOpen(true)}>
             <BadgeCheck className="size-4" aria-hidden="true" />
@@ -132,12 +133,12 @@ export function FbiDeadlineCard() {
       <Button variant="outline" size="sm" className="mt-3" asChild>
         {fbiListHasContent ? (
           <Link to="/matchs?fbi=1">
-            Ouvrir la liste FBI
+            {COCKPIT_TEXTS.fbiOpenList}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         ) : (
           <Link to="/matchs">
-            Placer les matchs
+            {COCKPIT_TEXTS.fbiPlaceMatches}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         )}

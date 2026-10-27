@@ -16,6 +16,7 @@ import { DEFAULT_KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { applyConsultToParams } from "./lib/urlState";
 import { useAttachVenueLabel, useCompetitions, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
 import { buildReviewQueue, byMatchDateAsc } from "./lib/reviewQueue";
+import { MATCHES_TEXTS } from "./texts";
 import { ReviewQueueRow } from "./ReviewQueueRow";
 import { useMatchesStore } from "./store";
 import { weekendKeyOf } from "./lib/weekendGrid";
@@ -30,11 +31,16 @@ interface ReviewQueueProps {
 /**
  * PR-3b — la file de traitement des rencontres, par équipe. Chaque équipe est un
  * accordéon (ouvert = présent dans l'URL `?equipe=`, deep-linkable) : en-tête « SM1
- * · 5 à valider · 2 écarts », « Tout valider » en tête de corps (un bouton
- * imbriqué dans l'en-tête accordéon serait un bouton dans un bouton — invalide),
- * puis une ligne par rencontre. L'ordre des équipes suit `compareTeamsByRank` (le
- * même que `TeamSelect`). Un interrupteur « Afficher les traitées » révèle les
+ * · 5 nouveautés à voir · 2 écarts à trancher », « Tout marquer comme vu » en tête de
+ * corps (un bouton imbriqué dans l'en-tête accordéon serait un bouton dans un bouton —
+ * invalide), puis une ligne par rencontre. L'ordre des équipes suit `compareTeamsByRank`
+ * (le même que `TeamSelect`). Un interrupteur « Afficher les traitées » révèle les
  * rencontres déjà traitées (masquées par défaut).
+ *
+ * Retours Nico (BCCL, 2026-10-27), M3 — la file n'est pas une « validation » (« ça fait quoi,
+ * ça mène où ? ») : c'est un ACQUITTEMENT. L'import a déjà mis à jour les matchs ; marquer « vu »
+ * ne place rien, ne change ni date ni gymnase — ça vide la liste. Les écarts, eux, s'arbitrent.
+ * D'où le vocabulaire : « nouveautés à voir » / « écarts à trancher » / « Tout marquer comme vu ».
  */
 export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   const navigate = useNavigate();
@@ -180,35 +186,39 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {hasTreated ? (
             <FilterToggle checked={showTreated} onChange={toggleTreated}>
-              Afficher les traitées
+              {MATCHES_TEXTS.reviewShowTreated}
             </FilterToggle>
           ) : null}
           <FilterToggle checked={hideAway} onChange={toggleHideAway}>
-            Masquer les extérieurs
+            {MATCHES_TEXTS.reviewHideAway}
           </FilterToggle>
         </div>
-        <EmptyState icon={Inbox} title="Rien à traiter" description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles." />
+        <EmptyState icon={Inbox} title={MATCHES_TEXTS.reviewNothingToTreatTitle} description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles." />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
+      {/* M3 — la file est un ACQUITTEMENT : l'import a déjà appliqué les mises à jour, « vu » vide la liste. */}
+      <p className="text-sm text-muted-foreground">
+        L'import a déjà mis à jour vos matchs. Marquez-les comme vus pour vider la liste ; les écarts, eux, demandent votre arbitrage.
+      </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <FilterToggle checked={showTreated} onChange={toggleTreated}>
-          Afficher les traitées
+          {MATCHES_TEXTS.reviewShowTreated}
         </FilterToggle>
         <FilterToggle checked={hideAway} onChange={toggleHideAway}>
-          Masquer les extérieurs
+          {MATCHES_TEXTS.reviewHideAway}
         </FilterToggle>
       </div>
       {visibleQueues.map((queue) => {
         // Traitées affichées = UNE liste par équipe, toujours triée par date (jamais les
         // traitées « à la suite », retour fondateur 2026-09-14).
         const rows = showTreated ? [...queue.open, ...queue.treated].sort(byMatchDateAsc) : queue.open;
-        const headerParts = [teamName(queue.teamId), `${queue.toValidate} à valider`];
+        const headerParts = [teamName(queue.teamId), `${queue.toValidate} nouveauté${queue.toValidate > 1 ? "s" : ""} à voir`];
         if (queue.deviationCount > 0) {
-          headerParts.push(`${queue.deviationCount} écart${queue.deviationCount > 1 ? "s" : ""}`);
+          headerParts.push(`${queue.deviationCount} écart${queue.deviationCount > 1 ? "s" : ""} à trancher`);
         }
         if (queue.unattachedCount > 0) {
           headerParts.push(`${queue.unattachedCount} sans gymnase`);
@@ -231,7 +241,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
               {queue.open.length > 0 ? (
                 <Button variant="outline" size="sm" className="self-start" disabled={busy} onClick={() => onValidateTeam(queue.teamId)}>
                   <CheckCheck className="size-4" />
-                  Tout valider
+                  Tout marquer comme vu
                 </Button>
               ) : null}
               <ul className="flex flex-col gap-2">

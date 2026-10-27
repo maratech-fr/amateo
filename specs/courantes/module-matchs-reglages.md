@@ -18,6 +18,13 @@ que le backend a déjà calculé, jamais une règle métier recalculée) ; une l
 (§ Écran Adversaires, `/matchs/adversaires`) — l'ancien deep-link `?section=adversaires` de cet
 écran redirige.
 
+**Deep-link `?acces=<venueId>`** (M11, retours Nico BCCL 2026-10-27) : force la section « Accès
+match » ouverte (même si une autre clé `?section=` est posée) et ouvre d'emblée l'éditeur de CE
+gymnase (`MatchWindowsEditor`, focus posé au montage) — état porté par l'URL, retiré (`?acces=`
+seul) à la fermeture de l'éditeur sans perdre la section ouverte. Posé par le bouton « Configurer
+les accès » d'un conflit `ACCESS_WINDOW_LOST` (§2 « Hors accès match »,
+`module-matchs-radar-et-placement.md`), consommé par `ConfigurationPage`.
+
 **Écran d'appariement des libellés** (`VenueLabelsSection`) : une ligne par LIBELLÉ de l'inventaire
 (`GET /api/venues/fbi-labels`), `VenueSelect` dont la valeur effective est le gymnase confirmé sinon
 la suggestion « d'après les rencontres » pré-sélectionnée. Trois gestes : **Confirmer** (additif,

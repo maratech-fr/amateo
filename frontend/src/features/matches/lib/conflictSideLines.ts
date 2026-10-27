@@ -1,5 +1,5 @@
 import type { CoachGender } from "@/shared/lib/coachWording";
-import { frDateShortNoYear } from "@/shared/lib/date";
+import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import { formatDuration } from "@/shared/lib/duration";
 import { formatMinutes, parseTime } from "@/shared/lib/time";
 
@@ -183,7 +183,8 @@ function venueSide(side: ConflictFixtureView, teams: Map<string, Team>, venueNam
     kind: HOME_AWAY_KIND[side.homeAway],
     place: venueName,
     opponent: undefined !== side.opponentLabel && "" !== side.opponentLabel ? `vs ${side.opponentLabel}` : undefined,
-    date: frDateShortNoYear(side.matchDate),
+    // M6 (retours Nico, BCCL 2026-10-27) — la date de la RENCONTRE porte son jour (« dim. 8 nov. »).
+    date: frDateWeekdayNoYear(side.matchDate),
     times: {
       kickoff: { value: kickoff, estimated },
       end: null !== kickoffMin && undefined !== duration ? formatMinutes(kickoffMin + duration) : undefined,

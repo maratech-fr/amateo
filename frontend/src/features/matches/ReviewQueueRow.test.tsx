@@ -200,17 +200,25 @@ describe("ReviewQueueRow — valider / pris en compte / bandeau (P4-199)", () =>
     return { onValidateLine };
   }
 
-  it("NEW sans écart : bouton « Valider », appelle onValidateLine", async () => {
+  // Retours Nico (BCCL, 2026-10-27), M3 — la ligne s'ACQUITTE : « Vu » (même mot pour NEW et
+  // REVIEWED à alerte), jamais « Valider »/« Pris en compte » (le fondateur ne savait pas « ce que
+  // ça fait, où ça mène »). A11Y-28 : le nom accessible reste CONTEXTUALISÉ (contient « vu »), la
+  // tournure exacte est à NEO ; on pine le texte visible « Vu » et la disparition des anciens mots.
+  it("NEW sans écart : bouton « Vu » (acquittement), appelle onValidateLine", async () => {
     const user = userEvent.setup();
     const fixture = fx({ reviewState: "NEW", homeAway: "AWAY" });
     const { onValidateLine } = renderValidatable(fixture);
-    await user.click(screen.getByRole("button", { name: "Valider" }));
+    const vu = screen.getByRole("button", { name: /vu/i });
+    expect(vu).toHaveTextContent("Vu");
+    expect(screen.queryByRole("button", { name: "Valider" })).not.toBeInTheDocument();
+    await user.click(vu);
     expect(onValidateLine).toHaveBeenCalledWith(fixture.id);
   });
 
   it("REVIEWED sans écart : aucun bouton (déjà traitée)", () => {
     renderValidatable(fx({ reviewState: "REVIEWED", homeAway: "AWAY", reviewedAt: "2026-10-01T10:00:00+00:00" }));
-    expect(screen.queryByRole("button", { name: "Valider" })).not.toBeInTheDocument();
+    // M3 : plus de bouton d'acquittement « Vu » quand il n'y a rien à acquitter.
+    expect(screen.queryByRole("button", { name: /vu/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pris en compte" })).not.toBeInTheDocument();
   });
 
@@ -227,7 +235,12 @@ describe("ReviewQueueRow — valider / pris en compte / bandeau (P4-199)", () =>
     expect(screen.getByText("FBI a déplacé ce match (date) : sam. 7 nov. → sam. 14 nov.")).toBeInTheDocument();
     // Pas d'arbitrage champ par champ sur un écart auto-appliqué.
     expect(screen.queryByRole("button", { name: "Garder Amateo" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Pris en compte" }));
+    // M3 (BCCL 2026-10-27) — une REVIEWED à alerte s'acquitte du même mot qu'une NEW : « Vu »
+    // (plus « Pris en compte »).
+    const vu = screen.getByRole("button", { name: /vu/i });
+    expect(vu).toHaveTextContent("Vu");
+    expect(screen.queryByRole("button", { name: "Pris en compte" })).not.toBeInTheDocument();
+    await user.click(vu);
     expect(onValidateLine).toHaveBeenCalledWith(fixture.id);
   });
 
@@ -272,7 +285,8 @@ describe("ReviewQueueRow — valider / pris en compte / bandeau (P4-199)", () =>
       homeAway: "AWAY",
       pendingDeviations: [{ field: "date", appValue: "2026-11-07", sourceValue: "2026-11-14", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: false }],
     }));
-    expect(screen.queryByRole("button", { name: "Valider" })).not.toBeInTheDocument();
+    // M3 : un écart s'ARBITRE (champ par champ), il ne s'acquitte pas d'un « Vu ».
+    expect(screen.queryByRole("button", { name: /vu/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pris en compte" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Garder Amateo" })).toBeInTheDocument();
   });

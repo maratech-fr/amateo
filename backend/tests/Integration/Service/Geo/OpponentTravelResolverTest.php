@@ -23,6 +23,7 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbSalleResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\OpponentTravelFailureStore;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\OpponentPairingKey;
@@ -194,6 +195,59 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertFalse($resolver->hasUncomputedTravel($club->getId(), $season->getId()), 'une fois tout en cache, plus rien à faire');
     }
 
+    /**
+     * M14 — un run où une paire est tentée mais INTROUVABLE (IGN muet / pas d'itinéraire) et une
+     * autre n'est PAS tentée faute de budget doit mémoriser, par clé d'appariement, les DEUX causes
+     * distinctes : « introuvable » (unroutable) vs « en attente de relance » (awaiting_retry). C'est
+     * ce que le bandeau Adversaires relit pour compter « N en attente, M introuvables ».
+     */
+    public function testARunClassifiesBudgetExceededAndUnroutablePerPairingKey(): void
+    {
+        [$club, $season, $codeA, $codeB] = $this->seedClubWithTwoLinkedAwayOpponents();
+
+        // IGN MUET (réponse sans `duration`) → toute paire TENTÉE revient `null` = introuvable.
+        // budgetSeconds = 0 : la 1re paire est toujours tentée (→ introuvable), la 2de est sautée
+        // faute de budget (→ en attente de relance). L'ordre des paires n'est pas garanti : on
+        // prouve l'ENSEMBLE { une introuvable, une en attente }, pas laquelle est laquelle.
+        $result = $this->resolverWithUnroutableIgn()->resolve($club->getId(), $season->getId(), budgetSeconds: 0.0);
+
+        self::assertSame(0, $result['resolved'], 'aucune paire routée (une muette, une hors budget)');
+        self::assertEqualsCanonicalizing([$codeA, $codeB], $result['unresolved'], 'les deux adversaires restent non résolus');
+
+        $reasons = $this->failureStore()->reasonsFor($club->getId(), $season->getId());
+        self::assertCount(2, $reasons, 'une cause mémorisée par adversaire');
+        self::assertEqualsCanonicalizing([$codeA, $codeB], array_keys($reasons), 'keyées par clé d\'appariement (le code fédéral)');
+        self::assertEqualsCanonicalizing(
+            [OpponentTravelFailureStore::REASON_AWAITING_RETRY, OpponentTravelFailureStore::REASON_UNROUTABLE],
+            array_values($reasons),
+            'les deux causes distinctes : une « en attente de relance », une « introuvable »',
+        );
+
+        $this->failureStore()->record($club->getId(), $season->getId(), []); // DEL ciblé (nettoyage)
+    }
+
+    /**
+     * M14 — « un trajet résolu ensuite efface sa cause » : un run qui réussit tout n'enregistre
+     * AUCUNE cause (carte vide → clé supprimée), effaçant les causes du run d'échec précédent.
+     */
+    public function testASuccessfulRunErasesThePreviousFailureCauses(): void
+    {
+        [$club, $season, $codeA, $codeB] = $this->seedClubWithTwoLinkedAwayOpponents();
+
+        // 1er run : tout échoue (IGN muet) → deux causes mémorisées.
+        $this->resolverWithUnroutableIgn()->resolve($club->getId(), $season->getId());
+        self::assertNotSame([], $this->failureStore()->reasonsFor($club->getId(), $season->getId()), 'préalable : le run d\'échec a mémorisé des causes');
+
+        // 2e run : l'IGN répond désormais (1320 s → 22 min), budget ample → les deux paires
+        // résolvent et le cache se réchauffe → plus aucune cause → la clé est effacée.
+        $result = $this->resolverWithIgn(1320)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(2, $result['resolved'], 'les deux trajets sont désormais calculés');
+        self::assertSame([], $result['unresolved']);
+        self::assertSame([], $this->failureStore()->reasonsFor($club->getId(), $season->getId()), 'un run propre efface les causes du run précédent');
+        unset($codeA, $codeB);
+    }
+
     public function testWarmTravelComputesAndCachesOnePair(): void
     {
         [$club] = $this->seedClubWithAwayOpponent();
@@ -274,6 +328,7 @@ final class OpponentTravelResolverTest extends WebTestCase
             self::getContainer()->get(FixtureRepository::class),
             self::getContainer()->get(TravelTimeCache::class),
             new OpponentPairingKey,
+            self::getContainer()->get(OpponentTravelFailureStore::class),
             new NullLogger,
         );
     }
@@ -393,6 +448,55 @@ final class OpponentTravelResolverTest extends WebTestCase
         $this->em->flush();
 
         return [$club, $season];
+    }
+
+    /** An IGN whose every response carries NO `duration` → every attempted pair resolves to null (unroutable). */
+    private function resolverWithUnroutableIgn(): OpponentTravelResolver
+    {
+        $ign = new IgnRoutingClient(new MockHttpClient(
+            static fn (): MockResponse => new MockResponse('{}'),
+        ), new MockClock);
+
+        return $this->makeResolver($ign);
+    }
+
+    private function failureStore(): OpponentTravelFailureStore
+    {
+        $store = self::getContainer()->get(OpponentTravelFailureStore::class);
+        self::assertInstanceOf(OpponentTravelFailureStore::class, $store);
+
+        return $store;
+    }
+
+    /**
+     * Deux adversaires à l'extérieur (codes fédéraux) chacun avec un gymnase apparié à des
+     * coordonnées DISTINCTES → deux paires à router (M14 : deux causes possibles sur un run).
+     *
+     * @return array{0: Club, 1: Season, 2: string, 3: string}
+     */
+    private function seedClubWithTwoLinkedAwayOpponents(): array
+    {
+        [$club, $season] = $this->seedClubSeason('m14');
+        $this->scopeGucToClub($club->getId());
+        $codeA = 'ARA0069M14A';
+        $codeB = 'ARA0069M14B';
+        foreach ([[$codeA, 'Adverse M14 A'], [$codeB, 'Adverse M14 B']] as [$code, $label]) {
+            $fixture = new Fixture;
+            $fixture->setClubId($club->getId());
+            $fixture->setSeasonId($season->getId());
+            $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+            $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
+            $fixture->setHomeAway(FixtureHomeAway::AWAY);
+            $fixture->setOpponentLabel($label);
+            $fixture->setOpponentOrganismeCode($code);
+            $this->em->persist($fixture);
+        }
+        $this->em->flush();
+
+        $this->link($club, $codeA, 'SALLE M14 A', 45.80, 5.00);
+        $this->link($club, $codeB, 'SALLE M14 B', 45.90, 5.10);
+
+        return [$club, $season, $codeA, $codeB];
     }
 
     /**

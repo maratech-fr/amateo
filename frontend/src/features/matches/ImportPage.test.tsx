@@ -168,11 +168,11 @@ const MATURED_OUTLOOK = {
   totalValidatable: 3,
 };
 
-describe("ImportPage — rattrapage « validé ligue » piloté par l'échéance (lot O)", () => {
+describe("ImportPage — rattrapage « déjà dans FBI » piloté par l'échéance (lot O)", () => {
   it("rien d'échu ⇒ aucun bandeau (jamais un geste sans rencontre à valider)", async () => {
     renderPage([]);
     await screen.findByRole("button", { name: /Importer FBI/ });
-    expect(screen.queryByText(/à confirmer « validé ligue »/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/à confirmer « déjà dans FBI »/)).not.toBeInTheDocument();
   });
 
   it("championnats échus prêts ⇒ bandeau chiffré, et confirmer bascule via l'API + toast avec le nombre RÉEL", async () => {
@@ -181,18 +181,20 @@ describe("ImportPage — rattrapage « validé ligue » piloté par l'échéance
     confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 2 });
     const user = userEvent.setup();
     renderPage([]);
-    expect(await screen.findByText(/à confirmer « validé ligue »/)).toBeInTheDocument();
+    expect(await screen.findByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
+    await user.click(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
     const dialog = await screen.findByRole("dialog");
     // La confirmation DÉTAILLE chaque championnat échu (nom + échéance + compte).
-    expect(within(dialog).getByText(/PNM — échéance .* — 3 à valider/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /Marquer « validé ligue »/ }));
+    // maturedLabel — arbitrage fondateur 2026-10-27 (source §64) : « — N à valider » →
+    // « — N déjà dans FBI à confirmer ». ROUGE tant que leagueValidation.ts:52 n'est pas appliqué.
+    expect(within(dialog).getByText(/PNM — échéance .* — 3 déjà dans FBI à confirmer/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
 
     expect(confirmLeagueValidatedFixtures).toHaveBeenCalledOnce();
     await waitFor(() => {
       const messages = useToastStore.getState().toasts.map((t) => t.message);
-      expect(messages.some((m) => /2 rencontres marquées « validé ligue »/.test(m))).toBe(true);
+      expect(messages.some((m) => /2 rencontres marquées « déjà dans FBI »/.test(m))).toBe(true);
     });
   });
 
@@ -200,11 +202,11 @@ describe("ImportPage — rattrapage « validé ligue » piloté par l'échéance
     getLeagueValidationOutlook.mockResolvedValue(MATURED_OUTLOOK);
     const user = userEvent.setup();
     renderPage([]);
-    await user.click(await screen.findByRole("button", { name: /Marquer « validé ligue »/ }));
+    await user.click(await screen.findByRole("button", { name: /Marquer « déjà dans FBI »/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
     expect(confirmLeagueValidatedFixtures).not.toHaveBeenCalled();
-    expect(screen.getByText(/à confirmer « validé ligue »/)).toBeInTheDocument();
+    expect(screen.getByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
   });
 });
 
@@ -216,13 +218,13 @@ describe("ImportPage — la file de traitement", () => {
 
   it("liste l'équipe avec son en-tête compté (à valider + écarts)", async () => {
     renderPage([fx("team-1", "NEW", "2026-11-07"), fx("team-1", "OUT_OF_SYNC", "2026-12-05", { pendingDeviations: [dateDev] })]);
-    expect(await screen.findByRole("button", { name: /SM1 · 1 à valider · 1 écart/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /SM1 · 1 nouveauté à voir · 1 écart à trancher/ })).toBeInTheDocument();
   });
 
   it("Valider en ligne traite CETTE rencontre ({fixtureIds})", async () => {
     const user = userEvent.setup();
     renderPage([fx("team-1", "NEW", "2026-11-07")], "/matchs/importer?equipe=team-1");
-    const validate = await screen.findByRole("button", { name: "Valider" });
+    const validate = await screen.findByRole("button", { name: /^Marquer vu :/ });
     await user.click(validate);
     expect(reviewFixtures).toHaveBeenCalledWith({ fixtureIds: ["fx-1"] });
   });
@@ -231,7 +233,7 @@ describe("ImportPage — la file de traitement", () => {
     reviewFixtures.mockResolvedValueOnce({ reviewed: 1, skipped: [{ fixtureId: "fx-2", reason: "pending_deviations" }] });
     const user = userEvent.setup();
     renderPage([fx("team-1", "NEW", "2026-11-07"), fx("team-1", "OUT_OF_SYNC", "2026-12-05", { pendingDeviations: [dateDev] })], "/matchs/importer?equipe=team-1");
-    await user.click(await screen.findByRole("button", { name: "Tout valider" }));
+    await user.click(await screen.findByRole("button", { name: "Tout marquer comme vu" }));
     expect(reviewFixtures).toHaveBeenCalledWith({ teamId: "team-1" });
     await waitFor(() => {
       const messages = useToastStore.getState().toasts.map((t) => t.message);
@@ -263,7 +265,7 @@ describe("ImportPage — la file de traitement", () => {
     // Bandeau P4-199 : « <source> a déplacé ce match (champ) : ancien → nouveau ».
     expect(await screen.findByText(/Canal FFBB a déplacé ce match.*15:00 → 16:00/)).toBeInTheDocument();
     // Rien à arbitrer → un « Valider » d'acquittement, pas de « Prendre FBI ».
-    expect(screen.getByRole("button", { name: "Valider" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Marquer vu :/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Prendre/ })).not.toBeInTheDocument();
   });
 
@@ -310,7 +312,7 @@ describe("ImportPage — la file de traitement", () => {
     renderPage([fx("team-1", "NEW", "2026-11-07")], "/matchs/importer?equipe=team-1");
     const header = await screen.findByRole("button", { name: /SM1/ });
     expect(header).toHaveAttribute("aria-expanded", "true");
-    expect(within(header.closest("div") as HTMLElement).getByRole("button", { name: "Valider" })).toBeInTheDocument();
+    expect(within(header.closest("div") as HTMLElement).getByRole("button", { name: /^Marquer vu :/ })).toBeInTheDocument();
   });
 });
 
@@ -323,13 +325,13 @@ describe("ImportPage — masquer les extérieurs (PR A)", () => {
       fx("team-2", "NEW", "2026-11-21", { homeAway: "AWAY" }),
     ]);
     // Avant : SM1 compte 2 à valider ; SF2 (100 % extérieur) est présente.
-    expect(await screen.findByRole("button", { name: /SM1 · 2 à valider/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /SM1 · 2 nouveautés à voir/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /SF2/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Masquer les extérieurs" }));
 
     // Après : SM1 recompté à 1 (le domicile seul), SF2 disparue, URL en miroir.
-    expect(await screen.findByRole("button", { name: /SM1 · 1 à valider/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /SM1 · 1 nouveauté à voir/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /SF2/ })).not.toBeInTheDocument();
     expect(router.state.location.search).toContain("exterieurs=masques");
   });
@@ -339,7 +341,7 @@ describe("ImportPage — masquer les extérieurs (PR A)", () => {
       [fx("team-1", "NEW", "2026-11-07", { homeAway: "HOME" }), fx("team-2", "NEW", "2026-11-21", { homeAway: "AWAY" })],
       "/matchs/importer?exterieurs=masques",
     );
-    expect(await screen.findByRole("button", { name: /SM1 · 1 à valider/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /SM1 · 1 nouveauté à voir/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /SF2/ })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Masquer les extérieurs" })).toBeChecked();
   });
@@ -348,7 +350,7 @@ describe("ImportPage — masquer les extérieurs (PR A)", () => {
 describe("ImportPage — rattacher un gymnase depuis le libellé (P4-187b)", () => {
   it("l'en-tête compte les domiciles sans gymnase (« N sans gymnase »)", async () => {
     renderPage([fx("team-1", "NEW", "2026-11-07", { fbiVenueLabel: "GYMNASE MATEO" })]);
-    expect(await screen.findByRole("button", { name: /SM1 · 1 à valider · 1 sans gymnase/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /SM1 · 1 nouveauté à voir · 1 sans gymnase/ })).toBeInTheDocument();
   });
 
   it("Confirmer poste le libellé BRUT sur le gymnase choisi + toast succès nommant le gymnase", async () => {

@@ -211,7 +211,10 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
     const rowTitle = `${divisionLabel(division)} · ${M.importFbiRowMatchCount(division.rowCount)}`;
     const selected = choices[divisionKey(division)] ?? usableSuggestion(division) ?? "";
     return (
-      <li key={divisionKey(division)} className="flex items-center justify-between gap-2">
+      // M2 (retours Nico, BCCL 2026-10-27) : surligner la ligne quand SON sélecteur a le focus
+      // (`focus-within`) pour lier visuellement le championnat et l'équipe choisie — teinte de
+      // surbrillance seulement (préfixée, le repos reste sur la surface opaque du conteneur).
+      <li key={divisionKey(division)} className="flex items-center justify-between gap-2 rounded -mx-1 px-1 py-0.5 focus-within:bg-accent/10">
         <span className="min-w-0 flex-1" title={rowTitle}>
           {division.name}
           {null !== division.fbiTeamLabel ? <span className="text-muted-foreground"> ({division.fbiTeamLabel})</span> : null}

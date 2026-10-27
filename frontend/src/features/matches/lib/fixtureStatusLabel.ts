@@ -15,20 +15,16 @@ import type { FixtureStatus } from "../api";
  * que des composants casse le Fast Refresh (`react-refresh/only-export-components`).
  */
 /**
- * UXC-24 — `UNPLACED` se dit « Sans créneau », plus « Importé ». La table de statut
- * raconte une PROGRESSION (`Placé → Saisi dans FBI → Attesté FBI`) ; « Importé »
- * détonnait — il nommait la PROVENANCE, pas où l'on en est, et ne disait rien de ce
- * qu'il reste à faire. « Sans créneau » dit l'ÉTAT (le match n'a pas encore de place)
- * sans se confondre avec « Placé ».
- *
- * ⚠ Les deux autres mots du module RESTENT, c'est une décision, pas un oubli — trois
- * mots, trois métiers : « À placer » (titre de la liste `WeekWorkbench`) dit l'ACTION,
- * « à confirmer » (légende de la grille `WeekendGridLegend`) dit qu'une PROPOSITION FBI
- * existe déjà, « Sans créneau » (ici) dit l'ÉTAT de la rencontre.
+ * Retours Nico (BCCL, 2026-10-27), M3 — wording VALIDÉ fondateur : la table d'états se dit
+ * en mots de gestionnaire, pas en jargon fédéral. La progression raconte désormais ce qui
+ * MANQUE ou ce qui RESTE à faire : « Sans date ni gymnase » (ce qui manque, plus l'absente
+ * « Sans créneau »), « Placé — à saisir dans FBI » (l'action qui reste, plus le muet « Placé »),
+ * « Saisi dans FBI » (inchangé), « Déjà dans FBI » (plus « Attesté FBI » — le mot fédéral
+ * « Attesté » que même le fondateur a dû faire expliquer a cédé).
  */
 export const FIXTURE_STATUS_LABEL: Record<FixtureStatus, string> = {
-  UNPLACED: "Sans créneau",
-  PLACED: "Placé",
+  UNPLACED: "Sans date ni gymnase",
+  PLACED: "Placé — à saisir dans FBI",
   SUBMITTED: "Saisi dans FBI",
-  VALIDATED: "Attesté FBI",
+  VALIDATED: "Déjà dans FBI",
 };

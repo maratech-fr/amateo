@@ -20,6 +20,7 @@ use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\OpponentTravelFailureStore;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
@@ -77,6 +78,7 @@ final class OpponentTravelController extends AbstractController
         private readonly OpponentVenueSuggestionRepository $suggestions,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly OpponentTravelResolver $resolver,
+        private readonly OpponentTravelFailureStore $failureStore,
         private readonly OpponentVenueLinkManager $linkManager,
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly OpponentPairingKey $pairingKey,
@@ -106,12 +108,15 @@ final class OpponentTravelController extends AbstractController
             : [];
         // pending = un calcul de trajets tourne pour ce club (C6) — alimente `travelStatus`.
         $computePending = $this->travelComputeLock->isHeld($clubId);
+        // M14 — la cause d'échec du DERNIER run (clé d'appariement → budget épuisé / introuvable),
+        // pour que chaque ligne de gymnase non calculée dise pourquoi (et le bandeau Adversaires compte).
+        $failureReasons = $this->failureStore->reasonsFor($clubId, $season->getId());
 
         return $this->json([
             'clubId' => $clubId,
             'seasonId' => $season->getId(),
             'clubGeolocated' => $clubGeolocated,
-            'opponents' => $this->buildOpponents($clubId, $season->getId(), $cacheByDest, $computePending),
+            'opponents' => $this->buildOpponents($clubId, $season->getId(), $cacheByDest, $computePending, $failureReasons),
         ]);
     }
 
@@ -320,11 +325,12 @@ final class OpponentTravelController extends AbstractController
      * « à apparier » (`unmatchedLabels`). Groupé par code fédéral (les rencontres sans code
      * sont regroupées au libellé, non appariables).
      *
-     * @param array<string, int> $cacheByDest destKey → aller simple (minutes)
+     * @param array<string, int>    $cacheByDest    destKey → aller simple (minutes)
+     * @param array<string, string> $failureReasons clé d'appariement → cause d'échec du dernier run (M14)
      *
      * @return list<array<string, mixed>>
      */
-    private function buildOpponents(string $clubId, string $seasonId, array $cacheByDest, bool $computePending): array
+    private function buildOpponents(string $clubId, string $seasonId, array $cacheByDest, bool $computePending, array $failureReasons): array
     {
         $away = $this->fixtures->findAwayBySeason($seasonId);
         $linksByCode = $this->linksByCode($clubId);
@@ -360,7 +366,7 @@ final class OpponentTravelController extends AbstractController
             // Les liens sont keyés par clé d'appariement (code fédéral OU sentinelle) : un
             // adversaire sans code retrouve ainsi ses gymnases appariés sous sa sentinelle.
             $links = $linksByCode[$this->pairingKey->fromOpponent($code, $group['name'])] ?? [];
-            $opponents[] = $this->opponentView($group, $entry, $links, $cacheByDest, $computePending);
+            $opponents[] = $this->opponentView($group, $entry, $links, $cacheByDest, $computePending, $failureReasons);
         }
         usort($opponents, static function (array $a, array $b): int {
             // Sans gymnase d'abord (aucun venue), puis alphabétique (fr, insensible à la casse).
@@ -377,17 +383,18 @@ final class OpponentTravelController extends AbstractController
      * @param array{code: string|null, name: string, labelCounts: array<string, array{label: string, count: int}>, total: int} $group
      * @param list<OpponentVenueLink>                                                                                          $links
      * @param array<string, int>                                                                                               $cacheByDest
+     * @param array<string, string>                                                                                            $failureReasons
      *
      * @return array<string, mixed>
      */
-    private function opponentView(array $group, ?OpponentDirectoryEntry $entry, array $links, array $cacheByDest, bool $computePending): array
+    private function opponentView(array $group, ?OpponentDirectoryEntry $entry, array $links, array $cacheByDest, bool $computePending, array $failureReasons): array
     {
         // Les gymnases appariés (une entrée par lien), avec leur compte de rencontres et le
         // gymnase de repli si on le retirait.
         $venues = [];
         foreach ($links as $link) {
             $fixtureCount = $group['labelCounts'][$link->getFbiLabelNorm()]['count'] ?? 0;
-            $venues[] = $this->venueView($link, $fixtureCount, $links, $group['labelCounts'], $cacheByDest, $computePending);
+            $venues[] = $this->venueView($link, $fixtureCount, $links, $group['labelCounts'], $cacheByDest, $computePending, $failureReasons);
         }
 
         // Les libellés SANS lien = « à apparier ».
@@ -423,12 +430,16 @@ final class OpponentTravelController extends AbstractController
      * @param list<OpponentVenueLink>                         $siblings
      * @param array<string, array{label: string, count: int}> $labelCounts
      * @param array<string, int>                              $cacheByDest
+     * @param array<string, string>                           $failureReasons
      *
      * @return array<string, mixed>
      */
-    private function venueView(OpponentVenueLink $link, int $fixtureCount, array $siblings, array $labelCounts, array $cacheByDest, bool $computePending): array
+    private function venueView(OpponentVenueLink $link, int $fixtureCount, array $siblings, array $labelCounts, array $cacheByDest, bool $computePending, array $failureReasons): array
     {
         $oneWay = $cacheByDest[$this->travelCache->destKey($link->getLatitude(), $link->getLongitude())] ?? null;
+        // M14 — la cause (awaiting_retry|unroutable) ne vaut que pour une ligne NON calculée et hors
+        // run en cours : un trajet présent, ou un calcul en vol, n'a pas de « pourquoi » à montrer.
+        $failureReason = null !== $oneWay || $computePending ? null : ($failureReasons[$link->getOpponentOrganismeCode()] ?? null);
 
         return [
             'id' => $link->getId(),
@@ -441,6 +452,9 @@ final class OpponentTravelController extends AbstractController
             'source' => $link->getSource()->value,
             'travelMinutes' => $oneWay,
             'travelStatus' => null !== $oneWay ? 'done' : ($computePending ? 'pending' : 'unavailable'),
+            // M14 : « en attente de relance » (budget worker épuisé) vs « introuvable » (IGN muet /
+            // pas d'itinéraire / gymnase mal géolocalisé) ; null = calculé, en cours, ou jamais tenté.
+            'travelFailureReason' => $failureReason,
             // Un lien = un gymnase exact → jamais « approché » (le repli approché vit dans la
             // projection par rencontre, pas ici).
             'approximated' => false,

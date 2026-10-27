@@ -134,6 +134,22 @@ describe("useMatchesStore — onglet Conflits (PR A)", () => {
   });
 });
 
+describe("useMatchesStore — filtre domicile de l'onglet Conflits (M4, BCCL 2026-10-27)", () => {
+  // Retour Nico : « case à cocher en petit, même moi je l'ai oubliée » — le filtre « avec un
+  // match à domicile » (c'est là qu'il peut AGIR) passe COCHÉ par défaut. On teste le défaut de
+  // CRÉATION du store (getInitialState), pas l'état courant que d'autres tests mutent.
+  it("conflictsHomeOnly NAÎT à true (domicile par défaut)", () => {
+    expect(useMatchesStore.getInitialState().conflictsHomeOnly).toBe(true);
+  });
+
+  it("setConflictsHomeOnly bascule le filtre (domicile ⇄ tous)", () => {
+    useMatchesStore.getState().setConflictsHomeOnly(false);
+    expect(useMatchesStore.getState().conflictsHomeOnly).toBe(false);
+    useMatchesStore.getState().setConflictsHomeOnly(true);
+    expect(useMatchesStore.getState().conflictsHomeOnly).toBe(true);
+  });
+});
+
 describe("useMatchesStore — temporalité Consulter (PR-2b)", () => {
   beforeEach(() => {
     useMatchesStore.setState({ consultTemporality: "semaine", consultMonth: null, consultPhaseId: null });

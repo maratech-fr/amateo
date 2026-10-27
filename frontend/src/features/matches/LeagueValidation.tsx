@@ -17,6 +17,7 @@ import {
   toTreatLabel,
 } from "./lib/leagueValidation";
 import { useConfirmLeagueValidatedFixtures, useLeagueValidationOutlook } from "./queries";
+import { MATCHES_TEXTS } from "./texts";
 
 /**
  * Lot O — « validé ligue » en lot, PILOTÉ PAR L'ÉCHÉANCE du championnat. Un club qui
@@ -49,7 +50,7 @@ export function LeagueValidationConfirmDialog({ open, outlook, onClose }: { open
   const handleConfirm = (): void => {
     confirm.mutate(undefined, {
       onSuccess: ({ confirmed }) => {
-        toast.success(`${confirmed} ${plural(confirmed)} marquée${confirmed > 1 ? "s" : ""} « validé ligue ».`);
+        toast.success(`${confirmed} ${plural(confirmed)} marquée${confirmed > 1 ? "s" : ""} « déjà dans FBI ».`);
         onClose();
       },
     });
@@ -57,7 +58,7 @@ export function LeagueValidationConfirmDialog({ open, outlook, onClose }: { open
   return (
     <ConfirmDialog
       open={open}
-      title="Marquer « validé ligue »"
+      title={LEAGUE_VALIDATION_CONFIRM_LABEL}
       description={
         <div className="flex flex-col gap-2 text-left">
           <p>{leagueValidationIntro(outlook.totalValidatable)}</p>
@@ -110,7 +111,7 @@ function LeagueToTreatNotice({ fixtures }: { fixtures: LeagueToTreatFixture[] })
           </ul>
         </div>
         <Button variant="outline" size="sm" className="shrink-0" onClick={scrollToQueue}>
-          Traiter dans la file
+          {MATCHES_TEXTS.leagueTreatInQueue}
           <ArrowRight className="size-4" aria-hidden="true" />
         </Button>
       </div>
@@ -134,7 +135,7 @@ function MissingDeadlineNotice({ competitions }: { competitions: MissingDeadline
           {competitions.length} championnat{competitions.length > 1 ? "s" : ""} sans échéance {competitions.length > 1 ? "ont" : "a"} des rencontres prêtes ({names}) — renseignez leur échéance de saisie pour les valider.
         </span>
         <Button variant="outline" size="sm" className="shrink-0" onClick={() => void navigate(ENTRY_DEADLINES_PATH)}>
-          Échéances de saisie
+          {MATCHES_TEXTS.entryDeadlinesLink}
           <ArrowRight className="size-4" aria-hidden="true" />
         </Button>
       </div>
@@ -165,7 +166,7 @@ export function LeagueValidationBanner() {
           <div className="flex flex-wrap items-center gap-2">
             <BadgeCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="grow tabular-nums">
-              {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « validé ligue ».
+              {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « déjà dans FBI ».
             </span>
             <Button size="sm" className="shrink-0" onClick={() => setOpen(true)}>
               {LEAGUE_VALIDATION_CONFIRM_LABEL}
@@ -195,7 +196,7 @@ export function LeagueValidationReportEntry() {
   return (
     <div className="mt-1 flex flex-col items-start gap-1 border-t border-border pt-2">
       <p className="text-xs text-muted-foreground">
-        {total} {plural(total)} de championnats commencés (échéance dépassée ou premier match joué) {total > 1 ? "portent" : "porte"} déjà date, heure et gymnase dans FBI — à confirmer « validé ligue ».
+        {total} {plural(total)} de championnats commencés (échéance dépassée ou premier match joué) {total > 1 ? "portent" : "porte"} déjà date, heure et gymnase dans FBI — à confirmer « déjà dans FBI ».
       </p>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <BadgeCheck className="size-4" />
@@ -215,9 +216,9 @@ export function EntryDeadlinesLink() {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
       <CalendarClock className="size-4 shrink-0" aria-hidden="true" />
-      <span className="grow">Des échéances de saisie à renseigner ? Complétez-les pour ne rien manquer.</span>
+      <span className="grow">{MATCHES_TEXTS.entryDeadlinesPrompt}</span>
       <Button variant="ghost" size="sm" className="shrink-0" onClick={() => void navigate(ENTRY_DEADLINES_PATH)}>
-        Échéances de saisie
+        {MATCHES_TEXTS.entryDeadlinesLink}
         <ArrowRight className="size-4" aria-hidden="true" />
       </Button>
     </div>

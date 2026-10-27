@@ -307,6 +307,19 @@ son contrat « codes fédéraux seuls » pour ses autres appelants ; le repli VI
 codes fédéraux (un sans-code n'a pas d'entrée d'annuaire fédérale à router en repli). Détail
 worker/verrou/topic : `backend/docs/geo-api.md` § Calcul asynchrone.
 
+**M14 (retours Nico, BCCL 2026-10-27) — la cause du DERNIER échec, par gymnase.** Un trajet non
+résolu l'est pour deux raisons bien distinctes, invisibles l'une de l'autre côté écran avant ce lot :
+le budget worker s'est épuisé AVANT d'atteindre la paire (une relance suffit) ou IGN est resté muet
+sur elle (pas d'itinéraire / gymnase mal géolocalisé — une relance seule n'y changera rien).
+`App\Service\Geo\OpponentTravelFailureStore` mémorise cette carte (clé d'appariement adversaire →
+`awaiting_retry`\|`unroutable`) dans **Redis** (même connexion que `TravelComputeLock`, clé
+`opponent_travel_failures:{clubId}:{seasonId}`, TTL 30 jours) — état VOLATILE, pas une donnée
+métier, écrasée à chaque run de `OpponentTravelResolver::resolve` (elle reflète le DERNIER calcul,
+jamais un cumul ; un code résolu depuis en disparaît). `GET /api/opponents/travel` sert
+`travelFailureReason` par ligne de gymnase (`null` si calculé, en cours, ou jamais tenté) — le
+bandeau d'échec partiel de l'écran Adversaires l'agrège et nomme les gymnases concernés (§ Écran
+Adversaires). Détail client Redis/TTL/clé : `backend/docs/geo-api.md` §2.
+
 ### Logo fédéral d'un adversaire
 
 `OpponentDirectoryEntry.logoId` (table GLOBALE) est posé sans coût réseau supplémentaire depuis les

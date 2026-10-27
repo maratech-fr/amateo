@@ -6,7 +6,6 @@ import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
-import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
@@ -28,6 +27,7 @@ import { applyConflictFocusToParams, applyConflictsToParams, applyConsultToParam
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
 import { useCoaches, useCompetitions, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
@@ -129,18 +129,22 @@ export function ConflictsPage() {
   const treatmentCounts = useMemo(() => countByTreatment(allConflicts), [allConflicts]);
   const effectiveFamilies = conflictsFamilies ?? CONFLICT_FAMILIES;
   // B3 — ordre : familles → traitement (treatmentOf) → domicile (hasHomeSide) → pivot ;
-  // les compteurs (au-dessus) n'en bougent pas.
-  const filtered = useMemo(() => {
+  // les compteurs (au-dessus) n'en bougent pas. Le filtre domicile est séparé pour servir les
+  // comptes du contrôle segmenté (M4) : la rangée AVANT domicile donne « Tous » et son sous-ensemble
+  // à côté domicile donne « Avec un match à domicile » — comptes via `hasHomeSide`, aucune règle neuve.
+  const familyTreatmentFiltered = useMemo(() => {
     let out = applyFamilyFilter(allConflicts, effectiveFamilies);
     if (null !== treatments) {
       const active = new Set(treatments);
       out = out.filter((c) => active.has(treatmentOf(c)));
     }
-    if (homeOnly) {
-      out = out.filter(hasHomeSide);
-    }
     return out;
-  }, [allConflicts, effectiveFamilies, treatments, homeOnly]);
+  }, [allConflicts, effectiveFamilies, treatments]);
+  const homeConflictCount = useMemo(() => familyTreatmentFiltered.filter(hasHomeSide).length, [familyTreatmentFiltered]);
+  const filtered = useMemo(
+    () => (homeOnly ? familyTreatmentFiltered.filter(hasHomeSide) : familyTreatmentFiltered),
+    [familyTreatmentFiltered, homeOnly],
+  );
   const rawEntries = useMemo(() => pivotConflicts(filtered, conflictsPivot, fixturesById), [filtered, conflictsPivot, fixturesById]);
   // Il reste des conflits traités ? (pilote l'affichage du groupe « Traitement ».)
   const hasTreated = useMemo(() => allConflicts.some((c) => !isOpenConflict(c)), [allConflicts]);
@@ -379,7 +383,7 @@ export function ConflictsPage() {
   const renderConflictAction = (conflict: Conflict): ReactNode => {
     if ("COMPETITION_INCOMPLETE" === conflict.type) {
       return (
-        <Button variant="outline" size="sm" title="Importer les matchs manquants" onClick={() => navigate("/matchs/importer")}>
+        <Button variant="outline" size="sm" title={MATCHES_TEXTS.conflictsImportMissingTitle} onClick={() => navigate("/matchs/importer")}>
           <Download className="size-4" aria-hidden="true" />
           Importer
         </Button>
@@ -444,7 +448,7 @@ export function ConflictsPage() {
     return (
       <EmptyState
         icon={ShieldCheck}
-        title="Aucun conflit sur la saison"
+        title={MATCHES_TEXTS.noSeasonConflictsTitle}
         description="Tous les matchs placés respectent les gymnases, les coachs et les fenêtres ligue."
       />
     );
@@ -455,11 +459,21 @@ export function ConflictsPage() {
   const present = familiesPresent(allConflicts);
   const familyChips = CONFLICT_FAMILIES.filter((family) => present.has(family));
 
+  // M4 (retours Nico, BCCL 2026-10-27) — le filtre domicile passe du petit interrupteur (« même moi
+  // je l'ai oublié ») à un contrôle SEGMENTÉ visible, COCHÉ sur « domicile » par défaut : c'est là que
+  // le gestionnaire peut agir. Comptes via `hasHomeSide` (aucune redérivation métier nouvelle).
   const homeToggle = (
     <div className="ml-auto">
-      <FilterToggle checked={homeOnly} onChange={onHomeOnly}>
-        Seulement avec un match à domicile
-      </FilterToggle>
+      <SegmentedControl
+        mode="single"
+        label={MATCHES_TEXTS.homeFilterGroupLabel}
+        options={[
+          { key: "home", label: "Avec un match à domicile", count: homeConflictCount, ariaLabel: `Avec un match à domicile (${homeConflictCount})` },
+          { key: "all", label: "Tous", count: familyTreatmentFiltered.length, ariaLabel: `Tous (${familyTreatmentFiltered.length})` },
+        ]}
+        value={homeOnly ? "home" : "all"}
+        onValueChange={(key) => onHomeOnly("home" === key)}
+      />
     </div>
   );
   const allFamiliesOn = familyChips.every(isFamilyChecked);
@@ -471,7 +485,7 @@ export function ConflictsPage() {
           vit sur le SegmentedControl ; ce div n'est qu'une rangée de mise en page. */}
       <div className="flex flex-wrap items-center gap-2">
         <span id="conflicts-pivot-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
-          Regrouper par
+          {MATCHES_TEXTS.groupByLabel}
         </span>
         <SegmentedControl
           mode="single"
@@ -500,7 +514,7 @@ export function ConflictsPage() {
         {/* Familles de conflits (présentes) avec compteur À TRAITER. */}
         <div role="group" aria-labelledby="conflicts-familles-label" className="flex flex-wrap items-center gap-1.5">
           <span id="conflicts-familles-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
-            Familles
+            {MATCHES_TEXTS.familiesGroupLabel}
           </span>
           {familyChips.map((family) => (
             <FilterChip key={family} pressed={isFamilyChecked(family)} count={familyCounts.get(family) ?? 0} onPress={() => toggleFamily(family)}>
@@ -528,7 +542,7 @@ export function ConflictsPage() {
         {hasTreated ? (
           <div role="group" aria-labelledby="conflicts-traitement-label" className="flex flex-wrap items-center gap-1.5">
             <span id="conflicts-traitement-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
-              Traitement
+              {MATCHES_TEXTS.treatmentGroupLabel}
             </span>
             {treatmentChipKeys(allConflicts).map((key) => {
               const meta = TREATMENT_META[key];

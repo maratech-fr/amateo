@@ -91,7 +91,9 @@ interface MatchesState {
    * local de la page vers le store (mémoire de session, comme `conflictsPivot`/`conflictsFamilies`) :
    * ils survivent désormais à un retour sur l'onglet. `conflictsTreatments` : `null` = tout coché
    * (les 4 aussi ⇒ jamais sérialisé) ; `conflictsHomeOnly` : n'afficher que les conflits avec un
-   * match à domicile. Non persistés : l'URL `?traitement=&domicile=1` porte le deep-link.
+   * match à domicile — COCHÉ par défaut (M4, retours Nico BCCL 2026-10-27 : c'est là que le
+   * gestionnaire peut AGIR ; ext/ext l'intéresse moins). Non persistés : l'URL
+   * `?traitement=&domicile=1` porte le deep-link.
    */
   conflictsTreatments: TreatmentKey[] | null;
   conflictsHomeOnly: boolean;
@@ -156,7 +158,7 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   conflictsPivot: "coach",
   conflictsFamilies: null,
   conflictsTreatments: null,
-  conflictsHomeOnly: false,
+  conflictsHomeOnly: true,
   landingDecided: false,
   // Les raisons de non-placement sont attachées à la semaine affichée : changer de
   // semaine les PURGE (une raison d'une autre semaine ne doit pas rester à l'écran).

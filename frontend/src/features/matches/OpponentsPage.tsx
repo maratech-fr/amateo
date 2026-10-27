@@ -86,6 +86,11 @@ export function OpponentsPage() {
   const computing = allVenues.some((v) => "pending" === v.travelStatus);
   const doneCount = allVenues.filter((v) => "done" === v.travelStatus).length;
   const failedCount = allVenues.filter((v) => "unavailable" === v.travelStatus).length;
+  // M14 — le pourquoi, servi PAR LIGNE : « en attente de relance » (budget worker épuisé) vs
+  // « introuvable » (IGN muet / gymnase mal géolocalisé). Le front AFFICHE la cause serveur.
+  const awaitingRetryCount = allVenues.filter((v) => "awaiting_retry" === v.travelFailureReason).length;
+  const unroutableCount = allVenues.filter((v) => "unroutable" === v.travelFailureReason).length;
+  const failedVenueNames = allVenues.filter((v) => null !== v.travelFailureReason).map((v) => v.label);
   const totalTravel = allVenues.length;
   const clubsWithoutGym = opponents.filter((o) => 0 === o.venues.length).length;
   useTravelStream(computing);
@@ -184,7 +189,17 @@ export function OpponentsPage() {
       ) : null}
 
       {"ready" === state && clubGeolocated && !computing && failedCount > 0 ? (
-        <NoticeBanner icon={<MapPinOff className="size-4 text-warning" aria-hidden="true" />} message={MATCHES_TEXTS.travelFailuresBanner(failedCount)}>
+        <NoticeBanner
+          icon={<MapPinOff className="size-4 text-warning" aria-hidden="true" />}
+          message={
+            <span className="flex flex-col gap-0.5">
+              <span>
+                {awaitingRetryCount + unroutableCount > 0 ? MATCHES_TEXTS.travelFailuresByReason(awaitingRetryCount, unroutableCount) : MATCHES_TEXTS.travelFailuresBanner(failedCount)}
+              </span>
+              {failedVenueNames.length > 0 ? <span className="text-xs text-muted-foreground">{MATCHES_TEXTS.travelFailureVenues(failedVenueNames)}</span> : null}
+            </span>
+          }
+        >
           <Button variant="outline" size="sm" disabled={retry.isPending} onClick={() => retry.mutate()}>
             {MATCHES_TEXTS.retryMissing}
           </Button>

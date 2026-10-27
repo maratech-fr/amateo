@@ -23,6 +23,13 @@ export interface OpponentVenue {
   source: OpponentTravelSource;
   travelMinutes: number | null;
   travelStatus: "done" | "pending" | "unavailable";
+  /**
+   * M14 (retours Nico, BCCL 2026-10-27) — pourquoi le dernier calcul a laissé ce gymnase sans
+   * trajet : « awaiting_retry » (budget worker épuisé avant de l'atteindre — une relance reprend)
+   * vs « unroutable » (IGN muet / pas d'itinéraire / gymnase mal géolocalisé — une relance seule
+   * n'y change rien) ; null = calculé, en cours, ou jamais tenté. Décidé SERVEUR, jamais redérivé.
+   */
+  travelFailureReason: "awaiting_retry" | "unroutable" | null;
   approximated: boolean;
   fixtureCount: number;
   fallbackVenueName: string | null;
