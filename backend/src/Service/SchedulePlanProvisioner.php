@@ -421,6 +421,24 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * Prolonger une fermeture (fondateur 2026-10-27) — RÉ-ANCRE un plan de période sur une AUTRE
+     * entrée de calendrier (le « milieu » enfant né de la conversion racine-bloc → mère découpée) et
+     * recale sa fenêtre, SANS toucher ses versions ni son pointeur : le planning déjà travaillé est
+     * conservé, il change juste de porteur. Appelé SOUS le verrou de plan-scope pris par l'appelant
+     * ({@see ClosureWindowApplier}). SQL brut, comme toute écriture de plan ici : `season_filter`
+     * épingle les lectures ORM à la saison active, un plan peut vivre pour une autre ; RLS scope le club.
+     */
+    public function reanchorPeriodPlan(string $schedulePlanId, string $newCalendarEntryId, DateTimeImmutable $start, DateTimeImmutable $end): void
+    {
+        $this->entityManager->getConnection()->executeStatement(
+            'UPDATE schedule_plan SET calendar_entry_id = :eid, start_date = :start, end_date = :end, updated_at = now(), version = version + 1 '
+            . 'WHERE id = :pid',
+            ['eid' => $newCalendarEntryId, 'start' => $start, 'end' => $end, 'pid' => $schedulePlanId],
+            ['start' => Types::DATETIMETZ_IMMUTABLE, 'end' => Types::DATETIMETZ_IMMUTABLE],
+        );
+    }
+
+    /**
      * D3 v1 — recale le NOM du plan de période sur le nouveau titre de l'entrée, MAIS seulement
      * s'il porte encore l'ancien titre (le WHERE `name = :old`). Inv. 12 : le nom du plan naît du
      * titre de l'entrée et un renommage manuel reste souverain — un plan déjà renommé à la main ne

@@ -89,6 +89,26 @@ class SchedulePlanResource
     #[Groups(['read'])]
     public bool $teamSelectionInitialized = false;
 
+    // Prolonger une fermeture (axe planning lifecycle) : SERVIS seulement sur un plan CLOSURE —
+    // sur un plan SEASON/HOLIDAY ils gardent leurs défauts (fenêtre non éditable par ce rail).
+    // Le pourquoi (plancher serveur, identité de la fermeture) vit dans l'ADR.
+    /** La fenêtre de cette fermeture est-elle modifiable (geste « Modifier les dates ») ? */
+    #[Groups(['read'])]
+    public bool $windowEditable = false;
+
+    /** Pourquoi la fenêtre n'est pas modifiable (génération en vol, saison archivée…), sinon null. */
+    #[Groups(['read'])]
+    public ?string $windowLockedReason = null;
+
+    /** Le PLANCHER « le passé ne bouge pas » : la fin ne descend jamais sous cette date (AAAA-MM-JJ). */
+    #[ApiProperty(openapiContext: ['format' => 'date'])]
+    #[Groups(['read'])]
+    public string $minEndDate = '';
+
+    /** L'identité de la FERMETURE (titre de la racine), partagée par tous ses plans-segments. */
+    #[Groups(['read'])]
+    public string $closureTitle = '';
+
     public static function fromEntity(SchedulePlan $entity): self
     {
         $dto = new self;
