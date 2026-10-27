@@ -83,6 +83,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *    contrainte datée `venue_closed` étendue à TOUTE la fenêtre (début figé = plancher) ;
  *    reprises de vacances non validées qui SURVIVENT et restent travaillables (« à régénérer » =
  *    jamais validées, le gestionnaire les régénère) ; aperçu == appliqué.
+ *  • règle VENDREDI→SAMEDI (fondateur 2026-10-27) : le feed scolaire démarre le VENDREDI de fin des
+ *    cours, mais un jour lun→ven d'une semaine qui n'est PAS DE vacances ({@see HolidayWorkweekRule})
+ *    reste à la FERMETURE → la pause ne commence que le SAMEDI, et une semaine dont chaque jour est
+ *    fermeture OU vacances compte PLEINE (plus de « fin » isolée qui trouait avec la fenêtre brute) ;
  *  • raccourcir : même geste, verdicts annoncés == appliqués, le passé ne bouge pas ;
  *  • plancher : une fenêtre déjà commencée a son début FIGÉ (minEndDate servi, apply sous le plancher refusé) ;
  *  • copie figée : modifier la SOURCE après coup ne redescend pas dans les copies ;
@@ -172,7 +176,13 @@ final class ClosureWindowExtendTest extends WebTestCase
 
         // (2)(3)(4) COPIES : fin avant vacances, après-vacances, fin finale — chacune POINTÉE sur une
         // version COMPLETED, slots == source, verrous à origine VRAIE (jamais UNKNOWN).
-        foreach ([[$this->mon(2), $this->thu(2)], [$this->mon(5), $this->sun(5)], [$this->mon(6), $this->fri(6)]] as $win) {
+        //
+        // ⚠ RÈGLE vendredi→samedi (fondateur 2026-10-27) : les vacances commencent le VENDREDI fri(2)
+        // (entrée + feed), mais la semaine mon(2)→dim n'est PAS une semaine DE vacances au sens de
+        // {@see HolidayWorkweekRule::covers} (lun→jeu hors vacances) → ses jours lun→ven restent à la
+        // FERMETURE et la pause ne commence que le SAMEDI. La première copie court donc jusqu'au
+        // VENDREDI fri(2) (et non jeu. thu(2), l'ancien découpage qui troue avec la fenêtre brute).
+        foreach ([[$this->mon(2), $this->fri(2)], [$this->mon(5), $this->sun(5)], [$this->mon(6), $this->fri(6)]] as $win) {
             $child = $this->childWithWindow($club, $rootId, $win[0], $win[1]);
             self::assertNotNull($child, \sprintf('un segment-copie existe sur [%s, %s]', $win[0], $win[1]));
             $planId = $this->planOf($club, $child);
@@ -257,9 +267,12 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertCount(1, $pauses, 'une période de vacances recoupée = exactement une ligne de pause');
         $pause = $pauses[0];
 
-        // (2) Nommée + bornes fusionnées et clampées à la fenêtre.
+        // (2) Nommée + bornes fusionnées et clampées à la fenêtre. La vacance DÉMARRE le VENDREDI
+        // fri(2) (feed + entrée), mais la semaine mon(2)→dim n'est pas une semaine DE vacances
+        // ({@see HolidayWorkweekRule}) : ses jours lun→ven restent à la FERMETURE, donc la PAUSE ne
+        // commence que le SAMEDI sat(2) (règle vendredi→samedi, fondateur 2026-10-27).
         self::assertStringStartsWith('Pause — Vacances de la Toussaint', $pause['label'], 'la pause nomme les vacances');
-        self::assertSame([$this->fri(2), $this->sun(4)], [$pause['startDate'], $pause['endDate']], 'les bornes fusionnent les 4 fenêtres et se clampent à la fenêtre');
+        self::assertSame([$this->sat(2), $this->sun(4)], [$pause['startDate'], $pause['endDate']], 'la pause commence le samedi (lun→ven restent à la fermeture) et se clampe à la fenêtre');
 
         // (3) Des plans de vacances recoupent la pause → on ne touche pas à leurs plannings.
         self::assertStringContainsString('vos plannings de vacances restent tels quels.', $pause['label']);
@@ -302,7 +315,9 @@ final class ClosureWindowExtendTest extends WebTestCase
         $pause = $pauses[0];
 
         self::assertStringStartsWith('Pause — Vacances de printemps', $pause['label'], 'la pause nomme les vacances du feed');
-        self::assertSame([$this->fri(2), $this->sun(4)], [$pause['startDate'], $pause['endDate']], 'les bornes du feed sont clampées à la fenêtre');
+        // Feed démarrant le VENDREDI fri(2) → semaine mon(2) non DE vacances ({@see HolidayWorkweekRule})
+        // → lun→ven restent à la fermeture, la pause commence le SAMEDI sat(2) (fondateur 2026-10-27).
+        self::assertSame([$this->sat(2), $this->sun(4)], [$pause['startDate'], $pause['endDate']], 'la pause du feed commence le samedi, clampée à la fenêtre');
 
         // Aucun plan de vacances ne recoupe la pause → on ne promet AUCUN planning.
         self::assertStringContainsString('les vacances gardent leur propre fonctionnement.', $pause['label']);
@@ -630,6 +645,12 @@ final class ClosureWindowExtendTest extends WebTestCase
     private function fri(int $n): string
     {
         return $this->today->modify(\sprintf('%+d days', 7 * $n + 4))->format('Y-m-d');
+    }
+
+    /** Samedi de la semaine +n (premier jour du WEEK-END — début d'une pause de vacances). */
+    private function sat(int $n): string
+    {
+        return $this->today->modify(\sprintf('%+d days', 7 * $n + 5))->format('Y-m-d');
     }
 
     /**
