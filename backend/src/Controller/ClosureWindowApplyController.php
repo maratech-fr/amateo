@@ -88,12 +88,6 @@ final class ClosureWindowApplyController extends AbstractController implements S
         if (SchedulePlanType::CLOSURE !== $plan->getType()) {
             return $this->json(['error' => 'Seule une fermeture modifie sa fenêtre ainsi.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-        // Lecture seule d'une saison archivée ou génération en vol : ce rail destructif est refusé
-        // (même prédicat que `windowEditable` servi au front). La saison archivée par ANNÉE est déjà
-        // gardée par le listener SeasonScopedWriteInterface ; ici on couvre aussi le statut ARCHIVED.
-        if (null !== $this->planner->windowLockedReason($plan)) {
-            return $this->json(['error' => 'Cette fermeture n\'est pas modifiable (saison archivée ou génération en cours).'], Response::HTTP_CONFLICT);
-        }
 
         // Tout ce qui DÉCIDE et écrit vit sous les verrous et dans la transaction : club+saison
         // d'abord (unicité de fenêtre du club entier), plan ensuite — ordre uniforme, pas d'ABBA.

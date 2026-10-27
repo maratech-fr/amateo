@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\SchedulePlan;
+use App\Entity\Season;
 use App\Enum\SchedulePlanType;
-use App\Enum\SeasonStatus;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -51,6 +51,7 @@ final class ClosureWindowPlanner
         private readonly ClosureSegmentation $closureSegmentation,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ClockInterface $clock,
+        private readonly SeasonResolver $seasonResolver,
     ) {}
 
     /**
@@ -121,8 +122,11 @@ final class ClosureWindowPlanner
                 if ($start > $end) {
                     continue;
                 }
+                // La fermeture PAUSE pendant les vacances : la reprise garde son planning (la datée
+                // `venue_closed` est droppée hors fermeture par {@see PeriodConstraintSelector}, donc
+                // l'empreinte d'une reprise ne bouge pas — rien n'est « à régénérer », ne RIEN le promettre).
                 $effects[] = $this->effect(self::KIND_HOLIDAY_PAUSE, $start, $end, \sprintf(
-                    'Les vacances font une pause dans la fermeture (%s).',
+                    'Pause — %s : votre planning de reprise reste tel quel.',
                     $this->label($start, $end),
                 ));
             }
@@ -206,8 +210,12 @@ final class ClosureWindowPlanner
         if (SchedulePlanType::CLOSURE !== $plan->getType()) {
             return 'Seule une fermeture modifie sa fenêtre ainsi.';
         }
-        if ($this->seasonArchived($plan->getSeasonId())) {
-            return 'Cette saison est archivée (lecture seule).';
+        // « Saison archivée » a UNE seule définition : le mécanisme GLOBAL par l'ANNÉE
+        // ({@see SeasonResolver::isReadonly}, clock-aware), jamais le statut. Le même verrou refuse
+        // l'écriture côté serveur via {@see SeasonReadonlyGuardListener} ; ici on le reflète pour le
+        // front (masquer l'édition d'une fermeture d'une saison passée).
+        if ($this->seasonReadonly($plan->getSeasonId())) {
+            return 'Cette saison est archivée — elle est en lecture seule.';
         }
         if ($this->hasInFlightGeneration($this->rootEntryId($plan))) {
             return 'Un planning est en cours de génération.';
@@ -400,12 +408,16 @@ final class ClosureWindowPlanner
         );
     }
 
-    private function seasonArchived(string $seasonId): bool
+    /**
+     * La saison est-elle en LECTURE SEULE ? Dérivé par l'ANNÉE via le mécanisme GLOBAL
+     * ({@see SeasonResolver::isReadonly}), jamais du statut. Jamais un oracle d'existence : une
+     * saison introuvable (ou cachée par la RLS) n'est pas « archivée ».
+     */
+    private function seasonReadonly(string $seasonId): bool
     {
-        return SeasonStatus::ARCHIVED->value === $this->entityManager->getConnection()->fetchOne(
-            'SELECT status FROM season WHERE id = :sid',
-            ['sid' => $seasonId],
-        );
+        $season = $this->entityManager->find(Season::class, $seasonId);
+
+        return $season instanceof Season && $this->seasonResolver->isReadonly($season);
     }
 
     /** @return array{0: ?string, 1: ?string} */
