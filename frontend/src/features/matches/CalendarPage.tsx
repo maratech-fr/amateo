@@ -3,6 +3,7 @@ import { ArrowRight, CalendarX2, Info, Plus, Upload, Wand2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
+import { usePublicHolidays } from "@/features/cockpit/queries";
 import { useCoachPlayers, useTeamCoaches } from "@/features/planning/queries";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
@@ -14,7 +15,7 @@ import { todayISO } from "@/shared/lib/clock";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { isManagementRole } from "@/shared/lib/roles";
 import { useCredits } from "@/shared/credits/useCredits";
-import { useMe } from "@/shared/session/queries";
+import { useMe, useWorkingSeason } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { Category, Coach, Competition, Conflict, Fixture, PlaceMatchesResult, PlacementRunResult, Team, Venue } from "./api";
@@ -122,6 +123,10 @@ export function CalendarPage() {
   const matchWindows = useVenueMatchWindows();
   const unavailabilities = useVenueUnavailabilities();
   const venueClosures = useVenueClosures();
+  // PR2 — les jours fériés de la saison de travail : un match posé un jour férié se juge sur la
+  // ligne « Jours fériés » du gymnase (feed GET /api/public-holidays), jamais la fenêtre du jour.
+  const workingSeason = useWorkingSeason();
+  const publicHolidays = usePublicHolidays(workingSeason?.startDate ?? "", workingSeason?.endDate ?? "", null !== workingSeason);
   const habitsQuery = useTeamMatchHabits();
   const teamCoaches = useTeamCoaches();
   const coachPlayers = useCoachPlayers();
@@ -264,9 +269,17 @@ export function CalendarPage() {
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
 
-  // D2 — les quatre lectures du club qui GARDENT le geste de placement (accès match,
-  // indisponibilités, fermetures du calendrier, enveloppe ligue), suspendues tant qu'elles ne sont pas prêtes.
-  const placementGuards = usePlacementGuards(matchWindows, unavailabilities, venueClosures, leagueWindows);
+  // PR2 — adaptateur : la lecture ne porte que les DATES `Y-m-d` fériées (feed public-holidays),
+  // pas les libellés. `data` undefined tant que la lecture n'a rien → readState la classe loading/failed.
+  const holidaysRead = useMemo(
+    () => ({ data: publicHolidays.data?.items.map((h) => h.date), isError: publicHolidays.isError, refetch: publicHolidays.refetch }),
+    [publicHolidays.data, publicHolidays.isError, publicHolidays.refetch],
+  );
+
+  // D2 — les cinq lectures du club qui GARDENT le geste de placement (accès match,
+  // indisponibilités, fermetures du calendrier, enveloppe ligue, jours fériés — PR2),
+  // suspendues tant qu'elles ne sont pas prêtes.
+  const placementGuards = usePlacementGuards(matchWindows, unavailabilities, venueClosures, leagueWindows, holidaysRead);
 
   // Chaîne de filtrage : PR-1 (équipe/coach/gymnase) → types → « Extérieurs ».
   const { filtered, coachTeamRoles, filterActive, filterLabel, effectiveKinds, effectiveFamilies, kindResult, visibleFixtures } = useMatchFilterChain(

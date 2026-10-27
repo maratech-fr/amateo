@@ -32,6 +32,8 @@ export interface PlacementGuards {
   unavailabilities: VenueUnavailability[];
   /** P4-300 — les fermetures de gymnase du calendrier : un gymnase fermé à la date du match refuse la pose. */
   closures: VenueClosure[];
+  /** PR2 — les dates `Y-m-d` fériées (feed GET /api/public-holidays) : un match posé un jour férié se juge sur la ligne « Jours fériés », pas la fenêtre du jour de semaine. */
+  holidays: string[];
   retry: () => void;
 }
 
@@ -122,7 +124,7 @@ export function PlacementPanel({
   onSubmit,
   onReopen,
 }: PlacementPanelProps) {
-  const { matchWindows, unavailabilities, closures } = guards;
+  const { matchWindows, unavailabilities, closures, holidays } = guards;
   const guardsReady = "ready" === guards.state;
   // Masquer n'est légitime que pour un CHOIX (§7.2.3) : le sélecteur n'offre
   // que les gymnases de match — mais seulement si le club a déclaré des
@@ -183,7 +185,7 @@ export function PlacementPanel({
   // visible (`EnvelopeHint`) et le radar continue de signaler ; le solveur garde,
   // lui, la ligue en HARD. Le gymnase indisponible reste le seul refus dur.
   const venueName = venues.find((v) => v.id === venueId)?.name ?? "ce gymnase";
-  const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly, closures);
+  const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly, closures, holidays);
   const accessBlocked = null !== accessIssue && "error" === accessIssue.level;
   const unchanged = placed && venueId === (fixture.venueId ?? "") && kickoff === (fixture.kickoffTime ?? "");
   // « Confirmer ce placement » : la rencontre est UNPLACED mais porte DÉJÀ un gymnase et

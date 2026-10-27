@@ -81,6 +81,14 @@ class FakeEventSource {
 const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined, role: undefined as string | undefined }));
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "s1", hasFinishedVersion: true }, club: meState.club, role: meState.role } }),
+  // PR2 — la pose un jour férié lit les fériés de la saison de travail (fenêtre du feed public-holidays).
+  useWorkingSeason: () => ({ id: "season-1", name: "2026-2027", startDate: "2026-09-01", endDate: "2027-06-30", isCurrent: true, isReadonly: false }),
+}));
+
+// PR2 — usePublicHolidays (feed GET /api/public-holidays) : résolu « prêt » et vide par défaut pour
+// ne pas suspendre le geste de placement ; les cas « jour férié » sont couverts par PlacementPanel.test.
+vi.mock("@/features/cockpit/queries", () => ({
+  usePublicHolidays: () => ({ data: { items: [] }, isError: false, refetch: vi.fn() }),
 }));
 
 const planningLinks = vi.hoisted(() => ({ teamCoaches: [] as unknown[], coachPlayers: [] as unknown[] }));
