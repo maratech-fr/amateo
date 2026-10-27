@@ -34,6 +34,7 @@ final class MatchPlacementSemanticsGateTest extends TestCase
 {
     private const string ENGINE_URL = 'http://engine:8000/place-matches';
     private const string SATURDAY = '2026-10-03'; // ISO day 6
+    private const string HOLIDAY_WEDNESDAY = '2026-11-11'; // Armistice — mercredi (ISO 3) férié
     /** L'énumération FIGÉE des raisons d'échec — miroir de l'enum OpenAPI + `UnplacedReason` (front). */
     private const array REASON_VOCABULARY = [
         'no_access_window',
@@ -247,6 +248,47 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         self::assertSame('m1', $result['placements'][0]['matchId']);
     }
 
+    public function testAHolidayMatchUsesTheHolidayLineAndIgnoresTheWeekdayLeague(): void
+    {
+        // PR2 « jours fériés » (axes §7.1 « constraint semantics » + « backend↔engine contract »,
+        // CONTRACT_VERSION 1.6→1.7) — réponse fondateur 2026-10-27 : un match fixé par la ligue un
+        // jour FÉRIÉ n'est pas un week-end libre. Contre le VRAI moteur, pour une date fériée le
+        // placement doit utiliser la ligne « Jours fériés » du gymnase (pas la fenêtre du jour de
+        // semaine) ET ignorer la fenêtre de ligue indexée sur ce jour de semaine.
+        //
+        // Décor : mercredi 11 nov. férié ; gymnase avec fenêtre MERCREDI 18:00-22:00 ET ligne
+        // « Jours fériés » 10:00-18:00 ; enveloppe de ligue MERCREDI 18:00-20:00. Attendu : coup
+        // d'envoi dans 10:00-16:15 (ligne férié, 105 min), jamais ≥ 18:00. ROUGE aujourd'hui : le
+        // schéma refuse `publicHolidays`/`appliesOnPublicHolidays` (422) → `solve()` n'obtient pas
+        // 200 ; même exprimé, `candidates.py` filtre sur le jour de semaine.
+        $result = $this->solve([
+            'publicHolidays' => [self::HOLIDAY_WEDNESDAY],
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::HOLIDAY_WEDNESDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [[
+                'id' => 'v1',
+                'name' => 'V1',
+                'matchWindows' => [
+                    ['dayOfWeek' => 3, 'start' => '18:00', 'end' => '22:00'],
+                    ['appliesOnPublicHolidays' => true, 'start' => '10:00', 'end' => '18:00'],
+                ],
+                'unavailabilities' => [],
+            ]],
+            'teams' => [[
+                'id' => 't1',
+                'name' => 'T1',
+                'leagueWindows' => [['dayOfWeek' => 3, 'kickoffMin' => '18:00', 'kickoffMax' => '20:00']],
+                'habits' => [],
+                'coaches' => [],
+            ]],
+        ]);
+
+        self::assertSame([], $result['unplaced'], 'un match férié plaçable dans la ligne « Jours fériés » ne reste pas non placé');
+        self::assertCount(1, $result['placements']);
+        $kickoff = substr((string) $result['placements'][0]['kickoff'], 0, 5);
+        self::assertGreaterThanOrEqual('10:00', $kickoff, 'le coup d\'envoi férié tient dans la ligne « Jours fériés »');
+        self::assertLessThanOrEqual('16:15', $kickoff, 'le coup d\'envoi férié tient dans la ligne « Jours fériés », jamais dans la fenêtre du mercredi ni forcé par la ligue');
+    }
+
     /**
      * Axes « constraint semantics » + « backend↔engine contract » (§7.1) — le VOCABULAIRE de
      * placement est FERMÉ côté moteur réel : un type de règle club, un rôle de coach ou un type
@@ -335,7 +377,7 @@ final class MatchPlacementSemanticsGateTest extends TestCase
     }
 
     /**
-     * @param array{matches: list<array<string, mixed>>, venues: list<array<string, mixed>>, teams: list<array<string, mixed>>, clubRules?: list<array<string, mixed>>} $problem
+     * @param array{matches: list<array<string, mixed>>, venues: list<array<string, mixed>>, teams: list<array<string, mixed>>, clubRules?: list<array<string, mixed>>, coachUnavailabilities?: list<array<string, mixed>>, publicHolidays?: list<string>} $problem
      *
      * @return array<string, mixed>
      */
@@ -355,6 +397,11 @@ final class MatchPlacementSemanticsGateTest extends TestCase
             'clubRules' => $problem['clubRules'] ?? [],
             'coachUnavailabilities' => $problem['coachUnavailabilities'] ?? [],
         ];
+        // PR2 « jours fériés » — clé AJOUTÉE seulement quand le scénario la fournit, pour que les
+        // scénarios existants gardent un payload byte-identique (le moteur est en extra="forbid").
+        if (isset($problem['publicHolidays'])) {
+            $payload['publicHolidays'] = $problem['publicHolidays'];
+        }
 
         $client = HttpClient::create(['timeout' => 30]);
 

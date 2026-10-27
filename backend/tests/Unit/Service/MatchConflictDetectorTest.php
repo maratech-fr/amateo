@@ -43,6 +43,33 @@ final class MatchConflictDetectorTest extends TestCase
     private const BASELINE = 'sched-baseline';
     private const OVERLAY = 'sched-overlay';
 
+    /**
+     * @param list<Fixture>                                                                                          $fixtures
+     * @param list<TeamCoach>                                                                                        $links
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $overlayPeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule
+     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities
+     *
+     * @return list<array<string, mixed>>
+     */
+    /**
+     * @param list<Fixture>                                                                                          $fixtures
+     * @param list<TeamCoach>                                                                                        $links
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $overlayPeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule
+     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities
+     * @param list<CoachPlayerMembership>                                                                            $playerMemberships
+     *
+     * @return list<array<string, mixed>>
+     */
+    // ── PR2 « jours fériés » — le radar dit la vérité un jour férié ────────────────────────────
+    // 11 novembre 2026 (Armistice) est un MERCREDI (ISO 3) férié. Un match fixé par la ligue ce
+    // jour-là n'est pas un week-end libre : l'entraînement projeté n'a pas lieu (pas de
+    // MATCH_TRAINING), la ligue a posé ce jour exprès (pas de LEAGUE_WINDOW_VIOLATION), et l'accès
+    // match se juge contre la ligne « Jours fériés » du gymnase, jamais la fenêtre du mercredi.
+    private const string HOLIDAY = '2026-11-11';        // mercredi férié (Armistice)
+    private const string ORDINARY_WEDNESDAY = '2026-11-18'; // mercredi ordinaire (témoin)
+
     /** @return array<string, array{0: int}> */
     public static function coherentCounts(): array
     {
@@ -1911,6 +1938,112 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('2026-10-04T17:00:00', $training[0]['start']);
     }
 
+    public function testAHolidayMatchSilencesTheProjectedTrainingClash(): void
+    {
+        // Même décor que testMatchOverlappingBaselineTrainingSameWeekdayConflicts, mais le match
+        // tombe un MERCREDI FÉRIÉ : l'entraînement de l'équipe sœur n'a pas lieu ce jour-là, donc
+        // AUCUN MATCH_TRAINING. ROUGE aujourd'hui (le détecteur ignore `$publicHolidays` → il
+        // projette l'entraînement → MATCH_TRAINING), VERT quand NEO tait les fériés.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, self::HOLIDAY, '20:45')];
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 3, '20:00', 90)]; // mercredi
+
+        $types = array_column(
+            $this->detect($fixtures, $links, self::BASELINE, [], [self::BASELINE => $slots], publicHolidays: [self::HOLIDAY]),
+            'type',
+        );
+
+        self::assertNotContains('MATCH_TRAINING', $types, 'un entraînement n\'a pas lieu un jour férié : aucun MATCH_TRAINING');
+    }
+
+    public function testAHolidayMatchSilencesTheLeagueWindowViolation(): void
+    {
+        // Enveloppe de ligue indexée MERCREDI 18:00–19:00 ; coup d'envoi 20:00 un mercredi FÉRIÉ.
+        // La ligue a fixé ce match sur ce jour férié exprès → la fenêtre du mercredi ordinaire ne
+        // s'applique pas → AUCUN LEAGUE_WINDOW_VIOLATION. ROUGE aujourd'hui (fenêtre du jour de
+        // semaine appliquée → violation), VERT quand NEO tait les fériés.
+        $placed = $this->fixture('fx-1', self::TEAM_1, self::HOLIDAY, '20:00');
+        $placed->setVenueId('venue-mateo');
+        $placed->setCompetitionId('comp-1');
+        $envelope = [self::TEAM_1 => [$this->leagueWindow(3, '18:00', '19:00')]];
+
+        $types = array_column(
+            $this->detect([$placed], [], null, [], [], [], [], [], [], $envelope, publicHolidays: [self::HOLIDAY]),
+            'type',
+        );
+
+        self::assertNotContains('LEAGUE_WINDOW_VIOLATION', $types, 'un match férié n\'est jamais hors fenêtre de ligue : la ligue a posé ce jour exprès');
+    }
+
+    public function testAHolidayMatchJudgesAccessAgainstTheHolidayLineNotTheWeekdayWindow(): void
+    {
+        // Coup d'envoi 20:00 un mercredi FÉRIÉ, le gymnase n'a qu'une fenêtre MERCREDI 18:00–22:00
+        // (aucune ligne « Jours fériés »). La fenêtre du mercredi ne vaut pas un jour férié, et il
+        // n'y a pas d'accès férié déclaré → ACCESS_WINDOW_LOST (« Hors accès match », vraie info).
+        // ROUGE aujourd'hui (20:00 ∈ fenêtre mercredi → silence), VERT quand NEO juge les fériés
+        // contre la seule ligne « Jours fériés ».
+        $placed = $this->fixture('fx-1', self::TEAM_1, self::HOLIDAY, '20:00');
+        $placed->setVenueId('venue-mateo');
+        $placed->setCompetitionId('comp-1');
+        $weekday = [$this->matchWindow('venue-mateo', 3, '18:00', '22:00')]; // mercredi
+
+        $types = array_column(
+            $this->detect([$placed], [], null, [], [], [], [], [], $weekday, publicHolidays: [self::HOLIDAY]),
+            'type',
+        );
+
+        self::assertContains('ACCESS_WINDOW_LOST', $types, 'un jour férié sans ligne « Jours fériés » perd l\'accès match — jamais jugé contre la fenêtre du mercredi');
+    }
+
+    public function testAHolidayMatchInsideTheHolidayLineKeepsItsAccess(): void
+    {
+        // Coup d'envoi 14:00 un mercredi FÉRIÉ ; le gymnase a une fenêtre MERCREDI 18:00–22:00 ET
+        // une ligne « Jours fériés » 10:00–18:00. Le coup d'envoi tombe DANS la ligne férié →
+        // AUCUN ACCESS_WINDOW_LOST. Feature absente aujourd'hui (le mutateur
+        // `setAppliesOnPublicHolidays` n'existe pas encore → ERREUR = ROUGE), VERT quand NEO
+        // ajoute la ligne férié et la juge.
+        $placed = $this->fixture('fx-1', self::TEAM_1, self::HOLIDAY, '14:00');
+        $placed->setVenueId('venue-mateo');
+        $placed->setCompetitionId('comp-1');
+        $windows = [
+            $this->matchWindow('venue-mateo', 3, '18:00', '22:00'),       // mercredi (hors de 14:00)
+            $this->holidayMatchWindow('venue-mateo', '10:00', '18:00'),   // ligne « Jours fériés » couvrant 14:00
+        ];
+
+        $types = array_column(
+            $this->detect([$placed], [], null, [], [], [], [], [], $windows, publicHolidays: [self::HOLIDAY]),
+            'type',
+        );
+
+        self::assertNotContains('ACCESS_WINDOW_LOST', $types, 'un coup d\'envoi dans la ligne « Jours fériés » garde son accès match');
+    }
+
+    public function testAnOrdinaryWednesdayStillRaisesTrainingAndLeagueConflicts(): void
+    {
+        // TÉMOIN (falsification dans l'AUTRE sens, point sensible « matchs ») — les deux familles
+        // taries un jour férié DOIVENT rester actives un mercredi ORDINAIRE, même quand une date
+        // fériée est dans la liste : la mise en sourdine est conditionnée à la DATE, jamais une
+        // désactivation globale. VERT avant ET après la PR2 ; rougirait si NEO coupait trop large.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, self::ORDINARY_WEDNESDAY, '20:45')];
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 3, '20:00', 90)];
+        $trainingTypes = array_column(
+            $this->detect($fixtures, $links, self::BASELINE, [], [self::BASELINE => $slots], publicHolidays: [self::HOLIDAY]),
+            'type',
+        );
+        self::assertContains('MATCH_TRAINING', $trainingTypes, 'un mercredi ordinaire conserve le conflit d\'entraînement');
+
+        $placed = $this->fixture('fx-2', self::TEAM_1, self::ORDINARY_WEDNESDAY, '20:00');
+        $placed->setVenueId('venue-mateo');
+        $placed->setCompetitionId('comp-1');
+        $envelope = [self::TEAM_1 => [$this->leagueWindow(3, '18:00', '19:00')]];
+        $leagueTypes = array_column(
+            $this->detect([$placed], [], null, [], [], [], [], [], [], $envelope, publicHolidays: [self::HOLIDAY]),
+            'type',
+        );
+        self::assertContains('LEAGUE_WINDOW_VIOLATION', $leagueTypes, 'un mercredi ordinaire conserve la violation de fenêtre de ligue');
+    }
+
     /** @param list<string>|null $opponents the poule's club names (for exempt counting) */
     private function competition(string $id, ?int $expectedMatchdays, ?array $opponents = null): Competition
     {
@@ -1978,26 +2111,7 @@ final class MatchConflictDetectorTest extends TestCase
         return ['coachId' => $coachId, 'dayOfWeek' => $dayOfWeek, 'kickoffMin' => $kickoffMin, 'kickoffMax' => $kickoffMax];
     }
 
-    /**
-     * @param list<Fixture>                                                                                          $fixtures
-     * @param list<TeamCoach>                                                                                        $links
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $overlayPeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule
-     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities
-     *
-     * @return list<array<string, mixed>>
-     */
-    /**
-     * @param list<Fixture>                                                                                          $fixtures
-     * @param list<TeamCoach>                                                                                        $links
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $overlayPeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule
-     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities
-     * @param list<CoachPlayerMembership>                                                                            $playerMemberships
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], ?array $levelByTeam = null, array $deadlineByCompetition = [], array $coachUnavailabilities = []): array
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], ?array $levelByTeam = null, array $deadlineByCompetition = [], array $coachUnavailabilities = [], array $publicHolidays = []): array
     {
         // Lot M — the TEAM_LINK family left the radar; the detector no longer takes
         // team links. `$teamLinks` is kept in THIS helper's positional shape only so
@@ -2017,8 +2131,14 @@ final class MatchConflictDetectorTest extends TestCase
         // signature réelle de `detect()` le gagne (famille MATCH_COACH_UNAVAILABLE + relief). Tant
         // que NEO ne l'a pas ajouté, PHP IGNORE cet argument surnuméraire → la famille n'est pas
         // émise → les tests du chantier H rougissent (RED pour la bonne raison, feature absente).
+        // PR2 « jours fériés » — `$publicHolidays` (dates Y-m-d fériées du territoire du club)
+        // est passé en DERNIER argument : la signature réelle de `detect()` le gagnera quand NEO
+        // l'ajoutera (le radar taira MATCH_TRAINING + LEAGUE_WINDOW_VIOLATION un jour férié et
+        // jugera ACCESS_WINDOW_LOST contre la ligne « Jours fériés »). Tant que NEO ne l'a pas
+        // ajouté, PHP IGNORE cet argument surnuméraire → le radar se comporte comme un jour
+        // ordinaire → les tests fériés rougissent (RED pour la bonne raison, feature absente).
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam, $deadlineByCompetition, $coachUnavailabilities);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam, $deadlineByCompetition, $coachUnavailabilities, $publicHolidays);
     }
 
     private function membership(string $coachId, string $teamId, bool $active = true): CoachPlayerMembership
@@ -2054,6 +2174,25 @@ final class MatchConflictDetectorTest extends TestCase
         $window->setSeasonId('season');
         $window->setVenueId($venueId);
         $window->setDayOfWeek($dayOfWeek);
+        $window->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $start) ?: new DateTimeImmutable('00:00'));
+        $window->setEndTime(DateTimeImmutable::createFromFormat('!H:i', $end) ?: new DateTimeImmutable('00:00'));
+
+        return $window;
+    }
+
+    /**
+     * PR2 « jours fériés » — la 8ᵉ ligne « Jours fériés » d'un gymnase : pas de jour de semaine
+     * (`dayOfWeek` nul), elle s'applique à tout jour férié. Forme exacte laissée à NEO
+     * (recommandation MORPHEUS : `dayOfWeek` nullable + booléen `appliesOnPublicHolidays`) — tant
+     * que l'entité n'expose pas ces mutateurs, appeler ce helper ERREUR (RED, feature absente).
+     */
+    private function holidayMatchWindow(string $venueId, string $start, string $end): VenueMatchWindow
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId('club');
+        $window->setSeasonId('season');
+        $window->setVenueId($venueId);
+        $window->setAppliesOnPublicHolidays(true); // @phpstan-ignore-line méthode ajoutée par NEO (PR2)
         $window->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $start) ?: new DateTimeImmutable('00:00'));
         $window->setEndTime(DateTimeImmutable::createFromFormat('!H:i', $end) ?: new DateTimeImmutable('00:00'));
 

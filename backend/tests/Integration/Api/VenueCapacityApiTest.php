@@ -66,6 +66,45 @@ final class VenueCapacityApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(204);
     }
 
+    public function testHolidayMatchWindowCreateAndExactlyOneOfDayOrHoliday(): void
+    {
+        // PR2 « jours fériés » (Q1 option c, VALIDÉ fondateur 2026-10-27) — la 8ᵉ ligne
+        // « Jours fériés » de l'éditeur : une fenêtre d'accès sans jour de semaine, qui s'applique
+        // à tout jour férié officiel du territoire. Contrat API attendu (forme laissée à NEO —
+        // reco MORPHEUS : `dayOfWeek` nullable + booléen `appliesOnPublicHolidays`, exactement
+        // l'un des deux) :
+        //   - une ligne férié valide (ni dayOfWeek, avec appliesOnPublicHolidays) → 201 ;
+        //   - jour de semaine ET férié combinés → 422 avec violation (jamais 422 MUET) ;
+        //   - ni l'un ni l'autre → 422 avec violation.
+        // ROUGE aujourd'hui : `VenueMatchWindowInput.dayOfWeek` est NotBlank + Range 1-7, et
+        // `appliesOnPublicHolidays` n'existe pas → la ligne férié est refusée (422), la combinaison
+        // passe (201). NEO rend VERT (champ nullable + drapeau + règle « exactement l'un des deux »
+        // via `$this->refuse(...)`, jamais `new ValidationException('chaîne')`).
+        [$club, $user, $season] = $this->createClubUser();
+        $venue = $this->createVenue($club, $season);
+        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
+
+        // 1. Ligne férié valide → 201.
+        $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode([
+            'venueId' => $venue->getId(), 'appliesOnPublicHolidays' => true, 'startTime' => '10:00', 'endTime' => '18:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'une ligne « Jours fériés » valide est créée');
+
+        // 2. Jour de semaine ET férié combinés → 422 AVEC violation (jamais muet).
+        $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode([
+            'venueId' => $venue->getId(), 'dayOfWeek' => 6, 'appliesOnPublicHolidays' => true, 'startTime' => '14:00', 'endTime' => '18:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'jour de semaine ET férié combinés sont refusés');
+        self::assertNotEmpty($this->responseData()['violations'] ?? [], 'le 422 porte une violation, jamais muet');
+
+        // 3. Ni jour de semaine NI férié → 422 AVEC violation.
+        $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode([
+            'venueId' => $venue->getId(), 'startTime' => '14:00', 'endTime' => '18:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'ni jour de semaine ni férié sont refusés');
+        self::assertNotEmpty($this->responseData()['violations'] ?? [], 'le 422 porte une violation, jamais muet');
+    }
+
     public function testUnavailabilityValidationAndLabelTrim(): void
     {
         [$club, $user, $season] = $this->createClubUser();
