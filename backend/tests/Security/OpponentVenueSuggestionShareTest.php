@@ -20,6 +20,7 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbSalleResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\OpponentTravelFailureStore;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
@@ -490,6 +491,7 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
             $this->service(FixtureRepository::class),
             $this->service(TravelTimeCache::class),
             new OpponentPairingKey,
+            $this->service(OpponentTravelFailureStore::class),
             new NullLogger,
         );
     }

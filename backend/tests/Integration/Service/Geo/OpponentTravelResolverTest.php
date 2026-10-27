@@ -23,6 +23,7 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbSalleResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\OpponentTravelFailureStore;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\OpponentPairingKey;
@@ -274,6 +275,7 @@ final class OpponentTravelResolverTest extends WebTestCase
             self::getContainer()->get(FixtureRepository::class),
             self::getContainer()->get(TravelTimeCache::class),
             new OpponentPairingKey,
+            self::getContainer()->get(OpponentTravelFailureStore::class),
             new NullLogger,
         );
     }
