@@ -72,6 +72,28 @@ Schedule (= Version)                    ← existant, recentré
 2. **Pointeur NULL = espace de travail.** On (re)travaille ⇒ pointeur remis à null, on
    génère des versions (V4, V5…), on choisira. **Aucun pointage automatique** (l'auto-baseline
    au 1er COMPLETED disparaît) — seul le gestionnaire pointe.
+
+   **Amendement (prolonger une fermeture à travers des vacances, fondateur 2026-10-27) :**
+   exception NOMMÉE, bornée au rail NEUF `POST /api/schedule_plans/{id}/window-preview` +
+   `POST …/window` (ancré au PLAN d'une FERMETURE, `App\Service\ClosureWindowPlanner`/
+   `ClosureWindowApplier` — le rail D3 v2 du `DayDialog`, `RedatePreviewController`/
+   `SplitMotherRedatePlanner`, reste INTACT et continue de naître vide ; sa décision fermée
+   [`etat-des-lieux.md` §2](../../specs/courantes/etat-des-lieux.md), « un segment neuf naît
+   VIDE, jamais une copie », n'est PAS rouverte, seulement bornée à son propre rail). Sur CE
+   geste, chaque run d'après-vacances naît en **copie VALIDÉE d'office** de la version EN
+   VIGUEUR du plan sœur « milieu » (`App\Service\PeriodPlanSiblingCopier`, COMPLETED sans
+   solve, pointée, source de verrous) — jamais un espace de travail : copier le pointage fait
+   partie du geste, le gestionnaire ne re-pointe rien. La fenêtre `[newStart, newEnd]` se
+   SEGMENTE d'abord en runs contigus en retranchant les fenêtres de vacances recoupées, puis
+   chaque run en semaines (même miroir `WeekSegmentationRule` que le découpage début·milieu·fin) ;
+   une seule fenêtre résultante ne découpe rien (le plan « d'un bloc » glisse/rétrécit,
+   `simpleRedate`). La racine-bloc validée devient alors une mère découpée **sans destruction** :
+   le premier segment reçoit un enfant sur lequel le plan existant est RÉ-ANCRÉ (même version,
+   slots intacts), chaque autre segment naît enfant+plan, rempli par la copie sœur ci-dessus. Le
+   plancher « le passé ne bouge pas » (début figé d'une fenêtre déjà commencée, fin jamais sous
+   aujourd'hui) est servi au front (`windowEditable`/`windowLockedReason`/`minEndDate`/
+   `closureTitle` sur `SchedulePlanResource`) ; aperçu et application partagent le MÊME calcul
+   (jeton recalculé sous `lockClubWindows` puis `lockPlanScope` → 409 si le décor a bougé).
 3. **1 Plan de type SEASON par saison.** Créé avec la saison (onboarding / transition N+1).
 4. **Deux plans ne se chevauchent jamais** (hors plan SEASON, qui couvre tout par nature) —
    la famille d'une même mère (racine, semaines/segments enfants) exclue de la règle. Tenu à
