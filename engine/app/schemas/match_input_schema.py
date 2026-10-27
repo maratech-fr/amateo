@@ -30,11 +30,27 @@ class SerializableModel(BaseModel):
 
 
 class MatchAccessWindowSchema(SerializableModel):
-    """A venue's MATCH access window (city-hall grant): ISO day + same-day range."""
+    """A venue's MATCH access window (city-hall grant): same-day range on either a weekday
+    OR the public-holiday line.
 
-    day_of_week: int = Field(alias="dayOfWeek", ge=1, le=7)
+    PR2 « jours fériés » (CONTRACT_VERSION 1.7) — EXACTLY ONE of:
+    - ``dayOfWeek`` (ISO 1..7) — a weekday line; or
+    - ``appliesOnPublicHolidays=True`` with ``dayOfWeek`` omitted — the « Jours fériés » line,
+      used instead of the weekday window when the match date is a public holiday.
+    """
+
+    day_of_week: int | None = Field(default=None, alias="dayOfWeek", ge=1, le=7)
+    applies_on_public_holidays: bool = Field(default=False, alias="appliesOnPublicHolidays")
     start: time
     end: time
+
+    @model_validator(mode="after")
+    def _exactly_one_of_day_or_holiday(self) -> MatchAccessWindowSchema:
+        has_day = self.day_of_week is not None
+        if has_day == self.applies_on_public_holidays:
+            msg = "a match access window targets a weekday OR public holidays — exactly one of the two"
+            raise ValueError(msg)
+        return self
 
 
 class MatchVenueUnavailabilitySchema(SerializableModel):
@@ -214,7 +230,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "1.6"
+    version: str = "1.7"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")
@@ -240,3 +256,9 @@ class MatchPlacementInputSchema(SerializableModel):
     coach_unavailabilities: list[CoachUnavailabilitySchema] = Field(
         default_factory=list, alias="coachUnavailabilities", max_length=MAX_COACH_UNAVAILABILITIES
     )
+    # PR2 « jours fériés » (CONTRACT_VERSION 1.7) — the club's public-holiday dates (national ∪
+    # territory), resolved by the backend. For a match whose date is in this list the solver reads
+    # the venue's « Jours fériés » line (appliesOnPublicHolidays) instead of the weekday window,
+    # and ignores the weekday-indexed league window (the league set that holiday on purpose).
+    # OMITTED ⇒ [] (an old payload keeps the previous behaviour: no date is treated as a holiday).
+    public_holidays: list[date] = Field(default_factory=list, alias="publicHolidays", max_length=MAX_MATCHES)

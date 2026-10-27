@@ -506,11 +506,13 @@ class TestGenerateContract:
         type `conflict` —, puis 1.4 → 1.5 — PR 6 (lot 8) : `SocleReferenceAssignmentSchema` gagne
         `venueId` + `keep` pour « garder ses créneaux de saison », puis 1.5 → 1.6 — chantier H : la
         tolérance d'arrivée tardive passe à la SÉANCE (`ScheduleSlotTemplateSchema.coachLateToleranceMinutes`)
-        et `CoachSchema.acceptableLateMinutes` (mort) est retiré) et un payload qui s'attribue cette
+        et `CoachSchema.acceptableLateMinutes` (mort) est retiré —, puis 1.6 → 1.7 — PR2 « jours
+        fériés » : `MatchAccessWindowSchema.dayOfWeek` devient nullable + `appliesOnPublicHolidays`,
+        et `MatchPlacementInputSchema` gagne `publicHolidays`) et un payload qui s'attribue cette
         version est recevable comme un payload qui n'annonce rien."""
         from app.main import read_contract_version
 
-        assert read_contract_version() == "1.6"
+        assert read_contract_version() == "1.7"
 
-        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.6"})
-        assert stamped.version == "1.6"
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.7"})
+        assert stamped.version == "1.7"
