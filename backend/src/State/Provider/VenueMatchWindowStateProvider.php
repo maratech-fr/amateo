@@ -57,9 +57,15 @@ class VenueMatchWindowStateProvider extends AbstractStateProvider
             }
         }
 
+        // PR2 — les lignes de jour de semaine (appliesOnPublicHolidays=false) d'abord, la
+        // ligne « Jours fériés » (dayOfWeek NULL) ensuite : trier d'abord sur le drapeau évite
+        // toute ambiguïté NULL sur dayOfWeek (les lignes de semaine ont toutes un dayOfWeek).
         // UUID PK tiebreaker: dayOfWeek/startTime are not unique — without it,
         // offset pagination reshuffles rows across pages (VenueTrainingSlot idiom).
-        $qb->orderBy('e.dayOfWeek', 'ASC')->addOrderBy('e.startTime', 'ASC')->addOrderBy('e.id', 'ASC');
+        $qb->orderBy('e.appliesOnPublicHolidays', 'ASC')
+            ->addOrderBy('e.dayOfWeek', 'ASC')
+            ->addOrderBy('e.startTime', 'ASC')
+            ->addOrderBy('e.id', 'ASC');
 
         if ($this->pagination->isEnabled($operation, $context)) {
             $offset = $this->pagination->getOffset($operation, $context);

@@ -843,8 +843,8 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame(['ACCESS_WINDOW_LOST'], array_column($conflicts, 'type'));
         self::assertSame(
             [
-                ['dayOfWeek' => 6, 'startTime' => '16:00', 'endTime' => '18:00'],
-                ['dayOfWeek' => 3, 'startTime' => '18:00', 'endTime' => '20:00'],
+                ['dayOfWeek' => 6, 'startTime' => '16:00', 'endTime' => '18:00', 'appliesOnPublicHolidays' => false],
+                ['dayOfWeek' => 3, 'startTime' => '18:00', 'endTime' => '20:00', 'appliesOnPublicHolidays' => false],
             ],
             $conflicts[0]['windows'],
             'les accès du gymnase de la fixture, jour du match (samedi) en premier ; l\'autre gymnase est exclu',

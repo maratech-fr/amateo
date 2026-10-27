@@ -60,6 +60,10 @@ class VenueMatchWindowStateProcessor extends AbstractStateProcessor
         if (null !== $input->dayOfWeek) {
             $entity->setDayOfWeek($input->dayOfWeek);
         }
+        // PR2 (Q1 option c) — la 8ᵉ ligne « Jours fériés » : pas de jour de semaine, un
+        // drapeau à true. Omis ⇒ false (ligne de jour de semaine, comportement historique).
+        $entity->setAppliesOnPublicHolidays(true === $input->appliesOnPublicHolidays);
+
         if (null !== $input->startTime) {
             $entity->setStartTime(new DateTimeImmutable($input->startTime));
         }
@@ -68,6 +72,12 @@ class VenueMatchWindowStateProcessor extends AbstractStateProcessor
         }
 
         $this->assertVenueInScope($entity->getVenueId());
+        // PR2 — EXACTEMENT l'un des deux : soit un jour de la semaine (dayOfWeek), soit la
+        // ligne « Jours fériés » (appliesOnPublicHolidays). Les deux combinés ou aucun des
+        // deux = 422 AVEC violation via `refuse()` (jamais l'exception nue muette).
+        if ((null !== $entity->getDayOfWeek()) === $entity->isAppliesOnPublicHolidays()) {
+            $this->refuse('Une fenêtre d\'accès aux matchs vise soit un jour de la semaine, soit les jours fériés — exactement l\'un des deux.');
+        }
         // Same-day window, no midnight crossing (P4-61 precedent) — end is
         // exclusive, so start < end is the whole rule.
         if ($entity->getStartTime()->format('H:i') >= $entity->getEndTime()->format('H:i')) {

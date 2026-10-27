@@ -10,6 +10,7 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
+use App\Entity\Season;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -54,6 +55,7 @@ final class ConflictRadarLoader
         private readonly ClubDay $clubDay,
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
         private readonly PlanVenueClosures $planVenueClosures,
+        private readonly ClubPublicHolidays $clubPublicHolidays,
     ) {}
 
     /**
@@ -235,6 +237,14 @@ final class ConflictRadarLoader
             }
         }
 
+        // PR2 — les dates FÉRIÉES du territoire du club dans la fenêtre de saison. Le détecteur
+        // TAIT MATCH_TRAINING + LEAGUE_WINDOW_VIOLATION un jour férié et juge ACCESS_WINDOW_LOST
+        // contre la ligne « Jours fériés ». Pas de saison pointée = aucune fenêtre = aucun férié.
+        $season = null !== $seasonId ? $this->entityManager->getRepository(Season::class)->find($seasonId) : null;
+        $publicHolidays = $season instanceof Season
+            ? $this->clubPublicHolidays->datesInWindow($clubId, $season->getStartDate(), $season->getEndDate())
+            : [];
+
         $conflicts = $this->detector->detect(
             $fixtures,
             $teamCoachRows,
@@ -255,6 +265,7 @@ final class ConflictRadarLoader
             $levelByTeam,
             $deadlineByCompetition,
             $coachUnavailabilities,
+            $publicHolidays,
         );
 
         return [

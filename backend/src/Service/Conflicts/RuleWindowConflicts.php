@@ -29,15 +29,22 @@ final class RuleWindowConflicts
      *
      * @param list<Fixture>                              $fixtures
      * @param array<string, list<LeagueWindowInterface>> $envelope
+     * @param list<string>                               $publicHolidays dates fériées (Y-m-d) — un match férié n'est jamais hors fenêtre de ligue (PR2)
      *
      * @return list<array<string, mixed>>
      */
-    public function leagueWindowViolations(array $fixtures, array $envelope): array
+    public function leagueWindowViolations(array $fixtures, array $envelope, array $publicHolidays = []): array
     {
         $conflicts = [];
         foreach ($fixtures as $fixture) {
             $kickoffTime = $fixture->getKickoffTime();
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || !$kickoffTime instanceof DateTimeImmutable) {
+                continue;
+            }
+            // PR2 — un match fixé par la ligue un jour FÉRIÉ n'est pas un week-end libre : la
+            // ligue a posé ce jour exprès, la fenêtre du jour de semaine ne s'applique pas. Jamais
+            // de LEAGUE_WINDOW_VIOLATION un férié (décision fondateur 2026-10-27, a+b).
+            if (\in_array($fixture->getMatchDate()->format('Y-m-d'), $publicHolidays, true)) {
                 continue;
             }
             // Un amical (competitionId null) n'obéit à aucune enveloppe de ligue

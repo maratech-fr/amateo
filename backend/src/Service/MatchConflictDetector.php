@@ -187,13 +187,44 @@ final class MatchConflictDetector
      * front l'utilise pour BLOQUER la pose, le backend pour DIAGNOSTIQUER (ACCESS_WINDOW_LOST).
      * L'enveloppe diverge (déclaré côté front), cette algèbre-ci ne doit pas.
      *
-     * @param list<array{venueId: string, dayOfWeek: int, startTime: string, endTime: string}> $windows
+     * @param list<array{venueId: string, dayOfWeek: int|null, startTime: string, endTime: string, appliesOnPublicHolidays?: bool}> $windows
      */
     public static function kickoffInsideWindow(string $venueId, int $day, string $kickoff, array $windows): bool
     {
         foreach ($windows as $window) {
+            // PR2 — la ligne « Jours fériés » (appliesOnPublicHolidays) ne sert JAMAIS un appel
+            // jour-de-semaine, même si son dayOfWeek coïncidait : elle n'est lue que par
+            // {@see kickoffInsideHolidayWindow} un jour férié.
+            if ($window['appliesOnPublicHolidays'] ?? false) {
+                continue;
+            }
             if ($window['venueId'] === $venueId
                 && $window['dayOfWeek'] === $day
+                && $kickoff >= $window['startTime']
+                && $kickoff < $window['endTime']
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * PR2 « jours fériés » — LE prédicat pur d'accès match UN JOUR FÉRIÉ : le coup d'envoi (H:i)
+     * tombe-t-il dans une ligne « Jours fériés » (`appliesOnPublicHolidays`) du gymnase ? Même
+     * algèbre DEMI-OUVERTE `[start, end[` que {@see kickoffInsideWindow}, mais filtrée sur le
+     * DRAPEAU férié (pas sur un jour de semaine) : la ligue a posé le match ce jour férié exprès,
+     * la fenêtre du jour de semaine ne s'applique pas. Miroir mécanique du front
+     * (`matches/lib/matchAccess.ts::kickoffInsideHolidayWindow`).
+     *
+     * @param list<array{venueId: string, dayOfWeek: int|null, startTime: string, endTime: string, appliesOnPublicHolidays?: bool}> $windows
+     */
+    public static function kickoffInsideHolidayWindow(string $venueId, string $kickoff, array $windows): bool
+    {
+        foreach ($windows as $window) {
+            if (($window['appliesOnPublicHolidays'] ?? false)
+                && $window['venueId'] === $venueId
                 && $kickoff >= $window['startTime']
                 && $kickoff < $window['endTime']
             ) {
@@ -302,6 +333,12 @@ final class MatchConflictDetector
      *                                                                                                                                      chantier H volet matchs — indisponibilités DÉCLARÉES des coachs (scope COACH),
      *                                                                                                                                      par jour ISO + fenêtre de coup d'envoi (bornes facultatives, intervalle FERMÉ).
      *                                                                                                                                      Alimente la famille MATCH_COACH_UNAVAILABLE et le relief des familles personne.
+     * @param list<string>                                                                                           $publicHolidays
+     *                                                                                                                                      PR2 — les dates FÉRIÉES (Y-m-d) du territoire du club. Un match un jour férié n'est
+     *                                                                                                                                      pas un week-end libre : la ligue a posé ce jour exprès. Le radar TAIT alors
+     *                                                                                                                                      MATCH_TRAINING (pas d'entraînement un férié) et LEAGUE_WINDOW_VIOLATION (la fenêtre du
+     *                                                                                                                                      jour de semaine ne s'applique pas), et juge ACCESS_WINDOW_LOST contre la seule ligne
+     *                                                                                                                                      « Jours fériés » du gymnase.
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -325,6 +362,7 @@ final class MatchConflictDetector
         array $levelByTeam = [],
         array $deadlineByCompetition = [],
         array $coachUnavailabilities = [],
+        array $publicHolidays = [],
     ): array {
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
@@ -449,17 +487,17 @@ final class MatchConflictDetector
 
         return [
             ...$this->venueConflicts->venueOverlapConflicts($views),
-            ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope),
+            ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope, $publicHolidays),
             ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules),
             ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam),
             ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities),
-            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities),
+            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays),
             // Chantier H volet matchs (amendement b) — coup d'envoi dans l'indispo DÉCLARÉE d'un
             // coach principal → ROUGE (3), JAUNE (5) si l'indispo ne touche que la durée du match
             // à domicile, ORANGE (4) si un adjoint/autre principal disponible peut couvrir.
             ...$this->personConflicts->coachUnavailableConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities),
             ...$this->venueConflicts->venueUnavailableConflicts($activeFixtures, $unavailabilities),
-            ...$this->venueConflicts->accessWindowLostConflicts($activeFixtures, $matchWindows),
+            ...$this->venueConflicts->accessWindowLostConflicts($activeFixtures, $matchWindows, $publicHolidays),
             ...$this->competitionIncompleteItems($fixtures, $competitions, $deadlineByCompetition, $clubToday),
             ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay, $levelByTeam),
             ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows),

@@ -102,6 +102,7 @@ final class PersonConflicts
      * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>         $activePeriods
      * @param array<string, list<ScheduleSlotTemplate>>                                                      $slotsBySchedule
      * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     * @param list<string>                                                                                   $publicHolidays        dates fériées (Y-m-d) — aucun entraînement n'a lieu un jour férié (PR2)
      *
      * @return list<array<string, mixed>>
      */
@@ -114,12 +115,19 @@ final class PersonConflicts
         array $activePeriods,
         array $slotsBySchedule,
         array $coachUnavailabilities = [],
+        array $publicHolidays = [],
     ): array {
         $conflicts = [];
         foreach ($views as $view) {
             // A footprint can cross midnight (late kickoff) — check every calendar
             // day it spans, each resolving its own effective schedule + weekday.
             foreach ($this->spannedDates($view['window']) as $date) {
+                // PR2 — un jour FÉRIÉ, l'entraînement projeté n'a pas lieu : aucun MATCH_TRAINING
+                // ne peut naître de ce jour-là (décision fondateur 2026-10-27, a+b). Le match, lui,
+                // est fixé par la ligue — il reste. La mise en sourdine est conditionnée à la DATE.
+                if (\in_array($date->format('Y-m-d'), $publicHolidays, true)) {
+                    continue;
+                }
                 $scheduleId = $this->effectiveScheduleResolver->resolve($date, $activePeriods, $seasonScheduleId);
                 if (null === $scheduleId) {
                     continue;
