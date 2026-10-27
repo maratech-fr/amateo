@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,7 +153,11 @@ describe("ConflictRadar — filtre domicile SEGMENTÉ (M4, BCCL 2026-10-27)", ()
 
   // Le store NAÎT à true (store.test.ts) — on le rétablit avant/après pour ne pas polluer les voisins.
   beforeEach(() => useMatchesStore.setState({ conflictsHomeOnly: true }));
-  afterEach(() => useMatchesStore.setState({ conflictsHomeOnly: true }));
+  // cleanup() AVANT la mutation du store : sinon le radar encore monté re-rend hors act (cliquet act).
+  afterEach(() => {
+    cleanup();
+    useMatchesStore.setState({ conflictsHomeOnly: true });
+  });
 
   it("domicile pressé par défaut : segments comptés, SEUL le conflit à domicile affiché, « Tous » révèle l'ext/ext", async () => {
     renderRadar(<ConflictRadar conflicts={mixedConflicts()} teams={teams} coaches={coaches} venues={venues} />);
