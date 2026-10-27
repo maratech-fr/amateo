@@ -11,7 +11,8 @@
 Réglages de saison RARES, quatre `AccordionSection` contrôlées (une seule ouverte, défaut **tout
 replié**), ancrées `?section=<clé>` : Échéances de saisie (§4) · Durée des matchs (`sport_category`
 par famille, table partagée) · Accès match (fenêtres `VenueMatchWindow`, modale par gymnase — même
-éditeur que le wizard) · Libellés FFBB des gymnases (écran d'appariement, ci-dessous). Un résumé
+éditeur que le wizard, `MatchWindowsEditor`) · Libellés FFBB des gymnases (écran d'appariement,
+ci-dessous). Un résumé
 discret dans le nom accessible de chaque bouton (`configSummaries.ts`, fonctions pures — comptent ce
 que le backend a déjà calculé, jamais une règle métier recalculée) ; une lecture en échec rend
 `null`, jamais un « 0 » fabriqué. **Les adversaires ont leur propre onglet**
@@ -24,6 +25,12 @@ gymnase (`MatchWindowsEditor`, focus posé au montage) — état porté par l'UR
 seul) à la fermeture de l'éditeur sans perdre la section ouverte. Posé par le bouton « Configurer
 les accès » d'un conflit `ACCESS_WINDOW_LOST` (§2 « Hors accès match »,
 `module-matchs-radar-et-placement.md`), consommé par `ConfigurationPage`.
+
+**Éditeur d'accès match** (`MatchWindowsEditor`, PR2, Q1 option c, décision fondateur 2026-10-27) :
+le sélecteur « Jour » porte une **8ᵉ ligne « Jours fériés »** sous lundi…dimanche — elle ne pose
+pas de jour de semaine (`dayOfWeek`), elle s'applique à tout jour férié officiel du territoire du
+club (national ∪ zone, `module-matchs-modele-donnees.md` §1). Les fenêtres existantes groupent la
+ligne férié à part, APRÈS dimanche, dans tout résumé compact (`formatMatchAccessWindows`).
 
 **Écran d'appariement des libellés** (`VenueLabelsSection`) : une ligne par LIBELLÉ de l'inventaire
 (`GET /api/venues/fbi-labels`), `VenueSelect` dont la valeur effective est le gymnase confirmé sinon
