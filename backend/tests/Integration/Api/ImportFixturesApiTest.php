@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Api;
 
 use App\Clock\DevClockStore;
+use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -165,6 +166,44 @@ final class ImportFixturesApiTest extends WebTestCase
         $freshness = $this->responseData()['latest'] ?? null;
         self::assertIsArray($freshness);
         self::assertSame('FBI_XLSX', $freshness['source']);
+    }
+
+    public function testMappingASecondPhaseOntoTheFirstPhaseChampionshipIsRefusedOverHttp(): void
+    {
+        // D4 (M15 / U13F3) — l'écho HTTP du refus : rattacher la 2ᵉ phase « DFU13-3-P2 » au
+        // championnat « DFU13-3 » déjà peuplé de rencontres FBI est refusé, le message remonte
+        // dans le rapport d'import, et le championnat de la 1ʳᵉ phase n'est pas renommé. Twin
+        // HTTP du service {@see App\Tests\Integration\Service\FbiFixtureImporterTest::testMappingADivisionOntoACompetitionAlreadyFilledWithFbiRencontresUnderAnotherLabelIsRefused}.
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $needle = strtoupper($clubName);
+
+        $venueX = $this->createClubVenue($token, 'Gymnase X');
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['DFU13-3', 'P1-1', $needle . ' - 1', 'AS Un', '03/10/2026', '15:30', 'Gymnase X'],
+        ]), ['mappings' => json_encode([['division' => 'DFU13-3', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR), 'venueMappings' => json_encode([['label' => 'Gymnase X', 'venueId' => $venueX]], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+
+        $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $this->scopeGucToClub($this->responseData()['club']['id']);
+        $c1 = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $teamId, 'name' => 'DFU13-3']);
+        self::assertNotNull($c1);
+        $c1Id = $c1->getId();
+
+        // La 2ᵉ phase (extérieur, aucune salle à couvrir) forcée sur le championnat de la 1ʳᵉ.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['DFU13-3-P2', 'P2-1', 'AS Deux', $needle . ' - 1', '14/11/2026', '15:30', ''],
+        ]), ['mappings' => json_encode([['division' => 'DFU13-3-P2', 'teamId' => $teamId, 'competitionId' => $c1Id]], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+
+        // Le message du refus remonte dans le rapport (décodé en JSON — l'API sérialise les
+        // apostrophes en ', cf. backend/docs/error-copy.md §rail 422).
+        $report = $this->responseData();
+        $refusals = array_filter($report['errors'], static fn (string $e): bool => str_contains($e, 'DFU13-3') && str_contains($e, 'championnat'));
+        self::assertNotSame([], $refusals, 'le refus D4 remonte dans le rapport d\'import');
+
+        $this->em->clear();
+        self::assertSame('DFU13-3', $this->em->getRepository(Competition::class)->find($c1Id)?->getName(), 'le championnat de la 1ʳᵉ phase n\'est pas renommé');
+        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['teamId' => $teamId, 'externalRef' => 'P2-1']), 'la rencontre de la 2ᵉ phase n\'est pas greffée');
     }
 
     public function testVenueDeviationOnAnUnplacedHomeIsSurfacedOverHttp(): void

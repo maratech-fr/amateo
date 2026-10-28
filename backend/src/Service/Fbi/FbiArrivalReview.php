@@ -79,19 +79,28 @@ final class FbiArrivalReview
     }
 
     /**
-     * Décision fondateur P4-199 — sur un domicile PLACÉ déphasé, la source « fait
-     * foi » (appliquée d'office, sans arbitrage) quand la date Amateo OU la date de
-     * la source tombe dans la fenêtre (≤ dimanche de la semaine ISO en cours) :
-     * « app OU source ». Un déphasage entièrement futur reste un arbitrage.
+     * Décision fondateur P4-199, RESTREINTE D3 (M15, 2026-10-27) — sur un domicile
+     * PLACÉ déphasé, la source « fait foi » (appliquée d'office, sans arbitrage)
+     * SEULEMENT quand la date Amateo OU la date de la source tombe DANS la semaine
+     * ISO en cours, bornes lundi ET dimanche INCLUSES (« app OU source ») : la borne
+     * basse est le LUNDI (`weekEnd − 6 jours`), plus un simple plafond « ≤ dimanche ».
+     * C'est la racine du bug M15 : un match passé de plusieurs semaines (10/10) était
+     * re-daté d'office loin devant (14/11) parce que toute date passée franchissait le
+     * plafond. Un déphasage dont AUCUNE des deux dates ne tombe dans la semaine (passé
+     * ancien, ou entièrement futur) reste un arbitrage. Bornes calculées dans le fuseau
+     * du club (le `weekEnd` vient de {@see currentIsoWeekEnd}).
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
      */
     public function sourceIsAuthoritativeForWindow(Fixture $existing, array $row, DateTimeImmutable $weekEnd): bool
     {
+        $start = $weekEnd->modify('-6 days')->format('Y-m-d');
         $end = $weekEnd->format('Y-m-d');
+        $appDate = $existing->getMatchDate()->format('Y-m-d');
+        $fileDate = $row['matchDate']->format('Y-m-d');
 
-        return $existing->getMatchDate()->format('Y-m-d') <= $end
-            || $row['matchDate']->format('Y-m-d') <= $end;
+        return ($appDate >= $start && $appDate <= $end)
+            || ($fileDate >= $start && $fileDate <= $end);
     }
 
     /**

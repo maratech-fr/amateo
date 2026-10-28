@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Fbi;
 
 use App\Entity\Competition;
+use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -81,6 +82,92 @@ final class FbiMappingGuards
         }
 
         return $survivors;
+    }
+
+    /**
+     * D4 (M15 / U13F3, décision fondateur « ce sont deux championnats différents ») —
+     * refuse un mapping qui grefferait la division de ce dépôt sur un championnat DÉJÀ
+     * peuplé de rencontres FBI (`external_ref` non nul) sous une AUTRE division : le
+     * championnat d'origine serait absorbé (persistMappings le renommerait). Le mapping
+     * fautif est DROPPÉ (erreur nommée, division marquée bloquée → sautée sans « re-mappez-
+     * moi »), les autres passent. Un mapping sans `competitionId`, ou dont la cible est
+     * peuplée UNIQUEMENT par le canal API (external_ref nul), ou dont l'id ne résout pas
+     * (forgé/étranger — l'import crée alors le propre championnat du club) n'est jamais
+     * bloqué. Garde-avant-écriture, jumeau de {@see rejectGuardBlockedMappings}.
+     *
+     * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}>                                                                                                                                                                                              $mappings
+     * @param list<array{name: string, divisionKey: string, label: string, labelKey: string, multiLabel: bool, rowCount: int, rows: list<array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}>}> $groups
+     * @param list<string>                                                                                                                                                                                                                                                                                      $errors
+     * @param array<string, true>                                                                                                                                                                                                                                                                               $blockedKeys divisionKey|labelKey of refused divisions
+     *
+     * @return list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}> the surviving mappings
+     */
+    public function rejectSecondPhaseOntoFilledCompetition(array $mappings, array $groups, array &$errors, array &$blockedKeys): array
+    {
+        if ([] === $mappings) {
+            return [];
+        }
+        $competitionRepository = $this->entityManager->getRepository(Competition::class);
+
+        $survivors = [];
+        foreach ($mappings as $mapping) {
+            $mappingCompetitionId = $mapping['competitionId'] ?? null;
+            if (null === $mappingCompetitionId) {
+                $survivors[] = $mapping;
+
+                continue;
+            }
+            $target = $competitionRepository->findOneBy(['id' => $mappingCompetitionId]);
+            if (!$target instanceof Competition || $target->getTeamId() !== $mapping['teamId']) {
+                // Id forgé/étranger : l'import crée le PROPRE championnat du club courant,
+                // rien à greffer — jamais une porte cross-tenant (isolation prouvée ailleurs).
+                $survivors[] = $mapping;
+
+                continue;
+            }
+            $divisionKey = $this->normalizeLabel($mapping['division']);
+            $conflicting = $this->fbiFilledDivisionConflicting($target, $divisionKey);
+            if (null === $conflicting) {
+                $survivors[] = $mapping;
+
+                continue;
+            }
+            $errors[] = \sprintf(
+                'Cette division a déjà son championnat « %s » : créez un nouveau championnat pour la 2ᵉ phase.',
+                $conflicting,
+            );
+            $labelKey = null !== $mapping['fbiTeamLabel'] ? $this->normalizeLabel($mapping['fbiTeamLabel']) : null;
+            foreach ($groups as $group) {
+                if ($group['divisionKey'] === $divisionKey && (null === $labelKey || $group['labelKey'] === $labelKey)) {
+                    $blockedKeys[$group['divisionKey'] . '|' . $group['labelKey']] = true;
+                }
+            }
+        }
+
+        return $survivors;
+    }
+
+    /**
+     * D4 (prédicat partagé) — le libellé d'une division FBI DÉJÀ posée sur ce championnat
+     * par des rencontres FBI (`external_ref` non nul), DIFFÉRENTE (clé normalisée) de
+     * `$divisionKey` ; null si aucune. Les rencontres du seul canal API (external_ref nul)
+     * ne comptent pas (ce n'est pas un championnat FBI). Partagé par le garde de mapping et
+     * la suggestion d'{@see App\Service\FbiFixtureImporter::analyze} (ne jamais suggérer une
+     * cible que le garde refuserait).
+     */
+    public function fbiFilledDivisionConflicting(Competition $competition, string $divisionKey): ?string
+    {
+        foreach ($this->entityManager->getRepository(Fixture::class)->findBy(['competitionId' => $competition->getId()]) as $fixture) {
+            if (null === $fixture->getExternalRef()) {
+                continue;
+            }
+            $division = (string) $fixture->getExternalDivision();
+            if ($this->normalizeLabel($division) !== $divisionKey) {
+                return '' === $division ? $competition->getName() : $division;
+            }
+        }
+
+        return null;
     }
 
     /**
