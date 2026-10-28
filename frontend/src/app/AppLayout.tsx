@@ -30,10 +30,20 @@ import { SeasonSelector } from "./SeasonSelector";
 import { SeasonTransitionBanner } from "./SeasonTransitionBanner";
 
 /**
- * M13 (retours Nico, BCCL 2026-10-27) — « Matchs » était trop discret (Nico ne savait pas que le
- * module existait) : il prend l'ASPECT d'un bouton SECONDAIRE (variante `outline` du système, aucune
- * couleur neuve) pour ressortir du bandeau, sans monter au niveau visuel du sélecteur de saison (qui,
- * lui, est plein). Il GARDE son rôle de lien (NavLink → `<a>`) et son état actif (fond accent sur /matchs).
+ * M13 (retours Nico, BCCL 2026-10-27) — « Matchs » était trop discret, caché dans la grappe de
+ * droite (Nico ne savait pas que le module existait) : il SORT de cette grappe, prend l'ASPECT d'un
+ * bouton SECONDAIRE (variante `outline` du système, aucune couleur neuve) et se place SEUL au CENTRE
+ * du bandeau pour ressortir, sans monter au niveau visuel du sélecteur de saison (qui, lui, est
+ * plein). Il GARDE son rôle de lien (NavLink → `<a>`) et son état actif (fond accent sur /matchs).
+ *
+ * Mise en page (passe `ui-ux-pro-max`, option B tranchée) : flex `justify-between` sous `lg`
+ * (téléphone — pas de place pour centrer, le contenu garde sa largeur naturelle, la marque tronque
+ * en premier, zéro débordement à 360 px) ; grille 3 colonnes `minmax(0,1fr) auto minmax(0,1fr)` à
+ * partir de `lg` (1024-1920 px) — centrage géométrique réel, les colonnes latérales se rétractent
+ * sans jamais forcer de scroll horizontal, le centre reste pile au milieu quelles que soient les
+ * largeurs inégales gauche/droite. « Matchs » reste dans un wrapper SIMPLE, pas un 2ᵉ repère de
+ * navigation (`<nav>`) : un lien unique n'est pas un repère, et deux repères sans nom distinct
+ * nuiraient au lecteur d'écran — la grappe de droite reste l'unique `<nav>`.
  */
 function NavItem({ to, children }: { to: string; children: string }) {
   return (
@@ -68,7 +78,7 @@ export function AppLayout() {
           que dans les zones vides, jamais sous l'en-tête ni les cartes. La racine, elle, laisse
           passer le fond du `body`. */}
       <header className="border-b border-border bg-background">
-        <div className="flex h-14 items-center justify-between gap-4 px-4 lg:px-6 xl:px-8">
+        <div className="flex h-14 items-center justify-between gap-2 px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-4 lg:px-6 xl:px-8">
           {/* L'en-tête = la marque PRODUIT, puis le club (décision fondateur DA) :
               [icône Amateo] · [blason du club, s'il existe] NOM DU CLUB. L'icône produit
               est TOUJOURS là ; le blason suit quand il existe. Le sens accessible du lien
@@ -104,10 +114,11 @@ export function AppLayout() {
             <DemoClockWidget />
             {import.meta.env.DEV ? <DevClock /> : null}
           </div>
-          <nav className="flex items-center gap-1">
-            <SeasonSelector />
-            {/* Matches stay locked until the season's plan points at a version —
-                same condition the server enforces (SocleGuard). */}
+          {/* M13 — « Matchs » SEUL au CENTRE (colonne auto de la grille à partir de `lg`), hors de
+              la grappe de droite, dans un wrapper SIMPLE (pas un 2ᵉ repère de navigation). Matches
+              stay locked until the season's plan points at a version — same condition the server
+              enforces (SocleGuard). */}
+          <div className="flex items-center">
             {null != data?.seasonPlan?.chosenScheduleId ? (
               <NavItem to="/matchs">Matchs</NavItem>
             ) : (
@@ -133,6 +144,9 @@ export function AppLayout() {
                 </span>
               </>
             )}
+          </div>
+          <nav className="flex items-center justify-end gap-1">
+            <SeasonSelector />
             {/* « Boîte aux lettres » : visible seulement si le club vit à une horloge simulée
                 (P4-16), avec le compteur des e-mails interceptés. Décide elle-même (null sinon). */}
             <MailboxNavItem />

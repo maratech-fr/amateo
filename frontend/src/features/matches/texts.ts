@@ -75,6 +75,10 @@ export const MATCHES_TEXTS = {
     return `Gymnases : ${shown.join(", ")}${overflow > 0 ? ` + ${overflow} autre${overflow > 1 ? "s" : ""}` : ""}.`;
   },
   retryMissing: "Réessayer les manquants",
+  // D7 (retours Nico, BCCL 2026-10-27, précisé fondateur) — au-delà de 60, un run calcule un POOL
+  // de 60 trajets non calculés et laisse le reste « en attente de relance » ; cette invite (rendue
+  // SEULEMENT s'il reste des paires en attente) dit qu'une relance reprendra le pool suivant.
+  travelRelaunchToContinue: "Il reste des trajets à calculer — relancez pour continuer.",
   noAwayThisSeason: "Aucun match à l'extérieur cette saison.",
   searchOpponentOrVenue: "Rechercher un club ou un gymnase",
   filterOpponents: "Filtrer les adversaires",
