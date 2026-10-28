@@ -1278,3 +1278,53 @@ describe("DayDialog — re-datage d'une indisponibilité découpée (« aperçu 
     expect(toast.error).not.toHaveBeenCalled();
   });
 });
+
+// ── Promesse 6 (décision fondateur option B, 2026-10-28) : l'indisponibilité de gymnase dans la modale du jour ──
+// Une `venue_unavailability` qui couvre le jour se LIT dans la modale comme une ligne « {gymnase}
+// indisponible », SANS geste (ni adapter ni supprimer depuis là — la suppression reste dans la carte
+// des indisponibilités), à côté de la fermeture (listée une fois, promesse 2). Contrat proposé à NEO :
+// prop `venueUnavailabilities` (les indispos DU JOUR, déjà résolues avec le nom du gymnase) ; texte via
+// la clé centralisée `COCKPIT_TEXTS.venueUnavailableTitle` (DayDialog migré). Hors scope : l'impact planning.
+describe("DayDialog — indisponibilité de gymnase listée dans la modale (promesse 6)", () => {
+  type UnavailabilityMark = { id: string; venueId: string; venueName: string; startDate: string; endDate: string; label: string | null };
+
+  function renderWithUnavailabilities(entries: CalendarEntry[], venueUnavailabilities: UnavailabilityMark[]) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const props = { iso: "2026-05-12", entries, venueUnavailabilities, onClose: vi.fn() } as unknown as Parameters<typeof DayDialog>[0];
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DayDialog {...props} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    deleteMutate.mockReset();
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    allPlansMock = [];
+    plansByEntry = {};
+    schedulesData = [];
+    queriesNoData = false;
+    childEntriesData = [];
+  });
+
+  const adn: UnavailabilityMark = { id: "vu1", venueId: "v9", venueName: "ADN", startDate: "2026-05-12", endDate: "2026-05-12", label: "travaux" };
+
+  it("liste l'indisponibilité de gymnase du jour comme une ligne lisible (clé centralisée), sans geste", () => {
+    renderWithUnavailabilities([], [adn]);
+
+    // RED aujourd'hui : la modale ignore les indisponibilités — aucune ligne « ADN indisponible ».
+    expect(screen.getByText(COCKPIT_TEXTS.venueUnavailableTitle("ADN", "travaux"))).toBeInTheDocument();
+    // Aucun geste depuis là (la suppression vit dans la carte des indisponibilités, pas dans la modale).
+    expect(screen.queryByRole("button", { name: /Supprimer ADN/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Adapter ADN/ })).toBeNull();
+  });
+
+  it("témoin : sans indisponibilité servie, aucune ligne « indisponible » n'apparaît", () => {
+    renderWithUnavailabilities([], []);
+
+    expect(screen.queryByText(/indisponible/)).toBeNull();
+  });
+});

@@ -261,6 +261,57 @@ describe("MonthCalendar — projection of the exception layer", () => {
   });
 });
 
+// ── Promesse 6 (décision fondateur option B, 2026-10-28) : l'indisponibilité de gymnase au calendrier ──
+// Amende P4-68 (« l'indispo entre au radar et nulle part ailleurs ») : une `venue_unavailability`
+// s'affiche AUSSI au calendrier, sur chacun de ses jours, avec une marque DISTINCTE de la fermeture ⛔
+// (marqueur propre + nom accessible « {gymnase} indisponible » et son libellé). Contrat proposé à NEO :
+// prop `venueUnavailabilities` SERVIE RÉSOLUE avec le nom du gymnase (comme `holidays`/`publicHolidays`).
+// Hors scope : l'impact de l'indispo sur les plannings.
+describe("MonthCalendar — indisponibilité de gymnase au calendrier (promesse 6)", () => {
+  type UnavailabilityMark = { id: string; venueId: string; venueName: string; startDate: string; endDate: string; label: string | null };
+
+  function renderWithUnavailabilities(entries: CalendarEntry[], venueUnavailabilities: UnavailabilityMark[]) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Props typées large puis castées vers la vraie signature : tsc-propre AVANT l'ajout de la prop
+    // (le composant l'ignore alors → RED), toujours valide APRÈS (la signature cible est un sur-ensemble).
+    const props = { year: 2026, month: 4, entries, holidays: [], publicHolidays: [], onPrev: vi.fn(), onNext: vi.fn(), venueUnavailabilities } as unknown as Parameters<typeof MonthCalendar>[0];
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MonthCalendar {...props} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  const adnUnavailability: UnavailabilityMark = { id: "vu1", venueId: "v2", venueName: "ADN", startDate: "2026-05-18", endDate: "2026-05-19", label: "travaux" };
+
+  it("une indisponibilité de gymnase porte une marque DISTINCTE de la fermeture sur chacun de ses jours", () => {
+    // Cas fondateur : le 18 mai porte DEUX marques — la fermeture Matéo (⛔) ET l'indispo ADN.
+    renderWithUnavailabilities(
+      [entry({ id: "m", kind: "period", periodType: "closure", title: "Matéo en travaux", startDate: "2026-05-18", endDate: "2026-05-18" })],
+      [adnUnavailability],
+    );
+
+    const day18 = screen.getByRole("button", { name: /^18 Mai/ });
+    expect(day18).toHaveAccessibleName(/Matéo en travaux/); // la fermeture reste marquée…
+    expect(day18).toHaveAccessibleName(/ADN indisponible/); // …et l'indispo ADN s'ajoute, distincte (RED aujourd'hui).
+  });
+
+  it("marque l'indisponibilité sur CHAQUE jour de sa plage", () => {
+    renderWithUnavailabilities([], [adnUnavailability]);
+
+    expect(screen.getByRole("button", { name: /^18 Mai/ })).toHaveAccessibleName(/ADN indisponible/);
+    expect(screen.getByRole("button", { name: /^19 Mai/ })).toHaveAccessibleName(/ADN indisponible/);
+  });
+
+  it("témoin : un jour hors de la plage de l'indisponibilité n'en porte pas la marque", () => {
+    renderWithUnavailabilities([], [adnUnavailability]);
+
+    expect(screen.getByRole("button", { name: /^20 Mai/ })).not.toHaveAccessibleName(/indisponible/);
+  });
+});
+
 /**
  * UXS-09 (décision fondateur A) — à chaque navigation de mois, `useCalendarEntries` change de clé et
  * la grille se recharge. L'en-tête du mois ET les flèches de navigation restent TOUJOURS montés ;
