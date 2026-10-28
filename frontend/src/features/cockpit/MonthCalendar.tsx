@@ -147,7 +147,7 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
                     <span className={cn("flex size-5 items-center justify-center rounded-full", isToday ? "bg-accent font-semibold text-accent-foreground" : "")}>{cell.day}</span>
                     {publicHoliday ? (
                       // « Férié » en TOUTES LETTRES à côté du numéro (le badge « F » seul était illisible).
-                      <span className="truncate text-[10px] font-semibold uppercase leading-none text-foreground">Férié</span>
+                      <span className="truncate text-[10px] font-semibold leading-none text-foreground">Férié</span>
                     ) : null}
                   </span>
                   {/* Markers are purely visual — the button's aria-label already names them
