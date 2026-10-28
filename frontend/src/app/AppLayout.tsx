@@ -36,14 +36,18 @@ import { SeasonTransitionBanner } from "./SeasonTransitionBanner";
  * du bandeau pour ressortir, sans monter au niveau visuel du sélecteur de saison (qui, lui, est
  * plein). Il GARDE son rôle de lien (NavLink → `<a>`) et son état actif (fond accent sur /matchs).
  *
- * Mise en page (passe `ui-ux-pro-max`, option B tranchée) : flex `justify-between` sous `lg`
- * (téléphone — pas de place pour centrer, le contenu garde sa largeur naturelle, la marque tronque
- * en premier, zéro débordement à 360 px) ; grille 3 colonnes `minmax(0,1fr) auto minmax(0,1fr)` à
- * partir de `lg` (1024-1920 px) — centrage géométrique réel, les colonnes latérales se rétractent
- * sans jamais forcer de scroll horizontal, le centre reste pile au milieu quelles que soient les
- * largeurs inégales gauche/droite. « Matchs » reste dans un wrapper SIMPLE, pas un 2ᵉ repère de
- * navigation (`<nav>`) : un lien unique n'est pas un repère, et deux repères sans nom distinct
- * nuiraient au lecteur d'écran — la grappe de droite reste l'unique `<nav>`.
+ * Mise en page (passe `ui-ux-pro-max`, option B tranchée) : grille 3 colonnes
+ * `minmax(0,1fr) auto minmax(0,1fr)` à partir de `lg` (1024-1920 px) — centrage géométrique réel,
+ * « Matchs » pile au milieu quelles que soient les largeurs inégales gauche/droite, les colonnes
+ * latérales se rétractant sans jamais forcer de scroll horizontal. Sous `lg` (téléphone/tablette),
+ * pas de place pour un vrai centrage : flex simple où la MARQUE prend l'espace restant (`flex-1`,
+ * nom tronqué par `min-w-0`+`truncate` AVANT tout chevauchement) et pousse « Matchs » puis la nav à
+ * DROITE — « Matchs » se place alors proprement en TÊTE de la grappe de droite (jamais chevauché).
+ * Les puces secondaires se masquent par palier pour garder « Matchs » et la nav à leur place sans
+ * débordement (cf. plus bas : offre sous `md`, horloges sous `xl`). « Matchs » reste dans un
+ * wrapper SIMPLE, pas un 2ᵉ repère de navigation (`<nav>`) : un lien unique n'est pas un repère, et
+ * deux repères sans nom distinct nuiraient au lecteur d'écran — la grappe de droite reste l'unique
+ * `<nav>`.
  */
 function NavItem({ to, children }: { to: string; children: string }) {
   return (
@@ -78,7 +82,7 @@ export function AppLayout() {
           que dans les zones vides, jamais sous l'en-tête ni les cartes. La racine, elle, laisse
           passer le fond du `body`. */}
       <header className="border-b border-border bg-background">
-        <div className="flex h-14 items-center justify-between gap-2 px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-4 lg:px-6 xl:px-8">
+        <div className="flex h-14 items-center gap-2 px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-4 lg:px-6 xl:px-8">
           {/* L'en-tête = la marque PRODUIT, puis le club (décision fondateur DA) :
               [icône Amateo] · [blason du club, s'il existe] NOM DU CLUB. L'icône produit
               est TOUJOURS là ; le blason suit quand il existe. Le sens accessible du lien
@@ -87,7 +91,7 @@ export function AppLayout() {
               desktop-first / mobile V2, P4-261) le MOT est masqué visuellement seulement
               (`hidden sm:inline`), pour ne plus se tronquer à « B… » ; le nom accessible ne
               bouge pas. La nav de droite ne se rétracte pas (décision fondateur). */}
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none">
             <NavLink
               to="/"
               aria-label={data?.club?.name ?? PRODUCT_NAME}
@@ -99,26 +103,37 @@ export function AppLayout() {
               className="flex items-center gap-2 rounded-md transition-opacity hover:opacity-80"
             >
               <BrandIcon className="size-6 shrink-0" />
-              {data?.club?.logoUrl ? <img src={data.club.logoUrl} alt="" className="size-6 shrink-0 rounded-full object-cover" /> : null}
+              {/* Blason du club : suit le MOT (`hidden sm:…`) — sous `sm` (téléphone) la marque se
+                  réduit au seul picto produit pour que « Matchs » + la nav tiennent sans
+                  chevauchement à 360 px ; le nom du club reste porté par l'`aria-label` du lien. */}
+              {data?.club?.logoUrl ? <img src={data.club.logoUrl} alt="" className="hidden size-6 shrink-0 rounded-full object-cover sm:inline-block" /> : null}
               <span className="hidden min-w-0 truncate text-sm font-semibold sm:inline">{data?.club?.name ?? PRODUCT_NAME}</span>
             </NavLink>
-            {/* Pastilles d'OFFRE, juste après la marque/club : « BÊTA » (offre bêta) et
-                « Découverte · N crédits » (offre Découverte bridée). Mutuellement exclusives en
-                pratique — chacune ne se montre que pour son offre ; rien en payant/démo. */}
-            <BetaBadge onReport={() => setFeedbackOpen(true)} />
-            <CreditBadge />
-            {/* Pastille « Démo » : s'ajoute aux deux précédentes pour un club is_demo, rien sinon. */}
-            <DemoBadge />
-            {/* Widget d'horloge du compte démo (prod) : pose/relâche la date simulée du club.
-                Décide lui-même (null pour un vrai club). */}
-            <DemoClockWidget />
-            {import.meta.env.DEV ? <DevClock /> : null}
+            {/* Pastilles d'OFFRE, juste après la marque/club : « BÊTA » (offre bêta),
+                « Découverte · N crédits » (offre Découverte bridée) et « Démo » (club is_demo).
+                Étroites, elles paraissent dès `md` ; sous `md` (téléphone) elles se masquent pour
+                laisser « Matchs » + la nav tenir sans chevauchement à 360 px — le canal de
+                signalement reste joignable par le menu du compte. Chacune décide elle-même sa
+                visibilité (null hors de son offre), le wrapper ne fait que gérer le palier. */}
+            <div className="hidden min-w-0 items-center gap-2 md:flex">
+              <BetaBadge onReport={() => setFeedbackOpen(true)} />
+              <CreditBadge />
+              <DemoBadge />
+            </div>
+            {/* Widgets d'HORLOGE (compte démo en prod + horloge dev) : LARGES (une date entière),
+                réservés au bureau large (`xl`) — plus bas ils pousseraient « Matchs » hors de sa
+                place. Chacun décide lui-même (null pour un vrai club / hors DEV). */}
+            <div className="hidden items-center gap-2 xl:flex">
+              <DemoClockWidget />
+              {import.meta.env.DEV ? <DevClock /> : null}
+            </div>
           </div>
           {/* M13 — « Matchs » SEUL au CENTRE (colonne auto de la grille à partir de `lg`), hors de
-              la grappe de droite, dans un wrapper SIMPLE (pas un 2ᵉ repère de navigation). Matches
-              stay locked until the season's plan points at a version — same condition the server
-              enforces (SocleGuard). */}
-          <div className="flex items-center">
+              la grappe de droite, dans un wrapper SIMPLE (pas un 2ᵉ repère de navigation). Sous `lg`
+              il reste `shrink-0` et, poussé par la marque `flex-1`, se range proprement en TÊTE de
+              la grappe de droite. Matches stay locked until the season's plan points at a version —
+              same condition the server enforces (SocleGuard). */}
+          <div className="flex shrink-0 items-center">
             {null != data?.seasonPlan?.chosenScheduleId ? (
               <NavItem to="/matchs">Matchs</NavItem>
             ) : (
@@ -145,7 +160,7 @@ export function AppLayout() {
               </>
             )}
           </div>
-          <nav className="flex items-center justify-end gap-1">
+          <nav className="flex shrink-0 items-center justify-end gap-1">
             <SeasonSelector />
             {/* « Boîte aux lettres » : visible seulement si le club vit à une horloge simulée
                 (P4-16), avec le compteur des e-mails interceptés. Décide elle-même (null sinon). */}
