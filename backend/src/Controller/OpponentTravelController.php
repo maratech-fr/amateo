@@ -195,18 +195,11 @@ final class OpponentTravelController extends AbstractController
         }
         \assert(null !== $clubId && $season instanceof Season);
 
-        // Cap dur AVANT tout réseau (aucun jeton brûlé sur un 422-cap).
-        $codes = $this->resolver->distinctOpponentCodes($season->getId());
-        if (\count($codes) > OpponentTravelResolver::MAX_OPPONENTS) {
-            return $this->json([
-                'error' => \sprintf(
-                    'Trop d\'adversaires à traiter en une fois (%d, maximum %d). Réessayez après avoir réduit le nombre de rencontres.',
-                    \count($codes),
-                    OpponentTravelResolver::MAX_OPPONENTS,
-                ),
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-
+        // D7 (retours Nico, BCCL 2026-10-27) — plus de 422-cap : la relance n'est plus refusée
+        // au-delà de 60 adversaires. Elle ENFILE le calcul, qui route un pool de 60 paires NON
+        // calculées par run et reprend aux relances suivantes jusqu'au bout (le cap vit désormais
+        // dans {@see OpponentTravelResolver::resolve}, sur les seules paires manquantes). Restent
+        // ici le limiteur d'abus, le verrou anti-double-calcul et le dispatch.
         $user = $this->getUser();
         if ($user instanceof User && !$this->opponentTravelResolveLimiter->create($user->getId())->consume(1)->isAccepted()) {
             return $this->json(['error' => 'Trop de calculs de trajet — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);

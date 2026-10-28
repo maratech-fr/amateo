@@ -124,13 +124,17 @@ existent, lien « Voir sur la carte ».
 
 ```
 GET https://data.geopf.fr/navigation/itineraire
-  ?resource=bdtopo-osrm&profile={car|pedestrian}&optimization=fastest
+  ?resource=bdtopo-valhalla&profile={car|pedestrian}&optimization=fastest
   &start={lon},{lat}&end={lon},{lat}
 Headers:
   Accept: application/json
 ```
 
 - Gratuit, sans clé. Mesuré en vie le 2026-08-26 : ~140-230 ms par appel.
+- ⚠ **Ressource = `bdtopo-valhalla`** (`IgnRoutingClient::RESOURCE`, figée par `IgnRoutingClientTest`).
+  IGN a **retiré `bdtopo-osrm`** (404 constaté le 27/10/2026 dans les journaux worker prod ; sonde
+  directe : `resource=bdtopo-osrm` → 400 « Parameter 'resource' is invalid »). `bdtopo-valhalla`
+  sert les **mêmes champs** `duration` (s) / `distance` (m) — aucune autre adaptation.
 - Profils utilisés : **`car`** et **`pedestrian`** seulement. ⚠ **`bike` rend 400** — ne jamais
   l'utiliser (`IgnRoutingClient::PROFILE_CAR`/`PROFILE_PEDESTRIAN`, aucune troisième constante).
 - Coordonnées **validées en plage** (lat ∈ [-90,90], lon ∈ [-180,180]) et **formatées
