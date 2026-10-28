@@ -325,6 +325,75 @@ describe("DayDialog — deletion is always confirmed", () => {
   });
 });
 
+// ── Promesse 2 (retour fondateur 2026-10-28) : une fermeture découpée est listée UNE fois ──
+// Une fermeture prolongée à travers les vacances devient une MÈRE (CLOSURE sans parent) + des
+// ENFANTS (CLOSURE avec parentEntryId). Aujourd'hui la liste du jour montre DEUX lignes (la mère ET
+// l'enfant) ; la fermeture doit n'apparaître qu'UNE fois, par le titre de la MÈRE, et l'item mène au
+// planning de la SOUS-ENTRÉE qui couvre le jour (le lien par entrée existe déjà : consult/adjust).
+describe("DayDialog — une fermeture découpée est listée une seule fois (promesse 2)", () => {
+  beforeEach(() => {
+    deleteMutate.mockReset();
+    navigate.mockClear();
+    startPeriodMode.mockClear();
+    setSelectedScheduleId.mockClear();
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    allPlansMock = [];
+    plansByEntry = {};
+    schedulesData = [];
+    queriesNoData = false;
+    childEntriesData = [];
+  });
+
+  const motherAndChild = () => [
+    entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, startDate: "2026-05-10", endDate: "2026-05-20" }),
+    entry({ id: "c", kind: "period", periodType: "closure", title: "Barros en travaux — semaine du 12 mai", parentEntryId: "m", startDate: "2026-05-11", endDate: "2026-05-17" }),
+  ];
+
+  it("liste la fermeture UNE fois (par le titre de la mère), sans ligne supprimable pour la sous-entrée", () => {
+    allPlansMock = [{ id: "pl-c", calendarEntryId: "c", chosenScheduleId: "sched-child" }];
+    renderDialog(motherAndChild());
+
+    // La fermeture apparaît par le titre de la MÈRE…
+    expect(screen.getByRole("button", { name: "Supprimer Barros en travaux" })).toBeInTheDocument();
+    // …et la sous-entrée n'ajoute PAS sa propre ligne (double entrée aujourd'hui → RED).
+    expect(screen.queryByRole("button", { name: "Supprimer Barros en travaux — semaine du 12 mai" })).toBeNull();
+  });
+
+  it("l'item unique mène au planning de la sous-entrée qui couvre le jour (Consulter → plan de l'enfant)", async () => {
+    allPlansMock = [{ id: "pl-c", calendarEntryId: "c", chosenScheduleId: "sched-child" }];
+    renderDialog(motherAndChild());
+
+    // Aujourd'hui la mère (sans plan propre) montre « Adapter » et l'enfant « Consulter » (deux lignes) ;
+    // après fix, l'item unique (la mère) porte le plan de la sous-entrée du jour → « Consulter », pas « Adapter ».
+    expect(screen.queryByRole("button", { name: COCKPIT_TEXTS.adapt })).toBeNull();
+    const consult = screen.getByRole("button", { name: COCKPIT_TEXTS.consult });
+    await userEvent.click(consult);
+    expect(setSelectedScheduleId).toHaveBeenCalledWith("sched-child");
+    expect(navigate).toHaveBeenCalledWith("/planning");
+  });
+
+  it("témoin : les gestes de la mère ne régressent pas — « Modifier les dates » et « Supprimer » restent sur l'item unique", () => {
+    allPlansMock = [{ id: "pl-c", calendarEntryId: "c", chosenScheduleId: "sched-child" }];
+    renderDialog([
+      entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, redateNeedsPreview: true, startDate: "2026-05-10", endDate: "2026-05-20" }),
+      entry({ id: "c", kind: "period", periodType: "closure", title: "Barros en travaux — semaine du 12 mai", parentEntryId: "m", startDate: "2026-05-11", endDate: "2026-05-17" }),
+    ]);
+
+    expect(screen.getByRole("button", { name: "Modifier les dates de Barros en travaux" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Supprimer Barros en travaux" })).toBeInTheDocument();
+  });
+
+  it("témoin : une fermeture NON découpée reste une ligne unique qui mène à son propre plan (inchangé)", async () => {
+    allPlansMock = [{ id: "pl-m", calendarEntryId: "m", chosenScheduleId: "sched-m" }];
+    renderDialog([entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, startDate: "2026-05-10", endDate: "2026-05-20" })]);
+
+    const consult = screen.getByRole("button", { name: COCKPIT_TEXTS.consult });
+    await userEvent.click(consult);
+    expect(setSelectedScheduleId).toHaveBeenCalledWith("sched-m");
+    expect(navigate).toHaveBeenCalledWith("/planning");
+  });
+});
+
 describe("DayDialog — holiday awareness (Lot B)", () => {
   beforeEach(() => {
     holidayMutateAsync.mockClear();
