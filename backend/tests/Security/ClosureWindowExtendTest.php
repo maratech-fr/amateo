@@ -603,6 +603,23 @@ final class ClosureWindowExtendTest extends WebTestCase
         );
     }
 
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+
+        // L'HORLOGE DU TEST : pinnée sur un LUNDI connu (2026-01-05 est un lundi) — toute fenêtre se
+        // dérive en semaines depuis ce « today », jamais une date calendaire en dur.
+        $this->today = new DateTimeImmutable('2026-01-05T12:00:00+00:00');
+        self::getContainer()->get(DevClockStore::class)->set($this->today);
+    }
+
+    protected function tearDown(): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set(null);
+        parent::tearDown();
+    }
+
     /**
      * Crée une fermeture (titre DONNÉ) sur [mon(-2), sun(1)], la prolonge à [mon(-2), sun(2)] (aligné,
      * sans vacances → `simpleRedate`), et rend le titre de la racine APRÈS apply — l'EFFET persisté,
@@ -635,23 +652,6 @@ final class ClosureWindowExtendTest extends WebTestCase
             'mai' => 'mai', 'juin' => 'juin', 'juillet' => 'juil.', 'août' => 'août',
             'septembre' => 'sept.', 'octobre' => 'oct.', 'novembre' => 'nov.', 'décembre' => 'déc.',
         ]);
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
-
-        // L'HORLOGE DU TEST : pinnée sur un LUNDI connu (2026-01-05 est un lundi) — toute fenêtre se
-        // dérive en semaines depuis ce « today », jamais une date calendaire en dur.
-        $this->today = new DateTimeImmutable('2026-01-05T12:00:00+00:00');
-        self::getContainer()->get(DevClockStore::class)->set($this->today);
-    }
-
-    protected function tearDown(): void
-    {
-        self::getContainer()->get(DevClockStore::class)->set(null);
-        parent::tearDown();
     }
 
     /** Une VRAIE saison passée (année N-1 relative à l’horloge), ACTIVE : archivée par l’ANNÉE seule. */
