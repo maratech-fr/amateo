@@ -51,7 +51,7 @@ export const COCKPIT_TEXTS = {
   redateEffectsTitle: "Effets de ce re-datage",
   redateSplitHint: "Déplacez la fenêtre de cette indisponibilité découpée. Voyez d'abord les effets, puis confirmez.",
   weeksCoveredCount: (covered: number, total: number) => `${covered}/${total} semaines à venir couverte`,
-  venueUnavailableTitle: (venue: string, label: string) => `${venue} indisponible (${label})`,
+  venueUnavailableTitle: (venue: string, label?: string | null) => (null != label && "" !== label ? `${venue} indisponible (${label})` : `${venue} indisponible`),
   // WeekPickerDialog (choix des semaines hors socle, P2-5 E1 / P2-36 / P2-38 / P2-40 / P2-41 / P2-64).
   chooseWeeks: "Choisir les semaines",
   continueBlock: "Continuer d'un bloc",

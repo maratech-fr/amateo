@@ -4,6 +4,7 @@ import { Navigate } from "react-router";
 
 import { useMe } from "@/shared/session/queries";
 import { useSchedules } from "@/features/planning/queries";
+import { useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PageHeader } from "@/shared/components/ui/page-header";
@@ -58,6 +59,19 @@ export function CockpitPage() {
   const { data: radarPublicHolidays, isLoading: publicHolidaysLoading } = radarPublicHolidaysQuery;
   const schedulesQuery = useSchedules();
   const { data: schedules = [], isLoading: schedulesLoading } = schedulesQuery;
+  // Option B (fondateur 2026-10-28) — les indisponibilités de gymnase s'affichent AUSSI au
+  // calendrier (amende P4-68). On les RÉSOUT ici (nom du gymnase) pour la grille + la modale du jour.
+  // Un échec de ce feed ne casse pas l'accueil (readState : `?? []`, la grille vit sans la marque).
+  const venueUnavailabilities = useVenueUnavailabilities().data ?? [];
+  const venues = useVenues().data ?? [];
+  const resolvedVenueUnavailabilities = venueUnavailabilities.map((u) => ({
+    id: u.id,
+    venueId: u.venueId,
+    venueName: venues.find((v) => v.id === u.venueId)?.name ?? "Gymnase",
+    startDate: u.startDate,
+    endDate: u.endDate,
+    label: u.label,
+  }));
   // D-28 : le prédicat partagé est un HOOK — il s'appelle donc ici, avec les autres, et
   // jamais après un early return (la version inline qu'il remplace n'était pas un hook,
   // et vivait plus bas : les règles des hooks l'auraient refusée là).
@@ -126,6 +140,7 @@ export function CockpitPage() {
             entries={entries}
             holidays={monthHolidays?.items ?? []}
             publicHolidays={publicHolidays?.items ?? []}
+            venueUnavailabilities={resolvedVenueUnavailabilities}
             onPrev={prev}
             onNext={next}
             loading={readLoading(entriesQuery)}
