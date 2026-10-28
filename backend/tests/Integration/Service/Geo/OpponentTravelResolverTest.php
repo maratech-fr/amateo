@@ -168,19 +168,77 @@ final class OpponentTravelResolverTest extends WebTestCase
     }
 
     /**
-     * BCK-32 — cap dur : 61 adversaires géolocalisés (annuaire). {@see OpponentTravelResolver::MAX_OPPONENTS}
-     * (60) en route 60, le 61ᵉ revient `unresolved` SANS aucun appel IGN pour l'excès.
+     * D6 (retours Nico, BCCL 2026-10-27) — le cap de 60 ({@see OpponentTravelResolver::MAX_OPPONENTS})
+     * borne les paires NON CALCULÉES, JAMAIS le total. Cas BCCL : 129 adversaires géolocalisés dont
+     * 100 déjà en cache (constantes) et 29 manquants ; le cache est filtré AVANT le cap, si bien que
+     * les 29 manquants (≤ 60) sont TOUS tentés — zéro « en attente de relance ». L'ancien ordre
+     * (cap AVANT cache) laissait les paires 61+ non tentées même déjà cachées : la famine BCCL.
      */
-    public function testResolveCapsAtSixtyOpponentsWithoutNetworkForTheExcess(): void
+    public function testTheCapBoundsUncomputedPairsNotTheTotal(): void
     {
-        [$club, $season] = $this->seedManyGeolocatedAwayOpponents(61);
+        [$club, $season] = $this->seedManyGeolocatedAwayOpponents(129);
+        $this->precacheFirstN($club, 100);
 
         $calls = 0;
         $result = $this->countingResolver($calls)->resolve($club->getId(), $season->getId());
 
-        self::assertSame(60, $result['resolved'], 'exactement 60 paires routées (cap dur)');
-        self::assertCount(1, $result['unresolved'], 'le 61ᵉ revient non résolu');
-        self::assertSame(60, $calls, 'aucun appel IGN pour l\'excès');
+        self::assertSame(129, $result['resolved'], 'les 100 en cache + les 29 manquantes : toutes résolues');
+        self::assertSame([], $result['unresolved'], 'aucune paire laissée de côté (29 manquantes ≤ cap)');
+        self::assertSame(29, $calls, 'seules les 29 paires NON cachées déclenchent un appel IGN (cache filtré AVANT le cap)');
+        self::assertSame([], $this->failureStore()->reasonsFor($club->getId(), $season->getId()), 'zéro « en attente de relance » — le cap n\'a pas mordu sur des paires cachées (cas BCCL)');
+    }
+
+    /**
+     * D7 (retours Nico, BCCL 2026-10-27, précisé fondateur) — « il fait 60 adversaires ; si on
+     * dépasse, au bout de 60 il dit qu'il en reste, on relance, il reprend un pool de 60 NON
+     * calculés et recommence jusqu'au bout ». 70 paires manquantes : un run route le POOL de 60 et
+     * laisse 10 « en attente de relance » ; la relance (cache grandi) reprend les 10 restantes et
+     * finit — zéro cause résiduelle.
+     */
+    public function testEachRunTakesTheNextPoolOfSixtyUncomputedPairsUntilNoneRemain(): void
+    {
+        [$club, $season] = $this->seedManyGeolocatedAwayOpponents(70);
+
+        $calls1 = 0;
+        $run1 = $this->countingResolver($calls1)->resolve($club->getId(), $season->getId());
+        self::assertSame(60, $run1['resolved'], 'le run route exactement le pool de 60');
+        self::assertCount(10, $run1['unresolved'], 'les 10 au-delà du pool restent non résolues');
+        self::assertSame(60, $calls1, '60 appels IGN, jamais plus');
+        $reasons1 = $this->failureStore()->reasonsFor($club->getId(), $season->getId());
+        self::assertCount(10, $reasons1, 'une cause par paire laissée de côté');
+        self::assertSame(
+            [OpponentTravelFailureStore::REASON_AWAITING_RETRY],
+            array_values(array_unique(array_values($reasons1))),
+            'les 10 sont « en attente de relance » (non tentées), pas « introuvables »',
+        );
+
+        // Relance : les 60 du run précédent sont désormais en cache (constantes) ; il ne reste que
+        // 10 paires non calculées (≤ cap) → la relance les finit toutes.
+        $calls2 = 0;
+        $run2 = $this->countingResolver($calls2)->resolve($club->getId(), $season->getId());
+        self::assertSame(70, $run2['resolved'], 'la relance reprend les 10 restantes : tout est calculé');
+        self::assertSame([], $run2['unresolved']);
+        self::assertSame(10, $calls2, 'seules les 10 paires encore non calculées sont routées');
+        self::assertSame([], $this->failureStore()->reasonsFor($club->getId(), $season->getId()), 'plus aucune cause : la relance a tout fini');
+    }
+
+    /**
+     * Abus nommé (cadrage ORACLE M14, 2026-10-27) — un club gonflé à 300 paires manquantes ne
+     * monopolise pas l'IGN : AU PLUS 60 appels sortants par run, jamais plus (le reste attend une
+     * relance). Garde du plafond anti-monopole, survivant au passage « cache AVANT cap ».
+     */
+    public function testAnInflatedClubNeverExceedsSixtyIgnCallsPerRun(): void
+    {
+        [$club, $season] = $this->seedManyGeolocatedAwayOpponents(300);
+
+        $calls = 0;
+        $result = $this->countingResolver($calls)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(60, $calls, 'le cap borne les appels IGN à 60 par run, jamais plus (anti-monopole)');
+        self::assertSame(60, $result['resolved'], 'exactement le pool de 60 est routé');
+        self::assertCount(240, $result['unresolved'], 'les 240 au-delà du pool attendent une relance');
+
+        $this->failureStore()->record($club->getId(), $season->getId(), []); // DEL ciblé (nettoyage)
     }
 
     public function testHasUncomputedTravelIsTrueWithAMissAndFalseOnceCached(): void
@@ -448,6 +506,20 @@ final class OpponentTravelResolverTest extends WebTestCase
         $this->em->flush();
 
         return [$club, $season];
+    }
+
+    /**
+     * Pré-remplit le cache de trajet (constante) pour les `$n` PREMIERS adversaires semés par
+     * {@see seedManyGeolocatedAwayOpponents} (coordonnées `45.0 + i/1000, 4.0 + i/1000`, siège
+     * 45.70,4.90) — ces paires-là sont déjà « calculées » et ne doivent déclencher aucun appel IGN.
+     */
+    private function precacheFirstN(Club $club, int $n): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $cache = self::getContainer()->get(TravelTimeCache::class);
+        for ($i = 0; $i < $n; ++$i) {
+            $cache->store($club->getId(), IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, 45.0 + $i / 1000, 4.0 + $i / 1000, 30);
+        }
     }
 
     /** An IGN whose every response carries NO `duration` → every attempted pair resolves to null (unroutable). */

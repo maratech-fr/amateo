@@ -119,6 +119,35 @@ final class IgnRoutingClientTest extends TestCase
     }
 
     /**
+     * M14 (cause racine « zéro trajet le 27/10 », journaux worker prod) — IGN a RETIRÉ la ressource
+     * `bdtopo-osrm` (404 depuis le 27/10) ; le client doit interroger `bdtopo-valhalla`, dont la
+     * réponse porte les MÊMES champs `duration` (s) / `distance` (m). On fige la ressource au plus
+     * bas (la query sortante) ET on prouve qu'une réponse valhalla donne minutes/mètres corrects.
+     */
+    public function testTheQueryUsesTheValhallaRoutingResourceAndReadsItsDurationAndDistance(): void
+    {
+        $clock = new MockClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00'));
+        $seenUrl = '';
+        $client = new IgnRoutingClient(
+            new MockHttpClient(static function (string $method, string $url) use (&$seenUrl): MockResponse {
+                $seenUrl = $url;
+
+                return new MockResponse((string) json_encode(['duration' => 900, 'distance' => 3300]));
+            }),
+            $clock,
+        );
+
+        $result = $client->travelMinutesBatch([
+            ['key' => 'a', 'profile' => IgnRoutingClient::PROFILE_CAR, 'startLat' => 45.7, 'startLon' => 4.8, 'endLat' => 45.8, 'endLon' => 4.9],
+        ]);
+
+        self::assertStringContainsString('resource=bdtopo-valhalla', $seenUrl, 'la query interroge la ressource valhalla (plus jamais bdtopo-osrm, retirée par IGN)');
+        self::assertStringNotContainsString('bdtopo-osrm', $seenUrl, 'la ressource retirée n\'est plus interrogée');
+        self::assertSame(['a' => 15], $result['minutes'], 'une réponse valhalla (900 s) donne 15 min');
+        self::assertSame(['a' => 3300], $result['meters'], 'la distance valhalla (3300 m) remonte telle quelle');
+    }
+
+    /**
      * P4-246 — plafond de taille de réponse (1 Mio). Un itinéraire fait quelques Kio ; une
      * réponse d'un ordre de grandeur au-dessus signale un endpoint compromis ou déréglé, et
      * la lire en entier serait un vecteur d'épuisement mémoire. Le téléchargement est AVORTÉ
