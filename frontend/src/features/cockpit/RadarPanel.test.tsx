@@ -60,6 +60,10 @@ const createVenueClosureMutateAsync = vi.fn().mockResolvedValue({
 });
 let unavailabilitiesData: { id: string; venueId: string; startDate: string; endDate: string; label: string | null }[] | undefined = [];
 let impactItemsData: { unavailabilityId: string; trainingSlotCount: number }[] = [];
+// Promesse 5 — le feed des fermetures servies AVEC leur gymnase ({venueId}). C'est la SEULE source,
+// côté front, du gymnase d'une fermeture (une `CalendarEntry` n'en porte pas). Vide par défaut :
+// les cas existants ne voient aucun masquage de plus.
+let venueClosuresData: { venueId: string; startDate: string; endDate: string }[] = [];
 // P2-40 — le hook useWeekAdapt source les fenêtres de vacances (feed scolaire + entrées calendrier)
 // pour EXCLURE de l'offre d'une fermeture les semaines sous vacances. Vides par défaut : les cas
 // existants (fermeture sans vacances) ne voient aucun changement.
@@ -92,7 +96,7 @@ vi.mock("@/features/matches/queries", () => ({
   useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: "sn1", items: impactItemsData } }),
   // Promesse 5 — le feed des fermetures (gymnase d'une closure) consommé par RadarPanel ; vide par
   // défaut, aucun changement pour les cas existants.
-  useVenueClosures: () => ({ data: [] }),
+  useVenueClosures: () => ({ data: venueClosuresData }),
 }));
 vi.mock("@/features/planning/queries", () => ({
   useSchedules: () => ({ data: schedulesData }),
@@ -181,6 +185,7 @@ describe("RadarPanel", () => {
     createVenueClosureMutateAsync.mockClear();
     unavailabilitiesData = [];
     impactItemsData = [];
+    venueClosuresData = [];
     schoolHolidaysData = { zone: "A", items: [] };
     calendarEntriesData = [];
     plannedWindowsData = [];
@@ -1003,16 +1008,45 @@ describe("RadarPanel", () => {
     expect(screen.getByText(/impact non évalué/)).toBeInTheDocument();
   });
 
-  it("ne double pas la carte d'une période qui couvre déjà l'indisponibilité", () => {
-    const today = todayISO();
-    unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: addDays(today, 12), endDate: addDays(today, 20), label: "travaux" }];
-    renderRadar({
-      entries: [
-        { id: "p1", kind: "period", periodType: "closure", title: "Fermeture Armand", startDate: addDays(today, 10), endDate: addDays(today, 25) } as CalendarEntry,
-      ],
+  // ── Promesse 5 (bug fondateur BCCL local 2026-10-28) : le gymnase de la fermeture compte ──
+  // Angle du NIVEAU COMPOSANT : le CÂBLAGE de RadarPanel vers `unavailabilitiesToAlert`. La règle
+  // PURE (quelle couverture masque) est prouvée au plus bas et exhaustivement par le jumeau
+  // `lib/venueUnavailabilityRadar.test.ts:89-117` (autre gymnase ne masque plus / même gymnase
+  // masque / période club-entier masque) — on ne la re-prouve pas ici. Ce que SEUL le composant
+  // voit, et que le pur ne peut pas : RadarPanel branche bien les DEUX sources attendues — les
+  // périodes CLUB-ENTIER de `entries` ET le feed `useVenueClosures` ({venueId}) — dans la fonction.
+  // Domaine sensible (fermeture de gymnase, charte §1) : le doublon d'angle est assumé.
+  describe("câblage du masquage des indispos (promesse 5)", () => {
+    // ⚠ Dates calculées DANS le test (après `beforeEach`, horloge figée à 2998-12-15) : les sortir
+    // au corps du `describe` les figerait à la VRAIE date (collecte), hors de la plage de l'indispo.
+    const unavailability = () => [{ id: "u1", venueId: "gym-1", startDate: addDays(todayISO(), 12), endDate: addDays(todayISO(), 20), label: "travaux" }];
+    const covering = () => ({ startDate: addDays(todayISO(), 10), endDate: addDays(todayISO(), 25) });
+    const cardTitle = () => COCKPIT_TEXTS.venueUnavailableTitle("Armand", "travaux");
+
+    it("une période CLUB-ENTIER (vacances) qui couvre masque la carte : RadarPanel passe bien `entries` à la fonction", () => {
+      unavailabilitiesData = unavailability();
+      renderRadar({ entries: [{ id: "p1", kind: "period", periodType: "holiday", title: "Vacances", ...covering() } as CalendarEntry] });
+
+      expect(screen.queryByText(cardTitle())).not.toBeInTheDocument();
     });
 
-    expect(screen.queryByText(COCKPIT_TEXTS.venueUnavailableTitle("Armand", "travaux"))).not.toBeInTheDocument();
+    it("une FERMETURE du MÊME gymnase qui couvre masque la carte : RadarPanel câble bien `useVenueClosures`", () => {
+      unavailabilitiesData = unavailability();
+      venueClosuresData = [{ venueId: "gym-1", ...covering() }];
+      renderRadar();
+
+      expect(screen.queryByText(cardTitle())).not.toBeInTheDocument();
+    });
+
+    it("témoin du bug fondateur : une fermeture d'un AUTRE gymnase couvrant la plage ne masque PLUS la carte", () => {
+      unavailabilitiesData = unavailability();
+      // La fermeture Matéo (gym-2) EST une période du calendrier et sert son gymnase par le feed ;
+      // avant le fix, `entries` masquait AVEUGLÉMENT n'importe quel gymnase — plus maintenant.
+      venueClosuresData = [{ venueId: "gym-2", ...covering() }];
+      renderRadar({ entries: [{ id: "p2", kind: "period", periodType: "closure", title: "Matéo fermé", ...covering() } as CalendarEntry] });
+
+      expect(screen.getByText(cardTitle())).toBeInTheDocument();
+    });
   });
 
   it("P4-9 — un férié SANS séance ce jour-là disparaît (rien à protéger)", () => {

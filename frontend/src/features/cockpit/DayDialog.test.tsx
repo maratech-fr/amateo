@@ -804,6 +804,10 @@ describe("DayDialog — P2-36 tranche 2 : la liste du jour passe par le sélecte
     schedulesData = [];
     queriesNoData = false;
     childEntriesData = [];
+    // Sans vacances par défaut : la décision « déjà découpée → bloc direct » exige `!holidayCovered`
+    // (useWeekAdapt.ts:100). Un feed de vacances COUVRANT fuité d'un test P2-40 (plus bas, l.881)
+    // rouvrirait le picker ici et ferait un FAUX ROUGE dépendant de l'ordre — ce reset le ferme.
+    schoolHolidaysMock = { zone: "A", items: [] };
   });
 
   // Fermeture RACINE couvrant plusieurs semaines calendaires (10 → 20 mai, today = 12 mai).
