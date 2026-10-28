@@ -90,6 +90,9 @@ vi.mock("@/features/matches/queries", () => ({
   useVenueUnavailabilities: () => ({ data: unavailabilitiesData }),
   useVenues: () => ({ data: [{ id: "gym-1", name: "Armand" }] }),
   useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: "sn1", items: impactItemsData } }),
+  // Promesse 5 — le feed des fermetures (gymnase d'une closure) consommé par RadarPanel ; vide par
+  // défaut, aucun changement pour les cas existants.
+  useVenueClosures: () => ({ data: [] }),
 }));
 vi.mock("@/features/planning/queries", () => ({
   useSchedules: () => ({ data: schedulesData }),
