@@ -101,7 +101,14 @@ introuvable(s) » (`MATCHES_TEXTS.travelFailuresByReason`) plutôt que le géné
 pas pu être calculé(s) » (gardé en repli, ex. siège non localisé — cause GLOBALE, sans ligne à
 nommer) — suivi des gymnases concernés, nommés (`travelFailureVenues`, plafonné à 10 + reliquat) ;
 bouton « Réessayer les manquants » (`POST /api/opponents/travel/resolve`, qui ne route déjà que
-les paires siège→gymnase manquantes). « En attente de relance » (`awaiting_retry`) = le budget
+les paires siège→gymnase manquantes). Depuis D7 (retours Nico BCCL 2026-10-27, précisé fondateur),
+cette relance n'est **jamais refusée** au-delà de 60 adversaires (fini l'ancien 422 « réduisez le
+nombre de rencontres ») : un run calcule un POOL de 60 paires non calculées et laisse le reste « en
+attente de relance » ; tant qu'il reste des paires en attente, le bandeau ajoute l'invite
+`MATCHES_TEXTS.travelRelaunchToContinue` (« relancez pour continuer ») — une relance reprend le pool
+suivant jusqu'au bout, sans aucun enchaînement automatique (détail : pool/cap/anti-monopole/relance
+dans [`module-matchs-modele-donnees.md`](module-matchs-modele-donnees.md) § Cache de trajets et
+calcul asynchrone). « En attente de relance » (`awaiting_retry`) = le budget
 worker s'est épuisé avant d'atteindre la paire, une relance la reprend ; « introuvable »
 (`unroutable`) = IGN muet/pas d'itinéraire/gymnase mal géolocalisé — une relance seule n'y change
 rien tant que la donnée ne bouge pas. Détail serveur (`travelFailureReason` par ligne de gymnase,

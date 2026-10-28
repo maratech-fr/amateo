@@ -78,10 +78,13 @@ final class OpponentTravelResolver
      * n'est pas déjà dans {@see ClubTravelCache}. Une paire déjà en cache n'est jamais
      * retouchée (constante). Best-effort par paire.
      *
-     * BCK-32 — deux bornes : (1) cap dur {@see MAX_OPPONENTS} de paires routées (l'excès
-     * part en `unresolved` SANS réseau) ; (2) budget de mur `$budgetSeconds` threadé vers
-     * {@see IgnRoutingClient::travelMinutesBatch}. `$budgetSeconds` null = budget du lot par
-     * défaut. `$onProgress(traitées, total)` est appelé au fil du lot (C6 — le worker publie).
+     * Deux bornes : (1) cap dur {@see MAX_OPPONENTS} sur les paires NON CALCULÉES seulement
+     * (D6/D7, retours Nico 2026-10-27) — le cache est filtré AVANT le cap, une paire déjà en
+     * cache ne consomme jamais de place, et l'excès de MANQUES part en `unresolved` SANS réseau
+     * (« en attente de relance ») ; une relance reprend le prochain pool de 60 jusqu'au bout.
+     * (2) budget de mur `$budgetSeconds` threadé vers {@see IgnRoutingClient::travelMinutesBatch}.
+     * `$budgetSeconds` null = budget du lot par défaut. `$onProgress(traitées, total)` est appelé
+     * au fil du lot (C6 — le worker publie).
      *
      * @param (callable(int, int): void)|null $onProgress
      *
@@ -113,20 +116,11 @@ final class OpponentTravelResolver
         $clubLatF = (float) $clubLat;
         $clubLonF = (float) $clubLon;
 
-        // Cap dur : l'excès part en `unresolved` sans aucun appel réseau — non tenté, une relance
-        // (passe suivante) le reprendra → « en attente de relance ».
-        if (\count($pairs) > self::MAX_OPPONENTS) {
-            foreach (\array_slice($pairs, self::MAX_OPPONENTS) as $excess) {
-                $unresolved[] = $excess['code'];
-                $failures[$excess['pairingKey']] = OpponentTravelFailureStore::REASON_AWAITING_RETRY;
-            }
-            $pairs = \array_slice($pairs, 0, self::MAX_OPPONENTS);
-        }
-
-        // Cache-first : un trajet est une CONSTANTE. Une paire DÉJÀ en cache est résolue (elle
-        // n'est jamais re-routée) ; seuls les vrais manques partent en lot IGN.
-        $jobs = [];
+        // Cache-first PUIS cap (D6/D7, retours Nico 2026-10-27). Un trajet est une CONSTANTE : on
+        // partitionne d'abord — une paire DÉJÀ en cache est résolue (jamais re-routée, elle ne
+        // consomme JAMAIS de place) ; seuls les vrais manques sont candidats au lot IGN.
         $cached = [];
+        $misses = [];
         $resolved = 0;
         foreach ($pairs as $pair) {
             if (null !== $this->travelCache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $pair['lat'], $pair['lon'])) {
@@ -135,6 +129,23 @@ final class OpponentTravelResolver
 
                 continue;
             }
+            $misses[] = $pair;
+        }
+
+        // Cap dur sur les paires NON CALCULÉES seulement ({@see MAX_OPPONENTS}), JAMAIS sur le
+        // total : l'excès de manques part en `unresolved` sans aucun appel réseau — non tenté,
+        // une relance reprendra le prochain pool de 60 → « en attente de relance ». Borne aussi
+        // les appels IGN par run (anti-monopole : un club gonflé ne dépasse jamais 60 sorties).
+        if (\count($misses) > self::MAX_OPPONENTS) {
+            foreach (\array_slice($misses, self::MAX_OPPONENTS) as $excess) {
+                $unresolved[] = $excess['code'];
+                $failures[$excess['pairingKey']] = OpponentTravelFailureStore::REASON_AWAITING_RETRY;
+            }
+            $misses = \array_slice($misses, 0, self::MAX_OPPONENTS);
+        }
+
+        $jobs = [];
+        foreach ($misses as $pair) {
             $jobs[] = [
                 'key' => $pair['key'],
                 'profile' => IgnRoutingClient::PROFILE_CAR,
@@ -145,8 +156,11 @@ final class OpponentTravelResolver
             ];
         }
 
-        $total = \count($pairs);
+        // Progression cohérente : le dénominateur est l'ensemble de travail de CE run — les paires
+        // en cache (déjà résolues) plus les manques effectivement routés ce run. L'excès « en
+        // attente de relance » n'y entre pas (il sera compté par la relance qui le prendra).
         $cacheHits = \count($cached);
+        $total = $cacheHits + \count($misses);
         if (null !== $onProgress && $total > 0) {
             $onProgress($cacheHits, $total);
         }
@@ -160,11 +174,8 @@ final class OpponentTravelResolver
         );
         $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 
-        foreach ($pairs as $pair) {
+        foreach ($misses as $pair) {
             $key = $pair['key'];
-            if (isset($cached[$key])) {
-                continue; // déjà compté résolu
-            }
             if (isset($budgetExceeded[$key])) {
                 // Le budget s'est arrêté AVANT cette paire : non tentée, relance pour finir →
                 // « en attente de relance ».

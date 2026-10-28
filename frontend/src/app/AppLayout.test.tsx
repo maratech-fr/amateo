@@ -150,6 +150,25 @@ describe("AppLayout — en-tête marque produit", () => {
       // La raison est ANNONCÉE (aria-describedby → texte), pas seulement un title muet au survol.
       expect(matchs).toHaveAccessibleDescription(/Validez le planning de saison/);
     });
+
+    // M13 (constat fondateur 2026-10-27) — « Matchs » était caché dans la grappe de droite
+    // (saison / thème / menu) et Nico ne savait pas que le module existait. Il doit être CENTRÉ,
+    // SEUL, hors de cette grappe. jsdom n'a pas de moteur de layout : on pinne l'INVARIANT de
+    // conteneur observable (« Matchs » a quitté la grappe de droite) SANS figer de classe CSS ; le
+    // centrage pixel réel est prouvé par la re-baseline `visual-reference.spec.ts` en CI.
+    it("débloqué → « Matchs » a quitté la grappe de droite (saison / thème / menu) pour être seul", () => {
+      meData = { club: club({ name: "BCCL" }), seasonPlan: { chosenScheduleId: "sched-1" } as unknown as MeResponse["seasonPlan"] };
+      renderLayout();
+      const matchs = screen.getByRole("link", { name: "Matchs" });
+      const themeToggle = screen.getByRole("button", { name: /thème/ });
+      const accountMenu = screen.getByRole("button", { name: "Menu du compte" });
+      // Le `<nav>` le plus proche du sélecteur de thème EST la grappe de droite (thème + menu).
+      const rightCluster = themeToggle.closest("nav");
+      expect(rightCluster).not.toBeNull();
+      expect(rightCluster?.contains(accountMenu)).toBe(true); // sanity : c'est bien cette grappe
+      // « Matchs » n'y est PLUS (il est centré, hors de la grappe de droite).
+      expect(rightCluster?.contains(matchs)).toBe(false);
+    });
   });
 
   it("« BÊTA » → onReport ouvre le canal de signalement (FeedbackDialog)", () => {

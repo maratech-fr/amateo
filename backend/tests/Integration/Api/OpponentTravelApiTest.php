@@ -20,6 +20,7 @@ use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelFailureStore;
+use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
@@ -426,6 +427,48 @@ final class OpponentTravelApiTest extends WebTestCase
         } finally {
             $lock->release($club->getId(), $token);
         }
+    }
+
+    /**
+     * D7 (retours Nico, BCCL 2026-10-27, précisé fondateur) — au-delà de 60 adversaires, la relance
+     * n'est PLUS refusée (ancien 422 « réduisez le nombre de rencontres ») : elle ENFILE le calcul,
+     * qui reprendra un pool de 60 non calculées par run jusqu'au bout. Le POST répond `{queued:true}`.
+     */
+    public function testTravelResolveQueuesEvenBeyondSixtyOpponents(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        for ($i = 0; $i <= OpponentTravelResolver::MAX_OPPONENTS; ++$i) {
+            $this->awayFixture($club, $season, \sprintf('ARA0069Q%03d', $i), 'Adverse ' . $i, 'SALLE ' . $i);
+        }
+
+        $this->client->request('POST', '/api/opponents/travel/resolve', [], [], $this->authHeaders($user) + ['HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseStatusCodeSame(200, 'au-delà du cap, la relance est acceptée (plus de 422) : ' . (string) $this->client->getResponse()->getContent());
+        self::assertTrue($this->responseData()['queued'], 'le calcul est enfilé');
+        self::assertFalse($this->responseData()['alreadyRunning']);
+    }
+
+    /**
+     * Abus nommé (cadrage ORACLE M14, 2026-10-27) — relancer EN BOUCLE : une fois l'ancien 422-cap
+     * retiré, c'est le limiteur dédié `opponent_travel_resolve` (10/h par utilisateur) qui borne la
+     * relance, 429 au-delà. On sème > 60 adversaires pour prouver que le 422 ne masque plus le
+     * limiteur : sans le retrait du 422, ce POST répondrait 422 (cap), pas 429 (borne d'abus).
+     */
+    public function testRelanceInALoopIsBoundedByTheResolveLimiterNotA422(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        for ($i = 0; $i <= OpponentTravelResolver::MAX_OPPONENTS; ++$i) {
+            $this->awayFixture($club, $season, \sprintf('ARA0069B%03d', $i), 'Adverse ' . $i, 'SALLE ' . $i);
+        }
+
+        $limiter = self::getContainer()->get('limiter.opponent_travel_resolve');
+        self::assertInstanceOf(RateLimiterFactory::class, $limiter);
+        for ($i = 0; $i < 10; ++$i) {
+            self::assertTrue($limiter->create($user->getId())->consume(1)->isAccepted(), "jeton {$i} sous la borne");
+        }
+
+        $this->client->request('POST', '/api/opponents/travel/resolve', [], [], $this->authHeaders($user) + ['HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseStatusCodeSame(429, 'la 11ᵉ relance dépasse la borne du limiteur de calcul (et non un 422-cap)');
+        self::assertStringContainsString('calculs de trajet', (string) $this->client->getResponse()->getContent());
     }
 
     public function testVenueSuggestionsAreForbiddenForANonManagementMember(): void

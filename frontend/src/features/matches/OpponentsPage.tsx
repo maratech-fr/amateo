@@ -196,6 +196,9 @@ export function OpponentsPage() {
               <span>
                 {awaitingRetryCount + unroutableCount > 0 ? MATCHES_TEXTS.travelFailuresByReason(awaitingRetryCount, unroutableCount) : MATCHES_TEXTS.travelFailuresBanner(failedCount)}
               </span>
+              {/* D7 — invite à relancer pour reprendre le pool suivant, UNIQUEMENT s'il reste des
+                  paires « en attente de relance » (un échec purement « introuvable » ne la montre pas). */}
+              {awaitingRetryCount > 0 ? <span className="text-xs text-muted-foreground">{MATCHES_TEXTS.travelRelaunchToContinue}</span> : null}
               {failedVenueNames.length > 0 ? <span className="text-xs text-muted-foreground">{MATCHES_TEXTS.travelFailureVenues(failedVenueNames)}</span> : null}
             </span>
           }

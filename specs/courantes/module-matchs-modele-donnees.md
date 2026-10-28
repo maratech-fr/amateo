@@ -325,6 +325,19 @@ son contrat « codes fédéraux seuls » pour ses autres appelants ; le repli VI
 codes fédéraux (un sans-code n'a pas d'entrée d'annuaire fédérale à router en repli). Détail
 worker/verrou/topic : `backend/docs/geo-api.md` § Calcul asynchrone.
 
+**Pool de 60 paires NON calculées par run (D6/D7, retours Nico BCCL 2026-10-27, précisé fondateur).**
+`resolve()` partitionne d'abord le cache PUIS applique le cap `OpponentTravelResolver::MAX_OPPONENTS`
+(60) sur les seules paires MANQUANTES — jamais sur le total. Une paire déjà en cache ne consomme
+jamais de place (le cas BCCL : 129 adversaires dont 100 en cache + 29 manquants calcule les 29 d'un
+coup, zéro « en attente de relance ») ; au-delà de 60 manques, le run route le pool de 60, laisse le
+reste `awaiting_retry`, et une relance reprend le pool suivant jusqu'au bout. Le cap borne aussi les
+appels IGN sortants (anti-monopole : un club gonflé ne dépasse jamais 60 sorties par run).
+**Plus de 422-cap côté contrôleur** (l'ancien « réduisez le nombre de rencontres » a disparu) : la
+relance n'est jamais refusée au-delà de 60 — restent le limiteur d'abus `opponent_travel_resolve`
+(10/h/utilisateur → 429), le verrou anti-double-calcul et le dispatch. **Pas d'auto-chaînage** : le
+worker ne ré-enfile RIEN après un run incomplet (figé par `ComputeTravelTimesHandlerTest`), c'est le
+gestionnaire qui relance.
+
 **M14 (retours Nico, BCCL 2026-10-27) — la cause du DERNIER échec, par gymnase.** Un trajet non
 résolu l'est pour deux raisons bien distinctes, invisibles l'une de l'autre côté écran avant ce lot :
 le budget worker s'est épuisé AVANT d'atteindre la paire (une relance suffit) ou IGN est resté muet

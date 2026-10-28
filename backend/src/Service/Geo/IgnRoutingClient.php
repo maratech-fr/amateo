@@ -66,7 +66,15 @@ final class IgnRoutingClient
     private const float MAX_RETRY_AFTER_SECONDS = 5.0;
 
     private const string ITINERARY_URL = 'https://data.geopf.fr/navigation/itineraire';
-    private const string RESOURCE = 'bdtopo-osrm';
+
+    /**
+     * Ressource de calcul d'itinéraire interrogée. IGN a RETIRÉ `bdtopo-osrm` (404 depuis le
+     * 27/10/2026 — constaté dans les journaux worker prod, puis sonde directe :
+     * `resource=bdtopo-osrm` → 400 « Parameter 'resource' is invalid: it does not exist on this
+     * service »). `bdtopo-valhalla` la remplace, avec les MÊMES champs `duration` (s) /
+     * `distance` (m). Figée par {@see IgnRoutingClientTest} ; cf. backend/docs/geo-api.md.
+     */
+    private const string RESOURCE = 'bdtopo-valhalla';
     private const float TIMEOUT = 5.0;
 
     /**

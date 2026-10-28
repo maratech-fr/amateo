@@ -351,6 +351,32 @@ describe("OpponentsPage — bandeau de trajets non calculés (M14)", () => {
   });
 });
 
+// ── D7 (retours Nico, BCCL 2026-10-27, précisé fondateur) — pool de 60 par run : quand il RESTE
+//    des paires « en attente de relance » (pool incomplet), le bandeau INVITE à relancer pour
+//    continuer. Assertion par CLÉ (MATCHES_TEXTS.*), jamais la phrase recopiée. CONTRAT NEO : une
+//    clé dédiée `travelRelaunchToContinue`, rendue UNIQUEMENT quand awaitingRetry > 0. ──
+describe("OpponentsPage — relance pour continuer le pool (D7)", () => {
+  it("avec des trajets « en attente de relance » : le bandeau invite à relancer pour continuer", () => {
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "A", name: "Club A", venues: [venue({ id: "a1", label: "Gym Attente", travelStatus: "unavailable", travelMinutes: null, travelFailureReason: "awaiting_retry" })] })],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    expect(screen.getByText(MATCHES_TEXTS.travelRelaunchToContinue)).toBeInTheDocument();
+  });
+
+  it("échec UNIQUEMENT « introuvable » (zéro en attente) : pas d'invite à relancer pour continuer", () => {
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "A", name: "Club A", venues: [venue({ id: "a1", label: "Gym Muet", travelStatus: "unavailable", travelMinutes: null, travelFailureReason: "unroutable" })] })],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    expect(screen.queryByText(MATCHES_TEXTS.travelRelaunchToContinue)).not.toBeInTheDocument();
+  });
+});
+
 // ── P4-293 — le 4ᵉ segment « Trajet indisponible » (OpponentsPage non encore migré : la CLÉ
 //    `MATCHES_TEXTS.opponentFilterTravelUnavailable` porte le libellé — assertion par rôle + nom). ──
 describe("OpponentsPage — segment « Trajet indisponible » (P4-293)", () => {
