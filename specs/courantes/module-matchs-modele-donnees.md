@@ -24,6 +24,16 @@ vigueur, il n'a rien à comparer.
   `CHAMPIONSHIP`/`CUP`/`BRASSAGE`, `entryDeadline` nullable, réfs FFBB — voir §4) — N par équipe.
 - **`Fixture`** (table `fixture`) : `teamId`, `competitionId` nullable = amical, `matchDate`,
   `homeAway`, `opponentLabel`, `opponentOrganismeCode`/`opponentTeamKey` (résolus serveur),
+  `externalDivision` (nullable, interne — jamais servi par `FixtureResource` — le libellé de
+  division FBI DU FICHIER d'origine, posé à la création à côté d'`externalRef`, non nul SSI lui l'est
+  ; backfillé depuis `competition.name` pour les rencontres FBI déjà en base, migration
+  `Version20261028120000`) : avec `externalRef`, il identifie une rencontre importée — équipe +
+  division + numéro (D1/M15, 2026-10-28), index unique `uniq_fixture_external_ref` élargi à
+  `(club_id, season_id, team_id, external_division, external_ref)` — jamais `competition.name` SEUL,
+  qui peut être réutilisé/renommé au fil des dépôts ; au 2ᵉ tour une équipe change de poule/division
+  et FBI réutilise ses numéros, sans la division dans la clé le n°X du 2ᵉ tour réécrivait le n°X de
+  la 1ʳᵉ phase (bug M15, détail et procédure de réparation :
+  [`module-matchs-import-fbi.md`](module-matchs-import-fbi.md) §7),
   `status` (`FixtureStatus` : `UNPLACED → PLACED → SUBMITTED → VALIDATED`), `venueId`/`kickoffTime`
   nullables, `fbiVenueLabel` (salle brute source, HOME et AWAY), `placementSource`
   (`MANUAL`/`SOLVER`/null legacy), `unplacedReason` (raison persistante : `venue_lost` — le gymnase
