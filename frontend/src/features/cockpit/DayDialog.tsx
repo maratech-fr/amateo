@@ -23,12 +23,28 @@ import { seasonLockTitle, useSocleValidated } from "./lib/socle";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
-import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
+import { entryIcon, entryLabel, holidayIcon, isClosureChildWithMotherPresent, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
 import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useRedatePreview, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
 import { WeekPickerDialog } from "./WeekPickerDialog";
 import { COCKPIT_TEXTS } from "./texts";
 
 type Mode = "list" | "event" | "closure" | "cutoff" | "redate";
+
+/**
+ * Indisponibilité de gymnase résolue (avec le nom du gymnase, comme `holiday`/`publicHoliday`) —
+ * posée depuis la page cockpit (décision fondateur « option B » 2026-10-28, amende P4-68 : désormais
+ * radar + calendrier + modale du jour, sans impact sur les plannings — cadré à part). Le type vit ICI
+ * (et non dans `MonthCalendar`) pour que `MonthCalendar`, qui importe déjà `DayDialog`, le réutilise
+ * sans cycle d'import de valeur.
+ */
+export interface CalendarVenueUnavailability {
+  id: string;
+  venueId: string;
+  venueName: string;
+  startDate: string;
+  endDate: string;
+  label: string | null;
+}
 
 interface DayDialogProps {
   iso: string;
@@ -37,11 +53,13 @@ interface DayDialogProps {
   holiday?: SchoolHoliday;
   /** Public holiday (jour férié) on this day, if any — shown as read-only info. */
   publicHoliday?: PublicHoliday;
+  /** Indisponibilités de gymnase couvrant ce jour (option B) — ligne lisible, SANS geste. */
+  venueUnavailabilities?: CalendarVenueUnavailability[];
   onClose: () => void;
 }
 
 /** Lightweight day dialog (annotation = modal, spec §5bis): lists the day's entries and creates an event / venue closure. */
-export function DayDialog({ iso, entries, holiday, publicHoliday, onClose }: DayDialogProps) {
+export function DayDialog({ iso, entries, holiday, publicHoliday, venueUnavailabilities, onClose }: DayDialogProps) {
   const [mode, setMode] = useState<Mode>("list");
   // D3 v1 PR-2 — le geste « Modifier les dates » ouvre un MODE du même dialogue (pas une modale
   // par-dessus) : l'entrée visée est retenue le temps du re-datage.
@@ -54,7 +72,7 @@ export function DayDialog({ iso, entries, holiday, publicHoliday, onClose }: Day
   return (
     <Modal label={`Jour ${iso}`} title={formatFrDate(iso)} onClose={onClose}>
       <div className="mt-4">
-        {mode === "list" ? <DayList entries={entries} holiday={holiday} publicHoliday={publicHoliday} onCreate={setMode} onRedate={startRedate} onClose={onClose} /> : null}
+        {mode === "list" ? <DayList entries={entries} holiday={holiday} publicHoliday={publicHoliday} venueUnavailabilities={venueUnavailabilities} onCreate={setMode} onRedate={startRedate} onClose={onClose} /> : null}
         {mode === "event" ? <EventForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "closure" ? <ClosureForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "cutoff" ? <CutoffForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
@@ -70,7 +88,7 @@ export function DayDialog({ iso, entries, holiday, publicHoliday, onClose }: Day
   );
 }
 
-function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose }: { entries: CalendarEntry[]; holiday?: SchoolHoliday; publicHoliday?: PublicHoliday; onCreate: (m: Mode) => void; onRedate: (entry: CalendarEntry) => void; onClose: () => void }) {
+function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCreate, onRedate, onClose }: { entries: CalendarEntry[]; holiday?: SchoolHoliday; publicHoliday?: PublicHoliday; venueUnavailabilities?: CalendarVenueUnavailability[]; onCreate: (m: Mode) => void; onRedate: (entry: CalendarEntry) => void; onClose: () => void }) {
   const deleteEntry = useDeleteEntry();
   const schedulesQuery = useSchedules();
   const [toDelete, setToDelete] = useState<CalendarEntry | null>(null);
@@ -172,7 +190,19 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
   // voir, supprimer) vivent DANS l'encart (fondateur 2026-07-24 : « le plan est
   // attaché aux vacances, plus simple en UX »). Un jour où la semaine déborde la
   // vacance (pas d'encart), la ligne reste — sinon elle serait inaccessible.
-  const deletable = entries.filter((e) => !isHolidayAnchor(e) && !(undefined !== holiday && isHolidayWeekChild(e)));
+  // Un enfant de FERMETURE dont la mère couvre le jour est masqué lui aussi : la
+  // fermeture est listée UNE fois, par la mère (retour fondateur 2026-10-28) — qui
+  // porte alors l'accès au planning de la SOUS-ENTRÉE du jour (cf. ci-dessous).
+  const deletable = entries.filter(
+    (e) => !isHolidayAnchor(e) && !(undefined !== holiday && isHolidayWeekChild(e)) && !isClosureChildWithMotherPresent(e, entries),
+  );
+  // Pour une mère de fermeture découpée, le plan/geste de la ligne suit la SOUS-ENTRÉE qui couvre le
+  // jour (les entrées reçues couvrent déjà le jour affiché, et les segments sont disjoints → au plus
+  // un enfant fermeture par jour). Sans enfant, la mère porte son propre plan (cas non découpé).
+  const closureChildOfDay = (mother: CalendarEntry): CalendarEntry | null =>
+    "closure" === mother.periodType && null === mother.parentEntryId
+      ? (entries.find((e) => e.parentEntryId === mother.id && "closure" === e.periodType) ?? null)
+      : null;
 
   return (
     <div className="space-y-4">
@@ -190,6 +220,13 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
 
       {holiday ? <HolidayBlock holiday={holiday} entries={entries} onClose={onClose} /> : null}
 
+      {/* Option B (fondateur 2026-10-28) : les indisponibilités de gymnase du jour, en LECTURE seule
+          (« {gymnase} indisponible »). Aucun geste ici — la suppression vit dans la carte
+          « Indisponibilités gymnase », l'impact planning est cadré à part. */}
+      {(venueUnavailabilities ?? []).map((u) => (
+        <NoticeBanner key={u.id} tone="warning" icon={<CalendarOff className="size-4 text-warning" />} message={COCKPIT_TEXTS.venueUnavailableTitle(u.venueName, u.label)} />
+      ))}
+
       {null !== windowConflict && null === pickerFor ? <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => adjust(windowConflict.entryId)} /> : null}
 
       {deletable.length > 0 ? (
@@ -199,7 +236,15 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
             // (pas de version validée) ou Consulter (validé). Une closure/holiday
             // RACINE sans plan (jamais adaptée — ADR-0002 amendé) → ADAPTER : le
             // geste crée le plan puis ouvre le wizard. Événement/coupure : rien.
-            const plan = planByEntry.get(entry.id) ?? null;
+            // Deux modèles de données coexistent et ne doivent pas se confondre :
+            //  - mère adaptée « d'un bloc » / découpée en semaines (P2-5/P2-36) : la MÈRE porte le plan ;
+            //  - fermeture prolongée à travers les vacances (2026-10-28) : la mère n'a PAS de plan,
+            //    chaque SOUS-ENTRÉE porte le sien.
+            // Donc le plan de la mère l'emporte s'il existe ; sinon, pour une fermeture découpée, on
+            // suit la sous-entrée qui couvre le jour (l'item unique mène au planning de l'enfant). Les
+            // gestes de la mère (Modifier les dates, Supprimer) restent sur `entry` quoi qu'il arrive.
+            const planEntry = null !== (planByEntry.get(entry.id) ?? null) ? entry : (closureChildOfDay(entry) ?? entry);
+            const plan = planByEntry.get(planEntry.id) ?? null;
             const chosen = plan?.chosenScheduleId ?? null;
             const planHasVersions = null !== plan && plansWithVersions.has(plan.id);
             const adaptable = null === plan && null === entry.parentEntryId && ("closure" === entry.periodType || "holiday" === entry.periodType);
@@ -222,7 +267,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
                         {COCKPIT_TEXTS.consult}
                       </Button>
                     ) : (
-                      <Button variant="outline" size="sm" disabled={adjustLocked || createPeriodPlan.isPending} disabledReason={adjustLocked ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
+                      <Button variant="outline" size="sm" disabled={adjustLocked || createPeriodPlan.isPending} disabledReason={adjustLocked ? lockTitle : undefined} onClick={() => requestAdapt(planEntry)}>
                         {COCKPIT_TEXTS.adjust}
                       </Button>
                     )
@@ -265,7 +310,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
           holiday est masquée de la liste supprimable (ancrage invisible), donc
           `deletable` peut être vide alors que le bloc vacances ci-dessus tient la
           journée — dire « la semaine type tourne normalement » se contredirait. */}
-      {deletable.length === 0 && !holiday ? (
+      {deletable.length === 0 && !holiday && 0 === (venueUnavailabilities ?? []).length ? (
         <EmptyHint>{COCKPIT_TEXTS.nothingThisDay}</EmptyHint>
       ) : null}
 
