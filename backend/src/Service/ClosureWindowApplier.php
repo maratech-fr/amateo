@@ -136,18 +136,23 @@ final class ClosureWindowApplier
 
     /**
      * Recale le suffixe de fenêtre du titre de la racine (« — du … au … »), s'il y était ; sinon le
-     * titre reste souverain (inv. 12). No-op quand les deux suffixes coïncident.
+     * titre reste souverain (inv. 12).
+     *
+     * On ne compare PLUS l'ancien suffixe au titre (`str_ends_with($title, windowLabel(old))`) : à la
+     * création l'app pose la graphie en TOUTES LETTRES, mais le seed BCCL (et l'historique) portent une
+     * graphie ABRÉGÉE (« 16 oct. 2026 ») que cette comparaison ne reconnaissait jamais — le titre
+     * n'était alors jamais réécrit après prolongation (retour fondateur 2026-10-28). On retire donc le
+     * suffixe par le MÊME motif que {@see createChild} (`/\s+—\s+du\s.+$/u`, insensible à la graphie des
+     * dates), puis on ajoute la fenêtre neuve. Un titre sans ce suffixe reste inchangé.
      */
     private function recaleTitleSuffix(CalendarEntry $root, ClosureWindowPlan $computed): void
     {
-        $oldSuffix = $this->schedulePlanProvisioner->windowLabel(new DateTimeImmutable($computed->oldStart), new DateTimeImmutable($computed->oldEnd));
-        $newSuffix = $this->schedulePlanProvisioner->windowLabel(new DateTimeImmutable($computed->newStart), new DateTimeImmutable($computed->newEnd));
-        if ($oldSuffix === $newSuffix) {
+        $title = $root->getTitle();
+        $base = preg_replace('/\s+—\s+du\s.+$/u', '', $title);
+        if (null === $base || $base === $title) {
             return;
         }
-        $title = $root->getTitle();
-        if (str_ends_with($title, $oldSuffix)) {
-            $root->setTitle(substr($title, 0, -\strlen($oldSuffix)) . $newSuffix);
-        }
+        $newSuffix = $this->schedulePlanProvisioner->windowLabel(new DateTimeImmutable($computed->newStart), new DateTimeImmutable($computed->newEnd));
+        $root->setTitle($base . ' — ' . $newSuffix);
     }
 }

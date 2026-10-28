@@ -2,7 +2,7 @@ import { AlertTriangle, CalendarClock, CalendarOff, ChevronDown, MapPin, Message
 import { Link, useNavigate } from "react-router";
 
 import { useWorkingSeason } from "@/shared/session/queries";
-import { useUnavailabilityImpact, useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
+import { useUnavailabilityImpact, useVenueClosures, useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
 import { useSchedules, useSlots } from "@/features/planning/queries";
 import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
@@ -388,9 +388,19 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   const venuesQuery = useVenues();
   const unavailabilityImpact = useUnavailabilityImpact();
   const createClosureFromUnavailability = useCreateVenueClosure();
+  // Le gymnase d'une fermeture du calendrier (`CalendarEntry` n'en porte pas) : sans ce feed, une
+  // fermeture d'un AUTRE gymnase masquait à tort une indispo (bug fondateur 2026-10-28). Lecture
+  // soumise à readState : un échec ne doit jamais se lire « Rien à l'horizon ».
+  const venueClosuresQuery = useVenueClosures();
   const venueNameOf = (id: string): string => (venuesQuery.data ?? []).find((v) => v.id === id)?.name ?? "Gymnase";
   const impactByUnavailability = new Map((unavailabilityImpact.data?.items ?? []).map((i) => [i.unavailabilityId, i]));
-  const unavailabilityAlerts = unavailabilitiesToAlert(unavailabilitiesQuery.data ?? [], entries, today, VENUE_UNAVAILABILITY_HORIZON_DAYS);
+  const unavailabilityAlerts = unavailabilitiesToAlert(
+    unavailabilitiesQuery.data ?? [],
+    entries,
+    today,
+    VENUE_UNAVAILABILITY_HORIZON_DAYS,
+    (venueClosuresQuery.data ?? []).map((c) => ({ venueId: c.venueId, startDate: c.startDate, endDate: c.endDate })),
+  );
 
   const upcomingPublicHolidays = holidaysInHorizon
     .map((h) => ({ ...h, sessionCount: slotsPerIsoDay.get(isoDayOf(h.date)) ?? 0 }))
@@ -411,10 +421,11 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // inconnu — squelette, jamais un « Tout roule » suivi d'une carte qui surgit.
   const holidayImpactLoading = holidaysInHorizon.length > 0 && null !== seasonChosenId && seasonSlotsQuery.isLoading;
   const stillLoading =
-    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || readLoading(unavailabilitiesQuery) || entriesLoading;
+    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || readLoading(unavailabilitiesQuery) || readLoading(venueClosuresQuery) || entriesLoading;
   // UXS-09 — l'échec de la lecture des entrées (ou des fériés) parvient au panneau par prop : une
-  // liste `entries`/`publicHolidays` vide est alors un ÉCHEC, pas « rien à traiter ».
-  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery) || entriesFailed || publicHolidaysFailed;
+  // liste `entries`/`publicHolidays` vide est alors un ÉCHEC, pas « rien à traiter ». Idem le feed
+  // des fermetures : sans lui le masquage par gymnase est faux, donc l'échec se DIT.
+  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery) || readFailed(venueClosuresQuery) || entriesFailed || publicHolidaysFailed;
 
   const isEmpty =
     // UXS-09 — « Tout roule » n'est JAMAIS vrai pendant un chargement ni sur un échec : une liste
@@ -443,6 +454,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
     // readState : charger n'est pas « rien à signaler »).
     unavailabilityAlerts.length === 0 &&
     undefined !== unavailabilitiesQuery.data &&
+    undefined !== venueClosuresQuery.data &&
     !holidayImpactLoading &&
     zone !== null &&
     !zoneLoading &&

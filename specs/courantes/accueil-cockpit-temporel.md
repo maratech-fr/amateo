@@ -286,11 +286,30 @@ sort de l'ordinaire** : événements club, indispos, périodes, vacances. **Un j
 roule comme la semaine type.** Clic sur un jour → **création rapide** (événement / indispo /
 période). Le jour courant est **entouré**.
 
+**Une fermeture découpée (prolongée à travers des vacances, §5bis) ne porte qu'UNE pastille ⛔ par
+jour** : la MÈRE représente la fermeture, l'enfant du jour ne redouble pas le marqueur (sauf
+orphelin d'affichage — mère absente des entrées du jour — qui garde alors le sien, pour qu'aucun
+jour ne reste muet). Même règle dans la modale du jour : la fermeture y est listée **une fois**, et
+l'item unique mène au planning de la **sous-entrée qui couvre le jour cliqué** quand la mère
+elle-même n'en porte pas (les gestes de la mère — Modifier les dates, Supprimer — restent sur
+l'item). Un jour **férié** porte en plus le mot « Férié » à côté du numéro, dans une case
+distincte du fond vacances — pas seulement une pastille colorée (color-not-only).
+
 **Radar** = la **to-do du gestionnaire**, triée par urgence : ce qui approche (J-24/J-7/J-3)
 et ce qui manque (plan de période non généré, planning modifié non régénéré). **Chaque item
 a un CTA.** C'est la version généralisée des alertes J-14 de la vision d'origine (§8.2). Les
 vacances y sont **proposées** comme période à adapter (CTA « Générer le plan »/« Adapter »),
 **jamais auto-appliquées** — c'est le gestionnaire qui déclenche.
+
+**Une indisponibilité de gymnase n'est plus confinée au radar** (amende la décision fermée P4-68
+— « l'indisponibilité entre au radar et nulle part ailleurs », `etat-des-lieux.md` §2) : elle porte
+en plus une marque DISTINCTE du ⛔ sur le calendrier, sur chacun de ses jours, et une ligne lecture
+seule dans la modale du jour (« {gymnase} indisponible », aucun geste — la suppression reste sur la
+carte radar « Indisponibilités gymnase »). Hors scope, délibérément : l'**impact** d'une
+indisponibilité sur les plannings (séances à replacer) — cadré à part (`roadmap.md` P4-372). Le
+radar lui-même ne masque plus une indisponibilité par une fermeture **d'un autre gymnase** — seule
+une période CLUB-ENTIER (vacances/coupure) ou une fermeture **du même gymnase** masque désormais
+(`unavailabilitiesToAlert`, `cockpit/lib/venueUnavailabilityRadar.ts`).
 
 ### 5.1 Le radar ne montre que l'AVENIR ACTIONNABLE
 

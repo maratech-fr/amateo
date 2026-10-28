@@ -552,6 +552,57 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertResponseStatusCodeSame(409, 'une saison passée (archivée par l’année) est refusée par le garde saison GLOBAL avant le contrôleur');
     }
 
+    /**
+     * ⑧ TITRE DE LA MÈRE RÉÉCRIT QUELLE QUE SOIT LA GRAPHIE (retour fondateur 2026-10-28).
+     *
+     * À la création, l'app pose un suffixe de dates en TOUTES LETTRES ({@see SchedulePlanProvisioner::
+     * windowLabel} → « du 22 décembre 2025 au 11 janvier 2026 »). Après prolongation, la racine doit
+     * être renommée avec la NOUVELLE fenêtre — y compris quand l'ancien titre porte une graphie
+     * ABRÉGÉE (« 16 oct. 2026 », forme du seed Matéo) : aujourd'hui {@see ClosureWindowApplier::
+     * recaleTitleSuffix} compare par `str_ends_with($title, windowLabel(old))` en toutes lettres, donc
+     * un suffixe abrégé n'est JAMAIS reconnu ni réécrit (le cas ROUGE). Trois graphies :
+     *  (A) suffixe en toutes lettres (ce que l'app pose)  → réécrit (déjà VERT, témoin de non-régression) ;
+     *  (B) suffixe abrégé (graphie du seed BCCL)          → réécrit lui aussi (le cas ROUGE) ;
+     *  (C) titre SANS suffixe de dates                    → inchangé (inv. 12 : le titre reste souverain).
+     *
+     * Le format PRODUIT reste celui de la création ({@see SchedulePlanProvisioner::windowLabel},
+     * calculé ici par le vrai service, jamais une date en dur). L'extension [mon(-2), sun(2)] est
+     * alignée lun→dim et sans vacances → un seul segment → chemin `simpleRedate` qui appelle le recale.
+     */
+    public function testMotherTitleIsRecaledWhateverTheDateGraphie(): void
+    {
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $oldLong = $provisioner->windowLabel(new DateTimeImmutable($this->mon(-2)), new DateTimeImmutable($this->sun(1)));
+        $newLong = $provisioner->windowLabel(new DateTimeImmutable($this->mon(-2)), new DateTimeImmutable($this->sun(2)));
+        // L'app pose la forme « du … au … » à la création (pas « Semaine du … » : la fenêtre > 1 semaine).
+        self::assertStringStartsWith('du ', $oldLong, 'la fenêtre multi-semaines produit un suffixe « du … au … »');
+        self::assertStringStartsWith('du ', $newLong);
+        self::assertNotSame($oldLong, $newLong, 'la nouvelle fenêtre produit un suffixe différent de l’ancien');
+
+        // (A) suffixe en TOUTES LETTRES (ce que l'app pose) → réécrit avec la nouvelle fenêtre.
+        self::assertSame(
+            'Matéo en travaux — ' . $newLong,
+            $this->recaleRootTitleAfterExtend('Matéo en travaux — ' . $oldLong),
+            'un suffixe en toutes lettres est réécrit avec la nouvelle fenêtre',
+        );
+
+        // (B) suffixe ABRÉGÉ (graphie du seed BCCL « 16 oct. ») → réécrit MALGRÉ la graphie (cas ROUGE).
+        $abbrev = $this->abbreviateFrenchMonths($oldLong);
+        self::assertNotSame($oldLong, $abbrev, 'la forme abrégée diffère bien de la forme en toutes lettres');
+        self::assertSame(
+            'Matéo en travaux — ' . $newLong,
+            $this->recaleRootTitleAfterExtend('Matéo en travaux — ' . $abbrev),
+            'un suffixe abrégé est réécrit lui aussi (reconnaissance insensible à la graphie)',
+        );
+
+        // (C) titre SANS suffixe de dates → inchangé (inv. 12 : le titre reste souverain).
+        self::assertSame(
+            'Barros en travaux',
+            $this->recaleRootTitleAfterExtend('Barros en travaux'),
+            'un titre sans suffixe de dates ne bouge pas',
+        );
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -567,6 +618,40 @@ final class ClosureWindowExtendTest extends WebTestCase
     {
         self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
+    }
+
+    /**
+     * Crée une fermeture (titre DONNÉ) sur [mon(-2), sun(1)], la prolonge à [mon(-2), sun(2)] (aligné,
+     * sans vacances → `simpleRedate`), et rend le titre de la racine APRÈS apply — l'EFFET persisté,
+     * jamais le site d'appel. Un club jetable par titre évite tout chevauchement de fenêtre entre cas.
+     */
+    private function recaleRootTitleAfterExtend(string $title): string
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $rootId = $this->postPeriod($user, $title, $this->mon(-2), $this->sun(1));
+        $planId = $this->adaptPeriod($user, $rootId);
+        $this->seedPointedVersionWithLockedSlots($club, $season, $planId);
+        $this->seedDatedClosure($club, $season, $rootId, $this->mon(-2), $this->sun(1));
+
+        $preview = $this->preview($user, $planId, $this->mon(-2), $this->sun(2));
+        $this->applyWindow($user, $planId, $this->mon(-2), $this->sun(2), $preview['token']);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $persisted = $this->em->getConnection()->fetchOne('SELECT title FROM calendar_entry WHERE id = :id', ['id' => $rootId]);
+        self::assertNotFalse($persisted, 'la racine survit à la prolongation');
+
+        return (string) $persisted;
+    }
+
+    /** Abrège les mois en toutes lettres (« décembre » → « déc. ») — fabrique la graphie du seed BCCL. */
+    private function abbreviateFrenchMonths(string $label): string
+    {
+        return strtr($label, [
+            'janvier' => 'janv.', 'février' => 'févr.', 'mars' => 'mars', 'avril' => 'avr.',
+            'mai' => 'mai', 'juin' => 'juin', 'juillet' => 'juil.', 'août' => 'août',
+            'septembre' => 'sept.', 'octobre' => 'oct.', 'novembre' => 'nov.', 'décembre' => 'déc.',
+        ]);
     }
 
     /** Une VRAIE saison passée (année N-1 relative à l’horloge), ACTIVE : archivée par l’ANNÉE seule. */

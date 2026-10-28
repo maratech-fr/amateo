@@ -52,6 +52,8 @@ vi.mock("./queries", () => ({
 vi.mock("@/features/matches/queries", () => ({
   useVenueUnavailabilities: () => ({ data: [] }),
   useVenues: () => ({ data: [] }),
+  // Promesse 5 — RadarPanel (réel ici) lit le feed des fermetures ; vide, aucun changement d'état.
+  useVenueClosures: () => ({ data: [] }),
   useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: null, items: [] } }),
   useCreateVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),

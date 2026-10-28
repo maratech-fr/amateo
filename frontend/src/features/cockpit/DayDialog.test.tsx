@@ -325,6 +325,75 @@ describe("DayDialog — deletion is always confirmed", () => {
   });
 });
 
+// ── Promesse 2 (retour fondateur 2026-10-28) : une fermeture découpée est listée UNE fois ──
+// Une fermeture prolongée à travers les vacances devient une MÈRE (CLOSURE sans parent) + des
+// ENFANTS (CLOSURE avec parentEntryId). Aujourd'hui la liste du jour montre DEUX lignes (la mère ET
+// l'enfant) ; la fermeture doit n'apparaître qu'UNE fois, par le titre de la MÈRE, et l'item mène au
+// planning de la SOUS-ENTRÉE qui couvre le jour (le lien par entrée existe déjà : consult/adjust).
+describe("DayDialog — une fermeture découpée est listée une seule fois (promesse 2)", () => {
+  beforeEach(() => {
+    deleteMutate.mockReset();
+    navigate.mockClear();
+    startPeriodMode.mockClear();
+    setSelectedScheduleId.mockClear();
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    allPlansMock = [];
+    plansByEntry = {};
+    schedulesData = [];
+    queriesNoData = false;
+    childEntriesData = [];
+  });
+
+  const motherAndChild = () => [
+    entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, startDate: "2026-05-10", endDate: "2026-05-20" }),
+    entry({ id: "c", kind: "period", periodType: "closure", title: "Barros en travaux — semaine du 12 mai", parentEntryId: "m", startDate: "2026-05-11", endDate: "2026-05-17" }),
+  ];
+
+  it("liste la fermeture UNE fois (par le titre de la mère), sans ligne supprimable pour la sous-entrée", () => {
+    allPlansMock = [{ id: "pl-c", calendarEntryId: "c", chosenScheduleId: "sched-child" }];
+    renderDialog(motherAndChild());
+
+    // La fermeture apparaît par le titre de la MÈRE…
+    expect(screen.getByRole("button", { name: "Supprimer Barros en travaux" })).toBeInTheDocument();
+    // …et la sous-entrée n'ajoute PAS sa propre ligne (double entrée aujourd'hui → RED).
+    expect(screen.queryByRole("button", { name: "Supprimer Barros en travaux — semaine du 12 mai" })).toBeNull();
+  });
+
+  it("l'item unique mène au planning de la sous-entrée qui couvre le jour (Consulter → plan de l'enfant)", async () => {
+    allPlansMock = [{ id: "pl-c", calendarEntryId: "c", chosenScheduleId: "sched-child" }];
+    renderDialog(motherAndChild());
+
+    // Aujourd'hui la mère (sans plan propre) montre « Adapter » et l'enfant « Consulter » (deux lignes) ;
+    // après fix, l'item unique (la mère) porte le plan de la sous-entrée du jour → « Consulter », pas « Adapter ».
+    expect(screen.queryByRole("button", { name: COCKPIT_TEXTS.adapt })).toBeNull();
+    const consult = screen.getByRole("button", { name: COCKPIT_TEXTS.consult });
+    await userEvent.click(consult);
+    expect(setSelectedScheduleId).toHaveBeenCalledWith("sched-child");
+    expect(navigate).toHaveBeenCalledWith("/planning");
+  });
+
+  it("témoin : les gestes de la mère ne régressent pas — « Modifier les dates » et « Supprimer » restent sur l'item unique", () => {
+    allPlansMock = [{ id: "pl-c", calendarEntryId: "c", chosenScheduleId: "sched-child" }];
+    renderDialog([
+      entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, redateNeedsPreview: true, startDate: "2026-05-10", endDate: "2026-05-20" }),
+      entry({ id: "c", kind: "period", periodType: "closure", title: "Barros en travaux — semaine du 12 mai", parentEntryId: "m", startDate: "2026-05-11", endDate: "2026-05-17" }),
+    ]);
+
+    expect(screen.getByRole("button", { name: "Modifier les dates de Barros en travaux" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Supprimer Barros en travaux" })).toBeInTheDocument();
+  });
+
+  it("témoin : une fermeture NON découpée reste une ligne unique qui mène à son propre plan (inchangé)", async () => {
+    allPlansMock = [{ id: "pl-m", calendarEntryId: "m", chosenScheduleId: "sched-m" }];
+    renderDialog([entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, startDate: "2026-05-10", endDate: "2026-05-20" })]);
+
+    const consult = screen.getByRole("button", { name: COCKPIT_TEXTS.consult });
+    await userEvent.click(consult);
+    expect(setSelectedScheduleId).toHaveBeenCalledWith("sched-m");
+    expect(navigate).toHaveBeenCalledWith("/planning");
+  });
+});
+
 describe("DayDialog — holiday awareness (Lot B)", () => {
   beforeEach(() => {
     holidayMutateAsync.mockClear();
@@ -735,6 +804,10 @@ describe("DayDialog — P2-36 tranche 2 : la liste du jour passe par le sélecte
     schedulesData = [];
     queriesNoData = false;
     childEntriesData = [];
+    // Sans vacances par défaut : la décision « déjà découpée → bloc direct » exige `!holidayCovered`
+    // (useWeekAdapt.ts:100). Un feed de vacances COUVRANT fuité d'un test P2-40 (plus bas, l.881)
+    // rouvrirait le picker ici et ferait un FAUX ROUGE dépendant de l'ordre — ce reset le ferme.
+    schoolHolidaysMock = { zone: "A", items: [] };
   });
 
   // Fermeture RACINE couvrant plusieurs semaines calendaires (10 → 20 mai, today = 12 mai).
@@ -1207,5 +1280,55 @@ describe("DayDialog — re-datage d'une indisponibilité découpée (« aperçu 
 
     expect(await screen.findByText(/déjà planifiées par « Vacances de Toussaint »/)).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+// ── Promesse 6 (décision fondateur option B, 2026-10-28) : l'indisponibilité de gymnase dans la modale du jour ──
+// Une `venue_unavailability` qui couvre le jour se LIT dans la modale comme une ligne « {gymnase}
+// indisponible », SANS geste (ni adapter ni supprimer depuis là — la suppression reste dans la carte
+// des indisponibilités), à côté de la fermeture (listée une fois, promesse 2). Contrat proposé à NEO :
+// prop `venueUnavailabilities` (les indispos DU JOUR, déjà résolues avec le nom du gymnase) ; texte via
+// la clé centralisée `COCKPIT_TEXTS.venueUnavailableTitle` (DayDialog migré). Hors scope : l'impact planning.
+describe("DayDialog — indisponibilité de gymnase listée dans la modale (promesse 6)", () => {
+  type UnavailabilityMark = { id: string; venueId: string; venueName: string; startDate: string; endDate: string; label: string | null };
+
+  function renderWithUnavailabilities(entries: CalendarEntry[], venueUnavailabilities: UnavailabilityMark[]) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const props = { iso: "2026-05-12", entries, venueUnavailabilities, onClose: vi.fn() } as unknown as Parameters<typeof DayDialog>[0];
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DayDialog {...props} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    deleteMutate.mockReset();
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    allPlansMock = [];
+    plansByEntry = {};
+    schedulesData = [];
+    queriesNoData = false;
+    childEntriesData = [];
+  });
+
+  const adn: UnavailabilityMark = { id: "vu1", venueId: "v9", venueName: "ADN", startDate: "2026-05-12", endDate: "2026-05-12", label: "travaux" };
+
+  it("liste l'indisponibilité de gymnase du jour comme une ligne lisible (clé centralisée), sans geste", () => {
+    renderWithUnavailabilities([], [adn]);
+
+    // RED aujourd'hui : la modale ignore les indisponibilités — aucune ligne « ADN indisponible ».
+    expect(screen.getByText(COCKPIT_TEXTS.venueUnavailableTitle("ADN", "travaux"))).toBeInTheDocument();
+    // Aucun geste depuis là (la suppression vit dans la carte des indisponibilités, pas dans la modale).
+    expect(screen.queryByRole("button", { name: /Supprimer ADN/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Adapter ADN/ })).toBeNull();
+  });
+
+  it("témoin : sans indisponibilité servie, aucune ligne « indisponible » n'apparaît", () => {
+    renderWithUnavailabilities([], []);
+
+    expect(screen.queryByText(/indisponible/)).toBeNull();
   });
 });

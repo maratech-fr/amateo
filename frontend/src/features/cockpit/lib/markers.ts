@@ -28,6 +28,22 @@ export const isHolidayAnchor = (e: CalendarEntry): boolean => null === e.parentE
  */
 export const isHolidayWeekChild = (e: CalendarEntry): boolean => null !== e.parentEntryId && "holiday" === e.periodType;
 
+/**
+ * Enfant d'une FERMETURE (`parentEntryId` + `periodType:"closure"`) dont la MÈRE figure parmi les
+ * entrées voisines (`siblings`) : une fermeture prolongée à travers les vacances devient une mère
+ * (CLOSURE racine, couvrant toute la fenêtre) + des enfants (ses sous-segments). La mère REPRÉSENTE
+ * la fermeture — au calendrier comme dans la modale du jour — donc l'enfant n'ajoute pas sa propre
+ * pastille ni sa propre ligne (sinon un double ⛔ / une double ligne le même jour).
+ *
+ * Contrairement à `isHolidayWeekChild` (qui n'a pas besoin du contexte des frères), le masquage est
+ * CONDITIONNEL à la présence de la mère : un enfant ORPHELIN d'affichage (mère absente des entrées
+ * du jour) reste la seule trace de la fermeture et GARDE sa pastille. Par construction un enfant ⊆
+ * sa mère, donc la mère couvre toujours les jours de l'enfant — le cas orphelin ne survient pas pour
+ * cette feature, mais le garder conditionnel évite un jour muet si jamais il survenait.
+ */
+export const isClosureChildWithMotherPresent = (e: CalendarEntry, siblings: CalendarEntry[]): boolean =>
+  null !== e.parentEntryId && "closure" === e.periodType && siblings.some((m) => m.id === e.parentEntryId);
+
 /** Emoji marker for a calendar entry (event / period). */
 export const entryIcon = (e: CalendarEntry): string => {
   if (e.kind === "period") {

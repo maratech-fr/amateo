@@ -24,6 +24,13 @@ vi.mock("@/features/planning/queries", () => ({
     schedulesError ? { data: undefined, isError: true, refetch: vi.fn() } : { data: [], isError: false, isLoading: false, refetch: vi.fn() },
 }));
 
+// Option B (2026-10-28) — CockpitPage résout les indisponibilités de gymnase pour la grille ;
+// enfants stubés ici, mais les hooks lus par la page doivent exister dans le mock.
+vi.mock("@/features/matches/queries", () => ({
+  useVenueUnavailabilities: () => ({ data: [] }),
+  useVenues: () => ({ data: [] }),
+}));
+
 vi.mock("./queries", () => ({
   useCalendarEntries: () =>
     entriesError ? { data: undefined, isError: true, refetch: vi.fn() } : { data: [], isError: false, refetch: vi.fn() },

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -130,6 +130,44 @@ describe("MonthCalendar — projection of the exception layer", () => {
     expect(screen.getAllByTitle("Travaux — semaine du 4 mai")[0]).toHaveTextContent("⛔");
   });
 
+  // ── Promesse 1 (retour fondateur 2026-10-28) : UNE seule pastille ⛔ par jour et par fermeture ──
+  // Une fermeture prolongée à travers les vacances devient une MÈRE (CLOSURE sans parent, couvrant
+  // toute la fenêtre) + des ENFANTS (CLOSURE avec parentEntryId, les sous-segments). Aujourd'hui
+  // `isHolidayWeekChild` ne masque QUE les enfants de VACANCES ; un enfant de FERMETURE peint donc
+  // son ⛔ par-dessus celui de la mère → deux pastilles le même jour. La mère représente la fermeture
+  // (comme dans la modale du jour) : son ⛔ reste, celui de l'enfant redondant disparaît.
+  it("une fermeture découpée (mère CLOSURE + enfant CLOSURE) ne porte qu'UNE pastille ⛔ par jour, jamais une pour la mère ET une pour l'enfant", () => {
+    renderMay([
+      entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, startDate: "2026-05-18", endDate: "2026-05-19" }),
+      entry({ id: "c", kind: "period", periodType: "closure", title: "Barros en travaux — semaine du 18 mai", parentEntryId: "m", startDate: "2026-05-18", endDate: "2026-05-19" }),
+    ]);
+
+    // La MÈRE garde son ⛔, un par jour couvert (18 et 19 mai).
+    expect(screen.getAllByTitle("Barros en travaux")).toHaveLength(2);
+    expect(screen.getAllByTitle("Barros en travaux")[0]).toHaveTextContent("⛔");
+    // L'enfant-segment n'ajoute AUCUNE pastille tant que sa mère couvre le jour (sinon double ⛔).
+    expect(screen.queryAllByTitle("Barros en travaux — semaine du 18 mai")).toHaveLength(0);
+  });
+
+  it("témoin : une fermeture NON découpée (mère seule, aucun enfant) garde sa pastille ⛔ sur chaque jour", () => {
+    renderMay([entry({ id: "m", kind: "period", periodType: "closure", title: "Barros en travaux", parentEntryId: null, startDate: "2026-05-18", endDate: "2026-05-19" })]);
+
+    expect(screen.getAllByTitle("Barros en travaux")).toHaveLength(2);
+    expect(screen.getAllByTitle("Barros en travaux")[0]).toHaveTextContent("⛔");
+  });
+
+  it("témoin : un enfant de fermeture ORPHELIN (mère absente des entrées du jour) garde sa pastille — sinon le jour serait muet", () => {
+    // Défensif : par construction un enfant ⊆ sa mère, donc la mère couvre TOUJOURS les jours de son
+    // enfant (le cas orphelin ne survient pas pour cette feature). Mais le masquage doit rester
+    // CONDITIONNEL à la présence de la mère dans les entrées du jour — jamais « tout enfant de
+    // fermeture est masqué » façon `isHolidayWeekChild` (qui, lui, n'a pas besoin du contexte des
+    // frères) : sans mère chargée, l'enfant est la seule trace de la fermeture et doit garder son ⛔.
+    renderMay([entry({ id: "c", kind: "period", periodType: "closure", title: "Travaux — semaine du 18 mai", parentEntryId: "mere-absente", startDate: "2026-05-18", endDate: "2026-05-19" })]);
+
+    expect(screen.getAllByTitle("Travaux — semaine du 18 mai")).toHaveLength(2);
+    expect(screen.getAllByTitle("Travaux — semaine du 18 mai")[0]).toHaveTextContent("⛔");
+  });
+
   it("marks a cutoff 🛑 (distinct from other periods) on every day of its window", () => {
     renderMay([entry({ id: "cut1", kind: "period", periodType: "cutoff", title: "Coupure de Noël", startDate: "2026-05-11", endDate: "2026-05-12" })]);
 
@@ -150,6 +188,25 @@ describe("MonthCalendar — projection of the exception layer", () => {
     // A11Y-08: the férié is announced in the cell's accessible name (and shown as a
     // shape+letter marker, not a bare colour dot) — perceivable beyond the tooltip.
     expect(screen.getByRole("button", { name: /jour férié — Fête du Travail/ })).toBeInTheDocument();
+  });
+
+  // ── Promesse 4 (ajout fondateur 2026-10-28) : un jour férié porte un libellé TEXTE « Férié » ──
+  // Aujourd'hui un férié n'est marqué que par une petite pastille « F » dans la case (peu visible).
+  // Il doit porter un libellé TEXTE « Férié » à côté du numéro du jour, et une case distincte (style
+  // laissé à la passe design — on ne fige AUCUNE classe CSS ici) ; le nom accessible nomme le férié.
+  it("un jour férié porte un libellé TEXTE « Férié » visible dans la case (pas seulement une pastille)", () => {
+    renderMay([], [], [{ id: "ph", date: "2026-05-18", label: "Armistice 1918", national: true }]);
+
+    const day = screen.getByRole("button", { name: /jour férié — Armistice 1918/ });
+    // RED aujourd'hui : seule la pastille « F » (aria-hidden) marque le férié — aucun TEXTE « Férié ».
+    expect(within(day).getByText("Férié")).toBeInTheDocument();
+  });
+
+  it("témoin : un jour ordinaire ne porte pas le libellé « Férié »", () => {
+    renderMay([], [], [{ id: "ph", date: "2026-05-18", label: "Armistice 1918", national: true }]);
+
+    const ordinary = screen.getByRole("button", { name: /^19 Mai/ });
+    expect(within(ordinary).queryByText("Férié")).toBeNull();
   });
 
   it("carries every marker in the cell's accessible name, not colour/tooltip only (A11Y-05/07, WCAG 1.1.1)", async () => {
@@ -201,6 +258,57 @@ describe("MonthCalendar — projection of the exception layer", () => {
     expect(screen.getByText(/26 mai 2026/)).toBeInTheDocument();
     expect(screen.getByText("AG")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Supprimer AG" })).toBeInTheDocument();
+  });
+});
+
+// ── Promesse 6 (décision fondateur option B, 2026-10-28) : l'indisponibilité de gymnase au calendrier ──
+// Amende P4-68 (« l'indispo entre au radar et nulle part ailleurs ») : une `venue_unavailability`
+// s'affiche AUSSI au calendrier, sur chacun de ses jours, avec une marque DISTINCTE de la fermeture ⛔
+// (marqueur propre + nom accessible « {gymnase} indisponible » et son libellé). Contrat proposé à NEO :
+// prop `venueUnavailabilities` SERVIE RÉSOLUE avec le nom du gymnase (comme `holidays`/`publicHolidays`).
+// Hors scope : l'impact de l'indispo sur les plannings.
+describe("MonthCalendar — indisponibilité de gymnase au calendrier (promesse 6)", () => {
+  type UnavailabilityMark = { id: string; venueId: string; venueName: string; startDate: string; endDate: string; label: string | null };
+
+  function renderWithUnavailabilities(entries: CalendarEntry[], venueUnavailabilities: UnavailabilityMark[]) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Props typées large puis castées vers la vraie signature : tsc-propre AVANT l'ajout de la prop
+    // (le composant l'ignore alors → RED), toujours valide APRÈS (la signature cible est un sur-ensemble).
+    const props = { year: 2026, month: 4, entries, holidays: [], publicHolidays: [], onPrev: vi.fn(), onNext: vi.fn(), venueUnavailabilities } as unknown as Parameters<typeof MonthCalendar>[0];
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MonthCalendar {...props} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  const adnUnavailability: UnavailabilityMark = { id: "vu1", venueId: "v2", venueName: "ADN", startDate: "2026-05-18", endDate: "2026-05-19", label: "travaux" };
+
+  it("une indisponibilité de gymnase porte une marque DISTINCTE de la fermeture sur chacun de ses jours", () => {
+    // Cas fondateur : le 18 mai porte DEUX marques — la fermeture Matéo (⛔) ET l'indispo ADN.
+    renderWithUnavailabilities(
+      [entry({ id: "m", kind: "period", periodType: "closure", title: "Matéo en travaux", startDate: "2026-05-18", endDate: "2026-05-18" })],
+      [adnUnavailability],
+    );
+
+    const day18 = screen.getByRole("button", { name: /^18 Mai/ });
+    expect(day18).toHaveAccessibleName(/Matéo en travaux/); // la fermeture reste marquée…
+    expect(day18).toHaveAccessibleName(/ADN indisponible/); // …et l'indispo ADN s'ajoute, distincte (RED aujourd'hui).
+  });
+
+  it("marque l'indisponibilité sur CHAQUE jour de sa plage", () => {
+    renderWithUnavailabilities([], [adnUnavailability]);
+
+    expect(screen.getByRole("button", { name: /^18 Mai/ })).toHaveAccessibleName(/ADN indisponible/);
+    expect(screen.getByRole("button", { name: /^19 Mai/ })).toHaveAccessibleName(/ADN indisponible/);
+  });
+
+  it("témoin : un jour hors de la plage de l'indisponibilité n'en porte pas la marque", () => {
+    renderWithUnavailabilities([], [adnUnavailability]);
+
+    expect(screen.getByRole("button", { name: /^20 Mai/ })).not.toHaveAccessibleName(/indisponible/);
   });
 });
 
