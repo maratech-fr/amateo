@@ -608,7 +608,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
             $this->xlsx([['DFU13-3-P2', '2', 'AS Deux', 'BC TESTVILLE - 1', '14/11/2026', '15:30', '']]),
             $this->club,
             [['division' => 'DFU13-3-P2', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $c1Id]],
-            [], null, [], [],
+            [],
+            null,
+            [],
+            [],
         );
 
         $refusals = array_filter($result['errors'], static fn (string $e): bool => str_contains($e, 'DFU13-3') && str_contains($e, 'championnat'));
@@ -641,7 +644,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
             $this->xlsx([['Coupe API', '9', 'AS Away', 'BC TESTVILLE - 1', '14/11/2026', '15:30', '']]),
             $this->club,
             [['division' => 'Coupe API', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $cup->getId()]],
-            [], null, [], [],
+            [],
+            null,
+            [],
+            [],
         );
 
         self::assertSame([], array_filter($result['errors'], static fn (string $e): bool => str_contains($e, 'championnat')), 'une compétition du canal API seul ne bloque pas');
@@ -659,7 +665,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
             $this->xlsx([['DX', '7', 'AS Away', 'BC TESTVILLE - 1', '14/11/2026', '15:30', '']]),
             $this->club,
             [['division' => 'DX', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => 'ffffffff-ffff-4fff-8fff-ffffffffffff']],
-            [], null, [], [],
+            [],
+            null,
+            [],
+            [],
         );
 
         self::assertSame(1, $result['created']);
