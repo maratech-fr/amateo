@@ -168,6 +168,12 @@ final class FbiFixtureImporter
             // WHICH of the two club teams it is (same refusal as the resolver) —
             // a blind suggestion would import one team's calendar under the other.
             $suggested = $competition instanceof Competition || $group['multiLabel'] ? null : $suggester($group['name']);
+            // D4 (M15) — ne jamais suggérer une compétition DÉJÀ peuplée de rencontres FBI
+            // sous une AUTRE division : le garde de mapping la refuserait (même prédicat), la
+            // pré-remplir pousserait le gestionnaire droit dans le refus.
+            if ($suggested instanceof Competition && null !== $this->mappingGuards->fbiFilledDivisionConflicting($suggested, $group['divisionKey'])) {
+                $suggested = null;
+            }
             $guard = $competition instanceof Competition ? $this->mappingGuards->pouleGuard($competition, $group['rows'], $group['name']) : null;
             $divisions[] = [
                 'name' => $group['name'],
@@ -186,7 +192,7 @@ final class FbiFixtureImporter
             }
             $teamId = $competition->getTeamId();
             foreach ($group['rows'] as $row) {
-                $existing = $existingByTeamRef[$teamId . '|' . $row['numero']] ?? null;
+                $existing = $existingByTeamRef[$teamId . '|' . $group['divisionKey'] . '|' . $row['numero']] ?? null;
                 if (!$existing instanceof Fixture || isset($seenFixtures[$existing->getId()])) {
                     continue;
                 }
@@ -290,17 +296,26 @@ final class FbiFixtureImporter
         // auto-envoyée collerait pour toujours).
         $blockedKeys = [];
         $mappings = $this->mappingGuards->rejectGuardBlockedMappings($mappings, $groups, $errors, $blockedKeys);
+        // D4 (M15 / U13F3, « ce sont deux championnats différents ») — un mapping qui
+        // grefferait la division de la 2ᵉ phase sur un championnat DÉJÀ peuplé de
+        // rencontres FBI sous un autre libellé est REFUSÉ (nommé, division sautée), avant
+        // le rename qu'opérerait persistMappings : le championnat d'origine n'est ni
+        // renommé ni absorbé.
+        $mappings = $this->mappingGuards->rejectSecondPhaseOntoFilledCompetition($mappings, $groups, $errors, $blockedKeys);
 
         $this->persistMappings($mappings, $club);
         $resolver = $this->buildCompetitionResolver();
 
-        // Existing FBI refs of the whole club, keyed team|ref (fact F6: the
-        // number is only unique within a division → within its team).
+        // Existing FBI refs of the whole club, keyed team|division|ref (D1/M15: the
+        // number is unique only within a division → within a (team, division) pair ;
+        // at the 2nd phase the team changes poule/division and FBI reuses its numbers).
+        // La division LUE est `external_division` (le libellé du fichier d'origine),
+        // JAMAIS `competition.name` — un championnat peut être réutilisé/renommé.
         /** @var array<string, Fixture> $existingByTeamRef */
         $existingByTeamRef = [];
         foreach ($this->entityManager->getRepository(Fixture::class)->findAll() as $existing) {
             if (null !== $existing->getExternalRef()) {
-                $existingByTeamRef[$existing->getTeamId() . '|' . $existing->getExternalRef()] = $existing;
+                $existingByTeamRef[$existing->getTeamId() . '|' . $this->normalizeLabel((string) $existing->getExternalDivision()) . '|' . $existing->getExternalRef()] = $existing;
             }
         }
 
@@ -359,7 +374,11 @@ final class FbiFixtureImporter
             $touchedCompetitions[$competition->getId()] = $competition;
 
             foreach ($group['rows'] as $row) {
-                $key = $teamId . '|' . $row['numero'];
+                // D1/D2 (M15) — identité = équipe | DIVISION normalisée | numéro. La dédup
+                // intra-fichier (seenInFile) comme la recherche de l'existant portent sur cette
+                // clé : deux phases d'une même équipe partageant le numéro sous des divisions
+                // différentes sont DEUX rencontres, jamais une ligne sautée en silence.
+                $key = $teamId . '|' . $group['divisionKey'] . '|' . $row['numero'];
                 if (isset($seenInFile[$key])) {
                     continue;
                 }
@@ -390,6 +409,9 @@ final class FbiFixtureImporter
                 $fixture->setOpponentLabel($row['opponentLabel']);
                 $fixture->setKickoffTime($row['kickoffTime']);
                 $fixture->setExternalRef($row['numero']);
+                // D1 (M15) — la division du fichier est gravée à côté du numéro : elle
+                // identifie la rencontre et distingue les deux phases d'une même équipe.
+                $fixture->setExternalDivision($group['name']);
                 $fixture->setFbiVenueLabel($row['venueLabel']);
                 if (FixtureHomeAway::HOME === $row['homeAway'] && $this->isNeutralHome($row, $group['name'], $neutralLabels, $neutralDivisions)) {
                     // Chantier A PR 2 (D-c) — terrain neutre (« pas chez nous ») : HOME sans
@@ -746,10 +768,13 @@ final class FbiFixtureImporter
     }
 
     /**
-     * Décision fondateur P4-199 — sur un domicile PLACÉ déphasé, la source « fait
-     * foi » (appliquée d'office, sans arbitrage) quand la date Amateo OU la date de
-     * la source tombe dans la fenêtre (≤ dimanche de la semaine ISO en cours) :
-     * « app OU source ». Un déphasage entièrement futur reste un arbitrage.
+     * Décision fondateur P4-199, RESTREINTE D3 (M15) — sur un domicile PLACÉ déphasé,
+     * la source « fait foi » (appliquée d'office) SEULEMENT quand la date Amateo OU la
+     * date de la source tombe DANS la semaine ISO en cours (lundi ≤ date ≤ dimanche,
+     * bornes incluses, fuseau du club) : plus un simple plafond « ≤ dimanche ». Un
+     * déphasage dont aucune des deux dates n'y tombe reste un arbitrage. Délègue au
+     * foyer unique {@see FbiArrivalReview::sourceIsAuthoritativeForWindow}, partagé avec
+     * le canal API {@see FfbbRencontreReconciler}.
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
      */
@@ -1196,7 +1221,7 @@ final class FbiFixtureImporter
                 if (FixtureHomeAway::HOME !== $row['homeAway']) {
                     continue;
                 }
-                $key = $teamId . '|' . $row['numero'];
+                $key = $teamId . '|' . $group['divisionKey'] . '|' . $row['numero'];
                 if (isset($seen[$key])) {
                     continue;
                 }
@@ -1263,6 +1288,31 @@ final class FbiFixtureImporter
      */
     private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now, DateTimeImmutable $weekEnd): string
     {
+        // Décision fondateur 2026-10-27 (M15) — « un match ne change pas d'adversaire,
+        // même forfait/repêchage : si ça arrive c'est un bug FFBB ». Même équipe, même
+        // division, même numéro mais un adversaire DIFFÉRENT dans le fichier = ANOMALIE :
+        // la rencontre existante n'est touchée en RIEN (ni adversaire, ni date, ni statut,
+        // ni traitement), la ligne est écartée et SIGNALÉE au rapport. Comparaison
+        // NORMALISÉE (foyer {@see VenueLabelNormalizer}) : une simple dérive de graphie
+        // n'est pas une anomalie (et n'écrase plus rien non plus — l'écrasement silencieux
+        // de `opponentLabel` est supprimé des deux chemins ci-dessous).
+        if ($this->normalizeLabel($existing->getOpponentLabel()) !== $this->normalizeLabel($row['opponentLabel'])) {
+            $warnings[] = [
+                'type' => 'OPPONENT_CHANGED',
+                'division' => $divisionName,
+                'externalRef' => $row['numero'],
+                'message' => \sprintf(
+                    '%s n°%s : le fichier annonce un autre adversaire (%s au lieu de %s) — ligne ignorée, vérifiez dans FBI.',
+                    $divisionName,
+                    $row['numero'],
+                    $row['opponentLabel'],
+                    $existing->getOpponentLabel(),
+                ),
+            ];
+
+            return 'unchanged';
+        }
+
         // D2 (rattrapage) — un existant matché resté « à traiter » (NEW) d'un dépôt
         // antérieur à la naissance-traitée est rattrapé ici, avant tout diff. Son
         // retour n'alimente PAS updated/unchanged (état de traitement, pas donnée).
@@ -1274,13 +1324,10 @@ final class FbiFixtureImporter
                 ? $this->reconcileNoDivergence($existing, $row, $venueNames, $now)
                 : $this->processPerimeterFields($existing, $row, $fields, $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now, $this->sourceIsAuthoritativeForWindow($existing, $row, $weekEnd));
 
-            // xlsx-only silent updates (D3): the opponent label always, the raw
-            // fbiVenueLabel only when the venue is not itself a divergence (a
-            // venue decision owns the label write).
-            if ($existing->getOpponentLabel() !== $row['opponentLabel']) {
-                $existing->setOpponentLabel($row['opponentLabel']);
-                $changed = true;
-            }
+            // xlsx-only silent update (D3): the raw fbiVenueLabel, only when the venue
+            // is not itself a divergence (a venue decision owns the label write). Le
+            // libellé adverse n'est JAMAIS réécrit (un adversaire différent = anomalie,
+            // traitée en tête de méthode ; identique à la graphie près = rien à faire).
             if (!isset($fields['venue']) && null !== $row['venueLabel'] && $existing->getFbiVenueLabel() !== $row['venueLabel']) {
                 $existing->setFbiVenueLabel($row['venueLabel']);
                 $changed = true;
@@ -1357,10 +1404,8 @@ final class FbiFixtureImporter
             }
         }
 
-        if ($existing->getOpponentLabel() !== $row['opponentLabel']) {
-            $existing->setOpponentLabel($row['opponentLabel']);
-            $changed = true;
-        }
+        // Le libellé adverse n'est jamais réécrit en silence (anomalie traitée en tête
+        // de méthode) — on passe directement à l'écart salle d'un non placé.
 
         // Un domicile UNPLACED rattaché à un gymnase dont la source nomme une AUTRE
         // salle est un écart à ARBITRER, jamais un libellé réécrit en silence (les 20
@@ -1435,9 +1480,10 @@ final class FbiFixtureImporter
     }
 
     /**
-     * Existing FBI-referenced fixtures of the club+season, keyed « teamId|ref »
-     * (fact F6: the number is only unique within its team). Shared by analyze
-     * (read-only detection) and import.
+     * Existing FBI-referenced fixtures of the club+season, keyed
+     * « teamId|division|ref » (D1/M15: the number is unique only within a (team,
+     * division) pair). La division LUE est `external_division` (le libellé du fichier),
+     * jamais `competition.name`. Shared by analyze (read-only detection) and import.
      *
      * @return array<string, Fixture>
      */
@@ -1446,7 +1492,7 @@ final class FbiFixtureImporter
         $index = [];
         foreach ($this->entityManager->getRepository(Fixture::class)->findAll() as $existing) {
             if (null !== $existing->getExternalRef()) {
-                $index[$existing->getTeamId() . '|' . $existing->getExternalRef()] = $existing;
+                $index[$existing->getTeamId() . '|' . $this->normalizeLabel((string) $existing->getExternalDivision()) . '|' . $existing->getExternalRef()] = $existing;
             }
         }
 
