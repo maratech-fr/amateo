@@ -31,8 +31,11 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_fixture_team', columns: ['team_id'])]
 #[ORM\Index(name: 'idx_fixture_date', columns: ['match_date'])]
 // Partial-unique: FBI import idempotence — one fixture per FBI number per team
-// (team-scoped so an intra-club derby can exist once per team's export).
-#[ORM\UniqueConstraint(name: 'uniq_fixture_external_ref', columns: ['club_id', 'season_id', 'team_id', 'external_ref'], options: ['where' => '(external_ref IS NOT NULL)'])]
+// AND per division (D1/M15): au 2ᵉ tour l'équipe change de poule/division et FBI
+// réutilise ses numéros ; sans la division dans la clé, le n°X de la phase 2
+// écraserait le n°X de la phase 1 (team-scoped : un derby intra-club existe une
+// fois par équipe ; un même numéro sous deux divisions coexiste).
+#[ORM\UniqueConstraint(name: 'uniq_fixture_external_ref', columns: ['club_id', 'season_id', 'team_id', 'external_division', 'external_ref'], options: ['where' => '(external_ref IS NOT NULL)'])]
 // Partial-unique: FFBB-API channel idempotence (RMM-4 PR-3) — one fixture per
 // national rencontre id per team (same team-scoping as external_ref: an
 // intra-club amical can exist once per team; re-checking never re-proposes a
@@ -94,6 +97,18 @@ class Fixture implements TenantOwnedInterface
      */
     #[ORM\Column(length: 64, nullable: true)]
     private ?string $externalRef = null;
+
+    /**
+     * Le libellé de division FBI du fichier dont vient cette rencontre (colonne
+     * « Division » de l'export) — posé À LA CRÉATION à côté de {@see $externalRef},
+     * donc non nul SSI `externalRef` l'est. Il entre dans l'identité d'une rencontre
+     * importée (équipe + division + numéro, D1/M15) et dans l'index partiel unique :
+     * au 2ᵉ tour l'équipe change de poule/division et FBI réutilise ses numéros —
+     * sans la division, le n°X de la phase 2 réécrirait le n°X de la phase 1. Null
+     * pour une rencontre saisie à la main ou née du canal API (external_ref nul).
+     */
+    #[ORM\Column(length: 180, nullable: true)]
+    private ?string $externalDivision = null;
 
     /**
      * National FFBB rencontre id (RMM-4 PR-3), when this fixture was created from
@@ -512,6 +527,18 @@ class Fixture implements TenantOwnedInterface
     public function setExternalRef(?string $externalRef): self
     {
         $this->externalRef = $externalRef;
+
+        return $this;
+    }
+
+    public function getExternalDivision(): ?string
+    {
+        return $this->externalDivision;
+    }
+
+    public function setExternalDivision(?string $externalDivision): self
+    {
+        $this->externalDivision = $externalDivision;
 
         return $this;
     }
