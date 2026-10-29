@@ -923,6 +923,220 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(422, $status, '501 cases à l\'import doit être refusé (borne ≤ 500)');
     }
 
+    // ───────────────────────── PR A (incident ALAP) — redéfinir les équipes d'une séance commune (corrections.equipes) ─────────────────────────
+    // Incident ALAP 2026-10-29 : la case « SF1 + SM shooting » cite « SM shooting » (en fait le NOM du
+    // groupe, lu comme une équipe). Le gestionnaire redéfinit la composition réelle via le nouveau
+    // canal `corrections.equipes` d'une décision de séance commune : une liste ≥ 2 d'entrées, chacune
+    // un UUID d'équipe EXISTANTE du club OU `import:<index>` vers une ligne Équipes gardée (créée dans
+    // ce run). Il est honoré à l'import : le bloc est créé avec sa réservation de groupe. ROUGE
+    // aujourd'hui : {@see ParcImportExecutor::importBlocks} résout les membres depuis `entry['equipes']`
+    // SEULEMENT → « SM shooting » introuvable → 422 (le défaut de l'incident).
+
+    public function testAMutualisationCorrectedWithTeamUuidsCreatesTheBlockWithItsGroupReservation(): void
+    {
+        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $sm1 = $this->makeTeam('SM1', sessionsPerWeek: 2);
+        $sm2 = $this->makeTeam('SM2', sessionsPerWeek: 2);
+        $venue = $this->makeVenue('Léon Jouhaux', canSplit: true);
+        $this->makeSlot($venue->getId(), 1, '20:30', capacity: 3);
+        $this->scopeGucToClub($this->club->getId());
+        $blocksBefore = $this->rowCount('shared_training_block');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],
+        ]);
+        // La composition réelle redéfinie à la main (SF1 + SM1 + SM2) remplace les équipes lues de la case.
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), $sm1->getId(), $sm2->getId()]]]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'une séance commune à composition corrigée s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame($blocksBefore + 1, $this->rowCount('shared_training_block'), 'le bloc de la composition corrigée est créé');
+
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+        self::assertSame('SM Shooting', $block->getLabel(), 'le groupe de la case nomme le bloc');
+
+        $memberIds = array_map(
+            static fn (SharedTrainingBlockTeam $m): string => $m->getTeamId(),
+            $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['clubId' => $this->club->getId(), 'blockId' => $block->getId()]),
+        );
+        self::assertEqualsCanonicalizing([$sf1->getId(), $sm1->getId(), $sm2->getId()], $memberIds, 'le bloc regroupe EXACTEMENT les 3 équipes corrigées, jamais « SM shooting »');
+        self::assertSame(3, $this->reservationCountOnVenue($venue->getId()), 'la réservation de groupe des 3 membres est posée');
+    }
+
+    public function testAMutualisationCorrectionCanReferenceAKeptTeamLineByImportIndex(): void
+    {
+        // Jumeau du test ci-dessus avec des membres CRÉÉS dans le même import : SF1 existe, SM1 & SM2
+        // naissent de leurs propres cases (lignes Équipes 0 et 1 gardées) et sont référencées par
+        // `import:0` / `import:1`. Le bloc regroupe les trois. ROUGE aujourd'hui (canal inexistant).
+        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $venue = $this->makeVenue('Léon Jouhaux', canSplit: true);
+        $this->makeSlot($venue->getId(), 1, '20:30', capacity: 3);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],                                               // ligne Équipes 0
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM2']],                                               // ligne Équipes 1
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'], // séance commune 0
+        ]);
+        $decisions = [
+            ['section' => 'equipes', 'index' => 0, 'coche' => true], // crée SM1 (genre M dérivé)
+            ['section' => 'equipes', 'index' => 1, 'coche' => true], // crée SM2
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), 'import:0', 'import:1']]],
+        ];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'une composition référençant des lignes Équipes gardées s\'importe : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $sm1 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        $sm2 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM2']);
+        self::assertInstanceOf(Team::class, $sm1);
+        self::assertInstanceOf(Team::class, $sm2);
+
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+        $memberIds = array_map(
+            static fn (SharedTrainingBlockTeam $m): string => $m->getTeamId(),
+            $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['clubId' => $this->club->getId(), 'blockId' => $block->getId()]),
+        );
+        self::assertEqualsCanonicalizing([$sf1->getId(), $sm1->getId(), $sm2->getId()], $memberIds, '`import:<index>` résout vers les équipes créées dans ce run');
+    }
+
+    // ───────────────────────── PR A — NR TENANT (axe §7.1) sur le canal corrections.equipes ─────────────────────────
+
+    public function testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing(): void
+    {
+        // Axe §7.1 (tenant isolation) — patron A1 étendu au nouveau canal `corrections.equipes` : un
+        // UUID d'équipe d'un AUTRE club ne doit JAMAIS entrer dans un bloc. La garde est `ownedTeam`
+        // ({@see ParcImportExecutor::ownedTeam}, :740-748) : 422, RIEN écrit. ROUGE AUJOURD'HUI pour la
+        // BONNE raison : le canal n'existe pas, donc `corrections.equipes` est ignoré et l'import
+        // RÉUSSIT en résolvant les équipes de la case (SF1 + SM1 existantes) → un bloc EST écrit (200).
+        // ⚠ Falsification à jouer APRÈS implémentation (option A) : désactiver `ownedTeam` doit faire
+        // ROUGIR ce test (l'équipe étrangère entrerait alors dans un bloc). Patron des NR existants :
+        // testCibleIdFromAnotherClubIsRefusedWithoutWriting (:540-563), testACibleIdFromAnotherClubOnAnAmbiguousTeamLine (:763-782).
+        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $this->makeTeam('SM1', sessionsPerWeek: 2);
+        $foreign = $this->seedForeignClubWithTeam('Étrangère');
+        $venue = $this->makeVenue('Léon Jouhaux', canSplit: true);
+        $this->makeSlot($venue->getId(), 1, '20:30', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+        $blocksBefore = $this->rowCount('shared_training_block');
+        $reservationsBefore = $this->rowCount('reservation');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM1'], 'groupe' => 'SM Shooting'],
+        ]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$foreign['teamId'], $sf1->getId()]]]];
+
+        [$status] = $this->import($parc, $decisions);
+        self::assertSame(422, $status, 'une composition corrigée citant une équipe hors tenant est refusée');
+        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'rien écrit : aucun bloc avec une équipe étrangère');
+        self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'aucune réservation écrite non plus (tout-ou-rien)');
+    }
+
+    // ───────────────────────── PR A — abus du canal corrections.equipes ─────────────────────────
+
+    public function testInvalidTeamCorrectionsAreRefusedWritingNothing(): void
+    {
+        // Abus — une composition corrigée invalide ne doit JAMAIS écrire : (a) moins de 2 entrées ;
+        // (b) un id forgé (aucune équipe) ; (c) un `import:<index>` hors bornes. Chacune → 422, rien
+        // écrit. ROUGE aujourd'hui : le canal n'existe pas, `corrections.equipes` est ignoré et l'import
+        // RÉUSSIT (200) en créant le bloc des équipes de la case.
+        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $this->makeTeam('SM1', sessionsPerWeek: 2);
+        $venue = $this->makeVenue('Léon Jouhaux', canSplit: true);
+        $this->makeSlot($venue->getId(), 1, '20:30', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+        $blocksBefore = $this->rowCount('shared_training_block');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM1'], 'groupe' => 'SM Shooting'],
+        ]);
+
+        $invalidCompositions = [
+            'moins de 2 entrées' => [$sf1->getId()],
+            'un id forgé (aucune équipe)' => [$sf1->getId(), $this->uuid()],
+            'un import:<index> hors bornes' => [$sf1->getId(), 'import:99'],
+        ];
+
+        foreach ($invalidCompositions as $why => $equipes) {
+            $this->scopeGucToClub($this->club->getId());
+            $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => $equipes]]];
+            [$status] = $this->import($parc, $decisions);
+            self::assertSame(422, $status, \sprintf('composition « %s » refusée', $why));
+            self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), \sprintf('composition « %s » : rien écrit', $why));
+        }
+    }
+
+    // ───────────────────────── PR A (D4 + D7) — 422 de résolution AGRÉGÉ, « séance commune » ─────────────────────────
+    // Le refus de RÉSOLUTION (équipe/gymnase introuvable des lignes cochées, toutes sections) agrège
+    // TOUTES les fautes en UNE passe AVANT toute écriture, chaque message nommant l'équipe ET la case.
+    // (Les gardes d'ÉCRITURE — occupation, cap, chevauchement — restent fail-fast, non agrégées.)
+    // Et le libellé « séance commune n°X » remplace « mutualisation n°X » (les CLÉS du contrat restent
+    // `mutualisations`). Deux angles VOULUS du même domaine sensible (pipeline d'import) : l'agrégation
+    // (testTheResolutionRefusalAggregatesFaultsAcrossSectionsNamingTeamAndCase) ⇄ le libellé
+    // (testAMutualisationFaultSaysSeanceCommuneNotMutualisation). Jumeau ANALYSE : ParcImportAnalyzeTest.
+
+    public function testTheResolutionRefusalAggregatesFaultsAcrossSectionsNamingTeamAndCase(): void
+    {
+        // SF1 existe ; « SM shooting » (cité par la séance commune) et « U13M1 » (cité par une
+        // réservation) sont IGNORÉS à l'étape Équipes (lignes non cochées) → introuvables à l'écriture.
+        // DEUX fautes, deux sections → `errors` à 2 entrées, chacune nommant équipe + case ; rien écrit.
+        // ROUGE aujourd'hui : fail-fast → la 1ʳᵉ faute (séance commune) stoppe tout → 1 seule erreur.
+        $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $venue = $this->makeVenue('Léon Jouhaux', canSplit: true);
+        $this->makeSlot($venue->getId(), 1, '20:30', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+        $teamsBefore = $this->rowCount('team');
+        $blocksBefore = $this->rowCount('shared_training_block');
+        $reservationsBefore = $this->rowCount('reservation');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U13M1']],
+        ]);
+        // On coche la séance commune ET la réservation, mais PAS les équipes (« SM shooting »/« U13M1 »
+        // restent ignorées → introuvables à l'écriture).
+        $decisions = [
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true],
+            ['section' => 'reservations', 'index' => 1, 'coche' => true],
+        ];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status);
+        $errors = $body['errors'] ?? [];
+        self::assertCount(2, $errors, 'les fautes de résolution des deux sections sont agrégées en UNE passe');
+        $joined = implode(' || ', $errors);
+        self::assertStringContainsString('SM shooting', $joined, 'une faute nomme l\'équipe de la séance commune');
+        self::assertStringContainsString('U13M1', $joined, 'l\'autre faute nomme l\'équipe de la réservation');
+
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : aucune équipe écrite');
+        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'tout-ou-rien : aucun bloc écrit');
+        self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'tout-ou-rien : aucune réservation écrite');
+    }
+
+    public function testAMutualisationFaultSaysSeanceCommuneNotMutualisation(): void
+    {
+        // D7 — le libellé serveur d'une faute de séance commune dit « séance commune n°X » et NOMME
+        // l'équipe introuvable, jamais le « Mutualisation n°X : Une équipe … introuvable » opaque de
+        // l'incident ALAP. Les CLÉS du contrat (`mutualisations` en recap/sections/décisions) ne
+        // changent PAS. ROUGE aujourd'hui : {@see ParcImportExecutor::LABEL_MUTUALISATIONS} = « mutualisation ».
+        $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],
+        ]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true]]; // « SM shooting » non cochée → introuvable
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status);
+        $joined = implode(' || ', $body['errors'] ?? []);
+        self::assertStringContainsString('séance commune', $joined, 'le libellé humain dit « séance commune »');
+        self::assertStringContainsString('SM shooting', $joined, 'le message NOMME l\'équipe introuvable');
+        self::assertStringNotContainsString('utualisation n', $joined, 'plus de « Mutualisation n°X » dans un message serveur');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
