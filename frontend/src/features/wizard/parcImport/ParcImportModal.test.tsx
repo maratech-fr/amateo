@@ -74,6 +74,12 @@ interface Line {
   suggestedTierId?: number;
   suggestedGender?: "M" | "F" | "MIXTE" | null;
   suggestedCtc?: boolean;
+  /**
+   * PR A (incident ALAP) — séance commune / réservation en alerte « équipe ignorée/introuvable » :
+   * le code MACHINE qui accompagne la `raison` humaine (le front le lit pour bloquer/orienter, D13).
+   * Le mock le porte comme l'API.
+   */
+  alerteCode?: string;
 }
 
 interface Recap {
@@ -1540,5 +1546,183 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
     expect(dec?.cibleId ?? null, "jamais apparié à un candidat").toBeNull();
     expect(dec?.corrections?.genre, "le genre tranché part en corrections.genre").toBe("MIXTE");
     expect(dec?.corrections?.tierId, "le rang suggéré part en corrections.tierId").toBe(5);
+  });
+});
+
+/**
+ * ─────────── PR A (incident ALAP 2026-10-29) — équipe ignorée d'une séance commune (D2/D5/D9/D10/D11/D13) ───────────
+ *
+ * Nouvelles PROMESSES (option A — TANK écrit ROUGE, NEO implémente) :
+ *  - D2  : changer une décision ÉQUIPES marque l'aperçu PÉRIMÉ (bandeau `staleHint` + « Revalider »).
+ *  - D5  : à l'arrivée d'une erreur d'import, le bandeau d'erreur est AMENÉ à l'écran (`scrollIntoView`),
+ *          SANS lui voler le focus.
+ *  - D9  : une ligne IGNORÉE est rendue BARRÉE (`line-through`).
+ *  - D10 : plus de bouton TEXTE « Fermer » au pied d'étape (la croix d'en-tête reste) ; Précédent avant Importer.
+ *  - D11 : l'option suggérée se lit « <nom> (suggéré) », PAS « Apparier à … ».
+ *  - D13 : une séance commune en alerte « équipe ignorée » ET gardée BLOQUE Importer ; « Voir » mène à
+ *          l'étape Mutualisations ; la raison du blocage au pied porte le ton `text-warning`.
+ */
+describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séance commune)", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
+
+  const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
+  const decisionTrigger = (libelle: string) => (accessibleName: string) => accessibleName.startsWith(T.decisionFor(libelle));
+
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepPaste as unknown as string) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+
+  /** Séance commune en ALERTE « équipe ignorée », GARDÉE (coche:true) — le cas ALAP, côté réponse serveur. */
+  function keptMutualisationAlerte(): Line {
+    return {
+      ...mkLine(0, "SF1 + SM shooting", "alerte"),
+      coche: true,
+      raison: "La séance commune cite « SM shooting », ignorée à l'étape Équipes.",
+      alerteCode: "equipe_ignoree",
+      groupe: "SM Shooting",
+      position: { gymnase: "Léon Jouhaux", jour: 1, debut: "20:30", duree: 90 },
+    };
+  }
+
+  it("D2 — changer une décision Équipes affiche le bandeau « aperçu périmé » et « Revalider »", async () => {
+    // Aujourd'hui, seul l'ÉDITEUR de case marque l'aperçu périmé ; changer une décision d'équipe
+    // (Listbox) ne touche pas `dirtyCases` → aucun bandeau. Promesse : toute modification de décision
+    // le marque périmé. ROUGE : le bandeau `staleHint` n'apparaît pas après le changement de décision.
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")] }));
+
+    // On change la décision de la ligne : « Créer » → « Ignorer cette ligne ».
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("SF1") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
+
+    expect(screen.getByText(T.staleHint(1)), "changer une décision marque l'aperçu périmé (D2)").toBeInTheDocument();
+  });
+
+  it("D5 — à l'erreur d'import, le bandeau d'erreur est amené à l'écran (scrollIntoView) sans voler le focus", async () => {
+    const user = userEvent.setup();
+    const scrollSpy = vi.fn();
+    // jsdom n'implémente pas scrollIntoView : on le POSE pour l'espionner (restauré en fin de test).
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    try {
+      q.importError.value = { response: { status: 422 }, data: { errors: ["séance commune n°1 (SF1 + SM shooting) : l'équipe « SM shooting » est introuvable."] } };
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+      await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+      const alert = await screen.findByRole("alert");
+      expect(scrollSpy, "le bandeau d'erreur est amené à l'écran (D5)").toHaveBeenCalled();
+      expect(alert, "l'erreur ne vole pas le focus").not.toHaveFocus();
+    } finally {
+      if (undefined === original) {
+        // @ts-expect-error — nettoyage du stub posé sur le prototype (jsdom ne le fournit pas).
+        delete Element.prototype.scrollIntoView;
+      } else {
+        Element.prototype.scrollIntoView = original;
+      }
+    }
+  });
+
+  it("D9 — une ligne IGNORÉE est rendue barrée (line-through)", async () => {
+    // Promesse : une ligne qu'on met en « Ignorer » est visuellement BARRÉE (plus « grisée/barrée »,
+    // retours fondateur). ROUGE : le libellé d'une ligne ignorée n'a aucune classe `line-through`.
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")] }));
+
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("SF1") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
+
+    const label = screen.getByText("SF1"); // DONNÉE serveur (libellé), affichée verbatim
+    const barred = label.className.includes("line-through") || (label.parentElement?.className.includes("line-through") ?? false);
+    expect(barred, "une ligne ignorée est barrée (D9)").toBe(true);
+  });
+
+  it("D10 — le pied d'étape n'a plus de bouton texte « Fermer » (la croix d'en-tête reste), Précédent avant Importer", async () => {
+    // ROUGE : le pied d'une étape de contenu rend encore un bouton TEXTE « Fermer » (clé `close`) À CÔTÉ
+    // de la croix d'en-tête (aria-label « Fermer » de modal.tsx) → DEUX boutons « Fermer ».
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")] }));
+
+    const closers = screen.getAllByRole("button", { name: T.close as unknown as string });
+    expect(closers, "seule la croix d'en-tête ferme (plus de bouton texte « Fermer » au pied)").toHaveLength(1);
+    expect(closers[0]?.textContent ?? "", "la seule « Fermer » restante est la croix (icône, sans texte)").toBe("");
+
+    // Précédent vient AVANT Importer dans l'ordre du document (groupés à gauche, Importer à droite).
+    const prev = screen.getByRole("button", { name: T.previous as unknown as string });
+    const importBtn = screen.getByRole("button", { name: /Importer/ });
+    // Node.DOCUMENT_POSITION_FOLLOWING (4) : importBtn suit prev.
+    expect(prev.compareDocumentPosition(importBtn) & Node.DOCUMENT_POSITION_FOLLOWING, "Précédent avant Importer").toBeTruthy();
+  });
+
+  it("D11 — l'option suggérée se lit « <nom> (suggéré) », jamais « Apparier à … »", async () => {
+    // ⚠ Exception documentée à la règle « assert la CLÉ » : la clé `matchToSuggested` est précisément
+    // CE qui change de valeur (de « Apparier à « X » (suggéré) » vers « X (suggéré) »), donc l'asserter
+    // serait VERT vacuement. On assert la FORME du nom accessible de l'option : contient « (suggéré) »,
+    // ne contient PAS « Apparier ». « (suggéré) » n'est pas une phrase recopiée mais le marqueur stable.
+    const user = userEvent.setup();
+    const line = mkLine(0, "SF1", "suggere", { cibleId: "t1", candidats: [{ id: "t1", nom: "U21M1" }] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [line] }));
+
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("SF1") }));
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    const suggested = options.find((o) => (o.textContent ?? "").includes("(suggéré)"));
+    expect(suggested, "une option suggérée est offerte").toBeDefined();
+    const name = suggested?.textContent ?? "";
+    expect(name).toContain("U21M1");
+    expect(name, "l'option suggérée ne commence plus par « Apparier à … » (D11)").not.toContain("Apparier");
+  });
+
+  it("D13 — une séance commune en alerte « équipe ignorée » et GARDÉE bloque « Importer »", async () => {
+    // ROUGE : aujourd'hui seules les lignes équipe/gymnase ambiguës (ou un genre manquant) bloquent ;
+    // une séance commune gardée mais en alerte n'empêche PAS l'import (le défaut ALAP : l'import part et 422).
+    const user = userEvent.setup();
+    const analysis = analysisOf({
+      equipes: [mkLine(0, "U13M1", "aCreer")], // une ligne cochée → count > 0 (l'import n'est pas bloqué par « rien à importer »)
+      mutualisations: [keptMutualisationAlerte()],
+    });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysis);
+
+    const importBtn = screen.getByRole("button", { name: /Importer/ });
+    expect(importBtn, "une séance commune en alerte gardée bloque l'import (D13)").toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("D13 — « Voir » mène à l'étape Mutualisations (séances communes)", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({
+      equipes: [mkLine(0, "U13M1", "aCreer")],
+      mutualisations: [keptMutualisationAlerte()],
+    });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysis); // atterrit sur « Équipes »
+
+    const voir = screen.queryByRole("button", { name: T.seeBlockingLine as unknown as string });
+    expect(voir, "un bouton « Voir » doit mener à la séance commune bloquante (D13)").not.toBeNull();
+    await user.click(voir as HTMLElement);
+
+    expect(
+      screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")) }),
+      "« Voir » bascule sur l'étape Mutualisations",
+    ).toHaveAttribute("aria-current", "step");
+  });
+
+  it("D13 — la raison du blocage au pied porte le ton « text-warning »", async () => {
+    // Patron ImportFbiDialog (raison de blocage en ORANGE). ROUGE : la raison au pied est en
+    // `text-muted-foreground`, pas `text-warning`.
+    const user = userEvent.setup();
+    const analysis = analysisOf({ equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysis);
+
+    const reason = screen.getByText(T.importBlocked(1, 0));
+    const warning = reason.className.includes("text-warning") || (reason.parentElement?.className.includes("text-warning") ?? false);
+    expect(warning, "la raison du blocage porte le ton warning (D13)").toBe(true);
   });
 });
