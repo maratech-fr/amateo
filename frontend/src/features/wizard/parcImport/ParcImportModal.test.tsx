@@ -44,6 +44,8 @@ interface Line {
   coche: boolean;
   cibleId: string | null;
   raison: string | null;
+  /** PR1 (D5) : candidats d'un appariement suggéré/ambigu, offerts au sélecteur de la ligne. */
+  candidats?: Array<{ id: string; nom: string }>;
   miseAJour?: { champ: "seances"; de: number; a: number };
   /**
    * Équipe (retours fondateur 2026-10-26) : le nombre de séances LU dans le fichier, servi sur

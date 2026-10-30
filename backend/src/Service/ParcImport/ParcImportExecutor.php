@@ -64,7 +64,7 @@ final class ParcImportExecutor
 
     private const string LABEL_CRENEAUX = 'créneau';
 
-    private const string LABEL_MUTUALISATIONS = 'mutualisation';
+    private const string LABEL_MUTUALISATIONS = 'séance commune';
 
     private const string LABEL_RESERVATIONS = 'réservation';
 
@@ -84,6 +84,23 @@ final class ParcImportExecutor
 
     /** @var array<string, string> nom normalisé → teamId */
     private array $teamByName = [];
+
+    /**
+     * PR A (D3) — teamId par rang de ligne « equipes » importée (créée OU appariée dans ce run) : résout
+     * les références `import:<index>` d'une composition corrigée de séance commune (`corrections.equipes`).
+     *
+     * @var array<int, string>
+     */
+    private array $teamIdByEquipesIndex = [];
+
+    /**
+     * PR A (D4) — les refus de RÉSOLUTION (équipe/gymnase introuvable d'une ligne cochée) collectés en
+     * UNE passe, toutes sections, puis levés AGRÉGÉS en fin de transaction (rien n'est écrit). Les gardes
+     * d'ÉCRITURE (chevauchement, capacité, Σ séances, cap) restent fail-fast.
+     *
+     * @var list<string>
+     */
+    private array $resolutionErrors = [];
 
     /**
      * Les équipes actives du club AVANT l'import (snapshot pris à l'entrée). L'ambiguïté d'un libellé
@@ -132,6 +149,8 @@ final class ParcImportExecutor
     {
         $this->venueByName = [];
         $this->teamByName = [];
+        $this->teamIdByEquipesIndex = [];
+        $this->resolutionErrors = [];
         $this->sportId = null;
         // Snapshot AVANT toute écriture : l'ambiguïté se mesure sur l'état d'avant l'import (comme
         // l'analyzer), jamais sur les équipes créées au fil de ce run.
@@ -155,6 +174,12 @@ final class ParcImportExecutor
                 'mutualisations' => $this->importBlocks($derived, $index, $club, $seasonId),
                 'reservations' => $this->importReservations($derived, $index, $club, $seasonId),
             ];
+
+            // D4 — refus de résolution AGRÉGÉ : si des lignes cochées ont cité une entité introuvable,
+            // on lève la liste d'un coup (la transaction est annulée, rien n'est écrit).
+            if ([] !== $this->resolutionErrors) {
+                throw new ParcImportResolutionException($this->resolutionErrors);
+            }
 
             return ['recap' => $recap];
         });
@@ -252,6 +277,7 @@ final class ParcImportExecutor
             if (null !== $existingId) {
                 $team = $this->ownedTeam($existingId, $club, $seasonId, 'equipes', $i);
                 $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
+                $this->teamIdByEquipesIndex[$i] = $team->getId();
                 // Équipe appariée : SEUL le nombre de séances peut bouger, et seulement si la mise à
                 // jour a été acceptée (corrections.seances). Jamais le genre, la catégorie, le niveau.
                 $sessions = $decision['corrections']['seances'] ?? null;
@@ -290,6 +316,7 @@ final class ParcImportExecutor
             $this->entityManager->persist($team);
             $this->entityManager->flush();
             $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
+            $this->teamIdByEquipesIndex[$i] = $team->getId();
             ++$recap['crees'];
         }
 
@@ -318,7 +345,11 @@ final class ParcImportExecutor
                 ? $this->ownedVenue($decision['cibleId'], $club, $seasonId, 'creneaux', $i)->getId()
                 : $this->venueIdForName($this->stringField($entry, 'gymnase'));
             if (null === $venueId) {
-                $this->fail('creneaux', $i, 'Gymnase introuvable pour ce créneau.');
+                // D4 — résolution introuvable AGRÉGÉE (pas une garde d'écriture) : on collecte et on saute.
+                $this->collectResolution('creneaux', $i, \sprintf('le gymnase « %s » est introuvable.', $this->stringField($entry, 'gymnase')), $entry);
+                ++$recap['ignores'];
+
+                continue;
             }
 
             $day = $this->intCorrectionOr($corrections, 'jour', $entry, 'jour');
@@ -390,15 +421,32 @@ final class ParcImportExecutor
                 continue;
             }
 
-            $teamIds = [];
-            foreach ($this->stringList($entry['equipes'] ?? null) as $name) {
-                $id = $this->teamIdForName($name);
-                if (null === $id) {
-                    $this->fail('mutualisations', $i, 'Une équipe de cette mutualisation est introuvable.');
+            // D3 — composition REDÉFINIE à la main (`corrections.equipes`, liste ≥ 2 de `uuid |
+            // import:<index>`) : elle REMPLACE les équipes lues de la case (incident ALAP — « SM shooting »
+            // était le NOM du groupe, pas une équipe). Abus (< 2, id forgé, import hors bornes) → 422
+            // fail-fast nommant la ligne. Sinon, résolution par NOM, avec collecte D4 des introuvables.
+            $correctedEquipes = $decision['corrections']['equipes'] ?? null;
+            if (\is_array($correctedEquipes)) {
+                $teamIds = $this->resolveCorrectedEquipes($correctedEquipes, $club, $seasonId, $i);
+            } else {
+                $teamIds = [];
+                $missing = false;
+                foreach ($this->stringList($entry['equipes'] ?? null) as $name) {
+                    $id = $this->teamIdForName($name);
+                    if (null === $id) {
+                        $this->collectResolution('mutualisations', $i, \sprintf('l\'équipe « %s » est introuvable.', $name), $entry);
+                        $missing = true;
+                    } else {
+                        $teamIds[] = $id;
+                    }
                 }
-                $teamIds[] = $id;
+                if ($missing) {
+                    ++$recap['ignores'];
+
+                    continue;
+                }
+                $teamIds = $this->sortedUnique($teamIds);
             }
-            $teamIds = $this->sortedUnique($teamIds);
             if ([] === $teamIds) {
                 ++$recap['ignores'];
 
@@ -535,14 +583,21 @@ final class ParcImportExecutor
 
             $teamId = $this->teamIdForName($this->stringField($entry, 'equipe'));
             if (null === $teamId) {
-                $this->fail('reservations', $i, 'L\'équipe de cette réservation est introuvable.');
+                // D4 — résolution introuvable AGRÉGÉE (pas une garde d'écriture) : on collecte et on saute.
+                $this->collectResolution('reservations', $i, \sprintf('l\'équipe « %s » est introuvable.', $this->stringField($entry, 'equipe')), $entry);
+                ++$recap['ignores'];
+
+                continue;
             }
 
             $venueId = null !== $decision['cibleId']
                 ? $this->ownedVenue($decision['cibleId'], $club, $seasonId, 'reservations', $i)->getId()
                 : $this->venueIdForName($this->stringField($entry, 'gymnase'));
             if (null === $venueId) {
-                $this->fail('reservations', $i, 'Gymnase introuvable pour cette réservation.');
+                $this->collectResolution('reservations', $i, \sprintf('le gymnase « %s » est introuvable.', $this->stringField($entry, 'gymnase')), $entry);
+                ++$recap['ignores'];
+
+                continue;
             }
 
             $day = $this->intCorrectionOr($corrections, 'jour', $entry, 'jour');
@@ -745,6 +800,70 @@ final class ParcImportExecutor
         }
 
         return $team;
+    }
+
+    /**
+     * PR A (D3) — résout une composition de séance commune REDÉFINIE (`corrections.equipes`) : une liste
+     * de ≥ 2 entrées, chacune un UUID d'équipe EXISTANTE (re-vérifiée tenant par {@see ownedTeam} — la
+     * garde du NR §7.1) OU `import:<index>` vers une ligne « equipes » gardée de ce run. Toute forme
+     * invalide (< 2, id forgé, `import:<index>` hors bornes ou non gardée) → 422 fail-fast nommant la
+     * ligne, rien écrit — c'est un abus du canal, jamais une résolution agrégée.
+     *
+     * @param array<array-key, mixed> $entries
+     *
+     * @return list<string>
+     */
+    private function resolveCorrectedEquipes(array $entries, Club $club, string $seasonId, int $index): array
+    {
+        $ids = [];
+        foreach ($entries as $entry) {
+            if (!\is_string($entry) || '' === trim($entry)) {
+                $this->fail('mutualisations', $index, 'une équipe de la composition est invalide.');
+            }
+            $entry = trim($entry);
+            if (str_starts_with($entry, 'import:')) {
+                $n = substr($entry, 7);
+                if ('' === $n || 1 !== preg_match('/^\d+$/', $n) || !isset($this->teamIdByEquipesIndex[(int) $n])) {
+                    $this->fail('mutualisations', $index, 'une équipe créée référencée par cette séance commune est introuvable.');
+                }
+                $ids[] = $this->teamIdByEquipesIndex[(int) $n];
+            } else {
+                $ids[] = $this->ownedTeam($entry, $club, $seasonId, 'mutualisations', $index)->getId();
+            }
+        }
+        $ids = $this->sortedUnique($ids);
+        if (\count($ids) < 2) {
+            $this->fail('mutualisations', $index, 'une séance commune doit regrouper au moins deux équipes.');
+        }
+
+        return $ids;
+    }
+
+    /**
+     * D4 — collecte un refus de RÉSOLUTION (introuvable), nommant la section, le rang, la case et le
+     * détail. Agrégé et levé en fin de transaction par {@see import}.
+     */
+    private function collectResolution(string $section, int $index, string $detail, mixed $entry): void
+    {
+        $this->resolutionErrors[] = \sprintf('%s n°%d%s : %s', $this->sectionLabel($section), $index + 1, $this->caseContext($entry), $detail);
+    }
+
+    /**
+     * Le contexte lisible d'une case dans un message de résolution : « (SF1 + SM shooting) » pour une
+     * séance commune, « (U13M1) » pour une réservation, rien si illisible.
+     */
+    private function caseContext(mixed $entry): string
+    {
+        if (!\is_array($entry)) {
+            return '';
+        }
+        $teams = $this->stringList($entry['equipes'] ?? null);
+        if ([] !== $teams) {
+            return ' (' . implode(' + ', $teams) . ')';
+        }
+        $equipe = $this->stringField($entry, 'equipe');
+
+        return '' !== $equipe ? ' (' . $equipe . ')' : '';
     }
 
     // ───────────────────────────── Idempotence ─────────────────────────────

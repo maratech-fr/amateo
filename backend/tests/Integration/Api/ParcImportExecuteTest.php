@@ -1012,7 +1012,9 @@ final class ParcImportExecuteTest extends WebTestCase
         // BONNE raison : le canal n'existe pas, donc `corrections.equipes` est ignoré et l'import
         // RÉUSSIT en résolvant les équipes de la case (SF1 + SM1 existantes) → un bloc EST écrit (200).
         // ⚠ Falsification à jouer APRÈS implémentation (option A) : désactiver `ownedTeam` doit faire
-        // ROUGIR ce test (l'équipe étrangère entrerait alors dans un bloc). Patron des NR existants :
+        // ROUGIR ce test (l'équipe étrangère entrerait alors dans un bloc). FALSIFIÉ par NEO 2026-10-30 :
+        // garde tenant de `ownedTeam` neutralisée → ce test ROUGIT (200 au lieu de 422, le bloc naît avec
+        // l'équipe étrangère) ; garde restaurée → VERT. La garde est donc atteinte et efficace. Patron des NR existants :
         // testCibleIdFromAnotherClubIsRefusedWithoutWriting (:540-563), testACibleIdFromAnotherClubOnAnAmbiguousTeamLine (:763-782).
         $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
         $this->makeTeam('SM1', sessionsPerWeek: 2);

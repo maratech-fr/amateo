@@ -33,8 +33,6 @@ export const PARC_IMPORT_TEXTS = {
     "La lecture de votre planning semble incertaine : vérifiez chaque ligne de près avant d'importer, et corrigez ce qui a été mal lu.",
   /** En-tête du bloc des alertes transverses (D9) — les messages, eux, sont des données serveur. */
   alertsHeading: "Points à vérifier",
-  /** Mise à jour de séances PROPOSÉE sur une équipe appariée (cochée, décochable). */
-  sessionsUpdate: (de: number, a: number) => `Séances : ${de} → ${a} (mise à jour proposée)`,
   /** Libellé VISIBLE du champ « Séances » éditable d'une ligne équipe. */
   sessionsLabel: "Séances",
   /** Nom accessible CONTEXTUALISÉ du champ « Séances » d'une équipe (A11Y-28). */
@@ -87,7 +85,7 @@ export const PARC_IMPORT_TEXTS = {
       equipes: "Équipes",
       gymnases: "Gymnases",
       creneaux: "Créneaux",
-      mutualisations: "Mutualisations",
+      mutualisations: "Séances communes",
       reservations: "Réservations",
     };
     return titles[section] ?? section;
@@ -115,7 +113,7 @@ export const PARC_IMPORT_TEXTS = {
   /** Placeholder d'une ligne AMBIGUË — sans présélection, à trancher à la main. */
   toDecide: "À trancher…",
   matchTo: (nom: string): string => `Apparier à « ${nom} »`,
-  matchToSuggested: (nom: string): string => `Apparier à « ${nom} » (suggéré)`,
+  matchToSuggested: (nom: string): string => `${nom} (suggéré)`,
   createOption: (libelle: string): string => `Créer « ${libelle} »`,
   ignoreLine: "Ignorer cette ligne",
   suggestionGroup: "Suggestion de l'analyse",
@@ -125,14 +123,20 @@ export const PARC_IMPORT_TEXTS = {
   allVenuesGroup: "Tous les gymnases du club",
 
   // Import bloqué / erreur / revalidation
-  /** Raison de désactivation d'« Importer » : nombre de lignes à trancher (+ sans genre, PR2). */
-  importBlocked: (nAmbigu: number, nGenre: number): string => {
+  /**
+   * Raison de désactivation d'« Importer » : nombre de lignes à trancher (+ sans genre, PR2 ; + séances
+   * communes à revoir, PR A / D13). `nAlerte` est optionnel : un appel à deux arguments reste identique.
+   */
+  importBlocked: (nAmbigu: number, nGenre: number, nAlerte = 0): string => {
     const parts: string[] = [];
     if (nAmbigu > 0) {
       parts.push(`${nAmbigu} ligne${nAmbigu > 1 ? "s" : ""} à trancher`);
     }
     if (nGenre > 0) {
       parts.push(`${nGenre} équipe${nGenre > 1 ? "s" : ""} sans genre`);
+    }
+    if (nAlerte > 0) {
+      parts.push(`${nAlerte} séance${nAlerte > 1 ? "s" : ""} commune${nAlerte > 1 ? "s" : ""} à revoir`);
     }
     return 0 === parts.length ? "Cochez au moins une ligne pour pouvoir importer." : `Impossible d'importer : ${parts.join(" · ")}.`;
   },
@@ -173,14 +177,14 @@ export const PARC_IMPORT_TEXTS = {
   cancel: "Annuler",
 
   // Étape Mutualisations (retours fondateur 2026-10-26) — sa propre étape du rail.
-  /** EmptyHint de l'étape Mutualisations vide (jamais sautée). */
-  mutualisationsEmpty: "Aucune mutualisation lue dans votre planning.",
-  /** En-tête de l'étape Mutualisations quand AU MOINS une est en alerte : combien à vérifier. */
-  mutualisationsCount: (n: number): string => `${n} mutualisation${n > 1 ? "s" : ""} à vérifier.`,
-  /** Finitions 2c — en-tête SANS alerte : « N mutualisations lues » (« à vérifier » réservé aux alertes). */
-  mutualisationsReadCount: (n: number): string => `${n} mutualisation${n > 1 ? "s" : ""} lue${n > 1 ? "s" : ""}.`,
-  /** Nom accessible du contrôle Garder/Ignorer d'une mutualisation. */
-  mutualDecision: (libelle: string): string => `Garder ou ignorer la mutualisation « ${libelle} »`,
+  /** EmptyHint de l'étape Séances communes vide (jamais sautée). */
+  mutualisationsEmpty: "Aucune séance commune lue dans votre planning.",
+  /** En-tête de l'étape Séances communes quand AU MOINS une est en alerte : combien à vérifier. */
+  mutualisationsCount: (n: number): string => `${n} séance${n > 1 ? "s" : ""} commune${n > 1 ? "s" : ""} à vérifier.`,
+  /** Finitions 2c — en-tête SANS alerte : « N séances communes lues » (« à vérifier » réservé aux alertes). */
+  mutualisationsReadCount: (n: number): string => `${n} séance${n > 1 ? "s" : ""} commune${n > 1 ? "s" : ""} lue${n > 1 ? "s" : ""}.`,
+  /** Nom accessible du contrôle Garder/Ignorer d'une séance commune. */
+  mutualDecision: (libelle: string): string => `Garder ou ignorer la séance commune « ${libelle} »`,
   mutualKeep: "Garder",
   mutualIgnore: "Ignorer",
 

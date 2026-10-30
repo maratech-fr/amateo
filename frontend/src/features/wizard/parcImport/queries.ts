@@ -30,8 +30,6 @@ export interface ParcAnalysisLine {
   /** PR1 (D5) : les candidats (`{id, nom}`) d'un appariement suggéré/ambigu — alimentent le groupe
    *  « Candidats possibles » du sélecteur de la ligne. Absent/vide pour une ligne « à créer ». */
   candidats?: Array<{ id: string; nom: string }>;
-  /** Équipes : une mise à jour de séances PROPOSÉE (pas appliquée). */
-  miseAJour?: { champ: "seances"; de: number; a: number };
   /**
    * Équipes (retours fondateur 2026-10-26) : le nombre de séances LU dans le fichier (nombre de cases
    * dérivé), servi sur CHAQUE ligne équipe — amorce le champ « Séances » éditable (ce qui SERA importé).
@@ -67,6 +65,12 @@ export interface ParcAnalysisLine {
   suggestedTierId?: number;
   suggestedGender?: "M" | "F" | null;
   suggestedCtc?: boolean;
+  /**
+   * PR A (incident ALAP, D1/D13) — séance commune / réservation en alerte « équipe ignorée ou
+   * introuvable » : le code MACHINE qui accompagne la `raison` humaine. Le front le lit pour BLOQUER
+   * l'import tant que la ligne est gardée (jamais une re-dérivation depuis la phrase FR serveur).
+   */
+  alerteCode?: string;
 }
 
 /** Le récap chiffré d'une section de l'aperçu. */

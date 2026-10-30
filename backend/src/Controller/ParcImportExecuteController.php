@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\Club;
 use App\Service\ParcImport\ParcImportExecutor;
 use App\Service\ParcImport\ParcImportGate;
+use App\Service\ParcImport\ParcImportResolutionException;
 use App\Service\ParcImport\ParcPayloadValidator;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -87,6 +88,10 @@ final class ParcImportExecuteController extends AbstractController
 
         try {
             $recap = $this->executor->import($club, \is_string($seasonId) ? $seasonId : '', $parc, $decisions);
+        } catch (ParcImportResolutionException $exception) {
+            // D4 — refus de RÉSOLUTION agrégé : toutes les entités introuvables des lignes cochées,
+            // nommées en une passe (rien écrit, la transaction est déjà annulée).
+            return $this->json(['errors' => $exception->errors()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (UnprocessableEntityHttpException $exception) {
             // Une ligne cochée invalide au moment de l'écriture : tout-ou-rien, la transaction est
             // déjà annulée, on nomme la ligne fautive.

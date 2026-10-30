@@ -1,5 +1,5 @@
 import { AlertTriangle, Link2 } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
@@ -178,10 +178,22 @@ export function ParcImportModal(props: ParcImportModalProps) {
   // Finition 4 — « Voir » vise une ligne à trancher : on mémorise SON sélecteur (ref, pas d'état — pas
   // de setState dans l'effet) pour le focaliser à la place de l'en-tête une fois la ligne rendue.
   const pendingFocusRef = useRef<{ section: string; index: number } | null>(null);
+  // D5 (incident ALAP) — le bandeau d'erreur d'import est en TÊTE de la zone défilante ; DÈS QU'IL
+  // APPARAÎT on l'AMÈNE à l'écran (cas Safari du club : jamais ramené), SANS lui voler le focus.
+  // Callback ref : il se déclenche au MONTAGE du nœud (= « à l'arrivée » de l'erreur), déjà posé dans
+  // le DOM — on défile donc directement (pas de `requestAnimationFrame` : le nœud est committé, il n'y
+  // a rien à attendre, et un rAF repousserait le défilement hors du cycle, invisible à l'utilisateur
+  // comme au test). Pas de `focus` : l'erreur s'annonce, elle ne vole pas l'attention.
+  const scrollErrorIntoView = useCallback((node: HTMLDivElement | null): void => {
+    node?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, []);
 
   const analyzing = analyze.isPending;
   const importing = importMut.isPending;
   const isRecap = null !== result;
+  // Le bandeau d'erreur d'import n'existe QUE sur une étape de contenu : D5 défile vers lui dès qu'il
+  // est RENDU (pas seulement au flanc montant de `isError`, qui peut déjà être vrai au montage).
+  const showImportError = CONTENT_STEPS.has(step) && importMut.isError;
 
   // Focus au changement d'étape : le sélecteur de la ligne visée par « Voir » (finition 4) s'il y en a
   // un en attente, sinon l'en-tête d'étape (jamais de vol ailleurs). Le `ref` se désarme ici (pas de
@@ -367,8 +379,13 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   const decisionValue = (section: string, line: ParcAnalysisLine): string => decisions[keyOf(section, line.index)] ?? initialDecision(line);
 
-  const setDecision = (section: string, index: number, value: string): void =>
+  const setDecision = (section: string, index: number, value: string): void => {
     setDecisions((prev) => ({ ...prev, [keyOf(section, index)]: value }));
+    // D2 (incident ALAP) — changer une décision (p.ex. ignorer une équipe) PÉRIME l'aperçu : les
+    // alertes affichées datent de l'analyse précédente, d'où le bandeau « Revalider » (comme une
+    // correction de case). Une séance commune qui cite cette équipe ne bascule en alerte qu'au rejeu.
+    setDirtyCases((prev) => new Set(prev).add(keyOf(section, index)));
+  };
 
   const setSessionDraft = (index: number, value: number): void =>
     setSessionDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: value }));
@@ -413,9 +430,27 @@ export function ParcImportModal(props: ParcImportModalProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysis, decisions, genderDrafts]);
 
+  // PR A (D13) — une ligne de CASE (séance commune / réservation) en alerte « équipe ignorée ou
+  // introuvable » (`alerteCode`) ET GARDÉE bloque l'import : sinon l'import part et le serveur 422
+  // (le défaut ALAP). On lit le code MACHINE servi par l'analyse, jamais la phrase FR.
+  const pendingAlerteCode = useMemo(() => {
+    if (null === analysis) {
+      return 0;
+    }
+    let n = 0;
+    for (const section of ["mutualisations", "reservations"] as const) {
+      for (const line of analysis.sections[section] ?? []) {
+        if (undefined !== line.alerteCode && "" !== line.alerteCode && (checked[keyOf(section, line.index)] ?? line.coche)) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+  }, [analysis, checked]);
+
   const importDecisions = buildDecisions();
   const count = importDecisions.filter((d) => d.coche).length;
-  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || 0 === count;
+  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || 0 === count;
 
   const doImport = (): void => {
     if (null === analysis || blocked) {
@@ -446,6 +481,23 @@ export function ParcImportModal(props: ParcImportModalProps) {
             pendingFocusRef.current = { section, index: line.index };
             setStep(section);
           }
+          return;
+        }
+      }
+    }
+    // PR2 — un genre OBLIGATOIRE manquant sur une ligne « Créer » : l'étape Équipes.
+    for (const line of analysis.sections.equipes ?? []) {
+      const key = keyOf("equipes", line.index);
+      if (undefined !== line.suggestedTierId && CREATE === decisionValue("equipes", line) && "" === (genderDrafts[key] ?? line.suggestedGender ?? "")) {
+        setStep("equipes");
+        return;
+      }
+    }
+    // D13 — une séance commune / réservation en alerte « équipe ignorée » et GARDÉE : son étape.
+    for (const section of ["mutualisations", "reservations"] as const) {
+      for (const line of analysis.sections[section] ?? []) {
+        if (undefined !== line.alerteCode && "" !== line.alerteCode && (checked[keyOf(section, line.index)] ?? line.coche)) {
+          setStep(section);
           return;
         }
       }
@@ -623,14 +675,32 @@ export function ParcImportModal(props: ParcImportModalProps) {
           </Button>
         ) : (
           <>
-            <Button variant="outline" size="sm" onClick={onClose}>
-              {T.close}
-            </Button>
-            {"prompt" !== step ? (
-              <Button variant="ghost" size="sm" onClick={() => goTo(-1)}>
-                {T.previous}
-              </Button>
-            ) : null}
+            {/* D10 (incident ALAP) — plus de bouton TEXTE « Fermer » au pied (la croix d'en-tête suffit) :
+                Précédent/Suivant GROUPÉS à gauche (`mr-auto`), l'action primaire (Analyser/Importer) à droite. */}
+            <div className="mr-auto flex flex-wrap items-center gap-2">
+              {"prompt" !== step ? (
+                <Button variant="ghost" size="sm" onClick={() => goTo(-1)}>
+                  {T.previous}
+                </Button>
+              ) : null}
+              {"prompt" === step || (CONTENT_STEPS.has(step) && "reservations" !== step) ? (
+                <Button variant="outline" size="sm" onClick={() => goTo(1)}>
+                  {T.next}
+                </Button>
+              ) : null}
+              {/* Finition 4 / D13 — la raison d'import bloqué est VISIBLE au pied (ton warning, patron
+                  ImportFbiDialog), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher / séance commune. */}
+              {CONTENT_STEPS.has(step) && blocked ? (
+                <span className="flex items-center gap-2 text-xs text-warning">
+                  <span>{T.importBlocked(pendingAmbiguous, pendingGender, pendingAlerteCode)}</span>
+                  {pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 ? (
+                    <Button variant="ghost" size="sm" onClick={seeBlocking}>
+                      {T.seeBlockingLine}
+                    </Button>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
             {"paste" === step ? (
               <Button
                 size="sm"
@@ -642,40 +712,16 @@ export function ParcImportModal(props: ParcImportModalProps) {
                 {T.analyze}
               </Button>
             ) : null}
-            {"prompt" === step ? (
-              <Button size="sm" onClick={() => goTo(1)}>
-                {T.next}
-              </Button>
-            ) : null}
             {CONTENT_STEPS.has(step) ? (
-              <>
-                {/* Finition 4 — la raison d'import bloqué est VISIBLE au pied (pas qu'en sr-only du
-                    bouton), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher. */}
-                {blocked ? (
-                  <span className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{T.importBlocked(pendingAmbiguous, pendingGender)}</span>
-                    {pendingAmbiguous > 0 ? (
-                      <Button variant="ghost" size="sm" onClick={seeBlocking}>
-                        {T.seeBlockingLine}
-                      </Button>
-                    ) : null}
-                  </span>
-                ) : null}
-                {"reservations" !== step ? (
-                  <Button variant="outline" size="sm" onClick={() => goTo(1)}>
-                    {T.next}
-                  </Button>
-                ) : null}
-                <Button
-                  size="sm"
-                  disabled={blocked || importing}
-                  disabledReason={blocked ? T.importDisabledHint : undefined}
-                  onClick={doImport}
-                >
-                  {importing ? <Spinner className="size-4" /> : null}
-                  <span className="tabular-nums">{T.importAction(count)}</span>
-                </Button>
-              </>
+              <Button
+                size="sm"
+                disabled={blocked || importing}
+                disabledReason={blocked ? T.importDisabledHint : undefined}
+                onClick={doImport}
+              >
+                {importing ? <Spinner className="size-4" /> : null}
+                <span className="tabular-nums">{T.importAction(count)}</span>
+              </Button>
             ) : null}
           </>
         )
@@ -701,8 +747,13 @@ export function ParcImportModal(props: ParcImportModalProps) {
                 ) : null}
               </div>
 
-              {/* Erreur d'import — dans la modale, jamais un toast (le hook garde le toast à l'analyse). */}
-              {CONTENT_STEPS.has(step) && importMut.isError ? <ImportErrorBanner error={importMut.error} /> : null}
+              {/* Erreur d'import — dans la modale, jamais un toast (le hook garde le toast à l'analyse).
+                  Le ref porte le scrollIntoView de D5 (bandeau amené à l'écran, sans voler le focus). */}
+              {showImportError ? (
+                <div ref={scrollErrorIntoView}>
+                  <ImportErrorBanner error={importMut.error} />
+                </div>
+              ) : null}
 
               {/* D10 — résultat peu fiable (informatif, jamais bloquant), en tête de l'aperçu. */}
               {CONTENT_STEPS.has(step) && null !== analysis && analysis.fiabilite.bandeau ? (
@@ -976,6 +1027,8 @@ function DecisionRow({
   const reasonId = useId();
   const groups = useMemo(() => decisionGroups(section, line, venues, allTeams, tiers), [section, line, venues, allTeams, tiers]);
   const pending = "ambigu" === line.statut && "" === value;
+  // D9 (incident ALAP) — une ligne mise en « Ignorer » est rendue BARRÉE (retours fondateur : grisée/barrée).
+  const ignored = IGNORE === value;
   // Refonte PR2 (D9) — une ligne équipe « Créer » PORTANT des suggestions (le serveur a servi
   // `suggestedTierId`) montre un Select Rang + un Select Genre (le genre est OBLIGATOIRE : vide = ⚠).
   const showCreateFields = "equipes" === section && CREATE === value && undefined !== line.suggestedTierId && undefined !== onGenderChange && undefined !== onTierChange;
@@ -985,7 +1038,7 @@ function DecisionRow({
   return (
     <li className="grid gap-x-4 gap-y-1 border-b border-border/60 py-2 md:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-medium text-foreground">{line.libelle}</span>
+        <span className={ignored ? "text-sm font-medium text-muted-foreground line-through" : "text-sm font-medium text-foreground"}>{line.libelle}</span>
         {/* Défaut C — la raison n'est rendue QU'UNE fois : la ligne ⚠ (ci-dessous) la porte dès qu'on
             est « à trancher », sinon la ligne grise. Les deux ensemble la doublaient (capture 03-equipes). */}
         {null === line.raison || pending ? null : <span className="text-xs text-muted-foreground">{line.raison}</span>}
