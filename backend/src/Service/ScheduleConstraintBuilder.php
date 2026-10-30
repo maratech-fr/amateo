@@ -27,6 +27,7 @@ use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTrainingSlotRepository;
@@ -640,9 +641,23 @@ final class ScheduleConstraintBuilder
         // Reservations feed the SAME engine `slotTemplates` payload (HARD pins) —
         // they are just sourced from the durable Reservation entity instead of the
         // ephemeral, schedule-bound ScheduleSlotTemplate.
+        //
+        // Incident ALAP : après génération, l'import du résultat réécrit chaque réservation en
+        // `ScheduleSlotTemplate` HARD d'origine RESERVATION, au placement exact de la réservation
+        // durable. La reprendre ici l'enverrait DEUX fois au moteur (26 épingles → 52 au BCCL) et
+        // ferait diverger l'empreinte de structure du `snapshotHash` juste après génération — un
+        // faux « périmé ». La `Reservation` durable est la SEULE source de ces épingles : on saute
+        // donc le template HARD/RESERVATION (base ET période, ce foyer est partagé). Les HARD
+        // MANUAL (verrou de work-loop) et UNKNOWN (origine indécidable) restent repris — filet
+        // contre le sur-filtrage.
+        $durablePins = array_filter(
+            $slotTemplates,
+            static fn (ScheduleSlotTemplate $slotTemplate): bool => LockLevel::HARD !== $slotTemplate->getLockLevel()
+                || LockOrigin::RESERVATION !== $slotTemplate->getLockOrigin(),
+        );
         $serializedSlots = array_merge(
             array_filter(
-                array_map($this->serializeSlotTemplate(...), $slotTemplates),
+                array_map($this->serializeSlotTemplate(...), $durablePins),
                 static fn (?array $slotTemplate): bool => null !== $slotTemplate,
             ),
             array_map($this->serializeReservation(...), $teamReservations),

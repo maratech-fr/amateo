@@ -12,6 +12,7 @@ use App\Entity\Season;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\Integration\ReservationPinsNotDoubledTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -23,7 +24,7 @@ use Symfony\Component\Console\Tester\CommandTester;
  * NR de nettoyage de données (axe generation pipeline) : `app:schedule:dedupe-snapshot-pins`
  * répare les snapshots déjà DOUBLÉS en base par le défaut corrigé par ailleurs (l'import écrivait
  * une épingle HARD/RESERVATION redondante avec la réservation durable, cf.
- * {@see \App\Tests\Integration\ReservationPinsNotDoubledTest}).
+ * {@see ReservationPinsNotDoubledTest}).
  *
  * La commande dédoublonne `snapshotData['slotTemplates']` sur la clé de placement
  * (teamId, venueId, dayOfWeek, startTime H:i, durationMinutes) des entrées HARD, en GARDANT

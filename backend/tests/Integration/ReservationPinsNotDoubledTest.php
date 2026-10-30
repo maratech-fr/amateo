@@ -22,6 +22,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
+use App\Service\ScheduleResultImporter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -35,7 +36,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * pipeline ; corollaire planning lifecycle « structure inchangée »).
  *
  * Après une génération, l'import du résultat écrit des `ScheduleSlotTemplate` HARD d'origine
- * RESERVATION ({@see \App\Service\ScheduleResultImporter}). Au build suivant, le builder reprenait
+ * RESERVATION ({@see ScheduleResultImporter}). Au build suivant, le builder reprenait
  * ces templates EN PLUS des `Reservation` durables dont ils sont nés : chaque réservation partait
  * DEUX fois au solveur (26 → 52 épingles au BCCL/ALAP), et surtout l'empreinte de structure
  * ({@see SchedulePlanProvisioner::structureHashOfPlan}) divergeait du `snapshotHash` de la version
