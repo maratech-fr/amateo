@@ -50,6 +50,8 @@ export const PLANNING_TEXTS = {
   collapseDiagnosticsLabel: "Réduire les diagnostics",
   collapseDiagnosticsTitle: "Réduire (plus de place pour la grille)",
   adjustRuleLink: "Ajuster cette règle",
+  reservationCause: (what: string): string => `En cause : ${what}.`,
+  reservationCauseFallback: "une réservation",
   fixRuleLink: "Corriger cette règle",
   diagnosticsLoading: "Lecture des diagnostics…",
   diagnosticsClean: "Aucun diagnostic — le planning est propre.",

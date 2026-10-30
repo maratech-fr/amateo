@@ -92,6 +92,25 @@ final class PayloadCapacityMirror
     }
 
     /**
+     * Les gymnases dont les « au moins » dépassent la grille MÊME SANS aucun verrou HARD : aucune
+     * réservation n'est en cause, le moteur échouera (miroir de sa sonde de causalité).
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return list<string>
+     */
+    public function venuesSaturatedWithoutLocks(array $payload): array
+    {
+        $templates = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
+        $payload['slotTemplates'] = array_values(array_filter(
+            $templates,
+            static fn (mixed $pin): bool => !\is_array($pin) || 'HARD' !== ($pin['lockLevel'] ?? null),
+        ));
+
+        return array_column($this->venueMinimumSaturation($payload), 'venueId');
+    }
+
+    /**
      * Saturation des « au moins N ici » PAR GYMNASE — miroir dans le sens SÛR :
      *
      * - la DEMANDE est le Σ des minimums (par équipe×gymnase, le MAX quand plusieurs
@@ -107,7 +126,10 @@ final class PayloadCapacityMirror
      *   triplets verrouillés par un pin HARD — un triplet bloqué ne porte aucune
      *   variable, pour personne. Inchangée.
      *
-     * `demande > libre` est un INFEASIBLE certain (épinglé par le test de parité).
+     * `demande > libre` : une séance ne pourra pas être placée. C'est un INFEASIBLE certain seulement
+     * si la grille dépasse même sans verrou ({@see venuesSaturatedWithoutLocks}, décision fondateur
+     * 2026-10-30) ; sinon le moteur produit le planning et nomme l'équipe privée de case. Épinglé par
+     * le test de parité.
      *
      * @param array<string, mixed> $payload
      *

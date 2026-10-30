@@ -48,8 +48,14 @@ function causeKindLabel(kind: string): string | null {
   return CAUSE_KIND_LABELS[kind as DiagnosticCauseKind] ?? null;
 }
 
-function causeSentence(cause: DiagnosticCause): string {
+function causeSentence(cause: DiagnosticCause, diagnosticType: string): string {
   const { count, label } = cause;
+  // Réservation souveraine : la règle n'a pas « fermé de créneau », c'est la réservation qui a
+  // pris la case. On nomme ce qui est en cause, sans compte.
+  if ("rule_sacrificed" === diagnosticType || "blocked_by_reservation" === diagnosticType) {
+    const family = causeKindLabel(cause.kind);
+    return PLANNING_TEXTS.reservationCause(null !== label && "" !== label ? `« ${label} »` : (family ?? PLANNING_TEXTS.reservationCauseFallback));
+  }
   const slots = `${count} créneau${count > 1 ? "x" : ""} fermé${count > 1 ? "s" : ""}`;
   const kind = causeKindLabel(cause.kind);
   // Le NOM de la règle est l'information principale — c'est lui qui répond à « quelle
@@ -275,7 +281,7 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                             <div className="flex flex-col gap-1 px-3 pb-1.5">
                               {item.causes.map((cause, index) => (
                                 <div key={`${cause.kind}-${cause.constraintId ?? "none"}-${index}`} className="flex flex-col gap-0.5">
-                                  <span className="text-xs text-muted-foreground">{causeSentence(cause)}</span>
+                                  <span className="text-xs text-muted-foreground">{causeSentence(cause, item.type)}</span>
                                   {null !== cause.constraintId ? (
                                     <WizardStepLink
                                       step="constraints"

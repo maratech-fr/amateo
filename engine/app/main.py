@@ -1002,7 +1002,9 @@ async def _best_effort_solve(
             return None
         if not relax_keys and not await _locks_are_the_cause(data, input_data):
             return None
-        relax_keys |= new_keys
+        # Une seule règle à la fois : deux planchers qui se disputent la dernière case forment un noyau,
+        # n'en lever qu'un laisse la case à l'autre équipe. Les lever ensemble gâcherait une case permise.
+        relax_keys |= {min(new_keys)}
         remaining = BEST_EFFORT_SOLVE_MAX_SECONDS - (time.perf_counter() - started)
         if remaining <= 0:
             return None
