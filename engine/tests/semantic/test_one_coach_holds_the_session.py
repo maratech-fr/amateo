@@ -21,9 +21,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from ortools.sat.python import cp_model
 
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
-from app.solver.validate_assignments import validate_assignment
+from app.solver.validate_assignments import hard_layer, validate_assignment
 from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload, team_coach
 
 MONDAY = 1
@@ -373,8 +374,11 @@ def test_the_move_verdict_still_refuses_a_baseline_with_a_coach_alone_in_two_gym
 # amène M, dont B est le coach, sur X à la même heure. Elle venait du jeudi (référence).
 
 
-def _move_onto_the_hour_of_a_lock(t_coaches: list[str], *, with_reference: bool) -> dict[str, Any]:
-    """Le verdict du geste sur M. D, s'il entraîne T, est déjà pris par U9 : un écart antérieur au geste."""
+def _move_onto_the_hour_of_a_lock(
+    t_coaches: list[str], *, with_reference: bool, t_locked: bool = True
+) -> dict[str, Any]:
+    """Le verdict du geste sur M. D, s'il entraîne T, est déjà pris par U9 : un écart antérieur au geste.
+    ``t_locked=False`` : T est figée par la base du planning, sans verrou HARD."""
     candidate = {"teamId": "M", "venueId": "X", "dayOfWeek": MONDAY, "startTime": "18:00", "durationMinutes": 90}
     reference = {"teamId": "M", "venueId": "Y", "dayOfWeek": THURSDAY, "startTime": "18:00", "durationMinutes": 90}
     frozen = [
@@ -386,7 +390,7 @@ def _move_onto_the_hour_of_a_lock(t_coaches: list[str], *, with_reference: bool)
             "startTime": "18:00",
             "durationMinutes": 90,
         }
-        for team, venue in (("U13", "W"), ("U9", "Z"))
+        for team, venue in (("U13", "W"), ("U9", "Z"), *(() if t_locked else (("T", "V"),)))
     ]
     payload: dict[str, Any] = {
         "clubId": "club",
@@ -398,7 +402,7 @@ def _move_onto_the_hour_of_a_lock(t_coaches: list[str], *, with_reference: bool)
         "teams": [make_team(team_id, sessions_per_week=1) for team_id in ("T", "U13", "U9", "M")],
         "coaches": _coaches("A", "B", "C", "D"),
         "constraints": _links(T=t_coaches, U13=["A"], U9=["D"], M=["B"]),
-        "slotTemplates": [_lock("T", "V"), *frozen],
+        "slotTemplates": [*([_lock("T", "V")] if t_locked else []), *frozen],
         "candidates": [candidate],
         "references": [reference] if with_reference else [],
     }
@@ -438,6 +442,55 @@ def test_a_fixed_session_already_without_coach_never_blocks_a_move(with_referenc
     result = _move_onto_the_hour_of_a_lock(["A", "D"], with_reference=with_reference)
 
     assert result["valid"] is True, result
+
+
+@pytest.mark.parametrize("with_reference", [True, False])
+def test_taking_the_last_coach_of_a_frozen_session_without_lock_names_the_session(with_reference: bool) -> None:
+    """Sans verrou HARD, le geste rend le modèle infaisable et c'est le miroir qui parle : il doit dire que
+    T n'a plus personne, pas accuser B d'un dédoublement que la règle autorise."""
+    result = _move_onto_the_hour_of_a_lock(["A", "B"], with_reference=with_reference, t_locked=False)
+
+    assert result["valid"] is False, result
+    assert result.get("indeterminate") is not True
+    [violation] = result["violations"]
+    assert violation["rule"] == "session_without_coach"
+    assert (violation["team_id"], violation["conflicting_team_id"]) == ("M", "T")
+    assert (violation["venue_id"], violation["day_of_week"], violation["start_time"]) == ("V", MONDAY, "18:00")
+    assert "séance fixée de T le lundi à 18:00" in violation["message"]
+
+
+def test_a_frozen_session_with_its_only_coach_taken_stays_a_double_booking() -> None:
+    """TÉMOIN : B seul sur T n'a jamais eu le choix, c'est bien lui qui se dédouble."""
+    result = _move_onto_the_hour_of_a_lock(["B"], with_reference=True, t_locked=False)
+
+    assert result["valid"] is False, result
+    assert {violation["rule"] for violation in result["violations"]} == {"coach_no_overlap"}
+
+
+@pytest.mark.parametrize("unproven_status", [cp_model.FEASIBLE, cp_model.UNKNOWN])
+@pytest.mark.parametrize("unproven_call", [1, 2], ids=["after_the_move", "before_the_move"])
+def test_a_verdict_without_proof_is_indeterminate_never_valid(
+    monkeypatch: pytest.MonkeyPatch, unproven_call: int, unproven_status: int
+) -> None:
+    """Le budget coupe la minimisation des séances sans coach, avant ou après le geste : le verdict ne
+    dépend pas de l'horloge, il reste neutre. Le statut est imposé, le test ne dépend d'aucun chronomètre."""
+    real_solve = hard_layer._solve
+    calls = 0
+
+    def solve_without_proof(model: Any, *, timeout_seconds: int, seed: int) -> tuple[int, Any]:
+        nonlocal calls
+        calls += 1
+        status, solver = real_solve(model, timeout_seconds=timeout_seconds, seed=seed)
+        return (unproven_status, solver) if calls == unproven_call else (status, solver)
+
+    monkeypatch.setattr(hard_layer, "_solve", solve_without_proof)
+
+    result = _move_onto_the_hour_of_a_lock(["A", "B"], with_reference=True)
+
+    assert calls >= unproven_call, "la minimisation visée n'a pas été jouée"
+    assert result["valid"] is False, result
+    assert result["indeterminate"] is True
+    assert result["violations"] == []
 
 
 # ── La tenue d'un verrou cède : jamais d'INFEASIBLE muet (contre-revue, décision ADR-0001 amendée) ──

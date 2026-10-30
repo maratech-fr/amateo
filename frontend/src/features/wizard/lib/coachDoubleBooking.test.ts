@@ -138,4 +138,38 @@ describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK
     expect(conflictingReservation(t3, here, mainCoachByTeam(sameCase))).not.toBeNull();
     expect(conflictingReservation(t3, here, mainCoachByTeam(sameCase), { groups: [["T1", "T2"]] })).toBeNull();
   });
+
+  // Le refus porte, coach par coach, la vraie cause : c'est ce que la modale nomme au gestionnaire.
+  describe("holdFailures — ce qui empêche chaque coach de tenir la séance", () => {
+    const teamA = reservation({ teamId: "teamA", venueId: "venue1" });
+
+    it("entraîne ailleurs : chaque coach avec la séance qui le prend", () => {
+      const busy: TeamCoach[] = [...twoCoaches, { id: "l4", teamId: "teamD", coachId: "coach-lea", role: "MAIN" }];
+      const teamD = reservation({ teamId: "teamD", venueId: "venue3" });
+
+      expect(conflictingReservation(candidate, [teamA, teamD], mainCoachByTeam(busy))?.holdFailures).toEqual([
+        { coachId: COACH_MAXIME, reason: "coaching", reservation: teamA },
+        { coachId: "coach-lea", reason: "coaching", reservation: teamD },
+      ]);
+    });
+
+    it("indisponible : le coach est nommé sans séance à citer", () => {
+      const blockedByCoach = { "coach-lea": [[2, 0, 1440]] as [number, number, number][] };
+
+      expect(conflictingReservation(candidate, [teamA], mainCoachByTeam(twoCoaches), { blockedByCoach })?.holdFailures).toEqual([
+        { coachId: COACH_MAXIME, reason: "coaching", reservation: teamA },
+        { coachId: "coach-lea", reason: "unavailable", reservation: null },
+      ]);
+    });
+
+    it("joue ailleurs : la séance où il joue est citée, pas celle qu'il entraîne", () => {
+      const sm1 = reservation({ teamId: "SM1", venueId: "venue3" });
+      const playersByTeam = new Map([["SM1", ["coach-lea"]]]);
+
+      expect(conflictingReservation(candidate, [teamA, sm1], mainCoachByTeam(twoCoaches), { playersByTeam })?.holdFailures).toEqual([
+        { coachId: COACH_MAXIME, reason: "coaching", reservation: teamA },
+        { coachId: "coach-lea", reason: "playing", reservation: sm1 },
+      ]);
+    });
+  });
 });

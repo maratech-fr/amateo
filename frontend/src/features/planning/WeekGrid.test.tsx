@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
@@ -130,6 +130,23 @@ describe("WeekGrid", () => {
       render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} />);
       expect(screen.getByText("Marie Durand")).toBeInTheDocument();
     });
+  });
+
+  it("une équipe à deux coachs : chacun sa ligne dans la case, noms complets dans le title", () => {
+    const twoCoaches: Lookups = {
+      ...lookups,
+      coaches: new Map<string, Coach>([
+        ["c1", { id: "c1", firstName: "Marie", lastName: "Durand", gender: "UNSPECIFIED" }],
+        ["c2", { id: "c2", firstName: "Paul", lastName: "Leroy", gender: "UNSPECIFIED" }],
+      ]),
+      teamMainCoaches: new Map([["t1", ["c1", "c2"]]]),
+    };
+    render(<WeekGrid model={buildGrid([{ ...slot, coachId: "c1" }], "gymnase", twoCoaches)} selectedSlotId={null} onSelectSlot={vi.fn()} />);
+
+    const tile = screen.getByRole("button", { name: /U11/ });
+    expect(within(tile).getByText("Marie D.")).toBeInTheDocument();
+    expect(within(tile).getByText("Paul L.")).toBeInTheDocument();
+    expect(tile.getAttribute("title")).toContain("Marie Durand / Paul Leroy");
   });
 
   describe("cadenas sur la carte (toggle en un clic)", () => {

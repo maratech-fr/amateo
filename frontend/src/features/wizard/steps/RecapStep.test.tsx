@@ -152,6 +152,38 @@ describe("RecapStep — read-only summary", () => {
       expect(await screen.findByText(/la place restante restera vide/)).toBeInTheDocument();
       expect(screen.getByText("Gymnase A · Lun 18:00")).toBeInTheDocument();
     });
+
+    // Une mention informe sans rien demander : elle s'affiche, mais n'est jamais comptée comme une alerte.
+    describe("mention ou alerte", () => {
+      const mention = { key: "m1", tone: "muted" as const, place: "Gymnase A · Sam 14:00", message: "créneau sans réservation." };
+      const alert = { key: "w1", tone: "warning" as const, place: "Gymnase A · Lun 18:00", message: "la place restante restera vide." };
+
+      it("une mention seule : affichée, sans en-tête d'alerte ni icône orange, et tout reste prêt", async () => {
+        validationState.value = { errors: [], warnings: [], notices: [mention] };
+        const { container } = renderWithProviders(<RecapStep />);
+
+        expect(await screen.findByText(/créneau sans réservation/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /alerte\(s\) à vérifier/ })).toBeNull();
+        expect(container.querySelector("svg.text-warning")).toBeNull();
+        expect(screen.getByText(WIZARD_TEXTS.allReady)).toBeInTheDocument();
+      });
+
+      it("une notice warning est comptée, avec l'icône orange", async () => {
+        validationState.value = { errors: [], warnings: [], notices: [alert] };
+        const { container } = renderWithProviders(<RecapStep />);
+
+        expect(await screen.findByRole("button", { name: /^1 alerte\(s\) à vérifier/ })).toBeInTheDocument();
+        expect(container.querySelector("svg.text-warning")).not.toBeNull();
+      });
+
+      it("mention et alertes mêlées : la mention reste affichée mais hors du compte", async () => {
+        validationState.value = { errors: [], warnings: ["Un avertissement."], notices: [mention, alert] };
+        renderWithProviders(<RecapStep />);
+
+        expect(await screen.findByRole("button", { name: /^2 alerte\(s\) à vérifier/ })).toBeInTheDocument();
+        expect(screen.getByText(/créneau sans réservation/)).toBeInTheDocument();
+      });
+    });
   });
 
   // P2-15 (retour fondateur) — LE symptôme : « je sélectionne 6 équipes sur l'overlay, il

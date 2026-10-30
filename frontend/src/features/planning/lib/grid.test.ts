@@ -81,6 +81,49 @@ describe("tous les coachs de l'équipe (décision fondateur)", () => {
 
     expect(JSON.stringify(grid)).toContain("tenue par Elsa E");
   });
+
+  // Deux coachs doivent rester lisibles dans la case : forme courte à l'écran, noms complets au survol.
+  describe("les lignes de la case", () => {
+    const fullNames: Lookups = {
+      ...withTwoCoaches,
+      coaches: new Map<string, Coach>([
+        ["cb", { id: "cb", firstName: "Bruno", lastName: "Bernard", gender: "UNSPECIFIED" }],
+        ["ce", { id: "ce", firstName: "Elsa", lastName: "Etienne", gender: "UNSPECIFIED" }],
+      ]),
+    };
+    const cellOf = (coachId: string | null, view: "gymnase" | "equipe" | "coach" = "gymnase", at: Lookups = fullNames) => buildGrid([slot({ coachId })], view, at).cells[0];
+
+    it("rien n'impose un tenant : une ligne courte par coach, le nom complet reste dans le libellé du title", () => {
+      const cell = cellOf("cb");
+
+      expect(cell.coachLines).toEqual(["Bruno B.", "Elsa E."]);
+      expect(cell.coachLabel).toBe("Bruno Bernard / Elsa Etienne");
+      expect(cell.coachName).toBeNull();
+    });
+
+    it("aucun coach stocké : la case liste aussi tous les coachs", () => {
+      expect(cellOf(null).coachLines).toEqual(["Bruno B.", "Elsa E."]);
+    });
+
+    it("le coach stocké n'est pas le premier : une seule ligne, « tenue par » en forme courte", () => {
+      const cell = cellOf("ce");
+
+      expect(cell.coachLines).toEqual(["tenue par Elsa E."]);
+      expect(cell.coachLabel).toBe("tenue par Elsa Etienne");
+    });
+
+    it("la vue équipe suit la même règle ; la vue coach montre le gymnase, sans lignes de coachs", () => {
+      expect(cellOf("cb", "equipe").coachLines).toEqual(["Bruno B.", "Elsa E."]);
+      expect(cellOf("cb", "coach").coachLines).toBeNull();
+    });
+
+    it("TÉMOIN : un coach seul garde ses deux moitiés de nom, sans lignes", () => {
+      const cell = cellOf("c1", "gymnase", lookups);
+
+      expect(cell.coachLines).toBeNull();
+      expect(cell.coachName).toEqual({ first: "Jean", last: "Paul" });
+    });
+  });
 });
 
 describe("resourceKeysForSlot", () => {
