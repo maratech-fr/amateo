@@ -13,5 +13,6 @@ Rules:
 - `CLAUDE.md` = short index only; detail lives in `docs/`; one canonical home per fact, no duplication across files.
 - Never write volatile counts (test counts, line counts) that will silently go stale — describe things structurally instead.
 - Update `specs/courantes/` per the triggers in `specs/README.md`; structural decisions get an ADR entry in `docs/architecture/adr-index.md`.
+- **Périmètre borné (règle fondateur 2026-10-30 — une passe à 167 actions a coûté ~390 k tokens)** : ne touche que les docs qui CITENT les fichiers du diff (`git diff --name-only origin/main...HEAD`, puis grep de ces chemins/symboles dans `docs/`, `specs/`, `*/docs/`), plus `specs/evolution/roadmap.md` et `specs/courantes/etat-des-lieux.md`. Pas de balayage global de dérive : une dérive hors de ce périmètre se SIGNALE en une ligne, elle ne se corrige pas dans la passe.
 - If nothing actually needs updating, say so explicitly rather than padding — "no doc impacted because …" is a valid, expected outcome.
 - Report back concisely: which files you touched and why, or why none needed touching.
