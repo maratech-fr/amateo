@@ -632,6 +632,7 @@ def _solve(
     model.coach_unavailability = parsed["coach_unavailability"]
     model.parsed_rules = parsed
     model.team_names = {str(t.get("id")): str(t.get("name") or t.get("id")) for t in data.get("teams", [])}
+    model.venue_names = {str(v.get("id")): str(v.get("name") or v.get("id")) for v in data.get("venues", [])}
 
     # (La famille FACILITY_CAPACITY rabotait ici la capacité d'un gymnase entier
     # à `maxTeams`. RETIRÉE le 2026-08-08 : aucun chemin UI ne la créait, zéro

@@ -380,6 +380,11 @@ def _team_label(model: Any, team_id: str) -> str:
     return str((getattr(model, "team_names", None) or {}).get(team_id) or team_id)
 
 
+def _venue_label(model: Any, venue_id: str) -> str:
+    """Le nom du gymnase, jamais son identifiant, sauf sur un modèle nu de test."""
+    return str((getattr(model, "venue_names", None) or {}).get(venue_id) or venue_id)
+
+
 def add_forced_venue_constraints(
     model: Any,
     assignments: Sequence[AssignmentVariable],
@@ -500,11 +505,11 @@ def add_venue_minimum_constraints(
                     "severity": "ERROR",
                     "teamId": team_id,
                     "message": (
-                        f"Team {team_id} cannot reach {minimum} session(s) at venue {venue_id}: "
-                        f"only {len(team_venue_days)} distinct free day(s) available there beyond "
-                        f"{len(locked_days)} locked day(s) (≤1 session/day)."
+                        f"{_team_label(model, team_id)} demande au moins {minimum} séance(s) à "
+                        f"{_venue_label(model, venue_id)}, mais ce gymnase n'offre que {len(team_venue_days)} jour(s) "
+                        f"libre(s) en plus de ses {len(locked_days)} jour(s) réservé(s), à une séance par jour."
                     ),
-                    "suggestions": ["Lower the minimum, or add availability slots on OTHER days at this venue."],
+                    "suggestions": ["Baissez le minimum, ou ajoutez des créneaux d'autres jours dans ce gymnase."],
                     "createdAt": datetime.now(UTC).isoformat(),
                 }
             )

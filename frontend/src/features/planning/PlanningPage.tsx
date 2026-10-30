@@ -353,7 +353,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const structureChanged =
     null !== currentStructureHash && null !== selectedSchedule && selectedSchedule.snapshotHash !== currentStructureHash;
   const regenerateDisabled =
-    null !== currentStructureHash && null !== selectedSchedule && selectedSchedule.snapshotHash === currentStructureHash;
+    null !== currentStructureHash && null !== selectedSchedule && selectedSchedule.snapshotHash === currentStructureHash && true !== selectedSchedule.manuallyEditedSinceGeneration;
   // regenerateFromMutation.isPending: "Charger cette version" no longer creates a
   // PENDING schedule (nothing sets isGenerating), so its own restore must disable
   // the action here — else a second click double-runs the destructive restore.

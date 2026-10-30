@@ -167,6 +167,28 @@ final class ScheduleConstraintBuilder
         return \sprintf('club.%s.schedule_input', $clubId);
     }
 
+    /**
+     * L'empreinte de STRUCTURE d'un payload, maison unique : le `snapshotHash` d'une version et le
+     * signal « structure modifiée » du plan doivent sortir de la même recette.
+     *
+     * Elle ignore les `slotTemplates` non HARD : une séance NONE est un RÉSULTAT du solveur, pas une
+     * donnée d'entrée, et l'import la relit à la génération suivante. Le payload lui-même ne change pas
+     * (`/validate-assignments` lit ces séances). Sans séance NONE, le hash égale celui d'avant ce filtre.
+     *
+     * @param array<mixed> $payload
+     */
+    public static function structureHash(array $payload): string
+    {
+        if (\is_array($payload['slotTemplates'] ?? null)) {
+            $payload['slotTemplates'] = array_values(array_filter(
+                $payload['slotTemplates'],
+                static fn (mixed $pin): bool => \is_array($pin) && 'HARD' === ($pin['lockLevel'] ?? null),
+            ));
+        }
+
+        return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
+    }
+
     private static function formatNullableTime(?DateTimeInterface $time): ?string
     {
         return $time?->format('H:i:s');

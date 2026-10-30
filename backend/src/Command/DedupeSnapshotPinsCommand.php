@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\Club;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
+use App\Service\ScheduleConstraintBuilder;
 use App\Service\TenantConnectionContext;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -27,8 +28,10 @@ use Throwable;
  * sont dédoublonnées par PLACEMENT (teamId, venueId, dayOfWeek, startTime H:i, durationMinutes) :
  * dans un groupe où une entrée est de forme réservation (son `id` appartient aux réservations du
  * périmètre), on GARDE l'entrée réservation et on laisse tomber le(s) template(s) redondant(s). Le
- * `snapshot_hash` n'est recalculé (sha256 du JSON du snapshot) que si un doublon est tombé — un
- * snapshot sain n'est jamais retouché, et un second passage ne retouche plus rien (idempotente).
+ * `snapshot_hash` est ensuite recalculé DEPUIS le snapshot, jamais depuis la structure courante
+ * ({@see ScheduleConstraintBuilder::structureHash}, qui ignore les séances NONE) : une version dont
+ * la structure a vraiment changé reste périmée. Un snapshot déjà à jour n'est pas retouché, et un
+ * second passage ne retouche plus rien (idempotente).
  *
  * Patron `PurgeOverlaysCommand` : commande manuelle, elle parcourt les clubs sur la connexion
  * runtime (RLS), chacun sous son propre GUC ; un échec sur un club ne bloque pas les autres.
@@ -106,8 +109,8 @@ final class DedupeSnapshotPinsCommand extends Command
     }
 
     /**
-     * Dédoublonne le snapshot d'UNE version. Rend vrai si un doublon a été trouvé ; n'écrit sur
-     * l'entité (snapshot nettoyé + hash recalculé) que si `$apply` (en dry-run on compte sans muter).
+     * Répare le snapshot d'UNE version. Rend vrai si un doublon est tombé ou si l'empreinte a changé ;
+     * n'écrit sur l'entité que si `$apply` (en dry-run on compte sans muter).
      *
      * @param array<string, true> $reservationIds
      */
@@ -155,18 +158,23 @@ final class DedupeSnapshotPinsCommand extends Command
             }
         }
 
-        if ([] === $drop) {
-            return false;
-        }
-
-        if ($apply) {
+        if ([] !== $drop) {
             $snapshot['slotTemplates'] = array_values(array_filter(
                 $slots,
                 static fn (mixed $slot, int $index): bool => !isset($drop[$index]),
                 \ARRAY_FILTER_USE_BOTH,
             ));
-            $schedule->setSnapshotData($snapshot);
-            $schedule->setSnapshotHash(hash('sha256', (string) json_encode($snapshot, \JSON_THROW_ON_ERROR)));
+        }
+        $hash = ScheduleConstraintBuilder::structureHash($snapshot);
+        if ([] === $drop && $hash === $schedule->getSnapshotHash()) {
+            return false;
+        }
+
+        if ($apply) {
+            if ([] !== $drop) {
+                $schedule->setSnapshotData($snapshot);
+            }
+            $schedule->setSnapshotHash($hash);
         }
 
         return true;

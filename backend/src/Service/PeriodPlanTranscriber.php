@@ -235,7 +235,7 @@ final class PeriodPlanTranscriber
         // Hacher AVANT les aurait exclus, et « Régénérer » se serait allumé dès la transcription.
         $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry, selection: $selection);
         $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
+        $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas périmée.
         $schedule->setManuallyEditedSinceGeneration(false);
         $this->entityManager->flush();

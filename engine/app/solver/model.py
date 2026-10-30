@@ -119,6 +119,7 @@ class ScheduleCpModel(cp_model.CpModel):
         self.parsed_rules: Mapping[str, Any] = {}
         # Les noms d'équipes, posés par `_solve`, pour les messages émis à la pose.
         self.team_names: dict[str, str] = {}
+        self.venue_names: dict[str, str] = {}
         # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1), peuplé
         # UNIQUEMENT quand `assumptions_enabled` (modèle diagnostique). Une littérale par clé de
         # source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase imposé/interdit,

@@ -252,8 +252,8 @@ final class GenerateScheduleHandler
             );
         }
 
-        // P5-10 — sérialiser UNE fois : le hash de snapshot ET la taille du payload
-        // (métrique de capacité) sortent du même JSON — coût nul vs le hash existant.
+        // P5-10 — la taille du payload (métrique de capacité). Le hash, lui, passe par la maison unique
+        // de l'empreinte, qui ignore les séances NONE.
         $encodedSnapshot = json_encode($scheduleInput, \JSON_THROW_ON_ERROR);
         $payloadBytes = \strlen($encodedSnapshot);
         $schedule
@@ -262,7 +262,7 @@ final class GenerateScheduleHandler
             ->setSolveStartedAt(new DateTimeImmutable)
             ->setSolverTimeoutSeconds($message->getTimeoutSeconds())
             ->setSnapshotData($scheduleInput)
-            ->setSnapshotHash(hash('sha256', $encodedSnapshot));
+            ->setSnapshotHash(ScheduleConstraintBuilder::structureHash($scheduleInput));
 
         // P3-21 — le placement PRÉCÉDENT (terme de stabilité moteur) est greffé sur l'entrée
         // du solveur APRÈS le snapshot (data + hash), jamais avant : le précédent est une

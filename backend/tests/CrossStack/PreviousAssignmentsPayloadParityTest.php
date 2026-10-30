@@ -113,7 +113,7 @@ final class PreviousAssignmentsPayloadParityTest extends KernelTestCase
         $snapshot = $reloaded->getSnapshotData();
         self::assertArrayNotHasKey('previousAssignments', $snapshot, 'le précédent ne doit pas polluer le snapshot');
         self::assertSame(
-            hash('sha256', json_encode($snapshot, \JSON_THROW_ON_ERROR)),
+            ScheduleConstraintBuilder::structureHash($snapshot),
             $reloaded->getSnapshotHash(),
             'le hash porte sur le snapshot structure-only',
         );
@@ -121,7 +121,7 @@ final class PreviousAssignmentsPayloadParityTest extends KernelTestCase
         // la régression que PR B a évitée. Le solveur n'a rien importé (résultat vide), donc la
         // structure recalculée est identique à celle gelée.
         self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
-        $currentStructureHash = hash('sha256', json_encode($this->builder->buildForClubSeason($club->getId(), $season->getId()), \JSON_THROW_ON_ERROR));
+        $currentStructureHash = ScheduleConstraintBuilder::structureHash($this->builder->buildForClubSeason($club->getId(), $season->getId()));
         self::assertSame(
             $currentStructureHash,
             $reloaded->getSnapshotHash(),

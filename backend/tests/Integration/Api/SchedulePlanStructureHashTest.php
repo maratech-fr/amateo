@@ -195,7 +195,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         $this->em->flush();
         $payload = $builder->buildForOverlay($v2, $entryFresh);
         $v2->setSnapshotData($payload);
-        $v2->setSnapshotHash(hash('sha256', (string) json_encode($payload, \JSON_THROW_ON_ERROR)));
+        $v2->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         self::assertNotSame([], $payload['slotTemplates'] ?? [], 'garde : les HARD de V1 doivent être hérités dans l’entrée du solve de V2');
         $this->em->flush();
 
@@ -370,7 +370,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
     {
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
         $payload = $builder->buildForClubSeason($club->getId(), $season->getId());
-        $hash = hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
+        $hash = ScheduleConstraintBuilder::structureHash($payload);
 
         $schedule = (new Schedule)
             ->setClubId($club->getId())->setSeasonId($season->getId())

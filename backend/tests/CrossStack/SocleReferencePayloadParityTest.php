@@ -135,7 +135,7 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
         $snapshot = $reloaded->getSnapshotData();
         self::assertArrayNotHasKey('socleReferenceAssignments', $snapshot, 'la référence ne doit pas polluer le snapshot');
         self::assertSame(
-            hash('sha256', json_encode($snapshot, \JSON_THROW_ON_ERROR)),
+            ScheduleConstraintBuilder::structureHash($snapshot),
             $reloaded->getSnapshotHash(),
             'le hash porte sur le snapshot structure-only (référence exclue)',
         );

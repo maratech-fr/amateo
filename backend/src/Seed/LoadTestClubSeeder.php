@@ -42,6 +42,7 @@ use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Service\Basketball\CategoryCatalog;
 use App\Service\ClubLeagueWindowSeeder;
+use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
@@ -613,7 +614,7 @@ final class LoadTestClubSeeder
 
         $snapshot = ['loadTest' => true, 'slots' => \count($trainingSlots)];
         $schedule->setSnapshotData($snapshot);
-        $schedule->setSnapshotHash(hash('sha256', json_encode($snapshot, \JSON_THROW_ON_ERROR)));
+        $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($snapshot));
         $schedule->setStatus(ScheduleStatus::COMPLETED);
         $manager->flush();
 
