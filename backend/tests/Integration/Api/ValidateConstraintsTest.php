@@ -125,9 +125,9 @@ final class ValidateConstraintsTest extends WebTestCase
         $venueId = $this->venue('Matéo');
         $this->trainingSlot($venueId, dayOfWeek: 1, start: '18:00');
         $this->trainingSlot($venueId, dayOfWeek: 2, start: '18:00');
-        $teamA = $this->team(sessionsPerWeek: 1);
-        $teamB = $this->team(sessionsPerWeek: 1);
-        $occupier = $this->team(sessionsPerWeek: 1); // aucun minimum : il vole une place sans rien satisfaire
+        $teamA = $this->namedTeam('Poussins');
+        $teamB = $this->namedTeam('Benjamins');
+        $occupier = $this->namedTeam('Cadets'); // aucun minimum : il vole une place sans rien satisfaire
         $this->minAtVenue($teamA, $venueId);
         $this->minAtVenue($teamB, $venueId);
         $this->reservation($occupier, $venueId, dayOfWeek: 1, start: '18:00');
@@ -141,7 +141,12 @@ final class ValidateConstraintsTest extends WebTestCase
         self::assertSame([], $data['blockers']);
         $warnings = implode(' | ', $data['warnings']);
         self::assertStringContainsString('Matéo', $warnings, 'l\'avertissement doit nommer le gymnase saturé');
-        self::assertStringContainsString('une place', $warnings);
+        self::assertStringContainsString('Poussins', $warnings, 'les équipes qui réclament sont nommées');
+        self::assertStringContainsString('Benjamins', $warnings, 'les équipes qui réclament sont nommées');
+        self::assertStringContainsString('Cadets', $warnings, 'la réservation en cause est nommée');
+        self::assertStringContainsString('au moins 1 séance', $warnings, 'la demande de chaque équipe est dite');
+        self::assertStringContainsString('une place', $warnings, 'la place restante est dite');
+        self::assertStringContainsString('Une équipe restera sans séance', $warnings, 'le manque (2 demandées, 1 libre) est dit');
         self::assertStringNotContainsString('la génération échouera', $warnings, 'elle n\'échoue plus');
     }
 

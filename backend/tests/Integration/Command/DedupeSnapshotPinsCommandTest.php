@@ -8,11 +8,18 @@ use App\Command\DedupeSnapshotPinsCommand;
 use App\Entity\Club;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Entity\Team;
+use App\Entity\Venue;
+use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Service\ScheduleConstraintBuilder;
+use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Integration\ReservationPinsNotDoubledTest;
+use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,12 +43,18 @@ use Symfony\Component\Console\Tester\CommandTester;
  * Patron de garde migration de données (charte tests-par-parcours §2) : ce test protège le run
  * réel tant que la commande n'a pas tourné en prod. La RÈGLE « une réservation n'est épinglée
  * qu'une fois » vit, elle, dans le test de code vivant ci-dessus — jamais garantie par ce seul test.
+ *
+ * Étendu le 2026-10-30 : l'empreinte ne compte plus les séances `NONE` du solveur. Une version née
+ * d'une génération antérieure porte un `snapshotHash` qui les comptait : la commande le recalcule,
+ * sinon toutes ces versions paraîtraient périmées après le correctif. `snapshotData` n'est pas touché,
+ * et une version dont la structure a VRAIMENT changé reste périmée.
  */
 #[Group('phase1')]
 #[Group('integration')]
 final class DedupeSnapshotPinsCommandTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
     private const string VENUE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -123,6 +136,58 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         self::assertSame($f['doubledHash'], $doubled->getSnapshotHash(), 'en dry-run le hash n’est pas recalculé');
     }
 
+    /** Une version d'avant le correctif, structure inchangée, n'est plus vue comme périmée après passage. */
+    public function testALegacyVersionCountingSolverSessionsIsRehashedAndNoLongerStale(): void
+    {
+        $f = $this->seedLegacyVersion();
+
+        $this->runCommand([])->assertCommandIsSuccessful();
+
+        $legacy = $this->reloadLegacy($f);
+        self::assertSame($f['snapshot'], $legacy->getSnapshotData(), 'snapshotData reste tel quel, seule l\'empreinte change');
+        self::assertNotSame($f['legacyHash'], $legacy->getSnapshotHash(), 'l\'ancienne empreinte comptait les séances NONE');
+        $this->purgeCache($f);
+        self::assertSame(
+            self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($f['planId']),
+            $legacy->getSnapshotHash(),
+            'structure inchangée : la version n\'est plus vue comme périmée',
+        );
+
+        // Idempotente.
+        $rehashed = $legacy->getSnapshotHash();
+        $this->runCommand([])->assertCommandIsSuccessful();
+        self::assertSame($rehashed, $this->reloadLegacy($f)->getSnapshotHash());
+    }
+
+    /** `--dry-run` ne recalcule rien non plus pour ce cas. */
+    public function testDryRunDoesNotRehashALegacyVersion(): void
+    {
+        $f = $this->seedLegacyVersion();
+
+        $this->runCommand(['--dry-run' => true])->assertCommandIsSuccessful();
+
+        self::assertSame($f['legacyHash'], $this->reloadLegacy($f)->getSnapshotHash());
+    }
+
+    /** Une structure VRAIMENT changée reste périmée : on ne recopie jamais l'empreinte courante. */
+    public function testAVersionWhoseStructureReallyChangedStaysStale(): void
+    {
+        $f = $this->seedLegacyVersion();
+        $this->scopeGucToClub($f['clubId']);
+        $this->seedTeam($f['clubId'], $f['seasonId'], '99999999-9999-4999-8999-999999999999', 'Nouvelle');
+        $this->em->flush();
+
+        $this->runCommand([])->assertCommandIsSuccessful();
+
+        $legacy = $this->reloadLegacy($f);
+        $this->purgeCache($f);
+        self::assertNotSame(
+            self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($f['planId']),
+            $legacy->getSnapshotHash(),
+            'une équipe ajoutée depuis la génération : le planning reste périmé',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -138,6 +203,86 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         $tester->execute($options);
 
         return $tester;
+    }
+
+    /**
+     * Une 2ᵉ version née avant le correctif : son snapshot porte la séance NONE de la 1ʳᵉ version, et
+     * son hash la compte. Snapshot pris par le VRAI builder, sur la structure qui existe encore.
+     *
+     * @return array{clubId: string, seasonId: string, planId: string, scheduleId: string, legacyHash: string, snapshot: array<string, mixed>}
+     */
+    private function seedLegacyVersion(): array
+    {
+        $uid = uniqid('', true);
+        $club = (new Club)->setName('Legacy Club')->setSlug('legacy-' . $uid)
+            ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true)
+            ->setFfbbClubCode('LGC' . strtoupper(substr(md5($uid), 0, 8)));
+        $this->em->persist($club);
+        $this->em->flush();
+        $this->scopeGucToClub($club->getId());
+
+        $season = (new Season)->setClubId($club->getId())->setName('2025-2026')
+            ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))
+            ->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($season);
+        $this->em->flush();
+
+        $this->seedTeam($club->getId(), $season->getId(), self::TEAM_ID, 'Seniors A');
+        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Platane')
+            ->setCanSplit(false)->setSource('manual');
+        $venue->setId(self::VENUE_ID);
+        $this->em->persist($venue);
+
+        $planId = $this->seasonPlanIdOf($season);
+        $first = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('V1')->setStatus(ScheduleStatus::COMPLETED);
+        $first->setSchedulePlanId($planId);
+        $this->em->persist($first);
+        $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setScheduleId($first->getId())->setTeamId(self::TEAM_ID)->setVenueId(self::VENUE_ID)
+            ->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
+            ->setLockLevel(LockLevel::NONE));
+        $this->em->flush();
+
+        $f = ['clubId' => $club->getId(), 'seasonId' => $season->getId(), 'planId' => $planId];
+        $this->purgeCache($f);
+        $snapshot = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($club->getId(), $season->getId());
+        self::assertContains('NONE', array_column($snapshot['slotTemplates'], 'lockLevel'), 'témoin : le snapshot d\'avant le correctif compte la séance du solveur');
+        $legacyHash = hash('sha256', json_encode($snapshot, \JSON_THROW_ON_ERROR));
+
+        $second = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('V2')->setStatus(ScheduleStatus::COMPLETED)
+            ->setSnapshotData($snapshot)->setSnapshotHash($legacyHash);
+        $second->setSchedulePlanId($planId);
+        $this->em->persist($second);
+        $this->em->flush();
+
+        return [...$f, 'scheduleId' => $second->getId(), 'legacyHash' => $legacyHash, 'snapshot' => $snapshot];
+    }
+
+    private function seedTeam(string $clubId, string $seasonId, string $id, string $name): void
+    {
+        $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)
+            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
+        $team->setId($id);
+        $this->em->persist($team);
+    }
+
+    /** @param array{clubId: string, seasonId: string, scheduleId: string} $f */
+    private function reloadLegacy(array $f): Schedule
+    {
+        $this->em->clear();
+        $this->scopeGucToClub($f['clubId']);
+        $schedule = $this->em->getRepository(Schedule::class)->find($f['scheduleId']);
+        self::assertInstanceOf(Schedule::class, $schedule);
+
+        return $schedule;
+    }
+
+    /** @param array{clubId: string, seasonId: string} $f */
+    private function purgeCache(array $f): void
+    {
+        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId']));
     }
 
     /**
