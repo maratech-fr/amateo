@@ -435,8 +435,11 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     // Le champ (rôle spinbutton = <input type="number">) est pré-rempli avec la valeur du FICHIER (3).
     const field = screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SM1") });
     expect(field).toHaveValue(3);
-    // L'indication « actuellement N » (clé centralisée), jamais la phrase recopiée.
-    expect(screen.getByText(T.sessionsCurrent(2))).toBeInTheDocument();
+    // E6 (disposition en COLONNES) — « actuellement N » n'est plus un texte VISIBLE sous la ligne : il
+    // vit dans l'INFOBULLE du champ Séances (title/aria-describedby). La promesse « l'équipe appariée
+    // montre ses séances actuelles » se vérifie donc par la DESCRIPTION ACCESSIBLE du champ, toujours
+    // par la CLÉ `sessionsCurrent` (jamais la phrase recopiée).
+    expect(field).toHaveAccessibleDescription(new RegExp(T.sessionsCurrent(2)));
     // Plus de case à cocher de séances sur la ligne.
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 
