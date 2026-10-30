@@ -1831,3 +1831,70 @@ describe("ParcImportModal — étape Séances communes : composition corrigée (
     expect(screen.getByRole("button", { name: /Importer/ })).toHaveAttribute("aria-disabled", "true");
   });
 });
+
+/**
+ * ─────────── PR A lot 2 (essai fondateur 30/10) — Ignorer visible aux étapes de la modale ───────────
+ * TANK écrit ROUGE (option A), NEO implémente :
+ *  - E4 : à l'étape Séances communes, une ligne mise en « Ignorer » est BARRÉE (`line-through`) et
+ *         GRISÉE (`text-muted-foreground`) — D9 étendu (aujourd'hui le libellé reste `text-foreground`).
+ *  - E5 : à l'étape Équipes, une ligne IGNORÉE n'affiche plus son champ « Séances » éditable (ni Rang
+ *         ni Genre — ces deux-là ne naissent que sur « Créer », déjà le cas). Aujourd'hui le champ
+ *         « Séances » se rend quel que soit la décision (`ParcImportModal.tsx:1091`, non conditionné à `ignored`).
+ * E2 (réservation en alerte de budget GARDÉE bloque Importer) : DÉJÀ couvert — le blocage D13 est
+ * générique sur les sections de CASE (`ParcImportModal.tsx:449-459`, `:727` `pendingAlerteCode`), il
+ * inclut les réservations. CITÉ, pas dédoublé (le chemin « alerte gardée bloque » n'a pas de test
+ * dédié : une garde VERTE serait utile — signalé au rapport, hors périmètre « rouges »).
+ */
+describe("ParcImportModal — PR A lot 2 (Ignorer barré · champ Séances masqué)", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
+  const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
+  const decisionTrigger = (libelle: string) => (accessibleName: string) => accessibleName.startsWith(T.decisionFor(libelle));
+
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepPaste as unknown as string) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+
+  const goToStep = async (user: ReturnType<typeof userEvent.setup>, section: "equipes" | "gymnases" | "mutualisations" | "reservations"): Promise<void> => {
+    await user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) }));
+  };
+
+  it("E4 — une séance commune mise en « Ignorer » est barrée et grisée", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({
+      mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })],
+    });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    // Précondition : la ligne est gardée, son libellé n'est pas barré.
+    const before = screen.getByText("U11M1 + U11M2");
+    expect(before.className).not.toContain("line-through");
+
+    // On bascule la ligne en « Ignorer » (contrôle segmenté Garder/Ignorer).
+    await user.click(screen.getByRole("button", { name: T.mutualIgnore as unknown as string }));
+
+    const after = screen.getByText("U11M1 + U11M2");
+    expect(after.className, "une ligne ignorée est barrée (D9 étendu)").toContain("line-through");
+    expect(after.className, "une ligne ignorée est grisée").toContain("text-muted-foreground");
+  });
+
+  it("E5 — une ligne Équipes IGNORÉE n'affiche plus de champ Séances éditable", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer", { seances: 2 })] }));
+
+    // Précondition : gardée → le champ « Séances » (spinbutton) est présent.
+    expect(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") })).toBeInTheDocument();
+
+    // On IGNORE la ligne via son sélecteur de décision.
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("SF1") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
+
+    // Le champ Séances disparaît ; Rang/Genre ne naissent que sur « Créer » (donc déjà absents ici).
+    expect(screen.queryByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") }), "pas de champ Séances sur une ligne ignorée (E5)").not.toBeInTheDocument();
+  });
+});
