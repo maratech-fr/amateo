@@ -236,7 +236,7 @@ final class VenueDetachFfbbApiTest extends WebTestCase
 
         return array_values(array_filter(
             [...$repository->findBy(['venueAId' => $venueId]), ...$repository->findBy(['venueBId' => $venueId])],
-            static fn (VenueTravelTime $row): bool => null !== $row->getDrivingMinutes() || null !== $row->getWalkingMinutes() || null !== $row->getDrivingSource() || null !== $row->getWalkingSource(),
+            static fn (VenueTravelTime $row): bool => null !== $row->getDrivingMinutes() || null !== $row->getWalkingMinutes() || $row->getDrivingSource() instanceof VenueTravelTimeSource || $row->getWalkingSource() instanceof VenueTravelTimeSource,
         ));
     }
 
