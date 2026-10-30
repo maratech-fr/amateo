@@ -197,7 +197,7 @@ final class VenueDetachFfbbApiTest extends WebTestCase
      */
     private function put(User $user, string $venueId, array $payload): void
     {
-        $this->client->request('PUT', '/api/venues/' . $venueId, [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode($payload, \JSON_THROW_ON_ERROR));
+        $this->client->request('PUT', '/api/venues/' . $venueId, [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode(['source' => 'manual'] + $payload, \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful((string) $this->client->getResponse()->getContent());
     }
 
