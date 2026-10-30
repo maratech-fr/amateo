@@ -1076,8 +1076,9 @@ final class ParcImportExecuteTest extends WebTestCase
     // (Les gardes d'ÉCRITURE — occupation, cap, chevauchement — restent fail-fast, non agrégées.)
     // Et le libellé « séance commune n°X » remplace « mutualisation n°X » (les CLÉS du contrat restent
     // `mutualisations`). Deux angles VOULUS du même domaine sensible (pipeline d'import) : l'agrégation
-    // (testTheResolutionRefusalAggregatesFaultsAcrossSectionsNamingTeamAndCase) ⇄ le libellé
-    // (testAMutualisationFaultSaysSeanceCommuneNotMutualisation). Jumeau ANALYSE : ParcImportAnalyzeTest.
+    // (testTheResolutionRefusalAggregatesFaultsAcrossSectionsNamingTeamAndCase) ⇄ le nommage des lignes
+    // (testSeanceCommuneFaultNamesItsLineNeverByNumber, testReservationFaultNamesItsLineNeverByNumber,
+    // E3). Jumeau ANALYSE : ParcImportAnalyzeTest.
 
     public function testTheResolutionRefusalAggregatesFaultsAcrossSectionsNamingTeamAndCase(): void
     {
@@ -1112,18 +1113,23 @@ final class ParcImportExecuteTest extends WebTestCase
         $joined = implode(' || ', $errors);
         self::assertStringContainsString('SM shooting', $joined, 'une faute nomme l\'équipe de la séance commune');
         self::assertStringContainsString('U13M1', $joined, 'l\'autre faute nomme l\'équipe de la réservation');
+        // E3 — chaque faute agrégée NOMME sa ligne (type + case + gymnase), jamais « n°X ».
+        self::assertStringNotContainsString('n°', $joined, 'E3 : plus jamais « n°X » dans un message agrégé');
+        self::assertStringContainsString('Séance commune', $joined, 'E3 : la faute de bloc se nomme « Séance commune … »');
+        self::assertStringContainsString('Réservation', $joined, 'E3 : la faute de réservation se nomme « Réservation … »');
+        self::assertStringContainsString('Léon Jouhaux', $joined, 'E3 : le gymnase de la case est nommé');
 
         self::assertSame($teamsBefore, $this->rowCount('team'), 'tout-ou-rien : aucune équipe écrite');
         self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'tout-ou-rien : aucun bloc écrit');
         self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'tout-ou-rien : aucune réservation écrite');
     }
 
-    public function testAMutualisationFaultSaysSeanceCommuneNotMutualisation(): void
+    public function testSeanceCommuneFaultNamesItsLineNeverByNumber(): void
     {
-        // D7 — le libellé serveur d'une faute de séance commune dit « séance commune n°X » et NOMME
-        // l'équipe introuvable, jamais le « Mutualisation n°X : Une équipe … introuvable » opaque de
-        // l'incident ALAP. Les CLÉS du contrat (`mutualisations` en recap/sections/décisions) ne
-        // changent PAS. ROUGE aujourd'hui : {@see ParcImportExecutor::LABEL_MUTUALISATIONS} = « mutualisation ».
+        // E3 (ex-D7, ADAPTÉ — je suis propriétaire de ce test) — une faute de séance commune se NOMME
+        // « Séance commune SF1 + SM shooting · lundi 20:30 · Léon Jouhaux », jamais « séance commune n°X »
+        // ni « Mutualisation n°X ». Heure au format HH:MM. Les CLÉS du contrat (`mutualisations`) ne
+        // changent pas. ROUGE sur fc13679db : {@see ParcImportExecutor::fail} préfixe encore « %s n°%d ».
         $this->makeTeam('SF1', sessionsPerWeek: 2);
         $this->scopeGucToClub($this->club->getId());
 
@@ -1135,9 +1141,33 @@ final class ParcImportExecuteTest extends WebTestCase
         [$status, $body] = $this->import($parc, $decisions);
         self::assertSame(422, $status);
         $joined = implode(' || ', $body['errors'] ?? []);
-        self::assertStringContainsString('séance commune', $joined, 'le libellé humain dit « séance commune »');
-        self::assertStringContainsString('SM shooting', $joined, 'le message NOMME l\'équipe introuvable');
-        self::assertStringNotContainsString('utualisation n', $joined, 'plus de « Mutualisation n°X » dans un message serveur');
+        self::assertStringContainsString('Séance commune', $joined, 'E3 : la ligne se nomme « Séance commune … »');
+        self::assertStringContainsString('SM shooting', $joined, 'le message NOMME l\'équipe en cause (dans la composition)');
+        self::assertStringContainsString('Léon Jouhaux', $joined, 'E3 : le gymnase de la case est nommé');
+        self::assertStringContainsString('20:30', $joined, 'E3 : l\'heure est au format HH:MM');
+        self::assertStringNotContainsString('n°', $joined, 'E3 : plus jamais « n°X » dans un message serveur');
+    }
+
+    public function testReservationFaultNamesItsLineNeverByNumber(): void
+    {
+        // E3 — une faute de réservation (équipe introuvable) se NOMME « Réservation U13M1 · … · Léon
+        // Jouhaux », jamais « réservation n°X ». ROUGE sur fc13679db : {@see ParcImportExecutor::fail}.
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U13M1']],
+        ]);
+        // « U13M1 » non cochée à l'étape Équipes → introuvable à l'écriture de SA réservation (cochée).
+        $decisions = [['section' => 'reservations', 'index' => 0, 'coche' => true]];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(422, $status);
+        $joined = implode(' || ', $body['errors'] ?? []);
+        self::assertStringContainsString('Réservation', $joined, 'E3 : la ligne se nomme « Réservation … »');
+        self::assertStringContainsString('U13M1', $joined, 'E3 : l\'équipe est nommée');
+        self::assertStringContainsString('Léon Jouhaux', $joined, 'E3 : le gymnase est nommé');
+        self::assertStringContainsString('18:00', $joined, 'E3 : l\'heure est au format HH:MM');
+        self::assertStringNotContainsString('n°', $joined, 'E3 : plus jamais « n°X » dans un message serveur');
     }
 
     protected function setUp(): void
