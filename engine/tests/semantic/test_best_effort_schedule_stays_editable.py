@@ -311,3 +311,54 @@ def test_removing_a_session_then_placing_it_outside_a_held_rule_is_accepted_and_
 
     assert verdict["valid"] is True, verdict["violations"]
     _assert_flagged(verdict, "Vendredi imposé")
+
+
+# ── Geste relevé à l'écran : un refus nomme TOUJOURS sa règle ───────────────────────────────────────
+
+
+def _seniors_before_younger() -> dict[str, Any]:
+    """Le décor de l'écran : Seniors A a perdu son vendredi, la seule case libre est lundi 18:00, juste avant
+    Minimes (19:30). Les âges rendent ce lundi contraire à « les plus jeunes d'abord », règle implicite dure."""
+    return make_payload(
+        teams=[
+            {**_named("T", "Seniors A"), "ageMin": 35, "ageMax": 99},
+            {**_named("U", "Cadets"), "ageMin": 15, "ageMax": 16},
+            {**_named("X", "Minimes"), "ageMin": 13, "ageMax": 14},
+        ],
+        venues=[make_venue("V", [(1, "18:00"), (1, "19:30"), (FRIDAY, "18:00")])],
+        constraints=[_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé")],
+        slot_templates=[_pin("U", "V", FRIDAY)],
+    )
+
+
+def test_a_hand_placement_refused_by_the_age_order_names_that_rule_and_both_teams() -> None:
+    """La règle levée n'y est pour rien : c'est l'ordre des âges qui refuse. Le refus le dit, avec les deux
+    équipes. Aujourd'hui : ``unknown_hard_conflict``, « une règle qui n'a pas pu être nommée »."""
+    baseline = _generated(_seniors_before_younger())
+    assert [t["dayOfWeek"] for t in baseline["slotTemplates"] if t["teamId"] == "X"] == [1], "décor : Minimes lundi"
+    baseline["slotTemplates"] = [
+        {**t, "startTime": "19:30"} if t["teamId"] == "X" else t for t in baseline["slotTemplates"]
+    ]
+
+    verdict = _verdict(baseline, _case("T", "V", 1), None)
+
+    assert verdict["valid"] is False
+    assert "unknown_hard_conflict" not in {v["rule"] for v in verdict["violations"]}, verdict["violations"]
+    message = " ".join(v["message"] for v in verdict["violations"])
+    assert "Seniors A" in message and "Minimes" in message, message
+
+
+def test_the_same_hand_placement_passes_and_is_flagged_when_the_age_order_is_only_preferred() -> None:
+    """TÉMOIN : l'ordre des âges est bien la seule cause. Assoupli, la pose hors règle levée est permise et
+    signalée, comme le fondateur l'a décidé."""
+    payload = _seniors_before_younger()
+    payload["implicitRules"] = {"ageAscending": {"intensity": "PREFERRED"}}
+    baseline = _generated(payload)
+    baseline["slotTemplates"] = [
+        {**t, "startTime": "19:30"} if t["teamId"] == "X" else t for t in baseline["slotTemplates"]
+    ]
+
+    verdict = _verdict(baseline, _case("T", "V", 1), None)
+
+    assert verdict["valid"] is True, verdict["violations"]
+    _assert_flagged(verdict, "Vendredi imposé")
