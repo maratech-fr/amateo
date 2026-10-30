@@ -175,7 +175,7 @@ def test_person_locked_in_two_venues_at_once_completes_with_a_diagnostic() -> No
     result = solve_payload(payload)
 
     assert result["status"] == "completed"
-    conflicts = [d for d in result["diagnostics"] if d.get("type") == "conflict"]
+    conflicts = [d for d in result["diagnostics"] if d.get("type") == "rule_sacrificed"]
     messages = " || ".join(str(d.get("message", "")) for d in conflicts)
     assert conflicts, f"la personne dans deux gymnases doit être diagnostiquée : {result['diagnostics']}"
     assert "Mara" in messages, f"la personne doit être nommée : {messages}"

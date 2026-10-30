@@ -235,7 +235,7 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit doit exister');
         self::assertStringContainsString('SM1', $result);
         self::assertStringContainsString('Vendredi imposé', $result);
-        self::assertMatchesRegularExpression('/r[ée]servation/i', $result);
+        self::assertMatchesRegularExpression('/r[ée]servation/iu', $result);
         self::assertDoesNotMatchRegularExpression('/relâch|sacrifi/i', $result, 'la règle n\'est pas relâchée');
     }
 

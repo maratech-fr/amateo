@@ -5,6 +5,7 @@ import contextlib
 import ctypes
 import ctypes.util
 import logging
+import math
 import multiprocessing
 import re
 import resource
@@ -433,40 +434,25 @@ async def build_schedule(
             )
 
             # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — 3ᵉ solve
-            # « best-effort ». Déclenché SEULEMENT après un INFEASIBLE et SEULEMENT si des verrous
-            # sont présents. On ne relâche QUE des blocs de mutualisation que le noyau d'infaisabilité
-            # (hypothèses du solve diagnostique) désigne — et JAMAIS un bloc SUR-ÉPINGLÉ par ses
-            # PROPRES verrous (``exclusives > commonSessions`` : une contradiction de configuration
-            # qui reste un échec NOMMÉ, pas une privation par réservation). La SONDE DE CAUSALITÉ
-            # (verrous libérés → faisable ?) confirme qu'un verrou est bien la cause directe : sinon
-            # (règle-contre-règle, règle-contre-grille) on ne touche à rien — « la réservation est la
-            # SEULE exception ». Si un verrou est la cause, on relâche ce(s) bloc(s), les verrous
-            # restent durs, le planning est PRODUIT. Reste dans le sémaphore (séquentiel), borné.
+            # « best-effort », SEULEMENT après un INFEASIBLE et SEULEMENT si des verrous sont présents.
+            # Détail et garde-fous : `_best_effort_solve`. Reste dans le sémaphore, borné.
             if diag_ran_to_infeasible and model.locked_slots:
-                relax_keys = _lock_caused_relax_keys(diag_model, diag_solver, data)
-                if relax_keys and await _locks_are_the_cause(data, input_data):
-                    be_status, be_solver, be_model, be_conflicts, be_stats = await asyncio.to_thread(
-                        _solve,
-                        data,
-                        input_data,
-                        assumptions_enabled=True,
-                        relax_source_keys=relax_keys,
-                        budget_override=BEST_EFFORT_SOLVE_MAX_SECONDS,
+                best_effort = await _best_effort_solve(data, input_data, diag_model, diag_solver)
+                if best_effort is not None:
+                    # Le best-effort a abouti : il DEVIENT le résultat. Statut completed, verrous tenus,
+                    # écarts nommés par le builder. Le message d'infaisabilité n'a plus lieu d'être.
+                    solver_status, solver, model, conflicts, solve_stats, sacrificed_source_keys = best_effort
+                    diagnostic_model = diagnostic_solver = None
+                    logger.info(
+                        "sovereign reservation best-effort produced a schedule club=%s relaxed=%d",
+                        input_data.club_id,
+                        len(sacrificed_source_keys),
                     )
-                    if be_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-                        # Le best-effort a abouti : il DEVIENT le résultat. Statut completed, verrous
-                        # tenus, règle(s) sacrifiée(s) nommée(s) (``sacrificed_source_keys``). On ne
-                        # passe plus le modèle diagnostique (son message d'infaisabilité n'a plus lieu
-                        # d'être — le planning est produit).
-                        solver, model, solver_status = be_solver, be_model, be_status
-                        conflicts, solve_stats = be_conflicts, be_stats
-                        sacrificed_source_keys = relax_keys
-                        diagnostic_model = diagnostic_solver = None
-                        logger.info(
-                            "sovereign reservation best-effort produced a schedule club=%s sacrificed=%d",
-                            input_data.club_id,
-                            len(relax_keys),
-                        )
+
+    # Aucun planning produit : rien n'a été « sacrifié », le signal historique reste (une réservation
+    # qui contredit une règle sur un échec est une information, pas un écart du planning).
+    if solver_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        conflicts = [_as_not_honored_info(conflict) for conflict in conflicts]
 
     result_dict = build_result(
         data,
@@ -524,7 +510,7 @@ CHAINING_PHASE_MAX_SECONDS = 10
 DIAGNOSTIC_SOLVE_MAX_SECONDS = 15
 
 # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — budget du 3ᵉ solve
-# « best-effort » : quand un VERROU HARD rend une règle dure insatisfiable, ce solve RELÂCHE cette
+# « best-effort » : quand un VERROU HARD rend une règle dure insatisfiable, ce solve lève cette
 # règle (et elle seule), tient le verrou, et PRODUIT le planning. Décision fondateur Q2 : 60 s.
 # S'il n'aboutit pas dans ce budget, le chemin ``failed`` reste inchangé (jamais un demi-planning).
 BEST_EFFORT_SOLVE_MAX_SECONDS = 60
@@ -644,6 +630,7 @@ def _solve(
     # à l'échec la MÊME question « un coach de l'union est-il libre ici ? » que la pose (helper
     # UNIQUE `constraints.availability`), sans re-parser les contraintes.
     model.coach_unavailability = parsed["coach_unavailability"]
+    model.parsed_rules = parsed
 
     # (La famille FACILITY_CAPACITY rabotait ici la capacité d'un gymnase entier
     # à `maxTeams`. RETIRÉE le 2026-08-08 : aucun chemin UI ne la créait, zéro
@@ -766,6 +753,12 @@ def _solve(
         max_sessions = team.get("sessions_per_week") or team.get("sessionsPerWeek")
         if team_id and max_sessions:
             remaining_by_team[str(team_id)] = max(0, int(max_sessions) - locked_slots_by_team.get(team_id, 0))
+    # Réservation souveraine — une règle de demande levée : la séance qu'elle exigeait reste non placée,
+    # elle ne part jamais ailleurs. Vide hors best-effort (chemin byte-identique).
+    for demand in model.relaxed_demands:
+        demand_team = str(demand["teamId"])
+        if demand_team in remaining_by_team:
+            remaining_by_team[demand_team] = max(0, remaining_by_team[demand_team] - int(demand["sessions"]))
 
     for team_id, team_vars in assignments_by_team.items():
         remaining = remaining_by_team.get(str(team_id))
@@ -979,20 +972,75 @@ def _solve(
     return status, solver, model, conflicts, solve_stats
 
 
+# Les règles de DEMANDE (« il faut une séance ICI ») que le best-effort peut lever. Les règles de
+# FERMETURE (indisponibilité, fenêtre, jour interdit…) ne sont JAMAIS levées : une séance ne se place
+# jamais hors de sa règle, elle reste non placée. Le jour imposé et le plancher retirent la séance
+# correspondante du quota de l'équipe à la pose (`relaxed_demands`).
+_RELAXABLE_KEY_PREFIXES = ("shared_block:", "forced_day:", "session_floor:")
+
+
+async def _best_effort_solve(
+    data: dict[str, Any],
+    input_data: ScheduleInputSchema,
+    diagnostic_model: ScheduleCpModel,
+    diagnostic_solver: cp_model.CpSolver,
+) -> tuple[int, cp_model.CpSolver, ScheduleCpModel, list[dict[str, Any]], dict[str, Any], frozenset[str]] | None:
+    """Réservation souveraine : lève les règles de demande du noyau d'infaisabilité et PRODUIT le
+    planning, ou rend ``None`` (le chemin ``failed`` reste inchangé, jamais un demi-planning).
+
+    La SONDE DE CAUSALITÉ (verrous libérés → faisable ?) passe d'abord : sinon le conflit est
+    règle-contre-règle ou règle-contre-grille, on ne touche à rien. Le noyau rendu par CP-SAT n'est
+    qu'UN sous-ensemble suffisant : si le solve reste infaisable, son propre noyau désigne les règles
+    suivantes. S'il ne désigne plus aucune règle de demande, l'impossibilité ne tient pas à une
+    réservation et le résultat reste ``failed``. Budget total : ``BEST_EFFORT_SOLVE_MAX_SECONDS``."""
+    started = time.perf_counter()
+    relax_keys: frozenset[str] = frozenset()
+    core_model, core_solver = diagnostic_model, diagnostic_solver
+    while True:
+        new_keys = _lock_caused_relax_keys(core_model, core_solver, data) - relax_keys
+        if not new_keys:
+            return None
+        if not relax_keys and not await _locks_are_the_cause(data, input_data):
+            return None
+        relax_keys |= new_keys
+        remaining = BEST_EFFORT_SOLVE_MAX_SECONDS - (time.perf_counter() - started)
+        if remaining <= 0:
+            return None
+        status, solver, model, conflicts, stats = await asyncio.to_thread(
+            _solve,
+            data,
+            input_data,
+            assumptions_enabled=True,
+            relax_source_keys=relax_keys,
+            budget_override=math.ceil(remaining),
+        )
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return status, solver, model, conflicts, stats, relax_keys
+        if status != cp_model.INFEASIBLE:
+            return None
+        core_model, core_solver = model, solver
+
+
+def _as_not_honored_info(conflict: dict[str, Any]) -> dict[str, Any]:
+    """Le signal historique d'une réservation qui contredit une règle, quand aucun planning ne sort."""
+    if conflict.get("type") != "rule_sacrificed":
+        return conflict
+    return {**conflict, "type": "constraint_not_honored", "severity": "INFO"}
+
+
 def _lock_caused_relax_keys(
     diagnostic_model: ScheduleCpModel,
     diagnostic_solver: cp_model.CpSolver,
     data: dict[str, Any],
 ) -> frozenset[str]:
-    """Les BLOCS de mutualisation du NOYAU d'infaisabilité que le best-effort relâchera (réservation
-    souveraine). Volontairement ÉTROIT : on ne relâche QUE des règles de bloc (``shared_block:<id>``),
-    jamais une règle source quelconque — les cas du besoin fondateur (ALAP) sont tous des blocs dont
-    un verrou prend la seule case commune.
+    """Les règles de DEMANDE du NOYAU d'infaisabilité que le best-effort lèvera (réservation
+    souveraine) : blocs de mutualisation, jours imposés, planchers de gymnase. Jamais une règle de
+    fermeture, jamais une règle hors du noyau.
 
     Le solve diagnostique a instrumenté chaque règle source d'une littérale d'hypothèse (registre
     ``assumption_literals`` : clé SOURCE → littérale). ``SufficientAssumptionsForInfeasibility()``
     rend les INDEX des littérales d'un sous-ensemble SUFFISANT : les retirer rend le modèle faisable.
-    On inverse index → clé, on garde les clés de BLOC, et on EXCLUT tout bloc SUR-ÉPINGLÉ par ses
+    On inverse index → clé, on garde ces familles, et on EXCLUT tout bloc SUR-ÉPINGLÉ par ses
     PROPRES verrous (``exclusives > commonSessions``) : celui-là n'est pas PRIVÉ d'une case par une
     réservation, ses verrous se contredisent — il reste un échec NOMMÉ (``shared_block_not_honored``),
     jamais un sacrifice. Vide ⇒ pas de best-effort (le planning reste ``failed`` et expliqué)."""
@@ -1004,7 +1052,10 @@ def _lock_caused_relax_keys(
     core_keys = {index_to_key[idx] for idx in core_indices if idx in index_to_key}
     overpinned = _overpinned_block_ids(data)
     return frozenset(
-        key for key in core_keys if key.startswith("shared_block:") and key.split(":", 1)[1] not in overpinned
+        key
+        for key in core_keys
+        if key.startswith(_RELAXABLE_KEY_PREFIXES)
+        and not (key.startswith("shared_block:") and key.split(":", 1)[1] in overpinned)
     )
 
 
@@ -1039,7 +1090,7 @@ def _overpinned_block_ids(data: dict[str, Any]) -> set[str]:
         pinned_teams_by_case.setdefault(case, set()).add(team)
 
     # Une case est EXCLUSIVE à un bloc si elle ne liste QUE lui (blocs imbriqués partageant une case
-    # ⇒ exclusive à aucun, jamais sur-épinglés — non-régression du cas BCCL).
+    # ⇒ exclusive à aucun, jamais sur-épinglés).
     fully_pinned_here: dict[tuple[str, str, str], list[int]] = {}
     for case, teams in pinned_teams_by_case.items():
         positions = [pos for pos, (_bid, members, _cs) in enumerate(valid) if members <= teams]

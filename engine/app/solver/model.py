@@ -110,6 +110,13 @@ class ScheduleCpModel(cp_model.CpModel):
         # il n'a pas de littérale, il est cuit dans le modèle). Vide (défaut) ⇒ aucune relaxation :
         # le solve nominal ET le solve diagnostique restent byte-identiques à `main`.
         self.relaxed_source_keys: frozenset[str] = frozenset()
+        # Réservation souveraine — les règles de DEMANDE (jour imposé, plancher de gymnase) relâchées
+        # par le best-effort : la règle n'est pas contournée, la séance qu'elle exigeait reste NON
+        # placée (`_solve` retire `sessions` du quota de l'équipe). Lues par le diagnostic.
+        self.relaxed_demands: list[dict[str, Any]] = []
+        # Le résultat de `parse_v2_constraints`, posé par `_solve` : le diagnostic post-solve y lit si
+        # une case prise par un verrou était compatible avec les règles de l'équipe, sans re-parser.
+        self.parsed_rules: Mapping[str, Any] = {}
         # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1), peuplé
         # UNIQUEMENT quand `assumptions_enabled` (modèle diagnostique). Une littérale par clé de
         # source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase imposé/interdit,

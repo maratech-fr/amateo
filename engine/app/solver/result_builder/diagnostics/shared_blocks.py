@@ -620,104 +620,60 @@ def _coachless_case_count(cases: list[tuple[int, int]], union: list[str], rules:
 
 def _diagnose_sacrificed_rules(
     model_data: Mapping[str, Any] | Any,
-    model: Any,
     sacrificed_source_keys: frozenset[str],
 ) -> list[dict[str, Any]]:
-    """Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — NOMME chaque
-    règle dure que le 3ᵉ solve « best-effort » a SACRIFIÉE parce qu'un VERROU la rend insatisfiable.
-
-    « La réservation gagne envers tout, mais c'est la SEULE exception. » Le planning est PRODUIT, le
-    verrou tenu, et la règle relâchée est signalée en ``rule_sacrificed`` (severity WARNING, jamais
-    une erreur bloquante). Deux familles de clé SOURCE relâchées :
-
-      * ``shared_block:<id>`` — la mutualisation d'un bloc : on NOMME ses équipes (jamais
-        d'identifiant interne) et on dit que la réservation l'emporte. C'est le cas des réservations
-        ALAP (grille réservée, la seule case commune du bloc prise par une équipe tierce).
-      * toute autre règle source — on reprend son LIBELLÉ depuis le registre d'hypothèses du modèle
-        (``assumption_sources``) pour ne jamais relâcher une règle en silence.
-
-    ``model`` absent / sans registre (doubles de test) ⇒ les règles non-bloc dégradent au kind seul.
-    """
+    """Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — NOMME chaque groupe
+    que le best-effort a privé de sa mutualisation parce qu'un VERROU d'une autre équipe occupe sa
+    case : le groupe, l'équipe qui réserve, le jour et l'heure. Le planning est PRODUIT, le verrou
+    tenu, l'écart signalé en ``rule_sacrificed`` (severity WARNING, jamais une erreur bloquante)."""
     if not sacrificed_source_keys:
         return []
 
     team_names = _team_name_map(model_data)
-    blocks = list(_collection(model_data, "sharedBlocks", "shared_blocks"))
-    block_by_key: dict[str, tuple[list[str], int]] = {}
-    for index, block in enumerate(blocks):
-        members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
-        if len(members) < 2:
+    venue_names = _venue_name_map(model_data)
+    concrete_cases = _concrete_candidate_cases(model_data)
+    pinned_teams_by_case: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    for pin in _collection(model_data, "slotTemplates", "slot_templates"):
+        if _get(pin, "lockLevel", "lock_level", default=None) != "HARD":
             continue
-        block_id = str(_get(block, "id", default=index) or index)
-        common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
-        block_by_key[f"shared_block:{block_id}"] = (members, common_sessions)
-
-    # Registre index-de-littérale → cause (kind/constraintId/label), pour nommer les règles NON-bloc.
-    assumption_literals: Mapping[str, Any] = getattr(model, "assumption_literals", None) or {}
-    assumption_sources: Mapping[int, Any] = getattr(model, "assumption_sources", None) or {}
-    cause_by_key: dict[str, Mapping[str, Any]] = {}
-    for key, literal in assumption_literals.items():
-        try:
-            cause_by_key[key] = assumption_sources.get(int(literal.Index())) or {}
-        except AttributeError, TypeError:  # pragma: no cover - littérale sans Index (double de test)
-            continue
+        case = (
+            str(_get(pin, "venueId", "venue_id", default="")),
+            str(_get(pin, "dayOfWeek", "day_of_week", default="")),
+            str(_get(pin, "startTime", "start_time", default=""))[:5],
+        )
+        pinned_teams_by_case[case].add(str(_get(pin, "teamId", "team_id", default="")))
 
     diagnostics: list[dict[str, Any]] = []
-    for key in sorted(sacrificed_source_keys):
-        if key in block_by_key:
-            members, common_sessions = block_by_key[key]
-            names = _named_list(members, team_names)
-            sessions = _sessions_phrase(common_sessions)
-            message = (
-                f"Le groupe {names} ne peut pas tenir {sessions} : une réservation occupe la seule case "
-                "où réunir ses équipes. La réservation est tenue ; la mutualisation du groupe est relâchée."
-            )
-            diagnostics.append(
-                {
-                    "id": f"rule-sacrificed-{key}",
-                    "type": "rule_sacrificed",
-                    "severity": "WARNING",
-                    "message": message,
-                    "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": 1}],
-                    "suggestions": [
-                        "Libérez la case réservée ou déplacez la réservation si vous voulez que le groupe se réunisse.",
-                    ],
-                    "createdAt": datetime.now(UTC).isoformat(),
-                }
-            )
+    for index, block in enumerate(_collection(model_data, "sharedBlocks", "shared_blocks")):
+        members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
+        block_id = str(_get(block, "id", default=index) or index)
+        key = f"shared_block:{block_id}"
+        if len(members) < 2 or key not in sacrificed_source_keys:
             continue
-
-        cause = cause_by_key.get(key) or {}
-        label = cause.get("label")
-        if label:
-            message = (
-                f"La règle « {label} » n'a pas pu être honorée : une réservation occupe le créneau qu'elle "
-                "impose. La réservation est tenue ; la règle est relâchée."
-            )
-        else:
-            message = (
-                "Une règle n'a pas pu être honorée : une réservation occupe le créneau qu'elle impose. "
-                "La réservation est tenue ; la règle est relâchée."
-            )
-        constraint_id = cause.get("constraintId")
-        diagnostics.append(
-            {
-                "id": f"rule-sacrificed-{key}",
-                "type": "rule_sacrificed",
-                "severity": "WARNING",
-                "message": message,
-                "causes": [
-                    {
-                        "kind": str(cause.get("kind") or "hard_lock"),
-                        "constraintId": constraint_id,
-                        "label": label,
-                        "count": 1,
-                    }
-                ],
-                "suggestions": [
-                    "Libérez la case réservée ou déplacez la réservation si vous voulez que cette règle s'applique.",
-                ],
-                "createdAt": datetime.now(UTC).isoformat(),
-            }
-        )
+        member_set = set(members)
+        blocked = [
+            (venue_id, day, start_hhmm[:5], frozenset(pins))
+            for venue_id, day, start_hhmm, _start_min, _duration in concrete_cases
+            if (pins := pinned_teams_by_case.get((venue_id, str(day), start_hhmm[:5]))) and not (pins & member_set)
+        ]
+        names = _named_list(members, team_names)
+        sessions = _sessions_phrase(int(_get(block, "commonSessions", "common_sessions", default=0) or 0))
+        detail = f" ({_format_locked_cases(blocked, team_names, venue_names)})" if blocked else ""
+        diagnostic: dict[str, Any] = {
+            "id": f"rule-sacrificed-{key}",
+            "type": "rule_sacrificed",
+            "severity": "WARNING",
+            "message": (
+                f"Le groupe {names} ne peut pas tenir {sessions} : une réservation occupe la case où "
+                f"réunir ses équipes{detail}. La réservation est tenue ; la mutualisation du groupe est relâchée."
+            ),
+            "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": max(1, len(blocked))}],
+            "suggestions": [
+                "Libérez la case réservée ou déplacez la réservation si vous voulez que le groupe se réunisse.",
+            ],
+            "createdAt": datetime.now(UTC).isoformat(),
+        }
+        if len(blocked) == 1:
+            diagnostic.update({"venueId": blocked[0][0], "dayOfWeek": blocked[0][1], "startTime": blocked[0][2]})
+        diagnostics.append(diagnostic)
     return diagnostics

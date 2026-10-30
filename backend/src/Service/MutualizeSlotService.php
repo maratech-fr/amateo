@@ -67,6 +67,7 @@ final class MutualizeSlotService
         private readonly SoloReservationBudget $soloReservationBudget,
         private readonly ScheduleProgressPublisher $progressPublisher,
         private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
+        private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
     ) {}
 
     /**
@@ -385,6 +386,15 @@ final class MutualizeSlotService
         // CAPACITÉ : après le geste, le bloc tient la case en UNE occupation + les séances des équipes
         // non-membres déjà posées (patron assertCaseHasRoom).
         $this->assertCaseHasRoom($schedule, $members, $venueId, $dayOfWeek, $startTime, $planId, $clubId, $seasonId);
+
+        // Décision fondateur 2026-10-30 — les anciens blocs perdent une séance commune : refusé s'il leur
+        // resterait moins de séances que de cases réservées. On refuse plutôt que de retirer une
+        // réservation en silence.
+        foreach ([$sourceBlockId, $targetBlockId] as $oldBlockId) {
+            if (null !== $oldBlockId) {
+                $this->assertOldBlockKeepsItsReservations($oldBlockId);
+            }
+        }
 
         // La case SOURCE qui sera libérée (bandeau côté UI) — celle du créneau source.
         $freedSourceCase = [
@@ -737,5 +747,21 @@ final class MutualizeSlotService
         }
 
         return null;
+    }
+
+    private function assertOldBlockKeepsItsReservations(string $blockId): void
+    {
+        $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($blockId);
+        if (!$block instanceof SharedTrainingBlock) {
+            return;
+        }
+        $memberSet = [];
+        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $blockId]) as $row) {
+            $memberSet[$row->getTeamId()] = true;
+        }
+        $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount($memberSet, $block->getSchedulePlanId());
+        if ($reservedSessions > $block->getCommonSessions() - 1) {
+            throw new MutualizationRefusedException(ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions));
+        }
     }
 }

@@ -40,6 +40,7 @@ const CAUSE_KIND_LABELS: Record<DiagnosticCauseKind, string> = {
   shared_block: "un bloc mutualisé",
   team_link: "une passerelle entre équipes",
   travel_time: "un temps de trajet trop court",
+  min_sessions: "la réservation d'une autre équipe",
 };
 
 // Kind inconnu → `null` : on affiche le compte SANS phrase inventée, jamais le code brut.
@@ -185,7 +186,9 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
     // (`diag-locked-team-day-*` volontairement ; `implicit_rule_not_honored`, autre type) ne passent
     // pas ici : elles retombent sur le repli plus bas — surlignage large (resserré au jour), jamais
     // d'ouverture.
-    if ("conflict" === diagnostic.type && null !== diagnostic.dayOfWeek && null !== diagnostic.startTime) {
+    // `rule_sacrificed` (réservation souveraine) reprend ce geste : il remplace le `conflict` de personne
+    // et porte les coordonnées de la case réservée.
+    if (("conflict" === diagnostic.type || "rule_sacrificed" === diagnostic.type) && null !== diagnostic.dayOfWeek && null !== diagnostic.startTime) {
       const concerned = concernedSlots(diagnostic, slots, lookups);
       onHighlight(new Set(concerned.map((c) => c.slotId)));
       const cells = new Set(
@@ -268,7 +271,7 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                               contrainte (`?step=constraints&edit=<id>`, rail ConstraintsStep). Pas
                               d'id → pas de lien (jamais de lien mort). `openCandidates > 0` a sa
                               propre phrase : des créneaux étaient DISPONIBLES, pas une cause. */}
-                          {"session_below_effective_min" === item.type || ("conflict" === item.type && (item.causes?.length ?? 0) > 0) ? (
+                          {"session_below_effective_min" === item.type || (("conflict" === item.type || "rule_sacrificed" === item.type || "blocked_by_reservation" === item.type) && (item.causes?.length ?? 0) > 0) ? (
                             <div className="flex flex-col gap-1 px-3 pb-1.5">
                               {item.causes.map((cause, index) => (
                                 <div key={`${cause.kind}-${cause.constraintId ?? "none"}-${index}`} className="flex flex-col gap-0.5">

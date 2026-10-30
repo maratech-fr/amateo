@@ -75,6 +75,9 @@ class DiagnosticCauseSchema(SerializableModel):
         # par une RÈGLE — ils vivent dans la même liste ``causes`` par commodité de contrat).
         "slot_absent",
         "displaced",
+        # Réservation souveraine — une séance demandée reste non placée, la réservation d'une autre
+        # équipe occupant la dernière case possible, sans autre règle en cause.
+        "min_sessions",
     ]
     constraint_id: str | None = Field(default=None, alias="constraintId")
     label: str | None = None
@@ -106,6 +109,10 @@ class DiagnosticSchema(SerializableModel):
         # SEULE exception à « aucun fallback de relaxation » : ne relâche QUE les règles qu'un
         # verrou bloque directement (gardé par le garde-fou `test_a_rule_conflict_not_caused_by_a_lock`).
         "rule_sacrificed",
+        # Réservation souveraine (décision fondateur 2026-10-30) : la réservation d'une AUTRE équipe
+        # prend la seule case compatible. La règle TIENT, la séance reste NON placée, le planning est
+        # produit (severity WARNING). Distinct de ``rule_sacrificed``, où la règle est relâchée.
+        "blocked_by_reservation",
         # Lot PASSERELLES PR-2 — deux équipes déclarées passerelle (partage de joueurs) ont des
         # séances qui se chevauchent dans le temps : SOFT concédé (PREFERRED) ou verrous HARD qui
         # se chevauchent sur une MANDATORY (jamais INFEASIBLE muet — CLAUDE.md §6).

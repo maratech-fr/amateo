@@ -259,7 +259,8 @@ export type DiagnosticCauseKind =
   | "session_floor"
   | "shared_block"
   | "team_link"
-  | "travel_time";
+  | "travel_time"
+  | "min_sessions";
 
 /** Une cause MESURÉE (pas re-dérivée) d'un créneau fermé pour l'équipe. Le backend a
  *  déjà ramené `constraintId` à l'UUID de l'entité (il avait suffixé les CLUB→TEAM) : c'est

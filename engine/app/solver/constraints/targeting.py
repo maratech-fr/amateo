@@ -297,9 +297,18 @@ def add_time_window_constraints(
             # `causes: []`. On NE RELÂCHE PAS pour autant la règle du jour imposé : le
             # `sum(forced_day_vars) >= 1` ci-dessous reste posé (= `0 >= 1`), donc la génération
             # RESTE infaisable — mais sa cause est désormais dite (décision fondateur 2026-10-03).
+            team_forced_sources = forced_sources.get(team_id_text)
+            forced_key = (
+                _source_key("forced_day", team_forced_sources[0][0], f"{team_id_text}:{team_forced_sources[0][2]}")
+                if team_forced_sources
+                else None
+            )
+            forced_is_relaxed = forced_key in getattr(model, "relaxed_source_keys", ())
             closures = getattr(model, "candidate_closures", None) or {}
-            if forced_day_vars and all(
-                (idx := _closure_index(var)) is not None and idx in closures for var in forced_day_vars
+            if (
+                not forced_is_relaxed
+                and forced_day_vars
+                and all((idx := _closure_index(var)) is not None and idx in closures for var in forced_day_vars)
             ):
                 closing_labels = sorted(
                     {
@@ -338,14 +347,26 @@ def add_time_window_constraints(
             # contrainte source nommée, `constraintId`/`label` la pointent ; le MESSAGE la cite par
             # son libellé réel et le front la rend cliquable.
             forced_literal = None
-            team_forced_sources = forced_sources.get(team_id_text)
-            if team_forced_sources:
-                src_id, src_label, src_index = team_forced_sources[0]
+            if team_forced_sources and forced_key is not None:
+                src_id, src_label, _src_index = team_forced_sources[0]
                 forced_literal = _assume(
                     model,
-                    _source_key("forced_day", src_id, f"{team_id_text}:{src_index}"),
+                    forced_key,
                     {"kind": "day_forced", "constraintId": src_id, "label": src_label},
                 )
+                if forced_is_relaxed:
+                    # Réservation souveraine — la règle n'est pas contournée : la séance qu'elle
+                    # exigeait reste NON placée (jamais déportée un autre jour).
+                    model.relaxed_demands.append(
+                        {
+                            "teamId": team_id_text,
+                            "kind": "day_forced",
+                            "constraintId": src_id,
+                            "label": src_label,
+                            "sessions": 1,
+                            "days": set(forced_day_set),
+                        }
+                    )
             forced_constraint = model.Add(sum(forced_day_vars) >= 1)
             if forced_literal is not None:
                 forced_constraint.OnlyEnforceIf(forced_literal)
@@ -458,7 +479,15 @@ def add_venue_minimum_constraints(
             and str(slot_key[1]) == venue_id
         } - locked_days
 
-        if len(team_venue_days) < effective_min:
+        # Réservation souveraine — le plancher n'est inatteignable QUE parce que le verrou d'une autre
+        # équipe occupe la case : on le pose quand même. L'INFEASIBLE qui en résulte passe par la sonde
+        # de causalité puis le best-effort (la séance reste non placée, jamais déportée ailleurs).
+        lock_taken_days = {
+            slot_key[2]
+            for slot_key in (getattr(model, "lock_removed_candidates", None) or {})
+            if str(slot_key[0]) == team_id and str(slot_key[1]) == venue_id
+        }
+        if len(team_venue_days | (lock_taken_days - locked_days)) < effective_min:
             conflicts.append(
                 {
                     "id": f"venue_minimum_unreachable-{team_id}-{venue_id}",
@@ -481,11 +510,23 @@ def add_venue_minimum_constraints(
         # d'infaisabilité quand son `sum >= N` ne peut être honoré. Neutre sur un solve abouti
         # (littérale toujours assumée vraie) ; modèle nu (tests de pose) ⇒ `_assume` renvoie None et
         # la contrainte reste INCONDITIONNELLE (chemin byte-identique).
+        floor_key = _source_key("session_floor", floor_constraint_id, f"{team_id}:{venue_id}")
         floor_literal = _assume(
             model,
-            _source_key("session_floor", floor_constraint_id, f"{team_id}:{venue_id}"),
+            floor_key,
             {"kind": "session_floor", "constraintId": floor_constraint_id, "label": floor_label},
         )
+        if floor_key in getattr(model, "relaxed_source_keys", ()):
+            model.relaxed_demands.append(
+                {
+                    "teamId": team_id,
+                    "kind": "session_floor",
+                    "constraintId": floor_constraint_id,
+                    "label": floor_label,
+                    "sessions": effective_min,
+                    "venueId": venue_id,
+                }
+            )
         floor_constraint = model.Add(sum(team_venue_vars) >= effective_min)
         if floor_literal is not None:
             floor_constraint.OnlyEnforceIf(floor_literal)

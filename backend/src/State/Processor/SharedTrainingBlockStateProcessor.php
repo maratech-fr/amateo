@@ -39,6 +39,14 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
 
     private SoloReservationBudget $soloReservationBudget;
 
+    private ReservationGroupOccupancy $reservationGroupOccupancy;
+
+    #[Required]
+    public function setReservationGroupOccupancy(ReservationGroupOccupancy $reservationGroupOccupancy): void
+    {
+        $this->reservationGroupOccupancy = $reservationGroupOccupancy;
+    }
+
     #[Required]
     public function setSoloReservationBudget(SoloReservationBudget $soloReservationBudget): void
     {
@@ -240,6 +248,14 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         if ([] !== $overflow) {
             sort($overflow);
             $this->refuse(\sprintf('Cette mutualisation ferait passer des créneaux individuels existants au-dessus du résidu autorisé pour : %s. Retirez ces réservations individuelles avant de mutualiser.', implode(', ', $overflow)));
+        }
+
+        // Décision fondateur 2026-10-30 — un groupe ne garde jamais moins de séances communes que de
+        // cases réservées pour lui, ni à la création, ni en baissant le nombre, ni en retirant un membre
+        // (la case {a,b} devient complète quand {a,b,c} perd c).
+        $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($teamIds, true), $planId);
+        if ($reservedSessions > $commonSessions) {
+            $this->refuse(ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions));
         }
 
         // Deux blocs au MÊME ensemble d'équipes dans la même portée sèmeraient la confusion : 422.

@@ -439,12 +439,24 @@ final class ReservationGroupOccupancy
     }
 
     /**
+     * Le refus d'un geste qui laisserait un groupe avec moins de séances communes que de cases réservées
+     * (décision fondateur 2026-10-30) : la génération suivante sortirait en échec. Une seule phrase,
+     * partagée par l'écran, la mutualisation et l'import.
+     */
+    public static function belowReservedSessionsMessage(int $reservedSessions): string
+    {
+        return 1 === $reservedSessions
+            ? '1 séance commune est réservée pour ce groupe. Retire d\'abord une réservation.'
+            : \sprintf('%d séances communes sont réservées pour ce groupe. Retire d\'abord une réservation.', $reservedSessions);
+    }
+
+    /**
      * Combien de cases de cette portée sont « bloc-complètes » pour CE jeu de membres : l'ensemble
      * des équipes réservées sur la case est EXACTEMENT l'ensemble des membres.
      *
      * @param array<string, true> $memberSet
      */
-    private function groupCompleteCaseCount(array $memberSet, ?string $schedulePlanId): int
+    public function groupCompleteCaseCount(array $memberSet, ?string $schedulePlanId): int
     {
         $cases = [];
         foreach (self::reservationsOnGroupCompleteCases($this->reservationsInScope($schedulePlanId), $memberSet) as $reservation) {

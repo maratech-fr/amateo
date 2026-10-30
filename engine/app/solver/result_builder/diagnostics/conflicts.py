@@ -266,7 +266,7 @@ def _diagnose_conflicts(
     # Ce qui reste un conflit : gymnases DIFFÉRENTS et intervalles qui se chevauchent — y
     # compris pour la MÊME équipe (elle ne peut pas être à deux endroits non plus). Le
     # doublon même-équipe/même-gymnase (artefact de template dupliqué) reste, lui, muet.
-    coach_slots: dict[tuple[str, int], list[tuple[int, int, str, str, str]]] = defaultdict(list)
+    coach_slots: dict[tuple[str, int], list[tuple[int, int, str, str, str, bool]]] = defaultdict(list)
     for slot in slots:
         coach_id = slot.get("coachId")
         if not coach_id:
@@ -280,14 +280,15 @@ def _diagnose_conflicts(
                 str(slot["teamId"]),
                 str(slot["venueId"]),
                 str(slot["startTime"]),
+                str(slot.get("lockLevel") or "NONE").upper() == "HARD",
             ),
         )
 
     for (clash_coach, clash_day), clash_booked in sorted(coach_slots.items()):
         ordered = sorted(clash_booked)
         seen_pairs: set[tuple[str, str]] = set()
-        for i, (a_start, a_end, a_team, a_venue, a_raw) in enumerate(ordered):
-            for b_start, b_end, b_team, b_venue, _b_raw in ordered[i + 1 :]:
+        for i, (a_start, a_end, a_team, a_venue, a_raw, a_hard) in enumerate(ordered):
+            for b_start, b_end, b_team, b_venue, _b_raw, b_hard in ordered[i + 1 :]:
                 if a_venue == b_venue:
                     continue  # même gymnase : le coach n'y est qu'une fois (D-14)
                 if not (a_start < b_end and b_start < a_end):
@@ -297,11 +298,22 @@ def _diagnose_conflicts(
                     continue
                 seen_pairs.add(pair)
                 when = f"{_day_label(clash_day)} {_time_range(a_raw, a_end - a_start)}"
+                # Une réservation en cause : un seul message (décision fondateur 2026-10-30). Le
+                # chemin sans verrou garde son signal historique.
+                reservation_at_stake = a_hard or b_hard
+                signal: dict[str, Any] = (
+                    {
+                        "type": "rule_sacrificed",
+                        "severity": "WARNING",
+                        "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": 2}],
+                    }
+                    if reservation_at_stake
+                    else {"type": "conflict", "severity": "ERROR"}
+                )
                 diagnostics.append(
                     {
                         "id": f"diag-conflict-coach-{clash_coach}-{clash_day}-{a_raw}",
-                        "type": "conflict",
-                        "severity": "ERROR",
+                        **signal,
                         "coachId": clash_coach,
                         "dayOfWeek": clash_day,
                         # P4-95 lot 8, décision D — même défaut latent que ``diag-locked-person-*`` :

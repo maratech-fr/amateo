@@ -61,6 +61,9 @@ final class DiagnosticMessageBuilder
             // (préféré) ; message vide ⇒ on compose le texte gestionnaire (équipe + règle + le fait
             // qu'une réservation a gagné). « La réservation gagne envers tout, mais c'est la SEULE exception. »
             'rule_sacrificed' => '' !== $engineMessage ? $engineMessage : $this->buildRuleSacrificed($diagnostic, $teamNames),
+            // Décision fondateur 2026-10-30 — la réservation d'une AUTRE équipe prend la seule case
+            // compatible : la règle tient, la séance reste non placée. Message moteur préféré.
+            'blocked_by_reservation' => '' !== $engineMessage ? $engineMessage : $this->buildBlockedByReservation($diagnostic, $teamNames),
             // PR 6 (lot 8) — « Garder ses créneaux de saison » : le moteur émet déjà le message
             // nommé (« SM1 : 2/3 créneaux de saison conservés. Non conservés : … »), on le préfère.
             'season_slots_kept' => '' !== $engineMessage ? $engineMessage : 'Des créneaux de saison n\'ont pas pu être conservés.',
@@ -152,6 +155,31 @@ final class DiagnosticMessageBuilder
             $rule,
             $ofTeam,
         );
+    }
+
+    /**
+     * Le repli d'une séance privée de case par la réservation d'une autre équipe : nomme l'équipe et la
+     * règle (LIBELLÉ de la première cause), et dit que la règle tient : elle n'est pas contournée.
+     *
+     * @param array<string, mixed>  $diagnostic
+     * @param array<string, string> $teamNames
+     */
+    private function buildBlockedByReservation(array $diagnostic, array $teamNames): string
+    {
+        $teamId = $this->extractId($diagnostic, 'teamId', 'team_id');
+        $teamName = null !== $teamId ? ($teamNames[$teamId] ?? $teamId) : 'une équipe';
+
+        $label = '';
+        foreach (\is_array($diagnostic['causes'] ?? null) ? $diagnostic['causes'] : [] as $cause) {
+            $candidate = \is_array($cause) ? trim((string) ($cause['label'] ?? '')) : '';
+            if ('' !== $candidate) {
+                $label = $candidate;
+                break;
+            }
+        }
+        $rule = '' !== $label ? \sprintf('la règle « %s »', $label) : 'ses règles';
+
+        return \sprintf('Séance non placée pour %s : la réservation d\'une autre équipe occupe la seule case compatible avec %s.', $teamName, $rule);
     }
 
     /**
