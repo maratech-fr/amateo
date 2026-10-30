@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { buttonVariants } from "@/shared/components/ui/button-variants";
+import { cn } from "@/shared/lib/utils";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -840,7 +841,7 @@ function VenuesEditor() {
                   <Menu
                     label={WIZARD_TEXTS.associateVenueMenu(selected.name)}
                     trigger={WIZARD_TEXTS.associateVenueMenu(selected.name)}
-                    triggerClassName={buttonVariants({ variant: "outline", size: "sm" })}
+                    triggerClassName={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-foreground")}
                   >
                     {associableSalles.map((salle) => (
                       <MenuItem key={salle.externalRef} onSelect={() => setPendingAssociate({ salle, venue: selected })}>
