@@ -79,6 +79,9 @@ final class ParcImportExecutor
     /** Catégorie « repère » d'une équipe importée sans catégorie — jamais un rattachement muet. */
     private const string UNFILED_CATEGORY = 'À classer';
 
+    /** E3 — jour ISO (1-7) → nom en toutes lettres, pour NOMMER une ligne dans un message serveur. */
+    private const array DAY_NAMES = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
+
     /** @var array<string, string> nom normalisé → venueId (créés dans ce run OU résolus) */
     private array $venueByName = [];
 
@@ -158,6 +161,12 @@ final class ParcImportExecutor
 
         $derived = $this->deriver->derive($parc);
         $index = $this->indexDecisions($decisions);
+        // PR A lot 2 (E1) — AVANT toute écriture : une séance commune dont la composition est redéfinie
+        // (`corrections.equipes`) recompte les `seances` des équipes ajoutées/retirées, pour que les
+        // équipes CRÉÉES naissent avec le bon nombre (1 indiv + N communes) et que la garde de budget
+        // individuel ne refuse pas leur réservation. Une valeur `corrections.seances` posée à la main
+        // l'emporte toujours ({@see sessionsOf}).
+        $this->applyCompositionSessions($derived, $index);
         // Ambiguïté gymnase jugée AVANT toute écriture (rien n'est encore persisté ici) : snapshot de
         // l'état d'avant l'import, comme le pool d'équipes.
         $this->venueAmbiguousByIndex = $this->snapshotVenueAmbiguity($derived);
@@ -346,7 +355,7 @@ final class ParcImportExecutor
                 : $this->venueIdForName($this->stringField($entry, 'gymnase'));
             if (null === $venueId) {
                 // D4 — résolution introuvable AGRÉGÉE (pas une garde d'écriture) : on collecte et on saute.
-                $this->collectResolution('creneaux', $i, \sprintf('le gymnase « %s » est introuvable.', $this->stringField($entry, 'gymnase')), $entry);
+                $this->collectResolution('creneaux', $entry, \sprintf('le gymnase « %s » est introuvable.', $this->stringField($entry, 'gymnase')));
                 ++$recap['ignores'];
 
                 continue;
@@ -434,7 +443,7 @@ final class ParcImportExecutor
                 foreach ($this->stringList($entry['equipes'] ?? null) as $name) {
                     $id = $this->teamIdForName($name);
                     if (null === $id) {
-                        $this->collectResolution('mutualisations', $i, \sprintf('l\'équipe « %s » est introuvable.', $name), $entry);
+                        $this->collectResolution('mutualisations', $entry, \sprintf('l\'équipe « %s » est introuvable.', $name));
                         $missing = true;
                     } else {
                         $teamIds[] = $id;
@@ -584,7 +593,7 @@ final class ParcImportExecutor
             $teamId = $this->teamIdForName($this->stringField($entry, 'equipe'));
             if (null === $teamId) {
                 // D4 — résolution introuvable AGRÉGÉE (pas une garde d'écriture) : on collecte et on saute.
-                $this->collectResolution('reservations', $i, \sprintf('l\'équipe « %s » est introuvable.', $this->stringField($entry, 'equipe')), $entry);
+                $this->collectResolution('reservations', $entry, \sprintf('l\'équipe « %s » est introuvable.', $this->stringField($entry, 'equipe')));
                 ++$recap['ignores'];
 
                 continue;
@@ -594,7 +603,7 @@ final class ParcImportExecutor
                 ? $this->ownedVenue($decision['cibleId'], $club, $seasonId, 'reservations', $i)->getId()
                 : $this->venueIdForName($this->stringField($entry, 'gymnase'));
             if (null === $venueId) {
-                $this->collectResolution('reservations', $i, \sprintf('le gymnase « %s » est introuvable.', $this->stringField($entry, 'gymnase')), $entry);
+                $this->collectResolution('reservations', $entry, \sprintf('le gymnase « %s » est introuvable.', $this->stringField($entry, 'gymnase')));
                 ++$recap['ignores'];
 
                 continue;
@@ -626,6 +635,7 @@ final class ParcImportExecutor
                     null,
                     $club->getId(),
                     $seasonId,
+                    'import',
                 );
             } catch (UnprocessableEntityHttpException $exception) {
                 $this->fail('reservations', $i, $exception->getMessage());
@@ -840,30 +850,133 @@ final class ParcImportExecutor
     }
 
     /**
-     * D4 — collecte un refus de RÉSOLUTION (introuvable), nommant la section, le rang, la case et le
-     * détail. Agrégé et levé en fin de transaction par {@see import}.
+     * PR A lot 2 (E1) — AVANT l'écriture : si une séance commune redéfinit sa composition
+     * (`corrections.equipes`), substitue les équipes LUES par la composition REDÉFINIE (en NOMS,
+     * `import:<index>` → nom de la ligne Équipes dérivée, UUID → nom de l'équipe du club) puis recompte
+     * `seances`/`seances_communes` ({@see ParcCaseDeriver::recomputeDerivedSessions}). Ainsi une équipe
+     * ajoutée à la séance commune NAÎT avec le bon nombre de séances (1 indiv + N communes), et la garde
+     * de budget individuel ne refuse plus sa réservation. Une composition < 2 résolues est laissée telle
+     * quelle (l'abus est refusé plus loin par {@see resolveCorrectedEquipes}).
+     *
+     * @param array<string, mixed>                                                                                                                      $derived
+     * @param array<string, array<int, array{coche: bool, creer: bool, cibleId: string|null, venueId: string|null, corrections: array<string, mixed>}>> $index
      */
-    private function collectResolution(string $section, int $index, string $detail, mixed $entry): void
+    private function applyCompositionSessions(array &$derived, array $index): void
     {
-        $this->resolutionErrors[] = \sprintf('%s n°%d%s : %s', $this->sectionLabel($section), $index + 1, $this->caseContext($entry), $detail);
+        $mutualisations = $derived['mutualisations'] ?? null;
+        if (!\is_array($mutualisations)) {
+            return;
+        }
+        $equipesLines = \is_array($derived['equipes'] ?? null) ? $derived['equipes'] : [];
+        $changed = false;
+        foreach ($index['mutualisations'] ?? [] as $i => $decision) {
+            if (!isset($mutualisations[$i]) || !\is_array($mutualisations[$i])) {
+                continue;
+            }
+            $equipes = $decision['corrections']['equipes'] ?? null;
+            if (!\is_array($equipes)) {
+                continue;
+            }
+            $names = $this->compositionNames($equipes, $equipesLines);
+            if (\count($names) < 2) {
+                continue;
+            }
+            $mutualisations[$i]['equipes'] = $names;
+            $changed = true;
+        }
+        if ($changed) {
+            $derived['mutualisations'] = $mutualisations;
+            /** @var array{gymnases: list<array{nom: string}>, equipes: list<array{nom: string, genre: ?string, categorie: string, seances: int}>, creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>, reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>, mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>, alertes: list<array{type: string, message: string}>} $typed */
+            $typed = $derived;
+            $this->deriver->recomputeDerivedSessions($typed);
+            $derived = $typed;
+        }
     }
 
     /**
-     * Le contexte lisible d'une case dans un message de résolution : « (SF1 + SM shooting) » pour une
-     * séance commune, « (U13M1) » pour une réservation, rien si illisible.
+     * Résout une composition `corrections.equipes` en NOMS : `import:<index>` → nom de la ligne Équipes
+     * dérivée, UUID → nom de l'équipe du club (RLS tenant ; une équipe étrangère ne charge pas). Les
+     * entrées non résolues sont omises. Sert UNIQUEMENT au recompte des séances (le membership réel du
+     * bloc se résout en IDS par {@see resolveCorrectedEquipes}).
+     *
+     * @param array<array-key, mixed> $entries
+     * @param array<array-key, mixed> $equipesLines
+     *
+     * @return list<string>
      */
-    private function caseContext(mixed $entry): string
+    private function compositionNames(array $entries, array $equipesLines): array
     {
-        if (!\is_array($entry)) {
-            return '';
-        }
-        $teams = $this->stringList($entry['equipes'] ?? null);
-        if ([] !== $teams) {
-            return ' (' . implode(' + ', $teams) . ')';
-        }
-        $equipe = $this->stringField($entry, 'equipe');
+        $names = [];
+        foreach ($entries as $entry) {
+            if (!\is_string($entry) || '' === trim($entry)) {
+                continue;
+            }
+            $entry = trim($entry);
+            if (str_starts_with($entry, 'import:')) {
+                $n = substr($entry, 7);
+                if (1 === preg_match('/^\d+$/', $n) && isset($equipesLines[(int) $n])) {
+                    $nom = $this->stringField($equipesLines[(int) $n], 'nom');
+                    if ('' !== $nom) {
+                        $names[] = $nom;
+                    }
+                }
 
-        return '' !== $equipe ? ' (' . $equipe . ')' : '';
+                continue;
+            }
+            $team = $this->entityManager->find(Team::class, $entry);
+            if ($team instanceof Team) {
+                $names[] = $team->getName();
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * D4 + E3 — collecte un refus de RÉSOLUTION (introuvable), nommant la LIGNE (type + case + gymnase),
+     * JAMAIS « n°X ». Agrégé et levé en fin de transaction par {@see import}.
+     */
+    private function collectResolution(string $section, mixed $entry, string $detail): void
+    {
+        $this->resolutionErrors[] = \sprintf('%s : %s', $this->lineName($section, $entry), $detail);
+    }
+
+    /**
+     * E3 (essai fondateur 30/10) — NOMME une ligne dans un message serveur, jamais « n°X » :
+     * « Séance commune SF1 + SM1 + SM2 · lundi 20:30 · Léon Jouhaux », « Réservation U13M1 · mardi
+     * 18:00 · Léon Jouhaux », « Créneau <gymnase> · <jour> <HH:MM> », « Équipe <nom> », « Gymnase <nom> ».
+     * Heure au format HH:MM (telle que lue). Jour en toutes lettres (foyer {@see self::DAY_NAMES}).
+     */
+    private function lineName(string $section, mixed $entry): string
+    {
+        $e = \is_array($entry) ? $entry : [];
+        $when = $this->whenSuffix($e);
+        $venue = $this->stringField($e, 'gymnase');
+        $venueSuffix = '' !== $venue ? ' · ' . $venue : '';
+
+        return match ($section) {
+            'mutualisations' => 'Séance commune ' . implode(' + ', $this->stringList($e['equipes'] ?? null)) . $when . $venueSuffix,
+            'reservations' => 'Réservation ' . $this->stringField($e, 'equipe') . $when . $venueSuffix,
+            'creneaux' => trim('Créneau ' . $venue . $when),
+            'equipes' => trim('Équipe ' . $this->stringField($e, 'nom')),
+            'gymnases' => trim('Gymnase ' . $this->stringField($e, 'nom')),
+            default => $this->sectionLabel($section),
+        };
+    }
+
+    /**
+     * « · lundi 20:30 » depuis `jour`/`debut` d'une case (vide si illisibles). Heure brute (déjà HH:MM).
+     *
+     * @param array<string, mixed> $entry
+     */
+    private function whenSuffix(array $entry): string
+    {
+        $jour = \is_int($entry['jour'] ?? null) ? $entry['jour'] : null;
+        $debut = $this->stringField($entry, 'debut');
+        $day = null !== $jour ? (self::DAY_NAMES[$jour] ?? '') : '';
+        $parts = array_values(array_filter([$day, $debut], static fn (string $p): bool => '' !== $p));
+
+        return [] === $parts ? '' : ' · ' . implode(' ', $parts);
     }
 
     // ───────────────────────────── Idempotence ─────────────────────────────
@@ -1334,9 +1447,14 @@ final class ParcImportExecutor
         return ['crees' => 0, 'apparies' => 0, 'misAJour' => 0, 'ignores' => 0];
     }
 
+    /**
+     * E3 — une faute fail-fast NOMME sa section (jamais « n°X ») ; le corps du message nomme l'entité
+     * en cause. `$index` n'est plus dans le texte (gardé pour la signature stable des appelants).
+     */
     private function fail(string $section, int $index, string $message): never
     {
-        throw new UnprocessableEntityHttpException(\sprintf('%s n°%d : %s', $this->sectionLabel($section), $index + 1, $message));
+        unset($index);
+        throw new UnprocessableEntityHttpException(\sprintf('%s : %s', $this->sectionLabel($section), $message));
     }
 
     private function sectionLabel(string $section): string

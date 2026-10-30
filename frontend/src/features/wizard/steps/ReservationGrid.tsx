@@ -26,6 +26,13 @@ interface Props {
    * groupe) : « Complet · Groupe <A> + <B> », jamais le compteur « 2/1 ». Vide par défaut.
    */
   blockCompleteSlots?: ReadonlySet<string>;
+  /**
+   * E11 (essai fondateur 30/10) — slotKey → NOM du groupe (le `label` du bloc, DISTINCT de
+   * `slot.groupLabel` qui est le libellé de CRÉNEAU P2-17). Quand il existe, une case bloc-complète se
+   * nomme « Complet · <nom> » ; sinon « Complet · Groupe ». Les équipes ne sont PLUS répétées dans
+   * cette première ligne (elles paraissent une seule fois en dessous). Vide par défaut.
+   */
+  blockLabels?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -34,7 +41,7 @@ interface Props {
  * not create them), and each slot shows the team(s) reserved on it + its
  * remaining capacity, click → the assign modal.
  */
-export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capacityOf, onSelectSlot, closures = [], blockCompleteSlots }: Props) {
+export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capacityOf, onSelectSlot, closures = [], blockCompleteSlots, blockLabels }: Props) {
   const color = venue.color ?? "var(--accent)";
 
   // Dynamic vertical range: only the hours that actually hold slots for THIS
@@ -87,7 +94,10 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
           // « Complet · Groupe <A> + <B> » (libellé validé fondateur 2026-10-22) à la place du
           // compteur « 2/1 », qui ne vaut que pour des équipes individuelles.
           const blockComplete = blockCompleteSlots?.has(slotKeyOf(slot)) ?? false;
-          const groupComplete = blockComplete ? `Complet · Groupe ${teams.join(" + ")}` : "";
+          // E11 — « Complet · <nom du groupe> » si le bloc porte un label, sinon « Complet · Groupe » ;
+          // JAMAIS les équipes ici (elles paraissent une seule fois dans la ligne du bas).
+          const blockLabel = (blockLabels?.get(slotKeyOf(slot)) ?? "").trim();
+          const groupComplete = blockComplete ? ("" !== blockLabel ? `Complet · ${blockLabel}` : "Complet · Groupe") : "";
           const occupancyText = blockComplete ? groupComplete : `${teams.length}/${capacity} réservé`;
           const dayLabel = WEEK[di]?.label ?? "";
           // P2-17 — libellé de groupe du créneau mutualisé, affiché discrètement (pas de fusion

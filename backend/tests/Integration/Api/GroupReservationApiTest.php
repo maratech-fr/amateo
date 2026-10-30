@@ -514,24 +514,6 @@ final class GroupReservationApiTest extends WebTestCase
         self::assertSame(422, $status, \sprintf('un nom de groupe > %d caractères est refusé (jamais une troncature/500)', SharedTrainingBlock::LABEL_MAX_LENGTH));
     }
 
-    /**
-     * @param array<string, mixed> $payload
-     *
-     * @return array{0: int, 1: array<string, mixed>}
-     */
-    private function postBlockResource(array $payload): array
-    {
-        $this->client->request('POST', '/api/shared_training_blocks', [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
-            'HTTP_X-Season-Id' => $this->season->getId(),
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode($payload, \JSON_THROW_ON_ERROR));
-        $response = $this->client->getResponse();
-        $decoded = json_decode((string) $response->getContent(), true);
-
-        return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
-    }
-
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -573,6 +555,24 @@ final class GroupReservationApiTest extends WebTestCase
         $this->em->flush();
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array{0: int, 1: array<string, mixed>}
+     */
+    private function postBlockResource(array $payload): array
+    {
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'HTTP_X-Season-Id' => $this->season->getId(),
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode($payload, \JSON_THROW_ON_ERROR));
+        $response = $this->client->getResponse();
+        $decoded = json_decode((string) $response->getContent(), true);
+
+        return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
     }
 
     private function rawReservation(string $teamId, string $venueId, int $dayOfWeek, string $startTime, ?string $planId): Reservation

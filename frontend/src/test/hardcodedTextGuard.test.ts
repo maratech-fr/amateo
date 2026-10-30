@@ -92,6 +92,8 @@ const MIGRATED_FILES = [
   "features/wizard/steps/TeamLinksModal.tsx",
   // PR F (P4-279) — migré en même temps que la PR qui pose les toasts trajets ; la migration ne recule jamais.
   "features/wizard/steps/VenuesStep.tsx",
+  // PR A lot 2 (E12) — le panneau « Mutualisation » migré (WIZARD_TEXTS) en ajoutant le champ « Nom du groupe ».
+  "features/wizard/steps/SharedTrainingBlockPanel.tsx",
   // Lot 5 PR E (P4-284) : les 3 écrans dont le `<table>` passe à la primitive sont migrés en même temps.
   "features/wizard/steps/TravelMatrixModal.tsx",
   // Chantier G PR3 — la modale d'import du parc par IA naît migrée (texts.ts de parcImport).

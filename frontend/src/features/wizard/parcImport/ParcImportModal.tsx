@@ -1,4 +1,4 @@
-import { AlertTriangle, Link2 } from "lucide-react";
+import { AlertTriangle, Info, Link2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -1078,9 +1078,14 @@ function DecisionRow({
     <li className="grid items-center gap-x-4 gap-y-0.5 border-b border-border/60 py-1 md:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
         <span className={ignored ? "text-sm font-medium text-muted-foreground line-through" : "text-sm font-medium text-foreground"}>{line.libelle}</span>
-        {/* Défaut C — la raison n'est rendue QU'UNE fois : la ligne ⚠ (ci-dessous) la porte dès qu'on
-            est « à trancher », sinon la ligne grise. Les deux ensemble la doublaient (capture 03-equipes). */}
-        {null === line.raison || pending ? null : <span className="text-xs text-muted-foreground">{line.raison}</span>}
+        {/* E6 (essai fondateur 30/10) — la raison d'une ligne NON « à trancher » vit dans une infobulle
+            ⓘ à côté du nom (le ⚠ reste visible pour une ligne à trancher, branche `pending` ci-dessous) ;
+            elle n'est plus un bloc de texte gris. La raison (donnée serveur) est le nom accessible du repère. */}
+        {null === line.raison || pending ? null : (
+          <span role="img" aria-label={line.raison} title={line.raison} className="inline-flex shrink-0 text-muted-foreground">
+            <Info aria-hidden className="size-3.5" />
+          </span>
+        )}
         {pending ? (
           <span id={reasonId} className="flex items-center gap-1 text-xs text-foreground">
             <AlertTriangle aria-hidden className="size-3.5 text-warning" />
@@ -1090,7 +1095,7 @@ function DecisionRow({
         {/* Retours fondateur 2026-10-26 — « Séances » est un CHAMP éditable (équipes), lisible d'un
             coup d'œil et corrigeable AVANT l'import (ce qui SERA importé) ; « actuellement N » pour une
             équipe appariée. Plus aucune case à cocher de séances. */}
-        {"equipes" === section && undefined !== onSessionChange ? (
+        {"equipes" === section && undefined !== onSessionChange && !ignored ? (
           <label className="flex items-center gap-2 text-xs text-foreground">
             <span>{T.sessionsLabel}</span>
             <Input
@@ -1387,7 +1392,8 @@ function MutualisationsStep({
               <div className="flex flex-wrap items-center gap-2">
                 <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
                 {null === (line.groupe ?? null) || "" === line.groupe ? null : <span className="text-sm font-semibold text-foreground">{line.groupe}</span>}
-                <span className="text-sm font-medium text-foreground">{line.libelle}</span>
+                {/* E4 (essai fondateur 30/10) — une séance commune mise en « Ignorer » est barrée + grisée (D9 étendu). */}
+                <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{line.libelle}</span>
                 {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}
                 {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))} · ${pos.gymnase}`}</span> : null}
               </div>

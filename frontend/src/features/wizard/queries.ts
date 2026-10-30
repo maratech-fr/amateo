@@ -856,7 +856,7 @@ export function useCreateSharedTrainingBlock() {
 export function useUpdateSharedTrainingBlock() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { teamIds: string[]; commonSessions: number } }) => wizardApi.updateSharedTrainingBlock(id, body),
+    mutationFn: ({ id, body }: { id: string; body: { teamIds: string[]; commonSessions: number; label?: string | null } }) => wizardApi.updateSharedTrainingBlock(id, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
       invalidateSoloBudgets(queryClient);

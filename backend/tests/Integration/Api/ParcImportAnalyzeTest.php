@@ -942,27 +942,6 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertStringContainsString('SM1', (string) ($resLine['raison'] ?? ''), 'la raison NOMME l\'équipe');
     }
 
-    /**
-     * @param list<Team> $teams
-     */
-    private function makeBlock(array $teams, int $commonSessions): SharedTrainingBlock
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $block = (new SharedTrainingBlock)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId(null)->setCommonSessions($commonSessions)->setLabel('Groupe');
-        $this->em->persist($block);
-        foreach ($teams as $team) {
-            $member = (new SharedTrainingBlockTeam)
-                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($team->getId());
-            $this->em->persist($member);
-        }
-        $this->em->flush();
-
-        return $block;
-    }
-
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -1001,6 +980,27 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->provisionSeasonPlan($this->season);
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
+    }
+
+    /**
+     * @param list<Team> $teams
+     */
+    private function makeBlock(array $teams, int $commonSessions): SharedTrainingBlock
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $block = (new SharedTrainingBlock)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId(null)->setCommonSessions($commonSessions)->setLabel('Groupe');
+        $this->em->persist($block);
+        foreach ($teams as $team) {
+            $member = (new SharedTrainingBlockTeam)
+                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($team->getId());
+            $this->em->persist($member);
+        }
+        $this->em->flush();
+
+        return $block;
     }
 
     /**

@@ -190,6 +190,11 @@ export function useImportParc(clubId: string) {
       void invalidateEverywhere(queryClient, "teams");
       void invalidateEverywhere(queryClient, "venues");
       void invalidateEverywhere(queryClient, "coaches");
+      // E8 (essai fondateur 30/10) — un import crée aussi des séances communes, des réservations et des
+      // créneaux de gymnases : les rafraîchir PARTOUT, sans quoi ils n'apparaissent qu'au prochain geste.
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "venue_slots"] });
     },
     onError: (error) => void error,
   });

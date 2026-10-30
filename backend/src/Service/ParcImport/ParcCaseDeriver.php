@@ -70,6 +70,49 @@ final class ParcCaseDeriver
     }
 
     /**
+     * PR A lot 2 (E1) — RECOMPTE `equipes[*].seances` et `mutualisations[*].seances_communes` depuis la
+     * structure dérivée COURANTE (après qu'une composition de séance commune a été redéfinie par
+     * `corrections.equipes` côté analyzer/executor). Pur : `seances` d'une équipe = ses réservations
+     * individuelles + les séances communes dont elle est membre ; `seances_communes` = nombre de séances
+     * communes partageant exactement le même ensemble d'équipes. Appelé SEULEMENT après une correction
+     * de composition (jamais sur la dérivation brute, qui a déjà ces comptes justes).
+     *
+     * @param array{gymnases: list<array{nom: string}>, equipes: list<array{nom: string, genre: ?string, categorie: string, seances: int}>, creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>, reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>, mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>, alertes: list<array{type: string, message: string}>} $derived
+     */
+    public function recomputeDerivedSessions(array &$derived): void
+    {
+        // seances par équipe (clé d'identité) : réservations individuelles + appartenances aux séances communes.
+        $sessionsByKey = [];
+        foreach ($derived['reservations'] as $reservation) {
+            $key = $this->teamKey($reservation['equipe']);
+            if ('' !== $key) {
+                $sessionsByKey[$key] = ($sessionsByKey[$key] ?? 0) + 1;
+            }
+        }
+        foreach ($derived['mutualisations'] as $mutualisation) {
+            foreach ($this->stringList($mutualisation['equipes']) as $name) {
+                $key = $this->teamKey($name);
+                if ('' !== $key) {
+                    $sessionsByKey[$key] = ($sessionsByKey[$key] ?? 0) + 1;
+                }
+            }
+        }
+        foreach ($derived['equipes'] as $i => $team) {
+            $derived['equipes'][$i]['seances'] = $sessionsByKey[$this->teamKey($team['nom'])] ?? 0;
+        }
+
+        // seances_communes par ensemble d'équipes.
+        $countBySet = [];
+        foreach ($derived['mutualisations'] as $mutualisation) {
+            $set = $this->teamSetKey($this->stringList($mutualisation['equipes']));
+            $countBySet[$set] = ($countBySet[$set] ?? 0) + 1;
+        }
+        foreach ($derived['mutualisations'] as $i => $mutualisation) {
+            $derived['mutualisations'][$i]['seances_communes'] = $countBySet[$this->teamSetKey($this->stringList($mutualisation['equipes']))] ?? 1;
+        }
+    }
+
+    /**
      * @param array<string, mixed> $parc
      *
      * @return list<array<string, mixed>>

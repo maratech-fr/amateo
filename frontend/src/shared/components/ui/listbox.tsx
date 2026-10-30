@@ -218,10 +218,15 @@ export function Listbox(props: ListboxProps) {
     const below = window.innerHeight - rect.bottom;
     const above = rect.top;
     const dropUp = below < needed && above > below;
+    // E10 (essai fondateur 30/10) — pas de `width` fixe (elle clouait le panneau à la largeur du
+    // déclencheur et TRONQUAIT les options longues « U21M1 (suggéré)… ») : un `minWidth` = largeur du
+    // déclencheur (plancher) laisse le panneau s'élargir au contenu, un `maxWidth` = reste du viewport
+    // le plafonne (troncature CSS en dernier recours, avec `title` sur l'option). `panelMinWidth` reste
+    // un plancher alternatif plus large si l'appelant le demande.
     setPopupStyle({
       left: rect.left,
-      width: rect.width,
-      minWidth: panelMinWidth,
+      minWidth: Math.max(rect.width, panelMinWidth ?? 0),
+      maxWidth: Math.max(0, window.innerWidth - rect.left - POPUP_GAP_PX),
       ...(dropUp ? { bottom: window.innerHeight - rect.top + POPUP_GAP_PX } : { top: rect.bottom + POPUP_GAP_PX }),
     });
   };

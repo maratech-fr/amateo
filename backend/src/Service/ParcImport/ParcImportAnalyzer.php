@@ -15,6 +15,7 @@ use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\PlanEntitlements;
+use App\Service\SoloBudget;
 use App\Service\SoloReservationBudget;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -91,7 +92,7 @@ final class ParcImportAnalyzer
             'equipes' => $this->analyzeTeams($derived['equipes'], $club, $season),
             'creneaux' => $this->analyzeSlots($derived['creneaux']),
             'mutualisations' => $this->analyzeMutualisations($derived['mutualisations'], $club->getId(), $seasonId, $ignoredTeamKeys, $knownTeamKeys),
-            'reservations' => $this->analyzeReservations($derived['reservations'], $derived['creneaux'], $derived['mutualisations'], $ignoredTeamKeys, $knownTeamKeys),
+            'reservations' => $this->analyzeReservations($derived['reservations'], $derived['creneaux'], $derived['mutualisations'], $ignoredTeamKeys, $knownTeamKeys, $club->getId(), $seasonId),
         ];
 
         $recap = [];
@@ -191,7 +192,8 @@ final class ParcImportAnalyzer
             $changed = true;
         }
         if ($changed) {
-            $this->recountCommonSessions($derived['mutualisations']);
+            // E1 — recompte seances (équipes ajoutées/retirées) ET seances_communes depuis la nouvelle composition.
+            $this->deriver->recomputeDerivedSessions($derived);
         }
     }
 
@@ -228,37 +230,6 @@ final class ParcImportAnalyzer
         }
 
         return array_values(array_filter($names, static fn (string $nom): bool => '' !== $nom));
-    }
-
-    /**
-     * Recompte `seances_communes` sur une liste de séances communes : chacune reçoit le nombre de
-     * séances communes partageant exactement le même ensemble d'équipes (clé d'identité `teamKey`).
-     *
-     * @param list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}> $mutualisations
-     */
-    private function recountCommonSessions(array &$mutualisations): void
-    {
-        $countBySet = [];
-        foreach ($mutualisations as $mutualisation) {
-            $key = $this->teamSetKey($this->stringList($mutualisation['equipes']));
-            $countBySet[$key] = ($countBySet[$key] ?? 0) + 1;
-        }
-        foreach ($mutualisations as $i => $mutualisation) {
-            $key = $this->teamSetKey($this->stringList($mutualisation['equipes']));
-            $mutualisation['seances_communes'] = $countBySet[$key] ?? 1;
-            $mutualisations[$i] = $mutualisation;
-        }
-    }
-
-    /**
-     * @param list<string> $teams
-     */
-    private function teamSetKey(array $teams): string
-    {
-        $keys = array_values(array_unique(array_map($this->teamKey(...), $teams)));
-        sort($keys);
-
-        return implode('|', $keys);
     }
 
     /**
@@ -700,7 +671,7 @@ final class ParcImportAnalyzer
      *
      * @return list<array<string, mixed>>
      */
-    private function analyzeReservations(array $reservations, array $slots, array $mutualisations, array $ignoredTeamKeys, array $knownTeamKeys): array
+    private function analyzeReservations(array $reservations, array $slots, array $mutualisations, array $ignoredTeamKeys, array $knownTeamKeys, string $clubId, string $seasonId): array
     {
         $contexts = [];
         $byCase = [];
@@ -739,6 +710,28 @@ final class ParcImportAnalyzer
                 );
 
                 continue;
+            }
+
+            // PR A lot 2 (E2) — garde de budget individuel jouée DÈS l'analyse : une équipe dont tout le
+            // temps de séances est déjà pris par ses groupes (bloc socle) ne peut pas poser de réservation
+            // INDIVIDUELLE → alerte DÉCOCHÉE, code machine dédié `budget_groupe` (la grille bloque Importer).
+            if ('' !== $seasonId) {
+                $teamId = $this->resolveTeamId($equipeName);
+                if (null !== $teamId) {
+                    $budget = $this->soloReservationBudget->forTeam($teamId, $clubId, $seasonId, null);
+                    if ($budget instanceof SoloBudget && $budget->inBlock && 0 === $budget->residual) {
+                        $out[] = $this->line(
+                            $i,
+                            $libelle,
+                            'alerte',
+                            null,
+                            \sprintf('L\'équipe « %s » a tout son temps de séances pris par ses groupes — elle ne peut pas poser de créneau individuel. Augmentez son nombre de séances dans sa fiche.', $equipeName),
+                            $extra + ['alerteCode' => 'budget_groupe'],
+                        );
+
+                        continue;
+                    }
+                }
             }
 
             $contested = null !== $case
