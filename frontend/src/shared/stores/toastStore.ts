@@ -10,6 +10,8 @@ export interface ToastAction {
 
 export interface ToastOptions {
   action?: ToastAction;
+  /** Un nouveau toast de même clé remplace le précédent : son « Annuler » ne vaudrait plus. */
+  replaces?: string;
 }
 
 export interface Toast {
@@ -17,6 +19,7 @@ export interface Toast {
   message: string;
   variant: ToastVariant;
   action?: ToastAction;
+  replaces?: string;
 }
 
 interface ToastState {
@@ -36,7 +39,11 @@ export const useToastStore = create<ToastState>((set, get) => ({
   push: (message, variant = "error", options) => {
     const id = ++seq;
     const action = options?.action;
-    set((s) => ({ toasts: [...s.toasts, { id, message, variant, ...(undefined !== action ? { action } : {}) }] }));
+    const replaces = options?.replaces;
+    if (undefined !== replaces) {
+      get().toasts.filter((t) => t.replaces === replaces).forEach((t) => get().dismiss(t.id));
+    }
+    set((s) => ({ toasts: [...s.toasts, { id, message, variant, ...(undefined !== action ? { action } : {}), ...(undefined !== replaces ? { replaces } : {}) }] }));
     if (typeof window !== "undefined") {
       timers.set(id, window.setTimeout(() => get().dismiss(id), undefined !== action ? ACTION_DISMISS_MS : AUTO_DISMISS_MS[variant]));
     }

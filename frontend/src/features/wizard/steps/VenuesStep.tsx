@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
+import { buttonVariants } from "@/shared/components/ui/button-variants";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -456,13 +457,13 @@ function VenuesEditor() {
   const confirmAssociate = ({ salle, venue }: { salle: FfbbSalle; venue: Venue }) =>
     update.mutate(
       { id: venue.id, body: { name: venue.name, color: venue.color, canSplit: venue.canSplit, isActive: venue.isActive, externalRef: salle.externalRef, latitude: salle.latitude, longitude: salle.longitude } },
-      { onSuccess: () => toast.success(WIZARD_TEXTS.salleLinkedToVenue(salle.name, venue.name), { action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
+      { onSuccess: () => toast.success(WIZARD_TEXTS.salleLinkedToVenue(salle.name, venue.name), { replaces: `venue-anchor-${venue.id}`, action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
     );
 
   const confirmDissociate = (venue: Venue) =>
     update.mutate(
       { id: venue.id, body: { name: venue.name, externalRef: "" } },
-      { onSuccess: () => toast.success(WIZARD_TEXTS.venueDissociated(venue.name), { action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
+      { onSuccess: () => toast.success(WIZARD_TEXTS.venueDissociated(venue.name), { replaces: `venue-anchor-${venue.id}`, action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
     );
 
   // Les salles proposées à l'association : celles d'à côté qu'aucun gymnase du club ne porte déjà.
@@ -838,8 +839,8 @@ function VenuesEditor() {
                 <div className="mb-3">
                   <Menu
                     label={WIZARD_TEXTS.associateVenueMenu(selected.name)}
-                    trigger={<span className="text-xs">{WIZARD_TEXTS.associateVenueMenu(selected.name)}</span>}
-                    triggerClassName="h-9 w-auto shrink-0 rounded-md border border-input px-2 text-xs"
+                    trigger={WIZARD_TEXTS.associateVenueMenu(selected.name)}
+                    triggerClassName={buttonVariants({ variant: "outline", size: "sm" })}
                   >
                     {associableSalles.map((salle) => (
                       <MenuItem key={salle.externalRef} onSelect={() => setPendingAssociate({ salle, venue: selected })}>

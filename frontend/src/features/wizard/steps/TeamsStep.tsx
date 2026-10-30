@@ -193,7 +193,10 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
           <span role="img" aria-label={TEAMS_TEXTS.engagedRowMarker} title={TEAMS_TEXTS.engagedRowMarker} className="inline-flex shrink-0 text-muted-foreground">
             <Lock aria-hidden className="size-4" />
           </span>
-        ) : null}
+        ) : (
+          // Même largeur que le cadenas sur toutes les lignes : les colonnes restent alignées.
+          <span aria-hidden="true" className="w-4 shrink-0" />
+        )}
         {/* P2-45 — l'affordance « Liens » : une icône muette par ligne (densité nominale), à côté
             de la corbeille. Elle ouvre passerelles + mutualisation de CETTE équipe. */}
         {/* P2-45 — l'affordance « Liens » (passerelles · mutualisation · entente CTC depuis D4). */}
@@ -929,6 +932,7 @@ function TeamsEditor() {
                 <SortHeader column="gender" sort={sort} onSort={setSort} className={TEAM_COLUMNS.gender} label={TEAMS_TEXTS.colGender} />
                 <SortHeader column="level" sort={sort} onSort={setSort} className={TEAM_COLUMNS.level} label={TEAMS_TEXTS.colLevel} />
                 <SortHeader column="sessions" sort={sort} onSort={setSort} className={TEAM_COLUMNS.sessions} label={TEAMS_TEXTS.colSessions} />
+                <span aria-hidden="true" className="w-4 shrink-0" />
                 <span className="w-8 text-right">{TEAMS_TEXTS.colDelete}</span>
               </div>
               {byRank ? (

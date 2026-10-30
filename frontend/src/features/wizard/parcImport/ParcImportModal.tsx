@@ -668,7 +668,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
               alerte: "alerte" === line.statut ? line.raison : null,
               mutual: "mutualisations" === section,
               // Le nom corrigé à l'étape Séances communes, repris tel quel à l'étape Réservations.
-              groupe: "mutualisations" === section ? (groupDrafts[key] ?? line.groupe ?? null) : null,
+              groupe: "mutualisations" === section ? shownGroupName(groupDrafts[key], line) : null,
               // Les CRÉNEAUX (ouvertures) s'affichent par leur plage horaire, pas par « jour N » (finition 1).
               opening: "creneaux" === section,
             });
@@ -958,6 +958,15 @@ export function ParcImportModal(props: ParcImportModalProps) {
       {caseEditor}
     </Modal>
   );
+}
+
+/**
+ * Le nom de groupe à l'écran : le brouillon, ou le nom lu si le champ est vide. C'est ce que l'import
+ * enverra : un nom vide ne part pas en correction, le serveur garde alors le nom lu.
+ */
+function shownGroupName(draft: string | undefined, line: ParcAnalysisLine): string | null {
+  const trimmed = (draft ?? "").trim();
+  return "" !== trimmed ? trimmed : (line.groupe ?? null);
 }
 
 /** La valeur initiale du sélecteur d'une ligne équipe/gymnase, d'après son verdict serveur. */
@@ -1455,6 +1464,7 @@ function MutualisationsStep({
           const key = keyOf("mutualisations", line.index);
           const keep = checked[key] ?? line.coche;
           const inAlert = "alerte" === line.statut;
+          const groupName = shownGroupName(groupDrafts[key], line);
           const pos = line.position;
           // Finition 2a — sélecteur de gymnase pré-rempli : l'id résolu, ou l'option « <nom> (à créer) »
           // (valeur `VENUE_TO_CREATE`, affiche le nom lu sans porter d'id) pour un gymnase pas encore existant.
@@ -1471,7 +1481,7 @@ function MutualisationsStep({
             <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
-                {null === (line.groupe ?? null) || "" === line.groupe ? null : <span className="text-sm font-semibold text-foreground">{line.groupe}</span>}
+                {null === groupName || "" === groupName ? null : <span className="text-sm font-semibold text-foreground">{groupName}</span>}
                 {/* E4 (essai fondateur 30/10) — une séance commune mise en « Ignorer » est barrée + grisée (D9 étendu). */}
                 <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{line.libelle}</span>
                 {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}
