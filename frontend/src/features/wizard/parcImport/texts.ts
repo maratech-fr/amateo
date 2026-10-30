@@ -140,6 +140,8 @@ export const PARC_IMPORT_TEXTS = {
     }
     return 0 === parts.length ? "Cochez au moins une ligne pour pouvoir importer." : `Impossible d'importer : ${parts.join(" · ")}.`;
   },
+  /** Raison visible d'« Importer » inactif : des étapes pas encore vues, ou vues avec un point en attente. */
+  importStepsToVisit: (n: number): string => `${n} étape${n > 1 ? "s" : ""} à vérifier avant d'importer.`,
   revalidate: "Revalider l'aperçu",
   /** Finitions 4 — raison concise de désactivation d'« Importer » (le DÉTAIL compté est, lui, VISIBLE au
    *  pied via `importBlocked`) : évite de doubler à l'identique l'annonce lecteur d'écran (A11Y-30). */
@@ -157,6 +159,8 @@ export const PARC_IMPORT_TEXTS = {
   gridVenueToCreate: (name: string): string => `${name} (à créer)`,
   /** Nom accessible d'une case EN ALERTE : la raison serveur, jamais la couleur seule. */
   caseToVerify: (raison: string): string => `Créneau à vérifier : ${raison}`,
+  /** Infobulle d'une case de réservation. */
+  caseTooltip: (nom: string, debut: string, fin: string): string => `${nom} · ${debut} → ${fin}`,
   /** Bandeau récapitulatif en tête de la grille : combien de cases sont à vérifier avant l'import. */
   gridAlertSummary: (n: number): string => `${n} créneau${n > 1 ? "x" : ""} à vérifier avant d'importer.`,
   gridGoTo: "Aller à :",

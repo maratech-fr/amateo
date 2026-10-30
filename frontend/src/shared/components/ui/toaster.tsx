@@ -32,6 +32,20 @@ export function Toaster() {
           )}
         >
           <span className="flex-1 break-words">{t.message}</span>
+          {undefined !== t.action ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => {
+                t.action?.onClick();
+                dismiss(t.id);
+              }}
+            >
+              {t.action.label}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"

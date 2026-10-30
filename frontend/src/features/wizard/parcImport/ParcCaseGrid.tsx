@@ -120,6 +120,22 @@ function caseJumpText(c: ParcCaseGridCase): string {
   return "" === range ? withoutVenue(c.libelle, c.venueName) : `${dayLabelShort(c.jour)} ${range}`.trim();
 }
 
+/**
+ * L'infobulle d'une case : « Nom · début → fin ». Le gymnase et l'heure du libellé serveur en sortent,
+ * ils y feraient doublon. Une ouverture garde sa plage horaire, déjà complète.
+ */
+function caseTooltip(c: ParcCaseGridCase, start: number): string {
+  const display = caseGridText(c);
+  if (true === c.opening) {
+    return display;
+  }
+  const name = display.replace(/[\s·]*\d{1,2}:\d{2}$/, "");
+  return T.caseTooltip("" === name ? display : name, formatMinutes(start), formatMinutes(start + c.duree));
+}
+
+/** La pause de midi, teintée comme dans la grille des gymnases du wizard (`VenueAvailabilityGrid`). */
+const isPause = (m: number): boolean => m >= 12 * 60 && m < 14 * 60;
+
 export function ParcCaseGrid({
   venues,
   cases,
@@ -190,7 +206,15 @@ export function ParcCaseGrid({
 
                 {/* Lignes de grille inertes. */}
                 {WEEK.map((d, di) =>
-                  gridRows.map((m, ri) => <div key={`g${d.n}-${m}`} className={cn("border-l border-t border-border/40", 0 === m % 60 ? "border-t-border/70" : "")} style={{ gridColumn: 2 + di, gridRow: 2 + ri }} aria-hidden="true" />),
+                  gridRows.map((m, ri) => (
+                    <div
+                      key={`g${d.n}-${m}`}
+                      data-pause={isPause(m) ? "true" : undefined}
+                      className={cn("border-l border-t border-border/40", 0 === m % 60 ? "border-t-border/70" : "", isPause(m) ? "bg-surface-muted" : "")}
+                      style={{ gridColumn: 2 + di, gridRow: 2 + ri }}
+                      aria-hidden="true"
+                    />
+                  )),
                 )}
 
                 {/* Cases. */}
@@ -212,7 +236,7 @@ export function ParcCaseGrid({
                       key={`case:${c.index}`}
                       type="button"
                       onClick={() => onEditCase(c.index)}
-                      title={display}
+                      title={caseTooltip(c, cell.start)}
                       aria-label={ariaLabel}
                       style={{
                         gridColumn: cell.col + 2,

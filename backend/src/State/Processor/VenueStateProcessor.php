@@ -117,6 +117,13 @@ class VenueStateProcessor extends AbstractStateProcessor
         // Lot G — la POSITION d'origine, pour détecter un vrai changement de coordonnées après coup.
         $oldLatitude = $entity->getLatitude();
         $oldLongitude = $entity->getLongitude();
+        // Dissocier de la salle FFBB (`externalRef` vide) ramène le gymnase à l'état d'un gymnase qu'on
+        // vient de créer : seul le nom reste. Une valeur fournie dans le même PUT l'emporte, juste après.
+        if ('' === $input->externalRef) {
+            $entity->setAddress(null);
+            $entity->setLatitude(null);
+            $entity->setLongitude(null);
+        }
         if (null !== $input->name) {
             $entity->setName($input->name);
         }
@@ -152,7 +159,7 @@ class VenueStateProcessor extends AbstractStateProcessor
             $entity->setSource($input->source);
         }
         if (null !== $input->externalRef) {
-            $entity->setExternalRef($input->externalRef);
+            $entity->setExternalRef('' === $input->externalRef ? null : $input->externalRef);
         }
         if (null !== $input->isActive) {
             $entity->setIsActive($input->isActive);
