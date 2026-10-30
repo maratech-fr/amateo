@@ -155,6 +155,11 @@ class VenueStateProcessor extends AbstractStateProcessor
         if ($coordsChanged && null !== $newLatitude && null !== $newLongitude) {
             $this->pendingTravelRecompute = [$entity->getClubId(), $entity->getSeasonId()];
         }
+        // Une dissociation qui laisse le gymnase sans position efface ses temps de trajet, saisies à la
+        // main comprises. Une position fournie dans le même PUT suit le chemin ci-dessus.
+        if ('' === $input->externalRef && (null === $newLatitude || null === $newLongitude)) {
+            $this->blankTravelTimesOf($entity);
+        }
         if (null !== $input->source) {
             $entity->setSource($input->source);
         }
@@ -215,6 +220,20 @@ class VenueStateProcessor extends AbstractStateProcessor
             return;
         }
         $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::VENUE_MATRIX));
+    }
+
+    /**
+     * Vide les lignes de matrice du gymnase sans les supprimer : {@see afterPersist} ne recalcule que si
+     * le club a au moins une ligne (opt-in), et « Annuler » ou une nouvelle adresse doivent recalculer
+     * même quand ce gymnase portait les seules lignes du club. L'autofill remplit une ligne vidée comme
+     * une colonne jamais renseignée (`VenueTravelTimeAutofillService::autofill`).
+     */
+    private function blankTravelTimesOf(Venue $venue): void
+    {
+        $repository = $this->entityManager->getRepository(VenueTravelTime::class);
+        foreach ([...$repository->findBy(['venueAId' => $venue->getId()]), ...$repository->findBy(['venueBId' => $venue->getId()])] as $row) {
+            $row->setDrivingMinutes(null)->setDrivingSource(null)->setWalkingMinutes(null)->setWalkingSource(null);
+        }
     }
 
     /**

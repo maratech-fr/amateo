@@ -441,6 +441,13 @@ function VenuesEditor() {
     setAddOpenChoice(false);
   };
 
+  // Le champ ne se vide qu'une fois l'ajout réussi : après un échec, le nom reste à corriger.
+  const onVenueCreatedFromField = (created: Venue) => {
+    setName("");
+    setPendingSalle(null);
+    onVenueCreated(created);
+  };
+
   // L'« Annuler » du toast rend le numéro fédéral et la position d'avant le geste : le serveur efface
   // ce qui n'est pas fourni quand `externalRef` est vide, et une valeur fournie l'emporte.
   const restoreAnchor = (venue: Venue) =>
@@ -492,10 +499,8 @@ function VenuesEditor() {
     const anchor = null !== pendingSalle ? { externalRef: pendingSalle.externalRef, latitude: pendingSalle.latitude, longitude: pendingSalle.longitude } : {};
     create.mutate(
       { name: name.trim(), color, canSplit: false, ...anchor },
-      { onSuccess: onVenueCreated },
+      { onSuccess: onVenueCreatedFromField },
     );
-    setName("");
-    setPendingSalle(null);
     // Le curseur reste dans le champ tant que l'accordéon est ouvert (un ajout réussi le referme).
     nameRef.current?.focus();
   };
@@ -509,11 +514,9 @@ function VenuesEditor() {
     pendingColorsRef.current.push(color);
     create.mutate(
       { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, address: salle.address, latitude: salle.latitude, longitude: salle.longitude },
-      { onSuccess: onVenueCreated },
+      // Vider le champ referme le bloc de recherche (nom < 3) — le gymnase est créé.
+      { onSuccess: onVenueCreatedFromField },
     );
-    // Vider le champ referme le bloc de recherche (nom < 3) — le gymnase est créé.
-    setName("");
-    setPendingSalle(null);
   };
 
   // P1-4 PR B — un gymnase à fenêtre MATCH est légitime sans créneau

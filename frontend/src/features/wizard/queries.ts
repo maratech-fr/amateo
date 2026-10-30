@@ -231,7 +231,8 @@ export function useUpdateVenue() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: VenuePayload }) => wizardApi.updateVenue(id, body),
-    onSuccess: () => Promise.all([invalidateEverywhere(queryClient, "venues"), invalidateVenueGeoCheck(queryClient)]).then(() => undefined),
+    // Les temps de trajet aussi : Dissocier efface ceux du gymnase.
+    onSuccess: () => Promise.all([invalidateEverywhere(queryClient, "venues"), invalidateVenueGeoCheck(queryClient), queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY })]).then(() => undefined),
   });
 }
 
