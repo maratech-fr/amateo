@@ -55,6 +55,12 @@ final class DiagnosticMessageBuilder
             // le backend AJOUTE l'ORIGINE de chaque contrainte citée, qu'il est le seul à connaître
             // (le moteur ignore `calendarEntryId`). Message vide ⇒ repli générique.
             'shared_block_not_honored' => $this->buildSharedBlockNotHonored($diagnostic, $engineMessage, $constraintOrigins),
+            // Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — un verrou
+            // HARD a rendu une règle dure insatisfiable ; le moteur a produit le planning, tenu le
+            // verrou, et relâché la règle. Le moteur nomme déjà le groupe/la règle dans son message
+            // (préféré) ; message vide ⇒ on compose le texte gestionnaire (équipe + règle + le fait
+            // qu'une réservation a gagné). « La réservation gagne envers tout, mais c'est la SEULE exception. »
+            'rule_sacrificed' => '' !== $engineMessage ? $engineMessage : $this->buildRuleSacrificed($diagnostic, $teamNames),
             // PR 6 (lot 8) — « Garder ses créneaux de saison » : le moteur émet déjà le message
             // nommé (« SM1 : 2/3 créneaux de saison conservés. Non conservés : … »), on le préfère.
             'season_slots_kept' => '' !== $engineMessage ? $engineMessage : 'Des créneaux de saison n\'ont pas pu être conservés.',
@@ -109,6 +115,43 @@ final class DiagnosticMessageBuilder
         }
 
         return [] === $sentences ? $engineMessage : $engineMessage . ' ' . implode(' ', $sentences);
+    }
+
+    /**
+     * Compose le texte d'une règle SACRIFIÉE par la réservation souveraine quand le moteur n'a pas
+     * fourni de message : NOMME l'équipe concernée (via `teamNames`, jamais un identifiant interne)
+     * et la règle relâchée (le LIBELLÉ de sa première cause), et DIT qu'une réservation a gagné.
+     * Équipe ou libellé absent ⇒ repli dégradé, jamais un identifiant brut ni « Diagnostic inconnu. ».
+     *
+     * @param array<string, mixed>  $diagnostic
+     * @param array<string, string> $teamNames
+     */
+    private function buildRuleSacrificed(array $diagnostic, array $teamNames): string
+    {
+        $teamId = $this->extractId($diagnostic, 'teamId', 'team_id');
+        $teamName = null !== $teamId ? ($teamNames[$teamId] ?? $teamId) : null;
+
+        $causes = \is_array($diagnostic['causes'] ?? null) ? $diagnostic['causes'] : [];
+        $label = '';
+        foreach ($causes as $cause) {
+            if (!\is_array($cause)) {
+                continue;
+            }
+            $candidate = trim((string) ($cause['label'] ?? $cause['name'] ?? ''));
+            if ('' !== $candidate) {
+                $label = $candidate;
+                break;
+            }
+        }
+
+        $rule = '' !== $label ? \sprintf('la règle « %s »', $label) : 'une règle';
+        $ofTeam = null !== $teamName ? \sprintf(' de %s', $teamName) : '';
+
+        return \sprintf(
+            'Un verrou (réservation) est prioritaire : %s%s n\'a pas pu être honorée et a été relâchée.',
+            $rule,
+            $ofTeam,
+        );
     }
 
     /**

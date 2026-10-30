@@ -25,7 +25,6 @@ VÉRIFIÉ infaisable, seul capable de servir de ROUGE à une feature déclenché
 
 from __future__ import annotations
 
-import copy
 import json
 import pathlib
 from typing import Any
@@ -57,8 +56,7 @@ def test_a_reservation_on_the_only_block_case_produces_a_schedule_and_names_the_
     result = solve_payload(_fixture())
 
     assert result["status"] == "completed", (
-        f"une réservation souveraine doit PRODUIRE le planning, jamais INFEASIBLE muet "
-        f"(obtenu {result['status']})"
+        f"une réservation souveraine doit PRODUIRE le planning, jamais INFEASIBLE muet (obtenu {result['status']})"
     )
     sacrificed = _sacrificed(result)
     assert sacrificed, "une règle dure rendue insatisfiable par le verrou doit être NOMMÉE (rule_sacrificed)"

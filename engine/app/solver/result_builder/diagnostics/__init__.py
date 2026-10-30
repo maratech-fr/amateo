@@ -120,6 +120,9 @@ from .sessions import (
     _diagnose_session_below_effective_min as _diagnose_session_below_effective_min,
 )
 from .shared_blocks import (
+    _diagnose_sacrificed_rules as _diagnose_sacrificed_rules,
+)
+from .shared_blocks import (
     _diagnose_shared_blocks as _diagnose_shared_blocks,
 )
 
@@ -138,6 +141,7 @@ def _generate_diagnostics(
     solver: cp_model.CpSolver | Any | None = None,
     diagnostic_model: ScheduleCpModel | Any | None = None,
     diagnostic_solver: cp_model.CpSolver | Any | None = None,
+    sacrificed_source_keys: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run post-solve checks and return manager-readable diagnostics.
 
@@ -210,8 +214,15 @@ def _generate_diagnostics(
             team_coach_map=team_coach_map or {},
             coach_unavailability=getattr(model, "coach_unavailability", None) or {},
             coach_unavailability_sources=getattr(model, "coach_unavailability_sources", None) or {},
+            # Réservation souveraine — un bloc sacrifié par le best-effort n'est pas accusé ici d'un
+            # ERROR : il est NOMMÉ en ``rule_sacrificed`` WARNING juste après.
+            sacrificed_source_keys=sacrificed_source_keys,
         )
     )
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}, model=model))
+    # Réservation souveraine (besoin fondateur 2026-10-30) — NOMME les règles sacrifiées par le
+    # best-effort (``rule_sacrificed`` WARNING). Vide hors best-effort ⇒ aucun diagnostic ajouté.
+    if sacrificed_source_keys:
+        diagnostics.extend(_diagnose_sacrificed_rules(model_data, model, sacrificed_source_keys))
     return diagnostics

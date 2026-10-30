@@ -102,6 +102,14 @@ class ScheduleCpModel(cp_model.CpModel):
         # (budget 600 atteint) sur le vrai club BCCL (50 équipes) contre 8-40 s sur `main`, et ~26 s
         # contre ~2 s sur la fixture `bccl_2026_08_15`. Cf. ADR-0001 (amendement 2026-10-07).
         self.assumptions_enabled: bool = False
+        # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — clés SOURCE
+        # (`_source_key`) des règles dures que le 3ᵉ solve « best-effort » RELÂCHE parce qu'un verrou
+        # les rend insatisfiables. `_assume` crée la littérale et pose son `OnlyEnforceIf` comme
+        # d'habitude mais N'APPELLE PAS `AddAssumption` pour ces clés : la littérale reste LIBRE, le
+        # solveur la met à faux et la contrainte source est désactivée (le verrou, lui, reste dur —
+        # il n'a pas de littérale, il est cuit dans le modèle). Vide (défaut) ⇒ aucune relaxation :
+        # le solve nominal ET le solve diagnostique restent byte-identiques à `main`.
+        self.relaxed_source_keys: frozenset[str] = frozenset()
         # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1), peuplé
         # UNIQUEMENT quand `assumptions_enabled` (modèle diagnostique). Une littérale par clé de
         # source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase imposé/interdit,

@@ -100,6 +100,12 @@ class DiagnosticSchema(SerializableModel):
         # (INFEASIBLE : moins de cases communes candidates que de séances demandées) ou le compte
         # réel de séances communes du bloc diffère du déclaré (défense en profondeur post-solve).
         "shared_block_not_honored",
+        # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) : un VERROU
+        # HARD (réservation ou épingle) rend une règle dure insatisfiable → le moteur PRODUIT le
+        # planning (best-effort), tient le verrou, et NOMME la règle sacrifiée (severity WARNING).
+        # SEULE exception à « aucun fallback de relaxation » : ne relâche QUE les règles qu'un
+        # verrou bloque directement (gardé par le garde-fou `test_a_rule_conflict_not_caused_by_a_lock`).
+        "rule_sacrificed",
         # Lot PASSERELLES PR-2 — deux équipes déclarées passerelle (partage de joueurs) ont des
         # séances qui se chevauchent dans le temps : SOFT concédé (PREFERRED) ou verrous HARD qui
         # se chevauchent sur une MANDATORY (jamais INFEASIBLE muet — CLAUDE.md §6).

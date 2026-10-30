@@ -36,6 +36,7 @@ def _diagnose_shared_blocks(
     team_coach_map: Mapping[str, Any] | None = None,
     coach_unavailability: Mapping[str, Any] | None = None,
     coach_unavailability_sources: Mapping[str, Any] | None = None,
+    sacrificed_source_keys: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
     """P2-51 (arbitrage n°7) — mutualisation par BLOC : nommer le bloc quand il n'est pas honoré,
     code ``shared_block_not_honored`` (severity ERROR).
@@ -200,11 +201,19 @@ def _diagnose_shared_blocks(
         if len(block_members) >= 2:
             fold_blocks.append((f"__shared_block__{_get(block, 'id', default=index)}", block_members))
 
+    sacrificed = sacrificed_source_keys or frozenset()
     for index, block in enumerate(blocks):
         members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
         if len(members) < 2:
             continue
         common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        # Réservation souveraine — un bloc que le best-effort a SACRIFIÉ (sa règle relâchée parce
+        # qu'un verrou la bloquait) n'est PAS une erreur : il est NOMMÉ en ``rule_sacrificed``
+        # (WARNING) par ``_diagnose_sacrificed_rules``. On ne l'accuse donc pas ici d'un
+        # ``shared_block_not_honored`` ERROR qui ferait doublon et crierait à tort.
+        block_id = str(_get(block, "id", default=index) or index)
+        if f"shared_block:{block_id}" in sacrificed:
+            continue
         member_sets = [occupancy.get(member, set()) for member in members]
         common_cases = set.intersection(*member_sets) if member_sets else set()
         block_key = f"__shared_block__{_get(block, 'id', default=index)}"
@@ -607,3 +616,108 @@ def _coachless_case_count(cases: list[tuple[int, int]], union: list[str], rules:
     """Nombre de cases candidates où AUCUN coach de l'union n'est disponible (le poids de la cause
     dégradée quand aucune source nommée ne porte l'indisponibilité)."""
     return sum(1 for day, start in cases if not any(_coach_available_at(c, day, start, rules) for c in union))
+
+
+def _diagnose_sacrificed_rules(
+    model_data: Mapping[str, Any] | Any,
+    model: Any,
+    sacrificed_source_keys: frozenset[str],
+) -> list[dict[str, Any]]:
+    """Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — NOMME chaque
+    règle dure que le 3ᵉ solve « best-effort » a SACRIFIÉE parce qu'un VERROU la rend insatisfiable.
+
+    « La réservation gagne envers tout, mais c'est la SEULE exception. » Le planning est PRODUIT, le
+    verrou tenu, et la règle relâchée est signalée en ``rule_sacrificed`` (severity WARNING, jamais
+    une erreur bloquante). Deux familles de clé SOURCE relâchées :
+
+      * ``shared_block:<id>`` — la mutualisation d'un bloc : on NOMME ses équipes (jamais
+        d'identifiant interne) et on dit que la réservation l'emporte. C'est le cas des réservations
+        ALAP (grille réservée, la seule case commune du bloc prise par une équipe tierce).
+      * toute autre règle source — on reprend son LIBELLÉ depuis le registre d'hypothèses du modèle
+        (``assumption_sources``) pour ne jamais relâcher une règle en silence.
+
+    ``model`` absent / sans registre (doubles de test) ⇒ les règles non-bloc dégradent au kind seul.
+    """
+    if not sacrificed_source_keys:
+        return []
+
+    team_names = _team_name_map(model_data)
+    blocks = list(_collection(model_data, "sharedBlocks", "shared_blocks"))
+    block_by_key: dict[str, tuple[list[str], int]] = {}
+    for index, block in enumerate(blocks):
+        members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
+        if len(members) < 2:
+            continue
+        block_id = str(_get(block, "id", default=index) or index)
+        common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        block_by_key[f"shared_block:{block_id}"] = (members, common_sessions)
+
+    # Registre index-de-littérale → cause (kind/constraintId/label), pour nommer les règles NON-bloc.
+    assumption_literals: Mapping[str, Any] = getattr(model, "assumption_literals", None) or {}
+    assumption_sources: Mapping[int, Any] = getattr(model, "assumption_sources", None) or {}
+    cause_by_key: dict[str, Mapping[str, Any]] = {}
+    for key, literal in assumption_literals.items():
+        try:
+            cause_by_key[key] = assumption_sources.get(int(literal.Index())) or {}
+        except AttributeError, TypeError:  # pragma: no cover - littérale sans Index (double de test)
+            continue
+
+    diagnostics: list[dict[str, Any]] = []
+    for key in sorted(sacrificed_source_keys):
+        if key in block_by_key:
+            members, common_sessions = block_by_key[key]
+            names = _named_list(members, team_names)
+            sessions = _sessions_phrase(common_sessions)
+            message = (
+                f"Le groupe {names} ne peut pas tenir {sessions} : une réservation occupe la seule case "
+                "où réunir ses équipes. La réservation est tenue ; la mutualisation du groupe est relâchée."
+            )
+            diagnostics.append(
+                {
+                    "id": f"rule-sacrificed-{key}",
+                    "type": "rule_sacrificed",
+                    "severity": "WARNING",
+                    "message": message,
+                    "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": 1}],
+                    "suggestions": [
+                        "Libérez la case réservée ou déplacez la réservation si vous voulez que le groupe se réunisse.",
+                    ],
+                    "createdAt": datetime.now(UTC).isoformat(),
+                }
+            )
+            continue
+
+        cause = cause_by_key.get(key) or {}
+        label = cause.get("label")
+        if label:
+            message = (
+                f"La règle « {label} » n'a pas pu être honorée : une réservation occupe le créneau qu'elle "
+                "impose. La réservation est tenue ; la règle est relâchée."
+            )
+        else:
+            message = (
+                "Une règle n'a pas pu être honorée : une réservation occupe le créneau qu'elle impose. "
+                "La réservation est tenue ; la règle est relâchée."
+            )
+        constraint_id = cause.get("constraintId")
+        diagnostics.append(
+            {
+                "id": f"rule-sacrificed-{key}",
+                "type": "rule_sacrificed",
+                "severity": "WARNING",
+                "message": message,
+                "causes": [
+                    {
+                        "kind": str(cause.get("kind") or "hard_lock"),
+                        "constraintId": constraint_id,
+                        "label": label,
+                        "count": 1,
+                    }
+                ],
+                "suggestions": [
+                    "Libérez la case réservée ou déplacez la réservation si vous voulez que cette règle s'applique.",
+                ],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+    return diagnostics
