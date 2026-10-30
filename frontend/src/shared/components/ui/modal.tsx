@@ -1,7 +1,8 @@
-import { X } from "lucide-react";
+import { Flag, X } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { createPortal } from "react-dom";
 
+import { serializeModalState, useModalReport } from "@/shared/components/ui/modalReportContext";
 import { MODAL_WIDTH } from "@/shared/components/ui/modal-width";
 import { useModalA11y } from "@/shared/lib/useModalA11y";
 import { cn } from "@/shared/lib/utils";
@@ -40,6 +41,17 @@ interface ModalProps {
    * de scroll.
    */
   footer?: ReactNode;
+  /**
+   * D14 (PR B) — instantané de l'état de la modale, ÉVALUÉ AU CLIC sur « Signaler » (jamais à chaque
+   * rendu), joint au signalement comme `modalState`. Absent → le drapeau envoie le contexte de base.
+   */
+  reportState?: () => unknown;
+  /**
+   * D14 — masque le drapeau « Signaler » de l'en-tête. Posé par `FeedbackDialog` sur SA propre modale :
+   * le canal de signalement ne se signale pas lui-même (le drapeau est ABSENT quand la modale EST la
+   * `FeedbackDialog`). `true` par défaut partout ailleurs.
+   */
+  showReportFlag?: boolean;
 }
 
 /**
@@ -63,10 +75,13 @@ interface ModalProps {
  * un enfant flex refuse de rétrécir sous sa taille de contenu sans lui, et `overflow-y-auto`
  * n'aurait alors rien à faire défiler.
  */
-export function Modal({ label, title, onClose, children, size = "md", footer }: ModalProps) {
+export function Modal({ label, title, onClose, children, size = "md", footer, reportState, showReportFlag = true }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   // Focus-trap + initial focus + focus restoration + Escape (WCAG 2.1.2 / 2.4.3).
   useModalA11y({ ref: panelRef, onClose });
+  // D14 — le drapeau « Signaler » ouvre le canal de signalement avec l'état de CETTE modale. Sans
+  // provider monté (console admin, test de primitive) `openReport` est null : le drapeau reste, inerte.
+  const { openReport } = useModalReport();
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -79,11 +94,25 @@ export function Modal({ label, title, onClose, children, size = "md", footer }: 
         aria-label={label}
         className={cn("relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-lg border border-border bg-card p-5 text-card-foreground shadow-xl", MODAL_WIDTH[size])}
       >
-        <div className="mb-4 flex shrink-0 items-center justify-between">
+        <div className="mb-4 flex shrink-0 items-center justify-between gap-2">
           <h2 className="text-base font-semibold">{title}</h2>
-          <button type="button" aria-label="Fermer" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={onClose}>
-            <X className="size-4" />
-          </button>
+          {/* D14 — drapeau « Signaler » À GAUCHE de la croix. Icône au ton destructif, repère du canal
+              (même grammaire que `FeedbackButton`) ; nom accessible « Signaler ». */}
+          <div className="flex shrink-0 items-center gap-1">
+            {showReportFlag ? (
+              <button
+                type="button"
+                aria-label="Signaler"
+                className="rounded p-1 text-muted-foreground hover:text-foreground"
+                onClick={() => openReport?.({ modalState: serializeModalState(reportState?.()), screenLabel: label })}
+              >
+                <Flag className="size-4 text-destructive" />
+              </button>
+            ) : null}
+            <button type="button" aria-label="Fermer" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={onClose}>
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
         {/* `p-1 -m-1` : une gouttière qui laisse respirer l'anneau `focus-visible:ring-2` d'un
             champ en bas de zone (sinon clippé au ras du pied) sans décaler le contenu — la marge

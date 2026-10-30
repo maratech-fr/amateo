@@ -1,8 +1,8 @@
 import { HTTPError } from "ky";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
-import { readRecentIncident } from "@/shared/api/lastIncidentStore";
+import { readRecentIncident, readRecentIncidents } from "@/shared/api/lastIncidentStore";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import { Modal } from "@/shared/components/ui/modal";
@@ -13,7 +13,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { FeedbackContext, FeedbackTopic } from "./api";
 import { captureScreen } from "./captureScreen";
-import { readRecentLastClick } from "./lastClickStore";
+import { readRecentClicks, readRecentLastClick } from "./lastClickStore";
 import { useSubmitFeedback } from "./queries";
 import { FEEDBACK_TEXTS } from "./texts";
 
@@ -34,37 +34,54 @@ interface FeedbackDialogProps {
   activeFilters?: string;
   /** Plage affichée (ex. « week-end du 08/11 ») — contextuel seul. */
   displayedRange?: string;
+  /**
+   * D15 (PR B) — état COMPLET de la modale ouvrante (string JSON), joint comme `modalState` quand le
+   * signalement est déclenché depuis le drapeau d'une modale (variante contextuelle).
+   */
+  modalState?: string;
 }
 
 const TOPIC_OPTIONS: { value: FeedbackTopic; label: string }[] = [
-  { value: "bug", label: "Bug" },
-  { value: "missing_constraint", label: "Contrainte manquante" },
-  { value: "idea", label: "Idée" },
+  { value: "bug", label: FEEDBACK_TEXTS.topicBug },
+  { value: "missing_constraint", label: FEEDBACK_TEXTS.topicMissingConstraint },
+  { value: "idea", label: FEEDBACK_TEXTS.topicIdea },
 ];
 
-export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleId, screenLabel, activeFilters, displayedRange }: FeedbackDialogProps) {
+export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleId, screenLabel, activeFilters, displayedRange, modalState }: FeedbackDialogProps) {
   const { pathname } = useLocation();
   const submit = useSubmitFeedback();
   const [topic, setTopic] = useState<FeedbackTopic>("bug");
   const [message, setMessage] = useState("");
   const [attachScreenshot, setAttachScreenshot] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // D16 (anti double envoi) — garde SYNCHRONE posée en tête de `handleSubmit`, AVANT l'await de
+  // `captureScreen` : un 2ᵉ « Envoyer » pendant la capture pendante est inerte (le cas réel ALAP ×4 à
+  // la même seconde). `submit.isPending` ne bascule qu'APRÈS l'await — il ne protège pas cette fenêtre.
+  const sendingRef = useRef(false);
+  const [sending, setSending] = useState(false);
   const topicId = useId();
   const messageId = useId();
   const formId = useId();
 
   const contextual = "contextual" === variant;
   const screen = screenProp ?? pathname;
-  const messageLabel = contextual ? "Décrivez le problème" : "Votre message";
+  const messageLabel = contextual ? FEEDBACK_TEXTS.messageLabelContextual : FEEDBACK_TEXTS.messageLabelFree;
+  const pending = submit.isPending || sending;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    // Garde synchrone : tout 2ᵉ envoi tant qu'un envoi est en cours est ignoré.
+    if (sendingRef.current) {
+      return;
+    }
     const trimmed = message.trim();
     if ("" === trimmed) {
-      setError("Le message est obligatoire.");
+      setError(FEEDBACK_TEXTS.messageRequired);
       return;
     }
     setError(null);
+    sendingRef.current = true;
+    setSending(true);
 
     const context: FeedbackContext = {
       screen,
@@ -89,6 +106,10 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
       if (displayedRange) {
         context.displayedRange = displayedRange;
       }
+      // D15 — l'état complet de la modale ouvrante (déjà sérialisé par la primitive Modal).
+      if (modalState) {
+        context.modalState = modalState;
+      }
       const lastClick = readRecentLastClick();
       if (lastClick) {
         context.lastClick = lastClick.label;
@@ -104,6 +125,28 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
           context.requestId = incident.requestId;
         }
       }
+      // D17 — le fil d'incident CLIENT : 5 dernières erreurs API, 5 derniers clics, horloge du poste.
+      const recentErrors = readRecentIncidents();
+      if (recentErrors.length > 0) {
+        context.recentErrors = recentErrors.map((e) => ({
+          method: e.method,
+          route: e.route ?? e.url,
+          status: e.status,
+          code: e.code,
+          errors: e.errors,
+          requestId: e.requestId,
+          at: new Date(e.at).toISOString(),
+        }));
+      }
+      const recentClicks = readRecentClicks();
+      if (recentClicks.length > 0) {
+        context.recentClicks = recentClicks;
+      }
+      // D17 — `clientClock` = l'horloge RÉELLE DU POSTE. Exception ASSUMÉE à `shared/lib/clock.ts` :
+      // ce n'est PAS l'« aujourd'hui » métier (override `?today=` / horloge simulée d'un club démo),
+      // c'est l'heure et le fuseau du navigateur de l'auteur — précisément ce que le support veut
+      // pour recouper un incident avec les logs serveur. D'où `new Date()` / `Intl`, volontairement.
+      context.clientClock = { at: new Date().toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone };
     }
 
     // Topic FIGÉ en contextuel — jamais dérivé d'un état d'UI (aucun sélecteur rendu).
@@ -127,13 +170,19 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
       { topic: effectiveTopic, message: trimmed, context, screenshot },
       {
         onSuccess: () => {
-          toast.success("Signalement envoyé — vous recevrez un accusé par email.");
+          // Rendre la main (en prod `onClose` démonte la modale ; en test elle peut rester montée).
+          sendingRef.current = false;
+          setSending(false);
+          toast.success(FEEDBACK_TEXTS.sentToast);
           onClose();
         },
         onError: (err) => {
+          // Rendre la main pour permettre un nouvel envoi (le geste a échoué).
+          sendingRef.current = false;
+          setSending(false);
           // 429 : message doux dédié (le générique pousserait à re-cliquer).
           if (err instanceof HTTPError && 429 === err.response.status) {
-            setError("Trop de signalements, réessayez plus tard.");
+            setError(FEEDBACK_TEXTS.tooManyReports);
             return;
           }
           // 422 et autres 4xx : messages métier du serveur (errorMessage lit error.data).
@@ -145,18 +194,20 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
 
   return (
     <Modal
-      label="Signaler"
-      title={contextual ? "Signaler un problème sur cet écran" : "Signaler un bug ou une idée"}
+      label={FEEDBACK_TEXTS.reportLabel}
+      title={contextual ? FEEDBACK_TEXTS.titleContextual : FEEDBACK_TEXTS.titleFree}
       onClose={onClose}
+      // D14 — le canal de signalement ne se signale pas lui-même : pas de drapeau sur SA modale.
+      showReportFlag={false}
       // Le formulaire vit dans le corps défilant ; le bouton d'envoi part au pied épinglé et
       // reste rattaché au `<form>` par l'attribut HTML `form={formId}` (submit + Entrée intacts).
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
-            Annuler
+            {FEEDBACK_TEXTS.cancel}
           </Button>
-          <Button type="submit" form={formId} disabled={submit.isPending}>
-            {submit.isPending ? "Envoi…" : "Envoyer"}
+          <Button type="submit" form={formId} disabled={pending}>
+            {pending ? FEEDBACK_TEXTS.sending : FEEDBACK_TEXTS.send}
           </Button>
         </>
       }
@@ -164,7 +215,7 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
       <form id={formId} onSubmit={(event) => void handleSubmit(event)} className="mt-4 space-y-4">
         {contextual ? null : (
           <div className="space-y-1.5">
-            <Label htmlFor={topicId}>Type de signalement</Label>
+            <Label htmlFor={topicId}>{FEEDBACK_TEXTS.topicFieldLabel}</Label>
             <Select id={topicId} value={topic} onChange={(event) => setTopic(event.target.value as FeedbackTopic)}>
               {TOPIC_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -201,9 +252,7 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
           <p className="text-xs text-muted-foreground">{FEEDBACK_TEXTS.attachScreenshotHint}</p>
         </div>
 
-        {contextual ? (
-          <p className="text-xs text-muted-foreground">L'écran courant et quelques informations techniques seront joints automatiquement pour nous aider à reproduire.</p>
-        ) : null}
+        {contextual ? <p className="text-xs text-muted-foreground">{FEEDBACK_TEXTS.contextualHint}</p> : null}
 
         {null !== error ? (
           <p role="alert" className="text-sm text-destructive">

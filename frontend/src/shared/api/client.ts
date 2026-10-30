@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/react";
 import ky from "ky";
 
-import { recordIncident } from "@/shared/api/lastIncidentStore";
+import { recordIncident, recordRecentIncident } from "@/shared/api/lastIncidentStore";
 import { markSessionExpired } from "@/shared/lib/sessionExpiredNotice";
 import { useAuthStore } from "@/shared/stores/authStore";
 import { useSeasonStore } from "@/shared/stores/seasonStore";
@@ -88,18 +88,38 @@ export const api = ky.create({
         // corps original, cf. commentaire plus bas) puis on parse en try/catch — le
         // clone a son propre flux, distinct de celui que lira ky. Sur le 502 nginx le
         // corps est du HTML : le parse échoue silencieusement, ce n'est pas une erreur.
-        if (state.response.status >= 500) {
+        //
+        // D17 — l'anneau `recentErrors` du signalement capte TOUTE erreur ≥ 400 (method + route +
+        // code + errors[] + request-id), pas seulement les ≥ 500 : une rafale de 422/409 raconte
+        // autant l'incident. Le DERNIER incident ≥ 500 (bloc dev) reste `lastIncident`, inchangé ;
+        // les 4xx n'entrent QUE dans l'anneau (`recordRecentIncident`) pour ne pas le polluer.
+        if (state.response.status >= 400) {
           const requestId = state.response.headers.get("X-Request-Id") ?? undefined;
           let code: string | undefined;
+          let errors: string[] | undefined;
           try {
-            const body = (await state.response.clone().json()) as { code?: unknown };
+            const body = (await state.response.clone().json()) as { code?: unknown; errors?: unknown };
             if (typeof body.code === "string") {
               code = body.code;
+            }
+            if (Array.isArray(body.errors)) {
+              errors = body.errors.filter((entry): entry is string => typeof entry === "string");
             }
           } catch {
             // Corps non-JSON (HTML nginx du 502) ou vide : statut + URL restent l'essentiel.
           }
-          recordIncident({ status: state.response.status, url: state.request.url, requestId, code });
+          let route = state.request.url;
+          try {
+            route = new URL(state.request.url).pathname;
+          } catch {
+            // URL relative/inhabituelle : on garde l'URL brute comme route.
+          }
+          const incident = { status: state.response.status, url: state.request.url, method: state.request.method, route, requestId, code, errors };
+          if (state.response.status >= 500) {
+            recordIncident(incident);
+          } else {
+            recordRecentIncident(incident);
+          }
         }
       },
       (state) => {

@@ -28,7 +28,6 @@ describe("Modal — drapeau « Signaler » dans l'en-tête (D14)", () => {
     const fermer = within(dialog).getByRole("button", { name: "Fermer" });
     expect(signaler).toBeInTheDocument();
     // « Signaler » précède « Fermer » dans l'ordre DOM de l'en-tête (à GAUCHE de la croix).
-    // eslint-disable-next-line no-bitwise
     expect(signaler.compareDocumentPosition(fermer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

@@ -81,7 +81,7 @@ describe("lastIncidentStore", () => {
       for (let i = 1; i <= 6; i++) {
         recordIncident({ status: 400 + i, url: `/api/x${i}`, method: "POST", route: `/api/x${i}`, code: `c${i}`, errors: [`e${i}`], requestId: `r${i}` } as never, i);
       }
-      const recent = (incidentStore.readRecentIncidents as (now?: number) => Array<Record<string, unknown>>)(7);
+      const recent = (incidentStore.readRecentIncidents as unknown as (now?: number) => Array<Record<string, unknown>>)(7);
       expect(recent, "au plus les 5 plus récentes").toHaveLength(5);
       expect(recent.some((e) => "r1" === e.requestId), "la plus ancienne (6ᵉ avant) est évincée du ring").toBe(false);
       const latest = recent[0];

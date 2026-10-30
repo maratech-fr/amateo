@@ -262,6 +262,8 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackBlockPeriod: "Période",
   feedbackBlockScreen: "Écran",
   feedbackBlockLastAction: "Dernier geste",
+  feedbackBlockModalState: "État de la modale",
+  feedbackModalStateTruncated: "tronqué",
   feedbackBlockTechnical: "Technique",
   feedbackScreenshot: "Capture d'écran",
   feedbackScreenshotAlt: "Capture d'écran jointe au signalement",

@@ -6,6 +6,7 @@ import { useLogout } from "@/features/auth/queries";
 import { MailboxNavItem } from "@/features/mailbox/MailboxNavItem";
 import { useMe } from "@/shared/session/queries";
 import { FeedbackDialog } from "@/shared/feedback/FeedbackDialog";
+import { ModalReportProvider } from "@/shared/feedback/ModalReportProvider";
 import { WhatsNewModal } from "@/features/release-notes/WhatsNewModal";
 import { BrandIcon } from "@/shared/components/ui/brand-icon";
 import { Button } from "@/shared/components/ui/button";
@@ -77,6 +78,10 @@ export function AppLayout() {
   const matchsLockReasonId = useId();
 
   return (
+    // D14 (PR B) — le provider du canal de signalement contextuel des modales enveloppe TOUT l'espace
+    // club : chaque drapeau « Signaler » d'une modale descendante ouvre `FeedbackDialog` avec l'état de
+    // la modale. Monté ici (hors console admin, qui n'a pas de canal de signalement de club).
+    <ModalReportProvider>
     <div className="min-h-screen text-foreground">
       {/* En-tête OPAQUE (`bg-background`) posé sur le fond d'écran commun (P5-16) : le fond ne vit
           que dans les zones vides, jamais sous l'en-tête ni les cartes. La racine, elle, laisse
@@ -210,5 +215,6 @@ export function AppLayout() {
       {/* P5-6 — porte libre du canal de signalement (topic au choix, contexte léger). */}
       {feedbackOpen ? <FeedbackDialog variant="free" onClose={() => setFeedbackOpen(false)} /> : null}
     </div>
+    </ModalReportProvider>
   );
 }

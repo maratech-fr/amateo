@@ -50,6 +50,9 @@ const SRC_ROOT = join(import.meta.dirname, "..");
 // ⚠ Au moment où TANK pose cette garde (PR7), AUCUN n'est encore extrait : la garde est ROUGE,
 // c'est VOULU — NEO la verdit en déplaçant les littéraux dans les `texts.ts` de chaque feature.
 const MIGRATED_FILES = [
+  // PR B « Signaler depuis une modale » (D14-D17) — la modale de signalement partagée migrée dans
+  // shared/feedback/texts.ts en même temps que le drapeau de modale. La migration ne recule jamais.
+  "shared/feedback/FeedbackDialog.tsx",
   // Améliorations légères #1 — l'écran d'inscription migré dans features/auth/texts.ts.
   "features/auth/RegisterPage.tsx",
   "features/cockpit/RadarPanel.tsx",

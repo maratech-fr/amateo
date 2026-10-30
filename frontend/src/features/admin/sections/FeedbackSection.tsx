@@ -390,6 +390,19 @@ function ContextBlocks({ context, onCopy, copied }: { context: AdminFeedbackCont
         {screenLead ? <p className="break-words text-xs font-medium">{screenLead}</p> : null}
       </ContextSection>
       <ContextSection title={T.feedbackBlockLastAction} rows={lastActionRows} />
+      {/* D15 — l'état COMPLET de la modale ouvrante, dans un bloc REPLIABLE (il peut peser lourd) ;
+          mention « tronqué » quand le serveur a coupé au plafond. */}
+      {"string" === typeof context.modalState && "" !== context.modalState ? (
+        <div className="space-y-2">
+          <details className="text-xs">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {T.feedbackBlockModalState}
+              {true === context.modalStateTruncated ? <span className="ml-2 font-normal normal-case text-console-warning">{T.feedbackModalStateTruncated}</span> : null}
+            </summary>
+            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-muted px-2 py-1 text-foreground">{context.modalState}</pre>
+          </details>
+        </div>
+      ) : null}
       <ContextSection title={T.feedbackBlockTechnical} rows={technicalRows}>
         {versionMismatch ? <p className="break-words text-xs text-muted-foreground">{T.feedbackVersionMismatch}</p> : null}
         {hasHeavy ? (

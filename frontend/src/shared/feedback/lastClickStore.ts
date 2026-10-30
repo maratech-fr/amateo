@@ -81,11 +81,17 @@ function accessibleLabel(element: Element): string {
   return element.getAttribute("title")?.trim() ?? "";
 }
 
+// D17 — l'anneau des 5 derniers clics (noms accessibles), joint au signalement comme `recentClicks`.
+const RECENT_CLICKS_SIZE = 5;
+
 let lastClick: LastClick | null = null;
+let recentClicks: LastClick[] = [];
 
 export function recordLastClick(element: Element, at: number = Date.now()): void {
-  const label = accessibleLabel(element).slice(0, MAX_LABEL_LENGTH);
-  lastClick = { label, role: roleOf(element), at };
+  const click = { label: accessibleLabel(element).slice(0, MAX_LABEL_LENGTH), role: roleOf(element), at };
+  lastClick = click;
+  // La plus récente en tête, plafonné à 5 — même promesse de confidentialité (jamais une valeur de champ).
+  recentClicks = [click, ...recentClicks].slice(0, RECENT_CLICKS_SIZE);
 }
 
 /** Le dernier clic s'il date de moins de 10 min, sinon null. */
@@ -99,8 +105,17 @@ export function readRecentLastClick(now: number = Date.now()): LastClick | null 
   return lastClick;
 }
 
+/**
+ * D17 — les noms accessibles des 5 derniers clics frais (< 10 min), le plus RÉCENT en tête. Alimente
+ * le champ `recentClicks` du signalement contextuel.
+ */
+export function readRecentClicks(now: number = Date.now()): string[] {
+  return recentClicks.filter((click) => now - click.at < FRESHNESS_WINDOW_MS).map((click) => click.label);
+}
+
 export function clearLastClick(): void {
   lastClick = null;
+  recentClicks = [];
 }
 
 let installed = false;

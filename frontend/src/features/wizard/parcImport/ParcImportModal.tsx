@@ -707,6 +707,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
       title={T.modalTitle}
       size="xl"
       onClose={onClose}
+      // D15 (PR B) — l'état COMPLET de l'import déclaré au drapeau « Signaler » : étape, parc collé,
+      // dernière réponse d'analyse, décisions construites et dernière erreur serveur (status + errors[]).
+      // Évalué AU CLIC (jamais à chaque rendu) ; borné/tronqué côté serveur (plafond 100 000).
+      reportState={() => ({
+        step,
+        parc: rawText,
+        analysis,
+        decisions: buildDecisions(),
+        lastError: importMut.isError
+          ? { status: (importMut.error as { response?: { status?: number } } | null)?.response?.status ?? null, errors: extractErrors(importMut.error) }
+          : null,
+      })}
       footer={
         isRecap ? (
           <Button size="sm" onClick={onClose}>

@@ -13,6 +13,7 @@ use App\Tests\Security\FeedbackContextIsolationTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -447,6 +448,11 @@ final class FeedbackTest extends WebTestCase
         self::assertLessThanOrEqual(60, mb_strlen((string) ($context['clientClock']['timeZone'] ?? '')), 'clientClock.timeZone borné à 60');
     }
 
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+    }
+
     /** Un planning FAILED FRAIS (< 12 h) avec snapshot + verdict solveur + un diagnostic ERROR, sous RLS. */
     private function seedFailedSchedule(string $clubId, string $seasonId): string
     {
@@ -467,7 +473,7 @@ final class FeedbackTest extends WebTestCase
         $schedule->setSolverNbVariables(42);
         $schedule->setSolverNbConstraints(99);
         $schedule->setSolverNbConflicts(7);
-        $schedule->setSolveStartedAt(new \DateTimeImmutable('now')->modify('-1 hour'));
+        $schedule->setSolveStartedAt(new DateTimeImmutable('now')->modify('-1 hour'));
         $em->persist($schedule);
 
         $diagnostic = new ScheduleDiagnostic;
@@ -486,11 +492,6 @@ final class FeedbackTest extends WebTestCase
         $this->clearGuc();
 
         return $scheduleId;
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
     }
 
     /**
