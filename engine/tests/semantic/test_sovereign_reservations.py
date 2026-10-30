@@ -499,3 +499,31 @@ def test_a_forced_day_the_grid_never_offers_stays_failed_even_with_reservations_
 
     assert result["status"] == "failed", f"aucun verrou en cause (obtenu {result['status']})"
     assert _reservation_signals(result) == []
+
+
+def test_two_floors_sharing_the_one_case_left_by_a_reservation_place_one_team_and_name_the_other() -> None:
+    """Une réservation tierce laisse UNE case pour deux planchers : la case libre sert une équipe, seule
+    l'autre reste non placée. Les laisser toutes les deux dehors gâcherait une case que la règle permet.
+    Jumeau backend : ``CapacityMirrorParityTest::testSaturationVerdictMatchesEngineFeasibility``."""
+    floors = [
+        _hard_team_rule(
+            f"f-{team}", team, "FACILITY", {"minAtVenueId": "V", "minAtVenueCount": 1}, f"Au moins 1 {team}"
+        )
+        for team in ("t1", "t2")
+    ]
+    result = solve_payload(
+        make_payload(
+            teams=[make_team("t1"), make_team("t2"), make_team("t3")],
+            venues=[make_venue("V", [(1, "18:00"), (3, "18:00")])],
+            constraints=floors,
+            slot_templates=[_reservation("t3", "V", 1)],
+        )
+    )
+
+    assert result["status"] == "completed"
+    placed = [team for team in ("t1", "t2") if _slots_of(result, team) == [3]]
+    assert len(placed) == 1, f"la case libre doit servir une équipe, obtenu {result['slots']}"
+    blocked = [d["teamId"] for d in result["diagnostics"] if d.get("type") == "blocked_by_reservation"]
+    assert blocked == [next(t for t in ("t1", "t2") if t not in placed)], (
+        f"seule l'équipe non placée est nommée : {blocked}"
+    )

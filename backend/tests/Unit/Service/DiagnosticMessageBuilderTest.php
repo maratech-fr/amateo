@@ -213,7 +213,7 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit d\'une règle sacrifiée doit exister, pas retomber sur le défaut');
         self::assertStringContainsString('SM1', $result, 'le message doit NOMMER l\'équipe concernée');
         self::assertStringContainsString('Indispo du vendredi', $result, 'le message doit NOMMER la règle sacrifiée (son libellé)');
-        self::assertMatchesRegularExpression('/r[ée]servation|verrou/i', $result, 'le message doit dire qu\'une réservation/un verrou a gagné');
+        self::assertMatchesRegularExpression('/r[ée]servation|verrou/iu', $result, 'le message doit dire qu\'une réservation/un verrou a gagné');
     }
 
     public function testBlockedByReservationComposesAMessageNamingTeamRuleAndReservationWithoutClaimingARelaxation(): void

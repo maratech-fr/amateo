@@ -83,8 +83,10 @@ final class CapacityMirrorParityTest extends TestCase
      *
      * 2 équipes exigent chacune 1 séance à V1 (2 places demandées) ; V1 a 2 créneaux
      * mais l'un est épinglé par une TROISIÈME équipe → 1 place libre. Le miroir dit
-     * saturé (2 > 1) ; le moteur doit être INFEASIBLE. Témoin : sans le pin, les
-     * deux verdicts basculent ensemble (rien à signaler / completed).
+     * saturé (2 > 1) et le récap avertit. AMENDÉ le 2026-10-30 (GO fondateur, ADR-0001 amendée
+     * « la réservation gagne ») : le moteur sort `completed`, une des deux équipes reste NON
+     * placée et `blocked_by_reservation` le nomme, au lieu de l'ancien INFEASIBLE. Témoin : sans le
+     * pin, les deux verdicts basculent ensemble (rien à signaler, deux équipes placées).
      */
     public function testSaturationVerdictMatchesEngineFeasibility(): void
     {
@@ -109,19 +111,29 @@ final class CapacityMirrorParityTest extends TestCase
         $saturation = $this->mirror->venueMinimumSaturation($saturatedPayload);
         self::assertCount(1, $saturation, 'le miroir doit voir la saturation (2 minimums pour 1 place libre)');
         self::assertSame(['demand' => 2, 'free' => 1], ['demand' => $saturation[0]['demand'], 'free' => $saturation[0]['free']]);
-        self::assertSame(
-            'failed',
-            $this->solve($saturatedPayload)['status'],
-            'PARITÉ ROMPUE : le miroir annonce un INFEASIBLE certain mais le moteur a résolu — '
-            . 'son algèbre des minimums ou des verrous a changé (pins comptés ? triplet non fermé ?). '
-            . 'Aligner App\Service\PayloadCapacityMirror, sinon le récap bloque à tort.',
+        $saturated = $this->solve($saturatedPayload);
+        self::assertSame('completed', $saturated['status'], 'le verrou gagne : une saturation causée par une réservation ne fait pas échouer');
+        $placed = array_values(array_intersect(['t1', 't2'], array_column($saturated['slots'], 'teamId')));
+        self::assertCount(
+            1,
+            $placed,
+            'PARITÉ ROMPUE : le miroir annonce 1 place libre pour 2 minimums, le moteur doit placer exactement une des deux équipes — '
+            . 'son algèbre des minimums ou des verrous a changé. Aligner App\Service\PayloadCapacityMirror.',
         );
+        self::assertContains('blocked_by_reservation', array_column($saturated['diagnostics'] ?? [], 'type'), 'l\'équipe non placée doit être nommée avec la réservation en cause');
 
         // TÉMOIN — sans le pin, les DEUX côtés doivent basculer ensemble : sans lui,
-        // « failed » ci-dessus pourrait venir d'un tout autre facteur du payload.
+        // l'équipe non placée ci-dessus pourrait venir d'un tout autre facteur du payload.
         $freePayload = $this->basePayload(teams: $this->teams(3), venues: $venues, constraints: $minConstraints);
         self::assertSame([], $this->mirror->venueMinimumSaturation($freePayload));
-        self::assertSame('completed', $this->solve($freePayload)['status']);
+        $free = $this->solve($freePayload);
+        self::assertSame('completed', $free['status']);
+        self::assertSame(['t1', 't2'], array_values(array_intersect(['t1', 't2'], array_column($free['slots'], 'teamId'))), 'sans le pin, les deux minimums tiennent');
+
+        // SANS réservation en cause, la saturation reste un échec : 3 minimums pour 2 places de grille.
+        $overGrid = $this->basePayload(teams: $this->teams(3), venues: $venues, constraints: [...$minConstraints, $this->minAtVenue('t3', 'v1')]);
+        self::assertCount(1, $this->mirror->venueMinimumSaturation($overGrid));
+        self::assertSame('failed', $this->solve($overGrid)['status'], 'aucun verrou en cause : l\'échec reste, c\'est ce qui justifie le bloqueur du récap');
     }
 
     /**

@@ -19,7 +19,6 @@ use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
-use App\Service\ReservationGroupOccupancy;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
@@ -486,19 +485,14 @@ final class ParcImportExecuteTest extends WebTestCase
         $parc = $this->parcWithCases([
             ['gymnase' => 'Gymnase Platane', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'Groupe X'],
         ]);
-        $this->import($parc, [['section' => 'mutualisations', 'index' => 0, 'coche' => true]]);
+        $blocksBefore = $this->rowCount('shared_training_block');
+        $reservationsBefore = $this->rowCount('reservation');
 
-        $this->em->clear();
-        $this->scopeGucToClub($this->club->getId());
-        foreach ($this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $this->club->getId()]) as $block) {
-            $members = [];
-            foreach ($this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()]) as $member) {
-                $members[$member->getTeamId()] = true;
-            }
-            $reservations = $this->em->getRepository(Reservation::class)->findBy(['clubId' => $this->club->getId()]);
-            $complete = ReservationGroupOccupancy::reservationsOnGroupCompleteCases($reservations, $members);
-            self::assertLessThanOrEqual($block->getCommonSessions(), \count($complete) / \count($members), 'plus de cases réservées que de séances communes');
-        }
+        [$status] = $this->import($parc, [['section' => 'mutualisations', 'index' => 0, 'coche' => true]]);
+
+        self::assertSame(422, $status, 'plus de cases déjà réservées que de séances communes : l\'import refuse');
+        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'tout-ou-rien : aucun bloc écrit');
+        self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'tout-ou-rien : aucune réservation écrite');
     }
 
     public function testACorrectedGroupeOverridesTheBlockLabel(): void

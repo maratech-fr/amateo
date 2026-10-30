@@ -110,7 +110,9 @@ final class ValidateConstraintsTest extends WebTestCase
      * PR A (2026-08-06) — saturation des « au moins » par gymnase. Deux équipes exigent
      * chacune 1 séance à Matéo (2 places demandées) ; le gymnase a 2 créneaux mais une
      * TROISIÈME équipe (sans minimum) en verrouille un par réservation → 1 place libre
-     * pour 2 demandées → INFEASIBLE certain, BLOQUEUR.
+     * pour 2 demandées. AMENDÉ le 2026-10-30 (GO fondateur, ADR-0001 amendée « la réservation
+     * gagne ») : c'était un BLOQUEUR ; la réservation étant en cause, le récap AVERTIT et on génère,
+     * le moteur sort `completed` + `blocked_by_reservation`.
      *
      * ⚠ P4-97 — l'occupant DOIT être une équipe SANS minimum : un pin de teamA ou teamB
      * CRÉDITE désormais le minimum de sa propre équipe (une équipe déjà servie par sa
@@ -118,7 +120,7 @@ final class ValidateConstraintsTest extends WebTestCase
      * (cf. `testVenueMinimumSatisfiedByOwnReservationsDoesNotBlock`). C'est l'occupation par
      * un TIERS non demandeur qui vole la place et rend la saturation réelle.
      */
-    public function testVenueMinimumsSaturatedByReservationsBlock(): void
+    public function testVenueMinimumsSaturatedByReservationsWarnWithoutBlocking(): void
     {
         $venueId = $this->venue('Matéo');
         $this->trainingSlot($venueId, dayOfWeek: 1, start: '18:00');
@@ -133,12 +135,41 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->client->loginUser($this->user);
         $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
-        self::assertResponseStatusCodeSame(422);
+        self::assertResponseIsSuccessful();
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertFalse($data['valid']);
-        $blockers = implode(' | ', $data['blockers']);
-        self::assertStringContainsString('Matéo', $blockers, 'le bloqueur doit nommer le gymnase saturé');
-        self::assertStringContainsString('2 places', $blockers);
+        self::assertTrue($data['valid'], 'on génère : la réservation gagne');
+        self::assertSame([], $data['blockers']);
+        $warnings = implode(' | ', $data['warnings']);
+        self::assertStringContainsString('Matéo', $warnings, 'l\'avertissement doit nommer le gymnase saturé');
+        self::assertStringContainsString('2 places', $warnings);
+        self::assertStringNotContainsString('la génération échouera', $warnings, 'elle n\'échoue plus');
+    }
+
+    /** Sans réservation en cause, 3 « au moins » pour 2 places : le moteur échoue, le récap bloque toujours. */
+    public function testVenueMinimumsExceedingTheGridStillBlockWithoutAnyReservation(): void
+    {
+        $this->seedThreeMinimumsForTwoPlaces('Matéo');
+
+        $this->client->loginUser($this->user);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Matéo', implode(' | ', json_decode((string) $this->client->getResponse()->getContent(), true)['blockers']));
+    }
+
+    /** Une réservation ailleurs n'excuse rien : elle n'est pas la cause de la saturation. */
+    public function testVenueMinimumsExceedingTheGridStillBlockWithAReservationElsewhere(): void
+    {
+        $this->seedThreeMinimumsForTwoPlaces('Matéo');
+        $elsewhere = $this->venue('Platane');
+        $this->trainingSlot($elsewhere, dayOfWeek: 3, start: '18:00');
+        $this->reservation($this->team(sessionsPerWeek: 1), $elsewhere, dayOfWeek: 3, start: '18:00');
+
+        $this->client->loginUser($this->user);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Matéo', implode(' | ', json_decode((string) $this->client->getResponse()->getContent(), true)['blockers']));
     }
 
     /**
@@ -650,6 +681,16 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->em->persist($this->season);
 
         $this->em->flush();
+    }
+
+    private function seedThreeMinimumsForTwoPlaces(string $venueName): void
+    {
+        $venueId = $this->venue($venueName);
+        $this->trainingSlot($venueId, dayOfWeek: 1, start: '18:00');
+        $this->trainingSlot($venueId, dayOfWeek: 2, start: '18:00');
+        foreach ([1, 2, 3] as $ignored) {
+            $this->minAtVenue($this->team(sessionsPerWeek: 1), $venueId);
+        }
     }
 
     /** @param array<string, mixed> $config */
