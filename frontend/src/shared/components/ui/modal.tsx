@@ -99,7 +99,9 @@ export function Modal({ label, title, onClose, children, size = "md", footer, re
           {/* D14 — drapeau « Signaler » À GAUCHE de la croix. Icône au ton destructif, repère du canal
               (même grammaire que `FeedbackButton`) ; nom accessible « Signaler ». */}
           <div className="flex shrink-0 items-center gap-1">
-            {showReportFlag ? (
+            {/* Drapeau rendu QUAND ET SEULEMENT QUAND un canal existe (`openReport !== null`) : hors
+                provider (console admin, test de primitive) aucun drapeau — jamais un drapeau inerte. */}
+            {showReportFlag && null !== openReport ? (
               <button
                 type="button"
                 aria-label="Signaler"
