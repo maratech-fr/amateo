@@ -43,6 +43,14 @@ export interface ParcAnalysisLine {
   seancesActuelles?: number;
   /** Mutualisations : le libellé du bloc DÉRIVÉ par le serveur (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
+  /**
+   * Séance commune (D3) : la COMPOSITION lue (`{id résolu|null, nom}`) — amorce le sélecteur multiple
+   * de l'étape Séances communes. Un `id` null = équipe non appariée au club (nom seul). La composition
+   * redéfinie voyage à l'import/revalidation dans `corrections.equipes`.
+   */
+  equipes?: Array<{ id: string | null; nom: string }>;
+  /** Séance commune (D3) : le nombre de séances communes partageant l'ensemble d'équipes (recalculé si corrigé). */
+  seancesCommunes?: number;
   /** Mutualisations (P4-363) : le gymnase RÉSOLU du nom de la case (null si à créer) — amorce le sélecteur de gymnase de la réservation de groupe, distinct du `cibleId` (qui désigne le bloc apparié). */
   gymnaseId?: string | null;
   /**

@@ -74,6 +74,10 @@ final class ParcImportAnalyzer
         $derived = $this->deriver->derive($parc);
         if ([] !== $decisions) {
             $this->applyTimeCorrections($derived, $decisions);
+            // PR A (D3) — rejeu de la COMPOSITION corrigée d'une séance commune (`corrections.equipes`) :
+            // on substitue les équipes lues par la composition redéfinie (UUID / `import:<index>`), ce qui
+            // reconstruit le libellé et recompte `seances_communes` sur le nouvel ensemble.
+            $this->applyCompositionCorrections($derived, $decisions);
         }
         $season = '' !== $seasonId ? $this->entityManager->find(Season::class, $seasonId) : null;
 
@@ -149,6 +153,112 @@ final class ParcImportAnalyzer
                 $derived['mutualisations'][$index] = $mutualisation;
             }
         }
+    }
+
+    /**
+     * PR A (D3) — rejoue `corrections.equipes` d'une décision de séance commune : substitue les équipes
+     * LUES par la composition REDÉFINIE (liste ≥ 2 d'UUID d'équipe du club, ou `import:<index>` vers une
+     * ligne Équipes dérivée), puis RECOMPTE `seances_communes` sur les nouveaux ensembles (nombre de
+     * séances communes partageant exactement le même ensemble d'équipes). Une composition < 2 résolues
+     * est ignorée côté analyse (le front bloque déjà l'import).
+     *
+     * @param array{gymnases: list<array{nom: string}>, equipes: list<array{nom: string, genre: ?string, categorie: string, seances: int}>, creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>, reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>, mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>, alertes: list<array{type: string, message: string}>} $derived
+     * @param list<array<string, mixed>>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           $decisions
+     */
+    private function applyCompositionCorrections(array &$derived, array $decisions): void
+    {
+        $changed = false;
+        foreach ($decisions as $decision) {
+            if ('mutualisations' !== ($decision['section'] ?? null)) {
+                continue;
+            }
+            $index = $decision['index'] ?? null;
+            $corrections = $decision['corrections'] ?? null;
+            if (!\is_int($index) || !\is_array($corrections) || !isset($derived['mutualisations'][$index])) {
+                continue;
+            }
+            $equipes = $corrections['equipes'] ?? null;
+            if (!\is_array($equipes)) {
+                continue;
+            }
+            $names = $this->resolveCompositionNames($equipes, $derived['equipes']);
+            if (\count($names) < 2) {
+                continue;
+            }
+            $mutualisation = $derived['mutualisations'][$index];
+            $mutualisation['equipes'] = $names;
+            $derived['mutualisations'][$index] = $mutualisation;
+            $changed = true;
+        }
+        if ($changed) {
+            $this->recountCommonSessions($derived['mutualisations']);
+        }
+    }
+
+    /**
+     * Résout une composition corrigée (`corrections.equipes`) en NOMS d'équipe : un UUID → le nom de
+     * l'équipe du club (RLS garantit le tenant, une équipe étrangère ne charge pas) ; `import:<index>` →
+     * le nom de la ligne Équipes dérivée visée (créée dans ce run). Les entrées non résolues sont omises.
+     *
+     * @param array<array-key, mixed>                                                   $entries
+     * @param list<array{nom: string, genre: ?string, categorie: string, seances: int}> $derivedTeams
+     *
+     * @return list<string>
+     */
+    private function resolveCompositionNames(array $entries, array $derivedTeams): array
+    {
+        $names = [];
+        foreach ($entries as $entry) {
+            if (!\is_string($entry) || '' === trim($entry)) {
+                continue;
+            }
+            $entry = trim($entry);
+            if (str_starts_with($entry, 'import:')) {
+                $n = substr($entry, 7);
+                if (1 === preg_match('/^\d+$/', $n) && isset($derivedTeams[(int) $n])) {
+                    $names[] = $this->stringField($derivedTeams[(int) $n], 'nom');
+                }
+
+                continue;
+            }
+            $team = $this->entityManager->find(Team::class, $entry);
+            if ($team instanceof Team) {
+                $names[] = $team->getName();
+            }
+        }
+
+        return array_values(array_filter($names, static fn (string $nom): bool => '' !== $nom));
+    }
+
+    /**
+     * Recompte `seances_communes` sur une liste de séances communes : chacune reçoit le nombre de
+     * séances communes partageant exactement le même ensemble d'équipes (clé d'identité `teamKey`).
+     *
+     * @param list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}> $mutualisations
+     */
+    private function recountCommonSessions(array &$mutualisations): void
+    {
+        $countBySet = [];
+        foreach ($mutualisations as $mutualisation) {
+            $key = $this->teamSetKey($this->stringList($mutualisation['equipes']));
+            $countBySet[$key] = ($countBySet[$key] ?? 0) + 1;
+        }
+        foreach ($mutualisations as $i => $mutualisation) {
+            $key = $this->teamSetKey($this->stringList($mutualisation['equipes']));
+            $mutualisation['seances_communes'] = $countBySet[$key] ?? 1;
+            $mutualisations[$i] = $mutualisation;
+        }
+    }
+
+    /**
+     * @param list<string> $teams
+     */
+    private function teamSetKey(array $teams): string
+    {
+        $keys = array_values(array_unique(array_map($this->teamKey(...), $teams)));
+        sort($keys);
+
+        return implode('|', $keys);
     }
 
     /**
@@ -463,9 +573,22 @@ final class ParcImportAnalyzer
             // dérivée (la grille place la case EXCLUSIVEMENT d'après elle, jamais `payload.cases[index]`,
             // car l'index d'une mutualisation est son rang dans la liste dérivée, pas celui de la case).
             $position = $this->positionOf($entry);
-            $extra = ['groupe' => $groupe, 'gymnaseId' => $position['gymnaseId'], 'position' => $position];
             $teamNames = $this->stringList($entry['equipes']);
             $commonSessions = $entry['seances_communes'];
+            // D3 — la ligne expose sa COMPOSITION (`equipes` : {id résolu|null, nom}) pour pré-remplir le
+            // sélecteur multiple de l'étape Séances communes, et `seancesCommunes` (recalculé si la
+            // composition a été redéfinie). Le `libelle` reflète déjà la composition (corrigée ou lue).
+            $composition = array_map(
+                fn (string $nom): array => ['id' => $this->resolveTeamId($nom), 'nom' => $nom],
+                $teamNames,
+            );
+            $extra = [
+                'groupe' => $groupe,
+                'gymnaseId' => $position['gymnaseId'],
+                'position' => $position,
+                'equipes' => $composition,
+                'seancesCommunes' => $commonSessions,
+            ];
 
             // PR A (D1/D13) — une équipe citée IGNORÉE à l'étape Équipes (décision décochée) ou
             // introuvable des cases fait passer la séance commune en alerte DÉCOCHÉE, nommant l'équipe,

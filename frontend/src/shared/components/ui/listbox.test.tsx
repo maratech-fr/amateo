@@ -39,6 +39,7 @@ function Harness(props: { onValueChange?: (v: string) => void; initial?: string 
       aria-label="Équipe"
       options={OPTIONS}
       {...rest}
+      mode="single"
       value={value}
       onValueChange={(v) => {
         setValue(v);

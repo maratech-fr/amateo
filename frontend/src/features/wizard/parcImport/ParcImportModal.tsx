@@ -6,7 +6,7 @@ import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
-import { Listbox, type ListboxGroup } from "@/shared/components/ui/listbox";
+import { Listbox, type ListboxGroup, type ListboxOption } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
@@ -160,6 +160,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
   const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({});
+  // D3 (incident ALAP) — composition d'équipes REDÉFINIE d'une séance commune, par `mutualisations:index`.
+  // Absente = non touchée (le serveur garde la composition lue) ; définie = `corrections.equipes` envoyé.
+  const [teamCompositionDrafts, setTeamCompositionDrafts] = useState<Record<string, string[]>>({});
   // Retours fondateur 2026-10-26 — le nombre de séances d'une ligne équipe, en CHAMP éditable
   // (pré-rempli de la valeur LUE), par `equipes:index`. Remplace l'ancienne case « mise à jour ».
   const [sessionDrafts, setSessionDrafts] = useState<Record<string, number>>({});
@@ -289,6 +292,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setSlotDrafts(nextSlotDrafts);
     setCaseVenue(nextCaseVenue);
     setGroupDrafts(nextGroupDrafts);
+    // D3 — la composition redéfinie repart de zéro à chaque (re)analyse (le serveur a déjà rejoué).
+    setTeamCompositionDrafts({});
     setSessionDrafts(nextSessionDrafts);
     setTierDrafts(nextTier);
     setGenderDrafts(nextGender);
@@ -353,12 +358,23 @@ export function ParcImportModal(props: ParcImportModalProps) {
           }
         } else if ("mutualisations" === section) {
           const groupe = (groupDrafts[key] ?? "").trim();
+          // D3 — la composition REDÉFINIE (si l'utilisateur a touché le sélecteur multiple) part en
+          // `corrections.equipes` (liste d'ids d'équipe du club / `import:<index>`), sinon le serveur
+          // garde la composition lue.
+          const composition = teamCompositionDrafts[key];
+          const corrections: Record<string, unknown> = {};
+          if ("" !== groupe) {
+            corrections.groupe = groupe;
+          }
+          if (undefined !== composition) {
+            corrections.equipes = composition;
+          }
           out.push({
             section,
             index: line.index,
             coche: checked[key] ?? line.coche,
             venueId: resolveVenueId(caseVenue[key]),
-            corrections: "" !== groupe ? { groupe } : undefined,
+            corrections: Object.keys(corrections).length > 0 ? corrections : undefined,
           });
         } else if (CASE_SECTION_SET.has(section)) {
           const draft = slotDrafts[key];
@@ -448,9 +464,25 @@ export function ParcImportModal(props: ParcImportModalProps) {
     return n;
   }, [analysis, checked]);
 
+  // D3 — une séance commune dont la composition REDÉFINIE compte moins de 2 équipes bloque l'import
+  // (la raison vit sur la ligne, `needsTwoTeams`). Une composition non touchée ne bloque jamais.
+  const pendingComposition = useMemo(() => {
+    if (null === analysis) {
+      return 0;
+    }
+    let n = 0;
+    for (const line of analysis.sections.mutualisations ?? []) {
+      const draft = teamCompositionDrafts[keyOf("mutualisations", line.index)];
+      if (undefined !== draft && draft.length < 2) {
+        n += 1;
+      }
+    }
+    return n;
+  }, [analysis, teamCompositionDrafts]);
+
   const importDecisions = buildDecisions();
   const count = importDecisions.filter((d) => d.coche).length;
-  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || 0 === count;
+  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || pendingComposition > 0 || 0 === count;
 
   const doImport = (): void => {
     if (null === analysis || blocked) {
@@ -690,7 +722,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
               ) : null}
               {/* Finition 4 / D13 — la raison d'import bloqué est VISIBLE au pied (ton warning, patron
                   ImportFbiDialog), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher / séance commune. */}
-              {CONTENT_STEPS.has(step) && blocked ? (
+              {CONTENT_STEPS.has(step) && blocked && (pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || 0 === count) ? (
                 <span className="flex items-center gap-2 text-xs text-warning">
                   <span>{T.importBlocked(pendingAmbiguous, pendingGender, pendingAlerteCode)}</span>
                   {pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 ? (
@@ -835,13 +867,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
               {"mutualisations" === step && null !== analysis ? (
                 <MutualisationsStep
                   lines={analysis.sections.mutualisations ?? []}
+                  equipesLines={analysis.sections.equipes ?? []}
                   venues={venues}
+                  allTeams={allTeams}
                   caseVenue={caseVenue}
                   groupDrafts={groupDrafts}
                   checked={checked}
+                  compositionDrafts={teamCompositionDrafts}
+                  decisionValue={decisionValue}
                   onVenueChange={(index, v) => setCaseVenue((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
                   onGroupChange={(index, v) => setGroupDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
                   onKeepChange={(index, keep) => setChecked((prev) => ({ ...prev, [keyOf("mutualisations", index)]: keep }))}
+                  onCompositionChange={(index, v) => setTeamCompositionDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
                   onEditSlot={(index) => setEditingCase({ section: "mutualisations", index })}
                 />
               ) : null}
@@ -1035,9 +1072,11 @@ function DecisionRow({
   const genderVal = genderValue ?? line.suggestedGender ?? "";
   const genderMissing = "" === genderVal;
 
+  // D12 (incident ALAP) — ligne COMPACTE : 1 ligne, 2 au maximum (padding/gaps resserrés, le champ
+  // « Séances » inline avec le libellé). Pur CSS, prouvé par les captures (aucun test jsdom).
   return (
-    <li className="grid gap-x-4 gap-y-1 border-b border-border/60 py-2 md:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="flex flex-col gap-0.5">
+    <li className="grid items-center gap-x-4 gap-y-0.5 border-b border-border/60 py-1 md:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
         <span className={ignored ? "text-sm font-medium text-muted-foreground line-through" : "text-sm font-medium text-foreground"}>{line.libelle}</span>
         {/* Défaut C — la raison n'est rendue QU'UNE fois : la ligne ⚠ (ci-dessous) la porte dès qu'on
             est « à trancher », sinon la ligne grise. Les deux ensemble la doublaient (capture 03-equipes). */}
@@ -1052,7 +1091,7 @@ function DecisionRow({
             coup d'œil et corrigeable AVANT l'import (ce qui SERA importé) ; « actuellement N » pour une
             équipe appariée. Plus aucune case à cocher de séances. */}
         {"equipes" === section && undefined !== onSessionChange ? (
-          <label className="mt-0.5 flex items-center gap-2 text-xs text-foreground">
+          <label className="flex items-center gap-2 text-xs text-foreground">
             <span>{T.sessionsLabel}</span>
             <Input
               type="number"
@@ -1281,23 +1320,33 @@ function GymnasesStep({
  */
 function MutualisationsStep({
   lines,
+  equipesLines,
   venues,
+  allTeams,
   caseVenue,
   groupDrafts,
   checked,
+  compositionDrafts,
+  decisionValue,
   onVenueChange,
   onGroupChange,
   onKeepChange,
+  onCompositionChange,
   onEditSlot,
 }: {
   lines: ParcAnalysisLine[];
+  equipesLines: ParcAnalysisLine[];
   venues: readonly ParcEntity[];
+  allTeams: TeamLike[];
   caseVenue: Record<string, string>;
   groupDrafts: Record<string, string>;
   checked: Record<string, boolean>;
+  compositionDrafts: Record<string, string[]>;
+  decisionValue: (section: string, line: ParcAnalysisLine) => string;
   onVenueChange: (index: number, value: string) => void;
   onGroupChange: (index: number, value: string) => void;
   onKeepChange: (index: number, keep: boolean) => void;
+  onCompositionChange: (index: number, values: string[]) => void;
   onEditSlot: (index: number) => void;
 }) {
   if (0 === lines.length) {
@@ -1305,6 +1354,14 @@ function MutualisationsStep({
   }
   // Finition 2c — « à vérifier » réservé aux alertes ; sinon « N mutualisations lues ».
   const hasAlert = lines.some((l) => "alerte" === l.statut);
+  // D3 — les équipes offertes au sélecteur de composition : les équipes du club + les lignes Équipes
+  // GARDÉES « à créer » de ce run (référencées par `import:<index>`, créées à l'import).
+  const teamOptions: ListboxOption[] = [
+    ...allTeams.map((t) => ({ value: t.id, label: t.name })),
+    ...equipesLines
+      .filter((l) => CREATE === decisionValue("equipes", l))
+      .map((l) => ({ value: `import:${l.index}`, label: l.libelle })),
+  ];
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground tabular-nums">{hasAlert ? T.mutualisationsCount(lines.length) : T.mutualisationsReadCount(lines.length)}</p>
@@ -1321,6 +1378,10 @@ function MutualisationsStep({
             ...(null == line.gymnaseId && "" !== posGym ? [{ value: VENUE_TO_CREATE, label: T.gridVenueToCreate(posGym), swatch: null }] : []),
             ...venues.map((v) => ({ value: v.id, label: v.name, swatch: null })),
           ];
+          // D3 — composition : amorcée des équipes RÉSOLUES lues (id non null), ou le brouillon redéfini.
+          const readComposition = (line.equipes ?? []).map((e) => e.id).filter((id): id is string => null !== id);
+          const composition = compositionDrafts[key] ?? readComposition;
+          const compositionTooFew = undefined !== compositionDrafts[key] && compositionDrafts[key].length < 2;
           return (
             <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -1348,6 +1409,19 @@ function MutualisationsStep({
                     { key: "ignore", label: T.mutualIgnore },
                   ]}
                 />
+                {/* D3 (incident ALAP) — sélecteur MULTIPLE : redéfinir la composition d'équipes (le
+                    nom du groupe avait pu être lu comme une équipe). → `corrections.equipes`. */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">{T.sectionTitle("equipes")}</span>
+                  <Listbox
+                    mode="multiple"
+                    aria-label={T.teamsForGroup(line.libelle)}
+                    wrapperClassName="w-56"
+                    values={composition}
+                    onValuesChange={(v) => onCompositionChange(line.index, v)}
+                    options={teamOptions}
+                  />
+                </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">{T.venueForGroupVisible}</span>
                   <Listbox
@@ -1369,6 +1443,13 @@ function MutualisationsStep({
                   {T.editCaseTitle}
                 </Button>
               </div>
+              {/* D3 — moins de 2 équipes choisies : raison VISIBLE (l'import est bloqué au pied). */}
+              {compositionTooFew ? (
+                <span className="flex items-center gap-1 text-xs text-warning">
+                  <AlertTriangle aria-hidden className="size-3.5" />
+                  {T.needsTwoTeams}
+                </span>
+              ) : null}
             </li>
           );
         })}
