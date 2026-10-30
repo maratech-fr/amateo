@@ -57,4 +57,13 @@ describe("toastStore", () => {
     const { toasts } = useToastStore.getState();
     expect(toasts[0]).toMatchObject({ message: "Saved", variant: "success" });
   });
+
+  it("un toast ne remplace que ceux de sa propre clé", () => {
+    toast.success("Sans clé");
+    toast.success("Gymnase A, premier", { replaces: "a" });
+    toast.success("Gymnase B", { replaces: "b" });
+    toast.success("Gymnase A, second", { replaces: "a" });
+
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual(["Sans clé", "Gymnase B", "Gymnase A, second"]);
+  });
 });

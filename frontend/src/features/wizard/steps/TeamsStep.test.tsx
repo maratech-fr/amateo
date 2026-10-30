@@ -225,6 +225,24 @@ describe("TeamsStep", () => {
     expect(within(teamRow().parentElement as HTMLElement).queryByRole("img", { name: TEAMS_TEXTS.engagedRowMarker })).not.toBeInTheDocument();
   });
 
+  it("reserves the lock column on a team that is not engaged, so the row columns stay aligned (P4-375)", () => {
+    // jsdom ne mesure rien : on garde la réserve de largeur par sa classe, le rendu se juge sur capture.
+    renderWithProviders(<TeamsStep />);
+
+    const reserved = within(teamRow()).getByRole("button", { name: TEAMS_TEXTS.linksOfTeam("SM3") }).previousElementSibling;
+    expect(reserved).toHaveAttribute("aria-hidden", "true");
+    expect(reserved).toHaveClass("w-4", "shrink-0");
+  });
+
+  it("puts the lock in that same reserved column on an engaged team (P4-375)", () => {
+    team = { ...baseTeam, isEngaged: true };
+    renderWithProviders(<TeamsStep />);
+
+    const lock = within(teamRow()).getByRole("button", { name: TEAMS_TEXTS.linksOfTeam("SM3") }).previousElementSibling;
+    expect(lock).toHaveAttribute("role", "img");
+    expect(lock?.querySelector("svg")).toHaveClass("size-4");
+  });
+
   it("leaves both open on a team that does not play yet", () => {
     renderWithProviders(<TeamsStep />);
     const row = teamRow();

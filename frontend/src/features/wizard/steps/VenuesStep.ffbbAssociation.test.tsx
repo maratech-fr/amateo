@@ -327,4 +327,23 @@ describe("VenuesStep — Associer une salle FFBB, sur la carte du gymnase", () =
       body: expect.objectContaining({ name: "Alpha", externalRef: "", address: "2 rue Basse", latitude: "45.1000000", longitude: "4.1000000" }),
     });
   });
+
+  it("un nouveau geste sur le même gymnase remplace le toast « Annuler » précédent : son retour arrière ne vaut plus", async () => {
+    const user = userEvent.setup();
+    h.venues.data = [LINKED];
+    h.nearby.salles = [SALLE];
+    renderWithProviders(<Harness />);
+
+    await user.click(screen.getByRole("button", { name: WIZARD_TEXTS.dissociateVenueButton("Alpha") }));
+    const dissociate = screen.getByRole("dialog", { name: WIZARD_TEXTS.dissociateVenueTitle("Alpha") });
+    await user.click(within(dissociate).getByRole("button", { name: WIZARD_TEXTS.dissociateVenueConfirm }));
+    expect(await screen.findByText(WIZARD_TEXTS.venueDissociated("Alpha"))).toBeInTheDocument();
+
+    await associate(user);
+    await confirm(user);
+
+    expect(await screen.findByText(WIZARD_TEXTS.salleLinkedToVenue(SALLE.name, "Alpha"))).toBeInTheDocument();
+    expect(screen.queryByText(WIZARD_TEXTS.venueDissociated("Alpha"))).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: WIZARD_TEXTS.undoAction })).toHaveLength(1);
+  });
 });

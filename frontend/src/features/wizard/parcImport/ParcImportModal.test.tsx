@@ -2036,6 +2036,45 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
     expect(screen.queryByRole("button", { name: T.mutualisationCaseLabel("CEC", "U11M1 + U11M2") })).not.toBeInTheDocument();
   });
 
+  describe("pt 7 — ce que le gestionnaire VOIT, pas seulement le nom accessible", () => {
+    const start = formatMinutes(17 * 60);
+    const end = formatMinutes(18 * 60 + 30);
+    const groupField = (): HTMLElement => screen.getByRole("textbox", { name: (n: string) => n.startsWith(PARC_IMPORT_TEXTS.groupLabel("U11M1 + U11M2")) });
+    const openMutual = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+      await analyzeThen(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position })] }));
+      await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")));
+    };
+
+    it("après renommage, la carte et la case de groupe montrent le nouveau nom, en texte et en infobulle", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user);
+
+      fireEvent.change(groupField(), { target: { value: "Loisirs" } });
+      expect(screen.getByText("Loisirs"), "le titre de la carte suit le champ").toBeInTheDocument();
+      expect(screen.queryByText("CEC")).not.toBeInTheDocument();
+
+      await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("reservations")));
+      const groupCase = screen.getByRole("button", { name: T.mutualisationCaseLabel("Loisirs", "U11M1 + U11M2") });
+      expect(groupCase).toHaveTextContent(/^Loisirs · U11M1 \+ U11M2$/);
+      expect(groupCase).toHaveAttribute("title", T.caseTooltip("Loisirs · U11M1 + U11M2", start, end));
+    });
+
+    it("champ vidé : la carte et la case reviennent au nom lu, celui que l'import gardera", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user);
+
+      fireEvent.change(groupField(), { target: { value: "" } });
+      expect(screen.getByText("CEC"), "le titre de la carte revient au nom lu").toBeInTheDocument();
+
+      await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("reservations")));
+      const groupCase = screen.getByRole("button", { name: T.mutualisationCaseLabel("CEC", "U11M1 + U11M2") });
+      expect(groupCase).toHaveTextContent(/^CEC · U11M1 \+ U11M2$/);
+      expect(groupCase).toHaveAttribute("title", T.caseTooltip("CEC · U11M1 + U11M2", start, end));
+    });
+  });
+
   it("pt 10 — une ligne modifiée n'affiche qu'UN « Revalider l'aperçu », et le bandeau périmé reste", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ParcImportModal {...defaultProps} />);
