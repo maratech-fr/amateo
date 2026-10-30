@@ -230,6 +230,77 @@ extraits du message, mais UN mail le matin, UNIQUEMENT si des signalements **non
 vers la console filtrée sur les non-traités
 (`/admin?tab=incidents&sub=signalements&fstatus=untreated`), jamais un lien par item.
 
+## 3octies. Drapeau « Signaler » sur toute modale, dédup 60 s, fil d'incident client (PR B « Signaler depuis une modale », D14-D17)
+
+Une 3ᵉ porte s'ajoute aux deux de D1 : la primitive `Modal`
+([`frontend-components.md`](../../frontend/docs/frontend-components.md) § `Modal`) porte à
+GAUCHE de sa croix de fermeture un drapeau « Signaler », rendu **seulement** quand un canal de
+signalement est monté (`ModalReportProviderContext`, câblé par `ModalReportProvider` dans
+`AppLayout.tsx`) — l'app club OUI, la console superadmin et tout test de primitive NON (le
+drapeau reste alors ABSENT, jamais un drapeau inerte). Un appelant peut le masquer
+(`showReportFlag={false}`) : seul `FeedbackDialog` le fait, sur SA propre modale — le canal ne
+se signale pas lui-même.
+
+**D15 — état complet de la modale joint.** Une modale déclare `reportState={() => ({…})}` : une
+fonction évaluée AU CLIC (jamais à chaque rendu), sérialisée en JSON (best-effort — un cycle ou
+un échec de sérialisation rend `undefined`, jamais une exception) et envoyée comme `modalState`.
+Stocké côté serveur HORS de `LIGHT_CONTEXT_FIELDS` (contrairement aux repères texte de §3quater),
+plafond 100 000 caractères — au-delà, TRONQUÉ (`modalStateTruncated: true`), jamais refusé : le
+fondateur a explicitement écarté une limite RGPD ici (les coachs ne sont jamais extraits du
+texte libre collé, `promptTemplate.ts`) ; la rétention suit celle du reste du contexte (§3septies,
+même colonne `feedback.context`). Patron vivant : `ParcImportModal.tsx` joint l'étape courante,
+le parc collé, la dernière réponse d'analyse, les décisions construites et la dernière erreur
+serveur. Console : bloc dépliable dédié (`FeedbackSection.tsx`), mention « tronqué » quand le
+serveur a coupé.
+
+**D16 — anti double envoi.** Deux gardes, client et serveur, motivées par le cas réel ALAP
+(4 envois à la même seconde, aucune garde avant ce lot) : côté client, un verrou SYNCHRONE posé
+en tête de `handleSubmit`, AVANT l'attente de la capture d'écran (`submit.isPending` ne bascule
+qu'après, il ne couvre pas cette fenêtre), ignore tout second clic pendant qu'un envoi est en
+cours ; côté serveur, `FeedbackRepository::findRecentDuplicate` (même club + même auteur + même
+topic + même message, fenêtre de 60 s à l'horloge RÉELLE) rend la requête IDEMPOTENTE — 201 avec
+l'id du signalement EXISTANT, jamais une seconde ligne.
+
+**D17 — fil d'incident côté client + enrichissement serveur du dernier échec.** La porte
+CONTEXTUELLE seule (jamais la porte libre du burger) joint en plus :
+- `recentErrors` (≤ 5, la plus récente en tête) : toute réponse API ≥ 400 — pas seulement ≥ 500,
+  une rafale de 422/409 raconte aussi l'incident —, captée par le hook `afterResponse` de
+  `client.ts` dans l'anneau de `lastIncidentStore.ts` (`recordRecentIncident`), DISTINCT du
+  dernier incident ≥ 500 qui alimente seul le bloc « Détails techniques (dev) ». Chaque entrée :
+  méthode, route, code machine, jusqu'à 5 messages `errors[]`, request-id, horodatage — bornes
+  serveur `method` 8 / `route` 300 / `code` 80 / `requestId` 128 / `errors[]` 5×300 ;
+- `recentClicks` (≤ 5 × 160 caractères) : les noms accessibles des derniers contrôles cliqués,
+  captés par un écouteur de clic GLOBAL posé une fois au bootstrap
+  (`lastClickStore.ts::installLastClickCapture`) — jamais la valeur d'un
+  `<input>`/`<textarea>`/`<select>`, même promesse de confidentialité que `lastClick` (§3quater) ;
+- `clientClock` (`{at, timeZone}`) : l'heure et le fuseau RÉELS du navigateur de l'auteur —
+  exception assumée à `shared/lib/clock.ts` (ce n'est pas l'« aujourd'hui » métier, c'est
+  l'horloge du poste, pour recouper un incident avec les logs serveur).
+
+Tout est BORNÉ et TRONQUÉ côté serveur (`FeedbackController::applyClientTrail`), jamais refusé.
+
+Côté serveur, `FeedbackContextEnricher::generationFailure` (§3quater) est ÉTENDU — jamais
+réécrit — pour porter, en plus du résumé déjà livré :
+- `scheduleId` du planning FAILED (pivot de la copie lourde) ;
+- `solver` : le verdict du solveur (version, temps mur, timeout, nb variables/contraintes/
+  conflits) ;
+- `plan` : le plan (socle SEASON ou période CLOSURE/HOLIDAY) auquel appartient l'échec ;
+- `gridSummary` : slots ouverts / réservations / pins verrouillés / blocs de mutualisation /
+  minutes verrouillées — calculé par `PayloadCapacityMirror::gridSummary`, fonction PURE qui
+  tolère les deux conventions de clés (snapshot moteur réel `trainingSlots`/`slotTemplates`, ou
+  la forme abrégée `slots`/`reservations`) ;
+- `snapshot`/`diagnostics` : la COPIE LOURDE (entrée réelle du solve + diagnostics détaillés),
+  SAUTÉE sans doublon si le client a déjà nommé CE MÊME planning (le contrôleur l'a alors déjà
+  jointe à la racine du contexte).
+
+Ces champs voyagent avec le signalement et restent lisibles en console via « Copier le JSON »
+(bloc Technique, §3quinquies) — ils n'ont pas chacun leur ligne dédiée dans les 5 blocs : seuls
+le résumé `generationFailure` (nature/type/version/1ᵉʳ message/date) et `modalState` le sont.
+
+NR d'axe *tenant isolation* étendu : `Security/FeedbackContextIsolationTest` — l'id du planning
+en échec d'un club B (pivot de la copie lourde D17) ne fuit jamais dans le signalement d'un
+club A.
+
 ## 4. Hors périmètre
 Un système de tickets (statuts multiples, assignation, SLA), un chat, un forum, une base de
 connaissances, ni le remplaçant de Sentry (les erreurs techniques remontent par Sentry, pas par ce
