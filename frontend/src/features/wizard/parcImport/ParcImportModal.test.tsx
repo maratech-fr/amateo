@@ -2094,7 +2094,14 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
     // Sans cette sortie, une alerte non corrigeable bloquerait l'import pour de bon.
     const user = userEvent.setup();
     renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { coche: true, groupe: "CEC", gymnaseId: null, raison: "À ajuster.", position })] }));
+    await analyzeThen(
+      user,
+      analysisOf({
+        // Une ligne gardée ailleurs : sans elle, « Cochez au moins une ligne » bloquerait à elle seule.
+        gymnases: [mkLine(0, "Palais des Sports", "aCreer")],
+        mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { coche: true, groupe: "CEC", gymnaseId: null, raison: "À ajuster.", position })],
+      }),
+    );
 
     await visitAllSteps(user);
     const mutual = PARC_IMPORT_TEXTS.sectionTitle("mutualisations");
@@ -2106,6 +2113,40 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
 
     expect(railButton(mutual).getAttribute("aria-label") ?? "").toContain("étape terminée");
     expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  // Décision fondateur : une alerte servie déjà en « Ignorer » n'attend aucun geste, visiter l'étape suffit.
+  it.each([
+    ["creneaux", "gymnases"],
+    ["gymnases", "gymnases"],
+    ["mutualisations", "mutualisations"],
+    ["reservations", "reservations"],
+  ] as const)("pt 11 — une alerte %s déjà en « Ignorer » passe au vert à la seule visite de son étape, sans geste", async (section, stepId) => {
+    const user = userEvent.setup();
+    const ignored = mkLine("gymnases" === section ? 1 : 0, "Ligne en alerte", "alerte", { coche: false, gymnaseId: null, raison: "À ajuster.", position });
+    const kept = mkLine(0, "Palais des Sports", "aCreer");
+    const payload = { format: "parc-v2", cases: [{ gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90, equipes: [] }] };
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ gymnases: "gymnases" === section ? [kept, ignored] : [kept], ...("gymnases" === section ? {} : { [section]: [ignored] }) }, { payload }));
+
+    const title = PARC_IMPORT_TEXTS.sectionTitle(stepId);
+    expect(railButton(title).getAttribute("aria-label") ?? "", "pas encore vue : pas de vert").not.toContain("étape terminée");
+
+    await visitAllSteps(user);
+
+    expect(railButton(title).getAttribute("aria-label") ?? "").toContain("étape terminée");
+    expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it.each(["creneaux", "reservations"] as const)("pt 11 — une alerte %s GARDÉE reste à vérifier après la visite et bloque l'import", async (section) => {
+    const user = userEvent.setup();
+    const payload = { format: "parc-v2", cases: [{ gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90, equipes: [] }] };
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")], [section]: [mkLine(0, "Ligne en alerte", "alerte", { coche: true, gymnaseId: null, raison: "À ajuster.", position })] }, { payload }));
+
+    await visitAllSteps(user);
+
+    expect(importButton()).toHaveAttribute("aria-disabled", "true");
   });
 
   it("pt 11 — « Revalider » ne fait pas perdre les étapes déjà visitées", async () => {

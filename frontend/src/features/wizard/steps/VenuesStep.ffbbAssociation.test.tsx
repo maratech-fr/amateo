@@ -191,7 +191,7 @@ describe("VenuesStep — l'accordéon d'ajout se referme après un ajout", () =>
     await waitFor(() => expect(accordion()).toHaveAttribute("aria-expanded", "false"));
   });
 
-  it("reste ouvert quand l'ajout échoue, pour que le gestionnaire puisse corriger", async () => {
+  it("reste ouvert et garde le nom saisi quand l'ajout échoue, pour que le gestionnaire puisse corriger", async () => {
     const user = userEvent.setup();
     h.createShouldSucceed.value = false;
     renderWithProviders(<Harness />);
@@ -201,6 +201,7 @@ describe("VenuesStep — l'accordéon d'ajout se referme après un ajout", () =>
     await user.click(screen.getByRole("button", { name: WIZARD_TEXTS.addVenueButton }));
 
     expect(accordion()).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("textbox", { name: WIZARD_TEXTS.venueNameLabel })).toHaveValue("Beta");
   });
 });
 

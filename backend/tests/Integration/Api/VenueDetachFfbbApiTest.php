@@ -9,7 +9,9 @@ use App\Entity\ClubUser;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
+use App\Enum\VenueTravelTimeSource;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -18,12 +20,18 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
  * Dissocier un gymnase de sa salle FFBB (`externalRef: ""`) le ramène à l'état d'un gymnase qu'on vient
  * de créer : seul le nom reste, numéro fédéral, adresse et GPS sont effacés. Une valeur fournie dans
  * le même PUT l'emporte, ce qui permet au toast « Annuler » d'une association de rendre la position
  * d'avant. Un PUT qui ne mentionne pas `externalRef` ne touche à rien.
+ *
+ * Décision fondateur : Dissocier efface aussi les temps de trajet du gymnase, saisies à la main
+ * comprises, et ceux des autres couples restent. « Annuler » ou une nouvelle adresse les recalculent,
+ * même si le gymnase portait les seules lignes du club ; un club sans matrice reste sans matrice.
  *
  * Le geste d'écran est prouvé par `frontend/src/features/wizard/steps/VenuesStep.ffbbAssociation.test.tsx`.
  */
@@ -97,6 +105,77 @@ final class VenueDetachFfbbApiTest extends WebTestCase
         self::assertSame(self::ANCHOR['longitude'], $venue->getLongitude());
     }
 
+    public function testDetachErasesOnlyTheTravelTimesOfThatVenueWithoutRecomputing(): void
+    {
+        [$user, $club, $season] = $this->seed();
+        $venueId = $this->createAnchoredVenue($user);
+        $other = 'bbbbbbbb-0000-4000-8000-000000000001';
+        $third = 'bbbbbbbb-0000-4000-8000-000000000002';
+        $this->matrixRow($club, $season, $venueId, $other, VenueTravelTimeSource::AUTO);
+        $this->matrixRow($club, $season, $venueId, $third, VenueTravelTimeSource::MANUAL);
+        $this->matrixRow($club, $season, $other, $third, VenueTravelTimeSource::AUTO);
+        $this->resetTransport();
+
+        $this->put($user, $venueId, ['name' => 'Gymnase G', 'externalRef' => '']);
+
+        self::assertCount(0, $this->dispatched(), 'rien à calculer vers une position vide');
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        self::assertSame([], $this->timesOf($venueId), 'plus aucun temps pour ce gymnase, saisie manuelle comprise');
+        self::assertCount(1, $this->timesOf($other), 'le couple des deux autres gymnases garde son temps');
+    }
+
+    public function testRenamingKeepsTheTravelTimes(): void
+    {
+        [$user, $club, $season] = $this->seed();
+        $venueId = $this->createAnchoredVenue($user);
+        $this->matrixRow($club, $season, $venueId, 'bbbbbbbb-0000-4000-8000-000000000003', VenueTravelTimeSource::AUTO);
+
+        $this->put($user, $venueId, ['name' => 'Gymnase renommé']);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        self::assertCount(1, $this->timesOf($venueId));
+    }
+
+    public function testUndoRecomputesEvenWhenTheVenueHeldTheOnlyMatrixRows(): void
+    {
+        [$user, $club, $season] = $this->seed();
+        $venueId = $this->createAnchoredVenue($user);
+        $this->matrixRow($club, $season, $venueId, 'bbbbbbbb-0000-4000-8000-000000000004', VenueTravelTimeSource::AUTO);
+
+        $this->put($user, $venueId, ['name' => 'Gymnase G', 'externalRef' => '']);
+        $this->resetTransport();
+        $this->put($user, $venueId, ['name' => 'Gymnase G'] + self::ANCHOR);
+
+        self::assertCount(1, $this->dispatched(), 'Annuler recalcule les temps effacés');
+    }
+
+    public function testNewAddressAfterADetachRecomputes(): void
+    {
+        [$user, $club, $season] = $this->seed();
+        $venueId = $this->createAnchoredVenue($user);
+        $this->matrixRow($club, $season, $venueId, 'bbbbbbbb-0000-4000-8000-000000000005', VenueTravelTimeSource::AUTO);
+
+        $this->put($user, $venueId, ['name' => 'Gymnase G', 'externalRef' => '']);
+        $this->resetTransport();
+        $this->put($user, $venueId, ['name' => 'Gymnase G', 'address' => '2 rue Basse', 'latitude' => '45.1000000', 'longitude' => '4.1000000']);
+
+        self::assertCount(1, $this->dispatched(), 'une nouvelle adresse recalcule les temps effacés');
+    }
+
+    public function testClubWithoutMatrixStaysWithoutMatrixAfterDetachAndUndo(): void
+    {
+        [$user] = $this->seed();
+        $venueId = $this->createAnchoredVenue($user);
+
+        $this->put($user, $venueId, ['name' => 'Gymnase G', 'externalRef' => '']);
+        $this->resetTransport();
+        $this->put($user, $venueId, ['name' => 'Gymnase G'] + self::ANCHOR);
+
+        self::assertCount(0, $this->dispatched(), 'jamais de matrice née d\'un Annuler');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -132,7 +211,52 @@ final class VenueDetachFfbbApiTest extends WebTestCase
         return $venue;
     }
 
-    /** @return array{0: User, 1: Club} */
+    private function matrixRow(Club $club, Season $season, string $venueA, string $venueB, VenueTravelTimeSource $source): void
+    {
+        if (strcasecmp($venueA, $venueB) > 0) {
+            [$venueA, $venueB] = [$venueB, $venueA];
+        }
+        $this->scopeGucToClub($club->getId());
+        $row = new VenueTravelTime;
+        $row->setClubId($club->getId())->setSeasonId($season->getId())->setVenueAId($venueA)->setVenueBId($venueB);
+        $row->setDrivingMinutes(12)->setDrivingSource($source)->setWalkingMinutes(40)->setWalkingSource($source);
+        $this->em->persist($row);
+        $this->em->flush();
+    }
+
+    /**
+     * Les lignes de ce gymnase qui portent encore un temps : effacer peut supprimer la ligne ou la
+     * vider, seul compte qu'aucun temps ni aucune origine ne survive.
+     *
+     * @return list<VenueTravelTime>
+     */
+    private function timesOf(string $venueId): array
+    {
+        $repository = $this->em->getRepository(VenueTravelTime::class);
+
+        return array_values(array_filter(
+            [...$repository->findBy(['venueAId' => $venueId]), ...$repository->findBy(['venueBId' => $venueId])],
+            static fn (VenueTravelTime $row): bool => null !== $row->getDrivingMinutes() || null !== $row->getWalkingMinutes() || null !== $row->getDrivingSource() || null !== $row->getWalkingSource(),
+        ));
+    }
+
+    /** @return list<object> */
+    private function dispatched(): array
+    {
+        $transport = self::getContainer()->get('messenger.transport.travel_in_memory');
+        \assert($transport instanceof InMemoryTransport);
+
+        return array_values(array_map(static fn (Envelope $envelope): object => $envelope->getMessage(), $transport->getSent()));
+    }
+
+    private function resetTransport(): void
+    {
+        $transport = self::getContainer()->get('messenger.transport.travel_in_memory');
+        \assert($transport instanceof InMemoryTransport);
+        $transport->reset();
+    }
+
+    /** @return array{0: User, 1: Club, 2: Season} */
     private function seed(): array
     {
         $uid = uniqid('', true);
@@ -175,7 +299,7 @@ final class VenueDetachFfbbApiTest extends WebTestCase
         $this->em->persist($season);
         $this->em->flush();
 
-        return [$user, $club];
+        return [$user, $club, $season];
     }
 
     /** @return array{HTTP_AUTHORIZATION: string} */
