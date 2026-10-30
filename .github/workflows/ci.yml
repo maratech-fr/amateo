@@ -779,6 +779,10 @@ jobs:
       # « périmé » juste après génération, et la même réservation envoyée deux fois au 2ᵉ solve.
       # Le payload (base ET période) SAUTE désormais les templates HARD/RESERVATION. Sans ce gate,
       # le doublon et le faux « périmé » reviendraient en silence. HARD MANUAL/UNKNOWN restent.
+      - name: GenerationRefusesACoachInTwoPlacesTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/GenerationRefusesACoachInTwoPlacesTest.php --group phase1'
+      - name: DedupeSnapshotPinsCommandTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Command/DedupeSnapshotPinsCommandTest.php --group phase1'
       - name: ReservationPinsNotDoubledTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/ReservationPinsNotDoubledTest.php --group phase1'
 

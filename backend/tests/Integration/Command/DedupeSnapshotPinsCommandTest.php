@@ -23,6 +23,7 @@ use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -159,6 +160,37 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         self::assertSame($rehashed, $this->reloadLegacy($f)->getSnapshotHash());
     }
 
+    /**
+     * Le numéro de contrat ne fait pas partie de la structure : un snapshot pris sous un ancien contrat,
+     * structure inchangée, n'est pas vu comme périmé après le passage de la commande (sinon chaque montée
+     * de `CONTRACT_VERSION` ferait paraître tous les plannings périmés).
+     */
+    #[DataProvider('oldContractVersions')]
+    public function testAVersionSnappedUnderAnOldContractIsNotStaleAfterTheCommand(string $oldContract): void
+    {
+        $f = $this->seedLegacyVersion($oldContract);
+        self::assertNotSame($oldContract, ScheduleConstraintBuilder::CONTRACT_VERSION, 'témoin : le contrat a bien changé depuis le snapshot');
+
+        $this->runCommand([])->assertCommandIsSuccessful();
+
+        $legacy = $this->reloadLegacy($f);
+        self::assertSame($oldContract, $legacy->getSnapshotData()['version'], 'snapshotData reste tel quel, le rejeu sait sous quel contrat il est né');
+        $this->purgeCache($f);
+        self::assertSame(
+            self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($f['planId']),
+            $legacy->getSnapshotHash(),
+            'même structure sous un contrat différent : même empreinte',
+        );
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function oldContractVersions(): iterable
+    {
+        yield 'contrat 1.0' => ['1.0'];
+        yield 'contrat 1.5' => ['1.5'];
+        yield 'contrat 1.7' => ['1.7'];
+    }
+
     /** `--dry-run` ne recalcule rien non plus pour ce cas. */
     public function testDryRunDoesNotRehashALegacyVersion(): void
     {
@@ -211,7 +243,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
      *
      * @return array{clubId: string, seasonId: string, planId: string, scheduleId: string, legacyHash: string, snapshot: array<string, mixed>}
      */
-    private function seedLegacyVersion(): array
+    private function seedLegacyVersion(?string $contractVersion = null): array
     {
         $uid = uniqid('', true);
         $club = (new Club)->setName('Legacy Club')->setSlug('legacy-' . $uid)
@@ -247,6 +279,9 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         $this->purgeCache($f);
         $snapshot = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($club->getId(), $season->getId());
         self::assertContains('NONE', array_column($snapshot['slotTemplates'], 'lockLevel'), 'témoin : le snapshot d\'avant le correctif compte la séance du solveur');
+        if (null !== $contractVersion) {
+            $snapshot['version'] = $contractVersion;
+        }
         $legacyHash = hash('sha256', json_encode($snapshot, \JSON_THROW_ON_ERROR));
 
         $second = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())

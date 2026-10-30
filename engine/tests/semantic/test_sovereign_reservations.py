@@ -25,10 +25,16 @@ VÉRIFIÉ infaisable, seul capable de servir de ROUGE à une feature déclenché
 
 from __future__ import annotations
 
+import asyncio
 import json
 import pathlib
+import re
 from typing import Any
 
+from ortools.sat.python import cp_model
+
+from app import main
+from app.schemas.input_schema import ScheduleInputSchema
 from tests.support.pipeline import (
     make_payload,
     make_team,
@@ -63,6 +69,8 @@ def test_a_reservation_on_the_only_block_case_produces_a_schedule_and_names_the_
     assert all(d.get("severity") == "WARNING" for d in sacrificed), (
         f"un sacrifice est une ALERTE, pas une erreur bloquante : {sacrificed}"
     )
+    for diagnostic in sacrificed:
+        _assert_screen_wording(diagnostic)
 
 
 def test_without_the_third_party_reservation_the_block_places_and_nothing_is_sacrificed() -> None:
@@ -185,6 +193,17 @@ _REPLACED_SIGNALS = {
 }
 
 
+def _assert_screen_wording(diagnostic: dict[str, Any]) -> None:
+    """Décision fondateur 2026-10-30 : à l'écran, « la séance fixée de X » pour tout verrou, réservation
+    ou manuel. Le texte lu est le message, les libellés de cause et les suggestions."""
+    causes = [str(c.get("label") or "") for c in diagnostic.get("causes", [])]
+    read = " ".join([str(diagnostic["message"]), *causes, *(str(s) for s in diagnostic.get("suggestions") or [])])
+    lowered = read.lower()
+    assert "verrou" not in lowered, f"jamais « verrou » à l'écran : {read!r}"
+    assert not re.search(r"\bréservations?\b", lowered), f"jamais « réservation » pour une séance fixée : {read!r}"
+    assert re.search(r"\bséances? fixées?\b", lowered), f"le verrou se dit « la séance fixée de X » : {read!r}"
+
+
 def _assert_single_message(result: dict[str, Any], *, expected_type: str) -> None:
     other_type = {"rule_sacrificed": "blocked_by_reservation", "blocked_by_reservation": "rule_sacrificed"}[
         expected_type
@@ -236,6 +255,7 @@ def _only_sacrifice_of_kind(result: dict[str, Any], kind: str) -> dict[str, Any]
     assert matching, f"écart attendu en rule_sacrificed, kind {kind} ; diagnostics : {result['diagnostics']}"
     assert matching[0]["severity"] == "WARNING", "un sacrifice est une alerte"
     _assert_single_message(result, expected_type="rule_sacrificed")
+    _assert_screen_wording(matching[0])
     return matching[0]
 
 
@@ -250,6 +270,7 @@ def _only_block_of_kind(result: dict[str, Any], kind: str) -> dict[str, Any]:
     assert matching, f"écart attendu en blocked_by_reservation, kind {kind} ; diagnostics : {result['diagnostics']}"
     assert matching[0]["severity"] == "WARNING", "un blocage par réservation est une alerte"
     _assert_single_message(result, expected_type="blocked_by_reservation")
+    _assert_screen_wording(matching[0])
     return matching[0]
 
 
@@ -529,3 +550,132 @@ def test_two_floors_sharing_the_one_case_left_by_a_reservation_place_one_team_an
     assert blocked == [next(t for t in ("t1", "t2") if t not in placed)], (
         f"seule l'équipe non placée est nommée : {blocked}"
     )
+
+
+# ── Contre-revue (décisions fondateur 2026-10-30) ────────────────────────────────────────────────
+
+
+def _floor(team: str, venue: str, count: int) -> dict[str, Any]:
+    return _hard_team_rule(
+        f"f-{team}",
+        team,
+        "FACILITY",
+        {"minAtVenueId": venue, "minAtVenueCount": count},
+        f"Au moins {count} à {venue}",
+    )
+
+
+def test_a_team_whose_own_reservations_serve_its_floor_does_not_turn_the_probe_against_another_team() -> None:
+    """Sonde de causalité : T exige 2 séances à V et ses 2 réservations remplissent V ; U exige 1 séance
+    à V. Libérer les verrous sans garder le crédit de T ferait croire à une grille trop petite (2+1 > 2),
+    donc à un échec sans réservation en cause. C'est bien la réservation qui prive U.
+    Jumeau backend : ``CapacityMirrorParityTest::testFloorServedByOwnLocksStaysAWarningOnBothSides``."""
+    result = solve_payload(
+        make_payload(
+            teams=[_named_team("T", "Seniors A", sessions_per_week=2), _named_team("U", "Cadets")],
+            venues=[make_venue("V", [(1, "18:00"), (2, "18:00")])],
+            constraints=[_floor("T", "V", 2), _floor("U", "V", 1)],
+            slot_templates=[_reservation("T", "V", 1), _reservation("T", "V", 2)],
+        )
+    )
+
+    assert result["status"] == "completed", f"c'est la réservation qui prive U (obtenu {result['status']})"
+    assert sorted(_slots_of(result, "T")) == [1, 2], "les séances réservées de T tiennent"
+    assert _slots_of(result, "U") == [], "U n'a plus de case à V"
+    diagnostic = _only_block_of_kind(result, "session_floor")
+    assert diagnostic["teamId"] == "U"
+    _assert_names(diagnostic, "Cadets", "Seniors A")
+
+
+def test_a_team_losing_one_case_of_its_floor_keeps_all_its_sessions_and_only_the_minimum_is_missing() -> None:
+    """T veut 3 séances dont 2 à V ; V a 2 jours, U en réserve un ; W a 3 cases libres. T garde ses 3
+    séances (1 à V, 2 à W), seul le minimum manque. Le message dit l'écart chiffré et nomme U."""
+    result = solve_payload(
+        make_payload(
+            teams=[_named_team("T", "Seniors A", sessions_per_week=3), _named_team("U", "Cadets")],
+            venues=[
+                make_venue("V", [(1, "18:00"), (2, "18:00")]),
+                make_venue("W", [(3, "18:00"), (4, "18:00"), (FRIDAY, "18:00")]),
+            ],
+            constraints=[_floor("T", "V", 2)],
+            slot_templates=[_reservation("U", "V", 2)],
+        )
+    )
+
+    placed = [s["venueId"] for s in result["slots"] if s["teamId"] == "T"]
+    assert sorted(placed) == ["V", "W", "W"], f"T garde ses 3 séances, 1 à V et 2 à W : {result['slots']}"
+    diagnostic = _only_block_of_kind(result, "session_floor")
+    assert "1 séance à V au lieu de 2" in diagnostic["message"], diagnostic["message"]
+    _assert_names(diagnostic, "Seniors A", "Cadets")
+
+
+def test_a_block_losing_one_of_its_two_cases_drops_only_the_missing_common_session() -> None:
+    """Groupe à 2 séances communes, deux cases communes possibles (lundi, mardi), lundi réservé par t3.
+    La séance commune de mardi reste : les deux membres s'y retrouvent, et chacun garde sa 2ᵉ séance sur
+    une case que lui seul peut prendre. Seule la commune manquante tombe."""
+    payload = make_payload(
+        teams=[make_team("t1", sessions_per_week=2), make_team("t2", sessions_per_week=2), make_team("t3")],
+        venues=[make_venue("V", [(1, "18:00"), (2, "18:00"), (3, "18:00"), (4, "18:00")])],
+        constraints=[
+            _hard_team_rule("a", "t1", "DAY", {"forbiddenDays": [4]}, "t1 jamais le jeudi"),
+            _hard_team_rule("b", "t2", "DAY", {"forbiddenDays": [3]}, "t2 jamais le mercredi"),
+        ],
+        slot_templates=[_reservation("t3", "V", 1)],
+    )
+    payload["sharedBlocks"] = [{"id": "b", "teamIds": ["t1", "t2"], "commonSessions": 2}]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed"
+    assert sorted(_slots_of(result, "t1")) == [2, 3], f"commune de mardi + sa 2ᵉ séance : {result['slots']}"
+    assert sorted(_slots_of(result, "t2")) == [2, 4], f"commune de mardi + sa 2ᵉ séance : {result['slots']}"
+    assert _sacrificed(result), "le groupe privé d'une case est nommé"
+
+
+def test_a_forced_day_whose_only_case_is_taken_removes_only_that_session() -> None:
+    """Décision antérieure tenue : le jour imposé pris reste NON placé, jamais déporté. Mais une équipe à
+    2 séances ne perd que celle-là : l'autre se place sur la case libre."""
+    forced = _hard_team_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé")
+    result = solve_payload(
+        make_payload(
+            teams=[_named_team("T", "Seniors A", sessions_per_week=2), _named_team("U", "Cadets")],
+            venues=[make_venue("V", [(1, "18:00"), (FRIDAY, "18:00")])],
+            constraints=[forced],
+            slot_templates=[_reservation("U", "V", FRIDAY)],
+        )
+    )
+
+    assert _slots_of(result, "T") == [1], f"seule la séance du jour imposé tombe : {result['slots']}"
+    _only_block_of_kind(result, "day_forced")
+
+
+def test_the_causality_probe_stays_within_its_budget_and_skips_the_chaining_phase(monkeypatch: Any) -> None:
+    """Budget mesuré à 29,2 s pour 15 s : la sonde enchaînait la phase de chaînage. Elle répond à une seule
+    question (faisable sans verrou ?), un seul solve suffit, sous son plafond."""
+    budgets: list[float] = []
+    real_solve = cp_model.CpSolver.Solve
+
+    def spy(self: Any, *args: Any, **kwargs: Any) -> Any:
+        budgets.append(self.parameters.max_time_in_seconds)
+        return real_solve(self, *args, **kwargs)
+
+    # Deux équipes du même coach sur des cases voisines : la phase de chaînage s'ouvre si on la laisse faire.
+    data = make_payload(
+        teams=[make_team("A"), make_team("B")],
+        venues=[make_venue("V", [(1, "18:00"), (1, "19:30")])],
+        coaches=[_coach()],
+        constraints=[team_coach("tc-a", "A", "c"), team_coach("tc-b", "B", "c")],
+    )
+    input_data = ScheduleInputSchema.model_validate(data)
+    witness: list[float] = []
+    monkeypatch.setattr(cp_model.CpSolver, "Solve", spy)
+    main._solve(data, input_data, budget_override=main.BEST_EFFORT_PROBE_MAX_SECONDS)
+    witness.extend(budgets)
+    budgets.clear()
+    assert len(witness) == 2, f"témoin : ce décor ouvre bien la phase de chaînage (solves : {witness})"
+
+    feasible = asyncio.run(main._locks_are_the_cause(data, input_data))
+
+    assert feasible is True
+    assert len(budgets) == 1, f"la sonde ne lance pas la phase de chaînage (solves : {budgets})"
+    assert budgets[0] <= main.BEST_EFFORT_PROBE_MAX_SECONDS

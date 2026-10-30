@@ -2897,3 +2897,57 @@ describe("PlanningPage — geste « Modifier les dates » d'une fermeture (PR2)"
     expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
   });
 });
+
+// Décision fondateur 2026-10-30 — le dialogue de validation NOMME ce qui manque (« U15 : 1 séance non
+// placée »), y compris quand le manque vit dans un gymnase masqué de la période, où le panneau de
+// diagnostics ne le montre pas. La validation reste permise : on assume en connaissance de cause.
+describe("PlanningPage — le dialogue de validation nomme ce qui manque", () => {
+  const blocked = (venueId: string) => ({ id: "blocked", scheduleId: SID, type: "blocked_by_reservation", severity: "WARNING" as const, teamId: "team-1", venueId, coachId: null, dayOfWeek: 5, startTime: "18:00", ruleKey: null, message: "Séance non placée.", suggestions: [], causes: [], openCandidates: null });
+
+  beforeEach(() => {
+    vi.mocked(listSchedules).mockResolvedValue(workVersion);
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U15", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
+    vi.mocked(getVenues).mockResolvedValue([
+      { id: "venue-1", name: "Gymnase Alpha", color: "#00aa00" },
+      { id: "venue-2", name: "Gymnase Beta", color: "#0000aa" },
+    ]);
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+  });
+
+  async function openDialog(scopePlanId?: string) {
+    const user = userEvent.setup();
+    renderWithProviders(<PlanningPage embedded scopePlanId={scopePlanId} />);
+    await user.click(await screen.findByRole("button", { name: "Valider" }));
+    return within(await screen.findByRole("dialog", { name: "Valider le planning" }));
+  }
+
+  it("nomme l'équipe et le nombre de séances manquantes, et laisse valider", async () => {
+    vi.mocked(getDiagnostics).mockResolvedValue([blocked("venue-1")]);
+
+    const dialog = await openDialog();
+
+    expect(dialog.getByText(/U15\s*:\s*1 séance non placée/)).toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Valider" })).toBeEnabled();
+  });
+
+  it("nomme aussi le manque d'un gymnase masqué pour la période", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ ...workVersion[0], name: "Période", planType: "HOLIDAY", schedulePlanId: "ete-plan" }]);
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
+    conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-2"] });
+    vi.mocked(getDiagnostics).mockResolvedValue([blocked("venue-2")]);
+
+    const dialog = await openDialog("ete-plan");
+
+    expect(dialog.getByText(/U15\s*:\s*1 séance non placée/)).toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Valider" })).toBeEnabled();
+  });
+
+  it("TÉMOIN : une équipe qui a toutes ses séances n'est pas citée, même avec une alerte", async () => {
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U15", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 1 }]);
+    vi.mocked(getDiagnostics).mockResolvedValue([blocked("venue-1")]);
+
+    const dialog = await openDialog();
+
+    expect(dialog.queryByText(/non placée/)).not.toBeInTheDocument();
+  });
+});

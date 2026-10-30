@@ -600,6 +600,34 @@ final class MutualizeSlotApiTest extends WebTestCase
 
     /** Au SOCLE : équipe → équipe donne un bloc de portée NULL (comme les blocs de saison). */
     /**
+     * Promesse fondateur 2026-10-30, chemin « mutualiser une séance » : créer un groupe à 1 séance commune
+     * sur des équipes déjà réservées ensemble sur 2 cases sortirait en échec à la génération suivante.
+     * Refus 422, même message que le PUT du groupe, rien n'est écrit.
+     */
+    public function testMutualizingTeamsAlreadyReservedTogetherOnTwoCasesIsRefused(): void
+    {
+        $ctx = $this->seedSeason('rs');
+        $source = $this->createTeam($ctx, 'Groupe A', 4, true);
+        $joiner = $this->createTeam($ctx, 'Groupe B', 4, true);
+        foreach ([3, 4] as $day) {
+            foreach ([$source, $joiner] as $teamId) {
+                $this->createReservation($ctx, $teamId, ['venueId' => $ctx['venueId'], 'dayOfWeek' => $day, 'startTime' => '18:00']);
+            }
+        }
+        $slot = $this->placeSlot($ctx, $source, $ctx['case']);
+        $joinerSlot = $this->placeSlot($ctx, $joiner, ['venueId' => $ctx['venueId'], 'dayOfWeek' => 5, 'startTime' => '18:00']);
+
+        $this->client->request('POST', '/api/schedule-slots/' . $slot->getId() . '/mutualize', [], [], $this->managerHeaders($ctx), json_encode([
+            'teamIds' => [$source, $joiner], 'replacedSlotIds' => [$joinerSlot->getId()],
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertStringContainsString('2 séances communes sont réservées pour ce groupe', (string) ($body['error'] ?? $body['detail'] ?? json_encode($body)));
+        self::assertCount(0, $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $ctx['clubId']]), 'rien n\'est écrit');
+    }
+
+    /**
      * Promesse fondateur 2026-10-30 : un groupe ne garde jamais moins de séances communes que de cases
      * réservées. Une équipe qui rejoint une séance du groupe lui retire une séance commune (K 2 → 1) ;
      * ses deux cases réservées restent. Refuser ou retirer la réservation tiennent la promesse : on

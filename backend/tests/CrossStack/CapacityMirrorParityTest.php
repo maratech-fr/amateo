@@ -242,6 +242,41 @@ final class CapacityMirrorParityTest extends TestCase
     }
 
     /**
+     * Crédit de plancher (P4-97) des deux côtés de la sonde de causalité : t1 exige 2 séances à V1 et ses
+     * 2 verrous remplissent V1 ; t2 exige 1 séance à V1. Libérer les verrous sans garder le crédit de t1
+     * ferait croire à une grille trop petite, donc à un échec sans réservation en cause. C'est bien le
+     * verrou qui prive t2 : le miroir AVERTIT, le moteur produit le planning et nomme t2.
+     * Jumeau moteur : `test_a_team_whose_own_reservations_serve_its_floor_does_not_turn_the_probe_against_another_team`.
+     *
+     * TÉMOIN : si t2 exige plus que la grille n'a de cases, aucun verrou n'y est pour rien, le miroir bloque.
+     */
+    public function testFloorServedByOwnLocksStaysAWarningOnBothSides(): void
+    {
+        $venues = [[
+            'id' => 'v1', 'name' => 'V1',
+            'trainingSlots' => [
+                ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
+                ['dayOfWeek' => 2, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
+            ],
+        ]];
+        $pins = [$this->pin('t1', 'v1', 1, '18:00'), $this->pin('t1', 'v1', 2, '18:00')];
+        $teams = [
+            ['id' => 't1', 'name' => 'T1', 'sportCategoryId' => 'cat-1', 'priorityTierId' => 3, 'sessionsPerWeek' => 2],
+            ['id' => 't2', 'name' => 'T2', 'sportCategoryId' => 'cat-1', 'priorityTierId' => 3, 'sessionsPerWeek' => 1],
+        ];
+
+        $payload = $this->basePayload(teams: $teams, venues: $venues, constraints: [$this->minAtVenue('t1', 'v1', count: 2), $this->minAtVenue('t2', 'v1')], slotTemplates: $pins);
+        self::assertSame([], $this->mirror->venuesSaturatedWithoutLocks($payload), 'PARITÉ ROMPUE (PHP) : le crédit de t1 doit tenir sans verrou, c\'est un avertissement');
+        self::assertCount(1, $this->mirror->venueMinimumSaturation($payload), 'il manque bien une place à t2 : le récap avertit');
+        $result = $this->solve($payload);
+        self::assertSame('completed', $result['status'], 'PARITÉ ROMPUE (moteur) : la sonde doit garder le crédit de t1');
+        self::assertContains('blocked_by_reservation', array_column($result['diagnostics'] ?? [], 'type'));
+
+        $witness = $this->basePayload(teams: $teams, venues: $venues, constraints: [$this->minAtVenue('t1', 'v1', count: 2), $this->minAtVenue('t2', 'v1', count: 3)], slotTemplates: $pins);
+        self::assertSame(['v1'], $this->mirror->venuesSaturatedWithoutLocks($witness), 'témoin : 3 séances à V1 pour 2 jours, la grille ne les a jamais');
+    }
+
+    /**
      * PR-4 — la DEMANDE est BLOC-AWARE : une séance de bloc réunit N membres sur UNE place, donc
      * (n_membres − 1) × commonSessions sortent de la demande. Falsifiable dans les deux sens sur le
      * VRAI moteur : le bloc replie la demande EXACTEMENT comme il fait TENIR le roster sur une seule

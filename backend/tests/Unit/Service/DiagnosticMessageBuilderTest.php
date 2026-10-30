@@ -213,7 +213,9 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit d\'une règle sacrifiée doit exister, pas retomber sur le défaut');
         self::assertStringContainsString('SM1', $result, 'le message doit NOMMER l\'équipe concernée');
         self::assertStringContainsString('Indispo du vendredi', $result, 'le message doit NOMMER la règle sacrifiée (son libellé)');
-        self::assertMatchesRegularExpression('/r[ée]servation|verrou/iu', $result, 'le message doit dire qu\'une réservation/un verrou a gagné');
+        // Décision fondateur 2026-10-30 : à l'écran, « la séance fixée de X » pour tout verrou.
+        self::assertMatchesRegularExpression('/s[ée]ances? fix[ée]es?/iu', $result, 'le message doit dire qu\'une séance fixée a gagné');
+        self::assertDoesNotMatchRegularExpression('/verrou|r[ée]servation/iu', $result, 'jamais « verrou » ni « réservation » pour une séance fixée');
     }
 
     public function testBlockedByReservationComposesAMessageNamingTeamRuleAndReservationWithoutClaimingARelaxation(): void
@@ -235,7 +237,8 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit doit exister');
         self::assertStringContainsString('SM1', $result);
         self::assertStringContainsString('Vendredi imposé', $result);
-        self::assertMatchesRegularExpression('/r[ée]servation/iu', $result);
+        self::assertMatchesRegularExpression('/s[ée]ances? fix[ée]es?/iu', $result, 'à l\'écran, « la séance fixée de X » pour tout verrou');
+        self::assertDoesNotMatchRegularExpression('/verrou|r[ée]servation/iu', $result);
         self::assertDoesNotMatchRegularExpression('/relâch|sacrifi/i', $result, 'la règle n\'est pas relâchée');
     }
 

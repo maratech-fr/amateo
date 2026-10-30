@@ -54,6 +54,36 @@ final class GenerationLockOutlivesTheSolveTest extends TestCase
         ));
     }
 
+    /**
+     * Le chemin le plus long d'une génération : solve nominal INFEASIBLE au palier le plus haut (sans
+     * chaînage, faute de solution), solve diagnostique, sonde de causalité, best-effort, chaînage de ce
+     * dernier. L'attente HTTP du worker et le verrou doivent survivre aux cinq. Sinon le worker abandonne
+     * un planning que le moteur est en train de produire, et le second message prend le verrou.
+     */
+    public function testHttpTimeoutAndLockOutliveTheWholeBestEffortPath(): void
+    {
+        $requested = new GenerateScheduleMessage('schedule-1', 'club-1')->getTimeoutSeconds();
+        /** @var int $margin */
+        $margin = new ReflectionClass(GenerateScheduleHandler::class)->getConstant('LOCK_TTL_MARGIN_SECONDS');
+
+        $phases = [
+            'nominal' => min($this->highestEngineTier(), $requested),
+            'diagnostic' => $this->engineBudget('DIAGNOSTIC_SOLVE_MAX_SECONDS'),
+            'sonde' => $this->engineBudget('BEST_EFFORT_PROBE_MAX_SECONDS'),
+            'best-effort' => $this->engineBudget('BEST_EFFORT_SOLVE_MAX_SECONDS'),
+            'chaînage du best-effort' => $this->chainingCap(),
+        ];
+        $worstCase = array_sum($phases);
+
+        self::assertLessThan($requested, $worstCase, \sprintf(
+            "Le worker cesse d'attendre le moteur à %d s, le pire chemin en demande %d (%s).",
+            $requested,
+            $worstCase,
+            json_encode($phases, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE),
+        ));
+        self::assertGreaterThan($worstCase, $requested + $margin, 'Le verrou expirerait avant la fin du pire chemin.');
+    }
+
     /** Le palier de budget le plus élevé de `_adaptive_timeout`. */
     private function highestEngineTier(): int
     {
@@ -67,6 +97,14 @@ final class GenerationLockOutlivesTheSolveTest extends TestCase
     {
         $found = preg_match('/^CHAINING_PHASE_MAX_SECONDS = (\d+)$/m', $this->engineSource(), $matches);
         self::assertSame(1, $found, 'CHAINING_PHASE_MAX_SECONDS a disparu du moteur — la phase 2 n\'est plus bornée par cette constante.');
+
+        return (int) $matches[1];
+    }
+
+    private function engineBudget(string $constant): int
+    {
+        $found = preg_match(\sprintf('/^%s = (\d+)$/m', $constant), $this->engineSource(), $matches);
+        self::assertSame(1, $found, $constant . ' a disparu du moteur : cette phase n\'est plus bornée par cette constante.');
 
         return (int) $matches[1];
     }
