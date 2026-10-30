@@ -22,7 +22,7 @@ class AssignmentViolationSchema(SerializableModel):
     # coach_unavailable | forbidden_venue | forced_venue | slot_unavailable |
     # baseline_infeasible | unknown_hard_conflict | shared_block_broken |
     # shared_block_overformed | team_link_broken | travel_time_infeasible (ENG-36) |
-    # venue_minimum_infeasible (P4-152) | age_ascending
+    # venue_minimum_infeasible (P4-152) | age_ascending | session_without_coach
     rule: str
     message: str
     team_id: str | None = Field(default=None, alias="teamId")

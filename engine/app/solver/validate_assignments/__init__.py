@@ -60,6 +60,9 @@ from .hard_layer import (
     _build_assignments as _build_assignments,
 )
 from .hard_layer import (
+    _locks_left_unheld_by_the_move as _locks_left_unheld_by_the_move,
+)
+from .hard_layer import (
     _solve as _solve,
 )
 from .mirrors import (
@@ -355,6 +358,43 @@ def validate_assignment(
     # mirror, aucune baseline sur ce chemin.
     if status == cp_model.UNKNOWN:
         return {"valid": False, "indeterminate": True, "violations": [], "compromises": [], "metrics": metrics}
+
+    if valid:
+        left_unheld = _locks_left_unheld_by_the_move(
+            model,
+            solver,
+            data,
+            parsed,
+            team_coach_map,
+            team_player_map,
+            frozen_keys,
+            reference_keys,
+            timeout_seconds=input_data.solver_timeout_seconds,
+            seed=input_data.solver_seed,
+        )
+        if left_unheld:
+            return {
+                "valid": False,
+                "violations": [
+                    {
+                        "rule": "session_without_coach",
+                        "message": (
+                            f"Ce déplacement prend le dernier coach disponible de la séance fixée de "
+                            f"{' et '.join(team_names.get(team, team) for team in hold['teams'])} le "
+                            f"{_DAY_LABELS_FR.get(int(hold['day']), str(hold['day']))} à "
+                            f"{_format_time(int(hold['start']))} : plus personne ne pourrait la tenir."
+                        ),
+                        "team_id": str(moved[0]["team_id"]),
+                        "conflicting_team_id": str(hold["team"]),
+                        "venue_id": str(hold["venue"]),
+                        "day_of_week": int(hold["day"]),
+                        "start_time": _format_time(int(hold["start"])),
+                    }
+                    for hold in left_unheld
+                ],
+                "compromises": [],
+                "metrics": metrics,
+            }
 
     violations: list[dict[str, Any]] = []
     if not valid:
