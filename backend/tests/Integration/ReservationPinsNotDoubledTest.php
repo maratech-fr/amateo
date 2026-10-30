@@ -20,9 +20,21 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Message\GenerateScheduleMessage;
+use App\MessageHandler\GenerateScheduleHandler;
+use App\Service\ClubGenerationLock;
+use App\Service\DiagnosticMessageBuilder;
+use App\Service\EngineClient;
+use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
+use App\Service\ScheduleDiagnosticsRecorder;
 use App\Service\SchedulePlanProvisioner;
+use App\Service\ScheduleProgressPublisher;
 use App\Service\ScheduleResultImporter;
+use App\Service\SolverMetricsMapper;
+use App\Service\SolverMetricsRecorder;
+use App\Service\StructureSnapshotter;
+use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -30,6 +42,9 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Component\Mercure\HubInterface;
 
 /**
  * NR BLOQUANT — « une réservation n'est épinglée QU'UNE FOIS au moteur » (axe §7.1 generation
@@ -55,6 +70,11 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *   - sur-filtrage : un HARD UNKNOWN sans réservation à l'origine RESTE au payload (le MANUAL, lui,
  *     est gardé par le jumeau {@see HardLockSurvivesPayloadTest}, step bloquant) → ne doit JAMAIS
  *     tomber ; il rougit si la correction filtre trop large.
+ *
+ * Étendu le 2026-10-30 — le même faux « périmé » venait aussi des séances placées par le solveur :
+ * leur template `lockLevel: NONE` entrait dans le payload recalculé. De bout en bout par le VRAI
+ * handler (moteur simulé, import réel), l'empreinte reste égale au `snapshotHash` après une première
+ * génération, après une seconde, et sur un plan de période.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -73,6 +93,10 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
     /** Le payload sérialise l'heure en H:i:s (`ScheduleConstraintBuilder::formatTime`). */
     private const string START_SERIALIZED = '18:00:00';
     private const int DURATION = 90;
+
+    private const string FREE_TEAM_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    /** Jeudi : la case de la séance que le solveur place librement, hors réservation. */
+    private const int FREE_DAY = 4;
 
     private EntityManagerInterface $em;
 
@@ -205,12 +229,145 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         );
     }
 
+    /** SOCLE : une réservation + une séance placée par le solveur ; rien n'a bougé, donc rien n'est périmé. */
+    public function testASolverPlacedSessionDoesNotMakeTheSeasonPlanLookStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->seedReservedAndFreeTeams($club, $season, null);
+        $schedule = $this->pendingVersion($club, $season, $this->seasonPlanIdOf($season), null);
+        $this->em->flush();
+
+        $this->assertNotStaleAfterGenerating($club, $season, $schedule->getId(), $this->seasonPlanIdOf($season));
+    }
+
+    /** SOCLE, deuxième génération : la version précédente et ses séances libres ne font pas diverger. */
+    public function testASecondGenerationStaysNotStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->seedReservedAndFreeTeams($club, $season, null);
+        $planId = $this->seasonPlanIdOf($season);
+        $first = $this->pendingVersion($club, $season, $planId, null);
+        $this->em->flush();
+        $this->assertNotStaleAfterGenerating($club, $season, $first->getId(), $planId);
+
+        $this->scopeGucToClub($club->getId());
+        $club = $this->em->getRepository(Club::class)->find($club->getId());
+        $season = $this->em->getRepository(Season::class)->find($season->getId());
+        self::assertInstanceOf(Club::class, $club);
+        self::assertInstanceOf(Season::class, $season);
+        $second = $this->pendingVersion($club, $season, $planId, null);
+        $this->em->flush();
+
+        $this->assertNotStaleAfterGenerating($club, $season, $second->getId(), $planId);
+    }
+
+    /** PÉRIODE : même promesse sur le rail overlay. */
+    public function testASolverPlacedSessionDoesNotMakeAPeriodPlanLookStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $entry = $this->closurePeriod($club, $season);
+        $this->em->flush();
+        $planId = $this->planIdOf($entry);
+        $this->seedReservedAndFreeTeams($club, $season, $planId);
+        $schedule = $this->pendingVersion($club, $season, $planId, $entry->getId());
+        $this->em->flush();
+
+        $this->assertNotStaleAfterGenerating($club, $season, $schedule->getId(), $planId);
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
         $this->provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+    }
+
+    private function assertNotStaleAfterGenerating(Club $club, Season $season, string $scheduleId, string $planId): void
+    {
+        $this->generate($club->getId(), $scheduleId);
+
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        $generated = $this->em->getRepository(Schedule::class)->find($scheduleId);
+        self::assertInstanceOf(Schedule::class, $generated);
+        self::assertSame(ScheduleStatus::COMPLETED, $generated->getStatus());
+        // Témoin : le NONE existe bien, sans quoi le test ne prouverait rien.
+        self::assertNotEmpty(
+            $this->em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $scheduleId, 'lockLevel' => LockLevel::NONE]),
+            'la séance placée par le solveur doit avoir été importée',
+        );
+
+        $this->purgeCache($club, $season);
+        self::assertSame(
+            $generated->getSnapshotHash(),
+            $this->provisioner->structureHashOfPlan($planId),
+            'structure inchangée : une séance placée par le solveur ne rend pas le planning périmé',
+        );
+    }
+
+    private function generate(string $clubId, string $scheduleId): void
+    {
+        $container = self::getContainer();
+        $hub = $this->createMock(HubInterface::class);
+        $hub->method('publish')->willReturn('id');
+
+        $slot = fn (string $id, string $teamId, int $day, string $lock): array => [
+            'id' => $id, 'teamId' => $teamId, 'venueId' => self::VENUE_ID, 'coachId' => null, 'dayOfWeek' => $day,
+            'startTime' => self::START_SERIALIZED, 'durationMinutes' => self::DURATION, 'lockLevel' => $lock, 'pendingConstraintSuggestion' => null,
+        ];
+        $engineResult = json_encode([
+            'status' => 'completed',
+            'score' => 0,
+            'slots' => [$slot('s-reserved', self::TEAM_ID, self::DAY, 'HARD'), $slot('s-free', self::FREE_TEAM_ID, self::FREE_DAY, 'NONE')],
+            'diagnostics' => [],
+        ], \JSON_THROW_ON_ERROR);
+        $client = new MockHttpClient(static fn (): MockResponse => new MockResponse($engineResult, ['http_code' => 200]));
+
+        $handler = new GenerateScheduleHandler(
+            $this->em,
+            $this->builder,
+            $container->get(ScheduleResultImporter::class),
+            new EngineClient($client, new RequestIdContext),
+            new ScheduleProgressPublisher($hub),
+            new ScheduleDiagnosticsRecorder($this->em, $container->get(DiagnosticMessageBuilder::class)),
+            new SolverMetricsMapper,
+            $container->get(ClubGenerationLock::class),
+            $container->get(TenantConnectionContext::class),
+            $container->get(StructureSnapshotter::class),
+            $this->provisioner,
+            null,
+            null,
+            $container->get(SolverMetricsRecorder::class),
+        );
+
+        $handler(new GenerateScheduleMessage(scheduleId: $scheduleId, clubId: $clubId));
+    }
+
+    private function seedReservedAndFreeTeams(Club $club, Season $season, ?string $schedulePlanId): void
+    {
+        $this->team($club, $season);
+        $free = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName('SM2')
+            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
+        $free->setId(self::FREE_TEAM_ID);
+        $this->em->persist($free);
+        $this->venue($club, $season);
+        $this->reservation($club, $season, $schedulePlanId);
+    }
+
+    private function pendingVersion(Club $club, Season $season, string $planId, ?string $calendarEntryId): Schedule
+    {
+        $schedule = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('Version')->setStatus(ScheduleStatus::PENDING);
+        if (null === $calendarEntryId) {
+            $schedule->setSchedulePlanId($planId);
+            $this->em->persist($schedule);
+            $this->provisioner->linkSchedule($schedule);
+        } else {
+            $this->linkSeededSchedule($schedule, $calendarEntryId);
+        }
+
+        return $schedule;
     }
 
     /**

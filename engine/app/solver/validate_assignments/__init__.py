@@ -104,6 +104,31 @@ def _slot_key_of(assignment: CandidateAssignmentSchema | None) -> SlotKey | None
     return (str(assignment.team_id), str(assignment.venue_id), int(assignment.day_of_week), start_text)
 
 
+def _outside_lifted_rules(
+    lifted_rules: list[dict[str, Any]], moved: list[dict[str, Any]], team_names: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Décision fondateur 2026-10-30 : poser une séance hors d'une règle déjà levée est permis et signalé."""
+    flagged: list[dict[str, Any]] = []
+    for rule in lifted_rules:
+        for m in moved:
+            team_id = str(m["team_id"])
+            if team_id not in rule["teams"]:
+                continue
+            if int(m["day"]) in rule.get("days", ()) or str(m["venue_id"]) == rule.get("venueId"):
+                continue
+            names = ", ".join(team_names.get(t, t) for t in rule["teams"])
+            what = f"la règle « {rule['label']} » de {names}" if rule.get("label") else f"le groupe {names}"
+            flagged.append(
+                {
+                    "family": "lifted_rule",
+                    "effect": "broken",
+                    "message": f"Cette séance est posée hors de {what}, qui n'était déjà plus tenue.",
+                    "teamId": team_id,
+                }
+            )
+    return flagged
+
+
 def validate_assignment(
     input_data: ValidateAssignmentsInputSchema,
     *,
@@ -353,6 +378,8 @@ def validate_assignment(
                 venue_names=venue_names,
                 resolved_rules=diag_rules,
                 shared_blocks=data.get("sharedBlocks", []) or [],
+                teams=data.get("teams", []),
+                locked_slots=model.locked_slots,
             ):
                 dedupe_key = (str(violation.get("rule")), str(violation.get("message")))
                 if dedupe_key not in seen:
@@ -442,6 +469,9 @@ def validate_assignment(
                 exc_info=True,
             )
             compromises = []
+
+    if valid:
+        compromises.extend(_outside_lifted_rules(model.lifted_rules, moved, team_names))
 
     logger.info(
         "validate club=%s teams=%s -> %s valid=%s violations=%d compromises=%d",

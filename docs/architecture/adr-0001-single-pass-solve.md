@@ -142,3 +142,57 @@ through this D2 aggregate, not the unsat core.
 
 The dormant two-pass *relaxation* fallback (the top of this ADR) is unchanged and
 still OFF — the second solve here is diagnostic-only and shares nothing with it.
+
+## Amendment (2026-10-30, decision fondateur) — « la réservation gagne », the ONE named exception
+
+**Need.** A manager who reserves cases (HARD locks) must never get an INFEASIBLE mute or a failure
+because a rule contradicts their own reservation: « bloquer un planning dont tous les créneaux sont
+réservés, c'est bizarre ; au pire j'alerte que des règles se contredisent ». Founder wording: *« La
+réservation gagne envers tout, mais c'est la SEULE exception. »*
+
+**Decision.** A HARD lock (a reservation or a manual lock — the origin is NOT sent to the engine) that
+contradicts a rule WINS: the engine PRODUCES the schedule (`status="completed"`), holds the lock, and
+NAMES the gap. Two warning diagnostics (WARNING, contract 1.8):
+
+- `rule_sacrificed` — the rule contradicts the reservation itself, or a group (shared block) is
+  deprived of its case: the rule is relaxed for that case and named, with the reservation in cause.
+- `blocked_by_reservation` — the reservation of ANOTHER team takes the only compatible case (window,
+  imposed day, floor): the rule is NOT relaxed, the session stays UNPLACED (a session is never placed
+  outside its rule), the message names the team, the rule and the reservation.
+
+Only rules of *demand* (imposed day, venue floor, shared-block common sessions) are ever lifted;
+*closure* rules (unavailability, window, forbidden day or venue) never are.
+
+**Mechanism** (`app/main.py`, `_best_effort_solve`): it runs ONLY after a first INFEASIBLE and ONLY when
+locks are present. (1) A **causality probe** replays the model with the locks RELEASED
+(`BEST_EFFORT_PROBE_MAX_SECONDS`, 15 s): if it stays infeasible the conflict is rule-against-rule or
+rule-against-grid, not a lock — nothing is relaxed. (2) Otherwise a **third, best-effort solve** frees
+the demand rules the infeasibility core points at (`ScheduleCpModel.relaxed_source_keys`: the literal is
+posed but never assumed, so it falls free) under `BEST_EFFORT_SOLVE_MAX_SECONDS` = 60 s, iterating on
+the next core if needed. If it does not succeed in budget the `failed` path is unchanged — never a
+half-plan. One gap = one message: once a reservation is in cause, the new diagnostic REPLACES the
+historical `constraint_not_honored` / `session_below_effective_min` / `conflict` signals of that team.
+
+**Refinements (founder, 2026-10-30, after the cross-review of the branch).**
+- *Lifted floor*: when a reservation takes one of the cases of an "at least N at V" floor, the team
+  KEEPS all its sessions (they go to the other non-forbidden venues, weighted
+  `RELAXED_FLOOR_PLACEMENT_WEIGHT` just behind filling) and only the minimum is missing — "1 session at V
+  instead of 2, X occupies the other case". The session count is reduced only when no allowed case exists.
+  With an imposed day or a window, the session stays UNPLACED (`blocked_by_reservation`).
+- *Probe*: a SINGLE solve (`placement_only`, no chaining phase), and the floor keeps its credit — a team
+  served by its own locks does not claim those sessions a second time.
+- *Budgets unchanged* (60/180/600 s adaptive, 15 s probe, 60 s best-effort). Worst path 700 s of engine
+  budget: the Messenger message now carries 750 s (`GenerateScheduleMessage`) and the Redis lock 810 s
+  (`GenerationLockOutlivesTheSolveTest` compares them to the engine).
+- *Wording*: `blocked_by_reservation` and `rule_sacrificed` say "séance fixée" ("la séance fixée de X"),
+  never "verrou", whatever the origin (reservation or manual lock).
+- *Verdict*: a manual placement of an unplaced session outside its rule is ALLOWED and flagged (see
+  `engine/docs/engine-inventory.md`, `/validate-assignments`).
+
+**This is the ONLY exception.** With no lock in cause, contradicting rules stay a `failed` outcome
+EXPLAINED (which rules, on what) exactly as the P4-96 amendment above; the nominal and diagnostic solves
+are byte-identical to before. The dormant relaxation fallback of the top of this ADR stays OFF. A
+future second exception needs its own amendment. Guards: `SovereignReservationProducesScheduleTest`
+(blocking, `ci.yml`), `engine/tests/semantic/test_sovereign_reservations.py` (incl. the rule-conflict-
+not-caused-by-a-lock witness), `engine/tests/test_best_effort_sovereign_budget.py`. Contract: bump
+1.7 → 1.8 (two diagnostic types, one cause kind `min_sessions`).

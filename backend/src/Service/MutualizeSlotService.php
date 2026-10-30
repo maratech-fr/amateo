@@ -67,6 +67,7 @@ final class MutualizeSlotService
         private readonly SoloReservationBudget $soloReservationBudget,
         private readonly ScheduleProgressPublisher $progressPublisher,
         private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
+        private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
     ) {}
 
     /**
@@ -173,6 +174,8 @@ final class MutualizeSlotService
                 }
                 $toMove[] = $replaced;
             }
+
+            $this->assertNewBlockFitsItsReservations($members, $planId);
 
             // Activer les équipes à 0 séance (override de période : 1 séance, marquée « mutualisation »)
             // AVANT la garde Σ, pour que leur volume effectif reflète le geste.
@@ -385,6 +388,19 @@ final class MutualizeSlotService
         // CAPACITÉ : après le geste, le bloc tient la case en UNE occupation + les séances des équipes
         // non-membres déjà posées (patron assertCaseHasRoom).
         $this->assertCaseHasRoom($schedule, $members, $venueId, $dayOfWeek, $startTime, $planId, $clubId, $seasonId);
+
+        // Décision fondateur 2026-10-30 — les anciens blocs perdent une séance commune : refusé s'il leur
+        // resterait moins de séances que de cases réservées. On refuse plutôt que de retirer une
+        // réservation en silence.
+        foreach ([$sourceBlockId, $targetBlockId] as $oldBlockId) {
+            if (null !== $oldBlockId) {
+                $this->assertOldBlockKeepsItsReservations($oldBlockId);
+            }
+        }
+
+        if (null === $this->findBlockIdWithExactTeamSet($clubId, $seasonId, $planId, $members)) {
+            $this->assertNewBlockFitsItsReservations($members, $planId);
+        }
 
         // La case SOURCE qui sera libérée (bandeau côté UI) — celle du créneau source.
         $freedSourceCase = [
@@ -737,5 +753,35 @@ final class MutualizeSlotService
         }
 
         return null;
+    }
+
+    /**
+     * Décision fondateur 2026-10-30 — un groupe neuf à 1 séance commune sur des équipes déjà réservées
+     * ensemble sur plusieurs cases sortirait en échec à la génération suivante.
+     *
+     * @param list<string> $members
+     */
+    private function assertNewBlockFitsItsReservations(array $members, ?string $planId): void
+    {
+        $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($members, true), $planId);
+        if ($reservedSessions > 1) {
+            throw new MutualizationRefusedException(ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions));
+        }
+    }
+
+    private function assertOldBlockKeepsItsReservations(string $blockId): void
+    {
+        $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($blockId);
+        if (!$block instanceof SharedTrainingBlock) {
+            return;
+        }
+        $memberSet = [];
+        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $blockId]) as $row) {
+            $memberSet[$row->getTeamId()] = true;
+        }
+        $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount($memberSet, $block->getSchedulePlanId());
+        if ($reservedSessions > $block->getCommonSessions() - 1) {
+            throw new MutualizationRefusedException(ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions));
+        }
     }
 }

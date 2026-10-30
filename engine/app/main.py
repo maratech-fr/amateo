@@ -5,12 +5,13 @@ import contextlib
 import ctypes
 import ctypes.util
 import logging
+import math
 import multiprocessing
 import re
 import resource
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
@@ -409,6 +410,8 @@ async def build_schedule(
         # rendu (D2 ne dépend pas du solveur). Jamais un solve relaxé : aucune contrainte retirée.
         diagnostic_model: ScheduleCpModel | None = None
         diagnostic_solver: cp_model.CpSolver | None = None
+        # Réservation souveraine — clés des règles sacrifiées par le best-effort (vide hors ce cas).
+        sacrificed_source_keys: frozenset[str] = frozenset()
         if solver_status == cp_model.INFEASIBLE:
             diag_start = time.perf_counter()
             diag_status, diag_solver, diag_model, _diag_conflicts, _diag_stats = await asyncio.to_thread(
@@ -430,6 +433,27 @@ async def build_schedule(
                 diag_ran_to_infeasible,
             )
 
+            # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — 3ᵉ solve
+            # « best-effort », SEULEMENT après un INFEASIBLE et SEULEMENT si des verrous sont présents.
+            # Détail et garde-fous : `_best_effort_solve`. Reste dans le sémaphore, borné.
+            if diag_ran_to_infeasible and model.locked_slots:
+                best_effort = await _best_effort_solve(data, input_data, diag_model, diag_solver)
+                if best_effort is not None:
+                    # Le best-effort a abouti : il DEVIENT le résultat. Statut completed, verrous tenus,
+                    # écarts nommés par le builder. Le message d'infaisabilité n'a plus lieu d'être.
+                    solver_status, solver, model, conflicts, solve_stats, sacrificed_source_keys = best_effort
+                    diagnostic_model = diagnostic_solver = None
+                    logger.info(
+                        "sovereign reservation best-effort produced a schedule club=%s relaxed=%d",
+                        input_data.club_id,
+                        len(sacrificed_source_keys),
+                    )
+
+    # Aucun planning produit : rien n'a été « sacrifié », le signal historique reste (une réservation
+    # qui contredit une règle sur un échec est une information, pas un écart du planning).
+    if solver_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        conflicts = [_as_not_honored_info(conflict) for conflict in conflicts]
+
     result_dict = build_result(
         data,
         solver,
@@ -441,6 +465,9 @@ async def build_schedule(
         # vide, message d'infaisabilité générique conservé.
         diagnostic_model=diagnostic_model,
         diagnostic_solver=diagnostic_solver,
+        # Réservation souveraine — les règles que le best-effort a sacrifiées (NOMMÉES en
+        # ``rule_sacrificed`` WARNING par le builder) ; vide ⇒ chemin inchangé.
+        sacrificed_source_keys=sacrificed_source_keys,
     )
     if conflicts:
         result_dict.setdefault("diagnostics", []).extend(conflicts)
@@ -481,6 +508,22 @@ CHAINING_PHASE_MAX_SECONDS = 10
 # right — if it does not prove INFEASIBLE in time (UNKNOWN/timeout) the generic message
 # is kept and D2 (the lock aggregate, which never needs the solver) still renders.
 DIAGNOSTIC_SOLVE_MAX_SECONDS = 15
+
+# Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — budget du 3ᵉ solve
+# « best-effort » : quand un VERROU HARD rend une règle dure insatisfiable, ce solve lève cette
+# règle (et elle seule), tient le verrou, et PRODUIT le planning. Décision fondateur Q2 : 60 s.
+# S'il n'aboutit pas dans ce budget, le chemin ``failed`` reste inchangé (jamais un demi-planning).
+BEST_EFFORT_SOLVE_MAX_SECONDS = 60
+
+# Sonde de CAUSALITÉ (gate court) du best-effort : on rejoue le modèle AVEC les verrous LIBÉRÉS.
+# S'il devient faisable, les verrous sont bien la cause DIRECTE de l'infaisabilité → on relâche.
+# S'il reste infaisable, le conflit est règle-contre-règle / règle-contre-grille (pas un verrou) →
+# on NE relâche RIEN : « la réservation est la SEULE exception » (garde-fou
+# ``test_a_rule_conflict_not_caused_by_a_lock_stays_failed_even_with_reservations_elsewhere``).
+BEST_EFFORT_PROBE_MAX_SECONDS = 15
+
+# Plancher de gymnase levé par le best-effort : devant toute préférence de confort, derrière le remplissage.
+RELAXED_FLOOR_PLACEMENT_WEIGHT = 500
 
 
 def _adaptive_timeout(n_teams: int, n_venues: int, payload_cap: int) -> int:
@@ -530,6 +573,8 @@ def _solve(
     *,
     assumptions_enabled: bool = False,
     budget_override: int | None = None,
+    relax_source_keys: frozenset[str] | None = None,
+    placement_only: bool = False,
 ) -> tuple[int, cp_model.CpSolver, ScheduleCpModel, list[dict[str, Any]], dict[str, Any]]:
     """Run the solver pipeline: build model, add constraints, solve.
 
@@ -549,10 +594,20 @@ def _solve(
       * ``budget_override`` replaces the adaptive 60/180/600 s budget with a fixed
         ceiling — the SHORT budget of that diagnostic solve. ``None`` ⇒ the adaptive
         budget (nominal). Neither knob touches ``_adaptive_workers``/the tiers.
+
+    Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — un TROISIÈME knob :
+      * ``relax_source_keys`` nomme les règles dures SOURCE que le 3ᵉ solve « best-effort » relâche
+        parce qu'un VERROU les rend insatisfiables. Posé sur ``model.relaxed_source_keys`` AVANT la
+        pose : ``_assume`` leur crée bien leur littérale et leur ``OnlyEnforceIf`` mais SANS
+        ``AddAssumption`` → libre, elle tombe à faux et la règle est désactivée (le verrou reste dur).
+        ``None`` ⇒ aucune relaxation (nominal + diagnostique). Combiné à ``assumptions_enabled=True``.
     """
     model: ScheduleCpModel = build_model(data)
     # Armé AVANT la pose des contraintes (``_assume`` lit cet interrupteur à chaque site de pose).
     model.assumptions_enabled = assumptions_enabled
+    # Réservation souveraine — les règles SOURCE que le best-effort relâche (littérale LIBRE, non
+    # assumée). Posé AVANT la pose, comme l'interrupteur ci-dessus. Vide ⇒ aucune relaxation.
+    model.relaxed_source_keys = relax_source_keys or frozenset()
 
     parsed = parse_v2_constraints(data.get("constraints", []))
     team_coach_map: dict[str, list[str]] = parsed.get("team_coach_map", {})
@@ -579,6 +634,9 @@ def _solve(
     # à l'échec la MÊME question « un coach de l'union est-il libre ici ? » que la pose (helper
     # UNIQUE `constraints.availability`), sans re-parser les contraintes.
     model.coach_unavailability = parsed["coach_unavailability"]
+    model.parsed_rules = parsed
+    model.team_names = {str(t.get("id")): str(t.get("name") or t.get("id")) for t in data.get("teams", [])}
+    model.venue_names = {str(v.get("id")): str(v.get("name") or v.get("id")) for v in data.get("venues", [])}
 
     # (La famille FACILITY_CAPACITY rabotait ici la capacité d'un gymnase entier
     # à `maxTeams`. RETIRÉE le 2026-08-08 : aucun chemin UI ne la créait, zéro
@@ -701,6 +759,12 @@ def _solve(
         max_sessions = team.get("sessions_per_week") or team.get("sessionsPerWeek")
         if team_id and max_sessions:
             remaining_by_team[str(team_id)] = max(0, int(max_sessions) - locked_slots_by_team.get(team_id, 0))
+    # Réservation souveraine — une règle de demande levée : la séance qu'elle exigeait reste non placée,
+    # elle ne part jamais ailleurs. Vide hors best-effort (chemin byte-identique).
+    for demand in model.relaxed_demands:
+        demand_team = str(demand["teamId"])
+        if demand_team in remaining_by_team:
+            remaining_by_team[demand_team] = max(0, remaining_by_team[demand_team] - int(demand["sessions"]))
 
     for team_id, team_vars in assignments_by_team.items():
         remaining = remaining_by_team.get(str(team_id))
@@ -804,6 +868,8 @@ def _solve(
             *travel_battement_terms,
             *socle_reference_terms,
             *proximity_terms,
+            # Plancher levé : l'équipe s'approche de son minimum tant qu'une case le permet.
+            *((var, RELAXED_FLOOR_PLACEMENT_WEIGHT) for var in model.relaxed_floor_vars),
         ],
         # A person chains a back-to-back pair as coach OR as player of the team;
         # the map is built once from the constraint links (l.446) and the chaining
@@ -867,7 +933,12 @@ def _solve(
     # pour la stabilité). Sans trajet ni stabilité, la condition se réduit à l'historique
     # `chaining_terms` (byte-identique).
     low_band_terms = [*stability_terms, *travel_departage_terms]
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and (objective_stats.chaining_terms or low_band_terms):
+    # `placement_only` : la sonde de causalité ne demande que « faisable ? », un seul solve suffit.
+    if (
+        not placement_only
+        and status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        and (objective_stats.chaining_terms or low_band_terms)
+    ):
         placement_optimum = int(solver.ObjectiveValue())
         cast(Any, model).Add(objective_stats.placement_expression >= placement_optimum)
         # Warm-start phase 2 with the placement-optimal solution so it always has
@@ -912,6 +983,224 @@ def _solve(
             )
 
     return status, solver, model, conflicts, solve_stats
+
+
+# Les règles de DEMANDE (« il faut une séance ICI ») que le best-effort peut lever. Les règles de
+# FERMETURE (indisponibilité, fenêtre, jour interdit…) ne sont JAMAIS levées : une séance ne se place
+# jamais hors de sa règle, elle reste non placée. Le jour imposé et le plancher retirent la séance
+# correspondante du quota de l'équipe à la pose (`relaxed_demands`).
+_RELAXABLE_KEY_PREFIXES = ("shared_block:", "forced_day:", "session_floor:")
+
+
+async def _best_effort_solve(
+    data: dict[str, Any],
+    input_data: ScheduleInputSchema,
+    diagnostic_model: ScheduleCpModel,
+    diagnostic_solver: cp_model.CpSolver,
+) -> tuple[int, cp_model.CpSolver, ScheduleCpModel, list[dict[str, Any]], dict[str, Any], frozenset[str]] | None:
+    """Réservation souveraine : lève les règles de demande du noyau d'infaisabilité et PRODUIT le
+    planning, ou rend ``None`` (le chemin ``failed`` reste inchangé, jamais un demi-planning).
+
+    La SONDE DE CAUSALITÉ (verrous libérés → faisable ?) passe d'abord : sinon le conflit est
+    règle-contre-règle ou règle-contre-grille, on ne touche à rien. Le noyau rendu par CP-SAT n'est
+    qu'UN sous-ensemble suffisant : si le solve reste infaisable, son propre noyau désigne les règles
+    suivantes. S'il ne désigne plus aucune règle de demande, l'impossibilité ne tient pas à une
+    réservation et le résultat reste ``failed``. Budget total : ``BEST_EFFORT_SOLVE_MAX_SECONDS``."""
+    started = time.perf_counter()
+    relax_keys: frozenset[str] = frozenset()
+    core_model, core_solver = diagnostic_model, diagnostic_solver
+    while True:
+        new_keys = _lock_caused_relax_keys(core_model, core_solver, data) - relax_keys
+        if not new_keys:
+            return None
+        if not relax_keys and not await _locks_are_the_cause(data, input_data):
+            return None
+        # Une seule règle à la fois : deux planchers qui se disputent la dernière case forment un noyau,
+        # n'en lever qu'un laisse la case à l'autre équipe. Les lever ensemble gâcherait une case permise.
+        relax_keys |= {min(new_keys)}
+        remaining = BEST_EFFORT_SOLVE_MAX_SECONDS - (time.perf_counter() - started)
+        if remaining <= 0:
+            return None
+        status, solver, model, conflicts, stats = await asyncio.to_thread(
+            _solve,
+            data,
+            input_data,
+            assumptions_enabled=True,
+            relax_source_keys=relax_keys,
+            budget_override=math.ceil(remaining),
+        )
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return status, solver, model, conflicts, stats, relax_keys
+        if status != cp_model.INFEASIBLE:
+            return None
+        core_model, core_solver = model, solver
+
+
+def _as_not_honored_info(conflict: dict[str, Any]) -> dict[str, Any]:
+    """Le signal historique d'une réservation qui contredit une règle, quand aucun planning ne sort."""
+    if conflict.get("type") != "rule_sacrificed":
+        return conflict
+    # Ce type n'affiche pas ses causes : la règle revient dans le message.
+    causes = conflict.get("causes") or [{}]
+    label = causes[0].get("label")
+    message = f"{conflict['message']} (contrainte « {label} »)" if label else conflict["message"]
+    return {**conflict, "type": "constraint_not_honored", "severity": "INFO", "message": message}
+
+
+def _lock_caused_relax_keys(
+    diagnostic_model: ScheduleCpModel,
+    diagnostic_solver: cp_model.CpSolver,
+    data: dict[str, Any],
+) -> frozenset[str]:
+    """Les règles de DEMANDE du NOYAU d'infaisabilité que le best-effort lèvera (réservation
+    souveraine) : blocs de mutualisation, jours imposés, planchers de gymnase. Jamais une règle de
+    fermeture, jamais une règle hors du noyau.
+
+    Le solve diagnostique a instrumenté chaque règle source d'une littérale d'hypothèse (registre
+    ``assumption_literals`` : clé SOURCE → littérale). ``SufficientAssumptionsForInfeasibility()``
+    rend les INDEX des littérales d'un sous-ensemble SUFFISANT : les retirer rend le modèle faisable.
+    On inverse index → clé, on garde ces familles, et on EXCLUT tout bloc SUR-ÉPINGLÉ par ses
+    PROPRES verrous (``exclusives > commonSessions``) : celui-là n'est pas PRIVÉ d'une case par une
+    réservation, ses verrous se contredisent — il reste un échec NOMMÉ (``shared_block_not_honored``),
+    jamais un sacrifice. Vide ⇒ pas de best-effort (le planning reste ``failed`` et expliqué)."""
+    try:
+        core_indices = diagnostic_solver.SufficientAssumptionsForInfeasibility()
+    except AttributeError, TypeError:  # pragma: no cover - solveur sans hypothèses
+        return frozenset()
+    index_to_key = {int(lit.Index()): key for key, lit in diagnostic_model.assumption_literals.items()}
+    core_keys = {index_to_key[idx] for idx in core_indices if idx in index_to_key}
+    overpinned = _overpinned_block_ids(data)
+    return frozenset(
+        key
+        for key in core_keys
+        if key.startswith(_RELAXABLE_KEY_PREFIXES)
+        and not (key.startswith("shared_block:") and key.split(":", 1)[1] in overpinned)
+    )
+
+
+def _overpinned_block_ids(data: dict[str, Any]) -> set[str]:
+    """Les ids des blocs SUR-ÉPINGLÉS par leurs PROPRES verrous : plus de cases où TOUS leurs membres
+    sont épinglés ENSEMBLE, et de façon EXCLUSIVE (aucun autre bloc toute-épinglé là), que de séances
+    communes demandées (``exclusives > commonSessions``). Miroir du motif ``shared-block-overpinned``
+    de ``_diagnose_shared_blocks`` : un tel bloc n'est pas PRIVÉ d'une case par une réservation tierce,
+    ses verrous se contredisent — on ne le sacrifie JAMAIS (il reste un échec de configuration nommé)."""
+    blocks = data.get("sharedBlocks") or data.get("shared_blocks") or []
+    valid: list[tuple[str, set[str], int]] = []
+    for index, block in enumerate(blocks):
+        members = {str(t) for t in (block.get("teamIds") or block.get("team_ids") or [])}
+        if len(members) < 2:
+            continue
+        block_id = str(block.get("id") if block.get("id") is not None else index)
+        common_sessions = int(block.get("commonSessions") or block.get("common_sessions") or 0)
+        valid.append((block_id, members, common_sessions))
+
+    pinned_teams_by_case: dict[tuple[str, str, str], set[str]] = {}
+    for pin in data.get("slotTemplates") or data.get("slot_templates") or []:
+        if str(pin.get("lockLevel") or pin.get("lock_level") or "").upper() != "HARD":
+            continue
+        team = str(pin.get("teamId") or pin.get("team_id") or "")
+        if not team:
+            continue
+        case = (
+            str(pin.get("venueId") or pin.get("venue_id") or ""),
+            str(pin.get("dayOfWeek") or pin.get("day_of_week") or ""),
+            str(pin.get("startTime") or pin.get("start_time") or "")[:5],
+        )
+        pinned_teams_by_case.setdefault(case, set()).add(team)
+
+    # Une case est EXCLUSIVE à un bloc si elle ne liste QUE lui (blocs imbriqués partageant une case
+    # ⇒ exclusive à aucun, jamais sur-épinglés).
+    fully_pinned_here: dict[tuple[str, str, str], list[int]] = {}
+    for case, teams in pinned_teams_by_case.items():
+        positions = [pos for pos, (_bid, members, _cs) in enumerate(valid) if members <= teams]
+        if positions:
+            fully_pinned_here[case] = positions
+
+    overpinned: set[str] = set()
+    for pos, (block_id, _members, common_sessions) in enumerate(valid):
+        exclusives = sum(1 for these in fully_pinned_here.values() if these == [pos])
+        if exclusives > common_sessions:
+            overpinned.add(block_id)
+    return overpinned
+
+
+async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSchema) -> bool:
+    """Sonde de CAUSALITÉ du best-effort : les VERROUS sont-ils la cause DIRECTE de l'infaisabilité ?
+
+    On rejoue le MÊME problème mais avec les verrous HARD LIBÉRÉS (grille rendue à sa capacité
+    pleine). S'il devient faisable, l'infaisabilité tenait aux verrous → on peut relâcher la règle
+    qu'ils bloquent (réservation souveraine). S'il reste infaisable (ou ne tranche pas dans le
+    budget court), le conflit est règle-contre-règle / règle-contre-grille — « la réservation est la
+    SEULE exception » — et on NE relâche RIEN : le planning reste ``failed`` et expliqué."""
+    probe_status, *_ = await asyncio.to_thread(
+        _solve,
+        _without_hard_locks(data),
+        input_data,
+        budget_override=BEST_EFFORT_PROBE_MAX_SECONDS,
+        placement_only=True,
+    )
+    return probe_status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def _without_hard_locks(data: dict[str, Any]) -> dict[str, Any]:
+    """Copie de ``data`` SANS ses verrous HARD (``lockLevel`` == HARD retiré de chaque collection de
+    gabarits que ``build_model`` lit). Les gabarits non-HARD et le reste du payload sont intacts.
+    Sert la sonde de causalité (grille rendue à sa capacité pleine). Le plancher garde son crédit : une
+    équipe servie par ses propres verrous ne réclame pas ces séances une seconde fois (P4-97)."""
+    template_keys = (
+        "slotTemplates",
+        "scheduleSlotTemplates",
+        "slot_templates",
+        "schedule_slot_templates",
+        "lockedSlots",
+        "locked_slots",
+        "slots",
+    )
+    probe = dict(data)
+    locked_days: dict[tuple[str, str], set[int]] = {}
+    for key in template_keys:
+        for template in probe.get(key) or []:
+            if (
+                isinstance(template, Mapping)
+                and str(template.get("lockLevel") or template.get("lock_level") or "").upper() == "HARD"
+            ):
+                where = (
+                    str(template.get("teamId") or template.get("team_id") or ""),
+                    str(template.get("venueId") or template.get("venue_id") or ""),
+                )
+                locked_days.setdefault(where, set()).add(
+                    int(template.get("dayOfWeek") or template.get("day_of_week") or 0)
+                )
+    probe["constraints"] = [
+        credited
+        for c in probe.get("constraints") or []
+        if (credited := _floor_with_lock_credit(c, locked_days)) is not None
+    ]
+    for key in template_keys:
+        templates = probe.get(key)
+        if isinstance(templates, list):
+            probe[key] = [
+                t
+                for t in templates
+                if not (
+                    isinstance(t, Mapping) and str(t.get("lockLevel") or t.get("lock_level") or "").upper() == "HARD"
+                )
+            ]
+    return probe
+
+
+def _floor_with_lock_credit(constraint: Any, locked_days: dict[tuple[str, str], set[int]]) -> Any:
+    """La contrainte telle que la sonde la voit : un plancher, moins les jours déjà verrouillés par son
+    équipe à ce gymnase (``None`` si tous sont servis). Toute autre contrainte passe telle quelle."""
+    config = constraint.get("config") if isinstance(constraint, Mapping) else None
+    if not isinstance(config, Mapping) or not config.get("minAtVenueId"):
+        return constraint
+    team_id = str(constraint.get("scopeTargetId") or constraint.get("scope_target_id") or "")
+    credit = len(locked_days.get((team_id, str(config["minAtVenueId"])), ()))
+    remaining = int(config.get("minAtVenueCount") or 1) - credit
+    if credit == 0:
+        return constraint
+    return None if remaining <= 0 else {**constraint, "config": {**config, "minAtVenueCount": remaining}}
 
 
 @app.get("/health")

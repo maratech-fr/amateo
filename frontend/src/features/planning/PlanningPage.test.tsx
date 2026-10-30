@@ -6,6 +6,7 @@ import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/ap
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
+import { stalenessMessage } from "./lib/staleness";
 import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -822,6 +823,52 @@ describe("PlanningPage (integration)", () => {
 
     const regen = await screen.findByRole("button", { name: /Régénérer/i });
     expect(regen).toBeDisabled();
+  });
+
+  // Décision fondateur 2026-10-30 — « Régénérer » n'est grisé que si l'empreinte est égale ET que le
+  // planning n'a pas été modifié à la main : le bandeau ne dit jamais « Régénérez » sur un bouton grisé.
+  describe("« Régénérer » suit l'empreinte ET la retouche à la main", () => {
+    const version = (over: { snapshotHash: string; manuallyEditedSinceGeneration: boolean }) => ({
+      id: "ov-1",
+      name: "Ajustement",
+      status: "COMPLETED",
+      score: 10,
+      createdAt: "2026-09-10T00:00:00Z",
+      updatedAt: "2026-09-10T00:00:00Z",
+      planType: "CLOSURE",
+      schedulePlanId: "ete-plan",
+      ...over,
+    });
+
+    const renderVersion = async (over: { snapshotHash: string; manuallyEditedSinceGeneration: boolean }) => {
+      vi.mocked(listSchedules).mockResolvedValue([version(over)] as never);
+      vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "SAME" });
+      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+      renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+      await screen.findByRole("button", { name: /Régénérer/i });
+    };
+    const regenerate = () => screen.getByRole("button", { name: /Régénérer/i });
+
+    it("rien n'a bougé : grisé, aucun bandeau", async () => {
+      await renderVersion({ snapshotHash: "SAME", manuallyEditedSinceGeneration: false });
+
+      await waitFor(() => expect(regenerate()).toBeDisabled());
+      expect(screen.queryByText(/il est périmé/)).not.toBeInTheDocument();
+    });
+
+    it("structure changée : actif, et le bandeau dit pourquoi", async () => {
+      await renderVersion({ snapshotHash: "OLD", manuallyEditedSinceGeneration: false });
+
+      expect(await screen.findByText(stalenessMessage({ manuallyEdited: false, structureChanged: true, readOnly: false }) as string)).toBeInTheDocument();
+      expect(regenerate()).toBeEnabled();
+    });
+
+    it("séance déplacée à la main, structure inchangée : actif, le bandeau et le bouton disent la même chose", async () => {
+      await renderVersion({ snapshotHash: "SAME", manuallyEditedSinceGeneration: true });
+
+      expect(await screen.findByText(stalenessMessage({ manuallyEdited: true, structureChanged: false, readOnly: false }) as string)).toBeInTheDocument();
+      await waitFor(() => expect(regenerate()).toBeEnabled());
+    });
   });
 
   // V1 — « Régénérer » un overlay repart TOUJOURS des DONNÉES EN COURS (la version SOURCE des
@@ -2848,5 +2895,59 @@ describe("PlanningPage — geste « Modifier les dates » d'une fermeture (PR2)"
     renderWithProviders(<PlanningPage />);
     await screen.findByText(/Génération du planning/i);
     expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
+  });
+});
+
+// Décision fondateur 2026-10-30 — le dialogue de validation NOMME ce qui manque (« U15 : 1 séance non
+// placée »), y compris quand le manque vit dans un gymnase masqué de la période, où le panneau de
+// diagnostics ne le montre pas. La validation reste permise : on assume en connaissance de cause.
+describe("PlanningPage — le dialogue de validation nomme ce qui manque", () => {
+  const blocked = (venueId: string) => ({ id: "blocked", scheduleId: SID, type: "blocked_by_reservation", severity: "WARNING" as const, teamId: "team-1", venueId, coachId: null, dayOfWeek: 5, startTime: "18:00", ruleKey: null, message: "Séance non placée.", suggestions: [], causes: [], openCandidates: null });
+
+  beforeEach(() => {
+    vi.mocked(listSchedules).mockResolvedValue(workVersion);
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U15", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
+    vi.mocked(getVenues).mockResolvedValue([
+      { id: "venue-1", name: "Gymnase Alpha", color: "#00aa00" },
+      { id: "venue-2", name: "Gymnase Beta", color: "#0000aa" },
+    ]);
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+  });
+
+  async function openDialog(scopePlanId?: string) {
+    const user = userEvent.setup();
+    renderWithProviders(<PlanningPage embedded scopePlanId={scopePlanId} />);
+    await user.click(await screen.findByRole("button", { name: "Valider" }));
+    return within(await screen.findByRole("dialog", { name: "Valider le planning" }));
+  }
+
+  it("nomme l'équipe et le nombre de séances manquantes, et laisse valider", async () => {
+    vi.mocked(getDiagnostics).mockResolvedValue([blocked("venue-1")]);
+
+    const dialog = await openDialog();
+
+    expect(dialog.getByText(/U15\s*:\s*1 séance non placée/)).toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Valider" })).toBeEnabled();
+  });
+
+  it("nomme aussi le manque d'un gymnase masqué pour la période", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ ...workVersion[0], name: "Période", planType: "HOLIDAY", schedulePlanId: "ete-plan" }]);
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
+    conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-2"] });
+    vi.mocked(getDiagnostics).mockResolvedValue([blocked("venue-2")]);
+
+    const dialog = await openDialog("ete-plan");
+
+    expect(dialog.getByText(/U15\s*:\s*1 séance non placée/)).toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Valider" })).toBeEnabled();
+  });
+
+  it("TÉMOIN : une équipe qui a toutes ses séances n'est pas citée, même avec une alerte", async () => {
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U15", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 1 }]);
+    vi.mocked(getDiagnostics).mockResolvedValue([blocked("venue-1")]);
+
+    const dialog = await openDialog();
+
+    expect(dialog.queryByText(/non placée/)).not.toBeInTheDocument();
   });
 });

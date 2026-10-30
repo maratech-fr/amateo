@@ -6,6 +6,7 @@ namespace App\Tests\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Reservation;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
@@ -302,6 +303,84 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    /**
+     * Promesse fondateur 2026-10-30 : on ne baisse pas les séances communes d'un groupe sous le nombre
+     * de cases déjà réservées pour lui, sinon le planning sort en échec à la génération suivante.
+     */
+    public function testLoweringCommonSessionsBelowTheReservedCasesIsRefused(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('a');
+        $t1 = $this->createTeam($club, $season, 'U9F1', 4);
+        $t2 = $this->createTeam($club, $season, 'U9F2', 4);
+        $venue = $this->createVenue($club, $season, 'Platane');
+        $id = $this->postBlock($user, [$t1, $t2], 3);
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 1);
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 2);
+
+        $this->putBlock($user, $id, [$t1, $t2], 1);
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_encode($this->responseData(), \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
+        self::assertStringContainsString('2 séances communes sont réservées pour ce groupe', $body);
+        self::assertStringContainsString('Retirez d\'abord une réservation', $body);
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        self::assertSame(3, $this->em->getRepository(SharedTrainingBlock::class)->find($id)?->getCommonSessions(), 'rien n\'est écrit');
+    }
+
+    /** Témoin : la baisse reste permise jusqu'au nombre de cases réservées, pas en dessous. */
+    public function testLoweringCommonSessionsDownToTheReservedCasesIsAccepted(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('a');
+        $t1 = $this->createTeam($club, $season, 'U9F1', 4);
+        $t2 = $this->createTeam($club, $season, 'U9F2', 4);
+        $venue = $this->createVenue($club, $season, 'Platane');
+        $id = $this->postBlock($user, [$t1, $t2], 3);
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 1);
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 2);
+
+        $this->putBlock($user, $id, [$t1, $t2], 2);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(2, $this->responseData()['commonSessions']);
+    }
+
+    /** Retirer un membre peut créer des cases complètes : {a,b,c} devient {a,b} sur deux cases {a,b}. */
+    public function testRemovingAMemberThatCreatesMoreCompleteCasesThanSessionsIsRefused(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('a');
+        $t1 = $this->createTeam($club, $season, 'U9F1', 4);
+        $t2 = $this->createTeam($club, $season, 'U9F2', 4);
+        $t3 = $this->createTeam($club, $season, 'U9F3', 4);
+        $venue = $this->createVenue($club, $season, 'Platane');
+        $id = $this->postBlock($user, [$t1, $t2, $t3], 1);
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 1);
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 2);
+
+        $this->putBlock($user, $id, [$t1, $t2], 1);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    /** Même trou à la création : un groupe déclaré sur des équipes déjà réservées ensemble sur deux cases. */
+    public function testCreatingABlockOverMoreCoLocatedReservationsThanSessionsIsRefused(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('a');
+        $t1 = $this->createTeam($club, $season, 'U9F1', 4);
+        $t2 = $this->createTeam($club, $season, 'U9F2', 4);
+        $venue = $this->createVenue($club, $season, 'Platane');
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 1);
+        $this->reservePair($club, $season, [$t1, $t2], $venue, 2);
+        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
+        $body = static fn (int $k): string => json_encode(['schedulePlanId' => null, 'teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => $k], \JSON_THROW_ON_ERROR);
+
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], $headers, $body(1));
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], $headers, $body(2));
+        self::assertResponseStatusCodeSame(201);
+    }
+
     public function testNonManagementWriteRefused(): void
     {
         [$club, , $season] = $this->createClubUser('a');
@@ -319,6 +398,43 @@ final class SharedTrainingBlockApiTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /** @param list<Team> $teams */
+    private function postBlock(User $user, array $teams, int $commonSessions): string
+    {
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'schedulePlanId' => null, 'teamIds' => array_map(static fn (Team $t): string => $t->getId(), $teams), 'commonSessions' => $commonSessions,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+
+        return (string) $this->responseData()['id'];
+    }
+
+    /** @param list<Team> $teams */
+    private function putBlock(User $user, string $id, array $teams, int $commonSessions): void
+    {
+        $this->client->request('PUT', '/api/shared_training_blocks/' . $id, [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'teamIds' => array_map(static fn (Team $t): string => $t->getId(), $teams), 'commonSessions' => $commonSessions,
+        ], \JSON_THROW_ON_ERROR));
+    }
+
+    /** @param list<Team> $teams */
+    private function reservePair(Club $club, Season $season, array $teams, Venue $venue, int $dayOfWeek): void
+    {
+        $this->scopeGucToClub($club->getId());
+        foreach ($teams as $team) {
+            $reservation = (new Reservation)
+                ->setClubId($club->getId())
+                ->setSeasonId($season->getId())
+                ->setTeamId($team->getId())
+                ->setVenueId($venue->getId())
+                ->setDayOfWeek($dayOfWeek)
+                ->setStartTime(new DateTimeImmutable('1970-01-01 18:00:00'))
+                ->setDurationMinutes(90);
+            $this->em->persist($reservation);
+        }
+        $this->em->flush();
     }
 
     private function periodPlan(Club $club, Season $season): SchedulePlan

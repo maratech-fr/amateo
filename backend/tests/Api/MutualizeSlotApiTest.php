@@ -25,6 +25,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\ClubGenerationLock;
 use App\Service\MutualizeSlotService;
+use App\Service\ReservationGroupOccupancy;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeriodPlanTrait;
@@ -598,6 +599,73 @@ final class MutualizeSlotApiTest extends WebTestCase
     }
 
     /** Au SOCLE : équipe → équipe donne un bloc de portée NULL (comme les blocs de saison). */
+    /**
+     * Promesse fondateur 2026-10-30, chemin « mutualiser une séance » : créer un groupe à 1 séance commune
+     * sur des équipes déjà réservées ensemble sur 2 cases sortirait en échec à la génération suivante.
+     * Refus 422, même message que le PUT du groupe, rien n'est écrit.
+     */
+    public function testMutualizingTeamsAlreadyReservedTogetherOnTwoCasesIsRefused(): void
+    {
+        $ctx = $this->seedSeason('rs');
+        $source = $this->createTeam($ctx, 'Groupe A', 4, true);
+        $joiner = $this->createTeam($ctx, 'Groupe B', 4, true);
+        foreach ([3, 4] as $day) {
+            foreach ([$source, $joiner] as $teamId) {
+                $this->createReservation($ctx, $teamId, ['venueId' => $ctx['venueId'], 'dayOfWeek' => $day, 'startTime' => '18:00']);
+            }
+        }
+        $slot = $this->placeSlot($ctx, $source, $ctx['case']);
+        $joinerSlot = $this->placeSlot($ctx, $joiner, ['venueId' => $ctx['venueId'], 'dayOfWeek' => 5, 'startTime' => '18:00']);
+
+        $this->client->request('POST', '/api/schedule-slots/' . $slot->getId() . '/mutualize', [], [], $this->managerHeaders($ctx), json_encode([
+            'teamIds' => [$source, $joiner], 'replacedSlotIds' => [$joinerSlot->getId()],
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertStringContainsString('2 séances communes sont réservées pour ce groupe', (string) ($body['error'] ?? $body['detail'] ?? json_encode($body)));
+        self::assertCount(0, $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $ctx['clubId']]), 'rien n\'est écrit');
+    }
+
+    /**
+     * Promesse fondateur 2026-10-30 : un groupe ne garde jamais moins de séances communes que de cases
+     * réservées. Une équipe qui rejoint une séance du groupe lui retire une séance commune (K 2 → 1) ;
+     * ses deux cases réservées restent. Refuser ou retirer la réservation tiennent la promesse : on
+     * vérifie l'état final, pas le moyen.
+     */
+    public function testAtCaseNeverLeavesAGroupWithMoreReservedCasesThanSessions(): void
+    {
+        $ctx = $this->seedSeason('acR');
+        $a = $this->createTeam($ctx, 'Groupe A', 4, true);
+        $b = $this->createTeam($ctx, 'Groupe B', 4, true);
+        $joiner = $this->createTeam($ctx, 'Rejoint', 4, true);
+        $other = ['venueId' => $ctx['venueId'], 'dayOfWeek' => 4, 'startTime' => '18:00'];
+        $group = $this->seedGroupAtCase($ctx, [$a, $b], $ctx['case'], 2);
+        foreach ([$a, $b] as $teamId) {
+            $this->createReservation($ctx, $teamId, $ctx['case']);
+            $this->createReservation($ctx, $teamId, $other);
+        }
+        $source = $this->placeSlot($ctx, $joiner, $this->sourceCase($ctx));
+
+        $this->postAtCase($ctx, $source->getId(), $group['slots'][$a]->getId(), null);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->find($group['block']->getId());
+        if (!$block instanceof SharedTrainingBlock) {
+            self::assertSame([], $this->em->getRepository(Reservation::class)->findBy(['clubId' => $ctx['clubId'], 'teamId' => [$a, $b]]), 'un groupe mort ne laisse pas de réservation de groupe');
+
+            return;
+        }
+        $reservations = $this->em->getRepository(Reservation::class)->findBy(['clubId' => $ctx['clubId']]);
+        $complete = ReservationGroupOccupancy::reservationsOnGroupCompleteCases($reservations, [$a => true, $b => true]);
+        self::assertLessThanOrEqual(
+            $block->getCommonSessions(),
+            \count($complete) / 2,
+            'plus de cases réservées que de séances communes : la génération suivante sort en échec',
+        );
+    }
+
     public function testAtCaseAtSeasonBasePlanWithNullScope(): void
     {
         $ctx = $this->seedSeason('acS');

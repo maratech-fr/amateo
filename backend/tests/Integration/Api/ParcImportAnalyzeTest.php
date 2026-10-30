@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\PriorityTier;
+use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -911,6 +912,50 @@ final class ParcImportAnalyzeTest extends WebTestCase
     }
 
     // ───────────────────────── PR A lot 2 (E2 analyse) — la garde de budget individuel joue dès /analyze ─────────────────────────
+
+    /**
+     * L'aperçu dit ce que l'exécution refuserait. Deux équipes déjà réservées ensemble sur deux cases, un
+     * groupe à une seule séance commune : la ligne sort en alerte DÉCOCHÉE avec le message du refus, au lieu
+     * d'un `aCreer` qui finit en 422 après le clic sur Importer. Jumeau exécution :
+     * `ParcImportExecuteTest::testImportNeverCreatesABlockWithFewerSessionsThanItsReservedCases`.
+     * TÉMOIN : réservées sur une seule case, la ligne reste importable.
+     */
+    public function testAnalyzeFlagsAGroupWithFewerCommonSessionsThanItsReservedCases(): void
+    {
+        $a = $this->makeTeam('U9M1');
+        $b = $this->makeTeam('U11F2');
+        $a->setSessionsPerWeek(3);
+        $b->setSessionsPerWeek(3);
+        $venue = $this->makeVenue('Gymnase Platane');
+        $this->scopeGucToClub($this->club->getId());
+        $reservation = null;
+        foreach ([$a, $b] as $team) {
+            foreach ([3, 4] as $day) {
+                $reservation = (new Reservation)
+                    ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                    ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek($day)
+                    ->setStartTime(new DateTimeImmutable('1970-01-01 16:00:00'))->setDurationMinutes(90);
+                $this->em->persist($reservation);
+            }
+        }
+        $this->em->flush();
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Platane', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'Groupe X'],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+
+        self::assertSame(200, $status);
+        $line = $body['sections']['mutualisations'][0];
+        self::assertSame('alerte', $line['statut'], 'ce que l\'exécution refuserait se voit dans l\'aperçu');
+        self::assertFalse($line['coche'], 'une alerte n\'est jamais cochée');
+        self::assertStringContainsString('2 séances communes sont réservées pour ce groupe', (string) ($line['raison'] ?? ''));
+
+        // TÉMOIN : plus qu'une case réservée en commun, le groupe à 1 séance tient.
+        $this->em->createQueryBuilder()->delete(Reservation::class, 'r')->where('r.dayOfWeek = 4')->getQuery()->execute();
+        [, $witness] = $this->analyze($parc);
+        self::assertNotSame('alerte', $witness['sections']['mutualisations'][0]['statut']);
+    }
 
     public function testTheIndividualBudgetGuardFlagsAReservationAtAnalyze(): void
     {

@@ -10,7 +10,8 @@ noms, libellés FR) et les modules solveur ``model`` / ``constraints`` : ``locks
 verrous) · ``placement`` (équipes non placées, surcharge coach, créneaux inutilisés) · ``sessions``
 (causes de séances manquantes) · ``infeasibility`` (noyau/agrégat et message d'infaisabilité) ·
 ``conflicts`` (double-réservations — seule arête interne : importe ``infeasibility``) ·
-``shared_blocks`` (blocs mutualisés) · ``links_travel`` (passerelles et temps de trajet) ·
+``shared_blocks`` (blocs mutualisés) · ``reservations`` (séances privées de case par une réservation) ·
+``links_travel`` (passerelles et temps de trajet) ·
 ``implicit_rules`` (règles implicites). Le paquet ne dépend PAS de ``slots`` ni de l'agrégateur.
 
 ⚠ ENG-37 : ``_diagnose_travel_times`` (dans ``links_travel``) consomme la SOURCE UNIQUE
@@ -110,6 +111,9 @@ from .placement import (
 from .placement import (
     _unplaced_team_ids as _unplaced_team_ids,
 )
+from .reservations import (
+    _diagnose_reservation_gaps as _diagnose_reservation_gaps,
+)
 from .season_slots import (
     _diagnose_season_slots as _diagnose_season_slots,
 )
@@ -118,6 +122,9 @@ from .sessions import (
 )
 from .sessions import (
     _diagnose_session_below_effective_min as _diagnose_session_below_effective_min,
+)
+from .shared_blocks import (
+    _diagnose_sacrificed_rules as _diagnose_sacrificed_rules,
 )
 from .shared_blocks import (
     _diagnose_shared_blocks as _diagnose_shared_blocks,
@@ -138,6 +145,7 @@ def _generate_diagnostics(
     solver: cp_model.CpSolver | Any | None = None,
     diagnostic_model: ScheduleCpModel | Any | None = None,
     diagnostic_solver: cp_model.CpSolver | Any | None = None,
+    sacrificed_source_keys: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run post-solve checks and return manager-readable diagnostics.
 
@@ -210,8 +218,49 @@ def _generate_diagnostics(
             team_coach_map=team_coach_map or {},
             coach_unavailability=getattr(model, "coach_unavailability", None) or {},
             coach_unavailability_sources=getattr(model, "coach_unavailability_sources", None) or {},
+            # Réservation souveraine — un bloc sacrifié par le best-effort n'est pas accusé ici d'un
+            # ERROR : il est NOMMÉ en ``rule_sacrificed`` WARNING juste après.
+            sacrificed_source_keys=sacrificed_source_keys,
         )
     )
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}, model=model))
+    # Réservation souveraine (besoin fondateur 2026-10-30) — NOMME les règles sacrifiées par le
+    # best-effort (``rule_sacrificed`` WARNING). Vide hors best-effort ⇒ aucun diagnostic ajouté.
+    if sacrificed_source_keys:
+        diagnostics.extend(_diagnose_sacrificed_rules(model_data, sacrificed_source_keys))
+    if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and model is not None:
+        # Un seul message dès qu'une réservation est en cause : l'écart nommé REMPLACE les signaux
+        # historiques de la même équipe.
+        gaps = _diagnose_reservation_gaps(model_data, model, slots, session_causes_by_team or {})
+        gap_teams = {gap["teamId"] for gap in gaps}
+        diagnostics = _without_duplicate_person_conflicts(
+            [
+                diag
+                for diag in diagnostics
+                if not (
+                    diag.get("type") in {"session_below_effective_min", "unplaced"} and diag.get("teamId") in gap_teams
+                )
+            ]
+        )
+        diagnostics.extend(gaps)
     return diagnostics
+
+
+def _without_duplicate_person_conflicts(diagnostics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Une personne sur deux réservations est vue deux fois : par les cartes coach/joueur et par le
+    coach porté sur le créneau. Un seul message, le plus précis."""
+    named = {
+        (diag.get("coachId"), diag.get("dayOfWeek"))
+        for diag in diagnostics
+        if str(diag.get("id", "")).startswith("diag-locked-person-")
+    }
+    return [
+        diag
+        for diag in diagnostics
+        if not (
+            str(diag.get("id", "")).startswith("diag-conflict-coach-")
+            and diag.get("type") == "rule_sacrificed"
+            and (diag.get("coachId"), diag.get("dayOfWeek")) in named
+        )
+    ]

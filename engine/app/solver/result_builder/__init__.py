@@ -61,6 +61,9 @@ from .diagnostics import (
     _diagnose_locked_structural_conflicts as _diagnose_locked_structural_conflicts,
 )
 from .diagnostics import (
+    _diagnose_sacrificed_rules as _diagnose_sacrificed_rules,
+)
+from .diagnostics import (
     _diagnose_session_below_effective_min as _diagnose_session_below_effective_min,
 )
 from .diagnostics import (
@@ -180,6 +183,7 @@ def build_result(
     team_coach_map: Mapping[str, list[str]] | None = None,
     diagnostic_model: ScheduleCpModel | Any | None = None,
     diagnostic_solver: cp_model.CpSolver | Any | None = None,
+    sacrificed_source_keys: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Transform a CP-SAT solution into a dict matching ``ScheduleOutputSchema``.
 
@@ -256,6 +260,9 @@ def build_result(
             solver=solver,
             diagnostic_model=diagnostic_model,
             diagnostic_solver=diagnostic_solver,
+            # Réservation souveraine — les règles sacrifiées par le best-effort, NOMMÉES en
+            # ``rule_sacrificed`` WARNING ; vide ⇒ chemin inchangé.
+            sacrificed_source_keys=sacrificed_source_keys,
         )
     )
 

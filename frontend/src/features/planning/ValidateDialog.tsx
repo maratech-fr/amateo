@@ -7,6 +7,8 @@ import { DeclaredFixturesNotice } from "@/shared/components/ui/declared-fixtures
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 
+import { PLANNING_TEXTS } from "./texts";
+
 /** P2-52 — l'impact de dépointage de la validation, tel que l'écran le connaît au moment de
  *  confirmer. `orphanCount` = matchs qui perdront leur salle ; `declaredCount` = sous-ensemble
  *  déjà déclaré à la fédération. `loading`/`failed` : on ne laisse JAMAIS confirmer sur un impact
@@ -24,7 +26,7 @@ export interface OrphanImpact {
  * ajouté) ; l'annonce « salle perdue » de P2-52 n'apparaît QUE si N>0 (aucun bruit préventif),
  * et le bouton Valider reste désactivé tant que l'impact n'est pas connu (en vol / échec).
  */
-export function ValidateDialog({ hasAlerts, siblingCount, busy, orphan, onConfirm, onCancel }: { hasAlerts: boolean; siblingCount: number; busy: boolean; orphan: OrphanImpact; onConfirm: () => void; onCancel: () => void }) {
+export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy, orphan, onConfirm, onCancel }: { hasAlerts: boolean; missingSessions: readonly { teamId: string; teamName: string; count: number }[]; siblingCount: number; busy: boolean; orphan: OrphanImpact; onConfirm: () => void; onCancel: () => void }) {
   // On ne laisse pas confirmer tant que l'impact n'est pas connu (en vol / échec) : confirmer à
   // l'aveugle est exactement ce que la route d'impact existe pour éviter.
   const confirmDisabled = busy || orphan.loading || orphan.failed;
@@ -62,6 +64,13 @@ export function ValidateDialog({ hasAlerts, siblingCount, busy, orphan, onConfir
           ? "Ce planning présente des alertes du système (créneaux non placés, contraintes non satisfaites…). En le validant, vous assumez ces contre-indications sous votre responsabilité. Le planning passera en lecture seule."
           : "Le planning passera en lecture seule (« Validé »). Vous pourrez le rouvrir pour le modifier."}
       </p>
+      {missingSessions.length > 0 ? (
+        <ul className="mt-2 list-disc pl-5 text-sm text-foreground">
+          {missingSessions.map((missing) => (
+            <li key={missing.teamId}>{PLANNING_TEXTS.validateMissingSessions(missing.teamName, missing.count)}</li>
+          ))}
+        </ul>
+      ) : null}
       {/* P2-52 — l'annonce « salle perdue » N'APPARAÎT QUE si N>0 (aucun bruit préventif sinon).
           Ton destructif encadré, distinct des deux paragraphes en prose ci-dessus/dessous. */}
       {orphan.orphanCount > 0 ? (

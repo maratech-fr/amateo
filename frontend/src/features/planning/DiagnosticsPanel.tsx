@@ -40,6 +40,7 @@ const CAUSE_KIND_LABELS: Record<DiagnosticCauseKind, string> = {
   shared_block: "un bloc mutualisé",
   team_link: "une passerelle entre équipes",
   travel_time: "un temps de trajet trop court",
+  min_sessions: "la séance fixée d'une autre équipe",
 };
 
 // Kind inconnu → `null` : on affiche le compte SANS phrase inventée, jamais le code brut.
@@ -47,8 +48,18 @@ function causeKindLabel(kind: string): string | null {
   return CAUSE_KIND_LABELS[kind as DiagnosticCauseKind] ?? null;
 }
 
-function causeSentence(cause: DiagnosticCause): string {
+function causeSentence(cause: DiagnosticCause, diagnosticType: string, message: string): string | null {
   const { count, label } = cause;
+  // Réservation souveraine : la règle n'a pas « fermé de créneau », c'est la réservation qui a
+  // pris la case. On nomme ce qui est en cause, sans compte.
+  if ("rule_sacrificed" === diagnosticType || "blocked_by_reservation" === diagnosticType) {
+    // Une règle déjà nommée par le message n'est pas répétée.
+    if (null !== label && "" !== label && message.includes(label)) {
+      return null;
+    }
+    const family = "hard_lock" === cause.kind ? null : causeKindLabel(cause.kind);
+    return PLANNING_TEXTS.reservationCause(null !== label && "" !== label ? `« ${label} »` : (family ?? PLANNING_TEXTS.reservationCauseFallback));
+  }
   const slots = `${count} créneau${count > 1 ? "x" : ""} fermé${count > 1 ? "s" : ""}`;
   const kind = causeKindLabel(cause.kind);
   // Le NOM de la règle est l'information principale — c'est lui qui répond à « quelle
@@ -185,7 +196,9 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
     // (`diag-locked-team-day-*` volontairement ; `implicit_rule_not_honored`, autre type) ne passent
     // pas ici : elles retombent sur le repli plus bas — surlignage large (resserré au jour), jamais
     // d'ouverture.
-    if ("conflict" === diagnostic.type && null !== diagnostic.dayOfWeek && null !== diagnostic.startTime) {
+    // `rule_sacrificed` (réservation souveraine) reprend ce geste : il remplace le `conflict` de personne
+    // et porte les coordonnées de la case réservée.
+    if (("conflict" === diagnostic.type || "rule_sacrificed" === diagnostic.type || "blocked_by_reservation" === diagnostic.type) && null !== diagnostic.dayOfWeek && null !== diagnostic.startTime) {
       const concerned = concernedSlots(diagnostic, slots, lookups);
       onHighlight(new Set(concerned.map((c) => c.slotId)));
       const cells = new Set(
@@ -268,12 +281,13 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                               contrainte (`?step=constraints&edit=<id>`, rail ConstraintsStep). Pas
                               d'id → pas de lien (jamais de lien mort). `openCandidates > 0` a sa
                               propre phrase : des créneaux étaient DISPONIBLES, pas une cause. */}
-                          {"session_below_effective_min" === item.type || ("conflict" === item.type && (item.causes?.length ?? 0) > 0) ? (
+                          {"session_below_effective_min" === item.type || (("conflict" === item.type || "rule_sacrificed" === item.type || "blocked_by_reservation" === item.type) && (item.causes?.length ?? 0) > 0) ? (
                             <div className="flex flex-col gap-1 px-3 pb-1.5">
                               {item.causes.map((cause, index) => (
                                 <div key={`${cause.kind}-${cause.constraintId ?? "none"}-${index}`} className="flex flex-col gap-0.5">
-                                  <span className="text-xs text-muted-foreground">{causeSentence(cause)}</span>
-                                  {null !== cause.constraintId ? (
+                                  {null !== causeSentence(cause, item.type, item.message) ? <span className="text-xs text-muted-foreground">{causeSentence(cause, item.type, item.message)}</span> : null}
+                                  {/* `blocked_by_reservation` : la règle tient, rien à y corriger. */}
+                                  {null !== cause.constraintId && "blocked_by_reservation" !== item.type ? (
                                     <WizardStepLink
                                       step="constraints"
                                       params={{ edit: cause.constraintId }}
@@ -285,6 +299,11 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                                   ) : null}
                                 </div>
                               ))}
+                              {"blocked_by_reservation" === item.type && null !== item.dayOfWeek && null !== item.startTime ? (
+                                <button type="button" onClick={() => selectDiagnostic(item)} className="self-start text-xs font-medium text-accent underline underline-offset-2 hover:text-accent hover:underline">
+                                  {PLANNING_TEXTS.showFixedSession}
+                                </button>
+                              ) : null}
                               {null !== item.openCandidates && item.openCandidates > 0 ? (
                                 <span className="text-xs italic text-muted-foreground">{openCandidatesSentence(item.openCandidates)}</span>
                               ) : null}

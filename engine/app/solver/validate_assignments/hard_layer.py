@@ -12,7 +12,14 @@ from app.solver.constraints import (
     add_venue_minimum_constraints,
     resolve_implicit_rules,
 )
-from app.solver.model import DEFAULT_SESSION_MINUTES, ScheduleCpModel, SlotKey, _time_to_minutes, build_model
+from app.solver.model import (
+    DEFAULT_SESSION_MINUTES,
+    ScheduleCpModel,
+    SlotKey,
+    _format_time,
+    _time_to_minutes,
+    build_model,
+)
 
 
 def _build_assignments(
@@ -47,6 +54,22 @@ def _build_assignments(
     return assignments
 
 
+def _frozen_occupancy(data: dict[str, Any]) -> set[tuple[str, str, int, str]]:
+    """Ce que le planning occupait AVANT le geste : le backend retire la séance déplacée du figé et la
+    passe en référence. Sans elle, un déplacement ferait croire qu'une règle tenue était déjà violée."""
+    occupancy: set[tuple[str, str, int, str]] = set()
+    for slot in [*(data.get("slotTemplates") or []), *(data.get("references") or [])]:
+        occupancy.add(
+            (
+                str(slot.get("teamId") or slot.get("team_id") or ""),
+                str(slot.get("venueId") or slot.get("venue_id") or ""),
+                int(slot.get("dayOfWeek") or slot.get("day_of_week") or 0),
+                _format_time(_time_to_minutes(slot.get("startTime") or slot.get("start_time"))),
+            )
+        )
+    return occupancy
+
+
 def _apply_hard(
     model: ScheduleCpModel,
     assignments: list[dict[str, Any]],
@@ -70,6 +93,7 @@ def _apply_hard(
     # EXACTEMENT la même couche HARD que `/generate` (parité `test_hard_layer_parity_registry`).
     model.team_assistant_map = parsed["team_assistant_map"]
     model.coach_unavailability = parsed["coach_unavailability"]
+    model.frozen_occupancy = _frozen_occupancy(data)
     min_by_team: dict[str, int] = {str(t.get("id")): 0 for t in data.get("teams", []) if t.get("id")}
     stats = add_level_1_hard_constraints(
         model,

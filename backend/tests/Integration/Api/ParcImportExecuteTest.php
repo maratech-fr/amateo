@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\PriorityTier;
+use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -457,6 +458,41 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertContains($u9m1->getId(), $memberTeamIds);
         self::assertContains($u11f2->getId(), $memberTeamIds);
         self::assertCount(2, $members, 'le bloc regroupe exactement les deux équipes de la case');
+    }
+
+    /**
+     * Promesse fondateur 2026-10-30 : l'import ne crée pas un groupe à 1 séance commune sur des équipes
+     * déjà réservées ensemble sur deux cases (le rejeu « déjà posée » saute la garde de plafond).
+     */
+    public function testImportNeverCreatesABlockWithFewerSessionsThanItsReservedCases(): void
+    {
+        $a = $this->makeTeam('U9M1', sessionsPerWeek: 3);
+        $b = $this->makeTeam('U11F2', sessionsPerWeek: 3);
+        $venue = $this->makeVenue('Gymnase Platane', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
+        $this->makeSlot($venue->getId(), 4, '16:00', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+        foreach ([$a, $b] as $team) {
+            foreach ([3, 4] as $day) {
+                $this->em->persist((new Reservation)
+                    ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                    ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek($day)
+                    ->setStartTime(new DateTimeImmutable('1970-01-01 16:00:00'))->setDurationMinutes(90));
+            }
+        }
+        $this->em->flush();
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Platane', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'Groupe X'],
+        ]);
+        $blocksBefore = $this->rowCount('shared_training_block');
+        $reservationsBefore = $this->rowCount('reservation');
+
+        [$status] = $this->import($parc, [['section' => 'mutualisations', 'index' => 0, 'coche' => true]]);
+
+        self::assertSame(422, $status, 'plus de cases déjà réservées que de séances communes : l\'import refuse');
+        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'tout-ou-rien : aucun bloc écrit');
+        self::assertSame($reservationsBefore, $this->rowCount('reservation'), 'tout-ou-rien : aucune réservation écrite');
     }
 
     public function testACorrectedGroupeOverridesTheBlockLabel(): void

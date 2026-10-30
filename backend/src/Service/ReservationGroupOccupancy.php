@@ -135,6 +135,18 @@ final class ReservationGroupOccupancy
     }
 
     /**
+     * Le refus d'un geste qui laisserait un groupe avec moins de séances communes que de cases réservées
+     * (décision fondateur 2026-10-30) : la génération suivante sortirait en échec. Une seule phrase,
+     * partagée par l'écran, la mutualisation et l'import.
+     */
+    public static function belowReservedSessionsMessage(int $reservedSessions): string
+    {
+        return 1 === $reservedSessions
+            ? '1 séance commune est réservée pour ce groupe. Retirez d\'abord une réservation à l\'étape Réservations.'
+            : \sprintf('%d séances communes sont réservées pour ce groupe. Retirez d\'abord une réservation à l\'étape Réservations.', $reservedSessions);
+    }
+
+    /**
      * @param array<string, true> $a
      * @param array<string, true> $b
      */
@@ -295,6 +307,22 @@ final class ReservationGroupOccupancy
     }
 
     /**
+     * Combien de cases de cette portée sont « bloc-complètes » pour CE jeu de membres : l'ensemble
+     * des équipes réservées sur la case est EXACTEMENT l'ensemble des membres.
+     *
+     * @param array<string, true> $memberSet
+     */
+    public function groupCompleteCaseCount(array $memberSet, ?string $schedulePlanId): int
+    {
+        $cases = [];
+        foreach (self::reservationsOnGroupCompleteCases($this->reservationsInScope($schedulePlanId), $memberSet) as $reservation) {
+            $cases[$reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i')] = true;
+        }
+
+        return \count($cases);
+    }
+
+    /**
      * Lot 4bis — combien de créneaux LIBRES (réservations sans équipe) occupent déjà la case.
      */
     private function freeSlotCountOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $schedulePlanId): int
@@ -436,22 +464,6 @@ final class ReservationGroupOccupancy
         }
 
         return $set;
-    }
-
-    /**
-     * Combien de cases de cette portée sont « bloc-complètes » pour CE jeu de membres : l'ensemble
-     * des équipes réservées sur la case est EXACTEMENT l'ensemble des membres.
-     *
-     * @param array<string, true> $memberSet
-     */
-    private function groupCompleteCaseCount(array $memberSet, ?string $schedulePlanId): int
-    {
-        $cases = [];
-        foreach (self::reservationsOnGroupCompleteCases($this->reservationsInScope($schedulePlanId), $memberSet) as $reservation) {
-            $cases[$reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i')] = true;
-        }
-
-        return \count($cases);
     }
 
     /**

@@ -1881,7 +1881,7 @@ final class BcclSeeder
         // inchangée depuis la « génération »).
         $payload = $this->constraintBuilder->buildForClubSeason($clubId, $season->getId());
         $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
+        $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         $schedule->setStatus(ScheduleStatus::COMPLETED);
         $manager->flush();
 
@@ -2374,7 +2374,7 @@ final class BcclSeeder
         // — exactement ce que `structureHashOfPlan` recalculera (« Régénérer » honnêtement grisé).
         $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $season->getId(), $planId, $child);
         $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
+        $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas retouchée à la main.
         $schedule->setManuallyEditedSinceGeneration(false);
         $manager->flush();

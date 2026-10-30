@@ -779,6 +779,10 @@ jobs:
       # « périmé » juste après génération, et la même réservation envoyée deux fois au 2ᵉ solve.
       # Le payload (base ET période) SAUTE désormais les templates HARD/RESERVATION. Sans ce gate,
       # le doublon et le faux « périmé » reviendraient en silence. HARD MANUAL/UNKNOWN restent.
+      - name: GenerationRefusesACoachInTwoPlacesTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/GenerationRefusesACoachInTwoPlacesTest.php --group phase1'
+      - name: DedupeSnapshotPinsCommandTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Command/DedupeSnapshotPinsCommandTest.php --group phase1'
       - name: ReservationPinsNotDoubledTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/ReservationPinsNotDoubledTest.php --group phase1'
 
@@ -1053,6 +1057,16 @@ jobs:
       - name: InfeasibilityNamesConflictingRulesTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/InfeasibilityNamesConflictingRulesTest.php --group phase1'
 
+      # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — « la réservation
+      # gagne envers tout, mais c'est la SEULE exception ». Quand un VERROU HARD rend une règle dure
+      # insatisfiable, le moteur PRODUIT le planning et NOMME la règle sacrifiée (rule_sacrificed),
+      # jamais INFEASIBLE muet ; SANS verrou en cause, deux règles contradictoires restent
+      # un échec NOMMÉ. De bout en bout contre le VRAI moteur (/generate). Skip propre si l'engine est
+      # absent. Sans ce gate, soit la réservation cesserait d'être souveraine, soit un second « cas
+      # d'exception » s'ouvrirait en silence.
+      - name: SovereignReservationProducesScheduleTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SovereignReservationProducesScheduleTest.php --group phase1'
+
       # Lot 3B PR A (axes constraint semantics + backend↔engine contract) — « un coach suffit »
       # (Q4B) : dès qu'une séance a plusieurs coachs requis, UN coach disponible suffit, l'UNION des
       # coachs des membres servant une séance de BLOC. De bout en bout contre le VRAI moteur
@@ -1067,8 +1081,11 @@ jobs:
       # Lot 3B PR B' (axes constraint semantics + backend↔engine contract) — MIROIR pré-solve de
       # « un coach suffit » pour les blocs : le récap PRÉVIENT, avant génération, qu'un groupe sans
       # case où un coach de l'union soit disponible est infaisable. Gate de parité contre le VRAI
-      # moteur (patron CapacityMirrorParityTest) : le miroir AVERTIT ⇒ le moteur sort failed ;
-      # le miroir se tait ⇒ completed, bascule coordonnée sur le même scénario. Skip propre si
+      # moteur (même esprit que CapacityMirrorParityTest) : le miroir AVERTIT ⇒ le moteur sort failed
+      # (ici SANS verrou en cause : indispo de coach, pas de réservation) ; le miroir se tait ⇒
+      # completed, bascule coordonnée sur le même scénario. NB : pour la saturation des « au moins »
+      # CAUSÉE par une réservation, ce n'est plus vrai (le miroir avertit, le moteur PRODUIT et nomme
+      # l'équipe privée de case — ADR-0001 amendée) ; seul le dépassement de la grille nue échoue. Skip propre si
       # l'engine est absent. Sans ce gate, les deux copies de la règle dériveraient et le récap
       # mentirait (crie à tort, ou se tait à tort).
       - name: SharedBlockPreSolveMirrorParityTest

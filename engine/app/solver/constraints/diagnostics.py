@@ -6,7 +6,7 @@ via ``model.candidate_closures``). Consumed by ``result_builder``/``main``."""
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from ..model import DEFAULT_SESSION_MINUTES, _time_to_minutes
 from .common import (
@@ -25,6 +25,14 @@ _DAY_LABELS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dim
 
 def _day_label(day: int) -> str:
     return _DAY_LABELS[day - 1] if 1 <= day <= 7 else f"jour {day}"
+
+
+def _duration_label(minutes: int) -> str:
+    """« 1h30 », « 2h », « 45 min » : même forme que ``shared/lib/duration.ts`` côté écran."""
+    if minutes < 60:
+        return f"{minutes} min"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours}h{rest:02d}" if rest else f"{hours}h"
 
 
 def _day_rules_union(
@@ -124,7 +132,9 @@ def diagnose_locked_slot_violations(
 
     The lock stays sovereign — that is the founder's ALIGN-07 ruling, and it is
     not reopened here. What changes is the silence: the manager is told what his
-    pin overrode, so he can decide. Hence INFO warnings, never errors.
+    pin overrode, so he can decide. Hence ``rule_sacrificed`` WARNINGs, never errors
+    (founder ruling 2026-10-30: one message only when a reservation is at stake; the
+    caller demotes them to ``constraint_not_honored`` INFO when no schedule comes out).
 
     Scope is deliberately the constraints the manager ENTERED (coach
     availability, team time/day windows, forbidden AND forced venues). The
@@ -146,6 +156,8 @@ def diagnose_locked_slot_violations(
     windows = parsed.get("time_windows") or ()
     forbidden = parsed.get("forbidden_assignments") or ()
     forced_venues: Mapping[str, Any] = parsed.get("forced_venues") or {}
+    coach_sources: Mapping[str, Any] = parsed.get("coach_unavailability_sources") or {}
+    forced_venue_sources: Mapping[str, Any] = parsed.get("forced_venue_sources") or {}
 
     def _team(team_id: str) -> str:
         return (team_names or {}).get(team_id) or team_id
@@ -161,7 +173,16 @@ def diagnose_locked_slot_violations(
     warnings: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
 
-    def _emit(constraint: Mapping[str, Any], team_id: str, lock_id: str, message: str) -> None:
+    def _emit(
+        constraint: Mapping[str, Any],
+        team_id: str,
+        lock_id: str,
+        message: str,
+        *,
+        kind: str,
+        where_fields: Mapping[str, Any],
+        source: Mapping[str, Any] | None = None,
+    ) -> None:
         # Clé (contrainte, équipe, VERROU) : deux verrous distincts qui violent la
         # même règle sont deux choses à corriger, et n'en montrer qu'une laisserait
         # le gestionnaire croire son planning réparé après un seul geste.
@@ -172,8 +193,29 @@ def diagnose_locked_slot_violations(
         if key in seen:
             return
         seen.add(key)
-        warning = _not_honored_warning(dict(constraint), "INFO", message)
-        warning["teamId"] = team_id
+        warning = _not_honored_warning(dict(constraint), "WARNING", message)
+        # `source` porte la VRAIE contrainte quand `constraint` est un libellé synthétique : seul un
+        # identifiant réel devient un lien « Corriger cette règle », jamais un id fabriqué ici.
+        origin = constraint if source is None else source
+        warning.update(
+            {
+                # La règle est nommée une seule fois, par la cause que le panneau affiche.
+                "message": message,
+                "id": f"rule-sacrificed-{constraint.get('id')}-{team_id}-{lock_id}",
+                "type": "rule_sacrificed",
+                "teamId": team_id,
+                **where_fields,
+                "causes": [
+                    {
+                        "kind": kind,
+                        "constraintId": origin.get("id") or origin.get("constraint_id"),
+                        "label": origin.get("name") or origin.get("label"),
+                        "count": 1,
+                    }
+                ],
+                "suggestions": ["Déplacez la séance fixée ou assouplissez la règle si vous voulez qu'elle s'applique."],
+            }
+        )
         warnings.append(warning)
 
     for slot in locked_slots:
@@ -192,23 +234,28 @@ def diagnose_locked_slot_violations(
         # La durée fait partie du libellé : deux verrous mêmes gymnase/jour/heure et
         # durées différentes sont DISTINCTS (cf. `lock_id`), et sans elle leurs deux
         # avertissements s'affichaient à l'octet près identiques.
-        where = f"{_venue(venue_id)} le {_day_label(day_int)} à {start_text} ({duration} min)"
+        where = f"{_venue(venue_id)}, {_day_label(day_int)} {start_text[:5]}, {_duration_label(duration)}"
         # La durée fait partie de la clé, comme dans `_extract_hard_locks` : deux
         # verrous identiques sauf la durée y sont DISTINCTS, les fusionner ici
         # ferait disparaître une violation.
         lock_id = f"{venue_id}|{day_int}|{start_text}|{duration}"
+        # Les coordonnées de la case réservée : le panneau l'ouvre à partir de ces champs.
+        lock_case = {"venueId": venue_id, "dayOfWeek": day_int, "startTime": start_text[:5]}
 
         # 1. Coach availability — every required coach of the team, like the solver.
         coach_ids = [str(c) for c in (coach_map.get(team_id) or [])]
         for coach_id in coach_ids:
             for iv_day, iv_from, iv_to in rules.get(coach_id) or ():
                 if iv_day == day_int and iv_from <= start < iv_to:
+                    source = _coach_source_covering(coach_sources.get(coach_id), day_int, start)
                     _emit(
-                        _constraint_of_coach(coach_id, _coach(coach_id)),
+                        _constraint_of_coach(coach_id, (source or {}).get("label") or _coach(coach_id)),
                         team_id,
                         lock_id,
-                        f"Réservation maintenue pour {_team(team_id)} ({where}) alors que "
-                        f"{_coach(coach_id)} est indisponible : le verrou prime, la contrainte est ignorée.",
+                        f"Séance fixée de {_team(team_id)} maintenue ({where}) alors que {_coach(coach_id)} est indisponible.",
+                        kind="coach_unavailability",
+                        where_fields=lock_case,
+                        source=source or {},
                     )
 
         # 2. Team time/day windows.
@@ -246,7 +293,9 @@ def diagnose_locked_slot_violations(
                     constraint,
                     team_id,
                     lock_id,
-                    f"Réservation maintenue pour {_team(team_id)} ({where}) hors de sa fenêtre horaire.",
+                    f"Séance fixée de {_team(team_id)} maintenue ({where}) hors de sa fenêtre horaire.",
+                    kind="time_window",
+                    where_fields=lock_case,
                 )
 
         # 2 bis. Règles DAY, évaluées sur l'UNION de l'équipe — la seule sémantique
@@ -266,7 +315,9 @@ def diagnose_locked_slot_violations(
                         constraint,
                         team_id,
                         lock_id,
-                        f"Réservation maintenue pour {_team(team_id)} ({where}) un jour exclu par ses règles de jours.",
+                        f"Séance fixée de {_team(team_id)} maintenue ({where}) un jour exclu par ses règles de jours.",
+                        kind="day_forbidden",
+                        where_fields=lock_case,
                     )
 
             # `forcedDays` : le solveur exige AU MOINS une séance ce jour-là. Un
@@ -278,9 +329,13 @@ def diagnose_locked_slot_violations(
                     {"id": f"forced-days-{team_id}", "name": f"jours imposés de {_team(team_id)}"},
                     team_id,
                     lock_id,
-                    f"Réservation maintenue pour {_team(team_id)} ({where}) alors que son planning "
-                    f"impose une séance {', '.join(_day_label(d) for d in sorted(forced))} : "
-                    "le verrou peut rendre cette exigence insatisfaisable.",
+                    f"Séance fixée de {_team(team_id)} maintenue ({where}) alors qu'une séance est imposée "
+                    f"{', '.join(_day_label(d) for d in sorted(forced))}.",
+                    kind="day_forced",
+                    where_fields=lock_case,
+                    source=next(
+                        (c for c in day_sources if _day_int_set((c.get("config") or {}).get("forcedDays"))), {}
+                    ),
                 )
 
         # 3. Forbidden (team, venue) pairs — venue closures land here.
@@ -298,7 +353,10 @@ def diagnose_locked_slot_violations(
                     {"id": f"forbidden-venue-{team_id}-{venue_id}", "name": f"gymnase interdit ({_venue(venue_id)})"},
                     team_id,
                     lock_id,
-                    f"Réservation maintenue pour {_team(team_id)} ({where}) dans un gymnase qui lui est interdit.",
+                    f"Séance fixée de {_team(team_id)} maintenue ({where}) dans un gymnase qui lui est interdit.",
+                    kind="venue_forbidden",
+                    where_fields=lock_case,
+                    source=item,
                 )
 
         # 4. Forced venue — le miroir du gymnase interdit. `parse_v2_constraints`
@@ -314,8 +372,10 @@ def diagnose_locked_slot_violations(
                 {"id": f"forced-venue-{team_id}", "name": f"gymnase imposé ({_venue(str(target_venue))})"},
                 team_id,
                 lock_id,
-                f"Réservation maintenue pour {_team(team_id)} ({where}) hors du gymnase imposé "
-                f"{_venue(str(target_venue))} : le verrou prime, la contrainte est ignorée.",
+                f"Séance fixée de {_team(team_id)} maintenue ({where}) hors du gymnase imposé {_venue(str(target_venue))}.",
+                kind="forced_venue_elsewhere",
+                where_fields=lock_case,
+                source=forced_venue_sources.get(team_id) or {},
             )
 
     return warnings
@@ -333,6 +393,8 @@ def diagnose_candidate_conflicts(
     venue_names: Mapping[str, str] | None = None,
     resolved_rules: ResolvedImplicitRules | None = None,
     shared_blocks: Sequence[Mapping[str, Any]] = (),
+    teams: Sequence[Mapping[str, Any]] = (),
+    locked_slots: Iterable[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Name the HARD rules a move candidate would break (P2-2 F2a).
 
@@ -509,10 +571,11 @@ def diagnose_candidate_conflicts(
     # verdict doit ACCEPTER de même — la concession remonte alors comme COMPROMIS (famille
     # implicit_rule, chemin ``_compromises_for``) sur le candidat retenu, jamais comme violation
     # bloquante ici. Sans ce garde, le verdict était PLUS STRICT que la génération (rupture de
-    # parité) : il refusait un 5ᵉ jour de coach que la génération concède. ``coachRestDay`` est la
-    # SEULE des 5 règles implicites réglables à avoir un pré-check nommé dans ce fichier ; les
-    # quatre autres (salarié, dos-à-dos, jours consécutifs, âge croissant) n'y miroitent rien.
-    coach_rest_is_hard = (resolved_rules or ResolvedImplicitRules()).coach_rest_day_intensity == HARD
+    # parité) : il refusait un 5ᵉ jour de coach que la génération concède. Parmi les 5 règles
+    # implicites réglables, seules ``coachRestDay`` et ``ageAscending`` (plus bas) ont un pré-check
+    # nommé dans ce fichier ; les trois autres (salarié, dos-à-dos, jours consécutifs) n'y miroitent rien.
+    implicit_rules = resolved_rules or ResolvedImplicitRules()
+    coach_rest_is_hard = implicit_rules.coach_rest_day_intensity == HARD
     if coach_rest_is_hard and 1 <= c_day <= 5:
         for cid in c_coaches:
             if cid not in coach_ids_in_payload:
@@ -538,6 +601,45 @@ def diagnose_candidate_conflicts(
             day_of_week=c_day,
             start_time=c_start_text,
         )
+
+    # Age order: mirror add_age_ascending_constraints — same venue and day, the younger team never
+    # starts after the older one. Same gates as the solver: HARD only (PREFERRED places and pays a
+    # malus), no ``ageMin`` or a HARD-locked session exempts the team, equal ages are not ordered.
+    if implicit_rules.age_ascending_intensity == HARD:
+        locked_teams = {str(_scalar_id(_get(locked, "team_id", "teamId", default=None))) for locked in locked_slots}
+        age_min_by_team: dict[str, int] = {}
+        for team in teams:
+            team_id = _scalar_id(_get(team, "id", "team_id", "teamId", default=None))
+            age_min = _get(team, "ageMin", "age_min", default=None)
+            if team_id is not None and age_min is not None and str(team_id) not in locked_teams:
+                age_min_by_team[str(team_id)] = int(age_min)
+        c_age_min = age_min_by_team.get(c_team)
+        if c_age_min is not None:
+            named_pairs: set[tuple[str, str]] = set()
+            for slot in baseline_slots:
+                s_team = str(slot["team_id"])
+                s_age_min = age_min_by_team.get(s_team)
+                if s_age_min is None or str(slot["venue_id"]) != c_venue or int(slot["day"]) != c_day:
+                    continue
+                if c_age_min < s_age_min and c_start > int(slot["start"]):
+                    younger, older = c_team, s_team
+                elif s_age_min < c_age_min and int(slot["start"]) > c_start:
+                    younger, older = s_team, c_team
+                else:
+                    continue
+                if (younger, older) in named_pairs:
+                    continue
+                named_pairs.add((younger, older))
+                _emit(
+                    "age_ascending",
+                    f"{_team(younger)} passerait après {_team(older)} à {_venue(c_venue)} le "
+                    f"{_day_label(c_day)} : les plus jeunes s'entraînent en premier.",
+                    team_id=c_team,
+                    conflicting_team_id=s_team,
+                    venue_id=c_venue,
+                    day_of_week=c_day,
+                    start_time=c_start_text,
+                )
 
     # --- Entered constraints (the manager's own rules). ---
     for cid in c_coaches:
@@ -615,6 +717,14 @@ def diagnose_candidate_conflicts(
             )
 
     return violations
+
+
+def _coach_source_covering(sources: Any, day: int, start: int) -> Mapping[str, Any] | None:
+    """La contrainte d'indisponibilité source dont un intervalle couvre ce moment, pour la nommer."""
+    for source in sources or ():
+        if any(iv_day == day and iv_from <= start < iv_to for iv_day, iv_from, iv_to in source.get("intervals") or ()):
+            return cast("Mapping[str, Any]", source)
+    return None
 
 
 def _constraint_of_coach(coach_id: str, label: str) -> dict[str, Any]:

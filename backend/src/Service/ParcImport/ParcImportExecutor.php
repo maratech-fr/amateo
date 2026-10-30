@@ -538,7 +538,15 @@ final class ParcImportExecutor
         $duration = $this->intCorrectionOr($corrections, 'duree', $entry, 'duree') ?? self::DEFAULT_GROUP_RESERVATION_DURATION;
 
         if ($this->allMembersReservedOnCase($teamIds, $venueId, $day, $start)) {
-            return; // déjà posée (rejeu) : aucun doublon.
+            // Déjà posée (rejeu) : aucun doublon. Mais ce retour saute le plafond de la garde ci-dessous :
+            // un groupe à 1 séance sur des équipes déjà réservées ensemble sur deux cases est refusé ici
+            // (décision fondateur 2026-10-30, l'import ne retire jamais une réservation en silence).
+            $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($teamIds, true), null);
+            if ($reservedSessions > $block->getCommonSessions()) {
+                $this->fail('mutualisations', $index, ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions));
+            }
+
+            return;
         }
 
         try {

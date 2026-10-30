@@ -230,11 +230,11 @@ def add_time_window_constraints(
                     "severity": "ERROR",
                     "teamId": team_id_text,
                     "message": (
-                        f"Team {team_id_text} has contradictory day rules "
-                        "(the allowed/forced days are all forbidden); the team is forced to 0 slots."
+                        f"Les règles de jours de {_team_label(model, team_id_text)} se contredisent : tous ses jours "
+                        "autorisés ou imposés sont aussi interdits. Aucune séance ne peut être placée."
                     ),
                     "suggestions": [
-                        "Remove the overlapping days between the 'only these days' / 'forced' rule and the 'avoid' rule.",
+                        "Retirez les jours en commun entre la règle « uniquement ces jours » ou « jour imposé » et la règle « à éviter ».",
                     ],
                     "createdAt": datetime.now(UTC).isoformat(),
                 }
@@ -286,6 +286,15 @@ def add_time_window_constraints(
             if forced_day_set & locked_days_by_team.get(team_id_text, set()):
                 continue
 
+            frozen = getattr(model, "frozen_occupancy", None)
+            if frozen is not None and not any(s[0] == team_id_text and s[2] in forced_day_set for s in frozen):
+                # Verdict : le planning figé ne tient déjà pas ce jour imposé (best-effort).
+                sources = forced_sources.get(team_id_text) or [(None, None, 0)]
+                model.lifted_rules.append(
+                    {"teams": [team_id_text], "label": sources[0][1], "days": set(forced_day_set)}
+                )
+                continue
+
             forced_day_vars: list[BoolVarLike] = []
             for day_value in forced_day_set:
                 forced_day_vars.extend(team_day_vars.get(team_id_text, {}).get(day_value, []))
@@ -297,9 +306,18 @@ def add_time_window_constraints(
             # `causes: []`. On NE RELÂCHE PAS pour autant la règle du jour imposé : le
             # `sum(forced_day_vars) >= 1` ci-dessous reste posé (= `0 >= 1`), donc la génération
             # RESTE infaisable — mais sa cause est désormais dite (décision fondateur 2026-10-03).
+            team_forced_sources = forced_sources.get(team_id_text)
+            forced_key = (
+                _source_key("forced_day", team_forced_sources[0][0], f"{team_id_text}:{team_forced_sources[0][2]}")
+                if team_forced_sources
+                else None
+            )
+            forced_is_relaxed = forced_key in getattr(model, "relaxed_source_keys", ())
             closures = getattr(model, "candidate_closures", None) or {}
-            if forced_day_vars and all(
-                (idx := _closure_index(var)) is not None and idx in closures for var in forced_day_vars
+            if (
+                not forced_is_relaxed
+                and forced_day_vars
+                and all((idx := _closure_index(var)) is not None and idx in closures for var in forced_day_vars)
             ):
                 closing_labels = sorted(
                     {
@@ -310,7 +328,7 @@ def add_time_window_constraints(
                         if cause.get("label")
                     }
                 )
-                detail = f" (constraints: {', '.join(closing_labels)})" if closing_labels else ""
+                detail = f" ({', '.join(closing_labels)})" if closing_labels else ""
                 conflicts.append(
                     {
                         "id": f"forced_day_emptied-{team_id_text}",
@@ -318,12 +336,12 @@ def add_time_window_constraints(
                         "severity": "ERROR",
                         "teamId": team_id_text,
                         "message": (
-                            f"Team {team_id_text} is forced to train on a given day, but every slot of "
-                            f"that day is ruled out by other constraints{detail}; no session can be placed there."
+                            f"{_team_label(model, team_id_text)} doit s'entraîner un jour imposé, mais d'autres règles "
+                            f"ferment tous les créneaux de ce jour{detail} : aucune séance ne peut y être placée."
                         ),
                         "suggestions": [
-                            "Relax the time/day rule, the coach unavailability or the access window "
-                            "that empties the forced day, or lock a session on that day.",
+                            "Assouplissez la règle d'horaire ou de jour, ou l'indisponibilité du coach, qui vide ce jour, "
+                            "ou réservez une séance ce jour-là.",
                         ],
                         "createdAt": datetime.now(UTC).isoformat(),
                     }
@@ -338,20 +356,42 @@ def add_time_window_constraints(
             # contrainte source nommée, `constraintId`/`label` la pointent ; le MESSAGE la cite par
             # son libellé réel et le front la rend cliquable.
             forced_literal = None
-            team_forced_sources = forced_sources.get(team_id_text)
-            if team_forced_sources:
-                src_id, src_label, src_index = team_forced_sources[0]
+            if team_forced_sources and forced_key is not None:
+                src_id, src_label, _src_index = team_forced_sources[0]
                 forced_literal = _assume(
                     model,
-                    _source_key("forced_day", src_id, f"{team_id_text}:{src_index}"),
+                    forced_key,
                     {"kind": "day_forced", "constraintId": src_id, "label": src_label},
                 )
+                if forced_is_relaxed:
+                    # Réservation souveraine — la règle n'est pas contournée : la séance qu'elle
+                    # exigeait reste NON placée (jamais déportée un autre jour).
+                    model.relaxed_demands.append(
+                        {
+                            "teamId": team_id_text,
+                            "kind": "day_forced",
+                            "constraintId": src_id,
+                            "label": src_label,
+                            "sessions": 1,
+                            "days": set(forced_day_set),
+                        }
+                    )
             forced_constraint = model.Add(sum(forced_day_vars) >= 1)
             if forced_literal is not None:
                 forced_constraint.OnlyEnforceIf(forced_literal)
             added += 1
 
     return added, conflicts
+
+
+def _team_label(model: Any, team_id: str) -> str:
+    """Le nom de l'équipe, jamais son identifiant, sauf sur un modèle nu de test."""
+    return str((getattr(model, "team_names", None) or {}).get(team_id) or team_id)
+
+
+def _venue_label(model: Any, venue_id: str) -> str:
+    """Le nom du gymnase, jamais son identifiant, sauf sur un modèle nu de test."""
+    return str((getattr(model, "venue_names", None) or {}).get(venue_id) or venue_id)
 
 
 def add_forced_venue_constraints(
@@ -435,6 +475,12 @@ def add_venue_minimum_constraints(
             # Les réservations saturent déjà le plancher : rien à contraindre, rien à signaler.
             continue
 
+        frozen = getattr(model, "frozen_occupancy", None)
+        if frozen is not None and len({s[2] for s in frozen if s[0] == team_id and s[1] == venue_id}) < minimum:
+            # Verdict : le planning figé ne tient déjà pas ce plancher (best-effort).
+            model.lifted_rules.append({"teams": [team_id], "label": floor_label, "venueId": venue_id})
+            continue
+
         team_venue_vars = [
             var
             for slot_key, var in x.items()
@@ -458,7 +504,15 @@ def add_venue_minimum_constraints(
             and str(slot_key[1]) == venue_id
         } - locked_days
 
-        if len(team_venue_days) < effective_min:
+        # Réservation souveraine — le plancher n'est inatteignable QUE parce que le verrou d'une autre
+        # équipe occupe la case : on le pose quand même. L'INFEASIBLE qui en résulte passe par la sonde
+        # de causalité puis le best-effort (la séance reste non placée, jamais déportée ailleurs).
+        lock_taken_days = {
+            slot_key[2]
+            for slot_key in (getattr(model, "lock_removed_candidates", None) or {})
+            if str(slot_key[0]) == team_id and str(slot_key[1]) == venue_id
+        }
+        if len(team_venue_days | (lock_taken_days - locked_days)) < effective_min:
             conflicts.append(
                 {
                     "id": f"venue_minimum_unreachable-{team_id}-{venue_id}",
@@ -466,11 +520,11 @@ def add_venue_minimum_constraints(
                     "severity": "ERROR",
                     "teamId": team_id,
                     "message": (
-                        f"Team {team_id} cannot reach {minimum} session(s) at venue {venue_id}: "
-                        f"only {len(team_venue_days)} distinct free day(s) available there beyond "
-                        f"{len(locked_days)} locked day(s) (≤1 session/day)."
+                        f"{_team_label(model, team_id)} demande au moins {minimum} séance(s) à "
+                        f"{_venue_label(model, venue_id)}, mais ce gymnase n'offre que {len(team_venue_days)} jour(s) "
+                        f"libre(s) en plus de ses {len(locked_days)} jour(s) réservé(s), à une séance par jour."
                     ),
-                    "suggestions": ["Lower the minimum, or add availability slots on OTHER days at this venue."],
+                    "suggestions": ["Baissez le minimum, ou ajoutez des créneaux d'autres jours dans ce gymnase."],
                     "createdAt": datetime.now(UTC).isoformat(),
                 }
             )
@@ -481,11 +535,26 @@ def add_venue_minimum_constraints(
         # d'infaisabilité quand son `sum >= N` ne peut être honoré. Neutre sur un solve abouti
         # (littérale toujours assumée vraie) ; modèle nu (tests de pose) ⇒ `_assume` renvoie None et
         # la contrainte reste INCONDITIONNELLE (chemin byte-identique).
+        floor_key = _source_key("session_floor", floor_constraint_id, f"{team_id}:{venue_id}")
         floor_literal = _assume(
             model,
-            _source_key("session_floor", floor_constraint_id, f"{team_id}:{venue_id}"),
+            floor_key,
             {"kind": "session_floor", "constraintId": floor_constraint_id, "label": floor_label},
         )
+        if floor_key in getattr(model, "relaxed_source_keys", ()):
+            model.relaxed_demands.append(
+                {
+                    "teamId": team_id,
+                    "kind": "session_floor",
+                    "constraintId": floor_constraint_id,
+                    "label": floor_label,
+                    # Un plancher n'interdit pas les autres gymnases : l'équipe garde ses séances.
+                    "sessions": 0,
+                    "minimum": minimum,
+                    "venueId": venue_id,
+                }
+            )
+            model.relaxed_floor_vars.extend(team_venue_vars)
         floor_constraint = model.Add(sum(team_venue_vars) >= effective_min)
         if floor_literal is not None:
             floor_constraint.OnlyEnforceIf(floor_literal)
@@ -663,6 +732,14 @@ def add_shared_block_constraints(
             for team_id in member_ids:
                 member_case_bvars[(team_id, venue_id, slot_id)].append(b)
             b_list.append(b)
+
+        frozen = getattr(model, "frozen_occupancy", None)
+        if frozen is not None:
+            cases_by_member = [{(s[1], s[2], s[3]) for s in frozen if s[0] == member} for member in member_ids]
+            if len(set.intersection(*cases_by_member)) < common_sessions:
+                # Verdict : le planning figé ne réunit déjà pas ce groupe (best-effort).
+                model.lifted_rules.append({"teams": member_ids, "label": None})
+                continue
 
         # P4-96 PR-2 — le bloc est une contrainte dure SOURCE saisie (``Σb == commonSessions``) :
         # UNE littérale par bloc (kind `shared_block`), partagée par la contrainte de compte ET la

@@ -86,7 +86,8 @@ def test_real_coach_double_booking_not_hidden_by_dedup() -> None:
     # Regression (audit review F1): the coach check must NOT dedupe by team id
     # alone. The SAME team locked into TWO gyms at the same time with ONE coach
     # is a real double-booking (the coach cannot be in two places) and must be
-    # reported, even though both slots carry the same team id.
+    # reported, even though both slots carry the same team id. Amended 2026-10-30 (founder GO): a
+    # reservation is at stake, so rule_sacrificed REPLACES conflict, one message only.
     tpl = {
         "teamId": "a",
         "coachId": "C",
@@ -101,8 +102,9 @@ def test_real_coach_double_booking_not_hidden_by_dedup() -> None:
         slot_templates=[dict(tpl, id="s1", venueId="v1"), dict(tpl, id="s2", venueId="v2")],
     )
     result = solve_payload(payload)
-    coach_conflicts = [d for d in result["diagnostics"] if d["type"] == "conflict" and d.get("coachId") == "C"]
-    assert coach_conflicts, "coach in two gyms at once must be flagged, even for one team"
+    flagged = [d for d in result["diagnostics"] if d["type"] == "rule_sacrificed" and d.get("coachId") == "C"]
+    assert flagged, "coach in two gyms at once must be flagged, even for one team"
+    assert [d for d in result["diagnostics"] if d["type"] == "conflict" and d.get("coachId") == "C"] == []
 
 
 def test_distinct_duration_hard_locks_not_deduplicated() -> None:

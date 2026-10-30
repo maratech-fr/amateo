@@ -253,10 +253,11 @@ final class LockContext extends BaseContext
         $this->assertSeanceALaMemeCaseDans($this->regeneratedId);
 
         // La règle violée est SIGNALÉE : un diagnostic de la version régénérée, pour cette équipe,
-        // nomme la règle de jours entrée en conflit avec le verrou.
+        // nomme la règle de jours entrée en conflit avec le verrou — dans son message OU sa cause,
+        // affichée juste dessous par le panneau (`rule_sacrificed` ne la dit qu'une fois).
         $signalements = (int) $this->dbalScalar(
             \sprintf(
-                'SELECT COUNT(*) AS behatval FROM schedule_diagnostic WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND message LIKE \'%%%s%%\'',
+                'SELECT COUNT(*) AS behatval FROM schedule_diagnostic WHERE schedule_id=\'%1$s\' AND team_id=\'%2$s\' AND (message LIKE \'%%%3$s%%\' OR causes::text LIKE \'%%%3$s%%\')',
                 $this->regeneratedId,
                 $this->lockTeamId,
                 self::DAY_RULE_NAME,

@@ -102,6 +102,32 @@ class ScheduleCpModel(cp_model.CpModel):
         # (budget 600 atteint) sur le vrai club BCCL (50 équipes) contre 8-40 s sur `main`, et ~26 s
         # contre ~2 s sur la fixture `bccl_2026_08_15`. Cf. ADR-0001 (amendement 2026-10-07).
         self.assumptions_enabled: bool = False
+        # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — clés SOURCE
+        # (`_source_key`) des règles dures que le 3ᵉ solve « best-effort » RELÂCHE parce qu'un verrou
+        # les rend insatisfiables. `_assume` crée la littérale et pose son `OnlyEnforceIf` comme
+        # d'habitude mais N'APPELLE PAS `AddAssumption` pour ces clés : la littérale reste LIBRE, le
+        # solveur la met à faux et la contrainte source est désactivée (le verrou, lui, reste dur —
+        # il n'a pas de littérale, il est cuit dans le modèle). Vide (défaut) ⇒ aucune relaxation :
+        # le solve nominal ET le solve diagnostique restent byte-identiques à `main`.
+        self.relaxed_source_keys: frozenset[str] = frozenset()
+        # Réservation souveraine — les règles de DEMANDE (jour imposé, plancher de gymnase) relâchées
+        # par le best-effort : la règle n'est pas contournée, la séance qu'elle exigeait reste NON
+        # placée (`_solve` retire `sessions` du quota de l'équipe). Lues par le diagnostic.
+        self.relaxed_demands: list[dict[str, Any]] = []
+        # Le résultat de `parse_v2_constraints`, posé par `_solve` : le diagnostic post-solve y lit si
+        # une case prise par un verrou était compatible avec les règles de l'équipe, sans re-parser.
+        self.parsed_rules: Mapping[str, Any] = {}
+        # Les noms d'équipes, posés par `_solve`, pour les messages émis à la pose.
+        self.team_names: dict[str, str] = {}
+        self.venue_names: dict[str, str] = {}
+        # Réservation souveraine — les séances possibles à un plancher levé : le best-effort les préfère,
+        # l'équipe garde toutes ses séances et s'approche de son minimum (terme de placement).
+        self.relaxed_floor_vars: list[Any] = []
+        # Rail verdict seulement : ce que le planning figé occupe, (équipe, gymnase, jour, début). Une
+        # règle de demande qu'il ne tient déjà pas n'est pas reposée (elle rendrait tout déplacement
+        # infaisable) et rejoint `lifted_rules`. None hors verdict : pose inchangée.
+        self.frozen_occupancy: set[tuple[str, str, int, str]] | None = None
+        self.lifted_rules: list[dict[str, Any]] = []
         # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1), peuplé
         # UNIQUEMENT quand `assumptions_enabled` (modèle diagnostique). Une littérale par clé de
         # source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase imposé/interdit,

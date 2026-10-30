@@ -36,6 +36,7 @@ def _diagnose_shared_blocks(
     team_coach_map: Mapping[str, Any] | None = None,
     coach_unavailability: Mapping[str, Any] | None = None,
     coach_unavailability_sources: Mapping[str, Any] | None = None,
+    sacrificed_source_keys: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
     """P2-51 (arbitrage n°7) — mutualisation par BLOC : nommer le bloc quand il n'est pas honoré,
     code ``shared_block_not_honored`` (severity ERROR).
@@ -200,11 +201,19 @@ def _diagnose_shared_blocks(
         if len(block_members) >= 2:
             fold_blocks.append((f"__shared_block__{_get(block, 'id', default=index)}", block_members))
 
+    sacrificed = sacrificed_source_keys or frozenset()
     for index, block in enumerate(blocks):
         members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
         if len(members) < 2:
             continue
         common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        # Réservation souveraine — un bloc que le best-effort a SACRIFIÉ (sa règle relâchée parce
+        # qu'un verrou la bloquait) n'est PAS une erreur : il est NOMMÉ en ``rule_sacrificed``
+        # (WARNING) par ``_diagnose_sacrificed_rules``. On ne l'accuse donc pas ici d'un
+        # ``shared_block_not_honored`` ERROR qui ferait doublon et crierait à tort.
+        block_id = str(_get(block, "id", default=index) or index)
+        if f"shared_block:{block_id}" in sacrificed:
+            continue
         member_sets = [occupancy.get(member, set()) for member in members]
         common_cases = set.intersection(*member_sets) if member_sets else set()
         block_key = f"__shared_block__{_get(block, 'id', default=index)}"
@@ -607,3 +616,68 @@ def _coachless_case_count(cases: list[tuple[int, int]], union: list[str], rules:
     """Nombre de cases candidates où AUCUN coach de l'union n'est disponible (le poids de la cause
     dégradée quand aucune source nommée ne porte l'indisponibilité)."""
     return sum(1 for day, start in cases if not any(_coach_available_at(c, day, start, rules) for c in union))
+
+
+def _diagnose_sacrificed_rules(
+    model_data: Mapping[str, Any] | Any,
+    sacrificed_source_keys: frozenset[str],
+) -> list[dict[str, Any]]:
+    """Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — NOMME chaque groupe
+    que le best-effort a privé de sa mutualisation parce qu'un VERROU d'une autre équipe occupe sa
+    case : le groupe, l'équipe qui réserve, le jour et l'heure. Le planning est PRODUIT, le verrou
+    tenu, l'écart signalé en ``rule_sacrificed`` (severity WARNING, jamais une erreur bloquante)."""
+    if not sacrificed_source_keys:
+        return []
+
+    team_names = _team_name_map(model_data)
+    venue_names = _venue_name_map(model_data)
+    concrete_cases = _concrete_candidate_cases(model_data)
+    pinned_teams_by_case: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    for pin in _collection(model_data, "slotTemplates", "slot_templates"):
+        if _get(pin, "lockLevel", "lock_level", default=None) != "HARD":
+            continue
+        case = (
+            str(_get(pin, "venueId", "venue_id", default="")),
+            str(_get(pin, "dayOfWeek", "day_of_week", default="")),
+            str(_get(pin, "startTime", "start_time", default=""))[:5],
+        )
+        pinned_teams_by_case[case].add(str(_get(pin, "teamId", "team_id", default="")))
+
+    diagnostics: list[dict[str, Any]] = []
+    for index, block in enumerate(_collection(model_data, "sharedBlocks", "shared_blocks")):
+        members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
+        block_id = str(_get(block, "id", default=index) or index)
+        key = f"shared_block:{block_id}"
+        if len(members) < 2 or key not in sacrificed_source_keys:
+            continue
+        member_set = set(members)
+        blocked = [
+            (venue_id, day, start_hhmm[:5], frozenset(pins))
+            for venue_id, day, start_hhmm, _start_min, _duration in concrete_cases
+            if (pins := pinned_teams_by_case.get((venue_id, str(day), start_hhmm[:5]))) and not (pins & member_set)
+        ]
+        names = _named_list(members, team_names)
+        sessions = _sessions_phrase(int(_get(block, "commonSessions", "common_sessions", default=0) or 0))
+        by_case = [
+            f"{_day_label(day)} {start}, {_label(venue_id, venue_names)}, séance fixée de {_named_list(sorted(pins), team_names)}"
+            for venue_id, day, start, pins in sorted(blocked, key=lambda case: (case[1], case[2], case[0]))[:3]
+        ]
+        detail = f" ({' ; '.join(by_case)})" if by_case else ""
+        diagnostic: dict[str, Any] = {
+            "id": f"rule-sacrificed-{key}",
+            "type": "rule_sacrificed",
+            "severity": "WARNING",
+            "message": (
+                f"Le groupe {names} ne peut pas tenir {sessions} : une séance fixée occupe la case où "
+                f"réunir ses équipes{detail}. La séance fixée est tenue ; la mutualisation du groupe est relâchée."
+            ),
+            "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": max(1, len(blocked))}],
+            "suggestions": [
+                "Libérez la case ou déplacez la séance fixée si vous voulez que le groupe se réunisse.",
+            ],
+            "createdAt": datetime.now(UTC).isoformat(),
+        }
+        if len(blocked) == 1:
+            diagnostic.update({"venueId": blocked[0][0], "dayOfWeek": blocked[0][1], "startTime": blocked[0][2]})
+        diagnostics.append(diagnostic)
+    return diagnostics

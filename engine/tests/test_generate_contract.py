@@ -508,11 +508,13 @@ class TestGenerateContract:
         tolérance d'arrivée tardive passe à la SÉANCE (`ScheduleSlotTemplateSchema.coachLateToleranceMinutes`)
         et `CoachSchema.acceptableLateMinutes` (mort) est retiré —, puis 1.6 → 1.7 — PR2 « jours
         fériés » : `MatchAccessWindowSchema.dayOfWeek` devient nullable + `appliesOnPublicHolidays`,
-        et `MatchPlacementInputSchema` gagne `publicHolidays`) et un payload qui s'attribue cette
-        version est recevable comme un payload qui n'annonce rien."""
+        et `MatchPlacementInputSchema` gagne `publicHolidays`, puis 1.7 → 1.8 — réservation souveraine :
+        le type de diagnostic `rule_sacrificed` (un verrou HARD rend une règle insatisfiable → le
+        moteur produit le planning et nomme la règle relâchée, amendement ADR-0001)) et un payload qui
+        s'attribue cette version est recevable comme un payload qui n'annonce rien."""
         from app.main import read_contract_version
 
-        assert read_contract_version() == "1.7"
+        assert read_contract_version() == "1.8"
 
-        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.7"})
-        assert stamped.version == "1.7"
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.8"})
+        assert stamped.version == "1.8"

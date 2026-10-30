@@ -209,6 +209,8 @@ export const WIZARD_TEXTS = {
   blockSessionsCapHint: "Sélectionnez les équipes pour connaître le maximum.",
   blockCancel: "Annuler",
   blockSave: "Enregistrer le groupe",
+  // Même phrase que `ReservationGroupOccupancy::belowReservedSessionsMessage` : le serveur la sert, l'écran l'affiche.
+  blockBelowReservedSessions: (n: number): string => (1 === n ? "1 séance commune est réservée pour ce groupe. Retirez d'abord une réservation à l'étape Réservations." : `${n} séances communes sont réservées pour ce groupe. Retirez d'abord une réservation à l'étape Réservations.`),
   blockCreate: "Créer le groupe",
   blockPickTwoTeams: "Cochez au moins deux équipes.",
   blockAnchorTeam: "équipe de référence",

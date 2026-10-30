@@ -310,7 +310,8 @@ def _rule_fingerprint(cell: MatrixCell) -> str:
 @pytest.mark.parametrize("cell", DIAGNOSED, ids=lambda c: c.case_id)
 def test_a_lock_bypassing_a_diagnosed_rule_is_announced(cell: MatrixCell) -> None:
     """The lock stays sovereign (ALIGN-07) but the silence ends: every DIAGNOSED
-    family emits a constraint_not_honored INFO that names the bypassed rule.
+    family emits a rule_sacrificed WARNING that names the bypassed rule (amended 2026-10-30, founder GO:
+    it REPLACES constraint_not_honored INFO on this path, one message only).
 
     Sovereignty is asserted on the PLACEMENT (the pinned slot is kept), not on the
     status: a forced-day lock legitimately fails the solve (the forced session
@@ -324,14 +325,19 @@ def test_a_lock_bypassing_a_diagnosed_rule_is_announced(cell: MatrixCell) -> Non
         for s in _slots(result)
     ), f"{cell.case_id}: the sovereign lock must be kept where it was pinned"
 
-    entries = [d for d in result.get("diagnostics", []) if d.get("type") == "constraint_not_honored"]
+    duplicates = [d for d in result.get("diagnostics", []) if d.get("type") == "constraint_not_honored"]
+    assert duplicates == [], f"{cell.case_id}: one message only when a reservation is at stake: {duplicates}"
+    entries = [d for d in result.get("diagnostics", []) if d.get("type") == "rule_sacrificed"]
     assert entries, f"{cell.case_id}: a lock bypassing a diagnosed rule must NOT be silent"
-    assert all(d.get("severity") == "INFO" for d in entries), f"{cell.case_id}: lock warnings are INFO, never errors"
+    assert all(d.get("severity") == "WARNING" for d in entries), (
+        f"{cell.case_id}: lock warnings are WARNING, never errors"
+    )
 
     fingerprint = _rule_fingerprint(cell)
-    assert any(fingerprint in str(d.get("message", "")) for d in entries), (
-        f"{cell.case_id}: the diagnostic must NAME the rule ({fingerprint!r}), not fire hollow"
-    )
+    assert any(
+        fingerprint in " ".join([str(d.get("message", "")), *(str(c.get("label")) for c in d.get("causes", []))])
+        for d in entries
+    ), f"{cell.case_id}: the diagnostic must NAME the rule ({fingerprint!r}), not fire hollow"
 
 
 def test_every_cell_declares_a_lock_silence_and_reasons_where_required() -> None:

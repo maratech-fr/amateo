@@ -98,8 +98,10 @@ def _diagnose_locked_structural_conflicts(
                 diagnostics.append(
                     {
                         "id": f"diag-locked-person-{person}-{a_day}-{a_start}",
-                        "type": "conflict",
-                        "severity": "ERROR",
+                        # Une réservation est en cause : un seul message (décision fondateur 2026-10-30).
+                        "type": "rule_sacrificed",
+                        "severity": "WARNING",
+                        "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": 2}],
                         "coachId": person,
                         "dayOfWeek": a_day,
                         # P4-95 lot 8 — l'INSTANT cliquable = le début du CHEVAUCHEMENT
@@ -112,13 +114,13 @@ def _diagnose_locked_structural_conflicts(
                         # (qui porte ``a_start``) ne change pas : il est stable.
                         "startTime": _format_time(max(a_start, b_start)),
                         "message": (
-                            f"{_label(person, coach_names)} est réservé(e) dans deux gymnases en même temps "
+                            f"{_label(person, coach_names)} a des séances fixées dans deux gymnases en même temps "
                             f"le {when} — {_label(a_venue, venue_names)} avec {_label(a_team, team_names)} et "
                             f"{_label(b_venue, venue_names)} avec {_label(b_team, team_names)} : "
-                            "un créneau verrouillé prime, mais la personne ne peut pas être aux deux endroits."
+                            "la personne ne peut pas être aux deux endroits."
                         ),
                         "suggestions": [
-                            "Déplacez ou retirez l'une des réservations verrouillées de cette personne.",
+                            "Déplacez ou retirez l'une des séances fixées de cette personne.",
                         ],
                         "createdAt": datetime.now(UTC).isoformat(),
                     }

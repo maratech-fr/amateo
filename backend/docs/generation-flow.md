@@ -47,11 +47,12 @@ Authorization: Bearer <token>
 
 ### 2.3 Traitement par GenerateScheduleController
 
-Le contrôleur `GenerateScheduleController` commence par **trois refus synchrones** — aucun ne crée de planning `PENDING` ni de diagnostic, l'appelant reçoit l'erreur immédiatement :
+Le contrôleur `GenerateScheduleController` commence par **quatre refus synchrones** — aucun ne crée de planning `PENDING` ni de diagnostic, l'appelant reçoit l'erreur immédiatement :
 
 1. **409 Conflict** si la version est celle que son plan **pointe** : c'est le planning en vigueur, il faut d'abord le **rouvrir** (`POST /api/schedules/{id}/reopen`).
 2. **422 Unprocessable Entity** si `GenerationComplexityGuard` juge le problème hors bornes (garde anti-DoS A10 « generation bomb » : plafonds généreux, ~10× un gros club FFBB ; les contraintes y sont comptées **permanentes only**, comme dans le payload).
 3. **422 Unprocessable Entity** si `OrphanPinGuard` trouve un **épinglage orphelin** — un verrou ou une réservation qui ne correspond plus à aucun créneau après une refonte de la grille de période. Le message nomme le gymnase et le jour ; c'est au gestionnaire de trancher (planning de période uniquement).
+4. **422 Unprocessable Entity** si `CoachInTwoPlacesGuard` trouve un **coach seul à deux endroits en même temps** (aucun autre coach pour tenir la séance) : mêmes réservations et contraintes que ce qui part au solveur, même détecteur que le Récap, qui le disait déjà mais que ces guichets ne traversent pas. Le message nomme le coach et les deux gymnases. La même garde est posée sur `/regenerate` et `/fill`.
 
 Ces gardes passées, il exécute trois actions :
 
@@ -85,7 +86,7 @@ SET schedule_generation:club:{clubId} <token> NX EX {timeoutSeconds + 60}
 
 - La **valeur** est un token aléatoire (16 octets hex) : seul le détenteur du token peut libérer le verrou (compare-and-delete atomique en Lua).
 - `NX` : uniquement si la clé n'existe pas encore.
-- `EX` : expiration automatique après `timeoutSeconds + 60` secondes, soit **710 s** avec le timeout par défaut de 650 s (safety net en cas de crash du worker).
+- `EX` : expiration automatique après `timeoutSeconds + 60` secondes, soit **810 s** avec le timeout par défaut de 750 s (safety net en cas de crash du worker).
 
 **Si le verrou est déjà tenu** (une autre génération pour le même club est en cours), le handler :
 1. Remet `Schedule.status` → `PENDING`.
@@ -140,13 +141,13 @@ Voici ce que fait la branche de base, dans l'ordre :
 
 6. **Niveaux de priorité** : il n'y a **pas** de clé `priorityTiers` top-level dans le payload. Les `PriorityTier` du club (S, A, B, C, D) sont sérialisés comme des **contraintes** de type `PRIORITY_TIER` dans `constraints[]`. Leurs poids ne sont pas envoyés (`orToolsWeight` volontairement omis) : le solveur applique des poids **codés en dur** côté engine — S=10000, A=1000, B=100, C=10, D=1 — un poids par tier serait accepté puis ignoré.
 
-7. **Métadonnées** : ajoute `version: "1.7"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
+7. **Métadonnées** : ajoute `version: "1.8"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
 
 Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la taille du club.
 
 ### 3c — Snapshot SHA-256
 
-Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
+Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256 par `ScheduleConstraintBuilder::structureHash` (maison unique de l'empreinte de structure, partagée avec `structureHashOfPlan`) : elle **ignore `version`** (un numéro de contrat n'est pas de la structure) et **les `slotTemplates` non HARD** (une séance NONE est un résultat du solveur, relu à la génération suivante ; le payload, lui, les garde). « Régénérer » est grisé seulement si l'empreinte est égale ET que le planning n'a pas été modifié à la main. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
 
 **À quoi ça sert ?**
 
@@ -248,7 +249,7 @@ Points d'attention sur ce format :
 
 ### 4.2 Timeout et gestion d'erreur
 
-Le timeout de l'appel HTTP côté backend est de **650 secondes** par défaut (`GenerateScheduleMessage.timeoutSeconds`). Côté engine, le budget du solveur CP-SAT est **adaptatif** selon la taille du problème (`n_teams × n_venues`) : 60 s (≤ 50), 180 s (≤ 200) ou 600 s au-delà — le `solverTimeoutSeconds` du payload (650 par défaut) n'est qu'un **plafond**, jamais le budget effectif.
+Le timeout de l'appel HTTP côté backend est de **750 secondes** par défaut (`GenerateScheduleMessage.timeoutSeconds`). Côté engine, le budget du solveur CP-SAT est **adaptatif** selon la taille du problème (`n_teams × n_venues`) : 60 s (≤ 50), 180 s (≤ 200) ou 600 s au-delà — le `solverTimeoutSeconds` du payload (650 par défaut) n'est qu'un **plafond**, jamais le budget effectif.
 
 Note importante sur les réponses HTTP : `EngineClient` lit la réponse avec `toArray(false)` — il ne lève **pas** d'exception sur un statut HTTP d'erreur générique. Toute réponse JSON sans clé `status` (par exemple un corps d'erreur Pydantic qui ne serait pas un 422, improbable en pratique) est traitée comme `status: "failed"`, donc planning `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de diagnostic `engine_validation_error`.
 
@@ -261,7 +262,7 @@ Note importante sur les réponses HTTP : `EngineClient` lit la réponse avec `to
 | `422 Unprocessable Entity` sur `/generate` (refus de contrat Pydantic) | Détecté par `EngineClient::solve()`, statut `FAILED` | `engine_rejected` (lisible, champ nommé) |
 | `422 Unprocessable Entity` sur `/place-matches` ou `/validate-assignments` (corps sans `status`) | Traité comme `failed`, statut `FAILED` | `engine_failed` |
 | `500 Internal Server Error` (corps sans `status`) | Traité comme `failed`, statut `FAILED` | `engine_failed` |
-| Timeout HTTP ou erreur de TRANSPORT (> 650 s, hôte injoignable, connexion refusée — `TransportExceptionInterface`) | Statut `FAILED` | `engine_timeout` |
+| Timeout HTTP ou erreur de TRANSPORT (> 750 s, hôte injoignable, connexion refusée — `TransportExceptionInterface`) | Statut `FAILED` | `engine_timeout` |
 | Exception moteur NON traduite (ni transport, ni 422 de contrat) — ex. réponse `200 OK` au corps non-JSON | Statut `FAILED` | `engine_error` (libellé stable sans URL ni détail d'infra ; substance technique dans le log serveur) |
 
 > Exemple concret : si le BCCL ajoute une contrainte `HARD` "SM3 uniquement le mercredi après 20h" et que le mercredi soir est déjà saturé par SM1, SM2, SF1 et SF2, le solveur peut déclarer le problème infaisable (INFEASIBLE côté CP-SAT). Il retourne alors `status: "failed"` avec un diagnostic listant SM3 comme équipe non placée.
@@ -285,6 +286,7 @@ Le moteur a trouvé un planning valide. `ScheduleResultImporter` exécute les op
    > Exemple : le moteur place SM3 le mercredi 20h00-22h00 à ADN. Un nouveau `ScheduleSlotTemplate` est créé avec ces valeurs.
 
 3. **Import des diagnostics** : les `diagnostics[]` retournés par l'engine (avertissements sur des contraintes `PREFERRED` violées, par exemple) sont transformés en entités `ScheduleDiagnostic`.
+   - **« La réservation gagne »** (ADR-0001, amendement 2026-10-30, contrat 1.8) : quand un verrou HARD (réservation ou verrou manuel) rend une règle dure insatisfiable, le moteur ne renvoie PAS `failed` — il produit le planning (`completed`), tient le verrou et émet un diagnostic `rule_sacrificed` (règle levée) ou `blocked_by_reservation` (séance restée non placée, la réservation d'une autre équipe prenant la seule case compatible). `DiagnosticMessageBuilder` préfère le message du moteur et ne compose le sien que s'il est vide. Sans verrou en cause, l'échec nommé du §5.2 demeure.
 
 4. **Mise à jour du planning** :
    - `Schedule.status` → `COMPLETED`
@@ -293,7 +295,7 @@ Le moteur a trouvé un planning valide. `ScheduleResultImporter` exécute les op
 
 ### 5.2 Cas : statut "failed"
 
-⚠ Il n'existe **pas** de statut `"infeasible"` sur le fil : le schéma de sortie du moteur est un `Literal["queued", "generating", "completed", "failed"]` (`engine/app/schemas/output_schema.py:152`) — une instance INFEASIBLE arrive en `status: "failed"` avec ses diagnostics.
+⚠ Il n'existe **pas** de statut `"infeasible"` sur le fil : le schéma de sortie du moteur est un `Literal["queued", "generating", "completed", "failed"]` (`engine/app/schemas/output_schema.py:152`) — une instance INFEASIBLE arrive en `status: "failed"` avec ses diagnostics — sauf si un verrou HARD en est la cause directe (voir « La réservation gagne », §5.1 : le statut est alors `completed`).
 
 Le moteur n'a pas pu produire de planning complet.
 
@@ -312,7 +314,7 @@ Le moteur n'a pas pu produire de planning complet.
 Deux branches distinctes dans `GenerateScheduleHandler`, selon la NATURE de l'exception :
 
 - **`TransportExceptionInterface`** (Symfony HttpClient) : couvre aussi bien un dépassement de
-  délai (> 650 s) qu'un engine injoignable (conteneur arrêté, réseau coupé, DNS cassé) — les deux
+  délai (> 750 s) qu'un engine injoignable (conteneur arrêté, réseau coupé, DNS cassé) — les deux
   lèvent la MÊME exception de transport, donc le MÊME diagnostic `engine_timeout` (pas de
   distinction « trop lent » vs « injoignable » côté diagnostic).
 - **Toute autre exception non traduite** — ni une erreur de transport, ni un refus de contrat 422
@@ -404,8 +406,8 @@ Voici un tableau récapitulatif de tous les cas d'erreur possibles, avec leur ca
 | **Problème hors bornes** | `GenerationComplexityGuard` (A10) : le club/saison dépasse les plafonds anti-« generation bomb » | — (refus synchrone **422**) | Aucun | Réduire le périmètre. Les plafonds sont ~10× un gros club FFBB : les franchir signale une donnée aberrante, pas un usage normal |
 | **Épinglage orphelin** | `OrphanPinGuard` (#8) : un verrou ou une réservation ne correspond plus à aucun créneau de la grille de période | — (refus synchrone **422**) | Aucun | Le message nomme le gymnase et le jour : redéfinir les créneaux, ou retirer l'épinglage |
 | **Club déjà en génération** | Verrou Redis `schedule_generation:club:{clubId}` tenu par un autre worker | `PENDING` (retry Messenger via `RecoverableMessageHandlingException`) | Aucun | Rien à faire : la demande sera rejouée automatiquement à la fin de la génération en cours |
-| **Timeout HTTP (> 650 s)** | Problème trop complexe pour le solveur CP-SAT (budget adaptatif 60/180/600 s dépassé côté engine) | `FAILED` | `engine_timeout` | Simplifier les contraintes `HARD`, augmenter le nombre de salles, ou réduire le nombre d'équipes |
-| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 1.7, `engine/CONTRACT_VERSION`) |
+| **Timeout HTTP (> 750 s)** | Problème trop complexe pour le solveur CP-SAT (budget adaptatif 60/180/600 s dépassé côté engine) | `FAILED` | `engine_timeout` | Simplifier les contraintes `HARD`, augmenter le nombre de salles, ou réduire le nombre d'équipes |
+| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 1.8, `engine/CONTRACT_VERSION`) |
 | **Engine inaccessible** | Conteneur `engine` arrêté ou crash | `FAILED` | `engine_error` | Vérifier l'état des conteneurs Docker (`make logs SERVICE=engine`) |
 | **Planning infaisable** | Contraintes `HARD` mutuellement exclusives | `FAILED` | `conflict` + liste équipes non placées | Relâcher une contrainte `HARD` en `PREFERRED`, ou ajouter des ressources (salle, coach) |
 | **Partiellement résolu** | Ressources insuffisantes pour toutes les équipes | `COMPLETED` (score bas) | `unplaced` diagnostics | Accepter le planning incomplet, ou ajouter des créneaux/salles |

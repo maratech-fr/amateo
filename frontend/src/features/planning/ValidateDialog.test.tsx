@@ -15,7 +15,7 @@ const readyImpact = (over: Partial<OrphanImpact> = {}): OrphanImpact => ({
 
 function renderDialog(orphan: OrphanImpact, over: { busy?: boolean; onConfirm?: () => void } = {}) {
   const onConfirm = over.onConfirm ?? vi.fn();
-  render(<ValidateDialog hasAlerts={false} siblingCount={0} busy={over.busy ?? false} orphan={orphan} onConfirm={onConfirm} onCancel={vi.fn()} />);
+  render(<ValidateDialog hasAlerts={false} missingSessions={[]} siblingCount={0} busy={over.busy ?? false} orphan={orphan} onConfirm={onConfirm} onCancel={vi.fn()} />);
   return { onConfirm };
 }
 

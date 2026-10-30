@@ -181,9 +181,15 @@ def _assume(model: Any, source_key: str, cause: dict[str, Any]) -> BoolVarLike |
     literal = registry.get(source_key)
     if literal is not None:
         return literal
+    # Réservation souveraine — une clé RELÂCHÉE par le best-effort garde sa littérale et son
+    # `OnlyEnforceIf` (la contrainte reste CONDITIONNÉE), mais on N'APPELLE PAS `AddAssumption` :
+    # libre, le solveur la met à faux → la règle source est désactivée (le verrou qui la bloque
+    # reste dur, cuit dans le modèle). Hors best-effort l'ensemble est vide ⇒ tout est assumé.
+    relaxed: frozenset[str] = getattr(model, "relaxed_source_keys", frozenset())
     try:
         literal = model.NewBoolVar(f"assume[{source_key}]")
-        model.AddAssumption(literal)
+        if source_key not in relaxed:
+            model.AddAssumption(literal)
     except AttributeError, TypeError:
         return None
     registry[source_key] = literal

@@ -878,7 +878,7 @@ final class SchedulePlanProvisioner
                 // AVANT toute greffe de convergence (jamais une donnée de structure).
                 $payload = $this->constraintBuilder->buildForClubSeason($context['clubId'], $context['seasonId']);
 
-                return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
+                return ScheduleConstraintBuilder::structureHash($payload);
             }
 
             $entryId = $context['calendarEntryId'];
@@ -897,7 +897,7 @@ final class SchedulePlanProvisioner
                 $entry,
             );
 
-            return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
+            return ScheduleConstraintBuilder::structureHash($payload);
         } catch (Throwable) {
             return null;
         }

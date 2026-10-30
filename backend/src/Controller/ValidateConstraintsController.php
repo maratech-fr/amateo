@@ -196,12 +196,14 @@ final class ValidateConstraintsController extends AbstractController
             ...$this->coachDoubleBookingDetector->detectRelayWarnings($reservations, $constraints, $clubId, $seasonId),
         ];
 
-        // 2. Saturation des « au moins N ici » par gymnase → BLOQUEUR : le moteur exige
-        //    ces séances sur les créneaux NON verrouillés, MAIS crédite le plancher des
-        //    jours déjà verrouillés de l'équipe à ce gymnase (P4-97 : effective_min =
-        //    minimum − jours verrouillés). Le bloqueur ne tombe donc que sur la demande
-        //    RÉELLEMENT restante > places libres = INFEASIBLE certain.
-        $saturationBlockers = null !== $capacityPayload ? $this->venueMinimumSaturation($capacityPayload) : [];
+        // 2. Saturation des « au moins N ici » par gymnase : le moteur exige ces séances sur
+        //    les créneaux NON verrouillés, MAIS crédite le plancher des jours déjà verrouillés
+        //    de l'équipe à ce gymnase (P4-97 : effective_min = minimum − jours verrouillés).
+        //    Décision fondateur 2026-10-30 : si la grille dépasse même sans verrou → BLOQUEUR
+        //    (échec certain). Si seules les réservations saturent → AVERTISSEMENT, on génère.
+        $saturation = null !== $capacityPayload ? $this->venueMinimumSaturation($capacityPayload) : ['blockers' => [], 'warnings' => []];
+        $saturationBlockers = $saturation['blockers'];
+        $warnings = [...$warnings, ...$saturation['warnings']];
 
         // P2-9 PR B — IMPOSSIBILITÉ PHYSIQUE : un verrou qui met un coach à deux endroits
         // en même temps. Le solveur ne peut PAS l'attraper (un verrou HARD est pré-placé
@@ -340,24 +342,83 @@ final class ValidateConstraintsController extends AbstractController
     /**
      * PR A — saturation des « au moins N ici » par gymnase. L'ALGÈBRE vit dans
      * {@see PayloadCapacityMirror} (parité épinglée contre le vrai moteur) ; ici,
-     * seulement la PHRASE que lit le gestionnaire.
+     * seulement la PHRASE que lit le gestionnaire, et le partage bloquant/avertissement.
      *
      * @param array<string, mixed> $payload
      *
-     * @return list<string>
+     * @return array{blockers: list<string>, warnings: list<string>}
      */
     private function venueMinimumSaturation(array $payload): array
     {
-        return array_map(
-            fn (array $s): string => \sprintf(
-                'Vos contraintes « au moins » réclament %s à %s, mais il n\'y reste que %s libre%s une fois les réservations déduites : la génération échouera. Ajoutez des créneaux dans ce gymnase, libérez des réservations, ou assouplissez ces contraintes.',
-                $this->plural($s['demand'], 'place de créneau', 'places de créneau'),
-                $s['venueName'],
-                $this->plural($s['free'], 'place', 'places'),
-                1 === $s['free'] ? '' : 's',
-            ),
-            $this->capacityMirror->venueMinimumSaturation($payload),
-        );
+        $gridSaturated = $this->capacityMirror->venuesSaturatedWithoutLocks($payload);
+        $result = ['blockers' => [], 'warnings' => []];
+        foreach ($this->capacityMirror->venueMinimumSaturation($payload) as $s) {
+            if (\in_array($s['venueId'], $gridSaturated, true)) {
+                $result['blockers'][] = \sprintf(
+                    'Vos contraintes « au moins » réclament %s à %s, mais il n\'y reste que %s libre%s une fois les réservations déduites : la génération échouera. Ajoutez des créneaux dans ce gymnase, libérez des réservations, ou assouplissez ces contraintes.',
+                    $this->plural($s['demand'], 'place de créneau', 'places de créneau'),
+                    $s['venueName'],
+                    $this->plural($s['free'], 'place', 'places'),
+                    1 === $s['free'] ? '' : 's',
+                );
+            } else {
+                $result['warnings'][] = $this->reservationSaturationWarning($s);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * « Poussins et Benjamins demandent chacune au moins 1 séance à Platane, mais il n'y reste qu'une
+     * place : la réservation de Seniors C occupe l'autre. Une équipe restera sans séance. ».
+     *
+     * @param array{venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>, pinnedCases: int, freeElsewhere: int} $s
+     */
+    private function reservationSaturationWarning(array $s): string
+    {
+        $names = $this->frenchList(array_map(strval(...), array_keys($s['teams'])));
+        $amounts = array_values(array_unique($s['teams']));
+        $count = \count($s['teams']);
+        if (1 === $count) {
+            $asks = \sprintf('%s demande au moins %s', $names, $this->plural($amounts[0], 'séance', 'séances'));
+        } elseif (1 === \count($amounts)) {
+            $asks = \sprintf('%s demandent chacune au moins %s', $names, $this->plural($amounts[0], 'séance', 'séances'));
+        } else {
+            $asks = \sprintf('%s demandent ensemble au moins %s', $names, $this->plural($s['demand'], 'séance', 'séances'));
+        }
+
+        $left = match ($s['free']) {
+            0 => 'il n\'y reste aucune place',
+            1 => 'il n\'y reste qu\'une place',
+            default => \sprintf('il n\'y reste que %d places', $s['free']),
+        };
+
+        $reservedBy = $s['reservedBy'];
+        if (1 === $s['pinnedCases'] && 1 === \count($reservedBy)) {
+            $taken = \sprintf('la réservation de %s occupe %s', $reservedBy[0], 1 === $s['free'] ? 'l\'autre' : (0 === $s['free'] ? 'la case' : 'une autre'));
+        } else {
+            $taken = \sprintf('les réservations de %s occupent les autres', $this->frenchList($reservedBy));
+        }
+
+        // « Sans séance » n'est dit que si c'est vrai : chaque équipe n'en réclame qu'une, et nul autre
+        // gymnase n'a de place. Sinon l'équipe joue ailleurs, seul le minimum manque.
+        $missing = $s['demand'] - $s['free'];
+        if (0 === $s['freeElsewhere'] && [1] === $amounts) {
+            $outcome = 1 === $missing ? 'Une équipe restera sans séance.' : \sprintf('%d équipes resteront sans séance.', $missing);
+        } else {
+            $outcome = \sprintf('Le minimum ne sera pas tenu : %s %s à %s.', $this->plural($missing, 'séance', 'séances'), 1 === $missing ? 'manquera' : 'manqueront', $s['venueName']);
+        }
+
+        return \sprintf('%s à %s, mais %s : %s. %s', $asks, $s['venueName'], $left, $taken, $outcome);
+    }
+
+    /** @param list<string> $items */
+    private function frenchList(array $items): string
+    {
+        $last = array_pop($items);
+
+        return [] === $items ? (string) $last : implode(', ', $items) . ' et ' . $last;
     }
 
     /**

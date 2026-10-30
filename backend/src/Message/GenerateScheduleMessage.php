@@ -9,7 +9,7 @@ final readonly class GenerateScheduleMessage
     public function __construct(
         private string $scheduleId,
         private string $clubId,
-        private int $timeoutSeconds = 650,
+        private int $timeoutSeconds = 750,
         // P3-21 — la version que le gestionnaire REGARDE quand il régénère (source de
         // `previousAssignments`, terme de stabilité moteur). Null = première génération /
         // repli sur la dernière COMPLETED du plan, résolu côté handler. Défaut obligatoire :

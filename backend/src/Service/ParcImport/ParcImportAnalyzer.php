@@ -15,6 +15,7 @@ use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\PlanEntitlements;
+use App\Service\ReservationGroupOccupancy;
 use App\Service\SoloBudget;
 use App\Service\SoloReservationBudget;
 use Doctrine\ORM\EntityManagerInterface;
@@ -58,6 +59,7 @@ final class ParcImportAnalyzer
         private readonly ParcCaseDeriver $deriver,
         private readonly TeamLabelMatcher $matcher,
         private readonly TeamCreationSuggester $suggester,
+        private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
     ) {}
 
     /**
@@ -586,6 +588,18 @@ final class ParcImportAnalyzer
                     $allResolved = false;
                 } else {
                     $teamIds[] = $id;
+                }
+            }
+
+            // Décision fondateur 2026-10-30 — l'aperçu dit ce que l'exécution refuserait : un groupe à
+            // moins de séances communes que de cases réservées pour lui. `alerteCode` : c'est ce que la
+            // grille lit pour bloquer l'import si la ligne est recochée.
+            if ($allResolved && [] !== $teamIds) {
+                $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($teamIds, true), null);
+                if ($reservedSessions > $commonSessions) {
+                    $out[] = $this->line($i, $libelle, 'alerte', null, ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions), $extra + ['alerteCode' => 'groupe_sous_reservations']);
+
+                    continue;
                 }
             }
 

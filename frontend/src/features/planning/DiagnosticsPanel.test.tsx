@@ -8,6 +8,7 @@ import { renderWithProviders } from "@/test/utils";
 import type { Diagnostic, DiagnosticSeverity, Slot } from "./api";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import type { Lookups } from "./lib/grid";
+import { PLANNING_TEXTS } from "./texts";
 
 const lookups: Lookups = {
   teams: new Map(),
@@ -551,5 +552,81 @@ describe("DiagnosticsPanel — « garder ses créneaux de saison » (PR 6 / lot 
     render(panel({ diagnostics: [seasonSlots], openMostSevere: true, seedToken: "v" }));
 
     expect(screen.getByText(/2\/3 créneaux de saison conservés/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Réservation souveraine (décision fondateur 2026-10-30) : `rule_sacrificed` et
+ * `blocked_by_reservation` REMPLACENT des signaux qui portaient le lien vers la règle et l'ouverture
+ * du créneau. Ces gestes du gestionnaire ne disparaissent pas avec le changement de type.
+ */
+describe("DiagnosticsPanel — les diagnostics de réservation gardent leurs gestes", () => {
+  const reservationDiag = (type: string, over: Partial<Diagnostic> = {}): Diagnostic =>
+    ({
+      id: type,
+      scheduleId: "s",
+      type,
+      severity: "WARNING",
+      teamId: "t1",
+      coachId: null,
+      venueId: null,
+      dayOfWeek: null,
+      startTime: null,
+      ruleKey: null,
+      message: `message ${type}`,
+      suggestions: null,
+      causes: [{ kind: "day_forced", constraintId: "rule-1", label: "Vendredi imposé", count: 1 }],
+      openCandidates: null,
+      ...over,
+    }) as Diagnostic;
+
+  it("blocked_by_reservation : nomme la règle, qui tient, sans lien pour la corriger", () => {
+    renderWithProviders(<DiagnosticsPanel diagnostics={[reservationDiag("blocked_by_reservation")]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
+
+    expect(screen.getByText(/Vendredi imposé/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: PLANNING_TEXTS.fixRuleLink })).toBeNull();
+  });
+
+  it.each(["rule_sacrificed"])("%s : nomme la règle et mène à SA contrainte", (type) => {
+    renderWithProviders(<DiagnosticsPanel diagnostics={[reservationDiag(type)]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
+
+    expect(screen.getByText(/Vendredi imposé/)).toBeInTheDocument();
+    const href = screen.getByRole("link", { name: PLANNING_TEXTS.fixRuleLink }).getAttribute("href") ?? "";
+    expect(href).toContain("step=constraints");
+    expect(href).toContain("edit=rule-1");
+  });
+
+  it.each(["rule_sacrificed", "blocked_by_reservation"])("%s : une cause sans id n'a pas de lien mort", (type) => {
+    renderWithProviders(<DiagnosticsPanel diagnostics={[reservationDiag(type, { causes: [{ kind: "hard_lock", constraintId: null, label: null, count: 1 }] })]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
+
+    expect(screen.queryByRole("link", { name: PLANNING_TEXTS.fixRuleLink })).toBeNull();
+  });
+
+  const slot = (over: Partial<Slot>): Slot => ({ id: "id", scheduleId: "s", teamId: "t1", venueId: "v1", coachId: null, dayOfWeek: 4, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: null, sharedTrainingBlockId: null, ...over });
+
+  it("rule_sacrificed sur UNE case réservée : le clic ouvre ce créneau", async () => {
+    const user = userEvent.setup();
+    const onOpenSlot = vi.fn();
+    const onHighlight = vi.fn();
+    const slots = [slot({ id: "a" }), slot({ id: "other", dayOfWeek: 2 })];
+    renderWithProviders(panel({ diagnostics: [reservationDiag("rule_sacrificed", { venueId: "v1", dayOfWeek: 4, startTime: "18:00" })], slots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
+
+    await user.click(screen.getByText("message rule_sacrificed"));
+
+    expect(onOpenSlot).toHaveBeenCalledWith("a");
+    expect([...(onHighlight.mock.calls.at(-1)?.[0] as Set<string>)]).toEqual(["a"]);
+  });
+
+  it("rule_sacrificed d'une personne sur deux réservations : surligne les deux cases, n'en ouvre aucune", async () => {
+    const user = userEvent.setup();
+    const onOpenSlot = vi.fn();
+    const onHighlight = vi.fn();
+    const slots = [slot({ id: "a", teamId: "t1", venueId: "v1", coachId: "c1" }), slot({ id: "b", teamId: "t2", venueId: "v2", coachId: "c1" })];
+    renderWithProviders(panel({ diagnostics: [reservationDiag("rule_sacrificed", { teamId: null, coachId: "c1", dayOfWeek: 4, startTime: "18:00" })], slots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
+
+    await user.click(screen.getByText("message rule_sacrificed"));
+
+    expect([...(onHighlight.mock.calls.at(-1)?.[0] as Set<string>)].sort()).toEqual(["a", "b"]);
+    expect(onOpenSlot).not.toHaveBeenCalled();
   });
 });

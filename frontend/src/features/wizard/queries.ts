@@ -850,6 +850,8 @@ export function useCreateSharedTrainingBlock() {
       void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
       invalidateSoloBudgets(queryClient);
     },
+    // Le panneau affiche le refus dans le formulaire : ce hook garde son erreur, pas de toast en plus.
+    onError: () => undefined,
   });
 }
 
@@ -861,6 +863,8 @@ export function useUpdateSharedTrainingBlock() {
       void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
       invalidateSoloBudgets(queryClient);
     },
+    // Le panneau affiche le refus dans le formulaire : ce hook garde son erreur, pas de toast en plus.
+    onError: () => undefined,
   });
 }
 

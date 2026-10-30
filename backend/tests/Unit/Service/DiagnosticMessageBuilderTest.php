@@ -189,6 +189,59 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertStringNotContainsString('Contrainte en cause', $result);
     }
 
+    // ── Réservation souveraine (besoin fondateur 2026-10-30) — le GABARIT FR d'une règle sacrifiée ──
+
+    public function testRuleSacrificedComposesAFrenchMessageNamingTheRuleAndTheSovereignReservation(): void
+    {
+        // « La réservation gagne envers tout. » Quand un verrou HARD rend une règle dure
+        // insatisfiable, le moteur émet un diagnostic `rule_sacrificed` ; le backend COMPOSE le texte
+        // gestionnaire (gabarit, pas la phrase exacte) : il NOMME l'équipe + la règle sacrifiée (son
+        // libellé, jamais un identifiant interne) et DIT que c'est une réservation/un verrou qui a
+        // gagné. Message moteur vide ⇒ repli composé localement (patron `shared_block_not_honored`).
+        $diagnostic = [
+            'type' => 'rule_sacrificed',
+            'severity' => 'WARNING',
+            'teamId' => 't1',
+            'message' => '',
+            'causes' => [
+                ['kind' => 'coach_unavailability', 'constraintId' => 'av-1', 'label' => 'Indispo du vendredi', 'count' => 1],
+            ],
+        ];
+
+        $result = $this->builder->build($diagnostic, ['t1' => 'SM1'], [], []);
+
+        self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit d\'une règle sacrifiée doit exister, pas retomber sur le défaut');
+        self::assertStringContainsString('SM1', $result, 'le message doit NOMMER l\'équipe concernée');
+        self::assertStringContainsString('Indispo du vendredi', $result, 'le message doit NOMMER la règle sacrifiée (son libellé)');
+        // Décision fondateur 2026-10-30 : à l'écran, « la séance fixée de X » pour tout verrou.
+        self::assertMatchesRegularExpression('/s[ée]ances? fix[ée]es?/iu', $result, 'le message doit dire qu\'une séance fixée a gagné');
+        self::assertDoesNotMatchRegularExpression('/verrou|r[ée]servation/iu', $result, 'jamais « verrou » ni « réservation » pour une séance fixée');
+    }
+
+    public function testBlockedByReservationComposesAMessageNamingTeamRuleAndReservationWithoutClaimingARelaxation(): void
+    {
+        // La réservation d'une AUTRE équipe prend la seule case compatible : la règle TIENT, la séance
+        // reste non placée (décision fondateur 2026-10-30). Le gabarit nomme l'équipe, la règle et la
+        // réservation, et n'affirme jamais qu'une règle a été relâchée.
+        $result = $this->builder->build(
+            [
+                'type' => 'blocked_by_reservation',
+                'severity' => 'WARNING',
+                'teamId' => 't1',
+                'message' => '',
+                'causes' => [['kind' => 'day_forced', 'constraintId' => 'd-1', 'label' => 'Vendredi imposé', 'count' => 1]],
+            ],
+            ['t1' => 'SM1'],
+        );
+
+        self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit doit exister');
+        self::assertStringContainsString('SM1', $result);
+        self::assertStringContainsString('Vendredi imposé', $result);
+        self::assertMatchesRegularExpression('/s[ée]ances? fix[ée]es?/iu', $result, 'à l\'écran, « la séance fixée de X » pour tout verrou');
+        self::assertDoesNotMatchRegularExpression('/verrou|r[ée]servation/iu', $result);
+        self::assertDoesNotMatchRegularExpression('/relâch|sacrifi/i', $result, 'la règle n\'est pas relâchée');
+    }
+
     protected function setUp(): void
     {
         $this->builder = new DiagnosticMessageBuilder;

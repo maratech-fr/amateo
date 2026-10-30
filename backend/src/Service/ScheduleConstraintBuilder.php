@@ -57,7 +57,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.7';
+    public const string CONTRACT_VERSION = '1.8';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -165,6 +165,30 @@ final class ScheduleConstraintBuilder
     public static function cacheTag(string $clubId): string
     {
         return \sprintf('club.%s.schedule_input', $clubId);
+    }
+
+    /**
+     * L'empreinte de STRUCTURE d'un payload, maison unique : le `snapshotHash` d'une version et le
+     * signal « structure modifiée » du plan doivent sortir de la même recette.
+     *
+     * Elle ignore les `slotTemplates` non HARD : une séance NONE est un RÉSULTAT du solveur, pas une
+     * donnée d'entrée, et l'import la relit à la génération suivante. Le payload lui-même ne change pas
+     * (`/validate-assignments` lit ces séances). Elle ignore aussi `version` : le numéro de contrat
+     * n'est pas de la structure, sinon chaque montée de contrat ferait paraître tous les plannings périmés.
+     *
+     * @param array<mixed> $payload
+     */
+    public static function structureHash(array $payload): string
+    {
+        unset($payload['version']);
+        if (\is_array($payload['slotTemplates'] ?? null)) {
+            $payload['slotTemplates'] = array_values(array_filter(
+                $payload['slotTemplates'],
+                static fn (mixed $pin): bool => \is_array($pin) && 'HARD' === ($pin['lockLevel'] ?? null),
+            ));
+        }
+
+        return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
     }
 
     private static function formatNullableTime(?DateTimeInterface $time): ?string

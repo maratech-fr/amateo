@@ -126,7 +126,7 @@ final class PeriodPlanSiblingCopier
             if ($entry instanceof CalendarEntry) {
                 $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $seasonId, $targetPlanId, $entry);
                 $version->setSnapshotData($payload);
-                $version->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
+                $version->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
             }
             $version->setManuallyEditedSinceGeneration(false);
             $this->entityManager->flush();
