@@ -560,12 +560,21 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    porte « renseignez l'adresse ensuite ». Une correction (séances, créneau, gymnase, groupe,
    composition) **ou** le changement d'une décision Équipes (ex. ignorer une équipe citée par une
    séance commune — incident ALAP) périme l'aperçu (bandeau « Vous avez modifié N lignes : les
-   alertes affichées datent de l'analyse précédente », bouton « Revalider » qui reposte
+   alertes affichées datent de l'analyse précédente », UN seul bouton « Revalider » (celui de l'en-tête d'étape ; le bandeau n'en porte pas) qui reposte
    `{payload, decisions}` à `/parc-import/analyze` pour rejouer l'analyse avec les corrections —
    §3) ; l'import reste possible SANS revalider — bloquent seulement un ambigu non tranché, une
    création sans genre tranché (point 3, refonte PR2), une alerte « équipe ignorée/introuvable »
    cochée (points 6-7, incident ALAP) ou une composition à moins de deux équipes, ou aucune ligne
    cochée.
+
+   **Règle des étapes** (finitions PR D, 2026-10-30) : une étape de contenu ne passe au vert qu'APRÈS
+   avoir été visitée (même vide) et sans point en attente ; « Revalider » conserve les étapes déjà
+   visitées. Une ligne mise en « Ignorer » n'attend plus rien (son alerte passe au vert sans geste) ;
+   une alerte gardée (cochée / « Garder ») bloque, et tant qu'une étape n'est pas vue ses alertes
+   restent signalées. « Importer » n'est actif que si toutes les étapes de contenu sont vertes. Le nom
+   d'un groupe corrigé à l'étape Séances communes est repris à l'étape Réservations. Dans les grilles
+   de cases, la pause 12:00-14:00 est teintée (décor) et l'infobulle d'une case dit « Nom · début →
+   fin ».
 
    **Pied de modale** (incident ALAP) : Précédent/Suivant **groupés à gauche**, l'action primaire
    (Analyser/Importer) à droite — plus de bouton TEXTE « Fermer » (la croix de l'en-tête suffit).
