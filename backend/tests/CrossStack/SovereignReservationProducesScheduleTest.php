@@ -19,7 +19,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  *
  *   (1) RÉSERVATION SOUVERAINE — quand un VERROU HARD (réservation, épingle) rend une règle DURE
  *       insatisfiable, le moteur PRODUIT le planning et NOMME la règle sacrifiée (diagnostic
- *       `rule_sacrificed`, severity WARNING), jamais un INFEASIBLE muet. Cas réel : ALAP prod, un
+ *       `rule_sacrificed`, severity WARNING), jamais un INFEASIBLE muet. Cas réel constaté en production : un
  *       bloc mutualisé dont la seule case commune est RÉSERVÉE par une équipe TIERCE → aujourd'hui
  *       INFEASIBLE en 4 ms sans rien nommer. TÉMOIN de CAUSE : le MÊME décor SANS la réservation
  *       place le bloc (`completed`, zéro sacrifice) — c'est bien le verrou qui force le sacrifice.

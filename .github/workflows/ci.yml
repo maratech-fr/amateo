@@ -1056,7 +1056,7 @@ jobs:
       # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — « la réservation
       # gagne envers tout, mais c'est la SEULE exception ». Quand un VERROU HARD rend une règle dure
       # insatisfiable, le moteur PRODUIT le planning et NOMME la règle sacrifiée (rule_sacrificed),
-      # jamais INFEASIBLE muet (cas ALAP) ; SANS verrou en cause, deux règles contradictoires restent
+      # jamais INFEASIBLE muet ; SANS verrou en cause, deux règles contradictoires restent
       # un échec NOMMÉ. De bout en bout contre le VRAI moteur (/generate). Skip propre si l'engine est
       # absent. Sans ce gate, soit la réservation cesserait d'être souveraine, soit un second « cas
       # d'exception » s'ouvrirait en silence.

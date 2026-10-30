@@ -2,7 +2,7 @@
 
 « La réservation gagne envers tout, mais c'est la SEULE exception. » Quand un VERROU HARD rend une
 règle DURE insatisfiable, le moteur PRODUIT le planning et NOMME la règle sacrifiée — jamais un
-INFEASIBLE muet (cas ALAP prod : grille réservée, INFEASIBLE en 4 ms sans rien nommer).
+INFEASIBLE muet (cas réel : grille réservée, INFEASIBLE en 4 ms sans rien nommer).
 
 Angle MOTEUR (doublon VOULU, point sensible solveur ; le bout-en-bout HTTP est gardé côté backend
 par ``SovereignReservationProducesScheduleTest``) : sur un décor SYNTHÉTIQUE (noms inventés, le
@@ -17,7 +17,7 @@ superset de ``b-seniors`` SM1+SM2) ne peut réunir ses trois membres QUE sur une
     aucun sacrifice. Sans ce témoin, un décor infaisable pour une autre raison ferait passer MAIN au
     vert sans rien prouver du verrou.
 
-⚠ NOTE FIXTURE (cf. ``alap_synthetic.json``) : la saturation littérale 14 équipes / 21 créneaux /
+⚠ NOTE FIXTURE (cf. ``sovereign_reservation_grid.json``) : la saturation littérale 14 équipes / 21 créneaux /
 26 réservations du brief est FEASIBLE aujourd'hui (la lenteur des contraintes de bloc / plancher de
 séances du solveur offre des échappatoires) ; le décor est donc réduit au noyau nested-bloc-réservé
 VÉRIFIÉ infaisable, seul capable de servir de ROUGE à une feature déclenchée sur INFEASIBLE.
@@ -38,7 +38,7 @@ from tests.support.pipeline import (
     team_constraint,
 )
 
-FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "alap_synthetic.json"
+FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "sovereign_reservation_grid.json"
 THIRD_PARTY_RESERVATION_ID = "r-U18-thu20-G1"
 FRIDAY = 5
 
@@ -72,7 +72,7 @@ def test_without_the_third_party_reservation_the_block_places_and_nothing_is_sac
     result = solve_payload(payload)
 
     assert result["status"] == "completed", "sans la réservation tierce, le bloc retrouve sa case"
-    assert _sacrificed(result) == [], (
+    assert _reservation_signals(result) == [], (
         f"aucune règle « sacrifiée » quand aucun verrou ne la contredit (obtenu {_sacrificed(result)})"
     )
 
@@ -142,7 +142,7 @@ def test_a_rule_conflict_not_caused_by_a_lock_stays_failed_even_with_reservation
         "une contradiction entre règles sans verrou en cause reste un ÉCHEC, même avec des "
         f"réservations ailleurs (la réservation est la SEULE exception) — obtenu {result['status']}"
     )
-    assert _sacrificed(result) == [], (
+    assert _reservation_signals(result) == [], (
         f"aucun rule_sacrificed : le best-effort ne relâche que les règles bloquées par un verrou "
         f"(obtenu {_sacrificed(result)})"
     )
@@ -158,7 +158,8 @@ def test_a_rule_conflict_not_caused_by_a_lock_stays_failed_even_with_reservation
 #   * la règle contredit LA réservation elle-même : la réservation est placée, la règle sacrifiée ;
 #   * la réservation d'une AUTRE équipe prend la seule case compatible : la règle n'est PAS relâchée, la
 #     séance reste NON placée, le résultat reste ``completed``, sans repartir en INFEASIBLE.
-# Dans les deux cas, UN SEUL message : ``rule_sacrificed`` remplace les signaux historiques.
+# Dans les deux cas, UN SEUL message remplace les signaux historiques : ``rule_sacrificed`` pour le
+# premier (et le groupe privé de sa case), ``blocked_by_reservation`` pour le second.
 
 
 def _reservation(team_id: str, venue_id: str, day: int, start: str = "18:00") -> dict[str, Any]:
@@ -184,9 +185,16 @@ _REPLACED_SIGNALS = {
 }
 
 
-def _assert_single_message(result: dict[str, Any]) -> None:
-    duplicates = [d for d in result["diagnostics"] if d.get("type") in _REPLACED_SIGNALS]
+def _assert_single_message(result: dict[str, Any], *, expected_type: str) -> None:
+    other_type = {"rule_sacrificed": "blocked_by_reservation", "blocked_by_reservation": "rule_sacrificed"}[
+        expected_type
+    ]
+    duplicates = [d for d in result["diagnostics"] if d.get("type") in _REPLACED_SIGNALS | {other_type}]
     assert duplicates == [], f"un seul message quand une réservation est en cause, doublons : {duplicates}"
+
+
+def _reservation_signals(result: dict[str, Any]) -> list[dict[str, Any]]:
+    return [d for d in result["diagnostics"] if d.get("type") in {"rule_sacrificed", "blocked_by_reservation"}]
 
 
 def _slots_of(result: dict[str, Any], team_id: str) -> list[int]:
@@ -227,7 +235,21 @@ def _only_sacrifice_of_kind(result: dict[str, Any], kind: str) -> dict[str, Any]
     matching = [d for d in _sacrificed(result) if kind in {c.get("kind") for c in d.get("causes", [])}]
     assert matching, f"écart attendu en rule_sacrificed, kind {kind} ; diagnostics : {result['diagnostics']}"
     assert matching[0]["severity"] == "WARNING", "un sacrifice est une alerte"
-    _assert_single_message(result)
+    _assert_single_message(result, expected_type="rule_sacrificed")
+    return matching[0]
+
+
+def _only_block_of_kind(result: dict[str, Any], kind: str) -> dict[str, Any]:
+    """Le ``blocked_by_reservation`` de ce kind : la règle tient, la séance reste non placée, planning produit."""
+    assert result["status"] == "completed", f"une séance non placée ne fait pas échouer (obtenu {result['status']})"
+    matching = [
+        d
+        for d in result["diagnostics"]
+        if d.get("type") == "blocked_by_reservation" and kind in {c.get("kind") for c in d.get("causes", [])}
+    ]
+    assert matching, f"écart attendu en blocked_by_reservation, kind {kind} ; diagnostics : {result['diagnostics']}"
+    assert matching[0]["severity"] == "WARNING", "un blocage par réservation est une alerte"
+    _assert_single_message(result, expected_type="blocked_by_reservation")
     return matching[0]
 
 
@@ -255,6 +277,8 @@ def test_the_only_coach_off_on_the_reserved_case_is_a_named_violation_with_the_r
     assert diagnostic["teamId"] == "T"
     _assert_names(diagnostic, "Ana Berger", "Indispo du jeudi", "Seniors A", "jeudi", "18:00")
     assert diagnostic["causes"][0]["constraintId"] == "off", "la règle doit rester cliquable (constraintId)"
+    # Le panneau ouvre la case réservée à partir de ces champs.
+    assert (diagnostic["venueId"], diagnostic["dayOfWeek"], diagnostic["startTime"]) == ("V", 4, "18:00")
 
 
 def test_a_grid_exhausted_by_other_teams_locks_names_the_team_and_the_session_gap() -> None:
@@ -269,7 +293,7 @@ def test_a_grid_exhausted_by_other_teams_locks_names_the_team_and_the_session_ga
         )
     )
 
-    diagnostic = _only_sacrifice_of_kind(result, "min_sessions")
+    diagnostic = _only_block_of_kind(result, "min_sessions")
     assert diagnostic["teamId"] == "T"
     assert _slots_of(result, "T") == [1], "seule la séance réservée est posée"
     _assert_names(diagnostic, "Seniors A", "2", "1", "Cadets")
@@ -319,7 +343,7 @@ def test_a_forced_day_taken_by_another_teams_reservation_leaves_the_session_unpl
         )
     )
 
-    diagnostic = _only_sacrifice_of_kind(result, "day_forced")
+    diagnostic = _only_block_of_kind(result, "day_forced")
     assert _slots_of(result, "T") == [], "la séance ne se place jamais hors de sa règle"
     _assert_names(diagnostic, "Vendredi imposé", "Seniors A", "Cadets")
 
@@ -337,7 +361,7 @@ def test_a_forced_day_whose_only_grid_case_is_reserved_does_not_go_infeasible() 
         )
     )
 
-    diagnostic = _only_sacrifice_of_kind(result, "day_forced")
+    diagnostic = _only_block_of_kind(result, "day_forced")
     assert _slots_of(result, "T") == []
     _assert_names(diagnostic, "Vendredi imposé", "Seniors A", "Cadets")
 
@@ -355,7 +379,7 @@ def test_a_hard_window_whose_only_case_is_reserved_leaves_the_session_unplaced_a
         )
     )
 
-    diagnostic = _only_sacrifice_of_kind(result, "time_window")
+    diagnostic = _only_block_of_kind(result, "time_window")
     assert _slots_of(result, "T") == [], "la séance ne se place jamais hors de sa fenêtre"
     _assert_names(diagnostic, "Pas après 18h", "Seniors A", "Cadets")
 
@@ -373,7 +397,7 @@ def test_a_venue_floor_taken_by_another_teams_reservation_leaves_the_session_unp
         )
     )
 
-    diagnostic = _only_sacrifice_of_kind(result, "session_floor")
+    diagnostic = _only_block_of_kind(result, "session_floor")
     assert _slots_of(result, "T") == [], "la séance ne se place jamais hors de sa règle"
     _assert_names(diagnostic, "Au moins 1 à W", "Seniors A", "Cadets")
 
@@ -418,7 +442,7 @@ def test_a_reservation_that_contradicts_nothing_sacrifices_nothing() -> None:
     )
 
     assert result["status"] == "completed"
-    assert _sacrificed(result) == [], f"aucun écart attendu, obtenu {_sacrificed(result)}"
+    assert _reservation_signals(result) == [], f"aucun écart attendu, obtenu {_sacrificed(result)}"
 
 
 def test_a_core_rule_no_lock_contradicts_is_not_relaxed_and_the_result_stays_failed() -> None:
@@ -442,7 +466,7 @@ def test_a_core_rule_no_lock_contradicts_is_not_relaxed_and_the_result_stays_fai
     result = solve_payload(payload)
 
     assert result["status"] == "failed", f"X reste impossible sans verrou en cause (obtenu {result['status']})"
-    assert _sacrificed(result) == [], f"aucun écart sur un planning non produit, obtenu {_sacrificed(result)}"
+    assert _reservation_signals(result) == [], f"aucun écart sur un planning non produit, obtenu {_sacrificed(result)}"
     infeasible = next(d for d in result["diagnostics"] if d.get("id") == "diag-infeasible")
     assert "Vendredi imposé" in infeasible["message"] and "Indispo du vendredi" in infeasible["message"]
 
@@ -456,7 +480,7 @@ def test_without_any_reservation_the_historic_signals_do_not_change() -> None:
     )
 
     assert result["status"] == "completed"
-    assert _sacrificed(result) == []
+    assert _reservation_signals(result) == []
     assert [d["type"] for d in result["diagnostics"]] == ["session_below_effective_min"]
 
 
@@ -474,4 +498,4 @@ def test_a_forced_day_the_grid_never_offers_stays_failed_even_with_reservations_
     )
 
     assert result["status"] == "failed", f"aucun verrou en cause (obtenu {result['status']})"
-    assert _sacrificed(result) == []
+    assert _reservation_signals(result) == []

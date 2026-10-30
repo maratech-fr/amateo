@@ -216,6 +216,29 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertMatchesRegularExpression('/r[ée]servation|verrou/i', $result, 'le message doit dire qu\'une réservation/un verrou a gagné');
     }
 
+    public function testBlockedByReservationComposesAMessageNamingTeamRuleAndReservationWithoutClaimingARelaxation(): void
+    {
+        // La réservation d'une AUTRE équipe prend la seule case compatible : la règle TIENT, la séance
+        // reste non placée (décision fondateur 2026-10-30). Le gabarit nomme l'équipe, la règle et la
+        // réservation, et n'affirme jamais qu'une règle a été relâchée.
+        $result = $this->builder->build(
+            [
+                'type' => 'blocked_by_reservation',
+                'severity' => 'WARNING',
+                'teamId' => 't1',
+                'message' => '',
+                'causes' => [['kind' => 'day_forced', 'constraintId' => 'd-1', 'label' => 'Vendredi imposé', 'count' => 1]],
+            ],
+            ['t1' => 'SM1'],
+        );
+
+        self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit doit exister');
+        self::assertStringContainsString('SM1', $result);
+        self::assertStringContainsString('Vendredi imposé', $result);
+        self::assertMatchesRegularExpression('/r[ée]servation/i', $result);
+        self::assertDoesNotMatchRegularExpression('/relâch|sacrifi/i', $result, 'la règle n\'est pas relâchée');
+    }
+
     protected function setUp(): void
     {
         $this->builder = new DiagnosticMessageBuilder;

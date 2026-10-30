@@ -14,7 +14,7 @@ sacrifiée. Deux garde-fous unitaires, sans chronomètre (donc sans flakiness) :
      tourne PAS : deux règles dures qui se contredisent restent un ÉCHEC (``failed``), jamais un
      ``rule_sacrificed``. C'est la règle « la réservation est la SEULE exception » à l'étage unitaire
      (le bout-en-bout est gardé par ``SovereignReservationProducesScheduleTest`` côté backend et
-     ``test_alap_sovereign_reservations.py`` côté moteur).
+     ``test_sovereign_reservations.py`` côté moteur).
 
 RED avant l'implémentation : ``BEST_EFFORT_SOLVE_MAX_SECONDS`` n'existe pas encore dans ``app.main``
 (ImportError à la collecte).

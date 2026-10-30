@@ -469,7 +469,7 @@ final class ParcImportExecuteTest extends WebTestCase
     {
         $a = $this->makeTeam('U9M1', sessionsPerWeek: 3);
         $b = $this->makeTeam('U11F2', sessionsPerWeek: 3);
-        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $venue = $this->makeVenue('Gymnase Platane', canSplit: true);
         $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
         $this->makeSlot($venue->getId(), 4, '16:00', capacity: 2);
         $this->scopeGucToClub($this->club->getId());
@@ -484,7 +484,7 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->flush();
 
         $parc = $this->parcWithCases([
-            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+            ['gymnase' => 'Gymnase Platane', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'Groupe X'],
         ]);
         $this->import($parc, [['section' => 'mutualisations', 'index' => 0, 'coche' => true]]);
 
