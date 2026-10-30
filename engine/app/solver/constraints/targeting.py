@@ -286,6 +286,15 @@ def add_time_window_constraints(
             if forced_day_set & locked_days_by_team.get(team_id_text, set()):
                 continue
 
+            frozen = getattr(model, "frozen_occupancy", None)
+            if frozen is not None and not any(s[0] == team_id_text and s[2] in forced_day_set for s in frozen):
+                # Verdict : le planning figé ne tient déjà pas ce jour imposé (best-effort).
+                sources = forced_sources.get(team_id_text) or [(None, None, 0)]
+                model.lifted_rules.append(
+                    {"teams": [team_id_text], "label": sources[0][1], "days": set(forced_day_set)}
+                )
+                continue
+
             forced_day_vars: list[BoolVarLike] = []
             for day_value in forced_day_set:
                 forced_day_vars.extend(team_day_vars.get(team_id_text, {}).get(day_value, []))
@@ -466,6 +475,12 @@ def add_venue_minimum_constraints(
             # Les réservations saturent déjà le plancher : rien à contraindre, rien à signaler.
             continue
 
+        frozen = getattr(model, "frozen_occupancy", None)
+        if frozen is not None and len({s[2] for s in frozen if s[0] == team_id and s[1] == venue_id}) < minimum:
+            # Verdict : le planning figé ne tient déjà pas ce plancher (best-effort).
+            model.lifted_rules.append({"teams": [team_id], "label": floor_label, "venueId": venue_id})
+            continue
+
         team_venue_vars = [
             var
             for slot_key, var in x.items()
@@ -533,10 +548,13 @@ def add_venue_minimum_constraints(
                     "kind": "session_floor",
                     "constraintId": floor_constraint_id,
                     "label": floor_label,
-                    "sessions": effective_min,
+                    # Un plancher n'interdit pas les autres gymnases : l'équipe garde ses séances.
+                    "sessions": 0,
+                    "minimum": minimum,
                     "venueId": venue_id,
                 }
             )
+            model.relaxed_floor_vars.extend(team_venue_vars)
         floor_constraint = model.Add(sum(team_venue_vars) >= effective_min)
         if floor_literal is not None:
             floor_constraint.OnlyEnforceIf(floor_literal)
@@ -714,6 +732,14 @@ def add_shared_block_constraints(
             for team_id in member_ids:
                 member_case_bvars[(team_id, venue_id, slot_id)].append(b)
             b_list.append(b)
+
+        frozen = getattr(model, "frozen_occupancy", None)
+        if frozen is not None:
+            cases_by_member = [{(s[1], s[2], s[3]) for s in frozen if s[0] == member} for member in member_ids]
+            if len(set.intersection(*cases_by_member)) < common_sessions:
+                # Verdict : le planning figé ne réunit déjà pas ce groupe (best-effort).
+                model.lifted_rules.append({"teams": member_ids, "label": None})
+                continue
 
         # P4-96 PR-2 — le bloc est une contrainte dure SOURCE saisie (``Σb == commonSessions``) :
         # UNE littérale par bloc (kind `shared_block`), partagée par la contrainte de compte ET la

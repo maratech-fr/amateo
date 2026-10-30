@@ -151,7 +151,7 @@ final class DiagnosticMessageBuilder
         $ofTeam = null !== $teamName ? \sprintf(' de %s', $teamName) : '';
 
         return \sprintf(
-            'Un verrou (réservation) est prioritaire : %s%s n\'a pas pu être honorée et a été relâchée.',
+            'Une séance fixée est prioritaire : %s%s n\'a pas pu être honorée et a été relâchée.',
             $rule,
             $ofTeam,
         );
@@ -179,7 +179,7 @@ final class DiagnosticMessageBuilder
         }
         $rule = '' !== $label ? \sprintf('la règle « %s »', $label) : 'ses règles';
 
-        return \sprintf('Séance non placée pour %s : la réservation d\'une autre équipe occupe la seule case compatible avec %s.', $teamName, $rule);
+        return \sprintf('Séance non placée pour %s : la séance fixée d\'une autre équipe occupe la seule case compatible avec %s.', $teamName, $rule);
     }
 
     /**

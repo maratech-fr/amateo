@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
@@ -33,6 +34,7 @@ final class GenerateScheduleController extends AbstractController implements Sea
     use ResolvesCurrentClubTrait;
 
     public function __construct(
+        private readonly CoachInTwoPlacesGuard $coachInTwoPlacesGuard,
         private EntityManagerInterface $entityManager,
         private MessageBusInterface $messageBus,
         private RequestStack $requestStack,
@@ -119,6 +121,11 @@ final class GenerateScheduleController extends AbstractController implements Sea
         $orphanPin = $this->orphanPinGuard->firstOrphanMessage($schedule);
         if (null !== $orphanPin) {
             return $this->json(['error' => $orphanPin], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $coachInTwoPlaces = $this->coachInTwoPlacesGuard->firstConflictMessage($schedule);
+        if (null !== $coachInTwoPlaces) {
+            return $this->json(['error' => $coachInTwoPlaces], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // Launching the first generation completes onboarding (the wizard is done);

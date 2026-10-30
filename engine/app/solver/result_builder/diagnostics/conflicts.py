@@ -325,6 +325,7 @@ def _diagnose_conflicts(
                         "message": (
                             f"Le coach {_label(clash_coach, coach_names)} est affecté à plusieurs équipes "
                             f"en même temps le {when}, dans des gymnases différents : {_named_list(list(pair), team_names)}."
+                            + (" Au moins une de ces séances est une séance fixée." if reservation_at_stake else "")
                         ),
                         "suggestions": [
                             "Séparez les séances ou affectez un autre coach à l'une des équipes.",

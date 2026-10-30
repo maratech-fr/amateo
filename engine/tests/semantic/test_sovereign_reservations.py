@@ -407,9 +407,9 @@ def test_a_hard_window_whose_only_case_is_reserved_leaves_the_session_unplaced_a
     _assert_names(diagnostic, "Pas après 18h", "Seniors A", "Cadets")
 
 
-def test_a_venue_floor_taken_by_another_teams_reservation_leaves_the_session_unplaced_and_named() -> None:
-    """Plancher « au moins 1 séance à W » dont la seule case est réservée par une autre équipe : la
-    séance unique de l'équipe ne part pas ailleurs, elle reste non placée."""
+def test_a_venue_floor_taken_by_another_teams_reservation_sends_the_session_elsewhere_and_is_named() -> None:
+    """Plancher « au moins 1 séance à W » dont la seule case est réservée par une autre équipe : un
+    plancher n'interdit pas les autres gymnases, la séance va à V, seul le minimum manque."""
     floor = _hard_team_rule("f", "T", "FACILITY", {"minAtVenueId": "W", "minAtVenueCount": 1}, "Au moins 1 à W")
     result = solve_payload(
         make_payload(
@@ -421,7 +421,8 @@ def test_a_venue_floor_taken_by_another_teams_reservation_leaves_the_session_unp
     )
 
     diagnostic = _only_block_of_kind(result, "session_floor")
-    assert _slots_of(result, "T") == [], "la séance ne se place jamais hors de sa règle"
+    assert _slots_of(result, "T") == [1], "un plancher n'interdit pas les autres gymnases"
+    assert "0 séance à W au lieu de 1" in diagnostic["message"], diagnostic["message"]
     _assert_names(diagnostic, "Au moins 1 à W", "Seniors A", "Cadets")
 
 

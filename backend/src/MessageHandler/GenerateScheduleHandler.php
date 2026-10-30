@@ -56,7 +56,7 @@ final class GenerateScheduleHandler
      * La marge couvre ce que le budget moteur NE compte PAS : l'aller-retour HTTP, la
      * sérialisation du payload, l'import du résultat. Le budget réel du moteur est
      * `min(tier, solver_timeout_seconds) + CHAINING_PHASE_MAX_SECONDS` — soit 610 s au
-     * plafond, contre 710 s de TTL ici. `GenerationLockOutlivesTheSolveTest` compare les deux
+     * plafond (700 s par le best-effort : nominal, diagnostic, sonde, best-effort, chaînage), contre 810 s de TTL ici. `GenerationLockOutlivesTheSolveTest` compare les deux
      * en lisant le moteur : baisser cette marge sous le budget fait rougir la CI, au lieu de
      * se découvrir en production sur un planning écrasé.
      */

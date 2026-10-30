@@ -175,6 +175,8 @@ final class MutualizeSlotService
                 $toMove[] = $replaced;
             }
 
+            $this->assertNewBlockFitsItsReservations($members, $planId);
+
             // Activer les équipes à 0 séance (override de période : 1 séance, marquée « mutualisation »)
             // AVANT la garde Σ, pour que leur volume effectif reflète le geste.
             foreach ($toActivate as $teamId) {
@@ -394,6 +396,10 @@ final class MutualizeSlotService
             if (null !== $oldBlockId) {
                 $this->assertOldBlockKeepsItsReservations($oldBlockId);
             }
+        }
+
+        if (null === $this->findBlockIdWithExactTeamSet($clubId, $seasonId, $planId, $members)) {
+            $this->assertNewBlockFitsItsReservations($members, $planId);
         }
 
         // La case SOURCE qui sera libérée (bandeau côté UI) — celle du créneau source.
@@ -747,6 +753,20 @@ final class MutualizeSlotService
         }
 
         return null;
+    }
+
+    /**
+     * Décision fondateur 2026-10-30 — un groupe neuf à 1 séance commune sur des équipes déjà réservées
+     * ensemble sur plusieurs cases sortirait en échec à la génération suivante.
+     *
+     * @param list<string> $members
+     */
+    private function assertNewBlockFitsItsReservations(array $members, ?string $planId): void
+    {
+        $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($members, true), $planId);
+        if ($reservedSessions > 1) {
+            throw new MutualizationRefusedException(ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions));
+        }
     }
 
     private function assertOldBlockKeepsItsReservations(string $blockId): void

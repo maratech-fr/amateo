@@ -522,6 +522,9 @@ BEST_EFFORT_SOLVE_MAX_SECONDS = 60
 # ``test_a_rule_conflict_not_caused_by_a_lock_stays_failed_even_with_reservations_elsewhere``).
 BEST_EFFORT_PROBE_MAX_SECONDS = 15
 
+# Plancher de gymnase levé par le best-effort : devant toute préférence de confort, derrière le remplissage.
+RELAXED_FLOOR_PLACEMENT_WEIGHT = 500
+
 
 def _adaptive_timeout(n_teams: int, n_venues: int, payload_cap: int) -> int:
     """Scale the solve budget to problem size, capped by the payload budget.
@@ -571,6 +574,7 @@ def _solve(
     assumptions_enabled: bool = False,
     budget_override: int | None = None,
     relax_source_keys: frozenset[str] | None = None,
+    placement_only: bool = False,
 ) -> tuple[int, cp_model.CpSolver, ScheduleCpModel, list[dict[str, Any]], dict[str, Any]]:
     """Run the solver pipeline: build model, add constraints, solve.
 
@@ -864,6 +868,8 @@ def _solve(
             *travel_battement_terms,
             *socle_reference_terms,
             *proximity_terms,
+            # Plancher levé : l'équipe s'approche de son minimum tant qu'une case le permet.
+            *((var, RELAXED_FLOOR_PLACEMENT_WEIGHT) for var in model.relaxed_floor_vars),
         ],
         # A person chains a back-to-back pair as coach OR as player of the team;
         # the map is built once from the constraint links (l.446) and the chaining
@@ -927,7 +933,12 @@ def _solve(
     # pour la stabilité). Sans trajet ni stabilité, la condition se réduit à l'historique
     # `chaining_terms` (byte-identique).
     low_band_terms = [*stability_terms, *travel_departage_terms]
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and (objective_stats.chaining_terms or low_band_terms):
+    # `placement_only` : la sonde de causalité ne demande que « faisable ? », un seul solve suffit.
+    if (
+        not placement_only
+        and status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        and (objective_stats.chaining_terms or low_band_terms)
+    ):
         placement_optimum = int(solver.ObjectiveValue())
         cast(Any, model).Add(objective_stats.placement_expression >= placement_optimum)
         # Warm-start phase 2 with the placement-optimal solution so it always has
@@ -1126,6 +1137,7 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
         _without_hard_locks(data),
         input_data,
         budget_override=BEST_EFFORT_PROBE_MAX_SECONDS,
+        placement_only=True,
     )
     return probe_status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
@@ -1133,7 +1145,8 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
 def _without_hard_locks(data: dict[str, Any]) -> dict[str, Any]:
     """Copie de ``data`` SANS ses verrous HARD (``lockLevel`` == HARD retiré de chaque collection de
     gabarits que ``build_model`` lit). Les gabarits non-HARD et le reste du payload sont intacts.
-    Sert la sonde de causalité (grille rendue à sa capacité pleine)."""
+    Sert la sonde de causalité (grille rendue à sa capacité pleine). Le plancher garde son crédit : une
+    équipe servie par ses propres verrous ne réclame pas ces séances une seconde fois (P4-97)."""
     template_keys = (
         "slotTemplates",
         "scheduleSlotTemplates",
@@ -1144,6 +1157,25 @@ def _without_hard_locks(data: dict[str, Any]) -> dict[str, Any]:
         "slots",
     )
     probe = dict(data)
+    locked_days: dict[tuple[str, str], set[int]] = {}
+    for key in template_keys:
+        for template in probe.get(key) or []:
+            if (
+                isinstance(template, Mapping)
+                and str(template.get("lockLevel") or template.get("lock_level") or "").upper() == "HARD"
+            ):
+                where = (
+                    str(template.get("teamId") or template.get("team_id") or ""),
+                    str(template.get("venueId") or template.get("venue_id") or ""),
+                )
+                locked_days.setdefault(where, set()).add(
+                    int(template.get("dayOfWeek") or template.get("day_of_week") or 0)
+                )
+    probe["constraints"] = [
+        credited
+        for c in probe.get("constraints") or []
+        if (credited := _floor_with_lock_credit(c, locked_days)) is not None
+    ]
     for key in template_keys:
         templates = probe.get(key)
         if isinstance(templates, list):
@@ -1155,6 +1187,20 @@ def _without_hard_locks(data: dict[str, Any]) -> dict[str, Any]:
                 )
             ]
     return probe
+
+
+def _floor_with_lock_credit(constraint: Any, locked_days: dict[tuple[str, str], set[int]]) -> Any:
+    """La contrainte telle que la sonde la voit : un plancher, moins les jours déjà verrouillés par son
+    équipe à ce gymnase (``None`` si tous sont servis). Toute autre contrainte passe telle quelle."""
+    config = constraint.get("config") if isinstance(constraint, Mapping) else None
+    if not isinstance(config, Mapping) or not config.get("minAtVenueId"):
+        return constraint
+    team_id = str(constraint.get("scopeTargetId") or constraint.get("scope_target_id") or "")
+    credit = len(locked_days.get((team_id, str(config["minAtVenueId"])), ()))
+    remaining = int(config.get("minAtVenueCount") or 1) - credit
+    if credit == 0:
+        return constraint
+    return None if remaining <= 0 else {**constraint, "config": {**config, "minAtVenueCount": remaining}}
 
 
 @app.get("/health")

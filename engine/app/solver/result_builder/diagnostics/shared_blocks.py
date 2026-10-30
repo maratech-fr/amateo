@@ -659,7 +659,7 @@ def _diagnose_sacrificed_rules(
         names = _named_list(members, team_names)
         sessions = _sessions_phrase(int(_get(block, "commonSessions", "common_sessions", default=0) or 0))
         by_case = [
-            f"{_day_label(day)} {start}, {_label(venue_id, venue_names)}, réservé pour {_named_list(sorted(pins), team_names)}"
+            f"{_day_label(day)} {start}, {_label(venue_id, venue_names)}, séance fixée de {_named_list(sorted(pins), team_names)}"
             for venue_id, day, start, pins in sorted(blocked, key=lambda case: (case[1], case[2], case[0]))[:3]
         ]
         detail = f" ({' ; '.join(by_case)})" if by_case else ""
@@ -668,12 +668,12 @@ def _diagnose_sacrificed_rules(
             "type": "rule_sacrificed",
             "severity": "WARNING",
             "message": (
-                f"Le groupe {names} ne peut pas tenir {sessions} : une réservation occupe la case où "
-                f"réunir ses équipes{detail}. La réservation est tenue ; la mutualisation du groupe est relâchée."
+                f"Le groupe {names} ne peut pas tenir {sessions} : une séance fixée occupe la case où "
+                f"réunir ses équipes{detail}. La séance fixée est tenue ; la mutualisation du groupe est relâchée."
             ),
             "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": max(1, len(blocked))}],
             "suggestions": [
-                "Libérez la case réservée ou déplacez la réservation si vous voulez que le groupe se réunisse.",
+                "Libérez la case ou déplacez la séance fixée si vous voulez que le groupe se réunisse.",
             ],
             "createdAt": datetime.now(UTC).isoformat(),
         }

@@ -172,10 +172,17 @@ def test_after_a_venue_floor_lost_to_a_reservation_an_unrelated_team_can_still_m
     assert verdict["valid"] is True, f"déplacer une équipe sans rapport reste permis : {verdict['violations']}"
 
 
-def test_the_missing_session_of_a_venue_floor_can_be_placed_by_hand_elsewhere_and_is_flagged() -> None:
+def test_the_session_of_a_lost_venue_floor_can_be_moved_by_hand_outside_it_and_is_flagged() -> None:
+    """Décision 2026-10-30 : un plancher n'interdit pas les autres gymnases, T joue déjà à V. Déplacer cette
+    séance reste permis, hors du plancher levé, et signalé."""
     baseline = _generated(_floor_taken())
+    placed = next(t for t in baseline["slotTemplates"] if t["teamId"] == "T")
+    others = [t for t in baseline["slotTemplates"] if t is not placed]
+    reference = _case("T", placed["venueId"], placed["dayOfWeek"], placed["startTime"])
 
-    verdict = _verdict(baseline, _case("T", "V", _free_days(baseline, "V", (1, 3, 4))[0]), None)
+    verdict = _verdict(
+        {**baseline, "slotTemplates": others}, _case("T", "V", _free_days(baseline, "V", (1, 3, 4))[0]), reference
+    )
 
     assert verdict["valid"] is True, f"la pose manuelle hors de la règle levée est permise : {verdict['violations']}"
     _assert_flagged(verdict, "Au moins 1 à W")

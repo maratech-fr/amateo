@@ -213,7 +213,7 @@ def diagnose_locked_slot_violations(
                         "count": 1,
                     }
                 ],
-                "suggestions": ["Déplacez la réservation ou assouplissez la règle si vous voulez qu'elle s'applique."],
+                "suggestions": ["Déplacez la séance fixée ou assouplissez la règle si vous voulez qu'elle s'applique."],
             }
         )
         warnings.append(warning)
@@ -252,7 +252,7 @@ def diagnose_locked_slot_violations(
                         _constraint_of_coach(coach_id, (source or {}).get("label") or _coach(coach_id)),
                         team_id,
                         lock_id,
-                        f"Réservation de {_team(team_id)} maintenue ({where}) alors que {_coach(coach_id)} est indisponible.",
+                        f"Séance fixée de {_team(team_id)} maintenue ({where}) alors que {_coach(coach_id)} est indisponible.",
                         kind="coach_unavailability",
                         where_fields=lock_case,
                         source=source or {},
@@ -293,7 +293,7 @@ def diagnose_locked_slot_violations(
                     constraint,
                     team_id,
                     lock_id,
-                    f"Réservation de {_team(team_id)} maintenue ({where}) hors de sa fenêtre horaire.",
+                    f"Séance fixée de {_team(team_id)} maintenue ({where}) hors de sa fenêtre horaire.",
                     kind="time_window",
                     where_fields=lock_case,
                 )
@@ -315,7 +315,7 @@ def diagnose_locked_slot_violations(
                         constraint,
                         team_id,
                         lock_id,
-                        f"Réservation de {_team(team_id)} maintenue ({where}) un jour exclu par ses règles de jours.",
+                        f"Séance fixée de {_team(team_id)} maintenue ({where}) un jour exclu par ses règles de jours.",
                         kind="day_forbidden",
                         where_fields=lock_case,
                     )
@@ -329,7 +329,7 @@ def diagnose_locked_slot_violations(
                     {"id": f"forced-days-{team_id}", "name": f"jours imposés de {_team(team_id)}"},
                     team_id,
                     lock_id,
-                    f"Réservation de {_team(team_id)} maintenue ({where}) alors qu'une séance est imposée "
+                    f"Séance fixée de {_team(team_id)} maintenue ({where}) alors qu'une séance est imposée "
                     f"{', '.join(_day_label(d) for d in sorted(forced))}.",
                     kind="day_forced",
                     where_fields=lock_case,
@@ -353,7 +353,7 @@ def diagnose_locked_slot_violations(
                     {"id": f"forbidden-venue-{team_id}-{venue_id}", "name": f"gymnase interdit ({_venue(venue_id)})"},
                     team_id,
                     lock_id,
-                    f"Réservation de {_team(team_id)} maintenue ({where}) dans un gymnase qui lui est interdit.",
+                    f"Séance fixée de {_team(team_id)} maintenue ({where}) dans un gymnase qui lui est interdit.",
                     kind="venue_forbidden",
                     where_fields=lock_case,
                     source=item,
@@ -372,7 +372,7 @@ def diagnose_locked_slot_violations(
                 {"id": f"forced-venue-{team_id}", "name": f"gymnase imposé ({_venue(str(target_venue))})"},
                 team_id,
                 lock_id,
-                f"Réservation de {_team(team_id)} maintenue ({where}) hors du gymnase imposé {_venue(str(target_venue))}.",
+                f"Séance fixée de {_team(team_id)} maintenue ({where}) hors du gymnase imposé {_venue(str(target_venue))}.",
                 kind="forced_venue_elsewhere",
                 where_fields=lock_case,
                 source=forced_venue_sources.get(team_id) or {},

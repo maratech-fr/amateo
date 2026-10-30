@@ -93,7 +93,8 @@ final class PayloadCapacityMirror
 
     /**
      * Les gymnases dont les « au moins » dépassent la grille MÊME SANS aucun verrou HARD : aucune
-     * réservation n'est en cause, le moteur échouera (miroir de sa sonde de causalité).
+     * réservation n'est en cause, le moteur échouera (miroir de sa sonde de causalité). Le plancher garde
+     * son crédit : une équipe servie par ses propres verrous ne réclame pas ces séances une seconde fois.
      *
      * @param array<string, mixed> $payload
      *
@@ -101,13 +102,7 @@ final class PayloadCapacityMirror
      */
     public function venuesSaturatedWithoutLocks(array $payload): array
     {
-        $templates = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
-        $payload['slotTemplates'] = array_values(array_filter(
-            $templates,
-            static fn (mixed $pin): bool => !\is_array($pin) || 'HARD' !== ($pin['lockLevel'] ?? null),
-        ));
-
-        return array_column($this->venueMinimumSaturation($payload), 'venueId');
+        return array_column($this->saturation($payload, false), 'venueId');
     }
 
     /**
@@ -133,109 +128,11 @@ final class PayloadCapacityMirror
      *
      * @param array<string, mixed> $payload
      *
-     * @return list<array{venueId: string, venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>}>
+     * @return list<array{venueId: string, venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>, pinnedCases: int, freeElsewhere: int}>
      */
     public function venueMinimumSaturation(array $payload): array
     {
-        /** @var array<string, array<string, int>> $minByVenueTeam venueId => teamId => min */
-        $minByVenueTeam = [];
-        foreach (\is_array($payload['constraints'] ?? null) ? $payload['constraints'] : [] as $row) {
-            if (!\is_array($row) || 'FACILITY' !== ($row['family'] ?? null) || false === ($row['isActive'] ?? true)) {
-                continue;
-            }
-            $config = \is_array($row['config'] ?? null) ? $row['config'] : [];
-            // Mêmes gardes que la branche moteur (`constraints.py`) : HARD, scope
-            // TEAM avec cible — ce que le validateur laisse passer d'autre est ignoré là-bas.
-            if (empty($config['minAtVenueId'])
-                || ($row['ruleType'] ?? null) !== 'HARD'
-                || 'TEAM' !== ($row['scope'] ?? null)
-                || empty($row['scopeTargetId'])
-            ) {
-                continue;
-            }
-            $venueId = (string) $config['minAtVenueId'];
-            $teamId = (string) $row['scopeTargetId'];
-            $min = max(1, isset($config['minAtVenueCount']) ? (int) $config['minAtVenueCount'] : 1);
-            $minByVenueTeam[$venueId][$teamId] = max($minByVenueTeam[$venueId][$teamId] ?? 0, $min);
-        }
-
-        if ([] === $minByVenueTeam) {
-            return [];
-        }
-
-        // Triplets fermés par un verrou HARD (réservations + slots épinglés), ET les JOURS
-        // DISTINCTS verrouillés par (gymnase, équipe) — ces derniers créditent la demande
-        // (P4-97 : un pin honore le plancher, comme `effective_min` côté moteur).
-        $pinnedKeys = [];
-        /** @var array<string, array<string, true>> $pinTeamsByVenue venueId => équipe qui réserve => true */
-        $pinTeamsByVenue = [];
-        /** @var array<string, array<string, array<int|string, true>>> $lockedDaysByVenueTeam venueId => teamId => day => true */
-        $lockedDaysByVenueTeam = [];
-        foreach (\is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [] as $pin) {
-            if (!\is_array($pin) || 'HARD' !== ($pin['lockLevel'] ?? null)) {
-                continue;
-            }
-            $pinVenueId = (string) ($pin['venueId'] ?? '');
-            $pinnedKeys[$this->key($pinVenueId, $pin['dayOfWeek'] ?? '', (string) ($pin['startTime'] ?? ''))] = true;
-            $pinTeamId = (string) ($pin['teamId'] ?? '');
-            $pinTeamsByVenue[$pinVenueId][$pinTeamId] = true;
-            $pinDay = $pin['dayOfWeek'] ?? null;
-            if ('' !== $pinTeamId && null !== $pinDay) {
-                $lockedDaysByVenueTeam[$pinVenueId][$pinTeamId][$pinDay] = true;
-            }
-        }
-
-        /** @var array<string, array<string, int>> $freeByVenue venueId => triplet => capacité libre */
-        $freeByVenue = [];
-        $venueNames = [];
-        foreach (\is_array($payload['venues'] ?? null) ? $payload['venues'] : [] as $venue) {
-            if (!\is_array($venue)) {
-                continue;
-            }
-            $venueId = (string) ($venue['id'] ?? '');
-            $venueNames[$venueId] = (string) ($venue['name'] ?? $venueId);
-            if (!isset($minByVenueTeam[$venueId])) {
-                continue;
-            }
-            foreach (\is_array($venue['trainingSlots'] ?? null) ? $venue['trainingSlots'] : [] as $slot) {
-                if (!\is_array($slot)) {
-                    continue;
-                }
-                $key = $this->key($venueId, $slot['dayOfWeek'] ?? '', (string) ($slot['startTime'] ?? ''));
-                if (isset($pinnedKeys[$key])) {
-                    continue;
-                }
-                $capacity = (int) ($slot['capacity'] ?? 0);
-                $freeByVenue[$venueId][$key] = $capacity;
-            }
-        }
-
-        $teamNames = [];
-        foreach (\is_array($payload['teams'] ?? null) ? $payload['teams'] : [] as $team) {
-            if (\is_array($team)) {
-                $teamNames[(string) ($team['id'] ?? '')] = (string) ($team['name'] ?? ($team['id'] ?? ''));
-            }
-        }
-
-        $saturated = [];
-        foreach ($minByVenueTeam as $venueId => $minByTeam) {
-            $demand = 0;
-            $teams = [];
-            foreach ($minByTeam as $teamId => $min) {
-                $lockedDays = \count($lockedDaysByVenueTeam[$venueId][$teamId] ?? []);
-                $remaining = max(0, $min - $lockedDays);
-                $demand += $remaining;
-                if ($remaining > 0) {
-                    $teams[$teamNames[$teamId] ?? $teamId] = $remaining;
-                }
-            }
-            $free = array_sum($freeByVenue[$venueId] ?? []);
-            if ($demand > $free) {
-                $saturated[] = ['venueId' => $venueId, 'venueName' => $venueNames[$venueId] ?? $venueId, 'demand' => $demand, 'free' => $free, 'teams' => $teams, 'reservedBy' => array_map(static fn (string|int $id): string => $teamNames[(string) $id] ?? (string) $id, array_keys(array_diff_key($pinTeamsByVenue[$venueId] ?? [], $minByTeam)))];
-            }
-        }
-
-        return $saturated;
+        return $this->saturation($payload, true);
     }
 
     /**
@@ -325,5 +222,125 @@ final class PayloadCapacityMirror
     public function key(string $venueId, mixed $dayOfWeek, string $startTime): string
     {
         return \sprintf('%s|%s|%s', $venueId, $dayOfWeek, substr($startTime, 0, 5));
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return list<array{venueId: string, venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>, pinnedCases: int, freeElsewhere: int}>
+     */
+    private function saturation(array $payload, bool $pinsCloseCases): array
+    {
+        /** @var array<string, array<string, int>> $minByVenueTeam venueId => teamId => min */
+        $minByVenueTeam = [];
+        foreach (\is_array($payload['constraints'] ?? null) ? $payload['constraints'] : [] as $row) {
+            if (!\is_array($row) || 'FACILITY' !== ($row['family'] ?? null) || false === ($row['isActive'] ?? true)) {
+                continue;
+            }
+            $config = \is_array($row['config'] ?? null) ? $row['config'] : [];
+            // Mêmes gardes que la branche moteur (`constraints.py`) : HARD, scope
+            // TEAM avec cible — ce que le validateur laisse passer d'autre est ignoré là-bas.
+            if (empty($config['minAtVenueId'])
+                || ($row['ruleType'] ?? null) !== 'HARD'
+                || 'TEAM' !== ($row['scope'] ?? null)
+                || empty($row['scopeTargetId'])
+            ) {
+                continue;
+            }
+            $venueId = (string) $config['minAtVenueId'];
+            $teamId = (string) $row['scopeTargetId'];
+            $min = max(1, isset($config['minAtVenueCount']) ? (int) $config['minAtVenueCount'] : 1);
+            $minByVenueTeam[$venueId][$teamId] = max($minByVenueTeam[$venueId][$teamId] ?? 0, $min);
+        }
+
+        if ([] === $minByVenueTeam) {
+            return [];
+        }
+
+        // Triplets fermés par un verrou HARD (réservations + slots épinglés), ET les JOURS
+        // DISTINCTS verrouillés par (gymnase, équipe) — ces derniers créditent la demande
+        // (P4-97 : un pin honore le plancher, comme `effective_min` côté moteur).
+        $pinnedKeys = [];
+        /** @var array<string, array<string, true>> $pinTeamsByVenue venueId => équipe qui réserve => true */
+        $pinTeamsByVenue = [];
+        /** @var array<string, array<string, array<int|string, true>>> $lockedDaysByVenueTeam venueId => teamId => day => true */
+        $lockedDaysByVenueTeam = [];
+        foreach (\is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [] as $pin) {
+            if (!\is_array($pin) || 'HARD' !== ($pin['lockLevel'] ?? null)) {
+                continue;
+            }
+            $pinVenueId = (string) ($pin['venueId'] ?? '');
+            $pinnedKeys[$this->key($pinVenueId, $pin['dayOfWeek'] ?? '', (string) ($pin['startTime'] ?? ''))] = true;
+            $pinTeamId = (string) ($pin['teamId'] ?? '');
+            $pinTeamsByVenue[$pinVenueId][$pinTeamId] = true;
+            $pinDay = $pin['dayOfWeek'] ?? null;
+            if ('' !== $pinTeamId && null !== $pinDay) {
+                $lockedDaysByVenueTeam[$pinVenueId][$pinTeamId][$pinDay] = true;
+            }
+        }
+
+        /** @var array<string, array<string, int>> $freeByVenue venueId => triplet => capacité libre */
+        $freeByVenue = [];
+        $venueNames = [];
+        foreach (\is_array($payload['venues'] ?? null) ? $payload['venues'] : [] as $venue) {
+            if (!\is_array($venue)) {
+                continue;
+            }
+            $venueId = (string) ($venue['id'] ?? '');
+            $venueNames[$venueId] = (string) ($venue['name'] ?? $venueId);
+            foreach (\is_array($venue['trainingSlots'] ?? null) ? $venue['trainingSlots'] : [] as $slot) {
+                if (!\is_array($slot)) {
+                    continue;
+                }
+                $key = $this->key($venueId, $slot['dayOfWeek'] ?? '', (string) ($slot['startTime'] ?? ''));
+                if ($pinsCloseCases && isset($pinnedKeys[$key])) {
+                    continue;
+                }
+                $capacity = (int) ($slot['capacity'] ?? 0);
+                $freeByVenue[$venueId][$key] = $capacity;
+            }
+        }
+
+        $teamNames = [];
+        foreach (\is_array($payload['teams'] ?? null) ? $payload['teams'] : [] as $team) {
+            if (\is_array($team)) {
+                $teamNames[(string) ($team['id'] ?? '')] = (string) ($team['name'] ?? ($team['id'] ?? ''));
+            }
+        }
+
+        $saturated = [];
+        foreach ($minByVenueTeam as $venueId => $minByTeam) {
+            $demand = 0;
+            $teams = [];
+            foreach ($minByTeam as $teamId => $min) {
+                $lockedDays = \count($lockedDaysByVenueTeam[$venueId][$teamId] ?? []);
+                $remaining = max(0, $min - $lockedDays);
+                $demand += $remaining;
+                if ($remaining > 0) {
+                    $teams[$teamNames[$teamId] ?? $teamId] = $remaining;
+                }
+            }
+            $free = array_sum($freeByVenue[$venueId] ?? []);
+            if ($demand > $free) {
+                $pinned = 0;
+                foreach (array_keys($pinnedKeys) as $key) {
+                    if (str_starts_with((string) $key, $venueId . '|')) {
+                        ++$pinned;
+                    }
+                }
+                $saturated[] = [
+                    'venueId' => $venueId,
+                    'venueName' => $venueNames[$venueId] ?? $venueId,
+                    'demand' => $demand,
+                    'free' => $free,
+                    'teams' => $teams,
+                    'reservedBy' => array_map(static fn (string|int $id): string => $teamNames[(string) $id] ?? (string) $id, array_keys($pinTeamsByVenue[$venueId] ?? [])),
+                    'pinnedCases' => $pinned,
+                    'freeElsewhere' => array_sum(array_map(array_sum(...), array_diff_key($freeByVenue, [$venueId => true]))),
+                ];
+            }
+        }
+
+        return $saturated;
     }
 }

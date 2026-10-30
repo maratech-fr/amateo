@@ -580,7 +580,14 @@ describe("DiagnosticsPanel — les diagnostics de réservation gardent leurs ges
       ...over,
     }) as Diagnostic;
 
-  it.each(["rule_sacrificed", "blocked_by_reservation"])("%s : nomme la règle et mène à SA contrainte", (type) => {
+  it("blocked_by_reservation : nomme la règle, qui tient, sans lien pour la corriger", () => {
+    renderWithProviders(<DiagnosticsPanel diagnostics={[reservationDiag("blocked_by_reservation")]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
+
+    expect(screen.getByText(/Vendredi imposé/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: PLANNING_TEXTS.fixRuleLink })).toBeNull();
+  });
+
+  it.each(["rule_sacrificed"])("%s : nomme la règle et mène à SA contrainte", (type) => {
     renderWithProviders(<DiagnosticsPanel diagnostics={[reservationDiag(type)]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
 
     expect(screen.getByText(/Vendredi imposé/)).toBeInTheDocument();

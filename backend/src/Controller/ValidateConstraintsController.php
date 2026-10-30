@@ -373,7 +373,7 @@ final class ValidateConstraintsController extends AbstractController
      * « Poussins et Benjamins demandent chacune au moins 1 séance à Platane, mais il n'y reste qu'une
      * place : la réservation de Seniors C occupe l'autre. Une équipe restera sans séance. ».
      *
-     * @param array{venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>} $s
+     * @param array{venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>, pinnedCases: int, freeElsewhere: int} $s
      */
     private function reservationSaturationWarning(array $s): string
     {
@@ -395,14 +395,20 @@ final class ValidateConstraintsController extends AbstractController
         };
 
         $reservedBy = $s['reservedBy'];
-        if (1 === \count($reservedBy)) {
+        if (1 === $s['pinnedCases'] && 1 === \count($reservedBy)) {
             $taken = \sprintf('la réservation de %s occupe %s', $reservedBy[0], 1 === $s['free'] ? 'l\'autre' : (0 === $s['free'] ? 'la case' : 'une autre'));
         } else {
             $taken = \sprintf('les réservations de %s occupent les autres', $this->frenchList($reservedBy));
         }
 
+        // « Sans séance » n'est dit que si c'est vrai : chaque équipe n'en réclame qu'une, et nul autre
+        // gymnase n'a de place. Sinon l'équipe joue ailleurs, seul le minimum manque.
         $missing = $s['demand'] - $s['free'];
-        $outcome = 1 === $missing ? 'Une équipe restera sans séance.' : \sprintf('%d séances resteront non placées.', $missing);
+        if (0 === $s['freeElsewhere'] && [1] === $amounts) {
+            $outcome = 1 === $missing ? 'Une équipe restera sans séance.' : \sprintf('%d équipes resteront sans séance.', $missing);
+        } else {
+            $outcome = \sprintf('Le minimum ne sera pas tenu : %s %s à %s.', $this->plural($missing, 'séance', 'séances'), 1 === $missing ? 'manquera' : 'manqueront', $s['venueName']);
+        }
 
         return \sprintf('%s à %s, mais %s : %s. %s', $asks, $s['venueName'], $left, $taken, $outcome);
     }

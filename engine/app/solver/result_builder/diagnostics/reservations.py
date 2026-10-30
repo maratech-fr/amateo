@@ -82,12 +82,12 @@ def _other_teams_locks_on(team_id: str, venue_id: str, day: int, start: int, mod
 def _reservations_phrase(
     locks: list[Mapping[str, Any]], team_names: Mapping[str, str], venue_names: Mapping[str, str]
 ) -> str:
-    """« la réservation de Cadets (vendredi 18:00, Gymnase V) », en ordre stable, chaque verrou une fois."""
+    """« la séance fixée de Cadets (vendredi 18:00, Gymnase V) », en ordre stable, chaque verrou une fois."""
     seen = sorted(
         {(int(k["day_of_week"]), str(k["start_time"])[:5], str(k["venue_id"]), str(k["team_id"])) for k in locks}
     )
     parts = [
-        f"la réservation de {_label(team, team_names)} ({_day_label(day)} {start}, {_label(venue, venue_names)})"
+        f"la séance fixée de {_label(team, team_names)} ({_day_label(day)} {start}, {_label(venue, venue_names)})"
         for day, start, venue, team in seen
     ]
     return " et ".join(parts)
@@ -107,8 +107,21 @@ def _gap(
     causes: list[dict[str, Any]],
     *,
     diagnostic_type: str = "blocked_by_reservation",
+    where: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    # Les coordonnées de la séance fixée en cause : le panneau y mène.
+    first = where[0] if where else None
+    target = (
+        {
+            "venueId": str(first["venue_id"]),
+            "dayOfWeek": int(first["day_of_week"]),
+            "startTime": str(first["start_time"])[:5],
+        }
+        if first is not None
+        else {}
+    )
     return {
+        **target,
         "id": f"{diagnostic_type}-{team_id}",
         "type": diagnostic_type,
         "severity": "WARNING",
@@ -172,9 +185,9 @@ def _diagnose_reservation_gaps(
                 gaps.append(
                     _gap(
                         team_id,
-                        f"{rule[0].upper()}{rule[1:]} de {team} n'est pas tenue : ses réservations occupent toutes ses "
-                        "séances. La réservation est tenue ; la règle est relâchée.",
-                        "Déplacez la réservation si vous voulez que cette règle s'applique.",
+                        f"{rule[0].upper()}{rule[1:]} de {team} n'est pas tenue : ses séances fixées occupent toutes ses "
+                        "séances. La séance fixée est tenue ; la règle est relâchée.",
+                        "Déplacez la séance fixée si vous voulez que cette règle s'applique.",
                         [cause],
                         diagnostic_type="rule_sacrificed",
                     )
@@ -186,7 +199,7 @@ def _diagnose_reservation_gaps(
             if (day in demand["days"] if "days" in demand else venue_id == demand.get("venueId"))
             for lock in _other_teams_locks_on(team_id, venue_id, day, _time_to_minutes(start), model)
         ]
-        by = _reservations_phrase(locks, team_names, venue_names) or "une réservation"
+        by = _reservations_phrase(locks, team_names, venue_names) or "une séance fixée"
         handled.add(team_id)
         # La dernière case libre de la règle a pu servir une autre équipe : ce n'était pas « la seule ».
         rivals = sorted(
@@ -198,23 +211,32 @@ def _diagnose_reservation_gaps(
                 and (str(s["teamId"]), str(s["venueId"]), int(s["dayOfWeek"]), str(s["startTime"])[:5]) in model.x
             }
         )
-        if rivals:
+        verb = "occupent" if " et la séance fixée" in by else "occupe"
+        if demand["kind"] == "session_floor":
+            venue_id = str(demand["venueId"])
+            at_venue = sum(1 for slot in placed.get(team_id, ()) if str(slot["venueId"]) == venue_id)
+            noun = "séance" if at_venue <= 1 else "séances"
+            head = f"{team} : {at_venue} {noun} à {_label(venue_id, venue_names)} au lieu de {demand['minimum']}."
+            tail = "une case et la dernière libre est allée à " + ", ".join(_label(r, team_names) for r in rivals)
+            summary = f"{head} {by[0].upper()}{by[1:]} {verb} {tail if rivals else 'la case demandée'}."
+        elif rivals:
             who = ", ".join(_label(r, team_names) for r in rivals)
             summary = (
                 f"{team} n'a pas de séance : {rule} ne peut plus être tenue. "
-                f"{by[0].upper()}{by[1:]} occupe une case et la dernière libre est allée à {who}."
+                f"{by[0].upper()}{by[1:]} {verb} une case et la dernière libre est allée à {who}."
             )
         else:
             summary = (
-                f"Séance non placée pour {team} : {by} occupe la seule case compatible avec {rule}. "
+                f"Séance non placée pour {team} : {by} {verb} la seule case compatible avec {rule}. "
                 "La règle tient, la séance n'est pas placée ailleurs."
             )
         gaps.append(
             _gap(
                 team_id,
                 summary,
-                "Déplacez cette réservation ou ajoutez un créneau compatible avec la règle.",
-                [cause],
+                "Déplacez cette séance fixée ou ajoutez un créneau compatible avec la règle.",
+                [{**cause, "count": max(1, int(cause["count"]))}],
+                where=locks,
             )
         )
 
@@ -241,15 +263,16 @@ def _diagnose_reservation_gaps(
         head = f"L'équipe {team} : {spw} séance(s) demandée(s), {count} placée(s)."
         if labels:
             quoted = ", ".join(f"« {label} »" for label in labels)
-            detail = f"{by} occupe la seule case compatible avec {quoted}. La règle tient, la séance n'est pas placée ailleurs."
+            detail = f"{by} {'occupent' if ' et la séance fixée' in by else 'occupe'} la seule case compatible avec {quoted}. La règle tient, la séance n'est pas placée ailleurs."
         else:
-            detail = f"{by} occupe la dernière case libre."
+            detail = f"{by} {'occupent' if ' et la séance fixée' in by else 'occupe'} la dernière case libre."
         gaps.append(
             _gap(
                 team_id,
                 f"{head} {detail[0].upper()}{detail[1:]}",
-                "Déplacez cette réservation ou ajoutez un créneau compatible avec les règles de l'équipe.",
+                "Déplacez cette séance fixée ou ajoutez un créneau compatible avec les règles de l'équipe.",
                 rules or [{"kind": "min_sessions", "constraintId": None, "label": None, "count": spw - count}],
+                where=locks,
             )
         )
     return gaps

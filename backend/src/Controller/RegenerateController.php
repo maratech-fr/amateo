@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
@@ -43,6 +44,7 @@ final class RegenerateController extends AbstractController implements SeasonSco
     private const IN_FLIGHT = [ScheduleStatus::PENDING, ScheduleStatus::GENERATING];
 
     public function __construct(
+        private readonly CoachInTwoPlacesGuard $coachInTwoPlacesGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly MessageBusInterface $messageBus,
         private readonly RequestStack $requestStack,
@@ -121,6 +123,11 @@ final class RegenerateController extends AbstractController implements SeasonSco
                 'error' => \sprintf('Génération bloquée : trop de %s (%d, limite %d).', $violation['cap'], $violation['count'], $violation['limit']),
                 'cap' => $violation['cap'], 'count' => $violation['count'], 'limit' => $violation['limit'],
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $coachInTwoPlaces = $this->coachInTwoPlacesGuard->firstConflictMessage($source);
+        if (null !== $coachInTwoPlaces) {
+            return $this->json(['error' => $coachInTwoPlaces], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // New PENDING version, then dispatch (a dispatch failure only strands a

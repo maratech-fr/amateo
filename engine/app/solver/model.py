@@ -120,6 +120,14 @@ class ScheduleCpModel(cp_model.CpModel):
         # Les noms d'équipes, posés par `_solve`, pour les messages émis à la pose.
         self.team_names: dict[str, str] = {}
         self.venue_names: dict[str, str] = {}
+        # Réservation souveraine — les séances possibles à un plancher levé : le best-effort les préfère,
+        # l'équipe garde toutes ses séances et s'approche de son minimum (terme de placement).
+        self.relaxed_floor_vars: list[Any] = []
+        # Rail verdict seulement : ce que le planning figé occupe, (équipe, gymnase, jour, début). Une
+        # règle de demande qu'il ne tient déjà pas n'est pas reposée (elle rendrait tout déplacement
+        # infaisable) et rejoint `lifted_rules`. None hors verdict : pose inchangée.
+        self.frozen_occupancy: set[tuple[str, str, int, str]] | None = None
+        self.lifted_rules: list[dict[str, Any]] = []
         # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1), peuplé
         # UNIQUEMENT quand `assumptions_enabled` (modèle diagnostique). Une littérale par clé de
         # source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase imposé/interdit,

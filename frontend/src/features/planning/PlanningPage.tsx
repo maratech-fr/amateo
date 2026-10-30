@@ -564,6 +564,19 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     [allDiagnostics, hiddenVenueIds],
   );
 
+  // Décision fondateur 2026-10-30 : le dialogue de validation nomme ce qui manque. Sur TOUS les
+  // diagnostics : un manque dans un gymnase masqué de la période compte aussi.
+  const missingSessions = useMemo(() => {
+    const cited = new Set(
+      allDiagnostics.filter((d) => null !== d.teamId && ("blocked_by_reservation" === d.type || "session_below_effective_min" === d.type || "unplaced" === d.type)).map((d) => d.teamId as string),
+    );
+    return [...cited].flatMap((teamId) => {
+      const team = lookups.teams.get(teamId);
+      const count = undefined === team ? 0 : team.sessionsPerWeek - slots.filter((s) => s.teamId === teamId).length;
+      return undefined !== team && count > 0 ? [{ teamId, teamName: team.name, count }] : [];
+    });
+  }, [allDiagnostics, lookups, slots]);
+
   // P4-40 — l'aside s'ouvre au sortir d'une génération lancée DEPUIS LE WIZARD, mais
   // seulement s'il a quelque chose à montrer.
   //
@@ -1344,6 +1357,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       {validateOpen ? (
         <ValidateDialog
           hasAlerts={diagnostics.length > 0}
+          missingSessions={missingSessions}
           siblingCount={selectedSchedule?.capabilities?.versionsDeletedOnValidate ?? 0}
           busy={validateMutation.isPending}
           orphan={orphanImpact}

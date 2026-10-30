@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
@@ -54,6 +55,7 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
     private const array IN_FLIGHT = [ScheduleStatus::PENDING, ScheduleStatus::GENERATING];
 
     public function __construct(
+        private readonly CoachInTwoPlacesGuard $coachInTwoPlacesGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly MessageBusInterface $messageBus,
         private readonly RequestStack $requestStack,
@@ -147,6 +149,11 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         $orphanPin = $this->orphanPinGuard->firstOrphanMessage($source);
         if (null !== $orphanPin) {
             return $this->json(['error' => $orphanPin], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $coachInTwoPlaces = $this->coachInTwoPlacesGuard->firstConflictMessage($source);
+        if (null !== $coachInTwoPlaces) {
+            return $this->json(['error' => $coachInTwoPlaces], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // Nouvelle version PENDING du MÊME plan (V+1), puis dispatch. Pas de copie de créneau : le

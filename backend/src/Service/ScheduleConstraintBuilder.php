@@ -173,12 +173,14 @@ final class ScheduleConstraintBuilder
      *
      * Elle ignore les `slotTemplates` non HARD : une séance NONE est un RÉSULTAT du solveur, pas une
      * donnée d'entrée, et l'import la relit à la génération suivante. Le payload lui-même ne change pas
-     * (`/validate-assignments` lit ces séances). Sans séance NONE, le hash égale celui d'avant ce filtre.
+     * (`/validate-assignments` lit ces séances). Elle ignore aussi `version` : le numéro de contrat
+     * n'est pas de la structure, sinon chaque montée de contrat ferait paraître tous les plannings périmés.
      *
      * @param array<mixed> $payload
      */
     public static function structureHash(array $payload): string
     {
+        unset($payload['version']);
         if (\is_array($payload['slotTemplates'] ?? null)) {
             $payload['slotTemplates'] = array_values(array_filter(
                 $payload['slotTemplates'],
