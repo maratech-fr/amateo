@@ -171,8 +171,11 @@ final class TrainingBlockContext extends BaseContext
         if (422 !== $this->individualStatus) {
             throw new RuntimeException(\sprintf('la réservation individuelle aurait dû être refusée (422), obtenu %d', $this->individualStatus));
         }
-        if (!str_contains($this->individualError, 'uniquement en groupe')) {
-            throw new RuntimeException(\sprintf('le refus aurait dû renvoyer vers le groupe, message obtenu « %s »', $this->individualError));
+        // E7 — le message ne dit plus « uniquement en groupe » mais nomme l'occupation par les groupes.
+        // Fragment STABLE du nouveau message (« … déjà toutes prises par ses groupes (…) »). ⚠ Si NEO
+        // formule autrement, adapter ce fragment (Behat gaté en CI, non rejoué ici).
+        if (!str_contains($this->individualError, 'par ses groupes')) {
+            throw new RuntimeException(\sprintf('le refus aurait dû dire le budget pris par les groupes, message obtenu « %s »', $this->individualError));
         }
     }
 

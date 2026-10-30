@@ -1170,6 +1170,81 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertStringNotContainsString('n°', $joined, 'E3 : plus jamais « n°X » dans un message serveur');
     }
 
+    // ───────────────────────── PR A lot 2 (E1 import) — corrections.equipes recompte les séances ─────────────────────────
+
+    public function testCompositionCorrectionRecomputesCreatedTeamSessionsAtImport(): void
+    {
+        // E1 — SF1 existe ; SM1/SM2 naissent de leurs cases individuelles ET sont ajoutées à la séance
+        // commune par `corrections.equipes`. Leurs séances DOIVENT être recomptées (1 indiv + 1 commune
+        // = 2) : sans ça, nées à 1 séance, la garde de budget individuel refuse leur réservation
+        // individuelle (ReservationGroupOccupancy « uniquement en groupe ») → 422 (le défaut de l'essai
+        // fondateur). ROUGE sur fc13679db : pas de recompte → 422, ou sessionsPerWeek=1.
+        $this->seedPriorityTiers();
+        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $mateo = $this->makeVenue('MATEO', canSplit: false);
+        $jouhaux = $this->makeVenue('Léon Jouhaux', canSplit: true);
+        $this->makeSlot($mateo->getId(), 2, '18:00', capacity: 1);
+        $this->makeSlot($mateo->getId(), 3, '18:00', capacity: 1);
+        $this->makeSlot($jouhaux->getId(), 1, '20:30', capacity: 3);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],                                                    // Équipes 0 + réservation 0
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM2']],                                                    // Équipes 1 + réservation 1
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],  // SM shooting = Équipes 3 ; séance commune 0
+        ]);
+        $decisions = [
+            ['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'M']], // crée SM1
+            ['section' => 'equipes', 'index' => 1, 'coche' => true, 'corrections' => ['genre' => 'M']], // crée SM2
+            ['section' => 'equipes', 'index' => 3, 'coche' => false],                                   // ignore « SM shooting »
+            ['section' => 'reservations', 'index' => 0, 'coche' => true],
+            ['section' => 'reservations', 'index' => 1, 'coche' => true],
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), 'import:0', 'import:1']]],
+        ];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'les équipes ajoutées recomptées, l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $sm1 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        $sm2 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM2']);
+        self::assertInstanceOf(Team::class, $sm1);
+        self::assertInstanceOf(Team::class, $sm2);
+        self::assertSame(2, $sm1->getSessionsPerWeek(), 'SM1 recomptée : 1 individuelle + 1 commune');
+        self::assertSame(2, $sm2->getSessionsPerWeek(), 'SM2 recomptée : 2 séances');
+    }
+
+    public function testHandCorrectedSessionsSurviveTheRecompute(): void
+    {
+        // E1 (garde VERTE, pas un rouge) — une valeur `corrections.seances` posée à la main l'emporte
+        // sur le recompte. {@see ParcImportExecutor::sessionsOf} (backend/src/Service/ParcImport/
+        // ParcImportExecutor.php) honore DÉJÀ cette précédence : SM1 créée avec seances=5 malgré son
+        // ajout à la séance commune. VERT aujourd'hui ET après le recompte E1 (le recompte ne doit pas
+        // écraser 5). Verrou, documenté comme tel.
+        $this->seedPriorityTiers();
+        $sf1 = $this->makeTeam('SF1', sessionsPerWeek: 2);
+        $jouhaux = $this->makeVenue('Léon Jouhaux', canSplit: true);
+        $this->makeSlot($jouhaux->getId(), 1, '20:30', capacity: 3);
+        $this->makeVenue('MATEO', canSplit: false);
+        $this->scopeGucToClub($this->club->getId());
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],
+        ]);
+        $decisions = [
+            ['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'M', 'seances' => 5]], // SM1, séances forcées 5
+            ['section' => 'equipes', 'index' => 2, 'coche' => false],                                                   // ignore « SM shooting »
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), 'import:0']]],
+        ];
+
+        [$status, $body] = $this->import($parc, $decisions);
+        self::assertSame(200, $status, 'import : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+
+        $sm1 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $sm1);
+        self::assertSame(5, $sm1->getSessionsPerWeek(), 'la valeur corrigée à la main (5) n\'est jamais écrasée par le recompte');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

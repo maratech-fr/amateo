@@ -8,6 +8,8 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -872,6 +874,93 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $teamLine = $body['sections']['equipes'][0];
         self::assertSame('apparie', $teamLine['statut'], 'précondition : SM1 existant → ligne appariée');
         self::assertArrayNotHasKey('miseAJour', $teamLine, 'le champ miseAJour a disparu de la réponse (P4-366)');
+    }
+
+    // ───────────────────────── PR A lot 2 (E1 analyse) — corrections.equipes recompte les séances ─────────────────────────
+
+    public function testCompositionCorrectionRecomputesAddedAndRemovedTeamSessionsAtAnalyze(): void
+    {
+        // E1 — redéfinir la composition d'une séance commune (`corrections.equipes`) RECOMPTE les
+        // `seances` des équipes AJOUTÉES (+1) et RETIRÉES (−1) dès /analyze. SM1/SM2 gagnent la séance
+        // commune (1 indiv + 1 commune = 2), « SM shooting » sort (0). ROUGE sur fc13679db :
+        // {@see ParcImportAnalyzer::applyTimeCorrections} ne lit pas `corrections.equipes`.
+        $sf1 = $this->makeTeam('SF1');
+        $sm1 = $this->makeTeam('SM1');
+        $sm2 = $this->makeTeam('SM2');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],                                                    // ligne Équipes 0
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM2']],                                                    // ligne Équipes 1
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],  // SF1 (2), SM shooting (3) ; séance commune 0
+        ]);
+        $decisions = [
+            ['section' => 'equipes', 'index' => 3, 'coche' => false], // on ignore « SM shooting »
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), $sm1->getId(), $sm2->getId()]]],
+        ];
+
+        $body = $this->revalidate($parc, $decisions)[1];
+        $byLabel = [];
+        foreach ($body['sections']['equipes'] as $line) {
+            $byLabel[(string) $line['libelle']] = $line;
+        }
+
+        self::assertSame(2, $byLabel['SM1']['seances'] ?? null, 'SM1 ajoutée à la séance commune : 1 indiv + 1 commune = 2');
+        self::assertSame(2, $byLabel['SM2']['seances'] ?? null, 'SM2 ajoutée : 2 séances recomptées');
+        self::assertSame(1, $byLabel['SF1']['seances'] ?? null, 'SF1 déjà membre : inchangée');
+        self::assertSame(0, $byLabel['SM shooting']['seances'] ?? 0, '« SM shooting » retirée de la composition : 0 (ou absente)');
+    }
+
+    // ───────────────────────── PR A lot 2 (E2 analyse) — la garde de budget individuel joue dès /analyze ─────────────────────────
+
+    public function testTheIndividualBudgetGuardFlagsAReservationAtAnalyze(): void
+    {
+        // E2 — une équipe dont tout le budget de séances est déjà pris par ses groupes (bloc socle) ne
+        // peut pas poser de réservation INDIVIDUELLE : la garde (ReservationGroupOccupancy /
+        // SoloReservationBudget) est jouée DÈS /analyze → la réservation sort en `alerte` DÉCOCHÉE,
+        // nommant l'équipe, avec un `alerteCode` DÉDIÉ (contrat : `budget_groupe`, string non vide) que
+        // la grille lit pour bloquer Importer. ROUGE sur fc13679db : `analyzeReservations` ne joue pas
+        // la garde de budget → la réservation est `aCreer`.
+        $sm1 = $this->makeTeam('SM1');
+        $sm2 = $this->makeTeam('SM2');
+        $sm1->setSessionsPerWeek(1);
+        $sm2->setSessionsPerWeek(1);
+        $this->em->flush();
+        $this->makeBlock([$sm1, $sm2], 1); // le bloc socle consomme l'unique séance de SM1
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $resLine = $body['sections']['reservations'][0];
+        self::assertSame('alerte', $resLine['statut'], 'SM1 est group-only : sa réservation individuelle sort en alerte dès l\'analyse');
+        self::assertFalse($resLine['coche'], 'une alerte de budget n\'est jamais cochée');
+        self::assertArrayHasKey('alerteCode', $resLine, 'un code machine dédié accompagne la raison');
+        self::assertSame('budget_groupe', $resLine['alerteCode'] ?? null, 'alerteCode dédié à la garde de budget individuel');
+        self::assertStringContainsString('SM1', (string) ($resLine['raison'] ?? ''), 'la raison NOMME l\'équipe');
+    }
+
+    /**
+     * @param list<Team> $teams
+     */
+    private function makeBlock(array $teams, int $commonSessions): SharedTrainingBlock
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $block = (new SharedTrainingBlock)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId(null)->setCommonSessions($commonSessions)->setLabel('Groupe');
+        $this->em->persist($block);
+        foreach ($teams as $team) {
+            $member = (new SharedTrainingBlockTeam)
+                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($team->getId());
+            $this->em->persist($member);
+        }
+        $this->em->flush();
+
+        return $block;
     }
 
     protected function setUp(): void

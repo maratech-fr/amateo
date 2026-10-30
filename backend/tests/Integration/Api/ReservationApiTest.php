@@ -190,7 +190,17 @@ final class ReservationApiTest extends WebTestCase
         $this->makeBlock(null, [$t1, $t2], 1);
 
         self::assertSame(422, $this->postTeam($t1->getId(), 3, '18:00', null));
-        self::assertStringContainsString('uniquement en groupe', (string) $this->client->getResponse()->getContent());
+        // E7 (ADAPTÉ — je suis propriétaire de ce test) — le message « catastrophique » du fondateur
+        // (« s'entraîne uniquement en groupe … réservez le groupe ») est remplacé par un message FACTUEL
+        // qui dit le BUDGET de séances, l'OCCUPATION par les groupes (noms) et une action. Cœur
+        // SURFACE-AGNOSTIQUE (hors import : la suggestion d'action est à trancher par le fondateur, non
+        // assertée ici). ROUGE sur fc13679db : {@see \App\Service\ReservationGroupOccupancy::soloOnlyBlockMessage}.
+        $errorBody = (string) $this->client->getResponse()->getContent();
+        self::assertStringNotContainsString('uniquement en groupe', $errorBody, 'E7 : l\'ancienne phrase disparaît');
+        self::assertStringNotContainsString('réservez le groupe', $errorBody, 'E7 : plus de « réservez le groupe plutôt qu\'un créneau »');
+        self::assertStringContainsString($t1->getName(), $errorBody, 'E7 : le message nomme l\'équipe en cause');
+        self::assertStringContainsString('séance', $errorBody, 'E7 : le message dit le budget de séances de l\'équipe');
+        self::assertStringContainsString($t2->getName(), $errorBody, 'E7 : le message nomme l\'occupation par les groupes (composition)');
     }
 
     public function testIndividualReservationBeyondThePartialResidualIsRefused(): void
