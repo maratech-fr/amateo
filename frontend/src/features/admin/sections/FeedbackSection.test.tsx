@@ -397,4 +397,31 @@ describe("FeedbackSection", () => {
 
     expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackPurgedPlaceholder)).toBeInTheDocument();
   });
+
+  // D15 (PR B « Signaler depuis une modale ») — l'état COMPLET de la modale ouvrante se lit dans un bloc
+  // REPLIABLE « État de la modale », avec la mention « tronqué » (clé centralisée) quand le serveur a
+  // coupé au plafond (`modalStateTruncated`). Le JSON brut est rendu en TEXTE PUR. Falsification : sans
+  // rendu du bloc, ni le titre, ni la mention, ni le contenu n'apparaissent.
+  it("rend le bloc « État de la modale » avec la mention tronqué quand modalStateTruncated", async () => {
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: {
+        screen: "/wizard",
+        url: "http://app/wizard",
+        userAgent: "UA",
+        modalState: '{"step":"equipes","parc":"…"}',
+        modalStateTruncated: true,
+      },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackBlockModalState)).toBeInTheDocument();
+    expect(within(dialog).getByText(ADMIN_SECTIONS_TEXTS.feedbackModalStateTruncated)).toBeInTheDocument();
+    // Le JSON brut de l'état est lisible (texte pur dans un <pre>).
+    expect(within(dialog).getByText(/"step":"equipes"/)).toBeInTheDocument();
+  });
 });

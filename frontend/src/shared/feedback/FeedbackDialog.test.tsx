@@ -10,6 +10,7 @@ import { renderWithProviders } from "@/test/utils";
 import { submitFeedback } from "./api";
 import { captureScreen } from "./captureScreen";
 import { FeedbackDialog } from "./FeedbackDialog";
+import { clearLastClick, recordLastClick } from "./lastClickStore";
 
 vi.mock("./api", async (importOriginal) => {
   const original = await importOriginal<typeof import("./api")>();
@@ -34,6 +35,7 @@ beforeEach(() => {
   mockCapture.mockReset();
   mockCapture.mockResolvedValue(null);
   clearLastIncident();
+  clearLastClick();
   useToastStore.setState({ toasts: [] });
 });
 
@@ -211,5 +213,40 @@ describe("FeedbackDialog — retours serveur", () => {
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
 
     expect(await screen.findByText("Le message est trop long.")).toBeInTheDocument();
+  });
+});
+
+describe("FeedbackDialog — fil d'incident client (D17)", () => {
+  // La porte CONTEXTUELLE joint le fil que seul le front connaît : l'anneau des dernières erreurs API
+  // (`recentErrors`), celui des derniers clics accessibles (`recentClicks`) et l'horloge RÉELLE DU POSTE
+  // (`clientClock` {at, timeZone}, exception assumée à `shared/lib/clock.ts` : heure navigateur, pas
+  // l'« aujourd'hui » métier). Falsification : retirer ces jointures du dialog laisse les clés absentes.
+  it("joint recentErrors, recentClicks et clientClock au contexte envoyé", async () => {
+    mockSubmit.mockResolvedValue({ id: "fb1" });
+    // Deux erreurs API récentes (la plus récente en tête de l'anneau) et un clic accessible récent.
+    recordIncident({ status: 500, url: "/api/a", method: "GET", route: "/api/a", code: "boom", errors: ["e1"], requestId: "r1" });
+    recordIncident({ status: 422, url: "/api/b", method: "POST", route: "/api/b", errors: ["e2"], requestId: "r2" });
+    const control = document.createElement("button");
+    control.setAttribute("aria-label", "Importer le parc");
+    recordLastClick(control);
+
+    renderWithProviders(<FeedbackDialog variant="contextual" screen="wizard/venues" onClose={vi.fn()} />, { route: "/wizard" });
+    await userEvent.type(screen.getByRole("textbox", { name: "Décrivez le problème" }), "Souci au collage");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    const ctx = mockSubmit.mock.calls[0][0].context as Record<string, unknown>;
+
+    // recentErrors : la plus récente en tête, chaque entrée porte method/route/status.
+    expect(Array.isArray(ctx.recentErrors), "recentErrors est un tableau").toBe(true);
+    const recentErrors = ctx.recentErrors as Array<Record<string, unknown>>;
+    expect(recentErrors.length).toBeGreaterThanOrEqual(2);
+    expect(recentErrors[0]).toMatchObject({ method: "POST", route: "/api/b", status: 422 });
+    // recentClicks : les noms accessibles des derniers clics (jamais une valeur saisie).
+    expect(ctx.recentClicks).toEqual(expect.arrayContaining(["Importer le parc"]));
+    // clientClock : horloge RÉELLE du poste (at ISO + fuseau).
+    const clock = ctx.clientClock as { at?: unknown; timeZone?: unknown };
+    expect(typeof clock.at, "clientClock.at est une chaîne ISO").toBe("string");
+    expect(typeof clock.timeZone, "clientClock.timeZone est une chaîne").toBe("string");
   });
 });
