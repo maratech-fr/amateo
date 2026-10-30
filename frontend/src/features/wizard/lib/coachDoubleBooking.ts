@@ -20,6 +20,9 @@ import { parseTime } from "@/shared/lib/time";
  *  2. gymnases DIFFÉRENTS seulement — même gymnase = mutualisation voulue (`canSplit`) ;
  *  3. coachs `MAIN` seulement — un `ASSISTANT` est optionnel pour le solveur, l'interdire
  *     refuserait une réservation légitime.
+ *
+ * « Tant qu'un coach tient la séance, c'est OK » (fondateur 2026-10-30) : un coach partagé ne refuse
+ * le geste que si une séance n'a plus personne pour la tenir ({@link holdersFor}).
  */
 
 /**
@@ -34,12 +37,12 @@ function minutes(time: string): number | null {
   return parseTime(time);
 }
 
-/** teamId → coachId du coach MAIN (les ASSISTANT sont ignorés, règle 3). */
-export function mainCoachByTeam(links: TeamCoach[]): Map<string, string> {
-  const map = new Map<string, string>();
+/** teamId → coachs MAIN, dans l'ordre des liens (les ASSISTANT sont ignorés, règle 3). */
+export function mainCoachByTeam(links: TeamCoach[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
   for (const link of links) {
-    if ("MAIN" === link.role) {
-      map.set(link.teamId, link.coachId);
+    if ("MAIN" === link.role && !(map.get(link.teamId) ?? []).includes(link.coachId)) {
+      map.set(link.teamId, [...(map.get(link.teamId) ?? []), link.coachId]);
     }
   }
 
@@ -120,35 +123,132 @@ export function teamsShareMainCoach(coachIdsA: string[], coachIdsB: string[]): b
   return coachIdsB.some((id) => first.has(id));
 }
 
+/** Une séance à tenir — l'entrée de {@link holdersFor}. */
+export type HoldSession = Omit<Booking, "coachId"> & { id: string };
+
+type PlayingBooking = Omit<Booking, "coachId">;
+
+function overlaps(a: PlayingBooking, b: PlayingBooking): boolean {
+  return a.dayOfWeek === b.dayOfWeek && a.startMinutes < b.startMinutes + b.durationMinutes && b.startMinutes < a.startMinutes + a.durationMinutes;
+}
+
+/** Les coachs de l'équipe, puis ceux des autres équipes de la MÊME case (séance commune). */
+function holdCandidates(session: HoldSession, sessions: HoldSession[], coaches: Record<string, string[]>): string[] {
+  const candidates = [...(coaches[session.teamId] ?? [])];
+  for (const other of sessions) {
+    if (other.venueId === session.venueId && other.dayOfWeek === session.dayOfWeek && other.startMinutes === session.startMinutes) {
+      candidates.push(...(coaches[other.teamId] ?? []));
+    }
+  }
+
+  return [...new Set(candidates)];
+}
+
+/**
+ * « Tant qu'un coach tient la séance, c'est OK » — LA règle pure de l'affectation des tenues, miroir
+ * MÉCANIQUE de `App\Service\CoachDoubleBookingDetector::holdersFor` (PHP) : séance → coach, ou null si
+ * une séance n'a personne. Déterministe : séances dans l'ordre donné, candidats dans l'ordre des
+ * listes, retour arrière, la PREMIÈRE solution. Cas partagés et règle complète :
+ * `coachDoubleBooking.parity.json::holdCases`, gardé par `CoachDoubleBookingMirrorParityTest`.
+ */
+export function holdersFor(
+  sessions: HoldSession[],
+  mainCoachesByTeam: Record<string, string[]>,
+  blockedByCoach: Record<string, [number, number, number][]> = {},
+  playingByCoach: Record<string, PlayingBooking[]> = {},
+): Record<string, string> | null {
+  const required: HoldSession[] = [];
+  const candidates = new Map<string, string[]>();
+  for (const session of sessions) {
+    const own = holdCandidates(session, sessions, mainCoachesByTeam);
+    if (0 === own.length) {
+      continue; // aucun coach principal : la séance n'exige personne.
+    }
+    const available = own.filter(
+      (coachId) =>
+        !(blockedByCoach[coachId] ?? []).some(
+          ([day, from, until]) => day === session.dayOfWeek && from < session.startMinutes + session.durationMinutes && session.startMinutes < until,
+        ),
+    );
+    const free = 0 === available.length ? own : available; // indisponible mais seul : avertissement, jamais bloqueur.
+    required.push(session);
+    candidates.set(
+      session.id,
+      free.filter((coachId) => !(playingByCoach[coachId] ?? []).some((game) => game.venueId !== session.venueId && overlaps(session, game))),
+    );
+  }
+
+  const holders: Record<string, string> = {};
+  const assign = (index: number): boolean => {
+    const session = required[index];
+    if (undefined === session) {
+      return true;
+    }
+    for (const coachId of candidates.get(session.id) ?? []) {
+      const taken = required
+        .slice(0, index)
+        .some((other) => holders[other.id] === coachId && bookingsCollide({ ...session, coachId }, { ...other, coachId }));
+      if (taken) {
+        continue;
+      }
+      holders[session.id] = coachId;
+      if (assign(index + 1)) {
+        return true;
+      }
+      delete holders[session.id];
+    }
+
+    return false;
+  };
+
+  return assign(0) ? holders : null;
+}
+
 /**
  * La réservation DÉJÀ posée qui empêche `candidate`, ou null si le geste est légitime.
  * Rendre la réservation fautive (et non un booléen) permet à l'appelant de nommer
  * l'équipe, le gymnase et l'heure — « Emerick coache déjà les U15F à 17h à Debarros ».
+ * Le geste n'est refusé que si, autour de lui, une séance n'a plus personne pour la tenir.
  */
-export function conflictingReservation(candidate: Candidate, reservations: Reservation[], coachByTeam: Map<string, string>): Reservation | null {
-  const coachId = coachByTeam.get(candidate.teamId);
-  if (undefined === coachId) {
+export function conflictingReservation(candidate: Candidate, reservations: Reservation[], coachByTeam: Map<string, string[]>): Reservation | null {
+  const coachIds = coachByTeam.get(candidate.teamId);
+  if (undefined === coachIds || 0 === coachIds.length) {
     return null; // pas de coach MAIN : personne à dédoubler
   }
   const start = minutes(candidate.startTime);
   if (null === start) {
     return null; // heure illisible : on ne peut rien affirmer, le récap tranchera (PR B)
   }
-  const here: Booking = { ...candidate, coachId, startMinutes: start };
+  const here: HoldSession = { ...candidate, id: "candidate", startMinutes: start };
+
+  const others: { reservation: Reservation; session: HoldSession }[] = [];
+  reservations.forEach((reservation, index) => {
+    const otherStart = minutes(reservation.startTime);
+    // Lot 4bis — un créneau libre (teamId null) n'a pas de coach : jamais un double-booking.
+    if (null !== reservation.teamId && null !== otherStart && coachByTeam.has(reservation.teamId)) {
+      others.push({ reservation, session: { ...reservation, id: String(index), teamId: reservation.teamId, startMinutes: otherStart } });
+    }
+  });
+
+  // Seules les séances qui peuvent se disputer une personne avec le geste se jugent avec lui.
+  const coachesOf = (session: HoldSession) => coachByTeam.get(session.teamId) ?? [];
+  const cluster = [here];
+  for (let index = 0; index < cluster.length; index += 1) {
+    const current = cluster[index] as HoldSession;
+    for (const { session } of others) {
+      if (!cluster.includes(session) && overlaps(current, session) && teamsShareMainCoach(coachesOf(current), coachesOf(session))) {
+        cluster.push(session);
+      }
+    }
+  }
+  if (null !== holdersFor(cluster, Object.fromEntries(coachByTeam))) {
+    return null;
+  }
 
   return (
-    reservations.find((other) => {
-      // Lot 4bis — un créneau libre (teamId null) n'a pas de coach : jamais un double-booking.
-      if (null === other.teamId) {
-        return false;
-      }
-      const otherCoach = coachByTeam.get(other.teamId);
-      const otherStart = minutes(other.startTime);
-      if (undefined === otherCoach || null === otherStart) {
-        return false;
-      }
-
-      return bookingsCollide(here, { ...other, teamId: other.teamId, coachId: otherCoach, startMinutes: otherStart });
-    }) ?? null
+    others.find(
+      ({ session }) =>
+        teamsShareMainCoach(coachIds, coachesOf(session)) && bookingsCollide({ ...here, coachId: "" }, { ...session, coachId: "" }),
+    )?.reservation ?? null
   );
 }

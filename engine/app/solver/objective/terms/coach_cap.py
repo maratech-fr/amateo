@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any, cast
 
 from ...compromise import FAMILY_COACH_DAY_CAP, CompromiseTermInfo
+from ...constraints.common import _coach_presence_literal
 
 BoolVarLike = Any
 
@@ -61,7 +62,10 @@ def add_coach_day_cap_penalty(
         team_id, _venue_id, day_of_week, _start = key
         for coach_id in team_coach_map.get(str(team_id), []):
             if str(coach_id) in caps:
-                day_vars.setdefault((str(coach_id), int(day_of_week)), []).append(var)
+                # Seul celui qui TIENT la séance travaille ce jour-là.
+                literal = _coach_presence_literal(model, var, coach_id)
+                if literal is not None:
+                    day_vars.setdefault((str(coach_id), int(day_of_week)), []).append(literal)
 
     for coach_id, cap in caps.items():
         is_working: list[BoolVarLike] = []

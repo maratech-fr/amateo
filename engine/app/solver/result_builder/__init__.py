@@ -215,7 +215,8 @@ def build_result(
 
     # Preserve HARD locked slots regardless of solver status.
     for locked in model.locked_slots:
-        slots.append(_locked_slot_to_dict(locked))
+        solved = solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        slots.append(_locked_slot_to_dict(locked, model, solver, solved))
 
     # Add solver-placed slots when the problem was solved successfully.
     if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):

@@ -17,6 +17,7 @@ from ..common import (
     SALARIE_VIOLATION_WEIGHT,
     AssignmentVariable,
     BoolVarLike,
+    _coach_presence_literal,
     _dedupe_variables,
     _get,
     _locked_person_day_intervals,
@@ -88,7 +89,10 @@ def add_salarie_distribution_constraints(
         if team_coach_map is not None and team_id_str is not None and team_id_str in team_coach_map:
             for coach_id in team_coach_map[team_id_str]:
                 if coach_id in salarie_ids:
-                    day_vars[day].append(assignment.var)
+                    # Un salarié compte présent s'il TIENT la séance.
+                    literal = _coach_presence_literal(model, assignment.var, coach_id)
+                    if literal is not None:
+                        day_vars[day].append(literal)
         else:
             coach_id = assignment.coach_id
             if coach_id is not None and str(coach_id) in salarie_ids:
@@ -102,6 +106,11 @@ def add_salarie_distribution_constraints(
             for player_id in assignment.player_ids:
                 if str(player_id) in salarie_ids:
                     day_vars[day].append(assignment.var)
+
+    for hold in (getattr(model, "lock_holds", None) or {}).values():
+        for coach_id, literal in hold["vars"].items():
+            if coach_id in salarie_ids:
+                day_vars[hold["day"]].append(literal)
 
     # P4-97 — jours ouvrés où un salarié a une séance VERROUILLÉE : présence constante.
     locked_person_days = _locked_person_day_intervals(model, team_coach_map, team_player_map)

@@ -343,8 +343,8 @@ export function SlotReservationModal({
     if (!tolerable) {
       return null;
     }
-    const doubledCoach = coachByTeam.get(candidate.teamId);
-    const adjointId = (assistantsByTeam.get(candidate.teamId) ?? []).find((id) => id !== doubledCoach);
+    const doubledCoaches = coachByTeam.get(candidate.teamId) ?? [];
+    const adjointId = (assistantsByTeam.get(candidate.teamId) ?? []).find((id) => !doubledCoaches.includes(id));
     return undefined === adjointId ? null : { lateMinutes, adjointId };
   };
 

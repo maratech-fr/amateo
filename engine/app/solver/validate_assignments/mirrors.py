@@ -290,7 +290,8 @@ def _travel_time_move_violation(
         placements_by_team,
         coaches=coaches,
         team_links=(),  # miroir cadré au voyageur COACH (arbitrage P2-55) : passerelle hors champ.
-        team_coach_map=team_coach_map,
+        # Une équipe à plusieurs coachs n'impose le trajet à aucun d'eux : le solve porte les tenues.
+        team_coach_map={team: coaches for team, coaches in team_coach_map.items() if len(coaches) == 1},
         matrix=matrix,
         default_minutes=resolved_rules.travel_time_default_minutes,
     ):

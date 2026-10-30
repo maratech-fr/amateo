@@ -13,6 +13,7 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
+from ..constraints.common import _hold_key, _lock_hold
 from ..model import (
     DEFAULT_SESSION_MINUTES,
     SLOT_MINUTES,
@@ -23,14 +24,57 @@ from ..model import (
 from .helpers import _find_coach_for_team, _get
 
 
-def _locked_slot_to_dict(locked: Mapping[str, Any] | Any) -> dict[str, Any]:
+def _first_holder(holders: Mapping[str, Any], solver: Any) -> str | None:
+    """Le premier coach, dans l'ordre de l'équipe, que la solution désigne pour tenir la séance."""
+    return next((coach_id for coach_id, literal in holders.items() if solver.Value(literal) == 1), None)
+
+
+def _lock_holder(locked: Mapping[str, Any], model: Any, solver: Any, solved: bool) -> str | None:
+    """Le coach qui tient un verrou. Sans solution, le premier de l'équipe ; sans carte, ``None``."""
+    team_id = str(_get(locked, "team_id", "teamId"))
+    coaches = getattr(model, "team_coach_map", None) or {}
+    start = _time_to_minutes(str(_get(locked, "start_time", "startTime")))
+    end = start + int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
+    day = int(_get(locked, "day_of_week", "dayOfWeek"))
+    hold = _lock_hold(model, team_id, str(_get(locked, "venue_id", "venueId")), day, start, end)
+    if hold is not None:
+        holder = _first_holder(hold["vars"], solver) if solved else None
+        return holder or str(hold["named"])
+    team_coaches = coaches.get(team_id) or []
+    return str(team_coaches[0]) if team_coaches else None
+
+
+def _session_holder(team_id: str, venue_id: str, day: int, start: str, model: Any, solver: Any) -> str | None:
+    """Le coach qui tient une séance posée : le sien, ou, en séance de bloc, celui d'un autre membre."""
+    holds = getattr(model, "hold_vars", None) or {}
+    var = model.x[(team_id, venue_id, day, start)]
+    holder = _first_holder(holds.get(_hold_key(var)) or {}, solver)
+    if holder is not None:
+        return holder
+    blocks = getattr(model, "shared_block_case_bvars", {}).get((venue_id, f"{day}:{start}"), ())
+    for members, block_var in blocks:
+        if team_id not in members or solver.Value(block_var) != 1:
+            continue
+        for member in sorted(members):
+            partner_var = model.x.get((member, venue_id, day, start))
+            holder = _first_holder(holds.get(_hold_key(partner_var)) or {}, solver) if partner_var is not None else None
+            if holder is not None:
+                return holder
+    return None
+
+
+def _locked_slot_to_dict(
+    locked: Mapping[str, Any] | Any, model: Any = None, solver: Any = None, solved: bool = False
+) -> dict[str, Any]:
     """Convert a normalized HARD locked slot into an output slot dict."""
     team_id = str(_get(locked, "team_id", "teamId"))
     venue_id = str(_get(locked, "venue_id", "venueId"))
     day_of_week = int(_get(locked, "day_of_week", "dayOfWeek"))
     start_time = str(_get(locked, "start_time", "startTime"))[:5]  # normalize "HH:MM:SS" → "HH:MM"
     duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
-    coach_id = _get(locked, "coach_id", "coachId", default=None)
+    coach_id = (_lock_holder(locked, model, solver, solved) if model is not None else None) or _get(
+        locked, "coach_id", "coachId", default=None
+    )
     pending_constraint_suggestion = _get(
         locked, "pending_constraint_suggestion", "pendingConstraintSuggestion", default=None
     )
@@ -80,7 +124,7 @@ def _build_solver_slots(
     slots: list[dict[str, Any]] = []
     for (team_id, venue_id, day_of_week), starts in active.items():
         starts_sorted = sorted(starts)
-        coach_id = _find_coach_for_team(model_data, team_id, team_coach_map)
+        default_coach = _find_coach_for_team(model_data, team_id, team_coach_map)
 
         # Merge consecutive variables into contiguous blocks.
         # Two variables are contiguous when the next start equals the end of the
@@ -102,7 +146,10 @@ def _build_solver_slots(
                         "id": _slot_id(team_id, venue_id, day_of_week, _format_time(block_start)),
                         "teamId": team_id,
                         "venueId": venue_id,
-                        "coachId": coach_id,
+                        "coachId": _session_holder(
+                            team_id, venue_id, day_of_week, _format_time(block_start), model, solver
+                        )
+                        or default_coach,
                         "dayOfWeek": day_of_week,
                         "startTime": _format_time(block_start),
                         "durationMinutes": duration,
@@ -120,7 +167,8 @@ def _build_solver_slots(
                 "id": _slot_id(team_id, venue_id, day_of_week, _format_time(block_start)),
                 "teamId": team_id,
                 "venueId": venue_id,
-                "coachId": coach_id,
+                "coachId": _session_holder(team_id, venue_id, day_of_week, _format_time(block_start), model, solver)
+                or default_coach,
                 "dayOfWeek": day_of_week,
                 "startTime": _format_time(block_start),
                 "durationMinutes": duration,

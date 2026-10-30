@@ -195,6 +195,14 @@ def _find_coach_for_team(
     return None
 
 
+def _session_coaches(slot: Mapping[str, Any], team_coach_map: Mapping[str, Any]) -> list[str]:
+    """Les coachs qu'une séance posée occupe : celui qu'elle nomme, puisqu'il la tient. Une équipe
+    absente des cartes n'en occupe aucun ; une séance sans coach nommé occupe ceux de la carte."""
+    mapped = [str(coach) for coach in team_coach_map.get(str(slot.get("teamId")), [])]
+    holder = slot.get("coachId")
+    return [str(holder)] if mapped and holder else mapped
+
+
 def _coach_threshold(model_data: Mapping[str, Any] | Any, coach_id: str) -> int:
     """Return the recommended maximum number of working DAYS for a coach (maxDaysOverride)."""
     for coach in _collection(model_data, "coaches"):

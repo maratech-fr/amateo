@@ -250,7 +250,7 @@ final class ValidateConstraintsController extends AbstractController
             : null;
 
         return $this->json(
-            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'capacity' => $capacity],
+            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
             $valid ? Response::HTTP_OK : Response::HTTP_UNPROCESSABLE_ENTITY,
         );
     }

@@ -20,6 +20,7 @@ from ..helpers import (
     _day_label,
     _get,
     _label,
+    _session_coaches,
     _slot_day,
     _slot_templates,
     _team_name_map,
@@ -42,8 +43,8 @@ def _diagnose_locked_structural_conflicts(
     verrou ; ne restent donc que les conflits ENTRE verrous, impossibles à résoudre sans lever un
     verrou. On n'émet un diagnostic que si AU MOINS un créneau HARD est impliqué.
 
-    Deux familles, aux personnes lues des CARTES (``team_coach_map``/``team_player_map``, jamais
-    ``slot.coachId``) :
+    Deux familles, aux personnes lues des CARTES (``team_player_map``, et ``team_coach_map`` réduite à
+    celui qui tient la séance, ``_session_coaches``) :
       * une personne dans DEUX gymnases à la même minute (impossible physiquement — le même
         gymnase reste permis pour deux rôles coach, D-14) ;
       * une équipe avec DEUX séances le même jour.
@@ -67,7 +68,7 @@ def _diagnose_locked_structural_conflicts(
         venue = str(slot["venueId"])
         is_hard = str(slot.get("lockLevel") or "NONE").upper() == "HARD"
         roles: dict[str, str] = {}
-        for coach_id in team_coach_map.get(team_id, []):
+        for coach_id in _session_coaches(slot, team_coach_map):
             roles.setdefault(str(coach_id), "coach")
         for player_id in team_player_map.get(team_id, []):
             roles[str(player_id)] = "player"

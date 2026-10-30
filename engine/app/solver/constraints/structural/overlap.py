@@ -15,6 +15,7 @@ from ..common import (
     AssignmentVariable,
     BoolVarLike,
     _assignment_time_key,
+    _coach_presence_literal,
     _extract_interval,
     _locked_person_day_occupations,
 )
@@ -26,6 +27,18 @@ from .pairing import (
     _add_free_vs_locked_interval_conflicts,
     _add_interval_at_most_one,
 )
+
+PersonEntries = dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str, str | None]]]
+
+
+def _add_lock_hold_entries(model: Any, person_entries: PersonEntries) -> None:
+    """Un verrou à plusieurs coachs occupe celui qui le tient : ses tenues s'opposent aux autres
+    séances de chaque coach comme n'importe quelle séance."""
+    for hold in (getattr(model, "lock_holds", None) or {}).values():
+        for coach_id, literal in hold["vars"].items():
+            person_entries[coach_id].append(
+                (hold["coach_start"], hold["end"], literal, str(hold["day"]), hold["venue"], "coach", hold["team"])
+            )
 
 
 def add_coach_at_most_one(
@@ -50,6 +63,10 @@ def add_coach_at_most_one(
     Le backend (`CoachDoubleBookingDetector`) et la modale du wizard
     (`coachDoubleBooking.ts`) appliquaient déjà cette exemption ; le moteur était le seul
     des trois à l'ignorer, et refusait donc de placer ce que les deux autres offraient.
+
+    « Tant qu'un coach tient la séance » (fondateur 2026-10-30) : la règle porte sur la TENUE. Une
+    séance à plusieurs coachs n'occupe que celui qui la tient (``_coach_presence_literal``), une
+    séance à un seul coach reste opposée par sa variable ``x``.
     """
 
     groups: dict[tuple[Any, Any], list[tuple[BoolVarLike, str | None]]] = defaultdict(list)
@@ -78,14 +95,18 @@ def add_coach_at_most_one(
         # Le gymnase reste HORS de la clé (cf. `_add_cross_venue_at_most_one`) : il est
         # porté par l'entrée, et c'est la comparaison de paire qui exempte le même gymnase
         # sans désarmer les gymnases différents.
-        for coach_id in coach_ids:
-            groups[(coach_id, time_key)].append((var, venue_id))
+        holds = [(coach_id, _coach_presence_literal(model, var, coach_id)) for coach_id in coach_ids]
+        for coach_id, literal in holds:
+            if literal is not None:
+                groups[(coach_id, time_key)].append((literal, venue_id))
 
         start, end, day = _extract_interval(assignment)
         if start is not None and end is not None and day is not None:
-            for coach_id in coach_ids:
-                person_entries[str(coach_id)].append((start, end, var, day, venue_id, "coach", team_id_str))
+            for coach_id, literal in holds:
+                if literal is not None:
+                    person_entries[str(coach_id)].append((start, end, literal, day, venue_id, "coach", team_id_str))
 
+    _add_lock_hold_entries(model, person_entries)
     time_key_added = _add_cross_venue_at_most_one(model, groups)
     interval_added = _add_interval_at_most_one(model, person_entries, same_venue_allowed=True)
 
@@ -151,11 +172,17 @@ def add_coach_player_non_overlap(
         person_roles: dict[str, str] = {}
         all_person_ids: set[str] = set()
 
+        # Le rôle de coach n'occupe que celui qui TIENT la séance (``_coach_presence_literal``).
+        person_vars: dict[str, BoolVarLike] = {}
         if team_coach_map is not None and team_id_str is not None and team_id_str in team_coach_map:
             for coach_id in team_coach_map[team_id_str]:
-                coach_groups[(coach_id, time_key)].append((var, venue_id, team_id_str))
+                literal = _coach_presence_literal(model, var, coach_id)
+                if literal is None:
+                    continue
+                coach_groups[(coach_id, time_key)].append((literal, venue_id, team_id_str))
                 all_person_ids.add(str(coach_id))
                 person_roles.setdefault(str(coach_id), "coach")
+                person_vars[str(coach_id)] = literal
         else:
             single_coach = assignment.coach_id
             if single_coach is not None:
@@ -177,9 +204,11 @@ def add_coach_player_non_overlap(
         start, end, day = _extract_interval(assignment)
         if start is not None and end is not None and day is not None:
             for person_id in all_person_ids:
-                person_entries[person_id].append(
-                    (start, end, var, day, venue_id, person_roles.get(person_id, "player"), team_id_str)
-                )
+                role = person_roles.get(person_id, "player")
+                entry_var = person_vars.get(person_id, var) if role == "coach" else var
+                person_entries[person_id].append((start, end, entry_var, day, venue_id, role, team_id_str))
+
+    _add_lock_hold_entries(model, person_entries)
 
     if case_bvars:
         # Un bloc existe : chemin PAIRE À PAIRE avec exemption (équivalent at-most-one, sauf la paire

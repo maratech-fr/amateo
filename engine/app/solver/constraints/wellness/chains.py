@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import Any, cast
 
 from ...compromise import FAMILY_IMPLICIT, CompromiseTermInfo
@@ -22,8 +23,10 @@ from ..common import (
     PREFERRED,
     AssignmentVariable,
     BoolVarLike,
+    _coach_presence_literal,
     _dedupe_variables,
     _get,
+    _hold_key,
     _locked_person_day_intervals,
     _scalar_id,
     _to_day_int,
@@ -115,7 +118,14 @@ def add_max_consecutive_sessions_constraints(
         if team_coach_map is not None and team_id_str is not None and team_id_str in team_coach_map:
             for cid in team_coach_map[team_id_str]:
                 if cid in coach_ids:
-                    person_ids.add(cid)
+                    # Seul celui qui TIENT la séance l'enchaîne.
+                    literal = _coach_presence_literal(model, assignment.var, cid)
+                    if literal is assignment.var:
+                        person_ids.add(cid)
+                    elif literal is not None:
+                        held = replace(assignment, var=literal)
+                        var_key = _hold_key(assignment.var)
+                        person_day_entries[(cid, day)][var_key] = (start_minutes, end_minutes, held)
         else:
             single_cid = assignment.coach_id
             if single_cid is not None and str(single_cid) in coach_ids:
@@ -137,6 +147,15 @@ def add_max_consecutive_sessions_constraints(
 
     # P4-97 — séances VERROUILLÉES en intervalles CONSTANTS (aucune variable) : elles
     # entrent dans la recherche de chaînes avec ``None`` en 3ᵉ position.
+    for hold in (getattr(model, "lock_holds", None) or {}).values():
+        for cid, literal in hold["vars"].items():
+            if cid in coach_ids:
+                person_day_entries[(cid, str(hold["day"]))][_hold_key(literal)] = (
+                    hold["start"],
+                    hold["end"],
+                    AssignmentVariable(var=literal),
+                )
+
     locked_person_days = _locked_person_day_intervals(model, team_coach_map, team_player_map)
     for person_id, day_intervals in locked_person_days.items():
         if person_id not in coach_ids:
