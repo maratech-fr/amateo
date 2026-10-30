@@ -48,6 +48,15 @@ describe("applicableConstraints", () => {
     expect(applicableConstraints(slot(), [here, elsewhere]).map((c) => c.id)).toEqual(["here"]);
   });
 
+  it("garde la contrainte d'un coach sur les séances de son équipe, même s'il n'est pas le coach stocké", () => {
+    // ⚠ Signature PROPOSÉE (4ᵉ paramètre) : équipe → tous ses coachs principaux.
+    const second = constraint({ id: "second", scope: "COACH", scopeTargetId: "coach-Y" });
+    const stranger = constraint({ id: "stranger", scope: "COACH", scopeTargetId: "coach-Z" });
+    const teamCoaches = new Map([["team-A", ["coach-X", "coach-Y"]]]);
+
+    expect(applicableConstraints(slot(), [second, stranger], new Map(), teamCoaches).map((c) => c.id)).toEqual(["second"]);
+  });
+
   it("garde une contrainte COACH seulement pour SON coach (jamais si le créneau n'a pas de coach)", () => {
     const coach = constraint({ id: "coach", scope: "COACH", scopeTargetId: "coach-X" });
     expect(applicableConstraints(slot(), [coach]).map((c) => c.id)).toEqual(["coach"]);

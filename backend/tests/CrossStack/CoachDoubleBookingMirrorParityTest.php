@@ -104,7 +104,7 @@ final class CoachDoubleBookingMirrorParityTest extends TestCase
      */
     public function testBackendHoldersForMatchesTheSharedCases(): void
     {
-        /** @var list<array{name: string, sessions: list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>, mainCoachesByTeam: array<string, list<string>>, blockedByCoach?: array<string, list<array{0: int, 1: int, 2: int}>>, playingByCoach?: array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>>, holders: array<string, string>|null}> $cases */
+        /** @var list<array{name: string, sessions: list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>, mainCoachesByTeam: array<string, list<string>>, blockedByCoach?: array<string, list<array{0: int, 1: int, 2: int}>>, playingByCoach?: array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>>, groups?: list<list<string>>, holders: array<string, string>|null}> $cases */
         $cases = $this->decoded()['holdCases'] ?? [];
         self::assertNotEmpty($cases, 'coachDoubleBooking.parity.json ne porte aucun cas de tenue.');
 
@@ -114,6 +114,7 @@ final class CoachDoubleBookingMirrorParityTest extends TestCase
                 $case['mainCoachesByTeam'],
                 $case['blockedByCoach'] ?? [],
                 $case['playingByCoach'] ?? [],
+                $case['groups'] ?? [],
             ), \sprintf('PARITÉ DES TENUES ROMPUE (« %s »).', $case['name']));
         }
     }

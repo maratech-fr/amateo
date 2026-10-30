@@ -102,4 +102,40 @@ describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK
 
     expect(conflictingReservation(candidate, both, mainCoachByTeam(busy))).not.toBeNull();
   });
+
+  // La modale juge comme le récap et le radar : mêmes indisponibilités, mêmes rôles de joueur, même
+  // groupe déclaré. ⚠ Signature PROPOSÉE (4ᵉ paramètre) ; NEO l'adapte mécaniquement.
+  it("le cas des trois appelants : U9 = A + B, A joue en SM1, U11-2 = B, le geste est refusé", () => {
+    const threeLinks: TeamCoach[] = [
+      { id: "l1", teamId: "U9", coachId: "A", role: "MAIN" },
+      { id: "l2", teamId: "U9", coachId: "B", role: "MAIN" },
+      { id: "l3", teamId: "U11-2", coachId: "B", role: "MAIN" },
+    ];
+    const u112 = reservation({ teamId: "U11-2", venueId: "venue1" });
+    const sm1 = reservation({ teamId: "SM1", venueId: "venue3" });
+    const u9 = { teamId: "U9", venueId: "venue2", dayOfWeek: 2, startTime: "17:00", durationMinutes: 90 };
+
+    expect(conflictingReservation(u9, [u112, sm1], mainCoachByTeam(threeLinks), { playersByTeam: new Map([["SM1", ["A"]]]) })).not.toBeNull();
+    // TÉMOIN : sans le rôle de joueur, A tient U9.
+    expect(conflictingReservation(u9, [u112, sm1], mainCoachByTeam(threeLinks))).toBeNull();
+  });
+
+  it("le second coach indisponible ne tient rien : le geste est refusé", () => {
+    const blockedByCoach = { "coach-lea": [[2, 0, 1440]] as [number, number, number][] };
+
+    expect(conflictingReservation(candidate, existing, mainCoachByTeam(twoCoaches), { blockedByCoach })).not.toBeNull();
+  });
+
+  it("même case sans groupe : chacun ses coachs ; groupe déclaré : le coach du groupe tient", () => {
+    const sameCase: TeamCoach[] = [
+      { id: "l1", teamId: "T1", coachId: "A", role: "MAIN" },
+      { id: "l2", teamId: "T2", coachId: "B", role: "MAIN" },
+      { id: "l3", teamId: "T3", coachId: "A", role: "MAIN" },
+    ];
+    const here = [reservation({ teamId: "T1", venueId: "venue1" }), reservation({ teamId: "T2", venueId: "venue1" })];
+    const t3 = { teamId: "T3", venueId: "venue2", dayOfWeek: 2, startTime: "17:00", durationMinutes: 90 };
+
+    expect(conflictingReservation(t3, here, mainCoachByTeam(sameCase))).not.toBeNull();
+    expect(conflictingReservation(t3, here, mainCoachByTeam(sameCase), { groups: [["T1", "T2"]] })).toBeNull();
+  });
 });

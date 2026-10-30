@@ -173,6 +173,32 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
      * d'avant l'import — c'est le cœur du faux « périmé ». Avant la correction, les templates
      * HARD/RESERVATION écrits par l'import faisaient diverger le hash de `snapshotHash`.
      */
+    /**
+     * Pas de faux « périmé » : le coach stocké sur un verrou manuel est un RÉSULTAT du solve, pas une
+     * donnée de structure. Une régénération qui l'écrit ou le change ne déplace pas l'empreinte.
+     */
+    public function testTheStoredCoachOfAManualLockStaysOutOfTheStructureHash(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->team($club, $season);
+        $this->venue($club, $season);
+        $base = $this->baseSchedule($club, $season);
+        $this->importedPin($base, LockOrigin::MANUAL);
+        $this->em->flush();
+
+        $this->purgeCache($club, $season);
+        $before = $this->provisioner->structureHashOfPlan($this->seasonPlanIdOf($season));
+
+        $pin = $this->em->getRepository(ScheduleSlotTemplate::class)->findOneBy(['scheduleId' => $base->getId(), 'teamId' => self::TEAM_ID]);
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $pin);
+        $pin->setCoachId('99999999-9999-4999-8999-999999999999');
+        $this->em->flush();
+
+        $this->purgeCache($club, $season);
+        self::assertNotNull($before);
+        self::assertSame($before, $this->provisioner->structureHashOfPlan($this->seasonPlanIdOf($season)), 'le coach stocké n\'entre pas dans l\'empreinte');
+    }
+
     public function testStructureHashIsStableAcrossAnImportedGeneration(): void
     {
         [$club, $season] = $this->seed();

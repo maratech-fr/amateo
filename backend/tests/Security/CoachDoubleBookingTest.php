@@ -6,10 +6,13 @@ namespace App\Tests\Security;
 
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
@@ -314,6 +317,83 @@ final class CoachDoubleBookingTest extends KernelTestCase
 
         self::assertSame([], $this->detector->detect([$a, $b], $ctx['clubId'], $ctx['seasonId'], [$maximeOff]));
         self::assertCount(1, $this->detector->detectUnavailabilityClashes([$a, $b], [$maximeOff], $ctx['clubId'], $ctx['seasonId']), 'témoin : elle reste signalée en avertissement');
+    }
+
+    /** Même case sans groupe : chacun ses coachs. Maxime (teamA, teamC) est à deux endroits, le récap bloque. */
+    public function testTheSameCaseWithoutAGroupLendsNoCoach(): void
+    {
+        ['ctx' => $ctx, 'reservations' => $reservations] = $this->seedSameCase();
+
+        self::assertNotSame([], $this->detector->detect($reservations, $ctx['clubId'], $ctx['seasonId']), 'Nicolas ne tient pas teamA par simple coïncidence de case');
+    }
+
+    /** Groupe DÉCLARÉ : Nicolas tient la séance commune, Maxime est libre pour teamC. */
+    public function testADeclaredGroupLendsItsCoaches(): void
+    {
+        ['ctx' => $ctx, 'reservations' => $reservations] = $this->seedSameCase();
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $this->em->persist($block);
+        $this->em->flush();
+        foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+        }
+        $this->em->flush();
+
+        self::assertSame([], $this->detector->detect($reservations, $ctx['clubId'], $ctx['seasonId']));
+    }
+
+    /**
+     * Le cas des trois appelants : U9 = Maxime + Lea, Maxime joue en SM1, U11-2 = Lea, même heure, trois
+     * gymnases. Maxime joue, Lea ne tient qu'une séance : le récap bloque, comme le radar et la modale.
+     */
+    public function testACoachPlayingElsewhereDoesNotHoldTheSessionAtTheRecap(): void
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $lea = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamA'], $lea, TeamCoachRole::MAIN);
+        $u112 = $this->secondTeamLike($ctx, 'U11-2');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $u112, $lea, TeamCoachRole::MAIN);
+        $this->em->persist((new CoachPlayerMembership)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($ctx['teamB'])->setCoachId($ctx['coachId'])->setIsActive(true));
+        $this->em->flush();
+        $u9 = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $sm1 = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+        $u112Session = $this->reserve($ctx, $u112, $this->thirdVenue($ctx), 2, '17:00', 90);
+
+        self::assertNotSame([], $this->detector->detect([$u9, $sm1, $u112Session], $ctx['clubId'], $ctx['seasonId']));
+    }
+
+    /** La mention ne ment jamais : Maxime joue ailleurs, c'est Lea qui tient, jamais lui. */
+    public function testTheHoldNoticeNeverNamesACoachWhoPlaysElsewhere(): void
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $lea = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamA'], $lea, TeamCoachRole::MAIN);
+        $this->em->persist((new CoachPlayerMembership)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($ctx['teamB'])->setCoachId($ctx['coachId'])->setIsActive(true));
+        $this->em->flush();
+        $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+
+        $messages = implode(' | ', array_column($this->detector->detectHoldNotices([$a, $b], [], $ctx['clubId'], $ctx['seasonId']), 'message'));
+
+        self::assertStringNotContainsString('Maxime', $messages);
+    }
+
+    /**
+     * teamA (Maxime) et teamB (Nicolas) sur la même case, teamC (Maxime) ailleurs au même moment.
+     *
+     * @return array{ctx: array{clubId: string, seasonId: string, teamA: string, teamB: string, venue1: string, venue2: string, coachId: string}, reservations: list<Reservation>}
+     */
+    private function seedSameCase(): array
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $teamC = $this->secondTeamLike($ctx, 'SM3');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $teamC, $ctx['coachId'], TeamCoachRole::MAIN);
+
+        return ['ctx' => $ctx, 'reservations' => [
+            $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '19:00', 90),
+            $this->reserve($ctx, $ctx['teamB'], $ctx['venue1'], 2, '19:00', 90),
+            $this->reserve($ctx, $teamC, $ctx['venue2'], 2, '19:00', 90),
+        ]];
     }
 
     protected function setUp(): void

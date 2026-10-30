@@ -61,7 +61,9 @@ describe("holdersFor — parité mécanique de l'affectation des tenues (PHP)", 
       const blocked = ("blockedByCoach" in c ? c.blockedByCoach : {}) as Parameters<typeof holdersFor>[2];
       const playing = ("playingByCoach" in c ? c.playingByCoach : {}) as Parameters<typeof holdersFor>[3];
 
-      expect(holdersFor(c.sessions, c.mainCoachesByTeam as Record<string, string[]>, blocked, playing)).toEqual(c.holders);
+      const groups = "groups" in c ? (c.groups as string[][]) : [];
+
+      expect(holdersFor(c.sessions, c.mainCoachesByTeam as Record<string, string[]>, blocked, playing, groups)).toEqual(c.holders);
     });
   }
 });

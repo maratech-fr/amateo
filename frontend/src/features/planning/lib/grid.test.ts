@@ -55,6 +55,34 @@ describe("time helpers", () => {
   });
 });
 
+describe("tous les coachs de l'équipe (décision fondateur)", () => {
+  // ⚠ Champ PROPOSÉ `teamMainCoaches` : équipe → tous ses coachs principaux, dans l'ordre.
+  const withTwoCoaches: Lookups = {
+    ...lookups,
+    coaches: new Map<string, Coach>([
+      ["cb", { id: "cb", firstName: "Bruno", lastName: "B", gender: "UNSPECIFIED" }],
+      ["ce", { id: "ce", firstName: "Elsa", lastName: "E", gender: "UNSPECIFIED" }],
+    ]),
+    teamMainCoaches: new Map([["t1", ["cb", "ce"]]]),
+  };
+
+  it("la séance paraît dans la vue de CHACUN des coachs de l'équipe", () => {
+    expect(resourceKeysForSlot(slot({ coachId: "cb" }), "coach", withTwoCoaches).sort()).toEqual(["cb", "ce"]);
+  });
+
+  it("la grille affiche « Bruno B / Elsa E » quand rien n'impose un tenant", () => {
+    const grid = buildGrid([slot({ coachId: "cb" })], "gymnase", withTwoCoaches);
+
+    expect(JSON.stringify(grid)).toContain("Bruno B / Elsa E");
+  });
+
+  it("la grille nomme le tenant quand il est imposé : le coach stocké n'est pas le premier", () => {
+    const grid = buildGrid([slot({ coachId: "ce" })], "gymnase", withTwoCoaches);
+
+    expect(JSON.stringify(grid)).toContain("tenue par Elsa E");
+  });
+});
+
 describe("resourceKeysForSlot", () => {
   const s = slot({ venueId: "v1", coachId: "c1", teamId: "t1" });
   it("maps per view (single key)", () => {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\CrossStack;
 
+use App\Service\CoachDoubleBookingDetector;
 use App\Service\ScheduleConstraintBuilder;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -59,6 +60,65 @@ final class OneCoachHoldsTheSessionGateTest extends TestCase
             $result['diagnostics'] ?? [],
             static fn (array $d): bool => 'rule_sacrificed' === ($d['type'] ?? null),
         )), 'un autre coach tient la séance : rien n\'est sacrifié');
+    }
+
+    /**
+     * MIROIR : l'indisponibilité se lit de la MÊME façon des deux côtés. A est indisponible à partir
+     * de 19:00, la séance dure 18:00-19:30, B est pris ailleurs. Le test ne dit pas quel sens est le
+     * bon, il exige que le moteur et `holdersFor` rendent le même verdict.
+     */
+    public function testAnUnavailabilityMidSessionGetsTheSameVerdictFromEngineAndMirror(): void
+    {
+        $payload = $this->payload(['A', 'B']);
+        $payload['constraints'] = [
+            $this->teamCoach('tc-u13', 'U13', 'B'),
+            $this->teamCoach('tc-u15-A', 'U15', 'A'),
+            $this->teamCoach('tc-u15-B', 'U15', 'B'),
+            [
+                'id' => 'off', 'scope' => 'COACH', 'scopeTargetId' => 'A', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD',
+                'name' => 'Indispo', 'config' => ['unavailableDays' => [1], 'fromTime' => '19:00'], 'sortOrder' => 0, 'isActive' => true,
+            ],
+        ];
+        $mirror = CoachDoubleBookingDetector::holdersFor(
+            $this->mirrorSessions(),
+            ['U13' => ['B'], 'U15' => ['A', 'B']],
+            ['A' => [[1, 1140, 1440]]],
+        );
+
+        self::assertSame(null !== $mirror, 2 === \count($this->coachByTeam($this->solve($payload))), 'le moteur et le miroir doivent juger pareil une indisponibilité qui commence pendant la séance');
+    }
+
+    /**
+     * MIROIR : un coach qui joue dans le même gymnase au même moment. A coache U15 et joue en U13 sur
+     * deux cases d'un gymnase divisible. Même principe : même verdict des deux côtés, sens non tranché.
+     */
+    public function testAPlayerInTheSameGymGetsTheSameVerdictFromEngineAndMirror(): void
+    {
+        $payload = $this->payload(['A']);
+        $payload['venues'] = [[
+            'id' => self::GYM_ONE, 'name' => 'V',
+            'trainingSlots' => [['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 2]],
+        ]];
+        $payload['constraints'] = [
+            $this->teamCoach('tc-u15-A', 'U15', 'A'),
+            ['id' => 'cp', 'type' => 'COACH_PLAYER_UNAVAILABILITY', 'isActive' => true, 'metadata' => ['teamId' => 'U13', 'coachId' => 'A']],
+        ];
+        $session = ['id' => 'u15', 'teamId' => 'U15', 'venueId' => self::GYM_ONE, 'dayOfWeek' => 1, 'startMinutes' => 1080, 'durationMinutes' => 90];
+        $game = ['teamId' => 'U13', 'venueId' => self::GYM_ONE, 'dayOfWeek' => 1, 'startMinutes' => 1080, 'durationMinutes' => 90];
+        $mirror = CoachDoubleBookingDetector::holdersFor([$session], ['U15' => ['A']], [], ['A' => [$game]]);
+
+        self::assertSame(null !== $mirror, 2 === \count($this->coachByTeam($this->solve($payload))), 'le moteur et le miroir doivent juger pareil un joueur dans le même gymnase');
+    }
+
+    /**
+     * @return list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>
+     */
+    private function mirrorSessions(): array
+    {
+        return [
+            ['id' => 'u15', 'teamId' => 'U15', 'venueId' => self::GYM_ONE, 'dayOfWeek' => 1, 'startMinutes' => 1080, 'durationMinutes' => 90],
+            ['id' => 'u13', 'teamId' => 'U13', 'venueId' => self::GYM_TWO, 'dayOfWeek' => 1, 'startMinutes' => 1080, 'durationMinutes' => 90],
+        ];
     }
 
     /**

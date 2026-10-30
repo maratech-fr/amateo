@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.validate_assignments import validate_assignment
 from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload, team_coach
@@ -363,3 +365,336 @@ def test_the_move_verdict_accepts_a_baseline_held_by_the_second_coach() -> None:
 def test_the_move_verdict_still_refuses_a_baseline_with_a_coach_alone_in_two_gyms() -> None:
     """TÉMOIN : sans second coach, la même base reste infaisable pour le verdict."""
     assert _verdict(["A"])["valid"] is False
+
+
+# ── La tenue d'un verrou cède : jamais d'INFEASIBLE muet (contre-revue, décision ADR-0001 amendée) ──
+#
+# Les deux coachs de l'équipe A+B sont déjà au plafond par leurs PROPRES réservations : qui que ce soit
+# qui tienne la réservation de A+B, une règle dure tombe. La réservation gagne : planning produit, écart
+# nommé. Ces décors comptent des verrous SEULS, ils ne peuvent donc jamais justifier un ``failed``.
+
+
+def _assert_produced_and_named(result: dict[str, Any]) -> None:
+    assert result["status"] == "completed", f"des verrous seuls n'échouent jamais : {result['diagnostics']}"
+    signals = _reservation_signals(result)
+    assert signals, f"la règle tombée doit être nommée : {result['diagnostics']}"
+    assert {d["type"] for d in signals} == {"rule_sacrificed"}
+
+
+def _lock_on(team_id: str, venue_id: str, day: int, start: str = "18:00") -> dict[str, Any]:
+    return {**_lock(team_id, venue_id, day=day, start=start), "id": f"lock-{team_id}-{day}-{start}"}
+
+
+def test_a_lock_whose_coaches_both_reached_their_rest_cap_is_named_not_infeasible() -> None:
+    """A et B réservés seuls du lundi au jeudi, A+B réservée le vendredi, repos coach dur."""
+    days = [1, 2, 3, 4, 5]
+    result = solve_payload(
+        make_payload(
+            teams=[
+                make_team("TA", sessions_per_week=4),
+                make_team("TB", sessions_per_week=4),
+                make_team("AB", sessions_per_week=1),
+            ],
+            venues=[make_venue(v, [(d, "18:00") for d in days]) for v in ("V", "W", "X")],
+            coaches=_coaches("A", "B"),
+            constraints=_links(TA=["A"], TB=["B"], AB=["A", "B"]),
+            slot_templates=[
+                *[_lock_on("TA", "V", d) for d in days[:4]],
+                *[_lock_on("TB", "W", d) for d in days[:4]],
+                _lock_on("AB", "X", 5),
+            ],
+            implicit_rules={"coachRestDay": {"intensity": "HARD"}},
+        )
+    )
+
+    _assert_produced_and_named(result)
+    assert "AB" in _placed(result), "la réservation reste posée"
+
+
+def test_a_lock_whose_coaches_cannot_arrive_in_time_is_named_not_infeasible() -> None:
+    """Trajet obligatoire : A et B finissent ailleurs à 20:00, A+B réservée à 20:00 dans un autre gymnase."""
+    payload = make_payload(
+        teams=[make_team(t, sessions_per_week=1) for t in ("TA", "TB", "AB")],
+        venues=[make_venue("V1", [(1, "18:30")]), make_venue("V3", [(1, "18:30")]), make_venue("V2", [(1, "20:00")])],
+        coaches=_coaches("A", "B"),
+        constraints=_links(TA=["A"], TB=["B"], AB=["A", "B"]),
+        slot_templates=[
+            _lock_on("TA", "V1", 1, "18:30"),
+            _lock_on("TB", "V3", 1, "18:30"),
+            _lock_on("AB", "V2", 1, "20:00"),
+        ],
+        implicit_rules={"travelTime": {"intensity": "MANDATORY", "toleranceMinutes": 0}},
+    )
+    payload["venueTravelTimes"] = [
+        {"venueAId": "V1", "venueBId": "V2", "drivingMinutes": 30, "walkingMinutes": 30},
+        {"venueAId": "V2", "venueBId": "V3", "drivingMinutes": 30, "walkingMinutes": 30},
+    ]
+
+    _assert_produced_and_named(solve_payload(payload))
+
+
+def test_a_lock_that_would_extend_both_coaches_chains_is_named_not_infeasible() -> None:
+    """Enchaînement dur : A et B ont chacun deux réservations de suite, A+B réservée juste après."""
+    starts = ["17:00", "18:30"]
+    result = solve_payload(
+        make_payload(
+            teams=[
+                make_team("TA1", sessions_per_week=1),
+                make_team("TA2", sessions_per_week=1),
+                make_team("TB1", sessions_per_week=1),
+                make_team("TB2", sessions_per_week=1),
+                make_team("AB", sessions_per_week=1),
+            ],
+            venues=[
+                make_venue("V", [(1, s) for s in starts]),
+                make_venue("W", [(1, s) for s in starts]),
+                make_venue("X", [(1, "20:00")]),
+            ],
+            coaches=_coaches("A", "B"),
+            constraints=_links(TA1=["A"], TA2=["A"], TB1=["B"], TB2=["B"], AB=["A", "B"]),
+            slot_templates=[
+                _lock_on("TA1", "V", 1, "17:00"),
+                _lock_on("TA2", "V", 1, "18:30"),
+                _lock_on("TB1", "W", 1, "17:00"),
+                _lock_on("TB2", "W", 1, "18:30"),
+                _lock_on("AB", "X", 1, "20:00"),
+            ],
+            implicit_rules={"maxConsecutiveSessions": {"intensity": "HARD", "maxConsecutive": 3}},
+        )
+    )
+
+    _assert_produced_and_named(result)
+
+
+# ── Trajets et plafonds durs : ils ne valent que pour le coach qui tient ─────────────────────────
+
+
+def _rest_decor(ab_coaches: list[str]) -> dict[str, Any]:
+    """A réservé seul du lundi au jeudi ; AB, libre, n'a de case que le vendredi."""
+    return make_payload(
+        teams=[make_team("TA", sessions_per_week=4), make_team("AB", sessions_per_week=1)],
+        venues=[make_venue("V", [(d, "18:00") for d in (1, 2, 3, 4)]), make_venue("X", [(5, "18:00")])],
+        coaches=_coaches("A", "B"),
+        constraints=_links(TA=["A"], AB=ab_coaches),
+        slot_templates=[_lock_on("TA", "V", d) for d in (1, 2, 3, 4)],
+        implicit_rules={"coachRestDay": {"intensity": "HARD"}},
+    )
+
+
+def test_the_rest_cap_binds_only_the_coach_who_holds() -> None:
+    result = solve_payload(_rest_decor(["A", "B"]))
+
+    assert "AB" in _placed(result), f"B tient AB, A garde son repos : {result['diagnostics']}"
+    assert _coach_of(result, "AB") == "B"
+
+
+def test_the_rest_cap_still_binds_a_coach_alone() -> None:
+    """TÉMOIN : sans B, le vendredi priverait A de son repos."""
+    assert "AB" not in _placed(solve_payload(_rest_decor(["A"])))
+
+
+def _travel_decor(ab_coaches: list[str]) -> dict[str, Any]:
+    payload = make_payload(
+        teams=[make_team("TA", sessions_per_week=1), make_team("AB", sessions_per_week=1)],
+        venues=[make_venue("V1", [(1, "18:30")]), make_venue("V2", [(1, "20:00")])],
+        coaches=_coaches("A", "B"),
+        constraints=_links(TA=["A"], AB=ab_coaches),
+        slot_templates=[_lock_on("TA", "V1", 1, "18:30")],
+        implicit_rules={"travelTime": {"intensity": "MANDATORY", "toleranceMinutes": 0}},
+    )
+    payload["venueTravelTimes"] = [{"venueAId": "V1", "venueBId": "V2", "drivingMinutes": 30, "walkingMinutes": 30}]
+    return payload
+
+
+def test_the_mandatory_travel_binds_only_the_coach_who_holds() -> None:
+    result = solve_payload(_travel_decor(["A", "B"]))
+
+    assert "AB" in _placed(result), f"B tient AB, A n'a pas à traverser : {result['diagnostics']}"
+    assert _coach_of(result, "AB") == "B"
+
+
+def test_the_mandatory_travel_still_binds_a_coach_alone() -> None:
+    """TÉMOIN : A seul ne peut pas enchaîner sans battement."""
+    assert "AB" not in _placed(solve_payload(_travel_decor(["A"])))
+
+
+def _chain_decor(ab_coaches: list[str]) -> dict[str, Any]:
+    return make_payload(
+        teams=[make_team(t, sessions_per_week=1) for t in ("T1", "T2", "AB")],
+        venues=[make_venue("V", [(1, "17:00"), (1, "18:30"), (1, "20:00")])],
+        coaches=_coaches("A", "B"),
+        constraints=_links(T1=["A"], T2=["A"], AB=ab_coaches),
+        slot_templates=[_lock_on("T1", "V", 1, "17:00"), _lock_on("T2", "V", 1, "18:30")],
+        implicit_rules={"maxConsecutiveSessions": {"intensity": "HARD", "maxConsecutive": 3}},
+    )
+
+
+def test_the_hard_chain_binds_only_the_coach_who_holds() -> None:
+    result = solve_payload(_chain_decor(["A", "B"]))
+
+    assert "AB" in _placed(result), f"B tient AB, A n'enchaîne pas trois séances : {result['diagnostics']}"
+    assert _coach_of(result, "AB") == "B"
+
+
+def test_the_hard_chain_still_binds_a_coach_alone() -> None:
+    """TÉMOIN : A seul enchaînerait trois séances."""
+    assert "AB" not in _placed(solve_payload(_chain_decor(["A"])))
+
+
+# ── Même case : seul un groupe DÉCLARÉ prête ses coachs (décision fondateur) ─────────────────────
+
+
+def _same_case_locks(*, declared_group: bool) -> dict[str, Any]:
+    """T1 (A) et T2 (B) réservées sur la même case, T3 (A) ailleurs au même moment."""
+    payload = make_payload(
+        teams=[make_team(t, sessions_per_week=1) for t in ("T1", "T2", "T3")],
+        venues=[make_venue("V", [(MONDAY, "19:00")], capacity=2), make_venue("W", [(MONDAY, "19:00")])],
+        coaches=_coaches("A", "B"),
+        constraints=_links(T1=["A"], T2=["B"], T3=["A"]),
+        slot_templates=[
+            _lock_on("T1", "V", MONDAY, "19:00"),
+            _lock_on("T2", "V", MONDAY, "19:00"),
+            _lock_on("T3", "W", MONDAY, "19:00"),
+        ],
+    )
+    if declared_group:
+        payload["sharedBlocks"] = [{"id": "g", "teamIds": ["T1", "T2"], "commonSessions": 1}]
+    return payload
+
+
+def test_the_same_case_without_a_group_lends_no_coach() -> None:
+    """A est à deux endroits : l'écart est nommé, B ne tient pas T1 par simple coïncidence de case."""
+    _assert_produced_and_named(solve_payload(_same_case_locks(declared_group=False)))
+
+
+def test_a_declared_group_lends_its_coaches_even_on_locks() -> None:
+    """Vrai groupe : B tient la séance commune, A est libre pour T3. Rien à signaler."""
+    result = solve_payload(_same_case_locks(declared_group=True))
+
+    assert result["status"] == "completed"
+    assert _reservation_signals(result) == [], f"B tient le groupe : {_reservation_signals(result)}"
+    assert _coach_of(result, "T3") == "A"
+    assert _coach_of(result, "T1") == "B", "A est à T3 : le groupe est tenu par B, et la sortie le dit"
+
+
+# ── Le coach stocké est stable : le tenant imposé, sinon le premier de l'équipe ──────────────────
+
+
+def _free_team(coaches: list[str], seed: int = 42) -> dict[str, Any]:
+    return make_payload(
+        teams=[make_team("T", sessions_per_week=1)],
+        venues=[make_venue("V", [(MONDAY, "18:00")])],
+        coaches=_coaches("A", "B"),
+        constraints=_links(T=coaches),
+        seed=seed,
+    )
+
+
+def test_a_free_choice_stores_the_first_coach_of_the_team() -> None:
+    """Rien n'impose B : le coach stocké reste le premier de l'équipe, jamais un choix du solveur."""
+    assert _coach_of(solve_payload(_free_team(["A", "B"])), "T") == "A"
+    assert _coach_of(solve_payload(_free_team(["B", "A"])), "T") == "B"
+
+
+def test_the_stored_coach_does_not_depend_on_the_seed() -> None:
+    assert {_coach_of(solve_payload(_free_team(["A", "B"], seed=seed)), "T") for seed in (1, 2, 3, 42, 99)} == {"A"}
+
+
+def _stable_decor() -> dict[str, Any]:
+    """Un club à co-coachs, libre : assez de séances pour qu'un choix de solveur puisse varier."""
+    teams = [f"T{i}" for i in range(8)]
+    return make_payload(
+        teams=[make_team(t, sessions_per_week=2) for t in teams],
+        venues=[make_venue(v, [(d, s) for d in (1, 2, 3, 4) for s in ("18:00", "19:30")]) for v in ("V", "W")],
+        coaches=_coaches("A", "B", "C"),
+        constraints=_links(**{t: (["A", "B"] if i % 2 else ["B", "C"]) for i, t in enumerate(teams)}),
+    )
+
+
+def _coach_by_team_and_case(result: dict[str, Any]) -> dict[tuple[str, int, str], Any]:
+    return {(s["teamId"], s["dayOfWeek"], s["startTime"]): s["coachId"] for s in result["slots"]}
+
+
+def test_two_solves_of_the_same_payload_store_the_same_coaches() -> None:
+    assert _coach_by_team_and_case(solve_payload(_stable_decor())) == _coach_by_team_and_case(
+        solve_payload(_stable_decor())
+    )
+
+
+def test_the_stored_coach_is_the_first_unless_imposed_with_eight_workers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Le parallélisme change la solution, jamais la règle : hors tenue imposée, le premier de l'équipe.
+    Dans ce décor sans verrou, un coach pris ailleurs peut imposer le second : la vérification porte
+    donc sur chaque séance dont le premier coach n'a aucune autre séance qui la chevauche."""
+    monkeypatch.setattr("app.main._adaptive_workers", lambda _teams, _venues: 8)
+    payload = _stable_decor()
+    result = solve_payload(payload)
+    first_by_team = {t["id"]: ("A" if int(t["id"][1:]) % 2 else "B") for t in payload["teams"]}
+
+    for slot in result["slots"]:
+        first = first_by_team[slot["teamId"]]
+        same_time_elsewhere = [
+            s
+            for s in result["slots"]
+            if s is not slot
+            and (s["dayOfWeek"], s["startTime"]) == (slot["dayOfWeek"], slot["startTime"])
+            and s["venueId"] != slot["venueId"]
+        ]
+        if not any(s["coachId"] == first for s in same_time_elsewhere):
+            assert slot["coachId"] == first, f"rien n'impose un autre coach : {slot}"
+
+
+# ── Le filet post-solve ne crie pas sur une séance de bloc tenue ailleurs ────────────────────────
+
+
+@pytest.mark.parametrize("third_team_locked", [True, False])
+def test_a_block_member_whose_coach_is_elsewhere_raises_no_false_alarm(third_team_locked: bool) -> None:
+    """Bloc {t1 (A), t2 (B)}, t1 réservée, B ailleurs avec T3 : A tient la séance commune. Le membre
+    libre t2 ne doit pas ressortir au nom de B (« affecté à plusieurs équipes » à tort)."""
+    payload = make_payload(
+        teams=[make_team(t, sessions_per_week=1) for t in ("t1", "t2", "T3")],
+        venues=[make_venue("V", [(MONDAY, "18:00")], capacity=2), make_venue("W", [(MONDAY, "18:00")])],
+        coaches=_coaches("A", "B"),
+        constraints=_links(t1=["A"], t2=["B"], T3=["B"]),
+        slot_templates=[_lock_on("t1", "V", MONDAY), *([_lock_on("T3", "W", MONDAY)] if third_team_locked else [])],
+    )
+    payload["sharedBlocks"] = [{"id": "g", "teamIds": ["t1", "t2"], "commonSessions": 1}]
+
+    result = solve_payload(payload)
+
+    assert _placed(result) == {"t1", "t2", "T3"}, result["diagnostics"]
+    false_alarms = [d for d in result["diagnostics"] if "plusieurs équipes" in str(d.get("message"))]
+    assert false_alarms == [], f"B est légitimement à T3, A tient le groupe : {false_alarms}"
+    assert _coach_of(result, "t2") != "B", "B est à T3 : la séance commune n'est pas à son nom"
+
+
+# ── Salarié : la présence comptée est celle que le planning affiche ──────────────────────────────
+
+
+def test_a_salaried_presence_required_by_a_hard_rule_is_the_coach_shown() -> None:
+    """Un salarié est second coach de chaque équipe, et la règle dure exige un salarié chaque soir :
+    il ne peut être compté présent sans ressortir comme coach de la séance (présence fantôme)."""
+    days = (1, 2, 3, 4, 5)
+    teams = [f"D{d}" for d in days]
+    coaches = [
+        {"id": "X", "firstName": "Coach", "lastName": "X", "isEmployee": False},
+        {"id": "S1", "firstName": "Coach", "lastName": "S1", "isEmployee": True},
+        {"id": "S2", "firstName": "Coach", "lastName": "S2", "isEmployee": True},
+    ]
+    result = solve_payload(
+        make_payload(
+            teams=[make_team(t, sessions_per_week=1) for t in teams],
+            venues=[make_venue("V", [(d, "18:00") for d in days])],
+            coaches=coaches,
+            # Le vendredi passe par S2 : S1 garde son jour de repos.
+            constraints=_links(**{t: ["X", "S2" if t == "D5" else "S1"] for t in teams}),
+            implicit_rules={
+                "salarieDistribution": {"intensity": "HARD"},
+                "coachRestDay": {"intensity": "HARD"},
+            },
+        )
+    )
+
+    assert result["status"] == "completed", result["diagnostics"]
+    shown = {s["dayOfWeek"] for s in result["slots"] if s["coachId"] in {"S1", "S2"}}
+    placed_days = {s["dayOfWeek"] for s in result["slots"]}
+    assert shown == placed_days, f"chaque soir compté doit afficher son salarié : {result['slots']}"

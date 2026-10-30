@@ -134,6 +134,39 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
+    /** Même case sans groupe : chacun ses coachs. Anna (A, C) est à deux endroits, le radar le signale. */
+    public function testTheSameCaseWithoutAGroupLendsNoCoach(): void
+    {
+        $ctx = $this->seed();
+        $bob = $this->createCoach($ctx, 'Bob');
+        $teamC = $this->thirdTeam($ctx);
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $bob, TeamCoachRole::MAIN);
+        $this->link($ctx, $teamC, $ctx['coach'], TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym1'], 2, '19:00', 90);
+        $this->place($ctx, $teamC, $ctx['gym2'], 2, '19:00', 90);
+
+        self::assertNotSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+    }
+
+    /** Le cas des trois appelants : U9 = Anna + Bob, Anna joue ailleurs, U11-2 = Bob. Personne pour tout tenir. */
+    public function testACoachPlayingElsewhereLeavesTheSecondCoachOverbooked(): void
+    {
+        $ctx = $this->seed();
+        $bob = $this->createCoach($ctx, 'Bob');
+        $teamC = $this->thirdTeam($ctx);
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamA'], $bob, TeamCoachRole::MAIN);
+        $this->playIn($ctx, $teamC, $ctx['coach'], true);
+        $this->link($ctx, $ctx['teamB'], $bob, TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
+        $this->place($ctx, $teamC, $this->thirdGym($ctx), 2, '18:00', 90);
+
+        self::assertNotSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+    }
+
     /** Un second coach qui joue ailleurs au même moment ne tient rien : la séance n'a personne. */
     public function testASecondCoachPlayingElsewhereDoesNotHoldTheSession(): void
     {
@@ -392,6 +425,32 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
             'gym1' => $gymIds[0], 'gym2' => $gymIds[1],
             'coach' => $this->createCoach(['clubId' => $clubId, 'seasonId' => $seasonId], 'Anna'),
         ];
+    }
+
+    /**
+     * @param array{teamA: string} $ctx
+     */
+    private function thirdTeam(array $ctx): string
+    {
+        $model = $this->em->getRepository(Team::class)->find($ctx['teamA']);
+        self::assertInstanceOf(Team::class, $model);
+        $team = (new Team)->setClubId($model->getClubId())->setSeasonId($model->getSeasonId())->setSportCategoryId($model->getSportCategoryId())->setPriorityTierId($model->getPriorityTierId())->setName('SM1')->setSessionsPerWeek(2);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team->getId();
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $ctx
+     */
+    private function thirdGym(array $ctx): string
+    {
+        $venue = (new Venue)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Gymnase C')->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue->getId();
     }
 
     /**
