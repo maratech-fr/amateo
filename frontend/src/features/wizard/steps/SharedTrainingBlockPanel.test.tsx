@@ -24,6 +24,7 @@ vi.mock("../queries", () => ({
   useDeleteSharedTrainingBlock: () => ({ mutate: stbDelete }),
 }));
 
+import { WIZARD_TEXTS as T } from "../texts";
 import { SharedTrainingBlockPanel } from "./SharedTrainingBlockPanel";
 
 const team = (over: Partial<Team> & Pick<Team, "id" | "name">): Team => ({
@@ -154,6 +155,26 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     expect(arg.id).toBe("b1");
     expect([...arg.body.teamIds].sort()).toEqual(["t1", "t2"]);
     expect(arg.body.commonSessions).toBe(2);
+  });
+
+  it("baisse sous les cases réservées : le motif du 422 s'affiche et la saisie reste en édition", async () => {
+    // Promesse fondateur 2026-10-30 : le serveur refuse, le gestionnaire lit pourquoi et ne perd rien.
+    const user = userEvent.setup();
+    const message = T.blockBelowReservedSessions(2);
+    const err = new HTTPError(new Response(null, { status: 422 }), new Request("http://localhost/"), { method: "PUT" } as never);
+    (err as { data?: unknown }).data = { title: "An error occurred", detail: message, violations: [{ propertyPath: "", message }] };
+    stbUpdate.mockRejectedValueOnce(err);
+    blocksState.data = [block("b1", ["t1", "t2"], 2)];
+    renderPanel();
+
+    await user.click(screen.getByRole("button", { name: /Modifier le groupe/ }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Séances communes" }), "1");
+    await user.click(screen.getByRole("button", { name: "Enregistrer le groupe" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("button", { name: "Enregistrer le groupe" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Séances communes" })).toHaveValue("1");
+    expect(screen.getByRole("checkbox", { name: "U9F2" })).toBeChecked();
   });
 
   it("supprime un bloc après confirmation ; sans séance placée, la confirmation reste par équipes", async () => {

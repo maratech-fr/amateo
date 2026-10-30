@@ -154,9 +154,11 @@ def test_a_rule_conflict_not_caused_by_a_lock_stays_failed_even_with_reservation
 # ── Portée élargie (décision fondateur 2026-10-30) : TOUTE règle contredite par un verrou ────────
 #
 # « On place la séance et on dit que la contrainte d'indisponibilité a été violée avec la réservation
-# X. » Ces cas ne passent pas tous par un INFEASIBLE : plusieurs sortent déjà ``completed`` avec un
-# signal d'une autre famille (``constraint_not_honored``, ``session_below_effective_min``,
-# ``conflict``). Les tests n'exigent pas la disparition de ces signaux, seulement le ``rule_sacrificed``.
+# X. » Deux cas, tranchés par le fondateur le 2026-10-30 :
+#   * la règle contredit LA réservation elle-même : la réservation est placée, la règle sacrifiée ;
+#   * la réservation d'une AUTRE équipe prend la seule case compatible : la règle n'est PAS relâchée, la
+#     séance reste NON placée, le résultat reste ``completed``, sans repartir en INFEASIBLE.
+# Dans les deux cas, UN SEUL message : ``rule_sacrificed`` remplace les signaux historiques.
 
 
 def _reservation(team_id: str, venue_id: str, day: int, start: str = "18:00") -> dict[str, Any]:
@@ -169,6 +171,26 @@ def _reservation(team_id: str, venue_id: str, day: int, start: str = "18:00") ->
         "durationMinutes": 90,
         "lockLevel": "HARD",
     }
+
+
+# Les signaux historiques qu'un ``rule_sacrificed`` remplace dès qu'une réservation est en cause.
+_REPLACED_SIGNALS = {
+    "constraint_not_honored",
+    "session_below_effective_min",
+    "conflict",
+    "unplaced",
+    "venue_minimum_unreachable",
+    "day_constraint_conflict",
+}
+
+
+def _assert_single_message(result: dict[str, Any]) -> None:
+    duplicates = [d for d in result["diagnostics"] if d.get("type") in _REPLACED_SIGNALS]
+    assert duplicates == [], f"un seul message quand une réservation est en cause, doublons : {duplicates}"
+
+
+def _slots_of(result: dict[str, Any], team_id: str) -> list[int]:
+    return [s["dayOfWeek"] for s in result["slots"] if s["teamId"] == team_id]
 
 
 def _named_team(team_id: str, name: str, *, sessions_per_week: int = 1) -> dict[str, Any]:
@@ -205,6 +227,7 @@ def _only_sacrifice_of_kind(result: dict[str, Any], kind: str) -> dict[str, Any]
     matching = [d for d in _sacrificed(result) if kind in {c.get("kind") for c in d.get("causes", [])}]
     assert matching, f"écart attendu en rule_sacrificed, kind {kind} ; diagnostics : {result['diagnostics']}"
     assert matching[0]["severity"] == "WARNING", "un sacrifice est une alerte"
+    _assert_single_message(result)
     return matching[0]
 
 
@@ -235,8 +258,9 @@ def test_the_only_coach_off_on_the_reserved_case_is_a_named_violation_with_the_r
 
 
 def test_a_grid_exhausted_by_other_teams_locks_names_the_team_and_the_session_gap() -> None:
-    """Équipe à 2 séances, 1 réservation, aucune case libre à cause du verrou d'une AUTRE équipe :
-    l'écart nomme l'équipe, le manque (2 demandées, 1 placée) et la réservation en cause."""
+    """Équipe à 2 séances, 1 réservation, aucune case libre à cause du verrou d'une AUTRE équipe : la
+    séance manquante reste non placée, l'écart nomme l'équipe, le manque (2 demandées, 1 placée) et la
+    réservation en cause."""
     result = solve_payload(
         make_payload(
             teams=[_named_team("T", "Seniors A", sessions_per_week=2), _named_team("U", "Cadets")],
@@ -247,6 +271,7 @@ def test_a_grid_exhausted_by_other_teams_locks_names_the_team_and_the_session_ga
 
     diagnostic = _only_sacrifice_of_kind(result, "min_sessions")
     assert diagnostic["teamId"] == "T"
+    assert _slots_of(result, "T") == [1], "seule la séance réservée est posée"
     _assert_names(diagnostic, "Seniors A", "2", "1", "Cadets")
 
 
@@ -280,9 +305,10 @@ def test_a_hard_forbidden_day_on_the_reserved_case_is_a_named_violation() -> Non
     _assert_names(_only_sacrifice_of_kind(result, "day_forbidden"), "Pas le lundi", "Seniors A", "lundi", "18:00")
 
 
-def test_a_forced_day_taken_by_another_teams_reservation_places_the_session_elsewhere() -> None:
-    """Le jour imposé n'a qu'une case, réservée par une autre équipe : la séance se place sur la case
-    libre restante et l'écart nomme la règle et la réservation. Aujourd'hui : ``failed``."""
+def test_a_forced_day_taken_by_another_teams_reservation_leaves_the_session_unplaced_and_named() -> None:
+    """Le jour imposé n'a qu'une case, réservée par une autre équipe. Une case libre existe un autre
+    jour : le moteur n'y place JAMAIS la séance, la règle n'est pas relâchée. Résultat ``completed``,
+    séance non placée, message nommant l'équipe, la règle et la réservation. Aujourd'hui : ``failed``."""
     forced = _hard_team_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé")
     result = solve_payload(
         make_payload(
@@ -294,12 +320,49 @@ def test_a_forced_day_taken_by_another_teams_reservation_places_the_session_else
     )
 
     diagnostic = _only_sacrifice_of_kind(result, "day_forced")
-    assert ("T", 1) in [(s["teamId"], s["dayOfWeek"]) for s in result["slots"]], "la séance doit être placée"
+    assert _slots_of(result, "T") == [], "la séance ne se place jamais hors de sa règle"
     _assert_names(diagnostic, "Vendredi imposé", "Seniors A", "Cadets")
 
 
-def test_a_venue_floor_taken_by_another_teams_reservation_is_a_named_violation() -> None:
-    """Plancher « au moins 1 séance à W » dont la seule case est réservée par une autre équipe."""
+def test_a_forced_day_whose_only_grid_case_is_reserved_does_not_go_infeasible() -> None:
+    """Aucune case possible du tout pour l'équipe non réservée : le résultat ne repart pas en
+    INFEASIBLE à cause de cette seule règle."""
+    forced = _hard_team_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé")
+    result = solve_payload(
+        make_payload(
+            teams=[_named_team("T", "Seniors A"), _named_team("U", "Cadets")],
+            venues=[make_venue("V", [(FRIDAY, "18:00")])],
+            constraints=[forced],
+            slot_templates=[_reservation("U", "V", FRIDAY)],
+        )
+    )
+
+    diagnostic = _only_sacrifice_of_kind(result, "day_forced")
+    assert _slots_of(result, "T") == []
+    _assert_names(diagnostic, "Vendredi imposé", "Seniors A", "Cadets")
+
+
+def test_a_hard_window_whose_only_case_is_reserved_leaves_the_session_unplaced_and_named() -> None:
+    """Fenêtre dure dont la seule case compatible est réservée par une autre équipe : la case libre
+    hors fenêtre n'est pas utilisée, la séance reste non placée et le message nomme tout."""
+    window = _hard_team_rule("w", "T", "TIME", {"maxStartTime": "18:00"}, "Pas après 18h")
+    result = solve_payload(
+        make_payload(
+            teams=[_named_team("T", "Seniors A"), _named_team("U", "Cadets")],
+            venues=[make_venue("V", [(1, "18:00"), (1, "20:00")])],
+            constraints=[window],
+            slot_templates=[_reservation("U", "V", 1)],
+        )
+    )
+
+    diagnostic = _only_sacrifice_of_kind(result, "time_window")
+    assert _slots_of(result, "T") == [], "la séance ne se place jamais hors de sa fenêtre"
+    _assert_names(diagnostic, "Pas après 18h", "Seniors A", "Cadets")
+
+
+def test_a_venue_floor_taken_by_another_teams_reservation_leaves_the_session_unplaced_and_named() -> None:
+    """Plancher « au moins 1 séance à W » dont la seule case est réservée par une autre équipe : la
+    séance unique de l'équipe ne part pas ailleurs, elle reste non placée."""
     floor = _hard_team_rule("f", "T", "FACILITY", {"minAtVenueId": "W", "minAtVenueCount": 1}, "Au moins 1 à W")
     result = solve_payload(
         make_payload(
@@ -310,7 +373,9 @@ def test_a_venue_floor_taken_by_another_teams_reservation_is_a_named_violation()
         )
     )
 
-    _assert_names(_only_sacrifice_of_kind(result, "session_floor"), "Au moins 1 à W", "Seniors A", "Cadets")
+    diagnostic = _only_sacrifice_of_kind(result, "session_floor")
+    assert _slots_of(result, "T") == [], "la séance ne se place jamais hors de sa règle"
+    _assert_names(diagnostic, "Au moins 1 à W", "Seniors A", "Cadets")
 
 
 def test_a_coach_also_playing_on_two_simultaneous_reservations_is_a_named_violation() -> None:
@@ -333,9 +398,10 @@ def test_a_coach_also_playing_on_two_simultaneous_reservations_is_a_named_violat
         )
     )
 
-    _assert_names(
-        _only_sacrifice_of_kind(result, "hard_lock"), "Ana Berger", "Benjamins", "Seniors B", "jeudi", "19:00"
-    )
+    diagnostic = _only_sacrifice_of_kind(result, "hard_lock")
+    _assert_names(diagnostic, "Ana Berger", "Benjamins", "Seniors B", "jeudi", "19:00")
+    # Le panneau surligne les deux cases à partir de ces champs : ils survivent au changement de type.
+    assert (diagnostic["coachId"], diagnostic["dayOfWeek"], diagnostic["startTime"]) == ("c", 4, "19:00")
 
 
 def test_a_reservation_that_contradicts_nothing_sacrifices_nothing() -> None:
@@ -379,3 +445,33 @@ def test_a_core_rule_no_lock_contradicts_is_not_relaxed_and_the_result_stays_fai
     assert _sacrificed(result) == [], f"aucun écart sur un planning non produit, obtenu {_sacrificed(result)}"
     infeasible = next(d for d in result["diagnostics"] if d.get("id") == "diag-infeasible")
     assert "Vendredi imposé" in infeasible["message"] and "Indispo du vendredi" in infeasible["message"]
+
+
+def test_without_any_reservation_the_historic_signals_do_not_change() -> None:
+    """TÉMOIN Q1 : aucun verrou, donc aucun remplacement. Le manque de séances reste un
+    ``session_below_effective_min``. Les ``conflict`` d'échec sans verrou sont gardés par le garde-fou
+    ci-dessus, les ``constraint_not_honored`` de parsing par ``test_unhonorable_rule_emits_an_explicit_diagnostic``."""
+    result = solve_payload(
+        make_payload(teams=[make_team("T", sessions_per_week=2)], venues=[make_venue("V", [(1, "18:00")])])
+    )
+
+    assert result["status"] == "completed"
+    assert _sacrificed(result) == []
+    assert [d["type"] for d in result["diagnostics"]] == ["session_below_effective_min"]
+
+
+def test_a_forced_day_the_grid_never_offers_stays_failed_even_with_reservations_elsewhere() -> None:
+    """LIMITE Q2 : la grille n'a aucune case ce jour-là, et aucune réservation n'y est pour rien. Ce
+    n'est pas « la seule case prise par un verrou » : le résultat reste ``failed``."""
+    forced = _hard_team_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé")
+    result = solve_payload(
+        make_payload(
+            teams=[_named_team("T", "Seniors A"), _named_team("U", "Cadets")],
+            venues=[make_venue("V", [(1, "18:00"), (2, "18:00")])],
+            constraints=[forced],
+            slot_templates=[_reservation("U", "V", 1)],
+        )
+    )
+
+    assert result["status"] == "failed", f"aucun verrou en cause (obtenu {result['status']})"
+    assert _sacrificed(result) == []

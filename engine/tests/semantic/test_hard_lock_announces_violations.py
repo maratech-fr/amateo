@@ -14,8 +14,13 @@ a constraint it had silently dropped.
 
 Founder ruling (2026-07-27): the lock REMAINS sovereign — that is ALIGN-07 and it
 is not reopened here. What must change is the silence, so the manager can see
-what his pin overrode and decide. Hence INFO warnings, not errors and not a
+what his pin overrode and decide. Hence warnings, not errors and not a
 placement change.
+
+AMENDÉ le 2026-10-30 (GO fondateur, ADR-0001 amendée « la réservation gagne ») : un
+seul message dès qu'une réservation est en cause. ``constraint_not_honored`` INFO est
+REMPLACÉ sur ce chemin par ``rule_sacrificed`` WARNING ; ``_violation_messages``
+échoue si l'ancien signal subsiste en doublon.
 
 Structuring axis `constraint semantics` (CLAUDE.md §7.1).
 """
@@ -68,9 +73,10 @@ def _days_of(result: dict[str, Any], team_id: str) -> list[int]:
 
 
 def _violation_messages(result: dict[str, Any]) -> list[str]:
-    return [
-        str(d.get("message", "")) for d in result.get("diagnostics") or [] if d.get("type") == "constraint_not_honored"
-    ]
+    diagnostics = result.get("diagnostics") or []
+    duplicates = [d for d in diagnostics if d.get("type") == "constraint_not_honored"]
+    assert duplicates == [], f"un seul message quand une réservation est en cause, doublons : {duplicates}"
+    return [str(d.get("message", "")) for d in diagnostics if d.get("type") == "rule_sacrificed"]
 
 
 def _payload(*, locked: bool) -> dict[str, Any]:
@@ -123,8 +129,8 @@ def test_a_lock_on_the_coach_day_off_is_kept_but_announced() -> None:
         assert expected in phrase, f"{why} doit être nommé dans la phrase : {phrase!r}"
 
     # 3. Un avertissement, jamais une erreur : le gestionnaire tranche.
-    severities = {d.get("severity") for d in result["diagnostics"] if d.get("type") == "constraint_not_honored"}
-    assert severities == {"INFO"}
+    severities = {d.get("severity") for d in result["diagnostics"] if d.get("type") == "rule_sacrificed"}
+    assert severities == {"WARNING"}
 
 
 def test_a_lock_that_violates_nothing_stays_quiet() -> None:
@@ -426,7 +432,7 @@ def test_a_lock_outside_the_forced_venue_is_kept_but_announced() -> None:
     # 1. Souveraineté : le placement du gestionnaire (GYMB) est respecté.
     assert [s["venueId"] for s in result["slots"] if s["teamId"] == "SM1"] == ["GYMB"], "le verrou reste souverain"
 
-    # 2. Fin du silence : un INFO qui NOMME l'équipe, le gymnase imposé ET le gymnase utilisé.
+    # 2. Fin du silence : un WARNING qui NOMME l'équipe, le gymnase imposé ET le gymnase utilisé.
     messages = _violation_messages(result)
     assert len(messages) == 1, f"une violation attendue, obtenu : {messages}"
     phrase = messages[0].split("(contrainte")[0]
@@ -437,8 +443,8 @@ def test_a_lock_outside_the_forced_venue_is_kept_but_announced() -> None:
     ):
         assert expected in phrase, f"{why} doit être nommé dans la phrase : {phrase!r}"
 
-    severities = {d.get("severity") for d in result["diagnostics"] if d.get("type") == "constraint_not_honored"}
-    assert severities == {"INFO"}, "un avertissement, jamais une erreur : le gestionnaire tranche"
+    severities = {d.get("severity") for d in result["diagnostics"] if d.get("type") == "rule_sacrificed"}
+    assert severities == {"WARNING"}, "un avertissement, jamais une erreur : le gestionnaire tranche"
 
 
 def test_a_lock_inside_the_forced_venue_stays_quiet() -> None:

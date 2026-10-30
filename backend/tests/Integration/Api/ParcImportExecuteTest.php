@@ -8,6 +8,8 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
+use App\Entity\Reservation;
+use App\Service\ReservationGroupOccupancy;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
@@ -457,6 +459,46 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertContains($u9m1->getId(), $memberTeamIds);
         self::assertContains($u11f2->getId(), $memberTeamIds);
         self::assertCount(2, $members, 'le bloc regroupe exactement les deux équipes de la case');
+    }
+
+    /**
+     * Promesse fondateur 2026-10-30 : l'import ne crée pas un groupe à 1 séance commune sur des équipes
+     * déjà réservées ensemble sur deux cases (le rejeu « déjà posée » saute la garde de plafond).
+     */
+    public function testImportNeverCreatesABlockWithFewerSessionsThanItsReservedCases(): void
+    {
+        $a = $this->makeTeam('U9M1', sessionsPerWeek: 3);
+        $b = $this->makeTeam('U11F2', sessionsPerWeek: 3);
+        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
+        $this->makeSlot($venue->getId(), 4, '16:00', capacity: 2);
+        $this->scopeGucToClub($this->club->getId());
+        foreach ([$a, $b] as $team) {
+            foreach ([3, 4] as $day) {
+                $this->em->persist((new Reservation)
+                    ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                    ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek($day)
+                    ->setStartTime(new DateTimeImmutable('1970-01-01 16:00:00'))->setDurationMinutes(90));
+            }
+        }
+        $this->em->flush();
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+        $this->import($parc, [['section' => 'mutualisations', 'index' => 0, 'coche' => true]]);
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        foreach ($this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $this->club->getId()]) as $block) {
+            $members = [];
+            foreach ($this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()]) as $member) {
+                $members[$member->getTeamId()] = true;
+            }
+            $reservations = $this->em->getRepository(Reservation::class)->findBy(['clubId' => $this->club->getId()]);
+            $complete = ReservationGroupOccupancy::reservationsOnGroupCompleteCases($reservations, $members);
+            self::assertLessThanOrEqual($block->getCommonSessions(), \count($complete) / \count($members), 'plus de cases réservées que de séances communes');
+        }
     }
 
     public function testACorrectedGroupeOverridesTheBlockLabel(): void
