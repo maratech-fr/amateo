@@ -65,6 +65,14 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
 
     private EntityManagerInterface $em;
 
+    /** @return iterable<string, array{string}> */
+    public static function oldContractVersions(): iterable
+    {
+        yield 'contrat 1.0' => ['1.0'];
+        yield 'contrat 1.5' => ['1.5'];
+        yield 'contrat 1.7' => ['1.7'];
+    }
+
     /**
      * Un snapshot DOUBLÉ (réservation + son template HARD redondant au même placement) est
      * réparé : le template tombe, la réservation et l'épingle saine restent, et le hash est
@@ -181,14 +189,6 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
             $legacy->getSnapshotHash(),
             'même structure sous un contrat différent : même empreinte',
         );
-    }
-
-    /** @return iterable<string, array{string}> */
-    public static function oldContractVersions(): iterable
-    {
-        yield 'contrat 1.0' => ['1.0'];
-        yield 'contrat 1.5' => ['1.5'];
-        yield 'contrat 1.7' => ['1.7'];
     }
 
     /** `--dry-run` ne recalcule rien non plus pour ce cas. */

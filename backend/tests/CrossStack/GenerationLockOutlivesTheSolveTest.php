@@ -76,7 +76,7 @@ final class GenerationLockOutlivesTheSolveTest extends TestCase
         $worstCase = array_sum($phases);
 
         self::assertLessThan($requested, $worstCase, \sprintf(
-            "Le worker cesse d'attendre le moteur à %d s, le pire chemin en demande %d (%s).",
+            'Le worker cesse d\'attendre le moteur à %d s, le pire chemin en demande %d (%s).',
             $requested,
             $worstCase,
             json_encode($phases, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE),

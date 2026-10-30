@@ -141,7 +141,9 @@ def _block_taken() -> dict[str, Any]:
 def _move_x_to(baseline: dict[str, Any], day: int) -> dict[str, Any]:
     placed = next(t for t in baseline["slotTemplates"] if t["teamId"] == "X")
     reference = _case("X", placed["venueId"], placed["dayOfWeek"], placed["startTime"])
-    return _verdict(baseline, _case("X", "V", day), reference)
+    # Comme le backend : la séance qui bouge sort du planning figé, sa case d'origine part en référence.
+    others = [t for t in baseline["slotTemplates"] if t is not placed]
+    return _verdict({**baseline, "slotTemplates": others}, _case("X", "V", day), reference)
 
 
 def test_after_a_forced_day_lost_to_a_reservation_an_unrelated_team_can_still_move() -> None:
