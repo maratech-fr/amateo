@@ -527,7 +527,16 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                     D5 (lot 2) — quand la sous-ligne est un COACH et que la tuile a la hauteur
                     (`gridRowSpan ≥ 2`), prénom sur une ligne puis nom plus petit dessous ; sinon ligne
                     unique. Dé-emphase du nom par la TAILLE seule (A11Y-22). */}
-                {null !== cell.coachName && cell.gridRowSpan >= 2 ? (
+                {/* Plusieurs coachs : chacun sa ligne, retour à la ligne plutôt que coupure ; le title garde les noms complets. */}
+                {cell.coachLines && cell.gridRowSpan >= 2 ? (
+                  <span className="flex w-full min-w-0 flex-col gap-0.5 leading-none">
+                    {cell.coachLines.map((line) => (
+                      <span key={line} className="break-words text-[10px] text-foreground">
+                        {line}
+                      </span>
+                    ))}
+                  </span>
+                ) : null !== cell.coachName && cell.gridRowSpan >= 2 ? (
                   <span className="flex min-w-0 flex-col leading-none">
                     <span className="truncate text-[10px] text-foreground">{cell.coachName.first}</span>
                     {"" === cell.coachName.last ? null : <span className="truncate text-[9px] text-foreground">{cell.coachName.last}</span>}

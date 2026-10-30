@@ -180,13 +180,16 @@ def _locks_left_unheld_by_the_move(
     *,
     timeout_seconds: int,
     seed: int,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | None:
     """La tenue d'un verrou cède sans rendre le modèle infaisable : le verdict doit donc regarder si le
     geste a retiré le dernier coach d'une séance fixée qui en avait un. Un verrou déjà sans coach avant
-    le geste ne compte pas (jamais de blocage sur un écart déjà là). Sans preuve, le geste passe."""
+    le geste ne compte pas (jamais de blocage sur un écart déjà là). ``None`` : le budget a coupé la
+    preuve, le verdict dépendrait de l'horloge (appelé ``indeterminate`` par l'orchestrateur)."""
     if not any(solver.Value(hold["unheld"]) == 1 for hold in model.lock_holds.values()):
         return []
     after = _least_unheld_locks(model, timeout_seconds=timeout_seconds, seed=seed)
+    if after is None:
+        return None
     if not after:
         return []
 
@@ -199,7 +202,7 @@ def _locks_left_unheld_by_the_move(
     _apply_hard(baseline, assignments, data, parsed, team_coach_map, team_player_map)
     before = _least_unheld_locks(baseline, timeout_seconds=timeout_seconds, seed=seed)
     if before is None:
-        return []
+        return None
 
     already_unheld = {(hold["team"], hold["venue"], hold["day"], hold["start"]) for hold in before}
     return [hold for hold in after if (hold["team"], hold["venue"], hold["day"], hold["start"]) not in already_unheld]

@@ -35,6 +35,7 @@ from app.solver.constraints import (
     parse_v2_constraints,
     resolve_implicit_rules,
 )
+from app.solver.constraints.diagnostics import session_without_coach_message
 from app.solver.model import (
     DEFAULT_SESSION_MINUTES,
     HARD_LOCK_LEVEL,
@@ -372,17 +373,19 @@ def validate_assignment(
             timeout_seconds=input_data.solver_timeout_seconds,
             seed=input_data.solver_seed,
         )
+        # Le budget a coupé la preuve : même verdict neutre qu'un UNKNOWN (ENG-51), jamais un « oui » d'horloge.
+        if left_unheld is None:
+            return {"valid": False, "indeterminate": True, "violations": [], "compromises": [], "metrics": metrics}
         if left_unheld:
             return {
                 "valid": False,
                 "violations": [
                     {
                         "rule": "session_without_coach",
-                        "message": (
-                            f"Ce déplacement prend le dernier coach disponible de la séance fixée de "
-                            f"{' et '.join(team_names.get(team, team) for team in hold['teams'])} le "
-                            f"{_DAY_LABELS_FR.get(int(hold['day']), str(hold['day']))} à "
-                            f"{_format_time(int(hold['start']))} : plus personne ne pourrait la tenir."
+                        "message": session_without_coach_message(
+                            " et ".join(team_names.get(team, team) for team in hold["teams"]),
+                            _DAY_LABELS_FR.get(int(hold["day"]), str(hold["day"])),
+                            _format_time(int(hold["start"])),
                         ),
                         "team_id": str(moved[0]["team_id"]),
                         "conflicting_team_id": str(hold["team"]),

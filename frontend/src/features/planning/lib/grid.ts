@@ -43,7 +43,7 @@ export function parseTimeToMinutes(time: string): number {
 /** minutes → "HH:MM" (zero-padded). */
 // D-20 : le formateur vit en `shared/lib/time` — cette copie ne clampait pas et rendait « 25:15 ».
 import { formatMinutes, parseTime } from "@/shared/lib/time";
-import { coachFullName, coachNameParts } from "@/shared/lib/coachName";
+import { coachFullName, coachNameParts, coachShortName } from "@/shared/lib/coachName";
 import { PLANNING_TEXTS } from "../texts";
 import { assignLanes } from "@/shared/lib/gridLayout";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
@@ -176,6 +176,16 @@ function coachLabelOf(slot: Slot, lookups: Lookups): string {
   }
 
   return all.map((id) => coachName(lookups.coaches, id)).join(" / ");
+}
+
+/** Les lignes de la case d'une équipe à plusieurs coachs, en forme courte. Le nom complet reste dans `coachLabel` (title). */
+function coachLinesOf(slot: Slot, lookups: Lookups): string[] {
+  const all = lookups.teamMainCoaches?.get(slot.teamId) ?? [];
+  if (null !== slot.coachId && slot.coachId !== all[0]) {
+    return [PLANNING_TEXTS.heldBy(coachShortName(lookups.coaches.get(slot.coachId)))];
+  }
+
+  return all.map((id) => coachShortName(lookups.coaches.get(id)));
 }
 
 function resourceLabel(id: string, viewMode: ViewMode, lookups: Lookups): string {
@@ -333,6 +343,8 @@ export interface GridCell {
    * coach, ou carte fusionnée (qui liste des équipes). La MISE EN PAGE reste côté `WeekGrid`.
    */
   coachName: { first: string; last: string } | null;
+  /** Équipe à plusieurs coachs (vues gymnase/équipe) : une ligne par coach, ou « tenue par … ». */
+  coachLines?: string[] | null;
   day: number;
   startLabel: string;
   endLabel: string;
@@ -576,6 +588,7 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
         // D5 — la sous-ligne porte le coach dans les vues gymnase/équipe (jamais en vue coach, où
         // elle montre le gymnase). `null` quand l'équipe n'a pas de coach : rien à couper en deux.
         coachName: ("gymnase" === columnView || "equipe" === columnView) && null !== mainCoachId && allCoaches.length < 2 ? coachNameParts(lookups.coaches.get(mainCoachId)) : null,
+        coachLines: ("gymnase" === columnView || "equipe" === columnView) && allCoaches.length >= 2 ? coachLinesOf(slot, lookups) : null,
         day: slot.dayOfWeek,
         startLabel: formatMinutes(start),
         endLabel: formatMinutes(start + slot.durationMinutes),

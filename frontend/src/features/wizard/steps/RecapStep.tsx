@@ -363,6 +363,22 @@ export function RecapStep() {
     return coach ? `${coach.firstName} ${coach.lastName}`.trim() : null;
   };
 
+  // Une mention (ton `muted`) informe sans rien demander : elle ne compte pas comme une alerte.
+  const alertCount = warnings.length + notices.filter((notice) => "muted" !== notice.tone).length;
+  const noticeBanners = notices.map((notice) => (
+    // Partiel = warning (une place se PERD) ; non réservé = information neutre (le système
+    // fera un choix légitime). Le ton visuel suit la gravité (même œil que layerNotices).
+    <NoticeBanner
+      key={notice.key}
+      tone={notice.tone}
+      message={
+        <>
+          <span className="font-medium">{notice.place}</span> : {notice.message}
+        </>
+      }
+    />
+  ));
+
   return (
     <div>
       <p className="mb-4 text-sm text-muted-foreground">{null === periodEntryId ? "Cartographie de votre club avant génération." : "Cartographie de cette période avant génération."}</p>
@@ -381,7 +397,7 @@ export function RecapStep() {
           sens vit dans le TITRE (icône + couleur), l'accordéon partagé portant son liseré teal. Le
           bas de page ne garde qu'UNE ligne d'état courte. L'ancienne décision (2026-08-04 : encart
           « en bas, avec la zone de décision ») est explicitement revue. */}
-      {blockers.length + notices.length + warnings.length > 0 ? (
+      {blockers.length + alertCount > 0 ? (
         <AccordionSection
           defaultOpen
           className="mb-4"
@@ -398,31 +414,21 @@ export function RecapStep() {
             ) : (
               <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
-                {notices.length + warnings.length} alerte(s) à vérifier
+                {alertCount} alerte(s) à vérifier
               </span>
             )
           }
         >
           <div className="space-y-2">
             <BlockerList blockers={blockers} />
-            {notices.map((notice) => (
-              // Partiel = warning (une place se PERD) ; non réservé = information neutre (le système
-              // fera un choix légitime). Le ton visuel suit la gravité (même œil que layerNotices).
-              <NoticeBanner
-                key={notice.key}
-                tone={notice.tone}
-                message={
-                  <>
-                    <span className="font-medium">{notice.place}</span> : {notice.message}
-                  </>
-                }
-              />
-            ))}
+            {noticeBanners}
             {warnings.map((warning) => (
               <NoticeBanner key={warning} tone="warning" message={warning} />
             ))}
           </div>
         </AccordionSection>
+      ) : notices.length > 0 ? (
+        <div className="mb-4 space-y-2">{noticeBanners}</div>
       ) : null}
       {/* P4-107 (4ᵉ tranche) — la bande de cartes est BORNÉE : à 1920 chacune faisait ~460 px
           pour porter un nombre à deux chiffres, et l'œil devait parcourir toute la largeur pour

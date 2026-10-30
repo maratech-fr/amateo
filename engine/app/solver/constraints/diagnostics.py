@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
-from ..model import DEFAULT_SESSION_MINUTES, _time_to_minutes
+from ..model import DEFAULT_SESSION_MINUTES, _format_time, _time_to_minutes
 from .availability import HoldSession, _coach_available_at, assign_holders, available_coach_exists
 from .common import (
     HARD,
@@ -22,6 +22,14 @@ from .common import (
 )
 
 _DAY_LABELS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+
+
+def session_without_coach_message(teams: str, day: str, start_time: str) -> str:
+    """Le refus du geste qui retire le dernier coach d'une séance fixée, verrouillée ou figée."""
+    return (
+        f"Ce déplacement prend le dernier coach disponible de la séance fixée de {teams} le {day} à "
+        f"{start_time} : plus personne ne pourrait la tenir."
+    )
 
 
 def _day_label(day: int) -> str:
@@ -548,7 +556,18 @@ def diagnose_candidate_conflicts(
                 # Tant qu'un coach tient chaque séance, un coach partagé n'est pas un dédoublement.
                 if not both_play and _sessions_stay_held():
                     continue
-                if is_coach_pair:
+                # La séance en place avait le choix de son coach : c'est elle qui reste sans personne.
+                if is_coach_pair and len(coach_map.get(s_team, ())) >= 2:
+                    _emit(
+                        "session_without_coach",
+                        session_without_coach_message(_team(s_team), _day_label(c_day), _format_time(s_start)),
+                        team_id=c_team,
+                        conflicting_team_id=s_team,
+                        venue_id=s_venue,
+                        day_of_week=c_day,
+                        start_time=_format_time(s_start),
+                    )
+                elif is_coach_pair:
                     _emit(
                         "coach_no_overlap",
                         f"{_coach(person_id)} a déjà {_team(s_team)} le {_day_label(c_day)} à "

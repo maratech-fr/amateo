@@ -322,11 +322,18 @@ export function SlotReservationModal({
 
         return;
       }
-      // Le message nomme l'équipe, l'heure et le gymnase : sans ça le gestionnaire sait
-      // qu'on refuse, pas ce qu'il doit changer.
-      setError(
-        `${teamName.get(teamId) ?? "Cette équipe"} ne peut pas être ajoutée : son coach entraîne déjà ${teamName.get(clash.teamId ?? "") ?? "une autre équipe"} à ${hhmm(clash.startTime)} à ${venueName.get(clash.venueId) ?? "un autre gymnase"}.`,
-      );
+      // Le message nomme chaque coach et ce qui le prend : sans ça le gestionnaire sait qu'on
+      // refuse, pas ce qu'il doit changer.
+      const placeOf = (taken: Reservation) => ({ team: teamName.get(taken.teamId ?? "") ?? WIZARD_TEXTS.reservationOtherTeam, time: hhmm(taken.startTime), venue: venueName.get(taken.venueId) ?? WIZARD_TEXTS.reservationOtherVenue });
+      const reasons = clash.holdFailures.map(({ coachId, reason, reservation }) => {
+        const coach = coachNameById.get(coachId) ?? WIZARD_TEXTS.reservationSomeCoach;
+        if (null === reservation || "unavailable" === reason) {
+          return WIZARD_TEXTS.reservationCoachUnavailable(coach);
+        }
+
+        return "playing" === reason ? WIZARD_TEXTS.reservationCoachPlaying(coach, placeOf(reservation)) : WIZARD_TEXTS.reservationCoachCoaching(coach, placeOf(reservation));
+      });
+      setError(WIZARD_TEXTS.reservationRefused(teamName.get(teamId) ?? WIZARD_TEXTS.reservationThisTeam, 0 === reasons.length ? [WIZARD_TEXTS.reservationCoachCoaching(WIZARD_TEXTS.reservationItsCoach, placeOf(clash))] : reasons));
 
       return;
     }

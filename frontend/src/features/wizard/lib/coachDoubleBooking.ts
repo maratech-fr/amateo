@@ -218,9 +218,10 @@ export function holdersFor(
  * La réservation DÉJÀ posée qui empêche `candidate`, ou null si le geste est légitime.
  * Rendre la réservation fautive (et non un booléen) permet à l'appelant de nommer
  * l'équipe, le gymnase et l'heure — « Emerick coache déjà les U15F à 17h à Debarros ».
- * Le geste n'est refusé que si, autour de lui, une séance n'a plus personne pour la tenir.
+ * Le geste n'est refusé que si, autour de lui, une séance n'a plus personne pour la tenir. Le refus
+ * porte, coach par coach, ce qui l'empêche de tenir la séance ({@link CoachHoldFailure}).
  */
-export function conflictingReservation(candidate: Candidate, reservations: Reservation[], coachByTeam: Map<string, string[]>, context: HoldContext = {}): Reservation | null {
+export function conflictingReservation(candidate: Candidate, reservations: Reservation[], coachByTeam: Map<string, string[]>, context: HoldContext = {}): RefusedReservation | null {
   const coachIds = coachByTeam.get(candidate.teamId);
   if (undefined === coachIds || 0 === coachIds.length) {
     return null; // pas de coach MAIN : personne à dédoubler
@@ -268,10 +269,41 @@ export function conflictingReservation(candidate: Candidate, reservations: Reser
     return null;
   }
 
-  return (
-    others.find(({ session }) => teamsShareMainCoach(coachIds, coachesOf(session)) && bookingsCollide({ ...here, coachId: "" }, { ...session, coachId: "" }))?.reservation ?? null
-  );
+  const clash = others.find(({ session }) => teamsShareMainCoach(coachIds, coachesOf(session)) && bookingsCollide({ ...here, coachId: "" }, { ...session, coachId: "" }))?.reservation;
+  if (undefined === clash) {
+    return null;
+  }
+
+  const located = reservations.flatMap((reservation) => {
+    const otherStart = minutes(reservation.startTime);
+
+    return null === reservation.teamId || null === otherStart ? [] : [{ reservation, teamId: reservation.teamId, session: { ...reservation, teamId: reservation.teamId, startMinutes: otherStart } }];
+  });
+  const failures = coachIds.flatMap((coachId): CoachHoldFailure[] => {
+    if ((context.blockedByCoach?.[coachId] ?? []).some(([day, from, until]) => day === here.dayOfWeek && from <= here.startMinutes && here.startMinutes < until)) {
+      return [{ coachId, reason: "unavailable", reservation: null }];
+    }
+    const playing = located.find(({ teamId, session }) => teamId !== here.teamId && (context.playersByTeam?.get(teamId) ?? []).includes(coachId) && overlaps(here, session));
+    if (undefined !== playing) {
+      return [{ coachId, reason: "playing", reservation: playing.reservation }];
+    }
+    const busy = located.find(({ teamId, session }) => (coachByTeam.get(teamId) ?? []).includes(coachId) && bookingsCollide({ ...here, coachId }, { ...session, coachId }));
+
+    return undefined === busy ? [] : [{ coachId, reason: "coaching", reservation: busy.reservation }];
+  });
+
+  return { ...clash, holdFailures: failures };
 }
+
+/** Pourquoi un coach de l'équipe ne peut pas tenir la séance. */
+export interface CoachHoldFailure {
+  coachId: string;
+  reason: "unavailable" | "playing" | "coaching";
+  /** La séance qui le prend ; `null` pour une indisponibilité. */
+  reservation: Reservation | null;
+}
+
+export type RefusedReservation = Reservation & { holdFailures: CoachHoldFailure[] };
 
 /** Ce que la modale sait en plus des liens, pour juger comme le récap et le radar. */
 export interface HoldContext {
