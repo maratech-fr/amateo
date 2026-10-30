@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
@@ -14,6 +15,9 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Entity\VenueTrainingSlot;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
@@ -67,6 +71,29 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         $this->client->request('POST', "/api/schedules/{$schedule->getId()}/regenerate");
 
         $this->assertRefusedNamingTheCoach();
+    }
+
+    public function testFillingAPeriodIsRefusedToo(): void
+    {
+        $ctx = $this->seedPeriod(sameVenue: false);
+
+        $this->client->loginUser($ctx['user']);
+        $this->client->request('POST', "/api/schedules/{$ctx['scheduleId']}/fill");
+
+        $this->assertRefusedNamingTheCoach();
+        $this->em->clear();
+        self::assertCount(1, $this->em->getRepository(Schedule::class)->findBy(['schedulePlanId' => $ctx['planId']]), 'aucune version créée');
+    }
+
+    /** TÉMOIN du comblement : même décor, même gymnase, le refus ne tombe pas pour une autre raison. */
+    public function testFillingAPeriodStartsWhenTheCoachStaysInOneVenue(): void
+    {
+        $ctx = $this->seedPeriod(sameVenue: true);
+
+        $this->client->loginUser($ctx['user']);
+        $this->client->request('POST', "/api/schedules/{$ctx['scheduleId']}/fill");
+
+        self::assertResponseStatusCodeSame(202);
     }
 
     public function testTheSameVenueIsAMutualisationAndGenerationStarts(): void
@@ -143,6 +170,40 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         $this->em->flush();
 
         return ['user' => $user, 'clubId' => $clubId, 'seasonId' => $seasonId];
+    }
+
+    /**
+     * Socle en vigueur, période avec sa grille, version terminée, et les deux réservations au plan.
+     *
+     * @return array{user: User, scheduleId: string, planId: string}
+     */
+    private function seedPeriod(bool $sameVenue): array
+    {
+        $ctx = $this->seed($sameVenue);
+        $season = $this->em->getRepository(Season::class)->find($ctx['seasonId']);
+        self::assertInstanceOf(Season::class, $season);
+        $this->settleSeasonPlan($season);
+
+        $entry = (new CalendarEntry)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTitle('Vacances')
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)
+            ->setStartDate(new DateTimeImmutable('2026-10-19'))->setEndDate(new DateTimeImmutable('2026-11-01'));
+        $this->em->persist($entry);
+        $this->em->flush();
+
+        $schedule = (new Schedule)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Période')->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($schedule, $entry->getId());
+        $this->em->flush();
+        $planId = (string) $schedule->getSchedulePlanId();
+
+        foreach ($this->em->getRepository(Reservation::class)->findBy(['seasonId' => $ctx['seasonId']]) as $reservation) {
+            $reservation->setSchedulePlanId($planId);
+            $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($reservation->getVenueId())
+                ->setDayOfWeek($reservation->getDayOfWeek())->setStartTime($reservation->getStartTime())->setDurationMinutes(90)->setCapacity(2)
+                ->setSchedulePlanId($planId));
+        }
+        $this->em->flush();
+
+        return ['user' => $ctx['user'], 'scheduleId' => $schedule->getId(), 'planId' => $planId];
     }
 
     /** @param array{clubId: string, seasonId: string} $ctx */

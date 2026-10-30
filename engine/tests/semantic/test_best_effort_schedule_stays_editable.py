@@ -223,3 +223,91 @@ def _assert_flagged(verdict: dict[str, Any], rule_label: str) -> None:
     """Le signal d'une pose hors règle : une alerte du verdict accepté, qui nomme la règle levée."""
     flagged = [c for c in verdict["compromises"] if c["effect"] == "broken" and rule_label in c["message"]]
     assert flagged, f"la pose hors règle doit être signalée en nommant {rule_label!r} : {verdict['compromises']}"
+
+
+# ── Hors best-effort : le moteur ne connaît pas l'origine du planning ────────────────────────────────
+#
+# Le verdict lève toute règle de demande que le planning figé ne tient pas, qu'elle ait été perdue au
+# best-effort ou ajoutée après la génération. Ces tests fixent ce que voit alors le gestionnaire : le geste
+# passe, la pose hors règle est signalée dans des termes vrais, et une règle tenue reste tenue.
+
+
+def _normal_schedule(constraint: dict[str, Any]) -> dict[str, Any]:
+    """Un planning de génération ordinaire, sans verrou : T lundi, X mardi. La règle arrive APRÈS."""
+    return make_payload(
+        teams=[_named("T", "Seniors A"), _named("X", "Minimes")],
+        venues=[
+            make_venue("V", [(1, "18:00"), (2, "18:00"), (3, "18:00"), (4, "18:00"), (FRIDAY, "18:00")]),
+            make_venue("W", [(SATURDAY, "18:00")]),
+        ],
+        constraints=[constraint],
+        slot_templates=[
+            {"id": "t", **_case("T", "V", 1), "lockLevel": "NONE"},
+            {"id": "x", **_case("X", "V", 2), "lockLevel": "NONE"},
+        ],
+    )
+
+
+def _moved(baseline: dict[str, Any], team_id: str, day: int, venue_id: str = "V") -> dict[str, Any]:
+    placed = next(t for t in baseline["slotTemplates"] if t["teamId"] == team_id)
+    others = [t for t in baseline["slotTemplates"] if t is not placed]
+    reference = _case(team_id, placed["venueId"], placed["dayOfWeek"], placed["startTime"])
+    return _verdict({**baseline, "slotTemplates": others}, _case(team_id, venue_id, day), reference)
+
+
+_FORCED_FRIDAY = _rule("late", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé")
+_FLOOR_AT_W = _rule("late", "T", "FACILITY", {"minAtVenueId": "W", "minAtVenueCount": 1}, "Au moins 1 à W")
+
+
+def test_a_rule_added_after_generation_does_not_block_an_unrelated_move_and_says_nothing_about_it() -> None:
+    """Une équipe sans rapport bouge, le verdict ne lui attribue pas la règle des autres."""
+    verdict = _moved(_normal_schedule(_FORCED_FRIDAY), "X", 3)
+
+    assert verdict["valid"] is True, verdict["violations"]
+    assert [c for c in verdict["compromises"] if c["family"] == "lifted_rule"] == []
+
+
+def test_a_team_already_outside_a_rule_added_later_can_move_and_the_message_says_so() -> None:
+    """T ne tenait pas la règle ajoutée, elle reste dehors : permis, et la phrase dit « déjà plus tenue »."""
+    verdict = _moved(_normal_schedule(_FORCED_FRIDAY), "T", 3)
+
+    assert verdict["valid"] is True, verdict["violations"]
+    _assert_flagged(verdict, "Vendredi imposé")
+
+
+def test_a_team_moving_onto_a_rule_added_later_is_accepted_without_any_flag() -> None:
+    """Le geste qui remet T dans la règle n'est pas signalé comme un écart."""
+    verdict = _moved(_normal_schedule(_FORCED_FRIDAY), "T", FRIDAY)
+
+    assert verdict["valid"] is True, verdict["violations"]
+    assert [c for c in verdict["compromises"] if c["family"] == "lifted_rule"] == []
+
+
+def test_a_venue_floor_added_later_behaves_the_same_way() -> None:
+    verdict = _moved(_normal_schedule(_FLOOR_AT_W), "T", 3)
+
+    assert verdict["valid"] is True, verdict["violations"]
+    _assert_flagged(verdict, "Au moins 1 à W")
+
+
+def test_a_rule_the_normal_schedule_holds_stays_enforced() -> None:
+    """TÉMOIN : hors best-effort aussi, sortir d'une règle TENUE est refusé. C'est la limite de l'effet de bord."""
+    baseline = _normal_schedule(_FORCED_FRIDAY)
+    baseline["slotTemplates"][0] = {"id": "t", **_case("T", "V", FRIDAY), "lockLevel": "NONE"}
+
+    verdict = _moved(baseline, "T", 3)
+
+    assert verdict["valid"] is False, "T tient son vendredi : la déplacer ailleurs casse la règle"
+    assert "baseline_infeasible" not in {v["rule"] for v in verdict["violations"]}
+
+
+def test_removing_a_session_then_placing_it_outside_a_held_rule_is_accepted_and_flagged() -> None:
+    """CONSTAT : retirer la séance puis la reposer contourne le refus du témoin ci-dessus. Sans référence, le
+    planning figé n'a plus T : la règle compte pour « déjà levée ». Le geste passe, signalé."""
+    baseline = _normal_schedule(_FORCED_FRIDAY)
+    baseline["slotTemplates"] = [t for t in baseline["slotTemplates"] if t["teamId"] != "T"]
+
+    verdict = _verdict(baseline, _case("T", "V", 3), None)
+
+    assert verdict["valid"] is True, verdict["violations"]
+    _assert_flagged(verdict, "Vendredi imposé")
