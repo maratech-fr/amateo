@@ -483,6 +483,37 @@ final class GroupReservationApiTest extends WebTestCase
         self::assertSame(1, $onCase, 'seule la réservation pré-existante demeure');
     }
 
+    // ── E12 — l'API du bloc accepte et persiste le « Nom du groupe » optionnel (label) ──────────
+    // Lot 2 (essai fondateur 30/10) — un groupe mutualisé a un `label` en base
+    // ({@see SharedTrainingBlock::LABEL_MAX_LENGTH} = 40), SERVI en lecture ({@see SharedTrainingBlockResource::$label})
+    // mais aucun écran ni le POST/PUT ne le SAISIT : {@see App\Dto\SharedTrainingBlockInput} ne porte
+    // pas `label`, et le processor ne l'écrit jamais. ROUGE : un POST qui envoie `label` le voit
+    // IGNORÉ (null en sortie) au lieu de persisté, et un label > 40 caractères n'est pas refusé.
+
+    public function testTheBlockEndpointPersistsTheOptionalGroupLabel(): void
+    {
+        $t1 = $this->team(2);
+        $t2 = $this->team(2);
+
+        [$status, $body] = $this->postBlockResource(['teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => 1, 'schedulePlanId' => null, 'label' => 'SM Shooting']);
+        self::assertSame(201, $status, 'le bloc se crée : ' . json_encode($body, \JSON_UNESCAPED_UNICODE));
+        self::assertSame('SM Shooting', $body['label'] ?? null, 'le POST accepte et persiste le nom du groupe (label)');
+
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+        self::assertSame('SM Shooting', $block->getLabel(), 'le label est écrit en base');
+    }
+
+    public function testTheBlockEndpointRefusesAnOverlongGroupLabel(): void
+    {
+        $t1 = $this->team(2);
+        $t2 = $this->team(2);
+
+        $tooLong = str_repeat('é', SharedTrainingBlock::LABEL_MAX_LENGTH + 1);
+        [$status] = $this->postBlockResource(['teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => 1, 'schedulePlanId' => null, 'label' => $tooLong]);
+        self::assertSame(422, $status, \sprintf('un nom de groupe > %d caractères est refusé (jamais une troncature/500)', SharedTrainingBlock::LABEL_MAX_LENGTH));
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -524,6 +555,24 @@ final class GroupReservationApiTest extends WebTestCase
         $this->em->flush();
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array{0: int, 1: array<string, mixed>}
+     */
+    private function postBlockResource(array $payload): array
+    {
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'HTTP_X-Season-Id' => $this->season->getId(),
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode($payload, \JSON_THROW_ON_ERROR));
+        $response = $this->client->getResponse();
+        $decoded = json_decode((string) $response->getContent(), true);
+
+        return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
     }
 
     private function rawReservation(string $teamId, string $venueId, int $dayOfWeek, string $startTime, ?string $planId): Reservation

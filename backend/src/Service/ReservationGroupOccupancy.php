@@ -203,6 +203,7 @@ final class ReservationGroupOccupancy
         ?string $schedulePlanId,
         ?string $clubId = null,
         ?string $seasonId = null,
+        string $actionContext = 'planning',
     ): void {
         $reserved = $this->reservedTeamSetOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId);
 
@@ -224,7 +225,7 @@ final class ReservationGroupOccupancy
             throw new UnprocessableEntityHttpException(\sprintf('Ce créneau est déjà plein (capacité %d) : aucune équipe supplémentaire ne peut y être réservée. Choisissez un autre créneau, ou activez le partage de ce gymnase.', $capacity));
         }
 
-        $this->assertSoloBudgetAllows($teamId, $finalSet, $schedulePlanId, $clubId, $seasonId);
+        $this->assertSoloBudgetAllows($teamId, $finalSet, $schedulePlanId, $clubId, $seasonId, $actionContext);
     }
 
     /**
@@ -324,7 +325,7 @@ final class ReservationGroupOccupancy
      *
      * @param array<string, true> $finalSet
      */
-    private function assertSoloBudgetAllows(string $teamId, array $finalSet, ?string $schedulePlanId, ?string $clubId, ?string $seasonId): void
+    private function assertSoloBudgetAllows(string $teamId, array $finalSet, ?string $schedulePlanId, ?string $clubId, ?string $seasonId, string $actionContext = 'planning'): void
     {
         if (null === $clubId || null === $seasonId) {
             return; // hors portée club+saison (non-HTTP) : rien à opposer.
@@ -339,7 +340,7 @@ final class ReservationGroupOccupancy
         }
 
         if (0 === $budget->residual && $budget->inBlock) {
-            throw new UnprocessableEntityHttpException($this->soloOnlyBlockMessage($teamId, $schedulePlanId));
+            throw new UnprocessableEntityHttpException($this->soloOnlyBlockMessage($teamId, $schedulePlanId, $budget->effective, $actionContext));
         }
         if ($budget->individualUsed + 1 > $budget->residual) {
             throw new UnprocessableEntityHttpException(\sprintf('L\'équipe « %s » a déjà %d créneau(x) individuel(s) sur %d possible(s) : elle ne peut pas en réserver davantage. Retirez un créneau, ou augmentez son nombre de séances.', $this->teamName($teamId), $budget->individualUsed, $budget->residual));
@@ -347,10 +348,13 @@ final class ReservationGroupOccupancy
     }
 
     /**
-     * « SF1 s'entraîne uniquement en groupe SF1 + SF2 : réservez le groupe » — le message de la
-     * règle (f) quand le résidu est nul et l'équipe membre d'un bloc. Noms d'équipes, jamais d'ids.
+     * E7 (essai fondateur 30/10) — le message FACTUEL de la règle (f) quand le résidu individuel est
+     * nul et l'équipe membre d'un bloc : il dit le BUDGET de séances, l'OCCUPATION par les groupes
+     * (compositions nommées) et une ACTION qui dépend du contexte — à l'IMPORT « Passez l'équipe à N+1
+     * séances, ou ignorez cette réservation. », ailleurs « Augmentez son nombre de séances dans sa
+     * fiche. ». Plus jamais « s'entraîne uniquement en groupe » ni « réservez le groupe ». Noms, pas d'ids.
      */
-    private function soloOnlyBlockMessage(string $teamId, ?string $schedulePlanId): string
+    private function soloOnlyBlockMessage(string $teamId, ?string $schedulePlanId, int $sessions, string $actionContext): string
     {
         $groups = [];
         foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
@@ -367,14 +371,21 @@ final class ReservationGroupOccupancy
             }
         }
 
-        if ([] === $groups) {
-            return \sprintf('L\'équipe « %s » s\'entraîne uniquement en groupe : réservez le groupe plutôt qu\'un créneau individuel.', $this->teamName($teamId));
-        }
+        $action = 'import' === $actionContext
+            ? \sprintf('Passez l\'équipe à %d séances, ou ignorez cette réservation.', $sessions + 1)
+            : 'Augmentez son nombre de séances dans sa fiche.';
+
+        $occupancy = [] === $groups
+            ? 'déjà toutes prises par ses groupes'
+            : \sprintf('déjà toutes prises par ses groupes (%s)', implode(', ', $groups));
 
         return \sprintf(
-            'L\'équipe « %s » s\'entraîne uniquement en groupe (%s) : réservez le groupe plutôt qu\'un créneau individuel.',
+            'L\'équipe « %s » a %d séance%s par semaine, %s. %s',
             $this->teamName($teamId),
-            implode(', ', $groups),
+            $sessions,
+            $sessions > 1 ? 's' : '',
+            $occupancy,
+            $action,
         );
     }
 

@@ -304,5 +304,14 @@ l'import suit la préférence (mercredi), donc c'est bien la réservation import
 déplace la séance ; si l'import cessait d'écrire la réservation ou de la poser HARD au socle
 (`schedulePlanId` null), le second solve retomberait sur le mercredi. Skip propre si le moteur est absent.
 Sans ce gate, un import qui cesserait de poser ses réservations en verrous honorés passerait tous les
-checks requis).
+checks requis) ·
+`Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
+ALAP, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
+`corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes
+gardée] ne fait JAMAIS entrer dans un bloc mutualisé une équipe d'un AUTRE club — un UUID hors tenant
+est refusé 422 par la garde `ownedTeam`, rien écrit [tout-ou-rien]. Le step `ci.yml` est FILTRÉ sur le
+seul `testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing` [la classe porte
+aussi des tests non bloquants]. Falsification : désactiver `ownedTeam` doit rougir ce gate. Sans lui,
+un élargissement du canal fuiterait une équipe étrangère dans un bloc en passant tous les checks
+requis de `main`).
 Detail: `docs/testing/testing-strategy.md`.

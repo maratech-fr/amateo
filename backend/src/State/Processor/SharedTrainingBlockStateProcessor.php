@@ -73,6 +73,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
             }
             $block->setSchedulePlanId($planId);
             $block->setCommonSessions((int) $input->commonSessions);
+            $block->setLabel($this->normalizedLabel($input->label));
             $this->entityManager->persist($block);
 
             $this->addMembers($block, $input->teamIds, $clubId, $resolvedSeasonId, $planId);
@@ -113,6 +114,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         $this->assertBlockValid($clubId, $seasonId, $planId, $input->teamIds, (int) $input->commonSessions, $entity->getId());
 
         $entity->setCommonSessions((int) $input->commonSessions);
+        $entity->setLabel($this->normalizedLabel($input->label));
         $entity->touch();
         $this->syncMembership($entity, $input->teamIds, $clubId, $seasonId, $planId);
     }
@@ -163,6 +165,14 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         sort($teamIds);
 
         return SharedTrainingBlockResource::fromEntity($entity, $teamIds);
+    }
+
+    /** E12 — « Nom du groupe » : trim non vide, sinon null (la lecture retombe sur les équipes). */
+    private function normalizedLabel(?string $label): ?string
+    {
+        $trimmed = trim((string) $label);
+
+        return '' === $trimmed ? null : $trimmed;
     }
 
     /**

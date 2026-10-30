@@ -37,9 +37,7 @@ export interface ListboxGroup {
   options: ListboxOption[];
 }
 
-interface ListboxProps {
-  value: string;
-  onValueChange: (value: string) => void;
+interface ListboxBaseProps {
   /** Flat list — mutually exclusive with `groups`. */
   options?: ListboxOption[];
   /** Grouped list — takes precedence over `options`. */
@@ -81,6 +79,17 @@ interface ListboxProps {
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
 }
+
+/**
+ * Union discriminée par `mode` (patron `SegmentedControl`) : `single` (défaut) choisit UNE valeur et
+ * ferme ; `multiple` (D3 import du parc) bascule un sous-ensemble, porte `aria-multiselectable` et
+ * RESTE OUVERT à chaque choix. Le mode simple est strictement inchangé.
+ */
+type ListboxProps = ListboxBaseProps &
+  (
+    | { mode?: "single"; value: string; onValueChange: (value: string) => void }
+    | { mode: "multiple"; values: string[]; onValuesChange: (values: string[]) => void }
+  );
 
 const MAX_LIST_PX = 256; // max-h-64 (16rem)
 
@@ -161,25 +170,29 @@ const POPUP_FRAME = "fixed z-[100] rounded-md border border-border bg-card text-
  *   on the selected option). jsdom cannot measure this pass beyond the DOM; contrast/reflow stay
  *   in Playwright.
  */
-export function Listbox({
-  value,
-  onValueChange,
-  options,
-  groups,
-  leadingOptions,
-  placeholder,
-  disabled = false,
-  title,
-  searchLabel = "Rechercher",
-  id,
-  className,
-  wrapperClassName = "w-full",
-  panelMinWidth,
-  autoFocus,
-  "aria-label": ariaLabel,
-  "aria-labelledby": ariaLabelledby,
-  "aria-describedby": ariaDescribedby,
-}: ListboxProps) {
+export function Listbox(props: ListboxProps) {
+  const {
+    options,
+    groups,
+    leadingOptions,
+    placeholder,
+    disabled = false,
+    title,
+    searchLabel = "Rechercher",
+    id,
+    className,
+    wrapperClassName = "w-full",
+    panelMinWidth,
+    autoFocus,
+    "aria-label": ariaLabel,
+    "aria-labelledby": ariaLabelledby,
+    "aria-describedby": ariaDescribedby,
+  } = props;
+  // Mode SIMPLE inchangé ; mode MULTIPLE (D3) : sous-ensemble togglé, la liste reste ouverte.
+  const multiple = "multiple" === props.mode;
+  const value = "multiple" === props.mode ? "" : props.value;
+  const values = "multiple" === props.mode ? props.values : [];
+  const isSelected = (candidate: string): boolean => (multiple ? values.includes(candidate) : candidate === value);
   const [open, setOpen] = useState(false);
   // Inline geometry of the portaled panel (left/width from the trigger, top OR bottom by flip).
   const [popupStyle, setPopupStyle] = useState<CSSProperties>({});
@@ -205,10 +218,15 @@ export function Listbox({
     const below = window.innerHeight - rect.bottom;
     const above = rect.top;
     const dropUp = below < needed && above > below;
+    // E10 (essai fondateur 30/10) — pas de `width` fixe (elle clouait le panneau à la largeur du
+    // déclencheur et TRONQUAIT les options longues « U21M1 (suggéré)… ») : un `minWidth` = largeur du
+    // déclencheur (plancher) laisse le panneau s'élargir au contenu, un `maxWidth` = reste du viewport
+    // le plafonne (troncature CSS en dernier recours, avec `title` sur l'option). `panelMinWidth` reste
+    // un plancher alternatif plus large si l'appelant le demande.
     setPopupStyle({
       left: rect.left,
-      width: rect.width,
-      minWidth: panelMinWidth,
+      minWidth: Math.max(rect.width, panelMinWidth ?? 0),
+      maxWidth: Math.max(0, window.innerWidth - rect.left - POPUP_GAP_PX),
       ...(dropUp ? { bottom: window.innerHeight - rect.top + POPUP_GAP_PX } : { top: rect.bottom + POPUP_GAP_PX }),
     });
   };
@@ -220,13 +238,17 @@ export function Listbox({
   const triggerLabelledby = [labelId, valueId].filter(Boolean).join(" ") || undefined;
 
   const realOptions: ListboxOption[] = groups ? groups.flatMap((g) => g.options) : (options ?? []);
-  const selected = "" !== value ? realOptions.find((o) => o.value === value) : undefined;
-  const hasValue = selected !== undefined;
-  const displayText = hasValue ? selected.label : (placeholder ?? "");
+  const selected = !multiple && "" !== value ? realOptions.find((o) => o.value === value) : undefined;
+  // Mode multiple : le déclencheur résume les options sélectionnées (libellés joints), sinon le
+  // placeholder ; mode simple inchangé.
+  const selectedLabels = multiple ? realOptions.filter((o) => values.includes(o.value)).map((o) => o.label) : [];
+  const hasValue = multiple ? selectedLabels.length > 0 : selected !== undefined;
+  const displayText = multiple ? (selectedLabels.length > 0 ? selectedLabels.join(", ") : (placeholder ?? "")) : (selected?.label ?? placeholder ?? "");
   // The placeholder doubles as a selectable leading option (value "") so a picker can be CLEARED —
   // parity with the native <select> this replaces (FfbbEngagements clears a suggestion, Reconciliation
   // « Ne pas créer »). It never appears in the trigger's chosen glyph (that stays the muted empty text).
-  const placeholderOption: ListboxOption | null = placeholder !== undefined ? { value: "", label: placeholder } : null;
+  // Un multiselect n'a pas d'option « vide » (on coche/décoche), d'où `null` en mode multiple.
+  const placeholderOption: ListboxOption | null = !multiple && placeholder !== undefined ? { value: "", label: placeholder } : null;
 
   // Search: only above the threshold, and only counting REAL options (placeholder + leadingOptions
   // are navigation aids, never results). The query filters `label + sub`, accent-insensitive, AND
@@ -262,7 +284,16 @@ export function Listbox({
     if ("true" === el.dataset.disabled) {
       return; // reachable, but inert
     }
-    onValueChange(el.dataset.value ?? "");
+    const picked = el.dataset.value ?? "";
+    if ("multiple" === props.mode) {
+      // Multiselect : on TOGGLE et on LAISSE la liste ouverte (on en coche plusieurs d'affilée) ;
+      // le filtre n'est pas effacé non plus (on continue à chercher).
+      const next = props.values.includes(picked) ? props.values.filter((v) => v !== picked) : [...props.values, picked];
+      props.onValuesChange(next);
+
+      return;
+    }
+    props.onValueChange(picked);
     close(true);
   };
 
@@ -421,7 +452,7 @@ export function Listbox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const renderOptions = (opts: ListboxOption[]): ReactNode => opts.map((opt) => <Option key={opt.value} opt={opt} selected={opt.value === value} onPick={selectEl} />);
+  const renderOptions = (opts: ListboxOption[]): ReactNode => opts.map((opt) => <Option key={opt.value} opt={opt} selected={isSelected(opt.value)} onPick={selectEl} />);
 
   const hasLeading = placeholderOption !== null || (leadingOptions !== undefined && leadingOptions.length > 0);
   const listContent: ReactNode = (
@@ -430,7 +461,7 @@ export function Listbox({
         <ul role="presentation" className="m-0 list-none p-0">
           {placeholderOption ? <Option opt={placeholderOption} selected={"" === value} onPick={selectEl} leading /> : null}
           {(leadingOptions ?? []).map((opt) => (
-            <Option key={opt.value} opt={opt} selected={opt.value === value} onPick={selectEl} leading />
+            <Option key={opt.value} opt={opt} selected={isSelected(opt.value)} onPick={selectEl} leading />
           ))}
         </ul>
       ) : null}
@@ -477,7 +508,7 @@ export function Listbox({
           className,
         )}
       >
-        {hasValue ? <Glyph icon={selected.icon} swatch={selected.swatch} /> : null}
+        {!multiple && selected !== undefined ? <Glyph icon={selected.icon} swatch={selected.swatch} /> : null}
         <span id={valueId} title={title ?? displayText} className={cn("min-w-0 flex-1 truncate", !hasValue && "text-muted-foreground")}>
           {displayText}
         </span>
@@ -502,7 +533,7 @@ export function Listbox({
                     />
                   </div>
                 </div>
-                <div role="listbox" tabIndex={-1} aria-labelledby={labelId} className="max-h-64 overflow-y-auto py-1">
+                <div role="listbox" tabIndex={-1} aria-multiselectable={multiple || undefined} aria-labelledby={labelId} className="max-h-64 overflow-y-auto py-1">
                   {listContent}
                 </div>
                 <span aria-live="polite" className="sr-only">
@@ -512,7 +543,7 @@ export function Listbox({
               </div>
             )
           : (
-              <div ref={popupRef} id={popupId} style={popupStyle} role="listbox" tabIndex={-1} aria-labelledby={labelId} className={cn(POPUP_FRAME, "max-h-64 overflow-y-auto py-1")}>
+              <div ref={popupRef} id={popupId} style={popupStyle} role="listbox" tabIndex={-1} aria-multiselectable={multiple || undefined} aria-labelledby={labelId} className={cn(POPUP_FRAME, "max-h-64 overflow-y-auto py-1")}>
                 {listContent}
               </div>
             ),

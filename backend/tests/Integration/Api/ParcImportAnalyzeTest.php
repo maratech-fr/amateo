@@ -8,6 +8,8 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -735,6 +737,211 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertSame($male->getId(), $teamLine['cibleId'], 'vise le MASCULIN U15M1, jamais le féminin U15F1');
     }
 
+    // ───────────────────────── PR A (incident ALAP) — une équipe IGNORÉE/introuvable bloque sa séance commune/réservation DÈS l'analyse (D1/D2) ─────────────────────────
+    // Incident ALAP 2026-10-29 : la case « SF1 + SM shooting » cite « SM shooting », que le
+    // gestionnaire a mise en « Ignorer » à l'étape Équipes. Aujourd'hui l'analyse classe la séance
+    // commune `aCreer` COCHÉE sans alerte (ParcImportAnalyzer::analyzeMutualisations ne lit pas les
+    // décisions Équipes) ; l'import renvoie alors un 422 opaque. Promesse PR A : une séance commune
+    // (ou une réservation) qui cite une équipe IGNORÉE (décision `coche:false`) ou introuvable sort
+    // en `alerte` DÉCOCHÉE, avec une `raison` qui NOMME l'équipe ET un champ MACHINE (contrat TANK :
+    // `alerteCode`, string non vide — nom libre documenté ici) que la grille lit pour bloquer/orienter
+    // (D13). Prouvé dès l'analyse. Deux angles VOULUS (séance commune ≠ réservation) sur le même
+    // domaine sensible (pipeline d'import) : ce test ⇄ testIgnoringATeamMakesTheCitingReservationAnAlerte.
+    // Jumeau IMPORT (le 422 agrégé + le libellé « séance commune ») : ParcImportExecuteTest.
+
+    public function testIgnoringATeamAtTeamsStepDrivesTheCitingMutualisationAlerteNamingItWithACode(): void
+    {
+        // Case ALAP : « SF1 + SM shooting », groupe « SM Shooting ». Les deux noms dérivent en lignes
+        // Équipes (SF1 index 0, « SM shooting » index 1) ET en UNE séance commune (index 0).
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],
+        ]);
+
+        // Précondition — PREMIÈRE analyse (sans décisions) : tout est gardé par défaut, la séance
+        // commune est `aCreer` cochée, aucune alerte de bloc. (Sinon le born ci-dessous ne prouverait rien.)
+        [$rawStatus, $raw] = $this->analyze($parc);
+        self::assertSame(200, $rawStatus);
+        self::assertSame('aCreer', $raw['sections']['mutualisations'][0]['statut'], 'précondition : sans décision, la séance commune est à créer, cochée');
+
+        // BORN — le gestionnaire IGNORE « SM shooting » à l'étape Équipes (décision coche=false) puis
+        // revalide : la séance commune qui la cite devient une alerte DÉCOCHÉE nommant l'équipe + un code.
+        $born = $this->revalidate($parc, [['section' => 'equipes', 'index' => 1, 'coche' => false]])[1];
+        $mutLine = $born['sections']['mutualisations'][0];
+        self::assertSame('alerte', $mutLine['statut'], 'citer une équipe ignorée → la séance commune passe en alerte');
+        self::assertFalse($mutLine['coche'], 'une alerte de séance commune n\'est jamais cochée');
+        self::assertStringContainsString('SM shooting', (string) ($mutLine['raison'] ?? ''), 'la raison NOMME l\'équipe en cause');
+        self::assertArrayHasKey('alerteCode', $mutLine, 'un champ MACHINE (alerteCode) accompagne la raison humaine (D13)');
+        self::assertIsString($mutLine['alerteCode']);
+        self::assertNotSame('', $mutLine['alerteCode'], 'le code machine est non vide');
+
+        // FALL — le gestionnaire REMET « SM shooting » en Garder (coche=true) : l'alerte tombe.
+        $fall = $this->revalidate($parc, [['section' => 'equipes', 'index' => 1, 'coche' => true]])[1];
+        self::assertNotSame('alerte', $fall['sections']['mutualisations'][0]['statut'], 'remettre l\'équipe en « Garder » lève l\'alerte');
+    }
+
+    public function testIgnoringATeamMakesTheCitingReservationAnAlerte(): void
+    {
+        // Jumeau RÉSERVATION du test ci-dessus (ParcImportExecutor.php:536-539 a le même trou) : une
+        // case à UNE équipe dérive une réservation individuelle. Ignorer l'équipe à l'étape Équipes
+        // fait passer SA réservation en alerte décochée nommant l'équipe.
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U13M1']],
+        ]);
+
+        [$rawStatus, $raw] = $this->analyze($parc);
+        self::assertSame(200, $rawStatus);
+        self::assertSame('aCreer', $raw['sections']['reservations'][0]['statut'], 'précondition : sans décision, la réservation est à créer, cochée');
+
+        $born = $this->revalidate($parc, [['section' => 'equipes', 'index' => 0, 'coche' => false]])[1];
+        $resLine = $born['sections']['reservations'][0];
+        self::assertSame('alerte', $resLine['statut'], 'citer une équipe ignorée → la réservation passe en alerte');
+        self::assertFalse($resLine['coche'], 'une alerte de réservation n\'est jamais cochée');
+        self::assertStringContainsString('U13M1', (string) ($resLine['raison'] ?? ''), 'la raison NOMME l\'équipe en cause');
+    }
+
+    // ───────────────────────── PR A (D3 analyse) — /analyze rejoue corrections.equipes ─────────────────────────
+    // Le canal `corrections.equipes` d'une décision de séance commune (redéfinition de la composition :
+    // liste ≥ 2 d'UUID d'équipe du club) n'est pas que pour l'import — il est REJOUÉ par /analyze à la
+    // revalidation : la séance commune corrigée voit son alerte TOMBER (l'équipe ignorée disparaît de la
+    // composition), son `libelle` refléter la composition CORRIGÉE, et `seancesCommunes` est RECALCULÉ
+    // selon cette composition (compte des cases portant le MÊME ensemble corrigé). ROUGE sur b938c993c :
+    // {@see ParcImportAnalyzer::applyTimeCorrections} ne lit que jour/heure/durée, jamais `equipes`.
+    // Contrat (défini ici, implémenté par NEO) : la ligne mutualisation expose `seancesCommunes` (int) et
+    // son `libelle` est reconstruit depuis la composition corrigée. Jumeau IMPORT : ParcImportExecuteTest.
+
+    public function testAnalyzeReplaysTeamCompositionCorrectionDroppingTheAlerteAndRecountingCommonSessions(): void
+    {
+        $sf1 = $this->makeTeam('SF1');
+        $sm1 = $this->makeTeam('SM1');
+        $sm2 = $this->makeTeam('SM2');
+
+        // Deux cases : la case 0 cite « SM shooting » (le nom du groupe, lu comme équipe) ; la case 1
+        // porte déjà la vraie composition SF1 + SM1 + SM2. Dérivation : séances communes index 0 (set
+        // {SF1, SM shooting}, seances_communes 1) et index 1 (set {SF1, SM1, SM2}, seances_communes 1).
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 3, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM1', 'SM2'], 'groupe' => 'SM Shooting'],
+        ]);
+
+        // Précondition — « SM shooting » (ligne Équipes index 1) IGNORÉE, SANS correction : la séance
+        // commune 0 qui la cite est en alerte.
+        $ignoreOnly = [['section' => 'equipes', 'index' => 1, 'coche' => false]];
+        self::assertSame('alerte', $this->revalidate($parc, $ignoreOnly)[1]['sections']['mutualisations'][0]['statut'], 'précondition : citer l\'équipe ignorée → alerte');
+
+        // Revalidation avec la composition corrigée (SF1 + SM1 + SM2) sur la séance commune 0.
+        $decisions = [
+            ['section' => 'equipes', 'index' => 1, 'coche' => false],
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), $sm1->getId(), $sm2->getId()]]],
+        ];
+        $body = $this->revalidate($parc, $decisions)[1];
+        $mut = $body['sections']['mutualisations'][0];
+
+        self::assertNotSame('alerte', $mut['statut'], 'la composition corrigée lève l\'alerte (« SM shooting » sort de la composition)');
+        self::assertStringContainsString('SM1', $mut['libelle'], 'le libellé reflète la composition CORRIGÉE');
+        self::assertStringContainsString('SM2', $mut['libelle'], 'le libellé reflète la composition CORRIGÉE');
+        self::assertStringNotContainsString('shooting', $mut['libelle'], '« SM shooting » n\'est plus dans la composition');
+        self::assertSame(2, $mut['seancesCommunes'] ?? null, 'seancesCommunes recalculé : les deux cases portent désormais le même ensemble corrigé');
+    }
+
+    // ───────────────────────── PR A (D8 + P4-366) — bandeau de fiabilité & champ miseAJour ─────────────────────────
+
+    public function testAVirginClubFirstImportDoesNotRaiseTheUnreliableBanner(): void
+    {
+        // D8 — sur un club VIERGE (aucun gymnase/équipe préexistant : rien À APPARIER), un premier
+        // import n'apparie RIEN par construction ; ce n'est pas un signe de lecture peu fiable. Le
+        // bandeau « peu fiable » doit donc rester BAISSÉ. ROUGE aujourd'hui : le taux vaut 0/ N → < 50 %
+        // → bandeau levé (ParcImportAnalyzer::fiabilite).
+        [$status, $body] = $this->analyze($this->validParc());
+        self::assertSame(200, $status);
+
+        self::assertFalse($body['fiabilite']['bandeau'] ?? true, 'un club vierge (rien à apparier) ne lève pas le bandeau « peu fiable »');
+    }
+
+    public function testTheMiseAJourFieldIsGoneFromTeamLines(): void
+    {
+        // P4-366 — le champ `miseAJour` d'une ligne équipe disparaît de la réponse (le champ éditable
+        // « Séances » + `seancesActuelles` suffisent à l'écran). SM1 existe (2 séances), le parc en lit
+        // 1 : aujourd'hui l'analyzer pose `miseAJour` sur cette ligne appariée → ROUGE.
+        $this->makeTeam('SM1');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $teamLine = $body['sections']['equipes'][0];
+        self::assertSame('apparie', $teamLine['statut'], 'précondition : SM1 existant → ligne appariée');
+        self::assertArrayNotHasKey('miseAJour', $teamLine, 'le champ miseAJour a disparu de la réponse (P4-366)');
+    }
+
+    // ───────────────────────── PR A lot 2 (E1 analyse) — corrections.equipes recompte les séances ─────────────────────────
+
+    public function testCompositionCorrectionRecomputesAddedAndRemovedTeamSessionsAtAnalyze(): void
+    {
+        // E1 — redéfinir la composition d'une séance commune (`corrections.equipes`) RECOMPTE les
+        // `seances` des équipes AJOUTÉES (+1) et RETIRÉES (−1) dès /analyze. SM1/SM2 gagnent la séance
+        // commune (1 indiv + 1 commune = 2), « SM shooting » sort (0). ROUGE sur fc13679db :
+        // {@see ParcImportAnalyzer::applyTimeCorrections} ne lit pas `corrections.equipes`.
+        $sf1 = $this->makeTeam('SF1');
+        $sm1 = $this->makeTeam('SM1');
+        $sm2 = $this->makeTeam('SM2');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],                                                    // ligne Équipes 0
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM2']],                                                    // ligne Équipes 1
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],  // SF1 (2), SM shooting (3) ; séance commune 0
+        ]);
+        $decisions = [
+            ['section' => 'equipes', 'index' => 3, 'coche' => false], // on ignore « SM shooting »
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), $sm1->getId(), $sm2->getId()]]],
+        ];
+
+        $body = $this->revalidate($parc, $decisions)[1];
+        $byLabel = [];
+        foreach ($body['sections']['equipes'] as $line) {
+            $byLabel[(string) $line['libelle']] = $line;
+        }
+
+        self::assertSame(2, $byLabel['SM1']['seances'] ?? null, 'SM1 ajoutée à la séance commune : 1 indiv + 1 commune = 2');
+        self::assertSame(2, $byLabel['SM2']['seances'] ?? null, 'SM2 ajoutée : 2 séances recomptées');
+        self::assertSame(1, $byLabel['SF1']['seances'] ?? null, 'SF1 déjà membre : inchangée');
+        self::assertSame(0, $byLabel['SM shooting']['seances'] ?? 0, '« SM shooting » retirée de la composition : 0 (ou absente)');
+    }
+
+    // ───────────────────────── PR A lot 2 (E2 analyse) — la garde de budget individuel joue dès /analyze ─────────────────────────
+
+    public function testTheIndividualBudgetGuardFlagsAReservationAtAnalyze(): void
+    {
+        // E2 — une équipe dont tout le budget de séances est déjà pris par ses groupes (bloc socle) ne
+        // peut pas poser de réservation INDIVIDUELLE : la garde (ReservationGroupOccupancy /
+        // SoloReservationBudget) est jouée DÈS /analyze → la réservation sort en `alerte` DÉCOCHÉE,
+        // nommant l'équipe, avec un `alerteCode` DÉDIÉ (contrat : `budget_groupe`, string non vide) que
+        // la grille lit pour bloquer Importer. ROUGE sur fc13679db : `analyzeReservations` ne joue pas
+        // la garde de budget → la réservation est `aCreer`.
+        $sm1 = $this->makeTeam('SM1');
+        $sm2 = $this->makeTeam('SM2');
+        $sm1->setSessionsPerWeek(1);
+        $sm2->setSessionsPerWeek(1);
+        $this->em->flush();
+        $this->makeBlock([$sm1, $sm2], 1); // le bloc socle consomme l'unique séance de SM1
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $resLine = $body['sections']['reservations'][0];
+        self::assertSame('alerte', $resLine['statut'], 'SM1 est group-only : sa réservation individuelle sort en alerte dès l\'analyse');
+        self::assertFalse($resLine['coche'], 'une alerte de budget n\'est jamais cochée');
+        self::assertArrayHasKey('alerteCode', $resLine, 'un code machine dédié accompagne la raison');
+        self::assertSame('budget_groupe', $resLine['alerteCode'] ?? null, 'alerteCode dédié à la garde de budget individuel');
+        self::assertStringContainsString('SM1', (string) ($resLine['raison'] ?? ''), 'la raison NOMME l\'équipe');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -773,6 +980,27 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->provisionSeasonPlan($this->season);
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
+    }
+
+    /**
+     * @param list<Team> $teams
+     */
+    private function makeBlock(array $teams, int $commonSessions): SharedTrainingBlock
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $block = (new SharedTrainingBlock)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId(null)->setCommonSessions($commonSessions)->setLabel('Groupe');
+        $this->em->persist($block);
+        foreach ($teams as $team) {
+            $member = (new SharedTrainingBlockTeam)
+                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($team->getId());
+            $this->em->persist($member);
+        }
+        $this->em->flush();
+
+        return $block;
     }
 
     /**

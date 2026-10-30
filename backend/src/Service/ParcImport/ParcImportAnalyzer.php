@@ -15,6 +15,7 @@ use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\PlanEntitlements;
+use App\Service\SoloBudget;
 use App\Service\SoloReservationBudget;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -74,15 +75,24 @@ final class ParcImportAnalyzer
         $derived = $this->deriver->derive($parc);
         if ([] !== $decisions) {
             $this->applyTimeCorrections($derived, $decisions);
+            // PR A (D3) — rejeu de la COMPOSITION corrigée d'une séance commune (`corrections.equipes`) :
+            // on substitue les équipes lues par la composition redéfinie (UUID / `import:<index>`), ce qui
+            // reconstruit le libellé et recompte `seances_communes` sur le nouvel ensemble.
+            $this->applyCompositionCorrections($derived, $decisions);
         }
         $season = '' !== $seasonId ? $this->entityManager->find(Season::class, $seasonId) : null;
+
+        // PR A (incident ALAP) — carte de résolution Équipes depuis la section dérivée + les décisions :
+        // une équipe gardée est résoluble (connue), une équipe décochée est IGNORÉE. Une séance commune /
+        // réservation qui cite une équipe ignorée (ou introuvable des cases) sort en alerte décochée.
+        [$ignoredTeamKeys, $knownTeamKeys] = $this->teamResolutionSets($derived['equipes'], $decisions);
 
         $sections = [
             'gymnases' => $this->analyzeVenues($derived['gymnases']),
             'equipes' => $this->analyzeTeams($derived['equipes'], $club, $season),
             'creneaux' => $this->analyzeSlots($derived['creneaux']),
-            'mutualisations' => $this->analyzeMutualisations($derived['mutualisations'], $club->getId(), $seasonId),
-            'reservations' => $this->analyzeReservations($derived['reservations'], $derived['creneaux'], $derived['mutualisations']),
+            'mutualisations' => $this->analyzeMutualisations($derived['mutualisations'], $club->getId(), $seasonId, $ignoredTeamKeys, $knownTeamKeys),
+            'reservations' => $this->analyzeReservations($derived['reservations'], $derived['creneaux'], $derived['mutualisations'], $ignoredTeamKeys, $knownTeamKeys, $club->getId(), $seasonId),
         ];
 
         $recap = [];
@@ -147,6 +157,165 @@ final class ParcImportAnalyzer
     }
 
     /**
+     * PR A (D3) — rejoue `corrections.equipes` d'une décision de séance commune : substitue les équipes
+     * LUES par la composition REDÉFINIE (liste ≥ 2 d'UUID d'équipe du club, ou `import:<index>` vers une
+     * ligne Équipes dérivée), puis RECOMPTE `seances_communes` sur les nouveaux ensembles (nombre de
+     * séances communes partageant exactement le même ensemble d'équipes). Une composition < 2 résolues
+     * est ignorée côté analyse (le front bloque déjà l'import).
+     *
+     * @param array{gymnases: list<array{nom: string}>, equipes: list<array{nom: string, genre: ?string, categorie: string, seances: int}>, creneaux: list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>, reservations: list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>, mutualisations: list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}>, alertes: list<array{type: string, message: string}>} $derived
+     * @param list<array<string, mixed>>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           $decisions
+     */
+    private function applyCompositionCorrections(array &$derived, array $decisions): void
+    {
+        $changed = false;
+        foreach ($decisions as $decision) {
+            if ('mutualisations' !== ($decision['section'] ?? null)) {
+                continue;
+            }
+            $index = $decision['index'] ?? null;
+            $corrections = $decision['corrections'] ?? null;
+            if (!\is_int($index) || !\is_array($corrections) || !isset($derived['mutualisations'][$index])) {
+                continue;
+            }
+            $equipes = $corrections['equipes'] ?? null;
+            if (!\is_array($equipes)) {
+                continue;
+            }
+            $names = $this->resolveCompositionNames($equipes, $derived['equipes']);
+            if (\count($names) < 2) {
+                continue;
+            }
+            $mutualisation = $derived['mutualisations'][$index];
+            $mutualisation['equipes'] = $names;
+            $derived['mutualisations'][$index] = $mutualisation;
+            $changed = true;
+        }
+        if ($changed) {
+            // E1 — recompte seances (équipes ajoutées/retirées) ET seances_communes depuis la nouvelle composition.
+            $this->deriver->recomputeDerivedSessions($derived);
+        }
+    }
+
+    /**
+     * Résout une composition corrigée (`corrections.equipes`) en NOMS d'équipe : un UUID → le nom de
+     * l'équipe du club (RLS garantit le tenant, une équipe étrangère ne charge pas) ; `import:<index>` →
+     * le nom de la ligne Équipes dérivée visée (créée dans ce run). Les entrées non résolues sont omises.
+     *
+     * @param array<array-key, mixed>                                                   $entries
+     * @param list<array{nom: string, genre: ?string, categorie: string, seances: int}> $derivedTeams
+     *
+     * @return list<string>
+     */
+    private function resolveCompositionNames(array $entries, array $derivedTeams): array
+    {
+        $names = [];
+        foreach ($entries as $entry) {
+            if (!\is_string($entry) || '' === trim($entry)) {
+                continue;
+            }
+            $entry = trim($entry);
+            if (str_starts_with($entry, 'import:')) {
+                $n = substr($entry, 7);
+                if (1 === preg_match('/^\d+$/', $n) && isset($derivedTeams[(int) $n])) {
+                    $names[] = $this->stringField($derivedTeams[(int) $n], 'nom');
+                }
+
+                continue;
+            }
+            $team = $this->entityManager->find(Team::class, $entry);
+            if ($team instanceof Team) {
+                $names[] = $team->getName();
+            }
+        }
+
+        return array_values(array_filter($names, static fn (string $nom): bool => '' !== $nom));
+    }
+
+    /**
+     * PR A (D1) — les deux ensembles de clés d'équipe pour juger une citation de séance commune /
+     * réservation : `ignored` = les équipes dérivées dont la décision Équipes est décochée ; `known` =
+     * toutes les équipes dérivées (une citation hors de `known` est introuvable des cases). Clé = la même
+     * identité que le dériveur (`teamKey`), pour croiser noms de case ET lignes Équipes sans re-dériver.
+     *
+     * @param list<array{nom: string, genre: ?string, categorie: string, seances: int}> $teams
+     * @param list<array<string, mixed>>                                                $decisions
+     *
+     * @return array{0: array<string, true>, 1: array<string, true>} [ignored, known]
+     */
+    private function teamResolutionSets(array $teams, array $decisions): array
+    {
+        $byIndex = [];
+        foreach ($decisions as $decision) {
+            if ('equipes' === ($decision['section'] ?? null) && \is_int($decision['index'] ?? null)) {
+                $byIndex[$decision['index']] = $decision;
+            }
+        }
+
+        $ignored = [];
+        $known = [];
+        foreach ($teams as $i => $team) {
+            $key = $this->teamKey($this->stringField($team, 'nom'));
+            if ('' === $key) {
+                continue;
+            }
+            $known[$key] = true;
+            $decision = $byIndex[$i] ?? null;
+            if (null !== $decision && false === ($decision['coche'] ?? null)) {
+                $ignored[$key] = true;
+            }
+        }
+
+        return [$ignored, $known];
+    }
+
+    /**
+     * Les équipes citées (par nom) qui sont IGNORÉES (décochées) ou introuvables des cases — celles qui
+     * bloquent une séance commune / réservation (D1).
+     *
+     * @param list<string>        $names
+     * @param array<string, true> $ignored
+     * @param array<string, true> $known
+     *
+     * @return list<string>
+     */
+    private function blockingTeamsAmong(array $names, array $ignored, array $known): array
+    {
+        $out = [];
+        foreach ($names as $name) {
+            $key = $this->teamKey($name);
+            if ('' === $key) {
+                continue;
+            }
+            if (isset($ignored[$key]) || !isset($known[$key])) {
+                $out[] = $name;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Clé d'IDENTITÉ d'une équipe, identique à {@see ParcCaseDeriver::teamKey} : casse/accents repliés,
+     * tout caractère non alphanumérique retiré (« U15 M2 » ≡ « U15M2 »), marqueur de genre conservé.
+     */
+    private function teamKey(string $name): string
+    {
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
+        $lower = mb_strtolower(false === $ascii ? $name : $ascii, 'UTF-8');
+
+        return (string) preg_replace('/[^a-z0-9]+/', '', $lower);
+    }
+
+    /**
+     * @param list<string> $names
+     */
+    private function quoteList(array $names): string
+    {
+        return implode(', ', array_map(static fn (string $n): string => '« ' . $n . ' »', $names));
+    }
+
+    /**
      * D10 — le bloc de fiabilité. `taux` = part des lignes appariables (équipes + gymnases) apparié
      * ou suggéré ; `anomalies` = nombre d'alertes transverses ; `bandeau` « peu fiable » si le taux
      * < 50 % OU au moins 3 anomalies (jamais bloquant).
@@ -158,7 +327,15 @@ final class ParcImportAnalyzer
      */
     private function fiabilite(array $sections, array $alertes): array
     {
-        $appariable = array_merge($sections['equipes'], $sections['gymnases']);
+        // D8 / P4-366 — le taux ne porte QUE sur les lignes qui avaient quelque chose à apparier (un
+        // existant visé). Les lignes « à créer » n'entrent pas au dénominateur : sinon un club VIERGE
+        // (rien à apparier, tout « à créer ») affiche un taux 0 trompeur et lèverait le bandeau « peu
+        // fiable » alors qu'il n'y a pas de LECTURE incertaine. Le bandeau de taux ne se pose donc que
+        // s'il y a des lignes appariables (`$total > 0`) ; les anomalies, elles, le lèvent toujours.
+        $appariable = array_filter(
+            array_merge($sections['equipes'], $sections['gymnases']),
+            static fn (array $line): bool => 'aCreer' !== ($line['statut'] ?? null),
+        );
         $total = \count($appariable);
         $matched = \count(array_filter(
             $appariable,
@@ -167,7 +344,7 @@ final class ParcImportAnalyzer
         $taux = $total > 0 ? round($matched / $total, 4) : 1.0;
         $anomalies = \count($alertes);
 
-        return ['taux' => $taux, 'anomalies' => $anomalies, 'bandeau' => $taux < 0.5 || $anomalies >= 3];
+        return ['taux' => $taux, 'anomalies' => $anomalies, 'bandeau' => ($total > 0 && $taux < 0.5) || $anomalies >= 3];
     }
 
     /**
@@ -210,11 +387,9 @@ final class ParcImportAnalyzer
             // l'équipe visée) pour l'indication « actuellement N » et la base de comparaison du champ.
             $extra = ['candidats' => $candidats, 'seances' => $entry['seances']];
             if ('apparie' === $statut && null !== $cibleId && isset($byId[$cibleId])) {
-                $current = $byId[$cibleId]->getSessionsPerWeek();
-                $extra['seancesActuelles'] = $current;
-                if ($current !== $entry['seances']) {
-                    $extra['miseAJour'] = ['champ' => 'seances', 'de' => $current, 'a' => $entry['seances']];
-                }
+                // P4-366 — le champ « Séances » éditable + `seancesActuelles` suffisent à l'écran : le
+                // champ `miseAJour` (ancienne case « 2 → 1 ») est retiré.
+                $extra['seancesActuelles'] = $byId[$cibleId]->getSessionsPerWeek();
             }
             // Refonte PR2 (D9) — CHAQUE ligne équipe (quel que soit son statut d'appariement : apparié /
             // suggéré / ambigu / à créer) porte les SUGGESTIONS de la règle FBI unique
@@ -350,10 +525,12 @@ final class ParcImportAnalyzer
 
     /**
      * @param list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}> $mutualisations
+     * @param array<string, true>                                                                                                                   $ignoredTeamKeys
+     * @param array<string, true>                                                                                                                   $knownTeamKeys
      *
      * @return list<array<string, mixed>>
      */
-    private function analyzeMutualisations(array $mutualisations, string $clubId, string $seasonId): array
+    private function analyzeMutualisations(array $mutualisations, string $clubId, string $seasonId, array $ignoredTeamKeys, array $knownTeamKeys): array
     {
         $existingBlocks = '' !== $seasonId ? $this->socleBlocks($clubId, $seasonId) : [];
 
@@ -367,9 +544,39 @@ final class ParcImportAnalyzer
             // dérivée (la grille place la case EXCLUSIVEMENT d'après elle, jamais `payload.cases[index]`,
             // car l'index d'une mutualisation est son rang dans la liste dérivée, pas celui de la case).
             $position = $this->positionOf($entry);
-            $extra = ['groupe' => $groupe, 'gymnaseId' => $position['gymnaseId'], 'position' => $position];
             $teamNames = $this->stringList($entry['equipes']);
             $commonSessions = $entry['seances_communes'];
+            // D3 — la ligne expose sa COMPOSITION (`equipes` : {id résolu|null, nom}) pour pré-remplir le
+            // sélecteur multiple de l'étape Séances communes, et `seancesCommunes` (recalculé si la
+            // composition a été redéfinie). Le `libelle` reflète déjà la composition (corrigée ou lue).
+            $composition = array_map(
+                fn (string $nom): array => ['id' => $this->resolveTeamId($nom), 'nom' => $nom],
+                $teamNames,
+            );
+            $extra = [
+                'groupe' => $groupe,
+                'gymnaseId' => $position['gymnaseId'],
+                'position' => $position,
+                'equipes' => $composition,
+                'seancesCommunes' => $commonSessions,
+            ];
+
+            // PR A (D1/D13) — une équipe citée IGNORÉE à l'étape Équipes (décision décochée) ou
+            // introuvable des cases fait passer la séance commune en alerte DÉCOCHÉE, nommant l'équipe,
+            // avec un code machine (`alerteCode`) que la grille lit pour bloquer l'import.
+            $blockingTeams = $this->blockingTeamsAmong($teamNames, $ignoredTeamKeys, $knownTeamKeys);
+            if ([] !== $blockingTeams) {
+                $out[] = $this->line(
+                    $i,
+                    $libelle,
+                    'alerte',
+                    null,
+                    \sprintf('Cette séance commune cite %s, ignorée(s) ou introuvable(s) à l\'étape Équipes — à revoir avant d\'importer.', $this->quoteList($blockingTeams)),
+                    $extra + ['alerteCode' => 'equipe_ignoree'],
+                );
+
+                continue;
+            }
 
             $teamIds = [];
             $allResolved = true;
@@ -396,7 +603,7 @@ final class ParcImportAnalyzer
 
             if ($allResolved && [] !== $teamIds && '' !== $seasonId
                 && $this->blockExceedsMemberSessions($teamIds, $clubId, $seasonId, $commonSessions, $matchedBlockId)) {
-                $out[] = $this->line($i, $libelle, 'alerte', null, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes — à ajuster à la main.', $extra);
+                $out[] = $this->line($i, $libelle, 'alerte', null, 'Les séances communes de ce groupe dépassent les séances hebdomadaires d\'une des équipes — à ajuster à la main.', $extra);
 
                 continue;
             }
@@ -459,10 +666,12 @@ final class ParcImportAnalyzer
      * @param list<array{equipe: string, gymnase: string, jour: int, debut: string, duree: int}>                                                    $reservations
      * @param list<array{gymnase: string, jour: int, debut: string, duree: int, equipes_en_parallele: int}>                                         $slots
      * @param list<array{equipes: list<string>, groupe: string|null, gymnase: string, jour: int, debut: string, duree: int, seances_communes: int}> $mutualisations
+     * @param array<string, true>                                                                                                                   $ignoredTeamKeys
+     * @param array<string, true>                                                                                                                   $knownTeamKeys
      *
      * @return list<array<string, mixed>>
      */
-    private function analyzeReservations(array $reservations, array $slots, array $mutualisations): array
+    private function analyzeReservations(array $reservations, array $slots, array $mutualisations, array $ignoredTeamKeys, array $knownTeamKeys, string $clubId, string $seasonId): array
     {
         $contexts = [];
         $byCase = [];
@@ -486,6 +695,44 @@ final class ParcImportAnalyzer
             // du parc — une case à 2 équipes sur terrains séparés donne 2 réservations et décale tout.
             $extra = ['position' => $this->positionOf($entry)];
             $case = $ctx['caseKey'];
+
+            // PR A (D1) — une réservation qui cite une équipe IGNORÉE à l'étape Équipes (décochée) ou
+            // introuvable des cases passe en alerte DÉCOCHÉE, nommant l'équipe + un code machine.
+            $equipeName = $this->stringField($entry, 'equipe');
+            if ([] !== $this->blockingTeamsAmong([$equipeName], $ignoredTeamKeys, $knownTeamKeys)) {
+                $out[] = $this->line(
+                    $i,
+                    $libelle,
+                    'alerte',
+                    null,
+                    \sprintf('Cette réservation cite « %s », ignorée ou introuvable à l\'étape Équipes — à revoir avant d\'importer.', $equipeName),
+                    $extra + ['alerteCode' => 'equipe_ignoree'],
+                );
+
+                continue;
+            }
+
+            // PR A lot 2 (E2) — garde de budget individuel jouée DÈS l'analyse : une équipe dont tout le
+            // temps de séances est déjà pris par ses groupes (bloc socle) ne peut pas poser de réservation
+            // INDIVIDUELLE → alerte DÉCOCHÉE, code machine dédié `budget_groupe` (la grille bloque Importer).
+            if ('' !== $seasonId) {
+                $teamId = $this->resolveTeamId($equipeName);
+                if (null !== $teamId) {
+                    $budget = $this->soloReservationBudget->forTeam($teamId, $clubId, $seasonId, null);
+                    if ($budget instanceof SoloBudget && $budget->inBlock && 0 === $budget->residual) {
+                        $out[] = $this->line(
+                            $i,
+                            $libelle,
+                            'alerte',
+                            null,
+                            \sprintf('L\'équipe « %s » a tout son temps de séances pris par ses groupes — elle ne peut pas poser de créneau individuel. Augmentez son nombre de séances dans sa fiche.', $equipeName),
+                            $extra + ['alerteCode' => 'budget_groupe'],
+                        );
+
+                        continue;
+                    }
+                }
+            }
 
             $contested = null !== $case
                 && \count($byCase[$case] ?? []) >= 2

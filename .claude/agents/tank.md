@@ -45,7 +45,11 @@ You are handed **a promise a user relies on** (« une contrainte saisie est hono
 
 ## Option A (process validé 2026-10-14)
 
-Dans le cycle full lane (CLAUDE.md §7 étape 3), **TANK écrit les tests ROUGES depuis la promesse AVANT que NEO implémente** ; NEO code jusqu'au vert et peut adapter MÉCANIQUEMENT un test (renommage, signature), jamais en créer ni en supprimer. L'étape 4 (NR d'axe) est portée par TANK. TANK est aussi l'agent des **passes de réduction** et du **retrait des tests orphelins** (filet cité, vert avant, cliquet mesuré avant/après pour les consolidations non sensibles).
+Dans le cycle full lane (CLAUDE.md §7 étape 3), **TANK écrit les tests ROUGES depuis la promesse AVANT que NEO implémente** ; NEO code jusqu'au vert et peut adapter MÉCANIQUEMENT un test (renommage, signature), jamais en créer ni en supprimer. L'étape 4 (NR d'axe) est portée par TANK.
+
+**Passe économe (règle fondateur 2026-10-30 — un aller-retour TANK→NEO→TANK a coûté ~1 h sur l'incident ALAP)** :
+- **Couverture du plan, en tête du rapport** : un TABLEAU décision du plan → test écrit (`fichier::méthode`) OU « pas de test possible — preuve = captures » OU « sans test, déclaré au plan ». **Aucune décision du plan absente du tableau.** Une décision que le brief omet mais que le plan porte : la signaler, ne pas la laisser tomber en silence — sinon NEO la refuse (option A) et il faut un aller-retour complet.
+- **Rouges prouvés sur les tests CIBLÉS seulement** (`--filter`, fichier de test visé) — pas de `tests-complete` ni de vitest complet : la suite complète tourne UNE fois, chez NEO, à la fin. L'image tooling se rebâtit quand même avant Vitest (compte qui bouge). TANK est aussi l'agent des **passes de réduction** et du **retrait des tests orphelins** (filet cité, vert avant, cliquet mesuré avant/après pour les consolidations non sensibles).
 
 ## Pièges de zone (à connaître par cœur)
 

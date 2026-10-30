@@ -1,12 +1,12 @@
-import { AlertTriangle, Link2 } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Info, Link2 } from "lucide-react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
-import { Listbox, type ListboxGroup } from "@/shared/components/ui/listbox";
+import { Listbox, type ListboxGroup, type ListboxOption } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
@@ -114,6 +114,13 @@ const MAX_SESSIONS = 7;
 const clampSessions = (n: number): number => (Number.isFinite(n) ? Math.min(MAX_SESSIONS, Math.max(MIN_SESSIONS, Math.round(n))) : DEFAULT_SESSIONS);
 
 /**
+ * E6 (essai fondateur 30/10) — gabarit de COLONNES partagé par l'en-tête et chaque ligne de l'étape
+ * Équipes (Nom · Séances · Décision · Rang · Genre), pour qu'ils s'alignent. Desktop seulement
+ * (`md:`) : à l'étroit, la ligne retombe en pile (desktop-first, garde-fous 360 px).
+ */
+const EQUIPES_GRID_COLS = "md:grid-cols-[minmax(0,1fr)_5rem_minmax(0,16rem)_7rem_8rem]";
+
+/**
  * Lot correctif import IA « G2 » — la modale d'import du parc par IA est un ASSISTANT en 7 étapes
  * (StepRail : Prompt · Coller · Équipes · Ententes (CTC) · Gymnases · Mutualisations · Réservations ;
  * l'étape « Ententes » est ajoutée par la refonte PR2, D9). Le gestionnaire
@@ -160,6 +167,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
   const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({});
+  // D3 (incident ALAP) — composition d'équipes REDÉFINIE d'une séance commune, par `mutualisations:index`.
+  // Absente = non touchée (le serveur garde la composition lue) ; définie = `corrections.equipes` envoyé.
+  const [teamCompositionDrafts, setTeamCompositionDrafts] = useState<Record<string, string[]>>({});
   // Retours fondateur 2026-10-26 — le nombre de séances d'une ligne équipe, en CHAMP éditable
   // (pré-rempli de la valeur LUE), par `equipes:index`. Remplace l'ancienne case « mise à jour ».
   const [sessionDrafts, setSessionDrafts] = useState<Record<string, number>>({});
@@ -178,10 +188,22 @@ export function ParcImportModal(props: ParcImportModalProps) {
   // Finition 4 — « Voir » vise une ligne à trancher : on mémorise SON sélecteur (ref, pas d'état — pas
   // de setState dans l'effet) pour le focaliser à la place de l'en-tête une fois la ligne rendue.
   const pendingFocusRef = useRef<{ section: string; index: number } | null>(null);
+  // D5 (incident ALAP) — le bandeau d'erreur d'import est en TÊTE de la zone défilante ; DÈS QU'IL
+  // APPARAÎT on l'AMÈNE à l'écran (cas Safari du club : jamais ramené), SANS lui voler le focus.
+  // Callback ref : il se déclenche au MONTAGE du nœud (= « à l'arrivée » de l'erreur), déjà posé dans
+  // le DOM — on défile donc directement (pas de `requestAnimationFrame` : le nœud est committé, il n'y
+  // a rien à attendre, et un rAF repousserait le défilement hors du cycle, invisible à l'utilisateur
+  // comme au test). Pas de `focus` : l'erreur s'annonce, elle ne vole pas l'attention.
+  const scrollErrorIntoView = useCallback((node: HTMLDivElement | null): void => {
+    node?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, []);
 
   const analyzing = analyze.isPending;
   const importing = importMut.isPending;
   const isRecap = null !== result;
+  // Le bandeau d'erreur d'import n'existe QUE sur une étape de contenu : D5 défile vers lui dès qu'il
+  // est RENDU (pas seulement au flanc montant de `isError`, qui peut déjà être vrai au montage).
+  const showImportError = CONTENT_STEPS.has(step) && importMut.isError;
 
   // Focus au changement d'étape : le sélecteur de la ligne visée par « Voir » (finition 4) s'il y en a
   // un en attente, sinon l'en-tête d'étape (jamais de vol ailleurs). Le `ref` se désarme ici (pas de
@@ -277,6 +299,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setSlotDrafts(nextSlotDrafts);
     setCaseVenue(nextCaseVenue);
     setGroupDrafts(nextGroupDrafts);
+    // D3 — la composition redéfinie repart de zéro à chaque (re)analyse (le serveur a déjà rejoué).
+    setTeamCompositionDrafts({});
     setSessionDrafts(nextSessionDrafts);
     setTierDrafts(nextTier);
     setGenderDrafts(nextGender);
@@ -341,12 +365,23 @@ export function ParcImportModal(props: ParcImportModalProps) {
           }
         } else if ("mutualisations" === section) {
           const groupe = (groupDrafts[key] ?? "").trim();
+          // D3 — la composition REDÉFINIE (si l'utilisateur a touché le sélecteur multiple) part en
+          // `corrections.equipes` (liste d'ids d'équipe du club / `import:<index>`), sinon le serveur
+          // garde la composition lue.
+          const composition = teamCompositionDrafts[key];
+          const corrections: Record<string, unknown> = {};
+          if ("" !== groupe) {
+            corrections.groupe = groupe;
+          }
+          if (undefined !== composition) {
+            corrections.equipes = composition;
+          }
           out.push({
             section,
             index: line.index,
             coche: checked[key] ?? line.coche,
             venueId: resolveVenueId(caseVenue[key]),
-            corrections: "" !== groupe ? { groupe } : undefined,
+            corrections: Object.keys(corrections).length > 0 ? corrections : undefined,
           });
         } else if (CASE_SECTION_SET.has(section)) {
           const draft = slotDrafts[key];
@@ -367,8 +402,13 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   const decisionValue = (section: string, line: ParcAnalysisLine): string => decisions[keyOf(section, line.index)] ?? initialDecision(line);
 
-  const setDecision = (section: string, index: number, value: string): void =>
+  const setDecision = (section: string, index: number, value: string): void => {
     setDecisions((prev) => ({ ...prev, [keyOf(section, index)]: value }));
+    // D2 (incident ALAP) — changer une décision (p.ex. ignorer une équipe) PÉRIME l'aperçu : les
+    // alertes affichées datent de l'analyse précédente, d'où le bandeau « Revalider » (comme une
+    // correction de case). Une séance commune qui cite cette équipe ne bascule en alerte qu'au rejeu.
+    setDirtyCases((prev) => new Set(prev).add(keyOf(section, index)));
+  };
 
   const setSessionDraft = (index: number, value: number): void =>
     setSessionDrafts((prev) => ({ ...prev, [keyOf("equipes", index)]: value }));
@@ -413,9 +453,43 @@ export function ParcImportModal(props: ParcImportModalProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysis, decisions, genderDrafts]);
 
+  // PR A (D13) — une ligne de CASE (séance commune / réservation) en alerte « équipe ignorée ou
+  // introuvable » (`alerteCode`) ET GARDÉE bloque l'import : sinon l'import part et le serveur 422
+  // (le défaut ALAP). On lit le code MACHINE servi par l'analyse, jamais la phrase FR.
+  const pendingAlerteCode = useMemo(() => {
+    if (null === analysis) {
+      return 0;
+    }
+    let n = 0;
+    for (const section of ["mutualisations", "reservations"] as const) {
+      for (const line of analysis.sections[section] ?? []) {
+        if (undefined !== line.alerteCode && "" !== line.alerteCode && (checked[keyOf(section, line.index)] ?? line.coche)) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+  }, [analysis, checked]);
+
+  // D3 — une séance commune dont la composition REDÉFINIE compte moins de 2 équipes bloque l'import
+  // (la raison vit sur la ligne, `needsTwoTeams`). Une composition non touchée ne bloque jamais.
+  const pendingComposition = useMemo(() => {
+    if (null === analysis) {
+      return 0;
+    }
+    let n = 0;
+    for (const line of analysis.sections.mutualisations ?? []) {
+      const draft = teamCompositionDrafts[keyOf("mutualisations", line.index)];
+      if (undefined !== draft && draft.length < 2) {
+        n += 1;
+      }
+    }
+    return n;
+  }, [analysis, teamCompositionDrafts]);
+
   const importDecisions = buildDecisions();
   const count = importDecisions.filter((d) => d.coche).length;
-  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || 0 === count;
+  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || pendingComposition > 0 || 0 === count;
 
   const doImport = (): void => {
     if (null === analysis || blocked) {
@@ -446,6 +520,23 @@ export function ParcImportModal(props: ParcImportModalProps) {
             pendingFocusRef.current = { section, index: line.index };
             setStep(section);
           }
+          return;
+        }
+      }
+    }
+    // PR2 — un genre OBLIGATOIRE manquant sur une ligne « Créer » : l'étape Équipes.
+    for (const line of analysis.sections.equipes ?? []) {
+      const key = keyOf("equipes", line.index);
+      if (undefined !== line.suggestedTierId && CREATE === decisionValue("equipes", line) && "" === (genderDrafts[key] ?? line.suggestedGender ?? "")) {
+        setStep("equipes");
+        return;
+      }
+    }
+    // D13 — une séance commune / réservation en alerte « équipe ignorée » et GARDÉE : son étape.
+    for (const section of ["mutualisations", "reservations"] as const) {
+      for (const line of analysis.sections[section] ?? []) {
+        if (undefined !== line.alerteCode && "" !== line.alerteCode && (checked[keyOf(section, line.index)] ?? line.coche)) {
+          setStep(section);
           return;
         }
       }
@@ -623,14 +714,32 @@ export function ParcImportModal(props: ParcImportModalProps) {
           </Button>
         ) : (
           <>
-            <Button variant="outline" size="sm" onClick={onClose}>
-              {T.close}
-            </Button>
-            {"prompt" !== step ? (
-              <Button variant="ghost" size="sm" onClick={() => goTo(-1)}>
-                {T.previous}
-              </Button>
-            ) : null}
+            {/* D10 (incident ALAP) — plus de bouton TEXTE « Fermer » au pied (la croix d'en-tête suffit) :
+                Précédent/Suivant GROUPÉS à gauche (`mr-auto`), l'action primaire (Analyser/Importer) à droite. */}
+            <div className="mr-auto flex flex-wrap items-center gap-2">
+              {"prompt" !== step ? (
+                <Button variant="ghost" size="sm" onClick={() => goTo(-1)}>
+                  {T.previous}
+                </Button>
+              ) : null}
+              {"prompt" === step || (CONTENT_STEPS.has(step) && "reservations" !== step) ? (
+                <Button variant="outline" size="sm" onClick={() => goTo(1)}>
+                  {T.next}
+                </Button>
+              ) : null}
+              {/* Finition 4 / D13 — la raison d'import bloqué est VISIBLE au pied (ton warning, patron
+                  ImportFbiDialog), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher / séance commune. */}
+              {CONTENT_STEPS.has(step) && blocked && (pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || 0 === count) ? (
+                <span className="flex items-center gap-2 text-xs text-warning">
+                  <span>{T.importBlocked(pendingAmbiguous, pendingGender, pendingAlerteCode)}</span>
+                  {pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 ? (
+                    <Button variant="ghost" size="sm" onClick={seeBlocking}>
+                      {T.seeBlockingLine}
+                    </Button>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
             {"paste" === step ? (
               <Button
                 size="sm"
@@ -642,40 +751,16 @@ export function ParcImportModal(props: ParcImportModalProps) {
                 {T.analyze}
               </Button>
             ) : null}
-            {"prompt" === step ? (
-              <Button size="sm" onClick={() => goTo(1)}>
-                {T.next}
-              </Button>
-            ) : null}
             {CONTENT_STEPS.has(step) ? (
-              <>
-                {/* Finition 4 — la raison d'import bloqué est VISIBLE au pied (pas qu'en sr-only du
-                    bouton), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher. */}
-                {blocked ? (
-                  <span className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{T.importBlocked(pendingAmbiguous, pendingGender)}</span>
-                    {pendingAmbiguous > 0 ? (
-                      <Button variant="ghost" size="sm" onClick={seeBlocking}>
-                        {T.seeBlockingLine}
-                      </Button>
-                    ) : null}
-                  </span>
-                ) : null}
-                {"reservations" !== step ? (
-                  <Button variant="outline" size="sm" onClick={() => goTo(1)}>
-                    {T.next}
-                  </Button>
-                ) : null}
-                <Button
-                  size="sm"
-                  disabled={blocked || importing}
-                  disabledReason={blocked ? T.importDisabledHint : undefined}
-                  onClick={doImport}
-                >
-                  {importing ? <Spinner className="size-4" /> : null}
-                  <span className="tabular-nums">{T.importAction(count)}</span>
-                </Button>
-              </>
+              <Button
+                size="sm"
+                disabled={blocked || importing}
+                disabledReason={blocked ? T.importDisabledHint : undefined}
+                onClick={doImport}
+              >
+                {importing ? <Spinner className="size-4" /> : null}
+                <span className="tabular-nums">{T.importAction(count)}</span>
+              </Button>
             ) : null}
           </>
         )
@@ -701,8 +786,13 @@ export function ParcImportModal(props: ParcImportModalProps) {
                 ) : null}
               </div>
 
-              {/* Erreur d'import — dans la modale, jamais un toast (le hook garde le toast à l'analyse). */}
-              {CONTENT_STEPS.has(step) && importMut.isError ? <ImportErrorBanner error={importMut.error} /> : null}
+              {/* Erreur d'import — dans la modale, jamais un toast (le hook garde le toast à l'analyse).
+                  Le ref porte le scrollIntoView de D5 (bandeau amené à l'écran, sans voler le focus). */}
+              {showImportError ? (
+                <div ref={scrollErrorIntoView}>
+                  <ImportErrorBanner error={importMut.error} />
+                </div>
+              ) : null}
 
               {/* D10 — résultat peu fiable (informatif, jamais bloquant), en tête de l'aperçu. */}
               {CONTENT_STEPS.has(step) && null !== analysis && analysis.fiabilite.bandeau ? (
@@ -784,13 +874,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
               {"mutualisations" === step && null !== analysis ? (
                 <MutualisationsStep
                   lines={analysis.sections.mutualisations ?? []}
+                  equipesLines={analysis.sections.equipes ?? []}
                   venues={venues}
+                  allTeams={allTeams}
                   caseVenue={caseVenue}
                   groupDrafts={groupDrafts}
                   checked={checked}
+                  compositionDrafts={teamCompositionDrafts}
+                  decisionValue={decisionValue}
                   onVenueChange={(index, v) => setCaseVenue((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
                   onGroupChange={(index, v) => setGroupDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
                   onKeepChange={(index, keep) => setChecked((prev) => ({ ...prev, [keyOf("mutualisations", index)]: keep }))}
+                  onCompositionChange={(index, v) => setTeamCompositionDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
                   onEditSlot={(index) => setEditingCase({ section: "mutualisations", index })}
                 />
               ) : null}
@@ -920,28 +1015,41 @@ function EntitySection({
   if (0 === lines.length) {
     return <p className="text-sm text-muted-foreground">{T.previewHelp}</p>;
   }
-  return (
-    <ul className="flex flex-col">
-      {lines.map((line) => (
-        <DecisionRow
-          key={line.index}
-          section={section}
-          line={line}
-          venues={venues}
-          allTeams={allTeams}
-          tiers={tiers}
-          value={decisionValue(section, line)}
-          onChange={(value) => onDecision(section, line.index, value)}
-          sessionValue={sessionDrafts?.[keyOf(section, line.index)] ?? line.seances ?? DEFAULT_SESSIONS}
-          onSessionChange={onSessionChange}
-          tierValue={tierDrafts?.[keyOf(section, line.index)]}
-          genderValue={genderDrafts?.[keyOf(section, line.index)]}
-          onTierChange={onTierChange}
-          onGenderChange={onGenderChange}
-        />
-      ))}
-    </ul>
-  );
+  const rows = lines.map((line) => (
+    <DecisionRow
+      key={line.index}
+      section={section}
+      line={line}
+      venues={venues}
+      allTeams={allTeams}
+      tiers={tiers}
+      value={decisionValue(section, line)}
+      onChange={(value) => onDecision(section, line.index, value)}
+      sessionValue={sessionDrafts?.[keyOf(section, line.index)] ?? line.seances ?? DEFAULT_SESSIONS}
+      onSessionChange={onSessionChange}
+      tierValue={tierDrafts?.[keyOf(section, line.index)]}
+      genderValue={genderDrafts?.[keyOf(section, line.index)]}
+      onTierChange={onTierChange}
+      onGenderChange={onGenderChange}
+    />
+  ));
+  // E6 — étape Équipes en COLONNES : un en-tête UNIQUE (Nom · Séances · Décision · Rang · Genre),
+  // partagé avec les lignes via `EQUIPES_GRID_COLS`. L'étape Gymnases garde sa liste simple.
+  if ("equipes" === section) {
+    return (
+      <div className="flex flex-col">
+        <div className={`hidden gap-x-4 border-b border-border px-0 pb-1 text-xs font-semibold text-muted-foreground md:grid ${EQUIPES_GRID_COLS}`}>
+          <span>{T.colName}</span>
+          <span>{T.sessionsLabel}</span>
+          <span>{T.colDecision}</span>
+          <span>{T.tierFieldLabel}</span>
+          <span>{T.genderFieldLabel}</span>
+        </div>
+        <ul className="flex flex-col">{rows}</ul>
+      </div>
+    );
+  }
+  return <ul className="flex flex-col">{rows}</ul>;
 }
 
 function DecisionRow({
@@ -974,79 +1082,110 @@ function DecisionRow({
   onGenderChange?: (index: number, value: string) => void;
 }) {
   const reasonId = useId();
+  const sessionsDescId = useId();
   const groups = useMemo(() => decisionGroups(section, line, venues, allTeams, tiers), [section, line, venues, allTeams, tiers]);
   const pending = "ambigu" === line.statut && "" === value;
+  // D9 (incident ALAP) — une ligne mise en « Ignorer » est rendue BARRÉE (retours fondateur : grisée/barrée).
+  const ignored = IGNORE === value;
   // Refonte PR2 (D9) — une ligne équipe « Créer » PORTANT des suggestions (le serveur a servi
   // `suggestedTierId`) montre un Select Rang + un Select Genre (le genre est OBLIGATOIRE : vide = ⚠).
   const showCreateFields = "equipes" === section && CREATE === value && undefined !== line.suggestedTierId && undefined !== onGenderChange && undefined !== onTierChange;
   const genderVal = genderValue ?? line.suggestedGender ?? "";
   const genderMissing = "" === genderVal;
 
-  return (
-    <li className="grid gap-x-4 gap-y-1 border-b border-border/60 py-2 md:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-medium text-foreground">{line.libelle}</span>
-        {/* Défaut C — la raison n'est rendue QU'UNE fois : la ligne ⚠ (ci-dessous) la porte dès qu'on
-            est « à trancher », sinon la ligne grise. Les deux ensemble la doublaient (capture 03-equipes). */}
-        {null === line.raison || pending ? null : <span className="text-xs text-muted-foreground">{line.raison}</span>}
-        {pending ? (
-          <span id={reasonId} className="flex items-center gap-1 text-xs text-foreground">
-            <AlertTriangle aria-hidden className="size-3.5 text-warning" />
-            {line.raison ?? T.toDecide}
+  // La cellule « Nom » : libellé (barré si ignoré) + la raison en ⓘ (hors « à trancher ») + le ⚠ d'une
+  // ligne à trancher. Partagée par les deux dispositions (Équipes en colonnes, Gymnases en 2 colonnes).
+  const nameCell = (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={ignored ? "truncate text-sm font-medium text-muted-foreground line-through" : "truncate text-sm font-medium text-foreground"}>{line.libelle}</span>
+        {/* E6 — la raison d'une ligne NON « à trancher » vit dans une infobulle ⓘ à côté du nom (donnée serveur = nom accessible). */}
+        {null === line.raison || pending ? null : (
+          <span role="img" aria-label={line.raison} title={line.raison} className="inline-flex shrink-0 text-muted-foreground">
+            <Info aria-hidden className="size-3.5" />
           </span>
-        ) : null}
-        {/* Retours fondateur 2026-10-26 — « Séances » est un CHAMP éditable (équipes), lisible d'un
-            coup d'œil et corrigeable AVANT l'import (ce qui SERA importé) ; « actuellement N » pour une
-            équipe appariée. Plus aucune case à cocher de séances. */}
-        {"equipes" === section && undefined !== onSessionChange ? (
-          <label className="mt-0.5 flex items-center gap-2 text-xs text-foreground">
-            <span>{T.sessionsLabel}</span>
+        )}
+      </span>
+      {pending ? (
+        <span id={reasonId} className="flex items-center gap-1 text-xs text-foreground">
+          <AlertTriangle aria-hidden className="size-3.5 text-warning" />
+          {line.raison ?? T.toDecide}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  const decisionCell = (
+    <Listbox
+      id={decisionTriggerId(section, line.index)}
+      aria-label={T.decisionFor(line.libelle)}
+      aria-describedby={pending ? reasonId : undefined}
+      wrapperClassName="w-full"
+      placeholder={T.toDecide}
+      value={value}
+      onValueChange={onChange}
+      groups={groups}
+    />
+  );
+
+  // Étape Gymnases : disposition simple à 2 colonnes (Nom | Décision), inchangée (pas de colonnes
+  // Séances/Rang/Genre sans objet).
+  if ("equipes" !== section) {
+    return (
+      <li className="grid items-center gap-x-4 gap-y-0.5 border-b border-border/60 py-1 md:grid-cols-[minmax(0,1fr)_20rem]">
+        {nameCell}
+        {decisionCell}
+      </li>
+    );
+  }
+
+  // E6 — étape Équipes en COLONNES : Nom · Séances · Décision · Rang · Genre, alignées sur l'en-tête.
+  // « actuellement N » n'est plus un texte visible : il vit dans l'infobulle du champ Séances
+  // (`title` + `aria-describedby`). Plus de libellé « Séances » répété par ligne (l'en-tête le porte).
+  return (
+    <li className={`grid items-center gap-x-4 gap-y-1 border-b border-border/60 py-1.5 ${EQUIPES_GRID_COLS}`}>
+      {nameCell}
+      <div className="flex items-center">
+        {undefined !== onSessionChange && !ignored ? (
+          <>
             <Input
               type="number"
               compact
               min={MIN_SESSIONS}
               max={MAX_SESSIONS}
               aria-label={T.sessionsFieldLabel(line.libelle)}
+              aria-describedby={undefined !== line.seancesActuelles ? sessionsDescId : undefined}
+              title={undefined !== line.seancesActuelles ? T.sessionsCurrent(line.seancesActuelles) : undefined}
               className="w-16"
               value={sessionValue}
               onChange={(e) => onSessionChange(line.index, Number(e.target.value))}
             />
-            {undefined !== line.seancesActuelles ? <span className="text-muted-foreground">{T.sessionsCurrent(line.seancesActuelles)}</span> : null}
-          </label>
+            {undefined !== line.seancesActuelles ? (
+              <span id={sessionsDescId} className="sr-only">
+                {T.sessionsCurrent(line.seancesActuelles)}
+              </span>
+            ) : null}
+          </>
         ) : null}
       </div>
-      <Listbox
-        id={decisionTriggerId(section, line.index)}
-        aria-label={T.decisionFor(line.libelle)}
-        aria-describedby={pending ? reasonId : undefined}
-        wrapperClassName="w-full"
-        placeholder={T.toDecide}
-        value={value}
-        onValueChange={onChange}
-        groups={groups}
-      />
-      {showCreateFields ? (
-        <div className="flex flex-wrap items-end justify-end gap-2 md:col-span-2">
-          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-            <span>{T.tierFieldLabel}</span>
-            <Select
-              aria-label={T.tierOf(line.libelle)}
-              wrapperClassName="w-44"
-              value={String(tierValue ?? line.suggestedTierId)}
-              onChange={(e) => onTierChange?.(line.index, Number(e.target.value))}
-            >
-              {tiers.map((t) => (
-                <option key={t.id} value={String(t.id)}>
-                  {tierGroupLabel(t)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-            <span>{T.genderFieldLabel}</span>
+      <div className="min-w-0">{decisionCell}</div>
+      <div className="flex items-center">
+        {showCreateFields ? (
+          <Select aria-label={T.tierOf(line.libelle)} wrapperClassName="w-full" value={String(tierValue ?? line.suggestedTierId)} onChange={(e) => onTierChange?.(line.index, Number(e.target.value))}>
+            {tiers.map((t) => (
+              <option key={t.id} value={String(t.id)}>
+                {tierGroupLabel(t)}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {showCreateFields ? (
+          <>
             <Select
               aria-label={T.genderOf(line.libelle)}
-              wrapperClassName="w-32"
+              wrapperClassName="w-full"
               aria-invalid={genderMissing || undefined}
               value={genderVal}
               onChange={(e) => onGenderChange?.(line.index, e.target.value)}
@@ -1057,14 +1196,14 @@ function DecisionRow({
               <option value="MIXTE">{T.genderMixte}</option>
             </Select>
             {genderMissing ? (
-              <span className="flex items-center gap-1 text-foreground">
+              <span className="flex items-center gap-1 text-xs text-foreground">
                 <AlertTriangle aria-hidden className="size-3.5 text-warning" />
                 {T.genderRequired}
               </span>
             ) : null}
-          </label>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -1228,23 +1367,33 @@ function GymnasesStep({
  */
 function MutualisationsStep({
   lines,
+  equipesLines,
   venues,
+  allTeams,
   caseVenue,
   groupDrafts,
   checked,
+  compositionDrafts,
+  decisionValue,
   onVenueChange,
   onGroupChange,
   onKeepChange,
+  onCompositionChange,
   onEditSlot,
 }: {
   lines: ParcAnalysisLine[];
+  equipesLines: ParcAnalysisLine[];
   venues: readonly ParcEntity[];
+  allTeams: TeamLike[];
   caseVenue: Record<string, string>;
   groupDrafts: Record<string, string>;
   checked: Record<string, boolean>;
+  compositionDrafts: Record<string, string[]>;
+  decisionValue: (section: string, line: ParcAnalysisLine) => string;
   onVenueChange: (index: number, value: string) => void;
   onGroupChange: (index: number, value: string) => void;
   onKeepChange: (index: number, keep: boolean) => void;
+  onCompositionChange: (index: number, values: string[]) => void;
   onEditSlot: (index: number) => void;
 }) {
   if (0 === lines.length) {
@@ -1252,6 +1401,14 @@ function MutualisationsStep({
   }
   // Finition 2c — « à vérifier » réservé aux alertes ; sinon « N mutualisations lues ».
   const hasAlert = lines.some((l) => "alerte" === l.statut);
+  // D3 — les équipes offertes au sélecteur de composition : les équipes du club + les lignes Équipes
+  // GARDÉES « à créer » de ce run (référencées par `import:<index>`, créées à l'import).
+  const teamOptions: ListboxOption[] = [
+    ...allTeams.map((t) => ({ value: t.id, label: t.name })),
+    ...equipesLines
+      .filter((l) => CREATE === decisionValue("equipes", l))
+      .map((l) => ({ value: `import:${l.index}`, label: l.libelle })),
+  ];
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground tabular-nums">{hasAlert ? T.mutualisationsCount(lines.length) : T.mutualisationsReadCount(lines.length)}</p>
@@ -1268,12 +1425,17 @@ function MutualisationsStep({
             ...(null == line.gymnaseId && "" !== posGym ? [{ value: VENUE_TO_CREATE, label: T.gridVenueToCreate(posGym), swatch: null }] : []),
             ...venues.map((v) => ({ value: v.id, label: v.name, swatch: null })),
           ];
+          // D3 — composition : amorcée des équipes RÉSOLUES lues (id non null), ou le brouillon redéfini.
+          const readComposition = (line.equipes ?? []).map((e) => e.id).filter((id): id is string => null !== id);
+          const composition = compositionDrafts[key] ?? readComposition;
+          const compositionTooFew = undefined !== compositionDrafts[key] && compositionDrafts[key].length < 2;
           return (
             <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
                 {null === (line.groupe ?? null) || "" === line.groupe ? null : <span className="text-sm font-semibold text-foreground">{line.groupe}</span>}
-                <span className="text-sm font-medium text-foreground">{line.libelle}</span>
+                {/* E4 (essai fondateur 30/10) — une séance commune mise en « Ignorer » est barrée + grisée (D9 étendu). */}
+                <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{line.libelle}</span>
                 {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}
                 {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))} · ${pos.gymnase}`}</span> : null}
               </div>
@@ -1295,6 +1457,19 @@ function MutualisationsStep({
                     { key: "ignore", label: T.mutualIgnore },
                   ]}
                 />
+                {/* D3 (incident ALAP) — sélecteur MULTIPLE : redéfinir la composition d'équipes (le
+                    nom du groupe avait pu être lu comme une équipe). → `corrections.equipes`. */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">{T.sectionTitle("equipes")}</span>
+                  <Listbox
+                    mode="multiple"
+                    aria-label={T.teamsForGroup(line.libelle)}
+                    wrapperClassName="w-56"
+                    values={composition}
+                    onValuesChange={(v) => onCompositionChange(line.index, v)}
+                    options={teamOptions}
+                  />
+                </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">{T.venueForGroupVisible}</span>
                   <Listbox
@@ -1316,6 +1491,13 @@ function MutualisationsStep({
                   {T.editCaseTitle}
                 </Button>
               </div>
+              {/* D3 — moins de 2 équipes choisies : raison VISIBLE (l'import est bloqué au pied). */}
+              {compositionTooFew ? (
+                <span className="flex items-center gap-1 text-xs text-warning">
+                  <AlertTriangle aria-hidden className="size-3.5" />
+                  {T.needsTwoTeams}
+                </span>
+              ) : null}
             </li>
           );
         })}

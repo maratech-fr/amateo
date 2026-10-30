@@ -27,6 +27,19 @@
 > est désormais **OBLIGATOIRE** à la création (plus de « MIXTE » d'office) : `TeamNameInterpreter`
 > ne rend plus qu'un genre lu sur un motif clair ou `null`, et une équipe « à créer » sans genre
 > connu (ni déduit ni corrigé) refuse l'import (422 nommant la ligne).
+>
+> **Lot correctif « PR A » (incident ALAP).** Une case « SF1 + SM1 + SM2 » dont le libellé de
+> groupe se lisait comme une troisième équipe a révélé trois manques : rien ne croisait la
+> composition d'une séance commune/réservation avec les décisions prises à l'étape Équipes, le
+> refus d'une entité introuvable à l'écriture sortait une ligne à la fois (« mutualisation n°2 :
+> … »), et l'écran parlait de « Mutualisation » là où le gestionnaire lit « séance commune ». Ce
+> lot (1) croise l'analyse des séances communes/réservations avec les décisions Équipes et alerte,
+> nommée et codée (`alerteCode`), une équipe ignorée ou introuvable (§3) ; (2) permet de REDÉFINIR
+> la composition d'une séance commune (`corrections.equipes`, §6) quand la case a été mal lue ;
+> (3) agrège en un seul refus toutes les entités introuvables d'un même import plutôt que
+> d'arrêter au premier rang (§6) ; (4) nomme chaque entité en cause au lieu d'un rang (« l'équipe
+> « X » est introuvable », plus jamais « n°3 ») ; (5) renomme l'écran et le vocabulaire serveur
+> « Mutualisation » → **« Séance commune »** (§6/§7).
 
 ## 1. Format `parc-v2`
 
@@ -177,11 +190,12 @@ L'analyzer n'écrit rien. Il DÉRIVE les sections (`ParcCaseDeriver`, §1) puis 
 `coachs`**), une liste de lignes `{index, libelle, statut, coche, cibleId, raison}` plus, selon la
 section, `candidats` (équipes/gymnases — les candidats `{id, nom}` d'un verdict `suggere`/`ambigu`,
 pour le sélecteur de la ligne, §7), `seances`/`seancesActuelles` (équipes — ci-dessous),
-`extra.miseAJour`/`extra.groupe`/`extra.gymnaseId`/`extra.position` (une mutualisation ou une
-réservation porte `position` : le créneau de **sa case dérivée**, gymnase/jour/heure/durée + le
-gymnase résolu — le front place la case de la grille et amorce l'éditeur **exclusivement** d'après
-cette position, jamais `payload.cases[index]`, car l'index d'une ligne de ces deux sections est son
-rang dans la liste dérivée, décalé du rang des cases du parc) plus un récap chiffré par section
+`extra.groupe`/`extra.gymnaseId`/`extra.position`/`extra.equipes`/`extra.seancesCommunes`/
+`extra.alerteCode` (une séance commune ou une réservation porte `position` : le créneau de **sa
+case dérivée**, gymnase/jour/heure/durée + le gymnase résolu — le front place la case de la grille
+et amorce l'éditeur **exclusivement** d'après cette position, jamais `payload.cases[index]`, car
+l'index d'une ligne de ces deux sections est son rang dans la liste dérivée, décalé du rang des
+cases du parc) plus un récap chiffré par section
 (`{total, apparie, suggere, aCreer, ambigu, decoche, alerte}`), un bloc `fiabilite`, les `alertes`
 transverses (§1) et en tête `{format: "parc-v2"}`.
 
@@ -206,14 +220,21 @@ serveur reste ainsi exploitable à l'import (`ParcImportModal.tsx`, lot correcti
 - `decoche` — idempotence (déjà présent) ou cap d'offre dépassé — décochée, `raison` posée.
 - `alerte` — collision à trancher à la main (deux équipes sur la même case non déclarée,
   chevauchement de créneaux, capacité ≥ 2 sur un gymnase existant non divisible, Σ séances
-  communes dépassant une équipe membre) — décochée, jamais un 500.
+  communes dépassant une équipe membre, équipe citée ignorée ou introuvable d'une séance
+  commune/réservation — ci-dessous) — décochée, jamais un 500. Une ligne `alerte` de séance
+  commune/réservation porte en plus `extra.alerteCode` : un code MACHINE stable (`equipe_ignoree`,
+  `budget_groupe`) que l'écran (§7) lit pour bloquer l'import tant que la ligne reste cochée —
+  jamais une re-dérivation de la phrase FR serveur.
 
 ### Fiabilité (D10)
 
-`fiabilite.taux` = part des lignes **appariables** (équipes + gymnases, ni créneaux ni
-mutualisations ni réservations) rendues `apparie` ou `suggere` (1.0 si aucune ligne appariable) ;
-`fiabilite.anomalies` = nombre d'alertes transverses (§1) ; `fiabilite.bandeau` (jamais
-bloquant) est vrai si `taux < 0.5` **ou** `anomalies ≥ 3`.
+`fiabilite.taux` = part des lignes **appariables** (équipes + gymnases **dont le statut n'est pas
+`aCreer`** — une ligne « à créer » n'avait rien à apparier, elle n'entre pas au dénominateur, sinon
+un club VIERGE afficherait un taux 0 trompeur) rendues `apparie` ou `suggere` (1.0 si aucune ligne
+appariable) ; `fiabilite.anomalies` = nombre d'alertes transverses (§1) ; `fiabilite.bandeau`
+(jamais bloquant) est vrai si (`taux < 0.5` **et** au moins une ligne appariable existe) **ou**
+`anomalies ≥ 3` — un parc neuf, sans aucun existant à apparier, ne lève donc jamais le bandeau
+« lecture incertaine » sur ce seul critère.
 
 ### Par section
 
@@ -236,19 +257,52 @@ bloquant) est vrai si `taux < 0.5` **ou** `anomalies ≥ 3`.
   **existant** dont `canSplit` est faux (garde de capacité de
   `VenueTrainingSlotStateProcessor` rejouée au dry-run) — un gymnase **à créer** n'est jamais
   alerté sur ce point : il naîtra divisible, dérivé de la capacité demandée.
-- **Mutualisations** — un groupe dont l'ensemble d'équipes (toutes résolues **exactement**, une
-  suggestion non confirmée ne compte pas) égale exactement l'ensemble d'un bloc
-  `SharedTrainingBlock` du **socle** existant s'apparie à ce bloc ; sinon `aCreer`. La garde
+- **Séances communes** (ex-« Mutualisations » — l'écran et les messages serveur disent désormais
+  « Séance commune », jamais « Mutualisation », incident ALAP) — un groupe dont l'ensemble
+  d'équipes (toutes résolues **exactement**, une suggestion non confirmée ne compte pas) égale
+  exactement l'ensemble d'un bloc `SharedTrainingBlock` du **socle** existant s'apparie à ce bloc ;
+  sinon `aCreer`. **D'abord**, une équipe citée par la case mais **ignorée** à l'étape Équipes
+  (décision `coche: false`) ou **introuvable** des lignes dérivées fait passer la ligne en
+  `alerte` (`extra.alerteCode = "equipe_ignoree"`, raison nommant l'équipe en cause — c'est le
+  défaut ALAP : « SM shooting » était le libellé du GROUPE, pas une équipe) ; sinon la garde
   Σ séances communes ≤ séances hebdomadaires d'un membre
   (`App\Service\SoloReservationBudget::forTeamsWithBlockSubstituted`, même foyer que
   `SharedTrainingBlockStateProcessor`) est rejouée : une violation passe en `alerte`. Le libellé
   de la ligne est la liste des équipes jointes par « + » ; `extra.groupe` porte le `groupe` de la
-  case (affichage, jamais redérivé).
-- **Réservations** — `alerte` si deux réservations ou plus visent la **même case** (gymnase +
-  jour + heure) sans qu'un créneau divisible (`equipes_en_parallele ≥ 2`) ou une mutualisation du
-  parc ne la couvre ; `decoche` (« Réservation déjà présente dans le planning. ») si une
-  `Reservation` du **socle** (`schedulePlanId` null) existe déjà pour la même équipe, le même
-  gymnase, le même jour et la même heure de début ; `aCreer` sinon.
+  case (affichage, jamais redérivé) ; `extra.equipes` porte la **composition lue**
+  (`{id résolu|null, nom}[]`, amorce du sélecteur multiple de l'étape Séances communes, §7) et
+  `extra.seancesCommunes` le nombre de séances communes partageant exactement cet ensemble
+  d'équipes (recalculé si la composition a été redéfinie — ci-dessous).
+- **Réservations** — **d'abord**, une équipe citée **ignorée** à l'étape Équipes ou
+  **introuvable** fait passer la ligne en `alerte` (`alerteCode = "equipe_ignoree"`, même garde que
+  les séances communes ci-dessus) ; **puis**, une équipe dont tout son budget de séances est déjà
+  pris par ses groupes (bloc du socle, résidu individuel nul) ne peut pas poser de réservation
+  individuelle : `alerte` (`alerteCode = "budget_groupe"`, message nommant l'équipe et invitant à
+  augmenter son nombre de séances) — cette garde (`SoloReservationBudget`/
+  `ReservationGroupOccupancy`) est désormais rejouée **dès l'analyse**, pas seulement à l'écriture ;
+  sinon `alerte` si deux réservations ou plus visent la **même case** (gymnase + jour + heure) sans
+  qu'un créneau divisible (`equipes_en_parallele ≥ 2`) ou une mutualisation du parc ne la couvre ;
+  `decoche` (« Réservation déjà présente dans le planning. ») si une `Reservation` du **socle**
+  (`schedulePlanId` null) existe déjà pour la même équipe, le même gymnase, le même jour et la même
+  heure de début ; `aCreer` sinon.
+
+### Redéfinir la composition d'une séance commune (`corrections.equipes`)
+
+Quand une case a été mal lue (le libellé du groupe pris pour une équipe, une équipe manquante),
+le gestionnaire redéfinit la composition depuis l'étape Séances communes (§7, sélecteur multiple) :
+la décision porte alors `corrections.equipes`, une liste d'**au moins deux** entrées — chacune soit
+l'UUID d'une équipe **existante du club** (re-vérifiée tenant à l'écriture, même garde `ownedTeam`
+que partout ailleurs — un UUID d'un autre club est refusé 422, rien écrit, NR gatant
+`ParcImportCorrectionTenantNR`, `docs/testing/blocking-tests.md`), soit `import:<index>` qui vise
+une ligne Équipes **gardée** de ce même run (créée à l'import) — jamais un gymnase ni une
+mutualisation. Rejouée par l'analyse (`/parc-import/analyze`, bouton « Revalider ») ET par
+l'import réel (mêmes règles) : les deux substituent les équipes **lues** par la composition
+**redéfinie**, puis RECOMPTENT `seances`/`seances_communes` depuis le nouvel ensemble
+(`ParcCaseDeriver::recomputeDerivedSessions`, pur) — une équipe ajoutée à la séance commune naît
+donc avec le bon nombre de séances (individuelles + communes), sans quoi la garde de budget
+individuel la refuserait à tort. Une composition à moins de deux équipes résolues est un abus du
+canal : 422 fail-fast avant tout persist (« une séance commune doit regrouper au moins deux
+équipes »), jamais une résolution agrégée.
 
 ### Appariement des gymnases
 
@@ -284,8 +338,9 @@ cochées en écriture. Corps `{payload, decisions}` :
   la réservation de groupe de cette ligne voyage dans le canal **distinct** `venueId` (sélecteur de
   la ligne, §7), lui aussi re-vérifié tenant, vide/absent → résolution par le nom de la case.
   `corrections` remplace des champs simples : `seances` pour une équipe (y compris une ligne
-  **créée**, §7), `jour`/`debut`/`duree` pour un créneau, une mutualisation (PLUS `groupe` — le
-  libellé du bloc, D8, §7) ou une réservation. Sur une équipe **appariée**, seul le nombre de
+  **créée**, §7), `jour`/`debut`/`duree` pour un créneau, une séance commune (PLUS `groupe` — le
+  libellé du bloc, §7 — et PLUS `equipes`, la composition REDÉFINIE — « Redéfinir la composition
+  d'une séance commune » ci-dessus) ou une réservation. Sur une équipe **appariée**, seul le nombre de
   séances peut bouger (`corrections.seances`) — jamais le genre, la catégorie ou le niveau. Sur une
   équipe **créée** (refonte PR2, D9), `corrections.{tierId, genre, ctc, ctcPartner}` remplace les
   suggestions de `TeamCreationSuggester` (§1) : `tierId` inconnu ou de type aberrant (flottant,
@@ -301,10 +356,19 @@ cochées en écriture. Corps `{payload, decisions}` :
   (422, rien écrit)**, nommant la ligne : le serveur ne crée ni n'apparie JAMAIS en silence un
   libellé ambigu, le gestionnaire doit trancher dans l'aperçu.
 
-**Une seule transaction, tout ou rien** (`EntityManagerInterface::wrapInTransaction`) ; une ligne
-cochée invalide au moment de l'écriture lève `UnprocessableEntityHttpException` nommant la ligne
-(« équipe n°3 : … »), la transaction est annulée et le contrôleur rend **422** `{errors: […]}` —
-rien n'est écrit. Succès → **200** `{recap: {<section>: {crees, apparies, misAJour, ignores}}}`.
+**Une seule transaction, tout ou rien** (`EntityManagerInterface::wrapInTransaction`). Deux régimes
+de refus, jamais confondus : une garde d'ÉCRITURE qui échoue (chevauchement, capacité, Σ séances,
+cap payant, composition de séance commune invalide) lève `UnprocessableEntityHttpException`
+**fail-fast**, au premier rang fautif ; une entité **introuvable** d'une ligne cochée (équipe/
+gymnase qu'aucune décision ne résout) est au contraire **collectée en une passe, toutes sections**
+(`ParcImportResolutionException`), puis levée **agrégée** en fin de transaction — plusieurs
+entités introuvables dans un même import sortent donc toutes d'un coup, jamais une à la fois au
+fil de relances successives (incident ALAP). Dans les deux cas, rien n'est écrit, et chaque message
+**nomme la LIGNE** (type + sa case : équipes/gymnase/jour/heure, jamais un rang « mutualisation n°2 :
+… ») puis le détail de l'échec — ex. « Séance commune SF1 + SM1 + SM2 · lundi 20:30 · Léon Jouhaux :
+l'équipe « SM shooting » est introuvable. », « Réservation U13M1 · mardi 18:00 · Léon Jouhaux :
+l'équipe « SM shooting » est introuvable. » : le contrôleur rend **422** `{errors: […]}`. Succès →
+**200** `{recap: {<section>: {crees, apparies, misAJour, ignores}}}`.
 
 Le **cap payant** (`PlanEntitlements::remainingTeamSlots`) est vérifié pour TOUTES les équipes
 `aCreer` cochées **avant tout persist** — jamais « les premières lignes passent, les suivantes
@@ -332,13 +396,18 @@ chatbot est ignorée en silence (le dériveur ne la lit pas).
   `VenueTrainingSlotStateProcessor::validateCapacityForVenue`) et chevauchement (même gymnase, même
   jour — `validateNoOverlap`). Une violation refuse la ligne, nommée. Idempotente par triplet
   (gymnase, jour, heure de début).
-- **Mutualisations** — un groupe d'équipes dont l'ensemble égale **exactement** celui d'un
-  `SharedTrainingBlock` du socle existant (`schedulePlanId` null) est apparié ; sinon la garde Σ
-  séances communes ≤ séances hebdomadaires d'un membre (`SoloReservationBudget::
-  forTeamsWithBlockSubstituted`, même foyer que `SharedTrainingBlockStateProcessor`) est rejouée
-  **avant** tout persist, puis le bloc naît au socle avec ses membres. Son **label** : la
-  `corrections.groupe` du gestionnaire (trim, non vide, D8, §7) l'emporte sur le `groupe` brut de
-  la case, les deux bornés à `SharedTrainingBlock::LABEL_MAX_LENGTH` (40 caractères).
+- **Séances communes** — **avant toute écriture**, si la décision porte `corrections.equipes`
+  (composition redéfinie, ci-dessus), les équipes **lues** de la case sont substituées par la
+  composition **redéfinie** et `seances`/`seances_communes` sont RECOMPTÉS
+  (`ParcCaseDeriver::recomputeDerivedSessions`) — une équipe ajoutée naît ainsi avec le bon nombre
+  de séances avant que son écriture ne soit tentée. Puis : un groupe d'équipes dont l'ensemble
+  égale **exactement** celui d'un `SharedTrainingBlock` du socle existant (`schedulePlanId` null)
+  est apparié ; sinon la garde Σ séances communes ≤ séances hebdomadaires d'un membre
+  (`SoloReservationBudget::forTeamsWithBlockSubstituted`, même foyer que
+  `SharedTrainingBlockStateProcessor`) est rejouée **avant** tout persist, puis le bloc naît au
+  socle avec ses membres. Son **label** : la `corrections.groupe` du gestionnaire (trim, non vide,
+  §7) l'emporte sur le `groupe` brut de la case, les deux bornés à
+  `SharedTrainingBlock::LABEL_MAX_LENGTH` (40 caractères).
   **Réservation de groupe** : le gymnase vient du `venueId` **CHOISI** de la décision
   (re-vérifié tenant), sinon de la résolution par le **NOM** de la case — jamais du `cibleId`, qui
   désigne le bloc apparié, pas un gymnase (P4-363). Si ce gymnase et le jour/heure (`corrections`)
@@ -351,7 +420,11 @@ chatbot est ignorée en silence (le dériveur ne la lit pas).
 - **Réservations** — une par équipe des cases **non mutualisées** (§1) ; idempotente par triplet
   (équipe + gymnase + jour + heure, `schedulePlanId` null) ; sinon la garde d'occupation
   (`ReservationGroupOccupancy::assertIndividualReservationAllowed`) est rejouée avant l'écriture,
-  posée au socle.
+  posée au socle. Son refus (résidu individuel nul, équipe membre d'un bloc) est **factuel** : il
+  dit le budget de séances de l'équipe, son occupation nommée par les groupes, et une action qui
+  dépend du contexte — « Passez l'équipe à N+1 séances, ou ignorez cette réservation. » à l'import,
+  « Augmentez son nombre de séances dans sa fiche. » ailleurs dans l'app (`actionContext`,
+  `ReservationGroupOccupancy::soloOnlyBlockMessage`) — jamais « s'entraîne uniquement en groupe ».
 
 ### Idempotence et noms hostiles
 
@@ -395,10 +468,12 @@ comportement) ; il reçoit les équipes/gymnases déjà saisis (`{id, name}`) po
 et le ré-appariement (ci-dessous).
 
 C'est un **assistant à 7 étapes** (`StepRail`, `ParcImportModal.tsx:59-61`) : **Prompt · Coller ·
-Équipes · Ententes (CTC) · Gymnases · Mutualisations · Réservations** — « Ententes (CTC) » (refonte
-PR2, D9) vient juste après Équipes, car elle dépend des suggestions de `TeamCreationSuggester`
-(§1). Les 5 étapes de contenu (Équipes/Ententes/Gymnases/Mutualisations/Réservations) restent
-verrouillées tant que l'analyse n'a pas réussi ; une analyse réussie ouvre et bascule sur Équipes.
+Équipes · Ententes (CTC) · Gymnases · Séances communes · Réservations** — « Séances communes »
+(ex-« Mutualisations », incident ALAP : l'écran et les messages serveur disent désormais « Séance
+commune », jamais « Mutualisation ») et « Ententes (CTC) » (refonte PR2, D9, vient juste après
+Équipes, car elle dépend des suggestions de `TeamCreationSuggester`, §1). Les 5 étapes de contenu
+restent verrouillées tant que l'analyse n'a pas réussi ; une analyse réussie ouvre et bascule sur
+Équipes.
 Les Réservations viennent volontairement **en dernier** (« plus on découpe, plus c'est simple » —
 décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisations ont chacun leur
 étape dédiée avant d'arriver aux réservations individuelles.
@@ -434,7 +509,13 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    porte « À choisir » et déclenche ⚠ « Genre requis » (`aria-invalid`, `border-warning`) — elle
    compte dans le `disabledReason` d'« Importer » (comptée SÉPARÉMENT des lignes ambiguës) tant
    qu'elle n'est pas tranchée. La case Entente (CTC) de cette même ligne a migré vers l'étape
-   dédiée (point 4) à la refonte PR2.
+   dédiée (point 4) à la refonte PR2. **Ligne « Ignorer »** (incident ALAP) : le libellé se rend
+   **barré et grisé** (jamais seulement une ligne qui disparaît visuellement), et le champ
+   « Séances » (comme le Select Rang/Genre d'une ligne « Créer ») **disparaît** — une ligne
+   ignorée n'a plus rien à corriger. La raison d'une ligne NON « à trancher » (déjà appariée,
+   candidat suggéré…) se lit dans une **infobulle ⓘ** à côté du nom (nom accessible = la raison
+   servie par le serveur), plutôt qu'un bloc de texte gris permanent — le ⚠ visible reste réservé
+   à une ligne encore « à trancher ».
 4. **Ententes (CTC)** (refonte PR2, D9) — une ligne par équipe « à créer » (celles qui portent des
    suggestions, `suggestedTierId` défini) : case Entente pré-cochée si `TeamCreationSuggester` la
    suggère (libellé portant « CTC »/« ENTENTE ») → `corrections.ctc`, décochable ; cochée, un champ
@@ -447,41 +528,63 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    `wizard/lib/weekGrid.ts`, patron `steps/VenueAvailabilityGrid.tsx` du wizard) rend, par gymnase,
    la grille de ses **ouvertures** (les créneaux dérivés des cases) : une case = une ouverture,
    libellée par sa plage horaire ; cliquer ouvre l'éditeur de créneau (point 7).
-6. **Mutualisations** — étape dédiée : une ligne par mutualisation (picto lien + nom de groupe +
-   équipes + sa position en clair « Lundi 18:00 · Gymnase X », raison ⚠ une seule fois si alerte) ;
-   Garder/Ignorer (`SegmentedControl`, pas de case à cocher), un sélecteur de gymnase pour sa
-   réservation de groupe (P4-363, → `venueId`), un champ pour le nom du groupe (D8, →
-   `corrections.groupe`) et un accès à l'éditeur de créneau pour le jour/heure/durée. Vide →
-   `EmptyHint`. Dans la grille des Réservations (point suivant), la case d'une mutualisation reste
-   marquée (picto lien + groupe) et son clic mène à cette ligne.
+6. **Séances communes** — étape dédiée : une ligne par séance commune (picto lien + nom de groupe +
+   équipes + sa position en clair « Lundi 18:00 · Gymnase X », raison ⚠ une seule fois si alerte,
+   **barrée/grisée si « Ignorer »**) ; Garder/Ignorer (`SegmentedControl`, pas de case à cocher), un
+   sélecteur de gymnase pour sa réservation de groupe (P4-363, → `venueId`), un champ pour le nom du
+   groupe (§6, → `corrections.groupe`), un **sélecteur MULTIPLE** (`Listbox mode="multiple"`,
+   incident ALAP) pour redéfinir la **composition d'équipes** (→ `corrections.equipes`, §6 — amorcé
+   des équipes résolues lues, options = équipes du club + lignes Équipes gardées « à créer » de ce
+   run, référencées `import:<index>`) et un accès à l'éditeur de créneau pour le jour/heure/durée.
+   Une ligne qui cite une équipe **ignorée ou introuvable** à l'étape Équipes (`alerteCode =
+   "equipe_ignoree"`, §3) et restée **cochée/« Garder »** **bloque « Importer »** (pied de modale,
+   ci-dessous) tant qu'elle n'est pas tranchée (composition redéfinie, ou ligne passée à
+   « Ignorer ») ; une composition redéfinie à moins de deux équipes affiche sa propre raison visible
+   (⚠ « Une séance commune regroupe au moins deux équipes — choisissez-les. ») et bloque de même.
+   Vide → `EmptyHint`. Dans la grille des Réservations (point suivant), la case d'une séance
+   commune reste marquée (picto lien + groupe) et son clic mène à cette ligne.
 7. **Réservations (grille)** — `ParcCaseGrid` rend, par gymnase, les réservations individuelles ET
-   les cases mutualisées marquées ; une case en alerte porte ⚠ et la raison serveur dans son nom
-   accessible (jamais la couleur seule). Cliquer une case ouvre un **éditeur de créneau imbriqué**
-   (`Modal size="md"`, brouillon transactionnel, clé de case stable `case:${index}`) iso au patron
-   du wizard : Gymnase (`Listbox`, absente pour une mutualisation — son gymnase se corrige à
-   l'étape Mutualisations), Jour, Début, Durée, Fin calculée. Une réservation/une mutualisation
-   s'amorce **exclusivement** d'après sa `position` servie par l'analyse (§3), jamais
-   `payload.cases[index]` — son index est son rang dans la section dérivée, pas celui de la case du
-   parc.
+   les cases de séance commune marquées ; une case en alerte porte ⚠ et la raison serveur dans son
+   nom accessible (jamais la couleur seule) — une alerte « équipe ignorée ou introuvable »
+   (`alerteCode`) et cochée bloque « Importer » au même titre qu'une séance commune (point 6).
+   Cliquer une case ouvre un **éditeur de créneau imbriqué** (`Modal size="md"`, brouillon
+   transactionnel, clé de case stable `case:${index}`) iso au patron du wizard : Gymnase
+   (`Listbox`, absente pour une séance commune — son gymnase se corrige à l'étape Séances
+   communes), Jour, Début, Durée, Fin calculée. Une réservation/une séance commune s'amorce
+   **exclusivement** d'après sa `position` servie par l'analyse (§3), jamais `payload.cases[index]`
+   — son index est son rang dans la section dérivée, pas celui de la case du parc.
 
    Partout dans l'aperçu : un bandeau `NoticeBanner` (D10) s'affiche si `fiabilite.bandeau` est
    vrai (« résultat peu fiable, vérifiez chaque ligne de près ») — **jamais bloquant** ; les
    `alertes` transverses (§1) s'affichent verbatim dans un second bandeau (D9) ; un gymnase naissant
-   porte « renseignez l'adresse ensuite ». Une correction (séances, créneau, gymnase, groupe) périme
-   l'aperçu (bandeau « Vous avez modifié N lignes : les alertes affichées datent de l'analyse
-   précédente », bouton « Revalider » qui reposte `{payload, decisions}` à `/parc-import/analyze`
-   pour rejouer l'analyse avec les corrections — §3) ; l'import reste possible SANS revalider —
-   bloquent seulement un ambigu non tranché, une création sans genre tranché (point 3, refonte
-   PR2), ou aucune ligne cochée. Bouton « Importer N » en pied, `disabledReason` découvrable
-   (A11Y-30) qui chiffre SÉPARÉMENT les lignes à trancher et les équipes sans genre.
+   porte « renseignez l'adresse ensuite ». Une correction (séances, créneau, gymnase, groupe,
+   composition) **ou** le changement d'une décision Équipes (ex. ignorer une équipe citée par une
+   séance commune — incident ALAP) périme l'aperçu (bandeau « Vous avez modifié N lignes : les
+   alertes affichées datent de l'analyse précédente », bouton « Revalider » qui reposte
+   `{payload, decisions}` à `/parc-import/analyze` pour rejouer l'analyse avec les corrections —
+   §3) ; l'import reste possible SANS revalider — bloquent seulement un ambigu non tranché, une
+   création sans genre tranché (point 3, refonte PR2), une alerte « équipe ignorée/introuvable »
+   cochée (points 6-7, incident ALAP) ou une composition à moins de deux équipes, ou aucune ligne
+   cochée.
+
+   **Pied de modale** (incident ALAP) : Précédent/Suivant **groupés à gauche**, l'action primaire
+   (Analyser/Importer) à droite — plus de bouton TEXTE « Fermer » (la croix de l'en-tête suffit).
+   La **raison du blocage est VISIBLE en permanence** au pied (ton `warning`, patron
+   `ImportFbiDialog`, pas seulement dans `disabledReason` au survol) : `importBlocked` chiffre
+   SÉPARÉMENT les lignes à trancher, les équipes sans genre et les alertes « équipe ignorée/
+   introuvable » cochées, avec un bouton « Voir » qui mène à la 1ʳᵉ ligne concernée (genre manquant
+   d'abord, puis une alerte gardée).
 
 **Import + récap** — `useImportParc` poste `{payload, decisions}`, `payload` étant le parc
-**normalisé** renvoyé par l'analyse (`data.payload`, §3, D4) — jamais le texte brut re-décodé côté
+**normalisé** renvoyé par l'analyse (`data.payload`, §3) — jamais le texte brut re-décodé côté
 front ni l'aperçu reconstruit ; une erreur serveur (422 `{errors: […]}`, §6) s'affiche **dans la
-modale** (`NoticeBanner tone="destructive" role="alert"`, jamais un toast) avec, par ligne fautive,
-un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher et lui donne le focus ; au succès,
-équipes/gymnases sont invalidés PARTOUT et le récap chiffré par section (§6) remplace le contenu de
-la modale.
+modale** (`NoticeBanner tone="destructive" role="alert"`, jamais un toast), amenée à l'écran dès
+qu'elle apparaît (`scrollIntoView({block: "nearest", behavior: "smooth"})`, sans voler le focus —
+elle vivait en tête d'une zone défilante que rien ne ramenait, incident ALAP sur Safari) avec, par
+ligne fautive, un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher et lui donne le focus ; au
+succès, équipes/gymnases **et** séances communes/réservations/créneaux de gymnase sont invalidés
+PARTOUT (pas seulement équipes/gymnases — un import en crée aussi, incident ALAP) et le récap
+chiffré par section (§6) remplace le contenu de la modale.
 
 Décisions d'interaction (passe `ui-ux-pro-max`) : clôture jamais bloquée (dry-run, rien n'est
 écrit avant l'import) sauf pendant un appel en cours (double-soumission désarmée) ; chaque état

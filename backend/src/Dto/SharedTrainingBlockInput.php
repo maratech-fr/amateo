@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dto;
 
+use App\Entity\SharedTrainingBlock;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -37,4 +38,12 @@ class SharedTrainingBlockInput
     #[Assert\Positive]
     #[Groups(['write'])]
     public ?int $commonSessions = null;
+
+    /**
+     * E12 (essai fondateur 30/10) — « Nom du groupe » FACULTATIF, persisté en POST/PUT ; vide = null
+     * (la lecture retombe sur l'affichage par les équipes). Borné à la longueur de la colonne.
+     */
+    #[Assert\Length(max: SharedTrainingBlock::LABEL_MAX_LENGTH, maxMessage: 'Le nom du groupe fait au plus {{ limit }} caractères.')]
+    #[Groups(['write'])]
+    public ?string $label = null;
 }

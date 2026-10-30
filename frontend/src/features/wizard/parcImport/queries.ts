@@ -30,8 +30,6 @@ export interface ParcAnalysisLine {
   /** PR1 (D5) : les candidats (`{id, nom}`) d'un appariement suggéré/ambigu — alimentent le groupe
    *  « Candidats possibles » du sélecteur de la ligne. Absent/vide pour une ligne « à créer ». */
   candidats?: Array<{ id: string; nom: string }>;
-  /** Équipes : une mise à jour de séances PROPOSÉE (pas appliquée). */
-  miseAJour?: { champ: "seances"; de: number; a: number };
   /**
    * Équipes (retours fondateur 2026-10-26) : le nombre de séances LU dans le fichier (nombre de cases
    * dérivé), servi sur CHAQUE ligne équipe — amorce le champ « Séances » éditable (ce qui SERA importé).
@@ -45,6 +43,14 @@ export interface ParcAnalysisLine {
   seancesActuelles?: number;
   /** Mutualisations : le libellé du bloc DÉRIVÉ par le serveur (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
+  /**
+   * Séance commune (D3) : la COMPOSITION lue (`{id résolu|null, nom}`) — amorce le sélecteur multiple
+   * de l'étape Séances communes. Un `id` null = équipe non appariée au club (nom seul). La composition
+   * redéfinie voyage à l'import/revalidation dans `corrections.equipes`.
+   */
+  equipes?: Array<{ id: string | null; nom: string }>;
+  /** Séance commune (D3) : le nombre de séances communes partageant l'ensemble d'équipes (recalculé si corrigé). */
+  seancesCommunes?: number;
   /** Mutualisations (P4-363) : le gymnase RÉSOLU du nom de la case (null si à créer) — amorce le sélecteur de gymnase de la réservation de groupe, distinct du `cibleId` (qui désigne le bloc apparié). */
   gymnaseId?: string | null;
   /**
@@ -67,6 +73,12 @@ export interface ParcAnalysisLine {
   suggestedTierId?: number;
   suggestedGender?: "M" | "F" | null;
   suggestedCtc?: boolean;
+  /**
+   * PR A (incident ALAP, D1/D13) — séance commune / réservation en alerte « équipe ignorée ou
+   * introuvable » : le code MACHINE qui accompagne la `raison` humaine. Le front le lit pour BLOQUER
+   * l'import tant que la ligne est gardée (jamais une re-dérivation depuis la phrase FR serveur).
+   */
+  alerteCode?: string;
 }
 
 /** Le récap chiffré d'une section de l'aperçu. */
@@ -178,6 +190,11 @@ export function useImportParc(clubId: string) {
       void invalidateEverywhere(queryClient, "teams");
       void invalidateEverywhere(queryClient, "venues");
       void invalidateEverywhere(queryClient, "coaches");
+      // E8 (essai fondateur 30/10) — un import crée aussi des séances communes, des réservations et des
+      // créneaux de gymnases : les rafraîchir PARTOUT, sans quoi ils n'apparaissent qu'au prochain geste.
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "venue_slots"] });
     },
     onError: (error) => void error,
   });

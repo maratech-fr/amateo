@@ -7,6 +7,7 @@ import { useWizardStore } from "../store";
 import { DAY_LABEL_LONG } from "@/shared/lib/days";
 
 import { activeTeams, activeVenues, pausedTeamIds } from "./activeLayer";
+import { type BlockLike, completeBlockOnCase } from "./blockOccupancy";
 import { dayLabel, hhmm } from "./days";
 import { effectiveSlotCapacity, sharedSlotStatuses, slotKey } from "./reservationSlots";
 import { okValidation, type RecapNotice, type StepValidation, type WizardStepId } from "./steps";
@@ -23,7 +24,7 @@ const DAY_LABELS = DAY_LABEL_LONG;
  *   2. A team reserved more slots than its sessions/week.
  *   3. A team with two sessions on the same day.
  */
-export function computeReservationWarnings(reservations: Reservation[], teams: Team[], venues: Venue[], slots: VenueTrainingSlot[]): string[] {
+export function computeReservationWarnings(reservations: Reservation[], teams: Team[], venues: Venue[], slots: VenueTrainingSlot[], blocks: BlockLike[] = []): string[] {
   const warnings: string[] = [];
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   const venueName = new Map(venues.map((v) => [v.id, v.name]));
@@ -50,6 +51,12 @@ export function computeReservationWarnings(reservations: Reservation[], teams: T
     bySlot.set(key, (bySlot.get(key) ?? new Set()).add(r.teamId));
   }
   bySlot.forEach((teamIds, key) => {
+    // E9 (essai fondateur 30/10) — une case BLOC-COMPLÈTE (l'ensemble réservé == les membres d'un
+    // bloc) compte pour UNE occupation (le groupe), jamais « partagé par N équipes ». Miroir déclaré
+    // `completeBlockOnCase` (⇄ `ReservationGroupOccupancy`).
+    if (null !== completeBlockOnCase(teamIds, blocks)) {
+      return;
+    }
     const [venueId, day, start] = key.split("|");
     const allowed = slotCapacity.get(key) ?? 1;
     if (teamIds.size > allowed) {
@@ -278,7 +285,7 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
     };
   }
   if ("constraints" === stepId) {
-    return { errors: [], warnings: computeReservationWarnings(reservations, teams, venues, slots) };
+    return { errors: [], warnings: computeReservationWarnings(reservations, teams, venues, slots, allSharedBlocks) };
   }
   if ("recap" === stepId) {
     const errors: string[] = [];

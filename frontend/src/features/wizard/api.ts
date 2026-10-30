@@ -503,6 +503,8 @@ export interface SharedTrainingBlockPayload {
   teamIds: string[];
   commonSessions: number;
   schedulePlanId?: string | null;
+  /** E12 — « Nom du groupe » facultatif (≤ 40). Vide/null = affichage par les équipes. */
+  label?: string | null;
 }
 
 /** Sans `schedulePlanId`, le provider renvoie socle ET périodes (le front trie). */
@@ -510,7 +512,7 @@ export const listSharedTrainingBlocks = (params?: Record<string, string>): Promi
   collectionAll<SharedTrainingBlock>("shared_training_blocks", params);
 export const createSharedTrainingBlock = (body: SharedTrainingBlockPayload): Promise<SharedTrainingBlock> =>
   api.post("shared_training_blocks", { json: body }).json();
-export const updateSharedTrainingBlock = (id: string, body: { teamIds: string[]; commonSessions: number }): Promise<SharedTrainingBlock> =>
+export const updateSharedTrainingBlock = (id: string, body: { teamIds: string[]; commonSessions: number; label?: string | null }): Promise<SharedTrainingBlock> =>
   api.put(`shared_training_blocks/${id}`, { json: body }).json();
 export const deleteSharedTrainingBlock = (id: string): Promise<void> => api.delete(`shared_training_blocks/${id}`).then(() => undefined);
 

@@ -79,7 +79,7 @@ export function Modal({ label, title, onClose, children, size = "md", footer }: 
         aria-label={label}
         className={cn("relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-lg border border-border bg-card p-5 text-card-foreground shadow-xl", MODAL_WIDTH[size])}
       >
-        <div className="flex shrink-0 items-center justify-between">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <h2 className="text-base font-semibold">{title}</h2>
           <button type="button" aria-label="Fermer" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={onClose}>
             <X className="size-4" />

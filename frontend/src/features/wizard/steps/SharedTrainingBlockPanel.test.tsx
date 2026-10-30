@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/utils";
 
 import type { PriorityTier, SharedBlockSession, SharedTrainingBlock, Team, TeamPeriodOverride } from "../api";
+import { sharedGroupLabel } from "../lib/sharedTraining";
 
 const stbCreate = vi.fn();
 const stbUpdate = vi.fn();
@@ -209,5 +210,48 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     // La sélection est CONSERVÉE pour retenter (patron error-recovery).
     expect(screen.getByRole("checkbox", { name: "U9F1" })).toBeChecked();
+  });
+});
+
+/**
+ * ─────────── PR A lot 2 — E12 : « Nom du groupe » facultatif d'une séance commune ───────────
+ * Un groupe mutualisé porte un `label` en base (servi en lecture) mais AUCUN écran ne le saisit :
+ * le panneau ne propose qu'équipes + séances communes, et la liste (:272) affiche
+ * `sharedGroupLabel(...)` (par les équipes), jamais le nom. TANK écrit ROUGE (option A), NEO implémente.
+ *  (a) champ « Nom du groupe » facultatif à la création/modification → sa valeur part dans le payload API ;
+ *  (b) la liste affiche le NOM s'il existe, sinon l'affichage par les équipes ;
+ *  (c) vider le nom → retour à l'affichage par les équipes (branche fallback, témoin VERT).
+ * Cohérence E11 : la case de réservation lit ce MÊME `label` (pas `slot.groupLabel`).
+ * ⚠ FINDING : `SharedTrainingBlockPanel.tsx` n'est PAS dans `MIGRATED_FILES` — ajouter un libellé de
+ * champ impose à NEO de MIGRER l'écran (texts.ts + inscription à `MIGRATED_FILES`). Élargissement de
+ * périmètre à acter ; non fait ici. Le test vise un nom accessible (écran non migré → littéral toléré).
+ */
+describe("SharedTrainingBlockPanel — E12 : nom du groupe (label)", () => {
+  it("E12 (a) — le « Nom du groupe » saisi part dans le payload de création (label)", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
+    await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
+
+    // Champ « Nom du groupe » facultatif — ABSENT aujourd'hui (le panneau ne propose qu'équipes + séances).
+    const nameField = screen.getByRole("textbox", { name: (n: string) => n.toLowerCase().includes("nom du groupe") });
+    await user.type(nameField, "SM Shooting");
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
+
+    expect(stbCreate).toHaveBeenCalledWith(expect.objectContaining({ label: "SM Shooting" }));
+  });
+
+  it("E12 (b/c) — la liste affiche le NOM quand il existe, sinon les équipes (fallback)", () => {
+    blocksState.data = [
+      { ...block("b1", ["t1", "t2"], 1), label: "SM Shooting" }, // avec nom
+      block("b2", ["t1", "t3"], 1), // sans nom (label null) → fallback par les équipes
+    ];
+    renderPanel();
+
+    // Avec nom → le NOM s'affiche. ROUGE aujourd'hui : la liste rend toujours `sharedGroupLabel` (équipes).
+    expect(screen.getByText("SM Shooting")).toBeInTheDocument();
+    // Sans nom → l'affichage par les équipes DEMEURE (témoin VERT du fallback, promesse (c)).
+    const nameOf = (id: string): string => TEAMS.find((t) => t.id === id)?.name ?? id;
+    expect(screen.getByText(sharedGroupLabel(["t1", "t3"], 1, nameOf))).toBeInTheDocument();
   });
 });
