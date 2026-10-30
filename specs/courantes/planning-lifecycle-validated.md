@@ -45,7 +45,7 @@ structure (P4-266 — revirement assumé sur l'ancien listener ciblé P4-268, qu
 séances **déjà placées** qui se chevauchent, sans que rien ne le dise. `App\Service\PlacedSessionPersonConflictDetector` ferme
 cet angle mort : feed **recalculé en lecture seule** à chaque appel (rien n'est persisté), il
 croise les séances placées de la version **pointée** du plan SEASON avec les liens COURANTS —
-coach MAIN, coach ASSISTANT, joueur (`CoachPlayerMembership` actif) — et réutilise, sans le
+coach MAIN, joueur (`CoachPlayerMembership` actif) — amendé le 2026-10-30 (« un coach tient la séance ») : un adjoint ou un coach absent ne fait plus conflit tant qu'un coach tient la séance (`CoachDoubleBookingDetector::holdersFor`), conflit seulement si personne ne peut la tenir, le joueur dans deux équipes restant un conflit — et réutilise, sans le
 réécrire, `CoachDoubleBookingDetector::bookingsCollide` (intervalles réels, gymnases
 **DIFFÉRENTS** uniquement — le même gymnase reste la mutualisation voulue, jamais un conflit).
 Périmètre V1 (fondateur 2026-09-28) : la version pointée du plan **SEASON** seulement (les plans
