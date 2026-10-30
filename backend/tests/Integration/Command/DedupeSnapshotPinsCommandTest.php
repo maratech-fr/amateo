@@ -236,8 +236,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         $planId = $this->seasonPlanIdOf($season);
         $first = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setName('V1')->setStatus(ScheduleStatus::COMPLETED);
-        $first->setSchedulePlanId($planId);
-        $this->em->persist($first);
+        $this->linkSeededSchedule($first);
         $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setScheduleId($first->getId())->setTeamId(self::TEAM_ID)->setVenueId(self::VENUE_ID)
             ->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
@@ -253,8 +252,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         $second = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setName('V2')->setStatus(ScheduleStatus::COMPLETED)
             ->setSnapshotData($snapshot)->setSnapshotHash($legacyHash);
-        $second->setSchedulePlanId($planId);
-        $this->em->persist($second);
+        $this->linkSeededSchedule($second);
         $this->em->flush();
 
         return [...$f, 'scheduleId' => $second->getId(), 'legacyHash' => $legacyHash, 'snapshot' => $snapshot];
