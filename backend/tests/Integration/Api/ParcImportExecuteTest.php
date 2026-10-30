@@ -1084,7 +1084,8 @@ final class ParcImportExecuteTest extends WebTestCase
         // SF1 existe ; « SM shooting » (cité par la séance commune) et « U13M1 » (cité par une
         // réservation) sont IGNORÉS à l'étape Équipes (lignes non cochées) → introuvables à l'écriture.
         // DEUX fautes, deux sections → `errors` à 2 entrées, chacune nommant équipe + case ; rien écrit.
-        // ROUGE aujourd'hui : fail-fast → la 1ʳᵉ faute (séance commune) stoppe tout → 1 seule erreur.
+        // (La case 0 est une séance commune : elle ne dérive AUCUNE réservation ; la seule réservation
+        // dérivée est celle de la case 1, « U13M1 », à l'index 0.)
         $this->makeTeam('SF1', sessionsPerWeek: 2);
         $venue = $this->makeVenue('Léon Jouhaux', canSplit: true);
         $this->makeSlot($venue->getId(), 1, '20:30', capacity: 2);
@@ -1101,7 +1102,7 @@ final class ParcImportExecuteTest extends WebTestCase
         // restent ignorées → introuvables à l'écriture).
         $decisions = [
             ['section' => 'mutualisations', 'index' => 0, 'coche' => true],
-            ['section' => 'reservations', 'index' => 1, 'coche' => true],
+            ['section' => 'reservations', 'index' => 0, 'coche' => true],
         ];
 
         [$status, $body] = $this->import($parc, $decisions);

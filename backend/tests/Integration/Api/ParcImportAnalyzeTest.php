@@ -797,6 +797,50 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertStringContainsString('U13M1', (string) ($resLine['raison'] ?? ''), 'la raison NOMME l\'équipe en cause');
     }
 
+    // ───────────────────────── PR A (D3 analyse) — /analyze rejoue corrections.equipes ─────────────────────────
+    // Le canal `corrections.equipes` d'une décision de séance commune (redéfinition de la composition :
+    // liste ≥ 2 d'UUID d'équipe du club) n'est pas que pour l'import — il est REJOUÉ par /analyze à la
+    // revalidation : la séance commune corrigée voit son alerte TOMBER (l'équipe ignorée disparaît de la
+    // composition), son `libelle` refléter la composition CORRIGÉE, et `seancesCommunes` est RECALCULÉ
+    // selon cette composition (compte des cases portant le MÊME ensemble corrigé). ROUGE sur b938c993c :
+    // {@see ParcImportAnalyzer::applyTimeCorrections} ne lit que jour/heure/durée, jamais `equipes`.
+    // Contrat (défini ici, implémenté par NEO) : la ligne mutualisation expose `seancesCommunes` (int) et
+    // son `libelle` est reconstruit depuis la composition corrigée. Jumeau IMPORT : ParcImportExecuteTest.
+
+    public function testAnalyzeReplaysTeamCompositionCorrectionDroppingTheAlerteAndRecountingCommonSessions(): void
+    {
+        $sf1 = $this->makeTeam('SF1');
+        $sm1 = $this->makeTeam('SM1');
+        $sm2 = $this->makeTeam('SM2');
+
+        // Deux cases : la case 0 cite « SM shooting » (le nom du groupe, lu comme équipe) ; la case 1
+        // porte déjà la vraie composition SF1 + SM1 + SM2. Dérivation : séances communes index 0 (set
+        // {SF1, SM shooting}, seances_communes 1) et index 1 (set {SF1, SM1, SM2}, seances_communes 1).
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],
+            ['gymnase' => 'Léon Jouhaux', 'jour' => 3, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM1', 'SM2'], 'groupe' => 'SM Shooting'],
+        ]);
+
+        // Précondition — « SM shooting » (ligne Équipes index 1) IGNORÉE, SANS correction : la séance
+        // commune 0 qui la cite est en alerte.
+        $ignoreOnly = [['section' => 'equipes', 'index' => 1, 'coche' => false]];
+        self::assertSame('alerte', $this->revalidate($parc, $ignoreOnly)[1]['sections']['mutualisations'][0]['statut'], 'précondition : citer l\'équipe ignorée → alerte');
+
+        // Revalidation avec la composition corrigée (SF1 + SM1 + SM2) sur la séance commune 0.
+        $decisions = [
+            ['section' => 'equipes', 'index' => 1, 'coche' => false],
+            ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['equipes' => [$sf1->getId(), $sm1->getId(), $sm2->getId()]]],
+        ];
+        $body = $this->revalidate($parc, $decisions)[1];
+        $mut = $body['sections']['mutualisations'][0];
+
+        self::assertNotSame('alerte', $mut['statut'], 'la composition corrigée lève l\'alerte (« SM shooting » sort de la composition)');
+        self::assertStringContainsString('SM1', $mut['libelle'], 'le libellé reflète la composition CORRIGÉE');
+        self::assertStringContainsString('SM2', $mut['libelle'], 'le libellé reflète la composition CORRIGÉE');
+        self::assertStringNotContainsString('shooting', $mut['libelle'], '« SM shooting » n\'est plus dans la composition');
+        self::assertSame(2, $mut['seancesCommunes'] ?? null, 'seancesCommunes recalculé : les deux cases portent désormais le même ensemble corrigé');
+    }
+
     // ───────────────────────── PR A (D8 + P4-366) — bandeau de fiabilité & champ miseAJour ─────────────────────────
 
     public function testAVirginClubFirstImportDoesNotRaiseTheUnreliableBanner(): void
