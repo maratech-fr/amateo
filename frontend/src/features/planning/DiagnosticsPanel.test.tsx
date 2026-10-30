@@ -602,7 +602,7 @@ describe("DiagnosticsPanel — les diagnostics de réservation gardent leurs ges
     const onOpenSlot = vi.fn();
     const onHighlight = vi.fn();
     const slots = [slot({ id: "a" }), slot({ id: "other", dayOfWeek: 2 })];
-    render(panel({ diagnostics: [reservationDiag("rule_sacrificed", { venueId: "v1", dayOfWeek: 4, startTime: "18:00" })], slots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
+    renderWithProviders(panel({ diagnostics: [reservationDiag("rule_sacrificed", { venueId: "v1", dayOfWeek: 4, startTime: "18:00" })], slots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
 
     await user.click(screen.getByText("message rule_sacrificed"));
 
@@ -615,7 +615,7 @@ describe("DiagnosticsPanel — les diagnostics de réservation gardent leurs ges
     const onOpenSlot = vi.fn();
     const onHighlight = vi.fn();
     const slots = [slot({ id: "a", teamId: "t1", venueId: "v1", coachId: "c1" }), slot({ id: "b", teamId: "t2", venueId: "v2", coachId: "c1" })];
-    render(panel({ diagnostics: [reservationDiag("rule_sacrificed", { teamId: null, coachId: "c1", dayOfWeek: 4, startTime: "18:00" })], slots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
+    renderWithProviders(panel({ diagnostics: [reservationDiag("rule_sacrificed", { teamId: null, coachId: "c1", dayOfWeek: 4, startTime: "18:00" })], slots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
 
     await user.click(screen.getByText("message rule_sacrificed"));
 
