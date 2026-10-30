@@ -231,7 +231,7 @@ final class PayloadCapacityMirror
             }
             $free = array_sum($freeByVenue[$venueId] ?? []);
             if ($demand > $free) {
-                $saturated[] = ['venueId' => $venueId, 'venueName' => $venueNames[$venueId] ?? $venueId, 'demand' => $demand, 'free' => $free, 'teams' => $teams, 'reservedBy' => array_values(array_map(static fn (string|int $id): string => $teamNames[(string) $id] ?? (string) $id, array_keys(array_diff_key($pinTeamsByVenue[$venueId] ?? [], $teams))))];
+                $saturated[] = ['venueId' => $venueId, 'venueName' => $venueNames[$venueId] ?? $venueId, 'demand' => $demand, 'free' => $free, 'teams' => $teams, 'reservedBy' => array_map(static fn (string|int $id): string => $teamNames[(string) $id] ?? (string) $id, array_keys(array_diff_key($pinTeamsByVenue[$venueId] ?? [], $minByTeam)))];
             }
         }
 
