@@ -105,4 +105,24 @@ describe("FeedbackDialog — capture d'écran (PR3)", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(useToastStore.getState().toasts.some((t) => t.message.includes("Signalement envoyé"))).toBe(true);
   });
+
+  // D16 (anti double envoi) — `FeedbackDialog` attend `captureScreen` AVANT `mutate` : deux « Envoyer »
+  // PENDANT la capture en attente ne doivent déclencher qu'UN SEUL `submitFeedback` (cas réel ALAP ×4
+  // à la même seconde). Falsification : sans garde « envoi en cours », le 2ᵉ clic relance une capture
+  // et un 2ᵉ envoi. Serveur : la dédup 60 s est le filet (Integration `FeedbackTest`).
+  it("D16 — deux « Envoyer » pendant la capture ne déclenchent qu'UN seul envoi", async () => {
+    let resolveCapture: (b: Blob) => void = () => {};
+    mockCapture.mockImplementation(() => new Promise<Blob>((resolve) => { resolveCapture = resolve; }));
+    renderWithProviders(<FeedbackDialog variant="contextual" screen="/planning" onClose={vi.fn()} />, { route: "/planning" });
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Décrivez le problème" }), "Clic double");
+    const envoyer = screen.getByRole("button", { name: "Envoyer" });
+    await userEvent.click(envoyer); // 1er envoi → capture PENDANTE
+    await userEvent.click(envoyer); // 2e envoi pendant la capture → doit être inerte
+
+    resolveCapture(new Blob(["x"], { type: "image/png" }));
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    expect(mockCapture, "une seule capture, jamais deux").toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { clearLastIncident, readRecentIncident, readRecentIncidentRequestId, recordIncident } from "./lastIncidentStore";
+import * as incidentStore from "./lastIncidentStore";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
@@ -63,6 +64,30 @@ describe("lastIncidentStore", () => {
 
     it("rend null sans aucun incident", () => {
       expect(readRecentIncidentRequestId(50_000)).toBeNull();
+    });
+  });
+
+  /**
+   * D17 (PR B, essai fondateur 30/10) — `recentErrors` : les 5 dernières erreurs API ≥ 400, écrites
+   * par `client.ts`, jointes au contexte de signalement du LINK. Ring buffer (pas un seul incident),
+   * chaque entrée {method, route, status, code, errors[], requestId, at}. `readRecentIncident`
+   * (≥ 500, bloc dev) reste INCHANGÉ — les tests ci-dessus le PROUVENT verts. ROUGE aujourd'hui :
+   * `readRecentIncidents` n'existe pas (le store ne retient qu'UN incident, sans method/route/errors).
+   */
+  describe("recentErrors — ring buffer des 5 dernières erreurs ≥ 400 (D17)", () => {
+    it("expose readRecentIncidents, bornée aux 5 plus récentes, avec method/route/status/code/errors[]/requestId", () => {
+      expect(incidentStore.readRecentIncidents, "D17 : un lecteur ring-buffer des erreurs récentes").toBeDefined();
+
+      for (let i = 1; i <= 6; i++) {
+        recordIncident({ status: 400 + i, url: `/api/x${i}`, method: "POST", route: `/api/x${i}`, code: `c${i}`, errors: [`e${i}`], requestId: `r${i}` } as never, i);
+      }
+      const recent = (incidentStore.readRecentIncidents as (now?: number) => Array<Record<string, unknown>>)(7);
+      expect(recent, "au plus les 5 plus récentes").toHaveLength(5);
+      expect(recent.some((e) => "r1" === e.requestId), "la plus ancienne (6ᵉ avant) est évincée du ring").toBe(false);
+      const latest = recent[0];
+      expect(latest.method).toBe("POST");
+      expect(latest.route).toBeTruthy();
+      expect(latest.errors).toBeDefined();
     });
   });
 });
