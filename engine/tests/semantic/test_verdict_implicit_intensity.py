@@ -6,9 +6,10 @@ alors que le réglage ``coachRestDay`` peut être PREFERRED. En PREFERRED, la G�
 payant le malus (−3/−6) et le verdict doit ACCEPTER de même : la concession remonte comme COMPROMIS
 (famille ``implicit_rule``), jamais comme violation. En HARD, le refus est inchangé.
 
-``coachRestDay`` est la SEULE des cinq règles implicites réglables (repos coach, distribution
-salarié, dos-à-dos, jours consécutifs, âge croissant) à posséder un pré-check nommé dans
-``diagnostics.py`` ; les quatre autres n'y miroitent rien, il n'y a donc rien d'autre à régler.
+Des cinq règles implicites réglables (repos coach, distribution salarié, dos-à-dos, jours consécutifs,
+âge croissant), seuls ``coachRestDay`` et ``ageAscending`` ont un pré-check nommé dans ``diagnostics.py``,
+gardé par la même intensité ; le garde d'``ageAscending`` est prouvé dans
+``test_best_effort_schedule_stays_editable.py``.
 
 Chaque test rougit si le garde d'intensité est retiré.
 """

@@ -393,6 +393,8 @@ def diagnose_candidate_conflicts(
     venue_names: Mapping[str, str] | None = None,
     resolved_rules: ResolvedImplicitRules | None = None,
     shared_blocks: Sequence[Mapping[str, Any]] = (),
+    teams: Sequence[Mapping[str, Any]] = (),
+    locked_slots: Iterable[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Name the HARD rules a move candidate would break (P2-2 F2a).
 
@@ -569,10 +571,11 @@ def diagnose_candidate_conflicts(
     # verdict doit ACCEPTER de même — la concession remonte alors comme COMPROMIS (famille
     # implicit_rule, chemin ``_compromises_for``) sur le candidat retenu, jamais comme violation
     # bloquante ici. Sans ce garde, le verdict était PLUS STRICT que la génération (rupture de
-    # parité) : il refusait un 5ᵉ jour de coach que la génération concède. ``coachRestDay`` est la
-    # SEULE des 5 règles implicites réglables à avoir un pré-check nommé dans ce fichier ; les
-    # quatre autres (salarié, dos-à-dos, jours consécutifs, âge croissant) n'y miroitent rien.
-    coach_rest_is_hard = (resolved_rules or ResolvedImplicitRules()).coach_rest_day_intensity == HARD
+    # parité) : il refusait un 5ᵉ jour de coach que la génération concède. Parmi les 5 règles
+    # implicites réglables, seules ``coachRestDay`` et ``ageAscending`` (plus bas) ont un pré-check
+    # nommé dans ce fichier ; les trois autres (salarié, dos-à-dos, jours consécutifs) n'y miroitent rien.
+    implicit_rules = resolved_rules or ResolvedImplicitRules()
+    coach_rest_is_hard = implicit_rules.coach_rest_day_intensity == HARD
     if coach_rest_is_hard and 1 <= c_day <= 5:
         for cid in c_coaches:
             if cid not in coach_ids_in_payload:
@@ -598,6 +601,45 @@ def diagnose_candidate_conflicts(
             day_of_week=c_day,
             start_time=c_start_text,
         )
+
+    # Age order: mirror add_age_ascending_constraints — same venue and day, the younger team never
+    # starts after the older one. Same gates as the solver: HARD only (PREFERRED places and pays a
+    # malus), no ``ageMin`` or a HARD-locked session exempts the team, equal ages are not ordered.
+    if implicit_rules.age_ascending_intensity == HARD:
+        locked_teams = {str(_scalar_id(_get(locked, "team_id", "teamId", default=None))) for locked in locked_slots}
+        age_min_by_team: dict[str, int] = {}
+        for team in teams:
+            team_id = _scalar_id(_get(team, "id", "team_id", "teamId", default=None))
+            age_min = _get(team, "ageMin", "age_min", default=None)
+            if team_id is not None and age_min is not None and str(team_id) not in locked_teams:
+                age_min_by_team[str(team_id)] = int(age_min)
+        c_age_min = age_min_by_team.get(c_team)
+        if c_age_min is not None:
+            named_pairs: set[tuple[str, str]] = set()
+            for slot in baseline_slots:
+                s_team = str(slot["team_id"])
+                s_age_min = age_min_by_team.get(s_team)
+                if s_age_min is None or str(slot["venue_id"]) != c_venue or int(slot["day"]) != c_day:
+                    continue
+                if c_age_min < s_age_min and c_start > int(slot["start"]):
+                    younger, older = c_team, s_team
+                elif s_age_min < c_age_min and int(slot["start"]) > c_start:
+                    younger, older = s_team, c_team
+                else:
+                    continue
+                if (younger, older) in named_pairs:
+                    continue
+                named_pairs.add((younger, older))
+                _emit(
+                    "age_ascending",
+                    f"{_team(younger)} passerait après {_team(older)} à {_venue(c_venue)} le "
+                    f"{_day_label(c_day)} : les plus jeunes s'entraînent en premier.",
+                    team_id=c_team,
+                    conflicting_team_id=s_team,
+                    venue_id=c_venue,
+                    day_of_week=c_day,
+                    start_time=c_start_text,
+                )
 
     # --- Entered constraints (the manager's own rules). ---
     for cid in c_coaches:

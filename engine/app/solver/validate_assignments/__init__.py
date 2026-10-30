@@ -378,6 +378,8 @@ def validate_assignment(
                 venue_names=venue_names,
                 resolved_rules=diag_rules,
                 shared_blocks=data.get("sharedBlocks", []) or [],
+                teams=data.get("teams", []),
+                locked_slots=model.locked_slots,
             ):
                 dedupe_key = (str(violation.get("rule")), str(violation.get("message")))
                 if dedupe_key not in seen:
