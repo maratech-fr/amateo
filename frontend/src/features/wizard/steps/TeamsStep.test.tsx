@@ -209,13 +209,20 @@ describe("TeamsStep", () => {
     // Ce qui reste libre le reste : le nom et les créneaux ne dépendent pas de la fédé.
     expect(within(row).getByRole("textbox", { name: "Nom" })).toBeEnabled();
     expect(within(row).getByRole("spinbutton", { name: "Séances/sem" })).toBeEnabled();
-    // La raison est du TEXTE, pas un survol : un contrôle `disabled` sort de l'ordre de
-    // tabulation et ne reçoit aucun événement souris — au clavier comme au lecteur
-    // d'écran, un `title` laisserait deux contrôles grisés sans explication.
-    // Deux niveaux, et il faut les DEUX : le pourquoi une fois pour la liste…
+    // Deux niveaux : le pourquoi en texte une fois pour la liste…
     expect(screen.getByText(/joue en compétition/)).toBeInTheDocument();
-    // …et le marqueur sur LA ligne concernée, sinon on ne sait pas laquelle est verrouillée.
-    expect(within(row.parentElement as HTMLElement).getByText(/Engagée en compétition/)).toBeInTheDocument();
+    // …et un cadenas sur LA ligne (P4-375) : la raison est son nom accessible et son infobulle.
+    const rowBox = within(row.parentElement as HTMLElement);
+    const lock = rowBox.getByRole("img", { name: TEAMS_TEXTS.engagedRowMarker });
+    expect(lock).toHaveAttribute("title", TEAMS_TEXTS.engagedRowMarker);
+    // Plus de texte permanent sous la ligne.
+    expect(rowBox.queryByText(TEAMS_TEXTS.engagedRowMarker)).not.toBeInTheDocument();
+  });
+
+  it("no lock on a team that is not engaged (P4-375)", () => {
+    renderWithProviders(<TeamsStep />);
+
+    expect(within(teamRow().parentElement as HTMLElement).queryByRole("img", { name: TEAMS_TEXTS.engagedRowMarker })).not.toBeInTheDocument();
   });
 
   it("leaves both open on a team that does not play yet", () => {

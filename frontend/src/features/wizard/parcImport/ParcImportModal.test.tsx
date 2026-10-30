@@ -214,6 +214,24 @@ const defaultProps = {
   onClose: () => {},
 };
 
+/**
+ * « Importer » n'est actif qu'une fois TOUTES les étapes visitées (finitions d'interface, 30/10) : un
+ * test qui exerce le CORPS de l'import passe d'abord par chaque étape de contenu, par le rail. Il finit
+ * donc sur « Réservations » : l'appeler juste avant le clic sur « Importer ».
+ */
+async function visitAllSteps(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  const labels = [
+    PARC_IMPORT_TEXTS.sectionTitle("equipes"),
+    PARC_IMPORT_TEXTS.stepEntentes,
+    PARC_IMPORT_TEXTS.sectionTitle("gymnases"),
+    PARC_IMPORT_TEXTS.sectionTitle("mutualisations"),
+    PARC_IMPORT_TEXTS.sectionTitle("reservations"),
+  ];
+  for (const label of labels) {
+    await user.click(within(screen.getByRole("navigation")).getByRole("button", { name: (n: string) => n.includes(label) }));
+  }
+}
+
 beforeEach(() => {
   q.analysis.value = null;
   q.importResult.value = null;
@@ -372,6 +390,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
     await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.matchTo("Armand") }));
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
@@ -392,6 +411,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
     await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
@@ -414,6 +434,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
     await user.selectOptions(screen.getByRole("combobox", { name: T.genderOf("Armond") }), "MIXTE");
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null }> };
@@ -444,6 +465,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     // Plus de case à cocher de séances sur la ligne.
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
     expect(body.decisions.find((d) => "equipes" === d.section && 0 === d.index)?.corrections?.seances).toBe(3);
@@ -457,6 +479,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SM1", "apparie", { cibleId: "t1", seances: 3, seancesActuelles: 2 })] }));
 
     fireEvent.change(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SM1") }), { target: { value: "2" } });
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
@@ -471,6 +494,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const alert = await screen.findByRole("alert");
@@ -553,6 +577,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     expect(q.importMutate).toHaveBeenCalledTimes(1);
@@ -577,6 +602,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     // L'import poste le payload NORMALISÉ (que le serveur a relu), jamais le texte brut ni null.
@@ -613,6 +639,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     fireEvent.change(screen.getByLabelText(T.editStart(libelle)), { target: { value: "19:00" } });
     await user.click(screen.getByRole("button", { name: T.save as unknown as string }));
 
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null; corrections?: Record<string, unknown> }> };
@@ -658,6 +685,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
     expect(await screen.findByText(PARC_IMPORT_TEXTS.unreliableResult)).toBeInTheDocument();
     // L'import n'est PAS bloqué par la fiabilité : une ligne cochée → bouton actif.
+    await visitAllSteps(user);
     expect(screen.getByRole("button", { name: /Importer/ })).not.toHaveAttribute("aria-disabled", "true");
   });
 
@@ -717,6 +745,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     // Et le nom de groupe (D8) → corrections.groupe.
     fireEvent.change(screen.getByRole("textbox", { name: (n: string) => n.startsWith(T.groupLabel(libelle)) }), { target: { value: "Section Loisirs" } });
 
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; cibleId?: string | null; venueId?: string | null; corrections?: Record<string, unknown> }> };
@@ -776,6 +805,7 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     await user.click(await screen.findByRole("button", { name: decisionTrigger("Armond") }));
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.createOption("Armond") }));
     await user.selectOptions(screen.getByRole("combobox", { name: T.genderOf("Armond") }), "MIXTE");
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; coche: boolean; cibleId?: string | null; creer?: boolean }> };
@@ -936,6 +966,7 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
     const field = screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("Nouvelle Équipe") });
     expect(field).toHaveValue(2);
     fireEvent.change(field, { target: { value: "3" } });
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
@@ -958,6 +989,7 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
     expect(field).toHaveAttribute("max", "7");
 
     fireEvent.change(field, { target: { value: "9" } });
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: Record<string, unknown> }> };
@@ -1433,6 +1465,7 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
     expect(typeof T.genderOf, "clé `genderOf` à créer").toBe("function");
     await user.selectOptions(screen.getByRole("combobox", { name: T.genderOf("Loisir Détente") }), "MIXTE");
 
+    await visitAllSteps(user);
     const importBtn = screen.getByRole("button", { name: /Importer/ });
     expect(importBtn).not.toHaveAttribute("aria-disabled", "true");
     await user.click(importBtn);
@@ -1469,6 +1502,7 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
 
     // Décocher → corrections.ctc:false à l'import (jamais d'office, décision du gestionnaire).
     await user.click(ctc);
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: { ctc?: boolean } }> };
@@ -1543,6 +1577,7 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
 
     // Genre tranché → Importer réarmé ; corrections.{tierId,genre} + creer:true partent (jamais appariée).
     await user.selectOptions(gender, "MIXTE");
+    await visitAllSteps(user);
     expect(importBtn).not.toHaveAttribute("aria-disabled", "true");
     await user.click(importBtn);
 
@@ -1618,6 +1653,7 @@ describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séan
       q.importError.value = { response: { status: 422 }, data: { errors: ["séance commune n°1 (SF1 + SM shooting) : l'équipe « SM shooting » est introuvable."] } };
       renderWithProviders(<ParcImportModal {...defaultProps} />);
       await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+      await visitAllSteps(user);
       await user.click(screen.getByRole("button", { name: /Importer/ }));
 
       const alert = await screen.findByRole("alert");
@@ -1810,6 +1846,7 @@ describe("ParcImportModal — étape Séances communes : composition corrigée (
       await user.click(within(panel).getByRole("option", { name: (n: string) => n.startsWith(name) }));
     }
     await user.keyboard("{Escape}");
+    await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: { equipes?: string[] } }> };
@@ -1935,6 +1972,7 @@ describe("ParcImportModal — « Signaler » joint l'état complet de l'import (
     fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: pasted } });
     await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
     // Déclencher l'import : il échoue (422) → la modale retient la dernière erreur serveur.
+    await visitAllSteps(user);
     await user.click(await screen.findByRole("button", { name: /Importer/ }));
 
     // Le drapeau « Signaler » de l'en-tête ouvre le canal avec l'instantané de CETTE modale.
@@ -1950,11 +1988,147 @@ describe("ParcImportModal — « Signaler » joint l'état complet de l'import (
       decisions: unknown[];
       lastError: { status: number | null; errors: string[] } | null;
     };
-    expect(state.step, "l'étape courante").toBe("equipes");
+    expect(state.step, "l'étape courante").toBe("reservations");
     expect(state.parc, "le parc collé").toBe(pasted);
     expect(state.analysis, "la dernière réponse d'analyse").not.toBeNull();
     expect(Array.isArray(state.decisions), "les décisions construites").toBe(true);
     expect(state.lastError?.status, "le status de la dernière erreur serveur").toBe(422);
     expect(state.lastError?.errors, "les errors[] de la dernière erreur serveur").toContain(serverError);
+  });
+});
+
+/**
+ * ─────────── Finitions d'interface (essai ALAP, 30/10, points 7, 10, 11) : ROUGE option A ───────────
+ *
+ * PROMESSES :
+ *  - pt 7 : un nom de groupe changé à l'étape Séances communes est repris à l'étape Réservations ;
+ *  - pt 10 : un seul « Revalider l'aperçu » (en-tête), le bandeau périmé n'a plus de bouton ;
+ *  - pt 11 : une étape ne passe au vert qu'APRÈS avoir été visitée et sans point en attente ;
+ *    « Importer » n'est actif que si TOUTES les étapes sont vertes.
+ *
+ * Clé de `texts.ts` à créer par NEO : `importStepsToVisit(n)` (raison visible au pied, « Voir » mène à
+ * la première étape non visitée). `importBlocked` garde la priorité quand une ligne est à trancher.
+ */
+describe("ParcImportModal — finitions d'interface (groupe repris, un seul Revalider, étapes visitées)", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
+  const position = { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 };
+  const railButton = (label: string): HTMLElement =>
+    within(screen.getByRole("navigation")).getByRole("button", { name: (n: string) => n.includes(label) });
+  const importButton = (): HTMLElement => screen.getByRole("button", { name: /Importer/ });
+
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(railButton(PARC_IMPORT_TEXTS.stepPaste));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+
+  it("pt 7 — un nom de groupe changé à l'étape Séances communes est repris dans la grille Réservations", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position })] }));
+
+    await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")));
+    fireEvent.change(screen.getByRole("textbox", { name: (n: string) => n.startsWith(PARC_IMPORT_TEXTS.groupLabel("U11M1 + U11M2")) }), { target: { value: "Loisirs" } });
+    await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("reservations")));
+
+    expect(screen.getByRole("button", { name: T.mutualisationCaseLabel("Loisirs", "U11M1 + U11M2") })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: T.mutualisationCaseLabel("CEC", "U11M1 + U11M2") })).not.toBeInTheDocument();
+  });
+
+  it("pt 10 — une ligne modifiée n'affiche qu'UN « Revalider l'aperçu », et le bandeau périmé reste", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")] }));
+
+    await user.click(screen.getByRole("button", { name: (n: string) => n.startsWith(T.decisionFor("SF1")) }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: PARC_IMPORT_TEXTS.ignoreLine }));
+
+    expect(screen.getByText(T.staleHint(1))).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: PARC_IMPORT_TEXTS.revalidate })).toHaveLength(1);
+  });
+
+  it("pt 11 — une étape sans point en attente ne passe au vert qu'une fois visitée", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+
+    const gymnases = PARC_IMPORT_TEXTS.sectionTitle("gymnases");
+    // L'étape d'atterrissage est visitée ; les autres n'ont encore ni vert ni alerte.
+    expect(railButton(PARC_IMPORT_TEXTS.sectionTitle("equipes")).getAttribute("aria-label") ?? "").toContain("étape terminée");
+    expect(railButton(gymnases).getAttribute("aria-label") ?? "").not.toContain("étape terminée");
+
+    await user.click(railButton(gymnases));
+    expect(railButton(gymnases).getAttribute("aria-label") ?? "").toContain("étape terminée");
+  });
+
+  it("pt 11 — « Importer » reste inactif tant qu'une étape n'est pas visitée, avec la raison visible, puis s'active", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+
+    // Atterrissage sur Équipes : restent Ententes, Gymnases, Séances communes, Réservations.
+    expect(importButton()).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText(T.importStepsToVisit(4))).toBeInTheDocument();
+
+    await user.click(importButton());
+    expect(q.importMutate, "un clic sur Importer inactif n'envoie rien").not.toHaveBeenCalled();
+
+    await visitAllSteps(user);
+    expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
+    await user.click(importButton());
+    expect(q.importMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("pt 11 — « Voir » mène à la première étape non visitée", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.seeBlockingLine }));
+
+    expect(railButton(PARC_IMPORT_TEXTS.stepEntentes)).toHaveAttribute("aria-current", "step");
+  });
+
+  it("pt 11 — une étape visitée mais en alerte bloque l'import ; ignorer la ligne en cause la fait passer au vert", async () => {
+    // Sans cette sortie, une alerte non corrigeable bloquerait l'import pour de bon.
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { coche: true, groupe: "CEC", gymnaseId: null, raison: "À ajuster.", position })] }));
+
+    await visitAllSteps(user);
+    const mutual = PARC_IMPORT_TEXTS.sectionTitle("mutualisations");
+    expect(railButton(mutual).getAttribute("aria-label") ?? "").toContain("à vérifier");
+    expect(importButton()).toHaveAttribute("aria-disabled", "true");
+
+    await user.click(railButton(mutual));
+    await user.click(screen.getByRole("button", { name: T.mutualIgnore as unknown as string }));
+
+    expect(railButton(mutual).getAttribute("aria-label") ?? "").toContain("étape terminée");
+    expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("pt 11 — « Revalider » ne fait pas perdre les étapes déjà visitées", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+    await visitAllSteps(user);
+
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+
+    expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("pt 11 — un import refusé par le serveur laisse « Importer » actif (on doit pouvoir réessayer)", async () => {
+    const user = userEvent.setup();
+    q.importError.value = { response: { status: 422 }, data: { errors: ["Refus du serveur."] } };
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+    await visitAllSteps(user);
+
+    await user.click(importButton());
+    await screen.findByRole("alert");
+
+    expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
   });
 });
