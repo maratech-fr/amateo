@@ -565,3 +565,55 @@ describe("Listbox — panneau porté hors de l'arbre (dépasse une modale comme 
     expect(await axe(document.body, { rules: { region: { enabled: false } } })).toHaveNoViolations();
   });
 });
+
+// ─────────── Mode MULTIPLE (D3 import du parc — ROUGE option A, NEO implémente) ───────────
+// La primitive gagne un MODE MULTISELECT (union discriminée `mode="single" | "multiple"`, patron
+// `SegmentedControl`) pour composer les équipes d'une séance commune. APG listbox multiselect :
+// `role="listbox"` + `aria-multiselectable="true"`, `aria-selected` par option, Espace/Entrée qui
+// TOGGLE une option ET LAISSE la liste OUVERTE (≠ le mode simple, qui sélectionne et ferme). Le mode
+// simple reste INCHANGÉ (les tests ci-dessus restent verts). Les props `mode`/`values`/`onValuesChange`
+// n'existent pas encore : on les passe par un cast (esbuild transpile sans typer ; NEO ajoutera l'union
+// au type) ET on fournit `value`/`onValueChange` pour que le composant ne PLANTE pas tant qu'il lit
+// encore le mode simple — ainsi le ROUGE est une erreur d'ASSERTION (attribut absent / liste refermée),
+// jamais un crash de harnais.
+function MultiHarness(props: { initial?: string[]; onValuesChange?: (v: string[]) => void }) {
+  const { initial = [], onValuesChange } = props;
+  const [values, setValues] = useState<string[]>(initial);
+  const multiProps = {
+    mode: "multiple",
+    values,
+    onValuesChange: (v: string[]) => {
+      setValues(v);
+      onValuesChange?.(v);
+    },
+    options: OPTIONS,
+    "aria-label": "Équipes",
+    // Filet mode simple (le composant le lit encore aujourd'hui) : évite le crash, pas la promesse.
+    value: "",
+    onValueChange: () => {},
+  } as unknown as React.ComponentProps<typeof Listbox>;
+  return <Listbox {...multiProps} />;
+}
+
+const multiTrigger = () => screen.getByRole("button", { name: /Équipes/ });
+
+describe("Listbox — mode multiple (D3, APG listbox multiselect) — ROUGE option A", () => {
+  it("expose aria-multiselectable=\"true\" sur le listbox", async () => {
+    const user = userEvent.setup();
+    render(<MultiHarness />);
+    await user.click(multiTrigger());
+    expect(screen.getByRole("listbox")).toHaveAttribute("aria-multiselectable", "true");
+  });
+
+  it("Espace TOGGLE une option et LAISSE la liste ouverte (le mode simple, lui, fermerait)", async () => {
+    const user = userEvent.setup();
+    render(<MultiHarness />);
+    await user.click(multiTrigger());
+    within(screen.getByRole("listbox")).getByRole("option", { name: "Alpha" }).focus();
+    await user.keyboard(" ");
+
+    // Un multiselect ne se referme pas à chaque choix (on en coche plusieurs d'affilée).
+    expect(screen.queryByRole("listbox"), "la liste multiselect reste ouverte après Espace").not.toBeNull();
+    expect(within(screen.getByRole("listbox")).getByRole("option", { name: "Alpha" })).toHaveAttribute("aria-selected", "true");
+  });
+});

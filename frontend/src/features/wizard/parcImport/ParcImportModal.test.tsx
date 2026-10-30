@@ -1728,3 +1728,106 @@ describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séan
     expect(warning, "la raison du blocage porte le ton warning (D13)").toBe(true);
   });
 });
+
+// ─────────── D3 (incident ALAP) — étape Séances communes : redéfinir la COMPOSITION d'équipes ───────────
+// À l'étape « Séances communes », chaque ligne porte un SÉLECTEUR MULTIPLE d'équipes (équipes du club
+// + lignes Équipes gardées) : choisir SF1 + SM1 + SM2 envoie `corrections.equipes` (liste d'ids) dans
+// les décisions — à la revalidation ET à l'import ; moins de 2 équipes choisies → une RAISON VISIBLE
+// qui bloque. Aligné sur le contrat backend (mes ROUGES D3 : la ligne mutualisation de /analyze reflète
+// la composition dans son `libelle` et expose `seancesCommunes` ; le canal de décision est
+// `corrections.equipes`). ROUGE option A — NEO implémente le sélecteur + les clés `texts.ts` ci-dessous.
+// ⚠ Clés de `texts.ts` RÉFÉRENCÉES ET PAS ENCORE CRÉÉES (rouge légitime, cf. précédent ligne ~258 de
+// ce fichier) : `teamsForGroup(libelle)` (nom accessible du sélecteur multi), `needsTwoTeams` (raison
+// « au moins 2 équipes »). Le ROUGE de chaque test est l'assertion `toBeDefined()` qui NOMME la clé à
+// créer — l'interaction en aval est la cible que NEO doit rendre verte.
+describe("ParcImportModal — étape Séances communes : composition corrigée (D3, incident ALAP) — ROUGE option A", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...a: unknown[]) => string> & Record<string, string>;
+  const stepNamed = (label: string) => (n: string) => n.includes(label);
+  const originalTeams = w.teams;
+
+  afterEach(() => {
+    w.teams = originalTeams;
+  });
+
+  async function analyzeThen(user: ReturnType<typeof userEvent.setup>, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(screen.getByRole("button", { name: stepNamed(T.stepPaste as unknown as string) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+  const goToMutual = (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")) }));
+
+  /** La séance commune ALAP « SF1 + SM shooting » (groupe « SM Shooting »), composition lue servie par /analyze. */
+  function seanceCommuneLine(): Line {
+    return {
+      index: 0,
+      libelle: "SF1 + SM shooting",
+      statut: "aCreer",
+      coche: true,
+      cibleId: null,
+      raison: null,
+      groupe: "SM Shooting",
+      equipes: [{ id: null, nom: "SF1" }, { id: null, nom: "SM shooting" }],
+      seancesCommunes: 1,
+      position: { gymnase: "Léon Jouhaux", jour: 1, debut: "20:30", duree: 90, gymnaseId: null },
+    } as unknown as Line;
+  }
+
+  it("chaque séance commune porte un sélecteur MULTIPLE d'équipes (listbox multiselect)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ mutualisations: [seanceCommuneLine()] }));
+    await goToMutual(user);
+
+    expect((T as Record<string, unknown>).teamsForGroup, "clé texts.ts `teamsForGroup(libelle)` (nom accessible du sélecteur multi) à créer par NEO").toBeDefined();
+    const selector = screen.getByRole("button", { name: (n: string) => n.startsWith(T.teamsForGroup("SF1 + SM shooting")) });
+    await user.click(selector);
+    expect(screen.getByRole("listbox")).toHaveAttribute("aria-multiselectable", "true");
+  });
+
+  it("choisir SF1 + SM1 + SM2 envoie decisions[].corrections.equipes à l'import", async () => {
+    const user = userEvent.setup();
+    w.teams = [
+      { id: "wt-sf1", name: "SF1", priorityTierId: 1, tierOrder: 0 },
+      { id: "wt-sm1", name: "SM1", priorityTierId: 1, tierOrder: 1 },
+      { id: "wt-sm2", name: "SM2", priorityTierId: 1, tierOrder: 2 },
+    ];
+    q.importResult.value = { recap: {} };
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ mutualisations: [seanceCommuneLine()] }));
+    await goToMutual(user);
+
+    expect((T as Record<string, unknown>).teamsForGroup, "clé texts.ts `teamsForGroup(libelle)` à créer par NEO").toBeDefined();
+    const selector = screen.getByRole("button", { name: (n: string) => n.startsWith(T.teamsForGroup("SF1 + SM shooting")) });
+    await user.click(selector);
+    const panel = screen.getByRole("listbox");
+    for (const name of ["SF1", "SM1", "SM2"]) {
+      await user.click(within(panel).getByRole("option", { name: (n: string) => n.startsWith(name) }));
+    }
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: { equipes?: string[] } }> };
+    const dec = body.decisions.find((d) => "mutualisations" === d.section && 0 === d.index);
+    expect(dec?.corrections?.equipes).toEqual(expect.arrayContaining(["wt-sf1", "wt-sm1", "wt-sm2"]));
+    expect(dec?.corrections?.equipes).toHaveLength(3);
+  });
+
+  it("moins de 2 équipes choisies → une raison VISIBLE qui bloque l'import", async () => {
+    const user = userEvent.setup();
+    w.teams = [{ id: "wt-sf1", name: "SF1", priorityTierId: 1, tierOrder: 0 }];
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysisOf({ mutualisations: [seanceCommuneLine()] }));
+    await goToMutual(user);
+
+    expect((T as Record<string, unknown>).needsTwoTeams, "clé texts.ts `needsTwoTeams` (raison « au moins 2 équipes ») à créer par NEO").toBeDefined();
+    const selector = screen.getByRole("button", { name: (n: string) => n.startsWith(T.teamsForGroup("SF1 + SM shooting")) });
+    await user.click(selector);
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: (n: string) => n.startsWith("SF1") }));
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByText(T.needsTwoTeams as unknown as string)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Importer/ })).toHaveAttribute("aria-disabled", "true");
+  });
+});
