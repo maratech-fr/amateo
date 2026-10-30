@@ -6,6 +6,7 @@ import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/ap
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
+import { stalenessMessage } from "./lib/staleness";
 import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -822,6 +823,52 @@ describe("PlanningPage (integration)", () => {
 
     const regen = await screen.findByRole("button", { name: /Régénérer/i });
     expect(regen).toBeDisabled();
+  });
+
+  // Décision fondateur 2026-10-30 — « Régénérer » n'est grisé que si l'empreinte est égale ET que le
+  // planning n'a pas été modifié à la main : le bandeau ne dit jamais « Régénérez » sur un bouton grisé.
+  describe("« Régénérer » suit l'empreinte ET la retouche à la main", () => {
+    const version = (over: { snapshotHash: string; manuallyEditedSinceGeneration: boolean }) => ({
+      id: "ov-1",
+      name: "Ajustement",
+      status: "COMPLETED",
+      score: 10,
+      createdAt: "2026-09-10T00:00:00Z",
+      updatedAt: "2026-09-10T00:00:00Z",
+      planType: "CLOSURE",
+      schedulePlanId: "ete-plan",
+      ...over,
+    });
+
+    const renderVersion = async (over: { snapshotHash: string; manuallyEditedSinceGeneration: boolean }) => {
+      vi.mocked(listSchedules).mockResolvedValue([version(over)] as never);
+      vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "SAME" });
+      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+      renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+      await screen.findByRole("button", { name: /Régénérer/i });
+    };
+    const regenerate = () => screen.getByRole("button", { name: /Régénérer/i });
+
+    it("rien n'a bougé : grisé, aucun bandeau", async () => {
+      await renderVersion({ snapshotHash: "SAME", manuallyEditedSinceGeneration: false });
+
+      await waitFor(() => expect(regenerate()).toBeDisabled());
+      expect(screen.queryByText(/il est périmé/)).not.toBeInTheDocument();
+    });
+
+    it("structure changée : actif, et le bandeau dit pourquoi", async () => {
+      await renderVersion({ snapshotHash: "OLD", manuallyEditedSinceGeneration: false });
+
+      expect(await screen.findByText(stalenessMessage({ manuallyEdited: false, structureChanged: true, readOnly: false }) as string)).toBeInTheDocument();
+      expect(regenerate()).toBeEnabled();
+    });
+
+    it("séance déplacée à la main, structure inchangée : actif, le bandeau et le bouton disent la même chose", async () => {
+      await renderVersion({ snapshotHash: "SAME", manuallyEditedSinceGeneration: true });
+
+      expect(await screen.findByText(stalenessMessage({ manuallyEdited: true, structureChanged: false, readOnly: false }) as string)).toBeInTheDocument();
+      await waitFor(() => expect(regenerate()).toBeEnabled());
+    });
   });
 
   // V1 — « Régénérer » un overlay repart TOUJOURS des DONNÉES EN COURS (la version SOURCE des
