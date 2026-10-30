@@ -272,20 +272,6 @@ final class SlotMoveVerdictTest extends KernelTestCase
         self::assertSame($coachB, $reloaded->getCoachId());
     }
 
-    /**
-     * @param array{clubId: string, seasonId: string} $ctx
-     */
-    private function seedMainCoach(array $ctx, string $teamId, string $firstName): string
-    {
-        $coach = (new Coach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setFirstName($firstName)->setLastName('Test');
-        $this->em->persist($coach);
-        $this->em->flush();
-        $this->em->persist((new TeamCoach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($teamId)->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
-        $this->em->flush();
-
-        return $coach->getId();
-    }
-
     /** La baseline envoyée au moteur NE contient PAS la source (sinon l'équipe se heurte à elle-même). */
     public function testSourceIsRemovedFromTheBaseline(): void
     {
@@ -777,6 +763,20 @@ final class SlotMoveVerdictTest extends KernelTestCase
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $ctx
+     */
+    private function seedMainCoach(array $ctx, string $teamId, string $firstName): string
+    {
+        $coach = (new Coach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setFirstName($firstName)->setLastName('Test');
+        $this->em->persist($coach);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($teamId)->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+
+        return $coach->getId();
     }
 
     /**

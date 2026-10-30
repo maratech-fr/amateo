@@ -386,6 +386,13 @@ final class CoachDoubleBookingTest extends KernelTestCase
         self::assertStringNotContainsString('Maxime', $messages);
     }
 
+    protected function setUp(): void
+    {
+        self::bootKernel();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->detector = self::getContainer()->get(CoachDoubleBookingDetector::class);
+    }
+
     /**
      * teamA (Maxime) et teamB (Nicolas) sur la même case, teamC (Maxime) ailleurs au même moment.
      *
@@ -402,13 +409,6 @@ final class CoachDoubleBookingTest extends KernelTestCase
             $this->reserve($ctx, $ctx['teamB'], $ctx['venue1'], 2, '19:00', 90),
             $this->reserve($ctx, $teamC, $ctx['venue2'], 2, '19:00', 90),
         ]];
-    }
-
-    protected function setUp(): void
-    {
-        self::bootKernel();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
-        $this->detector = self::getContainer()->get(CoachDoubleBookingDetector::class);
     }
 
     /**

@@ -298,6 +298,7 @@ class PdfGenerator
      * @param array<int, true>                                      $dayStartCols     column indices that open a new day
      * @param array<string, string>                                 $coachShortNames  coachId → « Karim B. »
      * @param array<string, string>                                 $teamMainCoachIds teamId → coachId du 1er MAIN
+     * @param array<string, list<string>>                           $teamCoachIds     teamId → tous ses coachs principaux
      */
     private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = [], array $teamCoachIds = []): string
     {
@@ -400,6 +401,7 @@ class PdfGenerator
      * @param array<string, string>                           $teamMainCoachIds teamId → coachId du 1er MAIN
      *                                                                          (repli quand la séance n'a
      *                                                                          pas de coach à elle)
+     * @param array<string, list<string>>                     $teamCoachIds     teamId → tous ses coachs principaux
      */
     private function slotCell(array $bucket, int $span, array $teamNames, array $venues, array $groupLabels, bool $dayStart, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = [], array $teamCoachIds = []): string
     {

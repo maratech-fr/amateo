@@ -167,11 +167,11 @@ final class PdfGridCoachNameTest extends TestCase
     }
 
     /**
-     * @param list<ScheduleSlotTemplate> $bucket
-     * @param array<string, string>      $coachShortNames  coachId → « Karim B. »
-     * @param array<string, string>      $teamMainCoachIds teamId → coachId du 1er MAIN (repli quand
-     *                                                     la séance n'a pas de coach à elle)
-     * @param array<string, list<string>> $teamCoachIds    teamId → TOUS ses coachs principaux, dans l'ordre
+     * @param list<ScheduleSlotTemplate>  $bucket
+     * @param array<string, string>       $coachShortNames  coachId → « Karim B. »
+     * @param array<string, string>       $teamMainCoachIds teamId → coachId du 1er MAIN (repli quand
+     *                                                      la séance n'a pas de coach à elle)
+     * @param array<string, list<string>> $teamCoachIds     teamId → TOUS ses coachs principaux, dans l'ordre
      *
      * ⚠ Signature PROPOSÉE (option A) : `$teamMainCoachIds` ajouté EN FIN, après `$showCoaches` :
      * `slotCell(bucket, span, teamNames, venues, groupLabels, dayStart, coachShortNames, showCoaches,
