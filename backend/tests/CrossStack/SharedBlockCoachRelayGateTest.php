@@ -83,13 +83,18 @@ final class SharedBlockCoachRelayGateTest extends TestCase
     }
 
     /**
-     * P4-322 — le même bloc, infaisable pour DEUX autres raisons, NOMME le groupe et la cause au lieu
-     * de retomber sur le générique muet (décision fondateur Q3). De bout en bout contre le VRAI
-     * moteur, kinds EXISTANTS (``hard_lock`` / ``time_window``), aucun bump de contrat :
-     *   (1) un VERROU HARD d'une équipe NON membre (t3) sur la seule case commune ⇒ ``hard_lock``, le
-     *       message nomme t3 et la case ;
+     * P4-322 — le même bloc, infaisable pour DEUX raisons distinctes. De bout en bout contre le VRAI
+     * moteur, aucun bump de contrat :
+     *   (1) un VERROU HARD d'une équipe NON membre (t3) sur la seule case commune. ⚠ AMENDÉ le
+     *       2026-10-30 (GO fondateur, « la réservation gagne envers tout — ADR-0001 amendée ») : TOUT
+     *       verrou HARD est désormais SOUVERAIN (réservation comme épingle manuelle, l'origine n'est
+     *       PAS transmise au moteur). Le verrou est donc PRODUIT et le bloc qu'il rend insatisfiable
+     *       est SACRIFIÉ et NOMMÉ (``rule_sacrificed``) — là où, avant la réservation souveraine,
+     *       la génération sortait `failed` (INFEASIBLE, `shared_block_not_honored` cause `hard_lock`).
      *   (2) une FENÊTRE HORAIRE dure d'un membre (t1, début au plus tard 18:00) qui exclut la seule
-     *       case (20:00) ⇒ ``time_window`` portant la contrainte, de quoi composer l'origine backend.
+     *       case (20:00), SANS aucun verrou : rule-vs-grille, aucune réservation en cause → la
+     *       génération reste `failed` et NOMME la règle (``time_window``). C'est le pendant de la
+     *       règle fondateur « la réservation est la SEULE exception » : sans verrou, l'échec demeure.
      */
     public function testNonMemberLockAndHardTimeWindowNameTheGroup(): void
     {
@@ -106,13 +111,15 @@ final class SharedBlockCoachRelayGateTest extends TestCase
             'slotTemplates' => [$this->hardLock('t3', '22222222-2222-4222-8222-222222222222', 1, '18:00')],
             'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]],
         ];
-        $locked = $this->solve($lockPayload);
-        self::assertSame('failed', $locked['status'], 'la seule case commune est verrouillée pour un non-membre');
-        $lockedDiag = $this->firstWithCauseKind($this->notHonoured($locked), 'hard_lock');
-        self::assertNotNull($lockedDiag, 'P4-322 : un verrou non-membre doit NOMMER le groupe (cause hard_lock)');
-        self::assertStringContainsString('T1', (string) $lockedDiag['message']);
-        self::assertStringContainsString('T2', (string) $lockedDiag['message']);
-        self::assertStringContainsString('T3', (string) $lockedDiag['message'], 'l\'équipe qui verrouille est nommée');
+        // ADR-0001 amendée (GO fondateur 2026-10-30) : le verrou non-membre t3 est SOUVERAIN → le
+        // planning est PRODUIT et le bloc rendu insatisfiable est SACRIFIÉ et NOMMÉ.
+        $produced = $this->solve($lockPayload);
+        self::assertSame('completed', $produced['status'], 'un verrou HARD est souverain : le planning est PRODUIT (ADR-0001 amendée 30/10)');
+        $sacrificed = $this->sacrificed($produced);
+        self::assertNotEmpty($sacrificed, 'P4-322 amendé : le bloc rendu insatisfiable par le verrou non-membre doit être SACRIFIÉ et NOMMÉ (rule_sacrificed)');
+        self::assertSame('WARNING', $sacrificed[0]['severity'] ?? null, 'un sacrifice est une ALERTE, pas une erreur bloquante');
+        self::assertStringContainsString('T1', (string) $sacrificed[0]['message'], 'la règle sacrifiée (le bloc) nomme le groupe');
+        self::assertStringContainsString('T2', (string) $sacrificed[0]['message'], 'la règle sacrifiée (le bloc) nomme le groupe');
 
         // (2) FENÊTRE HORAIRE dure — V ouvert lundi 20:00, t1 ne peut pas commencer après 18:00.
         $windowPayload = [
@@ -249,6 +256,21 @@ final class SharedBlockCoachRelayGateTest extends TestCase
         return array_values(array_filter(
             $result['diagnostics'] ?? [],
             static fn (array $d): bool => 'shared_block_not_honored' === ($d['type'] ?? null),
+        ));
+    }
+
+    /**
+     * Diagnostics « règle sacrifiée » (réservation souveraine, ADR-0001 amendée 2026-10-30).
+     *
+     * @param array<string, mixed> $result
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function sacrificed(array $result): array
+    {
+        return array_values(array_filter(
+            $result['diagnostics'] ?? [],
+            static fn (array $d): bool => 'rule_sacrificed' === ($d['type'] ?? null),
         ));
     }
 

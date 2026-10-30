@@ -30,10 +30,18 @@ import json
 import pathlib
 from typing import Any
 
-from tests.support.pipeline import solve_payload
+from tests.support.pipeline import (
+    make_payload,
+    make_team,
+    make_venue,
+    solve_payload,
+    team_coach,
+    team_constraint,
+)
 
 FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "alap_synthetic.json"
 THIRD_PARTY_RESERVATION_ID = "r-U18-thu20-G1"
+FRIDAY = 5
 
 
 def _fixture() -> dict[str, Any]:
@@ -68,4 +76,78 @@ def test_without_the_third_party_reservation_the_block_places_and_nothing_is_sac
     assert result["status"] == "completed", "sans la réservation tierce, le bloc retrouve sa case"
     assert _sacrificed(result) == [], (
         f"aucune règle « sacrifiée » quand aucun verrou ne la contredit (obtenu {_sacrificed(result)})"
+    )
+
+
+def test_a_rule_conflict_not_caused_by_a_lock_stays_failed_even_with_reservations_elsewhere() -> None:
+    """Décision fondateur 2026-10-30 (2) — GARDE-FOU : le best-effort ne relâche QUE les règles
+    DIRECTEMENT bloquées par un VERROU. « La réservation est la SEULE exception. »
+
+    Un club peut avoir des réservations AILLEURS (ici l'équipe A, épinglée HARD lundi 18:00) — donc
+    ``model.locked_slots`` NON vide, le gate du best-effort est franchi. Mais une contradiction
+    ENTRE RÈGLES dont AUCUN verrou n'est la cause (U21M1 : coach indisponible le vendredi + vendredi
+    imposé, gymnase ouvert le vendredi seulement) reste un ÉCHEC EXPLIQUÉ (``failed`` +
+    ``diag-infeasible``) — JAMAIS un ``rule_sacrificed``.
+
+    C'est le garde-fou de la Behat ``une-contrainte-saisie-est-honoree`` (générée sur le club démo,
+    qui PORTE des réservations de base) : sans ce test, un best-effort qui relâcherait TOUT le noyau
+    d'infaisabilité ferait basculer un échec LÉGITIME en planning produit. Vert aujourd'hui (le
+    comportement voulu tient déjà, le best-effort n'existe pas encore) ; sa FALSIFICATION est un
+    best-effort naïf qui relâcherait la contradiction A-free → ``completed`` + ``rule_sacrificed``,
+    que ce garde interdit.
+    """
+    payload = make_payload(
+        teams=[make_team("A", sessions_per_week=1), make_team("U21M1", sessions_per_week=1)],
+        venues=[
+            make_venue("G1", [(1, "18:00")]),
+            make_venue("G2", [(FRIDAY, "18:00")]),
+        ],
+        coaches=[{"id": "coach-marc", "firstName": "Marc", "lastName": "D.", "isEmployee": False}],
+        constraints=[
+            team_coach("tc-1", "U21M1", "coach-marc"),
+            team_constraint(
+                constraint_id="day-1",
+                team_id="U21M1",
+                family="DAY",
+                rule_type="HARD",
+                config={"forcedDays": [FRIDAY]},
+                name="Vendredi imposé",
+            ),
+            {
+                "id": "coach-1",
+                "scope": "COACH",
+                "scopeTargetId": "coach-marc",
+                "family": "COACH_AVAILABILITY",
+                "ruleType": "HARD",
+                "name": "Indispo du vendredi",
+                "config": {"unavailableDays": [FRIDAY]},
+                "sortOrder": 0,
+                "isActive": True,
+            },
+        ],
+        slot_templates=[
+            {
+                "id": "r-A-mon18-G1",
+                "teamId": "A",
+                "venueId": "G1",
+                "dayOfWeek": 1,
+                "startTime": "18:00",
+                "durationMinutes": 90,
+                "lockLevel": "HARD",
+            }
+        ],
+    )
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "failed", (
+        "une contradiction entre règles sans verrou en cause reste un ÉCHEC, même avec des "
+        f"réservations ailleurs (la réservation est la SEULE exception) — obtenu {result['status']}"
+    )
+    assert _sacrificed(result) == [], (
+        f"aucun rule_sacrificed : le best-effort ne relâche que les règles bloquées par un verrou "
+        f"(obtenu {_sacrificed(result)})"
+    )
+    assert any(d.get("id") == "diag-infeasible" for d in result["diagnostics"]), (
+        "l'échec doit rester EXPLIQUÉ (diag-infeasible nomme les règles en conflit)"
     )
