@@ -202,6 +202,9 @@ export const PARC_IMPORT_TEXTS = {
   /** Libellés VISIBLES courts des deux Select de la ligne « Créer ». */
   tierFieldLabel: "Rang",
   genderFieldLabel: "Genre",
+  /** E6 (essai fondateur 30/10) — en-têtes de colonnes de l'étape Équipes (disposition en colonnes). */
+  colName: "Nom",
+  colDecision: "Décision",
   /** Option vide du Select Genre — le genre est OBLIGATOIRE, à trancher. */
   genderPlaceholder: "À choisir",
   /** Libellés VISIBLES des options du Select Genre. */

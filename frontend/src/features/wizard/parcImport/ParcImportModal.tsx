@@ -114,6 +114,13 @@ const MAX_SESSIONS = 7;
 const clampSessions = (n: number): number => (Number.isFinite(n) ? Math.min(MAX_SESSIONS, Math.max(MIN_SESSIONS, Math.round(n))) : DEFAULT_SESSIONS);
 
 /**
+ * E6 (essai fondateur 30/10) — gabarit de COLONNES partagé par l'en-tête et chaque ligne de l'étape
+ * Équipes (Nom · Séances · Décision · Rang · Genre), pour qu'ils s'alignent. Desktop seulement
+ * (`md:`) : à l'étroit, la ligne retombe en pile (desktop-first, garde-fous 360 px).
+ */
+const EQUIPES_GRID_COLS = "md:grid-cols-[minmax(0,1fr)_5rem_minmax(0,16rem)_7rem_8rem]";
+
+/**
  * Lot correctif import IA « G2 » — la modale d'import du parc par IA est un ASSISTANT en 7 étapes
  * (StepRail : Prompt · Coller · Équipes · Ententes (CTC) · Gymnases · Mutualisations · Réservations ;
  * l'étape « Ententes » est ajoutée par la refonte PR2, D9). Le gestionnaire
@@ -1008,28 +1015,41 @@ function EntitySection({
   if (0 === lines.length) {
     return <p className="text-sm text-muted-foreground">{T.previewHelp}</p>;
   }
-  return (
-    <ul className="flex flex-col">
-      {lines.map((line) => (
-        <DecisionRow
-          key={line.index}
-          section={section}
-          line={line}
-          venues={venues}
-          allTeams={allTeams}
-          tiers={tiers}
-          value={decisionValue(section, line)}
-          onChange={(value) => onDecision(section, line.index, value)}
-          sessionValue={sessionDrafts?.[keyOf(section, line.index)] ?? line.seances ?? DEFAULT_SESSIONS}
-          onSessionChange={onSessionChange}
-          tierValue={tierDrafts?.[keyOf(section, line.index)]}
-          genderValue={genderDrafts?.[keyOf(section, line.index)]}
-          onTierChange={onTierChange}
-          onGenderChange={onGenderChange}
-        />
-      ))}
-    </ul>
-  );
+  const rows = lines.map((line) => (
+    <DecisionRow
+      key={line.index}
+      section={section}
+      line={line}
+      venues={venues}
+      allTeams={allTeams}
+      tiers={tiers}
+      value={decisionValue(section, line)}
+      onChange={(value) => onDecision(section, line.index, value)}
+      sessionValue={sessionDrafts?.[keyOf(section, line.index)] ?? line.seances ?? DEFAULT_SESSIONS}
+      onSessionChange={onSessionChange}
+      tierValue={tierDrafts?.[keyOf(section, line.index)]}
+      genderValue={genderDrafts?.[keyOf(section, line.index)]}
+      onTierChange={onTierChange}
+      onGenderChange={onGenderChange}
+    />
+  ));
+  // E6 — étape Équipes en COLONNES : un en-tête UNIQUE (Nom · Séances · Décision · Rang · Genre),
+  // partagé avec les lignes via `EQUIPES_GRID_COLS`. L'étape Gymnases garde sa liste simple.
+  if ("equipes" === section) {
+    return (
+      <div className="flex flex-col">
+        <div className={`hidden gap-x-4 border-b border-border px-0 pb-1 text-xs font-semibold text-muted-foreground md:grid ${EQUIPES_GRID_COLS}`}>
+          <span>{T.colName}</span>
+          <span>{T.sessionsLabel}</span>
+          <span>{T.colDecision}</span>
+          <span>{T.tierFieldLabel}</span>
+          <span>{T.genderFieldLabel}</span>
+        </div>
+        <ul className="flex flex-col">{rows}</ul>
+      </div>
+    );
+  }
+  return <ul className="flex flex-col">{rows}</ul>;
 }
 
 function DecisionRow({
@@ -1062,6 +1082,7 @@ function DecisionRow({
   onGenderChange?: (index: number, value: string) => void;
 }) {
   const reasonId = useId();
+  const sessionsDescId = useId();
   const groups = useMemo(() => decisionGroups(section, line, venues, allTeams, tiers), [section, line, venues, allTeams, tiers]);
   const pending = "ambigu" === line.statut && "" === value;
   // D9 (incident ALAP) — une ligne mise en « Ignorer » est rendue BARRÉE (retours fondateur : grisée/barrée).
@@ -1072,78 +1093,99 @@ function DecisionRow({
   const genderVal = genderValue ?? line.suggestedGender ?? "";
   const genderMissing = "" === genderVal;
 
-  // D12 (incident ALAP) — ligne COMPACTE : 1 ligne, 2 au maximum (padding/gaps resserrés, le champ
-  // « Séances » inline avec le libellé). Pur CSS, prouvé par les captures (aucun test jsdom).
-  return (
-    <li className="grid items-center gap-x-4 gap-y-0.5 border-b border-border/60 py-1 md:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-        <span className={ignored ? "text-sm font-medium text-muted-foreground line-through" : "text-sm font-medium text-foreground"}>{line.libelle}</span>
-        {/* E6 (essai fondateur 30/10) — la raison d'une ligne NON « à trancher » vit dans une infobulle
-            ⓘ à côté du nom (le ⚠ reste visible pour une ligne à trancher, branche `pending` ci-dessous) ;
-            elle n'est plus un bloc de texte gris. La raison (donnée serveur) est le nom accessible du repère. */}
+  // La cellule « Nom » : libellé (barré si ignoré) + la raison en ⓘ (hors « à trancher ») + le ⚠ d'une
+  // ligne à trancher. Partagée par les deux dispositions (Équipes en colonnes, Gymnases en 2 colonnes).
+  const nameCell = (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={ignored ? "truncate text-sm font-medium text-muted-foreground line-through" : "truncate text-sm font-medium text-foreground"}>{line.libelle}</span>
+        {/* E6 — la raison d'une ligne NON « à trancher » vit dans une infobulle ⓘ à côté du nom (donnée serveur = nom accessible). */}
         {null === line.raison || pending ? null : (
           <span role="img" aria-label={line.raison} title={line.raison} className="inline-flex shrink-0 text-muted-foreground">
             <Info aria-hidden className="size-3.5" />
           </span>
         )}
-        {pending ? (
-          <span id={reasonId} className="flex items-center gap-1 text-xs text-foreground">
-            <AlertTriangle aria-hidden className="size-3.5 text-warning" />
-            {line.raison ?? T.toDecide}
-          </span>
-        ) : null}
-        {/* Retours fondateur 2026-10-26 — « Séances » est un CHAMP éditable (équipes), lisible d'un
-            coup d'œil et corrigeable AVANT l'import (ce qui SERA importé) ; « actuellement N » pour une
-            équipe appariée. Plus aucune case à cocher de séances. */}
-        {"equipes" === section && undefined !== onSessionChange && !ignored ? (
-          <label className="flex items-center gap-2 text-xs text-foreground">
-            <span>{T.sessionsLabel}</span>
+      </span>
+      {pending ? (
+        <span id={reasonId} className="flex items-center gap-1 text-xs text-foreground">
+          <AlertTriangle aria-hidden className="size-3.5 text-warning" />
+          {line.raison ?? T.toDecide}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  const decisionCell = (
+    <Listbox
+      id={decisionTriggerId(section, line.index)}
+      aria-label={T.decisionFor(line.libelle)}
+      aria-describedby={pending ? reasonId : undefined}
+      wrapperClassName="w-full"
+      placeholder={T.toDecide}
+      value={value}
+      onValueChange={onChange}
+      groups={groups}
+    />
+  );
+
+  // Étape Gymnases : disposition simple à 2 colonnes (Nom | Décision), inchangée (pas de colonnes
+  // Séances/Rang/Genre sans objet).
+  if ("equipes" !== section) {
+    return (
+      <li className="grid items-center gap-x-4 gap-y-0.5 border-b border-border/60 py-1 md:grid-cols-[minmax(0,1fr)_20rem]">
+        {nameCell}
+        {decisionCell}
+      </li>
+    );
+  }
+
+  // E6 — étape Équipes en COLONNES : Nom · Séances · Décision · Rang · Genre, alignées sur l'en-tête.
+  // « actuellement N » n'est plus un texte visible : il vit dans l'infobulle du champ Séances
+  // (`title` + `aria-describedby`). Plus de libellé « Séances » répété par ligne (l'en-tête le porte).
+  return (
+    <li className={`grid items-center gap-x-4 gap-y-1 border-b border-border/60 py-1.5 ${EQUIPES_GRID_COLS}`}>
+      {nameCell}
+      <div className="flex items-center">
+        {undefined !== onSessionChange && !ignored ? (
+          <>
             <Input
               type="number"
               compact
               min={MIN_SESSIONS}
               max={MAX_SESSIONS}
               aria-label={T.sessionsFieldLabel(line.libelle)}
+              aria-describedby={undefined !== line.seancesActuelles ? sessionsDescId : undefined}
+              title={undefined !== line.seancesActuelles ? T.sessionsCurrent(line.seancesActuelles) : undefined}
               className="w-16"
               value={sessionValue}
               onChange={(e) => onSessionChange(line.index, Number(e.target.value))}
             />
-            {undefined !== line.seancesActuelles ? <span className="text-muted-foreground">{T.sessionsCurrent(line.seancesActuelles)}</span> : null}
-          </label>
+            {undefined !== line.seancesActuelles ? (
+              <span id={sessionsDescId} className="sr-only">
+                {T.sessionsCurrent(line.seancesActuelles)}
+              </span>
+            ) : null}
+          </>
         ) : null}
       </div>
-      <Listbox
-        id={decisionTriggerId(section, line.index)}
-        aria-label={T.decisionFor(line.libelle)}
-        aria-describedby={pending ? reasonId : undefined}
-        wrapperClassName="w-full"
-        placeholder={T.toDecide}
-        value={value}
-        onValueChange={onChange}
-        groups={groups}
-      />
-      {showCreateFields ? (
-        <div className="flex flex-wrap items-end justify-end gap-2 md:col-span-2">
-          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-            <span>{T.tierFieldLabel}</span>
-            <Select
-              aria-label={T.tierOf(line.libelle)}
-              wrapperClassName="w-44"
-              value={String(tierValue ?? line.suggestedTierId)}
-              onChange={(e) => onTierChange?.(line.index, Number(e.target.value))}
-            >
-              {tiers.map((t) => (
-                <option key={t.id} value={String(t.id)}>
-                  {tierGroupLabel(t)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-            <span>{T.genderFieldLabel}</span>
+      <div className="min-w-0">{decisionCell}</div>
+      <div className="flex items-center">
+        {showCreateFields ? (
+          <Select aria-label={T.tierOf(line.libelle)} wrapperClassName="w-full" value={String(tierValue ?? line.suggestedTierId)} onChange={(e) => onTierChange?.(line.index, Number(e.target.value))}>
+            {tiers.map((t) => (
+              <option key={t.id} value={String(t.id)}>
+                {tierGroupLabel(t)}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {showCreateFields ? (
+          <>
             <Select
               aria-label={T.genderOf(line.libelle)}
-              wrapperClassName="w-32"
+              wrapperClassName="w-full"
               aria-invalid={genderMissing || undefined}
               value={genderVal}
               onChange={(e) => onGenderChange?.(line.index, e.target.value)}
@@ -1154,14 +1196,14 @@ function DecisionRow({
               <option value="MIXTE">{T.genderMixte}</option>
             </Select>
             {genderMissing ? (
-              <span className="flex items-center gap-1 text-foreground">
+              <span className="flex items-center gap-1 text-xs text-foreground">
                 <AlertTriangle aria-hidden className="size-3.5 text-warning" />
                 {T.genderRequired}
               </span>
             ) : null}
-          </label>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </div>
     </li>
   );
 }
