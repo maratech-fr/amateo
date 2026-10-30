@@ -173,6 +173,22 @@ the next core if needed. If it does not succeed in budget the `failed` path is u
 half-plan. One gap = one message: once a reservation is in cause, the new diagnostic REPLACES the
 historical `constraint_not_honored` / `session_below_effective_min` / `conflict` signals of that team.
 
+**Refinements (founder, 2026-10-30, after the cross-review of the branch).**
+- *Lifted floor*: when a reservation takes one of the cases of an "at least N at V" floor, the team
+  KEEPS all its sessions (they go to the other non-forbidden venues, weighted
+  `RELAXED_FLOOR_PLACEMENT_WEIGHT` just behind filling) and only the minimum is missing — "1 session at V
+  instead of 2, X occupies the other case". The session count is reduced only when no allowed case exists.
+  With an imposed day or a window, the session stays UNPLACED (`blocked_by_reservation`).
+- *Probe*: a SINGLE solve (`placement_only`, no chaining phase), and the floor keeps its credit — a team
+  served by its own locks does not claim those sessions a second time.
+- *Budgets unchanged* (60/180/600 s adaptive, 15 s probe, 60 s best-effort). Worst path 700 s of engine
+  budget: the Messenger message now carries 750 s (`GenerateScheduleMessage`) and the Redis lock 810 s
+  (`GenerationLockOutlivesTheSolveTest` compares them to the engine).
+- *Wording*: `blocked_by_reservation` and `rule_sacrificed` say "séance fixée" ("la séance fixée de X"),
+  never "verrou", whatever the origin (reservation or manual lock).
+- *Verdict*: a manual placement of an unplaced session outside its rule is ALLOWED and flagged (see
+  `engine/docs/engine-inventory.md`, `/validate-assignments`).
+
 **This is the ONLY exception.** With no lock in cause, contradicting rules stay a `failed` outcome
 EXPLAINED (which rules, on what) exactly as the P4-96 amendment above; the nominal and diagnostic solves
 are byte-identical to before. The dormant relaxation fallback of the top of this ADR stays OFF. A

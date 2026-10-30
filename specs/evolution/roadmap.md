@@ -1,4 +1,4 @@
-# Roadmap (63) — ce qui reste à faire
+# Roadmap (64) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -153,6 +153,7 @@
 | P4-390 | **Vitrine : section « Ils nous font confiance » avec les clubs pilotes** | 🟡 | S | Décision fondateur, cadrage ALAP 30/10. `landing/index.html:615` ne cite les clubs pilotes qu'en générique (« Actuellement en bêta avec des clubs pilotes ») — ajouter une section nommant les clubs pilotes (nom + logo ; les noms vivent hors dépôt, dans `business/`, jamais ici), patron voisin de P4-305 (avis clients, même garde : rien n'est affiché sans un accord). **Prérequis bloquant : l'accord écrit de CHAQUE club** pour l'usage de son nom et de son logo, à obtenir avant tout code. Marque et liens via `landing/config.js` seul, jamais en littéral dans `index.html` (convention du fichier, `.claude/rules/landing.md`) |
 | P4-391 | **Vitrine : référencement — moteurs de recherche ET recherche IA** | 🟡 | S | Demande fondateur 30/10, à cadrer. Constats sur `landing/` : le `<title>` ne contient ni « basket » ni la marque (`landing/index.html:6`) ; le JSON-LD est injecté en JavaScript (`landing/index.html:25`), donc invisible à un robot qui n'exécute pas le JS ; ni `sitemap.xml` ni `llms.txt` ; une seule page. Marque et liens via `landing/config.js` seul (`.claude/rules/landing.md`). Voisine : P4-390 (section « Ils nous font confiance ») |
 | P4-392 | **Dépôt public : passage en privé à chiffrer** | ⚪ | S | À décider APRÈS le déploiement en cours. Le plan GitHub Free donne 2 000 min/mois de CI sur un dépôt privé, contre environ 29 000 min mesurées sur 30 jours pour la CI actuelle : un dépôt privé exige soit un plan payant, soit une CI allégée. Ajouter à l'analyse la protection de `main` (règles et required checks) à rejouer sur le dépôt privé. Aucune action avant la décision fondateur |
+| P4-393 | **Une pose après retrait passe hors d'une règle tenue ; le verdict tient le même discours sur une règle ajoutée après génération** | 🟡 | S | Constat (contre-revue de la PR B, 30/10) : retirer une séance puis la reposer ailleurs peut sortir d'une règle encore tenue, et le verdict (`/validate-assignments`, famille `lifted_rule`) dit la même chose pour une règle ajoutée APRÈS la génération — message à préciser pour distinguer « règle déjà levée par la génération » de « règle posée depuis ». |
 
 ---
 

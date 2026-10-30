@@ -336,7 +336,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Cause** | Une autre génération est en cours pour le même club : le worker n'a pas pu prendre le verrou Redis `schedule_generation:club:{clubId}`, il a remis le statut en `PENDING` et levé une `RecoverableMessageHandlingException` (retry Messenger). |
 | **Vérification** | `docker exec amateo-redis redis-cli GET schedule_generation:club:<club-uuid>` — si ça retourne un token, le verrou est actif. |
 | **Correction** | Normalement rien : le message est rejoué automatiquement. Si le verrou est orphelin (worker crashé), `docker exec amateo-redis redis-cli DEL schedule_generation:club:<club-uuid>`. |
-| **Prévention** | Le verrou expire automatiquement après `timeoutSeconds + 60` secondes (**≈ 710 s** avec le timeout par défaut de 650 s). Surveille les logs du worker pour détecter les crashes récurrents. |
+| **Prévention** | Le verrou expire automatiquement après `timeoutSeconds + 60` secondes (**≈ 810 s** avec le timeout par défaut de 750 s). Surveille les logs du worker pour détecter les crashes récurrents. |
 
 ### Cas 3 : FAILED + diagnostic "engine_timeout"
 

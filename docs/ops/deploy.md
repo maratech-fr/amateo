@@ -755,6 +755,20 @@ Déployer ensuite est un geste séparé et délibéré, au choix :
 
 Vert dans *Actions → Deploy* = en prod.
 
+### Étape post-déploiement OBLIGATOIRE — réparer les empreintes des plannings (version « réservation souveraine »)
+
+Juste après le déploiement de la version qui porte `ScheduleConstraintBuilder::structureHash` (empreinte
+sans `version` ni séances non HARD), lancée par le fondateur sur la VM, **avant** de laisser les
+gestionnaires régénérer : sans elle, les plannings déjà générés paraissent « périmés » et les réservations
+déjà doublées en base repartent deux fois au solveur.
+
+```bash
+docker compose exec php-fpm php bin/console app:schedule:dedupe-snapshot-pins --dry-run   # compte, n'écrit rien
+docker compose exec php-fpm php bin/console app:schedule:dedupe-snapshot-pins             # applique (idempotente)
+```
+
+Détail et limite connue : [`backend/docs/commands.md`](../../backend/docs/commands.md).
+
 ### Rituel sécurité post-déploiement (ZAP + Nuclei) — obligatoire à CHAQUE déploiement
 
 Une fois le déploiement vert, rejouer le rituel décrit dans

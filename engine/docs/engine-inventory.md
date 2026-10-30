@@ -194,6 +194,7 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
     d'ORIGINE de chaque source ; `references` VIDE pour une création à la dérive (`place()`),
     auquel cas « avant » = baseline nue.
   - **« après »** = baseline gelée + les N candidats épinglés.
+- **Règle déjà levée** (décision fondateur 2026-10-30, `validate_assignments/__init__.py::_outside_lifted_rules`) : une règle de DEMANDE que la génération a déjà levée (best-effort, ADR-0001) n'est PAS reposée par le verdict — le planning issu du best-effort reste retouchable —, une règle de FERMETURE reste toujours posée. Poser une séance hors d'une règle déjà non tenue est PERMIS et sort en `compromises` (`effect: "broken"`, famille `lifted_rule`). S'applique à toute baseline concernée, pas seulement à celle issue du best-effort. Le figé exclut la séance déplacée (`hard_layer._frozen_occupancy`) pour qu'un déplacement ne fasse pas croire qu'une règle tenue était déjà violée.
 - **Le delta** (`compute_compromises`, `solver/compromise.py`) : pour chaque terme soft, replié par
   clé LOGIQUE (équipe/gymnase/jour/coach — les familles per-slot s'agrègent PAR ÉQUIPE pour éviter
   le double-compte d'un déplacement au sein des créneaux déjà préférés), on compte les termes
