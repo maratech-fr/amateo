@@ -22,15 +22,39 @@ export interface LastIncident {
   url: string;
   code?: string;
   requestId?: string;
+  // D17 — repères de l'erreur API, captés par `client.ts` pour l'anneau `recentErrors` du signalement.
+  method?: string;
+  route?: string;
+  errors?: string[];
   at: number;
 }
 
 const FRESHNESS_WINDOW_MS = 10 * 60 * 1000;
 
+// D17 — l'anneau des 5 dernières erreurs API (≥ 400), joint au contexte d'un signalement. DISTINCT du
+// dernier incident ≥ 500 (`lastIncident`, bloc « Détails techniques dev ») : les deux cohabitent.
+const RECENT_RING_SIZE = 5;
+
 let lastIncident: LastIncident | null = null;
+let recentIncidents: LastIncident[] = [];
+
+/** Empile une entrée dans l'anneau (la plus récente en tête, plafonné à 5). */
+function pushRecent(entry: LastIncident): void {
+  recentIncidents = [entry, ...recentIncidents].slice(0, RECENT_RING_SIZE);
+}
 
 export function recordIncident(incident: Omit<LastIncident, "at">, at: number = Date.now()): void {
-  lastIncident = { ...incident, at };
+  const entry = { ...incident, at };
+  lastIncident = entry;
+  pushRecent(entry);
+}
+
+/**
+ * D17 — enregistre une erreur API dans l'ANNEAU SEUL, sans toucher `lastIncident` : `client.ts`
+ * l'appelle pour les 4xx (le bloc dev ne retient que le dernier ≥ 500, cf. `readRecentIncident`).
+ */
+export function recordRecentIncident(incident: Omit<LastIncident, "at">, at: number = Date.now()): void {
+  pushRecent({ ...incident, at });
 }
 
 /** Le dernier incident serveur s'il date de moins de 10 min, sinon null. */
@@ -52,6 +76,15 @@ export function readRecentIncidentRequestId(now: number = Date.now()): string | 
   return readRecentIncident(now)?.requestId ?? null;
 }
 
+/**
+ * D17 — les erreurs API récentes (< 10 min), la plus RÉCENTE en tête, au plus 5. L'anneau nourrit le
+ * champ `recentErrors` du signalement contextuel.
+ */
+export function readRecentIncidents(now: number = Date.now()): LastIncident[] {
+  return recentIncidents.filter((incident) => now - incident.at < FRESHNESS_WINDOW_MS);
+}
+
 export function clearLastIncident(): void {
   lastIncident = null;
+  recentIncidents = [];
 }

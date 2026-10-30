@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ModalReportProviderContext } from "@/shared/components/ui/modalReportContext";
 import { dayLabelLongCap, dayLabelShort } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
 import { tierGroupLabel } from "@/shared/lib/teamTiers";
@@ -1899,5 +1900,61 @@ describe("ParcImportModal — PR A lot 2 (Ignorer barré · champ Séances masqu
 
     // Le champ Séances disparaît ; Rang/Genre ne naissent que sur « Créer » (donc déjà absents ici).
     expect(screen.queryByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") }), "pas de champ Séances sur une ligne ignorée (E5)").not.toBeInTheDocument();
+  });
+});
+
+/**
+ * D15 (PR B « Signaler depuis une modale ») — la modale d'import DÉCLARE son `reportState` : quand le
+ * gestionnaire clique le drapeau « Signaler » de l'en-tête, le support reçoit l'état COMPLET de l'import
+ * — l'étape courante, le parc collé, la dernière réponse d'analyse, les décisions construites et la
+ * dernière erreur serveur (status + errors[]) — jamais un signalement nu depuis l'écran le plus riche.
+ * Garde de la forme livrée par NEO. On injecte un `openReport` espion via le CONTEXTE neutre (le vrai
+ * provider n'est pas monté par `renderWithProviders`) et on lit l'argument `modalState` (string JSON).
+ */
+describe("ParcImportModal — « Signaler » joint l'état complet de l'import (D15)", () => {
+  /** Nom accessible du bouton de rail « Coller » = « 2 Coller » (numéro + libellé, patron step-rail). */
+  const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
+
+  it("un clic sur « Signaler » envoie modalState = { step, parc, analysis, decisions, lastError{status, errors[]} }", async () => {
+    const user = userEvent.setup();
+    const openReport = vi.fn();
+    const pasted = '{"format":"parc-v2","cases":[]}';
+    const serverError = "L'équipe n°1 : appariement ambigu, à choisir.";
+    // L'analyse réussit (→ étape « Équipes », aperçu posé) ; l'import échoue en 422 (→ lastError peuplé).
+    q.analysis.value = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] });
+    q.importError.value = { response: { status: 422 }, data: { errors: [serverError] } };
+
+    renderWithProviders(
+      <ModalReportProviderContext value={{ openReport }}>
+        <ParcImportModal {...defaultProps} />
+      </ModalReportProviderContext>,
+    );
+
+    // Coller la réponse de l'assistant → analyser (passage auto à « Équipes »).
+    await user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.stepPaste) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: pasted } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+    // Déclencher l'import : il échoue (422) → la modale retient la dernière erreur serveur.
+    await user.click(await screen.findByRole("button", { name: /Importer/ }));
+
+    // Le drapeau « Signaler » de l'en-tête ouvre le canal avec l'instantané de CETTE modale.
+    await user.click(screen.getByRole("button", { name: "Signaler" }));
+
+    expect(openReport).toHaveBeenCalledTimes(1);
+    const request = openReport.mock.calls[0][0] as { modalState?: string; screenLabel?: string };
+    expect(typeof request.modalState, "modalState est une chaîne JSON, jamais undefined").toBe("string");
+    const state = JSON.parse(request.modalState as string) as {
+      step: string;
+      parc: string;
+      analysis: unknown;
+      decisions: unknown[];
+      lastError: { status: number | null; errors: string[] } | null;
+    };
+    expect(state.step, "l'étape courante").toBe("equipes");
+    expect(state.parc, "le parc collé").toBe(pasted);
+    expect(state.analysis, "la dernière réponse d'analyse").not.toBeNull();
+    expect(Array.isArray(state.decisions), "les décisions construites").toBe(true);
+    expect(state.lastError?.status, "le status de la dernière erreur serveur").toBe(422);
+    expect(state.lastError?.errors, "les errors[] de la dernière erreur serveur").toContain(serverError);
   });
 });

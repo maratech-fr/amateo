@@ -24,6 +24,16 @@ You are the production-investigation agent for ClubScheduler. You answer a **fac
 - Prefer **aggregates** (`count(*)`, `bool_or`, `min`/`max`) and **shape** over dumping rows. When you must show rows to prove a point, show the **fewest** possible and **redact** identifying columns (names, emails) unless the question is literally about them and the founder asked.
 - You write **no output file**. Results live in your report text, nowhere else.
 
+## Enquêter sur un signalement (règle fondateur 2026-10-30)
+
+Un bug déclaré depuis l'application est une ligne `feedback` (`club_id` = le club, jamais à rechercher par son nom d'usage). **Lis d'abord sa colonne JSON `context`** — elle est faite pour toi — avant toute autre table :
+- `screen` · `screenLabel` · `url` · `lastClick` · `recentClicks` (5 derniers gestes) · `clientClock` {at, timeZone} ;
+- `recentErrors` (5 dernières erreurs API ≥ 400 : method, route, status, code, errors[], requestId) ;
+- `modalState` (état complet de la modale ouverte, JSON en chaîne ; `modalStateTruncated` si coupé) ;
+- `auto.generationFailure` : `scheduleId` (→ `schedule` / `schedule_diagnostic` directement), `solver` (version, durée, timeout, variables, contraintes, conflits), `plan` (SEASON/CLOSURE/HOLIDAY + dates), `gridSummary` (slots, réservations, épingles, blocs, minutes verrouillées), `snapshot` + `diagnostics` (copie lourde) ;
+- `auto.*` (rôle, saison, compteurs, socle, versions) — calculé serveur.
+Ne descends dans les autres tables que si `context` ne suffit pas, et dis lesquelles ont manqué : c'est un trou de contexte à signaler (le fondateur veut que ce contexte suffise).
+
 ## What you deliver (report, in this order)
 
 1. **Question** — restated in one line.

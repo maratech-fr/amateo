@@ -138,10 +138,12 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
 **Cycle full lane** :
 0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
    `fichier:ligne`, jamais de mémoire ni depuis un doc ; jamais « vérifié » sur balayage partiel.
-1. **Need validation** (agent `oracle`, lecture seule) : besoin reformulé, constats cités
-   `fichier:ligne`, scénario UI réel, décisions avec exemple, ambiguïtés, hors-périmètre.
-   **User valide — pas de `/plan` avant.**
-2. `/plan` (agent `morpheus`, porte la checklist §9) ; optionnel `smith`. User valide.
+1. **Need validation** (agent `oracle`, lecture seule) : ce qui a été compris (dans les mots du
+   user), puis analyse RAPIDE — l'existant cité `fichier:ligne`, ce qui coince, 2-3 directions, les
+   questions qui décident. **Il ne tranche rien** : la direction se règle en discussion. **User
+   valide — pas de `/plan` avant.** Jamais un identifiant (P4-…, D…) sans son contenu en une phrase.
+2. `/plan` (agent `morpheus`, porte la checklist §9 — dont **contrats nouveaux** et **tableau
+   décision → test**, qui est le brief de `tank`) ; optionnel `smith`. User valide.
 3. **Tests ROUGES d'abord** (agent `tank`, depuis la promesse) puis implémenter **strictement dans
    le scope** (agent `neo`, zéro refactor opportuniste) jusqu'au vert — `neo` adapte MÉCANIQUEMENT un
    test (renommage/signature), jamais n'en crée ni n'en supprime (option A, charte `docs/testing/`).
@@ -153,6 +155,8 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
    en local (toujours sous `with-sandbox.sh`) seulement si la CI est bloquée ou pour diagnostiquer
    un Behat rouge en CI — table feature↔zone pour ce diagnostic :
    `.claude/skills/validation-runner/SKILL.md`.
+   **Contrôle visuel** (agent `switch`) si le plan nomme des écrans dont l'apparence change :
+   captures sur un club de test du bac à sable + passe de design, AVANT de dire au user « prêt ».
 6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**

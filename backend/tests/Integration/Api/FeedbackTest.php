@@ -13,6 +13,7 @@ use App\Tests\Security\FeedbackContextIsolationTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -329,9 +330,168 @@ final class FeedbackTest extends WebTestCase
         self::assertNotSame('', $apiVersion, 'une version non vide (repli « dev » hors déploiement)');
     }
 
+    // ───────────────────────── PR B — Signaler depuis une modale (D15/D16/D17) ─────────────────────────
+    // TANK écrit ROUGE (option A), NEO implémente. Contrats de champs définis ici : `modalState`
+    // (string JSON, traité À PART de LIGHT_CONTEXT_FIELDS, plafond 100 000, `modalStateTruncated:true`
+    // au-delà, jamais refusé) ; dédup 60 s (même user+topic+hash → 201 idempotent, 1 ligne) ;
+    // `auto.generationFailure` étendu (scheduleId + snapshot + diagnostics + `solver`) ; `recentErrors`,
+    // `recentClicks`, `clientClock` bornés. La PURGE efface tout le contexte (CITÉ : FeedbackPurgeCommandTest
+    // ::testTreatedTextAndContextArePurgedAfterThirtyDays:79, `context` nulé — modalState y vit). La console
+    // admin sert le contexte COMPLET (CITÉ : AdminFeedbackTest::testSuperAdminLists…:118-124, snapshot lu au détail).
+
+    public function testModalStateIsStoredSeparatelyAndOversizeTruncatedNeverRefused(): void
+    {
+        // D15 — `modalState` (string JSON) est CONSERVÉ (hors LIGHT_CONTEXT_FIELDS), et un modalState
+        // > 100 000 car. est TRONQUÉ avec `modalStateTruncated:true`, jamais refusé. ROUGE : `lightContext`
+        // ne garde que LIGHT_CONTEXT_FIELDS → `modalState` est DÉTRUIT aujourd'hui.
+        [$token, $userId, $clubId] = $this->registerVerifiedMember('FBMS');
+
+        $this->post($token, ['topic' => 'bug', 'message' => 'Petit état.', 'context' => ['modalState' => '{"step":"equipes","parc":"x"}']]);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('{"step":"equipes","parc":"x"}', $this->contextOf($clubId, $this->responseBody()['id'])['modalState'] ?? null, 'le modalState est conservé tel quel');
+
+        $this->resetFeedbackLimiterFor($userId);
+        $huge = str_repeat('a', 100_001);
+        $this->post($token, ['topic' => 'bug', 'message' => 'Gros état (1 Mo).', 'context' => ['modalState' => $huge . str_repeat('b', 1_000_000)]]);
+        self::assertResponseStatusCodeSame(201, 'un modalState énorme n\'est jamais refusé');
+        $context = $this->contextOf($clubId, $this->responseBody()['id']);
+        self::assertSame(100_000, mb_strlen((string) ($context['modalState'] ?? '')), 'le modalState est tronqué à 100 000 caractères');
+        self::assertTrue($context['modalStateTruncated'] ?? false, 'un drapeau modalStateTruncated signale la troncature');
+    }
+
+    public function testANonStringModalStateIsIgnoredWithoutError(): void
+    {
+        // D15 abus — un `modalState` NON-string (objet hostile) est IGNORÉ sans 500. (Garde : vert
+        // aujourd'hui, lightContext l'ignore déjà ; elle le RESTE quand NEO traite modalState à part.)
+        [$token, , $clubId] = $this->registerVerifiedMember('FBMSX');
+
+        $this->post($token, ['topic' => 'bug', 'message' => 'Objet hostile.', 'context' => ['modalState' => ['not' => 'a string']]]);
+        self::assertResponseStatusCodeSame(201, 'un modalState non-string ne fait jamais 500');
+        self::assertArrayNotHasKey('modalState', $this->contextOf($clubId, $this->responseBody()['id']), 'un modalState non-string est ignoré');
+    }
+
+    public function testIdenticalSubmitsWithinSixtySecondsCollapseToOneRow(): void
+    {
+        // D16 — anti double envoi : même user + même topic + même message dans la fenêtre 60 s →
+        // 201 IDEMPOTENT renvoyant l'id EXISTANT, UNE SEULE ligne (cas réel ALAP : 4 envois à la même
+        // seconde). ROUGE : aucune dédup aujourd'hui → 4 lignes, 4 ids distincts.
+        [$token, $userId, $clubId] = $this->registerVerifiedMember('FBDEDUP');
+        $before = $this->feedbackCount($clubId);
+
+        $ids = [];
+        for ($i = 0; $i < 4; ++$i) {
+            $this->resetFeedbackLimiterFor($userId); // isole la dédup du limiteur de débit
+            $this->post($token, ['topic' => 'bug', 'message' => 'Le même signalement, quatre fois.']);
+            self::assertResponseStatusCodeSame(201);
+            $ids[] = $this->responseBody()['id'];
+        }
+
+        self::assertCount(1, array_unique($ids), 'les 4 envois identiques rendent le MÊME id (201 idempotent)');
+        self::assertSame($before + 1, $this->feedbackCount($clubId), 'une SEULE ligne en base malgré 4 envois');
+    }
+
+    public function testAFreshFailedGenerationIsAutoResolvedWithHeavyCopyAndSolverVerdict(): void
+    {
+        // D17 (1)(3) — le serveur résout TOUT SEUL (sans scheduleId client) le dernier planning FAILED
+        // frais du club+saison et joint la COPIE LOURDE (snapshot engineInput + diagnostics) + le verdict
+        // solveur. ROUGE : `generationFailure` ne rend aujourd'hui qu'un RÉSUMÉ (status/type/version/
+        // firstError), sans scheduleId, ni snapshot, ni diagnostics, ni solver.
+        [$token, , $clubId] = $this->registerVerifiedMember('FBD17');
+        $seasonId = $this->currentSeasonId($clubId);
+        $failedId = $this->seedFailedSchedule($clubId, $seasonId);
+
+        $this->post($token, ['topic' => 'bug', 'message' => 'Ma génération a planté.']);
+        self::assertResponseStatusCodeSame(201);
+
+        $gf = $this->contextOf($clubId, $this->responseBody()['id'])['auto']['generationFailure'] ?? null;
+        self::assertIsArray($gf, 'un échec frais est résumé sous auto.generationFailure');
+        self::assertSame($failedId, $gf['scheduleId'] ?? null, 'le serveur résout l\'id du dernier planning FAILED frais');
+        self::assertNotEmpty($gf['snapshot'] ?? [], 'la copie lourde embarque le snapshot engineInput()');
+        self::assertNotEmpty($gf['diagnostics'] ?? [], 'la copie lourde embarque les diagnostics');
+        self::assertSame('or-tools-9.9', $gf['solver']['version'] ?? null, 'le verdict solveur est joint (version)');
+        self::assertSame(180, $gf['solver']['timeoutSeconds'] ?? null, 'le verdict solveur porte le timeout');
+    }
+
+    public function testClientIncidentTrailAndClockAreStoredWithinBounds(): void
+    {
+        // D17 (5)(6)(8) — `recentErrors` (≤ 5, method 8/route 300/code 80/requestId 128), `recentClicks`
+        // (≤ 5, 160) et `clientClock` {at 40, timeZone 60} venant du client sont CONSERVÉS, bornés et
+        // tronqués, jamais refusés. ROUGE : ces trois champs ne sont pas acceptés (hors LIGHT_CONTEXT_FIELDS)
+        // → détruits aujourd'hui.
+        [$token, , $clubId] = $this->registerVerifiedMember('FBTRAIL');
+
+        $sixErrors = array_map(static fn (int $i): array => [
+            'method' => 'OPTIONSX' . $i, 'route' => str_repeat('r', 400), 'status' => 500,
+            'code' => str_repeat('c', 100), 'requestId' => str_repeat('q', 200), 'at' => '2026-10-30T12:00:00Z',
+        ], range(1, 6));
+        $sixClicks = array_map(static fn (int $i): string => 'clic-' . $i . '-' . str_repeat('x', 200), range(1, 6));
+
+        $this->post($token, ['topic' => 'bug', 'message' => 'Fil d\'incident.', 'context' => [
+            'recentErrors' => $sixErrors,
+            'recentClicks' => $sixClicks,
+            'clientClock' => ['at' => str_repeat('d', 80), 'timeZone' => str_repeat('z', 120)],
+        ]]);
+        self::assertResponseStatusCodeSame(201, 'un fil surdimensionné n\'est jamais refusé');
+
+        $context = $this->contextOf($clubId, $this->responseBody()['id']);
+        // PRÉSENCE + plafond : 6 envoyés → EXACTEMENT 5 conservés (jamais vide — sinon le test passerait
+        // vacuement tant que le champ est détruit). ROUGE aujourd'hui : champs absents → 0.
+        self::assertCount(5, $context['recentErrors'] ?? [], '6 erreurs envoyées → 5 conservées');
+        self::assertCount(5, $context['recentClicks'] ?? [], '6 clics envoyés → 5 conservés');
+        self::assertArrayHasKey('at', $context['clientClock'] ?? [], 'clientClock conservé');
+        $firstError = $context['recentErrors'][0] ?? [];
+        self::assertLessThanOrEqual(8, mb_strlen((string) ($firstError['method'] ?? '')), 'method bornée à 8');
+        self::assertLessThanOrEqual(300, mb_strlen((string) ($firstError['route'] ?? '')), 'route bornée à 300');
+        self::assertLessThanOrEqual(80, mb_strlen((string) ($firstError['code'] ?? '')), 'code borné à 80');
+        self::assertLessThanOrEqual(128, mb_strlen((string) ($firstError['requestId'] ?? '')), 'requestId borné à 128');
+        self::assertLessThanOrEqual(40, mb_strlen((string) ($context['clientClock']['at'] ?? '')), 'clientClock.at borné à 40');
+        self::assertLessThanOrEqual(60, mb_strlen((string) ($context['clientClock']['timeZone'] ?? '')), 'clientClock.timeZone borné à 60');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    /** Un planning FAILED FRAIS (< 12 h) avec snapshot + verdict solveur + un diagnostic ERROR, sous RLS. */
+    private function seedFailedSchedule(string $clubId, string $seasonId): string
+    {
+        $this->scopeGucToClub($clubId);
+        $em = $this->em();
+
+        $schedule = new Schedule;
+        $schedule->setClubId($clubId);
+        $schedule->setSeasonId($seasonId);
+        $schedule->setSchedulePlanId(Uuid::v4()->toRfc4122());
+        $schedule->setName('Planning en échec');
+        $schedule->setVersionNumber(1);
+        $schedule->setStatus(ScheduleStatus::FAILED);
+        $schedule->setSnapshotData(['weeks' => [['index' => 1]], 'teams' => ['A', 'B']]);
+        $schedule->setSolverVersion('or-tools-9.9');
+        $schedule->setSolverWallTimeMs(123_456);
+        $schedule->setSolverTimeoutSeconds(180);
+        $schedule->setSolverNbVariables(42);
+        $schedule->setSolverNbConstraints(99);
+        $schedule->setSolverNbConflicts(7);
+        $schedule->setSolveStartedAt(new DateTimeImmutable('now')->modify('-1 hour'));
+        $em->persist($schedule);
+
+        $diagnostic = new ScheduleDiagnostic;
+        $diagnostic->setClubId($clubId);
+        $diagnostic->setSeasonId($seasonId);
+        $diagnostic->setScheduleId($schedule->getId());
+        $diagnostic->setType('engine_error');
+        $diagnostic->setSeverity(ScheduleDiagnosticSeverity::ERROR);
+        $diagnostic->setMessage('La génération a échoué.');
+        $diagnostic->setSuggestions([]);
+        $em->persist($diagnostic);
+
+        $em->flush();
+        $scheduleId = $schedule->getId();
+        $em->clear();
+        $this->clearGuc();
+
+        return $scheduleId;
     }
 
     /**

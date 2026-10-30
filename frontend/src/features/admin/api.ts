@@ -496,6 +496,9 @@ export interface AdminFeedbackContext {
   incidentStatus?: number | string;
   incidentUrl?: string;
   incidentCode?: string;
+  // D15 (PR B) — état COMPLET de la modale ouvrante (string JSON), tronqué si > 100 000 car.
+  modalState?: string;
+  modalStateTruncated?: boolean;
   auto?: AdminFeedbackAuto;
   [key: string]: unknown;
 }

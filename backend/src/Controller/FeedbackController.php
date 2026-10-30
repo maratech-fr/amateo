@@ -11,6 +11,7 @@ use App\Entity\User;
 use App\Service\FeedbackContextEnricher;
 use App\Service\FeedbackMailBuilder;
 use App\Storage\FeedbackScreenshotStorage;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use finfo;
 use Psr\Log\LoggerInterface;
@@ -88,6 +89,25 @@ final class FeedbackController extends AbstractController
         'incidentCode' => 80,
     ];
 
+    // D15 (PR B) — l'état de la modale (string JSON) est stocké À PART de LIGHT_CONTEXT_FIELDS :
+    // plafond généreux (une modale d'import colle un parc entier), tronqué au-delà, JAMAIS refusé.
+    private const int MODAL_STATE_MAX = 100_000;
+
+    // D17 (PR B) — les listes du fil d'incident client (erreurs API, clics) sont bornées aux 5 plus
+    // récentes ; chaque champ est à son tour borné en longueur. Tronqué, jamais refusé.
+    private const int CLIENT_TRAIL_MAX = 5;
+
+    /** Longueurs maximales des champs d'une erreur du fil client (D17). */
+    private const array RECENT_ERROR_FIELD_MAX = ['method' => 8, 'route' => 300, 'code' => 80, 'requestId' => 128, 'at' => 40];
+
+    private const int RECENT_ERROR_MESSAGE_MAX = 300;
+
+    private const int RECENT_CLICK_MAX = 160;
+
+    private const int CLIENT_CLOCK_AT_MAX = 40;
+
+    private const int CLIENT_CLOCK_TIMEZONE_MAX = 60;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly MailerInterface $mailer,
@@ -141,6 +161,15 @@ final class FeedbackController extends AbstractController
             return $this->json(['error' => 'Le message est trop long.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // D16 — anti double envoi : un signalement IDENTIQUE du même auteur (club + topic + message)
+        // dans les 60 s rend le MÊME id (201 idempotent), UNE SEULE ligne — le cas réel ALAP (4 envois
+        // à la même seconde). Fenêtre à l'horloge RÉELLE, comme le `createdAt` posé au constructeur.
+        $duplicate = $this->entityManager->getRepository(Feedback::class)
+            ->findRecentDuplicate($clubId, $user->getId(), $topic, $message, new DateTimeImmutable('-60 seconds'));
+        if ($duplicate instanceof Feedback) {
+            return $this->json(['id' => $duplicate->getId()], Response::HTTP_CREATED);
+        }
+
         // Capture d'écran (multipart) validée AVANT toute persistance : un envoi invalide ne
         // laisse AUCUNE ligne (atomique). Taille → type sondé → dimensions, dans cet ordre.
         $screenshotBytes = null;
@@ -155,6 +184,10 @@ final class FeedbackController extends AbstractController
 
         $inputContext = \is_array($data['context'] ?? null) ? $data['context'] : [];
         $context = $this->lightContext($inputContext);
+        // D15 — l'état COMPLET de la modale (string JSON), traité à part (plafond + troncature).
+        $context = $this->applyModalState($inputContext, $context);
+        // D17 — le fil d'incident CLIENT (5 dernières erreurs, 5 derniers clics, horloge du poste).
+        $context = $this->applyClientTrail($inputContext, $context);
 
         // Contexte lourd : quand un planning est nommé, on le recopie CÔTÉ SERVEUR
         // sous le filtre tenant. Un scheduleId étranger/inconnu fait échouer le POST
@@ -274,6 +307,119 @@ final class FeedbackController extends AbstractController
         }
 
         return $context;
+    }
+
+    /**
+     * D15 — l'état COMPLET de la modale (string JSON) : conservé tel quel sous `modalState`, TRONQUÉ
+     * à {@see self::MODAL_STATE_MAX} au-delà (drapeau `modalStateTruncated`), une valeur non-string
+     * IGNORÉE. Jamais refusé : un gros état n'échoue pas un signalement.
+     *
+     * @param array<int|string, mixed> $input
+     * @param array<string, mixed>     $context
+     *
+     * @return array<string, mixed>
+     */
+    private function applyModalState(array $input, array $context): array
+    {
+        $modalState = $input['modalState'] ?? null;
+        if (!\is_string($modalState) || '' === $modalState) {
+            return $context;
+        }
+
+        if (mb_strlen($modalState) > self::MODAL_STATE_MAX) {
+            $context['modalState'] = mb_substr($modalState, 0, self::MODAL_STATE_MAX);
+            $context['modalStateTruncated'] = true;
+        } else {
+            $context['modalState'] = $modalState;
+        }
+
+        return $context;
+    }
+
+    /**
+     * D17 — le fil d'incident CLIENT : `recentErrors` (≤ 5, chaque champ borné), `recentClicks`
+     * (≤ 5 × 160) et `clientClock` {at, timeZone}. Tout est borné et tronqué, jamais refusé.
+     *
+     * @param array<int|string, mixed> $input
+     * @param array<string, mixed>     $context
+     *
+     * @return array<string, mixed>
+     */
+    private function applyClientTrail(array $input, array $context): array
+    {
+        $errors = $input['recentErrors'] ?? null;
+        if (\is_array($errors) && [] !== $errors) {
+            $bounded = [];
+            foreach (\array_slice(array_values($errors), 0, self::CLIENT_TRAIL_MAX) as $error) {
+                if (\is_array($error)) {
+                    $bounded[] = $this->boundRecentError($error);
+                }
+            }
+            if ([] !== $bounded) {
+                $context['recentErrors'] = $bounded;
+            }
+        }
+
+        $clicks = $input['recentClicks'] ?? null;
+        if (\is_array($clicks) && [] !== $clicks) {
+            $bounded = [];
+            foreach (\array_slice(array_values($clicks), 0, self::CLIENT_TRAIL_MAX) as $click) {
+                if (\is_string($click) && '' !== $click) {
+                    $bounded[] = mb_substr($click, 0, self::RECENT_CLICK_MAX);
+                }
+            }
+            if ([] !== $bounded) {
+                $context['recentClicks'] = $bounded;
+            }
+        }
+
+        $clock = $input['clientClock'] ?? null;
+        if (\is_array($clock)) {
+            $boundedClock = [];
+            if (\is_string($clock['at'] ?? null) && '' !== $clock['at']) {
+                $boundedClock['at'] = mb_substr($clock['at'], 0, self::CLIENT_CLOCK_AT_MAX);
+            }
+            if (\is_string($clock['timeZone'] ?? null) && '' !== $clock['timeZone']) {
+                $boundedClock['timeZone'] = mb_substr($clock['timeZone'], 0, self::CLIENT_CLOCK_TIMEZONE_MAX);
+            }
+            if ([] !== $boundedClock) {
+                $context['clientClock'] = $boundedClock;
+            }
+        }
+
+        return $context;
+    }
+
+    /**
+     * Borne une entrée d'erreur du fil client (D17) : chaque champ string tronqué, le statut en int,
+     * la liste `errors[]` plafonnée (5 × 300). Les champs absents/invalides sont simplement omis.
+     *
+     * @param array<int|string, mixed> $error
+     *
+     * @return array<string, mixed>
+     */
+    private function boundRecentError(array $error): array
+    {
+        $bounded = [];
+        foreach (self::RECENT_ERROR_FIELD_MAX as $field => $max) {
+            if (\is_string($error[$field] ?? null) && '' !== $error[$field]) {
+                $bounded[$field] = mb_substr($error[$field], 0, $max);
+            }
+        }
+        if (isset($error['status']) && is_numeric($error['status'])) {
+            $bounded['status'] = (int) $error['status'];
+        }
+        if (\is_array($error['errors'] ?? null)) {
+            $messages = [];
+            foreach (\array_slice(array_values($error['errors']), 0, self::CLIENT_TRAIL_MAX) as $message) {
+                if (\is_string($message) && '' !== $message) {
+                    $messages[] = mb_substr($message, 0, self::RECENT_ERROR_MESSAGE_MAX);
+                }
+            }
+            $bounded['errors'] = $messages;
+        }
+
+        return $bounded;
     }
 
     /**

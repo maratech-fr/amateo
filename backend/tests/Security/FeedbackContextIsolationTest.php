@@ -157,7 +157,7 @@ final class FeedbackContextIsolationTest extends WebTestCase
         [, , $clubB] = $this->registerVerifiedMember('FBGFISOB');
         $seasonB = $this->currentSeasonId($clubB);
         $secret = 'erreur-secrete-du-club-b-' . bin2hex(random_bytes(6));
-        $this->seedFreshFailure($clubB, $seasonB, $secret);
+        $scheduleIdB = $this->seedFreshFailure($clubB, $seasonB, $secret);
 
         // Club A : l'auteur, aucune génération. Navigateur neuf (l'identité change).
         $this->startFreshBrowserSession($this->client);
@@ -176,6 +176,20 @@ final class FeedbackContextIsolationTest extends WebTestCase
             'le club A n\'a aucune génération — aucun résumé d\'échec joint',
         );
         self::assertStringNotContainsString($secret, $raw, 'un échec frais du club B ne fuit jamais dans le signalement de A');
+        // EXTENSION D17 (PR B) — le serveur résout désormais, pour le club AUTHENTIFIÉ, l'id du dernier
+        // planning FAILED frais + sa COPIE LOURDE (snapshot engineInput + diagnostics) + le résumé de
+        // grille. L'id du planning de B est le pivot de toute cette copie : s'il n'apparaît NULLE PART
+        // dans le JSON de A, ni le snapshot, ni les diagnostics, ni le résumé de B n'ont fui. (Aujourd'hui
+        // D17 n'est pas implémenté → aucun scheduleId n'est encore joint : cette assertion est un GARDE
+        // VERT qui le RESTE si NEO scope D17 au club, et ROUGIT s'il joint un id d'échec non scopé.)
+        // ⚠ FALSIFICATION & COUCHE RÉELLEMENT PROUVÉE : TenantFilter (Doctrine) + RLS PostgreSQL doublent
+        // ce garde — une requête d'enrichisseur NON scopée au club ne lirait de toute façon PAS le
+        // Schedule de B (RLS bloque le cross-club). Ce test prouve donc l'EFFET COMBINÉ (enrichisseur +
+        // TenantFilter + RLS) : « le signalement de A ne contient jamais la donnée d'échec de B ». Pour
+        // isoler la couche ENRICHISSEUR seule (scope explicite dans la requête, refus d'un scheduleId
+        // soufflé par le client), il faudrait couper RLS — hors de ce test ; la couverture fonctionnelle
+        // 12 h / COMPLETED / nature vit à côté dans FeedbackGenerationFailureTest.
+        self::assertStringNotContainsString($scheduleIdB, $raw, 'l\'id du planning en échec de B (pivot de la copie lourde D17) ne fuit jamais dans le signalement de A');
     }
 
     protected function setUp(): void
@@ -184,7 +198,7 @@ final class FeedbackContextIsolationTest extends WebTestCase
     }
 
     /** Sème pour un club un échec de génération FRAIS (< 12 h), dont le diagnostic porte $errorText. */
-    private function seedFreshFailure(string $clubId, string $seasonId, string $errorText): void
+    private function seedFreshFailure(string $clubId, string $seasonId, string $errorText): string
     {
         $this->scopeGucToClub($clubId);
         $em = $this->em();
@@ -211,8 +225,11 @@ final class FeedbackContextIsolationTest extends WebTestCase
         $em->persist($diagnostic);
 
         $em->flush();
+        $scheduleId = $schedule->getId();
         $em->clear();
         $this->clearGuc();
+
+        return $scheduleId;
     }
 
     /**

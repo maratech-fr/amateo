@@ -228,6 +228,63 @@ final class PayloadCapacityMirror
         return $grid;
     }
 
+    /**
+     * RÉSUMÉ DE GRILLE d'un snapshot figé (D17, PR B « Signaler ») — joint au signalement d'un
+     * échec de génération pour que le support voie la FORME de la grille sans ouvrir le planning.
+     * Fonction PURE, aucune dépendance : elle lit le payload tel quel.
+     *
+     * Elle tolère les DEUX conventions de clés : celle du snapshot moteur réel
+     * (`venues[].trainingSlots`, pins HARD dans `slotTemplates` via `lockLevel`) et la forme
+     * abrégée (`venues[].slots`, `reservations` avec `pinned`) — le résumé reste juste sur l'entrée
+     * RÉELLE de {@see App\Entity\Schedule::engineInput()} comme sur une grille déjà aplatie.
+     *
+     * - `slots` : créneaux ouverts (toutes grilles de gymnase) ;
+     * - `reservations` : réservations / pins (team→slot) ;
+     * - `pins` : parmi elles, les VERROUILLÉES (`pinned:true` ou `lockLevel:HARD`) ;
+     * - `blocks` : blocs de mutualisation ;
+     * - `lockedMinutes` : Σ des durées des réservations verrouillées.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return array{slots: int, reservations: int, pins: int, blocks: int, lockedMinutes: int}
+     */
+    public function gridSummary(array $payload): array
+    {
+        $slots = 0;
+        foreach (\is_array($payload['venues'] ?? null) ? $payload['venues'] : [] as $venue) {
+            if (!\is_array($venue)) {
+                continue;
+            }
+            $venueSlots = $venue['slots'] ?? $venue['trainingSlots'] ?? null;
+            $slots += \is_array($venueSlots) ? \count($venueSlots) : 0;
+        }
+
+        // Réservations/pins : la forme abrégée (`reservations`) sinon le bloc moteur (`slotTemplates`).
+        $reservations = \is_array($payload['reservations'] ?? null)
+            ? $payload['reservations']
+            : (\is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : []);
+
+        $pins = 0;
+        $lockedMinutes = 0;
+        foreach ($reservations as $reservation) {
+            if (!\is_array($reservation)) {
+                continue;
+            }
+            if (true === ($reservation['pinned'] ?? null) || 'HARD' === ($reservation['lockLevel'] ?? null)) {
+                ++$pins;
+                $lockedMinutes += (int) ($reservation['durationMinutes'] ?? 0);
+            }
+        }
+
+        return [
+            'slots' => $slots,
+            'reservations' => \count($reservations),
+            'pins' => $pins,
+            'blocks' => \is_array($payload['sharedBlocks'] ?? null) ? \count($payload['sharedBlocks']) : 0,
+            'lockedMinutes' => $lockedMinutes,
+        ];
+    }
+
     public function key(string $venueId, mixed $dayOfWeek, string $startTime): string
     {
         return \sprintf('%s|%s|%s', $venueId, $dayOfWeek, substr($startTime, 0, 5));

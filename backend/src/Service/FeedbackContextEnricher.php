@@ -68,6 +68,7 @@ final readonly class FeedbackContextEnricher
         private EntityManagerInterface $entityManager,
         private RequestStack $requestStack,
         private ClockInterface $clock,
+        private PayloadCapacityMirror $capacityMirror,
         private LoggerInterface $logger,
         private string $apiVersion,
     ) {}
@@ -133,7 +134,7 @@ final readonly class FeedbackContextEnricher
 
         // La RAISON d'un échec de génération RÉCENT (< 12 h), résolue côté serveur depuis la
         // dernière génération de la saison AUTHENTIFIÉE — jointe seulement s'il y en a une.
-        $failure = $this->generationFailure($clubId, $season);
+        $failure = $this->generationFailure($clubId, $season, $context);
         if (null !== $failure) {
             $auto['generationFailure'] = $failure;
         }
@@ -290,9 +291,16 @@ final readonly class FeedbackContextEnricher
      * échec frais d'un AUTRE club ne doit jamais remonter — angle tenant prouvé bloquant par
      * un NR de sécurité dédié (tests/Security/FeedbackContextIsolationTest, hors src).
      *
-     * @return array{status: string, kind: string, type: string, failedAt: string, version: array{number: int, name: string}, firstError: string, countsByType: array<string, int>}|null
+     * D17 (PR B « Signaler ») — ÉTENDUE (jamais réécrite) : au résumé s'ajoutent, résolus côté
+     * serveur, l'id du planning, le verdict du solveur, le plan (socle/période), le résumé de grille
+     * et — sauf doublon avec un planning déjà nommé par le client — la COPIE LOURDE (snapshot réel +
+     * diagnostics détaillés).
+     *
+     * @param array<string, mixed> $context
+     *
+     * @return array<string, mixed>|null
      */
-    private function generationFailure(string $clubId, ?Season $season): ?array
+    private function generationFailure(string $clubId, ?Season $season, array $context): ?array
     {
         if (!$season instanceof Season) {
             return null;
@@ -345,7 +353,7 @@ final readonly class FeedbackContextEnricher
 
         $type = $firstErrorType ?? 'unknown';
 
-        return [
+        $gf = [
             'status' => 'failed',
             'kind' => \in_array($type, self::TECHNICAL_FAILURE_TYPES, true) ? 'technical' : 'business',
             'type' => $type,
@@ -353,6 +361,78 @@ final readonly class FeedbackContextEnricher
             'version' => ['number' => $last->getVersionNumber(), 'name' => $last->getName()],
             'firstError' => $firstError,
             'countsByType' => $countsByType,
+            // D17 (1) — l'id du planning FAILED, résolu côté serveur : pivot de toute la copie lourde.
+            'scheduleId' => $last->getId(),
+            // D17 (3) — le verdict du solveur, lu sans ouvrir le planning.
+            'solver' => [
+                'version' => $last->getSolverVersion(),
+                'wallTimeMs' => $last->getSolverWallTimeMs(),
+                'timeoutSeconds' => $last->getSolverTimeoutSeconds(),
+                'nbVariables' => $last->getSolverNbVariables(),
+                'nbConstraints' => $last->getSolverNbConstraints(),
+                'nbConflicts' => $last->getSolverNbConflicts(),
+            ],
+            // D17 (4) — le plan (socle SEASON / période CLOSURE|HOLIDAY) auquel appartient l'échec.
+            'plan' => $this->planSummary($last->getSchedulePlanId()),
+            // D17 (2) — résumé de grille, calculé sur le SNAPSHOT figé (fonction pure du miroir de capacité).
+            'gridSummary' => $this->capacityMirror->gridSummary($last->engineInput()),
+        ];
+
+        // D17 (1) — COPIE LOURDE : le snapshot RÉEL + les diagnostics détaillés, sautés SANS DOUBLON
+        // si le client nomme déjà CE planning (le contrôleur a alors joint snapshot + diagnostics à la
+        // racine du contexte — on ne les recopie pas une seconde fois sous `generationFailure`).
+        $clientScheduleId = \is_string($context['scheduleId'] ?? null) ? $context['scheduleId'] : null;
+        if ($clientScheduleId !== $last->getId()) {
+            $gf['snapshot'] = $last->engineInput();
+            $gf['diagnostics'] = $this->detailedDiagnostics($diagnostics);
+        }
+
+        return $gf;
+    }
+
+    /**
+     * Les diagnostics d'un planning, sérialisés comme {@see App\Controller\FeedbackController::diagnosticsOf}
+     * — même forme, pour que le support ne lise qu'une structure.
+     *
+     * @param list<ScheduleDiagnostic> $diagnostics
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function detailedDiagnostics(array $diagnostics): array
+    {
+        return array_map(static fn (ScheduleDiagnostic $diagnostic): array => [
+            'type' => $diagnostic->getType(),
+            'severity' => $diagnostic->getSeverity()->value,
+            'message' => $diagnostic->getMessage(),
+            'teamId' => $diagnostic->getTeamId(),
+            'coachId' => $diagnostic->getCoachId(),
+            'venueId' => $diagnostic->getVenueId(),
+            'suggestions' => $diagnostic->getSuggestions(),
+        ], $diagnostics);
+    }
+
+    /**
+     * Le plan (socle/période) d'un planning : son type, son nom et ses dates — ce que le support lit
+     * pour situer l'échec. null si le plan a disparu.
+     *
+     * @return array{type: string, name: string, startDate: string, endDate: string}|null
+     */
+    private function planSummary(?string $planId): ?array
+    {
+        if (null === $planId) {
+            return null;
+        }
+
+        $plan = $this->entityManager->getRepository(SchedulePlan::class)->find($planId);
+        if (!$plan instanceof SchedulePlan) {
+            return null;
+        }
+
+        return [
+            'type' => $plan->getType()->value,
+            'name' => $plan->getName(),
+            'startDate' => $plan->getStartDate()->format('Y-m-d'),
+            'endDate' => $plan->getEndDate()->format('Y-m-d'),
         ];
     }
 
