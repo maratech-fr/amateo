@@ -381,6 +381,25 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
     }
 
+    public function testNonManagementWriteRefused(): void
+    {
+        [$club, , $season] = $this->createClubUser('a');
+        $t1 = $this->createTeam($club, $season, 'U9F1', 2);
+        $t2 = $this->createTeam($club, $season, 'U9F2', 2);
+        $member = $this->createMember($club, 'editor');
+
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'schedulePlanId' => null, 'teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => 1,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
     /** @param list<Team> $teams */
     private function postBlock(User $user, array $teams, int $commonSessions): string
     {
@@ -416,25 +435,6 @@ final class SharedTrainingBlockApiTest extends WebTestCase
             $this->em->persist($reservation);
         }
         $this->em->flush();
-    }
-
-    public function testNonManagementWriteRefused(): void
-    {
-        [$club, , $season] = $this->createClubUser('a');
-        $t1 = $this->createTeam($club, $season, 'U9F1', 2);
-        $t2 = $this->createTeam($club, $season, 'U9F2', 2);
-        $member = $this->createMember($club, 'editor');
-
-        $this->client->request('POST', '/api/shared_training_blocks', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'schedulePlanId' => null, 'teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => 1,
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(403);
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
     private function periodPlan(Club $club, Season $season): SchedulePlan
