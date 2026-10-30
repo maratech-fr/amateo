@@ -772,6 +772,16 @@ jobs:
       - name: HardLockSurvivesPayloadTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/HardLockSurvivesPayloadTest.php --group phase1'
 
+      # Incident ALAP pt 1 (axe generation pipeline) — « une réservation n'est épinglée QU'UNE
+      # fois au moteur ». Après une génération, l'import écrit une épingle HARD/RESERVATION
+      # redondante avec la réservation durable ; au build suivant le builder les reprenait TOUTES
+      # DEUX (26 → 52 épingles), et l'empreinte de structure divergeait du snapshotHash — un faux
+      # « périmé » juste après génération, et la même réservation envoyée deux fois au 2ᵉ solve.
+      # Le payload (base ET période) SAUTE désormais les templates HARD/RESERVATION. Sans ce gate,
+      # le doublon et le faux « périmé » reviendraient en silence. HARD MANUAL/UNKNOWN restent.
+      - name: ReservationPinsNotDoubledTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/ReservationPinsNotDoubledTest.php --group phase1'
+
       # ALIGN-18 (axe constraint semantics) : « on ne verrouille que les créneaux » — le cran LOCK
       # est retiré des CONTRAINTES. Une écriture `ruleType: "LOCK"` est refusée 422, jamais
       # normalisée en silence (le moteur la traitait auparavant comme HARD). Sans ce gate BLOQUANT,
