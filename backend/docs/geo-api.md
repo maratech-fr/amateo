@@ -388,7 +388,7 @@ Mécanique commune :
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.7**
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.8**
   à ce jour, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6 → 1.7 — l'historique : le bump 2.28→2.29 avait porté notamment ce
   bloc : sens de `walkingMinutes` désormais vélo,
   plus les champs `implicitRules.travelTime.toleranceMinutes`/`defaultMinutes`). Sa présence (≥1

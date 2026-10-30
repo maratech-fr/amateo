@@ -1077,8 +1077,11 @@ jobs:
       # Lot 3B PR B' (axes constraint semantics + backend↔engine contract) — MIROIR pré-solve de
       # « un coach suffit » pour les blocs : le récap PRÉVIENT, avant génération, qu'un groupe sans
       # case où un coach de l'union soit disponible est infaisable. Gate de parité contre le VRAI
-      # moteur (patron CapacityMirrorParityTest) : le miroir AVERTIT ⇒ le moteur sort failed ;
-      # le miroir se tait ⇒ completed, bascule coordonnée sur le même scénario. Skip propre si
+      # moteur (même esprit que CapacityMirrorParityTest) : le miroir AVERTIT ⇒ le moteur sort failed
+      # (ici SANS verrou en cause : indispo de coach, pas de réservation) ; le miroir se tait ⇒
+      # completed, bascule coordonnée sur le même scénario. NB : pour la saturation des « au moins »
+      # CAUSÉE par une réservation, ce n'est plus vrai (le miroir avertit, le moteur PRODUIT et nomme
+      # l'équipe privée de case — ADR-0001 amendée) ; seul le dépassement de la grille nue échoue. Skip propre si
       # l'engine est absent. Sans ce gate, les deux copies de la règle dériveraient et le récap
       # mentirait (crie à tort, ou se tait à tort).
       - name: SharedBlockPreSolveMirrorParityTest

@@ -204,7 +204,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.7** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.8** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
 exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
@@ -259,7 +259,7 @@ club non démo, pool > 0), le placement automatique se fait UNIQUEMENT semaine p
 sans fenêtre, ou avec une fenêtre de plus de 7 jours calendaires, est refusé 403 — défense SERVEUR
 derrière le bouton global désactivé (§5) ; 1 clic reste 1 crédit (`CreditBudgetSubscriber`, inchangé).
 
-**Jours fériés (PR2, CONTRACT_VERSION 1.7, décision fondateur 2026-10-27)** : le payload porte
+**Jours fériés (PR2, décision fondateur 2026-10-27, livré au palier 1.7 — numéro courant : `CLAUDE.md`)** : le payload porte
 `publicHolidays` (dates du territoire du club, national ∪ zone, résolues par la même maison
 `App\Service\ClubPublicHolidays` que le radar §2) — top-level, émis par `MatchPlacementPayloadBuilder`.
 Pour une date fériée, `candidates.py` (`_candidate_kickoffs`) construit le domaine sur la ligne
