@@ -21,6 +21,7 @@ use App\Enum\SeasonStatus;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
+use App\Service\ReservationGroupOccupancy;
 use App\Service\SoloReservationBudget;
 use App\State\Processor\SharedTrainingBlockStateProcessor;
 use App\Tests\TenantGucTrait;
@@ -223,6 +224,7 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
         );
         // Dépendance #[Required] : câblée à la main puisque le processor est instancié hors conteneur.
         $this->processor->setSoloReservationBudget($container->get(SoloReservationBudget::class));
+        $this->processor->setReservationGroupOccupancy($container->get(ReservationGroupOccupancy::class));
     }
 
     private function post(SharedTrainingBlockInput $input, Club $club, Season $season): SharedTrainingBlockResource
