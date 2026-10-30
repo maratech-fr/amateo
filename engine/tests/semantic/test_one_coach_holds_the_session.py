@@ -367,6 +367,79 @@ def test_the_move_verdict_still_refuses_a_baseline_with_a_coach_alone_in_two_gym
     assert _verdict(["A"])["valid"] is False
 
 
+# ── Le verdict : un geste ne retire pas le dernier coach d'une séance fixée ──────────────────────────
+#
+# Décor commun : T est fixée sur V le lundi à 18 h. A entraîne U13, figée sur W à la même heure. Le geste
+# amène M, dont B est le coach, sur X à la même heure. Elle venait du jeudi (référence).
+
+
+def _move_onto_the_hour_of_a_lock(t_coaches: list[str], *, with_reference: bool) -> dict[str, Any]:
+    """Le verdict du geste sur M. D, s'il entraîne T, est déjà pris par U9 : un écart antérieur au geste."""
+    candidate = {"teamId": "M", "venueId": "X", "dayOfWeek": MONDAY, "startTime": "18:00", "durationMinutes": 90}
+    reference = {"teamId": "M", "venueId": "Y", "dayOfWeek": THURSDAY, "startTime": "18:00", "durationMinutes": 90}
+    frozen = [
+        {
+            "id": f"s-{team}",
+            "teamId": team,
+            "venueId": venue,
+            "dayOfWeek": MONDAY,
+            "startTime": "18:00",
+            "durationMinutes": 90,
+        }
+        for team, venue in (("U13", "W"), ("U9", "Z"))
+    ]
+    payload: dict[str, Any] = {
+        "clubId": "club",
+        "seasonId": "season",
+        "venues": [
+            *_simultaneous_gyms("V", "W", "X", "Z"),
+            make_venue("Y", [(THURSDAY, "18:00")]),
+        ],
+        "teams": [make_team(team_id, sessions_per_week=1) for team_id in ("T", "U13", "U9", "M")],
+        "coaches": _coaches("A", "B", "C", "D"),
+        "constraints": _links(T=t_coaches, U13=["A"], U9=["D"], M=["B"]),
+        "slotTemplates": [_lock("T", "V"), *frozen],
+        "candidates": [candidate],
+        "references": [reference] if with_reference else [],
+    }
+
+    return validate_assignment(ValidateAssignmentsInputSchema.model_validate(payload))
+
+
+@pytest.mark.parametrize("with_reference", [True, False])
+def test_taking_the_last_coach_of_a_fixed_session_is_refused_and_named(with_reference: bool) -> None:
+    """A est pris, B tenait T : le geste qui prend B laisse T sans personne, le refus nomme la séance.
+    Sans ce contrôle la tenue du verrou cède en silence et le verdict accepte."""
+    result = _move_onto_the_hour_of_a_lock(["A", "B"], with_reference=with_reference)
+
+    assert result["valid"] is False, result
+    assert result.get("indeterminate") is not True
+    [violation] = result["violations"]
+    assert violation["rule"] == "session_without_coach"
+    assert violation["team_id"] == "M"
+    assert violation["conflicting_team_id"] == "T"
+    assert (violation["venue_id"], violation["day_of_week"], violation["start_time"]) == ("V", MONDAY, "18:00")
+    assert "dernier coach" in violation["message"]
+    assert "séance fixée de T le lundi à 18:00" in violation["message"]
+
+
+@pytest.mark.parametrize("with_reference", [True, False])
+def test_a_second_free_coach_keeps_the_move_accepted(with_reference: bool) -> None:
+    """TÉMOIN : même geste, C est libre pour tenir T, rien ne manque."""
+    result = _move_onto_the_hour_of_a_lock(["A", "B", "C"], with_reference=with_reference)
+
+    assert result["valid"] is True, result
+
+
+@pytest.mark.parametrize("with_reference", [True, False])
+def test_a_fixed_session_already_without_coach_never_blocks_a_move(with_reference: bool) -> None:
+    """T n'a déjà personne avant le geste (A et D sont pris) : jamais de blocage sur un écart déjà là,
+    même si le contrôle voit bien T sans tenue après le geste."""
+    result = _move_onto_the_hour_of_a_lock(["A", "D"], with_reference=with_reference)
+
+    assert result["valid"] is True, result
+
+
 # ── La tenue d'un verrou cède : jamais d'INFEASIBLE muet (contre-revue, décision ADR-0001 amendée) ──
 #
 # Les deux coachs de l'équipe A+B sont déjà au plafond par leurs PROPRES réservations : qui que ce soit

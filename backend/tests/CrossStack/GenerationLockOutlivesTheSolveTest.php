@@ -41,8 +41,9 @@ final class GenerationLockOutlivesTheSolveTest extends TestCase
         $ttl = $requested + $margin;
 
         // Le moteur borne sa phase 1 au plus petit du palier et du plafond de payload, puis
-        // ajoute la phase de chaînage. Le pire cas est donc atteint au palier le plus haut.
-        $worstCase = min($this->highestEngineTier(), $requested) + $this->chainingCap();
+        // ajoute la phase de chaînage et le choix du coach stocké. Le pire cas est donc atteint
+        // au palier le plus haut.
+        $worstCase = min($this->highestEngineTier(), $requested) + $this->chainingCap() + $this->engineBudget('HOLD_SETTLE_MAX_SECONDS');
 
         self::assertGreaterThan($worstCase, $ttl, \sprintf(
             "Le verrou (TTL %d s) ne survit plus au pire solve (%d s).\n"
@@ -57,8 +58,14 @@ final class GenerationLockOutlivesTheSolveTest extends TestCase
     /**
      * Le chemin le plus long d'une génération : solve nominal INFEASIBLE au palier le plus haut (sans
      * chaînage, faute de solution), solve diagnostique, sonde de causalité, best-effort, chaînage de ce
-     * dernier. L'attente HTTP du worker et le verrou doivent survivre aux cinq. Sinon le worker abandonne
-     * un planning que le moteur est en train de produire, et le second message prend le verrou.
+     * dernier. L'attente HTTP du worker et le verrou doivent survivre à toutes ces phases. Sinon le worker
+     * abandonne un planning que le moteur est en train de produire, et le second message prend le verrou.
+     *
+     * `_settle_holds` termine chaque `_solve` qui trouve une solution : la sonde (faisable, sinon pas de
+     * best-effort) et le best-effort le paient. Pas le nominal ni le diagnostic : ils sont INFEASIBLE sur
+     * ce chemin. Un diagnostic faisable arrête là, sans best-effort, donc bien plus court.
+     *
+     * La somme est un majorant : `_best_effort_solve` compte déjà la sonde dans ses 60 s.
      */
     public function testHttpTimeoutAndLockOutliveTheWholeBestEffortPath(): void
     {
@@ -70,8 +77,10 @@ final class GenerationLockOutlivesTheSolveTest extends TestCase
             'nominal' => min($this->highestEngineTier(), $requested),
             'diagnostic' => $this->engineBudget('DIAGNOSTIC_SOLVE_MAX_SECONDS'),
             'sonde' => $this->engineBudget('BEST_EFFORT_PROBE_MAX_SECONDS'),
+            'coach stocké de la sonde' => $this->engineBudget('HOLD_SETTLE_MAX_SECONDS'),
             'best-effort' => $this->engineBudget('BEST_EFFORT_SOLVE_MAX_SECONDS'),
             'chaînage du best-effort' => $this->chainingCap(),
+            'coach stocké du best-effort' => $this->engineBudget('HOLD_SETTLE_MAX_SECONDS'),
         ];
         $worstCase = array_sum($phases);
 
@@ -101,12 +110,13 @@ final class GenerationLockOutlivesTheSolveTest extends TestCase
         return (int) $matches[1];
     }
 
+    /** Un budget du moteur en secondes entières, arrondi au-dessus (`HOLD_SETTLE_MAX_SECONDS` est un float). */
     private function engineBudget(string $constant): int
     {
-        $found = preg_match(\sprintf('/^%s = (\d+)$/m', $constant), $this->engineSource(), $matches);
+        $found = preg_match(\sprintf('/^%s = (\d+(?:\.\d+)?)$/m', $constant), $this->engineSource(), $matches);
         self::assertSame(1, $found, $constant . ' a disparu du moteur : cette phase n\'est plus bornée par cette constante.');
 
-        return (int) $matches[1];
+        return (int) ceil((float) $matches[1]);
     }
 
     private function engineSource(): string

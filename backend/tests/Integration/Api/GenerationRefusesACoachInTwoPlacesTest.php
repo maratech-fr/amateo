@@ -11,6 +11,8 @@ use App\Entity\Coach;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
@@ -26,6 +28,7 @@ use App\Tests\Security\CoachDoubleBookingTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -37,6 +40,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * ne passent pas par lui. Cette garde porte la promesse côté serveur, sur les guichets eux-mêmes.
  *
  * TÉMOIN : les deux séances dans le MÊME gymnase sont une mutualisation permise, la génération part.
+ *
+ * « Tant qu'un coach tient la séance, c'est OK » traverse les guichets : un second coach ou un groupe
+ * déclaré laissent partir, le coach seul reste refusé. Jumeaux VOULUS (point sensible génération) :
+ * {@see CoachDoubleBookingTest} pour le détecteur seul, `OneCoachHoldsTheSessionGateTest` pour le moteur.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -48,6 +55,13 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
     private EntityManagerInterface $em;
 
     private KernelBrowser $client;
+
+    /** @return iterable<string, array{string, ScheduleStatus}> */
+    public static function counters(): iterable
+    {
+        yield '/generate' => ['generate', ScheduleStatus::DRAFT];
+        yield '/regenerate' => ['regenerate', ScheduleStatus::COMPLETED];
+    }
 
     public function testGenerateIsRefusedAndNothingIsQueued(): void
     {
@@ -107,6 +121,45 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
     }
 
+    /** Tant qu'un coach tient la séance, c'est OK : Bea tient Seniors B pendant qu'Ana entraîne Seniors A. */
+    #[DataProvider('counters')]
+    public function testASecondCoachWhoHoldsTheSessionLetsGenerationStart(string $counter, ScheduleStatus $status): void
+    {
+        $ctx = $this->seed(sameVenue: false);
+        $this->addMainCoach($ctx, 'Bea', 'Seniors B');
+
+        self::assertSame(202, $this->post($ctx, $counter, $status));
+    }
+
+    /** Le coach SEUL à deux endroits refuse sur les deux guichets, à décor égal avec le test précédent. */
+    #[DataProvider('counters')]
+    public function testACoachAloneInTwoPlacesIsRefused(string $counter, ScheduleStatus $status): void
+    {
+        $ctx = $this->seed(sameVenue: false);
+
+        self::assertSame(422, $this->post($ctx, $counter, $status));
+        $this->assertRefusedNamingTheCoach();
+    }
+
+    /** Groupe déclaré : Bea tient la séance commune d'Ana et d'elle, Ana est libre pour Seniors B ailleurs. */
+    #[DataProvider('counters')]
+    public function testADeclaredGroupRelaysAndGenerationStarts(string $counter, ScheduleStatus $status): void
+    {
+        $ctx = $this->seedSameCaseAsAnotherTeam(declaredGroup: true);
+
+        self::assertSame(202, $this->post($ctx, $counter, $status));
+    }
+
+    /** TÉMOIN du relais : même case sans groupe, chacun ses coachs, Ana reste à deux endroits. */
+    #[DataProvider('counters')]
+    public function testTheSameCaseWithoutAGroupLendsNoCoach(string $counter, ScheduleStatus $status): void
+    {
+        $ctx = $this->seedSameCaseAsAnotherTeam(declaredGroup: false);
+
+        self::assertSame(422, $this->post($ctx, $counter, $status));
+        $this->assertRefusedNamingTheCoach();
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -120,6 +173,65 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         self::assertStringContainsString('Ana', $error, 'le refus nomme le coach');
         self::assertStringContainsString('Gymnase Un', $error, 'le refus nomme les cases à reprendre');
         self::assertStringContainsString('Gymnase Deux', $error, 'le refus nomme les cases à reprendre');
+    }
+
+    /** @param array{user: User, clubId: string, seasonId: string} $ctx */
+    private function post(array $ctx, string $counter, ScheduleStatus $status): int
+    {
+        $schedule = $this->schedule($ctx, $status);
+        $this->client->loginUser($ctx['user']);
+        $this->client->request('POST', "/api/schedules/{$schedule->getId()}/{$counter}");
+
+        return $this->client->getResponse()->getStatusCode();
+    }
+
+    /** @param array{clubId: string, seasonId: string} $ctx */
+    private function addMainCoach(array $ctx, string $firstName, string $teamName): void
+    {
+        $coach = (new Coach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setFirstName($firstName)->setLastName('Morel');
+        $this->em->persist($coach);
+        $this->em->flush();
+        $team = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $ctx['seasonId'], 'name' => $teamName]);
+        self::assertInstanceOf(Team::class, $team);
+        $this->em->persist((new TeamCoach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+    }
+
+    /**
+     * Ana sur Seniors A (Gymnase Un) et Seniors B (Gymnase Deux), en même temps. Seniors C (Bea) partage la
+     * case de Seniors A, dans un groupe déclaré ou par simple coïncidence.
+     *
+     * @return array{user: User, clubId: string, seasonId: string}
+     */
+    private function seedSameCaseAsAnotherTeam(bool $declaredGroup): array
+    {
+        $ctx = $this->seed(sameVenue: false);
+        $repository = $this->em->getRepository(Team::class);
+        $seniorsA = $repository->findOneBy(['seasonId' => $ctx['seasonId'], 'name' => 'Seniors A']);
+        self::assertInstanceOf(Team::class, $seniorsA);
+        $seniorsC = (new Team)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Seniors C')->setSessionsPerWeek(1)
+            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
+        $this->em->persist($seniorsC);
+        $this->em->flush();
+        $this->addMainCoach($ctx, 'Bea', 'Seniors C');
+
+        $reservationOfA = $this->em->getRepository(Reservation::class)->findOneBy(['teamId' => $seniorsA->getId()]);
+        self::assertInstanceOf(Reservation::class, $reservationOfA);
+        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($seniorsC->getId())
+            ->setVenueId($reservationOfA->getVenueId())->setDayOfWeek(2)
+            ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
+
+        if ($declaredGroup) {
+            $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+            $this->em->persist($block);
+            $this->em->flush();
+            foreach ([$seniorsA, $seniorsC] as $member) {
+                $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($member->getId()));
+            }
+        }
+        $this->em->flush();
+
+        return $ctx;
     }
 
     /**

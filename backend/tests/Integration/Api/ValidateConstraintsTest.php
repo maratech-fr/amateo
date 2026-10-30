@@ -722,7 +722,9 @@ final class ValidateConstraintsTest extends WebTestCase
 
     /**
      * La réservation voulue ne crie pas : B tient les U15 pendant que A entraîne les U13. Le récap
-     * reste VALIDE, sans bloqueur ni avertissement, et le mentionne doucement dans `notices`.
+     * reste VALIDE, sans bloqueur ni alerte de conflit, et le mentionne doucement dans `notices`.
+     * L'avertissement de charge sur Alice (`PreSolvePreventionWarnings`, séances contre jours ouverts)
+     * reste permis : il ne dit pas qu'elle est à deux endroits.
      */
     public function testASessionHeldByTheSecondCoachIsANoticeNotAnAlert(): void
     {
@@ -735,7 +737,9 @@ final class ValidateConstraintsTest extends WebTestCase
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertTrue($data['valid']);
         self::assertSame([], $data['blockers']);
-        self::assertStringNotContainsString('Alice', implode(' | ', $data['warnings']), 'aucune alerte sur le coach pris ailleurs');
+        $warnings = implode(' | ', $data['warnings']);
+        self::assertStringNotContainsString('en même temps', $warnings, 'aucune alerte sur le coach pris ailleurs');
+        self::assertStringNotContainsString('Gymnase Deux', $warnings, 'aucun avertissement ne vise la séance tenue par Bruno');
         self::assertCount(1, $data['notices'], 'seule la séance dont un coach est pris ailleurs se mentionne');
         self::assertSame('U15 tenue par Bruno Dupont', $data['notices'][0]['message']);
         self::assertStringContainsString('Gymnase Deux', $data['notices'][0]['place']);
