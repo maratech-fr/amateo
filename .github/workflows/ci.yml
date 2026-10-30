@@ -1053,6 +1053,16 @@ jobs:
       - name: InfeasibilityNamesConflictingRulesTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/InfeasibilityNamesConflictingRulesTest.php --group phase1'
 
+      # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — « la réservation
+      # gagne envers tout, mais c'est la SEULE exception ». Quand un VERROU HARD rend une règle dure
+      # insatisfiable, le moteur PRODUIT le planning et NOMME la règle sacrifiée (rule_sacrificed),
+      # jamais INFEASIBLE muet (cas ALAP) ; SANS verrou en cause, deux règles contradictoires restent
+      # un échec NOMMÉ. De bout en bout contre le VRAI moteur (/generate). Skip propre si l'engine est
+      # absent. Sans ce gate, soit la réservation cesserait d'être souveraine, soit un second « cas
+      # d'exception » s'ouvrirait en silence.
+      - name: SovereignReservationProducesScheduleTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SovereignReservationProducesScheduleTest.php --group phase1'
+
       # Lot 3B PR A (axes constraint semantics + backend↔engine contract) — « un coach suffit »
       # (Q4B) : dès qu'une séance a plusieurs coachs requis, UN coach disponible suffit, l'UNION des
       # coachs des membres servant une séance de BLOC. De bout en bout contre le VRAI moteur

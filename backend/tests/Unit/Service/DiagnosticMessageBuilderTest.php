@@ -189,6 +189,33 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertStringNotContainsString('Contrainte en cause', $result);
     }
 
+    // ── Réservation souveraine (besoin fondateur 2026-10-30) — le GABARIT FR d'une règle sacrifiée ──
+
+    public function testRuleSacrificedComposesAFrenchMessageNamingTheRuleAndTheSovereignReservation(): void
+    {
+        // « La réservation gagne envers tout. » Quand un verrou HARD rend une règle dure
+        // insatisfiable, le moteur émet un diagnostic `rule_sacrificed` ; le backend COMPOSE le texte
+        // gestionnaire (gabarit, pas la phrase exacte) : il NOMME l'équipe + la règle sacrifiée (son
+        // libellé, jamais un identifiant interne) et DIT que c'est une réservation/un verrou qui a
+        // gagné. Message moteur vide ⇒ repli composé localement (patron `shared_block_not_honored`).
+        $diagnostic = [
+            'type' => 'rule_sacrificed',
+            'severity' => 'WARNING',
+            'teamId' => 't1',
+            'message' => '',
+            'causes' => [
+                ['kind' => 'coach_unavailability', 'constraintId' => 'av-1', 'label' => 'Indispo du vendredi', 'count' => 1],
+            ],
+        ];
+
+        $result = $this->builder->build($diagnostic, ['t1' => 'SM1'], [], []);
+
+        self::assertNotSame('Diagnostic inconnu.', $result, 'le gabarit d\'une règle sacrifiée doit exister, pas retomber sur le défaut');
+        self::assertStringContainsString('SM1', $result, 'le message doit NOMMER l\'équipe concernée');
+        self::assertStringContainsString('Indispo du vendredi', $result, 'le message doit NOMMER la règle sacrifiée (son libellé)');
+        self::assertMatchesRegularExpression('/r[ée]servation|verrou/i', $result, 'le message doit dire qu\'une réservation/un verrou a gagné');
+    }
+
     protected function setUp(): void
     {
         $this->builder = new DiagnosticMessageBuilder;

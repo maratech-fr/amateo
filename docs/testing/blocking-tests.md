@@ -315,4 +315,18 @@ seul `testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothin
 aussi des tests non bloquants]. Falsification : désactiver `ownedTeam` doit rougir ce gate. Sans lui,
 un élargissement du canal fuiterait une équipe étrangère dans un bloc en passant tous les checks
 requis de `main`).
+`CrossStack/SovereignReservationProducesScheduleTest` (axes *generation pipeline* + *constraint
+semantics* + *backend↔engine contract*, besoin fondateur 2026-10-30, amendement ADR-0001 — « la
+réservation gagne envers tout, mais c'est la SEULE exception »). De bout en bout contre le VRAI
+moteur (`/generate`), payload à la main : (1) RÉSERVATION SOUVERAINE — un bloc mutualisé dont la
+SEULE case commune est RÉSERVÉE HARD par une équipe TIERCE sort aujourd'hui INFEASIBLE muet ; la
+feature PRODUIT le planning (`completed`), pose la réservation, et NOMME le bloc sacrifié
+(diagnostic `rule_sacrificed`, severity WARNING) — TÉMOIN DE CAUSE : le MÊME décor SANS la
+réservation place le bloc, zéro sacrifice ; (2) LA SEULE EXCEPTION — sans verrou en cause, deux
+règles DURES contradictoires (coach indispo vendredi + vendredi imposé, gymnase ouvert le vendredi
+seulement) restent un ÉCHEC NOMMÉ (`failed` + `diag-infeasible`), jamais un `rule_sacrificed`
+(doublon ASSUMÉ, point sensible solveur, de {@see InfeasibilityNamesConflictingRulesTest} — ici
+l'angle est « la réservation est la SEULE exception »). Skip propre si l'engine est absent. Sans ce
+gate, soit la réservation cesserait d'être souveraine (INFEASIBLE muet revenu), soit un second
+« cas d'exception » s'ouvrirait en silence.
 Detail: `docs/testing/testing-strategy.md`.
