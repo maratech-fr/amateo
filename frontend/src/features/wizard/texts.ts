@@ -140,7 +140,7 @@ export const WIZARD_TEXTS = {
   associateVenueConfirm: "Associer",
   dissociateVenueButton: (venue: string) => `Dissocier « ${venue} » de sa salle FFBB`,
   dissociateVenueTitle: (venue: string) => `Dissocier « ${venue} » de sa salle FFBB ?`,
-  dissociateVenueDescription: "Seul le nom reste : le numéro fédéral, l'adresse et la position GPS sont effacés, à ressaisir.",
+  dissociateVenueDescription: "Seul le nom reste : le numéro fédéral, l'adresse et la position GPS sont effacés, à ressaisir. Les temps de trajet de ce gymnase, saisies manuelles comprises, seront effacés et ne reviendront pas à l'identique avec Annuler.",
   dissociateVenueConfirm: "Dissocier",
   venueDissociated: (venue: string) => `« ${venue} » dissocié de sa salle FFBB.`,
   undoAction: "Annuler",
