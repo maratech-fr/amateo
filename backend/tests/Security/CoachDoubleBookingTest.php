@@ -251,6 +251,14 @@ final class CoachDoubleBookingTest extends KernelTestCase
         $ctx = $this->seed(distinctSecondCoach: true);
         $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
         $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue1'], 2, '17:00', 90);
+        // Même case : seul un groupe DÉCLARÉ prête ses coachs (décision fondateur 2026-10-30).
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $this->em->persist($block);
+        $this->em->flush();
+        foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+        }
+        $this->em->flush();
         $maximeOff = $this->unavailability($ctx, ['unavailableDays' => [2]]); // Maxime (teamA) bloqué mardi
 
         self::assertSame(

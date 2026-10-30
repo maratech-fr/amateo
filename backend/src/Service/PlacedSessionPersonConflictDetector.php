@@ -9,6 +9,7 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
@@ -129,7 +130,12 @@ final class PlacedSessionPersonConflictDetector
             $this->entityManager->getRepository(Constraint::class)->findBy($scope),
         );
         $coachBookings = $this->coachBookings($slots, $sessionCoachesByTeam);
-        $unheld = $this->unheldSlots($slots, $sessionCoachesByTeam, $playersByTeam, $blockedByCoach);
+        // Les groupes déclarés du socle : seul le plan SEASON est scanné ici.
+        $groups = [];
+        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy($scope + ['schedulePlanId' => null]) as $member) {
+            $groups[$member->getBlockId()][] = $member->getTeamId();
+        }
+        $unheld = $this->unheldSlots($slots, $sessionCoachesByTeam, $playersByTeam, $blockedByCoach, array_values($groups));
 
         $names = $this->displayNames($pairs, $slots);
         $conflicts = [];
@@ -174,10 +180,11 @@ final class PlacedSessionPersonConflictDetector
      * @param array<string, list<string>>                        $sessionCoachesByTeam
      * @param array<string, list<string>>                        $playersByTeam
      * @param array<string, list<array{0: int, 1: int, 2: int}>> $blockedByCoach
+     * @param list<list<string>>                                 $groups
      *
      * @return array<string, true>
      */
-    private function unheldSlots(array $slots, array $sessionCoachesByTeam, array $playersByTeam, array $blockedByCoach): array
+    private function unheldSlots(array $slots, array $sessionCoachesByTeam, array $playersByTeam, array $blockedByCoach, array $groups): array
     {
         $coaches = $sessionCoachesByTeam;
         $playing = [];
@@ -194,7 +201,7 @@ final class PlacedSessionPersonConflictDetector
             }
         }
 
-        return CoachDoubleBookingDetector::holdsByCluster($sessions, $coaches, $blockedByCoach, $playing)['unheld'];
+        return CoachDoubleBookingDetector::holdsByCluster($sessions, $coaches, $blockedByCoach, $playing, $groups)['unheld'];
     }
 
     /**

@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\CalendarEntry;
+use App\Entity\CoachPlayerMembership;
+use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Enum\ConstraintFamily;
 use App\Enum\LockLevel;
+use App\Enum\TeamCoachRole;
 use App\Exception\DurationMismatchException;
 use App\Exception\EngineTimeoutException;
 use App\Exception\EvictTargetIsGroupException;
@@ -255,6 +259,7 @@ final class MoveSlotService
                 // LA RÈGLE : la durée écrite est TOUJOURS celle de l'emplacement de destination, jamais
                 // celle que la source portait — sinon la séance emporterait sa taille d'un gymnase à l'autre.
                 ->setDurationMinutes($durationMinutes);
+            $this->recomputeStoredCoaches($schedule, [$slot]);
             $schedule->setManuallyEditedSinceGeneration(true);
             $this->entityManager->flush();
 
@@ -563,6 +568,7 @@ final class MoveSlotService
                     ->setVenueId($venueId)
                     ->setDurationMinutes($durationMinutes);
             }
+            $this->recomputeStoredCoaches($schedule, $sources);
             $schedule->setManuallyEditedSinceGeneration(true);
             $this->entityManager->flush();
 
@@ -788,6 +794,7 @@ final class MoveSlotService
                     ->setVenueId($sourceCaseVenue)
                     ->setDurationMinutes($sourceWindowDuration);
             }
+            $this->recomputeStoredCoaches($schedule, [...$sources, ...$targets]);
             $schedule->setManuallyEditedSinceGeneration(true);
             $this->entityManager->flush();
 
@@ -795,6 +802,61 @@ final class MoveSlotService
 
             return $response;
         });
+    }
+
+    /**
+     * Après un déplacement, plus de nom périmé : le coach stocké redevient le premier de l'équipe, ou
+     * celui qu'imposent les autres séances à l'arrivée (« tant qu'un coach tient la séance »). Une
+     * équipe sans coach principal garde ce qu'elle a. Une séance sans coach stocké occupe le premier
+     * de son équipe, comme à l'affichage.
+     *
+     * @param list<ScheduleSlotTemplate> $moved
+     */
+    private function recomputeStoredCoaches(Schedule $schedule, array $moved): void
+    {
+        $scope = ['clubId' => $schedule->getClubId(), 'seasonId' => $schedule->getSeasonId()];
+        $coachesByTeam = [];
+        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy($scope) as $link) {
+            if (TeamCoachRole::MAIN === $link->getRole()) {
+                $coachesByTeam[$link->getTeamId()][] = $link->getCoachId();
+            }
+        }
+        $playersByTeam = [];
+        foreach ($this->entityManager->getRepository(CoachPlayerMembership::class)->findBy($scope) as $membership) {
+            if ($membership->getIsActive()) {
+                $playersByTeam[$membership->getTeamId()][] = $membership->getCoachId();
+            }
+        }
+        $blocked = CoachDoubleBookingDetector::blockedIntervalsByCoach($this->entityManager->getRepository(Constraint::class)->findBy($scope));
+        /** @var list<ScheduleSlotTemplate> $slots */
+        $slots = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $schedule->getId()]);
+
+        $bookingOf = static fn (ScheduleSlotTemplate $slot): array => [
+            'teamId' => $slot->getTeamId(),
+            'venueId' => $slot->getVenueId(),
+            'dayOfWeek' => $slot->getDayOfWeek(),
+            'startMinutes' => (int) $slot->getStartTime()->format('H') * 60 + (int) $slot->getStartTime()->format('i'),
+            'durationMinutes' => $slot->getDurationMinutes(),
+        ];
+        $playing = [];
+        foreach ($slots as $slot) {
+            foreach ($playersByTeam[$slot->getTeamId()] ?? [] as $playerId) {
+                $playing[$playerId][] = $bookingOf($slot);
+            }
+        }
+        foreach ($moved as $slot) {
+            $coachIds = $coachesByTeam[$slot->getTeamId()] ?? [];
+            if ([] === $coachIds) {
+                continue;
+            }
+            $others = [];
+            foreach ($slots as $other) {
+                if ($other !== $slot) {
+                    $others[] = ['coachId' => $other->getCoachId() ?? ($coachesByTeam[$other->getTeamId()][0] ?? null)] + $bookingOf($other);
+                }
+            }
+            $slot->setCoachId(CoachDoubleBookingDetector::storedCoachFor($bookingOf($slot), $coachIds, $others, $blocked, $playing));
+        }
     }
 
     /**

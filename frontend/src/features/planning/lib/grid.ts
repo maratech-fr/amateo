@@ -44,6 +44,7 @@ export function parseTimeToMinutes(time: string): number {
 // D-20 : le formateur vit en `shared/lib/time` — cette copie ne clampait pas et rendait « 25:15 ».
 import { formatMinutes, parseTime } from "@/shared/lib/time";
 import { coachFullName, coachNameParts } from "@/shared/lib/coachName";
+import { PLANNING_TEXTS } from "../texts";
 import { assignLanes } from "@/shared/lib/gridLayout";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 
@@ -93,6 +94,8 @@ export interface Lookups {
   coaches: Map<string, Coach>;
   /** teamId → main coachId. The engine leaves slot.coachId empty; the coach is the team's coach. */
   teamCoach: Map<string, string>;
+  /** teamId → tous ses coachs principaux, dans l'ordre : le planning les affiche tous (« B / E »). */
+  teamMainCoaches?: Map<string, string[]>;
   /** teamId → coachIds that are PLAYERS of the team (a coach can also play elsewhere). */
   teamPlayerCoaches: Map<string, string[]>;
   /**
@@ -137,6 +140,9 @@ export function resourceKeysForSlot(slot: Slot, viewMode: ViewMode, lookups: Loo
   if (null !== main) {
     keys.add(main);
   }
+  for (const coach of lookups.teamMainCoaches?.get(slot.teamId) ?? []) {
+    keys.add(coach);
+  }
   for (const player of lookups.teamPlayerCoaches.get(slot.teamId) ?? []) {
     keys.add(player);
   }
@@ -154,6 +160,22 @@ function coachName(coaches: Map<string, Coach>, coachId: string | null): string 
   // D-33 : formatage partagé — cette version omettait le `.trim()`, laissant un espace
   // final visible quand le coach n'a pas de nom de famille.
   return coachFullName(coach);
+}
+
+/**
+ * Tous les coachs de l'équipe (« B / E ») ; celui qui tient n'est nommé que s'il est imposé, c'est-à-dire
+ * si le coach stocké n'est pas le premier de l'équipe (décision fondateur 2026-10-30).
+ */
+function coachLabelOf(slot: Slot, lookups: Lookups): string {
+  const all = lookups.teamMainCoaches?.get(slot.teamId) ?? [];
+  if (all.length < 2) {
+    return coachName(lookups.coaches, slotCoachId(slot, lookups));
+  }
+  if (null !== slot.coachId && slot.coachId !== all[0]) {
+    return PLANNING_TEXTS.heldBy(coachName(lookups.coaches, slot.coachId));
+  }
+
+  return all.map((id) => coachName(lookups.coaches, id)).join(" / ");
 }
 
 function resourceLabel(id: string, viewMode: ViewMode, lookups: Lookups): string {
@@ -453,7 +475,8 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
     const ctcPartner = team?.ctcPartner ?? null;
     const venueLabel = venue?.name ?? "Gymnase ?";
     const mainCoachId = slotCoachId(slot, lookups);
-    const coachLabel = coachName(lookups.coaches, mainCoachId);
+    const coachLabel = coachLabelOf(slot, lookups);
+    const allCoaches = lookups.teamMainCoaches?.get(slot.teamId) ?? [];
     const locked = "NONE" !== slot.lockLevel;
     const label = labelOf(slot);
 
@@ -526,7 +549,7 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
         secondaryLabel = venueLabel;
         // P4-311 — accord avec le genre du coach de la COLONNE (`key`) : il joue dans
         // cette équipe sans en être l'entraîneur principal.
-        roleTag = key !== mainCoachId ? playerWord(lookups.coaches.get(key)?.gender ?? "UNSPECIFIED") : null;
+        roleTag = key !== mainCoachId && !allCoaches.includes(key) ? playerWord(lookups.coaches.get(key)?.gender ?? "UNSPECIFIED") : null;
       } else if ("equipe" === columnView) {
         primaryLabel = venueLabel;
         secondaryLabel = coachLabel;
@@ -552,7 +575,7 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
         coachLabel,
         // D5 — la sous-ligne porte le coach dans les vues gymnase/équipe (jamais en vue coach, où
         // elle montre le gymnase). `null` quand l'équipe n'a pas de coach : rien à couper en deux.
-        coachName: ("gymnase" === columnView || "equipe" === columnView) && null !== mainCoachId ? coachNameParts(lookups.coaches.get(mainCoachId)) : null,
+        coachName: ("gymnase" === columnView || "equipe" === columnView) && null !== mainCoachId && allCoaches.length < 2 ? coachNameParts(lookups.coaches.get(mainCoachId)) : null,
         day: slot.dayOfWeek,
         startLabel: formatMinutes(start),
         endLabel: formatMinutes(start + slot.durationMinutes),
@@ -625,7 +648,7 @@ export function concernedSlots(
   const pinned = null !== pinDay && null !== pinTime && (null !== diagnostic.venueId || null !== diagnostic.coachId || null !== diagnostic.teamId);
   const personMatches = (s: Slot): boolean =>
     null !== diagnostic.coachId &&
-    (slotCoachId(s, lookups) === diagnostic.coachId || (lookups.teamPlayerCoaches.get(s.teamId) ?? []).includes(diagnostic.coachId));
+    (slotCoachId(s, lookups) === diagnostic.coachId || (lookups.teamMainCoaches?.get(s.teamId) ?? []).includes(diagnostic.coachId) || (lookups.teamPlayerCoaches.get(s.teamId) ?? []).includes(diagnostic.coachId));
   const matches = pinned
     ? slots.filter((s) => {
         if (s.dayOfWeek !== pinDay) {

@@ -96,6 +96,9 @@ from .locks import (
 from .locks import (
     _diagnose_soft_lock_moved as _diagnose_soft_lock_moved,
 )
+from .locks import (
+    _diagnose_unheld_locks as _diagnose_unheld_locks,
+)
 from .placement import (
     _DAY_NAMES as _DAY_NAMES,
 )
@@ -180,6 +183,7 @@ def _generate_diagnostics(
         diagnostics.extend(
             _diagnose_locked_structural_conflicts(model_data, slots, team_coach_map or {}, team_player_map or {})
         )
+        diagnostics.extend(_diagnose_unheld_locks(model_data, model, solver))
         diagnostics.extend(_diagnose_unplaced(model_data, slots))
         diagnostics.extend(_diagnose_soft_lock_moved(model_data, slots))
         diagnostics.extend(

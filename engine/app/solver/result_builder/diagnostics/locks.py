@@ -164,6 +164,41 @@ def _diagnose_locked_structural_conflicts(
     return diagnostics
 
 
+def _diagnose_unheld_locks(model_data: Mapping[str, Any] | Any, model: Any, solver: Any) -> list[dict[str, Any]]:
+    """Une séance fixée qu'aucun coach ne peut tenir : les règles dures (repos, trajet, enchaînement,
+    autres séances fixées) n'en laissent aucun. La séance fixée gagne, l'écart est nommé."""
+    team_names = _team_name_map(model_data)
+    venue_names = _venue_name_map(model_data)
+    diagnostics: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for hold in (getattr(model, "lock_holds", None) or {}).values():
+        if id(hold) in seen or solver.Value(hold["unheld"]) != 1:
+            continue
+        seen.add(id(hold))
+        teams = ", ".join(_label(team, team_names) for team in hold["teams"])
+        when = f"{_day_label(hold['day'])} {_time_range(_format_time(hold['start']), hold['end'] - hold['start'])}"
+        diagnostics.append(
+            {
+                "id": f"diag-unheld-lock-{hold['team']}-{hold['day']}-{hold['start']}",
+                "type": "rule_sacrificed",
+                "severity": "WARNING",
+                "causes": [{"kind": "hard_lock", "constraintId": None, "label": None, "count": 1}],
+                "teamId": hold["team"],
+                "venueId": hold["venue"],
+                "dayOfWeek": hold["day"],
+                "startTime": _format_time(hold["start"]),
+                "message": (
+                    f"La séance fixée de {teams} ({_label(hold['venue'], venue_names)}, le {when}) n'a aucun coach "
+                    "disponible : leurs autres séances ou leurs règles les prennent. La séance fixée est tenue, "
+                    "la règle est relâchée."
+                ),
+                "suggestions": ["Déplacez cette séance fixée ou une autre séance de ses coachs."],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+    return diagnostics
+
+
 def _diagnose_soft_lock_moved(
     model_data: Mapping[str, Any] | Any,
     slots: list[dict[str, Any]],

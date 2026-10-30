@@ -24,9 +24,15 @@ from ..model import (
 from .helpers import _find_coach_for_team, _get
 
 
-def _first_holder(holders: Mapping[str, Any], solver: Any) -> str | None:
-    """Le premier coach, dans l'ordre de l'équipe, que la solution désigne pour tenir la séance."""
-    return next((coach_id for coach_id, literal in holders.items() if solver.Value(literal) == 1), None)
+def _first_holder(holders: Mapping[str, Any], model: Any, solver: Any) -> str | None:
+    """Le premier coach, dans l'ordre de l'équipe, qui tient la séance. Les tenues arrêtées par
+    ``main._settle_holds`` priment sur le solve : le coach stocké n'est pas un choix du solveur."""
+    settled = getattr(model, "settled_holds", None) or {}
+
+    def _held(literal: Any) -> bool:
+        return bool((settled[literal.Index()] if literal.Index() in settled else solver.Value(literal)) == 1)
+
+    return next((coach_id for coach_id, literal in holders.items() if _held(literal)), None)
 
 
 def _lock_holder(locked: Mapping[str, Any], model: Any, solver: Any, solved: bool) -> str | None:
@@ -38,7 +44,7 @@ def _lock_holder(locked: Mapping[str, Any], model: Any, solver: Any, solved: boo
     day = int(_get(locked, "day_of_week", "dayOfWeek"))
     hold = _lock_hold(model, team_id, str(_get(locked, "venue_id", "venueId")), day, start, end)
     if hold is not None:
-        holder = _first_holder(hold["vars"], solver) if solved else None
+        holder = _first_holder(hold["vars"], model, solver) if solved else None
         return holder or str(hold["named"])
     team_coaches = coaches.get(team_id) or []
     return str(team_coaches[0]) if team_coaches else None
@@ -48,7 +54,7 @@ def _session_holder(team_id: str, venue_id: str, day: int, start: str, model: An
     """Le coach qui tient une séance posée : le sien, ou, en séance de bloc, celui d'un autre membre."""
     holds = getattr(model, "hold_vars", None) or {}
     var = model.x[(team_id, venue_id, day, start)]
-    holder = _first_holder(holds.get(_hold_key(var)) or {}, solver)
+    holder = _first_holder(holds.get(_hold_key(var)) or {}, model, solver)
     if holder is not None:
         return holder
     blocks = getattr(model, "shared_block_case_bvars", {}).get((venue_id, f"{day}:{start}"), ())
@@ -57,9 +63,21 @@ def _session_holder(team_id: str, venue_id: str, day: int, start: str, model: An
             continue
         for member in sorted(members):
             partner_var = model.x.get((member, venue_id, day, start))
-            holder = _first_holder(holds.get(_hold_key(partner_var)) or {}, solver) if partner_var is not None else None
+            partner_holds = holds.get(_hold_key(partner_var)) or {} if partner_var is not None else {}
+            holder = _first_holder(partner_holds, model, solver)
             if holder is not None:
                 return holder
+        # Un membre VERROUILLÉ de la séance commune la tient.
+        for locked in getattr(model, "locked_slots", ()) or ():
+            if (
+                str(locked["team_id"]) in members
+                and str(locked["venue_id"]) == venue_id
+                and int(locked["day_of_week"]) == day
+                and str(locked["start_time"])[:5] == start[:5]
+            ):
+                holder = _lock_holder(locked, model, solver, True)
+                if holder is not None:
+                    return holder
     return None
 
 

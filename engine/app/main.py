@@ -170,6 +170,7 @@ _verdict_semaphore = asyncio.Semaphore(settings.max_concurrent_verdicts)
 # Un fils tué (OOM `mem_limit`) casse le pool (`BrokenProcessPool`) : on le RECRÉE pour que
 # les placements suivants repartent sur un pool sain, et on remonte une erreur claire.
 _PLACEMENT_MP_CONTEXT = multiprocessing.get_context("spawn")
+HOLD_SETTLE_MAX_SECONDS = 5.0
 _placement_executor: ProcessPoolExecutor | None = None
 
 
@@ -870,6 +871,7 @@ def _solve(
             *proximity_terms,
             # Plancher levé : l'équipe s'approche de son minimum tant qu'une case le permet.
             *((var, RELAXED_FLOOR_PLACEMENT_WEIGHT) for var in model.relaxed_floor_vars),
+            *model.lock_hold_penalties,
         ],
         # A person chains a back-to-back pair as coach OR as player of the team;
         # the map is built once from the constraint links (l.446) and the chaining
@@ -982,7 +984,39 @@ def _solve(
                 + sum(int(weight) * int(solver.Value(var)) for var, weight in objective_stats.chaining_terms)
             )
 
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        _settle_holds(model, solver, objective_stats.placement_expression, input_data.solver_seed)
+
     return status, solver, model, conflicts, solve_stats
+
+
+def _settle_holds(model: ScheduleCpModel, solver: cp_model.CpSolver, placement: Any, seed: int) -> None:
+    """Le coach stocké est STABLE : le premier coach de l'équipe, sauf si une règle dure en impose un
+    autre. Le placement est figé ; une courte résolution sur une COPIE du modèle choisit les tenues, sans
+    toucher à l'objectif ni au score. Rien à choisir (aucun co-coach) : aucun solve, chemin byte-identique.
+    Sans réponse dans le budget, les tenues du solve principal restent."""
+    groups = [*model.hold_vars.values(), *(hold["vars"] for hold in model.lock_holds.values())]
+    ranked = {
+        literal.Index(): (literal, len(holders) - rank)
+        for holders in groups
+        if len(holders) > 1
+        for rank, literal in enumerate(holders.values())
+    }
+    if ranked:
+        clone = cast(Any, model).clone()
+        for var in model.x.values():
+            clone.Add(var == solver.Value(var))
+        for hold in model.lock_holds.values():
+            clone.Add(hold["unheld"] == solver.Value(hold["unheld"]))
+        if not isinstance(placement, int):
+            clone.Add(placement >= solver.Value(placement))
+        clone.Maximize(sum(weight * literal for literal, weight in ranked.values()))
+        settler = cp_model.CpSolver()
+        settler.parameters.max_time_in_seconds = HOLD_SETTLE_MAX_SECONDS
+        settler.parameters.random_seed = seed
+        settler.parameters.num_search_workers = 1
+        if settler.Solve(clone) in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            model.settled_holds = {index: int(settler.Value(literal)) for index, (literal, _w) in ranked.items()}
 
 
 # Les règles de DEMANDE (« il faut une séance ICI ») que le best-effort peut lever. Les règles de

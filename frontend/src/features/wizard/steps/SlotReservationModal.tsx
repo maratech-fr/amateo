@@ -16,7 +16,7 @@ import { parseTime } from "@/shared/lib/time";
 import type { Closure } from "@/features/cockpit/api";
 
 import type { Coach, PriorityTier, Reservation, SharedTrainingBlock, Team, TeamCoach, TeamSoloBudget, Venue, VenueTrainingSlot, VenueTravelTime } from "../api";
-import { conflictingReservation, lateArrivalTolerated, mainCoachByTeam } from "../lib/coachDoubleBooking";
+import { blockedIntervalsByCoach, conflictingReservation, lateArrivalTolerated, mainCoachByTeam } from "../lib/coachDoubleBooking";
 import { dayLabel, hhmm } from "../lib/days";
 import { closureLabel } from "../lib/venueClosures";
 import { offerableGroups, postedGroupOnSlot } from "../lib/groupReservation";
@@ -27,6 +27,8 @@ import { WIZARD_TEXTS } from "../texts";
 
 /** Préfixe des valeurs de la section « Entraînements mutualisés » du sélecteur (P2-51). */
 const BLOCK_VALUE_PREFIX = "block:";
+
+type CoachPlayerLink = { teamId: string; coachId: string; isActive: boolean };
 
 interface Props {
   slot: VenueTrainingSlot;
@@ -60,6 +62,9 @@ interface Props {
   /** P2-51 — les BLOCS de mutualisation de la PORTÉE courante, posables comme une équipe à part
    *  entière : une entrée par bloc, qui réserve la case pour tous ses membres. */
   sharedTrainingBlocks?: SharedTrainingBlock[];
+  /** Les rôles de joueur et les contraintes : la modale juge comme le récap et le radar. */
+  coachPlayers?: CoachPlayerLink[];
+  constraints?: Parameters<typeof blockedIntervalsByCoach>[0];
   /** Chantier H — la matrice de trajet entre gymnases, servie au wizard : la modale calcule le
    *  retard d'arrivée (fin de la séance quittée + barème − début de celle rejointe) pour PROPOSER
    *  de le tolérer au lieu de refuser durement. Barème à vélo par défaut (le wizard n'a pas le
@@ -113,6 +118,8 @@ export function SlotReservationModal({
   venueClosures = [],
   venueCanSplit,
   sharedTrainingBlocks = [],
+  coachPlayers = [],
+  constraints = [],
   venueTravelTimes = [],
   teamSoloBudgets,
   budgetsPending,
@@ -147,6 +154,14 @@ export function SlotReservationModal({
   const teamById = new Map(teams.map((t) => [t.id, t]));
   const venueName = new Map(venues.map((v) => [v.id, v.name]));
   const coachByTeam = mainCoachByTeam(teamCoaches ?? []);
+  // La modale juge comme le récap et le radar : indisponibilités, rôles de joueur, groupes déclarés.
+  const playersByTeam = new Map<string, string[]>();
+  for (const link of coachPlayers) {
+    if (link.isActive) {
+      playersByTeam.set(link.teamId, [...(playersByTeam.get(link.teamId) ?? []), link.coachId]);
+    }
+  }
+  const holdContext = { blockedByCoach: blockedIntervalsByCoach(constraints), playersByTeam, groups: sharedTrainingBlocks.map((block) => block.teamIds) };
   // Chantier H — adjoints (ASSISTANT) par équipe : « a-t-on un adjoint qui peut ouvrir la séance
   // rejointe en retard ? » (la disponibilité fine est vérifiée serveur). Barème de trajet à vélo.
   const assistantsByTeam = new Map<string, string[]>();
@@ -295,7 +310,7 @@ export function SlotReservationModal({
       return;
     }
     const candidate = { teamId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes };
-    const clash = conflictingReservation(candidate, draftReservations, coachByTeam);
+    const clash = conflictingReservation(candidate, draftReservations, coachByTeam, holdContext);
     if (null !== clash) {
       // Chantier H — le dédoublement est-il un RETARD TOLÉRABLE que l'adjoint peut couvrir ? On
       // propose alors de le tolérer plutôt que de refuser durement.

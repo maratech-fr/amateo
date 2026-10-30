@@ -132,11 +132,18 @@ function overlaps(a: PlayingBooking, b: PlayingBooking): boolean {
   return a.dayOfWeek === b.dayOfWeek && a.startMinutes < b.startMinutes + b.durationMinutes && b.startMinutes < a.startMinutes + a.durationMinutes;
 }
 
-/** Les coachs de l'équipe, puis ceux des autres équipes de la MÊME case (séance commune). */
-function holdCandidates(session: HoldSession, sessions: HoldSession[], coaches: Record<string, string[]>): string[] {
+function sameGroup(teamA: string, teamB: string, groups: string[][]): boolean {
+  return teamA === teamB || groups.some((group) => group.includes(teamA) && group.includes(teamB));
+}
+
+/**
+ * Les coachs de l'équipe, puis ceux des autres équipes de son groupe DÉCLARÉ sur la MÊME case.
+ * Même case sans groupe = chacun ses coachs (décision fondateur 2026-10-30).
+ */
+function holdCandidates(session: HoldSession, sessions: HoldSession[], coaches: Record<string, string[]>, groups: string[][]): string[] {
   const candidates = [...(coaches[session.teamId] ?? [])];
   for (const other of sessions) {
-    if (other.venueId === session.venueId && other.dayOfWeek === session.dayOfWeek && other.startMinutes === session.startMinutes) {
+    if (other.venueId === session.venueId && other.dayOfWeek === session.dayOfWeek && other.startMinutes === session.startMinutes && sameGroup(session.teamId, other.teamId, groups)) {
       candidates.push(...(coaches[other.teamId] ?? []));
     }
   }
@@ -156,25 +163,28 @@ export function holdersFor(
   mainCoachesByTeam: Record<string, string[]>,
   blockedByCoach: Record<string, [number, number, number][]> = {},
   playingByCoach: Record<string, PlayingBooking[]> = {},
+  groups: string[][] = [],
 ): Record<string, string> | null {
   const required: HoldSession[] = [];
   const candidates = new Map<string, string[]>();
   for (const session of sessions) {
-    const own = holdCandidates(session, sessions, mainCoachesByTeam);
+    const own = holdCandidates(session, sessions, mainCoachesByTeam, groups);
     if (0 === own.length) {
       continue; // aucun coach principal : la séance n'exige personne.
     }
     const available = own.filter(
       (coachId) =>
         !(blockedByCoach[coachId] ?? []).some(
-          ([day, from, until]) => day === session.dayOfWeek && from < session.startMinutes + session.durationMinutes && session.startMinutes < until,
+          // Même règle que le moteur : l'indisponibilité se teste au DÉBUT de la séance.
+          ([day, from, until]) => day === session.dayOfWeek && from <= session.startMinutes && session.startMinutes < until,
         ),
     );
     const free = 0 === available.length ? own : available; // indisponible mais seul : avertissement, jamais bloqueur.
     required.push(session);
     candidates.set(
       session.id,
-      free.filter((coachId) => !(playingByCoach[coachId] ?? []).some((game) => game.venueId !== session.venueId && overlaps(session, game))),
+      // Même règle que le moteur : jouer occupe, même gymnase compris (sauf dans sa propre équipe).
+      free.filter((coachId) => !(playingByCoach[coachId] ?? []).some((game) => game.teamId !== session.teamId && overlaps(session, game))),
     );
   }
 
@@ -210,7 +220,7 @@ export function holdersFor(
  * l'équipe, le gymnase et l'heure — « Emerick coache déjà les U15F à 17h à Debarros ».
  * Le geste n'est refusé que si, autour de lui, une séance n'a plus personne pour la tenir.
  */
-export function conflictingReservation(candidate: Candidate, reservations: Reservation[], coachByTeam: Map<string, string[]>): Reservation | null {
+export function conflictingReservation(candidate: Candidate, reservations: Reservation[], coachByTeam: Map<string, string[]>, context: HoldContext = {}): Reservation | null {
   const coachIds = coachByTeam.get(candidate.teamId);
   if (undefined === coachIds || 0 === coachIds.length) {
     return null; // pas de coach MAIN : personne à dédoubler
@@ -220,13 +230,25 @@ export function conflictingReservation(candidate: Candidate, reservations: Reser
     return null; // heure illisible : on ne peut rien affirmer, le récap tranchera (PR B)
   }
   const here: HoldSession = { ...candidate, id: "candidate", startMinutes: start };
+  const groups = context.groups ?? [];
 
   const others: { reservation: Reservation; session: HoldSession }[] = [];
+  const playingByCoach: Record<string, PlayingBooking[]> = {};
+  for (const player of context.playersByTeam?.get(candidate.teamId) ?? []) {
+    (playingByCoach[player] ??= []).push(here);
+  }
   reservations.forEach((reservation, index) => {
     const otherStart = minutes(reservation.startTime);
     // Lot 4bis — un créneau libre (teamId null) n'a pas de coach : jamais un double-booking.
-    if (null !== reservation.teamId && null !== otherStart && coachByTeam.has(reservation.teamId)) {
-      others.push({ reservation, session: { ...reservation, id: String(index), teamId: reservation.teamId, startMinutes: otherStart } });
+    if (null === reservation.teamId || null === otherStart) {
+      return;
+    }
+    const session: HoldSession = { ...reservation, id: String(index), teamId: reservation.teamId, startMinutes: otherStart };
+    for (const player of context.playersByTeam?.get(reservation.teamId) ?? []) {
+      (playingByCoach[player] ??= []).push(session);
+    }
+    if (coachByTeam.has(reservation.teamId)) {
+      others.push({ reservation, session });
     }
   });
 
@@ -236,19 +258,59 @@ export function conflictingReservation(candidate: Candidate, reservations: Reser
   for (let index = 0; index < cluster.length; index += 1) {
     const current = cluster[index] as HoldSession;
     for (const { session } of others) {
-      if (!cluster.includes(session) && overlaps(current, session) && teamsShareMainCoach(coachesOf(current), coachesOf(session))) {
+      const linked = teamsShareMainCoach(coachesOf(current), coachesOf(session)) || (current.venueId === session.venueId && current.startMinutes === session.startMinutes && sameGroup(current.teamId, session.teamId, groups));
+      if (!cluster.includes(session) && overlaps(current, session) && linked) {
         cluster.push(session);
       }
     }
   }
-  if (null !== holdersFor(cluster, Object.fromEntries(coachByTeam))) {
+  if (null !== holdersFor(cluster, Object.fromEntries(coachByTeam), context.blockedByCoach ?? {}, playingByCoach, groups)) {
     return null;
   }
 
   return (
-    others.find(
-      ({ session }) =>
-        teamsShareMainCoach(coachIds, coachesOf(session)) && bookingsCollide({ ...here, coachId: "" }, { ...session, coachId: "" }),
-    )?.reservation ?? null
+    others.find(({ session }) => teamsShareMainCoach(coachIds, coachesOf(session)) && bookingsCollide({ ...here, coachId: "" }, { ...session, coachId: "" }))?.reservation ?? null
   );
+}
+
+/** Ce que la modale sait en plus des liens, pour juger comme le récap et le radar. */
+export interface HoldContext {
+  blockedByCoach?: Record<string, [number, number, number][]>;
+  playersByTeam?: Map<string, string[]>;
+  groups?: string[][];
+}
+
+/** coachId → intervalles bloqués (jour, de, à). Miroir de `CoachDoubleBookingDetector::blockedIntervalsByCoach`. */
+export function blockedIntervalsByCoach(constraints: { family: string; isActive: boolean; scopeTargetId: string | null; config: Record<string, unknown> }[]): Record<string, [number, number, number][]> {
+  const toMinutes = (value: unknown, fallback: number): number => ("string" === typeof value ? (parseTime(value) ?? fallback) : fallback);
+  const days = (value: unknown): number[] => (Array.isArray(value) ? value.map(Number).filter((day) => !Number.isNaN(day)) : []);
+  const blocked: Record<string, [number, number, number][]> = {};
+  for (const constraint of constraints) {
+    if ("COACH_AVAILABILITY" !== constraint.family || !constraint.isActive || null === constraint.scopeTargetId) {
+      continue;
+    }
+    const intervals = (blocked[constraint.scopeTargetId] ??= []);
+    const from = toMinutes(constraint.config.fromTime, 0);
+    const until = toMinutes(constraint.config.untilTime, 1440);
+    for (const day of days(constraint.config.unavailableDays)) {
+      intervals.push([day, from, until]);
+    }
+    const available = days(constraint.config.availableDays);
+    if (0 < available.length) {
+      for (let day = 1; day <= 7; day += 1) {
+        if (!available.includes(day)) {
+          intervals.push([day, 0, 1440]);
+          continue;
+        }
+        if (from > 0) {
+          intervals.push([day, 0, from]);
+        }
+        if (until < 1440) {
+          intervals.push([day, until, 1440]);
+        }
+      }
+    }
+  }
+
+  return blocked;
 }

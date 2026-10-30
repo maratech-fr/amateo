@@ -69,6 +69,10 @@ class ScheduleCpModel(cp_model.CpModel):
         # Maison de la pose : ``constraints.structural.holding``.
         self.hold_vars: dict[Any, dict[str, Any]] = {}
         self.lock_holds: dict[tuple[str, str, int, int, int], dict[str, Any]] = {}
+        # Le malus de chaque verrou resté sans tenue, replié dans le placement par `_solve`.
+        self.lock_hold_penalties: list[tuple[Any, int]] = []
+        # La valeur finale des tenues (index de littérale → 0/1), arrêtée par `main._settle_holds`.
+        self.settled_holds: dict[int, int] = {}
         # P2-51 (comblement) — équipe → ENSEMBLE de ses partenaires de bloc (co-membres d'un même
         # ``sharedBlocks``). Posée par ``build_model`` depuis le payload, lue par la capacité gymnase
         # (``add_room_at_most_one``) : un partenaire ÉPINGLÉ sur une case laisse le membre LIBRE du

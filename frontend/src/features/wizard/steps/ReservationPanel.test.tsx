@@ -13,6 +13,8 @@ vi.mock("../queries", () => ({
   useVenueTravelTimes: () => ({ data: [] }),
   useTeamSoloBudgets: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }),
   useWizardTeamCoaches: () => ({ data: new Map(), isPending: false, isError: false, refetch: vi.fn() }),
+  useWizardCoachPlayers: () => ({ data: [] }),
+  useWizardConstraints: () => ({ data: [] }),
   useWizardCoaches: () => ({ data: [] }),
 }));
 

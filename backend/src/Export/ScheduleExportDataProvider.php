@@ -106,6 +106,7 @@ final class ScheduleExportDataProvider
         // ⚠ On N'ordonne PAS via `CoachDoubleBookingDetector` (sa résolution « 1er MAIN » relève d'un
         // autre chantier) : la requête ordonnée vit ici, pour l'export.
         $teamMainCoachIds = [];
+        $teamCoachIds = [];
         foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(
             ['clubId' => $clubId, 'seasonId' => $seasonId, 'role' => TeamCoachRole::MAIN],
             ['id' => 'ASC'],
@@ -114,6 +115,7 @@ final class ScheduleExportDataProvider
             if (!isset($teamMainCoachIds[$teamId])) {
                 $teamMainCoachIds[$teamId] = $link->getCoachId();
             }
+            $teamCoachIds[$teamId][] = $link->getCoachId();
         }
 
         // Defined-but-unfilled venue windows ("créneaux vides"): the same view the
@@ -234,7 +236,7 @@ final class ScheduleExportDataProvider
             $groupLabels[$key] = $label;
         }
 
-        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots, $coachShortNames, $teamMainCoachIds);
+        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots, $coachShortNames, $teamMainCoachIds, $teamCoachIds);
     }
 
     /**

@@ -54,6 +54,8 @@ interface SlotDetailProps {
    *  planning. Absents (défaut) → la description rend le prédicat SEUL, jamais « ? · … ». */
   teamName?: (teamId: string) => string | undefined;
   coachName?: (coachId: string) => string | undefined;
+  /** équipe → tous ses coachs principaux : une contrainte de l'un vaut pour les séances de l'équipe. */
+  teamMainCoaches?: ReadonlyMap<string, readonly string[]>;
   busy: boolean;
   /** F2b : le retour du dernier déplacement (verdict moteur). Défaut = idle. */
   moveState?: MoveFeedback;
@@ -140,13 +142,13 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
 
 const noName = (): string | undefined => undefined;
 
-export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
+export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, teamMainCoaches, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
   // Repliées par défaut : ouvrir un créneau ne doit pas agrandir l'aside (retour fondateur).
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
   const [constraintsOpen, setConstraintsOpen] = useState(false);
 
   const origin = null !== slot.lockOrigin ? LOCK_ORIGIN[slot.lockOrigin] : null;
-  const applicable = applicableConstraints(slot, constraints, tagTeamIds);
+  const applicable = applicableConstraints(slot, constraints, tagTeamIds, teamMainCoaches);
   // Ce que chaque règle FAIT se dérive de sa config ; le gymnase d'une règle FACILITY se nomme
   // depuis les gymnases connus du panneau (introuvable → on retombe sur le nom, pas d'invention).
   const venueNameById = new Map(venues.map((v) => [v.id, v.name]));

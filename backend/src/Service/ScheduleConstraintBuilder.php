@@ -172,8 +172,9 @@ final class ScheduleConstraintBuilder
      * signal « structure modifiée » du plan doivent sortir de la même recette.
      *
      * Elle ignore les `slotTemplates` non HARD : une séance NONE est un RÉSULTAT du solveur, pas une
-     * donnée d'entrée, et l'import la relit à la génération suivante. Le payload lui-même ne change pas
-     * (`/validate-assignments` lit ces séances). Elle ignore aussi `version` : le numéro de contrat
+     * donnée d'entrée, et l'import la relit à la génération suivante. Elle ignore aussi le `coachId` des
+     * séances : c'est un résultat de la tenue, qu'une régénération écrit. Le payload lui-même ne change
+     * pas (`/validate-assignments` lit ces séances). Elle ignore enfin `version` : le numéro de contrat
      * n'est pas de la structure, sinon chaque montée de contrat ferait paraître tous les plannings périmés.
      *
      * @param array<mixed> $payload
@@ -182,10 +183,14 @@ final class ScheduleConstraintBuilder
     {
         unset($payload['version']);
         if (\is_array($payload['slotTemplates'] ?? null)) {
-            $payload['slotTemplates'] = array_values(array_filter(
+            $pins = array_values(array_filter(
                 $payload['slotTemplates'],
                 static fn (mixed $pin): bool => \is_array($pin) && 'HARD' === ($pin['lockLevel'] ?? null),
             ));
+            foreach ($pins as $index => $pin) {
+                unset($pins[$index]['coachId']);
+            }
+            $payload['slotTemplates'] = $pins;
         }
 
         return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
