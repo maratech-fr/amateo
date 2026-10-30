@@ -618,3 +618,21 @@ describe("Listbox — mode multiple (D3, APG listbox multiselect) — ROUGE opti
     expect(within(screen.getByRole("listbox")).getByRole("option", { name: "Alpha" })).toHaveAttribute("aria-selected", "true");
   });
 });
+
+// E10 (lot 2, retours essai fondateur 30/10) — le panneau ne doit plus être CLOUÉ à la largeur du
+// déclencheur (`width: rect.width`, qui tronque les options longues « U21M1 (suggéré)… ») : il porte
+// un `minWidth` = largeur du déclencheur (plancher), AUCUNE `width` fixe, et un `maxWidth` (plafond
+// viewport). jsdom n'a pas de layout → on asserte la FORME du style calculé (le rendu réel = captures).
+// Le `place()` est partagé par les modes simple ET multiple : une assertion suffit à prouver le style.
+describe("Listbox — panneau à largeur fluide (E10)", () => {
+  it("porte minWidth et maxWidth, jamais une width fixe", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(trigger());
+    const panel = list();
+
+    expect(panel.style.width, "pas de width fixe : le panneau s'élargit au contenu, l'option n'est plus tronquée").toBe("");
+    expect(panel.style.minWidth, "minWidth = largeur du déclencheur (plancher)").not.toBe("");
+    expect(panel.style.maxWidth, "plafond viewport pour ne pas déborder").not.toBe("");
+  });
+});

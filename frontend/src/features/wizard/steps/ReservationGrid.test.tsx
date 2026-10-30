@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -75,12 +75,37 @@ describe("ReservationGrid — case bloc-complète (#12)", () => {
       />,
     );
 
-    // Libellé VISIBLE validé par le fondateur.
-    expect(screen.getByText(/Complet · Groupe U15F \+ U18F/)).toBeInTheDocument();
-    // Porté dans le nom accessible du créneau (pour l'AT), et plus jamais le faux « 2/1 ».
-    const cell = screen.getByRole("button", { name: /Complet · Groupe U15F \+ U18F/ });
+    // E11 (lot 2, ADAPTÉ — je suis propriétaire de ce test) — plus de LISTE EN DOUBLE : la 1ʳᵉ ligne
+    // dit « Complet · Groupe » (sans label fourni ici), SANS répéter les équipes ; les équipes ne
+    // paraissent qu'UNE fois, en dessous. ROUGE aujourd'hui : la ligne « Complet » porte « Groupe U15F
+    // + U18F » ET le pied répète « U15F, U18F ».
+    expect(screen.queryByText(/Complet · Groupe U15F/), "E11 : les équipes ne sont PLUS dans la ligne « Complet »").toBeNull();
+    const cell = screen.getByRole("button", { name: /Complet/ });
+    expect(within(cell).getAllByText(/U15F/), "E11 : les équipes n'apparaissent qu'une fois (en dessous)").toHaveLength(1);
     expect(cell).toHaveAccessibleName(expect.not.stringMatching(/2\/1/));
     expect(screen.queryByText("2/1")).toBeNull();
+  });
+
+  it("E11 — la 1ʳᵉ ligne porte le NOM du groupe quand le bloc en a un (« Complet · SM Shooting »)", () => {
+    // Le bloc mutualisé a un `label` en base ; la grille le LIT (contrat : prop `blockLabels`,
+    // slotKey → label — distinct de `slot.groupLabel`, le libellé de CRÉNEAU P2-17). ROUGE
+    // aujourd'hui : la grille ignore le label et affiche « Complet · Groupe U15F + U18F ».
+    const RG = ReservationGrid as unknown as (props: Record<string, unknown>) => ReturnType<typeof ReservationGrid>;
+    render(
+      <RG
+        venue={venue}
+        slots={[monday]}
+        reservedTeams={new Map([["k", ["U15F", "U18F"]]])}
+        slotKeyOf={() => "k"}
+        capacityOf={cap1}
+        onSelectSlot={vi.fn()}
+        blockCompleteSlots={new Set(["k"])}
+        blockLabels={new Map([["k", "SM Shooting"]])}
+      />,
+    );
+
+    expect(screen.getByText(/Complet · SM Shooting/), "E11 : le nom du groupe nomme la case bloc-complète").toBeInTheDocument();
+    expect(screen.queryByText(/Complet · Groupe/), "E11 : avec un label, plus de « Complet · Groupe » générique").toBeNull();
   });
 
   it("CONTRÔLE — sans `blockCompleteSlots`, la même case retombe sur le compteur « 2/1 » (comportement hors bloc inchangé)", () => {

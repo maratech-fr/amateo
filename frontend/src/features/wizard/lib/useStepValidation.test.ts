@@ -187,6 +187,62 @@ describe("computeReservationWarnings (W6)", () => {
   });
 });
 
+// E9 (lot 2, retours essai fondateur 30/10) — l'avertissement de capacité (règle 1) doit IGNORER une
+// case BLOC-COMPLÈTE : les équipes réservées == les membres d'un bloc ⇒ UNE occupation (le groupe), pas
+// « Créneau partagé par N équipes ». `computeReservationWarnings` doit RECEVOIR les blocs (aujourd'hui
+// 4 paramètres, aucun bloc) — on l'appelle via un cast pour que le typage ne masque pas le ROUGE
+// d'assertion (le lint `tsc -b` restera rouge tant que NEO n'aura pas ajouté le 5ᵉ paramètre, attendu
+// sous option A). Miroir déclaré : `blockOccupancy.ts::completeBlockOnCase` ⇄ `ReservationGroupOccupancy`.
+describe("computeReservationWarnings — case bloc-complète = 1 occupation (E9)", () => {
+  interface BlockLike {
+    id: string;
+    teamIds: string[];
+  }
+  const withBlocks = computeReservationWarnings as unknown as (
+    reservations: Reservation[],
+    teams: Team[],
+    venues: Venue[],
+    slots: VenueTrainingSlot[],
+    blocks: BlockLike[],
+  ) => string[];
+
+  const groupeDeTrois = () => {
+    const teams = [team("sf1", "SF1", 2), team("sm1", "SM1", 2), team("sm2", "SM2", 2)];
+    const venues = [venue("v1", "Léon Jouhaux", false)];
+    const slots = [slot("v1", 1, "20:30", 1)]; // capacité 1 : à 3 équipes distinctes, la règle 1 crierait « max 1 »
+    const reservations = [
+      reservation("r1", "sf1", "v1", 1, "20:30"),
+      reservation("r2", "sm1", "v1", 1, "20:30"),
+      reservation("r3", "sm2", "v1", 1, "20:30"),
+    ];
+    return { teams, venues, slots, reservations };
+  };
+
+  it("ne crie plus « partagé par 3 équipes » quand la case porte EXACTEMENT les membres d'un bloc", () => {
+    const { teams, venues, slots, reservations } = groupeDeTrois();
+    const blocks: BlockLike[] = [{ id: "b1", teamIds: ["sf1", "sm1", "sm2"] }];
+    // ROUGE aujourd'hui : la règle 1 compte 3 équipes distinctes et ignore les blocs → avertit à tort.
+    expect(withBlocks(reservations, teams, venues, slots, blocks)).toEqual([]);
+  });
+
+  it("continue d'avertir quand l'ensemble réservé n'est PAS un bloc (témoin — reste vert)", () => {
+    const { teams, venues, slots, reservations } = groupeDeTrois();
+    const blocks: BlockLike[] = [{ id: "b1", teamIds: ["sf1", "sm1"] }]; // bloc à 2, la case en porte 3 → pas bloc-complète
+    const warnings = withBlocks(reservations, teams, venues, slots, blocks);
+    expect(warnings.some((w) => w.includes("Créneau partagé par 3 équipes (max 1)"))).toBe(true);
+  });
+
+  it("blocs IMBRIQUÉS : une case {SF1,SM1,SM2} est complète pour le bloc superset, jamais confondue avec le sous-bloc {SM1,SM2}", () => {
+    const { teams, venues, slots, reservations } = groupeDeTrois();
+    const blocks: BlockLike[] = [
+      { id: "sous", teamIds: ["sm1", "sm2"] },
+      { id: "sur", teamIds: ["sf1", "sm1", "sm2"] },
+    ];
+    // ROUGE aujourd'hui : blocs ignorés → « partagé par 3 équipes ». Le superset complète la case → 1 occupation.
+    expect(withBlocks(reservations, teams, venues, slots, blocks)).toEqual([]);
+  });
+});
+
 describe("useStepValidation — venue slot rule (période : #8 PR-B, la grille est éditable)", () => {
   afterEach(() => {
     // FRT-34 — démonter le hook (TestComponent) AVANT de remettre le store à zéro, sinon le
