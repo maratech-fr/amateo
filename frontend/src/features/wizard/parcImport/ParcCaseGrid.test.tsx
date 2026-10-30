@@ -200,7 +200,7 @@ describe("ParcCaseGrid — une case de mutualisation est marquée (refonte impor
 });
 
 /**
- * Finitions d'interface (essai ALAP, 30/10, points 8 et 9) : ROUGE option A. Contrat pour NEO : une
+ * Finitions d'interface (essai d'onboarding, 30/10, points 8 et 9) : ROUGE option A. Contrat pour NEO : une
  * cellule de décor de la pause porte `data-pause="true"` ; clé `caseTooltip(nom, debut, fin)` à créer
  * dans `texts.ts` (« Nom · début → fin »). La couleur elle-même se juge sur capture (jsdom ne peint rien).
  */

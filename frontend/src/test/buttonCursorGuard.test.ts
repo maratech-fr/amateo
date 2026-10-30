@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Finitions d'interface (essai ALAP, 30/10, point 6) : tout bouton actif montre le curseur « main ».
+ * Finitions d'interface (essai d'onboarding, 30/10, point 6) : tout bouton actif montre le curseur « main ».
  * Tailwind 4 a retiré ce curseur de son reset, d'où une règle de base unique dans `index.css`.
  *
  * Elle vit DANS `@layer base` : hors couche, elle l'emporterait sur les utilitaires de la couche

@@ -54,7 +54,7 @@ describe("Modal — drapeau « Signaler » dans l'en-tête (D14)", () => {
 });
 
 /**
- * Finitions d'interface (essai ALAP, 30/10, point 6) : ROUGE option A. Les deux pictos de l'en-tête
+ * Finitions d'interface (essai d'onboarding, 30/10, point 6) : ROUGE option A. Les deux pictos de l'en-tête
  * disent ce qu'ils font au survol (`title`) et réagissent au survol. Le rendu réel du survol se juge
  * sur capture : jsdom n'applique aucun style, ce test garde seulement la présence de la classe.
  */

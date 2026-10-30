@@ -12,7 +12,7 @@ import { WIZARD_TEXTS } from "../texts";
 import type { FfbbSalle, Venue, VenuePayload } from "../api";
 
 /**
- * Finitions d'interface (essai ALAP, 30/10, points 2 et 12) — ROUGE option A. PROMESSES :
+ * Finitions d'interface (essai d'onboarding, 30/10, points 2 et 12) — ROUGE option A. PROMESSES :
  *  - après un ajout, l'accordéon « Ajouter des gymnases » se referme, quel que soit le chemin ;
  *  - Associer et Dissocier une salle FFBB se font sur la carte du gymnase, hors de l'accordéon, et
  *    passent par une confirmation (le menu « Associer à… » quitte la liste des salles) ;

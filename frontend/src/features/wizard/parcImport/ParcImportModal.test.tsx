@@ -1998,7 +1998,7 @@ describe("ParcImportModal — « Signaler » joint l'état complet de l'import (
 });
 
 /**
- * ─────────── Finitions d'interface (essai ALAP, 30/10, points 7, 10, 11) : ROUGE option A ───────────
+ * ─────────── Finitions d'interface (essai d'onboarding, 30/10, points 7, 10, 11) : ROUGE option A ───────────
  *
  * PROMESSES :
  *  - pt 7 : un nom de groupe changé à l'étape Séances communes est repris à l'étape Réservations ;
