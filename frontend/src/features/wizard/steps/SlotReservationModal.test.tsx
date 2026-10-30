@@ -163,6 +163,16 @@ describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
     expect(screen.queryByRole("button", { name: /tolérer ce retard/i })).toBeNull();
     expect(screen.getByText(/ne peut pas être ajoutée/i)).toBeInTheDocument();
   });
+
+  it("un second coach principal tient la séance : ni refus ni tolérance à proposer", async () => {
+    // SM3 (m) réservée au gymnase 2 au même moment que SM4 (m + l) qu'on pose ici : l tient SM4.
+    const secondMain = { id: "tc-l", teamId: "d", coachId: "l", role: "MAIN" as const };
+    renderRelay({ teamCoaches: [...SHARED_COACHES, secondMain], reservations: [resa("c", "v2", 1, "18:00")] });
+    await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
+
+    expect(screen.queryByText(/ne peut pas être ajoutée/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /tolérer ce retard/i })).toBeNull();
+  });
 });
 
 describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {

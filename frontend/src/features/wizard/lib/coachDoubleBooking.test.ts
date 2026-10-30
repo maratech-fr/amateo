@@ -77,3 +77,29 @@ describe("conflictingReservation (parité avec CoachDoubleBookingDetector)", () 
     expect(conflictingReservation({ ...candidate, teamId: "teamOrphan" }, existing, mainCoachByTeam(links))).toBeNull();
   });
 });
+
+describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK", () => {
+  const twoCoaches: TeamCoach[] = [...links, { id: "l3", teamId: "teamB", coachId: "coach-lea", role: "MAIN" }];
+  const existing = [reservation({ teamId: "teamA", venueId: "venue1" })];
+
+  it("un second coach principal tient la séance : le geste est légitime", () => {
+    expect(conflictingReservation(candidate, existing, mainCoachByTeam(twoCoaches))).toBeNull();
+  });
+
+  it("l'ordre des liens ne change rien : aucun coach principal n'écrase l'autre", () => {
+    expect(conflictingReservation(candidate, existing, mainCoachByTeam([...twoCoaches].reverse()))).toBeNull();
+  });
+
+  it("le coach seul reste refusé, et la réservation fautive est nommée", () => {
+    expect(conflictingReservation(candidate, existing, mainCoachByTeam(links))?.teamId).toBe("teamA");
+  });
+
+  it("les deux coachs déjà pris par deux séances : plus personne pour tenir, le geste est refusé", () => {
+    // La tenue se compte sur TOUTES les réservations : teamA prend Maxime, teamD prend Léa. Une
+    // garde qui jugerait chaque paire isolément verrait toujours « un autre coach ».
+    const busy: TeamCoach[] = [...twoCoaches, { id: "l4", teamId: "teamD", coachId: "coach-lea", role: "MAIN" }];
+    const both = [reservation({ teamId: "teamA", venueId: "venue1" }), reservation({ teamId: "teamD", venueId: "venue3" })];
+
+    expect(conflictingReservation(candidate, both, mainCoachByTeam(busy))).not.toBeNull();
+  });
+});

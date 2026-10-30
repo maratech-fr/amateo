@@ -22,8 +22,8 @@ use RuntimeException;
  * en lecture seule. Gymnases DIFFÉRENTS = conflit ; MÊME gymnase = mutualisation voulue, rien.
  *
  * Décor : le club de démonstration et sa version de saison en vigueur. On crée deux équipes, deux
- * gymnases et un coach JETABLES, on lie le coach aux deux équipes (MAIN puis ASSISTANT — l'exemple
- * fondateur), puis on pose deux séances placées sur la version en vigueur (insertion directe, comme
+ * gymnases et un coach JETABLES, on lie le coach aux deux équipes (principal des deux), puis on
+ * pose deux séances placées sur la version en vigueur (insertion directe, comme
  * la génération l'aurait fait). Tout est retiré en fin de scénario, quoi qu'il arrive.
  */
 final class PlacedPersonConflictContext extends BaseContext
@@ -101,10 +101,10 @@ final class PlacedPersonConflictContext extends BaseContext
         $this->venue2Id = $this->createdId($this->apiPost('venues', ['name' => 'Gymnase Deux jetable', 'source' => 'manual'], $this->token), 'gymnase 2');
 
         $this->coachId = $this->createdId($this->apiPost('coaches', ['firstName' => 'Anna', 'lastName' => 'Jetable'], $this->token), 'coach');
-        // MAIN de l'équipe A, ASSISTANT de l'équipe B : l'élargissement fondateur (une adjointe
-        // liée tard compte comme présente), pas seulement le MAIN du solveur.
+        // Seule coach PRINCIPALE des deux équipes : l'une de ses séances n'a personne pour la tenir.
+        // Un adjoint absent n'est plus un conflit (fondateur 2026-10-30).
         $this->linkAId = $this->createdId($this->apiPost('team_coaches', ['teamId' => $this->teamAId, 'coachId' => $this->coachId, 'role' => 'MAIN'], $this->token), 'lien A');
-        $this->linkBId = $this->createdId($this->apiPost('team_coaches', ['teamId' => $this->teamBId, 'coachId' => $this->coachId, 'role' => 'ASSISTANT'], $this->token), 'lien B');
+        $this->linkBId = $this->createdId($this->apiPost('team_coaches', ['teamId' => $this->teamBId, 'coachId' => $this->coachId, 'role' => 'MAIN'], $this->token), 'lien B');
     }
 
     #[When('je place deux séances qui se chevauchent dans deux gymnases différents, coachées par la même personne')]

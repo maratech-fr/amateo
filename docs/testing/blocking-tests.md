@@ -330,5 +330,11 @@ seulement) restent un ÉCHEC NOMMÉ (`failed` + `diag-infeasible`), jamais un `r
 (doublon ASSUMÉ, point sensible solveur, de {@see InfeasibilityNamesConflictingRulesTest} — ici
 l'angle est « la réservation est la SEULE exception »). Skip propre si l'engine est absent. Sans ce
 gate, soit la réservation cesserait d'être souveraine (INFEASIBLE muet revenu), soit un second
-« cas d'exception » s'ouvrirait en silence.
+« cas d'exception » s'ouvrirait en silence ·
+`CrossStack/OneCoachHoldsTheSessionGateTest` (axes *constraint semantics* + *backend↔engine
+contract*, fondateur 2026-10-30 — « tant qu'un coach tient la séance, c'est OK »). De bout en bout
+contre le VRAI moteur (`/generate`) : deux séances simultanées dans deux gymnases, U15 = A + B et
+U13 = A, sont placées et le résultat nomme B sur les U15 ; TÉMOIN — A seul sur les deux équipes n'en
+place qu'une ; deux réservations simultanées avec un second coach ne sacrifient rien. Skip propre si
+l'engine est absent. Sans ce gate, le moteur recommencerait à occuper tous les coachs d'une équipe.
 Detail: `docs/testing/testing-strategy.md`.

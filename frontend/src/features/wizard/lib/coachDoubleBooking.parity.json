@@ -137,5 +137,155 @@
       "coachIdsB": ["c1"],
       "shares": true
     }
+  ],
+  "_holdComment": "« Tant qu'un coach tient la séance, c'est OK » (fondateur 2026-10-30) — PARITÉ MÉCANIQUE de l'affectation des tenues. Consommé par coachDoubleBooking.parity.test.ts (front, `holdersFor`) ET CoachDoubleBookingMirrorParityTest.php (backend, `CoachDoubleBookingDetector::holdersFor`). `holders` = sessionId → coachId, ou null si au moins une séance n'a personne pour la tenir (intenable). AFFECTATION DÉTERMINISTE : séances dans l'ordre donné, candidats dans l'ordre des listes, retour arrière, la PREMIÈRE solution est rendue. Candidats d'une séance = les principaux de son équipe, puis ceux des autres équipes de la MÊME case (gymnase, jour, début : séance commune), en retirant ceux de `blockedByCoach` [jour, de, à] qui chevauchent la séance SAUF si cela ne laisse personne (le coach indisponible reste candidat : c'est l'avertissement d'indisponibilité, jamais le bloqueur) et en retirant sans exception ceux que `playingByCoach` occupe ailleurs. Deux tenues d'un même coach sont incompatibles selon `bookingsCollide`. Une séance sans aucun coach principal n'exige personne et n'apparaît pas dans `holders`.",
+  "holdCases": [
+    {
+      "name": "le cas réel : U15 = A + B, U13 = A, deux gymnases, B tient les U15",
+      "sessions": [
+        { "id": "u13", "teamId": "U13", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "u15", "teamId": "U15", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "U13": ["A"], "U15": ["A", "B"] },
+      "holders": { "u13": "A", "u15": "B" }
+    },
+    {
+      "name": "même décor, séance à deux coachs servie la première : le retour arrière retrouve B",
+      "sessions": [
+        { "id": "u15", "teamId": "U15", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "u13", "teamId": "U13", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "U13": ["A"], "U15": ["A", "B"] },
+      "holders": { "u15": "B", "u13": "A" }
+    },
+    {
+      "name": "coach seul à deux endroits en même temps : intenable",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T2", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1110, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A"], "T2": ["A"] },
+      "holders": null
+    },
+    {
+      "name": "deux coachs pour trois séances simultanées : intenable, même si chaque paire trouve un coach",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T2", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s3", "teamId": "T3", "venueId": "v3", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A", "B"], "T2": ["A", "B"], "T3": ["A", "B"] },
+      "holders": null
+    },
+    {
+      "name": "à trois, un seul suffit : C tient la séance dont A et B sont pris ailleurs",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T2", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s3", "teamId": "T3", "venueId": "v3", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A"], "T2": ["B"], "T3": ["A", "B", "C"] },
+      "holders": { "s1": "A", "s2": "B", "s3": "C" }
+    },
+    {
+      "name": "même gymnase : un coach tient les deux séances (mutualisation voulue)",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T2", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1110, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A"], "T2": ["A"] },
+      "holders": { "s1": "A", "s2": "A" }
+    },
+    {
+      "name": "séances qui se touchent : intervalle demi-ouvert, le même coach les enchaîne",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1020, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T2", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1110, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A"], "T2": ["A"] },
+      "holders": { "s1": "A", "s2": "A" }
+    },
+    {
+      "name": "même équipe deux fois : double-réservation d'équipe, autre sujet que le coach",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T1", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A"] },
+      "holders": { "s1": "A", "s2": "A" }
+    },
+    {
+      "name": "équipe sans coach principal : elle n'exige personne, pas d'entrée",
+      "sessions": [
+        { "id": "s1", "teamId": "Loisirs", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": {},
+      "holders": {}
+    },
+    {
+      "name": "le premier coach indisponible : le second tient la séance",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 4, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A", "B"] },
+      "blockedByCoach": { "A": [[4, 0, 1440]] },
+      "holders": { "s1": "B" }
+    },
+    {
+      "name": "coach seul et indisponible : il reste candidat, c'est l'avertissement d'indisponibilité, jamais le bloqueur",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 4, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A"] },
+      "blockedByCoach": { "A": [[4, 0, 1440]] },
+      "holders": { "s1": "A" }
+    },
+    {
+      "name": "le second coach indisponible, le premier pris ailleurs : intenable",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 4, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T2", "venueId": "v2", "dayOfWeek": 4, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A"], "T2": ["A", "B"] },
+      "blockedByCoach": { "B": [[4, 0, 1440]] },
+      "holders": null
+    },
+    {
+      "name": "indisponibilité qui se termine au début de la séance : demi-ouvert, le coach est disponible",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 4, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["A", "B"] },
+      "blockedByCoach": { "A": [[4, 960, 1080]] },
+      "holders": { "s1": "A" }
+    },
+    {
+      "name": "séance commune : un coach de l'autre équipe de la case tient la séance, le coach propre est ailleurs",
+      "sessions": [
+        { "id": "s1", "teamId": "T1", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s2", "teamId": "T2", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 },
+        { "id": "s3", "teamId": "T3", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "T1": ["C"], "T2": ["D"], "T3": ["C"] },
+      "holders": { "s1": "D", "s2": "D", "s3": "C" }
+    },
+    {
+      "name": "le rôle de joueur occupe : A joue ailleurs, B tient la séance",
+      "sessions": [
+        { "id": "s1", "teamId": "U18", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "U18": ["A", "B"] },
+      "playingByCoach": { "A": [{ "teamId": "SM1", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }] },
+      "holders": { "s1": "B" }
+    },
+    {
+      "name": "le rôle de joueur occupe sans repli : A seul joue ailleurs, la séance n'a personne",
+      "sessions": [
+        { "id": "s1", "teamId": "U18", "venueId": "v1", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }
+      ],
+      "mainCoachesByTeam": { "U18": ["A"] },
+      "playingByCoach": { "A": [{ "teamId": "SM1", "venueId": "v2", "dayOfWeek": 2, "startMinutes": 1080, "durationMinutes": 90 }] },
+      "holders": null
+    }
   ]
 }

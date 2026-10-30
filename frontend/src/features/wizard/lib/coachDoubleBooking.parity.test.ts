@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type Booking, bookingsCollide, lateArrivalTolerated, teamsShareMainCoach } from "./coachDoubleBooking";
+import { type Booking, bookingsCollide, holdersFor, lateArrivalTolerated, teamsShareMainCoach } from "./coachDoubleBooking";
 import cases from "./coachDoubleBooking.parity.json";
 
 /**
@@ -46,6 +46,22 @@ describe("teamsShareMainCoach — parité mécanique multi-coach P4-333 (PHP)", 
     it(c.name, () => {
       expect(teamsShareMainCoach(c.coachIdsA, c.coachIdsB)).toBe(c.shares);
       expect(teamsShareMainCoach(c.coachIdsB, c.coachIdsA)).toBe(c.shares);
+    });
+  }
+});
+
+/**
+ * « Tant qu'un coach tient la séance, c'est OK » — CÔTÉ FRONT de la parité de l'affectation des
+ * tenues : `holdersFor` doit rendre EXACTEMENT les tenues de `holdCases`, ou null si une séance n'a
+ * personne. Jumeau : `CoachDoubleBookingMirrorParityTest::testBackendHoldersForMatchesTheSharedCases`.
+ */
+describe("holdersFor — parité mécanique de l'affectation des tenues (PHP)", () => {
+  for (const c of cases.holdCases) {
+    it(c.name, () => {
+      const blocked = ("blockedByCoach" in c ? c.blockedByCoach : {}) as Parameters<typeof holdersFor>[2];
+      const playing = ("playingByCoach" in c ? c.playingByCoach : {}) as Parameters<typeof holdersFor>[3];
+
+      expect(holdersFor(c.sessions, c.mainCoachesByTeam as Record<string, string[]>, blocked, playing)).toEqual(c.holders);
     });
   }
 });

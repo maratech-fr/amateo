@@ -37,16 +37,15 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * La règle de collision est CELLE du pré-solve, réutilisée sans être réécrite
  * ({@see CoachDoubleBookingDetector::bookingsCollide}) : personne
  * identique, équipes DIFFÉRENTES, gymnases DIFFÉRENTS (même gymnase = mutualisation),
- * même jour, intervalles réels demi-ouverts. L'ÉLARGISSEMENT (assumé) est ici :
- * personnes = MAIN, ASSISTANT ET joueur — pas seulement le MAIN du solveur.
+ * même jour, intervalles réels demi-ouverts. Amendé le 2026-10-30 (validé fondateur) : conflit
+ * SEULEMENT si une séance n'a personne pour la tenir. Un adjoint ne tient pas, un second coach
+ * principal tient, le rôle de joueur occupe la personne.
  *
  * ⚠ Chaque cas négatif ne diffère du cas positif QUE par la variable testée (même
  * club, saison, équipes, jour) : un cas qui rougirait pour un motif étranger
  * rougirait aussi le témoin positif.
  *
  * PREUVES DE CHUTE (2026-09-28) :
- *  - inclusion des ASSISTANT retirée (MAIN seul dans `sessionCoachesByTeam`) →
- *    {@see self::testAssistantOnSecondTeamIsDetected} rougit seul ;
  *  - inclusion des joueurs retirée (`$playersByTeam` ignoré) →
  *    {@see self::testPlayerWhoAlsoPlaysElsewhereIsDetected} rougit seul ;
  *  - repli `slot.coachId ?? coachs de l'équipe` neutralisé (toujours les coachs de
@@ -91,8 +90,11 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         self::assertSame('18:00', $conflict['first']['startTime']);
     }
 
-    /** L'ASSISTANT compte AUSSI (élargissement vs pré-solve) — l'exemple fondateur. */
-    public function testAssistantOnSecondTeamIsDetected(): void
+    /**
+     * Amende la décision V1 du 2026-09-28 (validé fondateur 2026-10-30) : un adjoint absent n'est pas
+     * un conflit, il ne tient pas la séance et la séance n'attend rien de lui.
+     */
+    public function testAnAbsentAssistantIsNotAConflict(): void
     {
         $ctx = $this->seed();
         $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
@@ -100,7 +102,51 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertCount(1, $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+    }
+
+    /** Le cas réel : Anna sur deux séances, Bob tient la seconde. Personne n'est signalé. */
+    public function testASecondMainCoachHoldingTheSessionIsNotAConflict(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $this->createCoach($ctx, 'Bob'), TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
+
+        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+    }
+
+    /**
+     * Un planning déjà en base porte le PREMIER coach sur chaque séance (avant cette règle, le moteur
+     * ne nommait que lui). Bob reste principal de l'équipe : la séance a quelqu'un, le radar se tait.
+     */
+    public function testASlotNamingTheBusyCoachStillHasItsSecondMainCoach(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $this->createCoach($ctx, 'Bob'), TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90, $ctx['coach']);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90, $ctx['coach']);
+
+        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+    }
+
+    /** Un second coach qui joue ailleurs au même moment ne tient rien : la séance n'a personne. */
+    public function testASecondCoachPlayingElsewhereDoesNotHoldTheSession(): void
+    {
+        $ctx = $this->seed();
+        $bob = $this->createCoach($ctx, 'Bob');
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->playIn($ctx, $ctx['teamA'], $bob, true);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $bob, TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
+
+        self::assertNotSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'Anna tient A, Bob y joue : B n\'a personne');
     }
 
     /** Retirer le lien fait disparaître le conflit : la détection suit les liens COURANTS. */
@@ -108,7 +154,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
     {
         $ctx = $this->seed();
         $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
-        $second = $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::ASSISTANT);
+        $second = $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 

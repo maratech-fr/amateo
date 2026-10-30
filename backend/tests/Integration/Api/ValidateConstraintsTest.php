@@ -720,6 +720,54 @@ final class ValidateConstraintsTest extends WebTestCase
         self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $this->validate()['blockers']));
     }
 
+    /**
+     * La réservation voulue ne crie pas : B tient les U15 pendant que A entraîne les U13. Le récap
+     * reste VALIDE, sans bloqueur ni avertissement, et le mentionne doucement dans `notices`.
+     */
+    public function testASessionHeldByTheSecondCoachIsANoticeNotAnAlert(): void
+    {
+        $this->seedSimultaneousReservations(u15SecondCoach: 'Bruno');
+
+        $this->client->loginUser($this->user);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+
+        self::assertResponseStatusCodeSame(200);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertTrue($data['valid']);
+        self::assertSame([], $data['blockers']);
+        self::assertStringNotContainsString('Alice', implode(' | ', $data['warnings']), 'aucune alerte sur le coach pris ailleurs');
+        self::assertCount(1, $data['notices'], 'seule la séance dont un coach est pris ailleurs se mentionne');
+        self::assertSame('U15 tenue par Bruno Dupont', $data['notices'][0]['message']);
+        self::assertStringContainsString('Gymnase Deux', $data['notices'][0]['place']);
+    }
+
+    /** Décision fondateur confirmée : coach SEUL à deux endroits en même temps, le récap BLOQUE toujours. */
+    public function testACoachAloneInTwoPlacesStillBlocksTheRecap(): void
+    {
+        $this->seedSimultaneousReservations(u15SecondCoach: null);
+
+        $this->client->loginUser($this->user);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+
+        self::assertResponseStatusCodeSame(422);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertFalse($data['valid']);
+        self::assertStringContainsString('deux créneaux en même temps', implode(' | ', $data['blockers']));
+        self::assertSame([], $data['notices'], 'rien à mentionner : personne ne tient la séance');
+    }
+
+    /** Une équipe à deux coachs sans séance simultanée n'a rien à mentionner : la mention reste rare. */
+    public function testTwoCoachesWithoutOverlapMentionNothing(): void
+    {
+        $this->seedSimultaneousReservations(u15SecondCoach: 'Bruno', u15Start: '20:00');
+
+        $this->client->loginUser($this->user);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['notices']);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -960,6 +1008,30 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->em->flush();
 
         return $team->getId();
+    }
+
+    /**
+     * U13 (Gymnase Un, mardi 18:00, Alice seule) et U15 (Gymnase Deux, Alice + le second coach
+     * éventuel), toutes deux réservées en dur.
+     */
+    private function seedSimultaneousReservations(?string $u15SecondCoach, string $u15Start = '18:00'): void
+    {
+        $venueOne = $this->venue('Gymnase Un');
+        $venueTwo = $this->venue('Gymnase Deux');
+        $this->trainingSlot($venueOne, dayOfWeek: 2, start: '18:00');
+        $this->trainingSlot($venueTwo, dayOfWeek: 2, start: $u15Start);
+
+        $u13 = $this->namedTeam('U13');
+        $u15 = $this->namedTeam('U15');
+        $alice = $this->coachOnly('Alice');
+        $this->linkCoach($u13, $alice, TeamCoachRole::MAIN);
+        $this->linkCoach($u15, $alice, TeamCoachRole::MAIN);
+        if (null !== $u15SecondCoach) {
+            $this->linkCoach($u15, $this->coachOnly($u15SecondCoach), TeamCoachRole::MAIN);
+        }
+
+        $this->reservation($u13, $venueOne, dayOfWeek: 2, start: '18:00');
+        $this->reservation($u15, $venueTwo, dayOfWeek: 2, start: $u15Start);
     }
 
     private function coachOnly(string $firstName, bool $vehicled = false): string
