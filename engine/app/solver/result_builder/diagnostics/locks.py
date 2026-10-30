@@ -117,10 +117,10 @@ def _diagnose_locked_structural_conflicts(
                             f"{_label(person, coach_names)} est réservé(e) dans deux gymnases en même temps "
                             f"le {when} — {_label(a_venue, venue_names)} avec {_label(a_team, team_names)} et "
                             f"{_label(b_venue, venue_names)} avec {_label(b_team, team_names)} : "
-                            "un créneau verrouillé prime, mais la personne ne peut pas être aux deux endroits."
+                            "la personne ne peut pas être aux deux endroits."
                         ),
                         "suggestions": [
-                            "Déplacez ou retirez l'une des réservations verrouillées de cette personne.",
+                            "Déplacez ou retirez l'une des réservations de cette personne.",
                         ],
                         "createdAt": datetime.now(UTC).isoformat(),
                     }

@@ -117,6 +117,8 @@ class ScheduleCpModel(cp_model.CpModel):
         # Le résultat de `parse_v2_constraints`, posé par `_solve` : le diagnostic post-solve y lit si
         # une case prise par un verrou était compatible avec les règles de l'équipe, sans re-parser.
         self.parsed_rules: Mapping[str, Any] = {}
+        # Les noms d'équipes, posés par `_solve`, pour les messages émis à la pose.
+        self.team_names: dict[str, str] = {}
         # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1), peuplé
         # UNIQUEMENT quand `assumptions_enabled` (modèle diagnostique). Une littérale par clé de
         # source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase imposé/interdit,

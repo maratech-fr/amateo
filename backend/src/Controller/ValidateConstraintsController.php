@@ -353,21 +353,66 @@ final class ValidateConstraintsController extends AbstractController
         $gridSaturated = $this->capacityMirror->venuesSaturatedWithoutLocks($payload);
         $result = ['blockers' => [], 'warnings' => []];
         foreach ($this->capacityMirror->venueMinimumSaturation($payload) as $s) {
-            $need = \sprintf(
-                'Vos contraintes « au moins » réclament %s à %s, mais il n\'y reste que %s libre%s une fois les réservations déduites',
-                $this->plural($s['demand'], 'place de créneau', 'places de créneau'),
-                $s['venueName'],
-                $this->plural($s['free'], 'place', 'places'),
-                1 === $s['free'] ? '' : 's',
-            );
             if (\in_array($s['venueId'], $gridSaturated, true)) {
-                $result['blockers'][] = $need . ' : la génération échouera. Ajoutez des créneaux dans ce gymnase, libérez des réservations, ou assouplissez ces contraintes.';
+                $result['blockers'][] = \sprintf(
+                    'Vos contraintes « au moins » réclament %s à %s, mais il n\'y reste que %s libre%s une fois les réservations déduites : la génération échouera. Ajoutez des créneaux dans ce gymnase, libérez des réservations, ou assouplissez ces contraintes.',
+                    $this->plural($s['demand'], 'place de créneau', 'places de créneau'),
+                    $s['venueName'],
+                    $this->plural($s['free'], 'place', 'places'),
+                    1 === $s['free'] ? '' : 's',
+                );
             } else {
-                $result['warnings'][] = $need . ' : des séances resteront non placées. Libérez une réservation ou ajoutez des créneaux dans ce gymnase si vous voulez les placer.';
+                $result['warnings'][] = $this->reservationSaturationWarning($s);
             }
         }
 
         return $result;
+    }
+
+    /**
+     * « Poussins et Benjamins demandent chacune au moins 1 séance à Platane, mais il n'y reste qu'une
+     * place : la réservation de Seniors C occupe l'autre. Une équipe restera sans séance. ».
+     *
+     * @param array{venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>} $s
+     */
+    private function reservationSaturationWarning(array $s): string
+    {
+        $names = $this->frenchList(array_map(strval(...), array_keys($s['teams'])));
+        $amounts = array_values(array_unique($s['teams']));
+        $count = \count($s['teams']);
+        if (1 === $count) {
+            $asks = \sprintf('%s demande au moins %s', $names, $this->plural($amounts[0], 'séance', 'séances'));
+        } elseif (1 === \count($amounts)) {
+            $asks = \sprintf('%s demandent chacune au moins %s', $names, $this->plural($amounts[0], 'séance', 'séances'));
+        } else {
+            $asks = \sprintf('%s demandent ensemble au moins %s', $names, $this->plural($s['demand'], 'séance', 'séances'));
+        }
+
+        $left = match ($s['free']) {
+            0 => 'il n\'y reste aucune place',
+            1 => 'il n\'y reste qu\'une place',
+            default => \sprintf('il n\'y reste que %d places', $s['free']),
+        };
+
+        $reservedBy = $s['reservedBy'];
+        if (1 === \count($reservedBy)) {
+            $taken = \sprintf('la réservation de %s occupe %s', $reservedBy[0], 1 === $s['free'] ? 'l\'autre' : (0 === $s['free'] ? 'la case' : 'une autre'));
+        } else {
+            $taken = \sprintf('les réservations de %s occupent les autres', $this->frenchList($reservedBy));
+        }
+
+        $missing = $s['demand'] - $s['free'];
+        $outcome = 1 === $missing ? 'Une équipe restera sans séance.' : \sprintf('%d séances resteront non placées.', $missing);
+
+        return \sprintf('%s à %s, mais %s : %s. %s', $asks, $s['venueName'], $left, $taken, $outcome);
+    }
+
+    /** @param list<string> $items */
+    private function frenchList(array $items): string
+    {
+        $last = array_pop($items);
+
+        return [] === $items ? (string) $last : implode(', ', $items) . ' et ' . $last;
     }
 
     /**

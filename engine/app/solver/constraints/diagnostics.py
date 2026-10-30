@@ -27,6 +27,14 @@ def _day_label(day: int) -> str:
     return _DAY_LABELS[day - 1] if 1 <= day <= 7 else f"jour {day}"
 
 
+def _duration_label(minutes: int) -> str:
+    """« 1h30 », « 2h », « 45 min » : même forme que ``shared/lib/duration.ts`` côté écran."""
+    if minutes < 60:
+        return f"{minutes} min"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours}h{rest:02d}" if rest else f"{hours}h"
+
+
 def _day_rules_union(
     windows: Iterable[Mapping[str, Any]],
 ) -> dict[str, tuple[dict[str, set[int]], list[Mapping[str, Any]]]]:
@@ -191,6 +199,8 @@ def diagnose_locked_slot_violations(
         origin = constraint if source is None else source
         warning.update(
             {
+                # La règle est nommée une seule fois, par la cause que le panneau affiche.
+                "message": message,
                 "id": f"rule-sacrificed-{constraint.get('id')}-{team_id}-{lock_id}",
                 "type": "rule_sacrificed",
                 "teamId": team_id,
@@ -224,7 +234,7 @@ def diagnose_locked_slot_violations(
         # La durée fait partie du libellé : deux verrous mêmes gymnase/jour/heure et
         # durées différentes sont DISTINCTS (cf. `lock_id`), et sans elle leurs deux
         # avertissements s'affichaient à l'octet près identiques.
-        where = f"{_venue(venue_id)} le {_day_label(day_int)} à {start_text} ({duration} min)"
+        where = f"{_venue(venue_id)}, {_day_label(day_int)} {start_text[:5]}, {_duration_label(duration)}"
         # La durée fait partie de la clé, comme dans `_extract_hard_locks` : deux
         # verrous identiques sauf la durée y sont DISTINCTS, les fusionner ici
         # ferait disparaître une violation.
@@ -242,8 +252,7 @@ def diagnose_locked_slot_violations(
                         _constraint_of_coach(coach_id, (source or {}).get("label") or _coach(coach_id)),
                         team_id,
                         lock_id,
-                        f"Réservation maintenue pour {_team(team_id)} ({where}) alors que "
-                        f"{_coach(coach_id)} est indisponible : le verrou prime, la contrainte est ignorée.",
+                        f"Réservation de {_team(team_id)} maintenue ({where}) alors que {_coach(coach_id)} est indisponible.",
                         kind="coach_unavailability",
                         where_fields=lock_case,
                         source=source or {},
@@ -284,7 +293,7 @@ def diagnose_locked_slot_violations(
                     constraint,
                     team_id,
                     lock_id,
-                    f"Réservation maintenue pour {_team(team_id)} ({where}) hors de sa fenêtre horaire.",
+                    f"Réservation de {_team(team_id)} maintenue ({where}) hors de sa fenêtre horaire.",
                     kind="time_window",
                     where_fields=lock_case,
                 )
@@ -306,7 +315,7 @@ def diagnose_locked_slot_violations(
                         constraint,
                         team_id,
                         lock_id,
-                        f"Réservation maintenue pour {_team(team_id)} ({where}) un jour exclu par ses règles de jours.",
+                        f"Réservation de {_team(team_id)} maintenue ({where}) un jour exclu par ses règles de jours.",
                         kind="day_forbidden",
                         where_fields=lock_case,
                     )
@@ -320,9 +329,8 @@ def diagnose_locked_slot_violations(
                     {"id": f"forced-days-{team_id}", "name": f"jours imposés de {_team(team_id)}"},
                     team_id,
                     lock_id,
-                    f"Réservation maintenue pour {_team(team_id)} ({where}) alors que son planning "
-                    f"impose une séance {', '.join(_day_label(d) for d in sorted(forced))} : "
-                    "le verrou peut rendre cette exigence insatisfaisable.",
+                    f"Réservation de {_team(team_id)} maintenue ({where}) alors qu'une séance est imposée "
+                    f"{', '.join(_day_label(d) for d in sorted(forced))}.",
                     kind="day_forced",
                     where_fields=lock_case,
                     source=next(
@@ -345,7 +353,7 @@ def diagnose_locked_slot_violations(
                     {"id": f"forbidden-venue-{team_id}-{venue_id}", "name": f"gymnase interdit ({_venue(venue_id)})"},
                     team_id,
                     lock_id,
-                    f"Réservation maintenue pour {_team(team_id)} ({where}) dans un gymnase qui lui est interdit.",
+                    f"Réservation de {_team(team_id)} maintenue ({where}) dans un gymnase qui lui est interdit.",
                     kind="venue_forbidden",
                     where_fields=lock_case,
                     source=item,
@@ -364,8 +372,7 @@ def diagnose_locked_slot_violations(
                 {"id": f"forced-venue-{team_id}", "name": f"gymnase imposé ({_venue(str(target_venue))})"},
                 team_id,
                 lock_id,
-                f"Réservation maintenue pour {_team(team_id)} ({where}) hors du gymnase imposé "
-                f"{_venue(str(target_venue))} : le verrou prime, la contrainte est ignorée.",
+                f"Réservation de {_team(team_id)} maintenue ({where}) hors du gymnase imposé {_venue(str(target_venue))}.",
                 kind="forced_venue_elsewhere",
                 where_fields=lock_case,
                 source=forced_venue_sources.get(team_id) or {},

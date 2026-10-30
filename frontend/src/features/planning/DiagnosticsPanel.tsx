@@ -53,7 +53,7 @@ function causeSentence(cause: DiagnosticCause, diagnosticType: string): string {
   // Réservation souveraine : la règle n'a pas « fermé de créneau », c'est la réservation qui a
   // pris la case. On nomme ce qui est en cause, sans compte.
   if ("rule_sacrificed" === diagnosticType || "blocked_by_reservation" === diagnosticType) {
-    const family = causeKindLabel(cause.kind);
+    const family = "hard_lock" === cause.kind ? null : causeKindLabel(cause.kind);
     return PLANNING_TEXTS.reservationCause(null !== label && "" !== label ? `« ${label} »` : (family ?? PLANNING_TEXTS.reservationCauseFallback));
   }
   const slots = `${count} créneau${count > 1 ? "x" : ""} fermé${count > 1 ? "s" : ""}`;

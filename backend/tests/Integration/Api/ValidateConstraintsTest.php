@@ -141,7 +141,7 @@ final class ValidateConstraintsTest extends WebTestCase
         self::assertSame([], $data['blockers']);
         $warnings = implode(' | ', $data['warnings']);
         self::assertStringContainsString('Matéo', $warnings, 'l\'avertissement doit nommer le gymnase saturé');
-        self::assertStringContainsString('2 places', $warnings);
+        self::assertStringContainsString('une place', $warnings);
         self::assertStringNotContainsString('la génération échouera', $warnings, 'elle n\'échoue plus');
     }
 

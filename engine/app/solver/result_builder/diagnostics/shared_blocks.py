@@ -658,7 +658,11 @@ def _diagnose_sacrificed_rules(
         ]
         names = _named_list(members, team_names)
         sessions = _sessions_phrase(int(_get(block, "commonSessions", "common_sessions", default=0) or 0))
-        detail = f" ({_format_locked_cases(blocked, team_names, venue_names)})" if blocked else ""
+        by_case = [
+            f"{_day_label(day)} {start}, {_label(venue_id, venue_names)}, réservé pour {_named_list(sorted(pins), team_names)}"
+            for venue_id, day, start, pins in sorted(blocked, key=lambda case: (case[1], case[2], case[0]))[:3]
+        ]
+        detail = f" ({' ; '.join(by_case)})" if by_case else ""
         diagnostic: dict[str, Any] = {
             "id": f"rule-sacrificed-{key}",
             "type": "rule_sacrificed",

@@ -230,11 +230,11 @@ def add_time_window_constraints(
                     "severity": "ERROR",
                     "teamId": team_id_text,
                     "message": (
-                        f"Team {team_id_text} has contradictory day rules "
-                        "(the allowed/forced days are all forbidden); the team is forced to 0 slots."
+                        f"Les règles de jours de {_team_label(model, team_id_text)} se contredisent : tous ses jours "
+                        "autorisés ou imposés sont aussi interdits. Aucune séance ne peut être placée."
                     ),
                     "suggestions": [
-                        "Remove the overlapping days between the 'only these days' / 'forced' rule and the 'avoid' rule.",
+                        "Retirez les jours en commun entre la règle « uniquement ces jours » ou « jour imposé » et la règle « à éviter ».",
                     ],
                     "createdAt": datetime.now(UTC).isoformat(),
                 }
@@ -319,7 +319,7 @@ def add_time_window_constraints(
                         if cause.get("label")
                     }
                 )
-                detail = f" (constraints: {', '.join(closing_labels)})" if closing_labels else ""
+                detail = f" ({', '.join(closing_labels)})" if closing_labels else ""
                 conflicts.append(
                     {
                         "id": f"forced_day_emptied-{team_id_text}",
@@ -327,12 +327,12 @@ def add_time_window_constraints(
                         "severity": "ERROR",
                         "teamId": team_id_text,
                         "message": (
-                            f"Team {team_id_text} is forced to train on a given day, but every slot of "
-                            f"that day is ruled out by other constraints{detail}; no session can be placed there."
+                            f"{_team_label(model, team_id_text)} doit s'entraîner un jour imposé, mais d'autres règles "
+                            f"ferment tous les créneaux de ce jour{detail} : aucune séance ne peut y être placée."
                         ),
                         "suggestions": [
-                            "Relax the time/day rule, the coach unavailability or the access window "
-                            "that empties the forced day, or lock a session on that day.",
+                            "Assouplissez la règle d'horaire ou de jour, ou l'indisponibilité du coach, qui vide ce jour, "
+                            "ou réservez une séance ce jour-là.",
                         ],
                         "createdAt": datetime.now(UTC).isoformat(),
                     }
@@ -373,6 +373,11 @@ def add_time_window_constraints(
             added += 1
 
     return added, conflicts
+
+
+def _team_label(model: Any, team_id: str) -> str:
+    """Le nom de l'équipe, jamais son identifiant, sauf sur un modèle nu de test."""
+    return str((getattr(model, "team_names", None) or {}).get(team_id) or team_id)
 
 
 def add_forced_venue_constraints(

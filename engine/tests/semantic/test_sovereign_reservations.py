@@ -254,7 +254,9 @@ def _only_block_of_kind(result: dict[str, Any], kind: str) -> dict[str, Any]:
 
 
 def _assert_names(diagnostic: dict[str, Any], *expected: str) -> None:
-    message = str(diagnostic["message"])
+    # La règle est nommée une fois : dans le message, ou dans la cause que le panneau affiche.
+    labels = " ".join(str(c.get("label")) for c in diagnostic.get("causes", []))
+    message = f"{diagnostic['message']} {labels}"
     for fragment in expected:
         assert fragment in message, f"{fragment!r} doit être nommé : {message!r}"
 

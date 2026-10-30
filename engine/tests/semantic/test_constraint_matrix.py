@@ -334,9 +334,10 @@ def test_a_lock_bypassing_a_diagnosed_rule_is_announced(cell: MatrixCell) -> Non
     )
 
     fingerprint = _rule_fingerprint(cell)
-    assert any(fingerprint in str(d.get("message", "")) for d in entries), (
-        f"{cell.case_id}: the diagnostic must NAME the rule ({fingerprint!r}), not fire hollow"
-    )
+    assert any(
+        fingerprint in " ".join([str(d.get("message", "")), *(str(c.get("label")) for c in d.get("causes", []))])
+        for d in entries
+    ), f"{cell.case_id}: the diagnostic must NAME the rule ({fingerprint!r}), not fire hollow"
 
 
 def test_every_cell_declares_a_lock_silence_and_reasons_where_required() -> None:

@@ -631,6 +631,7 @@ def _solve(
     # UNIQUE `constraints.availability`), sans re-parser les contraintes.
     model.coach_unavailability = parsed["coach_unavailability"]
     model.parsed_rules = parsed
+    model.team_names = {str(t.get("id")): str(t.get("name") or t.get("id")) for t in data.get("teams", [])}
 
     # (La famille FACILITY_CAPACITY rabotait ici la capacité d'un gymnase entier
     # à `maxTeams`. RETIRÉE le 2026-08-08 : aucun chemin UI ne la créait, zéro
@@ -1027,7 +1028,11 @@ def _as_not_honored_info(conflict: dict[str, Any]) -> dict[str, Any]:
     """Le signal historique d'une réservation qui contredit une règle, quand aucun planning ne sort."""
     if conflict.get("type") != "rule_sacrificed":
         return conflict
-    return {**conflict, "type": "constraint_not_honored", "severity": "INFO"}
+    # Ce type n'affiche pas ses causes : la règle revient dans le message.
+    causes = conflict.get("causes") or [{}]
+    label = causes[0].get("label")
+    message = f"{conflict['message']} (contrainte « {label} »)" if label else conflict["message"]
+    return {**conflict, "type": "constraint_not_honored", "severity": "INFO", "message": message}
 
 
 def _lock_caused_relax_keys(

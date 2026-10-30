@@ -133,7 +133,7 @@ final class PayloadCapacityMirror
      *
      * @param array<string, mixed> $payload
      *
-     * @return list<array{venueId: string, venueName: string, demand: int, free: int}>
+     * @return list<array{venueId: string, venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>}>
      */
     public function venueMinimumSaturation(array $payload): array
     {
@@ -167,6 +167,8 @@ final class PayloadCapacityMirror
         // DISTINCTS verrouillés par (gymnase, équipe) — ces derniers créditent la demande
         // (P4-97 : un pin honore le plancher, comme `effective_min` côté moteur).
         $pinnedKeys = [];
+        /** @var array<string, array<string, true>> $pinTeamsByVenue venueId => équipe qui réserve => true */
+        $pinTeamsByVenue = [];
         /** @var array<string, array<string, array<int|string, true>>> $lockedDaysByVenueTeam venueId => teamId => day => true */
         $lockedDaysByVenueTeam = [];
         foreach (\is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [] as $pin) {
@@ -176,6 +178,7 @@ final class PayloadCapacityMirror
             $pinVenueId = (string) ($pin['venueId'] ?? '');
             $pinnedKeys[$this->key($pinVenueId, $pin['dayOfWeek'] ?? '', (string) ($pin['startTime'] ?? ''))] = true;
             $pinTeamId = (string) ($pin['teamId'] ?? '');
+            $pinTeamsByVenue[$pinVenueId][$pinTeamId] = true;
             $pinDay = $pin['dayOfWeek'] ?? null;
             if ('' !== $pinTeamId && null !== $pinDay) {
                 $lockedDaysByVenueTeam[$pinVenueId][$pinTeamId][$pinDay] = true;
@@ -207,16 +210,28 @@ final class PayloadCapacityMirror
             }
         }
 
+        $teamNames = [];
+        foreach (\is_array($payload['teams'] ?? null) ? $payload['teams'] : [] as $team) {
+            if (\is_array($team)) {
+                $teamNames[(string) ($team['id'] ?? '')] = (string) ($team['name'] ?? ($team['id'] ?? ''));
+            }
+        }
+
         $saturated = [];
         foreach ($minByVenueTeam as $venueId => $minByTeam) {
             $demand = 0;
+            $teams = [];
             foreach ($minByTeam as $teamId => $min) {
                 $lockedDays = \count($lockedDaysByVenueTeam[$venueId][$teamId] ?? []);
-                $demand += max(0, $min - $lockedDays);
+                $remaining = max(0, $min - $lockedDays);
+                $demand += $remaining;
+                if ($remaining > 0) {
+                    $teams[$teamNames[$teamId] ?? $teamId] = $remaining;
+                }
             }
             $free = array_sum($freeByVenue[$venueId] ?? []);
             if ($demand > $free) {
-                $saturated[] = ['venueId' => $venueId, 'venueName' => $venueNames[$venueId] ?? $venueId, 'demand' => $demand, 'free' => $free];
+                $saturated[] = ['venueId' => $venueId, 'venueName' => $venueNames[$venueId] ?? $venueId, 'demand' => $demand, 'free' => $free, 'teams' => $teams, 'reservedBy' => array_values(array_map(static fn (string|int $id): string => $teamNames[(string) $id] ?? (string) $id, array_keys(array_diff_key($pinTeamsByVenue[$venueId] ?? [], $teams))))];
             }
         }
 

@@ -142,8 +142,8 @@ final class ReservationGroupOccupancy
     public static function belowReservedSessionsMessage(int $reservedSessions): string
     {
         return 1 === $reservedSessions
-            ? '1 séance commune est réservée pour ce groupe. Retire d\'abord une réservation.'
-            : \sprintf('%d séances communes sont réservées pour ce groupe. Retire d\'abord une réservation.', $reservedSessions);
+            ? '1 séance commune est réservée pour ce groupe. Retirez d\'abord une réservation à l\'étape Réservations.'
+            : \sprintf('%d séances communes sont réservées pour ce groupe. Retirez d\'abord une réservation à l\'étape Réservations.', $reservedSessions);
     }
 
     /**

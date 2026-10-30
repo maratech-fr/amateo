@@ -342,7 +342,7 @@ def test_two_locks_differing_only_by_duration_are_both_reported() -> None:
     # Revue #317 round 3 : compter ne suffit pas. Deux messages IDENTIQUES ne
     # servent à rien — le gestionnaire ne sait pas lequel il vient de corriger.
     assert messages[0] != messages[1], "les deux avertissements doivent être distinguables"
-    assert any("120 min" in m for m in messages) and any("90 min" in m for m in messages)
+    assert any("2h" in m for m in messages) and any("1h30" in m for m in messages)
 
 
 def test_a_lock_overrunning_the_window_with_ITS_OWN_duration_is_reported() -> None:
@@ -484,4 +484,5 @@ def test_the_day_warning_names_the_REAL_constraint_not_a_synthetic_one() -> None
 
     messages = _violation_messages(result)
     assert len(messages) == 1
-    assert "SM1 uniquement le mardi" in messages[0], "la VRAIE règle doit être nommée, pas un libellé fabriqué"
+    labels = [c.get("label") for d in result["diagnostics"] if d.get("type") == "rule_sacrificed" for c in d["causes"]]
+    assert "SM1 uniquement le mardi" in labels, "la VRAIE règle doit être nommée, pas un libellé fabriqué"

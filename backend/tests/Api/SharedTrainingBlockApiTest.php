@@ -322,7 +322,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         $body = json_encode($this->responseData(), \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
         self::assertStringContainsString('2 séances communes sont réservées pour ce groupe', $body);
-        self::assertStringContainsString('Retire d\'abord une réservation', $body);
+        self::assertStringContainsString('Retirez d\'abord une réservation', $body);
         $this->em->clear();
         $this->scopeGucToClub($club->getId());
         self::assertSame(3, $this->em->getRepository(SharedTrainingBlock::class)->find($id)?->getCommonSessions(), 'rien n\'est écrit');
