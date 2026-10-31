@@ -1,4 +1,4 @@
-# Roadmap (69) — ce qui reste à faire
+# Roadmap (74) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -159,6 +159,11 @@
 | P4-399 | **Alerte au Récap : « aucun salarié n'a de séance le X »** | 🟡 | S | Suite de la règle salariés devenue objectif (31/10) : le constat n'apparaît qu'APRÈS la génération (`diag-implicit-salarie`). Le Récap, qui prévient déjà avant de générer (`ValidateConstraintsController`), pourrait signaler en amont qu'un jour ouvré du club est sans salarié possible ou sans salarié réservé. Jamais bloquant. |
 | P4-400 | **`maxConsecutiveDays` ne diagnostique pas une violation par verrou** | ⚪ | S | Constat (cadrage 31/10) : `constraints/consecutive_days.py` ne lit que les variables libres, donc des séances verrouillées sur trop de jours de suite violent la règle **en silence** — aucun diagnostic post-solve ne la couvre (`implicit_rules.py` ne traite pas cette règle). À faire : une alerte `implicit_rule_not_honored` au même grain que la pose, plus un test témoin. |
 | P4-401 | **Réimport : renommer un groupe déjà existant n'a pas d'effet** | ⚪ | XS | Constat (cadrage 31/10) : à l'import du parc, un bloc de mutualisation déjà présent est réutilisé et le nom saisi (`corrections.groupe`) est ignoré (`ParcImportExecutor` ne lit le libellé qu'à la création). Le nom initial est gardé à tort. |
+| P4-402 | **Console superadmin : retirer la section d'en-tête « État de la plateforme »** | ⚪ | XS | Retour fondateur (31/10) : si le bouton « Actualiser » se place au milieu de l'en-tête, toute la première section n'a plus d'utilité (`features/admin/texts/dashboard.ts:54`). Non cadré |
+| P4-403 | **Bouton « Matchs » de l'application plus gros et plus large** | ⚪ | XS | Retour fondateur (31/10) : c'est une fonctionnalité importante, le bouton doit se voir. Non cadré |
+| P4-404 | **Salles à domicile pour l'appariement de matchs : un onglet à part** | ⚪ | S | Retour fondateur (31/10) : aujourd'hui sous chaque équipe, il les veut dans leur propre onglet (il pensait que c'était déjà fait). Non cadré |
+| P4-405 | **Bouton « Ajouter un gymnase » de l'onglet adversaire : le texte déborde** | ⚪ | XS | Retour fondateur (31/10) : le bouton tient sur une ligne, mais son texte en sort. Non cadré |
+| P4-406 | **Import IA : l'infobulle d'une case garde une équipe retirée du groupe** | ⚪ | XS | Retour fondateur (31/10) : équipe retirée d'une mutualisation, encore affichée au survol de la case de réservation. Non corrigé, ce qui part à l'import reste à vérifier. Non cadré |
 
 ---
 
