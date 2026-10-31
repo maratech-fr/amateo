@@ -2754,4 +2754,66 @@ describe("ParcImportModal — quick wins : composition d'un groupe et bouton de 
       expect(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") })).toHaveValue(3);
     });
   });
+
+  describe("D10 — trancher une ligne ambiguë ne périme que si une alerte en dépend", () => {
+    const ambiguousSf1 = (): Line => mkAmbiguous(0, "SF1", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }]);
+    const citesSf1 = { equipes: [{ id: null, nom: "SF1" }, { id: "wt-1", nom: "U11M1" }] } as unknown as Partial<Line>;
+    const withAmbiguous = (extra: Partial<Line>): Analysis => {
+      const analysis = decor("SF1 + U11M1", { ...citesSf1, ...extra });
+      analysis.sections.equipes = [ambiguousSf1()];
+      return analysis;
+    };
+
+    it("sans alerte qui en dépende : reste « Vérifié »", async () => {
+      const user = userEvent.setup();
+      await ready(user, withAmbiguous({}));
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.matchTo("Armand"));
+
+      expect(screen.queryByText(T.staleHint(1)), "pas de bandeau périmé").not.toBeInTheDocument();
+      expectUpToDate();
+    });
+
+    // La première analyse ne connaît aucune décision : l'alerte ne naît qu'au rejeu, où l'ambiguë non
+    // tranchée part décochée, donc « ignorée » (ParcImportAnalyzer.php:266). Sans bouton pour recalculer,
+    // cette alerte devenue fausse bloquerait « Importer » pour de bon.
+    it("une alerte « équipe ignorée » qui en dépend : « Revérifier » s'active et le rejeu la lève", async () => {
+      const user = userEvent.setup();
+      const raison = "Cette séance commune cite « SF1 », à revoir.";
+      await ready(user, withAmbiguous({}));
+      await editSlot(user);
+      q.analysis.value = withAmbiguous({ statut: "alerte", coche: false, raison, alerteCode: "equipe_ignoree" });
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      expect(screen.getByText(raison)).toBeInTheDocument();
+
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.createOption("SF1"));
+      expectStale();
+
+      q.analysis.value = withAmbiguous({});
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      const equipe = (lastAnalyzeBody().decisions as Array<{ section: string; coche?: boolean }>).find((d) => "equipes" === d.section);
+      expect(equipe?.coche, "le rejeu reçoit l'équipe gardée").toBe(true);
+      expectUpToDate();
+      await goTo(user, "mutualisations");
+      expect(screen.queryByText(raison)).not.toBeInTheDocument();
+    });
+  });
+
+  // L'amorce du sélecteur ne garde aujourd'hui que les équipes déjà au club (ParcImportModal.tsx:1496).
+  it("D4b — retirer l'équipe existante d'un groupe mixte garde les équipes à créer, par leur `import:<index>`", async () => {
+    const user = userEvent.setup();
+    const analysis = decor("U11M1 + N1 + N2", { equipes: [{ id: "wt-1", nom: "U11M1" }, { id: null, nom: "N1" }, { id: null, nom: "N2" }] } as unknown as Partial<Line>);
+    analysis.sections.equipes = [mkLine(3, "N1", "aCreer"), mkLine(5, "N2", "aCreer")];
+    await ready(user, analysis);
+    await goTo(user, "mutualisations");
+    await toggleTeam(user, "U11M1");
+
+    expect(screen.queryByText(T.needsTwoTeams as unknown as string), "il reste deux équipes : N1 et N2").not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+    await user.click(importButton());
+    const equipes = mutualOf(q.importMutate.mock.calls[0]?.[0])?.corrections?.equipes;
+    expect(equipes).toEqual(expect.arrayContaining(["import:3", "import:5"]));
+    expect(equipes).toHaveLength(2);
+  });
 });
