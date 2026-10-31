@@ -64,6 +64,9 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class ParcImportExecuteTest extends WebTestCase
 {
+    /** La date d'`updated_at` posée au décor d'un groupe : tout `touch()` la dépasse. */
+    private const string BLOCK_PAST_UPDATE = '2020-01-01 00:00:00+00';
+
     use ChoosesPlanVersionTrait;
     use TenantGucTrait;
 
@@ -520,6 +523,242 @@ final class ParcImportExecuteTest extends WebTestCase
         $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $this->club->getId()], ['createdAt' => 'DESC']);
         self::assertInstanceOf(SharedTrainingBlock::class, $block);
         self::assertSame('Section Loisirs', $block->getLabel(), 'le groupe CORRIGÉ nomme le bloc, jamais le groupe brut de la case');
+    }
+
+    // ───────────────────────── Renommage d'un groupe au réimport : seul un nom SAISI remplace ─────────────────────────
+    // Promesse : un nom saisi à la main renomme le groupe existant ; un nom lu dans le fichier collé ne
+    // l'écrase jamais. Jumeaux : l'amorce du champ et l'envoi conditionnel dans ParcImportModal.test.tsx
+    // (« renommage au réimport »), le `blocLabel` servi dans ParcImportAnalyzeTest.
+
+    /** Promesse : un nom saisi renomme le groupe existant, sans en créer un autre, et le récap le compte « mis à jour ». */
+    public function testAHandTypedGroupeRenamesTheExistingBlock(): void
+    {
+        $block = $this->seedExistingBlock('CEC');
+        $blocksBefore = $this->rowCount('shared_training_block');
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => 'Loisirs']]],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        $reloaded = $this->reloadBlock($block->getId());
+        self::assertSame('Loisirs', $reloaded->getLabel(), 'le nom saisi remplace celui du groupe');
+        self::assertTrue($this->wasTouched($reloaded), 'un renommage avance updatedAt');
+        self::assertSame(1, $body['recap']['mutualisations']['misAJour'], 'le récap compte un groupe mis à jour');
+        self::assertSame(0, $body['recap']['mutualisations']['apparies'], 'un groupe renommé n\'est pas compté deux fois');
+        self::assertSame($blocksBefore, $this->rowCount('shared_training_block'), 'aucun groupe neuf');
+    }
+
+    /** Promesse : le nom lu dans le fichier n'écrase jamais celui d'un groupe existant. */
+    public function testAGroupeReadFromTheFileNeverOverwritesTheExistingBlock(): void
+    {
+        $block = $this->seedExistingBlock('Loisirs');
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true]],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        $reloaded = $this->reloadBlock($block->getId());
+        self::assertSame('Loisirs', $reloaded->getLabel(), 'le nom du fichier n\'écrase pas');
+        self::assertFalse($this->wasTouched($reloaded), 'rien n\'a changé : updatedAt reste');
+        self::assertSame(1, $body['recap']['mutualisations']['apparies']);
+        self::assertSame(0, $body['recap']['mutualisations']['misAJour']);
+    }
+
+    /** Promesse : saisir le nom que le groupe porte déjà (espaces autour compris) n'est pas une mise à jour. */
+    public function testATypedGroupeIdenticalToTheExistingLabelIsNotAnUpdate(): void
+    {
+        $block = $this->seedExistingBlock('Loisirs');
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => '  Loisirs ']]],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        $reloaded = $this->reloadBlock($block->getId());
+        self::assertSame('Loisirs', $reloaded->getLabel());
+        self::assertFalse($this->wasTouched($reloaded), 'même nom : updatedAt reste');
+        self::assertSame(1, $body['recap']['mutualisations']['apparies']);
+        self::assertSame(0, $body['recap']['mutualisations']['misAJour']);
+    }
+
+    /** Promesse (règle 1) : deux cases d'un même groupe, noms de fichier différents, rien de saisi : le groupe garde le nom de la 1ʳᵉ. */
+    public function testTwoCasesWithDifferentFileNamesKeepTheFirstName(): void
+    {
+        $this->seedGroupTeamsAndVenue();
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('Premier', 3), $this->groupCase('Second', 4)]),
+            [
+                ['section' => 'mutualisations', 'index' => 0, 'coche' => true],
+                ['section' => 'mutualisations', 'index' => 1, 'coche' => true],
+            ],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame('Premier', $this->onlyBlockOfTheClub()->getLabel(), 'la 2ᵉ case ne renomme pas par son nom de fichier');
+        self::assertSame(['crees' => 1, 'apparies' => 1, 'misAJour' => 0], $this->blockCounters($body));
+    }
+
+    /** Promesse (règle 2) : un nom saisi sur la seule 2ᵉ case gagne sur le nom de fichier de la 1ʳᵉ, à la création. */
+    public function testANameTypedOnTheSecondCaseWinsAtCreation(): void
+    {
+        $this->seedGroupTeamsAndVenue();
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('Premier', 3), $this->groupCase('Second', 4)]),
+            [
+                ['section' => 'mutualisations', 'index' => 0, 'coche' => true],
+                ['section' => 'mutualisations', 'index' => 1, 'coche' => true, 'corrections' => ['groupe' => 'Saisi']],
+            ],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame('Saisi', $this->onlyBlockOfTheClub()->getLabel());
+        self::assertSame(['crees' => 1, 'apparies' => 0, 'misAJour' => 1], $this->blockCounters($body));
+    }
+
+    /** Promesse (règle 2) : un nom saisi sur la 1ʳᵉ case n'est pas défait par le nom de fichier de la 2ᵉ. */
+    public function testANameTypedOnTheFirstCaseSurvivesTheFileNameOfTheSecond(): void
+    {
+        $this->seedGroupTeamsAndVenue();
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('Premier', 3), $this->groupCase('Second', 4)]),
+            [
+                ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => 'Saisi']],
+                ['section' => 'mutualisations', 'index' => 1, 'coche' => true],
+            ],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame('Saisi', $this->onlyBlockOfTheClub()->getLabel());
+        self::assertSame(['crees' => 1, 'apparies' => 1, 'misAJour' => 0], $this->blockCounters($body));
+    }
+
+    /** Promesse (règle 2) : un nom saisi sur une seule case renomme un groupe existant, l'autre case restant un simple rattachement. */
+    public function testANameTypedOnOneCaseRenamesAnExistingBlock(): void
+    {
+        $block = $this->seedExistingBlock('Ancien', commonSessions: 2);
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('Premier', 3), $this->groupCase('Second', 4)]),
+            [
+                ['section' => 'mutualisations', 'index' => 0, 'coche' => true],
+                ['section' => 'mutualisations', 'index' => 1, 'coche' => true, 'corrections' => ['groupe' => 'Saisi']],
+            ],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame('Saisi', $this->reloadBlock($block->getId())->getLabel());
+        self::assertSame(['crees' => 0, 'apparies' => 1, 'misAJour' => 1], $this->blockCounters($body));
+    }
+
+    /** Promesse (règle 3) : deux noms saisis différents sur un même groupe : la dernière ligne l'emporte. */
+    public function testTwoDifferentTypedNamesLetTheLastLineWin(): void
+    {
+        $this->seedGroupTeamsAndVenue();
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('Premier', 3), $this->groupCase('Second', 4)]),
+            [
+                ['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => 'Un']],
+                ['section' => 'mutualisations', 'index' => 1, 'coche' => true, 'corrections' => ['groupe' => 'Deux']],
+            ],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame('Deux', $this->onlyBlockOfTheClub()->getLabel());
+        self::assertSame(['crees' => 1, 'apparies' => 0, 'misAJour' => 1], $this->blockCounters($body));
+    }
+
+    /** Promesse : un nom saisi trop long est borné à la colonne avant d'être écrit. */
+    public function testAnOverlongTypedNameIsBoundedBeforeRenaming(): void
+    {
+        $block = $this->seedExistingBlock('CEC');
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => str_repeat('é', 300)]]],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(str_repeat('é', SharedTrainingBlock::LABEL_MAX_LENGTH), $this->reloadBlock($block->getId())->getLabel());
+        self::assertSame(1, $body['recap']['mutualisations']['misAJour']);
+    }
+
+    /** Promesse : la comparaison se fait APRÈS le bornage : un nom trop long dont le début est le nom actuel ne change rien. */
+    public function testAnOverlongTypedNameEqualToTheLabelOnceBoundedIsNotAnUpdate(): void
+    {
+        $label = str_repeat('é', SharedTrainingBlock::LABEL_MAX_LENGTH);
+        $block = $this->seedExistingBlock($label);
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => str_repeat('é', 300)]]],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertFalse($this->wasTouched($this->reloadBlock($block->getId())), 'même nom une fois borné : updatedAt reste');
+        self::assertSame(1, $body['recap']['mutualisations']['apparies']);
+        self::assertSame(0, $body['recap']['mutualisations']['misAJour']);
+    }
+
+    /** Promesse d'abus : un gestionnaire d'un AUTRE club ne renomme pas un groupe de ce club (404, rien d'écrit). */
+    public function testAManagerOfAnotherClubCannotRenameABlock(): void
+    {
+        $block = $this->seedExistingBlock('CEC');
+        $outsiderToken = $this->managerTokenOfAnotherClub();
+
+        [$status] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'cibleId' => $block->getId(), 'corrections' => ['groupe' => 'Piraté']]],
+            token: $outsiderToken,
+        );
+
+        self::assertSame(404, $status, 'le gate répond comme à un club inconnu');
+        self::assertSame('CEC', $this->reloadBlock($block->getId())->getLabel(), 'rien n\'est renommé');
+    }
+
+    /** Promesse d'abus : un membre non gestionnaire du club ne renomme pas un groupe (403, rien d'écrit). */
+    public function testAViewerCannotRenameABlock(): void
+    {
+        $block = $this->seedExistingBlock('CEC');
+        $viewerToken = $this->viewerToken();
+
+        [$status] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => 'Piraté']]],
+            token: $viewerToken,
+        );
+
+        self::assertSame(403, $status);
+        self::assertSame('CEC', $this->reloadBlock($block->getId())->getLabel());
+    }
+
+    /**
+     * Promesse d'abus (tenant) : un `cibleId` forgé visant le groupe d'un AUTRE club ne le renomme jamais :
+     * le bloc se retrouve par les équipes du club courant, jamais par `cibleId`. Jumeau de refus :
+     * {@see testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing}.
+     */
+    public function testAForgedCibleIdNeverRenamesTheBlockOfAnotherClub(): void
+    {
+        $foreign = $this->seedForeignClubWithBlock('Étranger');
+        $this->seedExistingBlock('CEC');
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([$this->groupCase('CEC')]),
+            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'cibleId' => $foreign['blockId'], 'corrections' => ['groupe' => 'Piraté']]],
+        );
+
+        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        $this->scopeGucToClub($foreign['clubId']);
+        self::assertSame('Étranger', $this->em->getConnection()->fetchOne('SELECT label FROM shared_training_block WHERE id = :id', ['id' => $foreign['blockId']]), 'le groupe de l\'autre club ne bouge pas');
+        $this->scopeGucToClub($this->club->getId());
     }
 
     // ───────────────────────── Coachs retirés (D11) ─────────────────────────
@@ -1560,6 +1799,153 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
 
         return ['teamId' => $team->getId()];
+    }
+
+    /**
+     * Les deux équipes et le gymnase (créneaux mercredi et jeudi) qu'un groupe mutualisé occupe.
+     *
+     * @return list<Team>
+     */
+    private function seedGroupTeamsAndVenue(): array
+    {
+        $teams = [$this->makeTeam('U9M1', sessionsPerWeek: 3), $this->makeTeam('U11F2', sessionsPerWeek: 3)];
+        $venue = $this->makeVenue('Gymnase Mateo', canSplit: true);
+        $this->makeSlot($venue->getId(), 3, '16:00', capacity: 2);
+        $this->makeSlot($venue->getId(), 4, '16:00', capacity: 2);
+
+        return $teams;
+    }
+
+    /**
+     * Un groupe du socle déjà en base, `updated_at` reculé par pointage SQL pour que tout `touch()` se voie.
+     */
+    private function seedExistingBlock(?string $label, int $commonSessions = 1): SharedTrainingBlock
+    {
+        $teams = $this->seedGroupTeamsAndVenue();
+        $this->scopeGucToClub($this->club->getId());
+        $block = (new SharedTrainingBlock)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId(null)->setCommonSessions($commonSessions)->setLabel($label);
+        $this->em->persist($block);
+        foreach ($teams as $team) {
+            $this->em->persist((new SharedTrainingBlockTeam)
+                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($team->getId()));
+        }
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement(
+            'UPDATE shared_training_block SET updated_at = :past WHERE id = :id',
+            ['past' => self::BLOCK_PAST_UPDATE, 'id' => $block->getId()],
+        );
+        $this->em->clear();
+
+        return $block;
+    }
+
+    /**
+     * La case parc-v2 du groupe de `seedGroupTeamsAndVenue`.
+     *
+     * @return array<string, mixed>
+     */
+    private function groupCase(string $groupe, int $day = 3): array
+    {
+        return ['gymnase' => 'Gymnase Mateo', 'jour' => $day, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => $groupe];
+    }
+
+    private function reloadBlock(string $blockId): SharedTrainingBlock
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->clear();
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->find($blockId);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
+
+        return $block;
+    }
+
+    private function onlyBlockOfTheClub(): SharedTrainingBlock
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->clear();
+        $blocks = $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $this->club->getId()]);
+        self::assertCount(1, $blocks, 'les cases d\'un même groupe ne font qu\'un seul groupe');
+
+        return $blocks[0];
+    }
+
+    private function wasTouched(SharedTrainingBlock $block): bool
+    {
+        return $block->getUpdatedAt() > new DateTimeImmutable(self::BLOCK_PAST_UPDATE);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return array{crees: int, apparies: int, misAJour: int}
+     */
+    private function blockCounters(array $body): array
+    {
+        $recap = $body['recap']['mutualisations'];
+
+        return ['crees' => $recap['crees'], 'apparies' => $recap['apparies'], 'misAJour' => $recap['misAJour']];
+    }
+
+    /**
+     * Le JWT d'un gestionnaire d'un AUTRE club : un vrai compte, membre admin chez lui, étranger ici.
+     */
+    private function managerTokenOfAnotherClub(): string
+    {
+        $container = self::getContainer();
+        $uid = uniqid('', true);
+        $otherClub = (new Club)
+            ->setName('Autre ' . $uid)->setSlug('autre-' . $uid)
+            ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($otherClub);
+        $outsider = new User;
+        $outsider->setEmail('outsider' . $uid . '@test.com');
+        $outsider->setFirstName('Out');
+        $outsider->setLastName('Sider');
+        $outsider->setPasswordHash($container->get('security.user_password_hasher')->hashPassword($outsider, 'Password123!'));
+        $this->em->persist($outsider);
+        $this->em->flush();
+
+        $this->scopeGucToClub($otherClub->getId());
+        $this->em->persist((new ClubUser)->setClubId($otherClub->getId())->setUserId($outsider->getId())->setRole('admin')->setIsActive(true));
+        $this->em->flush();
+        $this->scopeGucToClub($this->club->getId());
+
+        return $container->get(JWTTokenManagerInterface::class)->create($outsider);
+    }
+
+    /**
+     * Un club TIERS avec un groupe du socle : la cible d'un `cibleId` forgé.
+     *
+     * @return array{clubId: string, blockId: string}
+     */
+    private function seedForeignClubWithBlock(string $label): array
+    {
+        $uid = uniqid('', true);
+        $otherClub = (new Club)
+            ->setName('Autre ' . $uid)->setSlug('autre-' . $uid)
+            ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($otherClub);
+        $this->em->flush();
+
+        $this->scopeGucToClub($otherClub->getId());
+        $otherSeason = (new Season)
+            ->setClubId($otherClub->getId())->setName('2026-2027')
+            ->setStartDate(new DateTimeImmutable('2026-07-01'))->setEndDate(new DateTimeImmutable('2027-06-30'))
+            ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
+        $this->em->persist($otherSeason);
+        $this->em->flush();
+
+        $block = (new SharedTrainingBlock)
+            ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
+            ->setSchedulePlanId(null)->setCommonSessions(1)->setLabel($label);
+        $this->em->persist($block);
+        $this->em->flush();
+        $this->scopeGucToClub($this->club->getId());
+
+        return ['clubId' => $otherClub->getId(), 'blockId' => $block->getId()];
     }
 
     private function viewerToken(): string

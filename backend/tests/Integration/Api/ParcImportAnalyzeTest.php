@@ -305,6 +305,64 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertContains(null, $gymnaseIds, 'un gymnase à créer → gymnaseId null (jamais absent)');
     }
 
+    /**
+     * Promesse : l'aperçu donne le VRAI nom du groupe existant (`blocLabel`), pas seulement celui du fichier,
+     * pour que le champ s'amorce dessus. Jumeau : « renommage au réimport » de ParcImportModal.test.tsx.
+     */
+    public function testAnAppariedMutualisationCarriesTheRealNameOfItsBlock(): void
+    {
+        $a = $this->makeTeam('U9M1');
+        $b = $this->makeTeam('U11F2');
+        $a->setSessionsPerWeek(3);
+        $b->setSessionsPerWeek(3);
+        $this->makeBlock([$a, $b], 1)->setLabel('Loisirs');
+        $this->em->flush();
+
+        [$status, $body] = $this->analyze($this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]));
+
+        self::assertSame(200, $status);
+        $line = $body['sections']['mutualisations'][0];
+        self::assertSame('apparie', $line['statut']);
+        self::assertSame('CEC', $line['groupe'], 'le nom lu reste servi tel quel');
+        self::assertSame('Loisirs', $line['blocLabel'] ?? null, 'le nom réel du groupe existant');
+    }
+
+    /** Promesse : un groupe existant sans nom sert `blocLabel` null, pas le nom du fichier présenté comme le sien. */
+    public function testAnAppariedMutualisationWithAnUnnamedBlockCarriesANullBlocLabel(): void
+    {
+        $a = $this->makeTeam('U9M1');
+        $b = $this->makeTeam('U11F2');
+        $a->setSessionsPerWeek(3);
+        $b->setSessionsPerWeek(3);
+        $this->makeBlock([$a, $b], 1)->setLabel(null);
+        $this->em->flush();
+
+        [$status, $body] = $this->analyze($this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]));
+
+        self::assertSame(200, $status);
+        $line = $body['sections']['mutualisations'][0];
+        self::assertSame('apparie', $line['statut']);
+        self::assertArrayHasKey('blocLabel', $line, 'une ligne appariée porte toujours le champ');
+        self::assertNull($line['blocLabel']);
+    }
+
+    /** Promesse : une mutualisation à créer n'a pas de groupe existant, donc pas de nom réel. */
+    public function testAMutualisationToCreateHasNoBlocLabel(): void
+    {
+        [$status, $body] = $this->analyze($this->parcWithCases([
+            ['gymnase' => 'Gymnase Mateo', 'jour' => 3, 'debut' => '16:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]));
+
+        self::assertSame(200, $status);
+        $line = $body['sections']['mutualisations'][0];
+        self::assertSame('aCreer', $line['statut']);
+        self::assertNull($line['blocLabel'] ?? null);
+    }
+
     // ───────────────────────── Retours fondateur 2026-10-26 — « Séances » en champ éditable (données servies) ─────────────────────────
     // Le champ « Séances » de l'aperçu est pré-rempli avec la valeur LUE dans le fichier pour TOUTE
     // équipe (pas seulement quand elle DIFFÈRE de l'actuelle, comme le fait `miseAJour`), avec une
