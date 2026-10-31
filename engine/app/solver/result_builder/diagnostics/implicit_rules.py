@@ -27,7 +27,6 @@ from ..helpers import (
 
 _IMPLICIT_RULE_LABELS = {
     "coachRestDay": "jour de repos",
-    "salarieDistribution": "présence d'un salarié",
     "maxConsecutiveSessions": "enchaînements",
     "ageAscending": "âge croissant",
 }

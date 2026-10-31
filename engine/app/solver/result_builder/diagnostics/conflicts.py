@@ -1,7 +1,7 @@
 """Double-réservations gymnase/coach et message d'infaisabilité porté (``diag-infeasible``).
 
 Extrait de l'ancien ``diagnostics.py`` (découpe P4-295 C1). Seule arête interne du paquet : importe
-deux symboles de ``infeasibility``.
+deux symboles de ``infeasibility`` et le diagnostic de ``shared_blocks``.
 """
 
 from __future__ import annotations
@@ -35,15 +35,16 @@ from .infeasibility import (
     _collect_infeasibility_causes,
     _infeasible_message,
 )
+from .shared_blocks import _diagnose_shared_blocks
 
 _DEMAND_RULE_KINDS = frozenset({"day_forced", "session_floor", "shared_block"})
 """Les seules règles qui exigent une séance : tout INFEASIBLE en a au moins une dans son noyau, les
 règles de bien-être et la capacité ne posant que des bornes hautes (ADR-0001)."""
 
-_WELLNESS_LEAD = (
-    "Elle se heurte sans doute à une règle de bien-être réglée « Obligatoire » (jour de repos, enchaînements, "
-    "jeunes avant les grands) ou à un coach qui tient plusieurs équipes : passez cette règle de bien-être en "
-    "« Objectif » pour le vérifier."
+_WELLNESS_LEAD_TAIL = (
+    "sans doute à une règle de bien-être réglée « Obligatoire » (jour de repos, enchaînements, jeunes avant "
+    "les grands) ou à un coach qui tient plusieurs équipes : passez cette règle de bien-être en « Objectif » "
+    "pour le vérifier."
 )
 
 
@@ -80,13 +81,16 @@ def _diagnose_conflicts(
     if solver_status == cp_model.INFEASIBLE:
         core_causes: list[dict[str, Any]] = []
         core_labels: list[str] = []
+        overbooked = False
         # Le noyau nommé vient du SECOND solve diagnostique (seul porteur des hypothèses). On retombe
         # sur ``model``/``solver`` pour les appels directs de test qui instrumentent le modèle passé.
         d_model = diagnostic_model if diagnostic_model is not None else model
         d_solver = diagnostic_solver if diagnostic_solver is not None else solver
         if d_model is not None and d_solver is not None:
             core_causes, core_labels = _collect_infeasibility_causes(d_model, d_solver)
-            core_causes, core_labels = _name_blocks_in_core(d_model, d_solver, model_data, core_causes, core_labels)
+            core_causes, core_labels, overbooked = _name_blocks_in_core(
+                d_model, d_solver, model_data, core_causes, core_labels
+            )
 
         # Le modèle nominal ne porte aucune hypothèse : sans modèle diagnostique, seul un noyau lu
         # prouve que la recherche a abouti.
@@ -95,6 +99,7 @@ def _diagnose_conflicts(
             core_labels,
             model_data,
             diagnostic_ran=diagnostic_model is not None or bool(core_causes),
+            overbooked=overbooked,
         )
         diagnostics.append(
             {
@@ -315,28 +320,33 @@ def _name_blocks_in_core(
     model_data: Mapping[str, Any] | Any,
     causes: list[dict[str, Any]],
     labels: list[str],
-) -> tuple[list[dict[str, Any]], list[str]]:
+) -> tuple[list[dict[str, Any]], list[str], bool]:
     """Nomme par ses équipes chaque groupe du noyau : ``_assume`` pose un bloc sans libellé, sa cause
     ``shared_block`` anonyme est remplacée par une cause « groupe SM1 + SM2 » par groupe en cause.
 
     Le noyau rendu par le solveur n'est pas minimal : il peut citer un groupe sans histoire. Si des
-    groupes du noyau sont sur-épinglés par leurs propres verrous, seuls ceux-là sont nommés."""
+    groupes du noyau sont sur-épinglés par leurs propres verrous, seuls ceux-là sont nommés, et le
+    troisième terme le dit : le message n'accuse une réservation en trop que dans ce cas."""
     registry: Mapping[str, Any] = getattr(model, "assumption_literals", None) or {}
     block_literals = {key.split(":", 1)[1]: lit for key, lit in registry.items() if key.startswith("shared_block:")}
     if not block_literals or not hasattr(solver, "SufficientAssumptionsForInfeasibility"):
-        return causes, labels
+        return causes, labels, False
     try:
         core_indices = {int(index) for index in solver.SufficientAssumptionsForInfeasibility()}
     except RuntimeError, AttributeError, TypeError, ValueError:
-        return causes, labels
+        return causes, labels, False
     core_block_ids = {block_id for block_id, lit in block_literals.items() if int(lit.Index()) in core_indices}
     if not core_block_ids:
-        return causes, labels
-    if len(core_block_ids) > 1 and isinstance(model_data, dict):
-        # Import local : ``main`` importe ce paquet ; le déplacer sortirait du périmètre.
-        from ....main import _overpinned_block_ids
-
-        core_block_ids = (core_block_ids & _overpinned_block_ids(model_data)) or core_block_ids
+        return causes, labels, False
+    # Le motif ``shared-block-overpinned`` du diagnostic dédié dit quels groupes le sont, sans seconde logique.
+    prefix = "shared-block-overpinned-"
+    overpinned = {
+        str(diagnostic["id"]).removeprefix(prefix)
+        for diagnostic in _diagnose_shared_blocks(model_data, int(cp_model.INFEASIBLE), [])
+        if str(diagnostic["id"]).startswith(prefix)
+    }
+    overbooked_ids = core_block_ids & overpinned
+    core_block_ids = overbooked_ids or core_block_ids
 
     team_names = _team_name_map(model_data)
     block_causes: list[dict[str, Any]] = []
@@ -347,9 +357,10 @@ def _name_blocks_in_core(
         members = " + ".join(_label(str(team), team_names) for team in _get(block, "teamIds", "team_ids", default=[]))
         block_causes.append({"kind": "shared_block", "constraintId": None, "label": f"groupe {members}", "count": 1})
     if not block_causes:
-        return causes, labels
+        return causes, labels, False
     others = [cause for cause in causes if cause.get("kind") != "shared_block" or cause.get("label")]
-    return [*block_causes, *others], [*(str(cause["label"]) for cause in block_causes), *labels]
+    named = [str(cause["label"]) for cause in block_causes]
+    return [*block_causes, *others], [*named, *labels], bool(overbooked_ids)
 
 
 def _infeasible_core_message(
@@ -358,6 +369,7 @@ def _infeasible_core_message(
     model_data: Mapping[str, Any] | Any,
     *,
     diagnostic_ran: bool,
+    overbooked: bool = False,
 ) -> tuple[str, list[str]]:
     """Le message et les suggestions de ``diag-infeasible``, selon ce que le noyau a pu nommer."""
     if not diagnostic_ran:
@@ -371,50 +383,64 @@ def _infeasible_core_message(
 
     groups = [str(c["label"]) for c in core_causes if c.get("kind") == "shared_block" and c.get("label")]
     if groups:
-        return _group_message(groups, [label for label in core_labels if label not in groups]), []
+        return _group_message(groups, [label for label in core_labels if label not in groups], overbooked), []
 
+    unnamed = sum(1 for cause in core_causes if not cause.get("label"))
+    cited = len(core_labels) + unnamed
     suggestions: list[str] = []
     kinds = {cause.get("kind") for cause in core_causes}
     if kinds and kinds <= _DEMAND_RULE_KINDS:
-        suggestions = [_WELLNESS_LEAD]
+        subject = (
+            "Les règles en cause se heurtent"
+            if not core_labels
+            else "Elles se heurtent"
+            if cited > 1
+            else "Elle se heurte"
+        )
+        suggestions = [f"{subject} {_WELLNESS_LEAD_TAIL}"]
     elif core_labels:
-        suggestions = ["Assouplissez l'une de ces règles, ou passez-la en « Objectif », puis relancez la génération."]
+        target = "l'une de ces règles" if cited > 1 else "cette règle"
+        suggestions = [f"Assouplissez {target}, ou passez-la en « Objectif », puis relancez la génération."]
 
     if not core_labels:
         return _infeasible_message(model_data), suggestions
     quoted = ", ".join(f"« {label} »" for label in core_labels)
-    count = len(core_labels)
-    if count > 1:
-        return f"Ces {count} règles se contredisent : {quoted}.", suggestions
+    if unnamed:
+        quoted += " et une règle sans nom" if unnamed == 1 else f" et {unnamed} règles sans nom"
+    if cited > 1:
+        return f"Ces {cited} règles se contredisent : {quoted}.", suggestions
     return f"Cette règle ne peut pas être honorée : {quoted}.", suggestions
 
 
-def _group_message(groups: list[str], others: list[str]) -> str:
-    """Une seule phrase directe, qui nomme le groupe et le remède ; la cause est connue."""
+def _group_message(groups: list[str], others: list[str], overbooked: bool) -> str:
+    """Une seule phrase directe, qui nomme le groupe et le remède. Une réservation en trop n'est citée
+    que si le groupe est sur-épinglé ; sinon il manque des cases communes."""
     several = len(groups) > 1
     subject = f"Le {groups[0]}"
     if several:
         names = [group.removeprefix("groupe ") for group in groups]
         subject = f"Les groupes {', '.join(names[:-1])} et {names[-1]}"
+    target = "d'un groupe" if several else "du groupe"
+    sessions = "leurs séances communes" if several else "ses séances communes"
     if others:
         quoted = ", ".join(f"« {label} »" for label in others)
         rules = f"la règle {quoted}" if len(others) == 1 else f"les règles {quoted}"
         relax = "assouplissez cette règle" if len(others) == 1 else "assouplissez l'une de ces règles"
-        remedy = (
-            f"retirez une réservation d'un groupe, ajustez leurs séances communes, ou {relax}"
+        first = f"retirez une réservation {target}" if overbooked else f"ajoutez une case commune aux équipes {target}"
+        return f"{subject} et {rules} se contredisent : {first}, ajustez {sessions}, ou {relax}."
+    if overbooked:
+        state = (
+            "sont réservés sur plus de cases que leurs séances communes, ou n'ont aucune case commune"
             if several
-            else f"retirez une réservation du groupe, ajustez ses séances communes, ou {relax}"
+            else "est réservé sur plus de cases que ses séances communes, ou n'a aucune case commune"
         )
-        return f"{subject} et {rules} se contredisent : {remedy}."
-    if several:
-        return (
-            f"{subject} sont réservés sur plus de cases que leurs séances communes, ou n'ont aucune case commune : "
-            "retirez une réservation d'un groupe ou ajustez leurs séances communes dans l'assistant."
-        )
-    return (
-        f"{subject} est réservé sur plus de cases que ses séances communes, ou n'a aucune case commune : "
-        "retirez une réservation du groupe ou ajustez ses séances communes dans l'assistant."
+        return f"{subject} {state} : retirez une réservation {target} ou ajustez {sessions} dans l'assistant."
+    state = (
+        "n'ont pas assez de cases communes pour leurs séances communes"
+        if several
+        else "n'a pas assez de cases communes pour ses séances communes"
     )
+    return f"{subject} {state} : ajoutez une case commune aux équipes {target} ou ajustez {sessions} dans l'assistant."
 
 
 def _occupant_list_with_blocks(

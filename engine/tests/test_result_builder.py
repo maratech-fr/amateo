@@ -770,6 +770,7 @@ class InfeasibilityCausesTest(unittest.TestCase):
             ["groupe SM1 + SM2", "Vendredi imposé"],
             {"teams": [], "venues": []},
             diagnostic_ran=True,
+            overbooked=True,
         )
         self.assertEqual(
             "Le groupe SM1 + SM2 et la règle « Vendredi imposé » se contredisent : retirez une réservation du "

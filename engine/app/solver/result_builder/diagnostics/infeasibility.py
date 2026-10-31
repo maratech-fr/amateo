@@ -13,21 +13,6 @@ from ortools.sat.python import cp_model
 from ...model import ScheduleCpModel
 from ..helpers import _collection, _get
 
-_CAUSE_KIND_FR = {
-    "hard_lock": "un créneau verrouillé",
-    "venue_forbidden": "un gymnase interdit",
-    "coach_unavailability": "une indisponibilité de coach",
-    "time_window": "une fenêtre horaire",
-    "day_conflict": "des règles de jour contradictoires",
-    "day_forced": "un jour imposé",
-    "day_forbidden": "un jour interdit",
-    "forced_venue_elsewhere": "un gymnase imposé",
-    "session_floor": "un minimum de séances dans un gymnase",
-    "shared_block": "un bloc mutualisé",
-    "team_link": "une passerelle",
-    "travel_time": "un temps de trajet",
-}
-
 
 def _collect_infeasibility_causes(
     model: ScheduleCpModel | Any,

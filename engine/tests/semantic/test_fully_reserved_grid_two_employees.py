@@ -276,9 +276,8 @@ def test_several_groups_with_none_overbooked_are_all_named() -> None:
     assert result["status"] == "failed"
     infeasible = _infeasible(result)
     assert infeasible["message"] == (
-        "Les groupes SM1 + SM2 et SF1 + SF2 sont réservés sur plus de cases que leurs séances communes, ou n'ont "
-        "aucune case commune : retirez une réservation d'un groupe ou ajustez leurs séances communes dans "
-        "l'assistant."
+        "Les groupes SM1 + SM2 et SF1 + SF2 n'ont pas assez de cases communes pour leurs séances communes : "
+        "ajoutez une case commune aux équipes d'un groupe ou ajustez leurs séances communes dans l'assistant."
     )
     assert [c["label"] for c in infeasible["causes"]] == ["groupe SM1 + SM2", "groupe SF1 + SF2"]
 

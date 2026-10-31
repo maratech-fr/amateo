@@ -58,9 +58,6 @@ from .implicit_rules import (
     _softened_prefix as _softened_prefix,
 )
 from .infeasibility import (
-    _CAUSE_KIND_FR as _CAUSE_KIND_FR,
-)
-from .infeasibility import (
     _collect_infeasibility_causes as _collect_infeasibility_causes,
 )
 from .infeasibility import (
