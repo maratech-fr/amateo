@@ -146,7 +146,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const importMut = useImportParc(clubId);
   // 3d — équipes COMPLÈTES + rangs du club, lus DANS la modale (sans changer ses props d'ouverture) :
   // le groupe « Toutes les équipes du club » du sélecteur d'équipe est rangé par rang.
-  const allTeams = (useWizardTeams().data ?? []) as TeamLike[];
+  const wizardTeams = useWizardTeams().data;
+  const allTeams = useMemo(() => (wizardTeams ?? []) as TeamLike[], [wizardTeams]);
   const tiers = (usePriorityTiers().data ?? []) as TierLike[];
 
   const prompt = useMemo(
