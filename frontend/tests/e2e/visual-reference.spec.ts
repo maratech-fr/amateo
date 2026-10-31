@@ -152,6 +152,10 @@ test("visual reference — écrans authentifiés (clair)", async ({ page }) => {
     await landOnMatchesCalendar(page);
     await expect(page.getByText("Aucun match importé")).toBeVisible({ timeout: 30_000 });
     await settleScreen(page);
+    // Le bandeau du gardien décale tout l'écran : s'il paraît, une spec amont a laissé des rencontres
+    // dans le club partagé. On le dit ici plutôt qu'en différence de pixels. Le retry ne le soignait
+    // qu'en apparence : l'horloge figée ouvre une nouvelle visite, la référence tourne, l'essai 2 passe.
+    await expect(page.getByRole("status").filter({ hasText: "Depuis votre dernière visite" })).toHaveCount(0);
     await expect(page).toHaveScreenshot("matchs-calendrier.png", authShot);
 
     // ── Matchs · Semaine type ────────────────────────────────────────────────────────────────────
