@@ -531,7 +531,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 {cell.coachLines && cell.gridRowSpan >= 2 ? (
                   <span className="flex w-full min-w-0 flex-col gap-0.5 leading-none">
                     {cell.coachLines.map((line) => (
-                      <span key={line} className="break-words text-[10px] text-foreground">
+                      <span key={line} className="overflow-hidden text-[10px] text-foreground">
                         {line}
                       </span>
                     ))}
