@@ -9,6 +9,12 @@ from app.schemas.output_schema import ScheduleOutputSchema
 from app.solver.model import build_model
 from app.solver.result_builder import build_result
 
+WELLNESS_LEAD = (
+    "Elle se heurte sans doute à une règle de bien-être réglée « Obligatoire » (jour de repos, enchaînements, "
+    "jeunes avant les grands) ou à un coach qui tient plusieurs équipes : passez cette règle de bien-être en "
+    "« Objectif » pour le vérifier."
+)
+
 
 class ResultBuilderTest(unittest.TestCase):
     def _solve(self, model: cp_model.CpModel) -> tuple[cp_model.CpSolver, int]:
@@ -582,8 +588,10 @@ class DiagnosticPrecisionTest(unittest.TestCase):
             "teams": [{"id": "t1", "sessionsPerWeek": 1}],
             "venues": [{"id": "v1", "trainingSlots": [{"dayOfWeek": 1, "startTime": "18:00", "capacity": 1}]}],
         }
-        message = _infeasible_message(model_data)
-        self.assertIn("contraintes dures", message)
+        self.assertEqual(
+            "Le planning n'a pas pu être généré : des règles se contredisent sans qu'aucune n'ait pu être désignée.",
+            _infeasible_message(model_data),
+        )
 
     def test_travel_diagnostic_delegates_to_the_shared_geometry_source(self) -> None:
         # ENG-37 — preuve de NON-DUPLICATION. Le diagnostic ne recalcule PLUS gap/barème : il
@@ -683,67 +691,111 @@ class InfeasibilityCausesTest(unittest.TestCase):
         self.assertEqual([{"kind": "time_window", "constraintId": None, "label": None, "count": 1}], causes)
         self.assertEqual([], labels)  # pas de libellé ⇒ rien à citer, aucun plantage
 
-    def test_locked_out_team_aggregates_closed_candidates_without_solver_value(self) -> None:
-        from app.solver.constraints.common import _enforce_closure
-        from app.solver.model import ScheduleCpModel
-        from app.solver.result_builder import _collect_locked_out_teams
-
-        model = ScheduleCpModel()
-        # Trois candidats de l'équipe T, tous FERMÉS (2 par un verrou, 1 par une indispo coach).
-        for i in range(3):
-            v = model.NewBoolVar(f"x{i}")
-            model.x[("T", "gym", 1, f"18:0{i}")] = v
-            cause = {"kind": "hard_lock"} if i < 2 else {"kind": "coach_unavailability", "label": "Indispo"}
-            _enforce_closure(model, v, cause, None)
-
-        locked_out = _collect_locked_out_teams(model)
-        self.assertEqual(1, len(locked_out))
-        entry = locked_out[0]
-        self.assertEqual("T", entry["teamId"])
-        self.assertEqual(3, entry["total"])
-        counts = {(c["kind"], c["label"]): c["count"] for c in entry["causes"]}
-        self.assertEqual(2, counts[("hard_lock", None)])
-        self.assertEqual(1, counts[("coach_unavailability", "Indispo")])
-
-    def test_team_with_an_open_candidate_is_not_locked_out(self) -> None:
-        from app.solver.constraints.common import _enforce_closure
-        from app.solver.model import ScheduleCpModel
-        from app.solver.result_builder import _collect_locked_out_teams
-
-        model = ScheduleCpModel()
-        closed = model.NewBoolVar("x0")
-        model.x[("T", "gym", 1, "18:00")] = closed
-        _enforce_closure(model, closed, {"kind": "hard_lock"}, None)
-        open_var = model.NewBoolVar("x1")  # non fermé → candidat OUVERT
-        model.x[("T", "gym", 1, "19:00")] = open_var
-
-        self.assertEqual([], _collect_locked_out_teams(model))
-
-    def test_infeasible_message_stays_generic_without_model_and_solver(self) -> None:
-        """Appel direct ancien (sans model/solver) : message générique conservé, aucun plantage."""
-        from app.solver.result_builder import _diagnose_conflicts, _infeasible_message
+    def test_unfinished_cause_search_says_so(self) -> None:
+        """Recherche de cause non aboutie (aucun modèle diagnostique) : le message le dit et invite
+        à relancer, plutôt qu'une phrase générique qui accuse des règles non identifiées."""
+        from app.solver.result_builder import _diagnose_conflicts
 
         model_data = {"teams": [], "venues": []}
         diags = _diagnose_conflicts(model_data, cp_model.INFEASIBLE, [])
         infeasible = next(d for d in diags if d["id"] == "diag-infeasible")
-        # Sans noyau nommé, le message reste EXACTEMENT le message générique mesuré (jamais la forme
-        # D1 « Ces N règles se contredisent : … »), et aucune cause n'est attachée.
-        self.assertFalse(infeasible["message"].startswith("Ces "))
-        self.assertEqual(_infeasible_message(model_data), infeasible["message"])
+        self.assertEqual(
+            "Le planning n'a pas pu être généré, et la recherche de la cause n'a pas abouti dans le temps imparti.",
+            infeasible["message"],
+        )
+        self.assertEqual(
+            [
+                "Relancez la génération ; si l'échec persiste, désactivez vos dernières règles une à une "
+                "pour trouver celle qui bloque."
+            ],
+            infeasible["suggestions"],
+        )
         self.assertEqual([], infeasible["causes"])
+
+    def test_finished_cause_search_with_an_empty_core_keeps_the_measured_message(self) -> None:
+        """Recherche aboutie sans noyau : le message mesuré (capacité, saturation) reste le bon."""
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _diagnose_conflicts, _infeasible_message
+
+        model_data = {"teams": [], "venues": []}
+        diags = _diagnose_conflicts(
+            model_data,
+            cp_model.INFEASIBLE,
+            [],
+            diagnostic_model=ScheduleCpModel(),
+            diagnostic_solver=cp_model.CpSolver(),
+        )
+        infeasible = next(d for d in diags if d["id"] == "diag-infeasible")
+        self.assertEqual(_infeasible_message(model_data), infeasible["message"])
+
+    def test_core_of_demand_rules_points_to_the_wellness_rule_behind(self) -> None:
+        """Un noyau fait de seules règles de demande : le message nomme la règle et la suggestion
+        désigne ce qui la contredit sans doute, qui n'est pas instrumenté dans le noyau."""
+        from app.solver.result_builder.diagnostics.conflicts import _infeasible_core_message
+
+        message, suggestions = _infeasible_core_message(
+            [{"kind": "day_forced", "constraintId": "d1", "label": "Vendredi imposé", "count": 1}],
+            ["Vendredi imposé"],
+            {"teams": [], "venues": []},
+            diagnostic_ran=True,
+        )
+        self.assertEqual("Cette règle ne peut pas être honorée : « Vendredi imposé ».", message)
+        self.assertEqual([WELLNESS_LEAD], suggestions)
+
+    def test_core_with_a_wellness_or_availability_rule_does_not_point_to_wellness(self) -> None:
+        """Un noyau qui nomme déjà l'autre règle n'a pas besoin de la piste « bien-être »."""
+        from app.solver.result_builder.diagnostics.conflicts import _infeasible_core_message
+
+        message, suggestions = _infeasible_core_message(
+            [
+                {"kind": "day_forced", "constraintId": "d1", "label": "Vendredi imposé", "count": 1},
+                {"kind": "coach_unavailability", "constraintId": "c1", "label": "Indispo", "count": 1},
+            ],
+            ["Vendredi imposé", "Indispo"],
+            {"teams": [], "venues": []},
+            diagnostic_ran=True,
+        )
+        self.assertEqual("Ces 2 règles se contredisent : « Vendredi imposé », « Indispo ».", message)
+        self.assertNotIn(WELLNESS_LEAD, suggestions)
+
+    def test_core_mixing_a_group_and_another_rule_keeps_the_direct_wording(self) -> None:
+        """Le groupe et une autre règle dans le noyau : la tournure directe reste, les deux sont nommés."""
+        from app.solver.result_builder.diagnostics.conflicts import _infeasible_core_message
+
+        message, suggestions = _infeasible_core_message(
+            [
+                {"kind": "shared_block", "constraintId": None, "label": "groupe SM1 + SM2", "count": 1},
+                {"kind": "day_forced", "constraintId": "d1", "label": "Vendredi imposé", "count": 1},
+            ],
+            ["groupe SM1 + SM2", "Vendredi imposé"],
+            {"teams": [], "venues": []},
+            diagnostic_ran=True,
+        )
+        self.assertIn("Le groupe SM1 + SM2 est réservé sur plus de cases que ses séances communes", message)
+        self.assertIn("« Vendredi imposé »", message)
+        self.assertNotIn(WELLNESS_LEAD, suggestions)
+
+    def test_no_failure_path_still_mentions_locked_slots(self) -> None:
+        """Une réservation n'est jamais la cause désignée d'un échec : la suggestion « LOCK » est partie."""
+        from app.solver.result_builder import _diagnose_conflicts
+
+        model, solver = self._infeasible_with_two_sources()
+        for kwargs in ({}, {"diagnostic_model": model, "diagnostic_solver": solver}):
+            diags = _diagnose_conflicts({"teams": [], "venues": []}, cp_model.INFEASIBLE, [], **kwargs)
+            infeasible = next(d for d in diags if d["id"] == "diag-infeasible")
+            self.assertFalse([s for s in infeasible["suggestions"] if "LOCK" in s or "verrouill" in s])
 
     def test_d1_reads_the_diagnostic_model_not_the_nominal_one(self) -> None:
         """Repli D4 — le noyau nommé (D1) vient du SECOND solve diagnostique passé en
-        ``diagnostic_model``/``diagnostic_solver`` ; le modèle NOMINAL (sans hypothèse) ne nomme rien
-        mais sert l'agrégat D2. On vérifie les DEUX dans un seul passage de ``_diagnose_conflicts``."""
+        ``diagnostic_model``/``diagnostic_solver`` ; le modèle NOMINAL (sans hypothèse) ne nomme rien."""
         from app.solver.constraints.common import _enforce_closure
         from app.solver.result_builder import _diagnose_conflicts
 
         # Modèle diagnostique INFEASIBLE sous deux hypothèses nommées (porteur de D1).
         diag_model, diag_solver = self._infeasible_with_two_sources()
 
-        # Modèle NOMINAL : aucune hypothèse (interrupteur éteint par défaut), mais une équipe T dont
-        # l'unique candidat est fermé → D2 doit la rapporter sans toucher au solveur.
+        # Modèle NOMINAL : aucune hypothèse (interrupteur éteint par défaut), et une équipe T dont
+        # l'unique candidat est fermé : elle ne reçoit plus aucune ligne à son nom.
         from app.solver.model import ScheduleCpModel
 
         nominal = ScheduleCpModel()
@@ -766,9 +818,7 @@ class InfeasibilityCausesTest(unittest.TestCase):
         # D1 — message nommé + causes issues du modèle DIAGNOSTIQUE.
         self.assertIn("se contredisent", infeasible["message"])
         self.assertEqual({"time_window", "coach_unavailability"}, {c["kind"] for c in infeasible["causes"]})
-        # D2 — l'équipe verrouillée rapportée depuis le modèle NOMINAL.
-        team_diag = next(d for d in diags if d["id"] == "diag-infeasible-team-T")
-        self.assertEqual("T", team_diag["teamId"])
+        self.assertEqual(["diag-infeasible"], [d["id"] for d in diags])
 
     def test_each_new_contract_14_kind_names_its_source_in_the_core(self) -> None:
         """P4-96 PR-2 (contrat 1.4) — les kinds DÉDIÉS `day_forced` (jour imposé), `session_floor`

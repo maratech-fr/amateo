@@ -91,12 +91,10 @@ def test_infeasibility_names_both_conflicting_rules() -> None:
     assert {DAY_RULE_NAME, COACH_RULE_NAME} <= labels, f"libellés attendus dans les causes : {labels}"
 
 
-def test_locked_out_team_is_aggregated() -> None:
-    """D2 — l'équipe dont TOUS les candidats sont fermés reçoit son agrégat nommé (sans solver.Value)."""
+def test_a_failure_never_accuses_a_team_of_having_no_open_candidate() -> None:
+    """Un échec nomme les règles : plus aucune ligne par équipe « N candidats, tous fermés », qui
+    accusait des équipes étrangères à la cause (décision 2026-10-31)."""
     result = solve_payload(_infeasible_payload())
-    team_diag = next((d for d in result["diagnostics"] if d["id"] == "diag-infeasible-team-U21M1"), None)
-    assert team_diag is not None, "l'équipe à 0 candidat ouvert doit être rapportée (D2)"
-    assert team_diag["teamId"] == "U21M1"
-    assert "tous fermés" in team_diag["message"], team_diag["message"]
-    # Le coach ferme le(s) vendredi(s) : la cause coach_unavailability figure dans l'agrégat.
-    assert any(c["kind"] == "coach_unavailability" for c in team_diag["causes"]), team_diag["causes"]
+    assert result["status"] == "failed"
+    assert [d["id"] for d in result["diagnostics"] if d["id"].startswith("diag-infeasible-team-")] == []
+    assert not any("candidat" in d["message"] for d in result["diagnostics"]), result["diagnostics"]

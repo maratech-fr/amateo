@@ -1,0 +1,1344 @@
+{
+  "version": "1.8",
+  "clubId": "club-fully-reserved-grid",
+  "seasonId": "season-1",
+  "scheduleName": null,
+  "solverSeed": 42,
+  "solverTimeoutSeconds": 650,
+  "teams": [
+    {
+      "id": "t-1",
+      "name": "Équipe 1",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 1,
+      "ageMin": null,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-2",
+      "name": "Équipe 2",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 3,
+      "ageMin": 19,
+      "priorityTierId": 2,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-3",
+      "name": "Équipe 3",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 3,
+      "ageMin": 22,
+      "priorityTierId": 1,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-4",
+      "name": "Équipe 4",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 1,
+      "ageMin": null,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-5",
+      "name": "Équipe 5",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 2,
+      "ageMin": 16,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-6",
+      "name": "Équipe 6",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 2,
+      "ageMin": 12,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-7",
+      "name": "Équipe 7",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 1,
+      "ageMin": 10,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-8",
+      "name": "Équipe 8",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 3,
+      "ageMin": 22,
+      "priorityTierId": 2,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-9",
+      "name": "Équipe 9",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 1,
+      "ageMin": 10,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-10",
+      "name": "Équipe 10",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 2,
+      "ageMin": 14,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-11",
+      "name": "Équipe 11",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 2,
+      "ageMin": 12,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-12",
+      "name": "Équipe 12",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 2,
+      "ageMin": 22,
+      "priorityTierId": 1,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-13",
+      "name": "Équipe 13",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 1,
+      "ageMin": 8,
+      "priorityTierId": 4,
+      "forcedVenueId": null
+    },
+    {
+      "id": "t-14",
+      "name": "Équipe 14",
+      "sportCategoryId": "cat",
+      "sessionsPerWeek": 2,
+      "ageMin": 19,
+      "priorityTierId": 3,
+      "forcedVenueId": null
+    }
+  ],
+  "venues": [
+    {
+      "id": "v-1",
+      "name": "Gymnase 1",
+      "trainingSlots": [
+        {
+          "dayOfWeek": 2,
+          "startTime": "17:00",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 2,
+          "startTime": "18:30",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 2,
+          "startTime": "20:00",
+          "durationMinutes": 120,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "15:30",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "17:00",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "18:30",
+          "durationMinutes": 90,
+          "capacity": 1
+        }
+      ]
+    },
+    {
+      "id": "v-2",
+      "name": "Gymnase 2",
+      "trainingSlots": [
+        {
+          "dayOfWeek": 1,
+          "startTime": "17:30",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 1,
+          "startTime": "19:00",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 1,
+          "startTime": "20:30",
+          "durationMinutes": 120,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 2,
+          "startTime": "19:00",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 2,
+          "startTime": "20:30",
+          "durationMinutes": 120,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "16:00",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "17:30",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "19:00",
+          "durationMinutes": 90,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "20:30",
+          "durationMinutes": 120,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 4,
+          "startTime": "18:00",
+          "durationMinutes": 120,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 4,
+          "startTime": "20:00",
+          "durationMinutes": 120,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 5,
+          "startTime": "18:00",
+          "durationMinutes": 120,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 5,
+          "startTime": "20:00",
+          "durationMinutes": 150,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 6,
+          "startTime": "09:00",
+          "durationMinutes": 90,
+          "capacity": 1
+        }
+      ]
+    },
+    {
+      "id": "v-3",
+      "name": "Gymnase 3",
+      "trainingSlots": [
+        {
+          "dayOfWeek": 2,
+          "startTime": "20:30",
+          "durationMinutes": 120,
+          "capacity": 1
+        }
+      ]
+    }
+  ],
+  "coaches": [
+    {
+      "id": "c-a",
+      "firstName": "Coach",
+      "lastName": "A",
+      "isEmployee": false,
+      "isVehicled": false,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    },
+    {
+      "id": "c-b",
+      "firstName": "Coach",
+      "lastName": "B",
+      "isEmployee": true,
+      "isVehicled": true,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    },
+    {
+      "id": "c-c",
+      "firstName": "Coach",
+      "lastName": "C",
+      "isEmployee": false,
+      "isVehicled": false,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    },
+    {
+      "id": "c-d",
+      "firstName": "Coach",
+      "lastName": "D",
+      "isEmployee": false,
+      "isVehicled": false,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    },
+    {
+      "id": "c-e",
+      "firstName": "Coach",
+      "lastName": "E",
+      "isEmployee": true,
+      "isVehicled": false,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    },
+    {
+      "id": "c-f",
+      "firstName": "Coach",
+      "lastName": "F",
+      "isEmployee": false,
+      "isVehicled": false,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    },
+    {
+      "id": "c-g",
+      "firstName": "Coach",
+      "lastName": "G",
+      "isEmployee": false,
+      "isVehicled": false,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    },
+    {
+      "id": "c-h",
+      "firstName": "Coach",
+      "lastName": "H",
+      "isEmployee": false,
+      "isVehicled": false,
+      "maxDaysOverride": null,
+      "parentCoachId": null
+    }
+  ],
+  "constraints": [
+    {
+      "id": "k-1",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-9",
+      "value": "c-b",
+      "metadata": {
+        "coachId": "c-b",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-2",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-5",
+      "value": "c-g",
+      "metadata": {
+        "coachId": "c-g",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-3",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-7",
+      "value": "c-e",
+      "metadata": {
+        "coachId": "c-e",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-4",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-10",
+      "value": "c-e",
+      "metadata": {
+        "coachId": "c-e",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-5",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-13",
+      "value": "c-e",
+      "metadata": {
+        "coachId": "c-e",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-6",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-3",
+      "value": "c-f",
+      "metadata": {
+        "coachId": "c-f",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-7",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-6",
+      "value": "c-b",
+      "metadata": {
+        "coachId": "c-b",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-8",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-8",
+      "value": "c-h",
+      "metadata": {
+        "coachId": "c-h",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-9",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-2",
+      "value": "c-a",
+      "metadata": {
+        "coachId": "c-a",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-10",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-13",
+      "value": "c-b",
+      "metadata": {
+        "coachId": "c-b",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-11",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-14",
+      "value": "c-d",
+      "metadata": {
+        "coachId": "c-d",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-12",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-12",
+      "value": "c-b",
+      "metadata": {
+        "coachId": "c-b",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-13",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-10",
+      "value": "c-c",
+      "metadata": {
+        "coachId": "c-c",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-14",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-11",
+      "value": "c-b",
+      "metadata": {
+        "coachId": "c-b",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-15",
+      "type": "TEAM_COACH",
+      "severity": "HARD",
+      "teamId": "t-5",
+      "value": "c-b",
+      "metadata": {
+        "coachId": "c-b",
+        "role": "MAIN",
+        "isRequired": true
+      }
+    },
+    {
+      "id": "k-16",
+      "type": "COACH_PLAYER_UNAVAILABILITY",
+      "severity": "HARD",
+      "teamId": "t-3",
+      "value": "c-b",
+      "metadata": {
+        "coachId": "c-b",
+        "teamId": "t-3",
+        "position": null,
+        "isActive": true
+      }
+    },
+    {
+      "id": "k-17",
+      "type": "COACH_PLAYER_UNAVAILABILITY",
+      "severity": "HARD",
+      "teamId": "t-8",
+      "value": "c-e",
+      "metadata": {
+        "coachId": "c-e",
+        "teamId": "t-8",
+        "position": null,
+        "isActive": true
+      }
+    },
+    {
+      "id": "k-18",
+      "type": "COACH_PLAYER_UNAVAILABILITY",
+      "severity": "HARD",
+      "teamId": "t-4",
+      "value": "c-f",
+      "metadata": {
+        "coachId": "c-f",
+        "teamId": "t-4",
+        "position": null,
+        "isActive": true
+      }
+    },
+    {
+      "id": "k-19",
+      "type": "PRIORITY_TIER",
+      "severity": "SOFT",
+      "teamId": "*",
+      "value": null,
+      "metadata": {
+        "id": 1,
+        "label": "Rang 1",
+        "defaultMinSessions": 3
+      }
+    },
+    {
+      "id": "k-20",
+      "type": "PRIORITY_TIER",
+      "severity": "SOFT",
+      "teamId": "*",
+      "value": null,
+      "metadata": {
+        "id": 2,
+        "label": "Rang 2",
+        "defaultMinSessions": 2
+      }
+    },
+    {
+      "id": "k-21",
+      "type": "PRIORITY_TIER",
+      "severity": "SOFT",
+      "teamId": "*",
+      "value": null,
+      "metadata": {
+        "id": 3,
+        "label": "Rang 3",
+        "defaultMinSessions": 2
+      }
+    },
+    {
+      "id": "k-22",
+      "type": "PRIORITY_TIER",
+      "severity": "SOFT",
+      "teamId": "*",
+      "value": null,
+      "metadata": {
+        "id": 4,
+        "label": "Rang 4",
+        "defaultMinSessions": 2
+      }
+    },
+    {
+      "id": "k-23",
+      "type": "PRIORITY_TIER",
+      "severity": "SOFT",
+      "teamId": "*",
+      "value": null,
+      "metadata": {
+        "id": 5,
+        "label": "Rang 5",
+        "defaultMinSessions": 1
+      }
+    },
+    {
+      "id": "k-24",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 0,
+      "name": "Règle 24",
+      "scopeTargetId": "t-5",
+      "config": {
+        "maxStartTime": "19:30"
+      }
+    },
+    {
+      "id": "k-25",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 0,
+      "name": "Règle 25",
+      "scopeTargetId": "t-6",
+      "config": {
+        "maxStartTime": "19:30"
+      }
+    },
+    {
+      "id": "k-26",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 0,
+      "name": "Règle 26",
+      "scopeTargetId": "t-10",
+      "config": {
+        "maxStartTime": "19:30"
+      }
+    },
+    {
+      "id": "k-27",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 0,
+      "name": "Règle 27",
+      "scopeTargetId": "t-11",
+      "config": {
+        "maxStartTime": "19:30"
+      }
+    },
+    {
+      "id": "k-28",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 1,
+      "name": "Règle 28",
+      "scopeTargetId": "t-1",
+      "config": {
+        "maxStartTime": "18:30"
+      }
+    },
+    {
+      "id": "k-29",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 2,
+      "name": "Règle 29",
+      "scopeTargetId": "t-7",
+      "config": {
+        "maxStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-30",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 2,
+      "name": "Règle 30",
+      "scopeTargetId": "t-9",
+      "config": {
+        "maxStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-31",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 2,
+      "name": "Règle 31",
+      "scopeTargetId": "t-13",
+      "config": {
+        "maxStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-32",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 3,
+      "name": "Règle 32",
+      "scopeTargetId": "t-2",
+      "config": {
+        "minStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-33",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 3,
+      "name": "Règle 33",
+      "scopeTargetId": "t-3",
+      "config": {
+        "minStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-34",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 3,
+      "name": "Règle 34",
+      "scopeTargetId": "t-8",
+      "config": {
+        "minStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-35",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 3,
+      "name": "Règle 35",
+      "scopeTargetId": "t-12",
+      "config": {
+        "minStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-36",
+      "family": "TIME",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 3,
+      "name": "Règle 36",
+      "scopeTargetId": "t-14",
+      "config": {
+        "minStartTime": "19:00"
+      }
+    },
+    {
+      "id": "k-37",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 37",
+      "scopeTargetId": "t-1",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-38",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 38",
+      "scopeTargetId": "t-2",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-39",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 39",
+      "scopeTargetId": "t-3",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-40",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 40",
+      "scopeTargetId": "t-4",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-41",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 41",
+      "scopeTargetId": "t-5",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-42",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 42",
+      "scopeTargetId": "t-6",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-43",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 43",
+      "scopeTargetId": "t-7",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-44",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 44",
+      "scopeTargetId": "t-8",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-45",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 45",
+      "scopeTargetId": "t-9",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-46",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 46",
+      "scopeTargetId": "t-10",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-47",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 47",
+      "scopeTargetId": "t-11",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-48",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 48",
+      "scopeTargetId": "t-12",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-49",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 49",
+      "scopeTargetId": "t-13",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-50",
+      "family": "DAY",
+      "scope": "TEAM",
+      "ruleType": "PREFERRED",
+      "isActive": true,
+      "sortOrder": 4,
+      "name": "Règle 50",
+      "scopeTargetId": "t-14",
+      "config": {
+        "forbiddenDays": [
+          7
+        ]
+      }
+    },
+    {
+      "id": "k-51",
+      "family": "COACH_AVAILABILITY",
+      "scope": "COACH",
+      "ruleType": "HARD",
+      "isActive": true,
+      "sortOrder": 0,
+      "name": "Règle 51",
+      "scopeTargetId": "c-b",
+      "config": {
+        "unavailableDays": [
+          4
+        ]
+      }
+    }
+  ],
+  "slotTemplates": [
+    {
+      "id": "p-1",
+      "teamId": "t-8",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 5,
+      "startTime": "20:00:00",
+      "durationMinutes": 150,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-2",
+      "teamId": "t-12",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "20:30:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-3",
+      "teamId": "t-12",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 1,
+      "startTime": "20:30:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-4",
+      "teamId": "t-8",
+      "venueId": "v-3",
+      "coachId": null,
+      "dayOfWeek": 2,
+      "startTime": "20:30:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-5",
+      "teamId": "t-5",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "19:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-6",
+      "teamId": "t-3",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 2,
+      "startTime": "20:30:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-7",
+      "teamId": "t-6",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "17:30:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-8",
+      "teamId": "t-10",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 2,
+      "startTime": "19:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-9",
+      "teamId": "t-6",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 1,
+      "startTime": "17:30:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-10",
+      "teamId": "t-2",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 4,
+      "startTime": "18:00:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-11",
+      "teamId": "t-1",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 6,
+      "startTime": "09:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-12",
+      "teamId": "t-14",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 1,
+      "startTime": "19:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-13",
+      "teamId": "t-13",
+      "venueId": "v-1",
+      "coachId": null,
+      "dayOfWeek": 2,
+      "startTime": "17:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-14",
+      "teamId": "t-3",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 1,
+      "startTime": "20:30:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-15",
+      "teamId": "t-2",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 1,
+      "startTime": "19:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-16",
+      "teamId": "t-5",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 5,
+      "startTime": "18:00:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-17",
+      "teamId": "t-11",
+      "venueId": "v-1",
+      "coachId": null,
+      "dayOfWeek": 2,
+      "startTime": "18:30:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-18",
+      "teamId": "t-14",
+      "venueId": "v-1",
+      "coachId": null,
+      "dayOfWeek": 2,
+      "startTime": "20:00:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-19",
+      "teamId": "t-9",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "16:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-20",
+      "teamId": "t-10",
+      "venueId": "v-1",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "17:00:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-21",
+      "teamId": "t-3",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 5,
+      "startTime": "20:00:00",
+      "durationMinutes": 150,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-22",
+      "teamId": "t-2",
+      "venueId": "v-1",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "18:30:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-23",
+      "teamId": "t-8",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 1,
+      "startTime": "20:30:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-24",
+      "teamId": "t-11",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "17:30:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-25",
+      "teamId": "t-7",
+      "venueId": "v-1",
+      "coachId": null,
+      "dayOfWeek": 3,
+      "startTime": "15:30:00",
+      "durationMinutes": 90,
+      "lockLevel": "HARD"
+    },
+    {
+      "id": "p-26",
+      "teamId": "t-4",
+      "venueId": "v-2",
+      "coachId": null,
+      "dayOfWeek": 4,
+      "startTime": "20:00:00",
+      "durationMinutes": 120,
+      "lockLevel": "HARD"
+    }
+  ],
+  "sharedBlocks": [
+    {
+      "id": "b-1",
+      "teamIds": [
+        "t-3",
+        "t-8",
+        "t-12"
+      ],
+      "commonSessions": 1
+    },
+    {
+      "id": "b-2",
+      "teamIds": [
+        "t-6",
+        "t-11"
+      ],
+      "commonSessions": 1
+    },
+    {
+      "id": "b-3",
+      "teamIds": [
+        "t-3",
+        "t-8"
+      ],
+      "commonSessions": 1
+    },
+    {
+      "id": "b-4",
+      "teamIds": [
+        "t-2",
+        "t-14"
+      ],
+      "commonSessions": 1
+    }
+  ],
+  "implicitRules": {
+    "coachRestDay": {
+      "intensity": "HARD",
+      "minRestDays": 1
+    },
+    "salarieDistribution": {
+      "intensity": "HARD"
+    },
+    "maxConsecutiveSessions": {
+      "intensity": "HARD",
+      "maxConsecutive": 3
+    },
+    "ageAscending": {
+      "intensity": "HARD"
+    }
+  }
+}

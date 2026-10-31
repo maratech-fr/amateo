@@ -402,9 +402,13 @@ class ImplicitRuleCell:
 
 IMPLICIT_RULE_MATRIX: tuple[ImplicitRuleCell, ...] = tuple(
     ImplicitRuleCell(rule_key, intensity, expected, note)
-    for rule_key in ("coachRestDay", "salarieDistribution", "maxConsecutiveSessions", "ageAscending")
+    for rule_key in ("coachRestDay", "maxConsecutiveSessions", "ageAscending")
     for intensity, expected, note in (
         ("HARD", Expectation.HONORED_HARD, "cran dur (défaut) : le solveur ne place jamais en violation"),
         ("PREFERRED", Expectation.HONORED_SOFT, "cran préféré : oriente sans bloquer + warning si non tenu"),
     )
+) + tuple(
+    # La présence d'un salarié est un objectif quel que soit le cran (décision 2026-10-31).
+    ImplicitRuleCell("salarieDistribution", intensity, Expectation.HONORED_SOFT, "objectif : alerte, jamais bloquant")
+    for intensity in ("HARD", "PREFERRED")
 )

@@ -366,7 +366,7 @@ _IMPLICIT_SCENARIOS = {
     ("maxConsecutiveSessions", "PREFERRED"): lambda: impl._chain_payload(
         intensity="PREFERRED", max_consecutive=None, n_slots=3
     ),
-    ("salarieDistribution", "HARD"): lambda: impl._salarie_payload(intensity="HARD", friday_salarie=True),
+    ("salarieDistribution", "HARD"): lambda: impl._salarie_payload(intensity="HARD", friday_salarie=False),
     ("salarieDistribution", "PREFERRED"): lambda: impl._salarie_payload(intensity="PREFERRED", friday_salarie=False),
     ("ageAscending", "HARD"): lambda: impl._age_payload(intensity="HARD"),
     ("ageAscending", "PREFERRED"): lambda: impl._age_payload(intensity="PREFERRED"),

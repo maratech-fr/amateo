@@ -254,11 +254,12 @@ def test_salarie_preferred_steers_and_warns() -> None:
     assert "vendredi" in warnings[0]["message"]
 
 
-def test_salarie_parity_hard_infeasible_where_preferred_warns() -> None:
-    """Parité S2 : le MÊME scénario (vendredi sans salarié) est INFEASIBLE en HARD (la pose
-    l'interdit) et complété-avec-warning en PREFERRED."""
+def test_salarie_day_without_one_warns_at_both_settings() -> None:
+    """Le MÊME scénario (vendredi sans salarié) aboutit avec une alerte aux deux crans : cette règle
+    est un objectif, jamais un blocage (décision 2026-10-31)."""
     hard = solve_payload(_salarie_payload(intensity="HARD", friday_salarie=False))
-    assert hard["status"] == "failed"
+    assert hard["status"] == "completed"
+    assert _implicit_warnings(hard, "salarieDistribution")
     preferred = solve_payload(_salarie_payload(intensity="PREFERRED", friday_salarie=False))
     assert preferred["status"] == "completed"
     assert _implicit_warnings(preferred, "salarieDistribution")
