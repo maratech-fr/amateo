@@ -46,15 +46,25 @@ if [[ "${SANDBOX_GUARD_SELFTEST:-0}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-# Resolve our own compose file from THIS file's location (backend/scripts/lib/…),
-# so the guard is independent of whatever helpers the sourcing script defines.
-_SANDBOX_GUARD_COMPOSE="${SANDBOX_GUARD_COMPOSE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/docker-compose.yml}"
+# Resolve the stack from THIS file's location (backend/scripts/lib/…), so the guard is independent
+# of whatever helpers the sourcing script defines — and follows this checkout's own stack.
+_SANDBOX_GUARD_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${SANDBOX_GUARD_COMPOSE:-}" ]]; then
+  _SANDBOX_GUARD_DC="docker compose -f $SANDBOX_GUARD_COMPOSE"
+else
+  _SANDBOX_GUARD_RESOLVED="$(sh "$_SANDBOX_GUARD_LIB/stack-resolve.sh" "$(cd "$_SANDBOX_GUARD_LIB/../../.." && pwd)")"
+  _SANDBOX_GUARD_DC="$(printf '%s\n' "$_SANDBOX_GUARD_RESOLVED" | sed -n 's/^COMPOSE=//p')"
+  [[ -n "$_SANDBOX_GUARD_DC" ]] || _sandbox_die "$(printf '%s\n' "$_SANDBOX_GUARD_RESOLVED" | sed -n 's/^STACK_REASON=//p')"
+  [[ "$(printf '%s\n' "$_SANDBOX_GUARD_RESOLVED" | sed -n 's/^STACK_ENV_OK=//p')" == "1" ]] \
+    || _sandbox_die "worktree nu sans son AMATEO_STACK dans .env — make -C backend test-up."
+fi
 _SANDBOX_GUARD_ENV="${SANDBOX_GUARD_APP_ENV:-dev}"
 
 # Ground truth: ask the live app connection which database it is on. This reflects
 # real env vars + dotenv precedence (.env.local wins), exactly what the app writes.
 _sandbox_resolve() {
-  docker compose -f "$_SANDBOX_GUARD_COMPOSE" exec -T -e APP_ENV="$_SANDBOX_GUARD_ENV" php-fpm \
+  # shellcheck disable=SC2086 # une ligne de commande, le découpage est voulu
+  $_SANDBOX_GUARD_DC exec -T -e APP_ENV="$_SANDBOX_GUARD_ENV" php-fpm \
     sh -c 'cd /app/backend && php bin/console dbal:run-sql "SELECT current_database() AS db"' 2>/dev/null \
     | sed -E 's/[[:space:]]//g' | grep -vE '^-*$' | grep -vxE 'db' | head -1
 }

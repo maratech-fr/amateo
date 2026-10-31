@@ -1,6 +1,31 @@
 .DEFAULT_GOAL := help
 
-FIG := docker compose -f ../docker-compose.yml
+# Quelle stack pour cette copie ? (backend/scripts/lib/stack-resolve.sh) : principal, épreuve, nu, unknown.
+STACK_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
+STACK_INFO := $(shell sh $(STACK_ROOT)/backend/scripts/lib/stack-resolve.sh $(STACK_ROOT) 2>/dev/null | sed 's/ /@@/g')
+stack_field = $(subst @@, ,$(patsubst $(1)=%,%,$(filter $(1)=%,$(STACK_INFO))))
+STACK_MODE := $(call stack_field,STACK_MODE)
+STACK_COMPOSE := $(call stack_field,COMPOSE)
+TEST_PROJECT := $(call stack_field,TEST_PROJECT)
+STACK_GOALS := $(or $(MAKECMDGOALS),help)
+FIG := $(STACK_COMPOSE)
+# Refus AVANT toute recette : un `make -n` les prouve aussi, et rien ne démarre à moitié.
+ifeq ($(filter principal epreuve nu,$(STACK_MODE)),)
+ifneq ($(filter-out help,$(STACK_GOALS)),)
+$(error $(or $(call stack_field,STACK_REASON),stack-resolve : dépôt non identifié (git absent ou dossier hors dépôt) — aucune cible Docker))
+endif
+endif
+ifeq ($(STACK_MODE),nu)
+STACK_REFUSED := $(filter-out install test coverage lint help,$(STACK_GOALS))
+ifneq ($(STACK_REFUSED),)
+$(error $(firstword $(STACK_REFUSED)) : indisponible en worktree nu — stack d'épreuve (make epreuve-up WT=…) ou dépôt principal)
+endif
+ifneq ($(call stack_field,STACK_ENV_OK),1)
+ifneq ($(filter-out help,$(STACK_GOALS)),)
+$(error .env sans AMATEO_STACK=$(TEST_PROJECT) exact : make -C backend test-up)
+endif
+endif
+endif
 ROOT_ENV := ../.env
 
 # Compte superadmin JETABLE du run e2e — recréé à chaque `make e2e`, jamais réutilisé
@@ -101,14 +126,15 @@ e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + `make 
 	@$(FIG) exec -T php-fpm php bin/console cache:pool:clear cache.rate_limiter >/dev/null
 	@$(FIG) exec -T postgres psql -U amateo_owner -d amateo_dev -c \
 		"DELETE FROM super_admin WHERE email='$(E2E_SA_EMAIL)'" >/dev/null
-	@printf '$(E2E_SA_PASSWORD)\n$(E2E_SA_PASSWORD)\n' | $(FIG) exec -T php-fpm \
-		php bin/console app:superadmin:create $(E2E_SA_EMAIL) > /tmp/amateo-e2e-sa.txt
+	# mktemp : deux runs e2e parallèles ne se lisent pas leur clé TOTP.
+	@sa_file=$$(mktemp); trap 'rm -f "$$sa_file"' EXIT; \
+	printf '$(E2E_SA_PASSWORD)\n$(E2E_SA_PASSWORD)\n' | $(FIG) exec -T php-fpm \
+		php bin/console app:superadmin:create $(E2E_SA_EMAIL) > "$$sa_file" || exit 1; \
 	$(FIG) --profile tools run --rm --no-deps \
 		-e E2E_SUPERADMIN_EMAIL='$(E2E_SA_EMAIL)' \
 		-e E2E_SUPERADMIN_PASSWORD='$(E2E_SA_PASSWORD)' \
-		-e E2E_SUPERADMIN_TOTP_SECRET="$$(sed -n 's/.*setup key: *//p' /tmp/amateo-e2e-sa.txt | tr -d '\r\n')" \
+		-e E2E_SUPERADMIN_TOTP_SECRET="$$(sed -n 's/.*setup key: *//p' "$$sa_file" | tr -d '\r\n')" \
 		e2e sh -lc 'PUPPETEER_SKIP_DOWNLOAD=1 npm ci --legacy-peer-deps && npx playwright test'
-	@rm -f /tmp/amateo-e2e-sa.txt
 
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

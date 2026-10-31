@@ -1,0 +1,39 @@
+# Surcharge de la compose d'un worktree NU (backend/scripts/lib/stack-resolve.sh) : aucun port
+# publié, aucune renaissance au reboot. `!reset []` et non `[]` : compose FUSIONNE les listes.
+services:
+  frontend:
+    restart: "no"
+    ports: !reset []
+  frontend-tooling:
+    restart: "no"
+  e2e:
+    restart: "no"
+  frontend-dev:
+    restart: "no"
+    ports: !reset []
+  php-fpm:
+    restart: "no"
+  nginx:
+    restart: "no"
+    ports: !reset []
+  postgres:
+    restart: "no"
+    ports: !reset []
+  redis:
+    restart: "no"
+    ports: !reset []
+  messenger-worker:
+    restart: "no"
+  cron-runner:
+    restart: "no"
+  engine:
+    restart: "no"
+    ports: !reset []
+  pdf-worker:
+    restart: "no"
+  mercure:
+    restart: "no"
+    ports: !reset []
+  mailpit:
+    restart: "no"
+    ports: !reset []

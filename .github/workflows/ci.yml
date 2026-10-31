@@ -38,6 +38,9 @@ jobs:
       - name: Lint Makefile
         run: make -n help
 
+      - name: Stack resolve bench
+        run: bash backend/scripts/lib/stack-resolve-test.sh
+
   # Frontend gate: until now the frontend had NO CI coverage — only the e2e job
   # touched it via `npm run dev` (Vite, no typecheck). A broken production build
   # (`tsc -b`) and failing Vitest units both slipped through. This job closes
