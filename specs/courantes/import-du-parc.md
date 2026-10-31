@@ -407,7 +407,15 @@ chatbot est ignorée en silence (le dériveur ne la lit pas).
   `SharedTrainingBlockStateProcessor`) est rejouée **avant** tout persist, puis le bloc naît au
   socle avec ses membres. Son **label** : la `corrections.groupe` du gestionnaire (trim, non vide,
   §7) l'emporte sur le `groupe` brut de la case, les deux bornés à
-  `SharedTrainingBlock::LABEL_MAX_LENGTH` (40 caractères).
+  `SharedTrainingBlock::LABEL_MAX_LENGTH` (40 caractères). **Bloc déjà existant (apparié)** : seul
+  un nom SAISI (`corrections.groupe`) le renomme ; le `groupe` lu dans le fichier ne l'écrase
+  jamais. L'analyse sert pour cela `blocLabel` (le vrai nom du groupe existant, null s'il n'en a pas)
+  sur la ligne `apparie`. Un renommage réel compte « mis à jour » au récap (un nom saisi identique
+  au nom courant, une fois borné, ne compte pas). **Plusieurs cases d'un même groupe** :
+  (1) noms de fichier différents et aucune saisie → le nom de la 1ʳᵉ case ; (2) un nom saisi sur
+  une case gagne sur les noms de fichier, à la création comme au renommage ; (3) deux noms saisis
+  différents → la dernière ligne l'emporte. Chaque changement réel de nom compte « mis à jour »,
+  y compris juste après une création : un même groupe peut rendre « 1 créé, 1 mis à jour ».
   **Réservation de groupe** : le gymnase vient du `venueId` **CHOISI** de la décision
   (re-vérifié tenant), sinon de la résolution par le **NOM** de la case — jamais du `cibleId`, qui
   désigne le bloc apparié, pas un gymnase (P4-363). Si ce gymnase et le jour/heure (`corrections`)
@@ -532,7 +540,7 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    équipes + sa position en clair « Lundi 18:00 · Gymnase X », raison ⚠ une seule fois si alerte,
    **barrée/grisée si « Ignorer »**) ; Garder/Ignorer (`SegmentedControl`, pas de case à cocher), un
    sélecteur de gymnase pour sa réservation de groupe (P4-363, → `venueId`), un champ pour le nom du
-   groupe (§6, → `corrections.groupe`), un **sélecteur MULTIPLE** (`Listbox mode="multiple"`,
+   groupe (§6, → `corrections.groupe`), amorcé par le vrai nom du groupe existant (`blocLabel`) à défaut le nom lu — seul un nom SAISI, différent de l'amorce, est envoyé ; champ vidé = rien envoyé, l'import ne retire jamais un nom, un **sélecteur MULTIPLE** (`Listbox mode="multiple"`,
    incident ALAP) pour redéfinir la **composition d'équipes** (→ `corrections.equipes`, §6 — amorcé
    des équipes résolues lues, options = équipes du club + lignes Équipes gardées « à créer » de ce
    run, référencées `import:<index>`) et un accès à l'éditeur de créneau pour le jour/heure/durée.
@@ -587,7 +595,7 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    les décisions, les corrections de case, les gymnases, les genres/niveaux/CTC, les séances, les
    coches Garder/Ignorer faites à la main (le serveur peut décocher ou recocher de lui-même une ligne
    dont l'alerte naît ou se lève — le geste manuel l'emporte) et les noms de groupe saisis (un nom
-   vidé revient au nom lu). Seule une **nouvelle analyse** (étape Coller) repart de la lecture. Le
+   vidé revient à l'amorce du champ). Seule une **nouvelle analyse** (étape Coller) repart de la lecture. Le
    **libellé d'un groupe suit la composition redéfinie** (les noms des équipes choisies, joints par
    « + ») dans la carte, la grille, l'éditeur de case et les noms accessibles ; présentation seule,
    le serveur garde la main à l'import. Les équipes « à créer » de ce run s'y retrouvent par leur

@@ -61,6 +61,8 @@ interface Line {
   seancesActuelles?: number;
   /** Mutualisation : le libellé du bloc dérivé (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
+  /** Mutualisation appariée : le VRAI nom du groupe existant, qui amorce le champ à la place du nom lu. */
+  blocLabel?: string | null;
   /** Mutualisation (P4-363) : le gymnase résolu du nom de la case (null si à créer) — amorce le sélecteur de gymnase. */
   gymnaseId?: string | null;
   /**
@@ -2883,6 +2885,148 @@ describe("ParcImportModal — quick wins : composition d'un groupe et bouton de 
       await editSlot(user);
 
       expectStaleNotFailed();
+    });
+  });
+});
+
+/**
+ * Renommage d'un groupe au réimport. Promesse : le champ affiche le VRAI nom du groupe, et seul un nom
+ * saisi à la main part au serveur ; le nom lu dans le fichier n'écrase jamais. Jumeaux serveur :
+ * `ParcImportExecuteTest::testAHandTypedGroupeRenamesTheExistingBlock` et
+ * `ParcImportAnalyzeTest::testAnAppariedMutualisationCarriesTheRealNameOfItsBlock`.
+ */
+describe("ParcImportModal — renommage au réimport : seul un nom saisi part", () => {
+  const LIBELLE = "U11M1 + U11M2";
+  const position = { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 };
+  /** Fichier « CEC », groupe existant « Loisirs » : le cas où les deux noms divergent. */
+  const appariedLine = (blocLabel: string | null = "Loisirs"): Line => mkLine(0, LIBELLE, "apparie", { groupe: "CEC", blocLabel, cibleId: "block-1", gymnaseId: null, position });
+  const railButton = (label: string): HTMLElement =>
+    within(screen.getByRole("navigation")).getByRole("button", { name: (n: string) => n.includes(label) });
+  const groupField = (): HTMLElement => screen.getByRole("textbox", { name: (n: string) => n.startsWith(PARC_IMPORT_TEXTS.groupLabel(LIBELLE)) });
+
+  async function openMutual(user: ReturnType<typeof userEvent.setup>, line: Line): Promise<void> {
+    q.analysis.value = analysisOf({ mutualisations: [line] });
+    await user.click(railButton(PARC_IMPORT_TEXTS.stepPaste));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+    await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")));
+  }
+
+  async function importedGroupCorrection(user: ReturnType<typeof userEvent.setup>): Promise<unknown> {
+    await visitAllSteps(user);
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+    const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; corrections?: Record<string, unknown> }> };
+    return body.decisions.find((d) => "mutualisations" === d.section)?.corrections?.groupe;
+  }
+
+  it("le champ et la carte montrent le vrai nom du groupe, pas celui du fichier", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, appariedLine());
+
+    expect(groupField()).toHaveValue("Loisirs");
+    expect(screen.getByText("Loisirs")).toBeInTheDocument();
+    expect(screen.queryByText("CEC")).not.toBeInTheDocument();
+  });
+
+  it("un groupe existant sans nom : le champ retombe sur le nom du fichier", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, appariedLine(null));
+
+    expect(groupField()).toHaveValue("CEC");
+  });
+
+  it("champ non touché : aucun corrections.groupe, sur un groupe existant", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, appariedLine());
+
+    expect(await importedGroupCorrection(user)).toBeUndefined();
+  });
+
+  it("champ non touché : aucun corrections.groupe, sur un groupe à créer", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, mkLine(0, LIBELLE, "aCreer", { groupe: "CEC", gymnaseId: null, position }));
+
+    expect(await importedGroupCorrection(user)).toBeUndefined();
+  });
+
+  it("un nom saisi part en corrections.groupe", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, appariedLine());
+    fireEvent.change(groupField(), { target: { value: "Section A" } });
+
+    expect(await importedGroupCorrection(user)).toBe("Section A");
+  });
+
+  it("champ vidé : rien n'est envoyé et le nom affiché revient au vrai nom (retirer un nom par l'import reste impossible)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, appariedLine());
+    fireEvent.change(groupField(), { target: { value: "" } });
+
+    expect(screen.getByText("Loisirs")).toBeInTheDocument();
+    expect(await importedGroupCorrection(user)).toBeUndefined();
+  });
+
+  it("un nom modifié puis remis à l'amorce n'est pas envoyé", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, appariedLine());
+    fireEvent.change(groupField(), { target: { value: "Section A" } });
+    fireEvent.change(groupField(), { target: { value: "Loisirs" } });
+
+    expect(await importedGroupCorrection(user)).toBeUndefined();
+  });
+
+  it("le récap affiche le groupe mis à jour", async () => {
+    const user = userEvent.setup();
+    q.importResult.value = { recap: { mutualisations: { crees: 0, apparies: 0, misAJour: 1, ignores: 0 } } };
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await openMutual(user, appariedLine());
+    fireEvent.change(groupField(), { target: { value: "Section A" } });
+
+    await importedGroupCorrection(user);
+
+    expect(await screen.findByText(PARC_IMPORT_TEXTS.sectionRecap(0, 0, 1, 0), { exact: false })).toBeInTheDocument();
+  });
+
+  describe("une ligne à créer devient appariée à la revérification", () => {
+    const toCreateLine = (): Line => mkLine(0, LIBELLE, "aCreer", { groupe: "CEC", gymnaseId: null, position });
+
+    /** Un nom de groupe ne périme pas l'aperçu (D10) : pour revérifier, on corrige aussi le créneau. */
+    async function reverifyAgainst(user: ReturnType<typeof userEvent.setup>, line: Line): Promise<void> {
+      q.analysis.value = analysisOf({ mutualisations: [line] });
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.editCaseTitle }));
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.save }));
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.verifyAction }));
+    }
+
+    it("non touché : le champ passe au vrai nom, et l'ancienne amorce ne devient pas une correction qui renommerait le groupe", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, toCreateLine());
+      expect(groupField()).toHaveValue("CEC");
+
+      await reverifyAgainst(user, appariedLine());
+
+      expect(groupField()).toHaveValue("Loisirs");
+      expect(await importedGroupCorrection(user)).toBeUndefined();
+    });
+
+    it("un nom saisi survit à la revérification et part", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, toCreateLine());
+      fireEvent.change(groupField(), { target: { value: "Section A" } });
+
+      await reverifyAgainst(user, appariedLine());
+
+      expect(groupField()).toHaveValue("Section A");
+      expect(await importedGroupCorrection(user)).toBe("Section A");
     });
   });
 });
