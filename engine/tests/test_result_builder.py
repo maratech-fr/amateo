@@ -771,7 +771,7 @@ class InfeasibilityCausesTest(unittest.TestCase):
             {"teams": [], "venues": []},
             diagnostic_ran=True,
         )
-        self.assertIn("Le groupe SM1 + SM2 est réservé sur plus de cases que ses séances communes", message)
+        self.assertIn("Le groupe SM1 + SM2 et la règle « Vendredi imposé » se contredisent", message)
         self.assertIn("« Vendredi imposé »", message)
         self.assertNotIn(WELLNESS_LEAD, suggestions)
 
