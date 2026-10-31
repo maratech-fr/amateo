@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.validate_assignments import validate_assignment
 from tests.support import make_payload, make_team, make_venue, solve_payload, team_coach
@@ -70,6 +72,49 @@ def _verdict(
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
     return validate_assignment(ValidateAssignmentsInputSchema.model_validate(payload), contract_version="2.19")
+
+
+def _salarie_move_scene(intensity: str, *, thursday_emptied: bool) -> dict[str, Any]:
+    """Deux salariés tiennent t1 à t5, une séance par jour ; on déplace t4 entre jeudi et vendredi.
+    Vers le vendredi, le jeudi perd son seul salarié ; vers le jeudi, il le retrouve."""
+    teams = [make_team(f"t{d}") for d in range(1, 6)]
+    venue = make_venue("v", [(d, "18:00") for d in range(1, 6)], duration_minutes=60, capacity=5)
+    coaches = [{**_coach("e1"), "isEmployee": True}, {**_coach("e2"), "isEmployee": True}]
+    constraints = [team_coach(f"tc{d}", f"t{d}", "e1" if d <= 2 else "e2") for d in range(1, 6)]
+    slots = [_tmpl(f"t{d}", "v", d, "18:00") for d in (1, 2, 3, 5)]
+    source_day, target_day = (4, 5) if thursday_emptied else (5, 4)
+    payload = _verdict(
+        teams=teams,
+        venues=[venue],
+        coaches=coaches,
+        constraints=constraints,
+        slot_templates=slots,
+        candidates=[_cand("t4", "v", target_day, "18:00")],
+        references=[_cand("t4", "v", source_day, "18:00")],
+        intensity=intensity,
+    )
+    payload["implicitRules"] = {"salarieDistribution": {"intensity": intensity}}
+    return payload
+
+
+@pytest.mark.parametrize("intensity", ["HARD", "PREFERRED"])
+def test_a_move_emptying_a_day_of_employees_is_accepted_and_named(intensity: str) -> None:
+    """Vider un jour de tout salarié est ACCEPTÉ à tout cran et remonte comme compromis, en un fait."""
+    result = _run(_salarie_move_scene(intensity, thursday_emptied=True))
+    assert result["valid"] is True, result["violations"]
+    assert "Le jeudi, plus aucun salarié n'a de séance." in [
+        c["message"] for c in result["compromises"] if c["family"] == "implicit_rule" and c["effect"] == "broken"
+    ], result["compromises"]
+
+
+@pytest.mark.parametrize("intensity", ["HARD", "PREFERRED"])
+def test_a_move_giving_a_day_back_its_employee_is_named(intensity: str) -> None:
+    """Le geste inverse rend le jour : le compromis gagné dit le même fait."""
+    result = _run(_salarie_move_scene(intensity, thursday_emptied=False))
+    assert result["valid"] is True, result["violations"]
+    assert "Le jeudi, un salarié a de nouveau une séance." in [
+        c["message"] for c in result["compromises"] if c["family"] == "implicit_rule" and c["effect"] == "gained"
+    ], result["compromises"]
 
 
 def _five_day_scene(intensity: str) -> dict[str, Any]:

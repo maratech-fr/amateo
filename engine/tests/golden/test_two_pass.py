@@ -43,6 +43,16 @@ def _enzo_working_days(result: Any) -> set[int]:
     return days
 
 
+def test_forced_days_against_the_rest_day_point_to_the_wellness_rule() -> None:
+    """Le repos coach n'est pas dans le noyau, qui ne nomme que les jours imposés : la suggestion
+    doit désigner la règle de bien-être, seule piste qui mène le gestionnaire à la vraie cause."""
+    result = asyncio.run(build_schedule(ScheduleInputSchema.model_validate(_load_fixture("no_rest_enzo"))))
+    assert result.status == "failed"
+    infeasible = next(d for d in result.diagnostics if d.id == "diag-infeasible")
+    assert any("règle de bien-être réglée « Obligatoire »" in s for s in infeasible.suggestions), infeasible.suggestions
+    assert not any("LOCK" in s for s in infeasible.suggestions), infeasible.suggestions
+
+
 def test_no_rest_enzo_hard_only() -> None:
     """Enzo coaches 5 teams (one per weekday, HARD-forced days) with no rest day.
 

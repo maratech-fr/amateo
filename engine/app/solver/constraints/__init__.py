@@ -343,7 +343,7 @@ def add_level_1_hard_constraints(
         soft_term_info_out=soft_info,
     )
 
-    # 3c. At least one salarié coach must be present each Mon-Fri day.
+    # 3c. Objectif, jamais un blocage : un salarié présent chaque jour ouvré où le club a un créneau.
     stats.salarie_distribution = add_salarie_distribution_constraints(
         model,
         assignment_list,

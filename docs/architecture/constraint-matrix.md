@@ -178,6 +178,7 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
   coach** (`coachRestDay`, seuil `minRestDays` 1-4, défaut 1), **distribution des salariés**
   (`salarieDistribution`), **jamais N créneaux dos-à-dos** (`maxConsecutiveSessions`, seuil
   `maxConsecutive` 2-6, défaut 3 — coaché ET joué confondus), **âge croissant** (`ageAscending`).
+  ⚠ **`salarieDistribution` fait exception (2026-10-31)** : c'est un OBJECTIF quel que soit le cran stocké (le cran est sans effet, l'alerte dit un fait et ne bloque jamais — ADR-0001, amendement 2026-10-31).
   Intensité **HARD** (bloque, comportement historique = défaut) ou **PREFERRED** (le solveur vise
   la règle via un littéral de violation AGRÉGÉ par entité, poids −6, preuve d'empilement dans
   `objective.py` — jamais un terme par occurrence, qui pouvait supprimer des séances). Un cran
@@ -192,7 +193,8 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
   `implicit_rule_not_honored` + `ruleKey`, détection post-solve inconditionnelle au **même grain
   que la pose** (coach MAIN — les ASSISTANT ne comptent pas — + séances jouées), textes
   différenciés : « règle assouplie par vous » (PREFERRED, informatif) vs « le solveur n'a pas pu
-  honorer » (HARD contourné par un verrou, alerte). Dédoublonné avec `coach_overload`.
+  honorer » (HARD contourné par un verrou, alerte) ; la distribution des salariés parle en fait
+  (« Aucun salarié n'a de séance le jeudi »), sans reproche. Dédoublonné avec `coach_overload`.
   La parité génération ⇄ verdict tient : `/validate-assignments` reçoit le même bloc.
 
 ✦ **Le levier `allowMultipleSessionsPerDay` est RETIRÉ de bout en bout** (P4-79) :

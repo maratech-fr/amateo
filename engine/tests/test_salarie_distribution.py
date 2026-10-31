@@ -22,6 +22,19 @@ def _solve(model: cp_model.CpModel) -> int:
     return solver.Solve(model)
 
 
+def _days_without_salarie(model: cp_model.CpModel, stats: object) -> set[int]:
+    """Résout et rend les jours dont le littéral « aucun salarié » est VRAI (décision 2026-10-31)."""
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 5
+    status = solver.Solve(model)
+    assert status in (cp_model.FEASIBLE, cp_model.OPTIMAL), f"un jour sans salarié ne bloque plus, obtenu {status}"
+    return {
+        int(info.day_of_week)
+        for info in stats.implicit_soft_info  # type: ignore[attr-defined]
+        if info.detail == "salarie" and solver.BooleanValue(info.var)
+    }
+
+
 def _assignment(
     model: cp_model.CpModel,
     name: str,
@@ -51,12 +64,11 @@ class TestSalarieDistribution:
             f"salarie_distribution should default to 0, got {stats.salarie_distribution}"
         )
 
-    def test_no_salarie_on_day_makes_infeasible(self) -> None:
-        """If a day has zero salarié assignments, the model must be INFEASIBLE.
+    def test_no_salarie_on_day_stays_feasible_and_lights_the_day(self) -> None:
+        """Un jour ouvré sans salarié ne bloque plus, quel que soit le cran : il allume son littéral.
 
-        Setup: 2 salarié coaches, but they only work days 1-2.
-        Days 3-5 have no salarié at all — constraint requires at least
-        one salarié per day, so the model is infeasible when all are forced on.
+        Setup : 2 salariés sur les jours 1-2, un vacataire sur les jours 1-4. Les jours 3 et 4 ont
+        des séances mais aucun salarié.
         """
         model = cp_model.CpModel()
         # Salarié coach-1 works days 1-2 only
@@ -108,9 +120,10 @@ class TestSalarieDistribution:
         for a in assignments:
             model.Add(a.var == 1)
 
-        status = _solve(model)
         assert stats.salarie_distribution > 0, f"Expected salarie_distribution > 0, got {stats.salarie_distribution}"
-        assert status == cp_model.INFEASIBLE, f"Days 3-5 with no salarié should be INFEASIBLE, got {status}"
+        lit_days = _days_without_salarie(model, stats)
+        assert {3, 4} <= lit_days, f"les jours 3 et 4 n'ont aucun salarié, littéraux vrais : {lit_days}"
+        assert not {1, 2} & lit_days, f"les jours 1 et 2 ont un salarié, littéraux vrais : {lit_days}"
 
     def test_salarie_on_all_days_is_feasible(self) -> None:
         """If at least one salarié works each day Mon-Fri, the model is feasible.
@@ -287,13 +300,13 @@ class TestSalarieDistribution:
         )
 
     def test_weekend_days_not_constrained(self) -> None:
-        """Saturday (6) and Sunday (7) must NOT be part of the salarié distribution constraint.
+        """Le samedi ne compte pas : un salarié présent le samedi n'efface pas le vendredi vide.
 
-        A salarié only working Mon-Thu (4 days) with no assignments on Friday (5)
-        should be infeasible (no salarié on Friday), even if they also work Saturday.
+        Salariés du lundi au jeudi (plus le samedi pour l'un), un vacataire seul le vendredi : le
+        vendredi allume son littéral, et aucun terme n'est posé pour le samedi.
         """
         model = cp_model.CpModel()
-        # Salarié coach-1 works days 1-4 (Mon-Thu) + day 6 (Saturday)
+        # Salarié coach-1 : lundi à mercredi et samedi (quatre jours, il garde son jour de repos).
         assignments = [
             _assignment(
                 model,
@@ -303,7 +316,7 @@ class TestSalarieDistribution:
                 venue_id="venue-A",
                 coach_id="coach-1",
             )
-            for d in (1, 2, 3, 4, 6)
+            for d in (1, 2, 3, 6)
         ]
         # Salarié coach-2 works days 1-4 only
         assignments += [
@@ -311,16 +324,27 @@ class TestSalarieDistribution:
                 model,
                 f"day2_{d}",
                 slot_id=f"{d}:19:00",
-                team_id=f"team-{d + 5}",
+                team_id=f"team-{d + 10}",
                 venue_id="venue-B",
                 coach_id="coach-2",
             )
             for d in (1, 2, 3, 4)
         ]
+        assignments.append(
+            _assignment(
+                model,
+                "friday_freelance",
+                slot_id="5:18:00",
+                team_id="team-20",
+                venue_id="venue-C",
+                coach_id="coach-3",
+            )
+        )
 
         coaches = [
             {"id": "coach-1", "isEmployee": True},
             {"id": "coach-2", "isEmployee": True},
+            {"id": "coach-3", "isEmployee": False},
         ]
 
         stats = add_level_1_hard_constraints(model, assignments, coaches=coaches)
@@ -329,9 +353,8 @@ class TestSalarieDistribution:
         for a in assignments:
             model.Add(a.var == 1)
 
-        status = _solve(model)
         assert stats.salarie_distribution > 0, f"Expected salarie_distribution > 0, got {stats.salarie_distribution}"
-        assert status == cp_model.INFEASIBLE, f"No salarié on Friday should be INFEASIBLE, got {status}"
+        assert _days_without_salarie(model, stats) == {5}, "seul le vendredi est sans salarié ; le samedi ne compte pas"
 
     def test_total_constraints_includes_salarie_distribution(self) -> None:
         """total_constraints_added must include salarie_distribution in the sum."""

@@ -95,6 +95,9 @@ def test_the_four_adjustable_rules_are_called_according_to_the_setting() -> None
     """Les 4 règles réglables restent APPELÉES quel que soit le cran — HARD par défaut,
     PREFERRED quand demandé. On ne les DÉBRANCHE jamais : PREFERRED n'est pas une relaxation
     de secours (ADR-0001, single-pass sans fallback) mais un réglage explicite du gestionnaire.
+
+    Ce test prouve le BRANCHEMENT, pas l'effet : pour la présence d'un salarié, le cran reçu est
+    sans effet (objectif aux deux crans, ``test_salarie_rule_is_an_objective.py``).
     """
     adjustable = {
         "add_coach_rest_day_constraints": "coach_rest_day_intensity",

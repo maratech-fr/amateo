@@ -406,8 +406,8 @@ class TestCoachRestDayWithMap:
 
 class TestSalarieDistributionWithMap:
     def test_salarie_distribution_fires_with_team_coach_map(self) -> None:
-        """When team_coach_map maps salarie coaches to teams,
-        the salarie_distribution constraint must enforce presence each day."""
+        """Les salariés lus dans team_coach_map comptent : un jour où aucun d'eux n'a de séance
+        reste faisable et allume le littéral « aucun salarié » (décision 2026-10-31)."""
         model = cp_model.CpModel()
         assignments = [
             AssignmentVariable(
@@ -427,6 +427,15 @@ class TestSalarieDistributionWithMap:
             )
             for d in range(1, 3)
         ]
+        # Le mercredi a une séance, sans aucun salarié.
+        assignments.append(
+            AssignmentVariable(
+                var=model.NewBoolVar("freelance_day3"),
+                team_id="team-20",
+                venue_id="venue-C",
+                slot_id="3:18:00",
+            )
+        )
 
         coaches = [
             {"id": "coach-1", "isEmployee": True},
@@ -438,6 +447,7 @@ class TestSalarieDistributionWithMap:
             "team-2": ["coach-1"],
             "team-6": ["coach-2"],
             "team-7": ["coach-2"],
+            "team-20": ["coach-3"],
         }
 
         stats = add_level_1_hard_constraints(
@@ -450,9 +460,18 @@ class TestSalarieDistributionWithMap:
         for a in assignments:
             model.Add(a.var == 1)
 
-        status = _solve(model)
         assert stats.salarie_distribution > 0, f"Expected salarie_distribution > 0, got {stats.salarie_distribution}"
-        assert status == cp_model.INFEASIBLE, f"Days 3-5 with no salarie should be INFEASIBLE, got {status}"
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 5
+        status = solver.Solve(model)
+        assert status in (cp_model.FEASIBLE, cp_model.OPTIMAL), f"un jour sans salarié ne bloque plus, obtenu {status}"
+        lit_days = {
+            info.day_of_week
+            for info in stats.implicit_soft_info
+            if info.detail == "salarie" and solver.BooleanValue(info.var)
+        }
+        assert 3 in lit_days, f"le mercredi n'a aucun salarié, littéraux vrais : {lit_days}"
+        assert not {1, 2} & lit_days, f"lundi et mardi ont un salarié, littéraux vrais : {lit_days}"
 
 
 class TestMaxConsecutiveWithMap:

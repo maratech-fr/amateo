@@ -15,7 +15,11 @@ relaxé (le diagnostic ne produit AUCUN planning).
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import patch
 
+from ortools.sat.python import cp_model
+
+from app import main
 from tests.support.pipeline import (
     make_payload,
     make_team,
@@ -91,12 +95,51 @@ def test_infeasibility_names_both_conflicting_rules() -> None:
     assert {DAY_RULE_NAME, COACH_RULE_NAME} <= labels, f"libellés attendus dans les causes : {labels}"
 
 
-def test_locked_out_team_is_aggregated() -> None:
-    """D2 — l'équipe dont TOUS les candidats sont fermés reçoit son agrégat nommé (sans solver.Value)."""
+def test_a_cause_search_that_does_not_conclude_says_so() -> None:
+    """Le chemin réel : solve nominal INFEASIBLE, solve diagnostique non conclu. Le constructeur reçoit
+    le modèle nominal et son solveur, sans modèle diagnostique, et doit dire que la recherche a échoué."""
+    real_solve = main._solve
+
+    def diagnostic_times_out(*args: Any, **kwargs: Any) -> Any:
+        status, *rest = real_solve(*args, **kwargs)
+        return (cp_model.UNKNOWN, *rest) if kwargs.get("assumptions_enabled") else (status, *rest)
+
+    with patch.object(main, "_solve", diagnostic_times_out):
+        result = solve_payload(_infeasible_payload())
+
+    assert result["status"] == "failed"
+    infeasible = next(d for d in result["diagnostics"] if d["id"] == "diag-infeasible")
+    assert infeasible["message"] == (
+        "Le planning n'a pas pu être généré, et la recherche de la cause n'a pas abouti dans le temps imparti."
+    )
+    assert infeasible["causes"] == []
+
+
+def _unnamed(rule: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in rule.items() if key != "name"}
+
+
+def test_a_core_of_unnamed_rules_still_gives_a_readable_message_and_its_causes() -> None:
+    """Règles sans libellé : le message reste une phrase non vide, et les causes gardent leur nature."""
+    payload = _infeasible_payload()
+    payload["constraints"] = [
+        rule if rule.get("type") == "TEAM_COACH" else _unnamed(rule) for rule in payload["constraints"]
+    ]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "failed"
+    infeasible = next(d for d in result["diagnostics"] if d["id"] == "diag-infeasible")
+    assert infeasible["message"] == (
+        "Le planning n'a pas pu être généré : des règles se contredisent sans qu'aucune n'ait pu être désignée."
+    )
+    assert {c["kind"] for c in infeasible["causes"]} == {"coach_unavailability", "day_forced"}
+
+
+def test_a_failure_never_accuses_a_team_of_having_no_open_candidate() -> None:
+    """Un échec nomme les règles : plus aucune ligne par équipe « N candidats, tous fermés », qui
+    accusait des équipes étrangères à la cause (décision 2026-10-31)."""
     result = solve_payload(_infeasible_payload())
-    team_diag = next((d for d in result["diagnostics"] if d["id"] == "diag-infeasible-team-U21M1"), None)
-    assert team_diag is not None, "l'équipe à 0 candidat ouvert doit être rapportée (D2)"
-    assert team_diag["teamId"] == "U21M1"
-    assert "tous fermés" in team_diag["message"], team_diag["message"]
-    # Le coach ferme le(s) vendredi(s) : la cause coach_unavailability figure dans l'agrégat.
-    assert any(c["kind"] == "coach_unavailability" for c in team_diag["causes"]), team_diag["causes"]
+    assert result["status"] == "failed"
+    assert [d["id"] for d in result["diagnostics"] if d["id"].startswith("diag-infeasible-team-")] == []
+    assert not any("candidat" in d["message"] for d in result["diagnostics"]), result["diagnostics"]
