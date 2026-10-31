@@ -64,11 +64,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class ParcImportExecuteTest extends WebTestCase
 {
-    /** La date d'`updated_at` posée au décor d'un groupe : tout `touch()` la dépasse. */
-    private const string BLOCK_PAST_UPDATE = '2020-01-01 00:00:00+00';
-
     use ChoosesPlanVersionTrait;
     use TenantGucTrait;
+    /** La date d'`updated_at` posée au décor d'un groupe : tout `touch()` la dépasse. */
+    private const string BLOCK_PAST_UPDATE = '2020-01-01 00:00:00+00';
 
     private KernelBrowser $client;
 
@@ -541,7 +540,7 @@ final class ParcImportExecuteTest extends WebTestCase
             [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => 'Loisirs']]],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         $reloaded = $this->reloadBlock($block->getId());
         self::assertSame('Loisirs', $reloaded->getLabel(), 'le nom saisi remplace celui du groupe');
         self::assertTrue($this->wasTouched($reloaded), 'un renommage avance updatedAt');
@@ -560,7 +559,7 @@ final class ParcImportExecuteTest extends WebTestCase
             [['section' => 'mutualisations', 'index' => 0, 'coche' => true]],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         $reloaded = $this->reloadBlock($block->getId());
         self::assertSame('Loisirs', $reloaded->getLabel(), 'le nom du fichier n\'écrase pas');
         self::assertFalse($this->wasTouched($reloaded), 'rien n\'a changé : updatedAt reste');
@@ -578,7 +577,7 @@ final class ParcImportExecuteTest extends WebTestCase
             [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => '  Loisirs ']]],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         $reloaded = $this->reloadBlock($block->getId());
         self::assertSame('Loisirs', $reloaded->getLabel());
         self::assertFalse($this->wasTouched($reloaded), 'même nom : updatedAt reste');
@@ -599,7 +598,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         self::assertSame('Premier', $this->onlyBlockOfTheClub()->getLabel(), 'la 2ᵉ case ne renomme pas par son nom de fichier');
         self::assertSame(['crees' => 1, 'apparies' => 1, 'misAJour' => 0], $this->blockCounters($body));
     }
@@ -617,7 +616,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         self::assertSame('Saisi', $this->onlyBlockOfTheClub()->getLabel());
         self::assertSame(['crees' => 1, 'apparies' => 0, 'misAJour' => 1], $this->blockCounters($body));
     }
@@ -635,7 +634,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         self::assertSame('Saisi', $this->onlyBlockOfTheClub()->getLabel());
         self::assertSame(['crees' => 1, 'apparies' => 1, 'misAJour' => 0], $this->blockCounters($body));
     }
@@ -653,7 +652,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         self::assertSame('Saisi', $this->reloadBlock($block->getId())->getLabel());
         self::assertSame(['crees' => 0, 'apparies' => 1, 'misAJour' => 1], $this->blockCounters($body));
     }
@@ -671,7 +670,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         self::assertSame('Deux', $this->onlyBlockOfTheClub()->getLabel());
         self::assertSame(['crees' => 1, 'apparies' => 0, 'misAJour' => 1], $this->blockCounters($body));
     }
@@ -686,7 +685,7 @@ final class ParcImportExecuteTest extends WebTestCase
             [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => str_repeat('é', 300)]]],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         self::assertSame(str_repeat('é', SharedTrainingBlock::LABEL_MAX_LENGTH), $this->reloadBlock($block->getId())->getLabel());
         self::assertSame(1, $body['recap']['mutualisations']['misAJour']);
     }
@@ -702,7 +701,7 @@ final class ParcImportExecuteTest extends WebTestCase
             [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'corrections' => ['groupe' => str_repeat('é', 300)]]],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         self::assertFalse($this->wasTouched($this->reloadBlock($block->getId())), 'même nom une fois borné : updatedAt reste');
         self::assertSame(1, $body['recap']['mutualisations']['apparies']);
         self::assertSame(0, $body['recap']['mutualisations']['misAJour']);
@@ -762,7 +761,7 @@ final class ParcImportExecuteTest extends WebTestCase
             [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'cibleId' => $foreign['blockId'], 'corrections' => ['groupe' => 'Piraté']]],
         );
 
-        self::assertSame(200, $status, json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
+        self::assertSame(200, $status, 'l\'import aboutit : ' . json_encode($body['errors'] ?? [], \JSON_UNESCAPED_UNICODE));
         $this->scopeGucToClub($foreign['clubId']);
         self::assertSame('Étranger', $this->em->getConnection()->fetchOne('SELECT label FROM shared_training_block WHERE id = :id', ['id' => $foreign['blockId']]), 'le groupe de l\'autre club ne bouge pas');
         $this->scopeGucToClub($this->club->getId());
