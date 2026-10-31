@@ -3,26 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Le planning de votre club, sans le casse-tête</title>
-  <meta name="description" content="Générez le planning d'entraînements de votre club de basket en quelques minutes : toutes vos contraintes capturées, un planning optimisé, réajustable quand la réalité change." />
+  <title>Amateo — Le planning d'entraînements des clubs de basket</title>
+  <meta name="description" content="Le planning de votre club de basket amateur, généré en quelques minutes à partir de vos contraintes — et vos matchs placés depuis l'export FBI de la FFBB." />
+  <link rel="canonical" href="https://amateo.app/" />
   <!-- Carte de partage (Open Graph / Twitter) : aperçu affiché quand un lien vers la vitrine
        est collé dans une messagerie / un réseau. URL ABSOLUES (l'aperçu se charge hors contexte).
        Copie recopiée du <title>/<meta description> ci-dessus ; image servie par la vitrine elle-même. -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://amateo.app/" />
-  <meta property="og:title" content="Le planning de votre club, sans le casse-tête" />
-  <meta property="og:description" content="Générez le planning d'entraînements de votre club de basket en quelques minutes : toutes vos contraintes capturées, un planning optimisé, réajustable quand la réalité change." />
+  <meta property="og:title" content="Amateo — Le planning d'entraînements des clubs de basket" />
+  <meta property="og:description" content="Le planning de votre club de basket amateur, généré en quelques minutes à partir de vos contraintes — et vos matchs placés depuis l'export FBI de la FFBB." />
   <meta property="og:image" content="https://amateo.app/assets/brand/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <!-- Balisage schema.org (SoftwareApplication + Organization éditrice) — INJECTÉ depuis
-       config.js, jamais en dur : le nom du produit/éditeur, l'URL de la vitrine et le logo sont
-       LA source unique (`brand`, `editor`, `siteUrl`, `logo`), comme le reste de la page et comme
-       le <title>/og:title qui n'écrivent jamais la marque en clair (règle landing, convention OG).
-       Googlebot exécute JS : un bloc peuplé en fin de page est lu. Script vide ignoré par les
-       crawlers tant que config.js n'a pas rempli son contenu — jamais de JSON invalide servi. -->
-  <script type="application/ld+json" data-brand-jsonld></script>
+  <!-- Balisage schema.org (SoftwareApplication + Organization éditrice), ÉCRIT dans le HTML pour
+       être lu sans JavaScript. La description recopie la meta description ci-dessus. Pas d'`offers` :
+       les paliers payants sont « sur demande », inexprimables en une offre. -->
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","@id":"https://amateo.app/#app","name":"Amateo","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"https://amateo.app/","inLanguage":"fr","description":"Le planning de votre club de basket amateur, généré en quelques minutes à partir de vos contraintes — et vos matchs placés depuis l'export FBI de la FFBB.","publisher":{"@id":"https://amateo.app/#editor"}},{"@type":"Organization","@id":"https://amateo.app/#editor","name":"Maratech","url":"https://amateo.app/","logo":"https://amateo.app/assets/brand/mark.svg"}]}</script>
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
   <!-- Thème AU CHOIX, posé AVANT le <style> pour éviter tout flash : localStorage `theme`
@@ -119,8 +117,8 @@
     }
     header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
     /* Logotype « comme l'app » (BrandMark) : l'ICÔNE (arcs, thème-neutre) + le MOT en TEXTE
-       à la couleur du thème, un seul rendu clair/sombre. Le mot vient de `brand` (config, via
-       `.brand`) ; `text-transform` le met en minuscules comme le logo, sans dupliquer le nom.
+       à la couleur du thème, un seul rendu clair/sombre. Le mot est écrit dans le HTML ;
+       `text-transform` le met en minuscules comme le logo.
        Repli conservé : si l'icône manque/échoue, le mot seul reste (marque toujours lisible). */
     .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
     .brand-logo { height: 30px; width: 30px; display: block; }
@@ -330,7 +328,7 @@
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="#" data-brand-label><img class="brand-logo" data-brand-logo alt="" width="30" height="30" /><span class="brand logo-word" aria-hidden="true"></span></a>
+    <a class="logotype" href="#" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
     <nav class="top" aria-label="Navigation principale">
       <a href="#fonctionnement">Comment ça marche</a>
       <a href="#offres">Offres</a>
@@ -365,11 +363,11 @@
 <main>
   <div class="wrap">
     <section class="hero">
-      <h1>Le planning de votre club, sans le casse-tête.</h1>
+      <h1>Le planning de votre club de basket, sans le casse-tête.</h1>
       <p class="lede">
-        Dans chaque club de basket FFBB, quelqu'un passe ses soirées à répartir les créneaux
-        de gymnase entre les équipes, en espérant n'oublier aucune contrainte.
-        <span class="brand">…</span> capture toutes les contraintes du club, <strong>génère un
+        Chaque année, dans chaque club de basket FFBB, quelqu'un passe ses soirées à répartir les
+        créneaux de gymnase entre les équipes, en espérant n'oublier aucune contrainte.
+        <span class="brand">Amateo</span> capture toutes les contraintes du club, <strong>génère un
         planning optimisé en quelques minutes</strong>, et le réajuste quand la réalité change.
       </p>
       <div class="ctas">
@@ -414,8 +412,8 @@
   <section id="fonctionnement">
     <div class="wrap">
       <h2>Vos contraintes entrent, votre planning sort.</h2>
-      <p class="sub">Pensé pour les gestionnaires de club — bénévoles ou salariés — pas pour des
-      informaticiens.</p>
+      <p class="sub">Pensé pour les gestionnaires de clubs amateurs — bénévoles ou salariés — pas pour
+      des informaticiens.</p>
       <div class="steps">
         <div class="step">
           <h3>Décrivez votre club</h3>
@@ -444,12 +442,12 @@
   <section class="alt" id="matchs">
     <div class="wrap">
       <h2>Les matchs, un dossier de moins à garder en tête.</h2>
-      <p class="sub">Le calendrier des matchs arrive de la fédération. L'app le range : les
-      rencontres importées, les domiciles placés, les conflits repérés, les échéances suivies. Vous
+      <p class="sub">Le calendrier des matchs arrive de la fédération, par FBI, l'outil de gestion de la
+      FFBB. L'app le range : les rencontres importées, les domiciles placés, les conflits repérés, les échéances suivies. Vous
       déposez l'export une fois, et vous n'avez plus à tout tenir de tête.</p>
       <div class="pains">
         <article class="pain">
-          <h3>Déposez l'export, l'app place vos matchs</h3>
+          <h3>Déposez l'export FBI, l'app place vos matchs</h3>
           <p>L'import du fichier FBI du club range vos rencontres par équipe, et un solveur pose vos
           domiciles sur les créneaux où vos gymnases sont libres — à vous d'ajuster ou de verrouiller
           ce qui doit l'être.</p>
@@ -561,6 +559,21 @@
           avec vos gymnases, créneaux et contraintes — guidé étape par étape.</p>
         </details>
         <details>
+          <summary>C'est fait pour un club amateur ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
+          <p class="a">Oui, et seulement pour lui : Amateo s'adresse aux clubs de basket amateurs
+          affiliés à la FFBB, gérés par des bénévoles ou un salarié, avec leurs équipes, leurs gymnases
+          et leurs coachs. Quelle que soit la taille du club, l'offre Découverte le prend en entier, et
+          vous êtes guidé pas à pas, sans informaticien.</p>
+        </details>
+        <details>
+          <summary>Est-ce que ça m'aide avec FBI ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
+          <p class="a">Oui. FBI est l'outil de gestion de la FFBB où vivent vos rencontres ; Amateo ne
+          le remplace pas et n'y écrit rien. Vous déposez l'export FBI de votre club : l'app range les
+          matchs par équipe, pose vos domiciles sur les créneaux libres de vos gymnases, et l'écran
+          « FBI — à faire » liste ce qu'il reste à saisir ou à corriger dans FBI, avec l'échéance de
+          chaque compétition.</p>
+        </details>
+        <details>
           <summary>Et si le planning généré ne me convient pas ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
           <p class="a">Vous gardez la main : chaque séance se déplace en deux clics, se
           verrouille, et vous pouvez régénérer autour de vos choix. L'outil optimise, vous décidez.</p>
@@ -612,7 +625,7 @@
 
 <footer class="site">
   <div class="wrap">
-    <span><span class="foot-brand"><img class="brand-logo" data-brand-logo alt="" width="20" height="20" /><span class="brand logo-word" aria-hidden="true"></span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
+    <span><span class="foot-brand"><img class="brand-logo" data-brand-logo alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
     <span><a href="mentions-legales.html">Mentions légales</a> · <a data-cta="demo-inline" href="#">Contact</a></span>
   </div>
 </footer>
@@ -622,13 +635,9 @@
      neuf. Bumper cette date À CHAQUE ajout/retrait de clé dans config.js (cf. commentaire là-bas). -->
 <script src="config.js?v=2026-10-19"></script>
 <script>
-  // Le nom et les liens sont injectés depuis config.js — UNE source.
+  // Les liens et le logo sont injectés depuis config.js — UNE source.
   (function () {
-    const { brand, appUrl, contactEmail, logo, siteUrl, editor } = window.LANDING_CONFIG;
-    document.title = brand + " — " + document.title;
-    // Le mot du logotype (`.brand.logo-word`) et les mentions de marque dans le texte
-    // (`.brand`) partagent le nom, injecté ici ; le logotype le met en minuscules en CSS.
-    document.querySelectorAll(".brand").forEach((el) => { el.textContent = brand; });
+    const { brand, appUrl, contactEmail, logo } = window.LANDING_CONFIG;
     // Injection défensive de l'ICÔNE : si `logo` manque (ancien config.js en cache) ou si
     // l'image échoue, on retire l'icône — le MOT (texte, toujours visible) reste le repli :
     // la marque demeure lisible, jamais d'image cassée.
@@ -640,7 +649,6 @@
         img.remove();
       }
     });
-    document.querySelectorAll("[data-brand-label]").forEach((el) => { el.setAttribute("aria-label", brand); });
     // ⚠ Objet ET corps 100 % ASCII (P4-273) : certains clients mail cassent l'encodage des
     // accents/tirets d'un mailto (objet illisible, corps tronqué). Le texte VISIBLE de la page
     // garde ses accents — seul le brouillon d'e-mail est déaccentué.
@@ -650,42 +658,6 @@
     document.querySelectorAll("[data-cta=register]").forEach((a) => { a.href = appUrl + "/register"; });
     document.querySelectorAll("[data-cta=login]").forEach((a) => { a.href = appUrl + "/login"; });
     document.querySelectorAll("[data-cta=demo],[data-cta=demo-inline]").forEach((a) => { a.href = mailto; });
-
-    // ── Balisage schema.org, construit depuis la MÊME source (config.js) ──────────────
-    // SoftwareApplication (le produit) + Organization (l'éditeur). JSON.stringify garantit un
-    // JSON valide par construction. La description reprend LA méta-description de la page (point
-    // unique, pas de recopie). URL/logo en ABSOLU depuis `siteUrl` (un crawler résout mal le
-    // relatif d'un bloc JSON-LD). PAS d'`offers` : l'offre Découverte est gratuite mais les
-    // paliers payants sont « sur demande » (prix non publics) — inexprimable proprement en une
-    // offre/fourchette, donc omis plutôt qu'inventé (section #offres).
-    const jsonldEl = document.querySelector("[data-brand-jsonld]");
-    if (jsonldEl && siteUrl && brand) {
-      const site = siteUrl.replace(/\/+$/, ""); // garde-fou : siteUrl est déjà sans slash final
-      const descMeta = document.querySelector('meta[name="description"]');
-      const description = descMeta ? descMeta.getAttribute("content") : undefined;
-      const app = {
-        "@type": "SoftwareApplication",
-        "@id": site + "/#app",
-        name: brand,
-        applicationCategory: "BusinessApplication",
-        operatingSystem: "Web",
-        url: site + "/",
-      };
-      if (description) app.description = description;
-      if (editor) app.publisher = { "@id": site + "/#editor" };
-      const graph = [app];
-      if (editor) {
-        const org = {
-          "@type": "Organization",
-          "@id": site + "/#editor",
-          name: editor,
-          url: site + "/",
-        };
-        if (logo) org.logo = site + "/" + String(logo).replace(/^\/+/, "");
-        graph.push(org);
-      }
-      jsonldEl.textContent = JSON.stringify({ "@context": "https://schema.org", "@graph": graph });
-    }
 
     // Mesure d'audience Umami (sans cookie, P4-276) — injection DÉFENSIVE à DOUBLE
     // garde : (a) les deux clés `analytics` non vides ; (b) hostname courant =
