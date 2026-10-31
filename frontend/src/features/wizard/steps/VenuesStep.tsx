@@ -3,8 +3,6 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
-import { buttonVariants } from "@/shared/components/ui/button-variants";
-import { cn } from "@/shared/lib/utils";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -13,7 +11,6 @@ import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { AccordionSection } from "@/shared/components/ui/accordion";
-import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -38,7 +35,9 @@ import { venueGeoAlertMessage } from "../lib/venueGeoAlert";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
 import { WIZARD_TEXTS } from "../texts";
+import { AssociateSalleModal } from "./AssociateSalleModal";
 import { PeriodVenues } from "./PeriodVenues";
+import { SalleResultRow } from "./SalleResultRow";
 import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { TravelMatrixModal } from "./TravelMatrixModal";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
@@ -337,6 +336,7 @@ function VenuesEditor() {
   // vidées). On CONFIRME avant. Le venue est capturé au clic (la sélection peut changer avant l'OK).
   const [pendingSplitOff, setPendingSplitOff] = useState<{ venue: Venue; preview: SplitCascadePreview } | null>(null);
   // Associer / Dissocier une salle FFBB, sur la carte du gymnase : confirmés, puis défaits par le toast.
+  const [associatingVenue, setAssociatingVenue] = useState<Venue | null>(null);
   const [pendingAssociate, setPendingAssociate] = useState<{ salle: FfbbSalle; venue: Venue } | null>(null);
   const [pendingDissociate, setPendingDissociate] = useState<Venue | null>(null);
   // Colours assigned to gyms created faster than the venues query refetches, so
@@ -457,7 +457,7 @@ function VenuesEditor() {
 
   const confirmAssociate = ({ salle, venue }: { salle: FfbbSalle; venue: Venue }) =>
     update.mutate(
-      { id: venue.id, body: { name: venue.name, color: venue.color, canSplit: venue.canSplit, isActive: venue.isActive, externalRef: salle.externalRef, latitude: salle.latitude, longitude: salle.longitude } },
+      { id: venue.id, body: { name: venue.name, color: venue.color, canSplit: venue.canSplit, isActive: venue.isActive, externalRef: salle.externalRef, address: venue.address || salle.address, latitude: salle.latitude, longitude: salle.longitude } },
       { onSuccess: () => toast.success(WIZARD_TEXTS.salleLinkedToVenue(salle.name, venue.name), { replaces: `venue-anchor-${venue.id}`, action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
     );
 
@@ -466,9 +466,6 @@ function VenuesEditor() {
       { id: venue.id, body: { name: venue.name, externalRef: "" } },
       { onSuccess: () => toast.success(WIZARD_TEXTS.venueDissociated(venue.name), { replaces: `venue-anchor-${venue.id}`, action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
     );
-
-  // Les salles proposées à l'association : celles d'à côté qu'aucun gymnase du club ne porte déjà.
-  const associableSalles = (nearbyQuery.data?.salles ?? []).filter((salle) => null !== salle.externalRef && !importedRefs.has(salle.externalRef));
 
   const addVenue = (event: FormEvent) => {
     event.preventDefault();
@@ -648,30 +645,14 @@ function VenuesEditor() {
             <EmptyHint>{WIZARD_TEXTS.nameSearchEmpty}</EmptyHint>
           ) : (
             <ul aria-label={WIZARD_TEXTS.nameSearchResultsLabel} className="flex max-h-44 flex-col gap-1 overflow-y-auto">
-              {nameSearchResults.map((salle) => {
-                // Déjà liée (au NUMÉRO fédéral) : la ligne reste LISIBLE mais fermée au geste fautif —
-                // re-choisir referait un doublon (anti-doublon existant, `importedRefs`).
-                const linked = null !== salle.externalRef && importedRefs.has(salle.externalRef);
-                return (
-                  <li key={`${salle.externalRef ?? salle.name}-${salle.address ?? ""}`} className="flex items-center gap-2 text-sm">
-                    <button
-                      type="button"
-                      disabled={linked || create.isPending}
-                      className="flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-2.5 py-1 text-left hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
-                      onClick={() => addSalleFromName(salle)}
-                    >
-                      <span className="font-medium">{salle.name}</span>
-                      {salle.address ? (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {salle.address}
-                          {salle.city ? `, ${salle.city}` : ""}
-                        </span>
-                      ) : null}
-                      {linked ? <span className="ml-auto shrink-0 text-xs text-muted-foreground">{WIZARD_TEXTS.alreadyLinkedTag}</span> : null}
-                    </button>
-                  </li>
-                );
-              })}
+              {nameSearchResults.map((salle) => (
+                <SalleResultRow
+                  key={`${salle.externalRef ?? salle.name}-${salle.address ?? ""}`}
+                  salle={salle}
+                  venues={venues}
+                  action={{ label: WIZARD_TEXTS.addTag, accessibleName: WIZARD_TEXTS.salleActionName(WIZARD_TEXTS.addTag, salle.name), disabled: create.isPending, onPick: addSalleFromName }}
+                />
+              ))}
             </ul>
           )}
         </div>
@@ -696,31 +677,25 @@ function VenuesEditor() {
             {0 === filteredNearby.length ? (
               <li className="text-xs text-muted-foreground">{WIZARD_TEXTS.noSalleMatches(name.trim())}</li>
             ) : null}
-            {filteredNearby.map((salle) => {
-              const added = null !== salle.externalRef && importedRefs.has(salle.externalRef);
-              return (
-                <li key={`${salle.externalRef ?? salle.name}-${salle.address ?? ""}`} className="flex items-center gap-2 text-sm">
-                  <Button
-                    size="sm"
-                    variant={added ? "ghost" : "outline"}
-                    className="shrink-0"
-                    disabled={added || create.isPending}
-                    onClick={() => {
-                      const color = nextVenueColor([...venues.map((v) => v.color), ...pendingColorsRef.current]);
-                      pendingColorsRef.current.push(color);
-                      create.mutate(
-                        { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, address: salle.address, latitude: salle.latitude, longitude: salle.longitude },
-                        { onSuccess: onVenueCreated },
-                      );
-                    }}
-                  >
-                    {added ? WIZARD_TEXTS.addedTag : WIZARD_TEXTS.addTag}
-                  </Button>
-                  <span className={added ? "text-muted-foreground" : "font-medium"}>{salle.name}</span>
-                  {salle.address ? <span className="truncate text-xs text-muted-foreground">{salle.address}{salle.city ? `, ${salle.city}` : ""}</span> : null}
-                </li>
-              );
-            })}
+            {filteredNearby.map((salle) => (
+              <SalleResultRow
+                key={`${salle.externalRef ?? salle.name}-${salle.address ?? ""}`}
+                salle={salle}
+                venues={venues}
+                action={{
+                  label: WIZARD_TEXTS.addTag,
+                  disabled: create.isPending,
+                  onPick: (picked) => {
+                    const color = nextVenueColor([...venues.map((v) => v.color), ...pendingColorsRef.current]);
+                    pendingColorsRef.current.push(color);
+                    create.mutate(
+                      { name: picked.name, color, canSplit: false, externalRef: picked.externalRef, address: picked.address, latitude: picked.latitude, longitude: picked.longitude },
+                      { onSuccess: onVenueCreated },
+                    );
+                  },
+                }}
+              />
+            ))}
           </ul>
         </div>
       ) : null}
@@ -828,29 +803,21 @@ function VenuesEditor() {
                   message={venueGeoAlertMessage(selectedGeoAlert)}
                 />
               )}
-              {/* La salle FFBB se gère ici, sur le gymnase lui-même. Associer pose numéro fédéral + GPS
-                  sans jamais renommer (le nom d'usage reste roi) ; Dissocier ne laisse que le nom. */}
+              {/* La salle FFBB se gère ici, sur le gymnase lui-même. Associer pose numéro fédéral + GPS + adresse
+                  (si le gymnase n'en a pas) sans jamais renommer (le nom d'usage reste roi) ; Dissocier ne laisse que le nom. */}
               {null != selected.externalRef ? (
                 <div className="mb-3">
                   <Button variant="outline" size="sm" onClick={() => setPendingDissociate(selected)}>
                     {WIZARD_TEXTS.dissociateVenueButton(selected.name)}
                   </Button>
                 </div>
-              ) : associableSalles.length > 0 ? (
+              ) : (
                 <div className="mb-3">
-                  <Menu
-                    label={WIZARD_TEXTS.associateVenueMenu(selected.name)}
-                    trigger={WIZARD_TEXTS.associateVenueMenu(selected.name)}
-                    triggerClassName={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-foreground")}
-                  >
-                    {associableSalles.map((salle) => (
-                      <MenuItem key={salle.externalRef} onSelect={() => setPendingAssociate({ salle, venue: selected })}>
-                        {salle.name}
-                      </MenuItem>
-                    ))}
-                  </Menu>
+                  <Button variant="outline" size="sm" onClick={() => setAssociatingVenue(selected)}>
+                    {WIZARD_TEXTS.associateVenueMenu(selected.name)}
+                  </Button>
                 </div>
-              ) : null}
+              )}
               {/* La clé porte aussi la salle : le champ garde son état local (repli, saisie) et doit
                   repartir de zéro après Associer, Dissocier ou leur « Annuler ». */}
               <VenueGeocodeField
@@ -1001,11 +968,30 @@ function VenuesEditor() {
         }}
       />
 
+      <AssociateSalleModal
+        venue={associatingVenue}
+        venues={venues}
+        onClose={() => setAssociatingVenue(null)}
+        onPick={(salle) => {
+          if (null !== associatingVenue) {
+            setPendingAssociate({ salle, venue: associatingVenue });
+          }
+          setAssociatingVenue(null);
+        }}
+      />
+
       <ConfirmDialog
         open={null !== pendingAssociate}
         destructive={false}
         title={null !== pendingAssociate ? WIZARD_TEXTS.associateVenueTitle(pendingAssociate.salle.name, pendingAssociate.venue.name) : ""}
-        description={WIZARD_TEXTS.associateVenueDescription}
+        description={
+          null !== pendingAssociate ? (
+            <>
+              {"" === WIZARD_TEXTS.associateVenueAddress(pendingAssociate.salle) ? null : <p className="mb-2 font-medium text-foreground">{WIZARD_TEXTS.associateVenueAddress(pendingAssociate.salle)}</p>}
+              <p>{null === pendingAssociate.salle.latitude || null === pendingAssociate.salle.longitude ? WIZARD_TEXTS.associateVenueDescriptionNoGps : WIZARD_TEXTS.associateVenueDescription}</p>
+            </>
+          ) : undefined
+        }
         confirmLabel={WIZARD_TEXTS.associateVenueConfirm}
         onCancel={() => setPendingAssociate(null)}
         onConfirm={() => {

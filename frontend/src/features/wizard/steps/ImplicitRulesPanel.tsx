@@ -7,11 +7,13 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
+import { isAlwaysObjective } from "@/shared/lib/implicitRules";
 import { readState } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
 import type { ImplicitRuleIntensity, ImplicitRuleKey, ImplicitRuleSetting, ImplicitRuleSettingPayload, VenueTravelRuleIntensity } from "../api";
 import { PRODUCT_RULES, WELLBEING_RULES, isWellbeingKey } from "../lib/implicitRules";
+import { IMPLICIT_RULES_TEXTS as T } from "../texts/implicitRules";
 import { useImplicitRuleSettings, useResetImplicitRuleSetting, useTravelRuleSetting, useUpdateImplicitRuleSetting, useUpdateTravelRuleSetting, useVenueTravelTimes } from "../queries";
 
 /**
@@ -22,7 +24,8 @@ import { useImplicitRuleSettings, useResetImplicitRuleSetting, useTravelRuleSett
  *    éditables côté moteur, un contrôle ici promettrait un réglage qui n'existe pas. Le texte
  *    est un CONTRAT (gelé par le test) : chaque ligne AFFIRME un comportement du solveur.
  *  - **Règles de bien-être** — RÉGLABLES (contrat moteur 2.7). Chacune porte une intensité
- *    (Obligatoire = HARD / Objectif = PREFERRED) et, pour deux d'entre elles, un seuil.
+ *    (Obligatoire = HARD / Objectif = PREFERRED) et, pour deux d'entre elles, un seuil. Une règle que
+ *    le moteur traite toujours en objectif (`isAlwaysObjective`) est présentée sans aucun réglage.
  *
  * ⚠ **Régime 1 strict** (`.claude/rules/frontend.md`) : ce panneau N'INVENTE aucune règle. Il
  * AFFICHE la collection RÉSOLUE par le serveur (toujours 4 entrées, défauts inclus) et POSTE le
@@ -36,8 +39,8 @@ import { useImplicitRuleSettings, useResetImplicitRuleSetting, useTravelRuleSett
 /** Les deux crans d'intensité, libellés humains. Les valeurs techniques (HARD/PREFERRED) restent
  *  celles du contrat — jamais affichées telles quelles. */
 const INTENSITY_CRANS: { value: ImplicitRuleIntensity; label: string }[] = [
-  { value: "HARD", label: "Obligatoire" },
-  { value: "PREFERRED", label: "Objectif" },
+  { value: "HARD", label: T.cranMandatory },
+  { value: "PREFERRED", label: T.cranObjective },
 ];
 
 /** Les règles OPT-IN (P2-42) ont un cran de plus : elles naissent INACTIVES. Les quatre
@@ -45,22 +48,22 @@ const INTENSITY_CRANS: { value: ImplicitRuleIntensity; label: string }[] = [
 const OPT_IN_RULES: ReadonlySet<ImplicitRuleKey> = new Set<ImplicitRuleKey>(["maxConsecutiveDays"]);
 
 function cransFor(ruleKey: ImplicitRuleKey): { value: ImplicitRuleIntensity; label: string }[] {
-  return OPT_IN_RULES.has(ruleKey) ? [{ value: "OFF", label: "Inactive" }, ...INTENSITY_CRANS] : INTENSITY_CRANS;
+  return OPT_IN_RULES.has(ruleKey) ? [{ value: "OFF", label: T.cranInactive }, ...INTENSITY_CRANS] : INTENSITY_CRANS;
 }
 
 /** Bornes OFFERTES pour chaque seuil (ergonomie de saisie ; le serveur reste juge, 422). Clés =
  *  le champ du payload, pas un enum métier. */
 const THRESHOLD_BOUNDS: Record<"minRestDays" | "maxConsecutive" | "maxConsecutiveDays", { min: number; max: number; label: string }> = {
-  minRestDays: { min: 1, max: 4, label: "Jours de repos minimum" },
-  maxConsecutive: { min: 2, max: 6, label: "Créneaux consécutifs maximum" },
-  maxConsecutiveDays: { min: 2, max: 5, label: "Jours d'affilée maximum" },
+  minRestDays: { min: 1, max: 4, label: T.thresholdRestDays },
+  maxConsecutive: { min: 2, max: 6, label: T.thresholdConsecutiveSessions },
+  maxConsecutiveDays: { min: 2, max: 5, label: T.thresholdConsecutiveDays },
 };
 
 /** Unité humaine du seuil, pour le repère « Saison : … » (PR2). Pure présentation. */
 const THRESHOLD_UNIT: Record<"minRestDays" | "maxConsecutive" | "maxConsecutiveDays", (n: number) => string> = {
-  minRestDays: (n) => (n > 1 ? "jours" : "jour"),
-  maxConsecutive: (n) => (n > 1 ? "créneaux" : "créneau"),
-  maxConsecutiveDays: (n) => (n > 1 ? "jours" : "jour"),
+  minRestDays: T.unitDays,
+  maxConsecutive: T.unitSessions,
+  maxConsecutiveDays: T.unitDays,
 };
 
 /** Le seuil d'une règle est celui que le serveur a RÉSOLU (non-null) — on ne le devine pas. */
@@ -100,7 +103,7 @@ function seasonReference(setting: ImplicitRuleSetting): string {
   const intensity = cransFor(setting.ruleKey).find((cran) => cran.value === setting.intensity)?.label ?? setting.intensity;
   const threshold = thresholdOf(setting);
 
-  return null === threshold ? `Saison : ${intensity}` : `Saison : ${intensity}, ${threshold.value} ${THRESHOLD_UNIT[threshold.field](threshold.value)}`;
+  return null === threshold ? T.seasonReference(intensity) : T.seasonReferenceWithThreshold(intensity, threshold.value, THRESHOLD_UNIT[threshold.field](threshold.value));
 }
 
 function range(min: number, max: number): number[] {
@@ -133,6 +136,7 @@ function WellbeingRuleRow({
   onReset: (ruleKey: ImplicitRuleKey) => void;
 }) {
   const threshold = thresholdOf(setting);
+  const adjustable = !isAlwaysObjective(meta.ruleKey);
 
   return (
     <div
@@ -142,17 +146,18 @@ function WellbeingRuleRow({
       <div>
         <p className="text-sm font-medium text-foreground">{meta.title}</p>
         <p className="text-xs text-muted-foreground">{meta.detail}</p>
-        {null !== seasonSetting ? <p className="text-xs italic text-muted-foreground">{seasonReference(seasonSetting)}</p> : null}
+        {adjustable && null !== seasonSetting ? <p className="text-xs italic text-muted-foreground">{seasonReference(seasonSetting)}</p> : null}
       </div>
+      {adjustable ? (
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label={`Intensité — ${meta.title}`} className="inline-flex overflow-hidden rounded-md border border-border">
+        <div role="group" aria-label={T.intensityGroup(meta.title)} className="inline-flex overflow-hidden rounded-md border border-border">
           {cransFor(setting.ruleKey).map((cran) => {
             const active = setting.intensity === cran.value;
             return (
               <button
                 key={cran.value}
                 type="button"
-                aria-label={`${cran.label} — ${meta.title}`}
+                aria-label={T.cranOf(cran.label, meta.title)}
                 aria-pressed={active}
                 disabled={readOnly}
                 onClick={() => onIntensity(setting, cran.value)}
@@ -171,7 +176,7 @@ function WellbeingRuleRow({
           <label className="flex items-center gap-1 text-xs text-muted-foreground">
             {THRESHOLD_BOUNDS[threshold.field].label}
             <Select
-              aria-label={`${THRESHOLD_BOUNDS[threshold.field].label} — ${meta.title}`}
+              aria-label={T.thresholdOf(THRESHOLD_BOUNDS[threshold.field].label, meta.title)}
               wrapperClassName="w-16"
               value={String(threshold.value)}
               disabled={readOnly}
@@ -190,10 +195,11 @@ function WellbeingRuleRow({
             réinitialiser tant que la règle est au défaut. */}
         {!setting.isDefault ? (
           <Button size="sm" variant="ghost" className="ml-auto text-xs" disabled={readOnly} onClick={() => onReset(meta.ruleKey)}>
-            Réinitialiser
+            {T.reset}
           </Button>
         ) : null}
       </div>
+      ) : null}
     </div>
   );
 }
@@ -206,12 +212,12 @@ function WellbeingRuleRow({
 export function ProductRulesPanel() {
   return (
     <div>
-      <p className="mb-3 text-xs text-muted-foreground">Ces règles s'appliquent d'office, sans saisie. Le système les garantit à chaque génération.</p>
+      <p className="mb-3 text-xs text-muted-foreground">{T.productRulesIntro}</p>
       <ul className="flex flex-col gap-2">
         {PRODUCT_RULES.map((rule) => (
           <li key={rule.id} className="text-sm">
             <span className="font-medium text-foreground">{rule.title}</span>
-            <span className="text-muted-foreground"> — {rule.detail}</span>
+            <span className="text-muted-foreground">{T.productRuleDetail(rule.detail)}</span>
           </li>
         ))}
       </ul>
@@ -220,9 +226,9 @@ export function ProductRulesPanel() {
 }
 
 const TRAVEL_INTENSITY_CRANS: { value: VenueTravelRuleIntensity; label: string }[] = [
-  { value: "OFF", label: "Inactive" },
-  { value: "PREFERRED", label: "Préféré" },
-  { value: "MANDATORY", label: "Obligatoire" },
+  { value: "OFF", label: T.cranInactive },
+  { value: "PREFERRED", label: T.travelPreferred },
+  { value: "MANDATORY", label: T.cranMandatory },
 ];
 
 const TRAVEL_TOLERANCE_BOUNDS = { min: 0, max: 60 } as const;
@@ -295,30 +301,27 @@ export function TravelRuleNotice() {
     <div className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
         <Route className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm font-medium text-foreground">Trajet entre gymnases</p>
+        <p className="text-sm font-medium text-foreground">{T.travelTitle}</p>
         {off ? (
-          <StatusPill variant="neutral">Inactive</StatusPill>
+          <StatusPill variant="neutral">{T.cranInactive}</StatusPill>
         ) : (
           <StatusPill variant="accent" icon={<Check className="size-3 text-accent" aria-hidden="true" />}>
-            Active
+            {T.travelActive}
           </StatusPill>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
-        Quand une même personne enchaîne deux séances le même jour dans deux gymnases différents, le planning vérifie qu'elle a le temps d'y aller — en voiture si le coach est véhiculé,
-        à vélo ou en trottinette sinon. Cet encart n'apparaît que parce que vous avez renseigné des temps de trajet entre vos gymnases.
-      </p>
+      <p className="text-xs text-muted-foreground">{T.travelIntro}</p>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-foreground">Niveau</span>
-        <div role="group" aria-label="Niveau de la règle de trajet entre gymnases" className="inline-flex overflow-hidden rounded-md border border-border">
+        <span className="text-xs font-medium text-foreground">{T.travelLevel}</span>
+        <div role="group" aria-label={T.travelLevelGroup} className="inline-flex overflow-hidden rounded-md border border-border">
           {TRAVEL_INTENSITY_CRANS.map((cran) => {
             const active = intensity === cran.value;
             return (
               <button
                 key={cran.value}
                 type="button"
-                aria-label={`${cran.label} — trajet entre gymnases`}
+                aria-label={T.travelCranOf(cran.label)}
                 aria-pressed={active}
                 disabled={readOnly || update.isPending}
                 onClick={() => applyIntensity(cran.value)}
@@ -336,12 +339,12 @@ export function TravelRuleNotice() {
 
       <div className="flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Battement toléré (min)</span>
+          <span className="font-medium text-foreground">{T.travelToleranceLabel}</span>
           <Input
             key={`tolerance-${tolerance}`}
             type="number"
             inputMode="numeric"
-            aria-label="Battement toléré, en minutes"
+            aria-label={T.travelToleranceAria}
             className="h-9 w-20"
             min={TRAVEL_TOLERANCE_BOUNDS.min}
             max={TRAVEL_TOLERANCE_BOUNDS.max}
@@ -351,12 +354,12 @@ export function TravelRuleNotice() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Temps par défaut (min)</span>
+          <span className="font-medium text-foreground">{T.travelDefaultLabel}</span>
           <Input
             key={`default-${defaultMinutes}`}
             type="number"
             inputMode="numeric"
-            aria-label="Temps par défaut pour un couple de gymnases sans temps, en minutes"
+            aria-label={T.travelDefaultAria}
             className="h-9 w-20"
             min={TRAVEL_DEFAULT_BOUNDS.min}
             max={TRAVEL_DEFAULT_BOUNDS.max}
@@ -368,10 +371,7 @@ export function TravelRuleNotice() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Le club accepte que le coach parte un peu avant la fin ou démarre un peu après l'heure : ce <em>battement toléré</em> est retranché du trajet exigé. Le <em>temps par défaut</em>{" "}
-        s'applique à un couple de gymnases dont vous n'avez pas indiqué le temps. <em>Préféré</em> : le planning s'y tient quand il peut. <em>Obligatoire</em> : il ne dépassera jamais
-        vos temps — au risque de rendre le planning infaisable si les enchaînements sont trop serrés. <em>Inactive</em> : le planning ne vérifie plus les trajets (vos temps sont
-        conservés).
+        {T.travelHelpTolerance}<em>{T.travelToleranceTerm}</em>{T.travelHelpDefault}<em>{T.travelDefaultTerm}</em>{T.travelHelpPreferred}<em>{T.travelPreferred}</em>{T.travelHelpMandatory}<em>{T.cranMandatory}</em>{T.travelHelpInactive}<em>{T.cranInactive}</em>{T.travelHelpEnd}
       </p>
     </div>
   );
@@ -432,19 +432,14 @@ export function WellbeingRulesPanel({ ruleTarget = null, schedulePlanId = null }
   return (
     <div>
       {periodMode ? (
-        <p className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground">
-          Ces réglages ne valent que pour cette période — copiés du planning de saison à sa création.
-        </p>
+        <p className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground">{T.periodScope}</p>
       ) : null}
-      <p className="mb-3 text-xs text-muted-foreground">
-        Réglez chacune sur « Obligatoire » (toujours respectée) ou « Objectif » (respectée quand c'est possible). Une règle en Objectif peut être dépassée — chaque dépassement est signalé
-        au planning (« assouplie par vous »).
-      </p>
+      <p className="mb-3 text-xs text-muted-foreground">{T.wellbeingIntro}</p>
 
       {"failed" === state ? (
-        <LoadErrorHint onRetry={() => void settingsQuery.refetch()}>Impossible de lire les réglages des règles de bien-être.</LoadErrorHint>
+        <LoadErrorHint onRetry={() => void settingsQuery.refetch()}>{T.loadError}</LoadErrorHint>
       ) : "loading" === state ? (
-        <p className="text-xs text-muted-foreground">Lecture des réglages…</p>
+        <p className="text-xs text-muted-foreground">{T.loading}</p>
       ) : (
         <div className="flex flex-col gap-2">
           {WELLBEING_RULES.map((meta) => {

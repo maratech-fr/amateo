@@ -7,6 +7,7 @@ import { renderWithProviders } from "@/test/utils";
 import { WIZARD_TEXTS } from "../texts";
 
 import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock } from "../api";
+import { isAlwaysObjective } from "@/shared/lib/implicitRules";
 import { PRODUCT_RULES, WELLBEING_RULES } from "../lib/implicitRules";
 
 const RESOLVED_IMPLICIT_RULES: ImplicitRuleSetting[] = [
@@ -1276,7 +1277,7 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
 
     await user.click(screen.getByRole("button", { name: "Bien-être" }));
 
-    for (const meta of WELLBEING_RULES) {
+    for (const meta of WELLBEING_RULES.filter((rule) => !isAlwaysObjective(rule.ruleKey))) {
       expect(screen.getByRole("group", { name: `Intensité — ${meta.title}` })).toBeInTheDocument();
     }
     // Les règles immuables ne sont PAS répétées ici.

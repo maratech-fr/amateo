@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { WizardStepLink } from "@/features/wizard/WizardStepLink";
+import { isAlwaysObjective } from "@/shared/lib/implicitRules";
 import { cn } from "@/shared/lib/utils";
 
 import type { Diagnostic, DiagnosticCause, DiagnosticCauseKind, DiagnosticSeverity, Slot } from "./api";
@@ -263,8 +264,9 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                           </button>
                           {/* P2-28 — un diagnostic « règle assouplie » mène à SON réglage : l'onglet
                               Contraintes du wizard, ouvert sur la règle visée (`?rule=<ruleKey>`).
-                              Retour nommé « ← Retour au planning ». */}
-                          {"implicit_rule_not_honored" === item.type && null !== item.ruleKey ? (
+                              Retour nommé « ← Retour au planning ». Une règle toujours objectif n'a
+                              aucun réglage : pas de lien. */}
+                          {"implicit_rule_not_honored" === item.type && null !== item.ruleKey && !isAlwaysObjective(item.ruleKey) ? (
                             <WizardStepLink
                               step="constraints"
                               params={{ rule: item.ruleKey }}

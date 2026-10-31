@@ -59,7 +59,7 @@ export const PRODUCT_RULES: ImplicitRule[] = [
  */
 export const WELLBEING_RULES: { ruleKey: ImplicitRuleKey; title: string; detail: string }[] = [
   { ruleKey: "coachRestDay", title: "Chaque coach garde un jour de repos", detail: "Au moins le nombre de jours choisi sans séance entre le lundi et le vendredi (les week-ends ne comptent pas)." },
-  { ruleKey: "salarieDistribution", title: "Au moins un salarié présent chaque jour ouvré", detail: "Sur chaque jour de la semaine où le club tourne, au moins un coach salarié encadre une séance." },
+  { ruleKey: "salarieDistribution", title: "Un salarié a une séance chaque jour où le club tourne", detail: "Le planning cherche à placer une séance d'un salarié chaque jour ouvré où le club a des créneaux. Un jour sans séance de salarié est signalé après la génération, jamais bloquant." },
   { ruleKey: "maxConsecutiveSessions", title: "Jamais trop de créneaux dos-à-dos", detail: "Un même coach n'enchaîne pas plus que le nombre choisi de créneaux d'affilée — qu'il les encadre ou qu'il y joue." },
   {
     ruleKey: "maxConsecutiveDays",
