@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -2815,5 +2815,74 @@ describe("ParcImportModal — quick wins : composition d'un groupe et bouton de 
     const equipes = mutualOf(q.importMutate.mock.calls[0]?.[0])?.corrections?.equipes;
     expect(equipes).toEqual(expect.arrayContaining(["import:3", "import:5"]));
     expect(equipes).toHaveLength(2);
+  });
+
+  describe("D10 — le verdict de vérification ne ment pas", () => {
+    const failOnce = (): void => {
+      q.analyzeMutate.mockImplementationOnce((_body: unknown, opts?: { onError?: (e: unknown) => void }) => {
+        const failure = new Error("échec réseau");
+        q.analyzeError.value = failure;
+        opts?.onError?.(failure);
+        q.rerender.fn();
+      });
+    };
+    const analyzeAgain = async (user: User): Promise<void> => {
+      await user.click(rail(PARC_IMPORT_TEXTS.stepPaste));
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+    };
+    const expectStaleNotFailed = (): void => {
+      expectStale();
+      expectStatus(key("verifyStatusStale"));
+      expect(screen.getAllByRole("status").some((el) => (el.textContent ?? "").includes(key("verifyStatusFailed"))), "aucune vérification n'a échoué").toBe(false);
+    };
+
+    it("un geste fait pendant une vérification en vol reste à vérifier quand elle aboutit", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await editSlot(user);
+      let inFlight: { onSuccess?: (a: unknown) => void } | undefined;
+      q.analyzeMutate.mockImplementationOnce((_body: unknown, opts?: { onSuccess?: (a: unknown) => void }) => {
+        inFlight = opts;
+        q.analyzePending.value = true;
+        q.rerender.fn();
+      });
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await editSlot(user);
+      act(() => {
+        q.analyzePending.value = false;
+        inFlight?.onSuccess?.(q.analysis.value);
+        q.rerender.fn();
+      });
+
+      expectStale();
+      await user.click(importButton());
+      expect(q.importMutate, "ce geste n'a pas été vérifié").not.toHaveBeenCalled();
+    });
+
+    // Atteignable seulement avec une analyse déjà réussie : sinon les étapes de contenu sont verrouillées.
+    it("un nouveau collage refusé, puis un geste sur l'aperçu précédent : à vérifier, pas « échec »", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      failOnce();
+      await analyzeAgain(user);
+
+      await editSlot(user);
+
+      expectStaleNotFailed();
+    });
+
+    it("une analyse refusée, puis réussie, puis un geste : à vérifier, pas « échec »", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      failOnce();
+      await analyze(user, decor());
+      await analyzeAgain(user);
+      await visitAllSteps(user);
+
+      await editSlot(user);
+
+      expectStaleNotFailed();
+    });
   });
 });
