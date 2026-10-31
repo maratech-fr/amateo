@@ -255,8 +255,9 @@ FIGÉ**.
   nom long (`Club::emailLabel()`) ; un e-mail sans club connu (envois de compte) n'a aucun
   en-tête club. **Pied de carte inchangé** : trait, logo produit 40 px en pièce inline, nom en
   gras, accroche, lien vitrine. `ProductIdentity` porte `tagline()` (accroche produit FIXE, bind
-  littéral — identique au `<title>`/`<h1>` de `landing/index.html`, « Le planning de votre club,
-  sans le casse-tête ») et `siteUrl()` (variable d'env dédiée `PRODUCT_SITE_URL`, le domaine NU
+  littéral « Le planning de votre club, sans le casse-tête » — NE suit PAS le `<h1>` de
+  `landing/index.html` depuis P4-391, qui dit « …de votre club de basket, sans le casse-tête » ;
+  l'accroche des e-mails reste sans « basket », divergence assumée) et `siteUrl()` (variable d'env dédiée `PRODUCT_SITE_URL`, le domaine NU
   de la vitrine `https://amateo.app` — **jamais** `FRONTEND_BASE_URL`, qui est l'app
   `app.amateo.app`). Le logo produit est un second asset PNG (`backend/assets/brand/email-icon.png`,
   pastille couleur sur disque blanc 128×128, README de provenance à côté — PNG et non SVG, les
@@ -276,7 +277,7 @@ FIGÉ**.
   simulée (`ClockedClubMailInterceptor`, priorité 100, à l'ENFILAGE seul) capte le texte métier
   AVANT ce gabarit — inchangée par ce lot (`backend-demo.md` § « Boîte aux lettres »). **Décision
   fermée** (fondateur, 2026-09-29) : signature sur tous les e-mails, superadmin compris ;
-  l'accroche reprend le titre de la vitrine ; le lien pointe vers la vitrine, jamais l'app —
+  l'accroche reprenait le titre de la vitrine (divergente depuis P4-391, voir plus haut) ; le lien pointe vers la vitrine, jamais l'app —
   `etat-des-lieux.md` §2.
 - **Bouton CTA — tout e-mail à lien d'action pose son bouton (règle fermée, D1, généralisée
   2026-10-26)** : le gabarit CARTE ci-dessus porte un **bouton CTA** optionnel
@@ -336,14 +337,15 @@ FIGÉ**.
   index.html`, `landing/mentions-legales.html` et `frontend/index.html` portent chacun leur bloc
   `og:`/`twitter:` (`og:url`/`og:image` en URL ABSOLUES — un aperçu se charge hors du contexte de
   la page, un chemin relatif ne s'y résout pas), copie recopiée du `<title>`/`<meta description>`
-  de chaque page, sans `og:site_name` et sans nom de marque en clair dans le titre/la description
-  (seul le domaine `amateo.app` y figure, une adresse plutôt que la marque). Gardé par
-  `frontend/tooling/og.test.ts`. **Décision fermée** : une seule image pour vitrine ET app, fond
+  de chaque page, sans `og:site_name`. **Doctrine « vitrine : marque en clair ; app : inchangée »
+  (P4-391, 2026-10-31)** : sur la vitrine, `<title>`, `og:title` et le logotype portent « Amateo »
+  écrit dans le HTML (un robot sans JS la lit) ; `frontend/index.html` est INCHANGÉ (son `og:` reste
+  sans marque en clair, seul le domaine `amateo.app` y figure — une adresse plutôt que la marque).
+  Vitrine gardée par `LandingDiscoverabilityTest`, app par `frontend/tooling/og.test.ts`. **Décision fermée** : une seule image pour vitrine ET app, fond
   clair (lisible dans un aperçu qui n'adapte pas au thème du visiteur) — `etat-des-lieux.md` §2.
-- **Balisage JSON-LD `schema.org` — posé (2026-10-06)** : `landing/index.html` injecte par
-  script, depuis `config.js` (`brand`/`editor`/`siteUrl`/`logo`, même point unique que le reste de
-  la page), un graphe `SoftwareApplication` (le produit) + `Organization` (l'éditeur) — jamais la
-  marque en littéral dans le balisage. La description reprend la `<meta name="description">` de
+- **Balisage JSON-LD `schema.org` — posé (2026-10-06), STATIQUE depuis P4-391 (2026-10-31)** :
+  `landing/index.html` porte, écrit dans le HTML (lisible sans JavaScript — il était injecté par
+  script avant), un graphe `SoftwareApplication` (le produit) + `Organization` (l'éditeur). La description reprend la `<meta name="description">` de
   la page. `offers` est **omis volontairement** : seul le palier Découverte est public, les
   paliers payants restent « sur demande ». `landing/mentions-legales.html` n'a pas ce bloc (page
   sans offre produit) mais porte désormais son propre `og:title` (« Mentions légales ») au lieu de

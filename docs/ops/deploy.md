@@ -732,6 +732,25 @@ Prochain deploy → premiers hits dans le dashboard **et dans l'onglet Statistiq
 future réinstallation de Umami (nouveau site → nouveau `websiteId` → à rebrancher de la même
 façon).
 
+### 1.12 Search Console — faire connaître la vitrine à Google (P4-391)
+
+Geste fondateur **unique**, **après** le déploiement qui porte le sitemap (`landing/sitemap.xml`,
+annoncé par `landing/robots.txt`). Rien à coder, rien à committer.
+
+1. Ouvrir <https://search.google.com/search-console> → **Ajouter une propriété** → type
+   **Domaine** → `amateo.app`. Le sous-domaine `app.` y paraîtra « exclue par noindex » : c'est
+   voulu (l'app n'est jamais indexée).
+2. Google donne un enregistrement **TXT** `google-site-verification=…` : l'ajouter dans la zone
+   DNS du domaine, nom `@`, TTL par défaut ; attendre la propagation, puis **Vérifier**.
+3. Menu **Sitemaps** → ajouter `https://amateo.app/sitemap.xml`.
+4. **Inspection de l'URL** → `https://amateo.app/` → **Demander une indexation**, une seule fois.
+5. À regarder sous **2 à 6 semaines** : **Pages** (la vitrine est-elle indexée ?) ; **Performance**
+   filtrée sur les requêtes « amateo », « planning basket », « club amateur », « FBI » ; la
+   recherche `site:amateo.app` ; dans Umami, la source `google`.
+
+Attentes réalistes : la recherche sur **le nom** aboutit en jours à semaines ; les recherches
+**génériques** (« planning basket »…) en mois, et seulement avec des liens entrants.
+
 ---
 
 ## Partie 2 — Au quotidien

@@ -1,8 +1,10 @@
 // ── Configuration de la page de vente ────────────────────────────────────────
-// LE nom et LES liens vivent ici, et seulement ici (décision fondateur
-// 2026-08-10 : nom paramétrable). Le nom est TRANCHÉ depuis le 2026-08-15 —
+// Source de ce que les SCRIPTS consomment : liens, mailto de démo, logo, pages `system-pages/`
+// (décision fondateur 2026-08-10 : nom paramétrable). Le nom est TRANCHÉ depuis le 2026-08-15 —
 // produit **Amateo**, éditeur **Maratech**, `amateo.app` acheté (P5-15).
-// Changer le nom = changer UNE ligne, recharger, publier.
+// ⚠ Depuis P4-391 la marque est AUSSI écrite en clair dans le HTML (un robot sans JS la lit) :
+// renommer = changer `brand` ici ET `grep -rn "Amateo" landing/ system-pages/` ;
+// `LandingDiscoverabilityTest` rougit sur toute dérive.
 //
 // ⚠ CACHE : ce fichier est chargé par `index.html` avec `?v=AAAA-MM-JJ` (cache-bust).
 // Caddy `file_server` n'envoie pas de Cache-Control → un visiteur peut garder un ancien
