@@ -726,7 +726,9 @@ final class ParcImportExecuteTest extends WebTestCase
         [$withOwnSeason] = $this->import($parc, $decisions, token: $outsider['token'], seasonId: $outsider['seasonId']);
         self::assertSame(404, $withOwnSeason, 'le gate répond comme à un club inconnu');
 
-        self::assertSame('CEC', $this->reloadBlock($block->getId())->getLabel(), 'rien n\'est renommé');
+        // Lecture SQL : le filtre Doctrine est resté posé sur le club de l'appelant par sa dernière requête.
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame('CEC', $this->em->getConnection()->fetchOne('SELECT label FROM shared_training_block WHERE id = :id', ['id' => $block->getId()]), 'rien n\'est renommé');
     }
 
     /** Promesse d'abus : un membre non gestionnaire du club ne renomme pas un groupe (403, rien d'écrit). */
