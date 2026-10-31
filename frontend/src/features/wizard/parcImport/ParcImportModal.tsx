@@ -173,7 +173,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   // Garder/Ignorer tranchés à la main : une revérification ne les défait pas, alors que le serveur peut
   // décocher (ou recocher) de lui-même une ligne dont l'alerte naît (ou se lève).
-  const [keepByHand, setKeepByHand] = useState<Record<string, boolean>>({});
+  // Ref : lue au retour de la vérification, elle voit aussi un geste fait pendant le vol.
+  const keepByHand = useRef<Record<string, boolean>>({});
   // Brouillons d'édition d'une case, par `section:index`.
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
   const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
@@ -194,6 +195,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
   // Gestes qui changent le verdict du serveur depuis la dernière vérification (clés `section:index`) :
   // tant qu'il en reste, « Revérifier » est proposé et « Importer » attend. Un geste défait à la main y reste.
   const [dirtyCases, setDirtyCases] = useState<Set<string>>(new Set());
+  // Les gestes faits pendant une vérification en vol (null hors vol) : elle ne les a pas vus, ils restent à
+  // vérifier à son retour, même sur une ligne déjà périmée au lancement.
+  const gesturesInFlight = useRef<Set<string> | null>(null);
+  // Une REVÉRIFICATION a échoué et aucun geste n'a suivi. Pas `analyze.isError` : ce drapeau vaut aussi pour
+  // une nouvelle analyse refusée à l'étape Coller, qui ne dit rien de la vérification.
+  const [verifyFailed, setVerifyFailed] = useState(false);
   const [result, setResult] = useState<ParcImportResult | null>(null);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -247,7 +254,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const applyAnalysis = (data: ParcAnalysis, replay: boolean): void => {
     setAnalysis(data);
     setResult(null);
-    setDirtyCases(new Set());
+    setDirtyCases(new Set(replay ? gesturesInFlight.current : []));
+    gesturesInFlight.current = null;
+    setVerifyFailed(false);
 
     const cases = parsedCasesOf(data.payload);
     setParc(data.payload ?? null);
@@ -312,7 +321,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     }
     const seededUnlessReplay = <V,>(seed: Record<string, V>) => (current: Record<string, V>): Record<string, V> => (replay ? { ...seed, ...current } : seed);
     setDecisions(seededUnlessReplay(nextDecisions));
-    setChecked(replay ? { ...nextChecked, ...keepByHand } : nextChecked);
+    setChecked(replay ? { ...nextChecked, ...keepByHand.current } : nextChecked);
     setSlotDrafts(seededUnlessReplay(nextSlotDrafts));
     setCaseVenue(seededUnlessReplay(nextCaseVenue));
     // Un nom de groupe vidé revient au nom lu : c'est déjà ce que l'import enverrait.
@@ -329,7 +338,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setCtcDrafts(seededUnlessReplay(nextCtc));
     setCtcPartnerDrafts(seededUnlessReplay(nextCtcPartner));
     if (!replay) {
-      setKeepByHand({});
+      keepByHand.current = {};
       setTeamCompositionDrafts({});
     }
   };
@@ -429,6 +438,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   const decisionValue = (section: string, line: ParcAnalysisLine): string => decisions[keyOf(section, line.index)] ?? initialDecision(line);
 
+  const markStale = (key: string): void => {
+    gesturesInFlight.current?.add(key);
+    setVerifyFailed(false);
+    setDirtyCases((prev) => new Set(prev).add(key));
+  };
+
   const setDecision = (section: string, index: number, value: string): void => {
     const key = keyOf(section, index);
     const previous = decisions[key] ?? "";
@@ -444,12 +459,12 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if ("" === previous && !hasIgnoredTeamAlert(analysis)) {
       return;
     }
-    setDirtyCases((prev) => new Set(prev).add(key));
+    markStale(key);
   };
 
   const setKeep = (key: string, keep: boolean): void => {
     setChecked((prev) => ({ ...prev, [key]: keep }));
-    setKeepByHand((prev) => ({ ...prev, [key]: keep }));
+    keepByHand.current[key] = keep;
   };
 
   const setSessionDraft = (index: number, value: number): void =>
@@ -544,7 +559,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if (null === analysis) {
       return;
     }
-    analyze.mutate({ payload: parc, decisions: buildDecisions() }, { onSuccess: (data) => applyAnalysis(data, true) });
+    gesturesInFlight.current = new Set();
+    setVerifyFailed(false);
+    analyze.mutate(
+      { payload: parc, decisions: buildDecisions() },
+      {
+        onSuccess: (data) => applyAnalysis(data, true),
+        onError: () => {
+          gesturesInFlight.current = null;
+          setVerifyFailed(true);
+        },
+      },
+    );
   };
 
   // Finition 4 — « Voir » : aller à l'étape de la 1ʳᵉ ligne à trancher et donner le focus à SON sélecteur.
@@ -659,7 +685,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const stepsToClear = STEP_ORDER.filter((id) => CONTENT_STEPS.has(id) && (!visitedSteps.has(id) || hasPending(id)));
   const blocked = blockedByLines || stepsToClear.length > 0;
   const dirty = dirtyCases.size > 0;
-  const verifyState: VerifyState = analyzing ? "running" : !dirty ? "upToDate" : analyze.isError ? "failed" : "stale";
+  const verifyState: VerifyState = analyzing ? "running" : !dirty ? "upToDate" : verifyFailed ? "failed" : "stale";
 
   const steps: StepRailStep<StepId>[] = STEP_ORDER.map((id) => ({
     id,
@@ -764,7 +790,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
           // Le gymnase d'une case et sa coche n'entrent pas dans le verdict du serveur : changés seuls, ils
           // ne périment rien. Tout autre enregistrement de l'éditeur porte sur le créneau et périme.
           if (!onlyVenueOrKeep) {
-            setDirtyCases((prev) => new Set(prev).add(key));
+            markStale(key);
           }
           setEditingCase(null);
         }}
@@ -969,7 +995,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
                   onKeepChange={(index, keep) => setKeep(keyOf("mutualisations", index), keep)}
                   onCompositionChange={(index, v) => {
                     setTeamCompositionDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }));
-                    setDirtyCases((prev) => new Set(prev).add(keyOf("mutualisations", index)));
+                    markStale(keyOf("mutualisations", index));
                   }}
                   onEditSlot={(index) => setEditingCase({ section: "mutualisations", index })}
                 />
