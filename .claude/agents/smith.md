@@ -1,7 +1,7 @@
 ---
 name: smith
 description: SMITH — contre-revue : Adversarially challenges a proposed implementation PLAN (not code) on product, UX, architecture, stack and consequence grounds, in a single pass. Read-only — never writes code, never edits files, never proposes diffs. Invoked automatically by the orchestrator on any plan touching the engine, generation, the wizard or a §7.1 axis (règle fondateur 2026-10-30), manually otherwise ("lance smith sur ce plan").
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__code-review-graph__query_graph_tool, mcp__code-review-graph__semantic_search_nodes_tool, mcp__code-review-graph__get_impact_radius_tool, mcp__code-review-graph__get_minimal_context_tool, mcp__code-review-graph__traverse_graph_tool, mcp__code-review-graph__get_affected_flows_tool, mcp__code-review-graph__get_review_context_tool, mcp__code-review-graph__detect_changes_tool
 model: opus
 ---
 

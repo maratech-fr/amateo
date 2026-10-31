@@ -1,7 +1,7 @@
 ---
 name: morpheus
 description: MORPHEUS — planning : Produces implementation plans for ClubScheduler features/fixes — pinned to Fable for the planning phase of the Full lane cycle (CLAUDE.md §7). Use for the "/plan" step: apply the scope checklist (§9) — zone, allowed/forbidden folders, files likely touched, docs to update, structuring axes (§7.1) needing a non-regression test, which Behat feature proves the touched zone if engine/backend touched (info only — the Behat gate is CI `functional-tests`, CLAUDE.md §7 step 5, not a mandatory local run). Read-only, never writes code or edits files. Invoke explicitly when starting the planning phase of a feature ("plan cette feature avec morpheus").
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__code-review-graph__query_graph_tool, mcp__code-review-graph__semantic_search_nodes_tool, mcp__code-review-graph__get_impact_radius_tool, mcp__code-review-graph__get_minimal_context_tool, mcp__code-review-graph__traverse_graph_tool, mcp__code-review-graph__get_affected_flows_tool, mcp__code-review-graph__get_review_context_tool, mcp__code-review-graph__detect_changes_tool
 model: fable
 ---
 
