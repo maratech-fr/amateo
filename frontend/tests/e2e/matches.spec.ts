@@ -611,8 +611,22 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
 
   // Dette e2e : nettoyage par DELETE API en `finally` (plus de nettoyage « navigant » par la grille).
   let createdFixtureId: string | undefined;
+  let earlierFixtureId: string | undefined;
 
   try {
+    // Le saut de semaine a besoin d'une semaine AVANT celle du match : seule en base, elle serait déjà
+    // affichée, sans `semaine=` dans l'URL et sans « Semaine suivante ». Le test la crée lui-même au
+    // lieu d'hériter des rencontres d'une spec amont.
+    const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+    expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+    const earlierTeamId = (await teamsRes.json()).member?.[0]?.id as string | undefined;
+    expect(earlierTeamId, "le club seedé doit avoir une équipe").toBeTruthy();
+    const earlierRes = await page.request.post("/api/fixtures", {
+      data: { teamId: earlierTeamId, matchDate: futureSaturday(18), homeAway: "HOME", opponentLabel: `E2E3A-${Date.now().toString(36).toUpperCase()}`, competitionId: null },
+    });
+    expect(earlierRes.ok(), "POST /api/fixtures (semaine précédente)").toBeTruthy();
+    earlierFixtureId = (await earlierRes.json()).id as string;
+
     // ── Créer un domicile daté LOIN (samedi futur, calculé depuis aujourd'hui) ────
     await page.getByRole("button", { name: /Nouveau match/i }).click();
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
@@ -704,8 +718,10 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   } finally {
     // Nettoyage par l'API (dette e2e) : un DELETE ciblé sur l'id capturé, jamais une navigation de
     // grille qui dépend de l'état d'affichage. Base dev CI non réinitialisée → on retire NOTRE rencontre.
-    if (undefined !== createdFixtureId) {
-      await page.request.delete(`/api/fixtures/${createdFixtureId}`).catch(() => undefined);
+    for (const id of [createdFixtureId, earlierFixtureId]) {
+      if (undefined !== id) {
+        await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
+      }
     }
   }
 });
