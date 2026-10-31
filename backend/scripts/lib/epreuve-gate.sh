@@ -30,7 +30,7 @@ caller_common=$(git_of "$caller" rev-parse --path-format=absolute --git-common-d
 [[ -n "$wt_common" && "$wt_common" == "$caller_common" ]] || refuse "$wt n'est pas un worktree de ce dépôt"
 
 # Une branche d'avant ce rail lancerait ses cibles sur le projet par défaut, celui du fondateur.
-for needed in backend/scripts/lib/stack-resolve.sh .env.epreuve.dist; do
+for needed in backend/scripts/lib/stack-resolve.sh .env.epreuve.dist docker-compose.worktree.yml; do
   [[ -f "$wt/$needed" ]] || refuse "$wt ne porte pas $needed : rebase sa branche sur main"
 done
 

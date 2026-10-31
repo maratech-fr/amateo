@@ -192,9 +192,9 @@ epreuve-up: ## Monte la stack d'épreuve sur un worktree (WT=… [RESEED=1]) : i
 	mark="$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --absolute-git-dir)/amateo-epreuve-mounted"; rm -f "$$mark"; \
 	occupant="$$($(EPREUVE_OCCUPANT))"; \
 	[ "$$occupant" = "$$wt" ] || $(MAKE) -C "$$wt/backend" test-down; \
-	cp "$$wt/.env.epreuve.dist" "$$wt/.env"; printf 'USER_ID=%s\nGROUP_ID=%s\n' "$$(id -u)" "$$(id -g)" >> "$$wt/.env"; \
+	cp "$$wt/.env.epreuve.dist" "$$wt/.env"; printf 'USER_ID=%s\nGROUP_ID=%s\nAMATEO_GIT_COMMON_DIR=%s\n' "$$(id -u)" "$$(id -g)" "$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --path-format=absolute --git-common-dir)" >> "$$wt/.env"; \
 	bash $(EPREUVE_LIB)/stack-check.sh snapshot "$$wt"; \
-	dc="docker compose -p amateo-epreuve --env-file $$wt/.env -f $$wt/docker-compose.yml"; \
+	dc="docker compose -p amateo-epreuve --env-file $$wt/.env -f $$wt/docker-compose.yml -f $$wt/docker-compose.worktree.yml"; \
 	[ "$$occupant" != "$$wt" ] || $$dc stop messenger-worker cron-runner pdf-worker frontend nginx; \
 	$$dc up -d --wait $(INFRA_SERVICES); \
 	$(MAKE) -C "$$wt/backend" install; \
@@ -211,7 +211,7 @@ epreuve-up: ## Monte la stack d'épreuve sur un worktree (WT=… [RESEED=1]) : i
 
 epreuve-dev: ## Vite sur la stack d'épreuve (:5273), WT=… ou l'occupant
 	@wt='$(WT_ABS)'; wt="$${wt:-$$($(EPREUVE_OCCUPANT))}"; [ -n "$$wt" ] || { echo "stack d'épreuve libre : make epreuve-up WT=… d'abord" >&2; exit 1; }; \
-	docker compose -p amateo-epreuve --env-file "$$wt/.env" -f "$$wt/docker-compose.yml" --profile dev up -d --build frontend-dev
+	docker compose -p amateo-epreuve --env-file "$$wt/.env" -f "$$wt/docker-compose.yml" -f "$$wt/docker-compose.worktree.yml" --profile dev up -d --build frontend-dev
 
 epreuve-status: ## Qui occupe la stack d'épreuve, et dans quel état
 	@wt="$$($(EPREUVE_OCCUPANT))"; \

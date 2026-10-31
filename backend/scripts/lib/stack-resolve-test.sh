@@ -115,7 +115,7 @@ seed_repo() { # seed_repo <dossier> : un dépôt qui porte les vrais Makefiles e
   local dest=$1 f
   mkdir -p "$dest"
   for f in Makefile backend/Makefile engine/Makefile frontend/Makefile docker-compose.yml \
-    docker-compose.test.yml .env.dist .env.epreuve.dist .gitignore backend/.env \
+    docker-compose.test.yml docker-compose.worktree.yml .env.dist .env.epreuve.dist .gitignore backend/.env \
     backend/scripts/with-sandbox.sh; do
     if [[ -f "$SRC/$f" ]]; then
       mkdir -p "$dest/$(dirname "$f")"
@@ -162,8 +162,8 @@ clear_label
 reset_log
 
 PRINCIPAL_COMPOSE="docker compose --env-file $MAIN/.env -f $MAIN/docker-compose.yml"
-EPREUVE_COMPOSE="docker compose -p amateo-epreuve --env-file $WT_A/.env -f $WT_A/docker-compose.yml"
-NU_COMPOSE="docker compose -p amateo-test-$H_A --env-file $WT_A/.env -f $WT_A/docker-compose.yml -f $WT_A/docker-compose.test.yml"
+EPREUVE_COMPOSE="docker compose -p amateo-epreuve --env-file $WT_A/.env -f $WT_A/docker-compose.yml -f $WT_A/docker-compose.worktree.yml"
+NU_COMPOSE="docker compose -p amateo-test-$H_A --env-file $WT_A/.env -f $WT_A/docker-compose.yml -f $WT_A/docker-compose.worktree.yml -f $WT_A/docker-compose.test.yml"
 
 # ---------------------------------------------------------------------------- outils d'assertion
 resolve_out=""
@@ -420,7 +420,7 @@ mk -C "$WT_A/backend" test-up
 if [[ "$mk_rc" -eq 0 ]]; then pass; else fail "test-up sans .env doit réussir : $(printf '%s' "$mk_out" | tail -n 2)"; fi
 check "test-up sans .env : AMATEO_STACK exact" env_has_exact "$WT_A" "AMATEO_STACK=amateo-test-$H_A"
 check "test-up : les clés requises par la compose sont là" grep -q '^POSTGRES_DB=' "$WT_A/.env"
-check "test-up démarre la compose privée" log_has "compose -p amateo-test-$H_A --env-file $WT_A/.env -f $WT_A/docker-compose.yml -f $WT_A/docker-compose.test.yml up"
+check "test-up démarre la compose privée" log_has "compose -p amateo-test-$H_A --env-file $WT_A/.env -f $WT_A/docker-compose.yml -f $WT_A/docker-compose.worktree.yml -f $WT_A/docker-compose.test.yml up"
 printf 'AMATEO_STACK=amateo-epreuve\n' >"$WT_A/.env"
 cat "$MAIN/.env.dist" >>"$WT_A/.env"
 mk -C "$WT_A/backend" test-up
@@ -612,10 +612,10 @@ assert_log_compose() { # assert_log_compose <libellé> <préfixe exact, sans "do
   bad=$(printf '%s\n' "$lines" | grep -vF -- "$want" | head -n 1)
   if [[ -n "$bad" ]]; then fail "$label : appel hors stack : $bad"; else pass; fi
 }
-EP_D="compose -p amateo-epreuve --env-file $WT_D/.env -f $WT_D/docker-compose.yml"
+EP_D="compose -p amateo-epreuve --env-file $WT_D/.env -f $WT_D/docker-compose.yml -f $WT_D/docker-compose.worktree.yml"
 PR_D="compose --env-file $MAIN/.env -f $MAIN/docker-compose.yml"
 H_E=$(hash_of "$WT_E")
-NU_E="compose -p amateo-test-$H_E --env-file $WT_E/.env -f $WT_E/docker-compose.yml -f $WT_E/docker-compose.test.yml"
+NU_E="compose -p amateo-test-$H_E --env-file $WT_E/.env -f $WT_E/docker-compose.yml -f $WT_E/docker-compose.worktree.yml -f $WT_E/docker-compose.test.yml"
 
 cat "$MAIN/.env.dist" >"$WT_D/.env"
 set_label "$WT_D"

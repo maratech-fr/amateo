@@ -8,6 +8,7 @@
 #   nu        : un autre worktree, sa compose privée sans port publié.
 #   unknown   : non identifiable, donc rien.
 # STACK_ENV_OK : en nu, le .env porte exactement l'AMATEO_STACK de cette copie.
+# GIT_COMMON_DIR : en worktree, le dépôt à monter en lecture seule (docker-compose.worktree.yml).
 set -eu
 
 PROJECT_EPREUVE=amateo-epreuve
@@ -19,9 +20,10 @@ else
   ROOT=$(dirname "$0")/../../..
 fi
 
+GIT_COMMON_DIR=''
 emit() { # emit <mode> <compose> <projet de test> <env ok> <raison>
-  printf 'STACK_MODE=%s\nSTACK_ROOT=%s\nCOMPOSE=%s\nTEST_PROJECT=%s\nSTACK_ENV_OK=%s\nSTACK_REASON=%s\n' \
-    "$1" "$ROOT" "$2" "$3" "$4" "$5"
+  printf 'STACK_MODE=%s\nSTACK_ROOT=%s\nCOMPOSE=%s\nTEST_PROJECT=%s\nSTACK_ENV_OK=%s\nSTACK_REASON=%s\nGIT_COMMON_DIR=%s\n' \
+    "$1" "$ROOT" "$2" "$3" "$4" "$5" "$GIT_COMMON_DIR"
   exit 0
 }
 unknown() { emit unknown '' '' 0 "$1"; }
@@ -54,6 +56,9 @@ if [ "$(basename "$ROOT")" = scheduler ]; then
   unknown 'worktree nommé “scheduler” : refusé'
 fi
 
+GIT_COMMON_DIR=$common_dir
+WORKTREE_FILE="-f $ROOT/docker-compose.worktree.yml"
+
 if ! occupant=$(docker ps -a --filter "label=com.docker.compose.project=$PROJECT_EPREUVE" \
   --format '{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null); then
   unknown "$UNKNOWN_REASON"
@@ -67,7 +72,7 @@ if [ -z "$hash" ]; then
 fi
 
 if [ "$occupant" = "$ROOT" ]; then
-  emit epreuve "docker compose -p $PROJECT_EPREUVE --env-file $ROOT/.env -f $ROOT/docker-compose.yml" \
+  emit epreuve "docker compose -p $PROJECT_EPREUVE --env-file $ROOT/.env -f $ROOT/docker-compose.yml $WORKTREE_FILE" \
     "$test_project" 1 ''
 fi
 
@@ -75,5 +80,5 @@ env_ok=0
 if grep -qxF "AMATEO_STACK=$test_project" "$ROOT/.env" 2>/dev/null; then
   env_ok=1
 fi
-emit nu "docker compose -p $test_project --env-file $ROOT/.env -f $ROOT/docker-compose.yml -f $ROOT/docker-compose.test.yml" \
+emit nu "docker compose -p $test_project --env-file $ROOT/.env -f $ROOT/docker-compose.yml $WORKTREE_FILE -f $ROOT/docker-compose.test.yml" \
   "$test_project" "$env_ok" ''

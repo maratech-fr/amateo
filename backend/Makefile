@@ -306,7 +306,7 @@ db-drop-legacy:
 # --- Worktree nu : une stack privée (compose + docker-compose.test.yml), sans port publié, jetable.
 NU_ENV_FILE = $(STACK_ROOT)/.env
 define WRITE_NU_ENV
-{ cat $(STACK_ROOT)/.env.dist; printf 'USER_ID=%s\nGROUP_ID=%s\nAMATEO_STACK=%s\n' "$(USERID)" "$(GROUPID)" "$(TEST_PROJECT)"; } > $(NU_ENV_FILE)
+{ cat $(STACK_ROOT)/.env.dist; printf 'USER_ID=%s\nGROUP_ID=%s\nAMATEO_STACK=%s\nAMATEO_GIT_COMMON_DIR=%s\n' "$(USERID)" "$(GROUPID)" "$(TEST_PROJECT)" "$(call stack_field,GIT_COMMON_DIR)"; } > $(NU_ENV_FILE)
 endef
 
 .PHONY: test-up ## (worktree nu) Démarre la stack privée — réécrit toujours le .env du worktree
