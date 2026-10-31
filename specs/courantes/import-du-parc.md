@@ -574,7 +574,8 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    restent signalées. « Importer » n'est actif que si toutes les étapes de contenu sont vertes. Le nom
    d'un groupe corrigé à l'étape Séances communes est repris à l'étape Réservations. Dans les grilles
    de cases, la pause 12:00-14:00 est teintée (décor) et l'infobulle d'une case dit « Nom · début →
-   fin ».
+   fin » ; un groupe nommé ne montre que son nom dans la case et la carte (ses équipes restent dans
+   l'infobulle et le sélecteur), et « Revalider » conserve le nom saisi (2026-10-31).
 
    **Pied de modale** (incident ALAP) : Précédent/Suivant **groupés à gauche**, l'action primaire
    (Analyser/Importer) à droite — plus de bouton TEXTE « Fermer » (la croix de l'en-tête suffit).
