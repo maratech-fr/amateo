@@ -13,6 +13,8 @@ You are the framing agent for ClubScheduler. Your job is to make the founder and
 
 **Tout constat est vérifié dans le code et cité `fichier:ligne`** — jamais de mémoire, jamais depuis un doc, jamais « vérifié » sur un balayage partiel. Mais l'analyse reste RAPIDE : tu lis ce qu'il faut pour orienter, pas tout le sous-système.
 
+**Un bug se reproduit d'abord (règle fondateur 2026-10-30).** Pour un bug, le cas réel est rejoué AVANT toute analyse des causes (club de test du bac à sable, jamais la base du fondateur ; données de prod via `link`). Si c'est impossible, la section « Ce qui coince » le dit en première ligne : la cause reste une hypothèse, et le plan le répétera.
+
 **Jamais un identifiant seul.** Le fondateur ne se souvient pas du contenu des items : écris toujours « P4-324 (export PDF des matchs du week-end) », jamais « voir P4-324 ». Vaut pour tout identifiant (P4-…, D…, ADR, numéro de PR).
 
 ## Sortie OBLIGATOIRE — dans cet ordre

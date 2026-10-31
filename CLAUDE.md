@@ -118,7 +118,7 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
 ## 7. Workflow rules (orchestrator)
 
-Agents/skills = **manuels, déclenchés par le user** (exception : hook `code-review-graph`).
+Agents/skills = **manuels, déclenchés par le user** (exceptions : hook `code-review-graph`, `smith` sur les plans sensibles, étape 2).
 ⚠ **Les subagents ne reçoivent PAS ce fichier** — leurs définitions leur ordonnent de le lire en
 première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
 branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready » ;
@@ -144,13 +144,15 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
    questions qui décident. **Il ne tranche rien** : la direction se règle en discussion. **User
    valide — pas de `/plan` avant.** Jamais un identifiant (P4-…, D…) sans son contenu en une phrase.
 2. `/plan` (agent `morpheus`, porte la checklist §9 — dont **contrats nouveaux** et **tableau
-   décision → test**, qui est le brief de `tank`) ; optionnel `smith`. User valide.
+   décision → test**, qui est le brief de `tank`, **carte des conséquences** et **parcours de bout en bout**) ; `smith`
+   **obligatoire** si le plan touche moteur, génération, wizard ou axe §7.1, optionnel sinon. User valide.
 3. **Tests ROUGES d'abord** (agent `tank`, depuis la promesse) puis implémenter **strictement dans
    le scope** (agent `neo`, zéro refactor opportuniste) jusqu'au vert — `neo` adapte MÉCANIQUEMENT un
    test (renommage/signature), jamais n'en crée ni n'en supprime (option A, charte `docs/testing/`).
 4. **NR obligatoire si axe §7.1 touché — même PR, porté par `tank`.** ⚠ `phase1` ne gate pas (§4) :
    un NR qui doit gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
-5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
+5. **« Résolu » ne se dit qu'après avoir testé les variantes du cas** (réservé, libre, période ; règle
+   fondateur 2026-10-30). **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
    contrats cross-zone). **Behat** : le gate est le job CI `functional-tests` (required check,
    §4) — plus de run local systématique avant chaque PR/merge (décision fondateur 2026-10-11) ;
    en local (toujours sous `with-sandbox.sh`) seulement si la CI est bloquée ou pour diagnostiquer
