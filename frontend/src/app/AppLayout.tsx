@@ -56,7 +56,7 @@ function NavItem({ to, children }: { to: string; children: string }) {
       to={to}
       end
       className={({ isActive }) =>
-        cn(buttonVariants({ variant: "outline", size: "default" }), "px-5 font-semibold", isActive ? "bg-accent text-accent-foreground hover:bg-accent-hover" : "text-foreground hover:bg-muted")
+        cn(buttonVariants({ variant: "outline", size: "default" }), "px-2.5 font-semibold md:px-5", isActive ? "bg-accent text-accent-foreground hover:bg-accent-hover" : "text-foreground hover:bg-muted")
       }
     >
       {children}
@@ -154,7 +154,7 @@ export function AppLayout() {
                   // M13 — mêmes aspect et dimensions de bouton secondaire que l'état débloqué, mais éteint
                   // (opacité réduite, curseur interdit) ; l'invariant A11Y-30 (focalisable + raison
                   // annoncée) est préservé.
-                  className={cn(buttonVariants({ variant: "outline", size: "default" }), "cursor-not-allowed px-5 font-semibold text-muted-foreground opacity-50")}
+                  className={cn(buttonVariants({ variant: "outline", size: "default" }), "cursor-not-allowed px-2.5 font-semibold text-muted-foreground opacity-50 md:px-5")}
                   title="Validez le planning de saison pour débloquer les matchs"
                 >
                   Matchs

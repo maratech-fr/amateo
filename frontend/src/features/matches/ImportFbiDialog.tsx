@@ -306,10 +306,11 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
                   idPrefix="fbi-family"
                 />
               ) : null}
-              {/* Raison du blocage EN CLAIR, sous la barre et depuis tous les onglets (doctrine
+              {/* Raison du blocage EN CLAIR, sous la barre et depuis les onglets de famille (doctrine
                   disabledReason, A11Y-30) : le compte des salles restantes rend la portée du blocage
-                  découvrable sans survoler « Importer » ni ouvrir l'onglet Salles. */}
-              {venuesIncomplete ? <p className="text-xs text-warning">{M.importFbiVenuesRemaining(venuesRemaining)}</p> : null}
+                  découvrable sans survoler « Importer ». Sur l'onglet Salles, les lignes le disent déjà
+                  et un renvoi vers l'onglet où l'on est n'aurait pas de sens. */}
+              {venuesIncomplete && "salles" !== currentTab ? <p className="text-xs text-warning">{M.importFbiVenuesRemaining(venuesRemaining)}</p> : null}
               {families.map((family) => (
                 <TabPanel key={family} tabId={family} idPrefix="fbi-family" active={family === currentTab} className="pt-1">
                   <ul className="flex flex-col gap-1">{sortedByName(analysis.divisions.filter((d) => classifyDivision(d.name) === family)).map(renderDivisionRow)}</ul>

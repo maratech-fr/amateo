@@ -931,7 +931,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
               {/* Vérification périmée après un geste : le bouton « Revérifier » est au pied de la modale. */}
               {CONTENT_STEPS.has(step) && dirty ? (
-                <NoticeBanner tone="accent">{T.staleHint(dirtyCases.size)}</NoticeBanner>
+                <NoticeBanner tone="warning">{T.staleHint(dirtyCases.size)}</NoticeBanner>
               ) : null}
 
               {"prompt" === step ? <PromptStep prompt={prompt} copied={copied} onCopy={copyPrompt} /> : null}
