@@ -27,6 +27,13 @@
   Le deploy **ré-envoie aussi `docker-compose.prod.yml` + le script + le
   `.env.prod` du secret `ENV_PROD`** sur la VM à chaque passage — n'édite aucun de ces
   fichiers directement sur la VM (écrasés au prochain deploy).
+- **`php-fpm` reçoit la version déployée dès l'`up`** : `docker-compose.prod.yml` lui passe
+  `VERSION: "${VERSION:-latest}"` dans son bloc `environment:`, interpolé par compose depuis le
+  `VERSION` exporté par `remote-deploy.sh` — `.env.prod` n'est réécrit (version épinglée) qu'APRÈS
+  le démarrage, le conteneur y lirait sinon la version précédente. Conséquence : l'`apiVersion` du
+  contexte d'un signalement (`FeedbackContextEnricher`) est la bonne dès la mise en prod. Un rollback
+  redéploie le tag précédent, qui réinjecte le sien. Garde : `ProdComposeVersionEnvTest`. **Preuve
+  réelle au prochain déploiement** (lire `apiVersion` d'un signalement juste après).
 - Revenir en arrière = redéployer le tag précédent : le workflow détecte que
   ses images existent déjà sur ghcr et les **réutilise telles quelles** (jamais
   de rebuild qui écraserait l'artefact d'origine).

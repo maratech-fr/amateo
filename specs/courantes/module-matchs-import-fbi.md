@@ -95,10 +95,13 @@ DOMICILE du fichier agrégées par libellé normalisé (`FbiFixtureImporter::ana
 chacune avec son compte de lignes, son gymnase déjà CONFIRMÉ (alias), une suggestion floue (jamais
 le confirmé) et si elle est déjà mémorisée neutre — et `homesWithoutVenue[]` — les divisions dont
 des domiciles n'ont AUCUNE salle dans le fichier (`analyzeHomesWithoutVenue`), par division
-(`fbiTeamLabel` seulement si deux équipes du club la partagent). La modale (`ImportFbiDialog`, section
-« Salles à domicile ») propose un gymnase du club par ligne — pré-rempli (confirmé > suggestion >
+(`fbiTeamLabel` seulement si deux équipes du club la partagent). La modale (`ImportFbiDialog`, **dernier onglet
+« Salles (appariées/total) »**, après les onglets de familles de divisions ; absent s'il n'y a ni salle
+ni domicile sans salle) propose un gymnase du club par ligne — pré-rempli (confirmé > suggestion >
 vide) — ou « Terrain neutre » ; « Importer » reste **grisé** (`disabledReason`, A11Y-30) tant qu'une
-ligne n'a pas de choix.
+ligne n'a pas de choix. Depuis un onglet de famille, une ligne `text-warning` sous la barre d'onglets
+compte les salles restantes et renvoie à l'onglet Salles ; sur l'onglet Salles lui-même elle est
+absente (les lignes le disent déjà).
 
 `POST /api/fixtures/import` accepte deux champs multipart JSON en plus de `mappings`/`decisions` :
 `venueMappings` (`{label, venueId}[]`, un libellé → un gymnase OU la sentinelle `'NEUTRAL'`) et
