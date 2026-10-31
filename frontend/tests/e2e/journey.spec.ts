@@ -161,6 +161,8 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
   await page.getByRole("button", { name: "Lun 18:00", exact: true }).click();
 
   // Second gymnase + un créneau à la grille (Mar 18:00 sur B).
+  // L'accordéon d'ajout se referme après un ajout réussi : on le rouvre pour le gymnase suivant.
+  await page.getByRole("button", { name: "Ajouter des gymnases" }).click();
   await page.getByLabel("Nom du gymnase").fill("Gymnase B");
   // Même attente de refetch qu'au Gymnase A. ⚠ Ici le sélecteur n'est PAS vide en attendant :
   // le repli `?? venues[0]` (VenuesStep.tsx:317) le laisse sur le gymnase PRÉCÉDENT (« Gymnase A »)
