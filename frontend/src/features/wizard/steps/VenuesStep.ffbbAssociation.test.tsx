@@ -28,6 +28,15 @@ import type { FfbbSalle, Venue, VenuePayload } from "../api";
  *    `dissociateVenueConfirm`, `venueDissociated(venue)`, `undoAction` ;
  *  - le toast porte une action : `toast.success(message, { action: { label, onClick } })`, rendue en
  *    bouton par `Toaster`. La mutation suit le patron existant `mutate(vars, { onSuccess })`.
+ *
+ * Associer une salle introuvable à proximité (retours du 31/10) — ROUGE option A. PROMESSE : le
+ * gestionnaire associe TOUJOURS son gymnase à une salle FFBB, même sans salle proche ou avec un
+ * homonyme à côté : il cherche dans toute la FFBB, distingue les homonymes par l'adresse et la ville,
+ * et l'adresse est reprise si le gymnase n'en a pas (sinon 0 trajet).
+ * Contrat pour NEO : `AssociateSalleModal`, `SalleResultRow` et les clés `associateModalTitle`,
+ * `associateModalHint`, `associateModalEmpty`, `associateTag`, `associateVenueAddress`,
+ * `associateVenueDescriptionNoGps` de `WIZARD_TEXTS`. Une ligne de résultat est un `<li>` ; le nom
+ * accessible de son bouton CONTIENT `action.label`.
  */
 
 const SALLE: FfbbSalle = {
@@ -64,6 +73,8 @@ const h = vi.hoisted(() => ({
   updateCalls: [] as Array<{ id: string; body: VenuePayload }>,
   nameSearch: { salles: [] as FfbbSalle[] },
   nearby: { salles: [] as FfbbSalle[] },
+  nameQueries: [] as string[],
+  nameSearchState: { value: "ready" as "ready" | "loading" | "failed" },
 }));
 
 vi.mock("@/shared/lib/travelStream", () => ({ useTravelStream: () => ({ connected: false, latest: null }) }));
@@ -110,8 +121,18 @@ vi.mock("../queries", () => ({
   useDeleteSlot: () => ({ mutate: vi.fn() }),
   useDeletionImpact: () => ({ data: undefined, isPending: false, isError: false }),
   useFfbbSalles: () => ({ data: { salles: [] } }),
-  useFfbbSallesProches: () => ({ data: { salles: h.nearby.salles } }),
-  useFfbbSallesByName: () => ({ data: { postalCode: null, salles: h.nameSearch.salles }, isPending: false }),
+  useFfbbSallesProches: () => ({ data: { radiusKm: 5, salles: h.nearby.salles }, isError: false }),
+  // Comme le vrai hook : sous 3 caractères la requête est DÉSACTIVÉE (`data` undefined, jamais d'erreur).
+  useFfbbSallesByName: (query: string) => {
+    h.nameQueries.push(query);
+    if (query.trim().length < 3 || "loading" === h.nameSearchState.value) {
+      return { data: undefined, isError: false, isPending: true };
+    }
+    if ("failed" === h.nameSearchState.value) {
+      return { data: undefined, isError: true, isPending: false };
+    }
+    return { data: { postalCode: null, salles: h.nameSearch.salles }, isError: false, isPending: false };
+  },
 }));
 
 vi.mock("@/features/matches/queries", () => ({ useVenueMatchWindows: () => ({ data: [] }) }));
@@ -152,6 +173,8 @@ beforeEach(() => {
   h.updateCalls = [];
   h.nameSearch.salles = [];
   h.nearby.salles = [];
+  h.nameQueries = [];
+  h.nameSearchState.value = "ready";
   useToastStore.setState({ toasts: [] });
 });
 
@@ -271,7 +294,8 @@ describe("VenuesStep — Dissocier une salle FFBB, sur la carte du gymnase", () 
 describe("VenuesStep — Associer une salle FFBB, sur la carte du gymnase", () => {
   const associate = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
     await user.click(screen.getByRole("button", { name: WIZARD_TEXTS.associateVenueMenu("Alpha") }));
-    await user.click(screen.getByRole("menuitem", { name: SALLE.name }));
+    const row = within(screen.getByRole("dialog", { name: WIZARD_TEXTS.associateModalTitle("Alpha") })).getByText(WIZARD_TEXTS.associateVenueAddress(SALLE)).closest("li") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: (n: string) => n.includes(WIZARD_TEXTS.associateTag) }));
   };
   const confirm = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
     const dialog = screen.getByRole("dialog", { name: WIZARD_TEXTS.associateVenueTitle(SALLE.name, "Alpha") });
@@ -345,5 +369,226 @@ describe("VenuesStep — Associer une salle FFBB, sur la carte du gymnase", () =
     expect(await screen.findByText(WIZARD_TEXTS.salleLinkedToVenue(SALLE.name, "Alpha"))).toBeInTheDocument();
     expect(screen.queryByText(WIZARD_TEXTS.venueDissociated("Alpha"))).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: WIZARD_TEXTS.undoAction })).toHaveLength(1);
+  });
+});
+
+describe("VenuesStep — Associer : la recherche dans toute la FFBB, dans sa modale", () => {
+  const HOMONYM: FfbbSalle = { ...SALLE, address: "3 ALLEE DES CIMES", city: "Valbois", postalCode: "74000", externalRef: "174000007", latitude: "45.92", longitude: "6.87" };
+  const OTHER: FfbbSalle = { ...SALLE, name: "HALLE DES SPORTS", address: "5 RUE BASSE", externalRef: "166900099" };
+  const NO_GPS: FfbbSalle = { ...SALLE, latitude: null, longitude: null };
+
+  const openButton = (): HTMLElement => screen.getByRole("button", { name: WIZARD_TEXTS.associateVenueMenu("Alpha") });
+  const modal = (): HTMLElement => screen.getByRole("dialog", { name: WIZARD_TEXTS.associateModalTitle("Alpha") });
+  const searchField = (): HTMLElement => within(modal()).getByRole("textbox");
+  const rowOf = (salle: FfbbSalle): HTMLElement => within(modal()).getByText(WIZARD_TEXTS.associateVenueAddress(salle)).closest("li") as HTMLElement;
+  const pick = async (user: ReturnType<typeof userEvent.setup>, salle: FfbbSalle): Promise<void> => {
+    await user.click(within(rowOf(salle)).getByRole("button", { name: (n: string) => n.includes(WIZARD_TEXTS.associateTag) }));
+  };
+  const confirmDialog = (salle: FfbbSalle): HTMLElement => screen.getByRole("dialog", { name: WIZARD_TEXTS.associateVenueTitle(salle.name, "Alpha") });
+
+  it("le bouton est là même sans aucune salle à proximité, et ouvre la modale de recherche", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+
+    expect(within(modal()).getByText(WIZARD_TEXTS.associateModalHint)).toBeInTheDocument();
+    expect(searchField()).toHaveAccessibleName();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("cherche dans toute la FFBB même quand un homonyme est à proximité, et distingue les homonymes par l'adresse et la ville", async () => {
+    const user = userEvent.setup();
+    h.nearby.salles = [SALLE];
+    h.nameSearch.salles = [HOMONYM];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await user.type(searchField(), "mont blanc");
+
+    expect(h.nameQueries).toContain("mont blanc");
+    expect(rowOf(SALLE)).toBeInTheDocument();
+    expect(rowOf(HOMONYM)).toBeInTheDocument();
+  });
+
+  it("la liste à proximité s'affiche à l'ouverture, sans chargement sans fin tant que rien n'est cherché, puis se filtre", async () => {
+    const user = userEvent.setup();
+    h.nearby.salles = [SALLE, OTHER];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    expect(rowOf(SALLE)).toBeInTheDocument();
+    expect(rowOf(OTHER)).toBeInTheDocument();
+    expect(within(modal()).queryByLabelText("Chargement")).not.toBeInTheDocument();
+
+    await user.type(searchField(), "mont blanc");
+    expect(rowOf(SALLE)).toBeInTheDocument();
+    expect(within(modal()).queryByText(WIZARD_TEXTS.associateVenueAddress(OTHER))).not.toBeInTheDocument();
+  });
+
+  it("une salle sans numéro fédéral n'est pas proposée : elle n'est pas associable", async () => {
+    const user = userEvent.setup();
+    const noRef = { ...OTHER, externalRef: null };
+    const noRefNational = { ...HOMONYM, externalRef: null };
+    h.nearby.salles = [noRef, SALLE];
+    h.nameSearch.salles = [noRefNational];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    expect(rowOf(SALLE)).toBeInTheDocument();
+    expect(within(modal()).queryByText(noRef.name)).not.toBeInTheDocument();
+
+    await user.type(searchField(), "mont blanc");
+    expect(within(modal()).queryByText(WIZARD_TEXTS.associateVenueAddress(noRefNational))).not.toBeInTheDocument();
+  });
+
+  it("une salle déjà liée à un autre gymnase reste lisible mais fermée au geste", async () => {
+    const user = userEvent.setup();
+    h.venues.data = [venueOf(), venueOf({ id: "v2", name: "Beta", externalRef: SALLE.externalRef })];
+    h.nearby.salles = [SALLE];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    expect(within(rowOf(SALLE)).getByText(WIZARD_TEXTS.alreadyLinkedTag)).toBeInTheDocument();
+
+    await user.click(within(rowOf(SALLE)).getByRole("button", { name: (n: string) => n.includes(WIZARD_TEXTS.associateTag) }));
+    expect(screen.queryByRole("dialog", { name: WIZARD_TEXTS.associateVenueTitle(SALLE.name, "Alpha") })).not.toBeInTheDocument();
+  });
+
+  it("un clic ferme la modale et demande confirmation avec adresse et ville ; confirmé, il associe sans créer ni renommer et reprend l'adresse d'un gymnase qui n'en a pas", async () => {
+    const user = userEvent.setup();
+    h.nameSearch.salles = [HOMONYM];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await user.type(searchField(), "mont blanc");
+    await pick(user, HOMONYM);
+
+    expect(screen.queryByRole("dialog", { name: WIZARD_TEXTS.associateModalTitle("Alpha") })).not.toBeInTheDocument();
+    expect(within(confirmDialog(HOMONYM)).getByText(WIZARD_TEXTS.associateVenueAddress(HOMONYM))).toBeInTheDocument();
+    expect(h.updateCalls).toHaveLength(0);
+
+    await user.click(within(confirmDialog(HOMONYM)).getByRole("button", { name: WIZARD_TEXTS.associateVenueConfirm }));
+
+    expect(h.updateCalls).toEqual([
+      { id: "v1", body: expect.objectContaining({ name: "Alpha", externalRef: HOMONYM.externalRef, address: HOMONYM.address, latitude: HOMONYM.latitude, longitude: HOMONYM.longitude }) },
+    ]);
+    expect(h.created.value).toBeNull();
+    expect(await screen.findByText(WIZARD_TEXTS.salleLinkedToVenue(HOMONYM.name, "Alpha"))).toBeInTheDocument();
+  });
+
+  it("un gymnase qui a déjà une adresse la garde", async () => {
+    const user = userEvent.setup();
+    h.venues.data = [venueOf({ address: "2 rue Basse" })];
+    h.nearby.salles = [SALLE];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await pick(user, SALLE);
+    await user.click(within(confirmDialog(SALLE)).getByRole("button", { name: WIZARD_TEXTS.associateVenueConfirm }));
+
+    expect(h.updateCalls).toEqual([{ id: "v1", body: expect.objectContaining({ externalRef: SALLE.externalRef, address: "2 rue Basse" }) }]);
+  });
+
+  it("une salle sans position le dit à la confirmation, l'adresse est reprise et la fiche la montre, position à saisir", async () => {
+    const user = userEvent.setup();
+    h.nearby.salles = [NO_GPS];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await pick(user, NO_GPS);
+
+    expect(within(confirmDialog(NO_GPS)).getByText(WIZARD_TEXTS.associateVenueDescriptionNoGps)).toBeInTheDocument();
+    expect(within(confirmDialog(NO_GPS)).queryByText(WIZARD_TEXTS.associateVenueDescription)).not.toBeInTheDocument();
+
+    await user.click(within(confirmDialog(NO_GPS)).getByRole("button", { name: WIZARD_TEXTS.associateVenueConfirm }));
+
+    expect(h.updateCalls[0]?.body).toEqual(expect.objectContaining({ externalRef: NO_GPS.externalRef, address: NO_GPS.address }));
+    expect(await screen.findByRole("textbox", { name: "Adresse" })).toHaveValue(NO_GPS.address);
+  });
+
+  it("une salle avec position garde le texte habituel de confirmation", async () => {
+    const user = userEvent.setup();
+    h.nearby.salles = [SALLE];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await pick(user, SALLE);
+
+    expect(within(confirmDialog(SALLE)).getByText(WIZARD_TEXTS.associateVenueDescription)).toBeInTheDocument();
+    expect(within(confirmDialog(SALLE)).queryByText(WIZARD_TEXTS.associateVenueDescriptionNoGps)).not.toBeInTheDocument();
+  });
+
+  it("une adresse absente à la FFBB n'affiche jamais « null », ni sur la ligne ni à la confirmation", async () => {
+    const user = userEvent.setup();
+    const noAddress = { ...SALLE, address: null };
+    h.nearby.salles = [noAddress];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    expect(modal()).not.toHaveTextContent("null");
+
+    await pick(user, noAddress);
+    expect(confirmDialog(noAddress)).not.toHaveTextContent("null");
+  });
+
+  it("« Annuler » à la confirmation n'écrit rien", async () => {
+    const user = userEvent.setup();
+    h.nearby.salles = [SALLE];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await pick(user, SALLE);
+    await user.click(within(confirmDialog(SALLE)).getByRole("button", { name: "Annuler" }));
+
+    expect(h.updateCalls).toHaveLength(0);
+  });
+
+  it("le toast « Annuler » rend un gymnase sans adresse à son état d'avant : ni salle, ni adresse reprise", async () => {
+    const user = userEvent.setup();
+    h.nearby.salles = [SALLE];
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await pick(user, SALLE);
+    await user.click(within(confirmDialog(SALLE)).getByRole("button", { name: WIZARD_TEXTS.associateVenueConfirm }));
+    await user.click(await screen.findByRole("button", { name: WIZARD_TEXTS.undoAction }));
+
+    expect(h.updateCalls.at(-1)).toEqual({ id: "v1", body: expect.objectContaining({ externalRef: "", address: null, latitude: null, longitude: null }) });
+    expect(h.venues.data[0]).toEqual(expect.objectContaining({ externalRef: null, address: null, latitude: null, longitude: null }));
+  });
+
+  it("rien trouvé : la modale le dit", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await user.type(searchField(), "introuvable");
+
+    expect(within(modal()).getByText(WIZARD_TEXTS.associateModalEmpty)).toBeInTheDocument();
+  });
+
+  it("une recherche en échec le dit, sans se faire passer pour un résultat vide", async () => {
+    const user = userEvent.setup();
+    h.nameSearchState.value = "failed";
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await user.type(searchField(), "mont blanc");
+
+    expect(within(modal()).getByText(WIZARD_TEXTS.nameSearchError)).toBeInTheDocument();
+    expect(within(modal()).queryByText(WIZARD_TEXTS.associateModalEmpty)).not.toBeInTheDocument();
+  });
+
+  it("une recherche en cours montre le chargement, sans se faire passer pour un résultat vide", async () => {
+    const user = userEvent.setup();
+    h.nameSearchState.value = "loading";
+    renderWithProviders(<Harness />);
+
+    await user.click(openButton());
+    await user.type(searchField(), "mont blanc");
+
+    expect(within(modal()).getByLabelText("Chargement")).toBeInTheDocument();
+    expect(within(modal()).queryByText(WIZARD_TEXTS.associateModalEmpty)).not.toBeInTheDocument();
   });
 });

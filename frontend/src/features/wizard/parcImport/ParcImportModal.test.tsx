@@ -1009,9 +1009,9 @@ describe("ParcImportModal — retours fondateur 2026-10-26 (grille gymnases, sé
     await analyzeThen(user, analysis);
     await goToStep(user, "mutualisations");
 
-    // Le nom de groupe (donnée serveur `groupe`) ET les équipes (libellé) sont rendus verbatim.
+    // Le nom de groupe (donnée serveur `groupe`) est rendu verbatim, et seul (arbitrage du 31/10).
     expect(await screen.findByText("CEC")).toBeInTheDocument();
-    expect(screen.getByText("U11M1 + U11M2")).toBeInTheDocument();
+    expect(screen.queryByText("U11M1 + U11M2")).not.toBeInTheDocument();
     // La raison serveur n'apparaît qu'UNE fois (défaut C, comme pour les lignes équipe/gymnase).
     expect(screen.getAllByText(raison)).toHaveLength(1);
     // Garder/Ignorer sans case à cocher (Listbox ou segmenté — jamais de checkbox).
@@ -1911,16 +1911,30 @@ describe("ParcImportModal — PR A lot 2 (Ignorer barré · champ Séances masqu
     await analyzeThen(user, analysis);
     await goToStep(user, "mutualisations");
 
-    // Précondition : la ligne est gardée, son libellé n'est pas barré.
-    const before = screen.getByText("U11M1 + U11M2");
+    // Précondition : la ligne est gardée, son nom (seul à l'écran, arbitrage du 31/10) n'est pas barré.
+    const before = screen.getByText("CEC");
     expect(before.className).not.toContain("line-through");
 
     // On bascule la ligne en « Ignorer » (contrôle segmenté Garder/Ignorer).
     await user.click(screen.getByRole("button", { name: T.mutualIgnore as unknown as string }));
 
-    const after = screen.getByText("U11M1 + U11M2");
+    const after = screen.getByText("CEC");
     expect(after.className, "une ligne ignorée est barrée (D9 étendu)").toContain("line-through");
     expect(after.className, "une ligne ignorée est grisée").toContain("text-muted-foreground");
+  });
+
+  it("E4 — une séance commune sans nom, mise en « Ignorer », barre ses équipes", async () => {
+    const user = userEvent.setup();
+    const analysis = analysisOf({
+      mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })],
+    });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyzeThen(user, analysis);
+    await goToStep(user, "mutualisations");
+
+    await user.click(screen.getByRole("button", { name: T.mutualIgnore as unknown as string }));
+
+    expect(screen.getByText("U11M1 + U11M2").className).toContain("line-through");
   });
 
   it("E5 — une ligne Équipes IGNORÉE n'affiche plus de champ Séances éditable", async () => {
@@ -2056,7 +2070,7 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
 
       await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("reservations")));
       const groupCase = screen.getByRole("button", { name: T.mutualisationCaseLabel("Loisirs", "U11M1 + U11M2") });
-      expect(groupCase).toHaveTextContent(/^Loisirs · U11M1 \+ U11M2$/);
+      expect(groupCase).toHaveTextContent(/^Loisirs$/);
       expect(groupCase).toHaveAttribute("title", T.caseTooltip("Loisirs · U11M1 + U11M2", start, end));
     });
 
@@ -2070,8 +2084,94 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
 
       await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("reservations")));
       const groupCase = screen.getByRole("button", { name: T.mutualisationCaseLabel("CEC", "U11M1 + U11M2") });
-      expect(groupCase).toHaveTextContent(/^CEC · U11M1 \+ U11M2$/);
+      expect(groupCase).toHaveTextContent(/^CEC$/);
       expect(groupCase).toHaveAttribute("title", T.caseTooltip("CEC · U11M1 + U11M2", start, end));
+    });
+  });
+
+  describe("le nom du groupe remplace ses équipes sur la carte, et survit à « Revalider » (retours du 31/10)", () => {
+    const groupField = (): HTMLElement => screen.getByRole("textbox", { name: (n: string) => n.startsWith(PARC_IMPORT_TEXTS.groupLabel("U11M1 + U11M2")) });
+    const teamsTrigger = (): HTMLElement => screen.getByRole("button", { name: (n: string) => n.startsWith(PARC_IMPORT_TEXTS.teamsForGroup("U11M1 + U11M2")) });
+    const namedLine = (groupe: string, extra: Partial<Line> = {}): Line => mkLine(0, "U11M1 + U11M2", "aCreer", { groupe, gymnaseId: null, position, ...extra });
+    const openMutual = async (user: ReturnType<typeof userEvent.setup>, line: Line): Promise<void> => {
+      await analyzeThen(user, analysisOf({ mutualisations: [line] }));
+      await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")));
+    };
+
+    it("nom lu puis nom saisi : la carte ne montre que le nom, jamais les équipes à côté", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, namedLine("CEC"));
+
+      expect(screen.getByText("CEC")).toBeInTheDocument();
+      expect(screen.queryByText("U11M1 + U11M2")).not.toBeInTheDocument();
+
+      fireEvent.change(groupField(), { target: { value: "Loisirs" } });
+      expect(screen.getByText("Loisirs")).toBeInTheDocument();
+      expect(screen.queryByText("U11M1 + U11M2")).not.toBeInTheDocument();
+    });
+
+    it("sans nom : la carte garde ses équipes", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, namedLine(""));
+
+      expect(screen.getByText("U11M1 + U11M2")).toBeInTheDocument();
+    });
+
+    it("les équipes d'un groupe nommé restent lisibles dans le sélecteur, même encore à créer, sans redéfinir la composition", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, namedLine("CEC", { equipes: [{ id: null, nom: "U11M1" }, { id: null, nom: "U11M2" }] } as unknown as Partial<Line>));
+
+      expect(teamsTrigger()).toHaveTextContent("U11M1");
+      expect(teamsTrigger()).toHaveTextContent("U11M2");
+
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+      const body = q.analyzeMutate.mock.calls.at(-1)?.[0] as { decisions: Array<{ section: string; corrections?: Record<string, unknown> }> };
+      expect(body.decisions.find((d) => "mutualisations" === d.section)?.corrections?.equipes).toBeUndefined();
+    });
+
+    it("« Revalider » garde le nom saisi : champ, carte et case, et le renvoie au serveur", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, namedLine("CEC"));
+      fireEvent.change(groupField(), { target: { value: "Loisirs" } });
+
+      // Comme l'API : l'analyse rejouée rend le nom LU, elle n'applique pas la correction de groupe.
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+
+      const body = q.analyzeMutate.mock.calls.at(-1)?.[0] as { decisions: Array<{ section: string; corrections?: Record<string, unknown> }> };
+      expect(body.decisions.find((d) => "mutualisations" === d.section)?.corrections?.groupe).toBe("Loisirs");
+      expect(groupField()).toHaveValue("Loisirs");
+      expect(screen.getByText("Loisirs")).toBeInTheDocument();
+
+      await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("reservations")));
+      expect(screen.getByRole("button", { name: T.mutualisationCaseLabel("Loisirs", "U11M1 + U11M2") })).toBeInTheDocument();
+    });
+
+    it("« Revalider » après avoir vidé le champ revient au nom lu", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, namedLine("CEC"));
+      fireEvent.change(groupField(), { target: { value: "" } });
+
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+
+      expect(groupField()).toHaveValue("CEC");
+    });
+
+    it("une NOUVELLE analyse repart du nom lu : le nom saisi pour l'ancien collage ne se colle pas sur le nouveau groupe", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, namedLine("CEC"));
+      fireEvent.change(groupField(), { target: { value: "Loisirs" } });
+
+      await openMutual(user, namedLine("Autre"));
+
+      expect(groupField()).toHaveValue("Autre");
+      expect(screen.getByText("Autre")).toBeInTheDocument();
+      expect(screen.queryByText("Loisirs")).not.toBeInTheDocument();
     });
   });
 

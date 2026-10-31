@@ -229,3 +229,26 @@ describe("ParcCaseGrid — pause de midi teintée et infobulle de réservation (
     expect(screen.getByRole("button")).toHaveAttribute("title", T.caseTooltip("U15M1", formatMinutes(18 * 60), formatMinutes(19 * 60 + 30)));
   });
 });
+
+/**
+ * Arbitrage fondateur du 31/10 : un groupe qui a un nom ne montre que ce nom sur sa case ; ses équipes
+ * restent lisibles dans l'infobulle et le nom accessible. ROUGE option A.
+ */
+describe("ParcCaseGrid — une case de groupe affiche son nom seul", () => {
+  const mistral = [{ name: "Gymnase Mistral", toCreate: false }];
+  const groupCase = (groupe: string | null): GridCase[] => [{ index: 0, venueName: "Gymnase Mistral", jour: 3, debut: "17:00", duree: 90, libelle: "SF + SM", mutual: true, groupe }];
+
+  it("nommé : le nom seul à l'écran, les équipes dans l'infobulle et le nom accessible", () => {
+    renderWithProviders(<ParcCaseGrid venues={mistral} cases={groupCase("Shooting")} onEditCase={vi.fn()} />);
+
+    const cell = screen.getByRole("button", { name: T.mutualisationCaseLabel("Shooting", "SF + SM") });
+    expect(cell).toHaveTextContent(/^Shooting$/);
+    expect(cell).toHaveAttribute("title", T.caseTooltip("Shooting · SF + SM", formatMinutes(17 * 60), formatMinutes(18 * 60 + 30)));
+  });
+
+  it.each([[null], [""]])("sans nom (%j) : la case garde ses équipes", (groupe) => {
+    renderWithProviders(<ParcCaseGrid venues={mistral} cases={groupCase(groupe)} onEditCase={vi.fn()} />);
+
+    expect(screen.getByRole("button")).toHaveTextContent(/^SF \+ SM$/);
+  });
+});

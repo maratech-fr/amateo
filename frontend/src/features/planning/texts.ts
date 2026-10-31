@@ -13,9 +13,9 @@ export const PLANNING_TEXTS = {
   noPeriodVersionTitle: "Aucune version pour cette période",
   noPeriodVersionDescription: "Générez le planning de cette période pour le voir apparaître ici.",
   generationFailed: "Génération en échec",
-  generationFailedDescription: "Aucun créneau n'a été placé, et ce planning n'a aucune réservation à afficher. Corrigez les contraintes signalées puis régénérez.",
+  generationFailedDescription: "Aucun créneau n'a été placé, et ce planning n'a aucune réservation à afficher. Lisez les diagnostics, corrigez, puis régénérez.",
   generationFailedNoSlots:
-    "La génération a échoué : aucun créneau n'a été placé. Seuls vos créneaux réservés sont affichés — ils restent acquis quoi qu'il arrive. Les exports sont vides pour ce planning.",
+    "La génération a échoué : aucun créneau n'a été placé. Seuls vos créneaux réservés sont affichés — ils restent acquis. Les exports sont vides pour ce planning. Ouvrez les diagnostics du système pour voir ce qui a été constaté.",
   scopeThisTeam: "Cette équipe",
   scopeWholeClub: "Tout le club",
   verifyTimeout: "La vérification a pris trop de temps, réessayez.",

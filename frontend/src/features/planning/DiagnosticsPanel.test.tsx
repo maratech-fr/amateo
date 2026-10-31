@@ -340,6 +340,13 @@ describe("DiagnosticsPanel — lien « Ajuster cette règle » (P2-28)", () => {
     expect(screen.queryByRole("link", { name: "Ajuster cette règle" })).toBeNull();
   });
 
+  it("aucun lien sur une règle toujours objectif : il n'y a rien à y ajuster, l'alerte reste lisible", () => {
+    renderWithProviders(<DiagnosticsPanel diagnostics={[softened({ ruleKey: "salarieDistribution", message: "Aucun salarié n'a de séance le jeudi." })]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
+
+    expect(screen.getByText("Aucun salarié n'a de séance le jeudi.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Ajuster cette règle" })).toBeNull();
+  });
+
   it("aucun lien sur un diagnostic d'un autre type (le lien est réservé aux règles assouplies)", () => {
     renderWithProviders(<DiagnosticsPanel diagnostics={[diag("WARNING", "autre alerte")]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
 

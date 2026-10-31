@@ -120,18 +120,22 @@ function caseJumpText(c: ParcCaseGridCase): string {
   return "" === range ? withoutVenue(c.libelle, c.venueName) : `${dayLabelShort(c.jour)} ${range}`.trim();
 }
 
-/** Le texte VISIBLE d'une case : celle d'un groupe porte le nom du groupe devant ses équipes. */
+function groupNameOf(c: ParcCaseGridCase): string | null {
+  return true === c.mutual && null != c.groupe && "" !== c.groupe ? c.groupe : null;
+}
+
+/** Le texte VISIBLE d'une case : un groupe nommé ne montre que son nom. */
 function caseVisibleText(c: ParcCaseGridCase): string {
-  const text = caseGridText(c);
-  return true === c.mutual && null != c.groupe && "" !== c.groupe ? `${c.groupe} · ${text}` : text;
+  return groupNameOf(c) ?? caseGridText(c);
 }
 
 /**
- * L'infobulle d'une case : « Nom · début → fin ». Le gymnase et l'heure du libellé serveur en sortent,
+ * L'infobulle d'une case : « Nom · début → fin », un groupe nommé y garde ses équipes. Le gymnase et l'heure du libellé serveur en sortent,
  * ils y feraient doublon. Une ouverture garde sa plage horaire, déjà complète.
  */
 function caseTooltip(c: ParcCaseGridCase, start: number): string {
-  const display = caseVisibleText(c);
+  const groupName = groupNameOf(c);
+  const display = null === groupName ? caseGridText(c) : `${groupName} · ${caseGridText(c)}`;
   if (true === c.opening) {
     return display;
   }

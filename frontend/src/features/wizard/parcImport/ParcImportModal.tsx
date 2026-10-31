@@ -509,7 +509,26 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if (null === analysis) {
       return;
     }
-    analyze.mutate({ payload: parc, decisions: buildDecisions() }, { onSuccess: applyAnalysis });
+    // L'analyse rejouée rend le nom LU, sans appliquer la correction de groupe : le nom saisi survit
+    // ici. Une NOUVELLE analyse (`doAnalyze`) repart, elle, du nom lu.
+    const typedGroupNames = groupDrafts;
+    analyze.mutate(
+      { payload: parc, decisions: buildDecisions() },
+      {
+        onSuccess: (data) => {
+          applyAnalysis(data);
+          setGroupDrafts((read) => {
+            const next = { ...read };
+            for (const key of Object.keys(read)) {
+              if ("" !== (typedGroupNames[key] ?? "").trim()) {
+                next[key] = typedGroupNames[key];
+              }
+            }
+            return next;
+          });
+        },
+      },
+    );
   };
 
   // Finition 4 — « Voir » : aller à l'étape de la 1ʳᵉ ligne à trancher et donner le focus à SON sélecteur.
@@ -1481,9 +1500,9 @@ function MutualisationsStep({
             <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
-                {null === groupName || "" === groupName ? null : <span className="text-sm font-semibold text-foreground">{groupName}</span>}
-                {/* E4 (essai fondateur 30/10) — une séance commune mise en « Ignorer » est barrée + grisée (D9 étendu). */}
-                <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{line.libelle}</span>
+                {/* Un groupe nommé ne montre que son nom : ses équipes se lisent dans le sélecteur.
+                    E4 (essai fondateur 30/10) — une séance commune mise en « Ignorer » est barrée + grisée (D9 étendu). */}
+                <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{null === groupName || "" === groupName ? line.libelle : groupName}</span>
                 {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}
                 {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))} · ${pos.gymnase}`}</span> : null}
               </div>
@@ -1514,6 +1533,7 @@ function MutualisationsStep({
                     aria-label={T.teamsForGroup(line.libelle)}
                     wrapperClassName="w-56"
                     values={composition}
+                    placeholder={(line.equipes ?? []).map((e) => e.nom).join(", ")}
                     onValuesChange={(v) => onCompositionChange(line.index, v)}
                     options={teamOptions}
                   />
