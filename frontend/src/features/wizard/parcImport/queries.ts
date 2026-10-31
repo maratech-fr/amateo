@@ -43,6 +43,8 @@ export interface ParcAnalysisLine {
   seancesActuelles?: number;
   /** Mutualisations : le libellé du bloc DÉRIVÉ par le serveur (ex. « CEC »), affiché et corrigeable (D8). */
   groupe?: string | null;
+  /** Mutualisation APPARIÉE : le VRAI nom du groupe existant (null s'il n'en a pas), qui amorce le champ à la place du nom lu. */
+  blocLabel?: string | null;
   /**
    * Séance commune (D3) : la COMPOSITION lue (`{id résolu|null, nom}`) — amorce le sélecteur multiple
    * de l'étape Séances communes. Un `id` null = équipe non appariée au club (nom seul). La composition

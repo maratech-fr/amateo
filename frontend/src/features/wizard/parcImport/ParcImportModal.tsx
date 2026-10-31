@@ -175,6 +175,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
   // décocher (ou recocher) de lui-même une ligne dont l'alerte naît (ou se lève).
   // Ref : lue au retour de la vérification, elle voit aussi un geste fait pendant le vol.
   const keepByHand = useRef<Record<string, boolean>>({});
+  /** L'amorce des noms de groupe de la dernière analyse : un brouillon qui lui est égal n'a pas été saisi. */
+  const groupSeeds = useRef<Record<string, string>>({});
   // Brouillons d'édition d'une case, par `section:index`.
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
   const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
@@ -311,7 +313,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
             nextCaseVenue[key] = line.cibleId ?? ("" !== slotGym ? VENUE_TO_CREATE : "");
           } else if ("mutualisations" === section) {
             nextCaseVenue[key] = line.gymnaseId ?? ("" !== posGym ? VENUE_TO_CREATE : "");
-            nextGroupDrafts[key] = line.groupe ?? "";
+            nextGroupDrafts[key] = groupSeed(line);
           } else {
             // Réservations : même amorce « gymnase de la case » que les autres sections de cases.
             nextCaseVenue[key] = line.gymnaseId ?? ("" !== posGym ? VENUE_TO_CREATE : "");
@@ -324,12 +326,16 @@ export function ParcImportModal(props: ParcImportModalProps) {
     setChecked(replay ? { ...nextChecked, ...keepByHand.current } : nextChecked);
     setSlotDrafts(seededUnlessReplay(nextSlotDrafts));
     setCaseVenue(seededUnlessReplay(nextCaseVenue));
-    // Un nom de groupe vidé revient au nom lu : c'est déjà ce que l'import enverrait.
+    // Un nom de groupe vidé revient à l'amorce : c'est déjà ce que l'import enverrait. Seul un nom SAISI
+    // survit à la revérification : une ancienne amorce conservée se changerait en correction si la
+    // nouvelle analyse en sert une autre (ligne devenue appariée à un groupe existant).
+    const previousGroupSeeds = groupSeeds.current;
+    groupSeeds.current = nextGroupDrafts;
     setGroupDrafts((current) => {
       if (!replay) {
         return nextGroupDrafts;
       }
-      const typed = Object.entries(current).filter(([, name]) => "" !== name.trim());
+      const typed = Object.entries(current).filter(([key, name]) => "" !== name.trim() && name.trim() !== (previousGroupSeeds[key] ?? "").trim());
       return { ...nextGroupDrafts, ...Object.fromEntries(typed) };
     });
     setSessionDrafts(seededUnlessReplay(nextSessionDrafts));
@@ -406,7 +412,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
           // garde la composition lue.
           const composition = teamCompositionDrafts[key];
           const corrections: Record<string, unknown> = {};
-          if ("" !== groupe) {
+          // Seul un nom SAISI part : ni le champ vide, ni l'amorce, que le serveur n'a pas à réécrire.
+          if ("" !== groupe && groupe !== groupSeed(line).trim()) {
             corrections.groupe = groupe;
           }
           if (undefined !== composition) {
@@ -1091,13 +1098,18 @@ function hasIgnoredTeamAlert(analysis: ParcAnalysis | null): boolean {
   return ["mutualisations", "reservations"].some((section) => (analysis?.sections[section] ?? []).some((l) => "equipe_ignoree" === l.alerteCode));
 }
 
+/** L'amorce du champ de groupe : le vrai nom du groupe existant, à défaut le nom lu dans le fichier. */
+function groupSeed(line: ParcAnalysisLine): string {
+  return line.blocLabel ?? line.groupe ?? "";
+}
+
 /**
- * Le nom de groupe à l'écran : le brouillon, ou le nom lu si le champ est vide. C'est ce que l'import
- * enverra : un nom vide ne part pas en correction, le serveur garde alors le nom lu.
+ * Le nom de groupe à l'écran : le brouillon, ou l'amorce si le champ est vide. Un champ vide ne part pas
+ * en correction : le serveur garde le nom du groupe existant, ou prend le nom lu à la création.
  */
 function shownGroupName(draft: string | undefined, line: ParcAnalysisLine): string | null {
   const trimmed = (draft ?? "").trim();
-  return "" !== trimmed ? trimmed : (line.groupe ?? null);
+  return "" !== trimmed ? trimmed : (line.blocLabel ?? line.groupe ?? null);
 }
 
 /** La valeur initiale du sélecteur d'une ligne équipe/gymnase, d'après son verdict serveur. */
