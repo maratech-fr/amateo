@@ -1,6 +1,14 @@
 .DEFAULT_GOAL := help
 
-FIG := docker compose -f ../docker-compose.yml
+# Quelle stack pour cette copie ? (backend/scripts/lib/stack-resolve.sh) : principal, épreuve, nu, unknown.
+STACK_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
+STACK_INFO := $(shell sh $(STACK_ROOT)/backend/scripts/lib/stack-resolve.sh $(STACK_ROOT) 2>/dev/null | sed 's/ /@@/g')
+stack_field = $(subst @@, ,$(patsubst $(1)=%,%,$(filter $(1)=%,$(STACK_INFO))))
+STACK_MODE := $(call stack_field,STACK_MODE)
+STACK_COMPOSE := $(call stack_field,COMPOSE)
+TEST_PROJECT := $(call stack_field,TEST_PROJECT)
+STACK_GOALS := $(or $(MAKECMDGOALS),help)
+FIG := $(STACK_COMPOSE)
 USERID := $(shell id -u)
 GROUPID := $(shell id -g)
 export USER_ID := $(USERID)
@@ -19,6 +27,39 @@ ifdef APP_ENV
 else
 	EXECROOT =
 	EXEC =
+endif
+
+# Refus AVANT toute recette : un `make -n` les prouve aussi, et rien ne démarre à moitié.
+ifeq ($(filter principal epreuve nu,$(STACK_MODE)),)
+ifneq ($(filter-out help,$(STACK_GOALS)),)
+$(error $(or $(call stack_field,STACK_REASON),stack-resolve : dépôt non identifié (git absent ou dossier hors dépôt) — aucune cible Docker))
+endif
+endif
+ifeq ($(STACK_MODE),nu)
+STACK_REFUSED := $(filter-out install tests-complete test phpunit phpstan cs cs-fix rector db-init-test db-empty-test purge-test-cache coverage jwt-keys lint composer-unused test-up test-down test-destroy test-check test-sweep help,$(STACK_GOALS))
+ifneq ($(STACK_REFUSED),)
+$(error $(firstword $(STACK_REFUSED)) : indisponible en worktree nu — stack d'épreuve (make epreuve-up WT=…) ou dépôt principal)
+endif
+ifneq ($(call stack_field,STACK_ENV_OK),1)
+ifneq ($(filter-out help tests-complete test-up test-down test-destroy test-check test-sweep,$(STACK_GOALS)),)
+$(error .env sans AMATEO_STACK=$(TEST_PROJECT) exact : make -C backend test-up)
+endif
+endif
+endif
+ifeq ($(filter principal,$(STACK_MODE)),)
+ifneq ($(filter play-env,$(STACK_GOALS)),)
+$(error play-env : refusé hors dépôt principal — la base de jeu du fondateur ne se vise pas d'ici)
+endif
+endif
+ifneq ($(STACK_MODE),nu)
+ifneq ($(filter test-up test-down test-destroy test-check,$(STACK_GOALS)),)
+$(error $(firstword $(filter test-up test-down test-destroy test-check,$(STACK_GOALS))) : réservé à un worktree nu)
+endif
+endif
+# Un worktree nu ne tourne qu'en test : -e APP_ENV=test résiste à une surcharge en ligne de commande.
+ifeq ($(STACK_MODE),nu)
+EXECROOT = $(FIG) exec -e APP_ENV=test php-fpm
+EXEC = $(FIG) exec -e APP_ENV=test -u $(USERID):$(GROUPID) php-fpm
 endif
 
 .PHONY: help ## Display this help
@@ -78,7 +119,7 @@ purge-test-cache:
 
 .PHONY: tests-complete ## Run the FULL suite, exactly like CI (phpstan + cs + tous les tests)
 tests-complete: APP_ENV = test
-tests-complete: purge-test-cache db-init-test
+tests-complete: $(if $(filter nu,$(STACK_MODE)),test-prepare) purge-test-cache db-init-test
 	# phpstan-symfony exige var/cache/dev/App_KernelDevDebugContainer.xml : présent en
 	# CI (auto-scripts composer), pas garanti sur un clone frais → warmup dev SI absent.
 	@test -f var/cache/dev/App_KernelDevDebugContainer.xml || $(EXEC) php bin/console cache:warmup -e dev
@@ -261,6 +302,60 @@ seed-league:
 db-drop-legacy:
 	$(FIG) exec -T postgres psql -U amateo_owner -d postgres -c "DROP DATABASE IF EXISTS clubscheduler"
 	$(FIG) exec -T postgres psql -U amateo_owner -d postgres -c "DROP DATABASE IF EXISTS clubscheduler_test"
+
+# --- Worktree nu : une stack privée (compose + docker-compose.test.yml), sans port publié, jetable.
+NU_ENV_FILE = $(STACK_ROOT)/.env
+define WRITE_NU_ENV
+{ cat $(STACK_ROOT)/.env.dist; printf 'USER_ID=%s\nGROUP_ID=%s\nAMATEO_STACK=%s\nAMATEO_GIT_COMMON_DIR=%s\n' "$(USERID)" "$(GROUPID)" "$(TEST_PROJECT)" "$(call stack_field,GIT_COMMON_DIR)"; } > $(NU_ENV_FILE)
+endef
+
+.PHONY: test-up ## (worktree nu) Démarre la stack privée — réécrit toujours le .env du worktree
+test-up:
+	@$(WRITE_NU_ENV)
+	@bash scripts/lib/stack-check.sh snapshot $(STACK_ROOT)
+	$(FIG) up -d --wait postgres redis mailpit mercure php-fpm engine
+
+# Interne à tests-complete : un worktree vierge n'a ni vendor/ ni clés JWT.
+.PHONY: test-prepare
+test-prepare:
+	$(MAKE) test-up
+	@test -f vendor/autoload_runtime.php || $(MAKE) install
+	$(MAKE) jwt-keys
+
+.PHONY: test-down ## (worktree nu) Arrête la stack privée, volumes gardés
+test-down:
+	@test -f $(NU_ENV_FILE) || $(WRITE_NU_ENV)
+	$(FIG) down --remove-orphans
+
+.PHONY: test-destroy ## (worktree nu) Détruit la stack privée : conteneurs, volumes, images locales
+test-destroy:
+	@test -f $(NU_ENV_FILE) || $(WRITE_NU_ENV)
+	$(FIG) down --remove-orphans --volumes --rmi local
+	@rm -f $(NU_ENV_FILE)
+
+.PHONY: test-check ## (worktree nu) Prouve que la stack privée est isolée de celle du fondateur
+test-check:
+	$(FIG) ps
+	@bash scripts/lib/stack-check.sh check $(STACK_ROOT)
+
+# Un worktree supprimé laisse sa stack amateo-test-<hash> : on retire tout projet dont le hash ne
+# correspond à aucun worktree vivant. Jamais par compose (le fichier n'existe plus), par label.
+.PHONY: test-sweep ## Retire les projets amateo-test-* dont le worktree n'existe plus
+test-sweep:
+	@keep=$$(env -u GIT_DIR -u GIT_WORK_TREE git -C $(STACK_ROOT) worktree list --porcelain | sed -n 's/^worktree //p' \
+		| while read -r w; do printf 'amateo-test-%s\n' "$$(printf '%s' "$$w" | sha1sum | cut -c1-12)"; done); \
+	[ -n "$$keep" ] || { echo "test-sweep : liste des worktrees vide, rien retiré" >&2; exit 1; }; \
+	label='{{.Label "com.docker.compose.project"}}'; \
+	projects=$$({ docker ps -a --format "$$label"; docker volume ls --format "$$label"; docker network ls --format "$$label"; } \
+		| grep -E '^amateo-test-[0-9a-f]{12}$$' | sort -u); \
+	for p in $$projects; do \
+		printf '%s\n' "$$keep" | grep -qxF "$$p" && continue; \
+		echo "test-sweep : retrait de $$p"; f="label=com.docker.compose.project=$$p"; \
+		docker ps -aq --filter "$$f" | xargs -r docker rm -f; \
+		docker volume ls -q --filter "$$f" | xargs -r docker volume rm; \
+		docker network ls -q --filter "$$f" | xargs -r docker network rm; \
+		docker images -q --filter "reference=$$p-*" | xargs -r docker rmi; \
+	done
 
 .PHONY: phpstan ## Run PHPStan
 phpstan:

@@ -44,10 +44,16 @@ ENV_LOCAL="$REPO_ROOT/backend/.env.local"
 BACKUP=""
 _restored=0
 
+RESOLVED="$(sh "$REPO_ROOT/backend/scripts/lib/stack-resolve.sh" "$REPO_ROOT")"
+DC="$(printf '%s\n' "$RESOLVED" | sed -n 's/^COMPOSE=//p')"
+if [[ -z "$DC" ]]; then
+  echo "==> with-sandbox: ABANDON — $(printf '%s\n' "$RESOLVED" | sed -n 's/^STACK_REASON=//p')" >&2
+  exit 1
+fi
+
 compose() {
-  local args=(-f "$REPO_ROOT/docker-compose.yml")
-  [[ -f "$REPO_ROOT/.env" ]] && args=(--env-file "$REPO_ROOT/.env" "${args[@]}")
-  docker compose "${args[@]}" "$@"
+  # shellcheck disable=SC2086 # une ligne de commande, le découpage est voulu
+  $DC "$@"
 }
 
 restart_workers() {

@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
-    container_name: amateo-frontend
+    container_name: ${AMATEO_STACK:-amateo}-frontend
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-8081}:80"
     depends_on:
@@ -75,7 +75,7 @@ services:
       target: tooling
     working_dir: /app/frontend
     ports:
-      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:${VITE_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app/frontend:cached
       - frontend_node_modules:/app/frontend/node_modules
@@ -104,7 +104,7 @@ services:
         # P4-166 (B1) — pcov dans l'image dev/test seulement : c'est le conteneur
         # où tourne `make -C backend coverage`. L'étage prod ne reçoit pas cet arg.
         WITH_PCOV: "1"
-    container_name: amateo-php-fpm
+    container_name: ${AMATEO_STACK:-amateo}-php-fpm
     working_dir: /app/backend
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     volumes:
@@ -139,7 +139,7 @@ services:
   nginx:
     restart: unless-stopped
     image: nginx:1.31-alpine
-    container_name: amateo-nginx
+    container_name: ${AMATEO_STACK:-amateo}-nginx
     depends_on:
       php-fpm:
         condition: service_healthy
@@ -160,7 +160,7 @@ services:
   postgres:
     restart: unless-stopped
     image: postgres:16-alpine
-    container_name: amateo-postgres
+    container_name: ${AMATEO_STACK:-amateo}-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -185,7 +185,7 @@ services:
   redis:
     restart: unless-stopped
     image: redis:8-alpine
-    container_name: amateo-redis
+    container_name: ${AMATEO_STACK:-amateo}-redis
     ports:
       - "127.0.0.1:${REDIS_PORT}:6379"
     command: ["redis-server", "--appendonly", "yes"]
@@ -205,7 +205,7 @@ services:
       args:
         UID: ${USER_ID:-1000}
         GID: ${GROUP_ID:-1000}
-    container_name: amateo-messenger-worker
+    container_name: ${AMATEO_STACK:-amateo}-messenger-worker
     working_dir: /app/backend
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     volumes:
@@ -255,7 +255,7 @@ services:
       args:
         UID: ${USER_ID:-1000}
         GID: ${GROUP_ID:-1000}
-    container_name: amateo-cron-runner
+    container_name: ${AMATEO_STACK:-amateo}-cron-runner
     working_dir: /app/backend
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     volumes:
@@ -296,7 +296,7 @@ services:
     build:
       context: .
       dockerfile: docker/engine/Dockerfile
-    container_name: amateo-engine
+    container_name: ${AMATEO_STACK:-amateo}-engine
     working_dir: /app/engine
     volumes:
       - ./:/app:cached
@@ -323,7 +323,7 @@ services:
     build:
       context: .
       dockerfile: docker/pdf-worker/Dockerfile
-    container_name: amateo-pdf-worker
+    container_name: ${AMATEO_STACK:-amateo}-pdf-worker
     working_dir: /app/frontend
     # Host uid, like the PHP containers: the worker creates backend/var/exports
     # on the bind mount itself (PdfGenerator.php does NOT pre-create it; P4-357 moved
@@ -357,7 +357,7 @@ services:
     # renommé. Épinglé à une 1.x EXACTE (jamais `latest`, jamais 0.x) — MÊME tag que `.prod.yml`
     # (gardé par MercureHardeningTest).
     image: dunglas/mercure:v1.1.2
-    container_name: amateo-mercure
+    container_name: ${AMATEO_STACK:-amateo}-mercure
     environment:
       SERVER_NAME: ":80"
       # SEC-05/06: dedicated Mercure secret (no longer the lexik JWT passphrase);
@@ -372,7 +372,7 @@ services:
       # (une seule source d'env des deux côtés). Lie l'`iss` du jeton aux clés de vérification.
       MERCURE_TRUSTED_ISSUERS: ${MERCURE_TRUSTED_ISSUERS}
       MERCURE_EXTRA_DIRECTIVES: |
-        cors_origins http://localhost:5173 http://localhost:8081
+        cors_origins http://localhost:${VITE_PORT:-5173} http://localhost:${FRONTEND_PORT:-8081}
         cookie_name mercure_access_token
         resource_identifier http://localhost:${MERCURE_PORT}/.well-known/mercure
     ports:
@@ -389,7 +389,7 @@ services:
   mailpit:
     restart: unless-stopped
     image: axllent/mailpit:v1.31.6
-    container_name: amateo-mailpit
+    container_name: ${AMATEO_STACK:-amateo}-mailpit
     ports:
       - "127.0.0.1:${MAILPIT_SMTP_PORT}:1025"
       - "127.0.0.1:${MAILPIT_WEB_PORT}:8025"
@@ -404,7 +404,7 @@ services:
 
 networks:
   amateo_network:
-    name: amateo_network
+    name: ${AMATEO_STACK:-amateo}_network
 
 volumes:
   postgres_data:

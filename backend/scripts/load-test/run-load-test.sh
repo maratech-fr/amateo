@@ -102,11 +102,12 @@ else
 fi
 
 # Compose invocation: base always, overlay only when limits are on.
+read -ra STACK_DC <<<"$(sh "$ROOT/backend/scripts/lib/stack-field.sh" COMPOSE "$ROOT")"
 dc() {
   if [[ "$LIMITS" -eq 1 ]]; then
-    docker compose -f "$COMPOSE_BASE" -f "$COMPOSE_LOAD" "$@"
+    "${STACK_DC[@]}" -f "$COMPOSE_LOAD" "$@"
   else
-    docker compose -f "$COMPOSE_BASE" "$@"
+    "${STACK_DC[@]}" "$@"
   fi
 }
 

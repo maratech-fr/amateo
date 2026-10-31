@@ -1,6 +1,31 @@
 .DEFAULT_GOAL := help
 
-DOCKER_COMPOSE := docker compose --env-file .env
+# Quelle stack pour cette copie ? (backend/scripts/lib/stack-resolve.sh) : principal, épreuve, nu, unknown.
+STACK_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+STACK_INFO := $(shell sh $(STACK_ROOT)/backend/scripts/lib/stack-resolve.sh $(STACK_ROOT) 2>/dev/null | sed 's/ /@@/g')
+stack_field = $(subst @@, ,$(patsubst $(1)=%,%,$(filter $(1)=%,$(STACK_INFO))))
+STACK_MODE := $(call stack_field,STACK_MODE)
+STACK_COMPOSE := $(call stack_field,COMPOSE)
+TEST_PROJECT := $(call stack_field,TEST_PROJECT)
+STACK_GOALS := $(or $(MAKECMDGOALS),help)
+DOCKER_COMPOSE := $(STACK_COMPOSE)
+# Refus AVANT toute recette : un `make -n` les prouve aussi, et rien ne démarre à moitié.
+ifeq ($(filter principal epreuve nu,$(STACK_MODE)),)
+ifneq ($(filter-out help deploy,$(STACK_GOALS)),)
+$(error $(or $(call stack_field,STACK_REASON),stack-resolve : dépôt non identifié (git absent ou dossier hors dépôt) — aucune cible Docker))
+endif
+endif
+ifeq ($(STACK_MODE),nu)
+STACK_REFUSED := $(filter-out install test lint help deploy epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS))
+ifneq ($(STACK_REFUSED),)
+$(error $(firstword $(STACK_REFUSED)) : indisponible en worktree nu — stack d'épreuve (make epreuve-up WT=…) ou dépôt principal)
+endif
+ifneq ($(call stack_field,STACK_ENV_OK),1)
+ifneq ($(filter-out help deploy epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS)),)
+$(error .env sans AMATEO_STACK=$(TEST_PROJECT) exact : make -C backend test-up)
+endif
+endif
+endif
 # php-fpm and engine belong here: `make install` execs into both. nginx must NOT —
 # its healthcheck curls /api/health, which needs vendor/ that install has yet to write.
 INFRA_SERVICES := postgres redis mailpit mercure php-fpm engine
@@ -11,8 +36,13 @@ export USER_ID := $(shell id -u)
 export GROUP_ID := $(shell id -g)
 
 .env:
+ifeq ($(STACK_MODE),principal)
 	cp .env.dist .env
 	printf 'USER_ID=%s\nGROUP_ID=%s\n' "$$(id -u)" "$$(id -g)" >> .env
+else
+	@echo ".env : refusé hors dépôt principal — make -C backend test-up ou make epreuve-up WT=…" >&2
+	@exit 1
+endif
 
 .installed: .env
 	$(DOCKER_COMPOSE) build
@@ -147,6 +177,67 @@ services: .env ## List Docker Compose services
 # follows the run it just created (fails red if the run fails).
 deploy: ## Deploy VERSION=vX.Y.Z (or origin/main HEAD if omitted) via the deploy workflow
 	bash scripts/deploy.sh $(VERSION)
+
+# --- Stack d'épreuve : UNE stack complète et seedée pour un worktree, à côté de celle du fondateur.
+# Toujours `-p amateo-epreuve` en toutes lettres, jamais la compose de la copie appelante, qui peut
+# être le dépôt principal. Occupation = label working_dir du projet.
+EPREUVE_OCCUPANT = docker ps -a --filter label=com.docker.compose.project=amateo-epreuve --format '{{.Label "com.docker.compose.project.working_dir"}}' | sed -n 1p
+EPREUVE_LIB := $(STACK_ROOT)/backend/scripts/lib
+WT_ABS = $(if $(WT),$(abspath $(WT)))
+
+.PHONY: epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check
+epreuve-up: ## Monte la stack d'épreuve sur un worktree (WT=… [RESEED=1]) : infra, install, seed, vérification
+	@set -e; wt='$(WT_ABS)'; rc=0; bash $(EPREUVE_LIB)/epreuve-gate.sh "$$wt" '$(RESEED)' '$(STACK_ROOT)' || rc=$$?; \
+	[ "$$rc" -ne 10 ] || exit 0; [ "$$rc" -eq 0 ] || exit "$$rc"; \
+	mark="$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --absolute-git-dir)/amateo-epreuve-mounted"; rm -f "$$mark"; \
+	occupant="$$($(EPREUVE_OCCUPANT))"; \
+	[ "$$occupant" = "$$wt" ] || $(MAKE) -C "$$wt/backend" test-down; \
+	cp "$$wt/.env.epreuve.dist" "$$wt/.env"; printf 'USER_ID=%s\nGROUP_ID=%s\nAMATEO_GIT_COMMON_DIR=%s\n' "$$(id -u)" "$$(id -g)" "$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --path-format=absolute --git-common-dir)" >> "$$wt/.env"; \
+	bash $(EPREUVE_LIB)/stack-check.sh snapshot "$$wt"; \
+	dc="docker compose -p amateo-epreuve --env-file $$wt/.env -f $$wt/docker-compose.yml -f $$wt/docker-compose.worktree.yml"; \
+	[ "$$occupant" != "$$wt" ] || $$dc stop messenger-worker cron-runner pdf-worker frontend nginx; \
+	$$dc up -d --wait $(INFRA_SERVICES); \
+	$(MAKE) -C "$$wt/backend" install; \
+	$(MAKE) -C "$$wt/backend" jwt-keys; \
+	$(MAKE) -C "$$wt/backend" db-empty; \
+	$(MAKE) -C "$$wt/backend" seed-bccl; \
+	$(MAKE) -C "$$wt/backend" seed-holidays; \
+	$(MAKE) -C "$$wt/backend" seed-league; \
+	$$dc up -d --wait; \
+	if ! bash $(EPREUVE_LIB)/stack-check.sh check "$$wt"; then $$dc down --remove-orphans; rm -f "$$wt/.env"; exit 1; fi; \
+	touch "$$mark"; \
+	echo "stack d'épreuve montée sur $$wt : http://localhost:8181"; \
+	echo ":8181 partage le cookie de localhost avec :8081 — ouvre-le dans une fenêtre privée"
+
+epreuve-dev: ## Vite sur la stack d'épreuve (:5273), WT=… ou l'occupant
+	@wt='$(WT_ABS)'; wt="$${wt:-$$($(EPREUVE_OCCUPANT))}"; [ -n "$$wt" ] || { echo "stack d'épreuve libre : make epreuve-up WT=… d'abord" >&2; exit 1; }; \
+	docker compose -p amateo-epreuve --env-file "$$wt/.env" -f "$$wt/docker-compose.yml" -f "$$wt/docker-compose.worktree.yml" --profile dev up -d --build frontend-dev
+
+epreuve-status: ## Qui occupe la stack d'épreuve, et dans quel état
+	@wt="$$($(EPREUVE_OCCUPANT))"; \
+	if [ -z "$$wt" ]; then echo "stack d'épreuve libre"; exit 0; fi; \
+	echo "stack d'épreuve occupée par $$wt ($$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" branch --show-current 2>/dev/null))"; \
+	docker ps -a --filter label=com.docker.compose.project=amateo-epreuve --format '{{.Names}} {{.Status}}'
+
+epreuve-check: ## Prouve que la stack d'épreuve est isolée de celle du fondateur (WT=… ou l'occupant)
+	@wt='$(WT_ABS)'; wt="$${wt:-$$($(EPREUVE_OCCUPANT))}"; [ -n "$$wt" ] || { echo "stack d'épreuve libre (-p amateo-epreuve sans conteneur)" >&2; exit 1; }; \
+	bash $(EPREUVE_LIB)/stack-check.sh check "$$wt"
+
+epreuve-down: ## Arrête la stack d'épreuve et la libère (volumes gardés)
+	@wt="$$($(EPREUVE_OCCUPANT))"; [ -n "$$wt" ] || { echo "stack d'épreuve déjà libre"; exit 0; }; \
+	base="$$wt"; [ -f "$$base/docker-compose.yml" ] || base='$(STACK_ROOT)'; \
+	[ -f "$$base/.env" ] || cp "$$base/.env.epreuve.dist" "$$base/.env"; \
+	docker compose -p amateo-epreuve --env-file "$$base/.env" -f "$$base/docker-compose.yml" down --remove-orphans; \
+	rm -f "$$wt/.env"; rm -f "$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --absolute-git-dir 2>/dev/null)/amateo-epreuve-mounted"
+
+epreuve-destroy: ## Détruit la stack d'épreuve, volumes compris (WT=… nettoie aussi ce worktree)
+	@wt="$$($(EPREUVE_OCCUPANT))"; given='$(WT_ABS)'; \
+	if [ -n "$$wt" ] && [ -n "$$given" ] && [ "$$wt" != "$$given" ]; then echo "stack d'épreuve occupée par $$wt, pas par $$given" >&2; exit 1; fi; \
+	wt="$${wt:-$$given}"; base="$${wt:-$(STACK_ROOT)}"; [ -f "$$base/docker-compose.yml" ] || base='$(STACK_ROOT)'; \
+	had_env=1; [ -f "$$base/.env" ] || { had_env=0; cp "$$base/.env.epreuve.dist" "$$base/.env"; }; \
+	docker compose -p amateo-epreuve --env-file "$$base/.env" -f "$$base/docker-compose.yml" down --remove-orphans --volumes; \
+	[ "$$had_env" = 1 ] || rm -f "$$base/.env"; \
+	if [ -n "$$wt" ]; then rm -f "$$wt/.env"; rm -f "$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --absolute-git-dir 2>/dev/null)/amateo-epreuve-mounted"; fi
 
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_.@%-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
