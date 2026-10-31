@@ -1,0 +1,8 @@
+# Surcharge commune aux deux modes worktree (nu et épreuve), jamais en principal ni en prod.
+# Le fichier .git d'un worktree pointe, en absolu, vers le git-common-dir du dépôt principal : sans ce
+# montage au MÊME chemin, git sort 128 dans le conteneur. Lecture seule : un conteneur n'écrit jamais
+# dans l'historique du dépôt. Le chemin est écrit dans le .env par test-up et epreuve-up.
+services:
+  php-fpm:
+    volumes:
+      - ${AMATEO_GIT_COMMON_DIR:?écrit par make -C backend test-up ou make epreuve-up}:${AMATEO_GIT_COMMON_DIR:?écrit par make -C backend test-up ou make epreuve-up}:ro

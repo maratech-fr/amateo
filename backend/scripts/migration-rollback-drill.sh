@@ -61,8 +61,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-COMPOSE=(docker compose -f "$REPO_ROOT/docker-compose.yml")
-[[ -f "$REPO_ROOT/.env" ]] && COMPOSE=(docker compose --env-file "$REPO_ROOT/.env" -f "$REPO_ROOT/docker-compose.yml")
+read -ra COMPOSE <<<"$(sh "$REPO_ROOT/backend/scripts/lib/stack-field.sh" COMPOSE "$REPO_ROOT")"
 
 _die() {
   printf '\033[0;31mFAIL:\033[0m %s\n' "$1" >&2

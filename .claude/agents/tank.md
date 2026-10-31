@@ -58,7 +58,7 @@ Dans le cycle full lane (CLAUDE.md §7 étape 3), **TANK écrit les tests ROUGES
 - **with-sandbox** bascule TOUTE la stack : annoncer AVANT, jamais pendant les tests du fondateur ; toute console non wrappée vise `amateo_local`.
 - **Behat jamais interrompu** : un run tué laisse des GENERATING fantômes → 409 ; `reconcile-stuck` + DELETE sous `with-sandbox.sh`. Behat détaché (`setsid nohup`) + superviseur, jamais un `pgrep -f` qui se trouve lui-même ; borne toute boucle d'attente par `timeout`.
 - **JAMAIS `FLUSHALL`** sur Redis (DEL ciblé) — à écrire dans chaque brief de test backend. JWT Bearer pour scripts/Behat, `APP_ENV=test` explicite, `SocleGuard` 409.
-- **Worktree** : les cibles `docker compose exec` (make test/tests-complete, vitest tooling) montent/copient le dépôt PRINCIPAL — depuis un worktree elles valident du code qui n'est pas le tien ; `tests-complete`/e2e/Behat se jouent sur le dépôt principal, sérialisés (`.claude/agents/neo.md` §Worktree).
+- **Worktree** : stack propre, jamais celle du principal. `make -C backend tests-complete` y tourne sur un socle privé (`test-down` à la fin) ; Behat/e2e : `make epreuve-status`, `make epreuve-up WT=…`, `with-sandbox.sh`, `make epreuve-down` (une seule stack d'épreuve, refus si occupée, front sur `:8181`). Aucune cible destructive sur le principal (`.claude/agents/neo.md` §Worktree).
 
 ## Rapport final
 

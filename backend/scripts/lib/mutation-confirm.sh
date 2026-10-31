@@ -29,11 +29,22 @@ LABEL="${1:-cette opération}"
 
 RED=$'\033[0;31m'; YEL=$'\033[1;33m'; GRN=$'\033[0;32m'; NC=$'\033[0m'
 
-COMPOSE="${MUTATION_CONFIRM_COMPOSE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/docker-compose.yml}"
+if [[ -n "${MUTATION_CONFIRM_COMPOSE:-}" ]]; then
+  DC="docker compose -f $MUTATION_CONFIRM_COMPOSE"
+else
+  LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  RESOLVED="$(sh "$LIB_DIR/stack-resolve.sh" "$(cd "$LIB_DIR/../../.." && pwd)")"
+  DC="$(printf '%s\n' "$RESOLVED" | sed -n 's/^COMPOSE=//p')"
+  if [[ -z "$DC" ]]; then
+    printf '%sFAIL:%s mutation-confirm: %s\n' "$RED" "$NC" "$(printf '%s\n' "$RESOLVED" | sed -n 's/^STACK_REASON=//p')" >&2
+    exit 1
+  fi
+fi
 APP_ENV_RESOLVE="${MUTATION_CONFIRM_APP_ENV:-dev}"
 
 resolve_db() {
-  docker compose -f "$COMPOSE" exec -T -e APP_ENV="$APP_ENV_RESOLVE" php-fpm \
+  # shellcheck disable=SC2086 # une ligne de commande, le découpage est voulu
+  $DC exec -T -e APP_ENV="$APP_ENV_RESOLVE" php-fpm \
     sh -c 'cd /app/backend && php bin/console dbal:run-sql "SELECT current_database() AS db"' 2>/dev/null \
     | sed -E 's/[[:space:]]//g' | grep -vE '^-*$' | grep -vxE 'db' | head -1
 }

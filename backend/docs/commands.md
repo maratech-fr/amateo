@@ -72,6 +72,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make migration-diff` / `make migration-migrate` | Diff / applique les migrations (connexion **admin**) |
 | `make fix-perms` | Répare les droits de `var/generate` (rapports lisibles côté host) |
 | `make exec` | Shell dans le container php-fpm |
+| `make test-up` / `test-down` / `test-destroy` / `test-check` / `test-sweep` | **Worktree nu seulement** (refusés ailleurs, sauf `test-sweep`) : démarre / arrête (volumes gardés) / détruit la stack privée `amateo-test-<hash>`, prouve son isolation (`stack-check.sh`), retire les stacks dont le worktree n'existe plus. `test-up` réécrit toujours le `.env` du worktree ; `tests-complete` l'appelle seul (`test-prepare`) — l'appeler à la main n'est utile que pour les autres cibles |
 
 ## Cibles Make (racine, `Makefile`)
 
@@ -81,6 +82,27 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make sandbox` | Retire `backend/.env.local` → retour à `amateo_dev` (bac à sable) + même redémarrage |
 | `make db-empty` | Vide (drop+create+migrate) la base **actuellement visée** — `amateo_local` en mode play, `amateo_dev` en bac à sable — aucun seed |
 | `make reset` | Composition littérale : `db-empty` puis `play` — repart de zéro et retrouve une base de jeu complète |
+| `make epreuve-up WT=<worktree> [RESEED=1]` | Monte la stack d'épreuve sur ce worktree (infra, install, JWT, base vidée, seed BCCL + vacances + ligue, vérification d'isolation). Refus nommé si le WT est le principal, si la stack est occupée par un autre, ou si le montage précédent a été interrompu (`RESEED=1` ou `epreuve-destroy`). Rien à faire (sortie propre) si déjà montée sur ce WT |
+| `make epreuve-status` / `epreuve-check` / `epreuve-dev` | Occupant et état des conteneurs · preuve d'isolation d'avec la stack du fondateur · Vite sur `:5273` |
+| `make epreuve-down` / `epreuve-destroy` | Libère la stack (volumes gardés) · la détruit, volumes compris |
+
+## Worktrees — quelle stack Docker, quelles cibles
+
+`backend/scripts/lib/stack-resolve.sh` classe chaque copie de travail ; les Makefiles (racine, `backend/`, `engine/`, `frontend/`), `with-sandbox.sh` et `sandbox-guard.sh` en dérivent leur commande `docker compose`. Quatre états :
+
+| État | Qui | Stack | Cibles |
+|---|---|---|---|
+| principal | le dépôt principal, la CI | projet par défaut (celle du fondateur) | toutes |
+| nu | tout worktree par défaut | projet privé `amateo-test-<hash>` (compose + `docker-compose.worktree.yml` + `docker-compose.test.yml`), **aucun port publié**, `restart: "no"` | liste FERMÉE de `make -C backend` (install, test, tests-complete, phpunit, phpstan, cs, rector, lint, db-init-test…) ; le reste est refusé |
+| épreuve | le worktree qui occupe la stack d'épreuve | projet `amateo-epreuve` (compose + `docker-compose.worktree.yml`, ports décalés de `.env.epreuve.dist`, front `:8181`) — **une seule**, Behat et e2e | tout, sous `with-sandbox.sh` |
+| unknown | hors dépôt git, ou worktree nommé `scheduler` | — | refusé |
+
+- Le dépôt git commun est monté **en lecture seule** dans php-fpm (`docker-compose.worktree.yml`, `AMATEO_GIT_COMMON_DIR` écrit dans le `.env`) : sans lui, `git` répond 128 dans le conteneur d'un worktree.
+- La garde contre `amateo_local` tient à l'isolation : `stack-check.sh check` échoue si cette base existe dans la stack, si ses conteneurs sont sur le réseau du fondateur, ou s'il y a un `.env.local`. Un changement d'état de la stack du fondateur depuis le snapshot est signalé, jamais un échec.
+- ⚠ `:8181` partage le cookie de `localhost` avec `:8081` (les cookies ignorent le port) : l'ouvrir dans une **fenêtre privée**.
+- Gestes d'un agent en worktree : `.claude/agents/neo.md` §Worktree.
+
+**Mesures (2026-10-31, une machine WSL2 — à recalculer si le besoin revient)** : `test-up` ≈ 20 s à froid, 13 s à chaud · `epreuve-up` ≈ 88 s à froid, 46 s à chaud, 1 s si déjà montée · RAM de la stack d'épreuve au repos ≈ 388 Mio ; socle nu après la suite ≈ 612 Mio · mémoire disponible au plus bas ≈ 4999 Mo pendant un Behat · `tests-complete` en nu : 347 à 515 s.
 
 ## Commandes console custom (`php bin/console app:…`)
 

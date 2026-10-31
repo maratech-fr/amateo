@@ -3,7 +3,32 @@
 # (rapport xml), et sans .PHONY make le prendrait pour à jour dès sa 2ᵉ exécution.
 .PHONY: exec install test coverage lint format help
 
-FIG := docker compose -f ../docker-compose.yml
+# Quelle stack pour cette copie ? (backend/scripts/lib/stack-resolve.sh) : principal, épreuve, nu, unknown.
+STACK_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
+STACK_INFO := $(shell sh $(STACK_ROOT)/backend/scripts/lib/stack-resolve.sh $(STACK_ROOT) 2>/dev/null | sed 's/ /@@/g')
+stack_field = $(subst @@, ,$(patsubst $(1)=%,%,$(filter $(1)=%,$(STACK_INFO))))
+STACK_MODE := $(call stack_field,STACK_MODE)
+STACK_COMPOSE := $(call stack_field,COMPOSE)
+TEST_PROJECT := $(call stack_field,TEST_PROJECT)
+STACK_GOALS := $(or $(MAKECMDGOALS),help)
+FIG := $(STACK_COMPOSE)
+# Refus AVANT toute recette : un `make -n` les prouve aussi, et rien ne démarre à moitié.
+ifeq ($(filter principal epreuve nu,$(STACK_MODE)),)
+ifneq ($(filter-out help,$(STACK_GOALS)),)
+$(error $(or $(call stack_field,STACK_REASON),stack-resolve : dépôt non identifié (git absent ou dossier hors dépôt) — aucune cible Docker))
+endif
+endif
+ifeq ($(STACK_MODE),nu)
+STACK_REFUSED := $(filter-out install test coverage lint help,$(STACK_GOALS))
+ifneq ($(STACK_REFUSED),)
+$(error $(firstword $(STACK_REFUSED)) : indisponible en worktree nu — stack d'épreuve (make epreuve-up WT=…) ou dépôt principal)
+endif
+ifneq ($(call stack_field,STACK_ENV_OK),1)
+ifneq ($(filter-out help,$(STACK_GOALS)),)
+$(error .env sans AMATEO_STACK=$(TEST_PROJECT) exact : make -C backend test-up)
+endif
+endif
+endif
 APP_ENV ?= $(shell awk -F= '$$1=="APP_ENV" {print $$2}' .env 2>/dev/null | tail -n 1)
 APP_ENV ?= dev
 USERID := $(shell id -u)
