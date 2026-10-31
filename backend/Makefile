@@ -319,7 +319,7 @@ test-up:
 .PHONY: test-prepare
 test-prepare:
 	$(MAKE) test-up
-	@test -d vendor || $(MAKE) install
+	@test -f vendor/autoload_runtime.php || $(MAKE) install
 	$(MAKE) jwt-keys
 
 .PHONY: test-down ## (worktree nu) Arrête la stack privée, volumes gardés
