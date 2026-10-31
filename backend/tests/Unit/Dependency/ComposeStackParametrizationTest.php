@@ -217,6 +217,32 @@ final class ComposeStackParametrizationTest extends TestCase
     }
 
     /**
+     * Un conteneur de worktree lit le dépôt git sans jamais pouvoir écrire dans l'historique :
+     * même chemin (le fichier .git du worktree y pointe en absolu), lecture seule.
+     */
+    public function testWorktreeOverrideMountsTheGitDirReadOnlyAtTheSamePath(): void
+    {
+        $services = $this->services('docker-compose.worktree.yml');
+
+        self::assertSame(['php-fpm'], array_keys($services));
+        $volumes = $services['php-fpm']['volumes'] ?? null;
+        self::assertIsArray($volumes);
+        self::assertCount(1, $volumes);
+        self::assertIsString($volumes[0]);
+        self::assertMatchesRegularExpression('/^(\$\{AMATEO_GIT_COMMON_DIR(?::\?[^}]*)?\}):\1:ro$/', $volumes[0]);
+    }
+
+    /** Ce montage n'existe qu'en worktree : ni le principal, ni le dépôt par défaut, ni la prod. */
+    public function testGitCommonDirStaysOutOfThePrincipalAndProdFiles(): void
+    {
+        foreach (['docker-compose.yml', '.env.dist', 'docker-compose.prod.yml', '.env.prod.dist'] as $file) {
+            $contents = file_get_contents(self::ROOT . '/' . $file);
+            self::assertIsString($contents);
+            self::assertStringNotContainsString('AMATEO_GIT_COMMON_DIR', $contents, $file);
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function yaml(string $file): array
