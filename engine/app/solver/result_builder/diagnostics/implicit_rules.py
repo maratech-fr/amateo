@@ -63,7 +63,8 @@ def _diagnose_implicit_rule_violations(
 
     Toujours exécuté, quel que soit le cran : PREFERRED non tenu → « assouplie par vous » ;
     HARD contourné par un verrou → « le solveur n'a pas pu honorer ». Émet
-    ``implicit_rule_not_honored`` (WARNING) avec la ``ruleKey`` du contrat.
+    ``implicit_rule_not_honored`` (WARNING) avec la ``ruleKey`` du contrat. Exception : la présence
+    d'un salarié est un objectif à tout cran, son alerte énonce le fait, sans ces deux préfixes.
     """
     diagnostics: list[dict[str, Any]] = []
     coach_names = _coach_name_map(model_data)
@@ -117,7 +118,7 @@ def _diagnose_implicit_rule_violations(
             }
         )
 
-    # --- 3c salarié distribution : un jour ouvré sans salarié présent -------------------
+    # --- 3c salarié distribution : un jour ouvré de la grille sans séance d'un salarié ----
     if len(salarie_ids) >= 2:
         salarie_days: set[int] = set()
         for slot in slots:
@@ -128,19 +129,23 @@ def _diagnose_implicit_rule_violations(
             people = set(_session_coaches(slot, team_coach_map)) | set(_persons(team_id, team_player_map))
             if people & salarie_ids:
                 salarie_days.add(day)
-        missing = [d for d in range(1, 6) if d not in salarie_days]
+        # Même grille que la pose (``slot_capacities``) : un jour sans aucun créneau au club ne compte pas.
+        grid_days = {
+            int(_get(training_slot, "day_of_week", "dayOfWeek"))
+            for venue in _collection(model_data, "venues")
+            for training_slot in _collection(venue, "training_slots", "trainingSlots")
+        }
+        missing = [d for d in range(1, 6) if d in grid_days and d not in salarie_days]
         if missing:
-            prefix = _softened_prefix(
-                _IMPLICIT_RULE_LABELS["salarieDistribution"], rules.salarie_distribution_intensity
-            )
-            days_text = " et ".join(_day_label(d) for d in missing)
+            names = [f"le {_day_label(d)}" for d in missing]
+            days_text = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} et {names[-1]}"
             diagnostics.append(
                 {
                     "id": "diag-implicit-salarie",
                     "type": "implicit_rule_not_honored",
                     "ruleKey": "salarieDistribution",
                     "severity": "WARNING",
-                    "message": f"{prefix} : aucun salarié encadrant le {days_text}.",
+                    "message": f"Aucun salarié n'a de séance {days_text}.",
                     "suggestions": [
                         "Placez au moins une séance d'un coach salarié ce(s) jour(s)-là.",
                     ],

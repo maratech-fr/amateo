@@ -371,8 +371,8 @@ async def build_schedule(
     if received_at is None:
         received_at = time.perf_counter()
 
-    # Single pass with all HARD constraints (including coach rest day + salarie
-    # distribution).  If the solver returns INFEASIBLE, build_result produces
+    # Single pass with all HARD constraints (including coach rest day; the salarié
+    # distribution is an objective at every setting).  If the solver returns INFEASIBLE, build_result produces
     # status="failed" with conflict diagnostics — no silent constraint dropping.
     # Decision: docs/architecture/adr-0001-single-pass-solve.md
     #
@@ -407,8 +407,8 @@ async def build_schedule(
         # ici un modèle INSTRUMENTÉ (hypothèses CP-SAT armées) sous un budget COURT pour lire le
         # noyau de règles en conflit. Il reste dans le sémaphore (séquentiel, même requête) ; borné,
         # rare (INFEASIBLE seul). S'il n'aboutit pas à INFEASIBLE dans le budget (UNKNOWN/timeout),
-        # on ne passe RIEN au builder → message générique conservé + D2 (agrégat verrous) toujours
-        # rendu (D2 ne dépend pas du solveur). Jamais un solve relaxé : aucune contrainte retirée.
+        # on ne passe RIEN au builder → le message dit que la recherche de la cause n'a pas abouti.
+        # Jamais un solve relaxé : aucune contrainte retirée.
         diagnostic_model: ScheduleCpModel | None = None
         diagnostic_solver: cp_model.CpSolver | None = None
         # Réservation souveraine — clés des règles sacrifiées par le best-effort (vide hors ce cas).
@@ -461,9 +461,8 @@ async def build_schedule(
         model,
         status=solver_status,
         constraint_version=read_contract_version(),
-        # P4-96 — le noyau nommé (D1) vient du SECOND solve diagnostique ; l'agrégat D2 reste lu
-        # du modèle nominal (ses fermetures sont enregistrées inconditionnellement). Absents ⇒ D1
-        # vide, message d'infaisabilité générique conservé.
+        # P4-96 — le noyau nommé (D1) vient du SECOND solve diagnostique. Absents ⇒ D1 vide, et le
+        # message dit que la recherche de la cause n'a pas abouti.
         diagnostic_model=diagnostic_model,
         diagnostic_solver=diagnostic_solver,
         # Réservation souveraine — les règles que le best-effort a sacrifiées (NOMMÉES en
@@ -506,8 +505,8 @@ CHAINING_PHASE_MAX_SECONDS = 10
 # ONLY after a first INFEASIBLE (the instrumented model with assumption literals, built
 # to name the conflicting rules). Kept well under the nominal 60/180/600 s budget: the
 # diagnostic never produces a plan, it only reads the unsat core, so a tight bound is
-# right — if it does not prove INFEASIBLE in time (UNKNOWN/timeout) the generic message
-# is kept and D2 (the lock aggregate, which never needs the solver) still renders.
+# right — if it does not prove INFEASIBLE in time (UNKNOWN/timeout) the message says the
+# search for the cause did not finish.
 DIAGNOSTIC_SOLVE_MAX_SECONDS = 15
 
 # Réservation souveraine (besoin fondateur 2026-10-30, amendement ADR-0001) — budget du 3ᵉ solve

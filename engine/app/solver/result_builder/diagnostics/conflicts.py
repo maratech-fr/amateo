@@ -1,7 +1,7 @@
 """Double-réservations gymnase/coach et message d'infaisabilité porté (``diag-infeasible``).
 
-Extrait verbatim de l'ancien ``diagnostics.py`` (découpe pure, P4-295 C1). Seule arête interne du
-paquet : importe quatre symboles de ``infeasibility``.
+Extrait de l'ancien ``diagnostics.py`` (découpe P4-295 C1). Seule arête interne du paquet : importe
+deux symboles de ``infeasibility``.
 """
 
 from __future__ import annotations
@@ -33,9 +33,17 @@ from ..helpers import (
 )
 from .infeasibility import (
     _collect_infeasibility_causes,
-    _collect_locked_out_teams,
     _infeasible_message,
-    _lock_summary_message,
+)
+
+_DEMAND_RULE_KINDS = frozenset({"day_forced", "session_floor", "shared_block"})
+"""Les seules règles qui exigent une séance : tout INFEASIBLE en a au moins une dans son noyau, les
+règles de bien-être et la capacité ne posant que des bornes hautes (ADR-0001)."""
+
+_WELLNESS_LEAD = (
+    "Elle se heurte sans doute à une règle de bien-être réglée « Obligatoire » (jour de repos, enchaînements, "
+    "jeunes avant les grands) ou à un coach qui tient plusieurs équipes : passez cette règle de bien-être en "
+    "« Objectif » pour le vérifier."
 )
 
 
@@ -52,14 +60,11 @@ def _diagnose_conflicts(
 ) -> list[dict[str, Any]]:
     """Report infeasibility or detected double-bookings — who, when, why.
 
-    P4-96 — sur INFEASIBLE : ``diag-infeasible`` porte le NOYAU de règles en conflit (D1, via
+    P4-96 — sur INFEASIBLE : ``diag-infeasible`` porte le NOYAU de règles en conflit (via
     ``_collect_infeasibility_causes`` lu sur le SECOND solve diagnostique instrumenté
-    ``diagnostic_model``/``diagnostic_solver``) — message « Ces N règles se contredisent : … » +
-    ``causes[]`` nommées —, et chaque équipe dont tous les candidats sont fermés (D2,
-    ``_collect_locked_out_teams`` sur le modèle NOMINAL ``model``) reçoit son agrégat. Sans
-    diagnostique (non lancé, ou UNKNOWN/timeout), le message générique ``_infeasible_message`` est
-    conservé et D2 reste rendu (il ne dépend pas du solveur). Appels directs anciens (ni ``model``
-    ni diagnostique) ⇒ message générique, aucune cause.
+    ``diagnostic_model``/``diagnostic_solver``), en message et en ``causes[]`` nommées. Le texte selon
+    le cas (groupe, règles de demande, recherche non aboutie) : ``_infeasible_core_message``. Aucune
+    ligne par équipe : le noyau nomme les règles, pas des équipes étrangères à la cause.
 
     ``slot_capacities`` maps ``(venue_id, day_of_week, start_time)`` to the
     maximum number of teams allowed simultaneously.  When provided, a venue
@@ -73,68 +78,35 @@ def _diagnose_conflicts(
     coach_names = _coach_name_map(model_data)
 
     if solver_status == cp_model.INFEASIBLE:
-        team_names = _team_name_map(model_data)
         core_causes: list[dict[str, Any]] = []
         core_labels: list[str] = []
-        locked_out: list[dict[str, Any]] = []
-        # D1 — le noyau nommé vient du SECOND solve diagnostique (seul porteur des hypothèses) ;
-        # absent ⇒ pas de noyau (message générique). On retombe sur ``model``/``solver`` pour les
-        # appels directs de test qui instrumentent eux-mêmes le modèle passé en ``model``.
+        # Le noyau nommé vient du SECOND solve diagnostique (seul porteur des hypothèses). On retombe
+        # sur ``model``/``solver`` pour les appels directs de test qui instrumentent le modèle passé.
         d_model = diagnostic_model if diagnostic_model is not None else model
         d_solver = diagnostic_solver if diagnostic_solver is not None else solver
         if d_model is not None and d_solver is not None:
             core_causes, core_labels = _collect_infeasibility_causes(d_model, d_solver)
-        # D2 — agrégat des candidats fermés, lu du modèle NOMINAL (fermetures inconditionnelles).
-        if model is not None:
-            locked_out = _collect_locked_out_teams(model)
+            core_causes, core_labels = _name_blocks_in_core(d_model, d_solver, model_data, core_causes, core_labels)
 
-        # D1 — quand le noyau nomme des règles, le message les CITE comme dans l'écran de
-        # contraintes ; sinon (aucune hypothèse, noyau vide, libellés absents) on garde le
-        # message générique mesuré de `_infeasible_message` (capacité / saturation / générique).
-        if core_labels:
-            quoted = ", ".join(f"« {label} »" for label in core_labels)
-            count = len(core_labels)
-            message = (
-                f"Ces {count} règles se contredisent : {quoted}."
-                if count > 1
-                else f"Cette règle ne peut pas être honorée : {quoted}."
-            )
-        else:
-            message = _infeasible_message(model_data)
-
+        # Le modèle nominal ne porte aucune hypothèse : sans modèle diagnostique, seul un noyau lu
+        # prouve que la recherche a abouti.
+        message, suggestions = _infeasible_core_message(
+            core_causes,
+            core_labels,
+            model_data,
+            diagnostic_ran=diagnostic_model is not None or bool(core_causes),
+        )
         diagnostics.append(
             {
                 "id": "diag-infeasible",
                 "type": "conflict",
                 "severity": "ERROR",
                 "message": message,
-                "suggestions": [
-                    "Assouplissez ou retirez une contrainte dure (jour/heure imposé, gymnase forcé).",
-                    "Ajoutez de la disponibilité de gymnase ou un coach supplémentaire.",
-                    "Vérifiez les créneaux verrouillés (LOCK) qui se chevauchent entre équipes.",
-                ],
-                # D1 — causes STRUCTURÉES du noyau (cliquables côté front en PR-2) ; vide sans noyau.
+                "suggestions": suggestions,
                 "causes": core_causes,
                 "createdAt": datetime.now(UTC).isoformat(),
             }
         )
-        # D2 — une équipe dont TOUS les candidats sont fermés : qui + combien + par quoi.
-        for entry in locked_out:
-            team_id = str(entry["teamId"])
-            diagnostics.append(
-                {
-                    "id": f"diag-infeasible-team-{team_id}",
-                    "type": "conflict",
-                    "severity": "ERROR",
-                    "teamId": team_id,
-                    "message": _lock_summary_message(_label(team_id, team_names), int(entry["total"]), entry["causes"]),
-                    "suggestions": [
-                        "Ouvrez un créneau à cette équipe ou retirez une des règles qui ferment ses candidats.",
-                    ],
-                    "causes": entry["causes"],
-                    "createdAt": datetime.now(UTC).isoformat(),
-                }
-            )
         return diagnostics
 
     if solver_status == cp_model.UNKNOWN:
@@ -335,6 +307,114 @@ def _diagnose_conflicts(
                 )
 
     return diagnostics
+
+
+def _name_blocks_in_core(
+    model: ScheduleCpModel | Any,
+    solver: cp_model.CpSolver | Any,
+    model_data: Mapping[str, Any] | Any,
+    causes: list[dict[str, Any]],
+    labels: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Nomme par ses équipes chaque groupe du noyau : ``_assume`` pose un bloc sans libellé, sa cause
+    ``shared_block`` anonyme est remplacée par une cause « groupe SM1 + SM2 » par groupe en cause.
+
+    Le noyau rendu par le solveur n'est pas minimal : il peut citer un groupe sans histoire. Si des
+    groupes du noyau sont sur-épinglés par leurs propres verrous, seuls ceux-là sont nommés."""
+    registry: Mapping[str, Any] = getattr(model, "assumption_literals", None) or {}
+    block_literals = {key.split(":", 1)[1]: lit for key, lit in registry.items() if key.startswith("shared_block:")}
+    if not block_literals or not hasattr(solver, "SufficientAssumptionsForInfeasibility"):
+        return causes, labels
+    try:
+        core_indices = {int(index) for index in solver.SufficientAssumptionsForInfeasibility()}
+    except RuntimeError, AttributeError, TypeError, ValueError:
+        return causes, labels
+    core_block_ids = {block_id for block_id, lit in block_literals.items() if int(lit.Index()) in core_indices}
+    if not core_block_ids:
+        return causes, labels
+    if len(core_block_ids) > 1 and isinstance(model_data, dict):
+        # Import local : ``main`` importe ce paquet ; le déplacer sortirait du périmètre.
+        from ....main import _overpinned_block_ids
+
+        core_block_ids = (core_block_ids & _overpinned_block_ids(model_data)) or core_block_ids
+
+    team_names = _team_name_map(model_data)
+    block_causes: list[dict[str, Any]] = []
+    for index, block in enumerate(_collection(model_data, "sharedBlocks", "shared_blocks")):
+        # Même identifiant que la pose (``targeting.py``), donc que la clé de la littérale.
+        if str(_get(block, "id", default=index) or index) not in core_block_ids:
+            continue
+        members = " + ".join(_label(str(team), team_names) for team in _get(block, "teamIds", "team_ids", default=[]))
+        block_causes.append({"kind": "shared_block", "constraintId": None, "label": f"groupe {members}", "count": 1})
+    if not block_causes:
+        return causes, labels
+    others = [cause for cause in causes if cause.get("kind") != "shared_block" or cause.get("label")]
+    return [*block_causes, *others], [*(str(cause["label"]) for cause in block_causes), *labels]
+
+
+def _infeasible_core_message(
+    core_causes: list[dict[str, Any]],
+    core_labels: list[str],
+    model_data: Mapping[str, Any] | Any,
+    *,
+    diagnostic_ran: bool,
+) -> tuple[str, list[str]]:
+    """Le message et les suggestions de ``diag-infeasible``, selon ce que le noyau a pu nommer."""
+    if not diagnostic_ran:
+        return (
+            "Le planning n'a pas pu être généré, et la recherche de la cause n'a pas abouti dans le temps imparti.",
+            [
+                "Relancez la génération ; si l'échec persiste, désactivez vos dernières règles une à une "
+                "pour trouver celle qui bloque."
+            ],
+        )
+
+    groups = [str(c["label"]) for c in core_causes if c.get("kind") == "shared_block" and c.get("label")]
+    if groups:
+        return _group_message(groups, [label for label in core_labels if label not in groups]), []
+
+    suggestions: list[str] = []
+    kinds = {cause.get("kind") for cause in core_causes}
+    if kinds and kinds <= _DEMAND_RULE_KINDS:
+        suggestions = [_WELLNESS_LEAD]
+    elif core_labels:
+        suggestions = ["Assouplissez l'une de ces règles, ou passez-la en « Objectif », puis relancez la génération."]
+
+    if not core_labels:
+        return _infeasible_message(model_data), suggestions
+    quoted = ", ".join(f"« {label} »" for label in core_labels)
+    count = len(core_labels)
+    if count > 1:
+        return f"Ces {count} règles se contredisent : {quoted}.", suggestions
+    return f"Cette règle ne peut pas être honorée : {quoted}.", suggestions
+
+
+def _group_message(groups: list[str], others: list[str]) -> str:
+    """Une seule phrase directe, qui nomme le groupe et le remède ; la cause est connue."""
+    several = len(groups) > 1
+    subject = f"Le {groups[0]}"
+    if several:
+        names = [group.removeprefix("groupe ") for group in groups]
+        subject = f"Les groupes {', '.join(names[:-1])} et {names[-1]}"
+    if others:
+        quoted = ", ".join(f"« {label} »" for label in others)
+        rules = f"la règle {quoted}" if len(others) == 1 else f"les règles {quoted}"
+        relax = "assouplissez cette règle" if len(others) == 1 else "assouplissez l'une de ces règles"
+        remedy = (
+            f"retirez une réservation d'un groupe, ajustez leurs séances communes, ou {relax}"
+            if several
+            else f"retirez une réservation du groupe, ajustez ses séances communes, ou {relax}"
+        )
+        return f"{subject} et {rules} se contredisent : {remedy}."
+    if several:
+        return (
+            f"{subject} sont réservés sur plus de cases que leurs séances communes, ou n'ont aucune case commune : "
+            "retirez une réservation d'un groupe ou ajustez leurs séances communes dans l'assistant."
+        )
+    return (
+        f"{subject} est réservé sur plus de cases que ses séances communes, ou n'a aucune case commune : "
+        "retirez une réservation du groupe ou ajustez ses séances communes dans l'assistant."
+    )
 
 
 def _occupant_list_with_blocks(

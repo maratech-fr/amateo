@@ -61,19 +61,10 @@ from .infeasibility import (
     _CAUSE_KIND_FR as _CAUSE_KIND_FR,
 )
 from .infeasibility import (
-    _closure_var_index as _closure_var_index,
-)
-from .infeasibility import (
     _collect_infeasibility_causes as _collect_infeasibility_causes,
 )
 from .infeasibility import (
-    _collect_locked_out_teams as _collect_locked_out_teams,
-)
-from .infeasibility import (
     _infeasible_message as _infeasible_message,
-)
-from .infeasibility import (
-    _lock_summary_message as _lock_summary_message,
 )
 from .infeasibility import (
     _saturated_venue_minimum as _saturated_venue_minimum,

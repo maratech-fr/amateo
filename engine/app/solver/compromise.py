@@ -176,9 +176,9 @@ def _message(family: str, effect: str, rep: CompromiseTermInfo, names: dict[str,
     # FAMILY_IMPLICIT — sous-genre porté par ``detail`` (jamais exposé tel quel).
     if rep.detail == "salarie":
         return (
-            f"Le {day}, plus aucun entraîneur salarié n'est présent."
+            f"Le {day}, plus aucun salarié n'a de séance."
             if broken
-            else f"Le {day}, un entraîneur salarié est de nouveau présent."
+            else f"Le {day}, un salarié a de nouveau une séance."
         )
     if rep.detail == "chain":
         return (

@@ -118,8 +118,7 @@ final class ScheduleDiagnosticsRecorder
             }
             // `session_below_effective_min` carries the MEASURED cause of a missing session, and
             // P4-96 a `conflict` on INFEASIBLE carries its own: `diag-infeasible` holds the
-            // conflicting-rule core, each `diag-infeasible-team-*` the team's closed-candidate
-            // aggregate. Both arrive as `causes` (a list of {kind, constraintId, label, count});
+            // conflicting-rule core. Both arrive as `causes` (a list of {kind, constraintId, label, count});
             // this generic branch persists them identically — no per-type code. `openCandidates`
             // (slots left open, none closed them) rides alongside only on session_below. Each
             // cause's constraintId is NORMALISED to the entity UUID — see normalizeCauses.

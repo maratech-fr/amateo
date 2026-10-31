@@ -300,7 +300,7 @@ export interface Diagnostic {
   suggestions: unknown;
   /** Causes MESURÉES — renseignées par un `session_below_effective_min` (séance manquante) ET,
    *  P4-96/contrat 1.4, par un `conflict` sur INFEASIBLE (le noyau de règles en conflit porté par
-   *  `diag-infeasible`, et l'agrégat des candidats fermés de chaque `diag-infeasible-team-*`).
+   *  `diag-infeasible`).
    *  `[]` sur les autres types. */
   causes: DiagnosticCause[];
   /** Créneaux restés OUVERTS (rien ne les a fermés, l'arbitrage a placé autre chose).

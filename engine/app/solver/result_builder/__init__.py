@@ -37,9 +37,6 @@ from .diagnostics import (
     _collect_infeasibility_causes as _collect_infeasibility_causes,
 )
 from .diagnostics import (
-    _collect_locked_out_teams as _collect_locked_out_teams,
-)
-from .diagnostics import (
     _collect_session_causes as _collect_session_causes,
 )
 from .diagnostics import (
@@ -95,9 +92,6 @@ from .diagnostics import (
 )
 from .diagnostics import (
     _list_days as _list_days,
-)
-from .diagnostics import (
-    _lock_summary_message as _lock_summary_message,
 )
 from .diagnostics import (
     _saturated_venue_minimum as _saturated_venue_minimum,

@@ -275,8 +275,8 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                             </WizardStepLink>
                           ) : null}
                           {/* P4-99 — la CAUSE mesurée d'une séance manquante, et P4-96 la CARTE
-                              D'ÉCHEC (`conflict` sur INFEASIBLE : le noyau de règles en conflit +
-                              l'agrégat des candidats fermés de chaque équipe). Une ligne par cause
+                              D'ÉCHEC (`conflict` sur INFEASIBLE : le noyau de règles en conflit).
+                              Une ligne par cause
                               (libellé du kind + compte) ; un `constraintId` connu mène à SA
                               contrainte (`?step=constraints&edit=<id>`, rail ConstraintsStep). Pas
                               d'id → pas de lien (jamais de lien mort). `openCandidates > 0` a sa

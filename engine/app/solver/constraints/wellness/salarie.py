@@ -13,7 +13,6 @@ from typing import Any, cast
 from ...compromise import FAMILY_IMPLICIT, CompromiseTermInfo
 from ..common import (
     HARD,
-    PREFERRED,
     SALARIE_VIOLATION_WEIGHT,
     AssignmentVariable,
     BoolVarLike,
@@ -36,23 +35,24 @@ def add_salarie_distribution_constraints(
     soft_terms_out: list[tuple[BoolVarLike, str]] | None = None,
     soft_term_info_out: list[CompromiseTermInfo] | None = None,
 ) -> int:
-    """Constraint 3c: at least one salarié coach must be present each Mon-Fri day.
+    """Constraint 3c: vise un salarié présent chaque jour ouvré où le club a un créneau.
 
-    A salarié is a coach with ``isEmployee=True``. For each day 1-5 (Mon-Fri),
-    creates a ``day_has_salarie[d]`` BoolVar with reification and (``intensity=HARD``)
-    enforces ``day_has_salarie[d] == 1``. When ``intensity=PREFERRED`` the ``== 1`` is
-    NOT posted; instead ONE aggregated violation literal per working day (Mon-Fri) —
-    ``day_has_salarie[d] == 0`` — is appended to ``soft_terms_out`` for the objective.
+    Un OBJECTIF, jamais un blocage (décision fondateur 2026-10-31) : un salarié est un coach
+    ``isEmployee=True`` ; pour chaque jour lun-ven de la grille, ``day_has_salarie[d]`` est réifié et
+    son littéral de violation ``day_has_salarie[d] == 0`` part dans ``soft_terms_out``. ``intensity``
+    reste dans la signature, mais est SANS EFFET pour cette règle : le cran stocké ne change rien.
+
+    Un jour sans aucun créneau au club ne porte aucun terme : ce serait un malus constant pour un fait
+    que le gestionnaire ne peut pas changer. La grille se lit sur ``model.slot_capacities`` ; un modèle
+    nu, sans grille (tests de pose), garde les cinq jours.
 
     Both coaching assignments (via ``team_coach_map``) and coach-player playing
     assignments (via ``team_player_map``) count as being present. Falls back to
     assignment attributes when maps are not provided.
 
     P4-97 — a day on which a salarié has a HARD-locked session (coached OR played) is a
-    CONSTANT « salarié present » day: ``day_has_salarie[d]`` is forced to 1. In HARD this
-    removes the phantom INFEASIBLE of a schedule whose salarié sessions are all locked; in
-    PREFERRED it removes the phantom violation literals (a day truly without any salarié
-    still lights its literal).
+    CONSTANT « salarié present » day: ``day_has_salarie[d]`` is forced to 1, which removes the
+    phantom violation literal (a day truly without any salarié still lights its literal).
 
     Skipped if there are fewer than 2 salarié coaches.
     """
@@ -118,8 +118,11 @@ def add_salarie_distribution_constraints(
     for salarie_id in salarie_ids:
         locked_salarie_days.update(locked_person_days.get(salarie_id, {}))
 
+    grid_days = {key[1] for key in getattr(model, "slot_capacities", None) or {}}
     added = 0
     for day in range(1, 6):
+        if grid_days and day not in grid_days:
+            continue
         day_has_salarie = cast(Any, model).NewBoolVar(f"day_has_salarie_day{day}")
 
         # P4-99 — HORS mesure de cause : `day_has_salarie` est une var de réification agrégée
@@ -136,23 +139,20 @@ def add_salarie_distribution_constraints(
                 cast(Any, model).Add(day_sum >= 1).OnlyEnforceIf(day_has_salarie)
                 cast(Any, model).Add(day_sum == 0).OnlyEnforceIf(day_has_salarie.Not())
 
-        if intensity == PREFERRED:
-            # Un littéral de violation par jour ouvré : « aucun salarié ce jour-là ».
-            if soft_terms_out is not None:
-                soft_terms_out.append((day_has_salarie.Not(), SALARIE_VIOLATION_WEIGHT))
-            if soft_term_info_out is not None:
-                soft_term_info_out.append(
-                    CompromiseTermInfo(
-                        var=day_has_salarie.Not(),
-                        family=FAMILY_IMPLICIT,
-                        honored_when_active=False,
-                        key=(FAMILY_IMPLICIT, "salarie", day),
-                        day_of_week=day,
-                        detail="salarie",
-                    )
+        # Un littéral de violation par jour ouvré : « aucun salarié ce jour-là ».
+        if soft_terms_out is not None:
+            soft_terms_out.append((day_has_salarie.Not(), SALARIE_VIOLATION_WEIGHT))
+        if soft_term_info_out is not None:
+            soft_term_info_out.append(
+                CompromiseTermInfo(
+                    var=day_has_salarie.Not(),
+                    family=FAMILY_IMPLICIT,
+                    honored_when_active=False,
+                    key=(FAMILY_IMPLICIT, "salarie", day),
+                    day_of_week=day,
+                    detail="salarie",
                 )
-        else:
-            cast(Any, model).Add(day_has_salarie == 1)
+            )
         added += 1
 
     return added

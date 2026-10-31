@@ -1,11 +1,10 @@
-"""Noyau nommé (D1), agrégat des candidats fermés (D2) et message d'infaisabilité.
+"""Noyau nommé (D1) et message d'infaisabilité.
 
 Extrait verbatim de l'ancien ``diagnostics.py`` (découpe pure, P4-295 C1).
 """
 
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Mapping
 from typing import Any
 
@@ -28,14 +27,6 @@ _CAUSE_KIND_FR = {
     "team_link": "une passerelle",
     "travel_time": "un temps de trajet",
 }
-
-
-def _closure_var_index(var: Any) -> int | None:
-    """Index OR-Tools stable d'une variable, ou None pour un double de test sans ``.Index()``."""
-    try:
-        return int(var.Index())
-    except AttributeError, TypeError:
-        return None
 
 
 def _collect_infeasibility_causes(
@@ -80,66 +71,6 @@ def _collect_infeasibility_causes(
         if source.get("label"):
             labels.append(str(source.get("label")))
     return causes, labels
-
-
-def _collect_locked_out_teams(model: ScheduleCpModel | Any) -> list[dict[str, Any]]:
-    """P4-96 (D2) — agrège, PAR ÉQUIPE, les candidats FERMÉS sur INFEASIBLE, SANS ``solver.Value``.
-
-    Un verrou HARD n'a pas de variable : impossible de l'interroger via le solveur. On lit donc les
-    fermetures MESURÉES à la pose — par variable dans ``model.candidate_closures`` et, pour les
-    candidats sans variable (créneau retiré par le verrou d'une autre équipe), dans
-    ``model.lock_removed_candidates``. Une équipe dont TOUS les candidats sont fermés (0 ouvert) est
-    rapportée avec le décompte par cause (« U21M1 : 20 candidats, tous fermés — 12 par …, 8 par … »).
-    Renvoie une liste de ``{teamId, total, causes}`` ; ``causes`` est au format ``DiagnosticCauseSchema``.
-    """
-    closures: Mapping[int, list[dict[str, Any]]] = getattr(model, "candidate_closures", None) or {}
-    lock_removed: Mapping[Any, dict[str, Any]] = getattr(model, "lock_removed_candidates", None) or {}
-
-    team_total: dict[str, int] = defaultdict(int)
-    team_closed: dict[str, int] = defaultdict(int)
-    team_cause_counts: dict[str, dict[tuple[Any, Any, Any], int]] = defaultdict(lambda: defaultdict(int))
-
-    for slot_key, var in getattr(model, "x", {}).items():
-        team_id = str(slot_key[0])
-        team_total[team_id] += 1
-        index = _closure_var_index(var)
-        var_closures = closures.get(index) if index is not None else None
-        if var_closures:
-            team_closed[team_id] += 1
-            for cause in var_closures:
-                key = (cause.get("kind"), cause.get("constraintId"), cause.get("label"))
-                team_cause_counts[team_id][key] += 1
-
-    for slot_key, cause in lock_removed.items():
-        team_id = str(slot_key[0])
-        team_total[team_id] += 1
-        team_closed[team_id] += 1
-        key = (cause.get("kind"), cause.get("constraintId"), cause.get("label"))
-        team_cause_counts[team_id][key] += 1
-
-    locked_out: list[dict[str, Any]] = []
-    for team_id in sorted(team_total):
-        total = team_total[team_id]
-        if total == 0 or total - team_closed[team_id] > 0:
-            continue  # il reste au moins un candidat OUVERT : l'équipe n'est pas verrouillée
-        causes = [
-            {"kind": kind, "constraintId": constraint_id, "label": label, "count": count}
-            for (kind, constraint_id, label), count in team_cause_counts[team_id].items()
-        ]
-        locked_out.append({"teamId": team_id, "total": total, "causes": causes})
-    return locked_out
-
-
-def _lock_summary_message(team_label: str, total: int, causes: list[dict[str, Any]]) -> str:
-    """Message FR d'un agrégat D2 : « U21M1 : 20 candidats, tous fermés — 12 par …, 8 par … »."""
-    parts: list[str] = []
-    for cause in sorted(causes, key=lambda c: int(c.get("count") or 0), reverse=True):
-        label = cause.get("label")
-        descriptor = f"« {label} »" if label else _CAUSE_KIND_FR.get(str(cause.get("kind")), "une contrainte")
-        parts.append(f"{cause.get('count')} par {descriptor}")
-    breakdown = f" — {', '.join(parts)}" if parts else ""
-    plural = "candidat" if total == 1 else "candidats"
-    return f"{team_label} : {total} {plural}, tous fermés{breakdown}."
 
 
 def _slot_capacity_by_key(model_data: Mapping[str, Any] | Any) -> dict[tuple[str, str, str], int]:
@@ -259,7 +190,4 @@ def _infeasible_message(model_data: Mapping[str, Any] | Any) -> str:
             f"gymnase {venue_name}, qui n'en a que {free} de libre(s) une fois les "
             "créneaux réservés déduits : ce gymnase est saturé."
         )
-    return (
-        f"{base} Aucune affectation valide n'existe — cherchez des contraintes dures "
-        "qui se contredisent (jour/heure imposés, gymnase forcé, créneaux verrouillés)."
-    )
+    return "Le planning n'a pas pu être généré : des règles se contredisent sans qu'aucune n'ait pu être désignée."
