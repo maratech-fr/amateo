@@ -737,6 +737,23 @@ describe("ImportFbiDialog", () => {
     expect(screen.getByRole("button", { name: "Importer" })).toHaveAccessibleDescription(M.importFbiVenueMissingReason);
   });
 
+  it("sur l'onglet Salles lui-même, le message qui y renvoie disparaît ; il revient depuis une famille", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      ...analysisWithVenues([{ label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: null, neutral: false }]),
+      divisions: [matchedDiv("DF2", "team-1")],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await openVenuesTab(user);
+    expect(screen.getByRole("button", { name: /GYMNASE MATEO/ }), "on est bien sur l'onglet Salles").toBeInTheDocument();
+    expect(screen.queryByText(M.importFbiVenuesRemaining(1))).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Départemental/ }));
+    expect(screen.getByText(M.importFbiVenuesRemaining(1))).toBeInTheDocument();
+  });
+
   it("un aller-retour d'onglet garde les choix de salles, et l'import les envoie", async () => {
     const user = userEvent.setup();
     analyzeFbiFixtures.mockResolvedValueOnce({
