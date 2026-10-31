@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -165,20 +165,31 @@ const q = vi.hoisted(() => ({
   // Refonte PR1 — l'erreur d'IMPORT est surfacée DANS la modale (role="alert"), plus un toast (le
   // hook garde le toast pour l'ANALYSE). Le double contrôle l'expose comme le vrai hook.
   importError: { value: null as unknown },
+  // D10 — comme le vrai hook : l'échec et l'attente de l'analyse se lisent sur le hook, et le composant
+  // se re-rend quand ils changent (`rerender`, posé par le double à chaque rendu).
+  analyzeError: { value: null as unknown },
+  rerender: { fn: () => {} },
   analyzeMutate: vi.fn(),
   importMutate: vi.fn(),
 }));
 
-vi.mock("./queries", () => ({
-  useAnalyzeParc: () => ({ mutate: q.analyzeMutate, isPending: q.analyzePending.value, data: q.analysis.value }),
-  useImportParc: () => ({
-    mutate: q.importMutate,
-    isPending: q.importPending.value,
-    data: q.importResult.value,
-    error: q.importError.value,
-    isError: null !== q.importError.value,
-  }),
-}));
+vi.mock("./queries", async () => {
+  const { useReducer } = await vi.importActual<typeof import("react")>("react");
+  return {
+    useAnalyzeParc: () => {
+      const [, rerender] = useReducer((n: number) => n + 1, 0);
+      q.rerender.fn = rerender;
+      return { mutate: q.analyzeMutate, isPending: q.analyzePending.value, data: q.analysis.value, error: q.analyzeError.value, isError: null !== q.analyzeError.value };
+    },
+    useImportParc: () => ({
+      mutate: q.importMutate,
+      isPending: q.importPending.value,
+      data: q.importResult.value,
+      error: q.importError.value,
+      isError: null !== q.importError.value,
+    }),
+  };
+});
 
 // 3d — le groupe « Toutes les équipes du club » du sélecteur est rangé PAR RANG via `groupTeamsByTier`.
 // NEO lit les équipes COMPLÈTES (+ rangs) via les queries EXISTANTES du wizard (`useWizardTeams` /
@@ -233,13 +244,16 @@ async function visitAllSteps(user: ReturnType<typeof userEvent.setup>): Promise<
 }
 
 beforeEach(() => {
+  q.analyzeMutate.mockReset();
   q.analysis.value = null;
   q.importResult.value = null;
   q.importError.value = null;
   q.analyzePending.value = false;
+  q.analyzeError.value = null;
   q.importPending.value = false;
   // mutate(texte, { onSuccess }) rend l'analyse mockée (pré-posée par le test) — comme l'API.
   q.analyzeMutate.mockImplementation((_text: unknown, opts?: { onSuccess?: (a: unknown) => void }) => {
+    q.analyzeError.value = null;
     opts?.onSuccess?.(q.analysis.value);
   });
   // onError déclenché quand un test pré-pose une erreur d'import ; sinon onSuccess (comme l'API).
@@ -272,12 +286,12 @@ afterEach(() => {
  *    « Créer » → cochée, SANS cibleId ;
  *  - une erreur d'IMPORT s'affiche DANS la modale en `role="alert"` (plus un toast — le hook garde
  *    le toast pour l'analyse) ;
- *  - « Revalider » reposte `{payload, decisions}` à l'analyse (rejeu avec corrections).
+ *  - « Revérifier » reposte `{payload, decisions}` à l'analyse (rejeu avec corrections).
  *
  * ⚠ Clés de `texts.ts` RÉFÉRENCÉES ET PAS ENCORE CRÉÉES (rouge légitime, NEO les crée) :
  *   `stepPaste` (« Coller »), `next`/`previous`, `lockedUntilAnalysis`, `decisionFor(libelle)`,
  *   `matchTo(nom)`/`matchToSuggested(nom)`, `createOption(libelle)`, `ignoreLine`, `toDecide`
- *   (placeholder « À trancher… »), `importBlocked(nAmbigu, nGenre)`, `revalidate`, `importErrorHeading`.
+ *   (placeholder « À trancher… »), `importBlocked(nAmbigu, nGenre)`, `verifyAction`, `importErrorHeading`.
  *   Les libellés d'étapes 3-5 réutilisent `sectionTitle("equipes"|"gymnases"|"reservations")` (existantes).
  */
 
@@ -501,14 +515,17 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(within(alert).getByText(T.importErrorHeading as unknown as string)).toBeInTheDocument();
   });
 
-  it("« Revalider » reposte { payload, decisions } à l'analyse (rejeu avec corrections)", async () => {
+  it("« Revérifier » reposte { payload, decisions } à l'analyse (rejeu avec corrections)", async () => {
     const user = userEvent.setup();
     const payload = { format: "parc-v2", gymnases: [{ nom: "Palais des Sports" }], cases: [] };
-    const analysis = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { payload });
+    // D10 — le bouton n'est actif qu'une fois l'aperçu périmé : on décoche d'abord une équipe.
+    const analysis = analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")], gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }, { payload });
     renderWithProviders(<ParcImportModal {...defaultProps} />);
 
     await analyzeThen(user, analysis);
-    await user.click(await screen.findByRole("button", { name: T.revalidate as unknown as string }));
+    await user.click(await screen.findByRole("button", { name: decisionTrigger("SF1") }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
+    await user.click(await screen.findByRole("button", { name: T.verifyAction as unknown as string }));
 
     // La revalidation passe une ENVELOPPE { payload, decisions } (jamais le texte brut).
     const envelopeCall = q.analyzeMutate.mock.calls.find((c) => "object" === typeof c[0] && null !== c[0]);
@@ -639,6 +656,9 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     fireEvent.change(screen.getByLabelText(T.editStart(libelle)), { target: { value: "19:00" } });
     await user.click(screen.getByRole("button", { name: T.save as unknown as string }));
 
+    // D10 — corriger une case périme l'aperçu : l'import ne repart qu'après la revérification, et celle-ci
+    // ne perd pas la correction (l'API rend le parc collé, jamais la case corrigée).
+    await user.click(screen.getByRole("button", { name: T.verifyAction as unknown as string }));
     await visitAllSteps(user);
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
@@ -1594,7 +1614,7 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
  * ─────────── PR A (incident ALAP 2026-10-29) — équipe ignorée d'une séance commune (D2/D5/D9/D10/D11/D13) ───────────
  *
  * Nouvelles PROMESSES (option A — TANK écrit ROUGE, NEO implémente) :
- *  - D2  : changer une décision ÉQUIPES marque l'aperçu PÉRIMÉ (bandeau `staleHint` + « Revalider »).
+ *  - D2  : changer une décision ÉQUIPES marque l'aperçu PÉRIMÉ (bandeau `staleHint` + « Revérifier »).
  *  - D5  : à l'arrivée d'une erreur d'import, le bandeau d'erreur est AMENÉ à l'écran (`scrollIntoView`),
  *          SANS lui voler le focus.
  *  - D9  : une ligne IGNORÉE est rendue BARRÉE (`line-through`).
@@ -1628,7 +1648,7 @@ describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séan
     };
   }
 
-  it("D2 — changer une décision Équipes affiche le bandeau « aperçu périmé » et « Revalider »", async () => {
+  it("D2 — changer une décision Équipes affiche le bandeau « aperçu périmé » et « Revérifier »", async () => {
     // Aujourd'hui, seul l'ÉDITEUR de case marque l'aperçu périmé ; changer une décision d'équipe
     // (Listbox) ne touche pas `dirtyCases` → aucun bandeau. Promesse : toute modification de décision
     // le marque périmé. ROUGE : le bandeau `staleHint` n'apparaît pas après le changement de décision.
@@ -1847,6 +1867,10 @@ describe("ParcImportModal — étape Séances communes : composition corrigée (
     }
     await user.keyboard("{Escape}");
     await visitAllSteps(user);
+    // D10 — le verrou : une composition changée n'importe qu'après la revérification.
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+    expect(q.importMutate, "composition non revérifiée : rien ne part").not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: T.verifyAction as unknown as string }));
     await user.click(screen.getByRole("button", { name: /Importer/ }));
 
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: { equipes?: string[] } }> };
@@ -2016,14 +2040,14 @@ describe("ParcImportModal — « Signaler » joint l'état complet de l'import (
  *
  * PROMESSES :
  *  - pt 7 : un nom de groupe changé à l'étape Séances communes est repris à l'étape Réservations ;
- *  - pt 10 : un seul « Revalider l'aperçu » (en-tête), le bandeau périmé n'a plus de bouton ;
+ *  - pt 10 : un seul « Revérifier » (en-tête), le bandeau périmé n'a plus de bouton ;
  *  - pt 11 : une étape ne passe au vert qu'APRÈS avoir été visitée et sans point en attente ;
  *    « Importer » n'est actif que si TOUTES les étapes sont vertes.
  *
  * Clé de `texts.ts` à créer par NEO : `importStepsToVisit(n)` (raison visible au pied, « Voir » mène à
  * la première étape non visitée). `importBlocked` garde la priorité quand une ligne est à trancher.
  */
-describe("ParcImportModal — finitions d'interface (groupe repris, un seul Revalider, étapes visitées)", () => {
+describe("ParcImportModal — finitions d'interface (groupe repris, un seul Revérifier, étapes visitées)", () => {
   const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
   const position = { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 };
   const railButton = (label: string): HTMLElement =>
@@ -2089,13 +2113,19 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
     });
   });
 
-  describe("le nom du groupe remplace ses équipes sur la carte, et survit à « Revalider » (retours du 31/10)", () => {
+  describe("le nom du groupe remplace ses équipes sur la carte, et survit à « Revérifier » (retours du 31/10)", () => {
     const groupField = (): HTMLElement => screen.getByRole("textbox", { name: (n: string) => n.startsWith(PARC_IMPORT_TEXTS.groupLabel("U11M1 + U11M2")) });
     const teamsTrigger = (): HTMLElement => screen.getByRole("button", { name: (n: string) => n.startsWith(PARC_IMPORT_TEXTS.teamsForGroup("U11M1 + U11M2")) });
     const namedLine = (groupe: string, extra: Partial<Line> = {}): Line => mkLine(0, "U11M1 + U11M2", "aCreer", { groupe, gymnaseId: null, position, ...extra });
     const openMutual = async (user: ReturnType<typeof userEvent.setup>, line: Line): Promise<void> => {
       await analyzeThen(user, analysisOf({ mutualisations: [line] }));
       await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")));
+    };
+    /** D10 — un nom de groupe ne périme pas l'aperçu : pour revérifier, on corrige aussi le créneau. */
+    const verifyAfterSlotEdit = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+      await user.click(screen.getByRole("button", { name: T.editCaseTitle as unknown as string }));
+      await user.click(screen.getByRole("button", { name: T.save as unknown as string }));
+      await user.click(screen.getByRole("button", { name: T.verifyAction as unknown as string }));
     };
 
     it("nom lu puis nom saisi : la carte ne montre que le nom, jamais les équipes à côté", async () => {
@@ -2127,19 +2157,19 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
       expect(teamsTrigger()).toHaveTextContent("U11M1");
       expect(teamsTrigger()).toHaveTextContent("U11M2");
 
-      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+      await verifyAfterSlotEdit(user);
       const body = q.analyzeMutate.mock.calls.at(-1)?.[0] as { decisions: Array<{ section: string; corrections?: Record<string, unknown> }> };
       expect(body.decisions.find((d) => "mutualisations" === d.section)?.corrections?.equipes).toBeUndefined();
     });
 
-    it("« Revalider » garde le nom saisi : champ, carte et case, et le renvoie au serveur", async () => {
+    it("« Revérifier » garde le nom saisi : champ, carte et case, et le renvoie au serveur", async () => {
       const user = userEvent.setup();
       renderWithProviders(<ParcImportModal {...defaultProps} />);
       await openMutual(user, namedLine("CEC"));
       fireEvent.change(groupField(), { target: { value: "Loisirs" } });
 
       // Comme l'API : l'analyse rejouée rend le nom LU, elle n'applique pas la correction de groupe.
-      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+      await verifyAfterSlotEdit(user);
 
       const body = q.analyzeMutate.mock.calls.at(-1)?.[0] as { decisions: Array<{ section: string; corrections?: Record<string, unknown> }> };
       expect(body.decisions.find((d) => "mutualisations" === d.section)?.corrections?.groupe).toBe("Loisirs");
@@ -2150,13 +2180,13 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
       expect(screen.getByRole("button", { name: T.mutualisationCaseLabel("Loisirs", "U11M1 + U11M2") })).toBeInTheDocument();
     });
 
-    it("« Revalider » après avoir vidé le champ revient au nom lu", async () => {
+    it("« Revérifier » après avoir vidé le champ revient au nom lu", async () => {
       const user = userEvent.setup();
       renderWithProviders(<ParcImportModal {...defaultProps} />);
       await openMutual(user, namedLine("CEC"));
       fireEvent.change(groupField(), { target: { value: "" } });
 
-      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+      await verifyAfterSlotEdit(user);
 
       expect(groupField()).toHaveValue("CEC");
     });
@@ -2175,7 +2205,7 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
     });
   });
 
-  it("pt 10 — une ligne modifiée n'affiche qu'UN « Revalider l'aperçu », et le bandeau périmé reste", async () => {
+  it("pt 10 — une ligne modifiée n'affiche qu'UN « Revérifier », et le bandeau périmé reste", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ParcImportModal {...defaultProps} />);
     await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")] }));
@@ -2184,7 +2214,7 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
     await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: PARC_IMPORT_TEXTS.ignoreLine }));
 
     expect(screen.getByText(T.staleHint(1))).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: PARC_IMPORT_TEXTS.revalidate })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: T.verifyAction as unknown as string })).toHaveLength(1);
   });
 
   it("pt 11 — une étape sans point en attente ne passe au vert qu'une fois visitée", async () => {
@@ -2288,13 +2318,16 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
     expect(importButton()).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("pt 11 — « Revalider » ne fait pas perdre les étapes déjà visitées", async () => {
+  it("pt 11 — « Revérifier » ne fait pas perdre les étapes déjà visitées", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
+    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")], gymnases: [mkLine(0, "Palais des Sports", "aCreer")] }));
     await visitAllSteps(user);
 
-    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.revalidate }));
+    await user.click(railButton(PARC_IMPORT_TEXTS.sectionTitle("equipes")));
+    await user.click(screen.getByRole("button", { name: (n: string) => n.startsWith(T.decisionFor("SF1")) }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: PARC_IMPORT_TEXTS.ignoreLine }));
+    await user.click(screen.getByRole("button", { name: T.verifyAction as unknown as string }));
 
     expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
   });
@@ -2310,5 +2343,546 @@ describe("ParcImportModal — finitions d'interface (groupe repris, un seul Reva
     await screen.findByRole("alert");
 
     expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+/**
+ * ─────────── Quick wins (31/10) : D4a, D4b, D10 — ROUGE option A ───────────
+ *
+ * PROMESSES :
+ *  - D4a : ce que dit la modale d'un groupe suit sa composition, partout où son libellé paraît ;
+ *  - D4b (NR, voisin de l'axe constraint semantics) : une équipe retirée d'une séance commune ne revient
+ *    jamais en silence après une revérification ; seul un nouveau collage repart de la lecture ;
+ *  - D10 : on n'importe que ce qui a été vérifié. Un geste qui change le verdict du serveur périme la
+ *    vérification et bloque l'import ; les autres gestes ne dérangent personne.
+ */
+describe("ParcImportModal — quick wins : composition d'un groupe et bouton de vérification", () => {
+  const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
+  const originalTeams = w.teams;
+  const position = { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 };
+  const THREE = "U11M1 + U11M2 + U11M3";
+  const TWO = "U11M1 + U11M2";
+
+  beforeEach(() => {
+    w.teams = [
+      { id: "wt-1", name: "U11M1", priorityTierId: 1, tierOrder: 0 },
+      { id: "wt-2", name: "U11M2", priorityTierId: 1, tierOrder: 1 },
+      { id: "wt-3", name: "U11M3", priorityTierId: 1, tierOrder: 2 },
+    ];
+  });
+  afterEach(() => {
+    w.teams = originalTeams;
+  });
+
+  type User = ReturnType<typeof userEvent.setup>;
+  /** Une clé de texte à créer : le rouge la NOMME au lieu de chercher un bouton sans nom. */
+  const key = (k: string): string => {
+    expect(T[k], `clé texts.ts \`${k}\` à créer`).toBeDefined();
+    return T[k];
+  };
+  const rail = (label: string): HTMLElement => within(screen.getByRole("navigation")).getByRole("button", { name: (n: string) => n.includes(label) });
+  const goTo = (user: User, section: string): Promise<void> => user.click(rail(PARC_IMPORT_TEXTS.sectionTitle(section)));
+  const importButton = (): HTMLElement => screen.getByRole("button", { name: /Importer/ });
+  const teamsTrigger = (): HTMLElement => {
+    // Le nom du sélecteur suit peut-être la composition : on ne vise que son préfixe.
+    const prefix = T.teamsForGroup("").split("«")[0] as string;
+    return screen.getByRole("button", { name: (n: string) => n.startsWith(prefix) });
+  };
+  const toggleTeam = async (user: User, name: string): Promise<void> => {
+    await user.click(teamsTrigger());
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: (n: string) => n.startsWith(name) }));
+    await user.keyboard("{Escape}");
+  };
+  const mutualLine = (libelle: string, extra: Partial<Line> = {}): Line =>
+    mkLine(0, libelle, "aCreer", {
+      groupe: "",
+      gymnaseId: null,
+      position,
+      equipes: libelle.split(" + ").map((nom) => ({ id: `wt-${nom.slice(-1)}`, nom })),
+      ...extra,
+    } as Partial<Line>);
+  const decor = (libelle = THREE, extra: Partial<Line> = {}): Analysis =>
+    analysisOf({
+      equipes: [mkLine(0, "SF1", "aCreer")],
+      gymnases: [mkLine(0, "Gymnase Zénith", "aCreer")],
+      mutualisations: [mutualLine(libelle, extra)],
+      reservations: [mkLine(0, "SM1", "aCreer", { gymnaseId: null, position: { ...position, jour: 4 } })],
+    }, { payload: { format: "parc-v2", cases: [] } });
+  async function analyze(user: User, analysis: Analysis): Promise<void> {
+    q.analysis.value = analysis;
+    await user.click(rail(PARC_IMPORT_TEXTS.stepPaste));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+  }
+  /** Analyse puis visite tout : plus rien d'autre que la vérification ne peut griser « Importer ». */
+  async function ready(user: User, analysis: Analysis = decor()): Promise<void> {
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+    await analyze(user, analysis);
+    await visitAllSteps(user);
+  }
+  const editSlot = async (user: User): Promise<void> => {
+    await goTo(user, "mutualisations");
+    await user.click(screen.getByRole("button", { name: T.editCaseTitle as unknown as string }));
+    await user.click(screen.getByRole("button", { name: T.save as unknown as string }));
+  };
+  const pickDecision = async (user: User, libelle: string, option: string): Promise<void> => {
+    await user.click(screen.getByRole("button", { name: (n: string) => n.startsWith(T.decisionFor(libelle)) }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: option }));
+  };
+  const expectStatus = (text: string): void => {
+    expect(screen.getAllByRole("status").some((s) => (s.textContent ?? "").includes(text)), `status annoncé : ${text}`).toBe(true);
+  };
+  const expectInactive = (el: HTMLElement): void => {
+    expect((el as HTMLButtonElement).disabled || "true" === el.getAttribute("aria-disabled"), "bouton inactif").toBe(true);
+  };
+  const expectUpToDate = (): void => {
+    expectInactive(screen.getByRole("button", { name: key("verifyUpToDate") }));
+    expect(screen.queryByRole("button", { name: key("verifyAction") })).not.toBeInTheDocument();
+    expect(importButton()).not.toHaveAttribute("aria-disabled", "true");
+  };
+  const expectStale = (): void => {
+    expect(screen.getByRole("button", { name: key("verifyAction") })).toBeEnabled();
+    expect(importButton()).toHaveAttribute("aria-disabled", "true");
+    expect(importButton()).toHaveAccessibleDescription(key("importStaleReason"));
+  };
+  const lastAnalyzeBody = (): { payload: unknown; decisions: Array<{ section: string; corrections?: { equipes?: string[] } }> } => q.analyzeMutate.mock.calls.at(-1)?.[0];
+  const mutualOf = (body: { decisions: Array<{ section: string; corrections?: { equipes?: string[] } }> }) => body.decisions.find((d) => "mutualisations" === d.section);
+
+  describe("D4a — le libellé d'un groupe suit sa composition", () => {
+    const cardTitles = (name: string): HTMLElement[] => screen.getAllByText(name).filter((el) => null === el.closest("button"));
+
+    it("retirer U11M2 : carte, champ de nom et en-tête de l'éditeur disent « U11M1 » ; re-cocher rend « U11M1 + U11M2 »", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await analyze(user, decor(TWO));
+      await goTo(user, "mutualisations");
+
+      await toggleTeam(user, "U11M2");
+      expect(cardTitles("U11M1"), "titre de carte").toHaveLength(1);
+      expect(screen.getByRole("textbox", { name: T.groupLabel("U11M1") })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: T.editCaseTitle as unknown as string }));
+      const editor = screen.getByRole("button", { name: T.save as unknown as string }).closest('[role="dialog"]') as HTMLElement;
+      expect(within(editor).getByText("U11M1"), "en-tête de l'éditeur").toBeInTheDocument();
+      await user.click(within(editor).getByRole("button", { name: T.cancel as unknown as string }));
+
+      await toggleTeam(user, "U11M2");
+      expect(cardTitles(TWO), "titre de carte rétabli").toHaveLength(1);
+      expect(screen.getByRole("textbox", { name: T.groupLabel(TWO) })).toBeInTheDocument();
+    });
+
+    it("retirer U11M2 : la case de la grille le dit en texte, en infobulle et en nom accessible", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await analyze(user, decor(TWO));
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M2");
+
+      await goTo(user, "reservations");
+      const groupCase = screen.getByRole("button", { name: T.mutualisationCaseLabel("", "U11M1") });
+      expect(groupCase).toHaveTextContent(/^U11M1$/);
+      expect(groupCase).toHaveAttribute("title", T.caseTooltip("U11M1", formatMinutes(17 * 60), formatMinutes(18 * 60 + 30)));
+
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M2");
+      await goTo(user, "reservations");
+      expect(screen.getByRole("button", { name: T.mutualisationCaseLabel("", TWO) })).toHaveTextContent(TWO);
+    });
+
+    it("une case en alerte : son bouton de saut suit la composition", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await analyze(user, decor(TWO, { statut: "alerte", coche: true, raison: "À ajuster." }));
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M2");
+
+      await goTo(user, "reservations");
+      expect(screen.getByRole("button", { name: `${T.goToLine as unknown as string} — U11M1` })).toHaveTextContent("U11M1");
+    });
+  });
+
+  describe("D4b — une équipe retirée ne revient pas en silence (NR)", () => {
+    it("retirer une équipe puis revérifier : l'analyse et l'import reçoivent la composition redéfinie, l'écran aussi", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M3");
+
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      expect(mutualOf(lastAnalyzeBody())?.corrections?.equipes).toEqual(["wt-1", "wt-2"]);
+      expect(teamsTrigger()).not.toHaveTextContent("U11M3");
+
+      await user.click(importButton());
+      expect(mutualOf(q.importMutate.mock.calls[0]?.[0])?.corrections?.equipes).toEqual(["wt-1", "wt-2"]);
+    });
+
+    it("la composition redéfinie survit à DEUX revérifications", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M3");
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await editSlot(user);
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      expect(mutualOf(lastAnalyzeBody())?.corrections?.equipes).toEqual(["wt-1", "wt-2"]);
+
+      await user.click(importButton());
+      expect(mutualOf(q.importMutate.mock.calls[0]?.[0])?.corrections?.equipes).toEqual(["wt-1", "wt-2"]);
+    });
+
+    it("un nouveau collage repart de la composition lue", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M3");
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await analyze(user, decor());
+      await visitAllSteps(user);
+      await user.click(importButton());
+      expect(mutualOf(q.importMutate.mock.calls[0]?.[0])?.corrections?.equipes).toBeUndefined();
+    });
+  });
+
+  describe("D10 — le bouton de vérification au pied de modale", () => {
+    it("les libellés sont ceux validés (pluriels compris), et l'ancienne clé a disparu", () => {
+      expect(T).toMatchObject({
+        verifyUpToDate: "Vérifié",
+        verifyAction: "Revérifier",
+        verifying: "Vérification…",
+        importStaleReason: "Revérifiez vos modifications avant d'importer.",
+        importVerifyingReason: "Vérification en cours.",
+        verifyStatusUpToDate: "Vérification à jour.",
+        verifyStatusStale: "Des modifications sont à revérifier avant d'importer.",
+        verifyStatusRunning: "Vérification en cours.",
+        verifyStatusFailed: "La vérification a échoué — réessayez.",
+      });
+      expect(T.staleHint(1)).toBe("Vous avez modifié 1 ligne : revérifiez pour mettre à jour les alertes et débloquer l'import.");
+      expect(T.staleHint(3)).toBe("Vous avez modifié 3 lignes : revérifiez pour mettre à jour les alertes et débloquer l'import.");
+      expect(T).not.toHaveProperty("revalidate");
+    });
+
+    it("après l'analyse : « Vérifié » inactif à côté d'« Importer » actif, status à jour, plus rien en en-tête d'étape", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      expect(screen.queryByRole("button", { name: key("verifyUpToDate") }), "rien à vérifier avant l'analyse").not.toBeInTheDocument();
+      await analyze(user, decor());
+      await visitAllSteps(user);
+
+      expectUpToDate();
+      expectStatus(key("verifyStatusUpToDate"));
+      expect(importButton().closest("footer")).toContainElement(screen.getByRole("button", { name: key("verifyUpToDate") }));
+      const heading = screen.getByRole("heading", { name: (n: string) => n.includes(PARC_IMPORT_TEXTS.sectionTitle("reservations")) });
+      expect(within(heading.parentElement as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    it("éditer une case : « Revérifier » actif, « Importer » grisé avec sa raison, bandeau à jour, clic sans effet", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await editSlot(user);
+
+      expectStale();
+      expectStatus(key("verifyStatusStale"));
+      expect(screen.getByText(T.staleHint(1))).toBeInTheDocument();
+      await user.click(importButton());
+      expect(q.importMutate).not.toHaveBeenCalled();
+    });
+
+    it("retirer une équipe d'une composition périme la vérification", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M3");
+
+      expectStale();
+    });
+
+    it("retirer puis remettre une équipe : reste à revérifier", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "mutualisations");
+      await toggleTeam(user, "U11M3");
+      await toggleTeam(user, "U11M3");
+
+      expectStale();
+    });
+
+    it("décocher une équipe (elle ne sera plus importée) périme la vérification", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.ignoreLine as unknown as string);
+
+      expectStale();
+    });
+
+    it("changer la cible d'une équipe sans changer sa cochabilité ne périme rien", async () => {
+      const user = userEvent.setup();
+      await ready(user, analysisOf({ equipes: [mkLine(0, "SF1", "suggere", { cibleId: "t1", candidats: [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }] })] }));
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.matchTo("Armund"));
+
+      expect(screen.queryByText(T.staleHint(1))).not.toBeInTheDocument();
+      expectUpToDate();
+    });
+
+    it.each<[string, (user: User) => Promise<void>]>([
+      ["la décision d'un gymnase", async (user) => {
+        await goTo(user, "gymnases");
+        await pickDecision(user, "Gymnase Zénith", T.ignoreLine as unknown as string);
+      }],
+      ["le nom d'un groupe", async (user) => {
+        await goTo(user, "mutualisations");
+        fireEvent.change(screen.getByRole("textbox", { name: T.groupLabel(THREE) }), { target: { value: "Loisirs" } });
+      }],
+      ["les séances d'une équipe", async (user) => {
+        await goTo(user, "equipes");
+        fireEvent.change(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") }), { target: { value: "3" } });
+      }],
+      ["garder ou ignorer une séance commune", async (user) => {
+        await goTo(user, "mutualisations");
+        await user.click(screen.getByRole("button", { name: T.mutualIgnore as unknown as string }));
+      }],
+      ["le gymnase d'une case", async (user) => {
+        await goTo(user, "mutualisations");
+        await user.click(screen.getByRole("button", { name: (n: string) => n.startsWith(T.venueForGroup(THREE)) }));
+        await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Gymnase Léon-Blum" }));
+      }],
+    ])("%s ne périme pas la vérification", async (_geste, geste) => {
+      const user = userEvent.setup();
+      await ready(user);
+      await geste(user);
+
+      expect(screen.queryByText(T.staleHint(1)), "pas de bandeau périmé").not.toBeInTheDocument();
+      expectUpToDate();
+    });
+
+    it("cliquer « Revérifier » envoie { payload, decisions } et rend « Vérifié » et « Importer »", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await editSlot(user);
+      q.analyzeMutate.mockClear();
+
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      const body = lastAnalyzeBody();
+      expect(q.analyzeMutate).toHaveBeenCalledTimes(1);
+      expect(body.payload).toEqual({ format: "parc-v2", cases: [] });
+      expect(Array.isArray(body.decisions)).toBe(true);
+      expectUpToDate();
+      expect(screen.queryByText(T.staleHint(1))).not.toBeInTheDocument();
+    });
+
+    it("pendant la vérification : bouton « Vérification… » inactif, « Importer » grisé avec sa raison, status en cours", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await editSlot(user);
+      q.analyzeMutate.mockImplementationOnce(() => {
+        q.analyzePending.value = true;
+        q.rerender.fn();
+      });
+
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      expectInactive(screen.getByRole("button", { name: key("verifying") }));
+      expect(importButton()).toHaveAttribute("aria-disabled", "true");
+      expect(importButton()).toHaveAccessibleDescription(key("importVerifyingReason"));
+      expectStatus(key("verifyStatusRunning"));
+    });
+
+    it("la vérification échoue : on reste à revérifier, status d'échec, et réessayer débloque", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await editSlot(user);
+      q.analyzeMutate.mockImplementationOnce((_body: unknown, opts?: { onError?: (e: unknown) => void }) => {
+        const failure = new Error("échec réseau");
+        q.analyzeError.value = failure;
+        opts?.onError?.(failure);
+        q.rerender.fn();
+      });
+
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      expectStale();
+      expectStatus(key("verifyStatusFailed"));
+
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      expectUpToDate();
+    });
+  });
+
+  // Le serveur rejoue les décisions mais rend ses verdicts de LECTURE : la revérification ne doit pas
+  // défaire à l'écran ce que le gestionnaire vient de trancher (ParcImportModal.tsx:303, ParcImportAnalyzer.php:94).
+  describe("D10 — une revérification ne défait pas les gestes du gestionnaire", () => {
+    it("une équipe ignorée le reste : à l'écran et à l'import", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.ignoreLine as unknown as string);
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      expect(screen.getByRole("button", { name: (n: string) => n.startsWith(T.decisionFor("SF1")) })).toHaveTextContent(T.ignoreLine as unknown as string);
+      await user.click(importButton());
+      const decisions = (q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; coche: boolean }> }).decisions;
+      expect(decisions.find((d) => "equipes" === d.section)?.coche).toBe(false);
+    });
+
+    it("une ligne ambiguë tranchée ne redevient pas « à trancher »", async () => {
+      const user = userEvent.setup();
+      const analysis = decor();
+      analysis.sections.equipes = [mkAmbiguous(0, "SF1", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])];
+      await ready(user, analysis);
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.matchTo("Armand"));
+      await editSlot(user);
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await user.click(importButton());
+      const decisions = (q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; cibleId?: string }> }).decisions;
+      expect(decisions.find((d) => "equipes" === d.section)?.cibleId).toBe("t1");
+    });
+
+    it("les séances corrigées d'une équipe restent celles saisies", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "equipes");
+      fireEvent.change(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") }), { target: { value: "3" } });
+      await editSlot(user);
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await goTo(user, "equipes");
+      expect(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") })).toHaveValue(3);
+    });
+  });
+
+  describe("D10 — trancher une ligne ambiguë ne périme que si une alerte en dépend", () => {
+    const ambiguousSf1 = (): Line => mkAmbiguous(0, "SF1", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }]);
+    const citesSf1 = { equipes: [{ id: null, nom: "SF1" }, { id: "wt-1", nom: "U11M1" }] } as unknown as Partial<Line>;
+    const withAmbiguous = (extra: Partial<Line>): Analysis => {
+      const analysis = decor("SF1 + U11M1", { ...citesSf1, ...extra });
+      analysis.sections.equipes = [ambiguousSf1()];
+      return analysis;
+    };
+
+    it("sans alerte qui en dépende : reste « Vérifié »", async () => {
+      const user = userEvent.setup();
+      await ready(user, withAmbiguous({}));
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.matchTo("Armand"));
+
+      expect(screen.queryByText(T.staleHint(1)), "pas de bandeau périmé").not.toBeInTheDocument();
+      expectUpToDate();
+    });
+
+    // La première analyse ne connaît aucune décision : l'alerte ne naît qu'au rejeu, où l'ambiguë non
+    // tranchée part décochée, donc « ignorée » (ParcImportAnalyzer.php:266). Sans bouton pour recalculer,
+    // cette alerte devenue fausse bloquerait « Importer » pour de bon.
+    it("une alerte « équipe ignorée » qui en dépend : « Revérifier » s'active et le rejeu la lève", async () => {
+      const user = userEvent.setup();
+      const raison = "Cette séance commune cite « SF1 », à revoir.";
+      await ready(user, withAmbiguous({}));
+      await editSlot(user);
+      q.analysis.value = withAmbiguous({ statut: "alerte", coche: false, raison, alerteCode: "equipe_ignoree" });
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      expect(screen.getByText(raison)).toBeInTheDocument();
+
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.createOption("SF1"));
+      expectStale();
+
+      q.analysis.value = withAmbiguous({});
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+      const equipe = (lastAnalyzeBody().decisions as Array<{ section: string; coche?: boolean }>).find((d) => "equipes" === d.section);
+      expect(equipe?.coche, "le rejeu reçoit l'équipe gardée").toBe(true);
+      expectUpToDate();
+      await goTo(user, "mutualisations");
+      expect(screen.queryByText(raison)).not.toBeInTheDocument();
+    });
+  });
+
+  // L'amorce du sélecteur ne garde aujourd'hui que les équipes déjà au club (ParcImportModal.tsx:1496).
+  it("D4b — retirer l'équipe existante d'un groupe mixte garde les équipes à créer, par leur `import:<index>`", async () => {
+    const user = userEvent.setup();
+    const analysis = decor("U11M1 + N1 + N2", { equipes: [{ id: "wt-1", nom: "U11M1" }, { id: null, nom: "N1" }, { id: null, nom: "N2" }] } as unknown as Partial<Line>);
+    analysis.sections.equipes = [mkLine(3, "N1", "aCreer"), mkLine(5, "N2", "aCreer")];
+    await ready(user, analysis);
+    await goTo(user, "mutualisations");
+    await toggleTeam(user, "U11M1");
+
+    expect(screen.queryByText(T.needsTwoTeams as unknown as string), "il reste deux équipes : N1 et N2").not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+    await user.click(importButton());
+    const equipes = mutualOf(q.importMutate.mock.calls[0]?.[0])?.corrections?.equipes;
+    expect(equipes).toEqual(expect.arrayContaining(["import:3", "import:5"]));
+    expect(equipes).toHaveLength(2);
+  });
+
+  describe("D10 — le verdict de vérification ne ment pas", () => {
+    const failOnce = (): void => {
+      q.analyzeMutate.mockImplementationOnce((_body: unknown, opts?: { onError?: (e: unknown) => void }) => {
+        const failure = new Error("échec réseau");
+        q.analyzeError.value = failure;
+        opts?.onError?.(failure);
+        q.rerender.fn();
+      });
+    };
+    const analyzeAgain = async (user: User): Promise<void> => {
+      await user.click(rail(PARC_IMPORT_TEXTS.stepPaste));
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+    };
+    const expectStaleNotFailed = (): void => {
+      expectStale();
+      expectStatus(key("verifyStatusStale"));
+      expect(screen.getAllByRole("status").some((el) => (el.textContent ?? "").includes(key("verifyStatusFailed"))), "aucune vérification n'a échoué").toBe(false);
+    };
+
+    it("un geste fait pendant une vérification en vol reste à vérifier quand elle aboutit", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await editSlot(user);
+      let inFlight: { onSuccess?: (a: unknown) => void } | undefined;
+      q.analyzeMutate.mockImplementationOnce((_body: unknown, opts?: { onSuccess?: (a: unknown) => void }) => {
+        inFlight = opts;
+        q.analyzePending.value = true;
+        q.rerender.fn();
+      });
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await editSlot(user);
+      act(() => {
+        q.analyzePending.value = false;
+        inFlight?.onSuccess?.(q.analysis.value);
+        q.rerender.fn();
+      });
+
+      expectStale();
+      await user.click(importButton());
+      expect(q.importMutate, "ce geste n'a pas été vérifié").not.toHaveBeenCalled();
+    });
+
+    // Atteignable seulement avec une analyse déjà réussie : sinon les étapes de contenu sont verrouillées.
+    it("un nouveau collage refusé, puis un geste sur l'aperçu précédent : à vérifier, pas « échec »", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      failOnce();
+      await analyzeAgain(user);
+
+      await editSlot(user);
+
+      expectStaleNotFailed();
+    });
+
+    it("une analyse refusée, puis réussie, puis un geste : à vérifier, pas « échec »", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      failOnce();
+      await analyze(user, decor());
+      await analyzeAgain(user);
+      await visitAllSteps(user);
+
+      await editSlot(user);
+
+      expectStaleNotFailed();
+    });
   });
 });

@@ -12,6 +12,48 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-10-31 — lot Dependabot (4 PRs mergées : frontend, puppeteer, umami, moteur)
+
+### Paquets du frontend (PR #1284 — 5 montées mineures/patch)
+
+**C'est quoi** : `@tanstack/react-query` 5.104.5 (la couche qui va chercher les données du serveur et les
+garde à jour à l'écran, avec son plugin de règles `@tanstack/eslint-plugin-query`), `react-router` 8.5.0
+(la navigation entre les écrans), `typescript-eslint` 8.72.0 (les règles d'analyse du code) et `knip`
+6.42.1 (l'outil qui repère le code et les dépendances inutilisés).
+
+**Ça apporte** : correctifs de routine, rien de visible pour un club.
+
+**Adapté chez nous** : rien.
+
+### Image `puppeteer` 25.14.0 → 25.16.0 (PR #1285)
+
+**C'est quoi** : l'image de base du « pdf-worker » (`docker/pdf-worker/Dockerfile`), le petit service qui
+pilote un vrai navigateur sans écran pour fabriquer les PDF d'export.
+
+**Ça apporte** : correctifs du navigateur embarqué et de la librairie qui le pilote.
+
+**Adapté chez nous** : rien (l'image reste figée par son empreinte).
+
+### Image `umami` 3.4.0 → 3.4.1 (PR #1286)
+
+**C'est quoi** : Umami, l'outil de statistiques de fréquentation de la vitrine, auto-hébergé
+(`docker-compose.prod.yml`) — sans cookie ni service tiers.
+
+**Ça apporte** : correctif de routine.
+
+**Adapté chez nous** : rien.
+
+### Paquets du moteur (PR #1287 — 7 montées mineures/patch)
+
+**C'est quoi** : les bibliothèques Python du moteur de calcul — FastAPI 0.150.0 (le serveur web qui reçoit
+les demandes du backend) et Starlette 1.9.0 (dessous), `hypothesis` 6.170.5 (tests par données générées),
+`ruff` 0.17.1 (analyse et mise en forme du code), `websockets` 17.3, `pluggy` 1.7.0 (extensions de
+pytest) et `ast-serialize` 0.13.1 (outillage de mypy).
+
+**Ça apporte** : correctifs et suivi de routine.
+
+**Adapté chez nous** : rien.
+
 ## 2026-10-25 — lot Dependabot (2 PRs mergées, frontend + engine)
 
 ### Paquets du frontend (PR #1265 — 17 montées mineures/patch)
@@ -138,24 +180,6 @@ délivrance (et la frontière tenant) bout en bout plutôt que la seule forme d'
 fichier compose. Dependabot n'ignore plus que la prochaine majeure (`>=2.0.0`). Détail :
 [`docs/security/mercure.md`](security/mercure.md).
 
-## 2026-10-16 — Redis 8 (lot 4 PR D, hors Dependabot)
-
-**C'est quoi** : l'image Redis — la file des générations (transport Messenger), les verrous
-distribués (génération, placement de matchs) et les limiteurs anti-abus, en dev comme en prod
-(`redis:8-alpine` dans les deux fichiers compose).
-
-**Ça apporte** : une version maintenue (la 7 sort de support) et le retour d'une licence open
-source AGPLv3 — la 7.4 était passée « source-available » (RSALv2/SSPLv1).
-
-**Adapté chez nous** : verdict licence OK — l'AGPLv3 n'oblige qu'en distribuant une version
-MODIFIÉE de Redis, or nous utilisons l'image officielle non modifiée, en interne uniquement.
-Trois changements : les deux lignes d'image compose, le retrait de l'exception majeure dans
-`.github/dependabot.yml` (Redis n'a plus de raison d'être ignoré), et une procédure de snapshot
-du volume `redis_data` avant tout déploiement (`docs/ops/backup-restore.md` §7) — un retour
-arrière 8 → 7 n'étant pas garanti sur le format AOF/RDB. Couvrait le volet Redis de l'ancienne
-ligne de roadmap P4-310 ; le volet Mercure est livré le même jour (entrée ci-dessus) — la ligne
-est close et a quitté la roadmap.
-
-> Lot le plus ancien retiré par le bornage à 6 (§ en-tête) : lot Dependabot 5 PRs (2026-10-16,
+> Lots les plus anciens retirés par le bornage à 6 (§ en-tête) : Redis 8 (2026-10-16, image `redis:8-alpine`, licence AGPLv3 vérifiée, snapshot `redis_data` avant déploiement — `docs/ops/backup-restore.md` §7) ; lot Dependabot 5 PRs (2026-10-16,
 > `fastapi`/`pydantic` moteur, protobuf fermée, frontend Playwright 1.64.0, backend Symfony/Sentry,
 > Mercure 0.24 fermée) — détail dans `git log -p --follow docs/upgrades.md`.

@@ -125,7 +125,7 @@ services:
             # défaut ; posée par environnement. Née ici avec sa var .env.
             $supportEmail: '%env(SUPPORT_EMAIL)%'
             # P4-355 — version applicative jointe au contexte d'un signalement
-            # (repli « dev » dans backend/.env ; le déploiement écrit le tag dans .env.prod).
+            # (repli « dev » dans backend/.env ; en prod, passée par le bloc `environment:` de php-fpm).
             # Consommée par le SEUL service FeedbackContextEnricher.
             $apiVersion: '%env(VERSION)%'
             $appSecret: '%env(APP_SECRET)%'

@@ -49,6 +49,14 @@ function payload(coach: Coach, patch: Partial<Coach>) {
   };
 }
 
+/** Les pastilles de liaison se distinguent sans couleur portée par le texte (repli AA). */
+function linkPillClass(role: TeamCoachRole | "PLAYER"): string {
+  if ("MAIN" === role) {
+    return "border border-accent/50 bg-surface-accent text-foreground";
+  }
+  return "ASSISTANT" === role ? "border border-border bg-muted text-foreground" : "border border-border text-foreground";
+}
+
 interface CardProps {
   coach: Coach;
   teams: Team[];
@@ -211,24 +219,24 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
         <div className="flex items-center gap-2">
           <span className="whitespace-nowrap text-sm font-medium">{`${coach.firstName} ${coach.lastName}`.trim()}</span>
           {coach.isEmployee ? (
-            <StatusPill variant="accent" className="shrink-0">
+            <StatusPill variant="accent-solid" className="shrink-0">
               {capitalizeWord(salariedWord(coach.gender))}
             </StatusPill>
           ) : null}
           {null !== coach.maxDaysOverride ? (
-            <StatusPill variant="accent" className="shrink-0" title="Plafond préféré : les séances sont regroupées quand c'est possible, le récap signale sinon.">
+            <StatusPill variant="neutral" className="shrink-0" title="Plafond préféré : les séances sont regroupées quand c'est possible, le récap signale sinon.">
               ≤ {coach.maxDaysOverride} j/sem
             </StatusPill>
           ) : null}
           {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- région défilante nommée, atteignable au clavier (WCAG 2.1.1, A11Y-26 résidu) */}
           <div aria-label="Rattachements aux équipes" tabIndex={0} className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {coachLinks.map((link) => (
-              <span key={link.id} className="inline-flex items-center whitespace-nowrap rounded-full bg-accent/15 px-2 py-0.5 text-xs">
+              <span key={link.id} className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${linkPillClass(link.role)}`}>
                 {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
               </span>
             ))}
             {playerLinks.map((link) => (
-              <span key={link.id} className="inline-flex items-center whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs">
+              <span key={link.id} className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${linkPillClass("PLAYER")}`}>
                 {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
               </span>
             ))}
@@ -256,7 +264,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
           {coachLinks.length > 0 || playerLinks.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {coachLinks.map((link) => (
-                <span key={link.id} className="flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs">
+                <span key={link.id} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${linkPillClass(link.role)}`}>
                   {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
                   <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (${link.role === "MAIN" ? "coach" : "adjoint"})`} className="rounded p-1.5 -m-1.5" onClick={() => delTeamCoach.mutate(link.id)}>
                     <X className="size-3" />
@@ -264,7 +272,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
                 </span>
               ))}
               {playerLinks.map((link) => (
-                <span key={link.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs">
+                <span key={link.id} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${linkPillClass("PLAYER")}`}>
                   {ctcMarkFor(link.teamId)}{teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
                   <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (${playerWord(coach.gender)})`} className="rounded p-1.5 -m-1.5" onClick={() => delPlayer.mutate(link.id)}>
                     <X className="size-3" />

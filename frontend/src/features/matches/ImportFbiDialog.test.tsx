@@ -8,6 +8,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, ImportHomeWithoutVenue, ImportVenueRow, LeagueValidationOutlook, PriorityTier, Team, VenueLabelInventoryRow } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
+import { MATCHES_TEXTS } from "./texts";
 
 const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures } = vi.hoisted(() => ({
   getLeagueValidationOutlook: vi.fn(() => Promise.resolve<LeagueValidationOutlook>({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
@@ -592,6 +593,13 @@ describe("ImportFbiDialog", () => {
     homesWithoutVenue,
   });
 
+  const M = MATCHES_TEXTS as unknown as Record<string, unknown> & { importFbiVenuesTab: (paired: number, total: number) => string; importFbiVenuesRemaining: (n: number) => string; importFbiVenueMissingReason: string; importFbiFamiliesAria: string };
+  /** L'onglet Salles, quel que soit son compteur : « Salles (p/t) » sans jamais recopier le mot. */
+  const venuesTabName = (name: string): boolean => name.startsWith(M.importFbiVenuesTab(0, 0).split("(")[0] as string);
+  const openVenuesTab = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+    await user.click(await screen.findByRole("tab", { name: venuesTabName }));
+  };
+
   it("la section « Salles à domicile » rend un sélecteur par libellé à domicile et un par domicile sans salle", async () => {
     const user = userEvent.setup();
     analyzeFbiFixtures.mockResolvedValueOnce(
@@ -603,6 +611,7 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
 
     await pickFile(user);
+    await openVenuesTab(user);
     // Un sélecteur de gymnase par libellé à domicile (nom accessible = le libellé) …
     expect(await screen.findByRole("button", { name: /GYMNASE MATEO/ })).toBeInTheDocument();
     // … et un sélecteur pour les domiciles sans salle de la division.
@@ -639,6 +648,7 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
 
     await pickFile(user);
+    await openVenuesTab(user);
     await pickListboxOption(user, /SALLE ADVERSE/, "Terrain neutre (pas chez nous)");
     await pickListboxOption(user, /domiciles sans salle.*PNM/, "Coubertin");
     await user.click(screen.getByRole("button", { name: "Importer" }));
@@ -652,5 +662,115 @@ describe("ImportFbiDialog", () => {
       ]),
     );
     expect(call[4]).toEqual([{ division: "PNM", venueId: "venue-coubertin" }]);
+  });
+
+  // ── D6 — les salles ont leur onglet, dernier, avec un compteur vivant ──
+
+  it("les libellés de l'onglet Salles sont ceux validés (pluriels compris)", () => {
+    expect(M.importFbiVenuesTab(1, 3)).toBe("Salles (1/3)");
+    expect(M.importFbiVenuesRemaining(1)).toBe("1 salle encore sans gymnase — voir l'onglet Salles.");
+    expect(M.importFbiVenuesRemaining(3)).toBe("3 salles encore sans gymnase — voir l'onglet Salles.");
+    expect(M.importFbiVenueMissingReason).toBe("Associez un gymnase à chaque salle à domicile dans l'onglet Salles (ou déclarez-la « terrain neutre ») pour pouvoir importer.");
+    expect(M.importFbiFamiliesAria).toBe("Divisions et salles à domicile");
+    expect(M, "le titre de section disparaît avec la section").not.toHaveProperty("importFbiVenuesTitle");
+  });
+
+  it("l'onglet Salles vient en dernier et compte en direct salles et domiciles sans salle", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(
+      analysisWithVenues(
+        [
+          { label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: "venue-mateo", neutral: false },
+          { label: "SALLE ADVERSE", rowCount: 2, confirmedVenueId: null, suggestedVenueId: null, neutral: false },
+        ],
+        [{ division: "PNM", fbiTeamLabel: null, rowCount: 1 }],
+      ),
+    );
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await screen.findByRole("tab", { name: venuesTabName });
+    expect(screen.getAllByRole("tablist", { name: M.importFbiFamiliesAria })).toHaveLength(1);
+    expect(screen.getAllByRole("tab").at(-1)).toHaveAccessibleName(M.importFbiVenuesTab(1, 3));
+
+    await openVenuesTab(user);
+    await pickListboxOption(user, /SALLE ADVERSE/, "Coubertin");
+    expect(screen.getByRole("tab", { name: M.importFbiVenuesTab(2, 3) })).toBeInTheDocument();
+    await pickListboxOption(user, /domiciles sans salle.*PNM/, "Coubertin");
+    expect(screen.getByRole("tab", { name: M.importFbiVenuesTab(3, 3) })).toBeInTheDocument();
+  });
+
+  it("sans aucune salle ni domicile sans salle, l'onglet Salles n'existe pas", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2")]));
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    expect(screen.queryByRole("tab", { name: venuesTabName })).not.toBeInTheDocument();
+  });
+
+  it("sans aucune division, l'onglet Salles est le seul, ouvert d'office", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce({ ...analysisWithVenues([{ label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: null, neutral: false }]), divisions: [] });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    const tab = await screen.findByRole("tab", { name: M.importFbiVenuesTab(0, 1) });
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: /GYMNASE MATEO/ })).toBeInTheDocument();
+  });
+
+  it("depuis l'onglet Départemental, le reste à apparier se lit sans ouvrir l'onglet Salles", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      ...analysisWithVenues([{ label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: null, neutral: false }]),
+      divisions: [matchedDiv("DF2", "team-1")],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    expect(await screen.findByRole("tab", { name: /Départemental/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText(M.importFbiVenuesRemaining(1))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GYMNASE MATEO/ }), "le sélecteur reste dans son onglet").not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Importer" })).toHaveAccessibleDescription(M.importFbiVenueMissingReason);
+  });
+
+  it("sur l'onglet Salles lui-même, le message qui y renvoie disparaît ; il revient depuis une famille", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      ...analysisWithVenues([{ label: "GYMNASE MATEO", rowCount: 5, confirmedVenueId: null, suggestedVenueId: null, neutral: false }]),
+      divisions: [matchedDiv("DF2", "team-1")],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await openVenuesTab(user);
+    expect(screen.getByRole("button", { name: /GYMNASE MATEO/ }), "on est bien sur l'onglet Salles").toBeInTheDocument();
+    expect(screen.queryByText(M.importFbiVenuesRemaining(1))).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Départemental/ }));
+    expect(screen.getByText(M.importFbiVenuesRemaining(1))).toBeInTheDocument();
+  });
+
+  it("un aller-retour d'onglet garde les choix de salles, et l'import les envoie", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      ...analysisWithVenues([{ label: "SALLE ADVERSE", rowCount: 2, confirmedVenueId: null, suggestedVenueId: null, neutral: false }]),
+      divisions: [matchedDiv("DF2", "team-1")],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} venues={venueOptions} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await openVenuesTab(user);
+    await pickListboxOption(user, /SALLE ADVERSE/, "Coubertin");
+    await user.click(screen.getByRole("tab", { name: /Départemental/ }));
+    await openVenuesTab(user);
+    expect(screen.getByRole("button", { name: /SALLE ADVERSE/ })).toHaveTextContent("Coubertin");
+
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await waitFor(() => expect(importFbiFixtures).toHaveBeenCalledOnce());
+    expect(((importFbiFixtures.mock.calls as unknown[][])[0] ?? [])[3]).toEqual([{ label: "SALLE ADVERSE", venueId: "venue-coubertin" }]);
   });
 });

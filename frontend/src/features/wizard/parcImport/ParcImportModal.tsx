@@ -1,4 +1,4 @@
-import { AlertTriangle, Info, Link2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Link2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -16,6 +16,7 @@ import { StepRail, type StepRailState, type StepRailStep } from "@/shared/compon
 import { DAYS, dayLabelLongCap } from "@/shared/lib/days";
 import { groupTeamsByTier, type TeamLike, type TierLike, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { formatMinutes } from "@/shared/lib/time";
+import { cn } from "@/shared/lib/utils";
 
 import { usePriorityTiers, useWizardTeams } from "@/features/wizard/queries";
 
@@ -145,7 +146,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const importMut = useImportParc(clubId);
   // 3d — équipes COMPLÈTES + rangs du club, lus DANS la modale (sans changer ses props d'ouverture) :
   // le groupe « Toutes les équipes du club » du sélecteur d'équipe est rangé par rang.
-  const allTeams = (useWizardTeams().data ?? []) as TeamLike[];
+  const wizardTeams = useWizardTeams().data;
+  const allTeams = useMemo(() => (wizardTeams ?? []) as TeamLike[], [wizardTeams]);
   const tiers = (usePriorityTiers().data ?? []) as TierLike[];
 
   const prompt = useMemo(
@@ -154,7 +156,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
   );
 
   const [step, setCurrentStep] = useState<StepId>("prompt");
-  // Les étapes déjà ouvertes depuis la dernière analyse d'un parc collé. « Revalider » les conserve.
+  // Les étapes déjà ouvertes depuis la dernière analyse d'un parc collé. « Revérifier » les conserve.
   const [visitedSteps, setVisitedSteps] = useState<ReadonlySet<StepId>>(new Set());
   const setStep = (id: StepId): void => {
     setCurrentStep(id);
@@ -169,6 +171,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [decisions, setDecisions] = useState<Record<string, string>>({});
   // Lignes gardées des sections de CASES (créneaux / réservations / mutualisations), par `section:index`.
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  // Garder/Ignorer tranchés à la main : une revérification ne les défait pas, alors que le serveur peut
+  // décocher (ou recocher) de lui-même une ligne dont l'alerte naît (ou se lève).
+  // Ref : lue au retour de la vérification, elle voit aussi un geste fait pendant le vol.
+  const keepByHand = useRef<Record<string, boolean>>({});
   // Brouillons d'édition d'une case, par `section:index`.
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
   const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
@@ -186,8 +192,15 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [ctcDrafts, setCtcDrafts] = useState<Record<string, boolean>>({});
   const [ctcPartnerDrafts, setCtcPartnerDrafts] = useState<Record<string, string>>({});
   const [editingCase, setEditingCase] = useState<EditingCase | null>(null);
-  // Cases corrigées depuis la dernière analyse (clés `section:index`) → aperçu périmé (« Revalider »).
+  // Gestes qui changent le verdict du serveur depuis la dernière vérification (clés `section:index`) :
+  // tant qu'il en reste, « Revérifier » est proposé et « Importer » attend. Un geste défait à la main y reste.
   const [dirtyCases, setDirtyCases] = useState<Set<string>>(new Set());
+  // Les gestes faits pendant une vérification en vol (null hors vol) : elle ne les a pas vus, ils restent à
+  // vérifier à son retour, même sur une ligne déjà périmée au lancement.
+  const gesturesInFlight = useRef<Set<string> | null>(null);
+  // Une REVÉRIFICATION a échoué et aucun geste n'a suivi. Pas `analyze.isError` : ce drapeau vaut aussi pour
+  // une nouvelle analyse refusée à l'étape Coller, qui ne dit rien de la vérification.
+  const [verifyFailed, setVerifyFailed] = useState(false);
   const [result, setResult] = useState<ParcImportResult | null>(null);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -234,10 +247,16 @@ export function ParcImportModal(props: ParcImportModalProps) {
     return null !== parsed && Array.isArray(parsed.cases) ? parsed.cases : [];
   };
 
-  const applyAnalysis = (data: ParcAnalysis): void => {
+  /**
+   * `replay` = une revérification : le serveur rejoue les décisions mais rend ses verdicts de LECTURE,
+   * donc tout ce que le gestionnaire a tranché survit. Seule une NOUVELLE analyse repart de la lecture.
+   */
+  const applyAnalysis = (data: ParcAnalysis, replay: boolean): void => {
     setAnalysis(data);
     setResult(null);
-    setDirtyCases(new Set());
+    setDirtyCases(new Set(replay ? gesturesInFlight.current : []));
+    gesturesInFlight.current = null;
+    setVerifyFailed(false);
 
     const cases = parsedCasesOf(data.payload);
     setParc(data.payload ?? null);
@@ -300,24 +319,34 @@ export function ParcImportModal(props: ParcImportModalProps) {
         }
       }
     }
-    setDecisions(nextDecisions);
-    setChecked(nextChecked);
-    setSlotDrafts(nextSlotDrafts);
-    setCaseVenue(nextCaseVenue);
-    setGroupDrafts(nextGroupDrafts);
-    // D3 — la composition redéfinie repart de zéro à chaque (re)analyse (le serveur a déjà rejoué).
-    setTeamCompositionDrafts({});
-    setSessionDrafts(nextSessionDrafts);
-    setTierDrafts(nextTier);
-    setGenderDrafts(nextGender);
-    setCtcDrafts(nextCtc);
-    setCtcPartnerDrafts(nextCtcPartner);
+    const seededUnlessReplay = <V,>(seed: Record<string, V>) => (current: Record<string, V>): Record<string, V> => (replay ? { ...seed, ...current } : seed);
+    setDecisions(seededUnlessReplay(nextDecisions));
+    setChecked(replay ? { ...nextChecked, ...keepByHand.current } : nextChecked);
+    setSlotDrafts(seededUnlessReplay(nextSlotDrafts));
+    setCaseVenue(seededUnlessReplay(nextCaseVenue));
+    // Un nom de groupe vidé revient au nom lu : c'est déjà ce que l'import enverrait.
+    setGroupDrafts((current) => {
+      if (!replay) {
+        return nextGroupDrafts;
+      }
+      const typed = Object.entries(current).filter(([, name]) => "" !== name.trim());
+      return { ...nextGroupDrafts, ...Object.fromEntries(typed) };
+    });
+    setSessionDrafts(seededUnlessReplay(nextSessionDrafts));
+    setTierDrafts(seededUnlessReplay(nextTier));
+    setGenderDrafts(seededUnlessReplay(nextGender));
+    setCtcDrafts(seededUnlessReplay(nextCtc));
+    setCtcPartnerDrafts(seededUnlessReplay(nextCtcPartner));
+    if (!replay) {
+      keepByHand.current = {};
+      setTeamCompositionDrafts({});
+    }
   };
 
   const doAnalyze = (): void => {
     analyze.mutate(rawText, {
       onSuccess: (data) => {
-        applyAnalysis(data);
+        applyAnalysis(data, false);
         setVisitedSteps(new Set());
         setStep("equipes");
       },
@@ -409,12 +438,33 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   const decisionValue = (section: string, line: ParcAnalysisLine): string => decisions[keyOf(section, line.index)] ?? initialDecision(line);
 
+  const markStale = (key: string): void => {
+    gesturesInFlight.current?.add(key);
+    setVerifyFailed(false);
+    setDirtyCases((prev) => new Set(prev).add(key));
+  };
+
   const setDecision = (section: string, index: number, value: string): void => {
-    setDecisions((prev) => ({ ...prev, [keyOf(section, index)]: value }));
-    // D2 (incident ALAP) — changer une décision (p.ex. ignorer une équipe) PÉRIME l'aperçu : les
-    // alertes affichées datent de l'analyse précédente, d'où le bandeau « Revalider » (comme une
-    // correction de case). Une séance commune qui cite cette équipe ne bascule en alerte qu'au rejeu.
-    setDirtyCases((prev) => new Set(prev).add(keyOf(section, index)));
+    const key = keyOf(section, index);
+    const previous = decisions[key] ?? "";
+    setDecisions((prev) => ({ ...prev, [key]: value }));
+    // Le serveur ne regarde d'une décision que sa cochabilité, et seulement à l'étape Équipes : seule
+    // une équipe qui entre ou sort de l'import peut faire naître ou lever une alerte (au rejeu).
+    if ("equipes" !== section || isKeptDecision(previous) === isKeptDecision(value)) {
+      return;
+    }
+    // Trancher une ambiguë ne périme que sous une alerte « équipe ignorée », née du rejeu où elle partait
+    // décochée : sinon Importer resterait bloqué sans bouton. La ligne de réservation ne dit pas son équipe
+    // autrement que dans sa phrase : toute alerte de ce code compte, sans chercher celle qui cite la ligne.
+    if ("" === previous && !hasIgnoredTeamAlert(analysis)) {
+      return;
+    }
+    markStale(key);
+  };
+
+  const setKeep = (key: string, keep: boolean): void => {
+    setChecked((prev) => ({ ...prev, [key]: keep }));
+    keepByHand.current[key] = keep;
   };
 
   const setSessionDraft = (index: number, value: number): void =>
@@ -499,7 +549,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const blockedByLines = pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || pendingComposition > 0 || 0 === count;
 
   const doImport = (): void => {
-    if (null === analysis || blocked) {
+    if (null === analysis || blocked || dirty || analyzing) {
       return;
     }
     importMut.mutate({ payload: parc, decisions: buildDecisions() }, { onSuccess: setResult });
@@ -509,23 +559,15 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if (null === analysis) {
       return;
     }
-    // L'analyse rejouée rend le nom LU, sans appliquer la correction de groupe : le nom saisi survit
-    // ici. Une NOUVELLE analyse (`doAnalyze`) repart, elle, du nom lu.
-    const typedGroupNames = groupDrafts;
+    gesturesInFlight.current = new Set();
+    setVerifyFailed(false);
     analyze.mutate(
       { payload: parc, decisions: buildDecisions() },
       {
-        onSuccess: (data) => {
-          applyAnalysis(data);
-          setGroupDrafts((read) => {
-            const next = { ...read };
-            for (const key of Object.keys(read)) {
-              if ("" !== (typedGroupNames[key] ?? "").trim()) {
-                next[key] = typedGroupNames[key];
-              }
-            }
-            return next;
-          });
+        onSuccess: (data) => applyAnalysis(data, true),
+        onError: () => {
+          gesturesInFlight.current = null;
+          setVerifyFailed(true);
         },
       },
     );
@@ -642,6 +684,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
   // sans point en attente.
   const stepsToClear = STEP_ORDER.filter((id) => CONTENT_STEPS.has(id) && (!visitedSteps.has(id) || hasPending(id)));
   const blocked = blockedByLines || stepsToClear.length > 0;
+  const dirty = dirtyCases.size > 0;
+  const verifyState: VerifyState = analyzing ? "running" : !dirty ? "upToDate" : verifyFailed ? "failed" : "stale";
 
   const steps: StepRailStep<StepId>[] = STEP_ORDER.map((id) => ({
     id,
@@ -683,7 +727,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
               jour: draft?.jour ?? 1,
               debut: draft?.debut ?? "",
               duree: draft?.duree ?? 0,
-              libelle: line.libelle,
+              libelle: compositionLabel(teamCompositionDrafts[key], line, allTeams, analysis.sections.equipes ?? []),
               alerte: "alerte" === line.statut ? line.raison : null,
               mutual: "mutualisations" === section,
               // Le nom corrigé à l'étape Séances communes, repris tel quel à l'étape Réservations.
@@ -702,7 +746,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
       return { gridCases, gridVenues, ref };
     };
     return { creneauxGrid: build(["creneaux"]), reservationsGrid: build(["reservations", "mutualisations"]) };
-  }, [analysis, parc, slotDrafts, groupDrafts]);
+  }, [analysis, parc, slotDrafts, groupDrafts, teamCompositionDrafts, allTeams]);
 
   // Éditeur de case (Modal imbriquée) — brouillon transactionnel, clé stable `section:index`.
   let caseEditor: ReactNode = null;
@@ -724,7 +768,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
       <CaseEditor
         key={key}
         section={section}
-        libelle={line?.libelle ?? ""}
+        libelle={undefined !== line ? compositionLabel(teamCompositionDrafts[key], line, allTeams, analysis?.sections.equipes ?? []) : ""}
         draft={slotDrafts[key]}
         venueId={caseVenue[key] ?? ""}
         venueToCreateName={editorVenueToCreate}
@@ -732,12 +776,22 @@ export function ParcImportModal(props: ParcImportModalProps) {
         venues={venues}
         onCancel={() => setEditingCase(null)}
         onSave={(next) => {
+          const previousDraft = slotDrafts[key];
+          const previousKeep = checked[key] ?? line?.coche ?? true;
+          const slotChanged = next.draft.jour !== previousDraft?.jour || next.draft.debut !== previousDraft?.debut || next.draft.duree !== previousDraft?.duree;
+          const onlyVenueOrKeep = !slotChanged && !isMutualCase && (next.venueId !== (caseVenue[key] ?? "") || next.keep !== previousKeep);
           setSlotDrafts((prev) => ({ ...prev, [key]: next.draft }));
           if (!isMutualCase) {
             setCaseVenue((prev) => ({ ...prev, [key]: next.venueId }));
-            setChecked((prev) => ({ ...prev, [key]: next.keep }));
+            if (next.keep !== previousKeep) {
+              setKeep(key, next.keep);
+            }
           }
-          setDirtyCases((prev) => new Set(prev).add(key));
+          // Le gymnase d'une case et sa coche n'entrent pas dans le verdict du serveur : changés seuls, ils
+          // ne périment rien. Tout autre enregistrement de l'éditeur porte sur le créneau et périme.
+          if (!onlyVenueOrKeep) {
+            markStale(key);
+          }
           setEditingCase(null);
         }}
       />
@@ -816,15 +870,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
               </Button>
             ) : null}
             {CONTENT_STEPS.has(step) ? (
-              <Button
-                size="sm"
-                disabled={blocked || importing}
-                disabledReason={blocked ? T.importDisabledHint : undefined}
-                onClick={doImport}
-              >
-                {importing ? <Spinner className="size-4" /> : null}
-                <span className="tabular-nums">{T.importAction(count)}</span>
-              </Button>
+              <>
+                <VerifyButton state={verifyState} onVerify={doRevalidate} />
+                <Button
+                  size="sm"
+                  disabled={blocked || importing || dirty || analyzing}
+                  disabledReason={analyzing ? T.importVerifyingReason : dirty ? T.importStaleReason : blocked ? T.importDisabledHint : undefined}
+                  onClick={doImport}
+                >
+                  {importing ? <Spinner className="size-4" /> : null}
+                  <span className="tabular-nums">{T.importAction(count)}</span>
+                </Button>
+              </>
             ) : null}
           </>
         )
@@ -838,16 +895,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
           ) : (
             <div className="flex flex-col gap-4">
               {/* En-tête d'étape, focalisé au changement d'étape. */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
                 <h3 ref={headingRef} tabIndex={-1} className="text-sm font-semibold outline-none">
                   {CONTENT_STEPS.has(step) ? T.stepHeading(stepNumber, STEP_ORDER.length, stepTitle) : stepTitle}
                 </h3>
-                {CONTENT_STEPS.has(step) ? (
-                  <Button variant="ghost" size="sm" onClick={doRevalidate} disabled={analyzing}>
-                    {analyzing ? <Spinner className="size-4" /> : null}
-                    {T.revalidate}
-                  </Button>
-                ) : null}
               </div>
 
               {/* Erreur d'import — dans la modale, jamais un toast (le hook garde le toast à l'analyse).
@@ -878,9 +929,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
               {/* Un gymnase « à créer » naîtra sans adresse — à renseigner ensuite (étape Gymnases). */}
               {"gymnases" === step && hasVenueToCreate ? <NoticeBanner tone="accent">{T.venuesCreatedWithoutAddress}</NoticeBanner> : null}
 
-              {/* Aperçu périmé après une correction : le bouton « Revalider » est celui de l'en-tête d'étape. */}
-              {CONTENT_STEPS.has(step) && dirtyCases.size > 0 ? (
-                <NoticeBanner tone="accent">{T.staleHint(dirtyCases.size)}</NoticeBanner>
+              {/* Vérification périmée après un geste : le bouton « Revérifier » est au pied de la modale. */}
+              {CONTENT_STEPS.has(step) && dirty ? (
+                <NoticeBanner tone="warning">{T.staleHint(dirtyCases.size)}</NoticeBanner>
               ) : null}
 
               {"prompt" === step ? <PromptStep prompt={prompt} copied={copied} onCopy={copyPrompt} /> : null}
@@ -941,8 +992,11 @@ export function ParcImportModal(props: ParcImportModalProps) {
                   decisionValue={decisionValue}
                   onVenueChange={(index, v) => setCaseVenue((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
                   onGroupChange={(index, v) => setGroupDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
-                  onKeepChange={(index, keep) => setChecked((prev) => ({ ...prev, [keyOf("mutualisations", index)]: keep }))}
-                  onCompositionChange={(index, v) => setTeamCompositionDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }))}
+                  onKeepChange={(index, keep) => setKeep(keyOf("mutualisations", index), keep)}
+                  onCompositionChange={(index, v) => {
+                    setTeamCompositionDrafts((prev) => ({ ...prev, [keyOf("mutualisations", index)]: v }));
+                    markStale(keyOf("mutualisations", index));
+                  }}
                   onEditSlot={(index) => setEditingCase({ section: "mutualisations", index })}
                 />
               ) : null}
@@ -977,6 +1031,64 @@ export function ParcImportModal(props: ParcImportModalProps) {
       {caseEditor}
     </Modal>
   );
+}
+
+type VerifyState = "upToDate" | "stale" | "running" | "failed";
+
+/**
+ * Le bouton de vérification, au pied à côté d'« Importer » : il dit l'état de la vérification et n'agit
+ * que si elle est à refaire. L'état s'annonce à part (`role="status"`), le libellé seul ne le dirait pas.
+ */
+function VerifyButton({ state, onVerify }: { state: VerifyState; onVerify: () => void }) {
+  const status = { upToDate: T.verifyStatusUpToDate, stale: T.verifyStatusStale, running: T.verifyStatusRunning, failed: T.verifyStatusFailed }[state];
+  const toRedo = "stale" === state || "failed" === state;
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!toRedo}
+        className={cn("text-foreground", toRedo && "border-warning", "upToDate" === state && "border-success/50 disabled:cursor-default disabled:opacity-100")}
+        onClick={onVerify}
+      >
+        {/* Masqué : le nom du bouton reste son libellé, l'attente s'annonce par le status. */}
+        {"running" === state ? (
+          <span aria-hidden className="inline-flex">
+            <Spinner className="size-4" />
+          </span>
+        ) : null}
+        {"upToDate" === state ? <CheckCircle2 aria-hidden className="text-success" /> : null}
+        {toRedo ? <AlertTriangle aria-hidden className="text-warning" /> : null}
+        {"running" === state ? T.verifying : "upToDate" === state ? T.verifyUpToDate : T.verifyAction}
+      </Button>
+      <span role="status" className="sr-only">
+        {status}
+      </span>
+    </>
+  );
+}
+
+/**
+ * Présentation seule, aucune règle : ce que la ligne dit d'elle quand sa composition a été redéfinie
+ * (les noms des équipes choisies), sinon son libellé serveur. Le serveur garde la main à l'import.
+ */
+function compositionLabel(draft: string[] | undefined, line: ParcAnalysisLine, allTeams: TeamLike[], equipesLines: ParcAnalysisLine[]): string {
+  if (undefined === draft) {
+    return line.libelle;
+  }
+  const names = draft.map((id) => (id.startsWith("import:") ? equipesLines.find((l) => `import:${l.index}` === id)?.libelle : allTeams.find((t) => t.id === id)?.name));
+  const label = names.filter((name) => undefined !== name).join(" + ");
+  return "" !== label ? label : line.libelle;
+}
+
+/** Une décision qui fait entrer la ligne dans l'import (« Ignorer » et « à trancher » partent décochées). */
+function isKeptDecision(value: string): boolean {
+  return "" !== value && IGNORE !== value;
+}
+
+/** Une alerte « équipe ignorée » est affichée, à lever par une revérification (code machine, jamais la phrase). */
+function hasIgnoredTeamAlert(analysis: ParcAnalysis | null): boolean {
+  return ["mutualisations", "reservations"].some((section) => (analysis?.sections[section] ?? []).some((l) => "equipe_ignoree" === l.alerteCode));
 }
 
 /**
@@ -1484,6 +1596,7 @@ function MutualisationsStep({
           const keep = checked[key] ?? line.coche;
           const inAlert = "alerte" === line.statut;
           const groupName = shownGroupName(groupDrafts[key], line);
+          const label = compositionLabel(compositionDrafts[key], line, allTeams, equipesLines);
           const pos = line.position;
           // Finition 2a — sélecteur de gymnase pré-rempli : l'id résolu, ou l'option « <nom> (à créer) »
           // (valeur `VENUE_TO_CREATE`, affiche le nom lu sans porter d'id) pour un gymnase pas encore existant.
@@ -1492,8 +1605,13 @@ function MutualisationsStep({
             ...(null == line.gymnaseId && "" !== posGym ? [{ value: VENUE_TO_CREATE, label: T.gridVenueToCreate(posGym), swatch: null }] : []),
             ...venues.map((v) => ({ value: v.id, label: v.name, swatch: null })),
           ];
-          // D3 — composition : amorcée des équipes RÉSOLUES lues (id non null), ou le brouillon redéfini.
-          const readComposition = (line.equipes ?? []).map((e) => e.id).filter((id): id is string => null !== id);
+          // D3 — composition : amorcée des équipes lues, ou le brouillon redéfini. Une équipe sans id est
+          // une équipe à créer de ce run : elle s'y retrouve par son `import:<index>` (comme dans `teamOptions`).
+          const toCreateRef = (nom: string): string | undefined => {
+            const created = equipesLines.find((l) => l.libelle === nom && CREATE === decisionValue("equipes", l));
+            return undefined !== created ? `import:${created.index}` : undefined;
+          };
+          const readComposition = (line.equipes ?? []).map((e) => e.id ?? toCreateRef(e.nom)).filter((id): id is string => undefined !== id);
           const composition = compositionDrafts[key] ?? readComposition;
           const compositionTooFew = undefined !== compositionDrafts[key] && compositionDrafts[key].length < 2;
           return (
@@ -1502,7 +1620,7 @@ function MutualisationsStep({
                 <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
                 {/* Un groupe nommé ne montre que son nom : ses équipes se lisent dans le sélecteur.
                     E4 (essai fondateur 30/10) — une séance commune mise en « Ignorer » est barrée + grisée (D9 étendu). */}
-                <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{null === groupName || "" === groupName ? line.libelle : groupName}</span>
+                <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{null === groupName || "" === groupName ? label : groupName}</span>
                 {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}
                 {undefined !== pos ? <span className="text-xs text-muted-foreground">{`${dayLabelLongCap(pos.jour)} ${formatMinutes(minutesOfSlot(pos.debut))} · ${pos.gymnase}`}</span> : null}
               </div>
@@ -1516,7 +1634,7 @@ function MutualisationsStep({
               <div className="flex flex-wrap items-end gap-2">
                 <SegmentedControl
                   mode="single"
-                  label={T.mutualDecision(line.libelle)}
+                  label={T.mutualDecision(label)}
                   value={keep ? "keep" : "ignore"}
                   onValueChange={(v) => onKeepChange(line.index, "keep" === v)}
                   options={[
@@ -1530,7 +1648,7 @@ function MutualisationsStep({
                   <span className="text-xs text-muted-foreground">{T.sectionTitle("equipes")}</span>
                   <Listbox
                     mode="multiple"
-                    aria-label={T.teamsForGroup(line.libelle)}
+                    aria-label={T.teamsForGroup(label)}
                     wrapperClassName="w-56"
                     values={composition}
                     placeholder={(line.equipes ?? []).map((e) => e.nom).join(", ")}
@@ -1541,7 +1659,7 @@ function MutualisationsStep({
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">{T.venueForGroupVisible}</span>
                   <Listbox
-                    aria-label={T.venueForGroup(line.libelle)}
+                    aria-label={T.venueForGroup(label)}
                     wrapperClassName="w-56"
                     value={caseVenue[key] ?? ""}
                     onValueChange={(v) => onVenueChange(line.index, v)}
@@ -1549,7 +1667,7 @@ function MutualisationsStep({
                   />
                 </div>
                 <Input
-                  aria-label={T.groupLabel(line.libelle)}
+                  aria-label={T.groupLabel(label)}
                   placeholder={T.groupNamePlaceholder}
                   className="w-48"
                   value={groupDrafts[key] ?? ""}

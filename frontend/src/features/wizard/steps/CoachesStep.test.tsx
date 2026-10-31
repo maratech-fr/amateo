@@ -155,7 +155,7 @@ describe("CoachesStep — statut véhiculé", () => {
 });
 
 describe("CoachesStep — pastilles read-only (P4-178 : StatusPill accent, repli AA)", () => {
-  it("« Salarié » et le plafond préféré s'affichent SANS `text-accent` sur le texte (repli AA)", () => {
+  it("Salarié plein, plafond neutre, coach/adjoint/joueur distincts — jamais `text-accent` sur le texte", () => {
     coachesState.data = [coach({ id: "c1", firstName: "Léa", isEmployee: true, maxDaysOverride: 3 })];
     renderWithProviders(<CoachesStep />);
 

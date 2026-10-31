@@ -295,7 +295,7 @@ l'UUID d'une équipe **existante du club** (re-vérifiée tenant à l'écriture,
 que partout ailleurs — un UUID d'un autre club est refusé 422, rien écrit, NR gatant
 `ParcImportCorrectionTenantNR`, `docs/testing/blocking-tests.md`), soit `import:<index>` qui vise
 une ligne Équipes **gardée** de ce même run (créée à l'import) — jamais un gymnase ni une
-mutualisation. Rejouée par l'analyse (`/parc-import/analyze`, bouton « Revalider ») ET par
+mutualisation. Rejouée par l'analyse (`/parc-import/analyze`, bouton « Revérifier ») ET par
 l'import réel (mêmes règles) : les deux substituent les équipes **lues** par la composition
 **redéfinie**, puis RECOMPTENT `seances`/`seances_communes` depuis le nouvel ensemble
 (`ParcCaseDeriver::recomputeDerivedSessions`, pur) — une équipe ajoutée à la séance commune naît
@@ -557,25 +557,54 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    Partout dans l'aperçu : un bandeau `NoticeBanner` (D10) s'affiche si `fiabilite.bandeau` est
    vrai (« résultat peu fiable, vérifiez chaque ligne de près ») — **jamais bloquant** ; les
    `alertes` transverses (§1) s'affichent verbatim dans un second bandeau (D9) ; un gymnase naissant
-   porte « renseignez l'adresse ensuite ». Une correction (séances, créneau, gymnase, groupe,
-   composition) **ou** le changement d'une décision Équipes (ex. ignorer une équipe citée par une
-   séance commune — incident ALAP) périme l'aperçu (bandeau « Vous avez modifié N lignes : les
-   alertes affichées datent de l'analyse précédente », UN seul bouton « Revalider » (celui de l'en-tête d'étape ; le bandeau n'en porte pas) qui reposte
-   `{payload, decisions}` à `/parc-import/analyze` pour rejouer l'analyse avec les corrections —
-   §3) ; l'import reste possible SANS revalider — bloquent seulement un ambigu non tranché, une
+   porte « renseignez l'adresse ensuite ». Un geste qui change le verdict du serveur **périme la vérification** :
+   le bandeau (ton `warning`) dit « Vous avez modifié N lignes : revérifiez pour mettre à jour les alertes
+   et débloquer l'import », et **« Importer » est grisé tant que la vérification n'est pas à jour**
+   (`disabledReason` : « Revérifiez vos modifications avant d'importer. », ou « Vérification en cours. »
+   pendant l'appel) — l'import n'est plus possible SANS revérifier.
+
+   **Le bouton de vérification** vit au **pied de la modale, à côté d'« Importer »** (plus dans l'en-tête
+   d'étape), sur toute étape de contenu. Son libellé suit l'état : **« Vérifié »** (coche verte, inerte)
+   quand rien n'est périmé, **« Revérifier »** (pictogramme d'alerte, bordure `warning`) quand un geste
+   a périmé la vérification **ou** qu'une revérification a échoué (message « La vérification a échoué —
+   réessayez », le bouton reste actif), **« Vérification… »** pendant l'appel. L'état s'annonce à part
+   (`role="status"`). Revérifier reposte `{payload, decisions}` à `/parc-import/analyze`.
+
+   | Geste | Périme la vérification ? |
+   |---|---|
+   | Changer la **composition** d'un groupe (séance commune) | oui |
+   | Enregistrer l'**éditeur de créneau** avec un jour, un début ou une durée changé (toute case de mutualisation comprise) | oui |
+   | Éditeur de créneau : **gymnase seul** ou **coche seule** (créneau et réservation) | non — ni l'un ni l'autre n'entre dans le verdict |
+   | Décision Équipes qui fait **entrer ou sortir** une équipe de l'import (Créer/Apparier ⇄ Ignorer) | oui |
+   | Décision Équipes entre deux décisions qui gardent la ligne (p. ex. Créer → Apparier) | non |
+   | Trancher une ambiguë (de « à trancher » vers une décision) | non, **sauf** si une alerte « équipe ignorée » est affichée (`alerteCode` `equipe_ignoree`, mutualisations ou réservations) : elle partait décochée au rejeu, l'import resterait bloqué sans bouton |
+   | Décision d'une autre section que Équipes | non |
+   | Garder/Ignorer d'une séance commune, nom du groupe, gymnase d'une séance commune, séances, genre, niveau, CTC | non |
+
+   Un geste **fait pendant une vérification en vol** reste à vérifier à son retour (la vérification
+   ne l'a pas vu), même sur une ligne déjà périmée au lancement. Un geste défait à la main reste
+   compté jusqu'à la revérification. **Revérifier conserve TOUT ce que le gestionnaire a tranché** :
+   les décisions, les corrections de case, les gymnases, les genres/niveaux/CTC, les séances, les
+   coches Garder/Ignorer faites à la main (le serveur peut décocher ou recocher de lui-même une ligne
+   dont l'alerte naît ou se lève — le geste manuel l'emporte) et les noms de groupe saisis (un nom
+   vidé revient au nom lu). Seule une **nouvelle analyse** (étape Coller) repart de la lecture. Le
+   **libellé d'un groupe suit la composition redéfinie** (les noms des équipes choisies, joints par
+   « + ») dans la carte, la grille, l'éditeur de case et les noms accessibles ; présentation seule,
+   le serveur garde la main à l'import. Les équipes « à créer » de ce run s'y retrouvent par leur
+   `import:<index>`. Bloquent « Importer » : un ambigu non tranché, une
    création sans genre tranché (point 3, refonte PR2), une alerte « équipe ignorée/introuvable »
    cochée (points 6-7, incident ALAP) ou une composition à moins de deux équipes, ou aucune ligne
-   cochée.
+   cochée, **et** une vérification périmée ou en cours.
 
    **Règle des étapes** (finitions PR D, 2026-10-30) : une étape de contenu ne passe au vert qu'APRÈS
-   avoir été visitée (même vide) et sans point en attente ; « Revalider » conserve les étapes déjà
+   avoir été visitée (même vide) et sans point en attente ; « Revérifier » conserve les étapes déjà
    visitées. Une ligne mise en « Ignorer » n'attend plus rien (son alerte passe au vert sans geste) ;
    une alerte gardée (cochée / « Garder ») bloque, et tant qu'une étape n'est pas vue ses alertes
    restent signalées. « Importer » n'est actif que si toutes les étapes de contenu sont vertes. Le nom
    d'un groupe corrigé à l'étape Séances communes est repris à l'étape Réservations. Dans les grilles
    de cases, la pause 12:00-14:00 est teintée (décor) et l'infobulle d'une case dit « Nom · début →
    fin » ; un groupe nommé ne montre que son nom dans la case et la carte (ses équipes restent dans
-   l'infobulle et le sélecteur), et « Revalider » conserve le nom saisi (2026-10-31).
+   l'infobulle et le sélecteur), et « Revérifier » conserve le nom saisi (2026-10-31).
 
    **Pied de modale** (incident ALAP) : Précédent/Suivant **groupés à gauche**, l'action primaire
    (Analyser/Importer) à droite — plus de bouton TEXTE « Fermer » (la croix de l'en-tête suffit).

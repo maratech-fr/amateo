@@ -882,4 +882,15 @@ describe("AdminDashboardPage", () => {
       expect(mockSession).toHaveBeenCalledOnce();
     });
   });
+
+  // D3 — la console ouvre sur son nom et son geste, sans eyebrow ni description de présentation.
+  it("l'en-tête se réduit au titre de la console et à « Actualiser »", async () => {
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+
+    expect(ADMIN_DASHBOARD_TEXTS.headerTitle).toBe("Console d'administration");
+    expect(await screen.findByRole("heading", { level: 1, name: ADMIN_DASHBOARD_TEXTS.headerTitle })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.refresh })).toBeInTheDocument();
+    expect(ADMIN_DASHBOARD_TEXTS, "plus d'eyebrow").not.toHaveProperty("headerEyebrow");
+    expect(ADMIN_DASHBOARD_TEXTS, "plus de description").not.toHaveProperty("headerDescription");
+  });
 });
