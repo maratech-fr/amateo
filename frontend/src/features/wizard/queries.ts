@@ -223,7 +223,13 @@ export function useCreateVenue() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: VenuePayload) => wizardApi.createVenue(body),
-    onSuccess: () => Promise.all([invalidateEverywhere(queryClient, "venues"), invalidateVenueGeoCheck(queryClient)]).then(() => undefined),
+    // L'ajout est acquis au POST : la promesse d'invalidation n'est PAS renvoyée, sinon le rappel de
+    // `VenuesStep` (vide le champ, referme l'accordéon) n'arriverait qu'après le refetch, et effacerait
+    // le gymnase suivant déjà en cours de saisie.
+    onSuccess: () => {
+      void invalidateEverywhere(queryClient, "venues");
+      void invalidateVenueGeoCheck(queryClient);
+    },
   });
 }
 

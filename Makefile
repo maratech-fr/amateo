@@ -227,7 +227,7 @@ epreuve-down: ## Arrête la stack d'épreuve et la libère (volumes gardés)
 	@wt="$$($(EPREUVE_OCCUPANT))"; [ -n "$$wt" ] || { echo "stack d'épreuve déjà libre"; exit 0; }; \
 	base="$$wt"; [ -f "$$base/docker-compose.yml" ] || base='$(STACK_ROOT)'; \
 	[ -f "$$base/.env" ] || cp "$$base/.env.epreuve.dist" "$$base/.env"; \
-	docker compose -p amateo-epreuve --env-file "$$base/.env" -f "$$base/docker-compose.yml" down --remove-orphans; \
+	docker compose -p amateo-epreuve --env-file "$$base/.env" -f "$$base/docker-compose.yml" --profile dev down --remove-orphans; \
 	rm -f "$$wt/.env"; rm -f "$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --absolute-git-dir 2>/dev/null)/amateo-epreuve-mounted"
 
 epreuve-destroy: ## Détruit la stack d'épreuve, volumes compris (WT=… nettoie aussi ce worktree)
@@ -235,7 +235,7 @@ epreuve-destroy: ## Détruit la stack d'épreuve, volumes compris (WT=… nettoi
 	if [ -n "$$wt" ] && [ -n "$$given" ] && [ "$$wt" != "$$given" ]; then echo "stack d'épreuve occupée par $$wt, pas par $$given" >&2; exit 1; fi; \
 	wt="$${wt:-$$given}"; base="$${wt:-$(STACK_ROOT)}"; [ -f "$$base/docker-compose.yml" ] || base='$(STACK_ROOT)'; \
 	had_env=1; [ -f "$$base/.env" ] || { had_env=0; cp "$$base/.env.epreuve.dist" "$$base/.env"; }; \
-	docker compose -p amateo-epreuve --env-file "$$base/.env" -f "$$base/docker-compose.yml" down --remove-orphans --volumes; \
+	docker compose -p amateo-epreuve --env-file "$$base/.env" -f "$$base/docker-compose.yml" --profile dev down --remove-orphans --volumes; \
 	[ "$$had_env" = 1 ] || rm -f "$$base/.env"; \
 	if [ -n "$$wt" ]; then rm -f "$$wt/.env"; rm -f "$$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$$wt" rev-parse --absolute-git-dir 2>/dev/null)/amateo-epreuve-mounted"; fi
 
