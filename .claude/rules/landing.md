@@ -31,6 +31,7 @@ paths:
   sans slash final) — consommée par `system-pages/503.html`/`maintenance.html` pour pointer leur
   logotype cliquable vers la page de vente plutôt que vers l'app morte ; point unique, un
   changement de domaine ne touche que cette ligne.
+  **Exception P4-391 :** chaque `<img data-brand-logo>` porte aussi `src="assets/brand/mark.svg"` en dur, pour le rendu sans JS ; changer `logo` dans `config.js` impose donc de le changer aussi dans le HTML.
   **Le logo suit le même patron (P5-25, 2026-09-25)** : `config.js` clé `logo` (source définitive
   du handoff marque, `assets/brand/`) injecté par script sur chaque `[data-brand-logo]` — jamais un
   chemin d'asset en dur dans `index.html`. `config.js` est chargé depuis `index.html` avec
