@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use Dom\XMLDocument;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -50,15 +51,31 @@ final class IndexationPolicyTest extends TestCase
         }
     }
 
-    public function testLandingRobotsReferencesNoSitemap(): void
+    /**
+     * P4-391 — promise: the landing robots.txt hands crawlers a sitemap that exists
+     * and lists both public pages (a dangling Sitemap: line would point at a 404).
+     */
+    public function testLandingRobotsAdvertisesAnExistingSitemap(): void
     {
-        // Decision: no sitemap exists, so none is advertised (a dangling
-        // Sitemap: line would point crawlers at a 404).
-        self::assertDoesNotMatchRegularExpression(
-            '/^\s*Sitemap:/mi',
+        $matched = preg_match('/^\s*siteUrl:\s*"([^"]+)"/m', $this->read('/landing/config.js'), $config);
+        self::assertSame(1, $matched, 'siteUrl not found in landing/config.js.');
+        $siteUrl = $config[1];
+
+        self::assertMatchesRegularExpression(
+            '#^\s*Sitemap:\s*' . preg_quote($siteUrl, '#') . '/sitemap\.xml\s*$#mi',
             $this->read('/landing/robots.txt'),
-            'No sitemap exists — the landing robots.txt must not reference one.',
+            'The landing robots.txt must advertise siteUrl/sitemap.xml.',
         );
+
+        // XMLDocument throws on malformed XML: this line IS the "parsable" check.
+        $sitemap = XMLDocument::createFromString($this->read('/landing/sitemap.xml'));
+        $locations = [];
+        foreach ($sitemap->getElementsByTagName('loc') as $location) {
+            $locations[] = trim((string) $location->textContent);
+        }
+
+        self::assertContains($siteUrl . '/', $locations);
+        self::assertContains($siteUrl . '/mentions-legales.html', $locations);
     }
 
     public function testAppRobotsForbidsCrawlingEntirely(): void

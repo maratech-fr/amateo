@@ -16,15 +16,22 @@ paths:
 - **Aucun lien avec `frontend/`** — pas d'import de composant, pas de CSS partagé, pas de brique
   commune. Les deux zones se ressemblent par **convention**, jamais par dépendance. Dupliquer une
   couleur ici est le comportement VOULU.
-- **Marque, liens, coordonnées et logo vivent dans `config.js` SEUL** — jamais en dur dans
-  `index.html`. Le nom commercial **est tranché depuis le 2026-08-15** (produit **Amateo**, éditeur
-  **Maratech**) et `config.js` est recalé dessus ; la règle du point unique reste, elle : c'est
-  elle qui a rendu le renommage gratuit, et c'est elle qui rendra gratuit un changement de domaine.
+- **La marque s'écrit EN HTML ; liens, coordonnées et logo vivent dans `config.js`** (P4-391,
+  2026-10-31, remplace « config.js SEUL »). Un robot qui n'exécute pas le JS (moteur, aperçu de
+  messagerie, IA) ne doit jamais lire « … » : `<title>`, `og:title`, `.brand`, `aria-label`,
+  `<h1>` et JSON-LD portent le nom en clair dans le HTML servi, et AUCUN script ne réécrit plus
+  la marque ni le titre. `config.js` reste la source de ce que les SCRIPTS consomment (mailto de
+  démo, liens `appUrl`, logo, pages `system-pages/`). Le nom commercial **est tranché depuis le
+  2026-08-15** (produit **Amateo**, éditeur **Maratech**). `LandingDiscoverabilityTest` lie les
+  deux côtés (HTML ⇄ `config.js` : `brand`, `editor`, `siteUrl`) — **renommer = changer
+  `config.js` ET `grep -rn "Amateo" landing/ system-pages/`** (checklist de renommage) ; le test
+  rougit sur toute dérive.
   ⚠ `appUrl` s'écrit **sans slash final** — les CTA concatènent (`appUrl + "/register"`).
   **Clé `siteUrl` (P4-302, 2026-10-05)** : l'URL de la vitrine elle-même (domaine nu, même règle
   sans slash final) — consommée par `system-pages/503.html`/`maintenance.html` pour pointer leur
   logotype cliquable vers la page de vente plutôt que vers l'app morte ; point unique, un
   changement de domaine ne touche que cette ligne.
+  **Exception P4-391 :** chaque `<img data-brand-logo>` porte aussi `src="assets/brand/mark.svg"` en dur, pour le rendu sans JS ; changer `logo` dans `config.js` impose donc de le changer aussi dans le HTML.
   **Le logo suit le même patron (P5-25, 2026-09-25)** : `config.js` clé `logo` (source définitive
   du handoff marque, `assets/brand/`) injecté par script sur chaque `[data-brand-logo]` — jamais un
   chemin d'asset en dur dans `index.html`. `config.js` est chargé depuis `index.html` avec
@@ -33,7 +40,7 @@ paths:
   l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
   **Le logotype recopie désormais le patron `BrandMark` de l'app (P4-274, 2026-09-29)** : `logo`
   pointe `assets/brand/mark.svg` (les trois arcs SEULS, sans le disque blanc du favicon
-  `icon.svg`) — un mark thème-neutre — et le MOT (`brand`, en minuscules) est rendu en TEXTE à la
+  `icon.svg`) — un mark thème-neutre — et le MOT (la marque, écrite dans le HTML, en minuscules par CSS) est rendu en TEXTE à la
   couleur du thème courant (`.logo-word`, `color: var(--ink)`), un seul rendu clair/sombre ; repli
   défensif inchangé, si l'icône manque/échoue seul le mot reste (marque toujours lisible).
 - **Le fond d'écran est un décor CSS, PAS une clé `config.js`** (P5-16, 2026-09-25) :
@@ -42,24 +49,27 @@ paths:
   précédente), un décor visuel n'a pas besoin d'indirection : il ne change jamais par club ni par
   domaine. Détail (opacité, purge C2PA, parité avec l'app) :
   `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ».
-- **`og:url`/`og:image` (carte de partage) sont des URL ABSOLUES en dur dans `index.html` et
-  `mentions-legales.html` (P5-24, 2026-09-29)** — même exception que le fond d'écran ci-dessus,
-  pour une raison différente : un crawler de messagerie/réseau social qui construit l'aperçu
-  Open Graph ne charge pas `config.js`, il **n'exécute pas de JS** — une valeur injectée par script
-  n'existerait donc jamais pour lui. `og:image` pointe `assets/brand/og.png` (source versionnée
-  `scripts/brand-og/`, README de régénération à côté — piège du cache immuable : renommer le
-  fichier à toute retouche visuelle). Détail : `specs/courantes/identite-visuelle-produit.md`
-  § « Ce qui reste à venir ».
-- **Balisage JSON-LD `schema.org` (`<script type="application/ld+json" data-brand-jsonld>` dans
-  `index.html`, 2026-10-06)** : INJECTÉ par script depuis `config.js` (`brand`/`editor`/
-  `siteUrl`/`logo`) — un graphe `SoftwareApplication` (le produit) + `Organization` (l'éditeur),
-  **jamais la marque en littéral dans le balisage**, même convention que le titre/`og:title`
-  ci-dessus. La description reprend la `<meta name="description">` de la page (point unique, pas
-  de recopie). `offers` est **omis volontairement** : seul le palier Découverte est public
-  (gratuit), les paliers payants restent « sur demande » — inexprimable proprement en une
-  offre/fourchette tant que leur prix n'est pas public. `mentions-legales.html` n'a pas ce bloc
-  (page sans offre produit) ; elle porte en revanche son propre `og:title` (« Mentions légales »,
-  cohérent avec son `<title>`) au lieu de recopier celui de l'accueil.
+- **Exceptions « domaine en dur » (P5-24, étendues par P4-391)** : `og:url`/`og:image`,
+  `<link rel="canonical">`, le JSON-LD, `sitemap.xml` et `robots.txt` (ligne `Sitemap:`) portent
+  des URL ABSOLUES en dur (`https://amateo.app/…`) — un crawler (messagerie, réseau social,
+  moteur) ne charge pas `config.js` et n'exécute pas de JS : une valeur injectée n'existerait
+  jamais pour lui. Le titre et `og:title`/`og:description` portent aussi la marque en clair
+  (« Amateo — … »). Un changement de domaine touche donc ces fichiers EN PLUS de `siteUrl` ;
+  `LandingDiscoverabilityTest` (canonical ⇄ `siteUrl`, URL absolues limitées à nos hôtes et aux
+  vocabulaires schema.org/sitemaps.org) et `IndexationPolicyTest` (`Sitemap:` ⇄ `siteUrl`,
+  sitemap parsable listant les deux pages) le rendent mécanique. `og:image` pointe
+  `assets/brand/og.png` (source versionnée `scripts/brand-og/`, README de régénération à côté —
+  piège du cache immuable : renommer le fichier à toute retouche visuelle). Détail :
+  `specs/courantes/identite-visuelle-produit.md` § « Ce qui reste à venir ».
+- **Balisage JSON-LD `schema.org` (`<script type="application/ld+json">` dans `index.html`)** :
+  **STATIQUE, écrit dans le HTML** depuis P4-391 (il était injecté par script depuis `config.js`
+  avant, donc invisible à un robot sans JS) — un graphe `SoftwareApplication` (le produit) +
+  `Organization` (l'éditeur). Sa description recopie la `<meta name="description">` (garde :
+  `LandingDiscoverabilityTest`). `offers` est **omis volontairement** : seul le palier Découverte
+  est public (gratuit), les paliers payants restent « sur demande » — inexprimable proprement en
+  une offre/fourchette tant que leur prix n'est pas public. `mentions-legales.html` n'a pas ce
+  bloc (page sans offre produit) ; elle porte son propre `og:title` (« Amateo — Mentions
+  légales », cohérent avec son `<title>`).
 - **Thème AU CHOIX, clair par défaut (P4-274, 2026-09-29)** : un mini-script en tête de `<head>`
   (avant le `<style>`, anti-flash) pose `data-theme="dark"` sur `<html>` depuis `localStorage.theme`
   (choix explicite du visiteur) sinon `prefers-color-scheme`, enveloppé (navigation privée,
@@ -140,9 +150,13 @@ paths:
   L'instance Umami vit dans la stack prod (`docker-compose.prod.yml`, `docs/ops/prod-stack.md` §
   Mesure d'audience, runbook `deploy.md` §1.11). **Vitrine seulement** — jamais l'app (volet « app »
   de P4-276 encore ouvert en roadmap).
-- **Aucun job CI ne couvre `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part) —
-  la seule preuve d'une passe (design, contraste, rendu) est un axe joué **à la main** dans un
-  vrai navigateur, captures à l'appui dans `captures/` (racine du dépôt, gitignoré).
+- **Aucun job CI dédié à `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part, et
+  ni `LandingDiscoverabilityTest` ni `IndexationPolicyTest` ne sont des steps du job
+  `blocking-tests` : ils tournent dans `backend-tests`). Ces deux gardes **statiques** vivent dans
+  `backend/tests/` (lecture des fichiers suivis, HTML parsé sans exécuter ses scripts) et couvrent
+  le référencement ; la seule preuve d'une passe de design, de contraste ou de rendu reste un
+  axe joué **à la main** dans un vrai navigateur, captures à l'appui dans `captures/` (racine du
+  dépôt, gitignoré).
 - **Une capture d'écran de l'app pour la vitrine s'exige sur le RÉSULTAT, pas sur une méthode
   unique** : (1) l'en-tête porte « Démo Basket Club », jamais un club réel ; (2) **aucune personne
   RÉELLE** — un nom de démo manifestement générique (ex. « Camille Durand ») est admis, remplacé

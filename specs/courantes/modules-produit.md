@@ -215,7 +215,8 @@ remplie : son nom, ses couleurs, son logo, et même les équipes qu'il a engagé
 Formulations à réutiliser telles quelles pour la page de vente et les scripts de démo — recopiées,
 jamais reformulées :
 
-- « Le planning de votre club, sans le casse-tête. »
+- « Le planning de votre club de basket, sans le casse-tête. » (h1 de la vitrine depuis P4-391 ;
+  l'accroche des e-mails garde la forme sans « basket »)
 - « Toutes tes contraintes en sécurité. Ton planning en minutes. »
 - « Fini le planning refait 10 fois sur Excel. »
 - « Aujourd'hui il doit penser à tout sans rien oublier. »
