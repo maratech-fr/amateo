@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\Entity\Club;
+use App\Entity\Coach;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -14,12 +15,14 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Exception\EngineTimeoutException;
 use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
@@ -225,6 +228,48 @@ final class SlotMoveVerdictTest extends KernelTestCase
         $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
         self::assertInstanceOf(Schedule::class, $schedule);
         self::assertTrue($schedule->isManuallyEditedSinceGeneration(), 'un déplacement accepté rend le score affiché périmé');
+    }
+
+    /** Après un déplacement, plus de nom périmé : rien n'impose plus B, le coach stocké redevient le premier. */
+    public function testAMoveRecomputesTheStoredCoach(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        $coachA = $this->seedMainCoach($ctx, $slot->getTeamId(), 'Alice');
+        $coachB = $this->seedMainCoach($ctx, $slot->getTeamId(), 'Bruno');
+        $slot->setCoachId($coachB);
+        $this->em->flush();
+
+        $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])))
+            ->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+        self::assertSame($coachA, $reloaded->getCoachId());
+    }
+
+    /** À l'arrivée, le premier coach est pris ailleurs : le second est imposé, et le coach stocké le dit. */
+    public function testAMoveStoresTheCoachImposedAtTheDestination(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        $coachA = $this->seedMainCoach($ctx, $slot->getTeamId(), 'Alice');
+        $coachB = $this->seedMainCoach($ctx, $slot->getTeamId(), 'Bruno');
+        $slot->setCoachId($coachA);
+        $occupant = $this->seedOccupant($ctx, 4, '20:00', $ctx['venue1']);
+        $this->em->persist((new TeamCoach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($occupant->getTeamId())->setCoachId($coachA)->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+
+        $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])))
+            ->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+        self::assertSame($coachB, $reloaded->getCoachId());
     }
 
     /** La baseline envoyée au moteur NE contient PAS la source (sinon l'équipe se heurte à elle-même). */
@@ -718,6 +763,20 @@ final class SlotMoveVerdictTest extends KernelTestCase
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $ctx
+     */
+    private function seedMainCoach(array $ctx, string $teamId, string $firstName): string
+    {
+        $coach = (new Coach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setFirstName($firstName)->setLastName('Test');
+        $this->em->persist($coach);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($teamId)->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+
+        return $coach->getId();
     }
 
     /**

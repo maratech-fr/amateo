@@ -12,7 +12,8 @@ sous-module frère — closures/targeting importent CE module, jamais l'inverse.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from ..model import _time_to_minutes
@@ -67,6 +68,70 @@ def case_has_available_coach(
     CET ENSEMBLE d'équipes ? On prend l'UNION des coachs requis des équipes puis on applique
     ``available_coach_exists``. Union vide ⇒ ``True`` (aucune exigence de coach sur cette case)."""
     return available_coach_exists(required_coaches_of(team_ids, team_coach_map), day, start, coach_unavailability)
+
+
+@dataclass(frozen=True)
+class HoldSession:
+    """Une séance à tenir : assez pour dire si deux tenues d'un même coach sont incompatibles."""
+
+    id: str
+    team_id: str
+    venue_id: str
+    day: int
+    start: int
+    end: int
+
+
+def holds_collide(a: HoldSession, b: HoldSession, *, same_team_collides: bool = False) -> bool:
+    """Un même coach ne tient pas ces deux séances : elles se chevauchent dans deux gymnases (D-14,
+    intervalles demi-ouverts). La même équipe deux fois est un autre sujet, sauf pour la pose, qui
+    oppose ces deux variables comme n'importe quelles autres (``same_team_collides``)."""
+    if a.day != b.day or a.venue_id == b.venue_id or not (a.start < b.end and b.start < a.end):
+        return False
+    return same_team_collides or a.team_id != b.team_id
+
+
+def assign_holders(
+    sessions: Sequence[HoldSession],
+    candidates: Mapping[str, Sequence[str]],
+    *,
+    same_team_collides: bool = False,
+) -> dict[str, str] | None:
+    """Séance → coach qui la tient, ou ``None`` si au moins une séance n'a personne. Séances dans
+    l'ordre donné, candidats dans l'ordre des listes, retour arrière : la PREMIÈRE solution, donc une
+    réponse déterministe. Même algorithme que ``holdersFor`` (détecteur PHP et miroir TS)."""
+    assigned: dict[str, str] = {}
+
+    def _assign(group: Sequence[HoldSession], index: int) -> bool:
+        if index == len(group):
+            return True
+        session = group[index]
+        for coach_id in candidates.get(session.id, ()):
+            if any(
+                assigned.get(other.id) == coach_id
+                and holds_collide(session, other, same_team_collides=same_team_collides)
+                for other in group[:index]
+            ):
+                continue
+            assigned[session.id] = coach_id
+            if _assign(group, index + 1):
+                return True
+            del assigned[session.id]
+        return False
+
+    # Grappe par grappe : le retour arrière ne repart que dans les séances qui peuvent se gêner, et la
+    # première solution reste la même que sur la liste entière.
+    pending = list(sessions)
+    while pending:
+        group = [pending.pop(0)]
+        for session in group:
+            linked = [other for other in pending if holds_collide(session, other, same_team_collides=True)]
+            group.extend(linked)
+            pending = [other for other in pending if other not in linked]
+        group.sort(key=sessions.index)
+        if not _assign(group, 0):
+            return None
+    return assigned
 
 
 def case_day_start(slot_id: str | None) -> tuple[int | None, int | None]:

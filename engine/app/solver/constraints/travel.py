@@ -37,7 +37,7 @@ posés). Son compteur dédié est ``HardConstraintStats.travel_time``.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from typing import Any
 
 from ..compromise import FAMILY_TRAVEL, CompromiseTermInfo
@@ -47,10 +47,12 @@ from .common import (
     AssignmentVariable,
     BoolVarLike,
     _assume,
+    _coach_presence_literal,
     _enforce_closure,
     _get,
     _intervals_overlap,
     _late_arrival_relay_opens,
+    _lock_hold,
     _source_key,
 )
 from .targeting import team_link_placements_by_team
@@ -285,6 +287,7 @@ def iter_travel_pairs_from_placements(
     team_coach_map: Mapping[str, list[str]] | None,
     matrix: Mapping[frozenset[str], tuple[int | None, int | None]],
     default_minutes: int,
+    coach_view: Callable[[str, str, TravelPlacement], TravelPlacement | None] | None = None,
 ) -> Iterator[tuple[str, int, int, TravelPlacement, TravelPlacement]]:
     """Le CŒUR géométrique de ``_iter_travel_pairs``, à partir de placements DÉJÀ résolus
     (``team → [TravelPlacement]``). SOURCE UNIQUE du prédicat « battement / barème » (résorbe
@@ -298,7 +301,11 @@ def iter_travel_pairs_from_placements(
     for coach_id, team_ids in _coach_teams(team_coach_map).items():
         gathered: list[TravelPlacement] = []
         for team_id in team_ids:
-            gathered.extend(placements_by_team.get(team_id, []))
+            for placement in placements_by_team.get(team_id, []):
+                # ``coach_view`` : le trajet ne vaut que pour celui qui TIENT la séance.
+                seen_by_coach = placement if coach_view is None else coach_view(coach_id, team_id, placement)
+                if seen_by_coach is not None:
+                    gathered.append(seen_by_coach)
         ordered = _sorted_placements(gathered)
         driving = vehicled.get(coach_id, False)
         for i in range(len(ordered)):
@@ -338,6 +345,7 @@ def _iter_travel_pairs(
     team_coach_map: Mapping[str, list[str]] | None,
     matrix: Mapping[frozenset[str], tuple[int | None, int | None]],
     default_minutes: int,
+    model: Any = None,
 ) -> Iterator[tuple[str, int, int, TravelPlacement, TravelPlacement]]:
     """Résout les placements depuis les variables du modèle (``assignments`` + ``locked_slots``)
     puis délègue au CŒUR géométrique ``iter_travel_pairs_from_placements``. Enveloppe consommée par
@@ -350,7 +358,27 @@ def _iter_travel_pairs(
         team_coach_map=team_coach_map,
         matrix=matrix,
         default_minutes=default_minutes,
+        coach_view=None if model is None else _holder_view(model),
     )
+
+
+def _holder_view(model: Any) -> Callable[[str, str, TravelPlacement], TravelPlacement | None]:
+    """La place d'une séance vue par un coach : sa littérale de tenue, ``None`` s'il ne peut pas la
+    tenir. Un verrou à un seul coach reste une constante, comme une séance sans tenue séparée."""
+
+    def _view(coach_id: str, team_id: str, placement: TravelPlacement) -> TravelPlacement | None:
+        start, end, day, venue, var = placement
+        literal: BoolVarLike | None
+        if var is None:
+            hold = _lock_hold(model, team_id, venue, day, start, end)
+            if hold is None:
+                return placement
+            literal = hold["vars"].get(coach_id)
+        else:
+            literal = _coach_presence_literal(model, var, coach_id)
+        return None if literal is None else (start, end, day, venue, literal)
+
+    return _view
 
 
 def _both_placed_literal(model: Any, pa: TravelPlacement, pb: TravelPlacement, name: str) -> BoolVarLike | None:
@@ -411,6 +439,7 @@ def add_travel_time_hard_constraints(
         team_coach_map=team_coach_map,
         matrix=matrix,
         default_minutes=default_minutes,
+        model=model,
     ):
         if gap >= required_gap(barometer, tolerance_minutes):
             continue
@@ -473,6 +502,7 @@ def add_travel_time_penalty(
         team_coach_map=team_coach_map,
         matrix=matrix,
         default_minutes=default_minutes,
+        model=model,
     ):
         if gap >= required_gap(barometer, tolerance_minutes):
             continue
@@ -538,6 +568,7 @@ def add_travel_departage_penalty(
         team_coach_map=team_coach_map,
         matrix=matrix,
         default_minutes=default_minutes,
+        model=model,
     ):
         literal = _both_placed_literal(model, pa, pb, f"travel_dep_{traveler_key}_{index}")
         if literal is None:

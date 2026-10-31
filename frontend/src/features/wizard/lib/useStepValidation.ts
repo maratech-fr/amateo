@@ -344,6 +344,11 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
           : `créneau partagé (${s.capacity} places) sans réservation — le système associera les équipes lui-même. Pour choisir lesquelles, réservez-les (étape Contraintes, onglet Réserver).`,
     }));
 
+    // La mention douce du serveur (« U15 tenue par B ») : information grise, jamais une alerte.
+    (constraintValidation?.notices ?? []).forEach((notice) => {
+      notices.push({ key: `hold-${notice.place}-${notice.message}`, tone: "muted", place: notice.place, message: notice.message });
+    });
+
     // Les avertissements du serveur — une contrainte écartée du payload parce qu'elle
     // nomme un gymnase désactivé. ⚠ LUS HORS du `if (!valid)` ci-dessus : ils n'invalident
     // rien (règle #8), donc ils arrivent précisément avec `valid: true`. Pas de

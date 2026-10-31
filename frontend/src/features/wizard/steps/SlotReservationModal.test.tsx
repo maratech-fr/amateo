@@ -163,6 +163,45 @@ describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
     expect(screen.queryByRole("button", { name: /tolérer ce retard/i })).toBeNull();
     expect(screen.getByText(/ne peut pas être ajoutée/i)).toBeInTheDocument();
   });
+
+  it("un second coach principal tient la séance : ni refus ni tolérance à proposer", async () => {
+    // SM3 (m) réservée au gymnase 2 au même moment que SM4 (m + l) qu'on pose ici : l tient SM4.
+    const secondMain = { id: "tc-l", teamId: "d", coachId: "l", role: "MAIN" as const };
+    renderRelay({ teamCoaches: [...SHARED_COACHES, secondMain], reservations: [resa("c", "v2", 1, "18:00")] });
+    await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
+
+    expect(screen.queryByText(/ne peut pas être ajoutée/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /tolérer ce retard/i })).toBeNull();
+  });
+
+  // Le refus dit la vraie cause, coach par coach : sans ça le gestionnaire ne sait pas quoi changer.
+  describe("le refus nomme chaque coach et ce qui le prend", () => {
+    const TWO_MAINS = [
+      { id: "tc-c", teamId: "c", coachId: "m", role: "MAIN" as const },
+      { id: "tc-d", teamId: "d", coachId: "m", role: "MAIN" as const },
+      { id: "tc-l", teamId: "d", coachId: "l", role: "MAIN" as const },
+    ];
+    const NAMED: Coach[] = [...COACHES, { id: "l", firstName: "Léa", lastName: "Petit" } as Coach];
+    const maximeCoaches = WIZARD_TEXTS.reservationCoachCoaching("Maxime Durand", { team: "SM3", time: "18:00", venue: "Gymnase B" });
+
+    it("l'un entraîne ailleurs, l'autre est indisponible", async () => {
+      const leaOff = { family: "COACH_AVAILABILITY", isActive: true, scopeTargetId: "l", config: { unavailableDays: [1] } };
+      renderRelay({ teamCoaches: TWO_MAINS, coaches: NAMED, reservations: [resa("c", "v2", 1, "18:00")], constraints: [leaOff] });
+      await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
+
+      expect(screen.getByRole("alert")).toHaveTextContent(WIZARD_TEXTS.reservationRefused("SM4", [maximeCoaches, WIZARD_TEXTS.reservationCoachUnavailable("Léa Petit")]));
+    });
+
+    it("l'un entraîne ailleurs, l'autre joue ailleurs", async () => {
+      const leaPlays = [{ teamId: "b", coachId: "l", isActive: true }];
+      renderRelay({ teamCoaches: TWO_MAINS, coaches: NAMED, reservations: [resa("c", "v2", 1, "18:00"), resa("b", "v2", 1, "18:00")], coachPlayers: leaPlays });
+      await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
+
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        WIZARD_TEXTS.reservationRefused("SM4", [maximeCoaches, WIZARD_TEXTS.reservationCoachPlaying("Léa Petit", { team: "SM2", time: "18:00", venue: "Gymnase B" })]),
+      );
+    });
+  });
 });
 
 describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {

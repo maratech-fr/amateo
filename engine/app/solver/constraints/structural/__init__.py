@@ -30,6 +30,12 @@ from .closures import (
 from .closures import (
     add_forbidden_assignments as add_forbidden_assignments,
 )
+from .holding import (
+    add_coach_hold_constraints as add_coach_hold_constraints,
+)
+from .holding import (
+    close_sessions_without_holder as close_sessions_without_holder,
+)
 from .min_sessions import (
     _compute_effective_min_sessions as _compute_effective_min_sessions,
 )

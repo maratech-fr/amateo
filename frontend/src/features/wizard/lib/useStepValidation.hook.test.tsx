@@ -109,6 +109,23 @@ describe("useStepValidation — les avertissements du serveur remontent au réca
     expect(result.current.warnings).toEqual(["« Pas le lundi » vise le gymnase Debarros, désactivé pour cette période : elle ne sera pas appliquée."]);
   });
 
+  it("la mention « tenue par » du serveur devient une information grise, jamais une alerte", () => {
+    // La réservation voulue (B tient les U15) se mentionne sans crier : ton `muted`, que le rail
+    // ne compte pas en avertissement (`railState.test.ts`), et rien dans `warnings` ni `errors`.
+    constraintValidation = q({
+      valid: true,
+      errors: {},
+      conflicts: [],
+      warnings: [],
+      notices: [{ place: "Gymnase Un · mardi 18:00", message: "U15 tenue par B" }],
+    });
+    const { result } = renderHook(() => useStepValidation("recap"));
+
+    expect(result.current.notices).toContainEqual(expect.objectContaining({ tone: "muted", place: "Gymnase Un · mardi 18:00", message: "U15 tenue par B" }));
+    expect(result.current.warnings).toEqual([]);
+    expect(result.current.errors).toEqual([]);
+  });
+
   it("n'invalide pas le récap : un avertissement ne produit aucune erreur", () => {
     constraintValidation = q({ valid: true, errors: {}, conflicts: [], warnings: ["un avertissement"] });
     const { result } = renderHook(() => useStepValidation("recap"));

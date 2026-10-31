@@ -4,6 +4,7 @@
 // Pas de lib i18n. JAMAIS en valeur : jour (→ shared/lib/days), heure/durée (→ time/duration),
 // marque (→ product), identifiant interne.
 export const PLANNING_TEXTS = {
+  heldBy: (coach: string) => `tenue par ${coach}`,
   lockWillBeLost: "Elle est verrouillée — le verrou sera perdu.",
   emptyPlanningTitle: "Planning vide",
   emptyPlanningDescription: "Ce planning ne contient aucun créneau placé pour le moment.",

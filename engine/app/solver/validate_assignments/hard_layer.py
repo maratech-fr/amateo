@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ortools.sat.python import cp_model
 
@@ -156,3 +156,53 @@ def _baseline_solve_status(
     _apply_hard(model, assignments, data, parsed, team_coach_map, team_player_map)
     status, _ = _solve(model, timeout_seconds=timeout_seconds, seed=seed)
     return status
+
+
+def _least_unheld_locks(model: ScheduleCpModel, *, timeout_seconds: int, seed: int) -> list[dict[str, Any]] | None:
+    """Les verrous qu'aucun coach ne peut tenir, au mieux des tenues. ``None`` si le solve ne le prouve pas."""
+    holds = list({id(hold): hold for hold in model.lock_holds.values()}.values())
+    cast(Any, model).Minimize(sum(hold["unheld"] for hold in holds))
+    status, solver = _solve(model, timeout_seconds=timeout_seconds, seed=seed)
+    if status != cp_model.OPTIMAL:
+        return None
+    return [hold for hold in holds if solver.Value(hold["unheld"]) == 1]
+
+
+def _locks_left_unheld_by_the_move(
+    model: ScheduleCpModel,
+    solver: cp_model.CpSolver,
+    data: dict[str, Any],
+    parsed: ParsedConstraints,
+    team_coach_map: dict[str, list[str]],
+    team_player_map: dict[str, list[str]],
+    frozen_keys: set[SlotKey],
+    reference_keys: set[SlotKey],
+    *,
+    timeout_seconds: int,
+    seed: int,
+) -> list[dict[str, Any]] | None:
+    """La tenue d'un verrou cède sans rendre le modèle infaisable : le verdict doit donc regarder si le
+    geste a retiré le dernier coach d'une séance fixée qui en avait un. Un verrou déjà sans coach avant
+    le geste ne compte pas (jamais de blocage sur un écart déjà là). ``None`` : le budget a coupé la
+    preuve, le verdict dépendrait de l'horloge (appelé ``indeterminate`` par l'orchestrateur)."""
+    if not any(solver.Value(hold["unheld"]) == 1 for hold in model.lock_holds.values()):
+        return []
+    after = _least_unheld_locks(model, timeout_seconds=timeout_seconds, seed=seed)
+    if after is None:
+        return None
+    if not after:
+        return []
+
+    baseline = build_model(data)
+    baseline.team_coach_map = team_coach_map
+    assignments = _build_assignments(baseline, team_coach_map, frozen_keys)
+    for key in reference_keys:
+        if key in baseline.x:
+            cast(Any, baseline).Add(baseline.x[key] == 1)
+    _apply_hard(baseline, assignments, data, parsed, team_coach_map, team_player_map)
+    before = _least_unheld_locks(baseline, timeout_seconds=timeout_seconds, seed=seed)
+    if before is None:
+        return None
+
+    already_unheld = {(hold["team"], hold["venue"], hold["day"], hold["start"]) for hold in before}
+    return [hold for hold in after if (hold["team"], hold["venue"], hold["day"], hold["start"]) not in already_unheld]

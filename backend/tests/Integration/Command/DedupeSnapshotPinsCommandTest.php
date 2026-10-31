@@ -98,7 +98,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         self::assertContains(self::HEALTHY_PIN_ID, $ids, 'l’épingle saine (placement distinct) survit');
         self::assertNotContains(self::TEMPLATE_PIN_ID, $ids, 'le template redondant au placement de la réservation est retiré');
         self::assertSame(
-            hash('sha256', (string) json_encode($doubled->getSnapshotData(), \JSON_THROW_ON_ERROR)),
+            ScheduleConstraintBuilder::structureHash($doubled->getSnapshotData()),
             $doubled->getSnapshotHash(),
             'le hash est recalculé sur le snapshot nettoyé',
         );
@@ -377,7 +377,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         $schedule = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setName('Version')->setStatus(ScheduleStatus::COMPLETED)
             ->setSnapshotData($snapshot)
-            ->setSnapshotHash(hash('sha256', (string) json_encode($snapshot, \JSON_THROW_ON_ERROR)));
+            ->setSnapshotHash(ScheduleConstraintBuilder::structureHash($snapshot));
         $this->linkSeededSchedule($schedule);
 
         return $schedule;

@@ -293,6 +293,7 @@ class HardConstraintStats:
     room_at_most_one: int = 0
     coach_at_most_one: int = 0
     coach_player_non_overlap: int = 0
+    coach_hold: int = 0
     team_no_overlap: int = 0
     travel_feasibility_stub: int = 0
     fixed_slots: int = 0
@@ -336,6 +337,7 @@ class HardConstraintStats:
             self.room_at_most_one
             + self.coach_at_most_one
             + self.coach_player_non_overlap
+            + self.coach_hold
             + self.team_no_overlap
             + self.travel_feasibility_stub
             + self.fixed_slots
@@ -353,6 +355,30 @@ class HardConstraintStats:
             + self.team_link
             + self.travel_time
         )
+
+
+def _hold_key(var: BoolVarLike) -> Any:
+    """La clé stable d'une variable (``Index()`` OR-Tools, ``id`` pour un double de test)."""
+    return var.Index() if hasattr(var, "Index") else id(var)
+
+
+def _coach_presence_literal(model: Any, var: BoolVarLike, coach_id: Any) -> BoolVarLike | None:
+    """Ce qui occupe ``coach_id`` quand la séance ``var`` est posée : sa tenue quand la séance a le
+    choix, ``var`` quand elle n'a pas de tenue séparée (un seul coach, modèle nu), ``None`` quand ce
+    coach ne peut pas la tenir (indisponible alors qu'un autre l'est) : il n'y est pas."""
+    holds = getattr(model, "hold_vars", None)
+    holders = holds.get(_hold_key(var)) if holds else None
+    return var if holders is None else holders.get(str(coach_id))
+
+
+def _lock_hold_key(team_id: str, venue_id: str, day: int, start: int, end: int) -> tuple[str, str, int, int, int]:
+    return team_id, venue_id, day, start, end
+
+
+def _lock_hold(model: Any, team_id: str, venue_id: str | None, day: int, start: int, end: int) -> Any:
+    """La tenue d'un verrou à plusieurs coachs, ou ``None`` : ses coachs sont alors des constantes."""
+    holds = getattr(model, "lock_holds", None)
+    return holds.get(_lock_hold_key(team_id, venue_id or "", day, start, end)) if holds else None
 
 
 def _locked_person_day_intervals(
@@ -393,8 +419,11 @@ def _locked_person_day_intervals(
         duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
         end = start + duration
         persons: set[str] = set()
-        for coach_id in coach_map.get(team_id, ()):
-            persons.add(str(coach_id))
+        venue = str(_get(locked, "venue_id", "venueId", default="") or "")
+        # Un verrou à plusieurs coachs n'occupe que CELUI qui le tient : une variable, pas une constante.
+        if _lock_hold(model, team_id, venue, day, start, end) is None:
+            for coach_id in coach_map.get(team_id, ()):
+                persons.add(str(coach_id))
         for player_id in player_map.get(team_id, ()):
             persons.add(str(player_id))
         for person in persons:
@@ -447,8 +476,10 @@ def _locked_person_day_occupations(
         if tolerance > 0 and _late_arrival_relay_opens(model, team_id, day, start, tolerance):
             coach_start = min(start + tolerance, end)
         roles: dict[str, str] = {}
-        for coach_id in coach_map.get(team_id, ()):
-            roles.setdefault(str(coach_id), "coach")
+        # Un verrou à plusieurs coachs n'occupe que CELUI qui le tient : variable, pas constante.
+        if _lock_hold(model, team_id, venue, day, start, end) is None:
+            for coach_id in coach_map.get(team_id, ()):
+                roles.setdefault(str(coach_id), "coach")
         for player_id in player_map.get(team_id, ()):
             roles[str(player_id)] = "player"  # jouer l'emporte sur coacher (D-14)
         for person, role in roles.items():

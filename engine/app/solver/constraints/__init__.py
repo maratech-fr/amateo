@@ -203,6 +203,7 @@ from .structural import _add_interval_at_most_one as _add_interval_at_most_one
 from .structural import _compute_effective_min_sessions as _compute_effective_min_sessions
 from .structural import _effective_min_sessions_by_team as _effective_min_sessions_by_team
 from .structural import add_coach_at_most_one as add_coach_at_most_one
+from .structural import add_coach_hold_constraints as add_coach_hold_constraints
 from .structural import add_coach_player_non_overlap as add_coach_player_non_overlap
 from .structural import add_coach_unavailability_constraints as add_coach_unavailability_constraints
 from .structural import add_fixed_slots as add_fixed_slots
@@ -210,6 +211,7 @@ from .structural import add_forbidden_assignments as add_forbidden_assignments
 from .structural import add_min_sessions_constraints as add_min_sessions_constraints
 from .structural import add_room_at_most_one as add_room_at_most_one
 from .structural import add_team_no_overlap as add_team_no_overlap
+from .structural import close_sessions_without_holder as close_sessions_without_holder
 from .targeting import TeamLinkPlacement as TeamLinkPlacement
 from .targeting import _forced_venue_id as _forced_venue_id
 from .targeting import add_forced_venue_constraints as add_forced_venue_constraints
@@ -308,6 +310,15 @@ def add_level_1_hard_constraints(
     # 1. One venue hosts at most one team at a time.
     stats.room_at_most_one = add_room_at_most_one(model, assignment_list)
 
+    # 1 bis. Qui peut tenir chaque séance : à poser AVANT les rôles (2, 3) et les plafonds (3b-3d).
+    stats.coach_hold = add_coach_hold_constraints(
+        model,
+        assignment_list,
+        team_coach_map=team_coach_map,
+        team_player_map=team_player_map,
+        coach_unavailability=coach_unavailability,
+    )
+
     # 2. One coach works with at most one team at a time.
     stats.coach_at_most_one = add_coach_at_most_one(model, assignment_list, team_coach_map=team_coach_map)
 
@@ -315,6 +326,9 @@ def add_level_1_hard_constraints(
     stats.coach_player_non_overlap = add_coach_player_non_overlap(
         model, assignment_list, team_coach_map=team_coach_map, team_player_map=team_player_map
     )
+
+    # 3 bis. Une séance dont plus aucun coach ne peut tenir la place est fermée, cause nommée.
+    stats.coach_hold += close_sessions_without_holder(model)
 
     # 3b. Every coach must keep at least ``min_rest_days`` rest days from Monday to Friday.
     stats.coach_rest_day = add_coach_rest_day_constraints(

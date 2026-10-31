@@ -37,9 +37,13 @@ export function SeasonComparisonModal({ seasonScheduleId, viewMode, onClose }: S
 
   const lookups: Lookups = useMemo(() => {
     const teamCoach = new Map<string, string>();
+    const teamMainCoaches = new Map<string, string[]>();
     for (const link of teamCoaches) {
       if ("MAIN" === link.role && !teamCoach.has(link.teamId)) {
         teamCoach.set(link.teamId, link.coachId);
+      }
+      if ("MAIN" === link.role) {
+        teamMainCoaches.set(link.teamId, [...(teamMainCoaches.get(link.teamId) ?? []), link.coachId]);
       }
     }
     const teamPlayerCoaches = new Map<string, string[]>();
@@ -60,6 +64,7 @@ export function SeasonComparisonModal({ seasonScheduleId, viewMode, onClose }: S
       venues: new Map(venues.map((v) => [v.id, v])),
       coaches: new Map(coaches.map((c) => [c.id, c])),
       teamCoach,
+      teamMainCoaches,
       teamPlayerCoaches,
       groupLabels,
     };

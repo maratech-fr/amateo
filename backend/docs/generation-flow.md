@@ -52,7 +52,7 @@ Le contrôleur `GenerateScheduleController` commence par **quatre refus synchron
 1. **409 Conflict** si la version est celle que son plan **pointe** : c'est le planning en vigueur, il faut d'abord le **rouvrir** (`POST /api/schedules/{id}/reopen`).
 2. **422 Unprocessable Entity** si `GenerationComplexityGuard` juge le problème hors bornes (garde anti-DoS A10 « generation bomb » : plafonds généreux, ~10× un gros club FFBB ; les contraintes y sont comptées **permanentes only**, comme dans le payload).
 3. **422 Unprocessable Entity** si `OrphanPinGuard` trouve un **épinglage orphelin** — un verrou ou une réservation qui ne correspond plus à aucun créneau après une refonte de la grille de période. Le message nomme le gymnase et le jour ; c'est au gestionnaire de trancher (planning de période uniquement).
-4. **422 Unprocessable Entity** si `CoachInTwoPlacesGuard` trouve un **coach seul à deux endroits en même temps** (aucun autre coach pour tenir la séance) : mêmes réservations et contraintes que ce qui part au solveur, même détecteur que le Récap, qui le disait déjà mais que ces guichets ne traversent pas. Le message nomme le coach et les deux gymnases. La même garde est posée sur `/regenerate` et `/fill`.
+4. **422 Unprocessable Entity** si `CoachInTwoPlacesGuard` trouve un **coach seul à deux endroits en même temps** (aucun autre coach de l'équipe ne peut tenir la séance : `CoachDoubleBookingDetector::holdersFor` rend `null` ; tant qu'un coach la tient, ce n'est pas un conflit) : mêmes réservations et contraintes que ce qui part au solveur, même détecteur que le Récap, qui le disait déjà mais que ces guichets ne traversent pas. Le message nomme le coach et les deux gymnases. La même garde est posée sur `/regenerate` et `/fill`.
 
 Ces gardes passées, il exécute trois actions :
 
@@ -249,7 +249,7 @@ Points d'attention sur ce format :
 
 ### 4.2 Timeout et gestion d'erreur
 
-Le timeout de l'appel HTTP côté backend est de **750 secondes** par défaut (`GenerateScheduleMessage.timeoutSeconds`). Côté engine, le budget du solveur CP-SAT est **adaptatif** selon la taille du problème (`n_teams × n_venues`) : 60 s (≤ 50), 180 s (≤ 200) ou 600 s au-delà — le `solverTimeoutSeconds` du payload (650 par défaut) n'est qu'un **plafond**, jamais le budget effectif.
+Le timeout de l'appel HTTP côté backend est de **750 secondes** par défaut (`GenerateScheduleMessage.timeoutSeconds`). Il doit dépasser le **pire chemin** du moteur, somme des phases (palier adaptatif le plus haut, solve diagnostique, sonde et best-effort, chaînage, deux passes de choix du coach stocké `_settle_holds`) : ≈ **710 s** en majorant, donc sous 750 s (attente HTTP) et sous 810 s (verrou) — gardé par `GenerationLockOutlivesTheSolveTest` qui lit les constantes du moteur. Côté engine, le budget du solveur CP-SAT est **adaptatif** selon la taille du problème (`n_teams × n_venues`) : 60 s (≤ 50), 180 s (≤ 200) ou 600 s au-delà — le `solverTimeoutSeconds` du payload (650 par défaut) n'est qu'un **plafond**, jamais le budget effectif.
 
 Note importante sur les réponses HTTP : `EngineClient` lit la réponse avec `toArray(false)` — il ne lève **pas** d'exception sur un statut HTTP d'erreur générique. Toute réponse JSON sans clé `status` (par exemple un corps d'erreur Pydantic qui ne serait pas un 422, improbable en pratique) est traitée comme `status: "failed"`, donc planning `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de diagnostic `engine_validation_error`.
 
@@ -411,7 +411,7 @@ Voici un tableau récapitulatif de tous les cas d'erreur possibles, avec leur ca
 | **Engine inaccessible** | Conteneur `engine` arrêté ou crash | `FAILED` | `engine_error` | Vérifier l'état des conteneurs Docker (`make logs SERVICE=engine`) |
 | **Planning infaisable** | Contraintes `HARD` mutuellement exclusives | `FAILED` | `conflict` + liste équipes non placées | Relâcher une contrainte `HARD` en `PREFERRED`, ou ajouter des ressources (salle, coach) |
 | **Partiellement résolu** | Ressources insuffisantes pour toutes les équipes | `COMPLETED` (score bas) | `unplaced` diagnostics | Accepter le planning incomplet, ou ajouter des créneaux/salles |
-| **Verrou Redis expiré** | Worker crashé en cours de génération | — (la génération suivante peut acquérir le verrou) | Aucun | Le verrou s'auto-expire après `timeoutSeconds + 60` s (≈ 710 s par défaut) |
+| **Verrou Redis expiré** | Worker crashé en cours de génération | — (la génération suivante peut acquérir le verrou) | Aucun | Le verrou s'auto-expire après `timeoutSeconds + 60` s (≈ 810 s par défaut) |
 
 > Exemple concret au BCCL : l'administrateur ajoute une contrainte `HARD` "Aucune équipe féminine à Jean Vilar" et une autre `HARD` "SF3 doit s'entraîner à Jean Vilar". Ces deux contraintes sont contradictoires. Le solveur retourne `infeasible` avec un diagnostic `conflict` indiquant que SF3 est `unplaced`. L'administrateur doit alors choisir : supprimer la contrainte sur Jean Vilar pour SF3, ou changer la règle globale sur les équipes féminines.
 

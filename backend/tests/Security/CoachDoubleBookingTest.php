@@ -6,10 +6,13 @@ namespace App\Tests\Security;
 
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
@@ -248,6 +251,14 @@ final class CoachDoubleBookingTest extends KernelTestCase
         $ctx = $this->seed(distinctSecondCoach: true);
         $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
         $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue1'], 2, '17:00', 90);
+        // Même case : seul un groupe DÉCLARÉ prête ses coachs (décision fondateur 2026-10-30).
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $this->em->persist($block);
+        $this->em->flush();
+        foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+        }
+        $this->em->flush();
         $maximeOff = $this->unavailability($ctx, ['unavailableDays' => [2]]); // Maxime (teamA) bloqué mardi
 
         self::assertSame(
@@ -257,11 +268,147 @@ final class CoachDoubleBookingTest extends KernelTestCase
         );
     }
 
+    // ── « Tant qu'un coach tient la séance, c'est OK » (fondateur 2026-10-30) ────────────────────
+    // Le récap ne bloque plus que l'INTENABLE. Le cas 1 ci-dessus reste le témoin : coach SEUL à
+    // deux endroits en même temps, le récap bloque toujours. Parité de la règle pure :
+    // CoachDoubleBookingMirrorParityTest::testBackendHoldersForMatchesTheSharedCases.
+
+    /** Le cas réel : Maxime sur deux équipes, Lea tient la seconde. Plus aucun bloqueur. */
+    public function testASecondMainCoachHoldingTheSessionDoesNotBlock(): void
+    {
+        $ctx = $this->seed();
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamB'], $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea'), TeamCoachRole::MAIN);
+        $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+
+        self::assertSame([], $this->detector->detect([$a, $b], $ctx['clubId'], $ctx['seasonId']), 'Lea tient la seconde séance : rien d\'intenable');
+    }
+
+    /** Deux coachs ne tiennent pas trois séances : une règle jugée paire par paire ne le verrait pas. */
+    public function testThreeSessionsForTwoCoachesStillBlock(): void
+    {
+        $ctx = $this->seed();
+        $lea = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamA'], $lea, TeamCoachRole::MAIN);
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamB'], $lea, TeamCoachRole::MAIN);
+        $teamC = $this->secondTeamLike($ctx, 'SM3');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $teamC, $ctx['coachId'], TeamCoachRole::MAIN);
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $teamC, $lea, TeamCoachRole::MAIN);
+        $venue3 = $this->thirdVenue($ctx);
+        $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+        $c = $this->reserve($ctx, $teamC, $venue3, 2, '17:00', 90);
+
+        self::assertNotSame([], $this->detector->detect([$a, $b, $c], $ctx['clubId'], $ctx['seasonId']), 'une séance n\'a personne pour la tenir');
+    }
+
+    /** Le second coach indisponible ne tient rien : Maxime pris ailleurs, la séance n'a personne. */
+    public function testASecondCoachUnavailableDoesNotHoldTheSession(): void
+    {
+        $ctx = $this->seed();
+        $lea = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamB'], $lea, TeamCoachRole::MAIN);
+        $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+        $leaOff = $this->unavailabilityFor($ctx, $lea, ['unavailableDays' => [2]]);
+
+        self::assertNotSame([], $this->detector->detect([$a, $b], $ctx['clubId'], $ctx['seasonId'], [$leaOff]));
+    }
+
+    /** L'indisponibilité d'un coach SEUL reste un avertissement : la réservation gagne, rien ne bloque. */
+    public function testASoleCoachUnavailableIsNotABlocker(): void
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+        $maximeOff = $this->unavailability($ctx, ['unavailableDays' => [2]]);
+
+        self::assertSame([], $this->detector->detect([$a, $b], $ctx['clubId'], $ctx['seasonId'], [$maximeOff]));
+        self::assertCount(1, $this->detector->detectUnavailabilityClashes([$a, $b], [$maximeOff], $ctx['clubId'], $ctx['seasonId']), 'témoin : elle reste signalée en avertissement');
+    }
+
+    /** Même case sans groupe : chacun ses coachs. Maxime (teamA, teamC) est à deux endroits, le récap bloque. */
+    public function testTheSameCaseWithoutAGroupLendsNoCoach(): void
+    {
+        ['ctx' => $ctx, 'reservations' => $reservations] = $this->seedSameCase();
+
+        self::assertNotSame([], $this->detector->detect($reservations, $ctx['clubId'], $ctx['seasonId']), 'Nicolas ne tient pas teamA par simple coïncidence de case');
+    }
+
+    /** Groupe DÉCLARÉ : Nicolas tient la séance commune, Maxime est libre pour teamC. */
+    public function testADeclaredGroupLendsItsCoaches(): void
+    {
+        ['ctx' => $ctx, 'reservations' => $reservations] = $this->seedSameCase();
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $this->em->persist($block);
+        $this->em->flush();
+        foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+        }
+        $this->em->flush();
+
+        self::assertSame([], $this->detector->detect($reservations, $ctx['clubId'], $ctx['seasonId']));
+    }
+
+    /**
+     * Le cas des trois appelants : U9 = Maxime + Lea, Maxime joue en SM1, U11-2 = Lea, même heure, trois
+     * gymnases. Maxime joue, Lea ne tient qu'une séance : le récap bloque, comme le radar et la modale.
+     */
+    public function testACoachPlayingElsewhereDoesNotHoldTheSessionAtTheRecap(): void
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $lea = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamA'], $lea, TeamCoachRole::MAIN);
+        $u112 = $this->secondTeamLike($ctx, 'U11-2');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $u112, $lea, TeamCoachRole::MAIN);
+        $this->em->persist((new CoachPlayerMembership)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($ctx['teamB'])->setCoachId($ctx['coachId'])->setIsActive(true));
+        $this->em->flush();
+        $u9 = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $sm1 = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+        $u112Session = $this->reserve($ctx, $u112, $this->thirdVenue($ctx), 2, '17:00', 90);
+
+        self::assertNotSame([], $this->detector->detect([$u9, $sm1, $u112Session], $ctx['clubId'], $ctx['seasonId']));
+    }
+
+    /** La mention ne ment jamais : Maxime joue ailleurs, c'est Lea qui tient, jamais lui. */
+    public function testTheHoldNoticeNeverNamesACoachWhoPlaysElsewhere(): void
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $lea = $this->createCoach($ctx['clubId'], $ctx['seasonId'], 'Lea');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $ctx['teamA'], $lea, TeamCoachRole::MAIN);
+        $this->em->persist((new CoachPlayerMembership)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($ctx['teamB'])->setCoachId($ctx['coachId'])->setIsActive(true));
+        $this->em->flush();
+        $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
+        $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue2'], 2, '17:00', 90);
+
+        $messages = implode(' | ', array_column($this->detector->detectHoldNotices([$a, $b], [], $ctx['clubId'], $ctx['seasonId']), 'message'));
+
+        self::assertStringNotContainsString('Maxime', $messages);
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->detector = self::getContainer()->get(CoachDoubleBookingDetector::class);
+    }
+
+    /**
+     * teamA (Maxime) et teamB (Nicolas) sur la même case, teamC (Maxime) ailleurs au même moment.
+     *
+     * @return array{ctx: array{clubId: string, seasonId: string, teamA: string, teamB: string, venue1: string, venue2: string, coachId: string}, reservations: list<Reservation>}
+     */
+    private function seedSameCase(): array
+    {
+        $ctx = $this->seed(distinctSecondCoach: true);
+        $teamC = $this->secondTeamLike($ctx, 'SM3');
+        $this->linkCoach($ctx['clubId'], $ctx['seasonId'], $teamC, $ctx['coachId'], TeamCoachRole::MAIN);
+
+        return ['ctx' => $ctx, 'reservations' => [
+            $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '19:00', 90),
+            $this->reserve($ctx, $ctx['teamB'], $ctx['venue1'], 2, '19:00', 90),
+            $this->reserve($ctx, $teamC, $ctx['venue2'], 2, '19:00', 90),
+        ]];
     }
 
     /**
@@ -389,6 +536,40 @@ final class CoachDoubleBookingTest extends KernelTestCase
         $this->em->flush();
 
         return $constraint;
+    }
+
+    /**
+     * Une équipe de plus, même catégorie et même rang que l'équipe A.
+     *
+     * @param array{teamA: string} $ctx
+     */
+    private function secondTeamLike(array $ctx, string $name): string
+    {
+        $model = $this->em->getRepository(Team::class)->find($ctx['teamA']);
+        self::assertInstanceOf(Team::class, $model);
+        $team = (new Team)
+            ->setClubId($model->getClubId())
+            ->setSeasonId($model->getSeasonId())
+            ->setSportCategoryId($model->getSportCategoryId())
+            ->setPriorityTierId($model->getPriorityTierId())
+            ->setName($name)
+            ->setSessionsPerWeek(2);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team->getId();
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $ctx
+     */
+    private function thirdVenue(array $ctx): string
+    {
+        $venue = (new Venue)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Gymnase Trois')->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue->getId();
     }
 
     private function createCoach(string $clubId, string $seasonId, string $firstName): string

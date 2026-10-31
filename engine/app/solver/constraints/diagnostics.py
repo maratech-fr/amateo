@@ -8,7 +8,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
-from ..model import DEFAULT_SESSION_MINUTES, _time_to_minutes
+from ..model import DEFAULT_SESSION_MINUTES, _format_time, _time_to_minutes
+from .availability import HoldSession, _coach_available_at, assign_holders, available_coach_exists
 from .common import (
     HARD,
     ResolvedImplicitRules,
@@ -21,6 +22,14 @@ from .common import (
 )
 
 _DAY_LABELS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+
+
+def session_without_coach_message(teams: str, day: str, start_time: str) -> str:
+    """Le refus du geste qui retire le dernier coach d'une séance fixée, verrouillée ou figée."""
+    return (
+        f"Ce déplacement prend le dernier coach disponible de la séance fixée de {teams} le {day} à "
+        f"{start_time} : plus personne ne pourrait la tenir."
+    )
 
 
 def _day_label(day: int) -> str:
@@ -242,9 +251,10 @@ def diagnose_locked_slot_violations(
         # Les coordonnées de la case réservée : le panneau l'ouvre à partir de ces champs.
         lock_case = {"venueId": venue_id, "dayOfWeek": day_int, "startTime": start_text[:5]}
 
-        # 1. Coach availability — every required coach of the team, like the solver.
+        # 1. Coach availability — un coach disponible suffit, comme à la pose : le verrou ne contredit
+        # l'indisponibilité que si AUCUN coach de l'équipe n'est libre (sinon, l'autre tient la séance).
         coach_ids = [str(c) for c in (coach_map.get(team_id) or [])]
-        for coach_id in coach_ids:
+        for coach_id in [] if available_coach_exists(coach_ids, day_int, start, rules) else coach_ids:
             for iv_day, iv_from, iv_to in rules.get(coach_id) or ():
                 if iv_day == day_int and iv_from <= start < iv_to:
                     source = _coach_source_covering(coach_sources.get(coach_id), day_int, start)
@@ -454,6 +464,47 @@ def diagnose_candidate_conflicts(
     def _emit(rule: str, message: str, **fields: Any) -> None:
         violations.append({"rule": rule, "message": message, **fields})
 
+    def _session_of(identifier: str, team: str, venue: str, day: int, start: int, end: int) -> HoldSession:
+        return HoldSession(id=identifier, team_id=team, venue_id=venue, day=day, start=start, end=end)
+
+    def _sessions_stay_held() -> bool:
+        """Le planning du jour, candidat compris, garde-t-il un coach pour chaque séance ? Même règle
+        que la génération : une personne qui joue ailleurs est prise, un coach indisponible s'efface
+        devant un autre disponible."""
+        sessions = [_session_of("candidate", c_team, c_venue, c_day, c_start, c_end)]
+        for index, slot in enumerate(baseline_slots):
+            if int(slot["day"]) == c_day:
+                sessions.append(
+                    _session_of(
+                        str(index),
+                        str(slot["team_id"]),
+                        str(slot["venue_id"]),
+                        c_day,
+                        int(slot["start"]),
+                        int(slot["end"]),
+                    )
+                )
+        candidates: dict[str, list[str]] = {}
+        coached: list[HoldSession] = []
+        for session in sessions:
+            coach_ids = [str(c) for c in coach_map.get(session.team_id, ())]
+            if not coach_ids:
+                continue
+            free = [c for c in coach_ids if _coach_available_at(c, c_day, session.start, unavailability)] or coach_ids
+            candidates[session.id] = [
+                c
+                for c in free
+                if not any(
+                    c in {str(p) for p in player_map.get(other.team_id, ())}
+                    and other.team_id != session.team_id
+                    and other.start < session.end
+                    and session.start < other.end
+                    for other in sessions
+                )
+            ]
+            coached.append(session)
+        return assign_holders(coached, candidates) is not None
+
     # --- Structural rules, checked against the FROZEN baseline occupancy. ---
     coach_working_days: dict[str, set[int]] = {cid: set() for cid in c_coaches}
     baseline_days_same_team: set[int] = set()
@@ -472,10 +523,11 @@ def diagnose_candidate_conflicts(
         for pid in player_map.get(s_team, ()):
             s_persons_role[str(pid)] = "player"
 
-        # Rest day: which weekdays each candidate coach already works.
+        # Rest day: which weekdays each candidate coach already works. Une équipe à plusieurs coachs
+        # n'occupe pas forcément celui-ci : le verdict s'en remet alors au solve, qui porte les tenues.
         if 1 <= s_day <= 5:
             for cid in c_coaches:
-                if cid in s_persons_role:
+                if cid in s_persons_role and (len(coach_map.get(s_team, ())) < 2 or s_persons_role[cid] == "player"):
                     coach_working_days[cid].add(s_day)
 
         # One session per day: same team already busy that day.
@@ -500,7 +552,22 @@ def diagnose_candidate_conflicts(
             shared = set(c_persons_role) & set(s_persons_role)
             for person_id in shared:
                 is_coach_pair = c_persons_role[person_id] == "coach" and s_persons_role[person_id] == "coach"
-                if is_coach_pair:
+                both_play = c_persons_role[person_id] == "player" and s_persons_role[person_id] == "player"
+                # Tant qu'un coach tient chaque séance, un coach partagé n'est pas un dédoublement.
+                if not both_play and _sessions_stay_held():
+                    continue
+                # La séance en place avait le choix de son coach : c'est elle qui reste sans personne.
+                if is_coach_pair and len(coach_map.get(s_team, ())) >= 2:
+                    _emit(
+                        "session_without_coach",
+                        session_without_coach_message(_team(s_team), _day_label(c_day), _format_time(s_start)),
+                        team_id=c_team,
+                        conflicting_team_id=s_team,
+                        venue_id=s_venue,
+                        day_of_week=c_day,
+                        start_time=_format_time(s_start),
+                    )
+                elif is_coach_pair:
                     _emit(
                         "coach_no_overlap",
                         f"{_coach(person_id)} a déjà {_team(s_team)} le {_day_label(c_day)} à "
@@ -576,7 +643,7 @@ def diagnose_candidate_conflicts(
     # nommé dans ce fichier ; les trois autres (salarié, dos-à-dos, jours consécutifs) n'y miroitent rien.
     implicit_rules = resolved_rules or ResolvedImplicitRules()
     coach_rest_is_hard = implicit_rules.coach_rest_day_intensity == HARD
-    if coach_rest_is_hard and 1 <= c_day <= 5:
+    if coach_rest_is_hard and 1 <= c_day <= 5 and len(c_coaches) < 2:
         for cid in c_coaches:
             if cid not in coach_ids_in_payload:
                 continue
@@ -642,7 +709,8 @@ def diagnose_candidate_conflicts(
                 )
 
     # --- Entered constraints (the manager's own rules). ---
-    for cid in c_coaches:
+    # Un coach disponible suffit, comme à la génération.
+    for cid in [] if available_coach_exists(c_coaches, c_day, c_start, unavailability) else c_coaches:
         for iv_day, iv_from, iv_to in unavailability.get(cid) or ():
             if int(iv_day) == c_day and int(iv_from) <= c_start < int(iv_to):
                 _emit(

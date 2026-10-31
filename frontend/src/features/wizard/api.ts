@@ -842,6 +842,11 @@ export interface ValidateResult {
    */
   warnings?: string[];
   /**
+   * La mention douce du récap : une séance dont un coach est pris ailleurs, tenue par un autre
+   * (« U15 tenue par B »). Ni bloqueur ni avertissement.
+   */
+  notices?: { place: string; message: string }[];
+  /**
    * P2-9 / PR-4 — le volet CAPACITÉ chiffré, lu sur le payload que le solveur recevra : `demand`
    * (bloc-aware — une séance de bloc réunit N membres sur UNE place) vs `offer` (places de créneau,
    * un majorant). `null` (ou clé absente) quand aucun payload n'existe (période non génératrice,

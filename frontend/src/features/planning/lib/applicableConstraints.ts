@@ -41,11 +41,12 @@ export function applicableConstraints(
   slot: Slot,
   constraints: Constraint[],
   tagTeamIds: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
+  teamCoaches: ReadonlyMap<string, readonly string[]> = new Map(),
 ): Constraint[] {
-  return constraints.filter((c) => c.isActive && applies(c, slot, tagTeamIds));
+  return constraints.filter((c) => c.isActive && applies(c, slot, tagTeamIds, teamCoaches));
 }
 
-function applies(constraint: Constraint, slot: Slot, tagTeamIds: ReadonlyMap<string, ReadonlySet<string>>): boolean {
+function applies(constraint: Constraint, slot: Slot, tagTeamIds: ReadonlyMap<string, ReadonlySet<string>>, teamCoaches: ReadonlyMap<string, readonly string[]>): boolean {
   switch (constraint.scope) {
     case "CLUB": {
       const targets = targetTagNames(constraint.config);
@@ -68,7 +69,8 @@ function applies(constraint: Constraint, slot: Slot, tagTeamIds: ReadonlyMap<str
     case "FACILITY":
       return constraint.scopeTargetId === slot.venueId;
     case "COACH":
-      return null !== slot.coachId && constraint.scopeTargetId === slot.coachId;
+      // Tous les coachs de l'équipe : le coach stocké n'est que celui qui tient la séance.
+      return (null !== slot.coachId && constraint.scopeTargetId === slot.coachId) || (null !== constraint.scopeTargetId && (teamCoaches.get(slot.teamId) ?? []).includes(constraint.scopeTargetId));
     default:
       return false;
   }

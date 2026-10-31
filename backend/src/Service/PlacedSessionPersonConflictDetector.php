@@ -9,6 +9,7 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
@@ -31,8 +32,11 @@ use Doctrine\ORM\EntityManagerInterface;
  * Périmètre V1 (fondateur 2026-09-28) :
  *  - chevauchement d'intervalles réels de séances PLACÉES dans des gymnases DIFFÉRENTS
  *    (même gymnase = mutualisation voulue, jamais un conflit) ;
- *  - personnes = coach MAIN, ASSISTANT, et joueur (`CoachPlayerMembership` actif :
- *    « joue aussi dans ») — élargissement ASSUMÉ vs la règle pré-solve (MAIN seul) ;
+ *  - personnes = coach MAIN et joueur (`CoachPlayerMembership` actif : « joue aussi dans ») ;
+ *  - amendé le 2026-10-30 (validé fondateur) : conflit SEULEMENT si une séance n'a personne pour la
+ *    tenir ({@see CoachDoubleBookingDetector::holdersFor}). Un adjoint ne tient pas et n'est pas
+ *    attendu ; un second coach principal tient ; le rôle de joueur occupe. Deux équipes où la
+ *    personne ne fait que jouer restent un conflit : aucun coach ne la remplace sur le terrain ;
  *  - planning scanné : la version POINTÉE du plan SEASON seulement (plans de période
  *    hors V1) ;
  *  - indisponibilités déclarées et trajets entre gymnases : hors V1.
@@ -40,9 +44,8 @@ use Doctrine\ORM\EntityManagerInterface;
  * La RÈGLE PURE de collision n'est PAS réécrite : on réutilise
  * {@see CoachDoubleBookingDetector::bookingsCollide} (même personne, équipes
  * DIFFÉRENTES, gymnases DIFFÉRENTS, même jour, intervalles réels demi-ouverts). Son
- * comportement pré-solve (MAIN seul) est INCHANGÉ — l'élargissement aux ASSISTANT et
- * aux joueurs se fait ICI, en amont, dans la construction des « personnes présentes »,
- * jamais dans la règle partagée.
+ * comportement pré-solve (MAIN seul) est INCHANGÉ — l'élargissement aux joueurs se fait ICI, en
+ * amont, dans la construction des « personnes présentes », jamais dans la règle partagée.
  *
  * Tenant : tout est chargé via les repositories mappés — les filtres Doctrine
  * club+saison s'appliquent (+ RLS) ; un club ne voit jamais que ses propres conflits.
@@ -89,7 +92,7 @@ final class PlacedSessionPersonConflictDetector
             return ['seasonPlanChosen' => true, 'conflicts' => [], 'relays' => []];
         }
 
-        // teamId → coachs de séance (MAIN + ASSISTANT) et joueurs (memberships ACTIFS).
+        // teamId → coachs principaux et joueurs (memberships ACTIFS).
         // Deux cartes distinctes : le repli « coach de séance » n'utilise que la première
         // (slot.coachId ?? coachs de l'équipe), les joueurs s'ajoutent toujours. Club+saison
         // explicites (comme {@see CoachDoubleBookingDetector::mainCoachByTeam}) : la scope ne
@@ -97,7 +100,9 @@ final class PlacedSessionPersonConflictDetector
         $scope = ['clubId' => $clubId, 'seasonId' => $seasonId];
         $sessionCoachesByTeam = [];
         foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy($scope) as $link) {
-            $sessionCoachesByTeam[$link->getTeamId()][] = $link->getCoachId();
+            if (TeamCoachRole::MAIN === $link->getRole()) {
+                $sessionCoachesByTeam[$link->getTeamId()][] = $link->getCoachId();
+            }
         }
         $playersByTeam = [];
         foreach ($this->entityManager->getRepository(CoachPlayerMembership::class)->findBy($scope) as $membership) {
@@ -125,11 +130,22 @@ final class PlacedSessionPersonConflictDetector
             $this->entityManager->getRepository(Constraint::class)->findBy($scope),
         );
         $coachBookings = $this->coachBookings($slots, $sessionCoachesByTeam);
+        // Les groupes déclarés du socle : seul le plan SEASON est scanné ici.
+        $groups = [];
+        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy($scope + ['schedulePlanId' => null]) as $member) {
+            $groups[$member->getBlockId()][] = $member->getTeamId();
+        }
+        $unheld = $this->unheldSlots($slots, $sessionCoachesByTeam, $playersByTeam, $blockedByCoach, array_values($groups));
 
         $names = $this->displayNames($pairs, $slots);
         $conflicts = [];
         $relays = [];
         foreach ($pairs as $pair) {
+            $onlyPlays = $this->onlyPlaysIn($pair['personId'], $pair['first'], $sessionCoachesByTeam, $playersByTeam)
+                && $this->onlyPlaysIn($pair['personId'], $pair['second'], $sessionCoachesByTeam, $playersByTeam);
+            if (!$onlyPlays && !isset($unheld[$pair['first']->getId()]) && !isset($unheld[$pair['second']->getId()])) {
+                continue; // chaque séance a quelqu'un pour la tenir.
+            }
             $relay = $this->relayFor($pair, $sessionCoachesByTeam, $assistantsByTeam, $matrix, $coachVehicled, $coachNames, $blockedByCoach, $coachBookings);
             if (null !== $relay) {
                 $relays[] = [
@@ -154,6 +170,49 @@ final class PlacedSessionPersonConflictDetector
         }
 
         return ['seasonPlanChosen' => true, 'conflicts' => $conflicts, 'relays' => $relays];
+    }
+
+    /**
+     * Les séances placées qui n'ont personne pour les tenir. Le coach nommé par une séance en reste
+     * candidat, derrière ceux de l'équipe : un planning déjà en base nomme le premier coach.
+     *
+     * @param list<ScheduleSlotTemplate>                         $slots
+     * @param array<string, list<string>>                        $sessionCoachesByTeam
+     * @param array<string, list<string>>                        $playersByTeam
+     * @param array<string, list<array{0: int, 1: int, 2: int}>> $blockedByCoach
+     * @param list<list<string>>                                 $groups
+     *
+     * @return array<string, true>
+     */
+    private function unheldSlots(array $slots, array $sessionCoachesByTeam, array $playersByTeam, array $blockedByCoach, array $groups): array
+    {
+        $coaches = $sessionCoachesByTeam;
+        $playing = [];
+        $sessions = [];
+        foreach ($slots as $slot) {
+            $booking = $this->bookingOf($slot);
+            $sessions[] = ['id' => $slot->getId()] + $booking;
+            $named = $slot->getCoachId();
+            if (null !== $named && !\in_array($named, $coaches[$slot->getTeamId()] ?? [], true)) {
+                $coaches[$slot->getTeamId()][] = $named;
+            }
+            foreach ($playersByTeam[$slot->getTeamId()] ?? [] as $playerId) {
+                $playing[$playerId][] = $booking;
+            }
+        }
+
+        return CoachDoubleBookingDetector::holdsByCluster($sessions, $coaches, $blockedByCoach, $playing, $groups)['unheld'];
+    }
+
+    /**
+     * @param array<string, list<string>> $sessionCoachesByTeam
+     * @param array<string, list<string>> $playersByTeam
+     */
+    private function onlyPlaysIn(string $personId, ScheduleSlotTemplate $slot, array $sessionCoachesByTeam, array $playersByTeam): bool
+    {
+        return \in_array($personId, $playersByTeam[$slot->getTeamId()] ?? [], true)
+            && !\in_array($personId, $sessionCoachesByTeam[$slot->getTeamId()] ?? [], true)
+            && $personId !== $slot->getCoachId();
     }
 
     /**
@@ -272,14 +331,13 @@ final class PlacedSessionPersonConflictDetector
      * paire à paire, par personne. Rend les IDENTIFIANTS (les noms sont résolus en aval).
      *
      * Personne présente à une séance de l'équipe T :
-     *  - coach de séance : `slot.coachId` s'il est posé, sinon les coachs de l'équipe
-     *    (MAIN + ASSISTANT) — même repli que le planning ;
+     *  - coach de séance : `slot.coachId` s'il est posé, sinon les coachs principaux de l'équipe ;
      *  - joueur : toute personne d'un `CoachPlayerMembership` ACTIF de T (elle joue là).
      * Une personne présente pour deux raisons (coach ET joueur du même créneau) ne compte
      * qu'UNE fois par créneau (dédup par slotId), sinon la paire se détecterait en double.
      *
      * @param list<ScheduleSlotTemplate>  $slots
-     * @param array<string, list<string>> $sessionCoachesByTeam teamId => coachIds (MAIN + ASSISTANT)
+     * @param array<string, list<string>> $sessionCoachesByTeam teamId => coachIds (MAIN)
      * @param array<string, list<string>> $playersByTeam        teamId => coachIds (joueurs actifs)
      *
      * @return list<array{personId: string, dayOfWeek: int, first: ScheduleSlotTemplate, second: ScheduleSlotTemplate}>

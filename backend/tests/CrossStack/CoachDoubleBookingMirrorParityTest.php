@@ -96,6 +96,29 @@ final class CoachDoubleBookingMirrorParityTest extends TestCase
         }
     }
 
+    /**
+     * « Tant qu'un coach tient la séance, c'est OK » — l'affectation des tenues se décide
+     * IDENTIQUEMENT des deux côtés : `holdersFor` rend EXACTEMENT les tenues de
+     * `coachDoubleBooking.parity.json::holdCases`, ou null si une séance n'a personne. Sans cette
+     * parité, la modale laisserait poser ce que le récap bloque.
+     */
+    public function testBackendHoldersForMatchesTheSharedCases(): void
+    {
+        /** @var list<array{name: string, sessions: list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>, mainCoachesByTeam: array<string, list<string>>, blockedByCoach?: array<string, list<array{0: int, 1: int, 2: int}>>, playingByCoach?: array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>>, groups?: list<list<string>>, holders: array<string, string>|null}> $cases */
+        $cases = $this->decoded()['holdCases'] ?? [];
+        self::assertNotEmpty($cases, 'coachDoubleBooking.parity.json ne porte aucun cas de tenue.');
+
+        foreach ($cases as $case) {
+            self::assertEquals($case['holders'], CoachDoubleBookingDetector::holdersFor(
+                $case['sessions'],
+                $case['mainCoachesByTeam'],
+                $case['blockedByCoach'] ?? [],
+                $case['playingByCoach'] ?? [],
+                $case['groups'] ?? [],
+            ), \sprintf('PARITÉ DES TENUES ROMPUE (« %s »).', $case['name']));
+        }
+    }
+
     /** @return list<array{name: string, a: array<string, mixed>, b: array<string, mixed>, collide: bool}> */
     private function cases(): array
     {

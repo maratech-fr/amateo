@@ -418,9 +418,13 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const lookups: Lookups = useMemo(() => {
     // teamId → main coachId (the engine leaves slot.coachId empty).
     const teamCoach = new Map<string, string>();
+    const teamMainCoaches = new Map<string, string[]>();
     for (const link of teamCoaches) {
       if ("MAIN" === link.role && !teamCoach.has(link.teamId)) {
         teamCoach.set(link.teamId, link.coachId);
+      }
+      if ("MAIN" === link.role) {
+        teamMainCoaches.set(link.teamId, [...(teamMainCoaches.get(link.teamId) ?? []), link.coachId]);
       }
     }
     // teamId → coachIds that are players of the team (coach view shows these too).
@@ -444,6 +448,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       venues: new Map(venues.map((v) => [v.id, v])),
       coaches: new Map(coaches.map((c) => [c.id, c])),
       teamCoach,
+      teamMainCoaches,
       teamPlayerCoaches,
       groupLabels,
       blockLabelBySlotId,
@@ -1283,6 +1288,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           // La description d'une contrainte NOMME sa cible : on passe les
                           // résolveurs de nom équipe/coach depuis les lookups déjà en main.
                           teamName={(id) => lookups.teams.get(id)?.name}
+                          teamMainCoaches={lookups.teamMainCoaches}
                           coachName={(id) => {
                             const c = lookups.coaches.get(id);
                             return undefined === c ? undefined : coachFullName(c);

@@ -17,6 +17,7 @@ from ..common import (
     PREFERRED,
     AssignmentVariable,
     BoolVarLike,
+    _coach_presence_literal,
     _dedupe_variables,
     _get,
     _locked_person_day_intervals,
@@ -98,7 +99,10 @@ def add_coach_rest_day_constraints(
         if team_coach_map is not None and team_id_str is not None and team_id_str in team_coach_map:
             for coach_id in team_coach_map[team_id_str]:
                 if coach_id in coach_max_days:
-                    person_day_vars[(coach_id, day)].append(assignment.var)
+                    # Seul celui qui TIENT la séance travaille ce jour-là.
+                    literal = _coach_presence_literal(model, assignment.var, coach_id)
+                    if literal is not None:
+                        person_day_vars[(coach_id, day)].append(literal)
         else:
             coach_id = assignment.coach_id
             if coach_id is not None:
@@ -116,6 +120,11 @@ def add_coach_rest_day_constraints(
                 player_id_str = str(player_id)
                 if player_id_str in coach_max_days:
                     person_day_vars[(player_id_str, day)].append(assignment.var)
+
+    for hold in (getattr(model, "lock_holds", None) or {}).values():
+        for coach_id, literal in hold["vars"].items():
+            if coach_id in coach_max_days:
+                person_day_vars[(coach_id, hold["day"])].append(literal)
 
     locked_person_days = _locked_person_day_intervals(model, team_coach_map, team_player_map)
 

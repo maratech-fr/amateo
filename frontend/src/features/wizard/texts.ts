@@ -233,5 +233,15 @@ export const WIZARD_TEXTS = {
   blockIntro: "Un ensemble d'équipes qui se comporte comme une seule : cochez-les, puis choisissez son nombre de séances communes. Une équipe peut appartenir à plusieurs groupes.",
   /** E12 — champ « Nom du groupe » facultatif (visible + nom accessible). */
   blockNameLabel: "Nom du groupe",
+  // Refus d'une réservation : chaque coach, et ce qui l'empêche de tenir la séance.
+  reservationThisTeam: "Cette équipe",
+  reservationOtherTeam: "une autre équipe",
+  reservationOtherVenue: "un autre gymnase",
+  reservationSomeCoach: "Un coach",
+  reservationItsCoach: "son coach",
+  reservationRefused: (team: string, reasons: string[]) => `${team} ne peut pas être ajoutée : ${reasons.join(" ; ")}.`,
+  reservationCoachCoaching: (coach: string, place: { team: string; time: string; venue: string }) => `${coach} entraîne déjà ${place.team} à ${place.time} à ${place.venue}`,
+  reservationCoachPlaying: (coach: string, place: { team: string; time: string; venue: string }) => `${coach} joue déjà avec ${place.team} à ${place.time} à ${place.venue}`,
+  reservationCoachUnavailable: (coach: string) => `${coach} est indisponible à cette heure`,
   blockNamePlaceholder: "Nom du groupe (facultatif)",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

@@ -19,6 +19,7 @@ from ..helpers import (
     _day_label,
     _get,
     _label,
+    _session_coaches,
     _slot_day,
     _team_name_map,
     _venue_name_map,
@@ -90,7 +91,7 @@ def _diagnose_implicit_rule_violations(
         if day is None or not 1 <= day <= 5:
             continue
         team_id = str(slot["teamId"])
-        for person in _persons(team_id, team_coach_map) + _persons(team_id, team_player_map):
+        for person in _session_coaches(slot, team_coach_map) + _persons(team_id, team_player_map):
             if person in coach_ids:
                 coach_working_days[person].add(day)
 
@@ -124,7 +125,7 @@ def _diagnose_implicit_rule_violations(
             if day is None or not 1 <= day <= 5:
                 continue
             team_id = str(slot["teamId"])
-            people = set(_persons(team_id, team_coach_map)) | set(_persons(team_id, team_player_map))
+            people = set(_session_coaches(slot, team_coach_map)) | set(_persons(team_id, team_player_map))
             if people & salarie_ids:
                 salarie_days.add(day)
         missing = [d for d in range(1, 6) if d not in salarie_days]
@@ -178,7 +179,7 @@ def _diagnose_chain_violations(
         team_id = str(slot["teamId"])
         start = _time_to_minutes(str(slot["startTime"]))
         end = start + int(slot.get("durationMinutes") or 0)
-        coaches = {str(c) for c in team_coach_map.get(team_id, [])}
+        coaches = set(_session_coaches(slot, team_coach_map))
         players = {str(p) for p in team_player_map.get(team_id, [])}
         for person in (coaches | players) & coach_ids:
             person_day[(person, day)].append((start, end, team_id, person in coaches))

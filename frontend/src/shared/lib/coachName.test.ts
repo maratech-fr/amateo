@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { COACH_UNKNOWN, coachFullName, coachNameParts } from "./coachName";
+import { COACH_UNKNOWN, coachFullName, coachNameParts, coachShortName } from "./coachName";
 import { isManagementRole, MANAGEMENT_ROLES } from "./roles";
 
 /**
@@ -19,6 +19,24 @@ describe("nom affiché d'un coach (foyer unique, D-33)", () => {
   it("un coach absent ou sans nom rend UN seul libellé", () => {
     expect(coachFullName(null)).toBe(COACH_UNKNOWN);
     expect(coachFullName({ firstName: "", lastName: "" })).toBe(COACH_UNKNOWN);
+  });
+});
+
+/** La forme courte qui laisse deux coachs lisibles dans une case de planning, sans jamais perdre le coach. */
+describe("coachShortName — « Prénom N. »", () => {
+  it("réduit le nom de famille à son initiale, en majuscule", () => {
+    expect(coachShortName({ firstName: "Alex", lastName: "Dupont" })).toBe("Alex D.");
+    expect(coachShortName({ firstName: " Alex ", lastName: " dupont " })).toBe("Alex D.");
+  });
+
+  it("une moitié manquante ne laisse ni point ni espace parasite", () => {
+    expect(coachShortName({ firstName: "Alex", lastName: null })).toBe("Alex");
+    expect(coachShortName({ firstName: null, lastName: "Dupont" })).toBe("D.");
+  });
+
+  it("un coach absent ou sans nom rend le libellé commun", () => {
+    expect(coachShortName(null)).toBe(COACH_UNKNOWN);
+    expect(coachShortName({ firstName: "", lastName: "" })).toBe(COACH_UNKNOWN);
   });
 });
 

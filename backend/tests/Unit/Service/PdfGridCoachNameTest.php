@@ -129,6 +129,32 @@ final class PdfGridCoachNameTest extends TestCase
         self::assertStringNotContainsString('Autre C.', $html, 'jamais le coach d’équipe quand la séance en porte un');
     }
 
+    /** Décision fondateur : tous les coachs de l'équipe (« B / E »), rien n'impose un tenant. */
+    public function testGridShowsAllTheCoachesOfTheTeam(): void
+    {
+        $html = $this->slotCell(
+            [$this->slot('t-a', 'v-a', 2, '18:00', 'c-b')],
+            coachShortNames: ['c-b' => 'Bruno B.', 'c-e' => 'Elsa E.'],
+            showCoaches: true,
+            teamCoachIds: ['t-a' => ['c-b', 'c-e']],
+        );
+
+        self::assertStringContainsString('Bruno B. / Elsa E.', $html);
+    }
+
+    /** Le tenant n'est nommé que s'il est imposé : le coach stocké n'est plus le premier de l'équipe. */
+    public function testGridNamesTheHolderOnlyWhenImposed(): void
+    {
+        $html = $this->slotCell(
+            [$this->slot('t-a', 'v-a', 2, '18:00', 'c-e')],
+            coachShortNames: ['c-b' => 'Bruno B.', 'c-e' => 'Elsa E.'],
+            showCoaches: true,
+            teamCoachIds: ['t-a' => ['c-b', 'c-e']],
+        );
+
+        self::assertStringContainsString('tenue par Elsa E.', $html);
+    }
+
     private function slot(string $teamId, string $venueId, int $day, string $time, ?string $coachId): ScheduleSlotTemplate
     {
         return new ScheduleSlotTemplate()
@@ -141,23 +167,24 @@ final class PdfGridCoachNameTest extends TestCase
     }
 
     /**
-     * @param list<ScheduleSlotTemplate> $bucket
-     * @param array<string, string>      $coachShortNames  coachId → « Karim B. »
-     * @param array<string, string>      $teamMainCoachIds teamId → coachId du 1er MAIN (repli quand
-     *                                                     la séance n'a pas de coach à elle)
+     * @param list<ScheduleSlotTemplate>  $bucket
+     * @param array<string, string>       $coachShortNames  coachId → « Karim B. »
+     * @param array<string, string>       $teamMainCoachIds teamId → coachId du 1er MAIN (repli quand
+     *                                                      la séance n'a pas de coach à elle)
+     * @param array<string, list<string>> $teamCoachIds     teamId → TOUS ses coachs principaux, dans l'ordre
      *
      * ⚠ Signature PROPOSÉE (option A) : `$teamMainCoachIds` ajouté EN FIN, après `$showCoaches` :
      * `slotCell(bucket, span, teamNames, venues, groupLabels, dayStart, coachShortNames, showCoaches,
      * teamMainCoachIds)`. NEO l'adapte mécaniquement ; la RÈGLE de repli (séance d'abord, sinon
      * équipe) ne bouge pas.
      */
-    private function slotCell(array $bucket, array $coachShortNames, bool $showCoaches, array $teamMainCoachIds = []): string
+    private function slotCell(array $bucket, array $coachShortNames, bool $showCoaches, array $teamMainCoachIds = [], array $teamCoachIds = []): string
     {
         $teamNames = ['t-a' => 'U13 F', 't-b' => 'U15 M'];
         $venues = ['v-a' => ['name' => 'Gymnase Municipal', 'color' => '#FFD700']];
         $generator = new ReflectionClass(PdfGenerator::class)->newInstanceWithoutConstructor();
 
         return (string) new ReflectionMethod(PdfGenerator::class, 'slotCell')
-            ->invoke($generator, $bucket, 6, $teamNames, $venues, [], false, $coachShortNames, $showCoaches, $teamMainCoachIds);
+            ->invoke($generator, $bucket, 6, $teamNames, $venues, [], false, $coachShortNames, $showCoaches, $teamMainCoachIds, $teamCoachIds);
     }
 }

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Coach;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\Reservation;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
@@ -41,6 +43,10 @@ use Doctrine\ORM\EntityManagerInterface;
  *  3. **Coachs `MAIN` uniquement.** Le solveur ne traite qu'eux en ressource exclusive
  *     (`add_coach_at_most_one`) ; un `ASSISTANT` est optionnel, bloquer dessus
  *     refuserait des réservations légitimes.
+ *
+ * « Tant qu'un coach tient la séance, c'est OK » (fondateur 2026-10-30) : un coach partagé ne bloque
+ * que si une séance n'a plus personne pour la tenir ({@see self::holdersFor}). Seul, il est
+ * indispensable ; à plusieurs, un seul suffit. `isRequired` n'entre pas en jeu.
  *
  * Rend des données STRUCTURÉES, jamais des phrases : le récap et la modale formulent
  * différemment (« Maxime se trouve à deux créneaux en même temps » vs « Emerick coache
@@ -128,6 +134,128 @@ final class CoachDoubleBookingDetector
     public static function teamsShareMainCoach(array $coachIdsA, array $coachIdsB): bool
     {
         return [] !== array_intersect($coachIdsA, $coachIdsB);
+    }
+
+    /**
+     * « Tant qu'un coach tient la séance, c'est OK » — LA règle pure de l'affectation des tenues,
+     * miroir MÉCANIQUE de `wizard/lib/coachDoubleBooking.ts::holdersFor` et du moteur
+     * (`constraints/availability.py::assign_holders`). Cas partagés et règle complète :
+     * `coachDoubleBooking.parity.json::holdCases`, gardé par `CoachDoubleBookingMirrorParityTest`.
+     * Déterministe : séances dans l'ordre donné, candidats dans l'ordre des listes, retour arrière,
+     * la PREMIÈRE solution.
+     *
+     * @param list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>    $sessions
+     * @param array<string, list<string>>                                                                                          $mainCoachesByTeam
+     * @param array<string, list<array{0: int, 1: int, 2: int}>>                                                                   $blockedByCoach    coachId → [(jour, de, à)]
+     * @param array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>> $playingByCoach    coachId → séances où il joue
+     * @param list<list<string>>                                                                                                   $groups            groupes déclarés (séances communes) : les seuls à prêter leurs coachs
+     *
+     * @return array<string, string>|null sessionId → coachId, null si une séance n'a personne
+     */
+    public static function holdersFor(array $sessions, array $mainCoachesByTeam, array $blockedByCoach = [], array $playingByCoach = [], array $groups = []): ?array
+    {
+        $required = [];
+        $candidates = [];
+        foreach ($sessions as $session) {
+            $own = self::holdCandidates($session, $sessions, $mainCoachesByTeam, $groups);
+            if ([] === $own) {
+                continue; // aucun coach principal : la séance n'exige personne.
+            }
+            $free = array_values(array_filter($own, static fn (string $coachId): bool => !self::blockedDuring($coachId, $session, $blockedByCoach)));
+            $free = [] === $free ? $own : $free; // indisponible mais seul : avertissement, jamais bloqueur.
+            $required[] = $session;
+            $candidates[$session['id']] = array_values(array_filter($free, static fn (string $coachId): bool => !self::playsElsewhereDuring($coachId, $session, $playingByCoach)));
+        }
+
+        $holders = [];
+
+        return self::assignHolders($required, $candidates, 0, $holders) ? $holders : null;
+    }
+
+    /**
+     * {@see self::holdersFor}, grappe par grappe : deux séances ne se jugent ensemble que si elles
+     * peuvent se disputer une personne. Une séance intenable ne condamne pas un autre créneau.
+     *
+     * @param list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>    $sessions
+     * @param array<string, list<string>>                                                                                          $mainCoachesByTeam
+     * @param array<string, list<array{0: int, 1: int, 2: int}>>                                                                   $blockedByCoach
+     * @param array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>> $playingByCoach
+     * @param list<list<string>>                                                                                                   $groups
+     *
+     * @return array{holders: array<string, string>, unheld: array<array-key, true>}
+     */
+    public static function holdsByCluster(array $sessions, array $mainCoachesByTeam, array $blockedByCoach = [], array $playingByCoach = [], array $groups = []): array
+    {
+        $people = [];
+        foreach ($sessions as $session) {
+            $people[$session['id']] = self::holdCandidates($session, $sessions, $mainCoachesByTeam, $groups);
+            foreach ($playingByCoach as $coachId => $games) {
+                foreach ($games as $game) {
+                    if (self::overlaps($session, $game)) {
+                        $people[$session['id']][] = $coachId;
+                        break;
+                    }
+                }
+            }
+        }
+
+        $holders = [];
+        $unheld = [];
+        $seen = [];
+        foreach ($sessions as $seed) {
+            if (isset($seen[$seed['id']])) {
+                continue;
+            }
+            $seen[$seed['id']] = true;
+            $cluster = [$seed];
+            for ($index = 0; isset($cluster[$index]); ++$index) { // la grappe grandit pendant le parcours
+                foreach ($sessions as $other) {
+                    if (!isset($seen[$other['id']]) && self::overlaps($cluster[$index], $other) && [] !== array_intersect($people[$cluster[$index]['id']], $people[$other['id']])) {
+                        $seen[$other['id']] = true;
+                        $cluster[] = $other;
+                    }
+                }
+            }
+            $clusterHolders = self::holdersFor(array_values(array_filter($sessions, static fn (array $session): bool => \in_array($session, $cluster, true))), $mainCoachesByTeam, $blockedByCoach, $playingByCoach, $groups);
+            if (null === $clusterHolders) {
+                foreach ($cluster as $session) {
+                    $unheld[$session['id']] = true;
+                }
+                continue;
+            }
+            $holders += $clusterHolders;
+        }
+
+        return ['holders' => $holders, 'unheld' => $unheld];
+    }
+
+    /**
+     * Le coach à stocker sur une séance qu'on vient de poser : le premier de l'équipe, ou le suivant si
+     * le premier est pris ailleurs (une séance qui le nomme, un rôle de joueur, son indisponibilité).
+     * Personne de libre : le premier, le radar le signalera.
+     *
+     * @param array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}                         $session
+     * @param list<string>                                                                                                            $coachIds
+     * @param list<array{coachId: ?string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}> $others
+     * @param array<string, list<array{0: int, 1: int, 2: int}>>                                                                      $blockedByCoach
+     * @param array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>>    $playingByCoach
+     */
+    public static function storedCoachFor(array $session, array $coachIds, array $others, array $blockedByCoach, array $playingByCoach): ?string
+    {
+        foreach ($coachIds as $coachId) {
+            if (self::blockedDuring($coachId, $session, $blockedByCoach) || self::playsElsewhereDuring($coachId, $session, $playingByCoach)) {
+                continue;
+            }
+            foreach ($others as $other) {
+                if ($other['coachId'] === $coachId && self::bookingsCollide(['coachId' => $coachId] + $session, ['coachId' => $coachId] + $other)) {
+                    continue 2;
+                }
+            }
+
+            return $coachId;
+        }
+
+        return $coachIds[0] ?? null;
     }
 
     /**
@@ -235,6 +363,118 @@ final class CoachDoubleBookingDetector
         return $blocked;
     }
 
+    /**
+     * Les coachs de l'équipe, puis ceux des autres équipes de son groupe DÉCLARÉ sur la MÊME case.
+     * Même case sans groupe = chacun ses coachs (décision fondateur 2026-10-30).
+     *
+     * @param array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}       $session
+     * @param list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}> $sessions
+     * @param array<string, list<string>>                                                                                       $mainCoachesByTeam
+     * @param list<list<string>>                                                                                                $groups
+     *
+     * @return list<string>
+     */
+    private static function holdCandidates(array $session, array $sessions, array $mainCoachesByTeam, array $groups): array
+    {
+        $candidates = $mainCoachesByTeam[$session['teamId']] ?? [];
+        foreach ($sessions as $other) {
+            if ($other['venueId'] === $session['venueId'] && $other['dayOfWeek'] === $session['dayOfWeek'] && $other['startMinutes'] === $session['startMinutes'] && self::sameGroup($session['teamId'], $other['teamId'], $groups)) {
+                $candidates = [...$candidates, ...($mainCoachesByTeam[$other['teamId']] ?? [])];
+            }
+        }
+
+        return array_values(array_unique($candidates));
+    }
+
+    /**
+     * @param list<list<string>> $groups
+     */
+    private static function sameGroup(string $teamA, string $teamB, array $groups): bool
+    {
+        if ($teamA === $teamB) {
+            return true;
+        }
+        foreach ($groups as $group) {
+            if (\in_array($teamA, $group, true) && \in_array($teamB, $group, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Même règle que le moteur (`availability.py::_coach_available_at`) : l'indisponibilité se teste
+     * au DÉBUT de la séance.
+     *
+     * @param array{dayOfWeek: int, startMinutes: int, durationMinutes: int} $session
+     * @param array<string, list<array{0: int, 1: int, 2: int}>>             $blockedByCoach
+     */
+    private static function blockedDuring(string $coachId, array $session, array $blockedByCoach): bool
+    {
+        foreach ($blockedByCoach[$coachId] ?? [] as [$day, $from, $until]) {
+            if ($day === $session['dayOfWeek'] && $from <= $session['startMinutes'] && $session['startMinutes'] < $until) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}                      $session
+     * @param array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>> $playingByCoach
+     */
+    private static function playsElsewhereDuring(string $coachId, array $session, array $playingByCoach): bool
+    {
+        foreach ($playingByCoach[$coachId] ?? [] as $game) {
+            // Même règle que le moteur : jouer occupe, même gymnase compris (sauf dans sa propre équipe).
+            if ($game['teamId'] !== $session['teamId'] && self::overlaps($session, $game)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array{dayOfWeek: int, startMinutes: int, durationMinutes: int} $a
+     * @param array{dayOfWeek: int, startMinutes: int, durationMinutes: int} $b
+     */
+    private static function overlaps(array $a, array $b): bool
+    {
+        return $a['dayOfWeek'] === $b['dayOfWeek']
+            && $a['startMinutes'] < $b['startMinutes'] + $b['durationMinutes']
+            && $b['startMinutes'] < $a['startMinutes'] + $a['durationMinutes'];
+    }
+
+    /**
+     * @param list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}> $sessions
+     * @param array<string, list<string>>                                                                                       $candidates
+     * @param array<string, string>                                                                                             $holders
+     */
+    private static function assignHolders(array $sessions, array $candidates, int $index, array &$holders): bool
+    {
+        if ($index === \count($sessions)) {
+            return true;
+        }
+        $session = $sessions[$index];
+        foreach ($candidates[$session['id']] ?? [] as $coachId) {
+            foreach (\array_slice($sessions, 0, $index) as $other) {
+                if (($holders[$other['id']] ?? null) === $coachId && self::bookingsCollide(['coachId' => $coachId] + $session, ['coachId' => $coachId] + $other)) {
+                    continue 2;
+                }
+            }
+            $holders[$session['id']] = $coachId;
+            if (self::assignHolders($sessions, $candidates, $index + 1, $holders)) {
+                return true;
+            }
+            unset($holders[$session['id']]);
+        }
+
+        return false;
+    }
+
     private static function timeToMinutes(mixed $time, int $default): int
     {
         if (!\is_string($time) || 1 !== preg_match('/^(\d{2}):(\d{2})/', $time, $matches)) {
@@ -257,6 +497,21 @@ final class CoachDoubleBookingDetector
             static fn (mixed $day): ?int => is_numeric($day) ? (int) $day : null,
             $days,
         ), static fn (?int $day): bool => null !== $day));
+    }
+
+    /**
+     * Les groupes déclarés d'un périmètre : les équipes de chaque séance commune.
+     *
+     * @return list<list<string>>
+     */
+    public function declaredGroups(string $clubId, string $seasonId, ?string $schedulePlanId): array
+    {
+        $groups = [];
+        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $schedulePlanId]) as $member) {
+            $groups[$member->getBlockId()][] = $member->getTeamId();
+        }
+
+        return array_values($groups);
     }
 
     /**
@@ -301,6 +556,42 @@ final class CoachDoubleBookingDetector
         }
 
         return $warnings;
+    }
+
+    /**
+     * La mention douce du récap : une séance dont un coach est pris ailleurs, tenue par un autre.
+     * Ni bloqueur ni avertissement (« U15 tenue par B », fondateur 2026-10-30).
+     *
+     * @param list<Reservation> $reservations
+     * @param list<Constraint>  $constraints
+     *
+     * @return list<array{place: string, message: string}>
+     */
+    public function detectHoldNotices(array $reservations, array $constraints, string $clubId, string $seasonId): array
+    {
+        $mainCoachesByTeam = $this->mainCoachesByTeam($clubId, $seasonId);
+        $relevant = array_values(array_filter(
+            $reservations,
+            static fn (Reservation $r): bool => [] !== ($mainCoachesByTeam[$r->getTeamId() ?? ''] ?? []),
+        ));
+        $sessions = $this->holdSessions($relevant);
+        $holders = self::holdsByCluster($sessions, $mainCoachesByTeam, self::blockedIntervalsByCoach($constraints), $this->playingByCoach($reservations, $clubId, $seasonId), $this->groupsOf($reservations, $clubId, $seasonId))['holders'];
+        $names = $this->displayNames($relevant, $mainCoachesByTeam);
+
+        $notices = [];
+        foreach ($sessions as $index => $session) {
+            $holder = $holders[$session['id']] ?? null;
+            if (null === $holder || !$this->aCoachIsBusyElsewhere($session, $sessions, $holders, $mainCoachesByTeam[$session['teamId']] ?? [])) {
+                continue;
+            }
+            $described = $this->describe($relevant[$index], $names);
+            $notices[] = [
+                'place' => \sprintf('%s · %s %s', $described['venueName'], self::DAY_NAMES[$session['dayOfWeek']] ?? 'ce jour', $described['startTime']),
+                'message' => \sprintf('%s tenue par %s', $described['teamName'], $names['coach'][$holder] ?? 'un autre coach'),
+            ];
+        }
+
+        return $notices;
     }
 
     /**
@@ -373,8 +664,10 @@ final class CoachDoubleBookingDetector
             return [];
         }
 
-        // Les équipes posées sur chaque case (gymnase, jour, début) : une séance COMMUNE en
-        // réunit plusieurs, et « un coach suffit » se décide sur l'UNION de leurs coachs.
+        // Les équipes posées sur chaque case (gymnase, jour, début) : une séance COMMUNE DÉCLARÉE en
+        // réunit plusieurs, et « un coach suffit » se décide sur l'UNION de leurs coachs. Même case
+        // sans groupe = chacun ses coachs (décision fondateur 2026-10-30).
+        $groups = $this->groupsOf($reservations, $clubId, $seasonId);
         $teamsByCase = [];
         foreach ($relevant as $reservation) {
             $teamsByCase[$this->caseKey($reservation)][$reservation->getTeamId() ?? ''] = true;
@@ -391,6 +684,9 @@ final class CoachDoubleBookingDetector
             // (séance commune) ; une équipe seule ⇒ ses seuls coachs.
             $requiredCoachIds = [];
             foreach (array_keys($teamsByCase[$this->caseKey($reservation)]) as $teamId) {
+                if (!self::sameGroup($reservation->getTeamId() ?? '', (string) $teamId, $groups)) {
+                    continue;
+                }
                 foreach ($mainCoaches[$teamId] ?? [] as $coachId) {
                     $requiredCoachIds[$coachId] = true;
                 }
@@ -442,6 +738,79 @@ final class CoachDoubleBookingDetector
     }
 
     /**
+     * Le groupe déclaré du périmètre des réservations (socle si aucune).
+     *
+     * @param list<Reservation> $reservations
+     *
+     * @return list<list<string>>
+     */
+    private function groupsOf(array $reservations, string $clubId, string $seasonId): array
+    {
+        return $this->declaredGroups($clubId, $seasonId, [] === $reservations ? null : $reservations[0]->getSchedulePlanId());
+    }
+
+    /**
+     * coachId → réservations où il JOUE (memberships actifs) : les mêmes rôles que le radar.
+     *
+     * @param list<Reservation> $reservations
+     *
+     * @return array<string, list<array{teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>>
+     */
+    private function playingByCoach(array $reservations, string $clubId, string $seasonId): array
+    {
+        $playersByTeam = [];
+        foreach ($this->entityManager->getRepository(CoachPlayerMembership::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $membership) {
+            if ($membership->getIsActive()) {
+                $playersByTeam[$membership->getTeamId()][] = $membership->getCoachId();
+            }
+        }
+        $playing = [];
+        foreach ($reservations as $reservation) {
+            foreach ($playersByTeam[$reservation->getTeamId() ?? ''] ?? [] as $coachId) {
+                $playing[$coachId][] = $this->bookingOf($reservation);
+            }
+        }
+
+        return $playing;
+    }
+
+    /**
+     * @param array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}       $session
+     * @param list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}> $sessions
+     * @param array<string, string>                                                                                             $holders
+     * @param list<string>                                                                                                      $ownCoaches
+     */
+    private function aCoachIsBusyElsewhere(array $session, array $sessions, array $holders, array $ownCoaches): bool
+    {
+        foreach ($sessions as $other) {
+            $coachId = $holders[$other['id']] ?? null;
+            if (null !== $coachId && $coachId !== $holders[$session['id']] && \in_array($coachId, $ownCoaches, true)
+                && self::bookingsCollide(['coachId' => $coachId] + $session, ['coachId' => $coachId] + $other)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Les séances de {@see self::holdersFor}, repérées par la position de la réservation.
+     *
+     * @param list<Reservation> $reservations
+     *
+     * @return list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}>
+     */
+    private function holdSessions(array $reservations): array
+    {
+        $sessions = [];
+        foreach ($reservations as $index => $reservation) {
+            $sessions[] = ['id' => (string) $index] + $this->bookingOf($reservation);
+        }
+
+        return $sessions;
+    }
+
+    /**
      * Le CŒUR du chantier H : chaque paire dédoublante (P4-333 : TOUS les principaux partagés)
      * classée TOLÉRÉE ou non. Une entrée par coach principal partagé, portant le conflit structuré
      * (forme historique, pour le bloqueur), un drapeau `tolerated`, et le message de relais quand
@@ -449,6 +818,8 @@ final class CoachDoubleBookingDetector
      * le retard géométrique (fin de la 1ʳᵉ + barème de trajet − début de la 2ᵉ) tient dans cette
      * tolérance, ET un adjoint DISPONIBLE (lien ASSISTANT de l'équipe rejointe, sans indispo
      * déclarée ni séance MAIN chevauchante dans un autre gymnase) ouvre la séance.
+     *
+     * Une paire dont chaque séance a quelqu'un pour la tenir n'a aucune entrée : ni conflit, ni relais.
      *
      * @param list<Reservation> $reservations
      * @param list<Constraint>  $constraints
@@ -475,10 +846,14 @@ final class CoachDoubleBookingDetector
         $assistantsByTeam = $this->assistantsByTeam($clubId, $seasonId);
         $blockedByCoach = self::blockedIntervalsByCoach($constraints);
         $mainBookingsByCoach = $this->mainBookingsByCoach($relevant, $mainCoachesByTeam);
+        $unheld = self::holdsByCluster($this->holdSessions($relevant), $mainCoachesByTeam, $blockedByCoach, $this->playingByCoach($reservations, $clubId, $seasonId), $this->groupsOf($reservations, $clubId, $seasonId))['unheld'];
 
         $entries = [];
         foreach ($relevant as $i => $first) {
-            foreach (\array_slice($relevant, $i + 1) as $second) {
+            foreach (\array_slice($relevant, $i + 1) as $offset => $second) {
+                if (!isset($unheld[(string) $i]) && !isset($unheld[(string) ($i + 1 + $offset)])) {
+                    continue; // chacune a quelqu'un pour la tenir.
+                }
                 $coachIdsA = $mainCoachesByTeam[$first->getTeamId() ?? ''] ?? [];
                 $coachIdsB = $mainCoachesByTeam[$second->getTeamId() ?? ''] ?? [];
                 if (!self::teamsShareMainCoach($coachIdsA, $coachIdsB) || !$this->geometricCollide($first, $second)) {

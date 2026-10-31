@@ -17,6 +17,17 @@ interface CoachLike {
 export const coachFullName = (coach: CoachLike | null | undefined): string =>
   null == coach ? COACH_UNKNOWN : `${coach.firstName ?? ""} ${coach.lastName ?? ""}`.trim() || COACH_UNKNOWN;
 
+/** « Prénom N. » : la forme courte qui laisse deux coachs lisibles dans une case de planning. */
+export const coachShortName = (coach: CoachLike | null | undefined): string => {
+  if (null == coach) {
+    return COACH_UNKNOWN;
+  }
+  const first = (coach.firstName ?? "").trim();
+  const initial = (coach.lastName ?? "").trim().charAt(0).toUpperCase();
+
+  return "" === initial ? coachFullName(coach) : `${first} ${initial}.`.trim();
+};
+
 /**
  * Les deux moitiés du nom, trimmées (D5) — la tuile du planning coupe le nom du coach sur deux
  * lignes (prénom puis nom plus petit) quand elle a la hauteur. Mêmes replis que `coachFullName` :

@@ -11,7 +11,7 @@ import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
 import { completeBlockOnCase } from "../lib/blockOccupancy";
 import { occupantsBySlot, effectiveSlotCapacity, reservedTeamsBySlot, slotKey } from "../lib/reservationSlots";
 import { closuresByVenue, closurePeriodLabel, isSlotClosed } from "../lib/venueClosures";
-import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useVenueTravelTimes, useWizardCoaches, useWizardTeamCoaches } from "../queries";
+import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useVenueTravelTimes, useWizardCoachPlayers, useWizardCoaches, useWizardConstraints, useWizardTeamCoaches } from "../queries";
 import { ReservationGrid } from "./ReservationGrid";
 import { SlotReservationModal } from "./SlotReservationModal";
 
@@ -49,6 +49,8 @@ export function ReservationPanel({
   // une réservation hors de la grille servie bloquerait la génération (#8).
   const { data: slots = [] } = useGridSlots(schedulePlanId);
   const { data: reservations = [] } = useReservations(schedulePlanId);
+  const { data: coachPlayers = [] } = useWizardCoachPlayers();
+  const { data: holdConstraints = [] } = useWizardConstraints(entryId);
   // P2-51 — les BLOCS de mutualisation de la portée courante (SEULE notion), posables sur un
   // créneau libre comme une équipe. En portée socle le provider renvoie socle ET périodes : on ne
   // garde que le socle.
@@ -191,6 +193,8 @@ export function ReservationPanel({
           venueClosures={closuresOfVenue}
           venueCanSplit={venueCanSplit}
           sharedTrainingBlocks={sharedBlocks}
+          coachPlayers={coachPlayers}
+          constraints={holdConstraints}
           venueTravelTimes={venueTravelTimes}
           teamSoloBudgets={teamSoloBudgets ?? null}
           budgetsPending={budgetsPending}

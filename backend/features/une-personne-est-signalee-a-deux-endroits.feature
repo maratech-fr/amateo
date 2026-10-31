@@ -1,9 +1,9 @@
 # language: fr
 Fonctionnalité: Une personne à deux endroits en même temps est signalée
-  Compléter son modèle après génération — lier un coach adjoint déclaré tard, un joueur — peut
-  mettre une personne sur deux séances DÉJÀ placées qui se chevauchent. L'application le voit sur
-  le planning en vigueur et le DIT, sans rien régénérer : deux gymnases différents = conflit ;
-  le même gymnase = mutualisation voulue, donc rien.
+  Compléter son modèle après génération — lier un coach déclaré tard, un joueur — peut laisser une
+  séance DÉJÀ placée sans personne pour la tenir. L'application le voit sur le planning en vigueur
+  et le DIT, sans rien régénérer : le seul coach dans deux gymnases différents = conflit ; le même
+  gymnase = mutualisation voulue, donc rien.
 
   Scénario: Deux gymnases différents au même moment : la personne est signalée
     Étant donné le club de démonstration, connecté, avec son planning de saison en vigueur

@@ -35,6 +35,7 @@ from ..helpers import (
     _collection,
     _get,
     _label,
+    _session_coaches,
     _slot_day,
     _team_name_map,
 )
@@ -188,7 +189,10 @@ def _diagnose_travel_times(
         for coach_id in coach_ids or ():
             coach_teams[str(coach_id)].append(str(team_id))
     for coach_id, team_ids in coach_teams.items():
-        gathered = [p for team_id in team_ids for p in placements.get(team_id, [])]
+        # Le trajet ne vaut que pour celui qui TIENT la séance : celui que le créneau nomme.
+        held = [slot for slot in slots if coach_id in _session_coaches(slot, team_coach_map)]
+        held_placements = _team_link_placements_from_slots(held)
+        gathered = [p for team_id in team_ids for p in held_placements.get(team_id, [])]
         ordered = sorted(gathered, key=lambda p: (p[2], p[0], p[1], p[3]))
         driving = vehicled.get(coach_id, False)
         for i in range(len(ordered)):

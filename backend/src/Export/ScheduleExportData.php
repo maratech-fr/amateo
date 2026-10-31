@@ -57,5 +57,7 @@ final readonly class ScheduleExportData
         public array $freeSlots = [],
         public array $coachShortNames = [],
         public array $teamMainCoachIds = [],
+        /** @var array<string, list<string>> teamId → tous ses coachs principaux, dans l'ordre */
+        public array $teamCoachIds = [],
     ) {}
 }
