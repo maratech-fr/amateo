@@ -462,14 +462,18 @@ final class ParcImportExecutor
                 continue;
             }
             $commonSessions = \is_int($entry['seances_communes'] ?? null) ? $entry['seances_communes'] : 1;
-            // D8 — le libellé CORRIGÉ par le gestionnaire (corrections.groupe) l'emporte sur le groupe
-            // DÉRIVÉ de la case ; borné à la longueur max de la colonne, comme les autres corrections.
-            $label = $this->blockLabel($decision['corrections'], $entry);
-
             $block = $this->existingBlockForTeams($club->getId(), $seasonId, $teamIds);
             if ($block instanceof SharedTrainingBlock) {
                 // Idempotence : un bloc du socle portant exactement ces équipes existe déjà → réutilisé.
-                ++$recap['apparies'];
+                // Seul un nom SAISI le renomme : le nom lu dans le fichier n'écrase jamais un groupe existant.
+                $typedLabel = $this->typedBlockLabel($decision['corrections']);
+                if (null !== $typedLabel && $typedLabel !== $block->getLabel()) {
+                    $block->setLabel($typedLabel)->touch();
+                    $this->entityManager->flush();
+                    ++$recap['misAJour'];
+                } else {
+                    ++$recap['apparies'];
+                }
             } else {
                 // Garde Σ séances communes ≤ séances d'un membre, rejouée depuis sa maison unique,
                 // AVANT toute écriture (un dépassement refuse l'import, rien n'est écrit).
@@ -484,7 +488,8 @@ final class ParcImportExecutor
                     ->setSeasonId($seasonId)
                     ->setSchedulePlanId(null)
                     ->setCommonSessions($commonSessions)
-                    ->setLabel($label);
+                    // D8 — à la CRÉATION, le nom saisi l'emporte sur le groupe DÉRIVÉ de la case.
+                    ->setLabel($this->blockLabel($decision['corrections'], $entry));
                 $this->entityManager->persist($block);
                 foreach ($teamIds as $teamId) {
                     $member = (new SharedTrainingBlockTeam)
@@ -1324,20 +1329,33 @@ final class ParcImportExecutor
     }
 
     /**
-     * Libellé d'un bloc mutualisé : la correction `groupe` (trim, non vide) l'emporte sur le `groupe`
-     * DÉRIVÉ de la case ; borné à {@see SharedTrainingBlock::LABEL_MAX_LENGTH} comme la colonne.
+     * Libellé d'un bloc mutualisé À CRÉER : le nom saisi l'emporte sur le `groupe` DÉRIVÉ de la case ;
+     * borné à {@see SharedTrainingBlock::LABEL_MAX_LENGTH} comme la colonne. Un bloc EXISTANT, lui, ne
+     * lit que {@see typedBlockLabel()} : le nom du fichier ne l'écrase jamais.
      *
      * @param array<string, mixed> $corrections
      */
     private function blockLabel(array $corrections, mixed $entry): ?string
     {
-        $corrected = $corrections['groupe'] ?? null;
-        if (\is_string($corrected) && '' !== trim($corrected)) {
-            return $this->boundLabel(trim($corrected));
+        $typed = $this->typedBlockLabel($corrections);
+        if (null !== $typed) {
+            return $typed;
         }
         $raw = \is_array($entry) ? ($entry['groupe'] ?? null) : null;
 
         return \is_string($raw) && '' !== trim($raw) ? $this->boundLabel(trim($raw)) : null;
+    }
+
+    /**
+     * Le nom de groupe SAISI à la main (`corrections.groupe`, trim, non vide), borné comme la colonne.
+     *
+     * @param array<string, mixed> $corrections
+     */
+    private function typedBlockLabel(array $corrections): ?string
+    {
+        $corrected = $corrections['groupe'] ?? null;
+
+        return \is_string($corrected) && '' !== trim($corrected) ? $this->boundLabel(trim($corrected)) : null;
     }
 
     private function boundLabel(string $label): string

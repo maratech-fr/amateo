@@ -604,11 +604,13 @@ final class ParcImportAnalyzer
             }
 
             $matchedBlockId = null;
+            $matchedBlockLabel = null;
             if ($allResolved && [] !== $teamIds) {
                 $set = $this->sortedUnique($teamIds);
                 foreach ($existingBlocks as $block) {
                     if ($block['members'] === $set) {
                         $matchedBlockId = $block['blockId'];
+                        $matchedBlockLabel = $block['label'];
 
                         break;
                     }
@@ -623,7 +625,9 @@ final class ParcImportAnalyzer
             }
 
             if (null !== $matchedBlockId) {
-                $out[] = $this->line($i, $libelle, 'apparie', $matchedBlockId, null, $extra);
+                // `blocLabel` = le VRAI nom du groupe existant (null s'il n'en a pas), distinct de `groupe`, le
+                // nom lu : c'est lui qui amorce le champ, le nom du fichier n'écrasant jamais un groupe existant.
+                $out[] = $this->line($i, $libelle, 'apparie', $matchedBlockId, null, $extra + ['blocLabel' => $matchedBlockLabel]);
 
                 continue;
             }
@@ -634,7 +638,7 @@ final class ParcImportAnalyzer
     }
 
     /**
-     * @return list<array{blockId: string, members: list<string>}>
+     * @return list<array{blockId: string, label: string|null, members: list<string>}>
      */
     private function socleBlocks(string $clubId, string $seasonId): array
     {
@@ -648,7 +652,7 @@ final class ParcImportAnalyzer
             foreach ($memberRepository->findBy(['blockId' => $block->getId()]) as $member) {
                 $members[] = $member->getTeamId();
             }
-            $out[] = ['blockId' => $block->getId(), 'members' => $this->sortedUnique($members)];
+            $out[] = ['blockId' => $block->getId(), 'label' => $block->getLabel(), 'members' => $this->sortedUnique($members)];
         }
 
         return $out;
