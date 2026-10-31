@@ -39,6 +39,28 @@ final class WorktreeTestRoutingTest extends TestCase
         self::assertStringNotContainsString('/tmp/amateo-e2e-sa.txt', $recipe);
     }
 
+    /**
+     * `epreuve-dev` lève `frontend-dev`, service du profil `dev` : un `down` sans ce profil le laisse
+     * tourner, le réseau reste occupé et `epreuve-status` annonce encore la stack occupée.
+     */
+    #[DataProvider('epreuveTeardownTargets')]
+    public function testEpreuveTeardownAlsoStopsTheDevProfile(string $target): void
+    {
+        self::assertMatchesRegularExpression(
+            '/-p amateo-epreuve\b[^;]*--profile dev\b[^;]* down\b/',
+            $this->recipe('Makefile', $target),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function epreuveTeardownTargets(): iterable
+    {
+        yield 'epreuve-down' => ['epreuve-down'];
+        yield 'epreuve-destroy' => ['epreuve-destroy'];
+    }
+
     /** Sinon le `.env` d'épreuve survit, et le worktree ne repasse jamais proprement en nu. */
     public function testEpreuveDestroyRemovesTheWorktreeEnv(): void
     {
