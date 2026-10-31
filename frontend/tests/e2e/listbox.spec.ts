@@ -157,6 +157,8 @@ async function reachVenueSelect(page: import("@playwright/test").Page): Promise<
   await page.getByLabel("Nom du gymnase").fill("Gymnase Un");
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
   await expect(page.locator("#venue-picker")).toContainText("Gymnase Un", { timeout: 20_000 });
+  // L'accordéon d'ajout se referme après un ajout réussi : on le rouvre pour le gymnase suivant.
+  await page.getByRole("button", { name: "Ajouter des gymnases" }).click();
   await page.getByLabel("Nom du gymnase").fill("Gymnase Deux");
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
   await expect(page.locator("#venue-picker")).toContainText("Gymnase Deux", { timeout: 20_000 });

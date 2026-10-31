@@ -2,6 +2,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Tailwind 4 a retiré le curseur « main » de son reset. Dans `@layer base`, pour qu'un utilitaire
+   (`cursor-not-allowed`) garde la main. */
+@layer base {
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 /*
  * Design tokens — base CHAUDE clair/sombre (papier `#faf9f7` / encre chaude `#464646` en clair,
  * échelle de gris chauds en sombre) partagée PAR CONVENTION avec la vitrine (`landing/`, jamais

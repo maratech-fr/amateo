@@ -52,3 +52,33 @@ describe("Modal — drapeau « Signaler » dans l'en-tête (D14)", () => {
     expect(within(dialog).getByRole("button", { name: "Fermer" })).toBeInTheDocument();
   });
 });
+
+/**
+ * Finitions d'interface (essai d'onboarding, 30/10, point 6) : ROUGE option A. Les deux pictos de l'en-tête
+ * disent ce qu'ils font au survol (`title`) et réagissent au survol. Le rendu réel du survol se juge
+ * sur capture : jsdom n'applique aucun style, ce test garde seulement la présence de la classe.
+ */
+describe("Modal — pictos de l'en-tête : infobulle et retour au survol", () => {
+  function renderHeader(): HTMLElement {
+    render(
+      <ModalReportProviderContext value={{ openReport: vi.fn() }}>
+        <Modal label="Fenêtre test" title="Titre test" onClose={() => {}}>
+          contenu
+        </Modal>
+      </ModalReportProviderContext>,
+    );
+    return screen.getByRole("dialog");
+  }
+
+  it.each(["Signaler", "Fermer"])("le bouton « %s » porte une infobulle et garde son nom accessible", (name) => {
+    const button = within(renderHeader()).getByRole("button", { name });
+
+    expect(button.getAttribute("title") ?? "").not.toBe("");
+  });
+
+  it.each(["Signaler", "Fermer"])("le bouton « %s » change de fond au survol", (name) => {
+    const button = within(renderHeader()).getByRole("button", { name });
+
+    expect(button.className).toMatch(/hover:bg-/);
+  });
+});

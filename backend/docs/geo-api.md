@@ -227,7 +227,7 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   — un simple déplacement ne fait jamais naître une matrice) et verrou non tenu. Les `AUTO` du
   couple impliquant ce gymnase se recalculent (nouvelles coordonnées ⇒ MISS du cache, indexé par
   coordonnées, ⇒ appel IGN) ; les `MANUAL` ne bougent jamais ; les autres couples retombent sur le
-  cache. **Toast front dédié depuis P4-279 (2026-10-16)** : tant que l'écran Gymnases du wizard
+  cache. ****Dissociation** (finitions PR D, 2026-10-30) : `PUT /api/venues/{id}` avec `externalRef: ""` stocke la référence FFBB à null, efface adresse et GPS et VIDE les lignes de matrice du gymnase (saisies manuelles comprises) sans les supprimer, pour que le recalcul reste opt-in ; une valeur fournie dans le même PUT l'emporte (`VenueStateProcessor`). Toast front dédié depuis P4-279 (2026-10-16)** : tant que l'écran Gymnases du wizard
   reste ouvert, il écoute le même flux `club:{id}:travel` (pas d'écoute globale ailleurs dans
   l'app) et toaste « Trajets recalculés. » à la transition terminale — sauf si la matrice
   (`TravelMatrixModal`) est déjà ouverte, qui montre sa propre jauge (`frontend/AGENTS.md`).

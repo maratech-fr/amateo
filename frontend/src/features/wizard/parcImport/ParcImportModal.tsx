@@ -153,7 +153,13 @@ export function ParcImportModal(props: ParcImportModalProps) {
     [teams, venues, club],
   );
 
-  const [step, setStep] = useState<StepId>("prompt");
+  const [step, setCurrentStep] = useState<StepId>("prompt");
+  // Les étapes déjà ouvertes depuis la dernière analyse d'un parc collé. « Revalider » les conserve.
+  const [visitedSteps, setVisitedSteps] = useState<ReadonlySet<StepId>>(new Set());
+  const setStep = (id: StepId): void => {
+    setCurrentStep(id);
+    setVisitedSteps((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  };
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState("");
   const [analysis, setAnalysis] = useState<ParcAnalysis | null>(null);
@@ -312,6 +318,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
     analyze.mutate(rawText, {
       onSuccess: (data) => {
         applyAnalysis(data);
+        setVisitedSteps(new Set());
         setStep("equipes");
       },
     });
@@ -480,16 +487,16 @@ export function ParcImportModal(props: ParcImportModalProps) {
     let n = 0;
     for (const line of analysis.sections.mutualisations ?? []) {
       const draft = teamCompositionDrafts[keyOf("mutualisations", line.index)];
-      if (undefined !== draft && draft.length < 2) {
+      if (undefined !== draft && draft.length < 2 && (checked[keyOf("mutualisations", line.index)] ?? line.coche)) {
         n += 1;
       }
     }
     return n;
-  }, [analysis, teamCompositionDrafts]);
+  }, [analysis, teamCompositionDrafts, checked]);
 
   const importDecisions = buildDecisions();
   const count = importDecisions.filter((d) => d.coche).length;
-  const blocked = pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || pendingComposition > 0 || 0 === count;
+  const blockedByLines = pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || pendingComposition > 0 || 0 === count;
 
   const doImport = (): void => {
     if (null === analysis || blocked) {
@@ -541,6 +548,10 @@ export function ParcImportModal(props: ParcImportModalProps) {
         }
       }
     }
+    // Plus aucune ligne à trancher : la première étape qui n'est pas encore verte.
+    if (undefined !== stepsToClear[0]) {
+      setStep(stepsToClear[0]);
+    }
   };
 
   const goTo = (direction: 1 | -1): void => {
@@ -565,23 +576,32 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if (importMut.isError && id === step) {
       return "error";
     }
-    return hasPending(id) ? "warning" : "done";
+    if (hasPending(id)) {
+      return "warning";
+    }
+    return visitedSteps.has(id) ? "done" : undefined;
   };
 
   const hasPending = (id: StepId): boolean => {
     if (null === analysis) {
       return false;
     }
+    // Une ligne en « Ignorer » n'attend plus rien, sinon une alerte non corrigeable bloquerait l'import
+    // pour de bon. Mais le serveur sert toute alerte décochée : tant que l'étape n'a pas été vue, l'alerte
+    // reste signalée au rail. Une ligne d'entité porte sa décision, une ligne de case Garder/Ignorer.
+    const unseen = !visitedSteps.has(id);
+    const entityAlert = (section: string, l: ParcAnalysisLine): boolean => "alerte" === l.statut && (unseen || IGNORE !== decisionValue(section, l));
+    const caseAlert = (section: string, l: ParcAnalysisLine): boolean => "alerte" === l.statut && (unseen || (checked[keyOf(section, l.index)] ?? l.coche));
     // Les CRÉNEAUX vivent à l'étape Gymnases (leurs alertes la marquent) ; les Réservations et les
     // Mutualisations ont désormais chacune leur propre étape (retours fondateur 2026-10-26).
     if ("gymnases" === id) {
-      return (analysis.sections.gymnases ?? []).some((l) => "alerte" === l.statut || "" === decisionValue("gymnases", l)) || (analysis.sections.creneaux ?? []).some((l) => "alerte" === l.statut);
+      return (analysis.sections.gymnases ?? []).some((l) => entityAlert("gymnases", l) || "" === decisionValue("gymnases", l)) || (analysis.sections.creneaux ?? []).some((l) => caseAlert("creneaux", l));
     }
     if ("mutualisations" === id) {
-      return (analysis.sections.mutualisations ?? []).some((l) => "alerte" === l.statut);
+      return (analysis.sections.mutualisations ?? []).some((l) => caseAlert("mutualisations", l));
     }
     if ("reservations" === id) {
-      return (analysis.sections.reservations ?? []).some((l) => "alerte" === l.statut);
+      return (analysis.sections.reservations ?? []).some((l) => caseAlert("reservations", l));
     }
     // L'étape Ententes (CTC) est optionnelle : jamais une décision EN ATTENTE (pas de warning rail).
     if ("ententes" === id) {
@@ -591,13 +611,18 @@ export function ParcImportModal(props: ParcImportModalProps) {
     if ("equipes" === id) {
       return (analysis.sections.equipes ?? []).some(
         (l) =>
-          "alerte" === l.statut ||
+          entityAlert("equipes", l) ||
           "" === decisionValue("equipes", l) ||
           (undefined !== l.suggestedTierId && CREATE === decisionValue("equipes", l) && "" === (genderDrafts[keyOf("equipes", l.index)] ?? l.suggestedGender ?? "")),
       );
     }
-    return (analysis.sections[id] ?? []).some((l) => "alerte" === l.statut || "" === decisionValue(id, l));
+    return (analysis.sections[id] ?? []).some((l) => entityAlert(id, l) || "" === decisionValue(id, l));
   };
+
+  // « Importer » n'est actif que si TOUTES les étapes de contenu sont vertes : visitées, même vides, et
+  // sans point en attente.
+  const stepsToClear = STEP_ORDER.filter((id) => CONTENT_STEPS.has(id) && (!visitedSteps.has(id) || hasPending(id)));
+  const blocked = blockedByLines || stepsToClear.length > 0;
 
   const steps: StepRailStep<StepId>[] = STEP_ORDER.map((id) => ({
     id,
@@ -642,7 +667,8 @@ export function ParcImportModal(props: ParcImportModalProps) {
               libelle: line.libelle,
               alerte: "alerte" === line.statut ? line.raison : null,
               mutual: "mutualisations" === section,
-              groupe: "mutualisations" === section ? (line.groupe ?? null) : null,
+              // Le nom corrigé à l'étape Séances communes, repris tel quel à l'étape Réservations.
+              groupe: "mutualisations" === section ? shownGroupName(groupDrafts[key], line) : null,
               // Les CRÉNEAUX (ouvertures) s'affichent par leur plage horaire, pas par « jour N » (finition 1).
               opening: "creneaux" === section,
             });
@@ -657,7 +683,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
       return { gridCases, gridVenues, ref };
     };
     return { creneauxGrid: build(["creneaux"]), reservationsGrid: build(["reservations", "mutualisations"]) };
-  }, [analysis, parc, slotDrafts]);
+  }, [analysis, parc, slotDrafts, groupDrafts]);
 
   // Éditeur de case (Modal imbriquée) — brouillon transactionnel, clé stable `section:index`.
   let caseEditor: ReactNode = null;
@@ -741,7 +767,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
               ) : null}
               {/* Finition 4 / D13 — la raison d'import bloqué est VISIBLE au pied (ton warning, patron
                   ImportFbiDialog), avec un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher / séance commune. */}
-              {CONTENT_STEPS.has(step) && blocked && (pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || 0 === count) ? (
+              {CONTENT_STEPS.has(step) && (pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 || 0 === count) ? (
                 <span className="flex items-center gap-2 text-xs text-warning">
                   <span>{T.importBlocked(pendingAmbiguous, pendingGender, pendingAlerteCode)}</span>
                   {pendingAmbiguous > 0 || pendingGender > 0 || pendingAlerteCode > 0 ? (
@@ -749,6 +775,13 @@ export function ParcImportModal(props: ParcImportModalProps) {
                       {T.seeBlockingLine}
                     </Button>
                   ) : null}
+                </span>
+              ) : CONTENT_STEPS.has(step) && stepsToClear.length > 0 ? (
+                <span className="flex items-center gap-2 text-xs text-warning">
+                  <span>{T.importStepsToVisit(stepsToClear.length)}</span>
+                  <Button variant="ghost" size="sm" onClick={seeBlocking}>
+                    {T.seeBlockingLine}
+                  </Button>
                 </span>
               ) : null}
             </div>
@@ -826,16 +859,9 @@ export function ParcImportModal(props: ParcImportModalProps) {
               {/* Un gymnase « à créer » naîtra sans adresse — à renseigner ensuite (étape Gymnases). */}
               {"gymnases" === step && hasVenueToCreate ? <NoticeBanner tone="accent">{T.venuesCreatedWithoutAddress}</NoticeBanner> : null}
 
-              {/* Aperçu périmé après une correction : inviter à revalider (sans bloquer l'import). */}
+              {/* Aperçu périmé après une correction : le bouton « Revalider » est celui de l'en-tête d'étape. */}
               {CONTENT_STEPS.has(step) && dirtyCases.size > 0 ? (
-                <NoticeBanner tone="accent">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span>{T.staleHint(dirtyCases.size)}</span>
-                    <Button variant="outline" size="sm" onClick={doRevalidate} disabled={analyzing}>
-                      {T.revalidate}
-                    </Button>
-                  </div>
-                </NoticeBanner>
+                <NoticeBanner tone="accent">{T.staleHint(dirtyCases.size)}</NoticeBanner>
               ) : null}
 
               {"prompt" === step ? <PromptStep prompt={prompt} copied={copied} onCopy={copyPrompt} /> : null}
@@ -932,6 +958,15 @@ export function ParcImportModal(props: ParcImportModalProps) {
       {caseEditor}
     </Modal>
   );
+}
+
+/**
+ * Le nom de groupe à l'écran : le brouillon, ou le nom lu si le champ est vide. C'est ce que l'import
+ * enverra : un nom vide ne part pas en correction, le serveur garde alors le nom lu.
+ */
+function shownGroupName(draft: string | undefined, line: ParcAnalysisLine): string | null {
+  const trimmed = (draft ?? "").trim();
+  return "" !== trimmed ? trimmed : (line.groupe ?? null);
 }
 
 /** La valeur initiale du sélecteur d'une ligne équipe/gymnase, d'après son verdict serveur. */
@@ -1429,6 +1464,7 @@ function MutualisationsStep({
           const key = keyOf("mutualisations", line.index);
           const keep = checked[key] ?? line.coche;
           const inAlert = "alerte" === line.statut;
+          const groupName = shownGroupName(groupDrafts[key], line);
           const pos = line.position;
           // Finition 2a — sélecteur de gymnase pré-rempli : l'id résolu, ou l'option « <nom> (à créer) »
           // (valeur `VENUE_TO_CREATE`, affiche le nom lu sans porter d'id) pour un gymnase pas encore existant.
@@ -1445,7 +1481,7 @@ function MutualisationsStep({
             <li key={line.index} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Link2 aria-hidden className="size-4 shrink-0 text-accent" />
-                {null === (line.groupe ?? null) || "" === line.groupe ? null : <span className="text-sm font-semibold text-foreground">{line.groupe}</span>}
+                {null === groupName || "" === groupName ? null : <span className="text-sm font-semibold text-foreground">{groupName}</span>}
                 {/* E4 (essai fondateur 30/10) — une séance commune mise en « Ignorer » est barrée + grisée (D9 étendu). */}
                 <span className={keep ? "text-sm font-medium text-foreground" : "text-sm font-medium text-muted-foreground line-through"}>{line.libelle}</span>
                 {/* Finition 2b — l'en-tête de ligne inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »). */}

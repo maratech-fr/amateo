@@ -105,13 +105,14 @@ export function Modal({ label, title, onClose, children, size = "md", footer, re
               <button
                 type="button"
                 aria-label="Signaler"
-                className="rounded p-1 text-muted-foreground hover:text-foreground"
+                title="Signaler un problème sur cette fenêtre"
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                 onClick={() => openReport?.({ modalState: serializeModalState(reportState?.()), screenLabel: label })}
               >
                 <Flag className="size-4 text-destructive" />
               </button>
             ) : null}
-            <button type="button" aria-label="Fermer" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={onClose}>
+            <button type="button" aria-label="Fermer" title="Fermer" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onClose}>
               <X className="size-4" />
             </button>
           </div>

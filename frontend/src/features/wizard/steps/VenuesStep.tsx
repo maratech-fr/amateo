@@ -3,6 +3,8 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
+import { buttonVariants } from "@/shared/components/ui/button-variants";
+import { cn } from "@/shared/lib/utils";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -16,7 +18,6 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
-import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { nextVenueColor } from "@/shared/lib/color";
 import { readState } from "@/shared/lib/readState";
 import { useSocleValidated } from "@/shared/lib/socle";
@@ -251,13 +252,11 @@ function VenuesEditor() {
   // « Rouvrir » → l'édition redevient normale.
   const slotsReadOnly = useSocleValidated();
   const { data: venues = [], isSuccess: venuesLoaded } = useWizardVenues();
-  // Accordéon « Ajouter un gymnase » (demande fondateur 2026-08-05 : l'encart
-  // prenait trop de place). Ouvert par défaut UNIQUEMENT pour un club sans
-  // gymnase — capturé UNE fois au premier rendu chargé, sinon l'ajout du 1er
-  // gymnase replierait la section sous la souris.
-  // defaultOpen n'est lu qu'au MONTAGE de l'accordéon : en ne le rendant
-  // qu'une fois les gymnases chargés, la valeur capturée est la bonne — et
-  // l'ajout du 1er gymnase ne replie rien (pas de remontage).
+  // Accordéon « Ajouter un gymnase » (demande fondateur 2026-08-05 : l'encart prenait trop de
+  // place). Tant que le gestionnaire n'y a pas touché, il est ouvert pour un club sans gymnase, et
+  // lui seul. Un ajout RÉUSSI le referme, quel que soit le chemin ; un échec le laisse ouvert.
+  const [addOpenChoice, setAddOpenChoice] = useState<boolean | null>(null);
+  const addOpen = addOpenChoice ?? 0 === venues.length;
   const { data: slots = [] } = useVenueSlots();
   const matchWindowsQuery = useVenueMatchWindows();
   const { data: reservations = [] } = useReservations();
@@ -337,6 +336,9 @@ function VenuesEditor() {
   // accueillent 2 équipes ou plus est une cascade destructive (créneaux ramenés à 1, réservations
   // vidées). On CONFIRME avant. Le venue est capturé au clic (la sélection peut changer avant l'OK).
   const [pendingSplitOff, setPendingSplitOff] = useState<{ venue: Venue; preview: SplitCascadePreview } | null>(null);
+  // Associer / Dissocier une salle FFBB, sur la carte du gymnase : confirmés, puis défaits par le toast.
+  const [pendingAssociate, setPendingAssociate] = useState<{ salle: FfbbSalle; venue: Venue } | null>(null);
+  const [pendingDissociate, setPendingDissociate] = useState<Venue | null>(null);
   // Colours assigned to gyms created faster than the venues query refetches, so
   // rapid successive adds don't all pick VENUE_PALETTE[0] off the stale list.
   // Pruned once a colour actually lands in the venue list.
@@ -435,6 +437,39 @@ function VenuesEditor() {
   // P3-16 — l'impact vient du serveur, et seulement quand une suppression attend confirmation.
   const venueImpact = useDeletionImpact("venue", pendingDeleteVenue?.id ?? null);
 
+  const onVenueCreated = (created: Venue) => {
+    setSelectedId(created.id);
+    toast.success(WIZARD_TEXTS.venueAdded(created.name));
+    setAddOpenChoice(false);
+  };
+
+  // Le champ ne se vide qu'une fois l'ajout réussi : après un échec, le nom reste à corriger.
+  const onVenueCreatedFromField = (created: Venue) => {
+    setName("");
+    setPendingSalle(null);
+    onVenueCreated(created);
+  };
+
+  // L'« Annuler » du toast rend le numéro fédéral et la position d'avant le geste : le serveur efface
+  // ce qui n'est pas fourni quand `externalRef` est vide, et une valeur fournie l'emporte.
+  const restoreAnchor = (venue: Venue) =>
+    update.mutate({ id: venue.id, body: { name: venue.name, externalRef: venue.externalRef ?? "", address: venue.address, latitude: venue.latitude, longitude: venue.longitude } });
+
+  const confirmAssociate = ({ salle, venue }: { salle: FfbbSalle; venue: Venue }) =>
+    update.mutate(
+      { id: venue.id, body: { name: venue.name, color: venue.color, canSplit: venue.canSplit, isActive: venue.isActive, externalRef: salle.externalRef, latitude: salle.latitude, longitude: salle.longitude } },
+      { onSuccess: () => toast.success(WIZARD_TEXTS.salleLinkedToVenue(salle.name, venue.name), { replaces: `venue-anchor-${venue.id}`, action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
+    );
+
+  const confirmDissociate = (venue: Venue) =>
+    update.mutate(
+      { id: venue.id, body: { name: venue.name, externalRef: "" } },
+      { onSuccess: () => toast.success(WIZARD_TEXTS.venueDissociated(venue.name), { replaces: `venue-anchor-${venue.id}`, action: { label: WIZARD_TEXTS.undoAction, onClick: () => restoreAnchor(venue) } }) },
+    );
+
+  // Les salles proposées à l'association : celles d'à côté qu'aucun gymnase du club ne porte déjà.
+  const associableSalles = (nearbyQuery.data?.salles ?? []).filter((salle) => null !== salle.externalRef && !importedRefs.has(salle.externalRef));
+
   const addVenue = (event: FormEvent) => {
     event.preventDefault();
     if ("" === name.trim()) {
@@ -466,11 +501,9 @@ function VenuesEditor() {
     const anchor = null !== pendingSalle ? { externalRef: pendingSalle.externalRef, latitude: pendingSalle.latitude, longitude: pendingSalle.longitude } : {};
     create.mutate(
       { name: name.trim(), color, canSplit: false, ...anchor },
-      { onSuccess: (created) => (setSelectedId(created.id), toast.success(WIZARD_TEXTS.venueAdded(created.name))) },
+      { onSuccess: onVenueCreatedFromField },
     );
-    setName("");
-    setPendingSalle(null);
-    // Keep the cursor in the name field to add the next gym without re-clicking.
+    // Le curseur reste dans le champ tant que l'accordéon est ouvert (un ajout réussi le referme).
     nameRef.current?.focus();
   };
 
@@ -483,11 +516,9 @@ function VenuesEditor() {
     pendingColorsRef.current.push(color);
     create.mutate(
       { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, address: salle.address, latitude: salle.latitude, longitude: salle.longitude },
-      { onSuccess: (created) => (setSelectedId(created.id), toast.success(WIZARD_TEXTS.venueAdded(created.name))) },
+      // Vider le champ referme le bloc de recherche (nom < 3) — le gymnase est créé.
+      { onSuccess: onVenueCreatedFromField },
     );
-    // Vider le champ referme le bloc de recherche (nom < 3) — le gymnase est créé.
-    setName("");
-    setPendingSalle(null);
   };
 
   // P1-4 PR B — un gymnase à fenêtre MATCH est légitime sans créneau
@@ -512,7 +543,8 @@ function VenuesEditor() {
       {venuesLoaded ? (
       <AccordionSection
         title={WIZARD_TEXTS.addVenuesSectionTitle}
-        defaultOpen={0 === venues.length}
+        open={addOpen}
+        onToggle={setAddOpenChoice}
         className="mb-3"
       >
       <form onSubmit={addVenue} className="mb-2 rounded-lg border border-border bg-card p-3">
@@ -678,42 +710,12 @@ function VenuesEditor() {
                       pendingColorsRef.current.push(color);
                       create.mutate(
                         { name: salle.name, color, canSplit: false, externalRef: salle.externalRef, address: salle.address, latitude: salle.latitude, longitude: salle.longitude },
-                        { onSuccess: (created) => (setSelectedId(created.id), toast.success(WIZARD_TEXTS.venueAdded(created.name))) },
+                        { onSuccess: onVenueCreated },
                       );
                     }}
                   >
                     {added ? WIZARD_TEXTS.addedTag : WIZARD_TEXTS.addTag}
                   </Button>
-                  {/* « Associer à… » (demande fondateur 2026-08-05) : cette salle EST un
-                      gymnase déjà saisi à la main — on pose numéro fédéral + GPS sur LE
-                      SIEN, sans jamais le renommer (le nom d'usage reste roi). Offert
-                      seulement s'il reste des gymnases non liés ; pastilles DANS la
-                      liste (menu custom — le natif ne sait pas les rendre). */}
-                  {!added && null !== salle.externalRef && venues.some((v) => null == v.externalRef) ? (
-                    <Menu
-                      label={WIZARD_TEXTS.associateMenuLabel(salle.name)}
-                      trigger={<span className="text-xs">{WIZARD_TEXTS.associateTrigger}</span>}
-                      triggerClassName="w-auto shrink-0 rounded-md border border-input px-2 text-xs"
-                    >
-                      {venues.filter((v) => null == v.externalRef).map((v) => (
-                        <MenuItem
-                          key={v.id}
-                          icon={<VenueSwatch color={v.color ?? DEFAULT_VENUE_COLOR} className="size-2.5" />}
-                          onSelect={() =>
-                            update.mutate(
-                              {
-                                id: v.id,
-                                body: { name: v.name, color: v.color, canSplit: v.canSplit, isActive: v.isActive, externalRef: salle.externalRef, latitude: salle.latitude, longitude: salle.longitude },
-                              },
-                              { onSuccess: () => toast.success(WIZARD_TEXTS.salleLinkedToVenue(salle.name, v.name)) },
-                            )
-                          }
-                        >
-                          {v.name}
-                        </MenuItem>
-                      ))}
-                    </Menu>
-                  ) : null}
                   <span className={added ? "text-muted-foreground" : "font-medium"}>{salle.name}</span>
                   {salle.address ? <span className="truncate text-xs text-muted-foreground">{salle.address}{salle.city ? `, ${salle.city}` : ""}</span> : null}
                 </li>
@@ -826,8 +828,33 @@ function VenuesEditor() {
                   message={venueGeoAlertMessage(selectedGeoAlert)}
                 />
               )}
+              {/* La salle FFBB se gère ici, sur le gymnase lui-même. Associer pose numéro fédéral + GPS
+                  sans jamais renommer (le nom d'usage reste roi) ; Dissocier ne laisse que le nom. */}
+              {null != selected.externalRef ? (
+                <div className="mb-3">
+                  <Button variant="outline" size="sm" onClick={() => setPendingDissociate(selected)}>
+                    {WIZARD_TEXTS.dissociateVenueButton(selected.name)}
+                  </Button>
+                </div>
+              ) : associableSalles.length > 0 ? (
+                <div className="mb-3">
+                  <Menu
+                    label={WIZARD_TEXTS.associateVenueMenu(selected.name)}
+                    trigger={WIZARD_TEXTS.associateVenueMenu(selected.name)}
+                    triggerClassName={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-foreground")}
+                  >
+                    {associableSalles.map((salle) => (
+                      <MenuItem key={salle.externalRef} onSelect={() => setPendingAssociate({ salle, venue: selected })}>
+                        {salle.name}
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </div>
+              ) : null}
+              {/* La clé porte aussi la salle : le champ garde son état local (repli, saisie) et doit
+                  repartir de zéro après Associer, Dissocier ou leur « Annuler ». */}
               <VenueGeocodeField
-                key={`geo-${selected.id}`}
+                key={`geo-${selected.id}-${selected.externalRef ?? ""}`}
                 venue={selected}
                 onLocate={({ address, latitude, longitude }) => locate.mutate({ id: selected.id, body: { name: selected.name, address, latitude, longitude } })}
               />
@@ -971,6 +998,35 @@ function VenuesEditor() {
             });
           }
           setPendingSplitOff(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={null !== pendingAssociate}
+        destructive={false}
+        title={null !== pendingAssociate ? WIZARD_TEXTS.associateVenueTitle(pendingAssociate.salle.name, pendingAssociate.venue.name) : ""}
+        description={WIZARD_TEXTS.associateVenueDescription}
+        confirmLabel={WIZARD_TEXTS.associateVenueConfirm}
+        onCancel={() => setPendingAssociate(null)}
+        onConfirm={() => {
+          if (null !== pendingAssociate) {
+            confirmAssociate(pendingAssociate);
+          }
+          setPendingAssociate(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={null !== pendingDissociate}
+        title={null !== pendingDissociate ? WIZARD_TEXTS.dissociateVenueTitle(pendingDissociate.name) : ""}
+        description={WIZARD_TEXTS.dissociateVenueDescription}
+        confirmLabel={WIZARD_TEXTS.dissociateVenueConfirm}
+        onCancel={() => setPendingDissociate(null)}
+        onConfirm={() => {
+          if (null !== pendingDissociate) {
+            confirmDissociate(pendingDissociate);
+          }
+          setPendingDissociate(null);
         }}
       />
 

@@ -209,13 +209,38 @@ describe("TeamsStep", () => {
     // Ce qui reste libre le reste : le nom et les créneaux ne dépendent pas de la fédé.
     expect(within(row).getByRole("textbox", { name: "Nom" })).toBeEnabled();
     expect(within(row).getByRole("spinbutton", { name: "Séances/sem" })).toBeEnabled();
-    // La raison est du TEXTE, pas un survol : un contrôle `disabled` sort de l'ordre de
-    // tabulation et ne reçoit aucun événement souris — au clavier comme au lecteur
-    // d'écran, un `title` laisserait deux contrôles grisés sans explication.
-    // Deux niveaux, et il faut les DEUX : le pourquoi une fois pour la liste…
+    // Deux niveaux : le pourquoi en texte une fois pour la liste…
     expect(screen.getByText(/joue en compétition/)).toBeInTheDocument();
-    // …et le marqueur sur LA ligne concernée, sinon on ne sait pas laquelle est verrouillée.
-    expect(within(row.parentElement as HTMLElement).getByText(/Engagée en compétition/)).toBeInTheDocument();
+    // …et un cadenas sur LA ligne (P4-375) : la raison est son nom accessible et son infobulle.
+    const rowBox = within(row.parentElement as HTMLElement);
+    const lock = rowBox.getByRole("img", { name: TEAMS_TEXTS.engagedRowMarker });
+    expect(lock).toHaveAttribute("title", TEAMS_TEXTS.engagedRowMarker);
+    // Plus de texte permanent sous la ligne.
+    expect(rowBox.queryByText(TEAMS_TEXTS.engagedRowMarker)).not.toBeInTheDocument();
+  });
+
+  it("no lock on a team that is not engaged (P4-375)", () => {
+    renderWithProviders(<TeamsStep />);
+
+    expect(within(teamRow().parentElement as HTMLElement).queryByRole("img", { name: TEAMS_TEXTS.engagedRowMarker })).not.toBeInTheDocument();
+  });
+
+  it("reserves the lock column on a team that is not engaged, so the row columns stay aligned (P4-375)", () => {
+    // jsdom ne mesure rien : on garde la réserve de largeur par sa classe, le rendu se juge sur capture.
+    renderWithProviders(<TeamsStep />);
+
+    const reserved = within(teamRow()).getByRole("button", { name: TEAMS_TEXTS.linksOfTeam("SM3") }).previousElementSibling;
+    expect(reserved).toHaveAttribute("aria-hidden", "true");
+    expect(reserved).toHaveClass("w-4", "shrink-0");
+  });
+
+  it("puts the lock in that same reserved column on an engaged team (P4-375)", () => {
+    team = { ...baseTeam, isEngaged: true };
+    renderWithProviders(<TeamsStep />);
+
+    const lock = within(teamRow()).getByRole("button", { name: TEAMS_TEXTS.linksOfTeam("SM3") }).previousElementSibling;
+    expect(lock).toHaveAttribute("role", "img");
+    expect(lock?.querySelector("svg")).toHaveClass("size-4");
   });
 
   it("leaves both open on a team that does not play yet", () => {

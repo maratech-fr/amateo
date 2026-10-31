@@ -1,7 +1,7 @@
 import { closestCorners, DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowUpDown, ChevronDown, ChevronUp, FileUp, GripVertical, Link2, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, FileUp, GripVertical, Link2, Lock, Plus, Sparkles, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
@@ -187,6 +187,16 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         />
         {/* Rang is not edited inline: changing a team's tier is done via the
             "Trier" mode (drag & drop between S/A/B/C/D zones). */}
+        {/* P4-375 — le cadenas de l'équipe engagée : la raison est son nom accessible et son infobulle ;
+            le pourquoi est aussi dit en texte, une fois, au-dessus de la liste. */}
+        {engaged ? (
+          <span role="img" aria-label={TEAMS_TEXTS.engagedRowMarker} title={TEAMS_TEXTS.engagedRowMarker} className="inline-flex shrink-0 text-muted-foreground">
+            <Lock aria-hidden className="size-4" />
+          </span>
+        ) : (
+          // Même largeur que le cadenas sur toutes les lignes : les colonnes restent alignées.
+          <span aria-hidden="true" className="w-4 shrink-0" />
+        )}
         {/* P2-45 — l'affordance « Liens » : une icône muette par ligne (densité nominale), à côté
             de la corbeille. Elle ouvre passerelles + mutualisation de CETTE équipe. */}
         {/* P2-45 — l'affordance « Liens » (passerelles · mutualisation · entente CTC depuis D4). */}
@@ -197,13 +207,6 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
           <Trash2 className="size-4" />
         </Button>
       </div>
-      {engaged && (
-        // Marqueur COURT, mais du TEXTE : un `title` de survol ne suffisait pas — un
-        // contrôle `disabled` sort de l'ordre de tabulation ET ne reçoit aucun événement
-        // souris, donc au clavier comme au lecteur d'écran deux contrôles disparaissaient
-        // sans la moindre raison. Le POURQUOI est dit une fois au-dessus de la liste.
-        <p className="ml-8 mt-1 text-xs text-muted-foreground">{TEAMS_TEXTS.engagedRowMarker}</p>
-      )}
       {linksLabel ? <p className="ml-8 mt-1 text-xs text-muted-foreground">{linksLabel}</p> : null}
       {bonusCompetitionWarning && (
         <p role="alert" className="ml-8 mt-1 text-xs text-warning">
@@ -929,6 +932,7 @@ function TeamsEditor() {
                 <SortHeader column="gender" sort={sort} onSort={setSort} className={TEAM_COLUMNS.gender} label={TEAMS_TEXTS.colGender} />
                 <SortHeader column="level" sort={sort} onSort={setSort} className={TEAM_COLUMNS.level} label={TEAMS_TEXTS.colLevel} />
                 <SortHeader column="sessions" sort={sort} onSort={setSort} className={TEAM_COLUMNS.sessions} label={TEAMS_TEXTS.colSessions} />
+                <span aria-hidden="true" className="w-4 shrink-0" />
                 <span className="w-8 text-right">{TEAMS_TEXTS.colDelete}</span>
               </div>
               {byRank ? (

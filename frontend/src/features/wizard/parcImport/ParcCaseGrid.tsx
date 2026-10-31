@@ -120,6 +120,28 @@ function caseJumpText(c: ParcCaseGridCase): string {
   return "" === range ? withoutVenue(c.libelle, c.venueName) : `${dayLabelShort(c.jour)} ${range}`.trim();
 }
 
+/** Le texte VISIBLE d'une case : celle d'un groupe porte le nom du groupe devant ses équipes. */
+function caseVisibleText(c: ParcCaseGridCase): string {
+  const text = caseGridText(c);
+  return true === c.mutual && null != c.groupe && "" !== c.groupe ? `${c.groupe} · ${text}` : text;
+}
+
+/**
+ * L'infobulle d'une case : « Nom · début → fin ». Le gymnase et l'heure du libellé serveur en sortent,
+ * ils y feraient doublon. Une ouverture garde sa plage horaire, déjà complète.
+ */
+function caseTooltip(c: ParcCaseGridCase, start: number): string {
+  const display = caseVisibleText(c);
+  if (true === c.opening) {
+    return display;
+  }
+  const name = display.replace(/[\s·]*\d{1,2}:\d{2}$/, "");
+  return T.caseTooltip("" === name ? display : name, formatMinutes(start), formatMinutes(start + c.duree));
+}
+
+/** La pause de midi, teintée comme dans la grille des gymnases du wizard (`VenueAvailabilityGrid`). */
+const isPause = (m: number): boolean => m >= 12 * 60 && m < 14 * 60;
+
 export function ParcCaseGrid({
   venues,
   cases,
@@ -190,7 +212,15 @@ export function ParcCaseGrid({
 
                 {/* Lignes de grille inertes. */}
                 {WEEK.map((d, di) =>
-                  gridRows.map((m, ri) => <div key={`g${d.n}-${m}`} className={cn("border-l border-t border-border/40", 0 === m % 60 ? "border-t-border/70" : "")} style={{ gridColumn: 2 + di, gridRow: 2 + ri }} aria-hidden="true" />),
+                  gridRows.map((m, ri) => (
+                    <div
+                      key={`g${d.n}-${m}`}
+                      data-pause={isPause(m) ? "true" : undefined}
+                      className={cn("border-l border-t border-border/40", 0 === m % 60 ? "border-t-border/70" : "", isPause(m) ? "bg-surface-muted" : "")}
+                      style={{ gridColumn: 2 + di, gridRow: 2 + ri }}
+                      aria-hidden="true"
+                    />
+                  )),
                 )}
 
                 {/* Cases. */}
@@ -203,6 +233,8 @@ export function ParcCaseGrid({
                   const inAlert = isInAlert(c);
                   const display = caseGridText(c);
                   const isMutual = true === c.mutual;
+                  // Case courte (une ligne de grille, 30 min) : une seule ligne tronquée, l'infobulle porte le texte complet.
+                  const isShort = span <= 1;
                   // Nom accessible : l'alerte prime (raison serveur), sinon une mutualisation se dit
                   // « Mutualisation · Groupe … · … » (lien + groupe), une réservation simple garde son
                   // libellé nu. Jamais la couleur/l'icône seules (a11y).
@@ -212,7 +244,7 @@ export function ParcCaseGrid({
                       key={`case:${c.index}`}
                       type="button"
                       onClick={() => onEditCase(c.index)}
-                      title={display}
+                      title={caseTooltip(c, cell.start)}
                       aria-label={ariaLabel}
                       style={{
                         gridColumn: cell.col + 2,
@@ -222,12 +254,13 @@ export function ParcCaseGrid({
                         left: `${(lane * 100) / laneCount}%`,
                       }}
                       className={cn(
-                        "relative z-10 m-px flex min-h-0 flex-col items-start gap-0.5 overflow-hidden rounded border px-1 py-0.5 text-left text-[10px] leading-tight",
+                        "relative z-10 m-px flex min-h-0 overflow-hidden rounded border px-1 py-0.5 text-left text-[10px] leading-tight",
+                        isShort ? "flex-row items-center gap-0.5" : "flex-col items-start gap-0.5",
                         inAlert ? "border-warning bg-surface-warning text-foreground ring-2 ring-warning" : "border-border bg-card text-foreground hover:bg-muted",
                       )}
                     >
                       {inAlert ? <AlertTriangle aria-hidden className="size-3 shrink-0 text-warning" /> : isMutual ? <Link2 aria-hidden className="size-3 shrink-0 text-accent" /> : null}
-                      <span className="w-full whitespace-normal break-words font-medium text-foreground">{display}</span>
+                      <span className={cn("w-full font-medium text-foreground", isShort ? "min-w-0 truncate" : "whitespace-normal break-words")}>{caseVisibleText(c)}</span>
                     </button>
                   );
                 })}

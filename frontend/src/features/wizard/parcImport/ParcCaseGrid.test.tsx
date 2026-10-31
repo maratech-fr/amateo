@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { formatMinutes } from "@/shared/lib/time";
 import { renderWithProviders } from "@/test/utils";
 
+import { STEP } from "../lib/weekGrid";
 import { PARC_IMPORT_TEXTS } from "./texts";
 // ⚠ Composant PAS ENCORE CRÉÉ (rouge légitime, option A — TANK écrit ROUGE, NEO crée `ParcCaseGrid`).
 // L'étape « Réservations » de l'assistant d'import rend UNE grille par gymnase (géométrie
@@ -195,5 +196,36 @@ describe("ParcCaseGrid — une case de mutualisation est marquée (refonte impor
     expect(mutual).toBeInTheDocument();
     // Une réservation simple garde un nom nu (jamais le préfixe « Mutualisation »).
     expect(screen.getByRole("button", { name: "SM1 · 18:00" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Finitions d'interface (essai d'onboarding, 30/10, points 8 et 9) : ROUGE option A. Contrat pour NEO : une
+ * cellule de décor de la pause porte `data-pause="true"` ; clé `caseTooltip(nom, debut, fin)` à créer
+ * dans `texts.ts` (« Nom · début → fin »). La couleur elle-même se juge sur capture (jsdom ne peint rien).
+ */
+describe("ParcCaseGrid — pause de midi teintée et infobulle de réservation (finitions d'interface)", () => {
+  const mistral = [{ name: "Gymnase Mistral", toCreate: false }];
+  const pauseCells = (container: HTMLElement): NodeListOf<Element> => container.querySelectorAll('[data-pause="true"]');
+
+  it("teinte la plage 12:00-14:00 sur les 7 jours, et elle seule", () => {
+    const covering: GridCase[] = [{ index: 0, venueName: "Gymnase Mistral", jour: 1, debut: "11:00", duree: 240, libelle: "SM1" }];
+    const { container } = renderWithProviders(<ParcCaseGrid venues={mistral} cases={covering} onEditCase={vi.fn()} />);
+
+    expect(pauseCells(container)).toHaveLength(7 * (120 / STEP));
+  });
+
+  it("n'affiche aucune teinte quand la grille ne couvre pas la pause", () => {
+    const evening: GridCase[] = [{ index: 0, venueName: "Gymnase Mistral", jour: 1, debut: "18:00", duree: 90, libelle: "SM1" }];
+    const { container } = renderWithProviders(<ParcCaseGrid venues={mistral} cases={evening} onEditCase={vi.fn()} />);
+
+    expect(pauseCells(container)).toHaveLength(0);
+  });
+
+  it("l'infobulle d'une case de réservation dit « Nom · début → fin », sans le gymnase ni l'heure du libellé serveur", () => {
+    const reservation: GridCase[] = [{ index: 0, venueName: "Gymnase Mistral", jour: 1, debut: "18:00", duree: 90, libelle: "U15M1 · Gymnase Mistral 18:00" }];
+    renderWithProviders(<ParcCaseGrid venues={mistral} cases={reservation} onEditCase={vi.fn()} />);
+
+    expect(screen.getByRole("button")).toHaveAttribute("title", T.caseTooltip("U15M1", formatMinutes(18 * 60), formatMinutes(19 * 60 + 30)));
   });
 });
