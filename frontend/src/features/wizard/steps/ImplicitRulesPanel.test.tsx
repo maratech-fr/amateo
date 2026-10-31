@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ImplicitRuleSetting } from "../api";
 import * as wizardApi from "../api";
+import { WELLBEING_RULES } from "../lib/implicitRules";
 import { WellbeingRulesPanel } from "./ImplicitRulesPanel";
 
 vi.mock("../api", () => ({
@@ -47,11 +48,11 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
   });
   afterEach(() => vi.mocked(wizardApi.listImplicitRuleSettings).mockReset());
 
-  it("rend les 4 règles réglables une fois la collection résolue", async () => {
+  it("rend les règles réglables une fois la collection résolue", async () => {
     renderPanel(<WellbeingRulesPanel />);
 
     expect(await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` })).toBeInTheDocument();
-    for (const title of [REST_TITLE, "Au moins un salarié présent chaque jour ouvré", CONSEC_TITLE, "Les jeunes avant les grands"]) {
+    for (const title of [REST_TITLE, CONSEC_TITLE, "Les jeunes avant les grands"]) {
       expect(screen.getByRole("group", { name: `Intensité — ${title}` })).toBeInTheDocument();
     }
   });
@@ -270,5 +271,39 @@ describe("ImplicitRulesPanel — portée par période", () => {
     // Un cache partagé ferait afficher à l'un les valeurs de l'autre.
     expect(within(season.container).getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
     expect(within(period.container).getByRole("button", { name: `Obligatoire — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+/**
+ * La règle des salariés est toujours un objectif pour le moteur (retours du 31/10) : l'écran n'offre
+ * aucun réglage sans effet, quel que soit ce qui est stocké. ROUGE option A, contrat
+ * `shared/lib/implicitRules.ts::isAlwaysObjective`.
+ */
+describe("ImplicitRulesPanel — une règle toujours objectif n'a aucun réglage", () => {
+  const SALARIE_TITLE = WELLBEING_RULES.find((r) => "salarieDistribution" === r.ruleKey)?.title ?? "";
+
+  beforeEach(() => {
+    workingSeason.value = { isReadonly: false };
+  });
+  afterEach(() => vi.mocked(wizardApi.listImplicitRuleSettings).mockReset());
+
+  it("la règle reste présentée, sans crans ni « Réinitialiser », même avec un réglage stocké hors défaut", async () => {
+    vi.mocked(wizardApi.listImplicitRuleSettings).mockResolvedValue(RESOLVED({ salarieDistribution: { intensity: "PREFERRED", isDefault: false } }));
+    renderPanel(<WellbeingRulesPanel />);
+    await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
+
+    expect(screen.getByText(SALARIE_TITLE)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: `Intensité — ${SALARIE_TITLE}` })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Réinitialiser" })).toBeNull();
+  });
+
+  it("en période, elle ne porte pas de repère « Saison : », les autres règles le gardent", async () => {
+    vi.mocked(wizardApi.listImplicitRuleSettings).mockImplementation((plan?: string | null) =>
+      Promise.resolve("plan-1" === plan ? RESOLVED({ salarieDistribution: { intensity: "PREFERRED", isDefault: false } }) : RESOLVED()),
+    );
+    renderPanel(<WellbeingRulesPanel schedulePlanId="plan-1" />);
+    await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
+
+    await waitFor(() => expect(screen.getAllByText(/^Saison :/)).toHaveLength(RESOLVED().length - 1));
   });
 });
