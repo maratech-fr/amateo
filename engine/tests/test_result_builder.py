@@ -771,8 +771,11 @@ class InfeasibilityCausesTest(unittest.TestCase):
             {"teams": [], "venues": []},
             diagnostic_ran=True,
         )
-        self.assertIn("Le groupe SM1 + SM2 et la règle « Vendredi imposé » se contredisent", message)
-        self.assertIn("« Vendredi imposé »", message)
+        self.assertEqual(
+            "Le groupe SM1 + SM2 et la règle « Vendredi imposé » se contredisent : retirez une réservation du "
+            "groupe, ajustez ses séances communes, ou assouplissez cette règle.",
+            message,
+        )
         self.assertNotIn(WELLNESS_LEAD, suggestions)
 
     def test_no_failure_path_still_mentions_locked_slots(self) -> None:

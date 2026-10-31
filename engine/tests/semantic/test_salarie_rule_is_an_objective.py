@@ -85,6 +85,13 @@ def test_the_alert_states_the_fact_without_blaming_anyone(intensity: str) -> Non
     assert _alerts(result) == ["Aucun salarié n'a de séance le mardi et le jeudi."]
 
 
+def test_the_alert_lists_three_days_as_a_sentence() -> None:
+    """Trois jours et plus se lisent comme une phrase : virgules, puis « et » avant le dernier."""
+    result = solve_payload(_one_team_a_day({1: "vol", 2: "vol", 3: "e1", 4: "vol", 5: "e2"}, intensity="HARD"))
+
+    assert _alerts(result) == ["Aucun salarié n'a de séance le lundi, le mardi et le jeudi."]
+
+
 @pytest.mark.parametrize("intensity", INTENSITIES)
 def test_the_solver_still_aims_for_an_employee_every_day(intensity: str) -> None:
     """Rien de réservé : l'objectif répartit les salariés sur les cinq jours, aux deux crans. Sans ce

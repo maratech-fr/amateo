@@ -193,6 +193,15 @@ def test_a_fully_reserved_club_names_the_reservation_and_never_a_lack_of_room(
     assert _shortage_lines(result, {"E1", "E2", "E3", "E4"}) == []
 
 
+def test_a_fully_reserved_club_without_perturbation_reports_nothing() -> None:
+    """Témoin du précédent : sans perturbation, aucune de ces lignes, donc elles viennent bien d'elle."""
+    result = solve_payload(_reserved_club("none"))
+
+    assert result["status"] == "completed"
+    assert len(result["slots"]) == 4
+    assert [d for d in result["diagnostics"] if d["type"] in {"rule_sacrificed", *SHORTAGE_TYPES}] == []
+
+
 # --- Le groupe sur-réservé reste un échec : il doit nommer le groupe, sans fausse piste ---------------
 
 
@@ -244,7 +253,34 @@ def test_the_overbooked_group_is_named_even_beside_another_group() -> None:
     result = solve_payload(_overpinned_group(with_innocent_group=True))
 
     assert result["status"] == "failed"
-    assert "SM1 + SM2" in _infeasible(result)["message"]
+    infeasible = _infeasible(result)
+    assert "SM1 + SM2" in infeasible["message"]
+    assert "SF1" not in infeasible["message"], "un groupe sans histoire n'est jamais accusé"
+    assert [c["label"] for c in infeasible["causes"]] == ["groupe SM1 + SM2"]
+
+
+def test_several_groups_with_none_overbooked_are_all_named() -> None:
+    """Deux groupes pour une seule case, aucun réservé : rien ne désigne l'un plutôt que l'autre, le
+    message les nomme tous, au pluriel."""
+    payload = make_payload(
+        teams=[make_team(team) for team in ("SM1", "SM2", "SF1", "SF2")],
+        venues=[make_venue("G1", [(1, "18:00")])],
+    )
+    payload["sharedBlocks"] = [
+        {"id": "b-seniors", "teamIds": ["SM1", "SM2"], "commonSessions": 1},
+        {"id": "b-feminines", "teamIds": ["SF1", "SF2"], "commonSessions": 1},
+    ]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "failed"
+    infeasible = _infeasible(result)
+    assert infeasible["message"] == (
+        "Les groupes SM1 + SM2 et SF1 + SF2 sont réservés sur plus de cases que leurs séances communes, ou n'ont "
+        "aucune case commune : retirez une réservation d'un groupe ou ajustez leurs séances communes dans "
+        "l'assistant."
+    )
+    assert [c["label"] for c in infeasible["causes"]] == ["groupe SM1 + SM2", "groupe SF1 + SF2"]
 
 
 # --- Hygiène du décor : aucun nom ni identifiant source dans un dépôt public ---------------------------
