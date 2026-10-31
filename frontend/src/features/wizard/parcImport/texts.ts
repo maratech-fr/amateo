@@ -142,14 +142,22 @@ export const PARC_IMPORT_TEXTS = {
   },
   /** Raison visible d'« Importer » inactif : des étapes pas encore vues, ou vues avec un point en attente. */
   importStepsToVisit: (n: number): string => `${n} étape${n > 1 ? "s" : ""} à vérifier avant d'importer.`,
-  revalidate: "Revalider l'aperçu",
+  verifyUpToDate: "Vérifié",
+  verifyAction: "Revérifier",
+  verifying: "Vérification…",
+  importStaleReason: "Revérifiez vos modifications avant d'importer.",
+  importVerifyingReason: "Vérification en cours.",
+  verifyStatusUpToDate: "Vérification à jour.",
+  verifyStatusStale: "Des modifications sont à revérifier avant d'importer.",
+  verifyStatusRunning: "Vérification en cours.",
+  verifyStatusFailed: "La vérification a échoué — réessayez.",
   /** Finitions 4 — raison concise de désactivation d'« Importer » (le DÉTAIL compté est, lui, VISIBLE au
    *  pied via `importBlocked`) : évite de doubler à l'identique l'annonce lecteur d'écran (A11Y-30). */
   importDisabledHint: "Importer n'est pas encore possible — voir la raison affichée.",
   /** Finitions 4 — bouton qui mène à la 1ʳᵉ ligne à trancher (change d'étape + focus son sélecteur). */
   seeBlockingLine: "Voir",
   /** Bandeau « aperçu périmé » après une modification (tone accent, sans role). */
-  staleHint: (n: number): string => `Vous avez modifié ${n} ligne${n > 1 ? "s" : ""} : les alertes affichées datent de l'analyse précédente.`,
+  staleHint: (n: number): string => `Vous avez modifié ${n} ligne${n > 1 ? "s" : ""} : revérifiez pour mettre à jour les alertes et débloquer l'import.`,
   importErrorHeading: "L'import n'a pas abouti",
   importErrorGeneric: "Une erreur est survenue pendant l'import. Réessayez plus tard.",
   goToLine: "Aller à la ligne",

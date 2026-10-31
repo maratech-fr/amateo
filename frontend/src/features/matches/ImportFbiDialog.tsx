@@ -28,6 +28,9 @@ interface ImportFbiDialogProps {
   onClose: () => void;
 }
 
+/** Un onglet de l'analyse : une famille de divisions, ou les salles à domicile (dernier). */
+type ImportTab = DivisionFamily | "salles";
+
 /** One mapping row of the analysis table is keyed division + FBI club-team
  * label (the label only exists when two club teams share a division). */
 const divisionKey = (d: { name: string; fbiTeamLabel: string | null }): string => `${d.name}|${d.fbiTeamLabel ?? ""}`;
@@ -40,8 +43,8 @@ const divisionKey = (d: { name: string; fbiTeamLabel: string | null }): string =
  * Stays open afterwards to show the report (created / updated / warnings),
  * which is the point of the feedback.
  *
- * Chantier A PR 2 — « pas de salles appariées, pas d'import » : la section « Salles
- * à domicile » relie chaque salle du fichier à un gymnase du club (ou la déclare
+ * Chantier A PR 2 — « pas de salles appariées, pas d'import » : l'onglet « Salles »
+ * relie chaque salle du fichier à un gymnase du club (ou la déclare
  * terrain neutre), et « Importer » est grisé (avec sa raison) tant qu'un libellé
  * reste sans gymnase. L'import envoie `venueMappings` + `venueChoices`.
  */
@@ -57,11 +60,11 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
   const [venueChoices, setVenueChoices] = useState<Record<string, string>>({});
   const [homeChoices, setHomeChoices] = useState<Record<string, string>>({});
   const [report, setReport] = useState<ImportFbiResult | null>(null);
-  // Onglet de famille actif — state SÉPARÉ, jamais réinitialisé par `onFileChange`
+  // Onglet actif (famille ou salles) — state SÉPARÉ, jamais réinitialisé par `onFileChange`
   // (un re-dépôt corrigeant une seule ligne doit garder le gestionnaire sur son
-  // onglet). Réconcilié au succès de chaque (ré-)analyse : conservé si la famille
-  // existe encore, sinon repli sur la première non vide de `FAMILY_ORDER`.
-  const [activeFamily, setActiveFamily] = useState<DivisionFamily | null>(null);
+  // onglet). Réconcilié au succès de chaque (ré-)analyse : conservé s'il existe
+  // encore, sinon repli sur le premier (la première famille non vide, ou les salles seules).
+  const [activeTab, setActiveTab] = useState<ImportTab | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const teamName = (id: string | null): string => teams.find((t) => t.id === id)?.name ?? "?";
@@ -78,14 +81,15 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
 
   // Les familles présentes, dans l'ordre d'affichage, familles vides écartées.
   const presentFamilies = (divisions: ImportAnalysisDivision[]): DivisionFamily[] => FAMILY_ORDER.filter((family) => divisions.some((d) => classifyDivision(d.name) === family));
+  const tabsOf = (a: ImportFbiAnalysis): ImportTab[] => [...presentFamilies(a.divisions), ...((a.venues ?? []).length + (a.homesWithoutVenue ?? []).length > 0 ? (["salles"] as const) : [])];
   // Dans un onglet, les divisions se lisent par ordre alphabétique NATUREL (DFU9 avant
   // DFU11), jamais dans l'ordre d'apparition du fichier (demande fondateur, 2026-09-12).
   const sortedByName = (divisions: ImportAnalysisDivision[]): ImportAnalysisDivision[] => [...divisions].sort((a, b) => a.name.localeCompare(b.name, "fr", { numeric: true, sensitivity: "base" }));
 
   const applyAnalysis = (a: ImportFbiAnalysis): void => {
     setAnalysis(a);
-    const families = presentFamilies(a.divisions);
-    setActiveFamily((current) => (null !== current && families.includes(current) ? current : (families[0] ?? null)));
+    const tabs = tabsOf(a);
+    setActiveTab((current) => (null !== current && tabs.includes(current) ? current : (tabs[0] ?? null)));
     // Pré-remplissage des salles : un libellé déjà neutre → neutre ; sinon le gymnase confirmé
     // (alias) ou la suggestion floue ; rien à défaut (le gestionnaire choisit). Les domiciles
     // sans salle n'ont pas de suggestion (vide) — il faut un choix explicite.
@@ -198,7 +202,10 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
 
   const canImport = null !== file && null !== analysis && !importFbi.isPending && !analyzeFbi.isPending;
   const families = null !== analysis ? presentFamilies(analysis.divisions) : [];
-  const currentFamily = null !== activeFamily && families.includes(activeFamily) ? activeFamily : (families[0] ?? null);
+  const importTabs = null !== analysis ? tabsOf(analysis) : [];
+  const currentTab = null !== activeTab && importTabs.includes(activeTab) ? activeTab : (importTabs[0] ?? null);
+  const venuesTotal = venueRows.length + homeRows.length;
+  const venuesRemaining = venueRows.filter((row) => "" === (venueChoices[row.label] ?? "")).length + homeRows.filter((home) => "" === (homeChoices[home.division] ?? "")).length;
 
   // Les options d'un sélecteur de salle : les gymnases du club + « terrain neutre ».
   const venueOptions: ListboxOption[] = [...venues.map((v): ListboxOption => ({ value: v.id, label: v.name })), { value: NEUTRAL, label: M.importFbiNeutralGround }];
@@ -282,35 +289,38 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
                   en onglets par famille ; le compteur du libellé (appariées/total) bouge en
                   direct. La Modale (`size=xl`) est l'UNIQUE zone défilante — plus de scroll
                   imbriqué qui rognait le panneau du TeamSelect. Un onglet entièrement apparié
-                  reste rendu. Les totaux et les diagnostics ci-dessous restent GLOBAUX. */}
-              {families.length > 0 ? (
+                  reste rendu. Les totaux et les diagnostics ci-dessous restent GLOBAUX. Les salles à
+                  domicile viennent en dernier onglet, compteur compris. */}
+              {importTabs.length > 0 ? (
                 <Tabs
-                  tabs={families.map((family) => ({
-                    id: family,
-                    label: `${FAMILY_LABEL[family]} (${analysis.divisions.filter((d) => classifyDivision(d.name) === family && isPaired(d)).length}/${analysis.divisions.filter((d) => classifyDivision(d.name) === family).length})`,
+                  tabs={importTabs.map((tab) => ({
+                    id: tab,
+                    label:
+                      "salles" === tab
+                        ? M.importFbiVenuesTab(venuesTotal - venuesRemaining, venuesTotal)
+                        : `${FAMILY_LABEL[tab]} (${analysis.divisions.filter((d) => classifyDivision(d.name) === tab && isPaired(d)).length}/${analysis.divisions.filter((d) => classifyDivision(d.name) === tab).length})`,
                   }))}
-                  activeTab={currentFamily ?? ""}
-                  onTabChange={(id) => setActiveFamily(id as DivisionFamily)}
+                  activeTab={currentTab ?? ""}
+                  onTabChange={(id) => setActiveTab(id as ImportTab)}
                   ariaLabel={M.importFbiFamiliesAria}
                   idPrefix="fbi-family"
                 />
               ) : null}
+              {/* Raison du blocage EN CLAIR, sous la barre et depuis tous les onglets (doctrine
+                  disabledReason, A11Y-30) : le compte des salles restantes rend la portée du blocage
+                  découvrable sans survoler « Importer » ni ouvrir l'onglet Salles. */}
+              {venuesIncomplete ? <p className="text-xs text-warning">{M.importFbiVenuesRemaining(venuesRemaining)}</p> : null}
               {families.map((family) => (
-                <TabPanel key={family} tabId={family} idPrefix="fbi-family" active={family === currentFamily} className="pt-1">
+                <TabPanel key={family} tabId={family} idPrefix="fbi-family" active={family === currentTab} className="pt-1">
                   <ul className="flex flex-col gap-1">{sortedByName(analysis.divisions.filter((d) => classifyDivision(d.name) === family)).map(renderDivisionRow)}</ul>
                 </TabPanel>
               ))}
 
-              {/* Chantier A PR 2 — « Salles à domicile » : chaque salle du fichier → un gymnase
-                  du club, ou terrain neutre. « Importer » reste grisé tant qu'un libellé manque. */}
-              {venueRows.length > 0 || homeRows.length > 0 ? (
-                <div className="flex flex-col gap-1.5 border-t border-border pt-2">
-                  <p className="text-sm font-medium">{M.importFbiVenuesTitle}</p>
+              {/* Chantier A PR 2 — l'onglet Salles : chaque salle du fichier → un gymnase du club, ou
+                  terrain neutre. « Importer » reste grisé tant qu'un libellé manque. */}
+              {venuesTotal > 0 ? (
+                <TabPanel tabId="salles" idPrefix="fbi-family" active={"salles" === currentTab} className="flex flex-col gap-1.5 pt-1">
                   <p className="text-xs text-muted-foreground">{M.importFbiVenuesIntro}</p>
-                  {/* Raison du blocage EN CLAIR à côté (doctrine disabledReason, A11Y-30) : le
-                      compte des salles restantes rend la portée du blocage découvrable sans
-                      survoler « Importer » ni parcourir chaque ligne. */}
-                  {venuesIncomplete ? <p className="text-xs text-warning">{M.importFbiVenuesRemaining(venueRows.filter((row) => "" === (venueChoices[row.label] ?? "")).length + homeRows.filter((home) => "" === (homeChoices[home.division] ?? "")).length)}</p> : null}
                   <ul className="flex flex-col gap-1.5">
                     {venueRows.map((row) => (
                       <li key={`v-${row.label}`} className="flex items-center justify-between gap-2">
@@ -346,7 +356,7 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
                       </li>
                     ))}
                   </ul>
-                </div>
+                </TabPanel>
               ) : null}
 
               {/* P1-4 PR F2 (6.1) — poule guard verdicts of the dry-run. */}

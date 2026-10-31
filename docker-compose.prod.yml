@@ -69,6 +69,9 @@ services:
     environment:
       APP_ENV: prod
       MERCURE_PUBLIC_URL: "${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env.prod}/.well-known/mercure"
+      # La version déployée, interpolée par compose : `.env.prod` n'est réécrit qu'après le démarrage,
+      # le conteneur y lirait la version précédente.
+      VERSION: "${VERSION:-latest}"
     volumes:
       # JWT keypair generated ON the VM at first install (runbook) — never in the image.
       - ./jwt:/app/backend/config/jwt:ro

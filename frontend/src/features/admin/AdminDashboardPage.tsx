@@ -1,6 +1,5 @@
 import { type Query, useIsFetching, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
@@ -175,29 +174,20 @@ export function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <section className="flex flex-col justify-between gap-5 border-b border-white/10 pb-8 lg:flex-row lg:items-end">
-        <div className="max-w-3xl">
-          <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-console-accent">
-            <Activity className="size-4" aria-hidden="true" /> {ADMIN_DASHBOARD_TEXTS.headerEyebrow}
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">{ADMIN_DASHBOARD_TEXTS.headerTitle}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-console-text-dim">
-            {ADMIN_DASHBOARD_TEXTS.headerDescription}
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="sr-only">{ADMIN_DASHBOARD_TEXTS.headerTitle}</h1>
+        <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} ariaLabel={ADMIN_DASHBOARD_TEXTS.tabsAriaLabel} idPrefix="admin" variant="console" />
         <Button
           type="button"
           variant="outline"
-          className="self-start border-white/15 text-console-text-bright hover:bg-white/10 lg:self-auto"
+          className="border-white/15 text-console-text-bright hover:bg-white/10"
           disabled={refreshing}
           onClick={refreshAll}
         >
           {refreshing ? <Spinner className="size-4 text-console-text" /> : <RefreshCw aria-hidden="true" />}
           {ADMIN_DASHBOARD_TEXTS.refresh}
         </Button>
-      </section>
-
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} ariaLabel={ADMIN_DASHBOARD_TEXTS.tabsAriaLabel} idPrefix="admin" variant="console" />
+      </div>
 
       <TabPanel variant="console" tabId="clubs" idPrefix="admin" active={activeTab === "clubs"} className="space-y-8 pt-6">
         {/* P3-4 PR B : les arbitrages (créations + adhésions) vivent avec le parc. */}

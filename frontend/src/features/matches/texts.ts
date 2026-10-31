@@ -154,7 +154,7 @@ export const MATCHES_TEXTS = {
   importFbiReadError: "Le fichier n'a pas pu être lu — est-il ouvert dans un autre logiciel ?",
   importFbiAnalysisSummary: (rows: number, divisions: number, exempted: number) =>
     `${rows} rencontre${rows > 1 ? "s" : ""} · ${divisions} division${divisions > 1 ? "s" : ""}${exempted > 0 ? ` · ${exempted} exempt${exempted > 1 ? "s" : ""}` : ""}`,
-  importFbiFamiliesAria: "Familles de divisions",
+  importFbiFamiliesAria: "Divisions et salles à domicile",
   importFbiSuggestedByFfbb: "proposé par la FFBB",
   importFbiTeamFor: (division: string) => `Équipe pour ${division}`,
   importFbiAssociateTo: "Associer à…",
@@ -173,15 +173,15 @@ export const MATCHES_TEXTS = {
   importFbiUnmappedTitle: "Des divisions restent sans équipe",
   importFbiUnmappedConfirm: (list: string) => `Les rencontres de ${list} ne seront pas importées — elles resteront à associer au prochain dépôt. Importer quand même ?`,
   // Section « Salles à domicile » : chaque salle à domicile → un gymnase, ou terrain neutre.
-  importFbiVenuesTitle: "Salles à domicile",
+  importFbiVenuesTab: (paired: number, total: number) => `Salles (${paired}/${total})`,
   importFbiVenuesIntro: "Chaque salle à domicile se relie à un gymnase du club — ou se déclare « terrain neutre » si vous ne jouez pas chez vous.",
   importFbiVenueFor: (label: string) => `Gymnase pour ${label}`,
   importFbiHomesWithoutVenueFor: (division: string) => `Gymnase pour les domiciles sans salle de ${division}`,
   importFbiChooseVenue: "Associer à un gymnase…",
   importFbiNeutralGround: "Terrain neutre (pas chez nous)",
   importFbiHomesWithoutVenueCount: (n: number) => `${n} domicile${n > 1 ? "s" : ""} sans salle`,
-  importFbiVenueMissingReason: "Associez un gymnase à chaque salle à domicile (ou déclarez-la « terrain neutre ») pour pouvoir importer.",
-  importFbiVenuesRemaining: (n: number) => `${n} salle${n > 1 ? "s" : ""} encore sans gymnase — l'import reste bloqué.`,
+  importFbiVenueMissingReason: "Associez un gymnase à chaque salle à domicile dans l'onglet Salles (ou déclarez-la « terrain neutre ») pour pouvoir importer.",
+  importFbiVenuesRemaining: (n: number) => `${n} salle${n > 1 ? "s" : ""} encore sans gymnase — voir l'onglet Salles.`,
   // ── MatchesLayout (en-tête + navigation du module, migré P4-356) ──────────────────────────────
   pageTitle: "Matchs",
   screenContext: (tab: string) => `Matchs · ${tab}`,

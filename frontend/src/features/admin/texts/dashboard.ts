@@ -50,9 +50,7 @@ export const ADMIN_DASHBOARD_TEXTS = {
   subAudit: "Audit",
 
   // AdminDashboardPage — en-tête + barres d'onglets
-  headerEyebrow: "Supervision temps réel",
-  headerTitle: "État de la plateforme",
-  headerDescription: "Santé technique, activité du parc et comportement du solveur réunis dans une vue en lecture seule.",
+  headerTitle: "Console d'administration",
   refresh: "Actualiser",
   tabsAriaLabel: "Sections admin",
   incidentsTabsAriaLabel: "Incidents",

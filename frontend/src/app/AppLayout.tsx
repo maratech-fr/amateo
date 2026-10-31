@@ -34,8 +34,8 @@ import { SeasonTransitionBanner } from "./SeasonTransitionBanner";
  * M13 (retours Nico, BCCL 2026-10-27) — « Matchs » était trop discret, caché dans la grappe de
  * droite (Nico ne savait pas que le module existait) : il SORT de cette grappe, prend l'ASPECT d'un
  * bouton SECONDAIRE (variante `outline` du système, aucune couleur neuve) et se place SEUL au CENTRE
- * du bandeau pour ressortir, sans monter au niveau visuel du sélecteur de saison (qui, lui, est
- * plein). Il GARDE son rôle de lien (NavLink → `<a>`) et son état actif (fond accent sur /matchs).
+ * du bandeau pour ressortir : même hauteur que les autres contrôles de l'en-tête, texte franc,
+ * alors que le sélecteur de saison à côté reste un menu discret. Il GARDE son rôle de lien (NavLink → `<a>`) et son état actif (fond accent sur /matchs).
  *
  * Mise en page (passe `ui-ux-pro-max`, option B tranchée) : grille 3 colonnes
  * `minmax(0,1fr) auto minmax(0,1fr)` à partir de `lg` (1024-1920 px) — centrage géométrique réel,
@@ -56,7 +56,7 @@ function NavItem({ to, children }: { to: string; children: string }) {
       to={to}
       end
       className={({ isActive }) =>
-        cn(buttonVariants({ variant: "outline", size: "sm" }), isActive ? "bg-accent text-accent-foreground hover:enabled:bg-accent-hover" : "text-muted-foreground")
+        cn(buttonVariants({ variant: "outline", size: "default" }), "px-5 font-semibold", isActive ? "bg-accent text-accent-foreground hover:bg-accent-hover" : "text-foreground hover:bg-muted")
       }
     >
       {children}
@@ -151,10 +151,10 @@ export function AppLayout() {
                   aria-disabled="true"
                   tabIndex={0}
                   aria-describedby={matchsLockReasonId}
-                  // M13 — même aspect de bouton secondaire (outline) que l'état débloqué, mais éteint
+                  // M13 — mêmes aspect et dimensions de bouton secondaire que l'état débloqué, mais éteint
                   // (opacité réduite, curseur interdit) ; l'invariant A11Y-30 (focalisable + raison
                   // annoncée) est préservé.
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "cursor-not-allowed text-muted-foreground opacity-50")}
+                  className={cn(buttonVariants({ variant: "outline", size: "default" }), "cursor-not-allowed px-5 font-semibold text-muted-foreground opacity-50")}
                   title="Validez le planning de saison pour débloquer les matchs"
                 >
                   Matchs
