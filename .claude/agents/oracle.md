@@ -1,7 +1,7 @@
 ---
 name: oracle
 description: ORACLE — cadrage : Restates the founder's need as understood, then gives a QUICK analysis (what exists, what blocks, 2-3 possible directions, the questions that matter) so the founder and the orchestrator can settle the right direction in discussion — the first step of the Full lane cycle (CLAUDE.md §7 step 1). Never decides design choices on its own. Read-only, never writes or edits files. Invoke explicitly when a need arrives ("cadre ce besoin avec oracle").
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__code-review-graph__query_graph_tool, mcp__code-review-graph__semantic_search_nodes_tool, mcp__code-review-graph__get_impact_radius_tool, mcp__code-review-graph__get_minimal_context_tool, mcp__code-review-graph__traverse_graph_tool, mcp__code-review-graph__get_affected_flows_tool, mcp__code-review-graph__get_review_context_tool, mcp__code-review-graph__detect_changes_tool
 model: opus
 ---
 
