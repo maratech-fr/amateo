@@ -48,6 +48,7 @@ cd backend && make behat    # tests fonctionnels Gherkin FR (API réelle) — `w
 cd engine  && make test     # ruff (+format --check) + mypy + bandit + deptry + pytest  | make format
 make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /.well-known/mercure)
 make -C frontend e2e        # Playwright entièrement dockerisé — exige stack + dev lancés
+make epreuve-up WT=<worktree> | epreuve-status | epreuve-down   # worktree : Behat/e2e sur la stack d'épreuve (:8181, §10.5)
 ```
 
 ## 4. CI — ce qui gate quoi
@@ -216,10 +217,14 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 4. ⚠ **Garde-fou actif** (hook PreToolUse Bash, `.claude/hooks/bounded-loop-guard.sh`) : toute
    boucle d'attente `while`/`until` DOIT être bornée par `timeout <durée>` ≤ 4 h — sinon refus
    (attendre la fin d'un journal, jamais un `pgrep -f` qui se trouve lui-même).
-5. ⚠ **Worktree + `docker compose exec` = code du dépôt PRINCIPAL** : les cibles Docker (make test,
-   vitest tooling) montent/copient le dépôt principal — depuis un worktree elles valident du code
-   qui n'est pas le tien ; `tests-complete`/e2e/Behat se jouent sur le dépôt principal, sérialisés
-   (`.claude/agents/neo.md` §Worktree).
+5. ⚠ **Worktree = sa propre stack Docker, jamais celle du fondateur** — `backend/scripts/lib/stack-resolve.sh`
+   classe chaque copie : **principal** (stack du fondateur, CI) · **nu** (worktree par défaut : socle de
+   test privé `amateo-test-<hash>`, sans port publié, liste FERMÉE de cibles `make -C backend` —
+   `tests-complete`, `test`, `phpunit`, `phpstan`, `cs`… ; `test-down` à la fin) · **épreuve** (UNE stack
+   complète et seedée, `make epreuve-up WT=<worktree>`, pour Behat et e2e ; `epreuve-status` avant,
+   `epreuve-down` après ; refus si occupée) · **unknown** : refusé. Une cible Docker hors liste en nu est
+   refusée, jamais redirigée vers le principal. Détail : `backend/docs/commands.md` ; rôle des agents :
+   `.claude/agents/neo.md` §Worktree.
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
 `docs/glossary.md` · `docs/testing/testing-strategy.md` · `docs/testing/tests-par-parcours.md` (charte des tests : ce que chaque niveau prouve, par parcours — maison de l'agent `tank`) · `specs/evolution/roadmap.md`
