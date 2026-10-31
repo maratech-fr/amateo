@@ -708,19 +708,24 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(0, $body['recap']['mutualisations']['misAJour']);
     }
 
-    /** Promesse d'abus : un gestionnaire d'un AUTRE club ne renomme pas un groupe de ce club (404, rien d'écrit). */
+    /**
+     * Promesse d'abus : un gestionnaire d'un AUTRE club ne renomme pas un groupe de ce club, rien d'écrit.
+     * Deux refus distincts, car le premier masquerait le second : avec la saison de ce club, la garde de
+     * saison (403) ; avec SA propre saison, l'adhésion du gate (404, comme un club inconnu).
+     */
     public function testAManagerOfAnotherClubCannotRenameABlock(): void
     {
         $block = $this->seedExistingBlock('CEC');
-        $outsiderToken = $this->managerTokenOfAnotherClub();
+        $outsider = $this->managerOfAnotherClub();
+        $parc = $this->parcWithCases([$this->groupCase('CEC')]);
+        $decisions = [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'cibleId' => $block->getId(), 'corrections' => ['groupe' => 'Piraté']]];
 
-        [$status] = $this->import(
-            $this->parcWithCases([$this->groupCase('CEC')]),
-            [['section' => 'mutualisations', 'index' => 0, 'coche' => true, 'cibleId' => $block->getId(), 'corrections' => ['groupe' => 'Piraté']]],
-            token: $outsiderToken,
-        );
+        [$withThisSeason] = $this->import($parc, $decisions, token: $outsider['token']);
+        self::assertSame(403, $withThisSeason, 'la saison d\'un autre club est refusée');
 
-        self::assertSame(404, $status, 'le gate répond comme à un club inconnu');
+        [$withOwnSeason] = $this->import($parc, $decisions, token: $outsider['token'], seasonId: $outsider['seasonId']);
+        self::assertSame(404, $withOwnSeason, 'le gate répond comme à un club inconnu');
+
         self::assertSame('CEC', $this->reloadBlock($block->getId())->getLabel(), 'rien n\'est renommé');
     }
 
@@ -1618,7 +1623,7 @@ final class ParcImportExecuteTest extends WebTestCase
      *
      * @return array{0: int, 1: array<string, mixed>}
      */
-    private function import(array $parc, array $decisions, ?string $token = null): array
+    private function import(array $parc, array $decisions, ?string $token = null, ?string $seasonId = null): array
     {
         $body = (string) json_encode(['payload' => $parc, 'decisions' => $decisions], \JSON_THROW_ON_ERROR);
         $this->client->request(
@@ -1626,7 +1631,7 @@ final class ParcImportExecuteTest extends WebTestCase
             '/api/clubs/' . $this->club->getId() . '/parc-import',
             [],
             [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $this->season->getId()],
+            ['HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token), 'CONTENT_TYPE' => 'application/json', 'HTTP_X_SEASON_ID' => $seasonId ?? $this->season->getId()],
             $body,
         );
         $response = $this->client->getResponse();
@@ -1890,9 +1895,11 @@ final class ParcImportExecuteTest extends WebTestCase
     }
 
     /**
-     * Le JWT d'un gestionnaire d'un AUTRE club : un vrai compte, membre admin chez lui, étranger ici.
+     * Un gestionnaire d'un AUTRE club : un vrai compte, membre admin chez lui avec sa saison, étranger ici.
+     *
+     * @return array{token: string, seasonId: string}
      */
-    private function managerTokenOfAnotherClub(): string
+    private function managerOfAnotherClub(): array
     {
         $container = self::getContainer();
         $uid = uniqid('', true);
@@ -1910,10 +1917,16 @@ final class ParcImportExecuteTest extends WebTestCase
 
         $this->scopeGucToClub($otherClub->getId());
         $this->em->persist((new ClubUser)->setClubId($otherClub->getId())->setUserId($outsider->getId())->setRole('admin')->setIsActive(true));
+        $otherSeason = (new Season)
+            ->setClubId($otherClub->getId())->setName('2026-2027')
+            ->setStartDate(new DateTimeImmutable('2026-07-01'))->setEndDate(new DateTimeImmutable('2027-06-30'))
+            ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
+        $this->em->persist($otherSeason);
         $this->em->flush();
+        $seasonId = $otherSeason->getId();
         $this->scopeGucToClub($this->club->getId());
 
-        return $container->get(JWTTokenManagerInterface::class)->create($outsider);
+        return ['token' => $container->get(JWTTokenManagerInterface::class)->create($outsider), 'seasonId' => $seasonId];
     }
 
     /**
