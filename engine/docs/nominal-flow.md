@@ -193,7 +193,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 9. **MIN_SESSIONS** : attention, ce n'est **pas** une contrainte dure — c'est une **cible soft** (audit ENG-18). Le nombre de seances souhaite (`sessionsPerWeek`) est encourage via l'objectif, jamais impose (plancher dur 0 en production) : une equipe peut recevoir moins de seances que demande sans rendre l'instance infaisable.
 10. **FORCED_VENUES** : si une equipe a une contrainte `FACILITY` `HARD` l'obligeant a une salle specifique, toutes les variables `x[team, autre_salle, *, *]` valent 0.
 11. **COACH_REST_DAY** : chaque coach a au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un coach dont le `maxDaysOverride` est deja inferieur ou egal a 4.
-12. **SALARIE_DISTRIBUTION** : au moins un coach salarie (`isEmployee`) est present chaque jour du lundi au vendredi. Inactif si le club compte moins de 2 salaries.
+12. **SALARIE_DISTRIBUTION** : objectif (malus, jamais un blocage, quel que soit le cran stocke) : un coach salarie (`isEmployee`) present chaque jour du lundi au vendredi ou le club a un creneau. Inactif si le club compte moins de 2 salaries.
 13. **MAX_CONSECUTIVE_SESSIONS** : une meme personne n'est jamais sur les 3 creneaux d'un enchainement A -> B -> C le meme jour, tous gymnases confondus.
 14. **ONE_SESSION_PER_DAY** : au plus une seance par jour et par equipe, sans exception (le drapeau `allowMultipleSessionsPerDay` est retire du contrat, P4-79).
 15. **AGE_ASCENDING** : a gymnase et jour egaux, une equipe plus jeune ne passe pas apres une plus agee. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'equipe est verrouillee en HARD.

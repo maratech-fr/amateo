@@ -7,7 +7,8 @@
 
 The CP-SAT model includes two "social" hard constraints that can make an
 otherwise-feasible instance INFEASIBLE: coach rest-day (every coach ≥ 1 rest day)
-and salarié distribution (≥ 1 employed coach per day).
+and salarié distribution (≥ 1 employed coach per day) — the latter is no longer a blocker (amendment
+2026-10-31 at the end of this file).
 
 The codebase carries the plumbing for a **two-pass fallback**: a second solve that
 relaxes those two constraints (`skip_rest_day_and_distribution=True` in
@@ -133,12 +134,9 @@ schedule** — it is not a relaxation, no HARD constraint is ever dropped. It is
 observable via a structured engine log line (the channel the regression itself was
 caught on); it does not add an output-contract field (contract unchanged, 1.3).
 
-**D2 (per-team aggregate of closed candidates) does not depend on the solver and is
-read from the NOMINAL model's pose-time closure maps** (`candidate_closures` +
-`lock_removed_candidates`, never `solver.Value` — a HARD lock has no variable), so
-it still renders even when the diagnostic second solve yields no core. HARD locks are
-deliberately NOT given assumption literals (sovereign, no variable); they surface
-through this D2 aggregate, not the unsat core.
+**D2 (per-team aggregate of closed candidates) was RETIRED by the 2026-10-31 amendment below** — it
+accused teams that were not the cause. HARD locks are deliberately NOT given assumption literals
+(sovereign, no variable); they are not part of the unsat core.
 
 The dormant two-pass *relaxation* fallback (the top of this ADR) is unchanged and
 still OFF — the second solve here is diagnostic-only and shares nothing with it.
@@ -196,3 +194,45 @@ future second exception needs its own amendment. Guards: `SovereignReservationPr
 (blocking, `ci.yml`), `engine/tests/semantic/test_sovereign_reservations.py` (incl. the rule-conflict-
 not-caused-by-a-lock witness), `engine/tests/test_best_effort_sovereign_budget.py`. Contract: bump
 1.7 → 1.8 (two diagnostic types, one cause kind `min_sessions`).
+
+## Amendment (2026-10-31, decision fondateur) — the salarié rule is an objective, a failure names its cause or says it found none
+
+**Need.** A club whose every case was reserved got a `failed` plan because no salarié sat on one weekday:
+the HARD « a salarié each day » rule contradicted the reservations. A manager cannot be blocked by a
+fact the grid and the reservations impose.
+
+**Decision 1 — the salarié distribution rule is an OBJECTIVE whatever its stored level.** The HARD branch
+of `add_salarie_distribution_constraints` is gone: both levels push the weighted violation literal
+(`SALARIE_VIOLATION_WEIGHT`) and a `CompromiseTermInfo(detail="salarie")`; `intensity` stays in the
+signature with no effect for this rule (stored settings, payload and API unchanged). A weekday on which
+no venue of the club has a case carries neither literal nor alert (same grid reading in the post-solve
+diagnostic). The alert (`implicit_rule_not_honored`, `ruleKey` `salarieDistribution`, WARNING) is worded
+as a fact — « Aucun salarié n'a de séance le jeudi. » — and `/validate-assignments` accepts a move that
+empties a day of salariés and reports it as a compromise. The two other week-rules that a lock can defeat
+(chains, ascending age) keep their HARD level; coach rest was already announced, not blocking.
+
+**Decision 2 — the D2 « N candidats, tous fermés » lines are removed** (`diag-infeasible-team-*`,
+`_collect_locked_out_teams`). They named teams that were innocent and told a manager to check « locked
+slots », which the 2026-10-30 wording forbids. A real lack of room is read on the messages of the
+`completed` path (unplaced session, `blocked_by_reservation`).
+
+**Consequence — every remaining INFEASIBLE has a nameable demand rule.** Once the salarié rule cannot
+fail, the only rules able to force an INFEASIBLE are the rules of *demand* (imposed day, venue floor,
+shared-block common sessions): the other week-rules only post upper bounds or `== 0`, which « nobody
+placed » satisfies, and the session floor is soft. So `diag-infeasible` has exactly these cases, each
+with its own text and suggestion (`_infeasible_core_message`): (a) the core holds a group (shared block),
+named by its teams « groupe SM1 + SM2 » with no « Corriger » link; (b) the diagnostic solve did not
+conclude in its budget: the message says the search for the cause did not finish and suggests relaunching
+or switching off the latest rules one by one; (c) a source rule without a label is cited as an unnamed
+rule of its kind; (d) the core names only demand rules: the suggestion points to a wellness rule set to
+« Obligatoire » or to a coach holding several teams. The generic « verify the locked slots » sentence is
+gone. A fully reserved team gets no « not enough room » message, even inside a group: only the
+reservation that breaks a rule is named (`rule_sacrificed`). The guards upstream of the engine
+(`CoachInTwoPlacesGuard`, the Récap blockers) are unchanged: « the reservation wins » holds inside the
+engine, not against them; an over-pinned shared block stays `failed`, named by its teams.
+
+**Known gap, not an exception.** `maxConsecutiveDays` only reads free variables, so it never blocks, and
+no post-solve diagnostic covers it: a violation caused by locks is SILENT (roadmap line). No contract change (1.8), no new diagnostic kind. Guards:
+`engine/tests/semantic/test_salarie_rule_is_an_objective.py`,
+`test_fully_reserved_grid_two_employees.py`, `test_infeasibility_names_the_rules.py`,
+`engine/tests/test_result_builder.py`, `engine/tests/golden/test_two_pass.py`.
