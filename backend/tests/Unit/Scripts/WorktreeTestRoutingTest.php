@@ -30,6 +30,15 @@ final class WorktreeTestRoutingTest extends TestCase
         yield 'seed-bccl' => ['seed-bccl'];
     }
 
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function epreuveTeardownTargets(): iterable
+    {
+        yield 'epreuve-down' => ['epreuve-down'];
+        yield 'epreuve-destroy' => ['epreuve-destroy'];
+    }
+
     /** Deux runs e2e parallèles se liraient leur clé TOTP dans un fichier /tmp au nom fixe. */
     public function testE2eSuperadminFileIsPrivateToTheRun(): void
     {
@@ -37,6 +46,19 @@ final class WorktreeTestRoutingTest extends TestCase
 
         self::assertStringContainsString('$$(mktemp)', $recipe);
         self::assertStringNotContainsString('/tmp/amateo-e2e-sa.txt', $recipe);
+    }
+
+    /**
+     * `epreuve-dev` lève `frontend-dev`, service du profil `dev` : un `down` sans ce profil le laisse
+     * tourner, le réseau reste occupé et `epreuve-status` annonce encore la stack occupée.
+     */
+    #[DataProvider('epreuveTeardownTargets')]
+    public function testEpreuveTeardownAlsoStopsTheDevProfile(string $target): void
+    {
+        self::assertMatchesRegularExpression(
+            '/-p amateo-epreuve\b[^;]*--profile dev\b[^;]* down\b/',
+            $this->recipe('Makefile', $target),
+        );
     }
 
     /** Sinon le `.env` d'épreuve survit, et le worktree ne repasse jamais proprement en nu. */

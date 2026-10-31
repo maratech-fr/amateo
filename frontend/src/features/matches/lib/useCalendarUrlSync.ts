@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useSearchParams } from "react-router";
+import { useContext, useEffect, useRef } from "react";
+import { UNSAFE_DataRouterContext, useLocation, useSearchParams } from "react-router";
 
 import type { Coach, Competition, Fixture, Team, Venue } from "../api";
 import { useMatchesStore } from "../store";
@@ -46,6 +46,11 @@ export function useCalendarUrlSync(
   focusFixtureCell: (fixtureId: string) => void,
 ): void {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { pathname: hookPathname } = useLocation();
+  // ⚠ API UNSAFE assumée : seul l'objet routeur connaît la position RÉELLE. `useLocation`, `useMatch`
+  // et `useNavigation` lisent l'état React, en retard pendant le `startTransition` de `RouterProvider`,
+  // et un `navigate` absolu écraserait l'entrée voisine au lieu de l'épargner.
+  const router = useContext(UNSAFE_DataRouterContext)?.router;
   const {
     selectedWeekend,
     setSelectedWeekend,
@@ -194,8 +199,13 @@ export function useCalendarUrlSync(
     // `match=` est TOUJOURS retiré à la re-synchro : c'est un deep-link one-shot consommé au
     // seed (« retiré en replace après sélection »), jamais un état porté par l'adresse.
     const next = applyMatchToParams(withFocus, null);
+    // Frontière de route : `setSearchParams` résout `?…` depuis la position du routeur, pas depuis
+    // cette route. Le routeur déjà parti, le Calendrier encore monté n'écrit plus rien.
+    if (undefined !== router && router.state.location.pathname !== hookPathname) {
+      return;
+    }
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [teamsData, coachesData, venuesData, fixturesData, searchParams, filterMode, filterIds, highlightedFixtureIds, setHighlightedFixtureIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSelectedFixtureId, focusFixtureCell, competitionsMap, setSearchParams]);
+  }, [teamsData, coachesData, venuesData, fixturesData, searchParams, filterMode, filterIds, highlightedFixtureIds, setHighlightedFixtureIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSelectedFixtureId, focusFixtureCell, competitionsMap, setSearchParams, router, hookPathname]);
 }

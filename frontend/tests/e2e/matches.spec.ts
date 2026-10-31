@@ -93,6 +93,25 @@ async function stepUntilVisible(btn: Locator, target: Locator, max: number): Pro
  * create a fixture manually → it lands in the "à placer" list → place it (venue +
  * kickoff) → it leaves the list. The conflict radar renders throughout.
  */
+/**
+ * Ce parcours crée ses trois rencontres par l'UI (domicile + deux extérieurs) et ne les supprimait pas :
+ * elles restaient dans le club seedé partagé, et `visual-reference.spec.ts` les voyait arriver dans le
+ * bandeau « Depuis votre dernière visite : 3 matchs arrivés · 2 nouveaux conflits ». Le nettoyage part
+ * d'ici, y compris quand l'essai échoue en route.
+ */
+const opponentsToClean: string[] = [];
+test.afterEach(async ({ page }) => {
+  const prefixes = opponentsToClean.splice(0);
+  if (0 === prefixes.length) {
+    return;
+  }
+  const fixtures = membersOf(await (await page.request.get("/api/fixtures?itemsPerPage=200")).json());
+  for (const fixture of fixtures.filter((f) => prefixes.some((prefix) => String(f.opponentLabel ?? "").startsWith(prefix)))) {
+    const deleted = await page.request.delete(`/api/fixtures/${String(fixture.id)}`);
+    expect(deleted.ok(), `nettoyage de la rencontre « ${String(fixture.opponentLabel)} »`).toBeTruthy();
+  }
+});
+
 test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   test.setTimeout(240_000); // onboarding runs a real CP-SAT generation
   await loginSeededClub(page);
@@ -100,6 +119,7 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
 
   // A unique opponent so the assertions target THIS run's fixture (dev DB is not reset).
   const opponent = `E2E-${Date.now().toString(36).toUpperCase()}`;
+  opponentsToClean.push(opponent);
   // P4-360 — fenêtre FUTURE calculée depuis aujourd'hui (plus de « 2027-03-xx » en dur). Le domicile
   // tombe un SAMEDI loin devant (placé sur la grille) ; les deux extérieurs sont des MERCREDIS (jour
   // sans habitude de match → AWAY_NO_FOOTPRINT) sur DEUX week-ends distincts : `homeSat + 4` et
@@ -591,8 +611,22 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
 
   // Dette e2e : nettoyage par DELETE API en `finally` (plus de nettoyage « navigant » par la grille).
   let createdFixtureId: string | undefined;
+  let earlierFixtureId: string | undefined;
 
   try {
+    // Le saut de semaine a besoin d'une semaine AVANT celle du match : seule en base, elle serait déjà
+    // affichée, sans `semaine=` dans l'URL et sans « Semaine suivante ». Le test la crée lui-même au
+    // lieu d'hériter des rencontres d'une spec amont.
+    const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+    expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+    const earlierTeamId = (await teamsRes.json()).member?.[0]?.id as string | undefined;
+    expect(earlierTeamId, "le club seedé doit avoir une équipe").toBeTruthy();
+    const earlierRes = await page.request.post("/api/fixtures", {
+      data: { teamId: earlierTeamId, matchDate: futureSaturday(18), homeAway: "HOME", opponentLabel: `E2E3A-${Date.now().toString(36).toUpperCase()}`, competitionId: null },
+    });
+    expect(earlierRes.ok(), "POST /api/fixtures (semaine précédente)").toBeTruthy();
+    earlierFixtureId = (await earlierRes.json()).id as string;
+
     // ── Créer un domicile daté LOIN (samedi futur, calculé depuis aujourd'hui) ────
     await page.getByRole("button", { name: /Nouveau match/i }).click();
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
@@ -684,8 +718,10 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   } finally {
     // Nettoyage par l'API (dette e2e) : un DELETE ciblé sur l'id capturé, jamais une navigation de
     // grille qui dépend de l'état d'affichage. Base dev CI non réinitialisée → on retire NOTRE rencontre.
-    if (undefined !== createdFixtureId) {
-      await page.request.delete(`/api/fixtures/${createdFixtureId}`).catch(() => undefined);
+    for (const id of [createdFixtureId, earlierFixtureId]) {
+      if (undefined !== id) {
+        await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
+      }
     }
   }
 });
@@ -754,21 +790,18 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     await expect(exterieurs).toHaveAttribute("aria-checked", "false");
     await exterieurs.click();
     await expect(exterieurs).toHaveAttribute("aria-checked", "true");
-    // ⚑ 15 s : l'interrupteur (aria-checked) reflète le store IMMÉDIATEMENT, mais l'écriture du
-    // param dans l'URL est portée par `useCalendarUrlSync` (useCalendarUrlSync.ts:75-78), dont
-    // la re-synchro est GARDÉE tant que teams/coaches/venues/fixtures ne sont pas chargés. Juste
-    // après le montage du Calendrier, ces quatre lectures peuvent dépasser 5 s sous charge CI.
-    await expect(page).toHaveURL(/[?&]exterieurs=1/, { timeout: 15_000 });
+    // L'interrupteur reflète le store tout de suite ; l'URL suit une fois les lectures du Calendrier
+    // arrivées (`useCalendarUrlSync`). On attend la barre, rendue après elles, plutôt qu'un long délai.
+    await expect(page.getByRole("group", { name: "Semaine affichée" })).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/[?&]exterieurs=1/);
     await matchesNav.getByRole("link", { name: "Conflits" }).click();
     await expect(page).toHaveURL(/\/matchs\/conflits/);
     await matchesNav.getByRole("link", { name: "Calendrier" }).click();
     await expect(page).toHaveURL(/\/matchs(\?|$)/);
     await expect(exterieurs).toHaveAttribute("aria-checked", "true");
-    // Même témoin réseau (15 s) : le Calendrier VIENT d'être re-monté par l'aller-retour
-    // Conflits → Calendrier, donc ses quatre lectures re-chargent et la re-synchro de l'URL
-    // (useCalendarUrlSync.ts:78) ne réécrit `exterieurs=1` qu'une fois les données prêtes —
-    // c'est précisément ce point qui a rougi (run 38591293403 tentative 1, URL restée « /matchs »).
-    await expect(page).toHaveURL(/[?&]exterieurs=1/, { timeout: 15_000 });
+    // Même témoin : l'aller-retour Conflits → Calendrier vient de re-monter la page.
+    await expect(page.getByRole("group", { name: "Semaine affichée" })).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/[?&]exterieurs=1/);
     await exterieurs.click();
     await expect(exterieurs).toHaveAttribute("aria-checked", "false");
 
