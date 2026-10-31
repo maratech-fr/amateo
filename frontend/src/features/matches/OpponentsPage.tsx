@@ -268,7 +268,7 @@ export function OpponentsPage() {
                     <TableHead>{MATCHES_TEXTS.venueHeader}</TableHead>
                     <TableHead className="hidden @md:table-cell @md:w-28">{MATCHES_TEXTS.columnTravel}</TableHead>
                     <TableHead className="hidden text-right @md:table-cell @md:w-24">{MATCHES_TEXTS.columnFixtures}</TableHead>
-                    <TableHead className="w-14 text-right @md:w-48">
+                    <TableHead className="w-14 text-right @md:w-56">
                       <span className="sr-only">{MATCHES_TEXTS.columnActions}</span>
                     </TableHead>
                   </TableRow>
