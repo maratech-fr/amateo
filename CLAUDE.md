@@ -160,7 +160,8 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
    `.claude/skills/validation-runner/SKILL.md`.
    **Contrôle visuel** (agent `switch`) si le plan nomme des écrans dont l'apparence change :
    captures sur un club de test du bac à sable + passe de design, AVANT de dire au user « prêt ».
-6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
+6. Résumé (liste des détails tranchés par l'orchestrateur, pour que le fondateur puisse en contester un) +
+   **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
    si la PR touche un item de cette **liste fermée** : auth · memberships · code FFBB / identité
