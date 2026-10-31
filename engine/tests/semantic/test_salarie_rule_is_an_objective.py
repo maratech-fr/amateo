@@ -85,6 +85,26 @@ def test_the_alert_states_the_fact_without_blaming_anyone(intensity: str) -> Non
     assert _alerts(result) == ["Aucun salarié n'a de séance le mardi et le jeudi."]
 
 
+def test_an_employee_who_only_plays_that_day_counts_as_present() -> None:
+    """Un salarié présent comme joueur compte : le vendredi n'a que lui, aucune alerte ne sort."""
+    payload = _one_team_a_day({1: "e1", 2: "e1", 3: "e2", 4: "e2", 5: "vol"}, intensity="HARD")
+    payload["constraints"].append(
+        {
+            "id": "player-e2",
+            "type": "COACH_PLAYER_UNAVAILABILITY",
+            "teamId": "t-5",
+            "severity": "HARD",
+            "value": "e2",
+            "metadata": {"coachId": "e2", "teamId": "t-5", "position": None, "isActive": True},
+        }
+    )
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed"
+    assert _alerts(result) == []
+
+
 def test_the_alert_lists_three_days_as_a_sentence() -> None:
     """Trois jours et plus se lisent comme une phrase : virgules, puis « et » avant le dernier."""
     result = solve_payload(_one_team_a_day({1: "vol", 2: "vol", 3: "e1", 4: "vol", 5: "e2"}, intensity="HARD"))

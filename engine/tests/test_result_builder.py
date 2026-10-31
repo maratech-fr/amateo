@@ -779,6 +779,70 @@ class InfeasibilityCausesTest(unittest.TestCase):
         )
         self.assertNotIn(WELLNESS_LEAD, suggestions)
 
+    def _core_message(self, causes: list[dict[str, Any]], **kwargs: Any) -> tuple[str, list[str]]:
+        from app.solver.result_builder.diagnostics.conflicts import _infeasible_core_message
+
+        labels = [str(c["label"]) for c in causes if c.get("label")]
+        return _infeasible_core_message(causes, labels, {"teams": [], "venues": []}, diagnostic_ran=True, **kwargs)
+
+    def test_several_demand_rules_get_a_plural_lead(self) -> None:
+        """La piste s'accorde : après plusieurs règles citées, « Elles », jamais « Elle »."""
+        _message, suggestions = self._core_message(
+            [
+                {"kind": "day_forced", "constraintId": "d1", "label": "Lundi imposé", "count": 1},
+                {"kind": "day_forced", "constraintId": "d2", "label": "Mardi imposé", "count": 1},
+            ]
+        )
+        self.assertEqual(1, len(suggestions))
+        self.assertTrue(suggestions[0].startswith("Elles se heurtent sans doute à une règle de bien-être"), suggestions)
+
+    def test_unnamed_demand_rules_get_a_lead_with_its_own_subject(self) -> None:
+        """Aucune règle citée : la piste nomme son sujet, un pronom n'y renverrait à rien."""
+        message, suggestions = self._core_message(
+            [{"kind": "day_forced", "constraintId": "d1", "label": None, "count": 1}]
+        )
+        self.assertNotIn("se contredisent :", message)
+        self.assertEqual(1, len(suggestions))
+        self.assertTrue(suggestions[0].startswith("Les règles en cause se heurtent sans doute"), suggestions)
+
+    def test_a_named_rule_beside_an_unnamed_one_mentions_both(self) -> None:
+        """Une règle sans nom du noyau n'est pas tue : le message la compte et le dit."""
+        message, suggestions = self._core_message(
+            [
+                {"kind": "day_forced", "constraintId": "d1", "label": "Lundi imposé", "count": 1},
+                {"kind": "time_window", "constraintId": "t1", "label": None, "count": 1},
+            ]
+        )
+        self.assertEqual("Ces 2 règles se contredisent : « Lundi imposé » et une règle sans nom.", message)
+        self.assertEqual(
+            ["Assouplissez l'une de ces règles, ou passez-la en « Objectif », puis relancez la génération."],
+            suggestions,
+        )
+
+    def test_a_single_named_rule_is_relaxed_in_the_singular(self) -> None:
+        """Une seule règle citée hors règles de demande : « cette règle », pas « l'une de ces règles »."""
+        _message, suggestions = self._core_message(
+            [{"kind": "coach_unavailability", "constraintId": "c1", "label": "Indispo", "count": 1}]
+        )
+        self.assertEqual(
+            ["Assouplissez cette règle, ou passez-la en « Objectif », puis relancez la génération."], suggestions
+        )
+
+    def test_a_group_without_extra_reservation_beside_a_rule_is_not_told_to_remove_one(self) -> None:
+        """Groupe non sur-épinglé mêlé à une règle : il manque une case commune, aucune réservation à retirer."""
+        message, _suggestions = self._core_message(
+            [
+                {"kind": "shared_block", "constraintId": None, "label": "groupe SM1 + SM2", "count": 1},
+                {"kind": "day_forced", "constraintId": "d1", "label": "Vendredi imposé", "count": 1},
+            ],
+            overbooked=False,
+        )
+        self.assertEqual(
+            "Le groupe SM1 + SM2 et la règle « Vendredi imposé » se contredisent : ajoutez une case commune aux "
+            "équipes du groupe, ajustez ses séances communes, ou assouplissez cette règle.",
+            message,
+        )
+
     def test_no_failure_path_still_mentions_locked_slots(self) -> None:
         """Une réservation n'est jamais la cause désignée d'un échec : la suggestion « LOCK » est partie."""
         from app.solver.result_builder import _diagnose_conflicts

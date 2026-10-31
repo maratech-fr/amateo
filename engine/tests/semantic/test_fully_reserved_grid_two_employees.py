@@ -111,12 +111,27 @@ def test_a_partly_reserved_club_generates_and_keeps_its_alert_consistent(kept: i
     assert not any(d["id"].startswith("diag-infeasible") for d in result["diagnostics"])
 
     employees = {c["id"] for c in payload["coaches"] if c["isEmployee"]}
-    teams_by_employee = {
+    # Compté comme la règle : le coach qui TIENT la séance, ou un salarié qui joue dans l'équipe. Le
+    # solveur peut couvrir un jour par un salarié joueur seul : l'oublier rendait ce test instable.
+    coached = {c["teamId"] for c in payload["constraints"] if c.get("type") == "TEAM_COACH"}
+    employee_coached = {
         c["teamId"]
         for c in payload["constraints"]
         if c.get("type") == "TEAM_COACH" and c["metadata"]["coachId"] in employees
     }
-    days_with_employee = {s["dayOfWeek"] for s in result["slots"] if s["teamId"] in teams_by_employee}
+    employee_playing = {
+        c["metadata"]["teamId"]
+        for c in payload["constraints"]
+        if c.get("type") == "COACH_PLAYER_UNAVAILABILITY" and c["metadata"]["coachId"] in employees
+    }
+
+    def has_employee(session: dict[str, Any]) -> bool:
+        team = session["teamId"]
+        holder = session.get("coachId")
+        held = holder in employees if team in coached and holder else team in employee_coached
+        return held or team in employee_playing
+
+    days_with_employee = {s["dayOfWeek"] for s in result["slots"] if has_employee(s)}
     alert = next((d for d in result["diagnostics"] if d["id"] == "diag-implicit-salarie"), None)
     if set(range(1, 6)) <= days_with_employee:
         assert alert is None
