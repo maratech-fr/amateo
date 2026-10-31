@@ -244,6 +244,7 @@ async function visitAllSteps(user: ReturnType<typeof userEvent.setup>): Promise<
 }
 
 beforeEach(() => {
+  q.analyzeMutate.mockReset();
   q.analysis.value = null;
   q.importResult.value = null;
   q.importError.value = null;
@@ -2707,6 +2708,50 @@ describe("ParcImportModal — quick wins : composition d'un groupe et bouton de 
 
       await user.click(screen.getByRole("button", { name: key("verifyAction") }));
       expectUpToDate();
+    });
+  });
+
+  // Le serveur rejoue les décisions mais rend ses verdicts de LECTURE : la revérification ne doit pas
+  // défaire à l'écran ce que le gestionnaire vient de trancher (ParcImportModal.tsx:303, ParcImportAnalyzer.php:94).
+  describe("D10 — une revérification ne défait pas les gestes du gestionnaire", () => {
+    it("une équipe ignorée le reste : à l'écran et à l'import", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.ignoreLine as unknown as string);
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      expect(screen.getByRole("button", { name: (n: string) => n.startsWith(T.decisionFor("SF1")) })).toHaveTextContent(T.ignoreLine as unknown as string);
+      await user.click(importButton());
+      const decisions = (q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; coche: boolean }> }).decisions;
+      expect(decisions.find((d) => "equipes" === d.section)?.coche).toBe(false);
+    });
+
+    it("une ligne ambiguë tranchée ne redevient pas « à trancher »", async () => {
+      const user = userEvent.setup();
+      const analysis = decor();
+      analysis.sections.equipes = [mkAmbiguous(0, "SF1", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])];
+      await ready(user, analysis);
+      await goTo(user, "equipes");
+      await pickDecision(user, "SF1", T.matchTo("Armand"));
+      await editSlot(user);
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await user.click(importButton());
+      const decisions = (q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; cibleId?: string }> }).decisions;
+      expect(decisions.find((d) => "equipes" === d.section)?.cibleId).toBe("t1");
+    });
+
+    it("les séances corrigées d'une équipe restent celles saisies", async () => {
+      const user = userEvent.setup();
+      await ready(user);
+      await goTo(user, "equipes");
+      fireEvent.change(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") }), { target: { value: "3" } });
+      await editSlot(user);
+      await user.click(screen.getByRole("button", { name: key("verifyAction") }));
+
+      await goTo(user, "equipes");
+      expect(screen.getByRole("spinbutton", { name: T.sessionsFieldLabel("SF1") })).toHaveValue(3);
     });
   });
 });
