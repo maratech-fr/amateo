@@ -138,7 +138,7 @@ export const WIZARD_TEXTS = {
   associateVenueDescription: "Le numéro fédéral et la position GPS de la salle sont posés sur ce gymnase. Son nom ne change pas.",
   associateVenueConfirm: "Associer",
   associateVenueAddress: (salle: { address: string | null; city: string | null }) => [salle.address, salle.city].filter((part) => null !== part && "" !== part).join(", "),
-  associateVenueDescriptionNoGps: "Le numéro fédéral est posé sur ce gymnase. La FFBB ne donne pas de position pour cette salle : celle du gymnase ne change pas. Son nom ne change pas.",
+  associateVenueDescriptionNoGps: "Le numéro fédéral est posé sur ce gymnase, et l'adresse de la salle est reprise s'il n'en a pas. La FFBB ne donne pas de position pour cette salle : celle du gymnase ne change pas. Son nom ne change pas.",
   associateModalTitle: (venue: string) => `Associer « ${venue} » à une salle FFBB`,
   associateModalHint: "Cherchez la salle par son nom dans toute la FFBB. Un clic l'associe à ce gymnase sans le renommer.",
   associateModalSearchLabel: "Nom de la salle",

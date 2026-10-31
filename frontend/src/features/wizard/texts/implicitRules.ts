@@ -21,7 +21,7 @@ export const IMPLICIT_RULES_TEXTS = {
   productRulesIntro: "Ces règles s'appliquent d'office, sans saisie. Le système les garantit à chaque génération.",
   productRuleDetail: (detail: string) => ` — ${detail}`,
   periodScope: "Ces réglages ne valent que pour cette période — copiés du planning de saison à sa création.",
-  wellbeingIntro: "Réglez chacune sur « Obligatoire » (toujours respectée) ou « Objectif » (respectée quand c'est possible). Une règle en Objectif peut être dépassée — chaque dépassement est signalé au planning (« assouplie par vous »).",
+  wellbeingIntro: "Réglez-les sur Obligatoire ou Objectif, sauf la présence d'un salarié, qui n'est jamais bloquante. Une règle en Objectif peut être dépassée — chaque dépassement est signalé au planning (« assouplie par vous »).",
   loadError: "Impossible de lire les réglages des règles de bien-être.",
   loading: "Lecture des réglages…",
   travelTitle: "Trajet entre gymnases",
