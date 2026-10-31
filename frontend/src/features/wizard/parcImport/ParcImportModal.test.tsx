@@ -2993,4 +2993,40 @@ describe("ParcImportModal — renommage au réimport : seul un nom saisi part", 
 
     expect(await screen.findByText(PARC_IMPORT_TEXTS.sectionRecap(0, 0, 1, 0), { exact: false })).toBeInTheDocument();
   });
+
+  describe("une ligne à créer devient appariée à la revérification", () => {
+    const toCreateLine = (): Line => mkLine(0, LIBELLE, "aCreer", { groupe: "CEC", gymnaseId: null, position });
+
+    /** Un nom de groupe ne périme pas l'aperçu (D10) : pour revérifier, on corrige aussi le créneau. */
+    async function reverifyAgainst(user: ReturnType<typeof userEvent.setup>, line: Line): Promise<void> {
+      q.analysis.value = analysisOf({ mutualisations: [line] });
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.editCaseTitle }));
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.save }));
+      await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.verifyAction }));
+    }
+
+    it("non touché : le champ passe au vrai nom, et l'ancienne amorce ne devient pas une correction qui renommerait le groupe", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, toCreateLine());
+      expect(groupField()).toHaveValue("CEC");
+
+      await reverifyAgainst(user, appariedLine());
+
+      expect(groupField()).toHaveValue("Loisirs");
+      expect(await importedGroupCorrection(user)).toBeUndefined();
+    });
+
+    it("un nom saisi survit à la revérification et part", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await openMutual(user, toCreateLine());
+      fireEvent.change(groupField(), { target: { value: "Section A" } });
+
+      await reverifyAgainst(user, appariedLine());
+
+      expect(groupField()).toHaveValue("Section A");
+      expect(await importedGroupCorrection(user)).toBe("Section A");
+    });
+  });
 });
