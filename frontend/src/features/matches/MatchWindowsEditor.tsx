@@ -75,7 +75,10 @@ export function MatchWindowsEditor({ venueId, venueName, prefillOpening }: Match
     }
     const frame = requestAnimationFrame(() => {
       openingDateRef.current?.scrollIntoView?.({ block: "center" });
-      openingDateRef.current?.focus();
+      // Jamais sous les doigts : quelqu'un qui saisit déjà dans un champ garde son focus.
+      if (!(document.activeElement instanceof HTMLInputElement)) {
+        openingDateRef.current?.focus();
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, []);
