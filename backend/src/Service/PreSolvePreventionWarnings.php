@@ -228,13 +228,13 @@ final readonly class PreSolvePreventionWarnings
             $available = $openDays - \count($this->daysClosedForCoach($coachId, $venues, $constraints));
             if ($sessions > $available) {
                 $messages[] = \sprintf(
-                    '%s est le seul coach de %s par semaine mais n\'a %s : plusieurs séances tomberont le même jour.',
+                    '%s est le seul coach de %s par semaine mais %s.',
                     $this->coachName($coach),
                     1 === $sessions ? '1 séance' : $sessions . ' séances',
                     match ($available) {
-                        0 => 'aucun jour disponible',
-                        1 => 'qu\'un jour disponible',
-                        default => 'que ' . $available . ' jours disponibles',
+                        0 => 'n\'a aucun jour disponible',
+                        1 => 'n\'a qu\'un jour disponible : plusieurs séances tomberont le même jour',
+                        default => 'n\'a que ' . $available . ' jours disponibles : plusieurs séances tomberont le même jour',
                     },
                 );
             }
