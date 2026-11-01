@@ -48,7 +48,7 @@
 |---|---|---|---|
 | « Coach indisponible tel jour » | COACH_AVAILABILITY `unavailableDays` (UNION, dur) | ✅ | Lionel indispo vendredi. ⚠ **ALIGN-19** : honoré seulement pour un entraîneur **PRINCIPAL** d'au moins une équipe (`parsing.py`, rôle absent traité comme principal) — un coach **adjoint partout** dont l'indisponibilité est saisie ne ferme AUCUN créneau ; elle est **Indicative** (`PreSolvePreventionWarnings::adjointOnlyUnavailabilityIsIndicative`, récap + écran Contraintes des matchs), jamais bloquante |
 | « Coach disponible uniquement tel jour » | COACH_AVAILABILITY `availableDays` (INTERSECTION, dur) — mode « disponible uniquement » du wizard | ✅ *(le wizard l'expose)* | coach dispo seulement le mardi |
-| « Coach indispo/dispo sur une **plage horaire** tel jour » | COACH_AVAILABILITY `fromTime`/`untilTime` (Lot C, dur) | ✅ | dispo le mardi qu'à partir de 20h |
+| « Coach indispo/dispo sur une **plage horaire** tel jour » | COACH_AVAILABILITY `fromTime`/`untilTime` (Lot C, dur) | ✅ (pose libre et déplacement : chevauchement de la séance ; existant : heure de début) | dispo le mardi qu'à partir de 20h |
 | « Un coach ne peut pas être sur 2 séances à la fois » | `COACH_NO_OVERLAP` (implicite) | ✅ | — |
 | « Un coach qui joue aussi n'est pas convoqué en double » | `COACH_PLAYER_NO_OVERLAP` (implicite) | ✅ | Mathis coach U13M2 + joueur U21M1 ; Florian coach U18F3 + joueur Loisir 3 |
 

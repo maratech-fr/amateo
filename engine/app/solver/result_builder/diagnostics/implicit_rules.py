@@ -14,7 +14,7 @@ from typing import Any
 from ...constraints import ResolvedImplicitRules
 from ...constraints.availability import available_coach_exists
 from ...constraints.common import OFF
-from ...model import _time_to_minutes
+from ...model import DEFAULT_SESSION_MINUTES, _time_to_minutes
 from ..helpers import (
     _coach_name_map,
     _collection,
@@ -152,18 +152,20 @@ def _diagnose_implicit_rule_violations(
             if people & salarie_ids:
                 salarie_days.add(day)
         # Même grille que la pose (``slot_capacities``) : un jour sans aucun créneau au club ne compte pas.
-        starts_by_day: dict[int, set[int]] = defaultdict(set)
+        cases_by_day: dict[int, set[tuple[int, int]]] = defaultdict(set)
         for venue in _collection(model_data, "venues"):
             for training_slot in _collection(venue, "training_slots", "trainingSlots"):
-                starts_by_day[int(_get(training_slot, "day_of_week", "dayOfWeek"))].add(
-                    _time_to_minutes(str(_get(training_slot, "start_time", "startTime")))
+                start = _time_to_minutes(str(_get(training_slot, "start_time", "startTime")))
+                duration = int(
+                    _get(training_slot, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES)
                 )
-        missing = [d for d in range(1, 6) if d in starts_by_day and d not in salarie_days]
+                cases_by_day[int(_get(training_slot, "day_of_week", "dayOfWeek"))].add((start, start + duration))
+        missing = [d for d in range(1, 6) if d in cases_by_day and d not in salarie_days]
         # Un jour est impossible quand AUCUN de ses créneaux n'a de salarié libre : il ne se reproche pas au planning.
         impossible = [
             d
             for d in missing
-            if not any(available_coach_exists(salarie_ids, d, s, coach_unavailability) for s in starts_by_day[d])
+            if not any(available_coach_exists(salarie_ids, d, s, coach_unavailability, e) for s, e in cases_by_day[d])
         ]
         possible = [d for d in missing if d not in impossible]
         if missing:

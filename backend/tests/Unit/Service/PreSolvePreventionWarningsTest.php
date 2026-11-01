@@ -148,11 +148,27 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], $this->overloadWarnings($found));
     }
 
-    /** Une plage qui commence après le créneau ne ferme pas le jour : `unavailableDays` seul ne dit pas tout. */
+    /** Une plage qui commence à la fin du créneau (19:30 pour 18:00-19:30) ne ferme pas le jour : `unavailableDays` seul ne dit pas tout. */
     public function testAnUnavailabilityStartingAfterTheSlotDoesNotCloseTheDay(): void
     {
         $found = $this->warnings->detect($this->payload(
-            venues: [$this->venue('v1', 'Matéo', [1, 2, 3])],
+            venues: [$this->venueWithStarts('v1', 'Matéo', [[1, '18:00:00'], [2, '18:00:00'], [3, '18:00:00']])],
+            teams: [$this->team('t1', 'SM1', sessions: 3)],
+            coaches: [$this->coach('anna', 'Anna', 'Martin')],
+            constraints: [
+                $this->teamCoach('t1', 'anna'),
+                $this->coachUnavailableFrom('anna', [3], '19:30'),
+            ],
+        ));
+
+        self::assertSame([], $this->overloadWarnings($found));
+    }
+
+    /** Une plage qui coupe l'unique créneau du jour (dès 19:00 pour 18:00-19:30) lui retire ce jour, comme à la pose. */
+    public function testAnUnavailabilityCuttingTheOnlySlotClosesTheDayForTheOverload(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venueWithStarts('v1', 'Matéo', [[1, '18:00:00'], [2, '18:00:00'], [3, '18:00:00']])],
             teams: [$this->team('t1', 'SM1', sessions: 3)],
             coaches: [$this->coach('anna', 'Anna', 'Martin')],
             constraints: [
@@ -161,7 +177,10 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ],
         ));
 
-        self::assertSame([], $this->overloadWarnings($found));
+        self::assertSame(
+            ['Anna Martin est le seul coach de 3 séances par semaine mais n\'a que 2 jours disponibles : plusieurs séances tomberont le même jour.'],
+            $this->overloadWarnings($found),
+        );
     }
 
     /** Une liste blanche de jours ferme les autres, ce que la seule lecture de `unavailableDays` ne voyait pas. */
@@ -272,6 +291,33 @@ final class PreSolvePreventionWarningsTest extends TestCase
             venues: [$this->venueWithStarts('v1', 'Matéo', [[4, '18:00:00'], [4, '20:30:00']])],
             coaches: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
             constraints: [$this->coachUnavailableFrom('anna', [4], '17:00'), $this->coachUnavailableFrom('ben', [4], '17:00', '20:00')],
+        ));
+
+        self::assertSame([], $this->employeeWarnings($found));
+    }
+
+    /** Leur plage dès 19:00 coupe l'unique créneau 18:00-19:30 du jeudi : aucun salarié ne peut le tenir, comme à la pose. */
+    public function testAnUnavailabilityCuttingTheSlotLeavesTheDayWithoutEmployee(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venueWithStarts('v1', 'Matéo', [[4, '18:00:00']])],
+            coaches: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            constraints: [$this->coachUnavailableFrom('anna', [4], '19:00'), $this->coachUnavailableFrom('ben', [4], '19:00')],
+        ));
+
+        self::assertSame(
+            ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'],
+            $this->employeeWarnings($found),
+        );
+    }
+
+    /** TÉMOIN sans marge : dès 19:30, Ben tient encore 18:00-19:30, le jeudi n'est pas impossible. */
+    public function testAnUnavailabilityStartingAtTheEndOfTheSlotKeepsTheDaySilent(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venueWithStarts('v1', 'Matéo', [[4, '18:00:00']])],
+            coaches: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            constraints: [$this->coachUnavailableFrom('anna', [4], '19:00'), $this->coachUnavailableFrom('ben', [4], '19:30')],
         ));
 
         self::assertSame([], $this->employeeWarnings($found));
@@ -789,6 +835,59 @@ final class PreSolvePreventionWarningsTest extends TestCase
         );
     }
 
+    // ── Récap aligné sur la pose : le jour imposé se ferme au chevauchement, pas à la journée ─────
+
+    /** Jour imposé lundi, unique créneau 18:00-19:30, principal parti dès 19:00 : le Récap prévient avant de générer, et le texte dit la vraie règle. */
+    public function testForcedDayClosedByAnUnavailabilityCuttingItsOnlySlotIsFlagged(): void
+    {
+        self::assertCount(1, $this->closedForcedDayWarnings($this->forcedMondayWarnings(
+            [$this->coachUnavailableFrom('c1', [1], '19:00')],
+        )));
+    }
+
+    /** TÉMOIN sans marge : dès 19:30 le créneau tient, silence (la lecture à la journée criait à tort). */
+    public function testForcedDayStaysOpenWhenTheUnavailabilityStartsAtTheEndOfTheSlot(): void
+    {
+        self::assertSame([], $this->anyClosedForcedDayWarning($this->forcedMondayWarnings(
+            [$this->coachUnavailableFrom('c1', [1], '19:30')],
+        )));
+    }
+
+    /** Un créneau du soir reste tenable : le jour n'est fermé que si TOUS ses créneaux le sont. */
+    public function testForcedDayStaysOpenWhenAnotherSlotOfTheDayIsLeft(): void
+    {
+        self::assertSame([], $this->anyClosedForcedDayWarning($this->forcedMondayWarnings(
+            [$this->coachUnavailableFrom('c1', [1], '17:00', '19:00')],
+            [[1, '18:00:00'], [1, '20:30:00']],
+        )));
+    }
+
+    /** Une liste blanche de jours ferme les autres, comme à la pose : la lecture de `unavailableDays` seule ne le voyait pas. */
+    public function testForcedDayOutsideTheMainCoachWhitelistIsFlagged(): void
+    {
+        self::assertCount(1, $this->closedForcedDayWarnings($this->forcedMondayWarnings(
+            [['scope' => 'COACH', 'scopeTargetId' => 'c1', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'config' => ['availableDays' => [2]]]],
+        )));
+    }
+
+    /** Toute l'union du groupe part dès 19:00 : aucune case servable, le Récap avertit et cite la contrainte, comme à la pose. */
+    public function testSharedBlockWhoseUnionLeavesDuringTheSlotIsWarned(): void
+    {
+        $found = $this->warnings->detect($this->overlapBlockPayload('19:00'));
+
+        $blockWarnings = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
+        self::assertCount(1, $blockWarnings);
+        self::assertStringContainsString('Contrainte en cause : « Indispo cA »', $blockWarnings[0]);
+    }
+
+    /** TÉMOIN sans marge : dès 19:30, le groupe garde sa case, silence. */
+    public function testSharedBlockIsSilentWhenTheUnavailabilityStartsAtTheEndOfTheSlot(): void
+    {
+        $found = $this->warnings->detect($this->overlapBlockPayload('19:30'));
+
+        self::assertSame([], array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe'))));
+    }
+
     /** Un payload vide n'invente rien : zéro équipe, zéro gymnase, zéro bruit. */
     public function testAnEmptyPayloadSaysNothing(): void
     {
@@ -881,6 +980,72 @@ final class PreSolvePreventionWarningsTest extends TestCase
     protected function setUp(): void
     {
         $this->warnings = new PreSolvePreventionWarnings;
+    }
+
+    /**
+     * U13 F1 imposée le lundi, c1 son seul principal, la grille et les indisponibilités données.
+     *
+     * @param list<array<string, mixed>>     $unavailable
+     * @param list<array{0: int, 1: string}> $cases
+     *
+     * @return list<string>
+     */
+    private function forcedMondayWarnings(array $unavailable, array $cases = [[1, '18:00:00']]): array
+    {
+        return $this->warnings->detect($this->payload(
+            venues: [$this->venueWithStarts('v1', 'Matéo', $cases)],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna', 'B')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+                $this->teamCoach('t1', 'c1', 'MAIN'),
+                ...$unavailable,
+            ],
+        ));
+    }
+
+    /**
+     * L'avertissement du jour imposé fermé, reconnu à son texte exact.
+     *
+     * @param list<string> $found
+     *
+     * @return list<string>
+     */
+    private function closedForcedDayWarnings(array $found): array
+    {
+        return array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1')
+            && str_contains($w, 'une autre règle (indisponibilité de l\'entraîneur principal sur tous les créneaux de ce jour, ou fenêtre horaire) n\'y laisse aucun créneau')));
+    }
+
+    /**
+     * Le même avertissement, quel que soit son libellé : un silence se prouve sans dépendre du texte.
+     *
+     * @param list<string> $found
+     *
+     * @return list<string>
+     */
+    private function anyClosedForcedDayWarning(array $found): array
+    {
+        return array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1') && str_contains($w, 'une autre règle')));
+    }
+
+    /**
+     * Le bloc {t1,t2}, unique case 18:00-19:30, ses deux coachs indisponibles à partir de `$from`.
+     *
+     * @return array<string, mixed>
+     */
+    private function overlapBlockPayload(string $from): array
+    {
+        $rule = fn (string $coachId): array => [
+            ...$this->coachUnavailableFrom($coachId, [2], $from),
+            'id' => 'av' . $coachId,
+            'name' => 'Indispo ' . $coachId,
+        ];
+
+        return [
+            ...$this->blockPayload([2], $rule('cA'), $rule('cB')),
+            'venues' => [$this->venueWithStarts('v1', 'V1', [[2, '18:00:00']])],
+        ];
     }
 
     /**

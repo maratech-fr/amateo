@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\Season;
@@ -20,6 +21,9 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
@@ -160,6 +164,31 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         $this->assertRefusedNamingTheCoach();
     }
 
+    /**
+     * Rail de l'existant : la réservation de 18:00-19:30 reste jugée à son DÉBUT. Bea part à 19:00 mais tient
+     * Seniors B à son début, Ana tient Seniors A, la régénération part. Seule la pose libre, côté moteur,
+     * regarde le chevauchement. Jumeau moteur : `engine/tests/semantic/test_coach_unavailability_overlaps_the_session.py`.
+     */
+    public function testALockCutByAnUnavailabilityDoesNotRefuseRegeneration(): void
+    {
+        $ctx = $this->seed(sameVenue: false);
+        $this->addMainCoach($ctx, 'Bea', 'Seniors B');
+        $this->makeCoachUnavailableFrom($ctx, 'Bea', '19:00');
+
+        self::assertSame(202, $this->post($ctx, 'regenerate', ScheduleStatus::COMPLETED));
+    }
+
+    /** TÉMOIN : même décor, Bea absente dès le début, Ana reste à deux endroits. La garde lit bien l'indisponibilité. */
+    public function testALockWhoseStartIsCoveredByAnUnavailabilityIsRefused(): void
+    {
+        $ctx = $this->seed(sameVenue: false);
+        $this->addMainCoach($ctx, 'Bea', 'Seniors B');
+        $this->makeCoachUnavailableFrom($ctx, 'Bea', '18:00');
+
+        self::assertSame(422, $this->post($ctx, 'regenerate', ScheduleStatus::COMPLETED));
+        $this->assertRefusedNamingTheCoach();
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -194,6 +223,21 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         $team = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $ctx['seasonId'], 'name' => $teamName]);
         self::assertInstanceOf(Team::class, $team);
         $this->em->persist((new TeamCoach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+    }
+
+    /** @param array{clubId: string, seasonId: string} $ctx */
+    private function makeCoachUnavailableFrom(array $ctx, string $firstName, string $from): void
+    {
+        $coach = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $ctx['seasonId'], 'firstName' => $firstName]);
+        self::assertInstanceOf(Coach::class, $coach);
+        $constraint = new Constraint;
+        $constraint->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId']);
+        $constraint->setName('Indispo ' . $firstName)->setScope(ConstraintScope::COACH)->setScopeTargetId($coach->getId());
+        $constraint->setFamily(ConstraintFamily::COACH_AVAILABILITY)->setRuleType(ConstraintRuleType::HARD);
+        $constraint->setConfig(['unavailableDays' => [2], 'fromTime' => $from]);
+        $constraint->setIsActive(true);
+        $this->em->persist($constraint);
         $this->em->flush();
     }
 

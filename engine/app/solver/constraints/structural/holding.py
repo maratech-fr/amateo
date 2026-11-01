@@ -23,7 +23,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ...model import DEFAULT_SESSION_MINUTES, _time_to_minutes
-from ..availability import HoldSession, _coach_available_at, holds_collide
+from ..availability import HoldSession, _coach_available_at, _coach_available_during, holds_collide
 from ..common import (
     AssignmentVariable,
     BoolVarLike,
@@ -171,7 +171,17 @@ def add_coach_hold_constraints(
 
         var = assignment.var
         players = {str(p) for p in player_map.get(team_id, ())}
-        available = [c for c in coaches if _coach_available_at(c, day, start, rules)]
+        # Pose libre : il tient toute la séance. Base figée d'un verdict : au début, comme les verrous.
+        end = None if assignment.fixed else assignment.end
+        available = [
+            c
+            for c in coaches
+            if (
+                _coach_available_at(c, day, start, rules)
+                if end is None
+                else _coach_available_during(c, day, start, end, rules)
+            )
+        ]
         # Tous indisponibles : la fermeture d'indisponibilité tranche. Sur une case de bloc, le relais
         # passe par un autre membre ; ailleurs, ils restent candidats pour le solve best-effort.
         eligible = available or ([] if block_bvars else coaches)

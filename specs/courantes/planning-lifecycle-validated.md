@@ -47,7 +47,7 @@ cet angle mort : feed **recalculé en lecture seule** à chaque appel (rien n'es
 croise les séances placées de la version **pointée** du plan SEASON avec les liens COURANTS —
 coach MAIN, joueur (`CoachPlayerMembership` actif) — amendé le 2026-10-30 (« un coach tient la séance ») : un adjoint ou un coach absent ne fait plus conflit tant qu'un coach tient la séance (`CoachDoubleBookingDetector::holdersFor`), conflit seulement si personne ne peut la tenir, le joueur dans deux équipes restant un conflit — et réutilise, sans le
 réécrire, `CoachDoubleBookingDetector::bookingsCollide` (intervalles réels, gymnases
-**DIFFÉRENTS** uniquement — le même gymnase reste la mutualisation voulue, jamais un conflit).
+**DIFFÉRENTS** uniquement — le même gymnase reste la mutualisation voulue, jamais un conflit). Les indisponibilités de coach y sont jugées à l'heure de début de la séance (règle de l'existant) : seule la pose libre du moteur et le candidat d'un déplacement les testent au chevauchement.
 Périmètre V1 (fondateur 2026-09-28) : la version pointée du plan **SEASON** seulement (les plans
 de période en sont hors scope).
 

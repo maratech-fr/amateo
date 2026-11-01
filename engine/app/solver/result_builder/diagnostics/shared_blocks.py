@@ -12,7 +12,12 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
-from ...constraints.availability import _coach_available_at, case_has_available_coach, required_coaches_of
+from ...constraints.availability import (
+    _coach_available_during,
+    case_has_available_coach,
+    interval_bites,
+    required_coaches_of,
+)
 from ...constraints.common import _fold_case_occupant_identity
 from ...constraints.targeting import time_window_excludes_slot
 from ...model import DEFAULT_SESSION_MINUTES, _format_time, _time_to_minutes
@@ -242,11 +247,11 @@ def _diagnose_shared_blocks(
     return diagnostics
 
 
-def _block_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[tuple[int, int]]:
-    """Les cases de gymnase ``(jour, minute de début)`` où un bloc POURRAIT tenir une séance commune
+def _block_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[tuple[int, int, int]]:
+    """Les cases de gymnase ``(jour, minute de début, minute de fin)`` où un bloc POURRAIT tenir une séance commune
     — toutes les ``trainingSlots`` du payload, le gymnase étant indifférent au relais de coach (un
     coach de l'union couvre la case quel que soit le gymnase). Slot illisible (jour/heure) écarté."""
-    cases: list[tuple[int, int]] = []
+    cases: list[tuple[int, int, int]] = []
     for venue in _collection(model_data, "venues"):
         for slot in _collection(venue, "training_slots", "trainingSlots"):
             raw_day = _get(slot, "day_of_week", "dayOfWeek", default=None)
@@ -258,7 +263,8 @@ def _block_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[tuple[in
                 start = _time_to_minutes(str(raw_start))
             except TypeError, ValueError:
                 continue
-            cases.append((day, start))
+            duration = int(_get(slot, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES) or 0)
+            cases.append((day, start, start + (duration or DEFAULT_SESSION_MINUTES)))
     return cases
 
 
@@ -533,7 +539,7 @@ def _diagnose_blocks_without_union_coach(
         if common_sessions <= 0:
             continue
         servable = sum(
-            1 for day, start in cases if case_has_available_coach(members, day, start, rules, team_coach_map)
+            1 for day, start, end in cases if case_has_available_coach(members, day, start, rules, team_coach_map, end)
         )
         # Pénurie de coach PROUVÉE, et de coach SEULEMENT : assez de cases dans la grille
         # (``common_sessions <= total``), mais trop peu portent un coach de l'union.
@@ -568,7 +574,7 @@ def _diagnose_blocks_without_union_coach(
 
 def _coach_unavailability_causes(
     members: list[str],
-    cases: list[tuple[int, int]],
+    cases: list[tuple[int, int, int]],
     team_coach_map: Mapping[str, Any],
     rules: Mapping[str, Any],
     coach_unavailability_sources: Mapping[str, Any],
@@ -589,8 +595,10 @@ def _coach_unavailability_causes(
             intervals = source.get("intervals") or ()
             closed = sum(
                 1
-                for day, start in cases
-                if any(iv_day == day and iv_from <= start < iv_to for iv_day, iv_from, iv_to in intervals)
+                for day, start, end in cases
+                if any(
+                    iv_day == day and interval_bites(iv_from, iv_to, start, end) for iv_day, iv_from, iv_to in intervals
+                )
             )
             if closed == 0:
                 continue
@@ -612,10 +620,12 @@ def _coach_unavailability_causes(
     return causes
 
 
-def _coachless_case_count(cases: list[tuple[int, int]], union: list[str], rules: Mapping[str, Any]) -> int:
+def _coachless_case_count(cases: list[tuple[int, int, int]], union: list[str], rules: Mapping[str, Any]) -> int:
     """Nombre de cases candidates où AUCUN coach de l'union n'est disponible (le poids de la cause
     dégradée quand aucune source nommée ne porte l'indisponibilité)."""
-    return sum(1 for day, start in cases if not any(_coach_available_at(c, day, start, rules) for c in union))
+    return sum(
+        1 for day, start, end in cases if not any(_coach_available_during(c, day, start, end, rules) for c in union)
+    )
 
 
 def _diagnose_sacrificed_rules(

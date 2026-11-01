@@ -15,7 +15,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  * Axes *constraint semantics* + *backend↔engine contract* : « tant qu'un coach tient la séance,
  * c'est OK » (fondateur 2026-10-30), de bout en bout contre le VRAI moteur (`/generate`).
  *
- * Seul, un coach principal est indispensable ; à plusieurs, un seul suffit. Les trois tests partagent
+ * Seul, un coach principal est indispensable ; à plusieurs, un seul suffit. Ces tests partagent
  * le même décor (deux gymnases, une seule case, donc deux séances simultanées) : seul le lien de la
  * seconde équipe, ou le verrou, change d'un test à l'autre.
  *
@@ -63,29 +63,36 @@ final class OneCoachHoldsTheSessionGateTest extends TestCase
     }
 
     /**
-     * MIROIR : l'indisponibilité se lit de la MÊME façon des deux côtés. A est indisponible à partir
-     * de 19:00, la séance dure 18:00-19:30, B est pris ailleurs. Le test ne dit pas quel sens est le
-     * bon, il exige que le moteur et `holdersFor` rendent le même verdict.
+     * Pose LIBRE, décision fondateur : un coach qui part pendant la séance ne la tient pas. A est
+     * indisponible dès 19:00 pour 18:00-19:30, B entraîne les U13 ailleurs : une seule séance est posée.
      */
-    public function testAnUnavailabilityMidSessionGetsTheSameVerdictFromEngineAndMirror(): void
+    public function testACoachLeavingDuringAFreeSessionDoesNotHoldIt(): void
     {
-        $payload = $this->payload(['A', 'B']);
-        $payload['constraints'] = [
-            $this->teamCoach('tc-u13', 'U13', 'B'),
-            $this->teamCoach('tc-u15-A', 'U15', 'A'),
-            $this->teamCoach('tc-u15-B', 'U15', 'B'),
-            [
-                'id' => 'off', 'scope' => 'COACH', 'scopeTargetId' => 'A', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD',
-                'name' => 'Indispo', 'config' => ['unavailableDays' => [1], 'fromTime' => '19:00'], 'sortOrder' => 0, 'isActive' => true,
-            ],
-        ];
+        $result = $this->solve($this->payloadWithACoachLeavingAtSeven(locked: false));
+
+        self::assertCount(1, $this->coachByTeam($result), 'B ne se dédouble pas, A part avant la fin');
+    }
+
+    /**
+     * Rail de l'EXISTANT, règle du début : les deux mêmes séances réservées restent gardées et tenues, rien
+     * n'est sacrifié, et le moteur rend le même verdict que le miroir `holdersFor` (guichets, modale).
+     */
+    public function testLockedSessionsAreJudgedAtTheirStartByEngineAndMirror(): void
+    {
+        $result = $this->solve($this->payloadWithACoachLeavingAtSeven(locked: true));
         $mirror = CoachDoubleBookingDetector::holdersFor(
             $this->mirrorSessions(),
             ['U13' => ['B'], 'U15' => ['A', 'B']],
             ['A' => [[1, 1140, 1440]]],
         );
 
-        self::assertSame(null !== $mirror, 2 === \count($this->coachByTeam($this->solve($payload))), 'le moteur et le miroir doivent juger pareil une indisponibilité qui commence pendant la séance');
+        self::assertSame('completed', $result['status']);
+        self::assertSame(['U13' => 'B', 'U15' => 'A'], $this->coachByTeam($result));
+        self::assertSame([], array_values(array_filter(
+            $result['diagnostics'] ?? [],
+            static fn (array $d): bool => 'rule_sacrificed' === ($d['type'] ?? null),
+        )), 'les réservations se jugent au début : rien n\'est sacrifié');
+        self::assertNotNull($mirror, 'le miroir juge pareil : A tient les U15 à leur début');
     }
 
     /**
@@ -108,6 +115,27 @@ final class OneCoachHoldsTheSessionGateTest extends TestCase
         $mirror = CoachDoubleBookingDetector::holdersFor([$session], ['U15' => ['A']], [], ['A' => [$game]]);
 
         self::assertSame(null !== $mirror, 2 === \count($this->coachByTeam($this->solve($payload))), 'le moteur et le miroir doivent juger pareil un joueur dans le même gymnase');
+    }
+
+    /**
+     * U15 = A + B, U13 = B, A indisponible le lundi dès 19:00.
+     *
+     * @return array<string, mixed>
+     */
+    private function payloadWithACoachLeavingAtSeven(bool $locked): array
+    {
+        $payload = $this->payload(['A', 'B'], locked: $locked);
+        $payload['constraints'] = [
+            $this->teamCoach('tc-u13', 'U13', 'B'),
+            $this->teamCoach('tc-u15-A', 'U15', 'A'),
+            $this->teamCoach('tc-u15-B', 'U15', 'B'),
+            [
+                'id' => 'off', 'scope' => 'COACH', 'scopeTargetId' => 'A', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD',
+                'name' => 'Indispo', 'config' => ['unavailableDays' => [1], 'fromTime' => '19:00'], 'sortOrder' => 0, 'isActive' => true,
+            ],
+        ];
+
+        return $payload;
     }
 
     /**

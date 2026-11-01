@@ -13,8 +13,8 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
-from ...model import ScheduleCpModel
-from ..helpers import _collection, _get
+from ...model import ScheduleCpModel, _format_time
+from ..helpers import _coach_name_map, _collection, _get
 
 
 def _collect_session_causes(
@@ -29,13 +29,15 @@ def _collect_session_causes(
     EXISTE, sans fermeture, et non retenu (``solver.Value == 0``) tombe dans la famille
     « resté ouvert » : on rapporte le COMPTE seul, jamais qui a pris la place (ce serait une
     re-dérivation). Renvoie ``team_id -> {"causes": [...], "openCandidates": int}`` où chaque
-    cause est ``{kind, constraintId, label, count}`` (forme ``DiagnosticCauseSchema``)."""
+    cause est ``{kind, constraintId, label, count}`` (forme ``DiagnosticCauseSchema``), plus ``cuts``
+    quand une indisponibilité commence PENDANT une séance (interne, jamais sérialisé)."""
     candidate_closures: dict[int, list[dict[str, Any]]] = getattr(model, "candidate_closures", {}) or {}
     lock_removed: dict[Any, dict[str, Any]] = getattr(model, "lock_removed_candidates", {}) or {}
 
     # team -> (kind, constraintId, label) -> nombre de créneaux fermés par cette cause
     aggregated: dict[str, dict[tuple[Any, Any, Any], int]] = defaultdict(lambda: defaultdict(int))
     open_counts: dict[str, int] = defaultdict(int)
+    cuts: dict[str, set[tuple[str, int, int, int, int]]] = defaultdict(set)
 
     for slot_key, var in model.x.items():
         if solver.Value(var) != 0:
@@ -46,6 +48,13 @@ def _collect_session_causes(
             for cause in closures:
                 key = (cause.get("kind"), cause.get("constraintId"), cause.get("label"))
                 aggregated[team_id][key] += 1
+            # Un créneau fermé aussi par une autre règle ne pouvait pas servir l'équipe : corriger la plage
+            # ne lui rendrait rien, il n'est jamais cité.
+            if all(cause.get("kind") == "coach_unavailability" for cause in closures):
+                for cause in closures:
+                    interval, case = cause.get("interval"), cause.get("case")
+                    if interval and case and cause.get("coachId") and case[0] < interval[0] < case[1]:
+                        cuts[team_id].add((str(cause["coachId"]), *interval, *case))
         else:
             open_counts[team_id] += 1  # existe, non fermé, non retenu → resté ouvert
 
@@ -61,12 +70,23 @@ def _collect_session_causes(
             for (kind, constraint_id, label), count in aggregated.get(team_id, {}).items()
         ]
         result[team_id] = {"causes": causes, "openCandidates": open_counts.get(team_id, 0)}
+        if team_id in cuts:
+            result[team_id]["cuts"] = sorted(cuts[team_id])
     return result
 
 
 # P4-96 — descripteur FR d'une cause de fermeture SANS libellé de contrainte (un verrou n'a pas
 # de « nom de règle » ; les autres kinds gardent le leur quand il existe). Sert aux agrégats D2 et
 # ne touche à AUCUN message existant.
+
+
+def _imprecise_entry_sentence(coach: str, iv_from: int, iv_to: int, start: int, end: int) -> str:
+    """Une plage saisie trop tôt coûte une séance : dire laquelle et quoi corriger."""
+    window = f"dès {_format_time(iv_from)}" if iv_to >= 1440 else f"de {_format_time(iv_from)} à {_format_time(iv_to)}"
+    return (
+        f"L'indisponibilité de {coach} {window} coupe le créneau {_format_time(start)}-{_format_time(end)} : "
+        f"si elle commence en réalité à {_format_time(end)}, corrigez-la (étape Contraintes, Dispo coach)."
+    )
 
 
 def _diagnose_session_below_effective_min(
@@ -78,6 +98,7 @@ def _diagnose_session_below_effective_min(
     """Warn when a team's placed session units fall below its effective minimum."""
     diagnostics: list[dict[str, Any]] = []
     causes_by_team = session_causes_by_team or {}
+    coach_names = _coach_name_map(model_data)
 
     tier_min: dict[int, int] = {}
     for tier in _collection(model_data, "priorityTiers", "priority_tiers"):
@@ -157,6 +178,16 @@ def _diagnose_session_below_effective_min(
             # (aucune donnée mesurée) → causes vide + openCandidates None : on garde alors le
             # message NEUTRE et les suggestions statiques, sans inventer de cause.
             team_causes = causes_by_team.get(team_id, {})
+            # Une indisponibilité qui commence PENDANT la séance : la phrase suit le fait, dans le ``message``
+            # (seul affiché par le panneau). Une par coach et par plage, sur son premier créneau coupé (``cuts``
+            # est trié). Une plage qui couvre le début, ou la journée, n'est pas une saisie imprécise.
+            first_cuts: dict[tuple[str, int, int], tuple[int, int]] = {}
+            for coach_id, iv_from, iv_to, start, end in team_causes.get("cuts", ()):
+                first_cuts.setdefault((coach_id, iv_from, iv_to), (start, end))
+            imprecise = "".join(
+                f" {_imprecise_entry_sentence(coach_names.get(coach_id, coach_id), iv_from, iv_to, *case)}"
+                for (coach_id, iv_from, iv_to), case in first_cuts.items()
+            )
             diagnostics.append(
                 {
                     "id": f"diag-session-below-min-{team_id}",
@@ -165,7 +196,7 @@ def _diagnose_session_below_effective_min(
                     "teamId": team_id,
                     "message": (
                         f"L'équipe {team_name} : {spw} séance(s) demandée(s) par semaine, "
-                        f"seulement {placed} placée(s){reason}"
+                        f"seulement {placed} placée(s){reason}{imprecise}"
                     ),
                     "suggestions": [
                         "Ajoutez de la disponibilité de gymnase ou un créneau supplémentaire pour cette équipe.",
