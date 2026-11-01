@@ -146,7 +146,10 @@ return (new Config)
             )
             ->withSuite(
                 new Suite('export')
-                    ->withPaths('%paths.base%/features/l-export-du-planning.feature')
+                    ->withPaths(
+                        '%paths.base%/features/l-export-du-planning.feature',
+                        '%paths.base%/features/l-export-des-matchs-pour-les-parents.feature',
+                    )
                     ->withContexts(ExportContext::class),
             )
             ->withSuite(

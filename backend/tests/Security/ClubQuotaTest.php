@@ -6,6 +6,7 @@ namespace App\Tests\Security;
 
 use App\Entity\ClubUser;
 use App\Entity\User;
+use App\EventListener\ClubQuotaSubscriber;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
 use Doctrine\ORM\EntityManagerInterface;
@@ -13,6 +14,10 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Yaml\Yaml;
 
@@ -115,9 +120,56 @@ final class ClubQuotaTest extends WebTestCase
         self::assertSame(429, $this->call($token, 'POST', '/api/schedules/00000000-0000-4000-8000-000000000001/fill'), '/fill (comblement de période) puise dans le même seau : c\'est un 4e déclencheur de solve');
     }
 
+    /** La borne de production de l'export des matchs : assez pour 25 équipes et des reprises, décidée ici. */
+    public function testTheMatchesExportCapIsTheOneWeDecided(): void
+    {
+        $config = Yaml::parseFile(__DIR__ . '/../../config/packages/rate_limiter.yaml');
+        self::assertIsArray($config);
+
+        $export = $config['framework']['rate_limiter']['fixtures_pdf_export'] ?? null;
+        self::assertIsArray($export, 'Le cap d\'export des matchs a disparu de rate_limiter.yaml.');
+        self::assertSame('sliding_window', $export['policy'] ?? null);
+        self::assertSame(60, $export['limit'] ?? null);
+        self::assertSame('1 hour', $export['interval'] ?? null);
+    }
+
+    /**
+     * Le 61ᵉ export des matchs de l'heure est refusé, et le seau de l'export du planning n'a pas
+     * bougé : les deux ressources se comptent à part. Le subscriber est piloté directement : en HTTP,
+     * le limiteur `api` (30/min en test) répondrait 429 bien avant, et le test passerait à tort.
+     */
+    public function testTheMatchesExportHasItsOwnBucket(): void
+    {
+        $clubId = 'quota-matchs-' . uniqid('', true);
+        $subscriber = self::getContainer()->get(ClubQuotaSubscriber::class);
+
+        for ($i = 0; $i < 60; ++$i) {
+            $subscriber->onKernelRequest($this->exportRequestEvent($clubId));
+        }
+
+        try {
+            $subscriber->onKernelRequest($this->exportRequestEvent($clubId));
+            self::fail('le 61ᵉ export de l\'heure doit être refusé');
+        } catch (TooManyRequestsHttpException $e) {
+            self::assertStringContainsString('Quota du club', $e->getMessage());
+        }
+
+        $planning = self::getContainer()->get('limiter.schedule_pdf_export')->create('club-' . $clubId)->consume(0);
+        self::assertSame(10, $planning->getRemainingTokens(), 'l\'export du planning garde tout son budget');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    private function exportRequestEvent(string $clubId): RequestEvent
+    {
+        $request = new Request;
+        $request->attributes->set('_route', 'api_fixtures_export_pdf');
+        $request->attributes->set('_club_id', $clubId);
+
+        return new RequestEvent(self::$kernel, $request, HttpKernelInterface::MAIN_REQUEST);
     }
 
     private function generate(string $token): int

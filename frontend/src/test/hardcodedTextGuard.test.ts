@@ -88,6 +88,8 @@ const MIGRATED_FILES = [
   // Ouverture datée (D18) — le panneau de pose migre avec ses nouveaux textes ; la petite fenêtre naît migrée.
   "features/matches/PlacementPanel.tsx",
   "features/matches/OpenVenueDialog.tsx",
+  // Export des matchs pour les parents : la fenêtre naît migrée (`texts/export.ts`).
+  "features/matches/ExportMatchesDialog.tsx",
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",

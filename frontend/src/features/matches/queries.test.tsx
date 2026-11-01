@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { HTTPError } from "ky";
+import { HTTPError, TimeoutError } from "ky";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as matchesApi from "./api";
+import { MATCHES_EXPORT_TEXTS } from "./texts/export";
 import {
+  useExportFixturesPdf,
   useAnalyzeFbiFixtures,
   useApplyFfbbRencontres,
   useAttachVenueLabel,
@@ -102,6 +104,7 @@ vi.mock("./api", () => ({
   getVenueLabelInventory: vi.fn().mockResolvedValue([]),
   putConflictResolution: vi.fn().mockResolvedValue({ fingerprint: "fp-1", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } }),
   deleteConflictResolution: vi.fn().mockResolvedValue(undefined),
+  exportFixturesPdf: vi.fn(),
 }));
 
 // La barre de toasts est mockée pour ces cas (aucun autre test du fichier ne l'asserte) :
@@ -109,6 +112,12 @@ vi.mock("./api", () => ({
 // signale l'échec d'une étape sans interrompre la suivante.
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast: toastMock }));
+
+const downloadBlobMock = vi.hoisted(() => vi.fn());
+vi.mock("@/shared/lib/download", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/lib/download")>()),
+  downloadBlob: downloadBlobMock,
+}));
 
 /** Une HTTPError ky d'un statut donné portant `data` = le corps parsé (ce que lit `errorMessage`). */
 function httpError(status: number, data: unknown): HTTPError {
@@ -728,6 +737,50 @@ describe("résolution des conflits (P4-207) — l'écriture rafraîchit le radar
     await waitFor(() => expect(result.current.clearRes.isSuccess).toBe(true));
     expect(matchesApi.deleteConflictResolution).toHaveBeenCalledWith("fp-1");
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("useExportFixturesPdf — un échec se dit, sans exposer le serveur", () => {
+  const input = { from: "2026-11-09", to: "2026-11-15", teamId: null };
+
+  it("un succès télécharge le fichier sous le nom demandé", async () => {
+    const blob = new Blob(["%PDF"]);
+    vi.mocked(matchesApi.exportFixturesPdf).mockResolvedValueOnce(blob);
+    const { result } = renderHook(() => useExportFixturesPdf(), { wrapper: wrapperFor(makeClient()) });
+
+    act(() => result.current.run(input, "matchs-club.pdf"));
+
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledWith(blob, "matchs-club.pdf"));
+    await waitFor(() => expect(result.current.busy).toBe(false));
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it("une panne serveur (502) rend le texte fixe, jamais le corps de la réponse", async () => {
+    vi.mocked(matchesApi.exportFixturesPdf).mockRejectedValueOnce(httpError(502, { error: "détail interne" }));
+    const { result } = renderHook(() => useExportFixturesPdf(), { wrapper: wrapperFor(makeClient()) });
+
+    act(() => result.current.run(input, "matchs-club.pdf"));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(MATCHES_EXPORT_TEXTS.generationFailed));
+    expect(downloadBlobMock).not.toHaveBeenCalled();
+  });
+
+  it("un délai dépassé rend son propre texte fixe", async () => {
+    vi.mocked(matchesApi.exportFixturesPdf).mockRejectedValueOnce(new TimeoutError(new Request("http://x")));
+    const { result } = renderHook(() => useExportFixturesPdf(), { wrapper: wrapperFor(makeClient()) });
+
+    act(() => result.current.run(input, "matchs-club.pdf"));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(MATCHES_EXPORT_TEXTS.timedOut));
+  });
+
+  it("un refus 4xx (quota, crédits) reprend le message du serveur", async () => {
+    vi.mocked(matchesApi.exportFixturesPdf).mockRejectedValueOnce(httpError(429, { detail: "Quota du club atteint pour cette opération." }));
+    const { result } = renderHook(() => useExportFixturesPdf(), { wrapper: wrapperFor(makeClient()) });
+
+    act(() => result.current.run(input, "matchs-club.pdf"));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Quota du club atteint pour cette opération."));
   });
 });
 
