@@ -36,6 +36,9 @@ TUESDAY = 2
 WEDNESDAY = 3
 THURSDAY = 4
 
+U15_MISSING_FACT = (
+    "L'équipe U15 : 1 séance(s) demandée(s) par semaine, seulement 0 placée(s) — en-dessous de son minimum cible de 1."
+)
 STATIC_SUGGESTIONS = [
     "Ajoutez de la disponibilité de gymnase ou un créneau supplémentaire pour cette équipe.",
     "Vérifiez le tier de priorité et le nombre de séances/semaine de l'équipe.",
@@ -417,12 +420,14 @@ def test_a_forced_day_whose_only_slot_is_cut_fails_and_names_the_unavailability(
 )
 def test_a_session_lost_to_a_partial_unavailability_says_what_to_correct(window: dict[str, str], expected: str) -> None:
     """Le minimum de séances est un objectif : la séance manque, et le panneau dit quoi corriger si la plage a été
-    saisie trop tôt. La phrase REMPLACE les suggestions statiques, la cause reste celle du contrat."""
+    saisie trop tôt. La phrase vient après le fait, dans le ``message`` : c'est lui que ``DiagnosticsPanel`` affiche,
+    pas les ``suggestions``, qui restent statiques. La cause reste celle du contrat."""
     result = _solve_u15(_anna_off(**window))
 
     assert result["slots"] == []
     diagnostic = _diagnostics_of(result, "session_below_effective_min")[0]
-    assert diagnostic["suggestions"] == [expected]
+    assert diagnostic["message"] == f"{U15_MISSING_FACT} {expected}"
+    assert diagnostic["suggestions"] == STATIC_SUGGESTIONS
     assert [cause["constraintId"] for cause in diagnostic["causes"]] == ["off-anna"]
 
 
@@ -431,4 +436,118 @@ def test_a_session_lost_to_a_whole_day_keeps_the_static_suggestions() -> None:
     result = _solve_u15(_anna_off())
 
     assert result["slots"] == []
-    assert _diagnostics_of(result, "session_below_effective_min")[0]["suggestions"] == STATIC_SUGGESTIONS
+    diagnostic = _diagnostics_of(result, "session_below_effective_min")[0]
+    assert diagnostic["message"] == U15_MISSING_FACT
+    assert diagnostic["suggestions"] == STATIC_SUGGESTIONS
+
+
+def _u15_missing_message(
+    venues: list[dict[str, Any]], *rules: dict[str, Any], coaches: tuple[str, ...] = ("anna",)
+) -> str:
+    """Le ``message`` de la séance manquante de U15, sur la grille et les règles données."""
+    result = solve_payload(
+        make_payload(
+            teams=[make_team("U15")],
+            venues=venues,
+            coaches=_coaches(),
+            constraints=[*(team_coach(f"tc-{coach}", "U15", coach) for coach in coaches), *rules],
+        )
+    )
+
+    assert result["slots"] == [], "décor : la séance doit manquer"
+    message: str = _diagnostics_of(result, "session_below_effective_min")[0]["message"]
+    return message
+
+
+def _correction(window: str, case: str, end: str, coach: str = "Anna Martin") -> str:
+    return (
+        f"L'indisponibilité de {coach} {window} coupe le créneau {case} : si elle commence en réalité à {end}, "
+        "corrigez-la (étape Contraintes, Dispo coach)."
+    )
+
+
+def _off_on_days(days: list[int], from_time: str, coach_id: str = "anna") -> dict[str, Any]:
+    return coach_availability(f"off-{coach_id}-{from_time}", coach_id, unavailable_days=days, from_time=from_time)
+
+
+def test_several_slots_cut_by_one_range_make_one_sentence_citing_the_first_slot() -> None:
+    """Une phrase par coach et par plage : deux gymnases et deux jours coupés par la même plage ne la répètent pas,
+    elle cite le premier créneau trié (heure de début)."""
+    message = _u15_missing_message(
+        [make_venue("V", [(TUESDAY, "18:30")]), make_venue("W", [(MONDAY, "18:00")])],
+        _off_on_days([MONDAY, TUESDAY], "19:00"),
+    )
+
+    assert message == f"{U15_MISSING_FACT} {_correction('dès 19:00', '18:00-19:30', '19:30')}"
+
+
+def test_two_ranges_of_a_coach_make_two_sentences() -> None:
+    """TÉMOIN : deux plages différentes, deux corrections possibles, deux phrases."""
+    message = _u15_missing_message(
+        [make_venue("V", [(MONDAY, "18:00"), (TUESDAY, "18:00")])],
+        _off_on_days([MONDAY], "19:00"),
+        _off_on_days([TUESDAY], "19:15"),
+    )
+
+    assert message == (
+        f"{U15_MISSING_FACT} {_correction('dès 19:00', '18:00-19:30', '19:30')} "
+        f"{_correction('dès 19:15', '18:00-19:30', '19:30')}"
+    )
+
+
+def test_each_coach_who_leaves_has_his_own_sentence() -> None:
+    """Deux coachs coupés sur la même case : la fermeture a deux causes de coach, chacune reste une phrase. Le filtre
+    des créneaux que l'équipe pouvait prendre n'écarte que les fermetures d'une autre famille."""
+    message = _u15_missing_message(
+        [make_venue("V", [(MONDAY, "18:00")])],
+        _off_on_days([MONDAY], "19:00"),
+        _off_on_days([MONDAY], "19:00", coach_id="ben"),
+        coaches=("anna", "ben"),
+    )
+
+    assert _correction("dès 19:00", "18:00-19:30", "19:30") in message
+    assert _correction("dès 19:00", "18:00-19:30", "19:30", coach="Ben Durand") in message
+
+
+def test_a_slot_of_another_venue_than_the_forced_one_is_never_cited() -> None:
+    """Gymnase imposé W : le créneau coupé de V, plus tôt, ne pouvait pas servir à l'équipe. Seul celui de W est cité."""
+    message = _u15_missing_message(
+        [make_venue("V", [(MONDAY, "18:00")]), make_venue("W", [(MONDAY, "18:30")])],
+        team_constraint(
+            constraint_id="forced",
+            team_id="U15",
+            family="FACILITY",
+            rule_type="HARD",
+            config={"forcedVenueId": "W"},
+        ),
+        _off_on_days([MONDAY], "19:00"),
+    )
+
+    assert message == f"{U15_MISSING_FACT} {_correction('dès 19:00', '18:30-20:00', '20:00')}"
+
+
+def test_a_slot_on_a_day_the_team_refuses_is_never_cited() -> None:
+    """Même règle pour une autre famille : l'équipe ne vient jamais le lundi, corriger la plage ne lui rendrait rien."""
+    message = _u15_missing_message(
+        [make_venue("V", [(MONDAY, "18:00")])],
+        team_constraint(
+            constraint_id="no-monday",
+            team_id="U15",
+            family="DAY",
+            rule_type="HARD",
+            config={"forbiddenDays": [MONDAY]},
+        ),
+        _off_on_days([MONDAY], "19:00"),
+    )
+
+    assert message == U15_MISSING_FACT
+
+
+def test_a_range_covering_the_start_of_the_slot_gets_no_sentence() -> None:
+    """Une plage 17:00-18:30 ferme déjà la case à son début : « si elle commence à 19:30 » n'aurait aucun sens."""
+    message = _u15_missing_message(
+        [make_venue("V", [(MONDAY, "18:00")])],
+        _anna_off(from_time="17:00", until_time="18:30"),
+    )
+
+    assert message == U15_MISSING_FACT
