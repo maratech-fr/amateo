@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
 from ..model import DEFAULT_SESSION_MINUTES, _format_time, _time_to_minutes
-from .availability import HoldSession, _coach_available_at, assign_holders, available_coach_exists
+from .availability import HoldSession, _coach_available_at, assign_holders, available_coach_exists, interval_bites
 from .common import (
     HARD,
     ResolvedImplicitRules,
@@ -709,13 +709,13 @@ def diagnose_candidate_conflicts(
                 )
 
     # --- Entered constraints (the manager's own rules). ---
-    # Un coach disponible suffit, comme à la génération.
-    for cid in [] if available_coach_exists(c_coaches, c_day, c_start, unavailability) else c_coaches:
-        for iv_day, iv_from, iv_to in unavailability.get(cid) or ():
-            if int(iv_day) == c_day and int(iv_from) <= c_start < int(iv_to):
+    # Un coach disponible suffit, comme à la génération. Le candidat est une pose libre : chevauchement.
+    for cid in [] if available_coach_exists(c_coaches, c_day, c_start, unavailability, c_end) else c_coaches:
+        for iv_day, iv_from, iv_to in sorted(unavailability.get(cid) or ()):
+            if int(iv_day) == c_day and interval_bites(int(iv_from), int(iv_to), c_start, c_end):
                 _emit(
                     "coach_unavailable",
-                    f"{_coach(cid)} est indisponible le {_day_label(c_day)} à {c_start_text}.",
+                    _unavailable_during_message(_coach(cid), c_day, int(iv_from), int(iv_to)),
                     coach_id=cid,
                     team_id=c_team,
                     day_of_week=c_day,
@@ -785,6 +785,20 @@ def diagnose_candidate_conflicts(
             )
 
     return violations
+
+
+def _unavailable_during_message(coach: str, day: int, iv_from: int, iv_to: int) -> str:
+    """La phrase du refus d'un déplacement : quand le coach manque, pas seulement qu'il manque."""
+    if iv_from <= 0 and iv_to >= 1440:
+        return f"{coach} est indisponible le {_day_label(day)}."
+    if iv_to >= 1440:
+        return (
+            f"{coach} est indisponible le {_day_label(day)} à partir de {_format_time(iv_from)}, pendant cette séance."
+        )
+    return (
+        f"{coach} est indisponible le {_day_label(day)} de {_format_time(iv_from)} à {_format_time(iv_to)}, "
+        "pendant cette séance."
+    )
 
 
 def _coach_source_covering(sources: Any, day: int, start: int) -> Mapping[str, Any] | None:

@@ -203,7 +203,7 @@ final readonly class PreSolvePreventionWarnings
      */
     private function overloadedCoaches(array $payload, array $teams, array $venues, array $constraints): array
     {
-        $openDays = \count($this->slotStartsByDay($venues));
+        $openDays = \count($this->slotCasesByDay($venues));
         if (0 === $openDays) {
             return []; // Aucun créneau du tout : le récap le dit déjà, mieux et plus tôt.
         }
@@ -246,8 +246,9 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * Les jours ouverts dont TOUS les créneaux sont fermés à ce coach. Une plage qui commence après
-     * le dernier créneau ne ferme donc pas le jour, une liste blanche de jours ferme les autres.
+     * Les jours ouverts dont TOUS les créneaux sont fermés à ce coach, au chevauchement comme la pose.
+     * Une plage qui commence à la fin du dernier créneau ne ferme donc pas le jour, une liste blanche
+     * de jours ferme les autres.
      *
      * @param list<array<string, mixed>> $venues
      * @param list<array<string, mixed>> $constraints
@@ -257,8 +258,8 @@ final readonly class PreSolvePreventionWarnings
     private function daysClosedForCoach(string $coachId, array $venues, array $constraints): array
     {
         $closed = [];
-        foreach ($this->slotStartsByDay($venues) as $day => $starts) {
-            if ($this->coachBlockedOnAllStarts($coachId, $day, $starts, $constraints)) {
+        foreach ($this->slotCasesByDay($venues) as $day => $cases) {
+            if ($this->coachBlockedOnAllCases($coachId, $day, $cases, $constraints)) {
                 $closed[] = $day;
             }
         }
@@ -267,13 +268,13 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * @param list<int>                  $starts
-     * @param list<array<string, mixed>> $constraints
+     * @param list<array{0: int, 1: int}> $cases
+     * @param list<array<string, mixed>>  $constraints
      */
-    private function coachBlockedOnAllStarts(string $coachId, int $day, array $starts, array $constraints): bool
+    private function coachBlockedOnAllCases(string $coachId, int $day, array $cases, array $constraints): bool
     {
-        foreach ($starts as $start) {
-            if (!$this->coachBlockedAt($coachId, $day, $start, $constraints)) {
+        foreach ($cases as [$start, $end]) {
+            if (!$this->coachBlockedAt($coachId, $day, $start, $end, $constraints)) {
                 return false;
             }
         }
@@ -282,23 +283,25 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * Les minutes de début distinctes des créneaux de la grille, par jour, jours triés.
+     * Les créneaux distincts de la grille `[début, fin]` en minutes, par jour, jours triés.
      *
      * @param list<array<string, mixed>> $venues
      *
-     * @return array<int, list<int>>
+     * @return array<int, list<array{0: int, 1: int}>>
      */
-    private function slotStartsByDay(array $venues): array
+    private function slotCasesByDay(array $venues): array
     {
-        $starts = [];
+        $cases = [];
         foreach ($venues as $venue) {
             foreach ($this->listOf($venue, 'trainingSlots') as $slot) {
-                $starts[(int) ($slot['dayOfWeek'] ?? 0)][$this->minutesOf($this->stringOf($slot, 'startTime'))] = true;
+                $start = $this->minutesOf($this->stringOf($slot, 'startTime'));
+                $end = $start + (int) ($slot['durationMinutes'] ?? 0);
+                $cases[(int) ($slot['dayOfWeek'] ?? 0)][$start . '|' . $end] = [$start, $end];
             }
         }
-        ksort($starts);
+        ksort($cases);
 
-        return array_map(array_keys(...), $starts);
+        return array_map(array_values(...), $cases);
     }
 
     /**
@@ -324,12 +327,12 @@ final readonly class PreSolvePreventionWarnings
         }
 
         $messages = [];
-        foreach ($this->slotStartsByDay($venues) as $day => $starts) {
+        foreach ($this->slotCasesByDay($venues) as $day => $cases) {
             if ($day < 1 || $day > 5) {
                 continue;
             }
             foreach ($employees as $employee) {
-                if (!$this->coachBlockedOnAllStarts($this->stringOf($employee, 'id'), $day, $starts, $constraints)) {
+                if (!$this->coachBlockedOnAllCases($this->stringOf($employee, 'id'), $day, $cases, $constraints)) {
                     continue 2;
                 }
             }
@@ -573,7 +576,8 @@ final readonly class PreSolvePreventionWarnings
 
     /**
      * ALIGN-16 — un jour imposé QUI A des créneaux candidats mais dont TOUS sont fermés par une
-     * AUTRE règle HARD : l'entraîneur PRINCIPAL indisponible toute la journée (indispo plein-jour),
+     * AUTRE règle HARD : l'entraîneur PRINCIPAL indisponible sur tous les créneaux de ce jour (au
+     * chevauchement, comme la pose),
      * ou une fenêtre horaire HARD qu'aucun créneau du jour ne satisfait. Le moteur rend alors la
      * génération infaisable (le verrou de jour reste posé) et NOMME la cause en diagnostic ; le
      * récap l'annonce AVANT (décision fondateur 2026-10-03). Distinct de {@see forcedDaysWithoutCandidateSlot}
@@ -636,7 +640,7 @@ final readonly class PreSolvePreventionWarnings
             }
 
             $windows = $this->teamHardTimeWindows($teamId, $constraints);
-            $mainUnavailableDays = $this->mainCoachFullDayUnavailableDays($teamId, $constraints);
+            $mainUnavailableDays = $this->mainCoachFullDayUnavailableDays($teamId, $venues, $constraints);
 
             $allEmptied = true;
             foreach ($candidateDays as $day => $daySlots) {
@@ -650,7 +654,7 @@ final readonly class PreSolvePreventionWarnings
 
             if ($allEmptied) {
                 $messages[] = \sprintf(
-                    '%s : au moins une séance exigée le(s) %s, mais une autre règle (indisponibilité de l\'entraîneur principal toute la journée, ou fenêtre horaire) n\'y laisse aucun créneau — la génération échouera. Levez la règle qui ferme ces jours, ou retirez l\'exigence (étape Contraintes).',
+                    '%s : au moins une séance exigée le(s) %s, mais une autre règle (indisponibilité de l\'entraîneur principal sur tous les créneaux de ce jour, ou fenêtre horaire) n\'y laisse aucun créneau — la génération échouera. Levez la règle qui ferme ces jours, ou retirez l\'exigence (étape Contraintes).',
                     $this->nameOf($team),
                     $this->dayList(array_keys($candidateDays)),
                 );
@@ -778,7 +782,7 @@ final readonly class PreSolvePreventionWarnings
             foreach ($this->listOf($venue, 'trainingSlots') as $slot) {
                 $day = (int) ($slot['dayOfWeek'] ?? 0);
                 $start = $this->minutesOf($this->stringOf($slot, 'startTime'));
-                $cases[$venueId . '|' . $day . '|' . $start] = [$day, $start];
+                $cases[$venueId . '|' . $day . '|' . $start] = [$day, $start, $start + (int) ($slot['durationMinutes'] ?? 0)];
             }
         }
         if ([] === $cases) {
@@ -818,9 +822,9 @@ final readonly class PreSolvePreventionWarnings
             $unionIds = array_keys($union);
 
             $servable = 0;
-            foreach ($caseList as [$day, $start]) {
+            foreach ($caseList as [$day, $start, $end]) {
                 foreach ($unionIds as $coachId) {
-                    if (!$this->coachBlockedAt($coachId, $day, $start, $constraints)) {
+                    if (!$this->coachBlockedAt($coachId, $day, $start, $end, $constraints)) {
                         ++$servable;
                         break;
                     }
@@ -847,10 +851,10 @@ final readonly class PreSolvePreventionWarnings
      * Les contraintes d'indisponibilité des coachs de l'union qui ferment AU MOINS une case
      * candidate, nommées avec leur ORIGINE (si connue). Dédup par libellé, ordre déterministe.
      *
-     * @param list<string>                $unionIds
-     * @param list<array{0: int, 1: int}> $cases
-     * @param list<array<string, mixed>>  $constraints
-     * @param array<string, bool>         $constraintOrigins
+     * @param list<string>                        $unionIds
+     * @param list<array{0: int, 1: int, 2: int}> $cases
+     * @param list<array<string, mixed>>          $constraints
+     * @param array<string, bool>                 $constraintOrigins
      */
     private function citedCoachConstraints(array $unionIds, array $cases, array $constraints, array $constraintOrigins): string
     {
@@ -871,8 +875,8 @@ final readonly class PreSolvePreventionWarnings
             }
             // Ne citer qu'une contrainte qui ferme RÉELLEMENT une case candidate du bloc.
             $closesACase = false;
-            foreach ($cases as [$day, $start]) {
-                if ($this->oneConstraintBlocksAt($constraint, $day, $start)) {
+            foreach ($cases as [$day, $start, $end]) {
+                if ($this->oneConstraintBlocksDuring($constraint, $day, $start, $end)) {
                     $closesACase = true;
                     break;
                 }
@@ -945,13 +949,14 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * Un coach est-il BLOQUÉ à `(jour, minute de début)` par l'une de ses COACH_AVAILABILITY ?
+     * Un coach est-il BLOQUÉ sur `(jour, [début, fin[)` par l'une de ses COACH_AVAILABILITY ? Le récap
+     * prévient de la pose libre : même chevauchement que le moteur (`availability.py`).
      * Miroir de {@see parsing.py} `parse_v2_constraints` (algèbre De Morgan : unavailableDays +
      * complément d'availableDays, borné par la fenêtre fromTime/untilTime). Aucune règle ⇒ libre.
      *
      * @param list<array<string, mixed>> $constraints
      */
-    private function coachBlockedAt(string $coachId, int $day, int $start, array $constraints): bool
+    private function coachBlockedAt(string $coachId, int $day, int $start, int $end, array $constraints): bool
     {
         foreach ($constraints as $constraint) {
             if (false === ($constraint['isActive'] ?? true)
@@ -961,7 +966,7 @@ final readonly class PreSolvePreventionWarnings
             ) {
                 continue;
             }
-            if ($this->oneConstraintBlocksAt($constraint, $day, $start)) {
+            if ($this->oneConstraintBlocksDuring($constraint, $day, $start, $end)) {
                 return true;
             }
         }
@@ -970,19 +975,20 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * Une SEULE contrainte COACH_AVAILABILITY bloque-t-elle `(jour, début)` ? (Même algèbre que
+     * Une SEULE contrainte COACH_AVAILABILITY chevauche-t-elle `(jour, [début, fin[)` ? Demi-ouvert, sans
+     * marge : une plage qui touche la séance ne la ferme pas. (Même algèbre que
      * {@see parsing.py} : fenêtre fromTime/untilTime [repli jour entier si absente/inversée],
      * unavailableDays dans la fenêtre, et complément d'une whitelist availableDays.).
      *
      * @param array<string, mixed> $constraint
      */
-    private function oneConstraintBlocksAt(array $constraint, int $day, int $start): bool
+    private function oneConstraintBlocksDuring(array $constraint, int $day, int $start, int $end): bool
     {
         $config = \is_array($constraint['config'] ?? null) ? $constraint['config'] : [];
         [$from, $to] = $this->coachWindowMinutes($config);
 
         $unavailable = $this->dayInts($config['unavailableDays'] ?? null);
-        if (\in_array($day, $unavailable, true) && $start >= $from && $start < $to) {
+        if (\in_array($day, $unavailable, true) && $from < $end && $start < $to) {
             return true;
         }
 
@@ -991,8 +997,8 @@ final readonly class PreSolvePreventionWarnings
             if (!\in_array($day, $available, true)) {
                 return true; // jour hors liste blanche : bloqué toute la journée.
             }
-            if ($start < $from || $start >= $to) {
-                return true; // jour autorisé mais hors de la fenêtre horaire.
+            if (($from > 0 && $start < $from) || ($to < 1440 && $to < $end)) {
+                return true; // jour autorisé mais la séance déborde de la fenêtre horaire.
             }
         }
 
@@ -1030,17 +1036,18 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * Les jours où TOUS les entraîneurs PRINCIPAUX de l'équipe sont indisponibles toute la
-     * journée — INTERSECTION, pas union. « Un coach suffit » (P4-319, même règle que le moteur
+     * Les jours où TOUS les entraîneurs PRINCIPAUX de l'équipe sont indisponibles sur tous les
+     * créneaux du jour ({@see daysClosedForCoach}) — INTERSECTION, pas union. « Un coach suffit » (P4-319, même règle que le moteur
      * `closures.py` / `availability.py`) : une équipe peut avoir plusieurs principaux, et un
      * jour n'est FERMÉ que si AUCUN d'eux n'est disponible. Un principal qui couvre le jour le
      * garde ouvert. Aucun principal ⇒ aucun jour fermé par ce biais.
      *
+     * @param list<array<string, mixed>> $venues
      * @param list<array<string, mixed>> $constraints
      *
      * @return array<int, true>
      */
-    private function mainCoachFullDayUnavailableDays(string $teamId, array $constraints): array
+    private function mainCoachFullDayUnavailableDays(string $teamId, array $venues, array $constraints): array
     {
         $coachIds = [];
         foreach ($constraints as $constraint) {
@@ -1062,7 +1069,7 @@ final readonly class PreSolvePreventionWarnings
 
         $intersection = null;
         foreach (array_keys($coachIds) as $coachId) {
-            $coachDays = array_fill_keys($this->unavailableDaysOf($coachId, $constraints), true);
+            $coachDays = array_fill_keys($this->daysClosedForCoach($coachId, $venues, $constraints), true);
             $intersection = null === $intersection ? $coachDays : array_intersect_key($intersection, $coachDays);
             if ([] === $intersection) {
                 return []; // un principal disponible tous les jours ⇒ aucun jour fermé pour l'équipe

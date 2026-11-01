@@ -9,10 +9,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
+from ...model import _format_time
 from ..availability import (
     available_coach_exists,
     case_day_start,
     case_has_available_coach,
+    interval_bites,
 )
 from ..common import (
     AssignmentVariable,
@@ -112,9 +114,10 @@ def add_coach_unavailability_constraints(
     """Constraint 7: close an assignment variable when the team has NO required coach available.
 
     ``coach_unavailability`` maps a coach id to a set of blocked ``(weekday,
-    from_minute, to_minute)`` intervals. A slot is blocked when its day matches
-    and its start time falls in ``[from, to)`` (start-based, like the team time
-    windows). A whole-day block is ``(day, 0, 1440)`` — the legacy day-level
+    from_minute, to_minute)`` intervals. A free slot is blocked when its day matches
+    and ``[from, to)`` overlaps the session (half-open, no margin). A ``fixed`` slot (the frozen
+    baseline of a verdict) stays judged at its start: the schedule in force never becomes
+    infeasible because of this rule. A whole-day block is ``(day, 0, 1440)`` — the legacy day-level
     behaviour (Lot C added the time dimension; ENG-01 fixed the old no-match bug).
 
     ⚑ LOT 3B — « UN COACH SUFFIT » (Q4B, décision fondateur 2026-10-10). Une équipe peut avoir
@@ -156,7 +159,8 @@ def add_coach_unavailability_constraints(
     for assignment in assignments:
         intrinsic = assignment.coach_unavailable
         day, start = _assignment_day_start(assignment)
-        # (coach_id, source) de chaque contrainte dont un intervalle contient (jour, début) :
+        end = None if assignment.fixed else assignment.end
+        # (coach_id, source) de chaque contrainte dont un intervalle ferme cette séance :
         # ce sont TOUTES celles qui ferment réellement ce créneau (même règle que day_forbidden).
         matched_sources: list[tuple[str, dict[str, Any]]] = []
         first_matched_coach: str | None = None
@@ -169,7 +173,7 @@ def add_coach_unavailability_constraints(
             if not coach_ids:
                 single = assignment.coach_id
                 coach_ids = [str(single)] if single is not None else []
-            all_required_blocked = bool(coach_ids) and not available_coach_exists(coach_ids, day, start, rules)
+            all_required_blocked = bool(coach_ids) and not available_coach_exists(coach_ids, day, start, rules, end)
             if all_required_blocked:
                 # Tous bloqués : CHAQUE coach ferme le créneau → tous sont des causes mesurées.
                 for cid in coach_ids:
@@ -178,7 +182,7 @@ def add_coach_unavailability_constraints(
                         first_matched_coach = cid_str
                     for src in sources.get(cid_str) or []:
                         if any(
-                            iv_day == day and iv_from <= start < iv_to
+                            iv_day == day and interval_bites(iv_from, iv_to, start, end)
                             for iv_day, iv_from, iv_to in (src.get("intervals") or ())
                         ):
                             matched_sources.append((cid_str, src))
@@ -225,6 +229,7 @@ def add_coach_unavailability_constraints(
                             "coachId": cid_str,
                             "constraintId": src.get("constraint_id"),
                             "label": src.get("label"),
+                            **_measured_cut(src, day, start, end),
                         },
                     )
             else:
@@ -235,8 +240,28 @@ def add_coach_unavailability_constraints(
                     cause["coachId"] = first_matched_coach
                 _record_closure(model, assignment.var, cause)
     # SÉANCE DE BLOC — un bloc dont l'UNION n'a aucun coach dispo sur la case ne peut y tenir séance.
-    added += _close_coachless_block_cases(model, case_bvars, rules, coach_map)
+    free_seats = {
+        (str(a.team_id), str(a.venue_id), str(a.slot_id)) for a in assignments if not a.fixed and a.slot_id is not None
+    }
+    added += _close_coachless_block_cases(model, case_bvars, rules, coach_map, free_seats)
     return added
+
+
+def _measured_cut(source: Mapping[str, Any], day: int | None, start: int | None, end: int | None) -> dict[str, Any]:
+    """L'intervalle de cette source qui ferme la séance, et la case, pour le diagnostic post-solve.
+    Interne : ``_collect_session_causes`` ne sérialise jamais ces deux clés. Celui qui commence PENDANT la
+    séance passe d'abord : c'est lui qu'une saisie trop tôt peut corriger."""
+    if day is None or start is None or end is None:
+        return {}
+    biting = sorted(
+        (int(iv_from), int(iv_to))
+        for iv_day, iv_from, iv_to in (source.get("intervals") or ())
+        if iv_day == day and interval_bites(iv_from, iv_to, start, end)
+    )
+    if not biting:
+        return {}
+    interval = next((iv for iv in biting if start < iv[0]), biting[0])
+    return {"interval": interval, "case": (start, end)}
 
 
 def _relay_block_vars(
@@ -258,19 +283,28 @@ def _close_coachless_block_cases(
     case_bvars: Mapping[tuple[str, str], list[tuple[frozenset[str], Any]]],
     rules: Mapping[Any, Any],
     coach_map: dict[str, list[str]],
+    free_seats: set[tuple[str, str, str]],
 ) -> int:
     """Force ``b == 0`` pour tout bloc dont l'UNION des coachs requis n'a AUCUN coach disponible sur
     sa case : une séance de bloc sans coach n'existe pas. La fermeture est hypothéquée sur une
     littérale assumable (patron ``_assume``) pour que le noyau d'infaisabilité NOMME la cause, et
     enregistrée (``_record_closure``) — neutre sur le solve nominal (``_assume`` renvoie ``None`` ⇒
-    ``b == 0`` inconditionnel). Carte vide ⇒ aucune pose (chemin byte-identique, goldens)."""
+    ``b == 0`` inconditionnel). Carte vide ⇒ aucune pose (chemin byte-identique, goldens).
+
+    Case à pourvoir (un membre y a une variable libre) : jugée au chevauchement, comme la pose. Case où
+    tous les membres sont déjà là (verrous, base figée) : jugée au début, sinon ``Σb >= 1`` du comblement
+    contredirait ``b == 0`` et un groupe réservé rendrait la génération infaisable."""
+    durations: Mapping[Any, int] = getattr(model, "slot_durations", {}) or {}
     added = 0
     for (venue_id, slot_id), entries in case_bvars.items():
         day, start = case_day_start(slot_id)
         if day is None or start is None:
             continue
         for members, b in entries:
-            if case_has_available_coach(members, day, start, rules, coach_map):
+            duration = durations.get((venue_id, day, _format_time(start)))
+            has_free_seat = any((team, venue_id, slot_id) in free_seats for team in members)
+            end = start + duration if duration is not None and has_free_seat else None
+            if case_has_available_coach(members, day, start, rules, coach_map, end):
                 continue
             cause: dict[str, Any] = {"kind": "coach_unavailability"}
             literal = _assume(model, _source_key("coach_unavail_block", None, f"{venue_id}:{slot_id}"), cause)

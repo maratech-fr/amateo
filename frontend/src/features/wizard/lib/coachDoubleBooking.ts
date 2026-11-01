@@ -23,6 +23,8 @@ import { parseTime } from "@/shared/lib/time";
  *
  * « Tant qu'un coach tient la séance, c'est OK » (fondateur 2026-10-30) : un coach partagé ne refuse
  * le geste que si une séance n'a plus personne pour la tenir ({@link holdersFor}).
+ *
+ * Indisponibilité d'un coach : règle du DÉBUT, rail des réservations et de l'existant ; la pose libre teste le chevauchement côté moteur.
  */
 
 /**

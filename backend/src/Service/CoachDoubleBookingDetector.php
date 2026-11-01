@@ -404,8 +404,7 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * Même règle que le moteur (`availability.py::_coach_available_at`) : l'indisponibilité se teste
-     * au DÉBUT de la séance.
+     * Même règle que le moteur (`availability.py::_coach_available_at`) : règle du DÉBUT, rail des réservations et de l'existant ; la pose libre teste le chevauchement côté moteur.
      *
      * @param array{dayOfWeek: int, startMinutes: int, durationMinutes: int} $session
      * @param array<string, list<array{0: int, 1: int, 2: int}>>             $blockedByCoach
