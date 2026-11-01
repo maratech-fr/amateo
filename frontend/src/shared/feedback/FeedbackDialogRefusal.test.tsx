@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -135,6 +136,39 @@ describe("FeedbackDialog — refus du serveur, trajet réel", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     expect(useToastStore.getState().toasts).toEqual([]);
+  });
+
+  // PROMESSE : un refus reçu après « Annuler » n'a plus de fenêtre où s'afficher, il se lit dans un
+  // seul toast, jamais perdu. Fenêtre encore ouverte : `n'ajoute aucun toast…`, ci-dessus.
+  it("montre un seul toast quand le refus arrive après la fermeture de la fenêtre", async () => {
+    let respond: (response: Response) => void = () => undefined;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    // La fermeture démonte vraiment la fenêtre, comme les appelants de l'app.
+    function Host() {
+      const [open, setOpen] = useState(true);
+      return open ? <FeedbackDialog variant="free" onClose={() => setOpen(false)} /> : null;
+    }
+    const router = createMemoryRouter([{ path: "*", element: <Host /> }], { initialEntries: ["/matchs"] });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await typeAndSend();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    respond(jsonResponse(422, { error: "Le message est trop long." }));
+
+    await waitFor(() => expect(useToastStore.getState().toasts).toHaveLength(1));
+    // Laisser un éventuel second toast (filet global) arriver avant de conclure.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual(["Le message est trop long."]);
   });
 
   it("garde un texte générique quand la réponse n'a aucun message exploitable", async () => {
