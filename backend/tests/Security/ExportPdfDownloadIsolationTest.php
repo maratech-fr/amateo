@@ -175,22 +175,21 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
         $this->seedTeamWithMatch($clubB, $seasonB, 'Adversaire du club B');
         $tokenA = self::getContainer()->get(JWTTokenManagerInterface::class)->create($userA);
         $tokenB = self::getContainer()->get(JWTTokenManagerInterface::class)->create($userB);
-        $this->client->disableReboot();
-        $htmlSeen = $this->doubleTheWorker();
+        $htmlSeen = new ArrayObject;
         $this->em->clear();
 
         $range = ['from' => $seasonA->getStartDate()->format('Y-m-d'), 'to' => $seasonA->getEndDate()->format('Y-m-d')];
 
         // Témoin : sur SA propre équipe, le propriétaire obtient son PDF.
-        $this->postMatchesExport($tokenA, $range + ['teamId' => $teamAId]);
+        $this->postMatchesExport($htmlSeen, $tokenA, $range + ['teamId' => $teamAId]);
         self::assertResponseStatusCodeSame(200, 'le club exporte les matchs de sa propre équipe');
 
         // Club B, équipe du club A → 404, identique à une équipe inconnue.
-        $this->postMatchesExport($tokenB, $range + ['teamId' => $teamAId]);
+        $this->postMatchesExport($htmlSeen, $tokenB, $range + ['teamId' => $teamAId]);
         self::assertResponseStatusCodeSame(404, 'une équipe d\'un autre club ne s\'exporte pas');
         $crossTenantBody = (string) $this->client->getResponse()->getContent();
 
-        $this->postMatchesExport($tokenB, $range + ['teamId' => $this->uuid()]);
+        $this->postMatchesExport($htmlSeen, $tokenB, $range + ['teamId' => $this->uuid()]);
         self::assertResponseStatusCodeSame(404, 'une équipe inconnue → 404');
 
         self::assertSame(
@@ -201,7 +200,7 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
 
         // Export « tout le club » du club B : le match du club A n'y est pas.
         $htmlSeen->exchangeArray([]);
-        $this->postMatchesExport($tokenB, $range + ['teamId' => null]);
+        $this->postMatchesExport($htmlSeen, $tokenB, $range + ['teamId' => null]);
         self::assertResponseStatusCodeSame(200);
         $html = (string) ($htmlSeen[0] ?? '');
         self::assertStringContainsString('Adversaire du club B', $html);
@@ -224,13 +223,12 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
     }
 
     /**
-     * Le worker est doublé : il écrit le fichier demandé. Rend le HTML reçu, requête après requête.
+     * Le worker est doublé : il écrit le fichier demandé et consigne le HTML reçu.
      *
-     * @return ArrayObject<int, string>
+     * @param ArrayObject<int, string> $htmlSeen
      */
-    private function doubleTheWorker(): ArrayObject
+    private function doubleTheWorker(ArrayObject $htmlSeen): void
     {
-        $htmlSeen = new ArrayObject;
         $reflection = new ReflectionClass(PdfGenerator::class);
         $pdf = $reflection->newInstanceWithoutConstructor();
         $reflection->getProperty('httpClient')->setValue($pdf, new MockHttpClient(function (string $method, string $url, array $options) use ($htmlSeen): ResponseInterface {
@@ -244,13 +242,21 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
         $reflection->getProperty('brandAssets')->setValue($pdf, new BrandAssets);
         $reflection->getProperty('productIdentity')->setValue($pdf, new ProductIdentity(productName: 'Zephyr'));
         self::getContainer()->set(PdfGenerator::class, $pdf);
-
-        return $htmlSeen;
     }
 
-    /** @param array<string, string|null> $body */
-    private function postMatchesExport(string $token, array $body): void
+    /**
+     * Un kernel NEUF par requête, comme php-fpm en production. Un kernel gardé entre deux clubs ferait
+     * refuser le second à tort : le `tenant_filter` de l'EntityManager, posé pour le premier
+     * (`TenantFilterListener`), masquerait l'adhésion du second lors de la résolution de son club.
+     *
+     * @param ArrayObject<int, string>   $htmlSeen
+     * @param array<string, string|null> $body
+     */
+    private function postMatchesExport(ArrayObject $htmlSeen, string $token, array $body): void
     {
+        self::ensureKernelShutdown();
+        $this->client = self::createClient();
+        $this->doubleTheWorker($htmlSeen);
         $this->client->request('POST', '/api/fixtures/export-pdf', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
             'CONTENT_TYPE' => 'application/json',

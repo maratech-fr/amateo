@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClubEntitlements } from "@/shared/session/api";
+import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import * as matchesApi from "./api";
@@ -13,7 +14,8 @@ import { MATCHES_EXPORT_TEXTS as TEXTS } from "./texts/export";
  * Promesse : la fenêtre d'export envoie exactement ce que le gestionnaire a choisi, nomme le fichier
  * d'après son choix, dit ce qu'un export coûte en Découverte, et ne déclenche rien sur « Annuler » ni
  * sur une plage impossible. Tout membre y accède (parité planning) : le rôle n'entre pas ici.
- * Le contrôle « Équipes » est un `SegmentedControl` (boutons), « Équipe » un `Select` natif.
+ * Le contrôle « Équipes » est un `SegmentedControl` (boutons), « Équipe » un `TeamSelect` : la liste
+ * porte le repère d'entente et suit l'ordre des rangs, comme partout (`ctcMarkGuard.test.ts`).
  */
 const entitlements = vi.hoisted(() => ({ value: undefined as Partial<ClubEntitlements> | undefined }));
 vi.mock("@/shared/session/queries", () => ({
@@ -33,13 +35,26 @@ vi.mock("@/shared/lib/download", async (importOriginal) => ({
 
 const teams = [
   { id: "team-13", name: "U13 M1", sportCategoryId: "c", priorityTierId: 1, tierOrder: 0, gender: null, level: null, sessionsPerWeek: 2, isActive: true },
-  { id: "team-15", name: "U15 F", sportCategoryId: "c", priorityTierId: 1, tierOrder: 1, gender: null, level: null, sessionsPerWeek: 2, isActive: true },
+  { id: "team-15", name: "U15 F", sportCategoryId: "c", priorityTierId: 1, tierOrder: 1, gender: null, level: null, sessionsPerWeek: 2, isActive: true, isCtc: true, ctcPartner: "Les Lions" },
 ];
+
+const tiers = [{ id: 1, label: "S", name: "Fanion", color: null }];
 
 function open(defaults: { teamId: string | null; from: string; to: string } = { teamId: null, from: "2026-11-01", to: "2026-11-30" }) {
   const onClose = vi.fn();
-  renderWithProviders(<ExportMatchesDialog open onClose={onClose} teams={teams} defaults={defaults} />);
+  renderWithProviders(<ExportMatchesDialog open onClose={onClose} teams={teams} tiers={tiers} defaults={defaults} />);
   return { onClose, dialog: within(screen.getByRole("dialog", { name: TEXTS.dialogTitle })) };
+}
+
+type DialogQueries = ReturnType<typeof within>;
+
+/** Le déclencheur de `TeamSelect` : son nom accessible est « Équipe + valeur choisie ». */
+function queryTeamTrigger(dialog: DialogQueries): HTMLElement | null {
+  return dialog.queryByRole("button", { name: (name) => name.includes(TEXTS.teamLabel) });
+}
+
+function teamTrigger(dialog: DialogQueries): HTMLElement {
+  return dialog.getByRole("button", { name: (name) => name.includes(TEXTS.teamLabel) });
 }
 
 function credits(remaining: number): Partial<ClubEntitlements> {
@@ -67,7 +82,7 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
     const user = userEvent.setup();
     const { dialog } = open({ teamId: "team-13", from: "2026-11-09", to: "2026-11-15" });
 
-    expect(dialog.getByLabelText(TEXTS.teamLabel)).toHaveValue("team-13");
+    expect(teamTrigger(dialog)).toHaveAccessibleName(expect.stringContaining("U13 M1"));
     await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
 
     await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-09", to: "2026-11-15", teamId: "team-13" }));
@@ -79,13 +94,59 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
     const { dialog } = open();
 
     await user.click(dialog.getByRole("button", { name: TEXTS.scopeTeam }));
-    await user.selectOptions(dialog.getByLabelText(TEXTS.teamLabel), "team-15");
+    await pickListboxOption(user, TEXTS.teamLabel, "U15 F");
     await user.click(dialog.getByRole("button", { name: TEXTS.scopeClub }));
 
-    expect(dialog.queryByLabelText(TEXTS.teamLabel)).not.toBeInTheDocument();
+    expect(queryTeamTrigger(dialog)).not.toBeInTheDocument();
     await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
 
     await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith(expect.objectContaining({ teamId: null })));
+  });
+
+  it("« Une équipe » sans équipe choisie : bouton inactif, aucun appel", async () => {
+    const user = userEvent.setup();
+    const { dialog } = open();
+
+    await user.click(dialog.getByRole("button", { name: TEXTS.scopeTeam }));
+
+    const download = dialog.getByRole("button", { name: TEXTS.downloadButton });
+    expect(download).toBeDisabled();
+    await user.click(download);
+    expect(matchesApi.exportFixturesPdf).not.toHaveBeenCalled();
+  });
+
+  it("une équipe choisie ensuite réactive le bouton et part au serveur", async () => {
+    const user = userEvent.setup();
+    const { dialog } = open();
+
+    await user.click(dialog.getByRole("button", { name: TEXTS.scopeTeam }));
+    await pickListboxOption(user, TEXTS.teamLabel, "U15 F");
+    await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
+
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-15" })));
+  });
+
+  it("un téléchargement réussi ferme la fenêtre", async () => {
+    const user = userEvent.setup();
+    const { dialog, onClose } = open();
+
+    await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
+
+    await waitFor(() => expect(downloadSpy).toHaveBeenCalled());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("un échec laisse la fenêtre ouverte, pour réessayer sans tout ressaisir", async () => {
+    vi.mocked(matchesApi.exportFixturesPdf).mockRejectedValueOnce(new Error("panne"));
+    const user = userEvent.setup();
+    const { dialog, onClose } = open();
+
+    await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
+
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalled());
+    await waitFor(() => expect(dialog.getByRole("button", { name: TEXTS.downloadButton })).toBeEnabled());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(downloadSpy).not.toHaveBeenCalled();
   });
 
   it("les dates saisies partent telles quelles", async () => {
@@ -124,6 +185,21 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
 
     expect(dialog.queryByText(TEXTS.rangeError)).not.toBeInTheDocument();
     expect(dialog.getByRole("button", { name: TEXTS.downloadButton })).toBeEnabled();
+  });
+});
+
+describe("ExportMatchesDialog — le sélecteur d'équipe", () => {
+  it("une équipe en entente porte son repère dans la liste, les autres non", async () => {
+    const user = userEvent.setup();
+    const { dialog } = open({ teamId: "team-13", from: "2026-11-01", to: "2026-11-30" });
+
+    const list = await openListbox(user, TEXTS.teamLabel);
+    expect(dialog.getByRole("listbox")).toBe(list);
+
+    const ctc = within(list).getByRole("option", { name: /U15 F/ });
+    expect(within(ctc).getByRole("img", { name: "Entente (CTC) avec Les Lions" })).toBeInTheDocument();
+    const plain = within(list).getByRole("option", { name: /U13 M1/ });
+    expect(within(plain).queryByRole("img", { name: /Entente/ })).not.toBeInTheDocument();
   });
 });
 

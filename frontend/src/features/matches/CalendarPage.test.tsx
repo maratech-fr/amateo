@@ -1101,7 +1101,8 @@ describe("CalendarPage — export des matchs pour les parents", () => {
     await user.click(screen.getByRole("button", { name: EXPORT_TEXTS.exportButton }));
     const dialog = within(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle }));
 
-    expect(dialog.getByLabelText(EXPORT_TEXTS.teamLabel)).toHaveValue("team-1");
+    // Déclencheur de `TeamSelect` : nom accessible « Équipe + valeur choisie ».
+    expect(dialog.getByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) && name.includes("U13") })).toBeInTheDocument();
   });
 
   it("le filtre sur un coach ne présélectionne aucune équipe", async () => {
@@ -1113,7 +1114,7 @@ describe("CalendarPage — export des matchs pour les parents", () => {
     await user.click(screen.getByRole("button", { name: EXPORT_TEXTS.exportButton }));
     const dialog = within(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle }));
 
-    expect(dialog.queryByLabelText(EXPORT_TEXTS.teamLabel)).not.toBeInTheDocument();
+    expect(dialog.queryByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) })).not.toBeInTheDocument();
   });
 });
 

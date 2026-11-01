@@ -43,6 +43,22 @@ final class MatchesPdfHtmlTest extends TestCase
         self::assertStringContainsString('Matchs du 9 au 15 novembre 2026 — U13 M1', $text);
     }
 
+    /** Un seul jour se lit comme un jour, pas « du 14 au 14 novembre ». */
+    public function testASingleDayRangeReadsAsThatDay(): void
+    {
+        $text = $this->textOf($this->build(['from' => '2026-11-14', 'to' => '2026-11-14']));
+
+        self::assertStringContainsString('Matchs du 14 novembre 2026', $text);
+        self::assertStringNotContainsString('au 14 novembre', $text);
+    }
+
+    public function testASingleDayRangeForATeamNamesIt(): void
+    {
+        $text = $this->textOf($this->build(['from' => '2026-11-14', 'to' => '2026-11-14', 'teamScopeName' => 'U13 M1']));
+
+        self::assertStringContainsString('Matchs du 14 novembre 2026 — U13 M1', $text);
+    }
+
     public function testTheHeaderCarriesEditionDateClubNameAndLogo(): void
     {
         $html = $this->build(['clubName' => 'Les Lions', 'logoDataUri' => 'data:image/png;base64,AAAA']);

@@ -123,6 +123,25 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         self::assertFalse($this->row('A')->toConfirm);
     }
 
+    /** Une fois joué, un écart resté ouvert ne concerne plus les parents : aucune mention. */
+    public function testAPlayedMatchWithOpenDeviationIsFirm(): void
+    {
+        $fixture = $this->homeMatch('A', '2026-11-07', '15:30', FixtureStatus::VALIDATED, $this->championship->getId());
+        $fixture->putPendingDeviation(['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-06T10:00:00+01:00', 'autoApplied' => false]);
+        $this->em->flush();
+
+        self::assertFalse($this->row('A')->toConfirm);
+    }
+
+    public function testAPlayedMatchWithOpenDeviationAndNoKickoffKeepsTheMention(): void
+    {
+        $fixture = $this->homeMatch('A', '2026-11-07', null, FixtureStatus::UNPLACED, $this->championship->getId());
+        $fixture->putPendingDeviation(['field' => 'kickoff', 'appValue' => null, 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-06T10:00:00+01:00', 'autoApplied' => false]);
+        $this->em->flush();
+
+        self::assertTrue($this->row('A')->toConfirm);
+    }
+
     public function testAPlayedMatchWithoutKickoffIsToConfirm(): void
     {
         $this->homeMatch('A', '2026-11-07', null, FixtureStatus::UNPLACED, $this->championship->getId());

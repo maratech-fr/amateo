@@ -69,6 +69,18 @@ final class ExportMatchesTest extends WebTestCase
         ];
     }
 
+    /** @return array<string, array{mixed}> */
+    public static function malformedTeamIds(): array
+    {
+        return [
+            'texte' => ['pas-un-uuid'],
+            'injection' => ['\' OR 1=1 --'],
+            'vide' => [''],
+            'nombre' => [42],
+            'tableau' => [['a']],
+        ];
+    }
+
     public function testAManagerGetsAPrivatePdf(): void
     {
         $ctx = $this->seedClub();
@@ -153,7 +165,7 @@ final class ExportMatchesTest extends WebTestCase
         $this->matchIn($ctx, 'Adversaire écarté', $other);
         $this->workerWrites();
 
-        $this->export($ctx['user'], $this->november() + ['teamId' => $ctx['team']->getId()]);
+        $this->export($ctx['user'], ['teamId' => $ctx['team']->getId()] + $this->november());
 
         self::assertResponseStatusCodeSame(200);
         $html = (string) ($this->workerPayloads[0]['html'] ?? '');
@@ -166,10 +178,27 @@ final class ExportMatchesTest extends WebTestCase
         $ctx = $this->seedClub();
         $this->workerWrites();
 
-        $this->export($ctx['user'], $this->november() + ['teamId' => '00000000-0000-4000-8000-0000000000ee']);
+        $this->export($ctx['user'], ['teamId' => '00000000-0000-4000-8000-0000000000ee'] + $this->november());
 
         self::assertResponseStatusCodeSame(404);
         self::assertSame('Équipe introuvable.', $this->errorBody());
+        self::assertSame(0, $this->creditsOf($ctx['club']));
+    }
+
+    /** Un identifiant mal formé ne touche pas la base (un `guid` invalide y ferait un 500) : même 404. */
+    #[DataProvider('malformedTeamIds')]
+    public function testAMalformedTeamIdIsTheSame404(mixed $teamId): void
+    {
+        $ctx = $this->seedClub();
+        $this->workerWrites();
+
+        $this->export($ctx['user'], ['teamId' => '00000000-0000-4000-8000-0000000000ee'] + $this->november());
+        $unknown = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        $this->export($ctx['user'], ['teamId' => $teamId] + $this->november());
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($unknown, json_decode((string) $this->client->getResponse()->getContent(), true));
         self::assertSame(0, $this->creditsOf($ctx['club']));
     }
 

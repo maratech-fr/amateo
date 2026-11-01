@@ -22,6 +22,8 @@ final class FrenchDateTest extends TestCase
             'même année' => ['2026-11-01', '2026-12-31', 'du 1er novembre au 31 décembre 2026'],
             'deux années' => ['2026-12-15', '2027-01-15', 'du 15 décembre 2026 au 15 janvier 2027'],
             'même mois' => ['2026-11-09', '2026-11-15', 'du 9 au 15 novembre 2026'],
+            'un seul jour' => ['2026-11-14', '2026-11-14', 'du 14 novembre 2026'],
+            'le premier seul' => ['2026-11-01', '2026-11-01', 'du 1er novembre 2026'],
         ];
     }
 
