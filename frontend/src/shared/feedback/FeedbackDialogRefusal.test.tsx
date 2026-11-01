@@ -1,11 +1,16 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { queryClient } from "@/shared/lib/queryClient";
+import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
 import { captureScreen } from "./captureScreen";
 import { FeedbackDialog } from "./FeedbackDialog";
+import { FEEDBACK_TEXTS } from "./texts";
 
 /**
  * PROMESSE : quand le serveur refuse un signalement, la personne lit dans la fenêtre Signaler le
@@ -41,6 +46,8 @@ async function typeAndSend(): Promise<void> {
 beforeEach(() => {
   mockCapture.mockReset();
   mockCapture.mockResolvedValue(null);
+  useToastStore.setState({ toasts: [] });
+  queryClient.clear();
 });
 
 afterEach(() => {
@@ -75,6 +82,59 @@ describe("FeedbackDialog — refus du serveur, trajet réel", () => {
     await typeAndSend();
 
     expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent(serverMessage);
+  });
+
+  // PROMESSE : un message serveur en anglais n'est pas lisible par la personne, il n'atteint jamais
+  // l'écran. FeedbackController.php:148 (400) et :138 (404).
+  it.each([
+    [400, "Invalid JSON"],
+    [404, "Club not found."],
+  ] as const)("garde un texte générique sur un %i au message anglais", async (status, englishMessage) => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(status, { error: englishMessage })));
+    renderWithProviders(<FeedbackDialog variant="free" onClose={vi.fn()} />, { route: "/matchs" });
+
+    await typeAndSend();
+
+    const alert = await within(screen.getByRole("dialog")).findByRole("alert");
+    expect(alert.textContent?.trim()).not.toBe("");
+    expect(alert).not.toHaveTextContent(englishMessage);
+  });
+
+  // PROMESSE : le limiteur global (ApiRateLimitSubscriber.php:61) ne met pas d'anglais à l'écran, le
+  // repli doux prend sa place. Corps relevés sur le vrai serveur : `detail` vaut le message de
+  // l'exception avec debug, la phrase de statut sans debug (RFC 7807 de Symfony).
+  it.each([
+    ["avec debug", "API rate limit exceeded."],
+    ["sans debug", "Too Many Requests"],
+  ] as const)("affiche le repli doux sur le 429 du limiteur global %s", async (_label, detail) => {
+    const body = { type: "https://tools.ietf.org/html/rfc2616#section-10", title: "An error occurred", status: 429, detail };
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(429, body)));
+    renderWithProviders(<FeedbackDialog variant="free" onClose={vi.fn()} />, { route: "/matchs" });
+
+    await typeAndSend();
+
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent(FEEDBACK_TEXTS.tooManyReports);
+  });
+
+  // PROMESSE : un refus se lit à un seul endroit, la fenêtre. Seul test sur le vrai `queryClient` :
+  // son filet global `MutationCache.onError` ajoute un toast si le hook ne porte pas d'`onError`.
+  it("n'ajoute aucun toast au message de la fenêtre", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { error: "Le message est trop long." })));
+    const router = createMemoryRouter([{ path: "*", element: <FeedbackDialog variant="free" onClose={vi.fn()} /> }], { initialEntries: ["/matchs"] });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await typeAndSend();
+
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("Le message est trop long.");
+    // Le toast part d'une promesse (`errorMessage`) : laisser le filet aller au bout avant de conclure.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(useToastStore.getState().toasts).toEqual([]);
   });
 
   it("garde un texte générique quand la réponse n'a aucun message exploitable", async () => {
