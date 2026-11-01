@@ -335,6 +335,7 @@ gate, soit la réservation cesserait d'être souveraine (INFEASIBLE muet revenu)
 contract*, fondateur 2026-10-30 — « tant qu'un coach tient la séance, c'est OK »). De bout en bout
 contre le VRAI moteur (`/generate`) : deux séances simultanées dans deux gymnases, U15 = A + B et
 U13 = A, sont placées et le résultat nomme B sur les U15 ; TÉMOIN — A seul sur les deux équipes n'en
-place qu'une ; deux réservations simultanées avec un second coach ne sacrifient rien. Skip propre si
-l'engine est absent. Sans ce gate, le moteur recommencerait à occuper tous les coachs d'une équipe.
+place qu'une ; deux réservations simultanées avec un second coach ne sacrifient rien ; un coach qui part
+pendant une séance LIBRE ne la tient pas (une seule posée), mais les mêmes séances réservées se jugent à
+leur début, d'accord avec le miroir `holdersFor`. Skip propre si l'engine est absent. Sans ce gate, le moteur recommencerait à occuper tous les coachs d'une équipe.
 Detail: `docs/testing/testing-strategy.md`.
