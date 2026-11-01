@@ -39,7 +39,7 @@ const holidayWindow = (): VenueMatchWindow =>
   ({ id: "wf", venueId: "v1", startTime: "10:00", endTime: "18:00", appliesOnPublicHolidays: true }) as unknown as VenueMatchWindow;
 
 beforeEach(() => {
-  createWindow.mockClear();
+  createWindow.mockReset();
   deleteWindow.mockClear();
   windowsState.data = [];
 });
@@ -103,7 +103,7 @@ describe("MatchWindowsEditor — ouvertures exceptionnelles", () => {
     await user.type(screen.getByLabelText(MATCHES_TEXTS.openingLabelLabel), "Coupe");
     await user.click(screen.getByRole("button", { name: MATCHES_TEXTS.openingAdd }));
 
-    expect(createWindow).toHaveBeenCalledWith(expect.objectContaining({ venueId: "v1", openingDate: "2026-11-11", startTime: "14:00", endTime: "20:00", label: "Coupe" }));
+    expect(createWindow.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ venueId: "v1", openingDate: "2026-11-11", startTime: "14:00", endTime: "20:00", label: "Coupe" }));
     expect(createWindow.mock.calls[0]?.[0]).not.toHaveProperty("dayOfWeek", expect.any(Number));
   });
 
@@ -144,6 +144,43 @@ describe("MatchWindowsEditor — ouvertures exceptionnelles", () => {
     windowsState.data = [opening(null)];
     renderWithProviders(<MatchWindowsEditor venueId="v1" />);
     expect(screen.getByText(/mer\. 11 nov\. 2026 · 14:00 – 20:00$/)).toBeInTheDocument();
+  });
+
+  /** Retour visuel : ajouter réussi repart d'un formulaire vierge ; un refus laisse la saisie à corriger. */
+  describe("après « Ajouter l'ouverture »", () => {
+    const fieldValues = () => [
+      (screen.getByLabelText(MATCHES_TEXTS.openingDateLabel) as HTMLInputElement).value,
+      (screen.getByLabelText(MATCHES_TEXTS.openingStartLabel) as HTMLInputElement).value,
+      (screen.getByLabelText(MATCHES_TEXTS.openingEndLabel) as HTMLInputElement).value,
+      (screen.getByLabelText(MATCHES_TEXTS.openingLabelLabel) as HTMLInputElement).value,
+    ];
+    const outOfSeason = () => screen.queryByText(MATCHES_TEXTS.openingOutOfSeason("1 sept. 2026", "30 juin 2027"));
+
+    it("réussi : date, motif et heures reviennent au défaut, l'avertissement hors saison part avec", async () => {
+      const user = userEvent.setup();
+      createWindow.mockImplementation((_input: unknown, options?: { onSuccess?: () => void }) => options?.onSuccess?.());
+      renderWithProviders(<MatchWindowsEditor venueId="v1" prefillOpening={{ date: "2027-07-10", start: "18:00", end: "22:00" }} />);
+      await user.type(screen.getByLabelText(MATCHES_TEXTS.openingLabelLabel), "Coupe");
+      expect(outOfSeason()).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: MATCHES_TEXTS.openingAdd }));
+
+      expect(fieldValues()).toEqual(["", "14:00", "20:00", ""]);
+      expect(outOfSeason()).toBeNull();
+    });
+
+    it("refus serveur : rien n'est vidé", async () => {
+      const user = userEvent.setup();
+      createWindow.mockImplementation((_input: unknown, options?: { onError?: (error: Error) => void }) => options?.onError?.(new Error("refus")));
+      renderWithProviders(<MatchWindowsEditor venueId="v1" prefillOpening={{ date: "2027-07-10", start: "18:00", end: "22:00" }} />);
+      await user.type(screen.getByLabelText(MATCHES_TEXTS.openingLabelLabel), "Coupe");
+
+      await user.click(screen.getByRole("button", { name: MATCHES_TEXTS.openingAdd }));
+
+      expect(createWindow).toHaveBeenCalledTimes(1);
+      expect(fieldValues()).toEqual(["2027-07-10", "18:00", "22:00", "Coupe"]);
+      expect(outOfSeason()).toBeInTheDocument();
+    });
   });
 
   it("D10 : supprimer passe par une confirmation qui dit que le match reste placé", async () => {

@@ -140,6 +140,25 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     expect(container.querySelector("li")).toHaveTextContent(expected);
   });
 
+  // Retour visuel : un match non placé n'est pas « placé hors des accès ». Le statut vient du conflit (`bareFixtureView`).
+  it.each([
+    ["UNPLACED", /proposé hors des accès/],
+    ["PLACED", /placé hors des accès/],
+    ["SUBMITTED", /placé hors des accès/],
+    ["VALIDATED", /placé hors des accès/],
+  ])("ACCESS_WINDOW_LOST : un match %s dit le bon verbe", (status, expected) => {
+    const conflict = { ...accessLost, windows: [], fixture: { ...accessLost.fixture, status } } as unknown as Conflict;
+    const { container } = renderLine({ conflict });
+    expect(container.querySelector("li")).toHaveTextContent(expected);
+    expect(container.querySelector("li")).toHaveTextContent(/aucun accès match ce jour-là/);
+  });
+
+  it("ACCESS_WINDOW_LOST : un match UNPLACED ne porte jamais le mot « placé »", () => {
+    const conflict = { ...accessLost, fixture: { ...accessLost.fixture, status: "UNPLACED" } } as unknown as Conflict;
+    const { container } = renderLine({ conflict });
+    expect(container.querySelector("li")?.textContent).not.toMatch(/(^|\s)placé(\s|$)/); // `\b` ne voit pas la fin d'un mot en « é » hors mode unicode
+  });
+
   it("VENUE_TRAINING_OVERLAP (D8) : titre et résumé nomment le gymnase, le match et l'entraînement", () => {
     const overlapTraining = {
       type: "VENUE_TRAINING_OVERLAP",
