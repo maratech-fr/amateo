@@ -1,5 +1,5 @@
 import { HTTPError } from "ky";
-import { type FormEvent, useId, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
 import { readRecentIncident, readRecentIncidents } from "@/shared/api/lastIncidentStore";
@@ -47,9 +47,36 @@ const TOPIC_OPTIONS: { value: FeedbackTopic; label: string }[] = [
   { value: "idea", label: FEEDBACK_TEXTS.topicIdea },
 ];
 
+/**
+ * Le texte d'un envoi refusé. `FeedbackController` écrit en français ses 422 et son 429, dans `error` ;
+ * ses 400 et 404, comme le `detail` du limiteur global (429), restent en anglais et n'atteignent pas
+ * l'écran. Local à ce parcours : `errorMessage` reprend tout message de 4xx hors reason-phrase HTTP.
+ * Le reste (5xx, SEC-08 ; réseau ; délai) suit la règle commune.
+ */
+async function refusalMessage(error: Error): Promise<string> {
+  if (!(error instanceof HTTPError) || error.response.status >= 500) {
+    return errorMessage(error);
+  }
+  const status = error.response.status;
+  const data = (error as { data?: unknown }).data;
+  const serverMessage = null !== data && "object" === typeof data ? (data as { error?: unknown }).error : undefined;
+  if ((422 === status || 429 === status) && "string" === typeof serverMessage && "" !== serverMessage.trim()) {
+    return serverMessage;
+  }
+  return 429 === status ? FEEDBACK_TEXTS.tooManyReports : FEEDBACK_TEXTS.sendRefused;
+}
+
 export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleId, screenLabel, activeFilters, displayedRange, modalState }: FeedbackDialogProps) {
   const { pathname } = useLocation();
-  const submit = useSubmitFeedback();
+  // Fenêtre encore ouverte ? Annuler reste possible pendant l'envoi : un refus arrivé après la
+  // fermeture n'a plus de fenêtre où s'afficher, il passe alors par un toast (jamais silencieux).
+  const openRef = useRef(true);
+  useEffect(() => {
+    openRef.current = true;
+    return () => {
+      openRef.current = false;
+    };
+  }, []);
   const [topic, setTopic] = useState<FeedbackTopic>("bug");
   const [message, setMessage] = useState("");
   const [attachScreenshot, setAttachScreenshot] = useState(true);
@@ -59,6 +86,15 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
   // la même seconde). `submit.isPending` ne bascule qu'APRÈS l'await — il ne protège pas cette fenêtre.
   const sendingRef = useRef(false);
   const [sending, setSending] = useState(false);
+  const submit = useSubmitFeedback((err) => {
+    void refusalMessage(err).then((text) => {
+      if (openRef.current) {
+        setError(text);
+      } else {
+        toast.error(text);
+      }
+    });
+  });
   const topicId = useId();
   const messageId = useId();
   const formId = useId();
@@ -176,17 +212,10 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
           toast.success(FEEDBACK_TEXTS.sentToast);
           onClose();
         },
-        onError: (err) => {
-          // Rendre la main pour permettre un nouvel envoi (le geste a échoué).
+        onError: () => {
+          // Rendre la main pour permettre un nouvel envoi (le texte du refus vit dans le hook).
           sendingRef.current = false;
           setSending(false);
-          // 429 : message doux dédié (le générique pousserait à re-cliquer).
-          if (err instanceof HTTPError && 429 === err.response.status) {
-            setError(FEEDBACK_TEXTS.tooManyReports);
-            return;
-          }
-          // 422 et autres 4xx : messages métier du serveur (errorMessage lit error.data).
-          void errorMessage(err).then(setError);
         },
       },
     );

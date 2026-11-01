@@ -197,7 +197,7 @@ d'injection que les logos (`app.feedback_screenshot_storage_dir`,
 (migration `Version20261024120000`). **Seule porte de lecture** : `GET
 /api/admin/feedback/{id}/screenshot` (console superadmin uniquement — le firewall `^/api/admin`
 fait l'étanchéité tenant), type sondé à la lecture, `X-Content-Type-Options: nosniff` +
-`Cache-Control: no-store`. La console (`FeedbackSection.tsx`) affiche l'aperçu en `<img>` quand
+`Cache-Control: no-store`. La console (`FeedbackSection.tsx`) affiche l'aperçu en `<img>` (agrandissable au clic ou au clavier) quand
 `hasScreenshot` est vrai.
 
 La **rétention** (purge de la capture, suppression du blob à l'effacement RGPD d'un club, sort

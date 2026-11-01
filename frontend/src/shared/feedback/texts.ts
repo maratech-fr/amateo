@@ -26,5 +26,6 @@ export const FEEDBACK_TEXTS = {
   contextualHint: "L'écran courant et quelques informations techniques seront joints automatiquement pour nous aider à reproduire.",
   messageRequired: "Le message est obligatoire.",
   tooManyReports: "Trop de signalements, réessayez plus tard.",
+  sendRefused: "Le signalement n'a pas pu être envoyé. Réessayez plus tard.",
   sentToast: "Signalement envoyé — vous recevrez un accusé par email.",
 } as const;

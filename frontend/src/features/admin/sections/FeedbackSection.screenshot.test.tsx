@@ -88,3 +88,62 @@ describe("FeedbackSection — aperçu de la capture (PR3)", () => {
     expect(within(dialog).queryByRole("img")).toBeNull();
   });
 });
+
+describe("FeedbackSection — capture agrandie", () => {
+  /** Ouvre le détail d'un signalement avec capture et rend la vignette, un bouton nommé. */
+  async function openThumbnail(): Promise<HTMLElement> {
+    mockList.mockResolvedValue(listResponse({ hasScreenshot: true }));
+    mockDetail.mockResolvedValue(detail(true));
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+    return within(dialog).findByRole("button", { name: /capture/i });
+  }
+
+  /** La fenêtre agrandie : la seule, parmi les fenêtres ouvertes, nommée d'après la capture. */
+  const zoomDialog = (): HTMLElement => screen.getByRole("dialog", { name: /capture/i });
+
+  // PROMESSE : un clic sur la vignette ouvre la capture de CE signalement en grand, dans une
+  // fenêtre nommée, par-dessus le détail.
+  it("ouvre la capture en grand au clic sur la vignette", async () => {
+    await userEvent.click(await openThumbnail());
+
+    const img = within(zoomDialog()).getByRole("img");
+    expect(img.getAttribute("src")).toContain("/api/admin/feedback/fb1/screenshot");
+    expect((img.getAttribute("alt") ?? "").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("dialog")).toHaveLength(2);
+  });
+
+  // PROMESSE : la vignette s'atteint et s'active au clavier, sans souris.
+  it.each([["Entrée", "{Enter}"], ["Espace", " "]] as const)("ouvre la capture en grand avec %s", async (_label, key) => {
+    (await openThumbnail()).focus();
+
+    await userEvent.keyboard(key);
+
+    expect(within(zoomDialog()).getByRole("img")).toBeInTheDocument();
+  });
+
+  // PROMESSE : Échap ferme la seule capture, le détail reste ouvert et le focus revient à la vignette.
+  it("ferme la capture avec Échap sans fermer le détail", async () => {
+    const thumbnail = await openThumbnail();
+    await userEvent.click(thumbnail);
+    expect(zoomDialog()).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: /capture/i })).toBeNull();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(thumbnail).toHaveFocus();
+  });
+
+  // PROMESSE : un bouton nommé ferme aussi la capture, sans fermer le détail.
+  it("ferme la capture avec son bouton Fermer", async () => {
+    await userEvent.click(await openThumbnail());
+
+    await userEvent.click(within(zoomDialog()).getByRole("button", { name: "Fermer" }));
+
+    expect(screen.queryByRole("dialog", { name: /capture/i })).toBeNull();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+});
