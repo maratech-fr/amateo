@@ -5,11 +5,20 @@ via ``model.candidate_closures``). Consumed by ``result_builder``/``main``."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections import defaultdict
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, cast
 
 from ..model import DEFAULT_SESSION_MINUTES, _format_time, _time_to_minutes
-from .availability import HoldSession, _coach_available_at, assign_holders, available_coach_exists, interval_bites
+from .availability import (
+    HoldSession,
+    _coach_available_at,
+    assign_holders,
+    available_coach_exists,
+    case_has_available_coach,
+    interval_bites,
+    required_coaches_of,
+)
 from .common import (
     HARD,
     ResolvedImplicitRules,
@@ -22,6 +31,9 @@ from .common import (
 )
 
 _DAY_LABELS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+
+# Sans planning, « maintenue » serait faux : ``main`` écarte cette alerte au lieu de la rétrograder.
+RESERVED_BLOCK_ALERT_ID_PREFIX = "rule-sacrificed-block-"
 
 
 def session_without_coach_message(teams: str, day: str, start_time: str) -> str:
@@ -128,6 +140,7 @@ def diagnose_locked_slot_violations(
     team_names: Mapping[str, str] | None = None,
     coach_names: Mapping[str, str] | None = None,
     venue_names: Mapping[str, str] | None = None,
+    shared_blocks: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Warn about the HARD constraints a HARD lock silently annuls (P2-9).
 
@@ -159,7 +172,11 @@ def diagnose_locked_slot_violations(
     coaches, min/max start for windows, team+venue pair for forbidden venues,
     team→imposed-venue mismatch for forced venues); any drift between the two
     would make this lie about what the solver did.
+
+    On a case where a whole declared group is pinned, coach availability is judged on the group's union:
+    a coach of the group present means silence, none means one alert for the group instead of one per team.
     """
+    locked_slots = list(locked_slots)
     rules: Mapping[Any, Any] = parsed.get("coach_unavailability") or {}
     coach_map: Mapping[str, Any] = parsed.get("team_coach_map") or {}
     windows = parsed.get("time_windows") or ()
@@ -179,7 +196,9 @@ def diagnose_locked_slot_violations(
 
     day_union = _day_rules_union(windows)
 
-    warnings: list[dict[str, Any]] = []
+    answered_by_group, warnings = _reserved_blocks_answer(
+        locked_slots, shared_blocks, rules, coach_map, coach_sources, _team, _coach, _venue
+    )
     seen: set[tuple[str, str, str]] = set()
 
     def _emit(
@@ -254,6 +273,8 @@ def diagnose_locked_slot_violations(
         # 1. Coach availability — un coach disponible suffit, comme à la pose : le verrou ne contredit
         # l'indisponibilité que si AUCUN coach de l'équipe n'est libre (sinon, l'autre tient la séance).
         coach_ids = [str(c) for c in (coach_map.get(team_id) or [])]
+        if (team_id, venue_id, day_int, start_text[:5]) in answered_by_group:
+            coach_ids = []
         for coach_id in [] if available_coach_exists(coach_ids, day_int, start, rules) else coach_ids:
             for iv_day, iv_from, iv_to in rules.get(coach_id) or ():
                 if iv_day == day_int and iv_from <= start < iv_to:
@@ -389,6 +410,84 @@ def diagnose_locked_slot_violations(
             )
 
     return warnings
+
+
+def _reserved_blocks_answer(
+    locked_slots: Sequence[Mapping[str, Any]],
+    shared_blocks: Sequence[Mapping[str, Any]],
+    rules: Mapping[Any, Any],
+    coach_map: Mapping[str, Any],
+    coach_sources: Mapping[str, Any],
+    team_label: Callable[[str], str],
+    coach_label: Callable[[str], str],
+    venue_label: Callable[[str], str],
+) -> tuple[set[tuple[str, str, int, str]], list[dict[str, Any]]]:
+    """Sur chaque case où un groupe entier est épinglé, même lecture que ``_close_coachless_block_cases`` :
+    les verrous dont le groupe répond ``(équipe, gymnase, jour, HH:MM)`` et l'alerte du groupe le plus
+    large quand personne n'a de coach au début. Un groupe étranger à ce plus large garde ses alertes
+    par équipe, l'identifiant de l'alerte ne portant que la case."""
+    durations_by_case: dict[tuple[str, int, str], dict[str, int]] = defaultdict(dict)
+    for slot in locked_slots:
+        team_id = str(slot.get("team_id") or slot.get("teamId") or "")
+        day = slot.get("day_of_week")
+        start_text = str(slot.get("start_time") or slot.get("startTime") or "")
+        if not team_id or day is None or not start_text:
+            continue
+        case = (str(slot.get("venue_id") or slot.get("venueId") or ""), int(day), start_text[:5])
+        duration = int(slot.get("duration_minutes") or slot.get("durationMinutes") or DEFAULT_SESSION_MINUTES)
+        durations_by_case[case][team_id] = max(duration, durations_by_case[case].get(team_id, 0))
+
+    blocks = [[str(t) for t in _get(block, "teamIds", "team_ids", default=()) or ()] for block in shared_blocks]
+    answered: set[tuple[str, str, int, str]] = set()
+    alerts: list[dict[str, Any]] = []
+    for case, durations in durations_by_case.items():
+        venue_id, day_int, start_hhmm = case
+        pinned = [members for members in blocks if len(members) >= 2 and set(members) <= durations.keys()]
+        if not pinned:
+            continue
+        start = _time_to_minutes(start_hhmm)
+        coached = [m for m in pinned if case_has_available_coach(m, day_int, start, rules, coach_map)]
+        if coached:
+            answered.update((team, *case) for members in coached for team in members)
+            continue
+        widest = max(pinned, key=len)
+        answered.update((team, *case) for members in pinned if set(members) <= set(widest) for team in members)
+        coach_ids = required_coaches_of(widest, coach_map)
+        names = [coach_label(coach_id) for coach_id in coach_ids]
+        reason = (
+            f"alors que {names[0]} est indisponible."
+            if len(names) == 1
+            else f"alors qu'aucun coach du groupe n'est disponible ({', '.join(names)})."
+        )
+        where = (
+            f"{venue_label(venue_id)}, {_day_label(day_int)} {start_hhmm}, "
+            f"{_duration_label(max(durations[team] for team in widest))}"
+        )
+        message = f"Séance fixée du groupe {', '.join(team_label(t) for t in widest)} maintenue ({where}) {reason}"
+        alert_id = f"{RESERVED_BLOCK_ALERT_ID_PREFIX}{venue_id}|{day_int}|{start_hhmm}"
+        sources = [_coach_source_covering(coach_sources.get(c), day_int, start) or {} for c in coach_ids]
+        alerts.append(
+            {
+                **_not_honored_warning({"id": alert_id}, "WARNING", message),
+                "id": alert_id,
+                "type": "rule_sacrificed",
+                "venueId": venue_id,
+                "dayOfWeek": day_int,
+                "startTime": start_hhmm,
+                "message": message,
+                "causes": [
+                    {
+                        "kind": "coach_unavailability",
+                        "constraintId": source.get("constraint_id"),
+                        "label": source.get("label"),
+                        "count": 1,
+                    }
+                    for source in sources
+                ],
+                "suggestions": [f"Déplacez la séance fixée ou rendez un coach du groupe disponible à {start_hhmm}."],
+            }
+        )
+    return answered, alerts
 
 
 def diagnose_candidate_conflicts(

@@ -212,8 +212,11 @@ def add_coach_hold_constraints(
             slot_id = f"{int(locked['day_of_week'])}:{minutes // 60:02d}:{minutes % 60:02d}"
             locked_coached_cases.add((str(locked["venue_id"]), slot_id))
 
+    frozen_seats = {(str(a.team_id), str(a.venue_id), str(a.slot_id)) for a in assignments if a.fixed}
+
     # Une séance de bloc active a au moins une tenue parmi ses membres, sauf si un membre VERROUILLÉ
-    # coaché sur la case la tient déjà.
+    # coaché sur la case la tient déjà, ou si tous sont figés sans coach au début : un déverrouillage
+    # ne fait pas d'un planning avec alerte un planning infaisable.
     for case, blocks in case_bvars.items():
         if case in locked_coached_cases:
             continue
@@ -222,6 +225,8 @@ def add_coach_hold_constraints(
                 continue
             member_holders = holders_by_case.get(case, {})
             literals = [literal for member in sorted(members) for literal in member_holders.get(member, {}).values()]
+            if not literals and all((member, *case) in frozen_seats for member in members):
+                continue
             model.Add(sum(literals) >= block_var)
             added += 1
     return added

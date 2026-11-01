@@ -153,6 +153,49 @@ def test_a_lock_that_violates_nothing_stays_quiet() -> None:
     assert _violation_messages(result) == []
 
 
+def test_a_fully_reserved_block_member_is_covered_by_the_union() -> None:
+    """A et B réservés ensemble, Anna (A) absente, Ben (B) présent : un coach du groupe suffit, aucune alerte."""
+    payload = make_payload(
+        teams=[make_team("A"), make_team("B")],
+        venues=[make_venue("gym", [(TUESDAY, "18:00")])],
+        coaches=[
+            {"id": "anna", "firstName": "Anna", "lastName": "Martin"},
+            {"id": "ben", "firstName": "Ben", "lastName": "Durand"},
+        ],
+        constraints=[_coach_link("A", "anna"), _coach_link("B", "ben"), _coach_off("anna", TUESDAY)],
+        slot_templates=[_hard_lock("A", "gym", TUESDAY, "18:00"), _hard_lock("B", "gym", TUESDAY, "18:00")],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    assert _violation_messages(result) == [], "Ben tient la séance du groupe : rien à signaler sur A"
+
+
+def test_a_partially_reserved_member_keeps_its_own_alert() -> None:
+    """A seule réservée le mardi, le groupe se réunit le samedi : la séance de mardi est celle de A, sans Ben.
+    L'absence d'Anna y reste signalée, au nom de A : l'union ne couvre que les cases où tout le groupe est là."""
+    payload = make_payload(
+        teams=[make_team("A", sessions_per_week=2), make_team("B")],
+        venues=[make_venue("gym", [(TUESDAY, "18:00"), (SATURDAY, "18:00")])],
+        coaches=[
+            {"id": "anna", "firstName": "Anna", "lastName": "Martin"},
+            {"id": "ben", "firstName": "Ben", "lastName": "Durand"},
+        ],
+        constraints=[_coach_link("A", "anna"), _coach_link("B", "ben"), _coach_off("anna", TUESDAY)],
+        slot_templates=[_hard_lock("A", "gym", TUESDAY, "18:00")],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    messages = _violation_messages(result)
+    assert len(messages) == 1, messages
+    assert "Séance fixée de A maintenue" in messages[0] and "Anna" in messages[0]
+
+
 def _time_window(team_id: str, *, rule_type: str, config: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": f"win-{team_id}-{rule_type}",

@@ -633,6 +633,35 @@ def test_a_block_losing_one_of_its_two_cases_drops_only_the_missing_common_sessi
     assert _sacrificed(result), "le groupe privé d'une case est nommé"
 
 
+def test_a_reserved_group_keeps_its_own_case_in_the_causality_probe() -> None:
+    """Groupe à 2 séances communes : lundi réservé par ses membres, coachs absents ; mardi servable mais pris par C.
+    La sonde garde la réservation du groupe (c'est sa séance, pas la cause) : sans le verrou de C, tout tient, c'est
+    donc lui la cause. Le planning sort et l'alerte nomme C."""
+    payload = make_payload(
+        teams=[make_team("A", sessions_per_week=2), make_team("B", sessions_per_week=2), make_team("C")],
+        venues=[make_venue("Nord", [(1, "18:00"), (2, "18:00")])],
+        coaches=[_coach("anna"), _coach("ben")],
+        constraints=[
+            team_coach("tc-a", "A", "anna"),
+            team_coach("tc-b", "B", "ben"),
+            _coach_off("off-anna", "anna", 1, "Indispo d'Anna"),
+            _coach_off("off-ben", "ben", 1, "Indispo de Ben"),
+        ],
+        slot_templates=[_reservation("A", "Nord", 1), _reservation("B", "Nord", 1), _reservation("C", "Nord", 2)],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 2}]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed", f"seul le verrou de C prive le groupe : {result['diagnostics']}"
+    relaxed = [d["message"] for d in _sacrificed(result) if "mutualisation du groupe est relâchée" in d["message"]]
+    assert len(relaxed) == 1, f"{result['diagnostics']}"
+    assert relaxed[0].startswith(
+        "Le groupe A, B ne peut pas tenir ses 2 séances communes : une séance fixée occupe la case où réunir ses "
+        "équipes (mardi 18:00, Nord, séance fixée de C)"
+    ), relaxed[0]
+
+
 def test_a_forced_day_whose_only_case_is_taken_removes_only_that_session() -> None:
     """Décision antérieure tenue : le jour imposé pris reste NON placé, jamais déporté. Mais une équipe à
     2 séances ne perd que celle-là : l'autre se place sur la case libre."""

@@ -293,16 +293,28 @@ def _close_coachless_block_cases(
 
     Case à pourvoir (un membre y a une variable libre) : jugée au chevauchement, comme la pose. Case où
     tous les membres sont déjà là (verrous, base figée) : jugée au début, sinon ``Σb >= 1`` du comblement
-    contredirait ``b == 0`` et un groupe réservé rendrait la génération infaisable."""
+    contredirait ``b == 0`` et un groupe réservé rendrait la génération infaisable.
+
+    La réservation gagne : si AUCUN des blocs déjà là n'a de coach de son union au début, aucun n'est fermé,
+    la séance est maintenue et ``diagnose_locked_slot_violations`` nomme l'écart. Si l'un d'eux en a un, c'est
+    lui qui tient la case : les autres sont fermés, comme une pose."""
     durations: Mapping[Any, int] = getattr(model, "slot_durations", {}) or {}
     added = 0
     for (venue_id, slot_id), entries in case_bvars.items():
         day, start = case_day_start(slot_id)
         if day is None or start is None:
             continue
+        without_free_seat = [
+            members for members, _b in entries if not any((team, venue_id, slot_id) in free_seats for team in members)
+        ]
+        reservation_wins = not any(
+            case_has_available_coach(members, day, start, rules, coach_map) for members in without_free_seat
+        )
         for members, b in entries:
             duration = durations.get((venue_id, day, _format_time(start)))
             has_free_seat = any((team, venue_id, slot_id) in free_seats for team in members)
+            if reservation_wins and not has_free_seat:
+                continue
             end = start + duration if duration is not None and has_free_seat else None
             if case_has_available_coach(members, day, start, rules, coach_map, end):
                 continue

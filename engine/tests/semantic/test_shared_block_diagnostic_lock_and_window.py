@@ -16,7 +16,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload, team_constraint
+from tests.support.pipeline import (
+    coach_availability,
+    make_payload,
+    make_team,
+    make_venue,
+    solve_payload,
+    team_coach,
+    team_constraint,
+)
 
 
 def _hard_lock(team_id: str, venue_id: str, day: int, start: str, *, duration: int = 90) -> dict[str, Any]:
@@ -141,6 +149,40 @@ def test_hard_time_window_of_a_member_closes_the_only_case_names_the_group_and_w
     assert cause["constraintId"] == "win-t1-late", "la contrainte doit être nommée pour composer son origine"
     assert cause["label"] == "pas de séance après 18h"
     assert cause["count"] == 1
+
+
+def test_a_fully_reserved_block_is_not_accused_when_another_rule_fails() -> None:
+    """A et B réservés ensemble, leur union absente partout : leur case réservée les sert. Quand D fait échouer la
+    génération (jour imposé, coach absent), le diagnostic accuse D, jamais ce groupe qui n'y est pour rien."""
+    payload = make_payload(
+        teams=[make_team("A"), make_team("B"), make_team("D")],
+        venues=[make_venue("Nord", [(1, "18:00")]), make_venue("Sud", [(4, "18:00")])],
+        coaches=[{"id": coach, "firstName": coach, "lastName": "X"} for coach in ("anna", "ben", "chloe")],
+        constraints=[
+            team_coach("tc-a", "A", "anna"),
+            team_coach("tc-b", "B", "ben"),
+            team_coach("tc-d", "D", "chloe"),
+            coach_availability("off-anna", "anna", unavailable_days=[1, 4]),
+            coach_availability("off-ben", "ben", unavailable_days=[1, 4]),
+            coach_availability("off-chloe", "chloe", unavailable_days=[4]),
+            team_constraint(
+                constraint_id="forced-d",
+                team_id="D",
+                family="DAY",
+                rule_type="HARD",
+                config={"forcedDays": [4]},
+                name="Jeudi imposé",
+            ),
+        ],
+        slot_templates=[_hard_lock("A", "Nord", 1, "18:00"), _hard_lock("B", "Nord", 1, "18:00")],
+    )
+    payload["sharedBlocks"] = [_block("ab", ["A", "B"], 1)]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "failed", f"le conflit de D reste un échec : {result['diagnostics']}"
+    assert _shared_block_diags(result) == [], "le groupe réservé n'est pas la cause"
+    assert any(d.get("id") == "diag-infeasible" for d in result["diagnostics"]), "l'échec reste expliqué"
 
 
 def test_time_window_witness_relaxed_window_places_the_block_without_diag() -> None:

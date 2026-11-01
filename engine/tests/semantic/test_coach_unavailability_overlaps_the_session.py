@@ -20,6 +20,7 @@ import pytest
 
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.validate_assignments import validate_assignment
+from tests.semantic.test_sovereign_reservations import _only_sacrifice_of_kind
 from tests.support.pipeline import (
     as_validate_payload,
     coach_availability,
@@ -239,6 +240,155 @@ def test_a_block_with_a_member_left_to_place_is_judged_on_the_overlap() -> None:
     result = _reserved_block_solve("U11A")
 
     assert [slot["teamId"] for slot in result["slots"]] == ["U11A"], f"{result['status']} : {result['diagnostics']}"
+    assert result["status"] == "failed", "un membre reste à poser sur une case sans coach : l'échec reste nommé"
+
+
+# ── 2.1 bis Groupe réservé dont l'union est absente au début : la réservation gagne ──────────────────
+# Jumeaux VOULUS (point sensible solveur, mutualisation) : ``CrossStack/SharedBlockPreSolveMirrorParityTest``
+# (les deux faces, Récap et moteur, sur le même scénario) ; ``Unit/Service/PreSolvePreventionWarningsTest``.
+
+GROUP_ALERT_SUGGESTION = "Déplacez la séance fixée ou rendez un coach du groupe disponible à 18:00."
+
+
+def _nord_lock(team_id: str, duration: int = 90) -> dict[str, Any]:
+    return {**_locked(team_id, "Nord", MONDAY), "durationMinutes": duration}
+
+
+def _solve_group(
+    *off: dict[str, Any],
+    locks: list[dict[str, Any]],
+    links: tuple[tuple[str, str], ...] = (("A", "anna"), ("B", "ben")),
+    teams: list[dict[str, Any]] | None = None,
+    blocks: list[dict[str, Any]] | None = None,
+    venues: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Le groupe A + B (par défaut), réservé sur Nord le lundi 18:00 par ``locks``."""
+    payload = make_payload(
+        teams=teams or [make_team("A"), make_team("B")],
+        venues=venues or [make_venue("Nord", [(MONDAY, "18:00")])],
+        coaches=[*_coaches(), {"id": "chloe", "firstName": "Chloé", "lastName": "Petit", "isEmployee": False}],
+        constraints=[*(team_coach(f"tc-{team}-{coach}", team, coach) for team, coach in links), *off],
+        slot_templates=locks,
+    )
+    payload["sharedBlocks"] = blocks or [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+    return solve_payload(payload)
+
+
+def _nested_on_monday(*off: dict[str, Any]) -> dict[str, Any]:
+    """{A,B} et {A,B,C} réservés ensemble lundi : une case ne porte qu'une séance commune (distinctness), le petit
+    groupe tient donc la sienne le mardi, sur une case libre."""
+    return _solve_group(
+        *off,
+        locks=[_nord_lock("A"), _nord_lock("B"), _nord_lock("C")],
+        links=(("A", "anna"), ("B", "ben"), ("C", "chloe")),
+        teams=[make_team("A", sessions_per_week=2), make_team("B", sessions_per_week=2), make_team("C")],
+        blocks=[
+            {"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1},
+            {"id": "abc", "teamIds": ["A", "B", "C"], "commonSessions": 1},
+        ],
+        venues=[make_venue("Nord", [(MONDAY, "18:00"), (TUESDAY, "18:00")], capacity=3)],
+    )
+
+
+def test_a_block_whose_members_are_all_reserved_keeps_its_case_when_the_union_is_absent_at_start() -> None:
+    """Anna et Ben indisponibles tout le lundi, A et B réservés lundi 18:00 : le planning sort, les deux y sont."""
+    result = _solve_group(_anna_off(), _anna_off(coach_id="ben"), locks=[_nord_lock("A"), _nord_lock("B")])
+
+    assert result["status"] == "completed", f"la réservation gagne : {result['diagnostics']}"
+    assert sorted(slot["teamId"] for slot in result["slots"]) == ["A", "B"]
+    assert _diagnostics_of(result, "shared_block_not_honored") == []
+    assert _diagnostics_of(result, "conflict") == []
+
+
+def test_a_nested_reserved_block_with_one_coach_present_keeps_the_case_in_silence() -> None:
+    """Groupes {A,B} et {A,B,C} réservés lundi, seule Chloé (C) présente : le plus large tient la case avec son
+    coach, un coach de l'union suffit, rien n'est signalé sur A ni B."""
+    result = _nested_on_monday(_anna_off(), _anna_off(coach_id="ben"))
+
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    assert _diagnostics_of(result, "rule_sacrificed") == [], "un coach du groupe le plus large est là : silence"
+    assert len(_diagnostics_of(result, "shared_block_not_honored")) <= 1
+
+
+@pytest.mark.parametrize(
+    ("links", "off_coaches", "reason", "causes"),
+    [
+        (
+            (("A", "anna"),),
+            ("anna",),
+            "alors que Anna Martin est indisponible.",
+            [("off-anna", "Indispo de anna")],
+        ),
+        (
+            (("A", "anna"), ("B", "ben")),
+            ("anna", "ben"),
+            "alors qu'aucun coach du groupe n'est disponible (Anna Martin, Ben Durand).",
+            [("off-anna", "Indispo de anna"), ("off-ben", "Indispo de ben")],
+        ),
+    ],
+    ids=["un-coach", "plusieurs-coachs"],
+)
+def test_the_reserved_block_alert_names_the_group_the_case_and_every_coach(
+    links: tuple[tuple[str, str], ...],
+    off_coaches: tuple[str, ...],
+    reason: str,
+    causes: list[tuple[str, str]],
+) -> None:
+    """Une seule alerte par case, sur le groupe : les alertes par équipe sont absorbées, la durée est la plus longue
+    des verrous des membres, ``teamId`` est nul, et le panneau ouvre la case à partir de ses coordonnées."""
+    result = _solve_group(
+        *(_anna_off(coach_id=coach) for coach in off_coaches),
+        locks=[_nord_lock("A", duration=60), _nord_lock("B")],
+        links=links,
+    )
+
+    alert = _only_sacrifice_of_kind(result, "coach_unavailability")
+    assert len(_diagnostics_of(result, "rule_sacrificed")) == 1, f"une seule alerte : {result['diagnostics']}"
+    assert alert["id"] == "rule-sacrificed-block-Nord|1|18:00"
+    assert alert["message"] == f"Séance fixée du groupe A, B maintenue (Nord, lundi 18:00, 1h30) {reason}"
+    assert alert["teamId"] is None
+    assert (alert["venueId"], alert["dayOfWeek"], alert["startTime"]) == ("Nord", MONDAY, "18:00")
+    assert [(c["kind"], c["constraintId"], c["label"], c["count"]) for c in alert["causes"]] == [
+        ("coach_unavailability", constraint_id, label, 1) for constraint_id, label in causes
+    ]
+    assert alert["suggestions"] == [GROUP_ALERT_SUGGESTION]
+
+
+def test_the_reserved_block_alert_speaks_for_the_widest_group_of_the_case() -> None:
+    """Toute l'union absente, {A,B} et {A,B,C} réservés sur la case : une alerte, au nom du groupe le plus large."""
+    result = _nested_on_monday(_anna_off(), _anna_off(coach_id="ben"), _anna_off(coach_id="chloe"))
+
+    alerts = _diagnostics_of(result, "rule_sacrificed")
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    assert [alert["message"] for alert in alerts] == [
+        "Séance fixée du groupe A, B, C maintenue (Nord, lundi 18:00, 1h30) alors qu'aucun coach du groupe n'est "
+        "disponible (Anna Martin, Ben Durand, Chloé Petit)."
+    ]
+
+
+def test_the_group_alert_is_dropped_when_no_schedule_comes_out() -> None:
+    """Un autre motif fait échouer la génération (D : jour imposé où son coach est absent) : « maintenue » serait
+    faux sans planning. L'alerte du groupe est écartée, pas rétrogradée, et celles des membres restent absorbées."""
+    result = _solve_group(
+        _anna_off(),
+        _anna_off(coach_id="ben"),
+        coach_availability("off-chloe", "chloe", unavailable_days=[THURSDAY]),
+        team_constraint(
+            constraint_id="forced-d",
+            team_id="D",
+            family="DAY",
+            rule_type="HARD",
+            config={"forcedDays": [THURSDAY]},
+            name="Jeudi imposé",
+        ),
+        locks=[_nord_lock("A"), _nord_lock("B")],
+        links=(("A", "anna"), ("B", "ben"), ("D", "chloe")),
+        teams=[make_team("A"), make_team("B"), make_team("D")],
+        venues=[make_venue("Nord", [(MONDAY, "18:00")]), make_venue("Sud", [(THURSDAY, "18:00")])],
+    )
+
+    assert result["status"] == "failed", f"le conflit de D reste un échec : {result['diagnostics']}"
+    assert [d["message"] for d in result["diagnostics"] if "maintenue" in str(d.get("message"))] == []
 
 
 def test_a_day_whose_every_slot_is_cut_for_the_employees_is_called_impossible() -> None:
@@ -321,6 +471,47 @@ def test_a_lock_cut_by_an_unavailability_is_kept_without_any_new_diagnostic() ->
     assert {(d["id"], d["message"]) for d in with_rule["diagnostics"]} == {
         (d["id"], d["message"]) for d in without_rule["diagnostics"]
     }
+
+
+def _verdict_on_absent_group(*at_monday: dict[str, Any]) -> dict[str, Any]:
+    """C passe du mardi au mercredi, sur un planning où A et B sont ensemble lundi, Anna et Ben absents."""
+    payload = make_payload(
+        teams=[make_team("A"), make_team("B"), make_team("C")],
+        venues=[make_venue("Nord", [(MONDAY, "18:00"), (TUESDAY, "18:00"), (WEDNESDAY, "18:00")])],
+        coaches=_coaches(),
+        constraints=[
+            team_coach("tc-a", "A", "anna"),
+            team_coach("tc-b", "B", "ben"),
+            _anna_off(),
+            _anna_off(coach_id="ben"),
+        ],
+        slot_templates=list(at_monday),
+        timeout=5,
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+    return validate_assignment(
+        ValidateAssignmentsInputSchema.model_validate(
+            as_validate_payload(
+                {**payload, "candidate": _case("C", "Nord", WEDNESDAY), "reference": _case("C", "Nord", TUESDAY)}
+            )
+        )
+    )
+
+
+def test_moving_another_team_stays_accepted_on_a_schedule_carrying_the_absent_reserved_group() -> None:
+    """Après une génération avec alerte, le groupe réservé sans coach ne fige pas le planning : C se déplace."""
+    verdict = _verdict_on_absent_group(_locked("A", "Nord", MONDAY), _locked("B", "Nord", MONDAY))
+
+    assert verdict["valid"] is True, f"déplacer une autre équipe reste permis : {verdict['violations']}"
+    assert "baseline_infeasible" not in {v["rule"] for v in verdict["violations"]}
+
+
+def test_moving_another_team_stays_accepted_after_unlocking_the_absent_group() -> None:
+    """Geste inverse : A et B déverrouillés restent là, figés, sans coach au début. La base reste faisable."""
+    verdict = _verdict_on_absent_group(_frozen("A", "Nord", MONDAY), _frozen("B", "Nord", MONDAY))
+
+    assert verdict["valid"] is True, f"déplacer une autre équipe reste permis : {verdict['violations']}"
+    assert "baseline_infeasible" not in {v["rule"] for v in verdict["violations"]}
 
 
 # ── 2.3 Candidat d'un déplacement : le refus dit quand le coach manque ───────────────────────────────
