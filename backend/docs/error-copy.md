@@ -82,6 +82,11 @@ recréerait une deuxième maison.
 le CORPS BRUT manque « d'accès » ou « L'indisponibilité ». Décoder le JSON et lire
 `violations[0].message`, comme le fait le consommateur réel.
 
+Exemple de copie « cause + geste » : le refus de pose hors accès match (`FixtureStateProcessor::assertVenueAccessAllowed`)
+nomme le gymnase et la DATE (jour férié signalé) puis le geste — « ouvrez-le ce jour-là depuis le panneau
+du match » — et non plus un renvoi vers l'écran Configuration ; il ne tombe qu'à une vraie pose, pas aux
+gestes de suivi qui renvoient le match à l'identique.
+
 ## Intouchables (ne relèvent pas de la copie humaine)
 
 - **Codes machine** : toute clé `'code' => …` et sa valeur (`generation_failed`, `stuck_timeout`,
