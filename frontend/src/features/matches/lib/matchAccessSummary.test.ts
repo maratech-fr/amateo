@@ -8,6 +8,8 @@ const win = (over: Partial<VenueMatchWindow> & { startTime: string; endTime: str
   venueId: "v1",
   dayOfWeek: null,
   appliesOnPublicHolidays: false,
+  openingDate: null,
+  label: null,
   ...over,
 });
 

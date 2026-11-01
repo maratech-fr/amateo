@@ -30,25 +30,27 @@ class SerializableModel(BaseModel):
 
 
 class MatchAccessWindowSchema(SerializableModel):
-    """A venue's MATCH access window (city-hall grant): same-day range on either a weekday
-    OR the public-holiday line.
+    """A venue's MATCH access window (city-hall grant): same-day range on a weekday, the
+    public-holiday line, OR one precise date.
 
     PR2 « jours fériés » (CONTRACT_VERSION 1.7) — EXACTLY ONE of:
     - ``dayOfWeek`` (ISO 1..7) — a weekday line; or
     - ``appliesOnPublicHolidays=True`` with ``dayOfWeek`` omitted — the « Jours fériés » line,
-      used instead of the weekday window when the match date is a public holiday.
+      used instead of the weekday window when the match date is a public holiday; or
+    - ``openingDate`` (CONTRACT_VERSION 1.9) — a dated opening, which ADDS to the lines of its date.
     """
 
     day_of_week: int | None = Field(default=None, alias="dayOfWeek", ge=1, le=7)
     applies_on_public_holidays: bool = Field(default=False, alias="appliesOnPublicHolidays")
+    opening_date: date | None = Field(default=None, alias="openingDate")
     start: time
     end: time
 
     @model_validator(mode="after")
-    def _exactly_one_of_day_or_holiday(self) -> MatchAccessWindowSchema:
-        has_day = self.day_of_week is not None
-        if has_day == self.applies_on_public_holidays:
-            msg = "a match access window targets a weekday OR public holidays — exactly one of the two"
+    def _exactly_one_target(self) -> MatchAccessWindowSchema:
+        targets = [self.day_of_week is not None, self.applies_on_public_holidays, self.opening_date is not None]
+        if sum(targets) != 1:
+            msg = "a match access window targets a weekday, public holidays OR a date — exactly one of the three"
             raise ValueError(msg)
         return self
 
@@ -175,6 +177,9 @@ class MatchSchema(SerializableModel):
     - TO_PLACE — HOME, UNPLACED (or SOLVER-placed being re-solved): the solver
       picks (venue, kickoff). `currentVenueId`/`currentKickoff` carry the
       previous SOLVER placement for the stability bonus + hint.
+      `importedVenueId`/`importedKickoff` (CONTRACT_VERSION 1.9) carry the position the league
+      file gave: kept when legal, even off the 15-minute grid (W_IMPORTED_POSITION), ignored
+      otherwise. Both or neither: one alone is no position.
     - FIXED — HOME already anchored (manual placement / submitted / validated):
       consumes its venue slot, NEVER moves.
     - AWAY — informative only, and IGNORED by the placement solver since P4-240 ③
@@ -192,6 +197,8 @@ class MatchSchema(SerializableModel):
     kickoff: time | None = None
     current_venue_id: str | None = Field(default=None, alias="currentVenueId")
     current_kickoff: time | None = Field(default=None, alias="currentKickoff")
+    imported_venue_id: str | None = Field(default=None, alias="importedVenueId")
+    imported_kickoff: time | None = Field(default=None, alias="importedKickoff")
 
     @model_validator(mode="after")
     def _fixed_is_anchored(self) -> MatchSchema:
@@ -230,7 +237,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "1.8"
+    version: str = "1.9"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

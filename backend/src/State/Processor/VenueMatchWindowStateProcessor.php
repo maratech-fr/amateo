@@ -63,6 +63,12 @@ class VenueMatchWindowStateProcessor extends AbstractStateProcessor
         // PR2 (Q1 option c) — la 8ᵉ ligne « Jours fériés » : pas de jour de semaine, un
         // drapeau à true. Omis ⇒ false (ligne de jour de semaine, comportement historique).
         $entity->setAppliesOnPublicHolidays(true === $input->appliesOnPublicHolidays);
+        if (null !== $input->openingDate) {
+            // Une date hors saison reste acceptée : l'avertissement vit à l'écran.
+            $entity->setOpeningDate(new DateTimeImmutable($input->openingDate));
+            $label = trim((string) $input->label);
+            $entity->setLabel('' === $label ? null : $label);
+        }
 
         if (null !== $input->startTime) {
             $entity->setStartTime(new DateTimeImmutable($input->startTime));
@@ -72,11 +78,11 @@ class VenueMatchWindowStateProcessor extends AbstractStateProcessor
         }
 
         $this->assertVenueInScope($entity->getVenueId());
-        // PR2 — EXACTEMENT l'un des deux : soit un jour de la semaine (dayOfWeek), soit la
-        // ligne « Jours fériés » (appliesOnPublicHolidays). Les deux combinés ou aucun des
-        // deux = 422 AVEC violation via `refuse()` (jamais l'exception nue muette).
-        if ((null !== $entity->getDayOfWeek()) === $entity->isAppliesOnPublicHolidays()) {
-            $this->refuse('Une fenêtre d\'accès aux matchs vise soit un jour de la semaine, soit les jours fériés — exactement l\'un des deux.');
+        // EXACTEMENT l'un des trois : un jour de la semaine, la ligne « Jours fériés », ou une date
+        // précise. Plusieurs ou aucun = 422 AVEC violation via `refuse()` (jamais l'exception nue muette).
+        $targets = array_filter([null !== $entity->getDayOfWeek(), $entity->isAppliesOnPublicHolidays(), $entity->getOpeningDate() instanceof DateTimeImmutable]);
+        if (1 !== \count($targets)) {
+            $this->refuse('Une ligne d\'accès match vise soit un jour de la semaine, soit les jours fériés, soit une date précise — exactement l\'un des trois.');
         }
         // Same-day window, no midnight crossing (P4-61 precedent) — end is
         // exclusive, so start < end is the whole rule.

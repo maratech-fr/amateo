@@ -15,8 +15,8 @@ class VenueMatchWindowInput
     public ?string $venueId = null;
 
     /**
-     * Weekday line: ISO 1..7. NULL for the « Jours fériés » line (PR2). Exactly one of
-     * dayOfWeek / appliesOnPublicHolidays must be set — enforced in the state processor
+     * Weekday line: ISO 1..7. NULL for the « Jours fériés » line and for a dated opening.
+     * Exactly one of dayOfWeek / appliesOnPublicHolidays / openingDate must be set — enforced in the state processor
      * via `$this->refuse(...)` (a 422 with a violation, never a muet one).
      */
     #[Assert\Range(min: 1, max: 7)]
@@ -26,6 +26,16 @@ class VenueMatchWindowInput
     /** PR2 (Q1 option c) — TRUE marks the « Jours fériés » line (no weekday). */
     #[Groups(['write'])]
     public ?bool $appliesOnPublicHolidays = null;
+
+    /** Dated opening: this venue, this day only (Y-m-d). */
+    #[Assert\Date]
+    #[Groups(['write'])]
+    public ?string $openingDate = null;
+
+    /** Reason of a dated opening (« Coupe »). */
+    #[Assert\Length(max: 120)]
+    #[Groups(['write'])]
+    public ?string $label = null;
 
     #[Assert\NotBlank]
     #[Assert\Regex(pattern: '/^([01]\d|2[0-3]):[0-5]\d$/')]

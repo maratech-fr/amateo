@@ -230,6 +230,10 @@ final class SeasonTransitionService
         // la convention mairie se renouvelle. Les indisponibilités (VenueUnavailability),
         // elles, sont des faits datés one-shot : JAMAIS recopiées.
         foreach ($this->rows(VenueMatchWindow::class, $clubId, $sourceId) as $window) {
+            // Une ouverture datée est un fait d'un jour, comme une indisponibilité : jamais recopiée.
+            if ($window->getOpeningDate() instanceof DateTimeImmutable) {
+                continue;
+            }
             $newVenueId = $venueMap[$window->getVenueId()] ?? null;
             if (null === $newVenueId) {
                 continue; // dangling venue reference — nothing to attach to.

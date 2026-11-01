@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Service\Conflicts;
 
 use App\Entity\Fixture;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\VenueMatchWindow;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
 use App\Service\ConflictRadarLoader;
+use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
+use DateInterval;
 use DateTimeImmutable;
 
 /**
@@ -26,6 +30,10 @@ use DateTimeImmutable;
  */
 final class VenueConflicts
 {
+    public function __construct(
+        private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
+    ) {}
+
     /**
      * Severity 1 — two fixtures on the SAME venue whose VENUE windows overlap.
      * The manual loop lets this happen on purpose (a derogation or the league
@@ -113,15 +121,14 @@ final class VenueConflicts
     }
 
     /**
-     * Severity 4 (dette ii) — a placed HOME fixture whose kickoff no longer sits
-     * in any access window of (venue, weekday): the window moved AFTER the
-     * placement. PANEL rule mirrored exactly (kickoff point, half-open end,
-     * no window anywhere = data not adopted = nothing to enforce).
+     * Severity 4 (dette ii) — a placed HOME fixture whose kickoff no longer sits in any
+     * access window APPLICABLE on its date: the window moved AFTER the placement. PANEL rule
+     * mirrored exactly (kickoff point, half-open end). A club without any NON-dated line has
+     * not adopted the access windows: nothing to enforce, a dated opening alone changes nothing.
      *
-     * PR2 — un match un jour FÉRIÉ se juge contre la seule ligne « Jours fériés »
-     * (`appliesOnPublicHolidays`) du gymnase, JAMAIS contre la fenêtre du jour de semaine (la
-     * ligue a posé ce jour exprès). Sans ligne férié déclarée ce jour-là, le coup d'envoi n'est
-     * dans aucune fenêtre applicable ⇒ ACCESS_WINDOW_LOST (« Hors accès match », vraie info).
+     * Le prédicat est {@see MatchConflictDetector::kickoffInsideAccess} : ouvertures datées de ce
+     * jour ∪ (férié ? ligne « Jours fériés » : lignes du jour de semaine). Sans plage applicable ce
+     * jour-là, le coup d'envoi n'est dans aucune ⇒ ACCESS_WINDOW_LOST (« Hors accès match »).
      *
      * @param list<Fixture>          $fixtures
      * @param list<VenueMatchWindow> $matchWindows
@@ -131,7 +138,8 @@ final class VenueConflicts
      */
     public function accessWindowLostConflicts(array $fixtures, array $matchWindows, array $publicHolidays = []): array
     {
-        if ([] === $matchWindows) {
+        $windowArrays = array_map(MatchConflictDetector::windowArray(...), $matchWindows);
+        if (!MatchConflictDetector::hasWeeklyAccess($windowArrays)) {
             return [];
         }
 
@@ -142,36 +150,15 @@ final class VenueConflicts
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || null === $venueId || !$kickoffTime instanceof DateTimeImmutable) {
                 continue;
             }
-            $day = (int) $fixture->getMatchDate()->format('N');
-            $kickoff = $kickoffTime->format('H:i');
-            $isHoliday = \in_array($fixture->getMatchDate()->format('Y-m-d'), $publicHolidays, true);
-            $windowArrays = array_map(static fn (VenueMatchWindow $w): array => [
-                'venueId' => $w->getVenueId(),
-                'dayOfWeek' => $w->getDayOfWeek(),
-                'startTime' => $w->getStartTime()->format('H:i'),
-                'endTime' => $w->getEndTime()->format('H:i'),
-                'appliesOnPublicHolidays' => $w->isAppliesOnPublicHolidays(),
-            ], $matchWindows);
-            $inside = $isHoliday
-                ? MatchConflictDetector::kickoffInsideHolidayWindow($venueId, $kickoff, $windowArrays)
-                : MatchConflictDetector::kickoffInsideWindow($venueId, $day, $kickoff, $windowArrays);
-            if ($inside) {
+            $date = $fixture->getMatchDate()->format('Y-m-d');
+            $isHoliday = \in_array($date, $publicHolidays, true);
+            if (MatchConflictDetector::kickoffInsideAccess($venueId, $date, $isHoliday, $kickoffTime->format('H:i'), $windowArrays)) {
                 continue;
             }
-            // Les accès match du GYMNASE de la fixture, de quoi dire à l'écran « placé hors des
-            // accès (samedi 14:00–18:00, …) ». Un jour FÉRIÉ on montre les lignes « Jours fériés »
-            // du gymnase (les seules applicables ce jour) ; sinon les lignes de jour de semaine,
-            // jour du match d'abord. Champ ADDITIF (hors identité : l'empreinte reste TYPE:fixtureId).
-            $venueWindows = array_values(array_filter(
-                $windowArrays,
-                static fn (array $w): bool => $w['venueId'] === $venueId
-                    && ($isHoliday ? $w['appliesOnPublicHolidays'] : !$w['appliesOnPublicHolidays']),
-            ));
-            usort($venueWindows, static fn (array $a, array $b): int => [
-                $a['dayOfWeek'] === $day ? 0 : 1, $a['dayOfWeek'] ?? 8, $a['startTime'],
-            ] <=> [
-                $b['dayOfWeek'] === $day ? 0 : 1, $b['dayOfWeek'] ?? 8, $b['startTime'],
-            ]);
+            // Les plages applicables à cette date, de quoi dire à l'écran « placé hors des accès
+            // (le 11 nov. 14:00–20:00) ». Champ ADDITIF (hors identité : l'empreinte reste TYPE:fixtureId).
+            $applicable = MatchConflictDetector::applicableWindows($venueId, $date, $isHoliday, $windowArrays);
+            usort($applicable, static fn (array $a, array $b): int => $a['startTime'] <=> $b['startTime']);
             $conflicts[] = [
                 'type' => 'ACCESS_WINDOW_LOST',
                 'severity' => 4,
@@ -182,7 +169,76 @@ final class VenueConflicts
                     'startTime' => $w['startTime'],
                     'endTime' => $w['endTime'],
                     'appliesOnPublicHolidays' => $w['appliesOnPublicHolidays'],
-                ], $venueWindows),
+                    'openingDate' => $w['openingDate'],
+                ], $applicable),
+            ];
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * Severity 5 — a placed HOME fixture (competition or friendly) whose VENUE window overlaps a
+     * session of ANOTHER team in the effective schedule, same venue. A signal, never a move: one
+     * item per fixture, listing every session. The session of the match's own team does not count
+     * (same rule as MATCH_TRAINING), nor does a public holiday: no session that day, without any
+     * period exception (same place in the reading as MATCH_TRAINING).
+     *
+     * @param list<FixtureView>                                                                      $views
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $activePeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
+     * @param list<string>                                                                           $publicHolidays  dates fériées (Y-m-d)
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function venueTrainingOverlapConflicts(array $views, ?string $seasonScheduleId, array $activePeriods, array $slotsBySchedule, array $publicHolidays = []): array
+    {
+        $conflicts = [];
+        foreach ($views as $view) {
+            $fixture = $view['fixture'];
+            $venueId = $fixture->getVenueId();
+            if (FixtureHomeAway::HOME !== $fixture->getHomeAway()
+                || null === $venueId
+                || !\in_array($fixture->getStatus(), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
+            ) {
+                continue;
+            }
+            $date = $fixture->getMatchDate();
+            if (\in_array($date->format('Y-m-d'), $publicHolidays, true)) {
+                continue;
+            }
+            $scheduleId = $this->effectiveScheduleResolver->resolve($date, $activePeriods, $seasonScheduleId);
+            if (null === $scheduleId) {
+                continue;
+            }
+
+            $trainings = [];
+            foreach ($slotsBySchedule[$scheduleId] ?? [] as $slot) {
+                if ($slot->getVenueId() !== $venueId
+                    || $slot->getDayOfWeek() !== (int) $date->format('N')
+                    || $slot->getTeamId() === $fixture->getTeamId()
+                ) {
+                    continue;
+                }
+                $slotStart = $slot->getStartTime();
+                $start = $date->setTime((int) $slotStart->format('H'), (int) $slotStart->format('i'));
+                $end = $start->add(new DateInterval('PT' . $slot->getDurationMinutes() . 'M'));
+                if (!ConflictMoments::overlaps($view['venueWindow'], ['start' => $start, 'end' => $end])) {
+                    continue;
+                }
+                $trainings[] = ['teamId' => $slot->getTeamId(), 'start' => $start->format('H:i'), 'end' => $end->format('H:i')];
+            }
+            if ([] === $trainings) {
+                continue;
+            }
+            usort($trainings, static fn (array $a, array $b): int => [$a['start'], $a['teamId']] <=> [$b['start'], $b['teamId']]);
+            $conflicts[] = [
+                'type' => 'VENUE_TRAINING_OVERLAP',
+                'severity' => 5,
+                'venueId' => $venueId,
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'matchEnd' => $view['venueWindow']['end']->format('H:i'),
+                'trainings' => $trainings,
             ];
         }
 

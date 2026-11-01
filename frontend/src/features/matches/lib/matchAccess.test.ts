@@ -4,7 +4,7 @@ import type { VenueClosure, VenueMatchWindow, VenueUnavailability } from "../api
 import { venueAccessError } from "./matchAccess";
 
 // Une fenêtre d'accès match le samedi (jour ISO 6), 14:00–18:00, sur venue-1.
-const windows: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }];
+const windows: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }];
 const SATURDAY = "2026-10-03";
 const SUNDAY = "2026-10-04";
 

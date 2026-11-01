@@ -22,6 +22,7 @@ import { useTravelStream } from "@/shared/lib/travelStream";
 import { toast } from "@/shared/stores/toastStore";
 
 import { MatchWindowsEditor } from "@/features/matches/MatchWindowsEditor";
+import { matchVenueIds } from "@/features/matches/lib/matchAccess";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
@@ -401,7 +402,7 @@ function VenuesEditor() {
   // Les fenêtres match du gymnase affiché : la grille les rend en fantôme, la légende
   // n'apparaît que s'il y en a. Une seule dérivation pour les deux — sinon la légende
   // et la grille peuvent finir par ne pas parler du même gymnase.
-  const venueMatchWindows = null === selected ? [] : (matchWindowsQuery.data ?? []).filter((w) => w.venueId === selected.id);
+  const venueMatchWindows = null === selected ? [] : (matchWindowsQuery.data ?? []).filter((w) => w.venueId === selected.id && null == w.openingDate);
 
   // Drop pending colours that the refetched venue list now carries.
   useEffect(() => {
@@ -521,9 +522,9 @@ function VenuesEditor() {
   // P1-4 PR B — un gymnase à fenêtre MATCH est légitime sans créneau
   // d'entraînement (loué pour les matchs seulement) : la règle l'épargne, ici
   // comme au gate (useStepValidation — les deux sites bougent ensemble, §7.2).
-  const matchVenueIds = new Set((matchWindowsQuery.data ?? []).map((w) => w.venueId));
+  const matchVenues = matchVenueIds(matchWindowsQuery.data ?? []);
   // D-24 : le prédicat vient de la porte — les trois sites partagent la RÈGLE, pas le libellé.
-  const emptyVenues = venuesWithoutSlot(venues, slots, matchVenueIds);
+  const emptyVenues = venuesWithoutSlot(venues, slots, matchVenues);
 
   return (
     <div>

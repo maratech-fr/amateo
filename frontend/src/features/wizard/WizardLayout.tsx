@@ -33,6 +33,7 @@ import { WizardFooterContext } from "./lib/footerSlot";
 import { type StepValidation, WIZARD_STEPS, type WizardStepId } from "./lib/steps";
 import { type RailState, railState } from "./lib/railState";
 import { useStepValidation } from "./lib/useStepValidation";
+import { matchVenueIds } from "@/features/matches/lib/matchAccess";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 
 import { useVenueSlots, useWizardCoaches, useWizardTeams, useWizardVenues } from "./queries";
@@ -263,7 +264,7 @@ export function WizardPage() {
     positioned.current = true;
     const venueList = venues.data ?? [];
     const slotList = slots.data ?? [];
-    const matchVenues = new Set((matchWindows.data ?? []).map((w) => w.venueId));
+    const matchVenues = matchVenueIds(matchWindows.data ?? []);
     let gap: WizardStepId | null = null;
     // P2-21 lot A — des équipes importées AUTOMATIQUEMENT que le gestionnaire
     // n'a pas encore vues : l'atterrissage vise Équipes (la modale d'annonce y

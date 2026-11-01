@@ -73,7 +73,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.8';
+    public const string CONTRACT_VERSION = '1.9';
 
     /**
      * Budget du solveur PAR SEMAINE ISO (secondes). Depuis ENG-50 le moteur découpe la
@@ -212,7 +212,16 @@ final class MatchPlacementPayloadBuilder
 
         // Venues with their capacity data.
         $windowsByVenue = [];
+        // Une ouverture datée ne part que si sa date porte un match à placer, fenêtre du run ou pas :
+        // la saison peut en compter plus que le plafond moteur par gymnase. Le motif ne part jamais.
+        $datesToPlace = array_column(array_filter($matchRows, static fn (array $row): bool => 'TO_PLACE' === $row['kind']), 'date');
+        $datedWindows = [];
         foreach ($matchWindows as $window) {
+            if ($window->getOpeningDate() instanceof DateTimeImmutable) {
+                $datedWindows[] = $window;
+
+                continue;
+            }
             // PR2 — chaque fenêtre porte `appliesOnPublicHolidays` (additif) ; la ligne « Jours
             // fériés » a un `dayOfWeek` NULL + ce drapeau à true, une ligne de jour de semaine le
             // porte à false. Le moteur choisit la fenêtre à lire selon que la date du match est fériée.
@@ -221,6 +230,19 @@ final class MatchPlacementPayloadBuilder
                 'start' => $window->getStartTime()->format('H:i'),
                 'end' => $window->getEndTime()->format('H:i'),
                 'appliesOnPublicHolidays' => $window->isAppliesOnPublicHolidays(),
+            ];
+        }
+        foreach ($datedWindows as $window) {
+            $openingDate = $window->getOpeningDate()?->format('Y-m-d');
+            if (!\in_array($openingDate, $datesToPlace, true)) {
+                continue;
+            }
+            $windowsByVenue[$window->getVenueId()][] = [
+                'dayOfWeek' => null,
+                'start' => $window->getStartTime()->format('H:i'),
+                'end' => $window->getEndTime()->format('H:i'),
+                'appliesOnPublicHolidays' => false,
+                'openingDate' => $openingDate,
             ];
         }
         $unavailabilitiesByVenue = [];
@@ -452,11 +474,21 @@ final class MatchPlacementPayloadBuilder
         // → FIXED (ancre, sa salle protégée, il ne bouge pas — le résultat ne le réécrit
         // pas, il n'est jamais renvoyé par le moteur) ; non posé → null (absent du payload).
         if (!$isFriendly && $inWindow && (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced)) {
-            return $base + [
+            $row = $base + [
                 'kind' => 'TO_PLACE',
                 'currentVenueId' => $isSolverPlaced ? $fixture->getVenueId() : null,
                 'currentKickoff' => $isSolverPlaced ? $fixture->getKickoffTime()?->format('H:i') : null,
             ];
+            // Contrat 1.9 — un match importé confie sa position au moteur, qui la garde si elle est
+            // légale. Valeurs de l'entité : un match déjà posé par le solveur et resté légal n'est donc
+            // pas réoptimisé. Les deux ou rien : une heure sans gymnase n'est pas une position.
+            $importedKickoff = $fixture->getKickoffTime();
+            if (null !== $fixture->getExternalRef() && null !== $fixture->getVenueId() && $importedKickoff instanceof DateTimeImmutable) {
+                $row['importedVenueId'] = $fixture->getVenueId();
+                $row['importedKickoff'] = $importedKickoff->format('H:i');
+            }
+
+            return $row;
         }
 
         // Anchors — competition matches placed manually / submitted / validated,

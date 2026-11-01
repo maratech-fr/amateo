@@ -14,7 +14,8 @@ import type { VenueMatchWindow } from "../api";
  * telles que servies (HH:MM), séparées d'un tiret demi-cadratin. Sans fenêtre : « aucun accès match ».
  *
  * PR2 — la ligne « Jours fériés » (dayOfWeek nul, `appliesOnPublicHolidays`) est regroupée à part,
- * libellée « fériés » et placée EN DERNIER (après dimanche).
+ * libellée « fériés » et placée EN DERNIER (après dimanche). Une ouverture datée sort des groupes :
+ * elle se compte en suffixe (« · 1 ouverture exceptionnelle »).
  */
 
 /** Abréviation minuscule d'un jour ISO depuis le foyer unique (« Sam » → « sam. »). */
@@ -24,17 +25,19 @@ const DAY_ABBR = new Map(DAYS.map((d) => [d.n, `${d.label.toLowerCase()}.`]));
 const HOLIDAY_KEY = 8;
 
 export function formatMatchAccessWindows(windows: VenueMatchWindow[]): string {
+  const weekly = windows.filter((w) => null == w.openingDate);
+  const openings = windows.length - weekly.length;
   if (0 === windows.length) {
     return "aucun accès match";
   }
   const byDay = new Map<number, VenueMatchWindow[]>();
-  for (const window of windows) {
+  for (const window of weekly) {
     const key = window.appliesOnPublicHolidays ? HOLIDAY_KEY : (window.dayOfWeek ?? HOLIDAY_KEY);
     const bucket = byDay.get(key) ?? [];
     bucket.push(window);
     byDay.set(key, bucket);
   }
-  return [...byDay.keys()]
+  const groups = [...byDay.keys()]
     .sort((a, b) => a - b)
     .map((day) => {
       const ranges = (byDay.get(day) ?? [])
@@ -44,6 +47,9 @@ export function formatMatchAccessWindows(windows: VenueMatchWindow[]): string {
         .join(", ");
       const label = HOLIDAY_KEY === day ? "fériés" : (DAY_ABBR.get(day) ?? "?");
       return `${label} ${ranges}`;
-    })
-    .join(" · ");
+    });
+  if (openings > 0) {
+    groups.push(1 === openings ? "1 ouverture exceptionnelle" : `${openings} ouvertures exceptionnelles`);
+  }
+  return groups.join(" · ");
 }

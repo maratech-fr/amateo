@@ -19,6 +19,7 @@ import { formatMatchAccessWindows } from "./lib/matchAccessSummary";
 import { VenueLabelsSection } from "./VenueLabelsSection";
 import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
 import { MatchDurationsEditor } from "./MatchDurationsEditor";
+import { proposedOpeningRange } from "./lib/matchAccess";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
 import { useCompetitions, useSportCategoryDurations, useTeams, useVenueLabelInventory, useVenueMatchWindows, useVenues } from "./queries";
 
@@ -91,6 +92,9 @@ export function ConfigurationPage() {
   // M11 (retours Nico, BCCL 2026-10-27) — deep-link depuis un conflit « Hors accès match » :
   // `?acces=<venueId>` ouvre la section Accès match SUR l'éditeur de ce gymnase (état dans l'URL).
   const accesVenueId = searchParams.get("acces");
+  // `&date=&debut=` (lien « Ouvrir ce gymnase ce jour-là ») : la ligne d'ouverture arrive préremplie.
+  const accesDate = searchParams.get("date");
+  const prefillOpening = null === accesVenueId || null === accesDate ? undefined : { date: accesDate, ...proposedOpeningRange(searchParams.get("debut"), 0) };
   const openSection = null !== accesVenueId ? "reglages" : decodeSectionParam(searchParams);
 
   const setOpenSection = (section: ConfigSection | null): void => {
@@ -101,6 +105,8 @@ export function ConfigurationPage() {
   const clearAccesDeepLink = (): void => {
     const next = new URLSearchParams(searchParams);
     next.delete("acces");
+    next.delete("date");
+    next.delete("debut");
     next.set("section", "reglages");
     setSearchParams(next, { replace: true });
   };
@@ -153,7 +159,7 @@ export function ConfigurationPage() {
       {/* 3. L'accès match des gymnases — clé URL `reglages` conservée. (Les adversaires
           ont leur propre onglet depuis C8 — `/matchs/adversaires`.) */}
       <AccordionSection {...sectionProps("reglages")} title={sectionTitle("Accès match", accessSummary(matchWindows.data, venuesData))}>
-        <SectionBody query={matchWindows} render={(windows) => <MatchAccessSection venues={venuesData} windows={windows} deepLinkVenueId={accesVenueId} onDeepLinkClosed={clearAccesDeepLink} />} />
+        <SectionBody query={matchWindows} render={(windows) => <MatchAccessSection venues={venuesData} windows={windows} deepLinkVenueId={accesVenueId} prefillOpening={prefillOpening} onDeepLinkClosed={clearAccesDeepLink} />} />
       </AccordionSection>
 
       {/* 5. Les libellés FFBB des gymnases — voir/retirer les alias de salle (P4-196). */}
@@ -174,12 +180,15 @@ function MatchAccessSection({
   venues,
   windows,
   deepLinkVenueId = null,
+  prefillOpening,
   onDeepLinkClosed,
 }: {
   venues: Venue[];
   windows: VenueMatchWindow[];
   /** M11 — gymnase à éditer d'emblée, porté par `?acces=` ; `null` = aucune ouverture profonde. */
   deepLinkVenueId?: string | null;
+  /** La ligne d'ouverture préremplie du gymnase du deep-link. */
+  prefillOpening?: { date: string; start: string; end: string };
   /** Appelé à la fermeture d'un éditeur ouvert par le deep-link (nettoie `?acces=`). */
   onDeepLinkClosed?: () => void;
 }) {
@@ -280,7 +289,7 @@ function MatchAccessSection({
               Les créneaux accordés les jours de match — un gymnase sans fenêtre n'accueille pas de matchs. Même éditeur que
               l'étape Gymnases du wizard.
             </p>
-            <MatchWindowsEditor venueId={editingVenue.id} />
+            <MatchWindowsEditor key={editingVenue.id} venueId={editingVenue.id} prefillOpening={editingVenue.id === deepLinkVenueId ? prefillOpening : undefined} />
           </div>
         </Modal>
       ) : null}

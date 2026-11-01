@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\VenueMatchWindowRepository;
+use App\Service\MatchConflictDetector;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -17,7 +18,9 @@ use Doctrine\ORM\Mapping as ORM;
  *
  * Season-scoped fact, NOT a period setting: no schedulePlanId (contrary to
  * VenueTrainingSlot's loaned slots). Copied on season transition — the city
- * hall convention renews.
+ * hall convention renews. EXCEPT a dated opening (openingDate set): a one-shot
+ * fact of one day, never copied, and it does not make a club « adopt » the
+ * access windows ({@see MatchConflictDetector::hasWeeklyAccess}).
  */
 #[ORM\Entity(repositoryClass: VenueMatchWindowRepository::class)]
 #[ORM\Table(name: 'venue_match_window')]
@@ -52,8 +55,9 @@ class VenueMatchWindow implements TenantOwnedInterface
     /**
      * ISO 1 (Monday) .. 7 (Sunday) — NOT weekend-restricted (Friday-night matches exist).
      * NULL for the « Jours fériés » line (PR2, Q1 option c) : that line carries no weekday
-     * and applies to every official public holiday instead. Exactly one of dayOfWeek /
-     * appliesOnPublicHolidays is set (enforced by the state processor).
+     * and applies to every official public holiday instead, and NULL for a dated opening.
+     * Exactly one of dayOfWeek / appliesOnPublicHolidays / openingDate is set (enforced by
+     * the state processor).
      */
     #[ORM\Column(type: 'smallint', nullable: true)]
     private ?int $dayOfWeek = null;
@@ -65,6 +69,14 @@ class VenueMatchWindow implements TenantOwnedInterface
      */
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $appliesOnPublicHolidays = false;
+
+    /** A dated opening: this venue, this day only. It ADDS to the lines of that date. */
+    #[ORM\Column(type: 'date_immutable', nullable: true)]
+    private ?DateTimeImmutable $openingDate = null;
+
+    /** The reason of a dated opening (« Coupe »). Screen only, never sent to the engine. */
+    #[ORM\Column(type: 'string', length: 120, nullable: true)]
+    private ?string $label = null;
 
     #[ORM\Column(type: 'time_immutable')]
     private DateTimeImmutable $startTime;
@@ -184,6 +196,30 @@ class VenueMatchWindow implements TenantOwnedInterface
     public function setAppliesOnPublicHolidays(bool $appliesOnPublicHolidays): self
     {
         $this->appliesOnPublicHolidays = $appliesOnPublicHolidays;
+
+        return $this;
+    }
+
+    public function getOpeningDate(): ?DateTimeImmutable
+    {
+        return $this->openingDate;
+    }
+
+    public function setOpeningDate(?DateTimeImmutable $openingDate): self
+    {
+        $this->openingDate = $openingDate;
+
+        return $this;
+    }
+
+    public function getLabel(): ?string
+    {
+        return $this->label;
+    }
+
+    public function setLabel(?string $label): self
+    {
+        $this->label = $label;
 
         return $this;
     }

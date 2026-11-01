@@ -27,6 +27,7 @@ export const CONFLICT_FAMILY_LABEL: Record<ConflictType, string> = {
   ACCESS_WINDOW_LOST: "Hors accès match",
   COMPETITION_INCOMPLETE: "Calendrier incomplet",
   VENUE_UNAVAILABLE: "Gymnase indisponible",
+  VENUE_TRAINING_OVERLAP: "Entraînement dans le gymnase",
   AWAY_NO_FOOTPRINT: "Extérieur sans heure",
   FRIENDLY_ON_MATCH_SLOT: "Amical sur créneau match",
   TEAM_LEVEL_MISSING: "Niveau non renseigné",

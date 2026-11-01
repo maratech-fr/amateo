@@ -104,10 +104,14 @@ export const detachVenueLabel = ({ venueId, label }: DetachVenueLabelInput): Pro
 export interface VenueMatchWindow {
   id: string;
   venueId: string;
-  /** ISO 1..7 — NULL for the « Jours fériés » line (PR2). */
+  /** ISO 1..7 — NULL for the « Jours fériés » line (PR2) and for a dated opening. */
   dayOfWeek: number | null;
   /** PR2 — TRUE for the « Jours fériés » line (applies to every public holiday, no weekday). */
   appliesOnPublicHolidays: boolean;
+  /** Une ouverture datée : ce gymnase, ce jour-là seulement (`Y-m-d`). NULL sur une ligne hebdo ou férié. */
+  openingDate: string | null;
+  /** Le motif d'une ouverture datée (« Coupe »). */
+  label: string | null;
   /** HH:MM */
   startTime: string;
   /** HH:MM, same-day, exclusive. */
@@ -161,7 +165,7 @@ export interface UnavailabilityImpactResponse {
 export const getVenueMatchWindows = (): Promise<VenueMatchWindow[]> => collectionAll<VenueMatchWindow>("venue_match_windows");
 
 export const createVenueMatchWindow = (
-  input: { venueId: string; startTime: string; endTime: string } & ({ dayOfWeek: number } | { appliesOnPublicHolidays: true }),
+  input: { venueId: string; startTime: string; endTime: string } & ({ dayOfWeek: number } | { appliesOnPublicHolidays: true } | { openingDate: string; label?: string }),
 ): Promise<VenueMatchWindow> => api.post("venue_match_windows", { json: input }).json<VenueMatchWindow>();
 
 export const deleteVenueMatchWindow = (id: string): Promise<void> => api.delete(`venue_match_windows/${id}`).then(() => undefined);

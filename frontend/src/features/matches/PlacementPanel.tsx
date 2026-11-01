@@ -12,12 +12,14 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import type { ReadState } from "@/shared/lib/readState";
 
-import type { Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow, VenueUnavailability } from "./api";
+import type { Conflict, Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow, VenueUnavailability } from "./api";
 import { isInEnvelope, isoWeekday } from "./lib/envelope";
 import type { EnvelopeResult } from "./lib/envelope";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
-import { dateInsideClosure, matchVenueIds, venueAccessError } from "./lib/matchAccess";
+import { applicableWindows, dateInsideClosure, hasWeeklyAccess, matchVenueIds, proposedOpeningRange, venueAccessError } from "./lib/matchAccess";
 import { unplacedReasonLabel } from "./lib/unplacedReasonLabel";
+import { OpenVenueDialog } from "./OpenVenueDialog";
+import { MATCHES_TEXTS } from "./texts";
 
 /**
  * The read state of the four club-owned guards the placement gesture leans on
@@ -52,6 +54,12 @@ interface PlacementPanelProps {
   categoryLabel: string;
   envelope: EnvelopeResult;
   busy: boolean;
+  /** La durée du match de sa catégorie : elle borne la plage proposée par le raccourci d'ouverture. */
+  matchMinutes: number;
+  /** Les conflits du club : le panneau y lit l'entraînement qui occupe le gymnase de CE match. */
+  conflicts: Conflict[];
+  /** Le nom d'une équipe, pour nommer les séances du signal ; absent = les plages seules. */
+  teamNameOf?: (teamId: string) => string | null;
   onClose: () => void;
   onPlace: (input: PlaceFixtureInput) => void;
   /** P1-4 PR E1 — manual loop on an already-placed match. */
@@ -77,18 +85,51 @@ function Row({ label, value }: { label: string; value: string }) {
 
 /** Envelope guidance line: HARD when the team maps, advisory reference otherwise. */
 function EnvelopeHint({ envelope, kickoff }: { envelope: EnvelopeResult; kickoff: string }) {
+  if (envelope.mapped && envelope.holiday) {
+    return (
+      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Info className="size-3.5" />
+        {MATCHES_TEXTS.leagueHolidayNote}
+      </p>
+    );
+  }
   if (!envelope.mapped) {
     if (0 === envelope.windows.length) {
       return null;
     }
     const windows = envelope.windows.map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
-    return <p className="text-xs text-muted-foreground">Fenêtres ligue (indicatif) : {windows}</p>;
+    return <p className="text-xs text-muted-foreground">{MATCHES_TEXTS.panelEnvelopeHintIndicative(windows)}</p>;
   }
   const ok = isInEnvelope(envelope, kickoff);
   return (
     <p className={`flex items-center gap-1 text-xs ${ok ? "text-success" : "text-warning"}`}>
       {ok ? <Check className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
-      {ok ? "Dans la fenêtre autorisée par la ligue" : "Hors fenêtre autorisée (jour ou heure)"}
+      {ok ? MATCHES_TEXTS.panelEnvelopeOk : MATCHES_TEXTS.panelEnvelopeOut}
+    </p>
+  );
+}
+
+/** Le signal d'un match posé : un entraînement d'une autre équipe occupe son gymnase. Il ne bloque rien. */
+function TrainingOverlapNote({ fixtureId, conflicts, venues, teamNameOf }: { fixtureId: string; conflicts: Conflict[]; venues: Venue[]; teamNameOf?: (teamId: string) => string | null }) {
+  const conflict = conflicts.find((c) => "VENUE_TRAINING_OVERLAP" === c.type && c.fixture?.fixtureId === fixtureId);
+  const trainings = conflict?.trainings ?? [];
+  if (undefined === conflict || 0 === trainings.length) {
+    return null;
+  }
+  const venue = venues.find((v) => v.id === conflict.venueId)?.name ?? MATCHES_TEXTS.panelFallbackVenue;
+  const one = 1 === trainings.length;
+  const details = trainings
+    .map((t) => {
+      const name = teamNameOf?.(t.teamId) ?? null;
+      const range = `${t.start} – ${t.end}`;
+      return null === name ? range : `${range}${one ? "," : ""} ${name}`;
+    })
+    .join(", ");
+  const phrase = one ? MATCHES_TEXTS.trainingOverlapOne(venue, details) : 2 === trainings.length ? MATCHES_TEXTS.trainingOverlapTwo(venue, details) : MATCHES_TEXTS.trainingOverlapMany(trainings.length, venue, details);
+  return (
+    <p className="mt-2 flex items-start gap-1 text-xs text-muted-foreground">
+      <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <span>{phrase}</span>
     </p>
   );
 }
@@ -114,6 +155,9 @@ export function PlacementPanel({
   categoryLabel,
   envelope,
   busy,
+  matchMinutes,
+  conflicts,
+  teamNameOf,
   onClose,
   onPlace,
   onUnplace,
@@ -131,8 +175,16 @@ export function PlacementPanel({
   // fenêtres quelque part (sinon liste complète, donnée non adoptée). Tant que
   // les gardes ne sont pas prêtes, on garde la liste COMPLÈTE (ne jamais filtrer
   // sur une lecture en cours / en échec).
+  // Y restent toujours le gymnase du match (jamais remplacé en silence) et ceux qu'une ouverture
+  // accueille ce jour-là.
+  const isFriendly = null === fixture.competitionId;
+  const adopted = hasWeeklyAccess(matchWindows);
+  const isHoliday = holidays.includes(fixture.matchDate);
   const matchIds = matchVenueIds(matchWindows);
-  const selectableVenues = !guardsReady || 0 === matchIds.size ? venues : venues.filter((v) => matchIds.has(v.id));
+  const openedThatDay = new Set(matchWindows.filter((w) => w.openingDate === fixture.matchDate).map((w) => w.venueId));
+  const selectableVenues = !guardsReady || !adopted ? venues : venues.filter((v) => matchIds.has(v.id) || v.id === fixture.venueId || openedThatDay.has(v.id));
+  const noAccessSubFor = (venueId: string): string | undefined =>
+    guardsReady && adopted && !isFriendly && 0 === applicableWindows(venueId, fixture.matchDate, isHoliday, matchWindows).length ? MATCHES_TEXTS.venueNoAccessThatDay : undefined;
 
   // P4-300 — grisé : l'option d'un gymnase FERMÉ ou INDISPONIBLE à la date du match est inerte,
   // avec une sous-ligne qui dit pourquoi (miroir du refus serveur). Tant que les gardes ne sont
@@ -165,6 +217,7 @@ export function PlacementPanel({
   });
   const [kickoff, setKickoff] = useState(fixture.kickoffTime ?? habit?.kickoffTime ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [openingVenue, setOpeningVenue] = useState<Venue | null>(null);
 
   const placed = "PLACED" === fixture.status;
   // Saisi dans FBI ET Attesté ligue (bascule « validé ligue » en lot — lot L — ou
@@ -178,13 +231,12 @@ export function PlacementPanel({
   // Un amical (competitionId null) n'obéit à aucune enveloppe ligue ni à aucun
   // créneau de match (P4-193, fondateur 2026-09-10) : son placement est LIBRE. Le
   // gymnase indisponible reste le seul refus dur — pour tout le monde.
-  const isFriendly = null === fixture.competitionId;
   const hasKickoff = "" !== kickoff;
   // P4-272 ① — la fenêtre de ligue ne BLOQUE plus la pose manuelle (ligue, club et
   // équipe se comportent pareil : le gestionnaire assume). L'avertissement reste
   // visible (`EnvelopeHint`) et le radar continue de signaler ; le solveur garde,
   // lui, la ligue en HARD. Le gymnase indisponible reste le seul refus dur.
-  const venueName = venues.find((v) => v.id === venueId)?.name ?? "ce gymnase";
+  const venueName = venues.find((v) => v.id === venueId)?.name ?? MATCHES_TEXTS.panelFallbackVenue;
   const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly, closures, holidays);
   const accessBlocked = null !== accessIssue && "error" === accessIssue.level;
   const unchanged = placed && venueId === (fixture.venueId ?? "") && kickoff === (fixture.kickoffTime ?? "");
@@ -199,33 +251,35 @@ export function PlacementPanel({
     null !== fixture.kickoffTime &&
     venueId === fixture.venueId &&
     kickoff === fixture.kickoffTime;
+  // Le raccourci ne répond qu'à un refus d'ACCÈS : une ouverture ne lève ni indisponibilité ni fermeture.
+  const canOpenVenue = guardsReady && null !== accessIssue && ("no_window" === accessIssue.reason || "outside_window" === accessIssue.reason);
+  const venueToOpen = venues.find((v) => v.id === venueId) ?? null;
+  const openingRange = proposedOpeningRange(kickoff, matchMinutes);
   const canPlace = "" !== venueId && hasKickoff && !accessBlocked && !busy && !unchanged && guardsReady;
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-1.5">
-          {locked ? <Lock aria-label="Ancre manuelle" className="size-3.5 text-muted-foreground" /> : null}
+          {locked ? <Lock aria-label={MATCHES_TEXTS.panelAnchorLock} className="size-3.5 text-muted-foreground" /> : null}
           {true === isCtc ? <CtcMark partner={ctcPartner} /> : null}
           {teamLabel}
         </CardTitle>
-        <button type="button" onClick={onClose} aria-label="Fermer" className="rounded p-1 text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onClose} aria-label={MATCHES_TEXTS.panelClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
           <X className="size-4" />
         </button>
       </CardHeader>
       <CardContent className="pt-0">
-        <Row label="Catégorie" value={categoryLabel} />
-        <Row label="Adversaire" value={fixture.opponentLabel} />
-        <Row label="Date" value={frDateWeekdayNoYear(fixture.matchDate)} />
+        <Row label={MATCHES_TEXTS.panelCategoryRow} value={categoryLabel} />
+        <Row label={MATCHES_TEXTS.panelOpponentRow} value={fixture.opponentLabel} />
+        <Row label={MATCHES_TEXTS.panelDateRow} value={frDateWeekdayNoYear(fixture.matchDate)} />
+        <TrainingOverlapNote fixtureId={fixture.id} conflicts={conflicts} venues={venues} teamNameOf={teamNameOf} />
 
         {submitted ? (
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
             <div>
               <p className="text-sm font-medium">{FIXTURE_STATUS_LABEL.SUBMITTED}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Ce match est ancré : les prochaines générations ne le déplaceront plus. À corriger seulement en cas d'erreur
-                (gymnase indisponible, saisie erronée).
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{MATCHES_TEXTS.panelSubmittedNote}</p>
             </div>
             <Button variant="ghost" size="sm" disabled={busy} className="self-start text-muted-foreground" onClick={onReopen}>
               <Undo2 className="size-3.5" />
@@ -236,10 +290,7 @@ export function PlacementPanel({
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
             <div>
               <p className="text-sm font-medium">{FIXTURE_STATUS_LABEL.VALIDATED}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Ce match est ancré sur les date, heure et salle enregistrées côté ligue. Corrigez-le si l'une d'elles doit changer ;
-                un futur import qui diverge le signalera dans Importer.
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{MATCHES_TEXTS.panelValidatedNote}</p>
             </div>
             <Button variant="ghost" size="sm" disabled={busy} className="self-start text-muted-foreground" onClick={onReopen}>
               <Undo2 className="size-3.5" />
@@ -251,21 +302,21 @@ export function PlacementPanel({
             {placed ? (
               <Button variant="outline" size="sm" disabled={busy} className="border-success/40 text-success hover:bg-success/10" onClick={onSubmit}>
                 <Check className="size-3.5" />
-                Marquer saisi dans FBI
+                {MATCHES_TEXTS.panelMarkSubmitted}
               </Button>
             ) : null}
             <div className="grid grid-cols-2 gap-2">
               <VenueSelect
-                aria-label="Gymnase"
-                placeholder="Gymnase…"
+                aria-label={MATCHES_TEXTS.panelVenueField}
+                placeholder={MATCHES_TEXTS.panelVenuePlaceholder}
                 venues={selectableVenues.map((v) => {
-                  const sub = blockedSubFor(v.id);
-                  return { id: v.id, name: v.name, color: v.color, sub, disabled: undefined !== sub };
+                  const blocked = blockedSubFor(v.id);
+                  return { id: v.id, name: v.name, color: v.color, sub: blocked ?? noAccessSubFor(v.id), disabled: undefined !== blocked };
                 })}
                 value={venueId}
                 onValueChange={setVenueId}
               />
-              <Input aria-label="Heure de coup d'envoi" type="time" value={kickoff} onChange={(e) => setKickoff(e.target.value)} />
+              <Input aria-label={MATCHES_TEXTS.panelKickoffField} type="time" value={kickoff} onChange={(e) => setKickoff(e.target.value)} />
             </div>
 
             {/* P2-52 — rappel de la raison PERSISTANTE « le gymnase n'est plus affilié » : INFO
@@ -274,14 +325,13 @@ export function PlacementPanel({
             {"venue_lost" === fixture.unplacedReason ? (
               <p className="flex items-start gap-1 text-xs text-muted-foreground">
                 <MapPinOff className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                {unplacedReasonLabel(fixture.unplacedReason)} — choisissez-en un autre.
+                {MATCHES_TEXTS.panelVenueLostHint(unplacedReasonLabel(fixture.unplacedReason) ?? "")}
               </p>
             ) : null}
 
             {null !== habit ? (
               <p className="text-xs text-muted-foreground">
-                Habitude : {habit.kickoffTime}
-                {null !== habit.venueId ? ` · ${venues.find((v) => v.id === habit.venueId)?.name ?? "?"}` : ""}
+                {MATCHES_TEXTS.panelHabit(habit.kickoffTime, null !== habit.venueId ? (venues.find((v) => v.id === habit.venueId)?.name ?? "?") : null)}
               </p>
             ) : null}
             {hasKickoff ? <EnvelopeHint envelope={envelope} kickoff={kickoff} /> : null}
@@ -292,11 +342,11 @@ export function PlacementPanel({
                 modifier, supprimer) restent actifs. */}
             {"failed" === guards.state ? (
               <LoadErrorHint onRetry={guards.retry}>
-                Impossible de vérifier les accès match et les indisponibilités de ce gymnase. Le placement est suspendu.
+                {MATCHES_TEXTS.panelGuardsFailed}
               </LoadErrorHint>
             ) : "loading" === guards.state ? (
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Spinner className="size-3.5" /> Vérification des accès match…
+                <Spinner className="size-3.5" /> {MATCHES_TEXTS.panelGuardsLoading}
               </p>
             ) : null}
             {guardsReady && null !== accessIssue ? (
@@ -313,32 +363,36 @@ export function PlacementPanel({
               )
             ) : null}
 
-            {isImportConfirm ? (
-              <p className="text-xs text-muted-foreground">Gymnase et heure repris de l'import — vérifiez, puis confirmez.</p>
+            {canOpenVenue && null !== venueToOpen ? (
+              <Button variant="outline" size="sm" onClick={() => setOpeningVenue(venueToOpen)}>
+                {MATCHES_TEXTS.openVenueAction}
+              </Button>
             ) : null}
+
+            {isImportConfirm ? <p className="text-xs text-muted-foreground">{MATCHES_TEXTS.panelImportConfirmHint}</p> : null}
             <Button size="sm" disabled={!canPlace} onClick={() => onPlace({ venueId, kickoffTime: kickoff })}>
-              {isImportConfirm ? "Confirmer ce placement" : placed ? "Déplacer" : "Placer"}
+              {isImportConfirm ? MATCHES_TEXTS.panelConfirmImport : placed ? MATCHES_TEXTS.panelMove : MATCHES_TEXTS.panelPlace}
             </Button>
 
             {placed ? (
               <div className="grid grid-cols-2 gap-1.5">
                 <Button variant="outline" size="sm" disabled={busy} onClick={onUnplace}>
                   <Undo2 className="size-3.5" />
-                  Dé-placer
+                  {MATCHES_TEXTS.panelUnplace}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={busy}
-                  title={locked ? "Le système pourra re-placer ce match au prochain passage" : "Figer ce placement — le système ne le bougera plus"}
+                  title={locked ? MATCHES_TEXTS.panelUnlockHint : MATCHES_TEXTS.panelLockHint}
                   onClick={onToggleLock}
                 >
                   {locked ? <LockOpen className="size-3.5" /> : <Lock className="size-3.5" />}
-                  {locked ? "Rendre au système" : "Verrouiller"}
+                  {locked ? MATCHES_TEXTS.panelUnlock : MATCHES_TEXTS.panelLock}
                 </Button>
                 <Button variant="outline" size="sm" disabled={busy} className="col-span-2" onClick={onStartSwap}>
                   <ArrowLeftRight className="size-3.5" />
-                  Échanger avec…
+                  {MATCHES_TEXTS.panelSwap}
                 </Button>
               </div>
             ) : null}
@@ -346,11 +400,11 @@ export function PlacementPanel({
             <div className="grid grid-cols-2 gap-1.5 border-t border-border pt-2">
               <Button variant="outline" size="sm" disabled={busy} onClick={onEdit}>
                 <Pencil className="size-3.5" />
-                Modifier
+                {MATCHES_TEXTS.panelEdit}
               </Button>
               <Button variant="outline" size="sm" disabled={busy} onClick={() => setConfirmDelete(true)}>
                 <Trash2 className="size-3.5" />
-                Supprimer
+                {MATCHES_TEXTS.panelDelete}
               </Button>
             </div>
           </div>
@@ -359,9 +413,9 @@ export function PlacementPanel({
 
       <ConfirmDialog
         open={confirmDelete}
-        title={`Supprimer le match contre « ${fixture.opponentLabel} » ?`}
-        description="Le match disparaît du calendrier. S'il vient d'un import FBI, le prochain import le recréera."
-        confirmLabel="Supprimer"
+        title={MATCHES_TEXTS.panelDeleteTitle(fixture.opponentLabel)}
+        description={MATCHES_TEXTS.panelDeleteDescription}
+        confirmLabel={MATCHES_TEXTS.panelDelete}
         destructive
         onConfirm={() => {
           setConfirmDelete(false);
@@ -369,6 +423,17 @@ export function PlacementPanel({
         }}
         onCancel={() => setConfirmDelete(false)}
       />
+
+      {null !== openingVenue ? (
+        <OpenVenueDialog
+          venue={openingVenue}
+          matchDate={fixture.matchDate}
+          defaultStart={openingRange.start}
+          defaultEnd={openingRange.end}
+          onClose={() => setOpeningVenue(null)}
+          onOpened={() => undefined}
+        />
+      ) : null}
     </Card>
   );
 }

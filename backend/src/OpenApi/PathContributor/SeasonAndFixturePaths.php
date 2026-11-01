@@ -146,7 +146,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'clubId' => ['type' => 'string'],
                         'seasonId' => ['type' => 'string', 'nullable' => true],
                         'conflicts' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
-                            'type' => ['type' => 'string', 'enum' => ['VENUE_OVERLAP', 'LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION', 'TEAM_VENUE_FORBIDDEN', 'MATCH_MATCH', 'MATCH_TRAINING', 'VENUE_UNAVAILABLE', 'ACCESS_WINDOW_LOST', 'COMPETITION_INCOMPLETE', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT']],
+                            'type' => ['type' => 'string', 'enum' => ['VENUE_OVERLAP', 'LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION', 'TEAM_VENUE_FORBIDDEN', 'MATCH_MATCH', 'MATCH_TRAINING', 'VENUE_UNAVAILABLE', 'ACCESS_WINDOW_LOST', 'VENUE_TRAINING_OVERLAP', 'COMPETITION_INCOMPLETE', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT']],
                             'coachId' => ['type' => 'string', 'description' => 'The double-booked person (a coach or a player) — MATCH_MATCH / MATCH_TRAINING'],
                             'coachRole' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'Aggregate role of the person: MAIN when every side is MAIN, ASSISTANT as soon as one side is ASSISTANT, PLAYER otherwise'],
                             'start' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Overlap segment start'],
@@ -163,10 +163,18 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'training' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the training slot', 'properties' => [
                                 'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'The person\'s role with the training team'],
                             ]],
-                            'windows' => ['type' => 'array', 'description' => 'ACCESS_WINDOW_LOST: the match-access windows of the fixture\'s venue, the match weekday first — so the screen can name where the kickoff should have sat', 'items' => ['type' => 'object', 'properties' => [
-                                'dayOfWeek' => ['type' => 'integer', 'description' => 'ISO weekday 1..7'],
+                            'windows' => ['type' => 'array', 'description' => 'ACCESS_WINDOW_LOST: the match-access windows of the fixture\'s venue that apply on the match date — so the screen can name where the kickoff should have sat', 'items' => ['type' => 'object', 'properties' => [
+                                'dayOfWeek' => ['type' => 'integer', 'nullable' => true, 'description' => 'ISO weekday 1..7, null on a public-holiday line or a dated opening'],
                                 'startTime' => ['type' => 'string', 'description' => '« HH:MM »'],
                                 'endTime' => ['type' => 'string', 'description' => '« HH:MM »'],
+                                'appliesOnPublicHolidays' => ['type' => 'boolean', 'description' => 'True on the public-holiday line'],
+                                'openingDate' => ['type' => 'string', 'format' => 'date', 'nullable' => true, 'description' => 'The date of a dated opening, null otherwise'],
+                            ]]],
+                            'matchEnd' => ['type' => 'string', 'description' => 'VENUE_TRAINING_OVERLAP: the end of the match, « HH:MM »'],
+                            'trainings' => ['type' => 'array', 'description' => 'VENUE_TRAINING_OVERLAP: the sessions of other teams in the match venue during the match', 'items' => ['type' => 'object', 'properties' => [
+                                'teamId' => ['type' => 'string'],
+                                'start' => ['type' => 'string', 'description' => '« HH:MM »'],
+                                'end' => ['type' => 'string', 'description' => '« HH:MM »'],
                             ]]],
                             'rules' => ['type' => 'array', 'description' => 'CLUB_RULE_VIOLATION: the HARD club match rules the placed kickoff violates — so the screen can name which rule was broken', 'items' => ['type' => 'object', 'properties' => [
                                 'daysOfWeek' => ['type' => 'array', 'items' => ['type' => 'integer'], 'description' => 'ISO weekdays the rule covers'],

@@ -8,7 +8,7 @@ import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { coachFullName } from "@/shared/lib/coachName";
 import type { CoachGender } from "@/shared/lib/coachWording";
-import { frDateWeekdayNoYear } from "@/shared/lib/date";
+import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import { dayLabelLong } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
 import { cn } from "@/shared/lib/utils";
@@ -68,6 +68,8 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
       return MATCHES_TEXTS.teamVenueForbiddenTitle;
     case "ACCESS_WINDOW_LOST":
       return MATCHES_TEXTS.accessWindowLostTitle;
+    case "VENUE_TRAINING_OVERLAP":
+      return MATCHES_TEXTS.venueTrainingOverlapTitle;
     case "COMPETITION_INCOMPLETE":
       return "OVER" === conflict.reason ? MATCHES_TEXTS.calendarToCheckTitle : "INCOHERENT" === conflict.reason ? MATCHES_TEXTS.calendarIncoherentTitle : MATCHES_TEXTS.calendarIncompleteTitle;
     case "AWAY_NO_FOOTPRINT":
@@ -81,14 +83,22 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
   }
 }
 
-/** « samedi 16:00–18:00, mercredi 18:00–20:00 » (jour du match d'abord, servi par le serveur) ;
- *  sans aucun accès match sur ce gymnase → « aucun accès match ce jour-là ». */
+/** Une ligne d'accès selon sa sorte : « le 11 nov. 14:00–20:00 », « jours fériés 14:00–18:00 », « mercredi 14:00–18:00 ».
+ *  Le serveur ne sert que les plages applicables à la date ; aucune → « aucun accès match ce jour-là ». */
 function accessWindowsPhrase(conflict: Conflict): string {
   const windows = (conflict.windows ?? []) as VenueAccessWindow[];
   if (0 === windows.length) {
     return "aucun accès match ce jour-là";
   }
-  return windows.map((w) => `${dayLabelLong(w.dayOfWeek)} ${w.startTime}–${w.endTime}`).join(", ");
+  return windows
+    .map((w) => {
+      const range = `${w.startTime}–${w.endTime}`;
+      if (null != w.openingDate) {
+        return MATCHES_TEXTS.accessWindowOpeningLine(frDateShortNoYear(w.openingDate), range);
+      }
+      return true === w.appliesOnPublicHolidays ? MATCHES_TEXTS.accessWindowHolidayLine(range) : `${dayLabelLong(w.dayOfWeek ?? 0)} ${range}`;
+    })
+    .join(", ");
 }
 
 function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>, coachGender: CoachGender): string {
@@ -116,6 +126,11 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
   }
   if ("VENUE_UNAVAILABLE" === conflict.type && conflict.fixture) {
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
+  }
+  if ("VENUE_TRAINING_OVERLAP" === conflict.type && conflict.fixture) {
+    const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
+    const trainings = (conflict.trainings ?? []).map((t) => `${teamName(teams, t.teamId)} ${t.start} – ${t.end}`).join(", ");
+    return MATCHES_TEXTS.venueTrainingOverlapSummary(venueName, frDateWeekdayNoYear(conflict.fixture.matchDate), `${conflict.fixture.kickoffTime ?? "?"} – ${conflict.matchEnd ?? "?"}`, trainings);
   }
   if ("ACCESS_WINDOW_LOST" === conflict.type && conflict.fixture) {
     const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
@@ -457,12 +472,12 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">{MATCHES_TEXTS.estimatedTimeTag}</span> : null}
       </p>
       {/* M11 (retours Nico, BCCL 2026-10-27) — « Hors accès match » offre un deep-link vers l'éditeur
-          d'accès du GYMNASE touché : /matchs/configuration?acces=<venueId> (état dans l'URL, partageable). */}
+          d'accès du GYMNASE touché, ligne d'ouverture préremplie (état dans l'URL, partageable). */}
       {"ACCESS_WINDOW_LOST" === conflict.type && undefined !== conflict.venueId ? (
         <Button variant="outline" size="sm" className="mt-1.5" asChild>
-          <Link to={`/matchs/configuration?acces=${conflict.venueId}`}>
+          <Link to={`/matchs/configuration?acces=${conflict.venueId}&date=${conflict.fixture?.matchDate ?? ""}&debut=${conflict.fixture?.kickoffTime ?? ""}`}>
             <Settings2 className="size-4" aria-hidden="true" />
-            {MATCHES_TEXTS.accessWindowLostConfigureLink}
+            {MATCHES_TEXTS.accessWindowLostOpenLink}
           </Link>
         </Button>
       ) : null}

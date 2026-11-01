@@ -41,7 +41,9 @@ interface Props {
   readOnly?: boolean;
 }
 
-export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onSelect, matchWindows = [], closures = [], readOnly = false }: Props) {
+export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onSelect, matchWindows: allMatchWindows = [], closures = [], readOnly = false }: Props) {
+  // Une ouverture datée n'a pas sa place dans une grille hebdomadaire : ni fantôme, ni plage étirée.
+  const matchWindows = allMatchWindows.filter((w) => null == w.openingDate);
   const color = venue.color ?? "var(--accent)";
 
   // La plage verticale est l'UNION de la plage de saisie (08h→23h) et de ce que les

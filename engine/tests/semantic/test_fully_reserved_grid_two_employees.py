@@ -412,7 +412,7 @@ def test_derive_rejects_filled_external_references(path: tuple[Any, ...], field:
 
 def _minimal_snapshot() -> dict[str, Any]:
     return {
-        "version": "1.8",
+        "version": "1.9",
         "clubId": "source-club",
         "seasonId": "source-season",
         "teams": [{"id": "source-team", "name": "Nom Source", "sessionsPerWeek": 1}],

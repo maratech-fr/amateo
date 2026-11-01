@@ -64,6 +64,7 @@ class VenueMatchWindowStateProvider extends AbstractStateProvider
         // offset pagination reshuffles rows across pages (VenueTrainingSlot idiom).
         $qb->orderBy('e.appliesOnPublicHolidays', 'ASC')
             ->addOrderBy('e.dayOfWeek', 'ASC')
+            ->addOrderBy('e.openingDate', 'ASC')
             ->addOrderBy('e.startTime', 'ASC')
             ->addOrderBy('e.id', 'ASC');
 

@@ -4,6 +4,12 @@ from __future__ import annotations
 # Placement dominates every SOFT combination of one match: the solver never
 # sacrifices a placement for comfort.
 W_PLACE = 10_000
+# Contrat 1.9 — the position the league file gave, when legal, is a real guard: it beats the worst
+# realistic sum of penalties on one candidate (protection 25 + habit 20 + preferred rule 30 + coach
+# unavailable 60 + 2 coaches 120 + 12 players 720 = 975). W_PLACE still dominates it plus that sum, so
+# a match is never left out to defend it. A person clash it causes is told by the radar, as for a
+# placement by hand.
+W_IMPORTED_POSITION = 2_000
 W_COACH_MAIN = 60
 # P4-272 ⑤ — a coach of the match's team is UNAVAILABLE at a candidate's kickoff (a declared
 # window on a covered day). SOFT (validé fondateur : même niveau que les autres pénalités

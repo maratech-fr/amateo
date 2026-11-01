@@ -69,6 +69,8 @@ interface Overrides {
 function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Overrides = {}) {
   render(
     <PlacementPanel
+      matchMinutes={90}
+      conflicts={[]}
       fixture={overrides.fixture ?? fixture}
       venues={venues}
       guards={{
@@ -158,7 +160,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       // venue-1 is a match venue on Saturdays 14:00-18:00; venue-2 is training-only.
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }],
     });
 
     // The selector masks the CHOICE: training-only venue-2 is not offered (open the listbox to see).
@@ -175,7 +177,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     // Sunday-only window; the fixture is on a Saturday.
     renderPanel(openEnvelope, vi.fn(), {
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 7, appliesOnPublicHolidays: false, startTime: "09:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 7, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "09:00", endTime: "18:00" }],
     });
 
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
@@ -228,7 +230,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       fixture: friendly,
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }],
     });
 
     const list = await openListbox(user, "Gymnase");
@@ -248,7 +250,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       fixture: { ...fixture, competitionId: "comp-1" },
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }],
     });
 
     const list = await openListbox(user, "Gymnase");
@@ -492,7 +494,7 @@ describe("PlacementPanel — D2 : le geste de placement suspendu tant que les ga
 });
 
 describe("PlacementPanel — gymnase fermé ou indisponible grisé (P4-300)", () => {
-  const windowVenue1: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }];
+  const windowVenue1: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }];
 
   it("grise l'option d'un gymnase fermé par le calendrier à la date du match, avec la raison", async () => {
     const user = userEvent.setup();
@@ -535,8 +537,8 @@ describe("PlacementPanel — pose manuelle un jour férié (PR2)", () => {
   const WED_HOLIDAY = "2026-11-11"; // mercredi (ISO 3) ET jour férié
   const WED_ORDINARY = "2026-11-18"; // mercredi ordinaire, pas férié
   const holidayVenueWindows: VenueMatchWindow[] = [
-    { id: "w-wed", venueId: "venue-1", dayOfWeek: 3, appliesOnPublicHolidays: false, startTime: "18:00", endTime: "22:00" },
-    { id: "w-hol", venueId: "venue-1", dayOfWeek: null, appliesOnPublicHolidays: true, startTime: "10:00", endTime: "18:00" },
+    { id: "w-wed", venueId: "venue-1", dayOfWeek: 3, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "18:00", endTime: "22:00" },
+    { id: "w-hol", venueId: "venue-1", dayOfWeek: null, appliesOnPublicHolidays: true, openingDate: null, label: null, startTime: "10:00", endTime: "18:00" },
   ];
   const holidayFixture: Fixture = { ...fixture, matchDate: WED_HOLIDAY };
 

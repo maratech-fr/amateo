@@ -120,6 +120,9 @@ use DateTimeImmutable;
  *   AFTER the placement. Mirrors the PANEL rule (kickoff point, half-open,
  *   club-without-any-window = nothing to enforce), NOT the solver's
  *   full-footprint rule: a match the panel just allowed must not alert.
+ * - VENUE_TRAINING_OVERLAP (5): a placed HOME fixture (competition or friendly) whose VENUE window
+ *   overlaps a session of ANOTHER team in the effective schedule, same venue. A signal only: the
+ *   match stays placed. Silent on a public holiday, like MATCH_TRAINING: no session that day.
  * - AWAY_NO_FOOTPRINT (7, dette v): an AWAY fixture with no hour and no habit
  *   on its weekday — the residual blind spot is now NAMED (info; the UI folds
  *   the group). JAMAIS émis pour une équipe LOISIR (ni calendrier ligue ni habitude
@@ -174,7 +177,7 @@ final class MatchConflictDetector
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
         private readonly AwayKickoffEstimator $awayKickoffEstimator,
     ) {
-        $this->venueConflicts = new VenueConflicts;
+        $this->venueConflicts = new VenueConflicts($this->effectiveScheduleResolver);
         $this->ruleWindowConflicts = new RuleWindowConflicts;
         $this->personConflicts = new PersonConflicts($this->effectiveScheduleResolver);
     }
@@ -233,6 +236,85 @@ final class MatchConflictDetector
         }
 
         return false;
+    }
+
+    /**
+     * Les plages d'accès APPLICABLES à (gymnase, date) : ses ouvertures datées de ce jour ∪ (férié ?
+     * ses lignes « Jours fériés » : ses lignes du jour de semaine). Le prédicat unique de la pose, du
+     * radar et de l'amical sur créneau ; miroir front `matches/lib/matchAccess.ts::applicableWindows`
+     * (cas partagés `matchAccess.parity.json`), même union côté moteur (`candidates.py`).
+     *
+     * @param list<array<string, mixed>> $windows forme {venueId, dayOfWeek, startTime, endTime, appliesOnPublicHolidays, openingDate}
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function applicableWindows(string $venueId, string $date, bool $isHoliday, array $windows): array
+    {
+        $day = (int) new DateTimeImmutable($date)->format('N');
+
+        return array_values(array_filter($windows, static function (array $window) use ($venueId, $date, $isHoliday, $day): bool {
+            if ($window['venueId'] !== $venueId) {
+                return false;
+            }
+            $openingDate = $window['openingDate'] ?? null;
+            if (null !== $openingDate) {
+                return $openingDate === $date;
+            }
+            $onHolidays = $window['appliesOnPublicHolidays'] ?? false;
+
+            return $isHoliday ? (bool) $onHolidays : !$onHolidays && $window['dayOfWeek'] === $day;
+        }));
+    }
+
+    /**
+     * Le coup d'envoi (H:i) tombe-t-il dans une plage applicable ? Intervalle DEMI-OUVERT `[start, end[` :
+     * la pose et le radar jugent le coup d'envoi, le moteur le match entier (écart déclaré).
+     *
+     * @param list<array<string, mixed>> $windows
+     */
+    public static function kickoffInsideAccess(string $venueId, string $date, bool $isHoliday, string $kickoff, array $windows): bool
+    {
+        foreach (self::applicableWindows($venueId, $date, $isHoliday, $windows) as $window) {
+            if ($kickoff >= $window['startTime'] && $kickoff < $window['endTime']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * « Le club a adopté les accès match » = au moins une ligne NON datée. Une ouverture datée ne fait
+     * pas basculer tout le club en « accès obligatoire ». Miroir front `matchAccess.ts::hasWeeklyAccess`.
+     *
+     * @param list<array<string, mixed>> $windows
+     */
+    public static function hasWeeklyAccess(array $windows): bool
+    {
+        foreach ($windows as $window) {
+            if (null === ($window['openingDate'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * La forme tableau d'une ligne d'accès, celle que lisent les prédicats ci-dessus.
+     *
+     * @return array{venueId: string, dayOfWeek: int|null, startTime: string, endTime: string, appliesOnPublicHolidays: bool, openingDate: string|null}
+     */
+    public static function windowArray(VenueMatchWindow $window): array
+    {
+        return [
+            'venueId' => $window->getVenueId(),
+            'dayOfWeek' => $window->getDayOfWeek(),
+            'startTime' => $window->getStartTime()->format('H:i'),
+            'endTime' => $window->getEndTime()->format('H:i'),
+            'appliesOnPublicHolidays' => $window->isAppliesOnPublicHolidays(),
+            'openingDate' => $window->getOpeningDate()?->format('Y-m-d'),
+        ];
     }
 
     /**
@@ -498,9 +580,10 @@ final class MatchConflictDetector
             ...$this->personConflicts->coachUnavailableConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities),
             ...$this->venueConflicts->venueUnavailableConflicts($activeFixtures, $unavailabilities),
             ...$this->venueConflicts->accessWindowLostConflicts($activeFixtures, $matchWindows, $publicHolidays),
+            ...$this->venueConflicts->venueTrainingOverlapConflicts($views, $seasonScheduleId, $activePeriods, $slotsBySchedule, $publicHolidays),
             ...$this->competitionIncompleteItems($fixtures, $competitions, $deadlineByCompetition, $clubToday),
             ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay, $levelByTeam),
-            ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows),
+            ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows, $publicHolidays),
             // P4-288 — ajouté EN FIN pour que le $conflicts[0] des familles plus graves
             // reste inchangé : une info repliée (sévérité 7), jamais une alerte en tête.
             ...$this->teamLevelMissingItems($activeFixtures, $levelByTeam),
@@ -563,10 +646,11 @@ final class MatchConflictDetector
      * @param list<FixtureView>      $views
      * @param list<Fixture>          $fixtures
      * @param list<VenueMatchWindow> $matchWindows
+     * @param list<string>           $publicHolidays dates fériées (Y-m-d)
      *
      * @return list<array<string, mixed>>
      */
-    private function friendlyOnMatchSlotConflicts(array $views, array $fixtures, array $matchWindows): array
+    private function friendlyOnMatchSlotConflicts(array $views, array $fixtures, array $matchWindows, array $publicHolidays = []): array
     {
         // Weekends (key = the Saturday's date) where a NON-friendly match is
         // played, on the Saturday or the Sunday. Friday does not count.
@@ -593,12 +677,12 @@ final class MatchConflictDetector
             }
 
             $reasons = [];
-            // Fenêtre : la fenêtre SALLE (sans échauffement, D1) chevauche une fenêtre
-            // du même gymnase, projetée sur le jour ISO de la date (chevauchement, pas
-            // appartenance du kickoff).
-            $day = (int) $fixture->getMatchDate()->format('N');
+            // Fenêtre : la fenêtre SALLE (sans échauffement, D1) chevauche une
+            // plage APPLICABLE du même gymnase à cette date (chevauchement, pas appartenance du kickoff).
+            $date = $fixture->getMatchDate()->format('Y-m-d');
+            $isHoliday = \in_array($date, $publicHolidays, true);
             foreach ($matchWindows as $window) {
-                if ($window->getVenueId() !== $fixture->getVenueId() || $window->getDayOfWeek() !== $day) {
+                if ([] === self::applicableWindows($fixture->getVenueId(), $date, $isHoliday, [self::windowArray($window)])) {
                     continue;
                 }
                 if (ConflictMoments::overlaps($view['venueWindow'], $this->matchWindowOnDate($fixture->getMatchDate(), $window))) {
@@ -647,7 +731,7 @@ final class MatchConflictDetector
 
     /**
      * Project a match access window onto a concrete date (the caller has already
-     * matched the ISO weekday).
+     * checked that it applies on that date).
      *
      * @return array{start: DateTimeImmutable, end: DateTimeImmutable}
      */

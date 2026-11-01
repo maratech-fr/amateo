@@ -1,4 +1,5 @@
 import type { Competition, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
+import { matchVenueIds } from "./matchAccess";
 
 /**
  * P4-185 — les résumés d'en-tête des sections de `/matchs/configuration` (accordéon
@@ -35,7 +36,7 @@ export function durationsSummary(categories?: SportCategoryDuration[]): string |
 
 /**
  * PR 2a « Configuration & navigation » — le résumé d'en-tête de la section « Accès match » :
- * « N gymnases » (les gymnases qui ONT au moins une fenêtre d'accès match). Convention `undefined`
+ * « N gymnases » (les gymnases qui ONT au moins une fenêtre d'accès match non datée). Convention `undefined`
  * (chargement/échec de l'une des deux lectures) ⇒ `null` ⇒ en-tête muet. Aucun gymnase avec accès
  * ⇒ « aucun gymnase avec accès match ». Le front COMPTE ce que le backend a servi (fenêtres), il
  * n'invente aucune règle.
@@ -44,7 +45,7 @@ export function accessSummary(windows?: VenueMatchWindow[], venues?: Venue[]): s
   if (undefined === windows || undefined === venues) {
     return null;
   }
-  const withAccess = new Set(windows.map((w) => w.venueId));
+  const withAccess = matchVenueIds(windows);
   const n = venues.filter((v) => withAccess.has(v.id)).length;
   if (0 === n) {
     return "aucun gymnase avec accès match";

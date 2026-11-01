@@ -4,7 +4,7 @@ import type { Competition, SportCategoryDuration, Venue, VenueLabelInventoryRow,
 import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary } from "./configSummaries";
 
 const venue = (id: string): Venue => ({ id, name: `Gymnase ${id}`, color: null, externalLabels: [] });
-const matchWindow = (venueId: string): VenueMatchWindow => ({ id: `${venueId}-w`, venueId, dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "22:00" });
+const matchWindow = (venueId: string): VenueMatchWindow => ({ id: `${venueId}-w`, venueId, dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "22:00" });
 
 const invRow = (over: Partial<VenueLabelInventoryRow> = {}): VenueLabelInventoryRow => ({
   labelKey: "gymnase mateo",
