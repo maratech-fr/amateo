@@ -56,13 +56,13 @@ const QUARTER = 15;
 /**
  * La plage que propose le raccourci d'ouverture : assez large pour plusieurs matchs le même jour.
  * Début = coup d'envoi arrondi à l'heure inférieure (14:00 sans heure) ; fin = le plus tard de
- * (coup d'envoi + durée du match, arrondi au quart d'heure) et (début + 4 h), plafonné à 23:00.
+ * (coup d'envoi + durée du match, arrondi au quart d'heure supérieur) et (début + 4 h), plafonné à 23:00.
  * Le moteur juge le match entier, la pose le coup d'envoi : c'est cette largeur qui évite l'écart.
  */
 export function proposedOpeningRange(kickoff: string | null, matchMinutes: number): { start: string; end: string } {
   const kickoffMin = parseTime(kickoff);
   const start = null === kickoffMin ? OPENING_DEFAULT_START : Math.floor(kickoffMin / 60) * 60;
-  const matchEnd = Math.round(((kickoffMin ?? start) + matchMinutes) / QUARTER) * QUARTER;
+  const matchEnd = Math.ceil(((kickoffMin ?? start) + matchMinutes) / QUARTER) * QUARTER;
   return { start: formatMinutes(start), end: formatMinutes(Math.min(Math.max(matchEnd, start + OPENING_MIN_SPAN), OPENING_LATEST_END)) };
 }
 
