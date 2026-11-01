@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ...constraints import ResolvedImplicitRules
+from ...constraints.availability import available_coach_exists
+from ...constraints.common import OFF
 from ...model import _time_to_minutes
 from ..helpers import (
     _coach_name_map,
@@ -28,6 +30,7 @@ from ..helpers import (
 _IMPLICIT_RULE_LABELS = {
     "coachRestDay": "jour de repos",
     "maxConsecutiveSessions": "enchaînements",
+    "maxConsecutiveDays": "jours consécutifs",
     "ageAscending": "âge croissant",
 }
 
@@ -49,12 +52,32 @@ def _list_days(days: list[int]) -> str:
     return ", ".join(names)
 
 
+def _french_list(items: list[str]) -> str:
+    """« a », « a et b », « a, b et c »."""
+    if len(items) <= 1:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} et {items[-1]}"
+
+
+def _salarie_alert_message(possible: list[int], impossible: list[int]) -> str:
+    """Le fait reprochable (un salarié pouvait venir) d'abord, le jour sans aucun salarié ensuite."""
+    sentences = []
+    if possible:
+        sentences.append(f"Aucun salarié n'a de séance {_french_list([f'le {_day_label(d)}' for d in possible])}.")
+    if impossible:
+        days = _french_list([_day_label(d) for d in impossible])
+        opening = f"Le {days}" if len(impossible) == 1 else f"Les {days}"
+        sentences.append(f"{opening}, aucun salarié n'était disponible.")
+    return " ".join(sentences)
+
+
 def _diagnose_implicit_rule_violations(
     model_data: Mapping[str, Any] | Any,
     slots: list[dict[str, Any]],
     rules: ResolvedImplicitRules,
     team_coach_map: Mapping[str, list[str]],
     team_player_map: Mapping[str, list[str]],
+    coach_unavailability: Mapping[str, Any] = {},
 ) -> list[dict[str, Any]]:
     """Diagnostique les 4 règles implicites sur les slots FINAUX (verrous inclus), au MÊME
     grain que la pose : personnes = coachs (``team_coach_map``, ASSISTANT déjà exclus) +
@@ -129,24 +152,32 @@ def _diagnose_implicit_rule_violations(
             if people & salarie_ids:
                 salarie_days.add(day)
         # Même grille que la pose (``slot_capacities``) : un jour sans aucun créneau au club ne compte pas.
-        grid_days = {
-            int(_get(training_slot, "day_of_week", "dayOfWeek"))
-            for venue in _collection(model_data, "venues")
-            for training_slot in _collection(venue, "training_slots", "trainingSlots")
-        }
-        missing = [d for d in range(1, 6) if d in grid_days and d not in salarie_days]
+        starts_by_day: dict[int, set[int]] = defaultdict(set)
+        for venue in _collection(model_data, "venues"):
+            for training_slot in _collection(venue, "training_slots", "trainingSlots"):
+                starts_by_day[int(_get(training_slot, "day_of_week", "dayOfWeek"))].add(
+                    _time_to_minutes(str(_get(training_slot, "start_time", "startTime")))
+                )
+        missing = [d for d in range(1, 6) if d in starts_by_day and d not in salarie_days]
+        # Un jour est impossible quand AUCUN de ses créneaux n'a de salarié libre : il ne se reproche pas au planning.
+        impossible = [
+            d
+            for d in missing
+            if not any(available_coach_exists(salarie_ids, d, s, coach_unavailability) for s in starts_by_day[d])
+        ]
+        possible = [d for d in missing if d not in impossible]
         if missing:
-            names = [f"le {_day_label(d)}" for d in missing]
-            days_text = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} et {names[-1]}"
             diagnostics.append(
                 {
                     "id": "diag-implicit-salarie",
                     "type": "implicit_rule_not_honored",
                     "ruleKey": "salarieDistribution",
                     "severity": "WARNING",
-                    "message": f"Aucun salarié n'a de séance {days_text}.",
+                    "message": _salarie_alert_message(possible, impossible),
                     "suggestions": [
-                        "Placez au moins une séance d'un coach salarié ce(s) jour(s)-là.",
+                        "Placez au moins une séance d'un coach salarié ce(s) jour(s)-là."
+                        if possible
+                        else "Libérez un salarié sur l'un de ces jours (étape Contraintes, Dispo coach).",
                     ],
                     "createdAt": datetime.now(UTC).isoformat(),
                 }
@@ -157,9 +188,82 @@ def _diagnose_implicit_rule_violations(
         _diagnose_chain_violations(slots, rules, team_coach_map, team_player_map, coach_ids, coach_names, team_names)
     )
 
+    # --- 3e jours consécutifs : suite de jours posés par équipe (ou groupe mutualisé) ------
+    diagnostics.extend(_diagnose_consecutive_days_violations(slots, rules, model_data, team_names))
+
     # --- 12 âge croissant : paire inversée par (gymnase, jour) ---------------------------
     diagnostics.extend(_diagnose_age_violations(model_data, slots, rules, venue_names, team_names))
 
+    return diagnostics
+
+
+def _runs_reaching(days: set[int], threshold: int) -> list[tuple[int, ...]]:
+    """Les suites maximales de jours d'au moins ``threshold`` jours. La semaine ne boucle pas (comme à la pose)."""
+    runs: list[list[int]] = []
+    for day in sorted(days):
+        if runs and runs[-1][-1] == day - 1:
+            runs[-1].append(day)
+        else:
+            runs.append([day])
+    return [tuple(run) for run in runs if len(run) >= threshold]
+
+
+def _diagnose_consecutive_days_violations(
+    slots: list[dict[str, Any]],
+    rules: ResolvedImplicitRules,
+    model_data: Mapping[str, Any] | Any,
+    team_names: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Une équipe posée ``max`` jours de suite ou plus : la violation telle que la pose la définit (une fenêtre
+    de ``max`` jours tous retenus), lue sur les slots FINAUX car le solveur ne voit pas les verrous dans sa
+    fenêtre. Texte neutre, quel que soit le cran. Les membres d'un groupe mutualisé sur la même suite forment
+    un seul message, porté par le premier identifiant trié."""
+    threshold = rules.max_consecutive_days
+    if rules.max_consecutive_days_intensity == OFF or threshold < 2:
+        return []
+
+    days_by_team: dict[str, set[int]] = defaultdict(set)
+    for slot in slots:
+        day = _slot_day(slot)
+        if day is not None:
+            days_by_team[str(slot["teamId"])].add(day)
+    runs_by_team = {team: _runs_reaching(days, threshold) for team, days in days_by_team.items()}
+
+    alerts: list[tuple[list[str], tuple[int, ...]]] = []
+    grouped: set[tuple[str, tuple[int, ...]]] = set()
+    for block in _collection(model_data, "sharedBlocks", "shared_blocks"):
+        members = sorted({str(m) for m in (_get(block, "teamIds", "team_ids", default=[]) or [])})
+        for run in sorted({run for member in members for run in runs_by_team.get(member, [])}):
+            holders = [m for m in members if run in runs_by_team.get(m, []) and (m, run) not in grouped]
+            if len(holders) >= 2:
+                alerts.append((holders, run))
+                grouped.update((m, run) for m in holders)
+    alerts.extend(([team], run) for team, runs in runs_by_team.items() for run in runs if (team, run) not in grouped)
+
+    label = _IMPLICIT_RULE_LABELS["maxConsecutiveDays"]
+    diagnostics: list[dict[str, Any]] = []
+    seen_teams: set[str] = set()
+    for holders, run in sorted(alerts, key=lambda alert: (alert[0][0], alert[1])):
+        lead = holders[0]
+        names = [_label(team, team_names) for team in holders]
+        who = f"{names[0]} s'entraîne" if len(names) == 1 else f"{_french_list(names)} (séance commune) s'entraînent"
+        # Deux suites distinctes d'une même équipe : l'identifiant du contrat reste celui de la première.
+        suffix = f"-{run[0]}" if lead in seen_teams else ""
+        seen_teams.add(lead)
+        diagnostics.append(
+            {
+                "id": f"diag-implicit-consecutive-days-{lead}{suffix}",
+                "type": "implicit_rule_not_honored",
+                "ruleKey": "maxConsecutiveDays",
+                "severity": "WARNING",
+                "teamId": lead,
+                "message": f"Règle « {label} » : {who} {len(run)} jours de suite, {_list_days(list(run))}.",
+                "suggestions": [
+                    "Déplacez une des séances réservées, ou assouplissez la règle (étape Contraintes).",
+                ],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
     return diagnostics
 
 

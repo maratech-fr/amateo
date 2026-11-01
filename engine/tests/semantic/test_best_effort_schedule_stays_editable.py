@@ -268,11 +268,29 @@ def test_a_rule_added_after_generation_does_not_block_an_unrelated_move_and_says
 
 
 def test_a_team_already_outside_a_rule_added_later_can_move_and_the_message_says_so() -> None:
-    """T ne tenait pas la règle ajoutée, elle reste dehors : permis, et la phrase dit « déjà plus tenue »."""
+    """T ne tenait pas la règle ajoutée, elle reste dehors : permis, et la phrase n'affirme pas d'où vient l'écart."""
     verdict = _moved(_normal_schedule(_FORCED_FRIDAY), "T", 3)
 
     assert verdict["valid"] is True, verdict["violations"]
-    _assert_flagged(verdict, "Vendredi imposé")
+    assert [c["message"] for c in verdict["compromises"] if c["family"] == "lifted_rule"] == [
+        "Cette séance est posée hors de la règle « Vendredi imposé » de Seniors A : le planning généré ne la "
+        "tenait pas déjà, ou elle a été ajoutée depuis."
+    ]
+
+
+def test_a_session_placed_outside_a_lifted_group_names_the_group_in_good_french() -> None:
+    """La séance d'un groupe levé, posée à la main hors du groupe : permis, et la phrase dit « hors du groupe »."""
+    payload = _block_taken()
+    names = {"t1": "U11 A", "t2": "U11 B"}
+    payload["teams"] = [{**team, "name": names.get(team["id"], team["name"])} for team in payload["teams"]]
+
+    verdict = _verdict(_generated(payload), _case("t1", "V", 3), None)
+
+    assert verdict["valid"] is True, verdict["violations"]
+    assert [c["message"] for c in verdict["compromises"] if c["family"] == "lifted_rule"] == [
+        "Cette séance est posée hors du groupe U11 A, U11 B : le planning généré ne le tenait pas déjà, "
+        "ou il a été formé depuis."
+    ]
 
 
 def test_a_team_moving_onto_a_rule_added_later_is_accepted_without_any_flag() -> None:

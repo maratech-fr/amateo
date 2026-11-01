@@ -121,12 +121,18 @@ def _outside_lifted_rules(
             if int(m["day"]) in rule.get("days", ()) or str(m["venue_id"]) == rule.get("venueId"):
                 continue
             names = ", ".join(team_names.get(t, t) for t in rule["teams"])
-            what = f"la règle « {rule['label']} » de {names}" if rule.get("label") else f"le groupe {names}"
+            label = rule.get("label")
+            outside = (
+                f"hors de la règle « {label} » de {names} : le planning généré ne la tenait pas déjà, "
+                "ou elle a été ajoutée depuis."
+                if label
+                else f"hors du groupe {names} : le planning généré ne le tenait pas déjà, ou il a été formé depuis."
+            )
             flagged.append(
                 {
                     "family": "lifted_rule",
                     "effect": "broken",
-                    "message": f"Cette séance est posée hors de {what}, qui n'était déjà plus tenue.",
+                    "message": f"Cette séance est posée {outside}",
                     "teamId": team_id,
                 }
             )
