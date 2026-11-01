@@ -787,7 +787,7 @@ final class MatchPlacementContext extends BaseContext
         );
     }
 
-    #[Then('poser le premier à la main ce mercredi à 19h00 est refusé, faute d\'accès ce jour-là')]
+    #[Then('poser le premier à la main ce mercredi à 18h00 est refusé, faute d\'accès ce jour-là')]
     public function poserLePremierEstRefuse(): void
     {
         $response = $this->poserLePremierMercredi();
@@ -805,7 +805,7 @@ final class MatchPlacementContext extends BaseContext
         );
     }
 
-    #[Then('poser le premier à la main ce mercredi à 19h00 est accepté')]
+    #[Then('poser le premier à la main ce mercredi à 18h00 est accepté')]
     public function poserLePremierEstAccepte(): void
     {
         $response = $this->poserLePremierMercredi();
@@ -814,7 +814,7 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
-    #[Then('le second match du mercredi est posé par le solveur dans ce gymnase, dans l\'ouverture')]
+    #[Then('le second match du mercredi est posé par le solveur dans ce gymnase, à 19h45 dans l\'ouverture')]
     public function leSecondMatchEstPoseDansLOuverture(): void
     {
         $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat2), $this->token)['json'];
@@ -822,8 +822,8 @@ final class MatchPlacementContext extends BaseContext
             throw new RuntimeException(\sprintf('le second match n\'est pas posé par le solveur dans ce gymnase : %s', json_encode($fixture, \JSON_THROW_ON_ERROR)));
         }
         $kickoff = $fixture['kickoffTime'] ?? '';
-        if (!\is_string($kickoff) || $kickoff < '18:00' || $kickoff >= '22:00') {
-            throw new RuntimeException(\sprintf('coup d\'envoi hors de l\'ouverture : « %s »', \is_string($kickoff) ? $kickoff : '?'));
+        if (!\is_string($kickoff) || !str_starts_with($kickoff, '19:45')) {
+            throw new RuntimeException(\sprintf('coup d\'envoi attendu à 19:45, juste après le premier match de l\'ouverture : « %s »', \is_string($kickoff) ? $kickoff : '?'));
         }
     }
 
@@ -1234,7 +1234,7 @@ final class MatchPlacementContext extends BaseContext
             'opponentLabel' => 'Coupe A',
             'competitionId' => $this->competitionId,
             'venueId' => $this->venueId,
-            'kickoffTime' => '19:00',
+            'kickoffTime' => '18:00',
             'status' => 'PLACED',
         ], $this->token);
     }
