@@ -183,7 +183,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
         );
     }
 
-    /** Aucun jour ne lui reste : la phrase le dit tel quel, pas « que 0 jours ». */
+    /** Aucun jour ne lui reste : la phrase le dit tel quel, sans promettre des séances qui ne tomberont nulle part. */
     public function testACoachWithNoDayLeftIsToldSo(): void
     {
         $found = $this->warnings->detect($this->payload(
@@ -196,10 +196,23 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ],
         ));
 
-        self::assertContains(
-            'Anna Martin est le seul coach de 2 séances par semaine mais n\'a aucun jour disponible : plusieurs séances tomberont le même jour.',
-            $found,
-        );
+        self::assertContains('Anna Martin est le seul coach de 2 séances par semaine mais n\'a aucun jour disponible.', $found);
+    }
+
+    /** Même phrase au singulier : une seule séance, aucun jour. */
+    public function testACoachWithOneSessionAndNoDayLeftIsToldSo(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2])],
+            teams: [$this->team('t1', 'SM1', sessions: 1)],
+            coaches: [$this->coach('anna', 'Anna', 'Martin')],
+            constraints: [
+                $this->teamCoach('t1', 'anna'),
+                $this->coachUnavailable('anna', [1, 2]),
+            ],
+        ));
+
+        self::assertContains('Anna Martin est le seul coach de 1 séance par semaine mais n\'a aucun jour disponible.', $found);
     }
 
     /** Aucun salarié ne peut venir sur aucun créneau du jeudi : le gestionnaire le lit avant de générer. */

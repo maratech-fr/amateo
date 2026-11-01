@@ -216,6 +216,29 @@ def test_a_group_on_the_same_days_gets_a_single_message() -> None:
     ]
 
 
+def test_two_separate_runs_of_a_team_give_two_messages_with_distinct_ids() -> None:
+    """Lundi-mardi et jeudi-vendredi à max 2 : deux faits, deux lignes que le panneau peut distinguer."""
+    result = _solve_reserved([1, 2, 4, 5], {"intensity": "PREFERRED", "maxConsecutiveDays": 2})
+
+    assert _messages(result) == [
+        "Règle « jours consécutifs » : U15 s'entraîne 2 jours de suite, du lundi au mardi.",
+        "Règle « jours consécutifs » : U15 s'entraîne 2 jours de suite, du jeudi au vendredi.",
+    ]
+    ids = [d["id"] for d in _alerts(result)]
+    assert len(set(ids)) == 2, ids
+
+
+def test_a_group_sharing_a_run_stays_one_message_when_a_member_has_an_extra_day() -> None:
+    """U11 A a son samedi en plus, hors de la suite : la suite commune lundi-mercredi reste un seul message."""
+    result = _solve_group([1, 2, 3, 6], [1, 2, 3])
+
+    assert result["status"] == "completed"
+    assert _messages(result) == [
+        "Règle « jours consécutifs » : U11 A et U11 B (séance commune) s'entraînent 3 jours de suite, "
+        "du lundi au mercredi."
+    ]
+
+
 def test_a_group_member_alone_on_a_longer_run_is_named_alone() -> None:
     """« Aux mêmes jours » : U11 B n'a que lundi et mardi, seule U11 A dépasse la règle, seule elle est nommée."""
     result = _solve_group([1, 2, 3], [1, 2])
