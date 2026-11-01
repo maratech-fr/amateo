@@ -1,4 +1,4 @@
-# Roadmap (70) — ce qui reste à faire
+# Roadmap (71) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -160,6 +160,7 @@
 | P4-421 | **`make -C frontend e2e` n'accepte aucun argument** | ⚪ | S | Ni fichier, ni `-g`, ni `--repeat-each` : lancer un seul spec sur la stack d'épreuve oblige à contourner le préflight superadmin et le garde bac à sable. La cible s'arrête aussi à la première capture en écart en local, les références visuelles venant de la CI. Non cadré |
 | P4-422 | **Visuel : `retries: 0` à reconsidérer** | ⚪ | XS | `frontend/playwright.config.ts` fixe `retries: 0` pour le projet visuel. À mesurer d'abord sur plusieurs runs CI (écart stable < 0,5 %) avant de décider quoi que ce soit. Non cadré |
 | P4-423 | **Mutualiser une séance sur un planning sans verdict du moteur : garde exacte seulement** | ⚪ | S | Constat (31/10) : `MutualizeSlotService` n'interroge pas le moteur ; sa seule garde est `TeamCaseOccupancyGuard::conflictSentence` (`backend/src/Service/MutualizeSlotService.php:171,382`), qui ne voit qu'un doublon EXACT de case. Une mutualisation qui fait chevaucher partiellement une équipe, ou sortir d'une règle, n'est donc ni refusée ni signalée. Même famille que P4-328 (garde par intervalle). À cadrer. |
+| P4-424 | **Export des matchs pour les parents : par équipe, de date A à date B** | 🟡 | M | Retour d'une gestionnaire (2026-11-01) : elle veut transmettre aux parents la liste des matchs et les horaires d'une phase, par exemple de début novembre à fin décembre. Aucun export de matchs n'existe (`backend/src/Export/`). Colonnes : sans statut ni conflit, avec adresse et temps de trajet, éventuellement en option. Non cadré. |
 
 ---
 
