@@ -161,6 +161,16 @@
 > contre le VRAI moteur par `SharedBlockPreSolveMirrorParityTest` (même patron que le miroir de
 > capacité, `CapacityMirrorParityTest`).
 >
+> **Groupe entièrement réservé : la réservation gagne.** Sur une case où TOUS les membres d'un
+> groupe sont épinglés (verrou HARD ou base figée), la fermeture « sans coach » ne s'applique plus
+> si aucun des groupes épinglés n'a de coach de son union au début : la case reste ouverte, le
+> planning sort, et `diagnose_locked_slot_violations` émet UNE alerte `rule_sacrificed` par case
+> (groupe le plus large, `teamId` nul). Si un groupe épinglé a un coach au début, il tient la case
+> et rien n'est dit. Le jugement est au DÉBUT de la séance, comme pour tout verrou. Le miroir
+> pré-solve en tient compte : une case exclusive entièrement épinglée compte comme servable
+> (plafonnée aux séances communes) ; trop de cases épinglées pour les séances communes, ou des
+> groupes imbriqués réunis par une seule case réservée, restent un échec annoncé au Récap.
+>
 > **La cible est le `scope`, jamais le `config` (SEC-13).** La clé `coachId` n'existe plus : elle
 > valait exactement `scopeTargetId`, et un doublon de cible est une occasion de divergence (deux
 > sources pour la même vérité). Elle est absente de la liste blanche — un `config` qui la porte est

@@ -186,6 +186,21 @@ historical `constraint_not_honored` / `session_below_effective_min` / `conflict`
   never "verrou", whatever the origin (reservation or manual lock).
 - *Verdict*: a manual placement of an unplaced session outside its rule is ALLOWED and flagged (see
   `engine/docs/engine-inventory.md`, `/validate-assignments`).
+- *A fully reserved group without a coach at the start (2026-11-01)*: on a case where EVERY member of a
+  declared group is pinned HARD (a lock, or a frozen placement), the coach-presence closure of the group
+  case (`closures._close_coachless_block_cases`) no longer closes it when NO pinned group has a coach of
+  its union at the start: the reservation wins, the schedule is produced and
+  `diagnose_locked_slot_violations` emits ONE `rule_sacrificed` WARNING per case for the widest pinned
+  group (`teamId` null, case and longest member duration, one `coach_unavailability` cause per coach of the
+  union). If a pinned group has a coach at the start, that group holds the case and nothing is said. Judged
+  at the START of the session, like any lock: a coach who leaves at 19:00 for a 18:00 session raises no
+  alert (founder, 2026-11-01). On `failed` the alert is dropped (`RESERVED_BLOCK_ALERT_ID_PREFIX`,
+  « maintenue » would be false), not downgraded. A partially pinned group is unchanged (free placement,
+  per-team alerts). The causality probe KEEPS the locks of such a group (`_reserved_group_locks`): they are
+  the group's session, not the cause, otherwise the case becomes a free placement again. Over-pinned groups
+  (exclusive fully pinned cases > common sessions) and nested groups sharing one pinned case stay
+  INFEASIBLE, now announced by the pre-solve recap (`PreSolvePreventionWarnings`). No contract change
+  (stays 1.9).
 
 **This is the ONLY exception.** With no lock in cause, contradicting rules stay a `failed` outcome
 EXPLAINED (which rules, on what) exactly as the P4-96 amendment above; the nominal and diagnostic solves
