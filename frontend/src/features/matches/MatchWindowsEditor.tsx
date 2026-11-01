@@ -1,9 +1,10 @@
 import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { frDateShort, frDateWeekdayNoYear } from "@/shared/lib/date";
 import { dayLabelLongCap } from "@/shared/lib/days";
@@ -15,6 +16,8 @@ import { useCreateVenueMatchWindow, useDeleteVenueMatchWindow, useVenueMatchWind
 
 interface MatchWindowsEditorProps {
   venueId: string;
+  /** Le nom du gymnase, pour le bandeau du lien « Ouvrir ce gymnase ce jour-là ». */
+  venueName?: string;
   /** La ligne d'ouverture préremplie, depuis le lien « Ouvrir ce gymnase ce jour-là » d'un conflit. */
   prefillOpening?: { date: string; start: string; end: string };
 }
@@ -47,7 +50,7 @@ function windowDayLabel(window: VenueMatchWindow): string {
  * PR2 (Q1 option c, décision fondateur 2026-10-27) : une 8ᵉ ligne « Jours fériés » SOUS
  * lundi…dimanche s'applique à tout jour férié officiel du territoire (pas de jour de semaine).
  */
-export function MatchWindowsEditor({ venueId, prefillOpening }: MatchWindowsEditorProps) {
+export function MatchWindowsEditor({ venueId, venueName, prefillOpening }: MatchWindowsEditorProps) {
   const windowsQuery = useVenueMatchWindows();
   const create = useCreateVenueMatchWindow();
   const remove = useDeleteVenueMatchWindow();
@@ -60,6 +63,22 @@ export function MatchWindowsEditor({ venueId, prefillOpening }: MatchWindowsEdit
   const [openingStart, setOpeningStart] = useState(prefillOpening?.start ?? "14:00");
   const [openingEnd, setOpeningEnd] = useState(prefillOpening?.end ?? "20:00");
   const [openingLabel, setOpeningLabel] = useState("");
+  const [arrivedByLink, setArrivedByLink] = useState(undefined !== prefillOpening);
+  const openingDateRef = useRef<HTMLInputElement>(null);
+  const openedOnLink = useRef(undefined !== prefillOpening);
+
+  // Arrivée par le lien d'un conflit : la ligne préremplie vient à l'écran et prend le focus, une
+  // fois la modale montée (son propre focus d'ouverture passe avant).
+  useEffect(() => {
+    if (!openedOnLink.current) {
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      openingDateRef.current?.scrollIntoView?.({ block: "center" });
+      openingDateRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const venueWindows = (windowsQuery.data ?? []).filter((w) => w.venueId === venueId);
   const windows = venueWindows.filter((w) => null == w.openingDate);
@@ -85,7 +104,19 @@ export function MatchWindowsEditor({ venueId, prefillOpening }: MatchWindowsEdit
       return;
     }
     const label = openingLabel.trim();
-    create.mutate({ venueId, openingDate, startTime: openingStart, endTime: openingEnd, ...("" === label ? {} : { label }) });
+    create.mutate(
+      { venueId, openingDate, startTime: openingStart, endTime: openingEnd, ...("" === label ? {} : { label }) },
+      {
+        // Seul un ajout réussi repart de zéro : un refus laisse la saisie à corriger.
+        onSuccess: () => {
+          setOpeningDate("");
+          setOpeningStart("14:00");
+          setOpeningEnd("20:00");
+          setOpeningLabel("");
+          setArrivedByLink(false);
+        },
+      },
+    );
   };
 
   if (windowsQuery.isError) {
@@ -180,10 +211,13 @@ export function MatchWindowsEditor({ venueId, prefillOpening }: MatchWindowsEdit
             );
           })}
         </ul>
+        {arrivedByLink && undefined !== venueName && undefined !== prefillOpening ? (
+          <NoticeBanner tone="accent">{MATCHES_TEXTS.openVenueDialogTitle(venueName, frDateWeekdayNoYear(prefillOpening.date))}</NoticeBanner>
+        ) : null}
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {MATCHES_TEXTS.openingDateLabel}
-            <Input type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} />
+            <Input ref={openingDateRef} type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {MATCHES_TEXTS.openingStartLabel}

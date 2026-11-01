@@ -40,6 +40,9 @@ export const MATCHES_TEXTS = {
   // M11 + M6 (retours Nico, BCCL 2026-10-27) : nomme l'équipe, la date (avec son jour) et le gymnase.
   accessWindowLostPhrase: (team: string, date: string, venue: string, windows: string) =>
     `${team} — match du ${date} placé hors des accès match de ${venue} (${windows}). Déplacez le match ou ajustez l'accès.`,
+  // Un match encore à placer n'est pas « placé » : son gymnase et son heure sont seulement proposés.
+  accessWindowLostProposedPhrase: (team: string, date: string, venue: string, windows: string) =>
+    `${team} — match du ${date} proposé hors des accès match de ${venue} (${windows}). Choisissez un autre gymnase ou ouvrez-le ce jour-là.`,
   accessWindowLostOpenLink: "Ouvrir ce gymnase ce jour-là",
   accessWindowOpeningLine: (date: string, range: string) => `le ${date} ${range}`,
   accessWindowHolidayLine: (range: string) => `jours fériés ${range}`,
@@ -239,8 +242,7 @@ export const MATCHES_TEXTS = {
   radarToTreatSr: "à traiter",
   // MatchWindowsEditor (accès match d'un gymnase) — PR2 « jours fériés » (8ᵉ ligne)
   matchWindowsLoadError: "Les fenêtres d’accès match n’ont pas pu être chargées.",
-  matchWindowsEmpty:
-    "Aucune fenêtre d’accès match — ce gymnase n’accueille pas de matchs. Ajoutez les créneaux qui vous sont accordés les jours de match.",
+  matchWindowsEmpty: "Aucun accès habituel : ce gymnase n'accueille des matchs que sur ses ouvertures exceptionnelles.",
   matchWindowDayLabel: "Jour",
   matchWindowStartLabel: "Début",
   matchWindowEndLabel: "Fin",

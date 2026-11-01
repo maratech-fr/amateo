@@ -136,7 +136,8 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
     // M11 + M6 (retours Nico, BCCL 2026-10-27) : nomme l'ÉQUIPE et la DATE (avec son jour) de la
     // rencontre, en plus du gymnase touché — « Hors accès match » ne disait ni qui ni quand.
-    return MATCHES_TEXTS.accessWindowLostPhrase(teamName(teams, conflict.fixture.teamId), frDateWeekdayNoYear(conflict.fixture.matchDate), venueName, accessWindowsPhrase(conflict));
+    const phrase = "status" in conflict.fixture && "UNPLACED" === conflict.fixture.status ? MATCHES_TEXTS.accessWindowLostProposedPhrase : MATCHES_TEXTS.accessWindowLostPhrase;
+    return phrase(teamName(teams, conflict.fixture.teamId), frDateWeekdayNoYear(conflict.fixture.matchDate), venueName, accessWindowsPhrase(conflict));
   }
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
     const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");

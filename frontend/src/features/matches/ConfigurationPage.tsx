@@ -241,7 +241,7 @@ function MatchAccessSection({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Les créneaux que la mairie accorde les jours de match — un gymnase sans fenêtre n'accueille pas de matchs.
+        Les créneaux que la mairie accorde les jours de match. Un gymnase sans accès ni ouverture exceptionnelle n'accueille pas de matchs.
       </p>
 
       {!hasAccess ? <EmptyHint>Aucun gymnase n'accueille de matchs — ajoutez un accès.</EmptyHint> : null}
@@ -286,10 +286,10 @@ function MatchAccessSection({
         >
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted-foreground">
-              Les créneaux accordés les jours de match — un gymnase sans fenêtre n'accueille pas de matchs. Même éditeur que
+              Les créneaux accordés les jours de match. Un gymnase sans accès ni ouverture exceptionnelle n'accueille pas de matchs. Même éditeur que
               l'étape Gymnases du wizard.
             </p>
-            <MatchWindowsEditor key={editingVenue.id} venueId={editingVenue.id} prefillOpening={editingVenue.id === deepLinkVenueId ? prefillOpening : undefined} />
+            <MatchWindowsEditor key={editingVenue.id} venueId={editingVenue.id} venueName={editingVenue.name} prefillOpening={editingVenue.id === deepLinkVenueId ? prefillOpening : undefined} />
           </div>
         </Modal>
       ) : null}
