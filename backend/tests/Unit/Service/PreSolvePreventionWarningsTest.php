@@ -100,7 +100,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
 
         // 4 séances pour 2 jours ouverts.
         self::assertContains(
-            'Alex Martin encadre 4 séances par semaine mais n\'a que 2 jours disponibles : plusieurs séances tomberont le même jour.',
+            'Alex Martin est le seul coach de 4 séances par semaine mais n\'a que 2 jours disponibles : plusieurs séances tomberont le même jour.',
             $found,
         );
     }
@@ -115,7 +115,237 @@ final class PreSolvePreventionWarningsTest extends TestCase
             constraints: [$this->teamCoach('t1', 'c1')],
         ));
 
-        self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'encadre')));
+        self::assertSame([], $this->overloadWarnings($found));
+    }
+
+    /** Un co-entraîneur principal peut tenir la séance : Anna n'en est seule que sur 2, pas sur 5. */
+    public function testSessionsSharedWithAnotherMainCoachAreNotCounted(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2, 3])],
+            teams: [$this->team('t1', 'SM1', sessions: 3), $this->team('t2', 'SM2', sessions: 2)],
+            coaches: [$this->coach('anna', 'Anna', 'Martin'), $this->coach('ben', 'Ben', 'Durand')],
+            constraints: [
+                $this->teamCoach('t1', 'anna'),
+                $this->teamCoach('t1', 'ben'),
+                $this->teamCoach('t2', 'anna'),
+            ],
+        ));
+
+        self::assertSame([], $this->overloadWarnings($found));
+    }
+
+    /** Un adjoint n'est pas requis à la séance : même seul sur l'équipe, il ne cumule aucune charge. */
+    public function testAnAssistantCarriesNoLoad(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'SM1', sessions: 3)],
+            coaches: [$this->coach('anna', 'Anna', 'Martin')],
+            constraints: [$this->teamCoach('t1', 'anna', 'ASSISTANT')],
+        ));
+
+        self::assertSame([], $this->overloadWarnings($found));
+    }
+
+    /** Une plage qui commence après le créneau ne ferme pas le jour : `unavailableDays` seul ne dit pas tout. */
+    public function testAnUnavailabilityStartingAfterTheSlotDoesNotCloseTheDay(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2, 3])],
+            teams: [$this->team('t1', 'SM1', sessions: 3)],
+            coaches: [$this->coach('anna', 'Anna', 'Martin')],
+            constraints: [
+                $this->teamCoach('t1', 'anna'),
+                $this->coachUnavailableFrom('anna', [3], '19:00'),
+            ],
+        ));
+
+        self::assertSame([], $this->overloadWarnings($found));
+    }
+
+    /** Une liste blanche de jours ferme les autres, ce que la seule lecture de `unavailableDays` ne voyait pas. */
+    public function testAnAvailableDaysWhitelistClosesTheOtherDaysAndSaysOneDay(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2, 3])],
+            teams: [$this->team('t1', 'SM1', sessions: 2)],
+            coaches: [$this->coach('anna', 'Anna', 'Martin')],
+            constraints: [
+                $this->teamCoach('t1', 'anna'),
+                ['scope' => 'COACH', 'scopeTargetId' => 'anna', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'config' => ['availableDays' => [1]]],
+            ],
+        ));
+
+        self::assertContains(
+            'Anna Martin est le seul coach de 2 séances par semaine mais n\'a qu\'un jour disponible : plusieurs séances tomberont le même jour.',
+            $found,
+        );
+    }
+
+    /** Aucun jour ne lui reste : la phrase le dit tel quel, pas « que 0 jours ». */
+    public function testACoachWithNoDayLeftIsToldSo(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2])],
+            teams: [$this->team('t1', 'SM1', sessions: 2)],
+            coaches: [$this->coach('anna', 'Anna', 'Martin')],
+            constraints: [
+                $this->teamCoach('t1', 'anna'),
+                $this->coachUnavailable('anna', [1, 2]),
+            ],
+        ));
+
+        self::assertContains(
+            'Anna Martin est le seul coach de 2 séances par semaine mais n\'a aucun jour disponible : plusieurs séances tomberont le même jour.',
+            $found,
+        );
+    }
+
+    /** Aucun salarié ne peut venir sur aucun créneau du jeudi : le gestionnaire le lit avant de générer. */
+    public function testADayWithoutAnyAvailableEmployeeIsFlagged(): void
+    {
+        $found = $this->warnings->detect($this->employeesPayload(
+            employees: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            unavailable: [$this->coachUnavailable('anna', [4]), $this->coachUnavailable('ben', [4])],
+        ));
+
+        self::assertSame(
+            ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'],
+            $this->employeeWarnings($found),
+        );
+    }
+
+    /** Trois salariés se lisent comme une phrase : virgule, puis « et » avant le dernier. */
+    public function testThreeUnavailableEmployeesReadAsASentence(): void
+    {
+        $found = $this->warnings->detect($this->employeesPayload(
+            employees: [$this->employee('a', 'Anna', 'Martin'), $this->employee('b', 'Ben', 'Durand'), $this->employee('c', 'Chloé', 'Petit')],
+            unavailable: [$this->coachUnavailable('a', [4]), $this->coachUnavailable('b', [4]), $this->coachUnavailable('c', [4])],
+        ));
+
+        self::assertSame(
+            ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin, Ben Durand et Chloé Petit sont indisponibles ce jour-là.'],
+            $this->employeeWarnings($found),
+        );
+    }
+
+    /** Témoin : un salarié est libre mais rien n'est réservé ce jour-là, le Récap n'a rien à dire. */
+    public function testADayWithAFreeEmployeeIsSilent(): void
+    {
+        $found = $this->warnings->detect($this->employeesPayload(
+            employees: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            unavailable: [$this->coachUnavailable('anna', [4])],
+        ));
+
+        self::assertSame([], $this->employeeWarnings($found));
+    }
+
+    /** Sous le seuil de la règle (2 salariés), rien à dire : la règle elle-même ne s'applique pas. */
+    public function testASingleEmployeeIsSilent(): void
+    {
+        $found = $this->warnings->detect($this->employeesPayload(
+            employees: [$this->employee('anna', 'Anna', 'Martin')],
+            unavailable: [$this->coachUnavailable('anna', [4])],
+        ));
+
+        self::assertSame([], $this->employeeWarnings($found));
+    }
+
+    /** Ben reste libre sur le seul créneau de 20:30, celui de 18:00 est fermé à tous : le jour n'est pas impossible. */
+    public function testASlotLeftOpenToAnEmployeeKeepsTheDaySilent(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venueWithStarts('v1', 'Matéo', [[4, '18:00:00'], [4, '20:30:00']])],
+            coaches: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            constraints: [$this->coachUnavailableFrom('anna', [4], '17:00'), $this->coachUnavailableFrom('ben', [4], '17:00', '20:00')],
+        ));
+
+        self::assertSame([], $this->employeeWarnings($found));
+    }
+
+    /** Le samedi n'est pas un jour ouvré, et un jour sans créneau ne compte pas : même règle que le moteur. */
+    public function testAWeekendDayAndADayWithoutSlotAreSilent(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 6])],
+            coaches: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            constraints: [$this->coachUnavailable('anna', [4, 6]), $this->coachUnavailable('ben', [4, 6])],
+        ));
+
+        self::assertSame([], $this->employeeWarnings($found));
+    }
+
+    /** Deux gymnases : U15 ne peut pas être aux deux, la phrase donne les deux créneaux et leurs salles. */
+    public function testATeamReservedTwiceOnOverlappingCasesInTwoVenuesIsFlagged(): void
+    {
+        $found = $this->warnings->detect($this->reservationsPayload([
+            $this->reservation('t1', 'v1', 1, '18:00:00'),
+            $this->reservation('t1', 'v2', 1, '19:00:00'),
+        ]));
+
+        self::assertContains(
+            'U15 est réservée deux fois le lundi sur des créneaux qui se chevauchent : 18:00-19:30 à Gymnase A et 19:00-20:30 à Gymnase B.',
+            $found,
+        );
+    }
+
+    /** Même gymnase : la salle n'est dite qu'une fois. */
+    public function testATeamReservedTwiceOnOverlappingCasesInOneVenueNamesItOnce(): void
+    {
+        $found = $this->warnings->detect($this->reservationsPayload([
+            $this->reservation('t1', 'v1', 1, '18:00:00'),
+            $this->reservation('t1', 'v1', 1, '19:00:00'),
+        ]));
+
+        self::assertContains(
+            'U15 est réservée deux fois le lundi sur des créneaux qui se chevauchent : 18:00-19:30 et 19:00-20:30 à Gymnase A.',
+            $found,
+        );
+    }
+
+    /** Fin = début : deux séances qui s'enchaînent ne se chevauchent pas. */
+    public function testBackToBackReservationsAreSilent(): void
+    {
+        $found = $this->warnings->detect($this->reservationsPayload([
+            $this->reservation('t1', 'v1', 1, '18:00:00'),
+            $this->reservation('t1', 'v2', 1, '19:30:00'),
+        ]));
+
+        self::assertSame([], $this->overlapWarnings($found));
+    }
+
+    /** Deux équipes sur des créneaux qui se chevauchent : aucun doublon, c'est le quotidien d'un club. */
+    public function testOverlappingReservationsOfTwoTeamsAreSilent(): void
+    {
+        $found = $this->warnings->detect($this->reservationsPayload([
+            $this->reservation('t1', 'v1', 1, '18:00:00'),
+            $this->reservation('t2', 'v2', 1, '19:00:00'),
+        ]));
+
+        self::assertSame([], $this->overlapWarnings($found));
+    }
+
+    /** Témoin : les mêmes heures un autre jour ne se chevauchent pas. */
+    public function testSameHoursOnAnotherDayAreSilent(): void
+    {
+        $found = $this->warnings->detect($this->reservationsPayload([
+            $this->reservation('t1', 'v1', 1, '18:00:00'),
+            $this->reservation('t1', 'v2', 2, '19:00:00'),
+        ]));
+
+        self::assertSame([], $this->overlapWarnings($found));
+    }
+
+    /** Une séance NON verrouillée n'est pas une réservation : le solveur est libre de la reposer. */
+    public function testAnUnlockedSlotIsNotAReservation(): void
+    {
+        $found = $this->warnings->detect($this->reservationsPayload([
+            $this->reservation('t1', 'v1', 1, '18:00:00'),
+            $this->reservation('t1', 'v2', 1, '19:00:00', 'NONE'),
+        ]));
+
+        self::assertSame([], $this->overlapWarnings($found));
     }
 
     /** Ses indisponibilités RÉDUISENT ses jours — sinon le compte serait faux dans le sens rassurant. */
@@ -127,12 +357,12 @@ final class PreSolvePreventionWarningsTest extends TestCase
             coaches: [['id' => 'c1', 'firstName' => 'Alex', 'lastName' => 'Martin']],
             constraints: [
                 $this->teamCoach('t1', 'c1'),
-                $this->v2Constraint('COACH', 'c1', ['unavailableDays' => [3]]),
+                $this->coachUnavailable('c1', [3]),
             ],
         ));
 
         self::assertContains(
-            'Alex Martin encadre 3 séances par semaine mais n\'a que 2 jours disponibles : plusieurs séances tomberont le même jour.',
+            'Alex Martin est le seul coach de 3 séances par semaine mais n\'a que 2 jours disponibles : plusieurs séances tomberont le même jour.',
             $found,
         );
     }
@@ -757,6 +987,114 @@ final class PreSolvePreventionWarningsTest extends TestCase
         $serialized = $method->invoke($builder, [$teamCoach]);
 
         return $serialized[0];
+    }
+
+    /**
+     * @param list<string> $found
+     *
+     * @return list<string>
+     */
+    private function overloadWarnings(array $found): array
+    {
+        return array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'tomberont le même jour')));
+    }
+
+    /**
+     * @param list<string> $found
+     *
+     * @return list<string>
+     */
+    private function employeeWarnings(array $found): array
+    {
+        return array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'Aucun salarié')));
+    }
+
+    /**
+     * @param list<string> $found
+     *
+     * @return list<string>
+     */
+    private function overlapWarnings(array $found): array
+    {
+        return array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'se chevauchent')));
+    }
+
+    /**
+     * Un gymnase ouvert du lundi au vendredi à 18:00, et les salariés donnés.
+     *
+     * @param list<array<string, mixed>> $employees
+     * @param list<array<string, mixed>> $unavailable
+     *
+     * @return array<string, mixed>
+     */
+    private function employeesPayload(array $employees, array $unavailable): array
+    {
+        return $this->payload(venues: [$this->venue('v1', 'Matéo', [1, 2, 3, 4, 5])], coaches: $employees, constraints: $unavailable);
+    }
+
+    /** Un salarié, tel que le payload le porte. @return array<string, mixed> */
+    private function employee(string $id, string $firstName, string $lastName): array
+    {
+        return [...$this->coach($id, $firstName, $lastName), 'isEmployee' => true];
+    }
+
+    /**
+     * Une indisponibilité bornée par sa fenêtre horaire, comme l'onglet Dispo coach l'écrit.
+     *
+     * @param list<int> $days
+     *
+     * @return array<string, mixed>
+     */
+    private function coachUnavailableFrom(string $coachId, array $days, string $from, ?string $until = null): array
+    {
+        return [
+            'scope' => 'COACH',
+            'scopeTargetId' => $coachId,
+            'family' => 'COACH_AVAILABILITY',
+            'ruleType' => 'HARD',
+            'config' => ['unavailableDays' => $days, 'fromTime' => $from, ...(null === $until ? [] : ['untilTime' => $until])],
+        ];
+    }
+
+    /**
+     * @param list<array{0: int, 1: string}> $cases
+     *
+     * @return array<string, mixed>
+     */
+    private function venueWithStarts(string $id, string $name, array $cases): array
+    {
+        return [
+            'id' => $id,
+            'name' => $name,
+            'trainingSlots' => array_map(
+                static fn (array $case): array => ['dayOfWeek' => $case[0], 'startTime' => $case[1], 'durationMinutes' => 90, 'capacity' => 1],
+                $cases,
+            ),
+        ];
+    }
+
+    /**
+     * Deux gymnases, U15 et U13, et les séances figées données (`slotTemplates` du builder).
+     *
+     * @param list<array<string, mixed>> $reservations
+     *
+     * @return array<string, mixed>
+     */
+    private function reservationsPayload(array $reservations): array
+    {
+        return [
+            ...$this->payload(
+                venues: [$this->venue('v1', 'Gymnase A', [1, 2]), $this->venue('v2', 'Gymnase B', [1, 2])],
+                teams: [$this->team('t1', 'U15'), $this->team('t2', 'U13')],
+            ),
+            'slotTemplates' => $reservations,
+        ];
+    }
+
+    /** Une réservation, forme de `ScheduleConstraintBuilder::serializeReservation`. @return array<string, mixed> */
+    private function reservation(string $teamId, string $venueId, int $day, string $start, string $lockLevel = 'HARD'): array
+    {
+        return ['id' => $teamId . $venueId . $start, 'teamId' => $teamId, 'venueId' => $venueId, 'coachId' => null, 'dayOfWeek' => $day, 'startTime' => $start, 'durationMinutes' => 90, 'lockLevel' => $lockLevel];
     }
 
     /** Un entraîneur, tel que le payload le porte. @return array<string, mixed> */

@@ -15,7 +15,15 @@ import pytest
 from app.solver.compromise import CompromiseTermInfo
 from app.solver.constraints import add_salarie_distribution_constraints
 from app.solver.model import build_model
-from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload, team_coach, team_constraint
+from tests.support.pipeline import (
+    coach_availability,
+    make_payload,
+    make_team,
+    make_venue,
+    solve_payload,
+    team_coach,
+    team_constraint,
+)
 
 INTENSITIES = ["HARD", "PREFERRED"]
 
@@ -152,6 +160,75 @@ def test_a_day_with_a_slot_and_no_possible_employee_raises_the_alert(intensity: 
 
     assert result["status"] == "completed"
     assert _alerts(result) == ["Aucun salarié n'a de séance le vendredi."]
+
+
+def _employees_off(payload: dict[str, Any], days: list[int], *, from_time: str | None = None) -> dict[str, Any]:
+    """Les deux salariés indisponibles ces jours-là, tels que l'onglet Dispo coach les saisit."""
+    payload["constraints"].extend(
+        coach_availability(f"off-{coach}", coach, unavailable_days=days, from_time=from_time) for coach in ("e1", "e2")
+    )
+    return payload
+
+
+def test_a_day_when_no_employee_was_available_is_stated_as_such() -> None:
+    """Tous les jours manquants sont impossibles : la seconde phrase seule, aucun reproche au planning."""
+    payload = _one_team_a_day({1: "e1", 2: "e1", 3: "e2", 4: "e2", 5: "vol"}, intensity="HARD")
+
+    result = solve_payload(_employees_off(payload, [5]))
+
+    assert result["status"] == "completed"
+    assert _alerts(result) == ["Le vendredi, aucun salarié n'était disponible."]
+
+
+def test_several_days_when_no_employee_was_available_read_as_one_sentence() -> None:
+    """Le pluriel : « Les jeudi et vendredi », un seul message."""
+    payload = _one_team_a_day({1: "e1", 2: "e1", 3: "e2", 4: "vol", 5: "vol"}, intensity="HARD")
+
+    result = solve_payload(_employees_off(payload, [4, 5]))
+
+    assert result["status"] == "completed"
+    assert _alerts(result) == ["Les jeudi et vendredi, aucun salarié n'était disponible."]
+
+
+def test_a_possible_day_and_an_impossible_day_share_one_alert_of_two_sentences() -> None:
+    """Mardi n'a pas été retenu, jeudi ne pouvait pas l'être : le gestionnaire lit les deux faits, séparés."""
+    payload = _one_team_a_day({1: "e1", 2: "vol", 3: "e2", 4: "vol", 5: "e1"}, intensity="HARD")
+
+    result = solve_payload(_employees_off(payload, [4]))
+
+    assert result["status"] == "completed"
+    assert _alerts(result) == ["Aucun salarié n'a de séance le mardi. Le jeudi, aucun salarié n'était disponible."]
+
+
+def test_one_employee_still_available_keeps_the_day_possible() -> None:
+    """TÉMOIN : e2 reste libre le vendredi, « aucun salarié n'était disponible » serait faux."""
+    payload = _one_team_a_day({1: "e1", 2: "e1", 3: "e2", 4: "e2", 5: "vol"}, intensity="HARD")
+    payload["constraints"].append(coach_availability("off-e1", "e1", unavailable_days=[5]))
+
+    result = solve_payload(payload)
+
+    assert _alerts(result) == ["Aucun salarié n'a de séance le vendredi."]
+
+
+def test_a_day_with_one_slot_left_for_the_employees_stays_possible() -> None:
+    """TÉMOIN : indisponibles dès 19:30, ils restent libres sur le créneau de 18:00 du jeudi."""
+    payload = _one_team_a_day({1: "e1", 2: "e1", 3: "e2", 4: "vol", 5: "e1"}, intensity="HARD")
+    payload["venues"][0]["trainingSlots"].append(
+        {"dayOfWeek": 4, "startTime": "20:00", "durationMinutes": 60, "capacity": 1}
+    )
+
+    result = solve_payload(_employees_off(payload, [4], from_time="19:30"))
+
+    assert _alerts(result) == ["Aucun salarié n'a de séance le jeudi."]
+
+
+def test_a_partial_unavailability_covering_every_slot_of_the_day_makes_it_impossible() -> None:
+    """Le jour impossible se juge créneau par créneau : la plage dès 17:00 ferme l'unique créneau de 18:00."""
+    payload = _one_team_a_day({1: "e1", 2: "e1", 3: "e2", 4: "vol", 5: "e1"}, intensity="HARD")
+
+    result = solve_payload(_employees_off(payload, [4], from_time="17:00"))
+
+    assert _alerts(result) == ["Le jeudi, aucun salarié n'était disponible."]
 
 
 def _objective_days(grid_days: list[int], intensity: str) -> set[int]:

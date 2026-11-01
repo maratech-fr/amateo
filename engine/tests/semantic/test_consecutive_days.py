@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload
 
 
@@ -70,3 +72,155 @@ def test_preferred_keeps_the_sessions_and_pays_the_malus_instead() -> None:
     days = _days_used(_solve({"maxConsecutiveDays": {"intensity": "PREFERRED", "maxConsecutiveDays": 3}}), "sm1")
 
     assert days == [1, 2, 3], f"PREFERRED ne doit pas supprimer une séance (≥21 bat −6), obtenu {days}"
+
+
+# ── La règle saisie est dite quand le planning posé la dépasse (verrous compris) ─────────────────────
+#
+# Le solveur ne voit pas les verrous dans sa fenêtre : une suite réservée sort quand même, le gestionnaire
+# doit le lire. Angle DIAGNOSTIC, les tests ci-dessus portent l'angle POSE.
+
+
+def _reserved_on(team_id: str, days: list[int]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f"lock-{team_id}-{day}",
+            "teamId": team_id,
+            "venueId": "gym",
+            "dayOfWeek": day,
+            "startTime": "18:00",
+            "durationMinutes": 90,
+            "lockLevel": "HARD",
+        }
+        for day in days
+    ]
+
+
+def _solve_reserved(days: list[int], rule: dict[str, Any] | None) -> dict[str, Any]:
+    """U15 réservée ces jours-là, son quota au complet, aucune autre case au gymnase."""
+    return solve_payload(
+        make_payload(
+            teams=[make_team("U15", sessions_per_week=len(days))],
+            venues=[make_venue("gym", [(day, "18:00") for day in days])],
+            slot_templates=_reserved_on("U15", days),
+            implicit_rules={"maxConsecutiveDays": rule} if rule else None,
+        ),
+        timeout=10,
+    )
+
+
+def _alerts(result: dict[str, Any]) -> list[dict[str, Any]]:
+    return [d for d in result["diagnostics"] if d.get("ruleKey") == "maxConsecutiveDays"]
+
+
+def _messages(result: dict[str, Any]) -> list[str]:
+    return [d["message"] for d in _alerts(result)]
+
+
+@pytest.mark.parametrize("intensity", ["HARD", "PREFERRED"])
+def test_three_reserved_days_in_a_row_are_named_at_the_threshold(intensity: str) -> None:
+    """Max 3, trois jours réservés : c'est la borne, le planning sort et le dit, avec la forme du contrat."""
+    result = _solve_reserved([1, 2, 3], {"intensity": intensity, "maxConsecutiveDays": 3})
+
+    assert result["status"] == "completed"
+    assert _days_used(result, "U15") == [1, 2, 3]
+    assert _messages(result) == ["Règle « jours consécutifs » : U15 s'entraîne 3 jours de suite, du lundi au mercredi."]
+    alert = _alerts(result)[0]
+    assert alert["id"] == "diag-implicit-consecutive-days-U15"
+    assert alert["type"] == "implicit_rule_not_honored"
+    assert alert["severity"] == "WARNING"
+    assert alert["teamId"] == "U15"
+    assert alert["suggestions"] == ["Déplacez une des séances réservées, ou assouplissez la règle (étape Contraintes)."]
+
+
+def test_a_longer_run_is_named_once_with_its_whole_length() -> None:
+    """Quatre jours de suite = une alerte de 4 jours, pas deux fenêtres de 3."""
+    result = _solve_reserved([1, 2, 3, 4], {"intensity": "PREFERRED", "maxConsecutiveDays": 3})
+
+    assert _messages(result) == ["Règle « jours consécutifs » : U15 s'entraîne 4 jours de suite, du lundi au jeudi."]
+
+
+def test_a_preferred_rule_paid_by_the_solver_itself_is_named_too() -> None:
+    """Sans aucun verrou : le malus a perdu contre le quota, le planning dépasse, l'alerte le dit."""
+    result = _solve({"maxConsecutiveDays": {"intensity": "PREFERRED", "maxConsecutiveDays": 3}})
+
+    assert _days_used(result, "sm1") == [1, 2, 3]
+    assert _messages(result) == ["Règle « jours consécutifs » : sm1 s'entraîne 3 jours de suite, du lundi au mercredi."]
+
+
+def test_two_reserved_days_under_a_threshold_of_three_raise_nothing() -> None:
+    """Lundi et mardi, max 3 : la règle est tenue, silence."""
+    result = _solve_reserved([1, 2], {"intensity": "HARD", "maxConsecutiveDays": 3})
+
+    assert result["status"] == "completed"
+    assert _alerts(result) == []
+
+
+def test_a_gap_breaks_the_run() -> None:
+    """Lundi, mardi, jeudi, vendredi, max 3 : deux suites de 2, aucune alerte."""
+    result = _solve_reserved([1, 2, 4, 5], {"intensity": "PREFERRED", "maxConsecutiveDays": 3})
+
+    assert result["status"] == "completed"
+    assert _alerts(result) == []
+
+
+def test_a_rule_that_is_off_raises_nothing() -> None:
+    """Règle coupée = bloc absent du payload (``parsing.py``, le schéma refuse « OFF ») : trois jours de suite se taisent."""
+    result = _solve_reserved([1, 2, 3], None)
+
+    assert result["status"] == "completed"
+    assert _days_used(result, "U15") == [1, 2, 3]
+    assert _alerts(result) == []
+
+
+def test_sunday_then_monday_is_not_a_run() -> None:
+    """La semaine ne boucle pas, comme à la pose (``consecutive_days.py``) : même à max 2, silence."""
+    result = _solve_reserved([1, 7], {"intensity": "PREFERRED", "maxConsecutiveDays": 2})
+
+    assert _days_used(result, "U15") == [1, 7]
+    assert _alerts(result) == []
+
+
+def test_saturday_then_sunday_is_a_run() -> None:
+    """TÉMOIN du précédent : le week-end compte comme les autres jours, seul le passage de semaine est exclu."""
+    result = _solve_reserved([6, 7], {"intensity": "PREFERRED", "maxConsecutiveDays": 2})
+
+    assert _messages(result) == [
+        "Règle « jours consécutifs » : U15 s'entraîne 2 jours de suite, du samedi au dimanche."
+    ]
+
+
+def _solve_group(days_a: list[int], days_b: list[int]) -> dict[str, Any]:
+    """U11 A et U11 B forment un groupe mutualisé, réservé aux mêmes cases sur leurs jours communs."""
+    days = sorted(set(days_a) | set(days_b))
+    payload = make_payload(
+        teams=[
+            {**make_team("a", sessions_per_week=len(days_a)), "name": "U11 A"},
+            {**make_team("b", sessions_per_week=len(days_b)), "name": "U11 B"},
+        ],
+        venues=[make_venue("gym", [(day, "18:00") for day in days], capacity=2)],
+        slot_templates=[*_reserved_on("a", days_a), *_reserved_on("b", days_b)],
+        implicit_rules={"maxConsecutiveDays": {"intensity": "PREFERRED", "maxConsecutiveDays": 3}},
+    )
+    payload["sharedBlocks"] = [{"id": "g", "teamIds": ["a", "b"], "commonSessions": len(set(days_a) & set(days_b))}]
+    return solve_payload(payload, timeout=10)
+
+
+def test_a_group_on_the_same_days_gets_a_single_message() -> None:
+    """Le groupe mutualisé se comporte comme UNE équipe : un message qui nomme ses membres, pas un par membre."""
+    result = _solve_group([1, 2, 3], [1, 2, 3])
+
+    assert result["status"] == "completed"
+    assert _messages(result) == [
+        "Règle « jours consécutifs » : U11 A et U11 B (séance commune) s'entraînent 3 jours de suite, "
+        "du lundi au mercredi."
+    ]
+
+
+def test_a_group_member_alone_on_a_longer_run_is_named_alone() -> None:
+    """« Aux mêmes jours » : U11 B n'a que lundi et mardi, seule U11 A dépasse la règle, seule elle est nommée."""
+    result = _solve_group([1, 2, 3], [1, 2])
+
+    assert result["status"] == "completed"
+    assert _messages(result) == [
+        "Règle « jours consécutifs » : U11 A s'entraîne 3 jours de suite, du lundi au mercredi."
+    ]
