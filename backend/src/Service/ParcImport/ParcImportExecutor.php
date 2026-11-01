@@ -431,7 +431,7 @@ final class ParcImportExecutor
             }
 
             // D3 — composition REDÉFINIE à la main (`corrections.equipes`, liste ≥ 2 de `uuid |
-            // import:<index>`) : elle REMPLACE les équipes lues de la case (incident ALAP — « SM shooting »
+            // import:<index>`) : elle REMPLACE les équipes lues de la case (incident d'un club pilote — « SM shooting »
             // était le NOM du groupe, pas une équipe). Abus (< 2, id forgé, import hors bornes) → 422
             // fail-fast nommant la ligne. Sinon, résolution par NOM, avec collecte D4 des introuvables.
             $correctedEquipes = $decision['corrections']['equipes'] ?? null;

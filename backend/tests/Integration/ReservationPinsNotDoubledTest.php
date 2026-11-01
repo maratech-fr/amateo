@@ -53,7 +53,7 @@ use Symfony\Component\Mercure\HubInterface;
  * Après une génération, l'import du résultat écrit des `ScheduleSlotTemplate` HARD d'origine
  * RESERVATION ({@see ScheduleResultImporter}). Au build suivant, le builder reprenait
  * ces templates EN PLUS des `Reservation` durables dont ils sont nés : chaque réservation partait
- * DEUX fois au solveur (26 → 52 épingles au BCCL/ALAP), et surtout l'empreinte de structure
+ * DEUX fois au solveur (26 → 52 épingles sur un club pilote), et surtout l'empreinte de structure
  * ({@see SchedulePlanProvisioner::structureHashOfPlan}) divergeait du `snapshotHash` de la version
  * fraîchement générée — un faux « périmé » juste après génération, et le risque d'envoyer la même
  * réservation deux fois au second solve.

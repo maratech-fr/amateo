@@ -76,7 +76,7 @@ export interface ParcAnalysisLine {
   suggestedGender?: "M" | "F" | null;
   suggestedCtc?: boolean;
   /**
-   * PR A (incident ALAP, D1/D13) — séance commune / réservation en alerte « équipe ignorée ou
+   * PR A (incident d'un club pilote, D1/D13) — séance commune / réservation en alerte « équipe ignorée ou
    * introuvable » : le code MACHINE qui accompagne la `raison` humaine. Le front le lit pour BLOQUER
    * l'import tant que la ligne est gardée (jamais une re-dérivation depuis la phrase FR serveur).
    */

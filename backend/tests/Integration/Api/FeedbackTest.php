@@ -373,7 +373,7 @@ final class FeedbackTest extends WebTestCase
     public function testIdenticalSubmitsWithinSixtySecondsCollapseToOneRow(): void
     {
         // D16 — anti double envoi : même user + même topic + même message dans la fenêtre 60 s →
-        // 201 IDEMPOTENT renvoyant l'id EXISTANT, UNE SEULE ligne (cas réel ALAP : 4 envois à la même
+        // 201 IDEMPOTENT renvoyant l'id EXISTANT, UNE SEULE ligne (cas réel d'un club pilote : 4 envois à la même
         // seconde). ROUGE : aucune dédup aujourd'hui → 4 lignes, 4 ids distincts.
         [$token, $userId, $clubId] = $this->registerVerifiedMember('FBDEDUP');
         $before = $this->feedbackCount($clubId);

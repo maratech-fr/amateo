@@ -28,7 +28,7 @@
 > ne rend plus qu'un genre lu sur un motif clair ou `null`, et une équipe « à créer » sans genre
 > connu (ni déduit ni corrigé) refuse l'import (422 nommant la ligne).
 >
-> **Lot correctif « PR A » (incident ALAP).** Une case « SF1 + SM1 + SM2 » dont le libellé de
+> **Lot correctif « PR A » (incident d'un club pilote).** Une case « SF1 + SM1 + SM2 » dont le libellé de
 > groupe se lisait comme une troisième équipe a révélé trois manques : rien ne croisait la
 > composition d'une séance commune/réservation avec les décisions prises à l'étape Équipes, le
 > refus d'une entité introuvable à l'écriture sortait une ligne à la fois (« mutualisation n°2 :
@@ -258,13 +258,13 @@ appariable) ; `fiabilite.anomalies` = nombre d'alertes transverses (§1) ; `fiab
   `VenueTrainingSlotStateProcessor` rejouée au dry-run) — un gymnase **à créer** n'est jamais
   alerté sur ce point : il naîtra divisible, dérivé de la capacité demandée.
 - **Séances communes** (ex-« Mutualisations » — l'écran et les messages serveur disent désormais
-  « Séance commune », jamais « Mutualisation », incident ALAP) — un groupe dont l'ensemble
+  « Séance commune », jamais « Mutualisation », incident d'un club pilote) — un groupe dont l'ensemble
   d'équipes (toutes résolues **exactement**, une suggestion non confirmée ne compte pas) égale
   exactement l'ensemble d'un bloc `SharedTrainingBlock` du **socle** existant s'apparie à ce bloc ;
   sinon `aCreer`. **D'abord**, une équipe citée par la case mais **ignorée** à l'étape Équipes
   (décision `coche: false`) ou **introuvable** des lignes dérivées fait passer la ligne en
   `alerte` (`extra.alerteCode = "equipe_ignoree"`, raison nommant l'équipe en cause — c'est le
-  défaut ALAP : « SM shooting » était le libellé du GROUPE, pas une équipe) ; sinon la garde
+  défaut d'un club pilote : « SM shooting » était le libellé du GROUPE, pas une équipe) ; sinon la garde
   Σ séances communes ≤ séances hebdomadaires d'un membre
   (`App\Service\SoloReservationBudget::forTeamsWithBlockSubstituted`, même foyer que
   `SharedTrainingBlockStateProcessor`) est rejouée : une violation passe en `alerte`. Le libellé
@@ -363,7 +363,7 @@ cap payant, composition de séance commune invalide) lève `UnprocessableEntityH
 gymnase qu'aucune décision ne résout) est au contraire **collectée en une passe, toutes sections**
 (`ParcImportResolutionException`), puis levée **agrégée** en fin de transaction — plusieurs
 entités introuvables dans un même import sortent donc toutes d'un coup, jamais une à la fois au
-fil de relances successives (incident ALAP). Dans les deux cas, rien n'est écrit, et chaque message
+fil de relances successives (incident d'un club pilote). Dans les deux cas, rien n'est écrit, et chaque message
 **nomme la LIGNE** (type + sa case : équipes/gymnase/jour/heure, jamais un rang « mutualisation n°2 :
 … ») puis le détail de l'échec — ex. « Séance commune SF1 + SM1 + SM2 · lundi 20:30 · Léon Jouhaux :
 l'équipe « SM shooting » est introuvable. », « Réservation U13M1 · mardi 18:00 · Léon Jouhaux :
@@ -477,7 +477,7 @@ et le ré-appariement (ci-dessous).
 
 C'est un **assistant à 7 étapes** (`StepRail`, `ParcImportModal.tsx:59-61`) : **Prompt · Coller ·
 Équipes · Ententes (CTC) · Gymnases · Séances communes · Réservations** — « Séances communes »
-(ex-« Mutualisations », incident ALAP : l'écran et les messages serveur disent désormais « Séance
+(ex-« Mutualisations », incident d'un club pilote : l'écran et les messages serveur disent désormais « Séance
 commune », jamais « Mutualisation ») et « Ententes (CTC) » (refonte PR2, D9, vient juste après
 Équipes, car elle dépend des suggestions de `TeamCreationSuggester`, §1). Les 5 étapes de contenu
 restent verrouillées tant que l'analyse n'a pas réussi ; une analyse réussie ouvre et bascule sur
@@ -517,7 +517,7 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    porte « À choisir » et déclenche ⚠ « Genre requis » (`aria-invalid`, `border-warning`) — elle
    compte dans le `disabledReason` d'« Importer » (comptée SÉPARÉMENT des lignes ambiguës) tant
    qu'elle n'est pas tranchée. La case Entente (CTC) de cette même ligne a migré vers l'étape
-   dédiée (point 4) à la refonte PR2. **Ligne « Ignorer »** (incident ALAP) : le libellé se rend
+   dédiée (point 4) à la refonte PR2. **Ligne « Ignorer »** (incident d'un club pilote) : le libellé se rend
    **barré et grisé** (jamais seulement une ligne qui disparaît visuellement), et le champ
    « Séances » (comme le Select Rang/Genre d'une ligne « Créer ») **disparaît** — une ligne
    ignorée n'a plus rien à corriger. La raison d'une ligne NON « à trancher » (déjà appariée,
@@ -541,7 +541,7 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    **barrée/grisée si « Ignorer »**) ; Garder/Ignorer (`SegmentedControl`, pas de case à cocher), un
    sélecteur de gymnase pour sa réservation de groupe (P4-363, → `venueId`), un champ pour le nom du
    groupe (§6, → `corrections.groupe`), amorcé par le vrai nom du groupe existant (`blocLabel`) à défaut le nom lu — seul un nom SAISI, différent de l'amorce, est envoyé ; champ vidé = rien envoyé, l'import ne retire jamais un nom, un **sélecteur MULTIPLE** (`Listbox mode="multiple"`,
-   incident ALAP) pour redéfinir la **composition d'équipes** (→ `corrections.equipes`, §6 — amorcé
+   incident d'un club pilote) pour redéfinir la **composition d'équipes** (→ `corrections.equipes`, §6 — amorcé
    des équipes résolues lues, options = équipes du club + lignes Équipes gardées « à créer » de ce
    run, référencées `import:<index>`) et un accès à l'éditeur de créneau pour le jour/heure/durée.
    Une ligne qui cite une équipe **ignorée ou introuvable** à l'étape Équipes (`alerteCode =
@@ -601,7 +601,7 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    le serveur garde la main à l'import. Les équipes « à créer » de ce run s'y retrouvent par leur
    `import:<index>`. Bloquent « Importer » : un ambigu non tranché, une
    création sans genre tranché (point 3, refonte PR2), une alerte « équipe ignorée/introuvable »
-   cochée (points 6-7, incident ALAP) ou une composition à moins de deux équipes, ou aucune ligne
+   cochée (points 6-7, incident d'un club pilote) ou une composition à moins de deux équipes, ou aucune ligne
    cochée, **et** une vérification périmée ou en cours.
 
    **Règle des étapes** (finitions PR D, 2026-10-30) : une étape de contenu ne passe au vert qu'APRÈS
@@ -614,7 +614,7 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
    fin » ; un groupe nommé ne montre que son nom dans la case et la carte (ses équipes restent dans
    l'infobulle et le sélecteur), et « Revérifier » conserve le nom saisi (2026-10-31).
 
-   **Pied de modale** (incident ALAP) : Précédent/Suivant **groupés à gauche**, l'action primaire
+   **Pied de modale** (incident d'un club pilote) : Précédent/Suivant **groupés à gauche**, l'action primaire
    (Analyser/Importer) à droite — plus de bouton TEXTE « Fermer » (la croix de l'en-tête suffit).
    La **raison du blocage est VISIBLE en permanence** au pied (ton `warning`, patron
    `ImportFbiDialog`, pas seulement dans `disabledReason` au survol) : `importBlocked` chiffre
@@ -627,10 +627,10 @@ décision fondateur) : les créneaux de gymnase (ouvertures) et les mutualisatio
 front ni l'aperçu reconstruit ; une erreur serveur (422 `{errors: […]}`, §6) s'affiche **dans la
 modale** (`NoticeBanner tone="destructive" role="alert"`, jamais un toast), amenée à l'écran dès
 qu'elle apparaît (`scrollIntoView({block: "nearest", behavior: "smooth"})`, sans voler le focus —
-elle vivait en tête d'une zone défilante que rien ne ramenait, incident ALAP sur Safari) avec, par
+elle vivait en tête d'une zone défilante que rien ne ramenait, incident d'un club pilote sur Safari) avec, par
 ligne fautive, un bouton « Voir » qui mène à la 1ʳᵉ ligne à trancher et lui donne le focus ; au
 succès, équipes/gymnases **et** séances communes/réservations/créneaux de gymnase sont invalidés
-PARTOUT (pas seulement équipes/gymnases — un import en crée aussi, incident ALAP) et le récap
+PARTOUT (pas seulement équipes/gymnases — un import en crée aussi, incident d'un club pilote) et le récap
 chiffré par section (§6) remplace le contenu de la modale.
 
 Décisions d'interaction (passe `ui-ux-pro-max`) : clôture jamais bloquée (dry-run, rien n'est

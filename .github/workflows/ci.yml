@@ -493,7 +493,7 @@ jobs:
       - name: FeedbackContextIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/FeedbackContextIsolationTest.php --group phase1'
 
-      # Axe tenant isolation (GO fondateur 2026-10-30, incident ALAP, PR A import du parc) — la
+      # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la
       # redéfinition de la composition d'une séance commune par le canal `corrections.equipes` ne
       # doit JAMAIS faire entrer dans un bloc mutualisé une équipe d'un AUTRE club : un UUID hors
       # tenant est refusé 422 par la garde `ownedTeam`, rien écrit. Step FILTRÉ sur le seul test de
@@ -775,7 +775,7 @@ jobs:
       - name: HardLockSurvivesPayloadTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/HardLockSurvivesPayloadTest.php --group phase1'
 
-      # Incident ALAP pt 1 (axe generation pipeline) — « une réservation n'est épinglée QU'UNE
+      # Incident d'un club pilote pt 1 (axe generation pipeline) — « une réservation n'est épinglée QU'UNE
       # fois au moteur ». Après une génération, l'import écrit une épingle HARD/RESERVATION
       # redondante avec la réservation durable ; au build suivant le builder les reprenait TOUTES
       # DEUX (26 → 52 épingles), et l'empreinte de structure divergeait du snapshotHash — un faux

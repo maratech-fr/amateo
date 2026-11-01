@@ -181,7 +181,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
   const [caseVenue, setCaseVenue] = useState<Record<string, string>>({});
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({});
-  // D3 (incident ALAP) — composition d'équipes REDÉFINIE d'une séance commune, par `mutualisations:index`.
+  // D3 (incident d'un club pilote) — composition d'équipes REDÉFINIE d'une séance commune, par `mutualisations:index`.
   // Absente = non touchée (le serveur garde la composition lue) ; définie = `corrections.equipes` envoyé.
   const [teamCompositionDrafts, setTeamCompositionDrafts] = useState<Record<string, string[]>>({});
   // Retours fondateur 2026-10-26 — le nombre de séances d'une ligne équipe, en CHAMP éditable
@@ -209,7 +209,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
   // Finition 4 — « Voir » vise une ligne à trancher : on mémorise SON sélecteur (ref, pas d'état — pas
   // de setState dans l'effet) pour le focaliser à la place de l'en-tête une fois la ligne rendue.
   const pendingFocusRef = useRef<{ section: string; index: number } | null>(null);
-  // D5 (incident ALAP) — le bandeau d'erreur d'import est en TÊTE de la zone défilante ; DÈS QU'IL
+  // D5 (incident d'un club pilote) — le bandeau d'erreur d'import est en TÊTE de la zone défilante ; DÈS QU'IL
   // APPARAÎT on l'AMÈNE à l'écran (cas Safari du club : jamais ramené), SANS lui voler le focus.
   // Callback ref : il se déclenche au MONTAGE du nœud (= « à l'arrivée » de l'erreur), déjà posé dans
   // le DOM — on défile donc directement (pas de `requestAnimationFrame` : le nœud est committé, il n'y
@@ -519,7 +519,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
 
   // PR A (D13) — une ligne de CASE (séance commune / réservation) en alerte « équipe ignorée ou
   // introuvable » (`alerteCode`) ET GARDÉE bloque l'import : sinon l'import part et le serveur 422
-  // (le défaut ALAP). On lit le code MACHINE servi par l'analyse, jamais la phrase FR.
+  // (le défaut d'un club pilote). On lit le code MACHINE servi par l'analyse, jamais la phrase FR.
   const pendingAlerteCode = useMemo(() => {
     if (null === analysis) {
       return 0;
@@ -832,7 +832,7 @@ export function ParcImportModal(props: ParcImportModalProps) {
           </Button>
         ) : (
           <>
-            {/* D10 (incident ALAP) — plus de bouton TEXTE « Fermer » au pied (la croix d'en-tête suffit) :
+            {/* D10 (incident d'un club pilote) — plus de bouton TEXTE « Fermer » au pied (la croix d'en-tête suffit) :
                 Précédent/Suivant GROUPÉS à gauche (`mr-auto`), l'action primaire (Analyser/Importer) à droite. */}
             <div className="mr-auto flex flex-wrap items-center gap-2">
               {"prompt" !== step ? (
@@ -1275,7 +1275,7 @@ function DecisionRow({
   const sessionsDescId = useId();
   const groups = useMemo(() => decisionGroups(section, line, venues, allTeams, tiers), [section, line, venues, allTeams, tiers]);
   const pending = "ambigu" === line.statut && "" === value;
-  // D9 (incident ALAP) — une ligne mise en « Ignorer » est rendue BARRÉE (retours fondateur : grisée/barrée).
+  // D9 (incident d'un club pilote) — une ligne mise en « Ignorer » est rendue BARRÉE (retours fondateur : grisée/barrée).
   const ignored = IGNORE === value;
   // Refonte PR2 (D9) — une ligne équipe « Créer » PORTANT des suggestions (le serveur a servi
   // `suggestedTierId`) montre un Select Rang + un Select Genre (le genre est OBLIGATOIRE : vide = ⚠).
@@ -1654,7 +1654,7 @@ function MutualisationsStep({
                     { key: "ignore", label: T.mutualIgnore },
                   ]}
                 />
-                {/* D3 (incident ALAP) — sélecteur MULTIPLE : redéfinir la composition d'équipes (le
+                {/* D3 (incident d'un club pilote) — sélecteur MULTIPLE : redéfinir la composition d'équipes (le
                     nom du groupe avait pu être lu comme une équipe). → `corrections.equipes`. */}
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">{T.sectionTitle("equipes")}</span>
