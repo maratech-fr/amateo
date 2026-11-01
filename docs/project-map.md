@@ -181,7 +181,7 @@ ruff (line 120, py314, double quotes, LF) · mypy `strict` + `pydantic.mypy` (`o
 
 Two hooks in `.claude/settings.json` (paths corrected to this checkout):
 - **`SessionStart`** → `code-review-graph status` (read-only).
-- **`PostToolUse` on `Edit|Write|Bash`** → `code-review-graph update --skip-flows` — **the only automatic action in this repo**: it incrementally re-indexes the graph after each edit. It never touches application code. This is the documented exception to the "no hidden automation" rule. To make it manual, remove the `PostToolUse` block and run `code-review-graph update` by hand.
+- **`PostToolUse` on `Edit|Write|Bash`** → `.claude/hooks/graph-update.sh`, which runs `code-review-graph update --skip-flows` detached and under a lock, so the hook timeout cannot kill it and runs do not stack — **the only automatic action in this repo**: it incrementally re-indexes the graph after each edit. It never touches application code. This is the documented exception to the "no hidden automation" rule. To make it manual, remove the `PostToolUse` block and run `code-review-graph update` by hand.
 
 The MCP server (`.mcp.json`: `uvx code-review-graph serve`) loads at session start; its tools (`semantic_search_nodes`, `query_graph`, `get_impact_radius`, `detect_changes`, …) are the preferred way to explore before Grep/Read. Semantic search additionally needs `code-review-graph embed` (not run — pulls a heavy local model).
 
