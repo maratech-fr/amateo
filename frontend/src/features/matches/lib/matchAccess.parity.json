@@ -149,7 +149,7 @@
       "venueId": "v1",
       "matchDate": "2026-11-11",
       "isHoliday": true,
-      "kickoff": "11:00",
+      "kickoff": "10:00",
       "windows": [
         {
           "venueId": "v1",

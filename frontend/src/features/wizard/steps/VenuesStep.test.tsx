@@ -31,6 +31,8 @@ const h = vi.hoisted(() => ({
   listeners: new Set<() => void>(),
   stream: { value: { connected: false, latest: null } as { connected: boolean; latest: unknown } },
   venues: { data: [] as unknown[] },
+  matchWindows: { data: [] as unknown[] },
+  gridMatchWindows: { value: undefined as unknown },
 }));
 
 vi.mock("@/shared/lib/travelStream", async () => {
@@ -71,7 +73,7 @@ vi.mock("../queries", () => ({
   useFfbbSallesByName: () => ({ data: { postalCode: null, salles: [] }, isPending: false }),
 }));
 
-vi.mock("@/features/matches/queries", () => ({ useVenueMatchWindows: () => ({ data: [] }) }));
+vi.mock("@/features/matches/queries", () => ({ useVenueMatchWindows: () => ({ data: h.matchWindows.data }) }));
 vi.mock("@/features/matches/MatchWindowsEditor", () => ({ MatchWindowsEditor: () => null }));
 vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: { id: "club-1", postalCode: "69100" } } }), useWorkingSeason: () => undefined }));
 // La modale d'import du parc n'est pas rendue ici (parcOpen reste faux) ; on la neutralise pour
@@ -81,7 +83,12 @@ vi.mock("@/shared/lib/socle", () => ({ useSocleValidated: () => false }));
 vi.mock("@/shared/components/ui/venue-select", () => ({ VenueSelect: () => null }));
 vi.mock("./slotFields", () => ({ CapacitySelect: () => null, DurationSelect: () => null, GroupLabelField: () => null, SharedSlotHint: () => null }));
 vi.mock("./VenueGeocodeField", () => ({ VenueGeocodeField: () => null }));
-vi.mock("./VenueAvailabilityGrid", () => ({ VenueAvailabilityGrid: () => null }));
+vi.mock("./VenueAvailabilityGrid", () => ({
+  VenueAvailabilityGrid: ({ matchWindows }: { matchWindows?: unknown }) => {
+    h.gridMatchWindows.value = matchWindows;
+    return null;
+  },
+}));
 // La modale n'a pas besoin de rendre son contenu : seule son OUVERTURE (matrixOpen) compte pour
 // la suppression du toast terminal.
 vi.mock("./TravelMatrixModal", () => ({ TravelMatrixModal: () => null }));
@@ -122,6 +129,8 @@ beforeEach(() => {
   h.listeners.clear();
   h.stream.value = { connected: false, latest: null };
   h.venues.data = [];
+  h.matchWindows.data = [];
+  h.gridMatchWindows.value = undefined;
 });
 
 afterEach(() => {
@@ -162,5 +171,37 @@ describe("VenuesStep — toast de recalcul des trajets (P4-279)", () => {
     // Laisser les effets se poser puis vérifier qu'aucun toast n'est parti (la modale montre sa jauge).
     await Promise.resolve();
     expect(successSpy).not.toHaveBeenCalledWith(WIZARD_TEXTS.travelRecomputed);
+  });
+});
+
+/**
+ * Promesse (D1bis, D21) : une ouverture datée vaut un jour, pas une convention. Dans l'étape Gymnases,
+ * un gymnase qui n'a qu'une ouverture reste « sans créneau » et la grille hebdo ne la reçoit pas.
+ * Jumeau de la porte : `useStepValidation.test.ts` ; jumeau de l'atterrissage : `WizardLayout.openingDate.test.tsx`.
+ */
+describe("VenuesStep — une ouverture datée ne fait pas un gymnase de match", () => {
+  const dated = { id: "o1", venueId: "v1", dayOfWeek: null, appliesOnPublicHolidays: false, openingDate: "2026-11-11", label: null, startTime: "14:00", endTime: "20:00" };
+  const weekly = { id: "w1", venueId: "v1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" };
+
+  it("une ouverture seule : le bandeau « sans créneau » nomme le gymnase", async () => {
+    h.venues.data = [venue("v1", "Gymnase Alpha")];
+    h.matchWindows.data = [dated];
+    renderWithProviders(<Harness />);
+    expect(await screen.findByText(WIZARD_TEXTS.emptyVenuesSingular, { exact: false })).toHaveTextContent("Gymnase Alpha");
+  });
+
+  it("témoin : une ligne hebdo l'exempte", async () => {
+    h.venues.data = [venue("v1", "Gymnase Alpha")];
+    h.matchWindows.data = [weekly];
+    renderWithProviders(<Harness />);
+    await waitFor(() => expect(h.gridMatchWindows.value).toEqual([weekly]));
+    expect(screen.queryByText(WIZARD_TEXTS.emptyVenuesSingular, { exact: false })).toBeNull();
+  });
+
+  it("la grille hebdo ne reçoit jamais la ligne datée", async () => {
+    h.venues.data = [venue("v1", "Gymnase Alpha")];
+    h.matchWindows.data = [weekly, dated];
+    renderWithProviders(<Harness />);
+    await waitFor(() => expect(h.gridMatchWindows.value).toEqual([weekly]));
   });
 });

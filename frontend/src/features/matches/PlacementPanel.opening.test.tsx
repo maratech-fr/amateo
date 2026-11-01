@@ -216,8 +216,8 @@ describe("PlacementPanel — la plage proposée par le raccourci (D4)", () => {
     expect(await proposed(null, 90)).toEqual(["14:00", "18:00"]);
   });
 
-  it("match long : la fin couvre le match, arrondie au quart d'heure", async () => {
-    expect(await proposed("15:10", 280)).toEqual(["15:00", "19:45"]);
+  it("match long : la fin couvre le match entier, arrondie au quart d'heure SUPÉRIEUR (15:10 + 280 min = 19:50 → 20:00)", async () => {
+    expect(await proposed("15:10", 280)).toEqual(["15:00", "20:00"]);
   });
 });
 
