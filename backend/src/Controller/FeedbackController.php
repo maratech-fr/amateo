@@ -162,7 +162,7 @@ final class FeedbackController extends AbstractController
         }
 
         // D16 — anti double envoi : un signalement IDENTIQUE du même auteur (club + topic + message)
-        // dans les 60 s rend le MÊME id (201 idempotent), UNE SEULE ligne — le cas réel ALAP (4 envois
+        // dans les 60 s rend le MÊME id (201 idempotent), UNE SEULE ligne — le cas réel d'un club pilote (4 envois
         // à la même seconde). Fenêtre à l'horloge RÉELLE, comme le `createdAt` posé au constructeur.
         $duplicate = $this->entityManager->getRepository(Feedback::class)
             ->findRecentDuplicate($clubId, $user->getId(), $topic, $message, new DateTimeImmutable('-60 seconds'));

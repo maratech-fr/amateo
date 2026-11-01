@@ -1204,8 +1204,8 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(422, $status, '501 cases à l\'import doit être refusé (borne ≤ 500)');
     }
 
-    // ───────────────────────── PR A (incident ALAP) — redéfinir les équipes d'une séance commune (corrections.equipes) ─────────────────────────
-    // Incident ALAP 2026-10-29 : la case « SF1 + SM shooting » cite « SM shooting » (en fait le NOM du
+    // ───────────────────────── PR A (incident d'un club pilote) — redéfinir les équipes d'une séance commune (corrections.equipes) ─────────────────────────
+    // Incident d'un club pilote 2026-10-29 : la case « SF1 + SM shooting » cite « SM shooting » (en fait le NOM du
     // groupe, lu comme une équipe). Le gestionnaire redéfinit la composition réelle via le nouveau
     // canal `corrections.equipes` d'une décision de séance commune : une liste ≥ 2 d'entrées, chacune
     // un UUID d'équipe EXISTANTE du club OU `import:<index>` vers une ligne Équipes gardée (créée dans

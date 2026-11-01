@@ -84,7 +84,7 @@ final class ParcImportAnalyzer
         }
         $season = '' !== $seasonId ? $this->entityManager->find(Season::class, $seasonId) : null;
 
-        // PR A (incident ALAP) — carte de résolution Équipes depuis la section dérivée + les décisions :
+        // PR A (incident d'un club pilote) — carte de résolution Équipes depuis la section dérivée + les décisions :
         // une équipe gardée est résoluble (connue), une équipe décochée est IGNORÉE. Une séance commune /
         // réservation qui cite une équipe ignorée (ou introuvable des cases) sort en alerte décochée.
         [$ignoredTeamKeys, $knownTeamKeys] = $this->teamResolutionSets($derived['equipes'], $decisions);

@@ -80,7 +80,7 @@ interface Line {
   suggestedGender?: "M" | "F" | "MIXTE" | null;
   suggestedCtc?: boolean;
   /**
-   * PR A (incident ALAP) — séance commune / réservation en alerte « équipe ignorée/introuvable » :
+   * PR A (incident d'un club pilote) — séance commune / réservation en alerte « équipe ignorée/introuvable » :
    * le code MACHINE qui accompagne la `raison` humaine (le front le lit pour bloquer/orienter, D13).
    * Le mock le porte comme l'API.
    */
@@ -1613,7 +1613,7 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
 });
 
 /**
- * ─────────── PR A (incident ALAP 2026-10-29) — équipe ignorée d'une séance commune (D2/D5/D9/D10/D11/D13) ───────────
+ * ─────────── PR A (incident d'un club pilote 2026-10-29) — équipe ignorée d'une séance commune (D2/D5/D9/D10/D11/D13) ───────────
  *
  * Nouvelles PROMESSES (option A — TANK écrit ROUGE, NEO implémente) :
  *  - D2  : changer une décision ÉQUIPES marque l'aperçu PÉRIMÉ (bandeau `staleHint` + « Revérifier »).
@@ -1625,7 +1625,7 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
  *  - D13 : une séance commune en alerte « équipe ignorée » ET gardée BLOQUE Importer ; « Voir » mène à
  *          l'étape Mutualisations ; la raison du blocage au pied porte le ton `text-warning`.
  */
-describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séance commune)", () => {
+describe("ParcImportModal — PR A (incident d'un club pilote : équipe ignorée d'une séance commune)", () => {
   const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...args: unknown[]) => string> & Record<string, string>;
 
   const stepNamed = (label: string) => (accessibleName: string) => accessibleName.includes(label);
@@ -1638,7 +1638,7 @@ describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séan
     await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
   }
 
-  /** Séance commune en ALERTE « équipe ignorée », GARDÉE (coche:true) — le cas ALAP, côté réponse serveur. */
+  /** Séance commune en ALERTE « équipe ignorée », GARDÉE (coche:true) — le cas d'un club pilote, côté réponse serveur. */
   function keptMutualisationAlerte(): Line {
     return {
       ...mkLine(0, "SF1 + SM shooting", "alerte"),
@@ -1745,7 +1745,7 @@ describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séan
 
   it("D13 — une séance commune en alerte « équipe ignorée » et GARDÉE bloque « Importer »", async () => {
     // ROUGE : aujourd'hui seules les lignes équipe/gymnase ambiguës (ou un genre manquant) bloquent ;
-    // une séance commune gardée mais en alerte n'empêche PAS l'import (le défaut ALAP : l'import part et 422).
+    // une séance commune gardée mais en alerte n'empêche PAS l'import (le défaut d'un club pilote : l'import part et 422).
     const user = userEvent.setup();
     const analysis = analysisOf({
       equipes: [mkLine(0, "U13M1", "aCreer")], // une ligne cochée → count > 0 (l'import n'est pas bloqué par « rien à importer »)
@@ -1791,7 +1791,7 @@ describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séan
   });
 });
 
-// ─────────── D3 (incident ALAP) — étape Séances communes : redéfinir la COMPOSITION d'équipes ───────────
+// ─────────── D3 (incident d'un club pilote) — étape Séances communes : redéfinir la COMPOSITION d'équipes ───────────
 // À l'étape « Séances communes », chaque ligne porte un SÉLECTEUR MULTIPLE d'équipes (équipes du club
 // + lignes Équipes gardées) : choisir SF1 + SM1 + SM2 envoie `corrections.equipes` (liste d'ids) dans
 // les décisions — à la revalidation ET à l'import ; moins de 2 équipes choisies → une RAISON VISIBLE
@@ -1802,7 +1802,7 @@ describe("ParcImportModal — PR A (incident ALAP : équipe ignorée d'une séan
 // ce fichier) : `teamsForGroup(libelle)` (nom accessible du sélecteur multi), `needsTwoTeams` (raison
 // « au moins 2 équipes »). Le ROUGE de chaque test est l'assertion `toBeDefined()` qui NOMME la clé à
 // créer — l'interaction en aval est la cible que NEO doit rendre verte.
-describe("ParcImportModal — étape Séances communes : composition corrigée (D3, incident ALAP) — ROUGE option A", () => {
+describe("ParcImportModal — étape Séances communes : composition corrigée (D3, incident d'un club pilote) — ROUGE option A", () => {
   const T = PARC_IMPORT_TEXTS as unknown as Record<string, (...a: unknown[]) => string> & Record<string, string>;
   const stepNamed = (label: string) => (n: string) => n.includes(label);
   const originalTeams = w.teams;
@@ -1820,7 +1820,7 @@ describe("ParcImportModal — étape Séances communes : composition corrigée (
   const goToMutual = (user: ReturnType<typeof userEvent.setup>) =>
     user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("mutualisations")) }));
 
-  /** La séance commune ALAP « SF1 + SM shooting » (groupe « SM Shooting »), composition lue servie par /analyze. */
+  /** La séance commune d'un club pilote « SF1 + SM shooting » (groupe « SM Shooting »), composition lue servie par /analyze. */
   function seanceCommuneLine(): Line {
     return {
       index: 0,

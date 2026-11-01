@@ -671,7 +671,7 @@ final class ScheduleConstraintBuilder
         // they are just sourced from the durable Reservation entity instead of the
         // ephemeral, schedule-bound ScheduleSlotTemplate.
         //
-        // Incident ALAP : après génération, l'import du résultat réécrit chaque réservation en
+        // Incident d'un club pilote : après génération, l'import du résultat réécrit chaque réservation en
         // `ScheduleSlotTemplate` HARD d'origine RESERVATION, au placement exact de la réservation
         // durable. La reprendre ici l'enverrait DEUX fois au moteur (26 épingles → 52 au BCCL) et
         // ferait diverger l'empreinte de structure du `snapshotHash` juste après génération — un

@@ -796,8 +796,8 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertSame($male->getId(), $teamLine['cibleId'], 'vise le MASCULIN U15M1, jamais le féminin U15F1');
     }
 
-    // ───────────────────────── PR A (incident ALAP) — une équipe IGNORÉE/introuvable bloque sa séance commune/réservation DÈS l'analyse (D1/D2) ─────────────────────────
-    // Incident ALAP 2026-10-29 : la case « SF1 + SM shooting » cite « SM shooting », que le
+    // ───────────────────────── PR A (incident d'un club pilote) — une équipe IGNORÉE/introuvable bloque sa séance commune/réservation DÈS l'analyse (D1/D2) ─────────────────────────
+    // Incident d'un club pilote 2026-10-29 : la case « SF1 + SM shooting » cite « SM shooting », que le
     // gestionnaire a mise en « Ignorer » à l'étape Équipes. Aujourd'hui l'analyse classe la séance
     // commune `aCreer` COCHÉE sans alerte (ParcImportAnalyzer::analyzeMutualisations ne lit pas les
     // décisions Équipes) ; l'import renvoie alors un 422 opaque. Promesse PR A : une séance commune
@@ -810,7 +810,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
     public function testIgnoringATeamAtTeamsStepDrivesTheCitingMutualisationAlerteNamingItWithACode(): void
     {
-        // Case ALAP : « SF1 + SM shooting », groupe « SM Shooting ». Les deux noms dérivent en lignes
+        // Case d'un club pilote : « SF1 + SM shooting », groupe « SM Shooting ». Les deux noms dérivent en lignes
         // Équipes (SF1 index 0, « SM shooting » index 1) ET en UNE séance commune (index 0).
         $parc = $this->parcWithCases([
             ['gymnase' => 'Léon Jouhaux', 'jour' => 1, 'debut' => '20:30', 'duree' => 90, 'equipes' => ['SF1', 'SM shooting'], 'groupe' => 'SM Shooting'],

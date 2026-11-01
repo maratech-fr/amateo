@@ -149,14 +149,14 @@ describe("les modales bornent leur hauteur et laissent défiler leur contenu", (
 });
 
 /**
- * PR A (incident ALAP 2026-10-29, D6) — la rangée de TITRE d'une Modal porte une marge basse.
+ * PR A (incident d'un club pilote 2026-10-29, D6) — la rangée de TITRE d'une Modal porte une marge basse.
  *
  * Capture du club : le bandeau d'erreur (en tête de la zone défilante) collait au titre, sans
  * respiration. La rangée qui tient le `<h2>` + la croix doit porter une marge basse (`mb-*`) pour
  * séparer l'en-tête FIGÉ du contenu défilant. Test de CLASSE (même raison que ce fichier : jsdom
  * n'a pas de moteur de layout). ROUGE aujourd'hui : la rangée de titre n'a aucune classe `mb-*`.
  */
-describe("la rangée de titre d'une Modal porte une marge basse (D6, incident ALAP)", () => {
+describe("la rangée de titre d'une Modal porte une marge basse (D6, incident d'un club pilote)", () => {
   it("Modal : la rangée qui tient le titre + la croix porte une marge basse (mb-*)", () => {
     render(
       <Modal label="Test" title="Titre" onClose={vi.fn()}>

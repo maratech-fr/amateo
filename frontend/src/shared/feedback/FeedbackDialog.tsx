@@ -55,7 +55,7 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
   const [attachScreenshot, setAttachScreenshot] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // D16 (anti double envoi) — garde SYNCHRONE posée en tête de `handleSubmit`, AVANT l'await de
-  // `captureScreen` : un 2ᵉ « Envoyer » pendant la capture pendante est inerte (le cas réel ALAP ×4 à
+  // `captureScreen` : un 2ᵉ « Envoyer » pendant la capture pendante est inerte (le cas réel d'un club pilote ×4 à
   // la même seconde). `submit.isPending` ne bascule qu'APRÈS l'await — il ne protège pas cette fenêtre.
   const sendingRef = useRef(false);
   const [sending, setSending] = useState(false);

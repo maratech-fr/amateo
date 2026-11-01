@@ -107,7 +107,7 @@ describe("FeedbackDialog — capture d'écran (PR3)", () => {
   });
 
   // D16 (anti double envoi) — `FeedbackDialog` attend `captureScreen` AVANT `mutate` : deux « Envoyer »
-  // PENDANT la capture en attente ne doivent déclencher qu'UN SEUL `submitFeedback` (cas réel ALAP ×4
+  // PENDANT la capture en attente ne doivent déclencher qu'UN SEUL `submitFeedback` (cas réel d'un club pilote ×4
   // à la même seconde). Falsification : sans garde « envoi en cours », le 2ᵉ clic relance une capture
   // et un 2ᵉ envoi. Serveur : la dédup 60 s est le filet (Integration `FeedbackTest`).
   it("D16 — deux « Envoyer » pendant la capture ne déclenchent qu'UN seul envoi", async () => {

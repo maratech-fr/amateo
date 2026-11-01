@@ -253,7 +253,7 @@ le parc collé, la dernière réponse d'analyse, les décisions construites et l
 serveur. Console : bloc dépliable dédié (`FeedbackSection.tsx`), mention « tronqué » quand le
 serveur a coupé.
 
-**D16 — anti double envoi.** Deux gardes, client et serveur, motivées par le cas réel ALAP
+**D16 — anti double envoi.** Deux gardes, client et serveur, motivées par le cas réel d'un club pilote
 (4 envois à la même seconde, aucune garde avant ce lot) : côté client, un verrou SYNCHRONE posé
 en tête de `handleSubmit`, AVANT l'attente de la capture d'écran (`submit.isPending` ne bascule
 qu'après, il ne couvre pas cette fenêtre), ignore tout second clic pendant qu'un envoi est en

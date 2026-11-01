@@ -199,7 +199,7 @@ export const PARC_IMPORT_TEXTS = {
   mutualDecision: (libelle: string): string => `Garder ou ignorer la séance commune « ${libelle} »`,
   mutualKeep: "Garder",
   mutualIgnore: "Ignorer",
-  /** D3 (incident ALAP) — nom accessible du sélecteur MULTIPLE d'équipes d'une séance commune. */
+  /** D3 (incident d'un club pilote) — nom accessible du sélecteur MULTIPLE d'équipes d'une séance commune. */
   teamsForGroup: (libelle: string): string => `Équipes de la séance commune « ${libelle} »`,
   /** D3 — raison VISIBLE qui bloque quand moins de deux équipes composent la séance commune. */
   needsTwoTeams: "Une séance commune regroupe au moins deux équipes — choisissez-les.",
