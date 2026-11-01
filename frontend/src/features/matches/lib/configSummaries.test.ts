@@ -118,3 +118,16 @@ describe("accessSummary (PR 2a — la section « Accès match »)", () => {
     expect(accessSummary([matchWindow("v1")], [venue("v1"), venue("v2")])).toBe("1 gymnase");
   });
 });
+
+/** D1bis : un gymnase n'a « un accès match » que par une ligne non datée. */
+describe("accessSummary — ouverture datée", () => {
+  const opening: VenueMatchWindow = { id: "o", venueId: "a", dayOfWeek: null, appliesOnPublicHolidays: false, openingDate: "2026-11-11", label: null, startTime: "14:00", endTime: "20:00" };
+
+  it("une ouverture seule ne fait pas un gymnase avec accès match", () => {
+    expect(accessSummary([opening], [venue("a")])).toBe("aucun gymnase avec accès match");
+  });
+
+  it("une ligne hebdo, si", () => {
+    expect(accessSummary([opening, matchWindow("b")], [venue("a"), venue("b")])).toBe("1 gymnase");
+  });
+});

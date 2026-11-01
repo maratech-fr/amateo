@@ -85,6 +85,9 @@ const MIGRATED_FILES = [
   "features/matches/ImportFbiDialog.tsx",
   // PR2 « jours fériés » — l'éditeur des accès match d'un gymnase, migré en ajoutant la 8ᵉ ligne « Jours fériés ».
   "features/matches/MatchWindowsEditor.tsx",
+  // Ouverture datée (D18) — le panneau de pose migre avec ses nouveaux textes ; la petite fenêtre naît migrée.
+  "features/matches/PlacementPanel.tsx",
+  "features/matches/OpenVenueDialog.tsx",
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",

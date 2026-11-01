@@ -220,6 +220,8 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // exact: the page also carries the "Placer automatiquement" solver button (PR D).
   const place = page.getByRole("button", { name: "Placer", exact: true });
 
+  // D22 — plus de faux vert : un « Placer » inactif FAIT ÉCHOUER le scénario, il ne le saute plus.
+  await expect(place).toBeEnabled();
   if (await place.isEnabled()) {
     await place.click();
     await expect(page.getByRole("button", { name: new RegExp(`vs ${opponent}`) })).toHaveCount(0, { timeout: 15_000 });
@@ -694,6 +696,7 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     await page.getByRole("listbox").getByRole("option").nth(1).click();
     await page.getByLabel("Heure de coup d'envoi").fill("15:00");
     const place = page.getByRole("button", { name: "Placer", exact: true });
+    await expect(place).toBeEnabled(); // D22
     if (await place.isEnabled()) {
       await place.click();
       // La cellule placée est focalisée (repli : le <h2> « À placer »).

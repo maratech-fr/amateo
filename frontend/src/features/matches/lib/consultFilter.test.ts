@@ -309,3 +309,22 @@ describe("hiddenWeekBreakdown / hiddenBreakdownParts (A5)", () => {
     expect(hiddenBreakdownParts(b)).toEqual(["2 extérieurs", "2 amicaux"]);
   });
 });
+
+/** D8 : le signal se range et se date comme un conflit de gymnase à un seul match, côté domicile. */
+describe("VENUE_TRAINING_OVERLAP dans les filtres", () => {
+  const conflict = {
+    type: "VENUE_TRAINING_OVERLAP",
+    severity: 5,
+    resolution: null,
+    venueId: "v1",
+    fixture: { fixtureId: "fx", teamId: "team-1", homeAway: "HOME", matchDate: "2026-11-18", kickoffTime: "18:30", status: "PLACED" },
+    trainings: [{ teamId: "team-2", start: "18:00", end: "19:30" }],
+  } as unknown as Conflict;
+
+  it("se compte dans sa famille, à sa date, côté domicile", () => {
+    expect(familyOf(conflict)).toBe("VENUE_TRAINING_OVERLAP");
+    expect(dateOf(conflict)).toBe("2026-11-18");
+    expect(hasHomeSide(conflict)).toBe(true);
+    expect(countByFamily([conflict]).get("VENUE_TRAINING_OVERLAP")).toBe(1);
+  });
+});

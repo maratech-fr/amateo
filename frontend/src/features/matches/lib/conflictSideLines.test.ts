@@ -250,3 +250,22 @@ describe("buildConflictSideLines — VENUE_OVERLAP (collision de gymnase, détai
     expect(model).toBeNull();
   });
 });
+
+/**
+ * D8 : le signal d'entraînement n'a pas de « côtés » de match complets : la ligne de conflit
+ * utilise son résumé, le lecteur de côtés ne doit ni planter ni inventer une vue.
+ */
+describe("buildConflictSideLines — VENUE_TRAINING_OVERLAP", () => {
+  it("ne construit aucun détail par côté", () => {
+    const conflict = {
+      type: "VENUE_TRAINING_OVERLAP",
+      severity: 5,
+      resolution: null,
+      fingerprint: "VENUE_TRAINING_OVERLAP:fx-home",
+      venueId: "v-mateo",
+      fixture: { fixtureId: "fx-home", teamId: "team-sm2", homeAway: "HOME", matchDate: "2026-11-18", kickoffTime: "18:30", status: "PLACED" },
+      trainings: [{ teamId: "team-sf2", start: "18:00", end: "19:30" }],
+    } as unknown as Conflict;
+    expect(buildConflictSideLines(conflict, teams, venues, "UNSPECIFIED")).toBeNull();
+  });
+});

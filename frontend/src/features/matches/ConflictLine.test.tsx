@@ -118,7 +118,7 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
   // NEO décide de l'hôte du lien ; le contrat piné : un lien nommé « Configurer les accès » porte
   // ce href pour un ACCESS_WINDOW_LOST. (Côté consommateur : l'arrivée sur cette URL ouvre
   // l'éditeur d'accès du gymnase — à pinner dans ConfigurationPage, voir rapport TANK.)
-  it("ACCESS_WINDOW_LOST : un deep-link « Configurer les accès » pointe le gymnase (?acces=<venueId>)", () => {
+  it("ACCESS_WINDOW_LOST : le lien « Ouvrir ce gymnase ce jour-là » porte le gymnase, la date et le début (D5bis)", () => {
     render(
       <MemoryRouter>
         <ul>
@@ -126,7 +126,33 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
         </ul>
       </MemoryRouter>,
     );
-    expect(screen.getByRole("link", { name: /Configurer les accès/ })).toHaveAttribute("href", "/matchs/configuration?acces=v-1");
+    expect(screen.getByRole("link", { name: MATCHES_TEXTS.accessWindowLostOpenLink })).toHaveAttribute("href", "/matchs/configuration?acces=v-1&date=2026-10-03&debut=15:00");
+    expect(screen.queryByRole("link", { name: /Configurer les accès/ })).toBeNull();
+  });
+
+  // A8 : `dayLabelLong` rend "" hors bornes : chaque sorte de ligne a son libellé.
+  it.each([
+    ["ouverture", { dayOfWeek: null, appliesOnPublicHolidays: false, openingDate: "2026-11-11", startTime: "14:00", endTime: "20:00" }, "le 11 nov. 14:00–20:00"],
+    ["férié", { dayOfWeek: null, appliesOnPublicHolidays: true, openingDate: null, startTime: "14:00", endTime: "18:00" }, "jours fériés 14:00–18:00"],
+    ["jour", { dayOfWeek: 3, appliesOnPublicHolidays: false, openingDate: null, startTime: "14:00", endTime: "18:00" }, "mercredi 14:00–18:00"],
+  ])("ACCESS_WINDOW_LOST : libellé d'une ligne %s", (_label, window, expected) => {
+    const { container } = renderLine({ conflict: { ...accessLost, windows: [window] } as unknown as Conflict });
+    expect(container.querySelector("li")).toHaveTextContent(expected);
+  });
+
+  it("VENUE_TRAINING_OVERLAP (D8) : titre et résumé nomment le gymnase, le match et l'entraînement", () => {
+    const overlapTraining = {
+      type: "VENUE_TRAINING_OVERLAP",
+      severity: 5,
+      resolution: null,
+      fingerprint: "fp-train",
+      venueId: "v-1",
+      fixture: { fixtureId: "fx-9", teamId: "team-2", homeAway: "HOME", matchDate: "2026-11-11", kickoffTime: "18:30", status: "PLACED" },
+      trainings: [{ teamId: "team-1", start: "18:00", end: "19:30" }],
+    } as unknown as Conflict;
+    const { container } = renderLine({ conflict: overlapTraining });
+    expect(screen.getByText("Entraînement dans le gymnase")).toBeInTheDocument();
+    expect(container.querySelector("li")).toHaveTextContent(/Gymnase Mateo · mer\. 11 nov\. · match 18:30 – .* · entraînement U13 18:00 – 19:30/);
   });
 
   it("CLUB_RULE_VIOLATION : titre « Hors règle du club » et phrase nommant la règle violée (P4-272 ③)", () => {

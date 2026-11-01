@@ -55,6 +55,13 @@ final class FixtureApiTest extends WebTestCase
 
     private const VENUE_ID = '22222222-2222-4222-8222-222222222222';
 
+    // ── Ouverture datée d'un gymnase ─────────────────────────────────────────────────────────
+    private const string HOLIDAY_WEDNESDAY = '2026-11-11';
+
+    private const string ORDINARY_WEDNESDAY = '2026-11-18';
+
+    private const string ORDINARY_SATURDAY = '2026-11-21';
+
     private KernelBrowser $client;
 
     private EntityManagerInterface $em;
@@ -64,6 +71,20 @@ final class FixtureApiTest extends WebTestCase
     private Season $season;
 
     private User $user;
+
+    /**
+     * A2 : témoins de l'autre sens, un vrai changement de position ou de nature repasse par la garde.
+     * Verts aujourd'hui (la garde tourne à chaque PUT) ; ils rougiraient si NEO coupait la garde trop large.
+     *
+     * @return array<string, array{0: array<string, string>}>
+     */
+    public static function placementChanges(): array
+    {
+        return [
+            'heure' => [['kickoffTime' => '17:00']],
+            'date' => [['matchDate' => '2026-11-14']],
+        ];
+    }
 
     public function testCreatesAFriendlyWithNoCompetition(): void
     {
@@ -376,13 +397,6 @@ final class FixtureApiTest extends WebTestCase
         self::assertSame('Coup d\'envoi hors des accès match de Gymnase Matéo le samedi 7 novembre (14:00 – 18:00). Choisissez une heure dans ces plages, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
     }
 
-    // ── Ouverture datée d'un gymnase ─────────────────────────────────────────────────────────
-    private const string HOLIDAY_WEDNESDAY = '2026-11-11';
-
-    private const string ORDINARY_WEDNESDAY = '2026-11-18';
-
-    private const string ORDINARY_SATURDAY = '2026-11-21';
-
     public function testAnOpeningLetsACompetitionMatchLandOnThatDate(): void
     {
         // Promesse centrale : refus sans ouverture, pose acceptée avec. Ligne samedi = club adopté.
@@ -529,20 +543,6 @@ final class FixtureApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
     }
 
-    /**
-     * A2 : témoins de l'autre sens, un vrai changement de position ou de nature repasse par la garde.
-     * Verts aujourd'hui (la garde tourne à chaque PUT) ; ils rougiraient si NEO coupait la garde trop large.
-     *
-     * @return array<string, array{0: array<string, string>}>
-     */
-    public static function placementChanges(): array
-    {
-        return [
-            'heure' => [['kickoffTime' => '17:00']],
-            'date' => [['matchDate' => '2026-11-14']],
-        ];
-    }
-
     /** @param array<string, string> $change */
     #[DataProvider('placementChanges')]
     public function testAChangedPlacementIsGuardedAgain(array $change): void
@@ -619,88 +619,6 @@ final class FixtureApiTest extends WebTestCase
         $this->putFixture($id, ['status' => 'SUBMITTED'] + $body);
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('fermée', (string) $this->client->getResponse()->getContent());
-    }
-
-    /**
-     * Un match de compétition posé le samedi 7 nov. à 16:30 AVANT que le club n'adopte une ligne qui
-     * ne le couvre pas : l'état réel d'un match importé validé, ou d'une fenêtre déplacée après la pose.
-     *
-     * @return array{0: string, 1: array<string, mixed>}
-     */
-    private function placedOutOfAccess(): array
-    {
-        $this->persistVenue();
-        $competitionId = $this->createCompetition();
-        $body = $this->competitionBody($competitionId, '2026-11-07', '16:30');
-        $created = $this->post($body);
-        self::assertResponseStatusCodeSame(201);
-        $this->persistMatchWindow(1, '18:00', '22:00');
-
-        return [(string) $created['id'], $body];
-    }
-
-    /** @return array<string, mixed> */
-    private function competitionBody(string $competitionId, string $date, string $kickoff): array
-    {
-        return [
-            'teamId' => self::TEAM_ID,
-            'competitionId' => $competitionId,
-            'matchDate' => $date,
-            'homeAway' => 'HOME',
-            'opponentLabel' => 'Adversaire',
-            'venueId' => self::VENUE_ID,
-            'kickoffTime' => $kickoff,
-            'status' => 'PLACED',
-        ];
-    }
-
-    private function firstViolation(): string
-    {
-        $violations = $this->responseData()['violations'] ?? [];
-        self::assertIsArray($violations);
-        self::assertIsArray($violations[0] ?? null, 'le 422 porte une violation, jamais muet');
-
-        return (string) $violations[0]['message'];
-    }
-
-    private function persistOpening(string $date, string $start, string $end): void
-    {
-        $window = new VenueMatchWindow;
-        $window->setClubId($this->club->getId());
-        $window->setSeasonId($this->season->getId());
-        $window->setVenueId(self::VENUE_ID);
-        $window->setOpeningDate(new DateTimeImmutable($date));
-        $window->setStartTime(new DateTimeImmutable($start));
-        $window->setEndTime(new DateTimeImmutable($end));
-        $this->em->persist($window);
-        $this->em->flush();
-    }
-
-    private function persistHolidayLine(string $start, string $end): void
-    {
-        $window = new VenueMatchWindow;
-        $window->setClubId($this->club->getId());
-        $window->setSeasonId($this->season->getId());
-        $window->setVenueId(self::VENUE_ID);
-        $window->setAppliesOnPublicHolidays(true);
-        $window->setStartTime(new DateTimeImmutable($start));
-        $window->setEndTime(new DateTimeImmutable($end));
-        $this->em->persist($window);
-        $this->em->flush();
-    }
-
-    private function seedHoliday(string $date): void
-    {
-        $repository = $this->em->getRepository(PublicHoliday::class);
-        if (null !== $repository->findOneBy(['zone' => PublicHoliday::NATIONAL, 'date' => new DateTimeImmutable($date)])) {
-            return;
-        }
-        $holiday = new PublicHoliday;
-        $holiday->setZone(PublicHoliday::NATIONAL);
-        $holiday->setDate(new DateTimeImmutable($date));
-        $holiday->setLabel('11 novembre');
-        $this->em->persist($holiday);
-        $this->em->flush();
     }
 
     public function testAllowsFriendlyPlacementOutsideMatchWindow(): void
@@ -804,6 +722,88 @@ final class FixtureApiTest extends WebTestCase
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->user = $this->createClubUser();
+    }
+
+    /**
+     * Un match de compétition posé le samedi 7 nov. à 16:30 AVANT que le club n'adopte une ligne qui
+     * ne le couvre pas : l'état réel d'un match importé validé, ou d'une fenêtre déplacée après la pose.
+     *
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private function placedOutOfAccess(): array
+    {
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $body = $this->competitionBody($competitionId, '2026-11-07', '16:30');
+        $created = $this->post($body);
+        self::assertResponseStatusCodeSame(201);
+        $this->persistMatchWindow(1, '18:00', '22:00');
+
+        return [(string) $created['id'], $body];
+    }
+
+    /** @return array<string, mixed> */
+    private function competitionBody(string $competitionId, string $date, string $kickoff): array
+    {
+        return [
+            'teamId' => self::TEAM_ID,
+            'competitionId' => $competitionId,
+            'matchDate' => $date,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => $kickoff,
+            'status' => 'PLACED',
+        ];
+    }
+
+    private function firstViolation(): string
+    {
+        $violations = $this->responseData()['violations'] ?? [];
+        self::assertIsArray($violations);
+        self::assertIsArray($violations[0] ?? null, 'le 422 porte une violation, jamais muet');
+
+        return (string) $violations[0]['message'];
+    }
+
+    private function persistOpening(string $date, string $start, string $end): void
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId($this->club->getId());
+        $window->setSeasonId($this->season->getId());
+        $window->setVenueId(self::VENUE_ID);
+        $window->setOpeningDate(new DateTimeImmutable($date));
+        $window->setStartTime(new DateTimeImmutable($start));
+        $window->setEndTime(new DateTimeImmutable($end));
+        $this->em->persist($window);
+        $this->em->flush();
+    }
+
+    private function persistHolidayLine(string $start, string $end): void
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId($this->club->getId());
+        $window->setSeasonId($this->season->getId());
+        $window->setVenueId(self::VENUE_ID);
+        $window->setAppliesOnPublicHolidays(true);
+        $window->setStartTime(new DateTimeImmutable($start));
+        $window->setEndTime(new DateTimeImmutable($end));
+        $this->em->persist($window);
+        $this->em->flush();
+    }
+
+    private function seedHoliday(string $date): void
+    {
+        $repository = $this->em->getRepository(PublicHoliday::class);
+        if (null !== $repository->findOneBy(['zone' => PublicHoliday::NATIONAL, 'date' => new DateTimeImmutable($date)])) {
+            return;
+        }
+        $holiday = new PublicHoliday;
+        $holiday->setZone(PublicHoliday::NATIONAL);
+        $holiday->setDate(new DateTimeImmutable($date));
+        $holiday->setLabel('11 novembre');
+        $this->em->persist($holiday);
+        $this->em->flush();
     }
 
     /** @return array<string, mixed> the full-replace body of a freshly PLACED fixture */

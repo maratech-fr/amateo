@@ -123,6 +123,15 @@ describe("VenueAvailabilityGrid — les fenêtres d'accès match", () => {
     expect(screen.getByRole("button", { name: "Lun 07:00" })).toBeInTheDocument();
   });
 
+  it("D21 : une ouverture datée n'a pas sa place dans une grille hebdo : ni fantôme, ni grille étirée", () => {
+    render(
+      <VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} matchWindows={[matchWindow({ dayOfWeek: null, openingDate: "2026-11-11", startTime: "07:00", endTime: "09:00" } as Partial<VenueMatchWindow>)]} />,
+    );
+
+    expect(document.querySelector('[aria-hidden="true"][style*="grid-row"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Lun 07:00" })).toBeNull();
+  });
+
   it("ne rend aucun fantôme quand l'appelant ne passe pas de fenêtre (éditeur de période)", () => {
     render(<VenueAvailabilityGrid venue={venue} slots={[slot({})]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
 

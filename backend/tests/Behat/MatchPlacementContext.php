@@ -827,21 +827,6 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
-    /** @return array{status: int, json: array<mixed>} */
-    private function poserLePremierMercredi(): array
-    {
-        return $this->apiPut(\sprintf('fixtures/%s', $this->fxSat), [
-            'teamId' => $this->teamId,
-            'matchDate' => $this->wednesday,
-            'homeAway' => 'HOME',
-            'opponentLabel' => 'Coupe A',
-            'competitionId' => $this->competitionId,
-            'venueId' => $this->venueId,
-            'kickoffTime' => '19:00',
-            'status' => 'PLACED',
-        ], $this->token);
-    }
-
     #[Given('plus aucune fenêtre d\'accès le dimanche dans tout le club')]
     public function plusAucuneFenetreLeDimanche(): void
     {
@@ -1237,6 +1222,21 @@ final class MatchPlacementContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /** @return array{status: int, json: array<mixed>} */
+    private function poserLePremierMercredi(): array
+    {
+        return $this->apiPut(\sprintf('fixtures/%s', $this->fxSat), [
+            'teamId' => $this->teamId,
+            'matchDate' => $this->wednesday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Coupe A',
+            'competitionId' => $this->competitionId,
+            'venueId' => $this->venueId,
+            'kickoffTime' => '19:00',
+            'status' => 'PLACED',
+        ], $this->token);
     }
 
     /**

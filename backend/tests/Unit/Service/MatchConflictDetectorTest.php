@@ -1017,53 +1017,6 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertNotContains('VENUE_TRAINING_OVERLAP', array_column($this->detect([$fixture], [], self::BASELINE, $period, $slots), 'type'));
     }
 
-    private function competitionAt(string $id, string $date, string $kickoff): Fixture
-    {
-        $fixture = $this->fixture($id, self::TEAM_1, $date, $kickoff);
-        $fixture->setVenueId('venue-mateo');
-        $fixture->setCompetitionId('comp-1');
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
-
-        return $fixture;
-    }
-
-    private function venueSlot(string $id, string $teamId, int $day, string $start, int $minutes): ScheduleSlotTemplate
-    {
-        $slot = $this->slot($id, self::BASELINE, $teamId, $day, $start, $minutes);
-        $slot->setVenueId('venue-mateo');
-
-        return $slot;
-    }
-
-    /**
-     * @param list<ScheduleSlotTemplate> $extraSlots
-     * @param list<string>               $publicHolidays
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function overlapConflicts(Fixture $fixture, array $extraSlots = [], bool $withOtherTeam = true, array $publicHolidays = []): array
-    {
-        $slots = $withOtherTeam ? [$this->venueSlot('slot-2', self::TEAM_2, 3, '18:00', 90)] : [];
-
-        return array_values(array_filter(
-            $this->detect([$fixture], [], self::BASELINE, [], [self::BASELINE => [...$slots, ...$extraSlots]], publicHolidays: $publicHolidays),
-            static fn (array $c): bool => 'VENUE_TRAINING_OVERLAP' === $c['type'],
-        ));
-    }
-
-    private function openingWindow(string $venueId, string $date, string $start, string $end): VenueMatchWindow
-    {
-        $window = new VenueMatchWindow;
-        $window->setClubId('club');
-        $window->setSeasonId('season');
-        $window->setVenueId($venueId);
-        $window->setOpeningDate(new DateTimeImmutable($date));
-        $window->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $start) ?: new DateTimeImmutable('00:00'));
-        $window->setEndTime(DateTimeImmutable::createFromFormat('!H:i', $end) ?: new DateTimeImmutable('00:00'));
-
-        return $window;
-    }
-
     public function testCoachRoleIsMainOnlyWhenMainOnEveryInvolvedTeam(): void
     {
         // P4-189 — the per-PAIR role is MAIN only when the coach is MAIN on BOTH
@@ -2255,6 +2208,53 @@ final class MatchConflictDetectorTest extends TestCase
             'type',
         );
         self::assertContains('LEAGUE_WINDOW_VIOLATION', $leagueTypes, 'un mercredi ordinaire conserve la violation de fenêtre de ligue');
+    }
+
+    private function competitionAt(string $id, string $date, string $kickoff): Fixture
+    {
+        $fixture = $this->fixture($id, self::TEAM_1, $date, $kickoff);
+        $fixture->setVenueId('venue-mateo');
+        $fixture->setCompetitionId('comp-1');
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+
+        return $fixture;
+    }
+
+    private function venueSlot(string $id, string $teamId, int $day, string $start, int $minutes): ScheduleSlotTemplate
+    {
+        $slot = $this->slot($id, self::BASELINE, $teamId, $day, $start, $minutes);
+        $slot->setVenueId('venue-mateo');
+
+        return $slot;
+    }
+
+    /**
+     * @param list<ScheduleSlotTemplate> $extraSlots
+     * @param list<string>               $publicHolidays
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function overlapConflicts(Fixture $fixture, array $extraSlots = [], bool $withOtherTeam = true, array $publicHolidays = []): array
+    {
+        $slots = $withOtherTeam ? [$this->venueSlot('slot-2', self::TEAM_2, 3, '18:00', 90)] : [];
+
+        return array_values(array_filter(
+            $this->detect([$fixture], [], self::BASELINE, [], [self::BASELINE => [...$slots, ...$extraSlots]], publicHolidays: $publicHolidays),
+            static fn (array $c): bool => 'VENUE_TRAINING_OVERLAP' === $c['type'],
+        ));
+    }
+
+    private function openingWindow(string $venueId, string $date, string $start, string $end): VenueMatchWindow
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId('club');
+        $window->setSeasonId('season');
+        $window->setVenueId($venueId);
+        $window->setOpeningDate(new DateTimeImmutable($date));
+        $window->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $start) ?: new DateTimeImmutable('00:00'));
+        $window->setEndTime(DateTimeImmutable::createFromFormat('!H:i', $end) ?: new DateTimeImmutable('00:00'));
+
+        return $window;
     }
 
     /** @param list<string>|null $opponents the poule's club names (for exempt counting) */

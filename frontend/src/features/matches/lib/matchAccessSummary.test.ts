@@ -31,3 +31,21 @@ describe("formatMatchAccessWindows (PR 2a — les plages d'accès match d'un gym
     expect(formatMatchAccessWindows(windows)).toBe("sam. 12:00–14:00, 16:00–23:00");
   });
 });
+
+/** D21 : une ouverture sort des groupes par jour, elle se compte en suffixe (jamais dans « fériés »). */
+describe("formatMatchAccessWindows — ouvertures exceptionnelles", () => {
+  const opening = (date: string): VenueMatchWindow => ({ id: date, venueId: "v1", dayOfWeek: null, appliesOnPublicHolidays: false, openingDate: date, label: null, startTime: "14:00", endTime: "20:00" });
+  const saturday: VenueMatchWindow = { id: "s", venueId: "v1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" };
+
+  it("une : suffixe au singulier", () => {
+    expect(formatMatchAccessWindows([saturday, opening("2026-11-11")])).toBe("sam. 14:00–18:00 · 1 ouverture exceptionnelle");
+  });
+
+  it("plusieurs : suffixe au pluriel", () => {
+    expect(formatMatchAccessWindows([saturday, opening("2026-11-11"), opening("2026-11-18"), opening("2026-11-25")])).toBe("sam. 14:00–18:00 · 3 ouvertures exceptionnelles");
+  });
+
+  it("seules des ouvertures : le compte, sans groupe vide", () => {
+    expect(formatMatchAccessWindows([opening("2026-11-11"), opening("2026-11-18")])).toBe("2 ouvertures exceptionnelles");
+  });
+});

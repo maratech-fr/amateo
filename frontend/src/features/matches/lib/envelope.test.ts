@@ -91,3 +91,20 @@ describe("isInEnvelope", () => {
     expect(isInEnvelope(env, "20:00")).toBe(false);
   });
 });
+
+/** D7 : la ligue a posé ce jour exprès : un férié est dans l'enveloppe, miroir du radar (`RuleWindowConflicts.php:47`). */
+describe("resolveEnvelope — jour férié", () => {
+  const HOLIDAY = "2026-11-11"; // mercredi, hors de la fenêtre du samedi
+
+  it("un férié est dans l'enveloppe et le dit", () => {
+    const env = resolveEnvelope(fixture({ matchDate: HOLIDAY }), { "team-1": ["w-1"] }, [window()], [HOLIDAY]);
+    expect(env.holiday).toBe(true);
+    expect(isInEnvelope(env, "20:00")).toBe(true);
+  });
+
+  it("un mardi non férié reste hors enveloppe : l'alerte ligue reste", () => {
+    const env = resolveEnvelope(fixture({ matchDate: "2026-11-24" }), { "team-1": ["w-1"] }, [window()], [HOLIDAY]);
+    expect(env.holiday).toBe(false);
+    expect(isInEnvelope(env, "20:00")).toBe(false);
+  });
+});

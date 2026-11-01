@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { VenueMatchWindow } from "../api";
-import { dateInsideClosure, kickoffInsideHolidayWindow, kickoffInsideWindow } from "./matchAccess";
+import { applicableWindows, dateInsideClosure, hasWeeklyAccess, kickoffInsideAccess, kickoffInsideHolidayWindow, kickoffInsideWindow } from "./matchAccess";
 import cases from "./matchAccess.parity.json";
 
 /**
@@ -38,6 +38,37 @@ describe("kickoffInsideHolidayWindow — parité mécanique avec MatchConflictDe
   for (const c of cases.holidayCases) {
     it(c.name, () => {
       expect(kickoffInsideHolidayWindow(c.venueId, c.kickoff, c.windows as VenueMatchWindow[])).toBe(c.inside);
+    });
+  }
+});
+
+/**
+ * Ouverture datée — CÔTÉ FRONT du prédicat unique (D2) : plages applicables (gymnase, date) =
+ * ouvertures de ce jour ∪ (férié ? lignes « Jours fériés » : lignes du jour de semaine). Jumeaux :
+ * `MatchAccessMirrorParityTest.php` (backend) et `MatchAccessEngineParityTest.php` (moteur).
+ */
+describe("kickoffInsideAccess — parité avec le backend et le moteur", () => {
+  for (const c of cases.accessCases) {
+    it(c.name, () => {
+      expect(kickoffInsideAccess(c.venueId, c.matchDate, c.isHoliday, c.kickoff, c.windows as VenueMatchWindow[])).toBe(c.inside);
+    });
+  }
+});
+
+describe("applicableWindows — parité avec le backend", () => {
+  for (const c of cases.accessCases) {
+    it(c.name, () => {
+      const starts = applicableWindows(c.venueId, c.matchDate, c.isHoliday, c.windows as VenueMatchWindow[]).map((w) => w.startTime).sort();
+      expect(starts).toEqual(c.applicableStarts);
+    });
+  }
+});
+
+/** D1bis — « le club a adopté les accès » : au moins une ligne NON datée. */
+describe("hasWeeklyAccess — parité avec le backend", () => {
+  for (const c of cases.adoptionCases) {
+    it(c.name, () => {
+      expect(hasWeeklyAccess(c.windows as VenueMatchWindow[])).toBe(c.adopted);
     });
   }
 });

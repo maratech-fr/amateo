@@ -27,10 +27,12 @@ describe("venueAccessError — error dure vs warning amical", () => {
   it("coup d'envoi hors fenêtre : error pour une compétition, warning pour un amical", () => {
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "20:00", windows, [], false)).toEqual({
       level: "error",
-      message: expect.stringMatching(/Hors fenêtre d'accès match \(14:00–18:00\)/) as unknown as string,
+      reason: "outside_window",
+      message: expect.stringMatching(/Hors des accès match de ce jour \(14:00 – 18:00\)/) as unknown as string,
     });
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "20:00", windows, [], true)).toEqual({
       level: "warning",
+      reason: "friendly_off_slot",
       message: "Amical hors créneau match — placement libre.",
     });
   });
@@ -40,6 +42,7 @@ describe("venueAccessError — error dure vs warning amical", () => {
     expect(venueAccessError("venue-1", "Alpha", SUNDAY, "14:00", windows, [], false)?.level).toBe("error");
     expect(venueAccessError("venue-1", "Alpha", SUNDAY, "14:00", windows, [], true)).toEqual({
       level: "warning",
+      reason: "friendly_off_slot",
       message: "Amical hors créneau match — placement libre.",
     });
   });
@@ -77,5 +80,47 @@ describe("venueAccessError — fermeture du calendrier (P4-300)", () => {
   it("fermeture d'un AUTRE gymnase : sans effet sur celui-ci", () => {
     const elsewhere: VenueClosure[] = [{ id: "c2", venueId: "venue-2", title: "T", startDate: "2026-08-31", endDate: "2026-10-16" }];
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, [], false, elsewhere)).toBeNull();
+  });
+});
+
+/** Ouverture datée : la garde de pose lit le prédicat unique et nomme la RAISON du refus, seule à ouvrir le raccourci (D5). */
+describe("venueAccessError — ouverture datée", () => {
+  const WEDNESDAY = "2026-11-18";
+  const HOLIDAY = "2026-11-11";
+  const opening = (date: string, startTime = "18:00", endTime = "22:00", venueId = "venue-1"): VenueMatchWindow => ({ id: `o-${date}`, venueId, dayOfWeek: null, appliesOnPublicHolidays: false, openingDate: date, label: null, startTime, endTime });
+
+  it("une ouverture rend la pose possible ce jour-là", () => {
+    expect(venueAccessError("venue-1", "Alpha", WEDNESDAY, "19:00", [...windows, opening(WEDNESDAY)], [], false)).toBeNull();
+  });
+
+  it("sans plage ce jour : raison no_window et phrase datée", () => {
+    const issue = venueAccessError("venue-1", "Alpha", WEDNESDAY, "19:00", windows, [], false);
+    expect(issue?.reason).toBe("no_window");
+    expect(issue?.message).toBe("Pas d'accès match le mer. 18 nov. à Alpha.");
+  });
+
+  it("un férié sans plage : la phrase le dit", () => {
+    const issue = venueAccessError("venue-1", "Alpha", HOLIDAY, "19:00", windows, [], false, [], [HOLIDAY]);
+    expect(issue?.reason).toBe("no_window");
+    expect(issue?.message).toBe("Pas d'accès match le mer. 11 nov. (jour férié) à Alpha.");
+  });
+
+  it("hors plage : raison outside_window et toutes les plages de CE jour", () => {
+    const line: VenueMatchWindow = { id: "h", venueId: "venue-1", dayOfWeek: null, appliesOnPublicHolidays: true, openingDate: null, label: null, startTime: "10:00", endTime: "12:00" };
+    const issue = venueAccessError("venue-1", "Alpha", HOLIDAY, "13:00", [line, opening(HOLIDAY, "14:00", "18:00")], [], false, [], [HOLIDAY]);
+    expect(issue?.reason).toBe("outside_window");
+    expect(issue?.message).toBe("Hors des accès match de ce jour (10:00 – 12:00, 14:00 – 18:00).");
+  });
+
+  it("D1bis : un club qui n'a que des ouvertures n'a pas adopté les accès, le samedi reste libre", () => {
+    expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", [opening(HOLIDAY)], [], false)).toBeNull();
+  });
+
+  it("une ouverture ne lève jamais une indisponibilité ni une fermeture, et leur raison les distingue", () => {
+    const unavail: VenueUnavailability[] = [{ id: "u", venueId: "venue-1", startDate: WEDNESDAY, endDate: WEDNESDAY, label: null }];
+    const closure: VenueClosure[] = [{ id: "c", venueId: "venue-1", startDate: WEDNESDAY, endDate: WEDNESDAY, title: "Mairie" } as VenueClosure];
+    const open = [...windows, opening(WEDNESDAY)];
+    expect(venueAccessError("venue-1", "Alpha", WEDNESDAY, "19:00", open, unavail, false)?.reason).toBe("unavailable");
+    expect(venueAccessError("venue-1", "Alpha", WEDNESDAY, "19:00", open, [], false, closure)?.reason).toBe("closed");
   });
 });
