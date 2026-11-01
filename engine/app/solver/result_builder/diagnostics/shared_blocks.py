@@ -515,9 +515,10 @@ def _diagnose_blocks_without_union_coach(
     """PROUVE, à l'échec, qu'un bloc est infaisable parce qu'AUCUN (ou trop peu de) créneau n'a de
     coach de l'union disponible — et NOMME le groupe + les indisponibilités en cause.
 
-    Miroir exact de la pose « un coach suffit » (``closures._close_coachless_block_cases`` via le
-    helper UNIQUE ``constraints.availability.case_has_available_coach``) : une case sert le bloc dès
-    qu'UN coach de l'union de ses membres y est libre. On ne tire la sonnette que lorsque les cases
+    Miroir de la pose « un coach suffit » (``closures._close_coachless_block_cases`` via le helper
+    UNIQUE ``constraints.availability.case_has_available_coach``) : une case sert le bloc dès qu'UN coach
+    de l'union de ses membres y est libre, et une case où le groupe entier est réservé le sert sans coach
+    (la réservation gagne), pour le bloc le plus large qui la tient et au plus une fois par séance. On ne tire la sonnette que lorsque les cases
     servables sont STRICTEMENT moins nombreuses que les séances communes demandées ALORS QUE la
     grille en offre assez (``commonSessions <= total``) — sinon la pénurie est de PLACE (gymnase),
     déjà nommée par la boucle de sur-contrainte ci-dessus, pas de coach. Les blocs IMBRIQUÉS
@@ -533,13 +534,19 @@ def _diagnose_blocks_without_union_coach(
         return []  # Aucune case du tout : pénurie de place, la boucle de sur-contrainte l'a dite.
 
     rules: Mapping[str, Any] = coach_unavailability if isinstance(coach_unavailability, Mapping) else {}
+    concrete_cases = _concrete_candidate_cases(model_data)
+    reserved = _reserved_cases_by_block(model_data, valid_blocks, team_coach_map, rules)
     diagnostics: list[dict[str, Any]] = []
     for index, block, members, _member_set in valid_blocks:
         common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
         if common_sessions <= 0:
             continue
-        servable = sum(
-            1 for day, start, end in cases if case_has_available_coach(members, day, start, rules, team_coach_map, end)
+        held = reserved.get(index, set())
+        servable = min(len(held), common_sessions) + sum(
+            1
+            for venue_id, day, start_hhmm, start, duration in concrete_cases
+            if (venue_id, day, start_hhmm) not in held
+            and case_has_available_coach(members, day, start, rules, team_coach_map, start + duration)
         )
         # Pénurie de coach PROUVÉE, et de coach SEULEMENT : assez de cases dans la grille
         # (``common_sessions <= total``), mais trop peu portent un coach de l'union.
@@ -570,6 +577,37 @@ def _diagnose_blocks_without_union_coach(
             }
         )
     return diagnostics
+
+
+def _reserved_cases_by_block(
+    model_data: Mapping[str, Any] | Any,
+    valid_blocks: list[tuple[int, Any, list[str], set[str]]],
+    team_coach_map: Mapping[str, Any],
+    rules: Mapping[str, Any],
+) -> dict[int, set[tuple[str, int, str]]]:
+    """Index du bloc → les cases ``(gymnase, jour, HH:MM)`` qu'il tient par ses réservations : là où tous ses
+    membres sont épinglés et où ``_close_coachless_block_cases`` le laisse ouvert (un bloc à coach au début
+    s'il y en a un, sinon tous), le plus large d'entre eux. Une case ne compte que pour un bloc."""
+    pinned_teams: dict[tuple[str, int, str], set[str]] = defaultdict(set)
+    for pin in _collection(model_data, "slotTemplates", "slot_templates"):
+        if _get(pin, "lockLevel", "lock_level", default=None) == "HARD":
+            case = (
+                str(_get(pin, "venueId", "venue_id", default="")),
+                int(_get(pin, "dayOfWeek", "day_of_week", default=0)),
+                str(_get(pin, "startTime", "start_time", default=""))[:5],
+            )
+            pinned_teams[case].add(str(_get(pin, "teamId", "team_id", default="")))
+
+    reserved: dict[int, set[tuple[str, int, str]]] = defaultdict(set)
+    for case, teams in pinned_teams.items():
+        here = [block for block in valid_blocks if block[3] <= teams]
+        if here:
+            _venue_id, day, start_hhmm = case
+            start = _time_to_minutes(start_hhmm)
+            coached = [b for b in here if case_has_available_coach(b[2], day, start, rules, team_coach_map)]
+            widest = max(coached or here, key=lambda block: len(block[3]))
+            reserved[widest[0]].add(case)
+    return reserved
 
 
 def _coach_unavailability_causes(

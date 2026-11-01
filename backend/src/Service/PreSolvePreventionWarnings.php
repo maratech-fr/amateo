@@ -62,7 +62,7 @@ final readonly class PreSolvePreventionWarnings
             ...$this->overloadedCoaches($payload, $teams, $venues, $constraints),
             ...$this->constraintsTargetingAbsentTeams($teams, $constraints),
             ...$this->mergedForcedDayRules($teams, $constraints),
-            ...$this->forcedDayEmptiedByClosingRules($teams, $venues, $constraints),
+            ...$this->forcedDayEmptiedByClosingRules($payload, $teams, $venues, $constraints),
             ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
             ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins),
             ...$this->daysWithoutAnyAvailableEmployee($payload, $venues, $constraints),
@@ -588,14 +588,20 @@ final readonly class PreSolvePreventionWarnings
      * ⚠ L'indispo d'un ADJOINT ne ferme jamais un créneau côté moteur (parsing.py exclut les
      * adjoints) : seul l'entraîneur PRINCIPAL compte ici (ALIGN-19).
      *
+     * @param array<string, mixed>       $payload
      * @param list<array<string, mixed>> $teams
      * @param list<array<string, mixed>> $venues
      * @param list<array<string, mixed>> $constraints
      *
      * @return list<string>
      */
-    private function forcedDayEmptiedByClosingRules(array $teams, array $venues, array $constraints): array
+    private function forcedDayEmptiedByClosingRules(array $payload, array $teams, array $venues, array $constraints): array
     {
+        $lockedDaysByTeam = [];
+        foreach ($this->hardPins($payload) as $pin) {
+            $lockedDaysByTeam[$pin['teamId']][] = $pin['day'];
+        }
+
         $slotsByVenueDay = [];
         $slotsByDay = [];
         foreach ($venues as $venue) {
@@ -614,6 +620,11 @@ final readonly class PreSolvePreventionWarnings
             $teamId = $this->stringOf($team, 'id');
             $rules = $this->teamHardDayRules($teamId, $constraints);
             if ([] === $rules['forced']) {
+                continue;
+            }
+            // Un verrou sur un jour imposé EST la séance exigée, même un jour que les règles ferment
+            // (`targeting.py`, jours imposés crédités par verrou).
+            if ([] !== array_intersect($rules['forced'], $lockedDaysByTeam[$teamId] ?? [])) {
                 continue;
             }
 
@@ -757,6 +768,10 @@ final readonly class PreSolvePreventionWarnings
      * des contraintes citées (héritée de la saison / posée pour la période) est le SEUL apport
      * externe, car le payload ne la porte pas — carte vide ⇒ on nomme la contrainte sans son origine.
      *
+     * Une case où le groupe entier est réservé, sans autre groupe, le sert même sans coach : la réservation
+     * gagne, le planning sort avec une alerte. Plafonnée aux séances communes : au-delà, ces réservations
+     * se contredisent et le moteur échoue, comme pour des groupes imbriqués qu'une seule case réunit.
+     *
      * @param array<string, mixed>       $payload
      * @param list<array<string, mixed>> $venues
      * @param list<array<string, mixed>> $teams
@@ -788,25 +803,81 @@ final readonly class PreSolvePreventionWarnings
         if ([] === $cases) {
             return [];
         }
-        $caseList = array_values($cases);
+
+        $teamsByPinnedCase = [];
+        foreach ($this->hardPins($payload) as $pin) {
+            $teamsByPinnedCase[$pin['venueId'] . '|' . $pin['day'] . '|' . $pin['start']][$pin['teamId']] = true;
+        }
 
         $teamNames = [];
         foreach ($teams as $team) {
             $teamNames[$this->stringOf($team, 'id')] = $this->nameOf($team);
         }
         $mainCoaches = $this->teamMainCoaches($constraints);
+        $groupNames = static fn (array $memberIds): string => implode(', ', array_map(static fn (string $id): string => $teamNames[$id] ?? $id, $memberIds));
 
-        $messages = [];
+        // Les groupes à placer, et ceux qui sont entièrement réservés sur chaque case.
+        $validBlocks = [];
+        $blocksByPinnedCase = [];
         foreach ($blocks as $block) {
             $memberIds = array_values(array_filter(array_map(
                 static fn (mixed $id): string => \is_string($id) ? $id : (string) $id,
                 \is_array($block['teamIds'] ?? null) ? $block['teamIds'] : [],
             )));
-            if (\count($memberIds) < 2) {
+            $commonSessions = (int) ($block['commonSessions'] ?? 0);
+            if (\count($memberIds) < 2 || $commonSessions <= 0) {
                 continue;
             }
-            $commonSessions = (int) ($block['commonSessions'] ?? 0);
-            if ($commonSessions <= 0) {
+            $index = \count($validBlocks);
+            $validBlocks[] = [$memberIds, $commonSessions];
+            foreach ($teamsByPinnedCase as $caseKey => $pinnedTeams) {
+                if ([] === array_diff_key(array_flip($memberIds), $pinnedTeams)) {
+                    $blocksByPinnedCase[$caseKey][] = $index;
+                }
+            }
+        }
+
+        $messages = [];
+        $answered = [];
+        foreach ($blocksByPinnedCase as $indexes) {
+            // Des groupes qui partagent une équipe ne siègent pas ensemble : une case vaut une séance pour l'un d'eux.
+            $nested = array_values(array_filter($indexes, static function (int $index) use ($indexes, $validBlocks): bool {
+                foreach ($indexes as $other) {
+                    if ($other !== $index && [] !== array_intersect($validBlocks[$index][0], $validBlocks[$other][0])) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }));
+            $sessions = array_sum(array_map(static fn (int $index): int => $validBlocks[$index][1], $nested));
+            if ([] === $nested || $sessions <= \count($cases)) {
+                continue;
+            }
+            $messages[] = \sprintf(
+                'Groupes %s : une seule case réservée les réunit, pour %d séances communes à placer — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+                implode(' et ', array_map(static fn (int $index): string => $groupNames($validBlocks[$index][0]), $nested)),
+                $sessions,
+            );
+            foreach ($nested as $index) {
+                $answered[$index] = true;
+            }
+        }
+
+        foreach ($validBlocks as $index => [$memberIds, $commonSessions]) {
+            if (isset($answered[$index])) {
+                continue;
+            }
+
+            $pinnedKeys = array_keys(array_filter($blocksByPinnedCase, static fn (array $indexes): bool => \in_array($index, $indexes, true)));
+            $exclusiveKeys = array_values(array_filter($pinnedKeys, static fn (string $key): bool => 1 === \count($blocksByPinnedCase[$key])));
+            if (\count($exclusiveKeys) > $commonSessions) {
+                $messages[] = \sprintf(
+                    'Groupe %s : réservé sur %d cases pour %s — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+                    $groupNames($memberIds),
+                    \count($exclusiveKeys),
+                    1 === $commonSessions ? '1 séance commune' : $commonSessions . ' séances communes',
+                );
                 continue;
             }
 
@@ -821,8 +892,8 @@ final readonly class PreSolvePreventionWarnings
             }
             $unionIds = array_keys($union);
 
-            $servable = 0;
-            foreach ($caseList as [$day, $start, $end]) {
+            $servable = \count($exclusiveKeys);
+            foreach (array_diff_key($cases, array_flip($exclusiveKeys)) as [$day, $start, $end]) {
                 foreach ($unionIds as $coachId) {
                     if (!$this->coachBlockedAt($coachId, $day, $start, $end, $constraints)) {
                         ++$servable;
@@ -834,8 +905,8 @@ final readonly class PreSolvePreventionWarnings
                 continue; // Assez de cases à coach de l'union : le bloc est servable, rien à dire.
             }
 
-            $names = implode(', ', array_map(static fn (string $id): string => $teamNames[$id] ?? $id, $memberIds));
-            $cited = $this->citedCoachConstraints($unionIds, $caseList, $constraints, $constraintOrigins);
+            $names = $groupNames($memberIds);
+            $cited = $this->citedCoachConstraints($unionIds, array_values(array_diff_key($cases, array_flip($pinnedKeys))), $constraints, $constraintOrigins);
             $head = 0 === $servable
                 ? \sprintf('Groupe %s : aucun créneau où au moins un coach du groupe n\'est disponible pour une séance commune — la génération échouera.', $names)
                 : \sprintf('Groupe %s : seulement %d créneau(x) où un coach du groupe est disponible, pour %d séance(s) commune(s) — la génération échouera.', $names, $servable, $commonSessions);
@@ -845,6 +916,30 @@ final readonly class PreSolvePreventionWarnings
         sort($messages);
 
         return $messages;
+    }
+
+    /**
+     * Les réservations HARD du payload, à la clé de case du Récap.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return list<array{teamId: string, venueId: string, day: int, start: int}>
+     */
+    private function hardPins(array $payload): array
+    {
+        $pins = [];
+        foreach ($this->listOf($payload, 'slotTemplates') as $slot) {
+            if ('HARD' === ($slot['lockLevel'] ?? null)) {
+                $pins[] = [
+                    'teamId' => $this->stringOf($slot, 'teamId'),
+                    'venueId' => $this->stringOf($slot, 'venueId'),
+                    'day' => (int) ($slot['dayOfWeek'] ?? 0),
+                    'start' => $this->minutesOf($this->stringOf($slot, 'startTime')),
+                ];
+            }
+        }
+
+        return $pins;
     }
 
     /**

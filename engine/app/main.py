@@ -39,6 +39,7 @@ from app.solver.constraints import (
     parse_v2_constraints,
     resolve_implicit_rules,
 )
+from app.solver.constraints.diagnostics import RESERVED_BLOCK_ALERT_ID_PREFIX
 from app.solver.match_placement import solve_match_placement
 from app.solver.model import DEFAULT_SESSION_MINUTES, ScheduleCpModel, _time_to_minutes, build_model
 from app.solver.objective import (
@@ -453,7 +454,11 @@ async def build_schedule(
     # Aucun planning produit : rien n'a été « sacrifié », le signal historique reste (une réservation
     # qui contredit une règle sur un échec est une information, pas un écart du planning).
     if solver_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        conflicts = [_as_not_honored_info(conflict) for conflict in conflicts]
+        conflicts = [
+            _as_not_honored_info(conflict)
+            for conflict in conflicts
+            if not str(conflict.get("id")).startswith(RESERVED_BLOCK_ALERT_ID_PREFIX)
+        ]
 
     result_dict = build_result(
         data,
@@ -741,6 +746,7 @@ def _solve(
             team_names={str(t.get("id")): str(t.get("name") or t.get("id")) for t in data.get("teams", [])},
             coach_names={str(c.get("id")): _coach_label(c) for c in data.get("coaches", [])},
             venue_names={str(v.get("id")): str(v.get("name") or v.get("id")) for v in data.get("venues", [])},
+            shared_blocks=data.get("sharedBlocks", []),
         ),
     ]
 
@@ -1167,7 +1173,7 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
     SEULE exception » — et on NE relâche RIEN : le planning reste ``failed`` et expliqué."""
     probe_status, *_ = await asyncio.to_thread(
         _solve,
-        _without_hard_locks(data),
+        _without_hard_locks(data, keep=_reserved_group_locks(data)),
         input_data,
         budget_override=BEST_EFFORT_PROBE_MAX_SECONDS,
         placement_only=True,
@@ -1175,11 +1181,42 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
     return probe_status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
-def _without_hard_locks(data: dict[str, Any]) -> dict[str, Any]:
+def _lock_identity(template: Mapping[str, Any]) -> tuple[str, str, int, str]:
+    """Un verrou : ``(équipe, gymnase, jour, HH:MM)``."""
+    return (
+        str(template.get("teamId") or template.get("team_id") or ""),
+        str(template.get("venueId") or template.get("venue_id") or ""),
+        int(template.get("dayOfWeek") or template.get("day_of_week") or 0),
+        str(template.get("startTime") or template.get("start_time") or "")[:5],
+    )
+
+
+def _reserved_group_locks(data: dict[str, Any]) -> frozenset[tuple[str, str, int, str]]:
+    """Les verrous des cases où un groupe entier est réservé : ils sont la séance du groupe, pas la cause
+    de son infaisabilité. La sonde les garde, sinon la case redevient une pose libre, sans coach."""
+    teams_by_case: dict[tuple[str, int, str], set[str]] = {}
+    for pin in data.get("slotTemplates") or data.get("slot_templates") or []:
+        if str(pin.get("lockLevel") or pin.get("lock_level") or "").upper() == "HARD":
+            team, venue, day, start = _lock_identity(pin)
+            teams_by_case.setdefault((venue, day, start), set()).add(team)
+    kept: set[tuple[str, str, int, str]] = set()
+    for block in data.get("sharedBlocks") or data.get("shared_blocks") or []:
+        members = {str(t) for t in (block.get("teamIds") or block.get("team_ids") or [])}
+        if len(members) >= 2:
+            for (venue, day, start), teams in teams_by_case.items():
+                if members <= teams:
+                    kept.update((team, venue, day, start) for team in members)
+    return frozenset(kept)
+
+
+def _without_hard_locks(
+    data: dict[str, Any], *, keep: frozenset[tuple[str, str, int, str]] = frozenset()
+) -> dict[str, Any]:
     """Copie de ``data`` SANS ses verrous HARD (``lockLevel`` == HARD retiré de chaque collection de
-    gabarits que ``build_model`` lit). Les gabarits non-HARD et le reste du payload sont intacts.
-    Sert la sonde de causalité (grille rendue à sa capacité pleine). Le plancher garde son crédit : une
-    équipe servie par ses propres verrous ne réclame pas ces séances une seconde fois (P4-97)."""
+    gabarits que ``build_model`` lit), hors ``keep``. Les gabarits non-HARD et le reste du payload sont
+    intacts. Sert la sonde de causalité (grille rendue à sa capacité pleine). Le plancher garde son crédit :
+    une équipe servie par ses propres verrous ne réclame pas ces séances une seconde fois (P4-97) ; un
+    verrou gardé reste crédité par le modèle lui-même."""
     template_keys = (
         "slotTemplates",
         "scheduleSlotTemplates",
@@ -1196,6 +1233,7 @@ def _without_hard_locks(data: dict[str, Any]) -> dict[str, Any]:
             if (
                 isinstance(template, Mapping)
                 and str(template.get("lockLevel") or template.get("lock_level") or "").upper() == "HARD"
+                and _lock_identity(template) not in keep
             ):
                 where = (
                     str(template.get("teamId") or template.get("team_id") or ""),
@@ -1216,7 +1254,9 @@ def _without_hard_locks(data: dict[str, Any]) -> dict[str, Any]:
                 t
                 for t in templates
                 if not (
-                    isinstance(t, Mapping) and str(t.get("lockLevel") or t.get("lock_level") or "").upper() == "HARD"
+                    isinstance(t, Mapping)
+                    and str(t.get("lockLevel") or t.get("lock_level") or "").upper() == "HARD"
+                    and _lock_identity(t) not in keep
                 )
             ]
     return probe
