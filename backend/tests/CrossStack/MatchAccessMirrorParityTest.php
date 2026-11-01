@@ -81,6 +81,62 @@ final class MatchAccessMirrorParityTest extends TestCase
         }
     }
 
+    /**
+     * Ouverture datée — LE prédicat unique d'accès (D2) : plages applicables (gymnase, date) =
+     * ouvertures datées de ce jour ∪ (férié ? lignes « Jours fériés » : lignes du jour de semaine).
+     * Les MÊMES cas (`accessCases`) traversent le front (`matchAccess.parity.test.ts`) et le moteur
+     * (`MatchAccessEngineParityTest`) : changer l'union d'un seul côté rougit ce côté-là.
+     */
+    public function testBackendKickoffInsideAccessMatchesTheSharedCases(): void
+    {
+        foreach ($this->section('accessCases') as $case) {
+            self::assertSame(
+                (bool) $case['inside'],
+                MatchConflictDetector::kickoffInsideAccess((string) $case['venueId'], (string) $case['matchDate'], (bool) $case['isHoliday'], (string) $case['kickoff'], $case['windows']),
+                \sprintf('PARITÉ ROMPUE (« %s ») : le prédicat d\'accès daté backend diverge du front.', (string) $case['name']),
+            );
+        }
+    }
+
+    /** Les plages APPLICABLES à (gymnase, date) : celles que le refus et « Hors accès match » nomment (D20). */
+    public function testBackendApplicableWindowsMatchTheSharedCases(): void
+    {
+        foreach ($this->section('accessCases') as $case) {
+            $starts = array_column(
+                MatchConflictDetector::applicableWindows((string) $case['venueId'], (string) $case['matchDate'], (bool) $case['isHoliday'], $case['windows']),
+                'startTime',
+            );
+            sort($starts);
+            self::assertSame($case['applicableStarts'], $starts, \sprintf('PARITÉ ROMPUE (« %s ») : plages applicables.', (string) $case['name']));
+        }
+    }
+
+    /** D1bis — « le club a adopté les accès » = au moins une ligne NON datée : une ouverture ne bascule pas le club. */
+    public function testBackendHasWeeklyAccessMatchesTheSharedCases(): void
+    {
+        foreach ($this->section('adoptionCases') as $case) {
+            self::assertSame(
+                (bool) $case['adopted'],
+                MatchConflictDetector::hasWeeklyAccess($case['windows']),
+                \sprintf('PARITÉ ROMPUE (« %s ») : adoption des accès.', (string) $case['name']),
+            );
+        }
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function section(string $key): array
+    {
+        $raw = file_get_contents(self::CASES);
+        self::assertIsString($raw, 'Illisible : ' . self::CASES);
+        $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($decoded);
+        /** @var list<array<string, mixed>> $list */
+        $list = $decoded[$key] ?? [];
+        self::assertNotEmpty($list, 'matchAccess.parity.json ne porte plus aucun cas ' . $key);
+
+        return $list;
+    }
+
     /** @return list<array{name: string, venueId: string, day: int, kickoff: string, windows: list<array<string, mixed>>, inside: bool}> */
     private function cases(): array
     {

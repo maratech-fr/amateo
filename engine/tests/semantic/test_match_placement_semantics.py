@@ -894,3 +894,75 @@ def test_remaining_reason_falsified_both_ways() -> None:
     assert _remaining_reason([("mateo", 840), ("armand", 840)], day, 105, {("mateo", day): [(840, 945)]}) == (
         "not_selected"
     )
+
+
+# ── Ouverture datée (axe §7.1 « constraint semantics », contrat 1.9) ─────────────────────────
+# Promesse : une ouverture saisie est HONORÉE par le solveur, et elle n'ouvre que le gymnase : ni la
+# fenêtre de ligue, ni les règles dures, ni l'interdiction d'un gymnase ne cèdent. Jumeau d'angle :
+# `tests/test_match_placement_holidays.py` (domaine) ; bout en bout : scénario « une ouverture datée
+# suffit à poser » de `backend/features/placement-des-matchs.feature`.
+OPENING_TUESDAY = "2026-11-24"  # mardi ordinaire, ISO 2
+
+
+def _opening_solve(
+    *,
+    opening: bool = True,
+    team_over: dict[str, Any] | None = None,
+    club_rules: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-opening",
+        "seasonId": "season-opening",
+        "matches": [{"id": "m1", "teamId": "t1", "date": OPENING_TUESDAY, "kind": "TO_PLACE"}],
+        "venues": [
+            {
+                "id": "gym-b",
+                "name": "Gymnase B",
+                "matchWindows": (
+                    [{"openingDate": OPENING_TUESDAY, "start": "20:00", "end": "23:00"}] if opening else []
+                ),
+                "unavailabilities": [],
+            }
+        ],
+        "teams": [{"id": "t1", "name": "T1", "leagueWindows": [], "habits": [], "coaches": [], **(team_over or {})}],
+        "clubRules": club_rules or [],
+    }
+    return solve_match_placement(MatchPlacementInputSchema.model_validate(payload))
+
+
+def test_an_entered_opening_is_honoured_by_the_solver() -> None:
+    result = _opening_solve()
+    assert result["unplaced"] == []
+    placement = result["placements"][0]
+    assert placement["venueId"] == "gym-b"
+    # Match de 105 min dans 20:00-23:00 : dernier coup d'envoi 21:15.
+    assert time(20, 0) <= placement["kickoff"] <= time(21, 15)
+
+
+def test_without_the_opening_the_same_match_has_no_access_window() -> None:
+    # Témoin de l'autre sens : c'est bien l'ouverture qui place le match, pas un repli.
+    result = _opening_solve(opening=False)
+    assert result["placements"] == []
+    assert result["unplaced"][0]["reason"] == "no_access_window"
+
+
+def test_an_opening_does_not_silence_the_league_window_of_a_mapped_team() -> None:
+    # D14 : équipe rattachée à la ligue (samedi seulement), mardi ouvert : toujours exclu en automatique.
+    league = [{"dayOfWeek": 6, "kickoffMin": "13:00", "kickoffMax": "18:00"}]
+    result = _opening_solve(team_over={"leagueWindows": league})
+    assert result["placements"] == []
+    assert result["unplaced"][0]["reason"] == "no_league_intersection"
+
+
+def test_an_opening_does_not_silence_a_hard_club_rule() -> None:
+    rule = [{"ruleType": "HARD", "daysOfWeek": [2], "kickoffMin": None, "kickoffMax": "18:00"}]
+    result = _opening_solve(club_rules=rule)
+    assert result["placements"] == []
+    assert result["unplaced"][0]["reason"] == "club_rule_no_slot"
+
+
+def test_an_opening_does_not_lift_a_venue_forbidden_to_the_team() -> None:
+    result = _opening_solve(team_over={"forbiddenVenueIds": ["gym-b"]})
+    assert result["placements"] == []
+    assert result["unplaced"][0]["reason"] == "team_venue_forbidden"

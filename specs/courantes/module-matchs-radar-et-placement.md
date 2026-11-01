@@ -102,13 +102,14 @@ jour férié n'est pas un week-end libre — la ligue a posé ce jour EXPRÈS) :
 joint les dates fériées (national ∪ zone du club, dans la fenêtre de saison) via la maison UNIQUE
 `App\Service\ClubPublicHolidays`, partagée avec le placement (§3) et le feed d'affichage du
 cockpit (`specs/courantes/vacances-scolaires-jours-feries.md`). Sur une date fériée, le détecteur
-TAIT deux familles qui crieraient à tort : `MATCH_TRAINING` (l'entraînement projeté n'a pas lieu un
-férié — `PersonConflicts::matchTrainingConflicts` écarte la date AVANT de résoudre le planning
+TAIT deux familles qui crieraient à tort : `MATCH_TRAINING` et `VENUE_TRAINING_OVERLAP` (l'entraînement projeté n'a pas lieu un
+férié — **aucune séance un férié pour tous les conflits match/entraînement, sans exception de
+période** — `PersonConflicts::matchTrainingConflicts` écarte la date AVANT de résoudre le planning
 effectif) et `LEAGUE_WINDOW_VIOLATION` (la fenêtre de ligue indexée sur le jour de semaine ne
 s'applique pas un jour férié — `RuleWindowConflicts::leagueWindowViolations`). `ACCESS_WINDOW_LOST`
 (§ échelle ci-dessous), lui, continue de se lever, mais jugé contre la seule ligne « Jours fériés »
 du gymnase (`VenueMatchWindow.appliesOnPublicHolidays`, § `module-matchs-modele-donnees.md` §1,
-prédicat pur `MatchConflictDetector::kickoffInsideHolidayWindow`) — jamais contre la fenêtre du
+prédicat pur `MatchConflictDetector::kickoffInsideAccess`, ouvertures datées de la date incluses) — jamais contre la fenêtre du
 jour de semaine, même si son `dayOfWeek` coïncidait ; sans ligne férié déclarée, le coup d'envoi
 n'est dans aucune fenêtre applicable et le conflit se lève normalement.
 
@@ -201,10 +202,26 @@ fichier). Le front (`conflictSideLines.ts`, `ConflictLine.tsx`) choisit sa mise 
 
 Présentation pure — aucune formule de gravité redérivée.
 
+**Accès match — UN prédicat pour la pose, le radar et l'amical** (lot « ouverture datée ») :
+`MatchConflictDetector::applicableWindows(gymnase, date, férié)` = ouvertures datées de CE jour ∪
+(férié ? lignes « Jours fériés » : lignes du jour de semaine) ; `kickoffInsideAccess` en juge le coup
+d'envoi, intervalle demi-ouvert `[start, end[`. Mêmes cas partagés (`matchAccess.parity.json`) côté
+miroir front (`matches/lib/matchAccess.ts`, `MatchAccessMirrorParityTest`) et côté moteur
+(`MatchAccessEngineParityTest`, `candidates.py`). **Écart déclaré** : la pose et le radar jugent le
+COUP D'ENVOI, le moteur le MATCH ENTIER (il doit tenir dans la plage) ; l'ouverture proposée par le
+raccourci est donc arrondie au quart d'heure supérieur de la fin du match. L'étape « accès match » de
+la garde de pose (`FixtureStateProcessor`) ne tourne qu'à une VRAIE pose (UNPLACED → autre statut,
+ou changement de gymnase, date, heure, compétition, domicile/extérieur) : « Marquer saisi »,
+« Corriger », « Verrouiller », « Rendre au système » renvoient le match à l'identique et ne sont plus
+refusés ; indisponibilité et fermeture, elles, restent jugées à chaque PUT. **Signal
+`VENUE_TRAINING_OVERLAP`** (gravité 5, information) : un domicile placé (compétition ou amical) dont la
+plage SALLE chevauche une séance d'une AUTRE équipe au même gymnase dans le planning effectif ce
+jour-là ; jamais un déplacement, muet un jour férié.
+
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.8** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.9** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
 exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
@@ -271,6 +288,20 @@ entraînement n'est projeté une date fériée (`trainingOccupancies` écarte la
 résolution de planning effectif, parité radar `MATCH_TRAINING`) — un match férié ne peut donc
 jamais être gêné par une occupation d'entraînement fantôme. Payload omis (ancien contrat) ⇒ `[]`,
 comportement byte-identique à avant PR2 (aucune date traitée comme férié).
+
+**Ouverture datée et position importée (contrat 1.9)** : `MatchAccessWindowSchema.openingDate`
+(3ᵉ cible exclusive) — `_candidate_kickoffs` ajoute ces plages à celles de leur date, férié ou non ;
+le builder n'émet que les ouvertures dont la date porte un match à PLACER (plafond par gymnase tenu),
+le motif ne part jamais. Un club sans ligne hebdomadaire mais avec une ouverture : le match de ce
+jour est placé sur l'ouverture, un autre jour reste `no_access_window` (« adopté » = ≥ 1 ligne non
+datée). **Position importée gardée** : pour un match importé (`externalRef`) TO_PLACE qui porte
+gymnase ET heure, le builder émet `importedVenueId`/`importedKickoff` (les deux ou rien ; une heure
+sans gymnase n'est pas une position) ; si cette position est LÉGALE (plage applicable, match entier
+dedans, ligue et règles dures respectées) son heure exacte est candidate même hors du pas de 15 min et
+reçoit `W_IMPORTED_POSITION`, au-dessus du cumul réaliste des pénalités d'un candidat mais sous
+`W_PLACE` (un match n'est jamais laissé non placé pour la défendre) ; illégale, elle est ignorée. Elle
+tient aussi aux lancements suivants (un match posé par le solveur puis relancé garde sa position
+importée). Un clash de personne qu'elle cause est dit par le radar, comme pour une pose à la main.
 
 **HARD** : fenêtres d'accès match (le match SEUL dedans, D1 — `kickoff ≥ start`,
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre

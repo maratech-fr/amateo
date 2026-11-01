@@ -55,6 +55,8 @@ interface WeekWorkbenchProps {
   allFixtures: Fixture[];
   /** Conflits de la semaine, filtrés par famille (chaîne Consulter) — le radar. */
   radarConflicts: Conflict[];
+  /** Tous les conflits, hors filtre : le panneau d'un match dit toujours ce qui le touche. */
+  allConflicts: Conflict[];
   /** Le radar n'est rendu qu'une fois les conflits chargés (jamais un faux « aucun clash »). */
   radarLoaded: boolean;
   /** Le plan de saison ne pointe plus de version → les conflits d'entraînement ne sont pas évalués. */
@@ -122,6 +124,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     filteredFixtures,
     allFixtures,
     radarConflicts,
+    allConflicts,
     radarLoaded,
     seasonPlanChosen,
     conflictsError,
@@ -188,8 +191,8 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
 
   const selectedFixture = allFixtures.find((f) => f.id === selectedFixtureId) ?? null;
   const selectedEnvelope = useMemo(
-    () => (null === selectedFixture ? null : resolveEnvelope(selectedFixture, resolvedTeamWindows, windows)),
-    [selectedFixture, resolvedTeamWindows, windows],
+    () => (null === selectedFixture ? null : resolveEnvelope(selectedFixture, resolvedTeamWindows, windows, guards.holidays)),
+    [selectedFixture, resolvedTeamWindows, windows, guards.holidays],
   );
   const swapSource = allFixtures.find((f) => f.id === swapSourceId) ?? null;
 
@@ -289,6 +292,9 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
         categoryLabel={categoriesMap.get(teamsMap.get(selectedFixture.teamId)?.sportCategoryId ?? "")?.name ?? "—"}
         envelope={selectedEnvelope}
         busy={mutating}
+        matchMinutes={matchDurations.get(teamsMap.get(selectedFixture.teamId)?.sportCategoryId ?? "") ?? 105}
+        conflicts={allConflicts}
+        teamNameOf={(teamId) => teamsMap.get(teamId)?.name ?? null}
         onClose={() => setSelectedFixtureId(null)}
         onPlace={(input) => {
           const mutation = "PLACED" === selectedFixture.status ? moveFixture : placeFixture;

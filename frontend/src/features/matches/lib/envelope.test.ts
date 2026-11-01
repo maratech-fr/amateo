@@ -47,7 +47,7 @@ describe("envelope helpers", () => {
 // only looks up `resolvedTeamWindows`. These tests pin the lookup semantics.
 describe("resolveEnvelope", () => {
   it("maps a team via the server-resolved ids and validates day + time", () => {
-    const env = resolveEnvelope(fixture(), { "team-1": ["w-1"] }, [window()]);
+    const env = resolveEnvelope(fixture(), { "team-1": ["w-1"] }, [window()], []);
     expect(env.mapped).toBe(true);
     expect(env.dayOk).toBe(true);
     expect(env.timeOk("14:00")).toBe(true);
@@ -55,24 +55,24 @@ describe("resolveEnvelope", () => {
   });
 
   it("does not map a team the server resolved to [] (unmapped = advisory)", () => {
-    const env = resolveEnvelope(fixture(), { "team-1": [] }, [window()]);
+    const env = resolveEnvelope(fixture(), { "team-1": [] }, [window()], []);
     expect(env.mapped).toBe(false);
     expect(env.windows).toHaveLength(0);
   });
 
   it("does not map a team absent from the server resolution", () => {
-    const env = resolveEnvelope(fixture(), {}, [window()]);
+    const env = resolveEnvelope(fixture(), {}, [window()], []);
     expect(env.mapped).toBe(false);
   });
 
   it("ignores resolved ids that no longer exist in the catalog items", () => {
-    const env = resolveEnvelope(fixture(), { "team-1": ["w-gone"] }, [window()]);
+    const env = resolveEnvelope(fixture(), { "team-1": ["w-gone"] }, [window()], []);
     expect(env.mapped).toBe(false);
   });
 
   it("flags the wrong day as out of envelope", () => {
     // A Sunday match against a Saturday-only window.
-    const env = resolveEnvelope(fixture({ matchDate: "2026-10-04" }), { "team-1": ["w-1"] }, [window()]);
+    const env = resolveEnvelope(fixture({ matchDate: "2026-10-04" }), { "team-1": ["w-1"] }, [window()], []);
     expect(env.mapped).toBe(true);
     expect(env.dayOk).toBe(false);
   });
@@ -80,14 +80,31 @@ describe("resolveEnvelope", () => {
 
 describe("isInEnvelope", () => {
   it("never blocks an unmapped team (advisory degradation)", () => {
-    const env = resolveEnvelope(fixture(), { "team-1": [] }, [window()]);
+    const env = resolveEnvelope(fixture(), { "team-1": [] }, [window()], []);
     expect(env.mapped).toBe(false);
     expect(isInEnvelope(env, "23:00")).toBe(true);
   });
 
   it("blocks a mapped team placed outside its window", () => {
-    const env = resolveEnvelope(fixture(), { "team-1": ["w-1"] }, [window()]);
+    const env = resolveEnvelope(fixture(), { "team-1": ["w-1"] }, [window()], []);
     expect(isInEnvelope(env, "14:00")).toBe(true);
+    expect(isInEnvelope(env, "20:00")).toBe(false);
+  });
+});
+
+/** D7 : la ligue a posé ce jour exprès : un férié est dans l'enveloppe, miroir du radar (`RuleWindowConflicts.php:47`). */
+describe("resolveEnvelope — jour férié", () => {
+  const HOLIDAY = "2026-11-11"; // mercredi, hors de la fenêtre du samedi
+
+  it("un férié est dans l'enveloppe et le dit", () => {
+    const env = resolveEnvelope(fixture({ matchDate: HOLIDAY }), { "team-1": ["w-1"] }, [window()], [HOLIDAY]);
+    expect(env.holiday).toBe(true);
+    expect(isInEnvelope(env, "20:00")).toBe(true);
+  });
+
+  it("un mardi non férié reste hors enveloppe : l'alerte ligue reste", () => {
+    const env = resolveEnvelope(fixture({ matchDate: "2026-11-24" }), { "team-1": ["w-1"] }, [window()], [HOLIDAY]);
+    expect(env.holiday).toBe(false);
     expect(isInEnvelope(env, "20:00")).toBe(false);
   });
 });

@@ -105,6 +105,61 @@ final class VenueCapacityApiTest extends WebTestCase
         self::assertNotEmpty($this->responseData()['violations'] ?? [], 'le 422 porte une violation, jamais muet');
     }
 
+    /** D1 : une ligne d'accès peut viser une date précise, avec un motif ; c'est exactement l'un des trois. */
+    public function testDatedOpeningCreateAndExactlyOneOfThree(): void
+    {
+        [$club, $user, $season] = $this->createClubUser();
+        $venue = $this->createVenue($club, $season);
+        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
+        $base = ['venueId' => $venue->getId(), 'startTime' => '14:00', 'endTime' => '20:00'];
+
+        $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode($base + ['openingDate' => '2026-11-11', 'label' => 'Coupe'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $created = $this->responseData();
+        self::assertSame('2026-11-11', $created['openingDate'] ?? null);
+        self::assertSame('Coupe', $created['label'] ?? null);
+        self::assertNull($created['dayOfWeek'] ?? null);
+        self::assertFalse($created['appliesOnPublicHolidays'] ?? null);
+
+        $this->client->request('GET', '/api/venue_match_windows/' . $created['id'], [], [], $headers);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('2026-11-11', $this->responseData()['openingDate'] ?? null, 'relue telle quelle');
+
+        foreach (['date + jour' => ['openingDate' => '2026-11-11', 'dayOfWeek' => 3], 'date + férié' => ['openingDate' => '2026-11-11', 'appliesOnPublicHolidays' => true]] as $case => $extra) {
+            $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode($base + $extra, \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, $case);
+            self::assertSame('Une ligne d\'accès match vise soit un jour de la semaine, soit les jours fériés, soit une date précise — exactement l\'un des trois.', $this->responseData()['violations'][0]['message'] ?? null, $case);
+        }
+
+        foreach (['date mal formée' => ['openingDate' => '11/11/2026'], 'motif de 121 caractères' => ['openingDate' => '2026-11-11', 'label' => str_repeat('x', 121)]] as $case => $extra) {
+            $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode($base + $extra, \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, $case);
+        }
+
+        $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode(['openingDate' => '2026-11-11', 'startTime' => '20:00', 'endTime' => '14:00', 'venueId' => $venue->getId()], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'une plage inversée reste refusée pour une ouverture');
+    }
+
+    /** D11 + A4 : passée, chevauchante ou hors saison, une ouverture est acceptée ; l'avertissement hors saison vit à l'écran. */
+    public function testPastOverlappingAndOutOfSeasonOpeningsAreAccepted(): void
+    {
+        [$club, $user, $season] = $this->createClubUser();
+        $venue = $this->createVenue($club, $season);
+        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
+        $post = function (string $date, string $start, string $end) use ($headers, $venue): void {
+            $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode(['venueId' => $venue->getId(), 'openingDate' => $date, 'startTime' => $start, 'endTime' => $end], \JSON_THROW_ON_ERROR));
+        };
+
+        $post($season->getStartDate()->modify('+1 day')->format('Y-m-d'), '14:00', '20:00');
+        self::assertResponseStatusCodeSame(201, 'date passée');
+        $post('2026-11-11', '14:00', '20:00');
+        self::assertResponseStatusCodeSame(201);
+        $post('2026-11-11', '15:00', '21:00');
+        self::assertResponseStatusCodeSame(201, 'chevauchement : l\'union suffit');
+        $post($season->getEndDate()->modify('+10 days')->format('Y-m-d'), '14:00', '20:00');
+        self::assertResponseStatusCodeSame(201, 'hors saison');
+    }
+
     public function testUnavailabilityValidationAndLabelTrim(): void
     {
         [$club, $user, $season] = $this->createClubUser();

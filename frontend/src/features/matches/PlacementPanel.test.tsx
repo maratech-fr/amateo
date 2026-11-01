@@ -43,8 +43,9 @@ const mappedEnvelope: EnvelopeResult = {
   windows: [{ id: "w", league: "AURA", category: "U13", level: "DEPARTEMENTAL", gender: null, dayOfWeek: 6, kickoffMin: "13:00", kickoffMax: "18:00" }],
   dayOk: true,
   timeOk: (k) => "14:00" === k,
+  holiday: false,
 };
-const openEnvelope: EnvelopeResult = { mapped: false, windows: [], dayOk: false, timeOk: () => false };
+const openEnvelope: EnvelopeResult = { mapped: false, windows: [], dayOk: false, timeOk: () => false, holiday: false };
 
 interface Overrides {
   matchWindows?: VenueMatchWindow[];
@@ -68,6 +69,8 @@ interface Overrides {
 function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Overrides = {}) {
   render(
     <PlacementPanel
+      matchMinutes={90}
+      conflicts={[]}
       fixture={overrides.fixture ?? fixture}
       venues={venues}
       guards={{
@@ -157,7 +160,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       // venue-1 is a match venue on Saturdays 14:00-18:00; venue-2 is training-only.
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }],
     });
 
     // The selector masks the CHOICE: training-only venue-2 is not offered (open the listbox to see).
@@ -165,7 +168,7 @@ describe("PlacementPanel", () => {
     expect(within(list).queryByRole("option", { name: "Gymnase Beta" })).not.toBeInTheDocument();
     await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
-    expect(screen.getByText(/Hors fenêtre d'accès match \(14:00–18:00\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Hors des accès match de ce jour \(14:00 – 18:00\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
     expect(onPlace).not.toHaveBeenCalled();
   });
@@ -174,11 +177,11 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     // Sunday-only window; the fixture is on a Saturday.
     renderPanel(openEnvelope, vi.fn(), {
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 7, appliesOnPublicHolidays: false, startTime: "09:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 7, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "09:00", endTime: "18:00" }],
     });
 
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
-    expect(screen.getByText(/Pas d'accès match le samedi/)).toBeInTheDocument();
+    expect(screen.getByText(/Pas d'accès match le sam\. 3 oct\./)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
   });
 
@@ -227,7 +230,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       fixture: friendly,
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }],
     });
 
     const list = await openListbox(user, "Gymnase");
@@ -236,7 +239,7 @@ describe("PlacementPanel", () => {
 
     expect(screen.getByText("Amical hors créneau match — placement libre.")).toBeInTheDocument();
     // Jamais le message dur d'une compétition.
-    expect(screen.queryByText(/Hors fenêtre d'accès match/)).toBeNull();
+    expect(screen.queryByText(/Hors des accès match de ce jour/)).toBeNull();
     const place = screen.getByRole("button", { name: "Placer" });
     expect(place).toBeEnabled();
     await user.click(place);
@@ -247,14 +250,14 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       fixture: { ...fixture, competitionId: "comp-1" },
-      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }],
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }],
     });
 
     const list = await openListbox(user, "Gymnase");
     await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
 
-    expect(screen.getByText(/Hors fenêtre d'accès match \(14:00–18:00\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Hors des accès match de ce jour \(14:00 – 18:00\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
     expect(onPlace).not.toHaveBeenCalled();
   });
@@ -491,7 +494,7 @@ describe("PlacementPanel — D2 : le geste de placement suspendu tant que les ga
 });
 
 describe("PlacementPanel — gymnase fermé ou indisponible grisé (P4-300)", () => {
-  const windowVenue1: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "18:00" }];
+  const windowVenue1: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "18:00" }];
 
   it("grise l'option d'un gymnase fermé par le calendrier à la date du match, avec la raison", async () => {
     const user = userEvent.setup();
@@ -534,8 +537,8 @@ describe("PlacementPanel — pose manuelle un jour férié (PR2)", () => {
   const WED_HOLIDAY = "2026-11-11"; // mercredi (ISO 3) ET jour férié
   const WED_ORDINARY = "2026-11-18"; // mercredi ordinaire, pas férié
   const holidayVenueWindows: VenueMatchWindow[] = [
-    { id: "w-wed", venueId: "venue-1", dayOfWeek: 3, appliesOnPublicHolidays: false, startTime: "18:00", endTime: "22:00" },
-    { id: "w-hol", venueId: "venue-1", dayOfWeek: null, appliesOnPublicHolidays: true, startTime: "10:00", endTime: "18:00" },
+    { id: "w-wed", venueId: "venue-1", dayOfWeek: 3, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "18:00", endTime: "22:00" },
+    { id: "w-hol", venueId: "venue-1", dayOfWeek: null, appliesOnPublicHolidays: true, openingDate: null, label: null, startTime: "10:00", endTime: "18:00" },
   ];
   const holidayFixture: Fixture = { ...fixture, matchDate: WED_HOLIDAY };
 
@@ -550,7 +553,7 @@ describe("PlacementPanel — pose manuelle un jour férié (PR2)", () => {
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
 
     // 14:00 ∈ [10:00, 18:00[ de la ligne férié → aucune raison d'accès, pose autorisée.
-    expect(screen.queryByText(/Hors fenêtre d'accès match/)).toBeNull();
+    expect(screen.queryByText(/Hors des accès match de ce jour/)).toBeNull();
     const place = screen.getByRole("button", { name: "Placer" });
     expect(place).toBeEnabled();
     await user.click(place);
@@ -569,7 +572,7 @@ describe("PlacementPanel — pose manuelle un jour férié (PR2)", () => {
 
     // 20:00 ∉ [10:00, 18:00[ → la raison cite la ligne férié (10:00–18:00), PAS la fenêtre
     // du mercredi (18:00–22:00), et le bouton est désactivé.
-    expect(screen.getByText(/Hors fenêtre d'accès match \(10:00–18:00\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Hors des accès match de ce jour \(10:00 – 18:00\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
     expect(onPlace).not.toHaveBeenCalled();
   });
@@ -585,13 +588,13 @@ describe("PlacementPanel — pose manuelle un jour férié (PR2)", () => {
     const kickoff = screen.getByLabelText("Heure de coup d'envoi");
     // 20:00 ∈ [18:00, 22:00[ de la fenêtre du mercredi → accepté (la ligne férié reste ignorée).
     await user.type(kickoff, "20:00");
-    expect(screen.queryByText(/Hors fenêtre d'accès match/)).toBeNull();
+    expect(screen.queryByText(/Hors des accès match de ce jour/)).toBeNull();
     expect(screen.getByRole("button", { name: "Placer" })).toBeEnabled();
 
     // 14:00 ∉ [18:00, 22:00[ → refusé sur la fenêtre du mercredi (pas sur la ligne férié).
     await user.clear(kickoff);
     await user.type(kickoff, "14:00");
-    expect(screen.getByText(/Hors fenêtre d'accès match \(18:00–22:00\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Hors des accès match de ce jour \(18:00 – 22:00\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
     expect(onPlace).not.toHaveBeenCalled();
   });

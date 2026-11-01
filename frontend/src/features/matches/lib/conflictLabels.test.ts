@@ -15,6 +15,7 @@ const ALL_FAMILIES: ConflictType[] = [
   "MATCH_TRAINING",
   "MATCH_COACH_UNAVAILABLE",
   "VENUE_UNAVAILABLE",
+  "VENUE_TRAINING_OVERLAP",
   "ACCESS_WINDOW_LOST",
   "COMPETITION_INCOMPLETE",
   "AWAY_NO_FOOTPRINT",
@@ -43,6 +44,12 @@ describe("CONFLICT_FAMILY_LABEL", () => {
     expect(CONFLICT_FAMILY_LABEL.AWAY_NO_FOOTPRINT).toBe("Extérieur sans heure");
     expect(CONFLICT_FAMILY_LABEL.FRIENDLY_ON_MATCH_SLOT).toBe("Amical sur créneau match");
     expect(CONFLICT_FAMILY_LABEL.TEAM_LEVEL_MISSING).toBe("Niveau non renseigné");
+  });
+});
+
+describe("CONFLICT_FAMILY_LABEL — entraînement dans le gymnase (D8)", () => {
+  it("nomme la famille", () => {
+    expect(CONFLICT_FAMILY_LABEL.VENUE_TRAINING_OVERLAP).toBe("Entraînement dans le gymnase");
   });
 });
 

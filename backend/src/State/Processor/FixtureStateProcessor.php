@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Service\Basketball\VenueAliasResolver;
+use App\Service\ClubPublicHolidays;
 use App\Service\ConflictRadarLoader;
 use App\Service\FbiCorrectionLedger;
 use App\Service\MatchConflictDetector;
@@ -35,6 +36,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
     /** ISO weekday (1 = Monday … 7 = Sunday) → the French day name, lowercase. */
     private const array DAY_LABELS = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
 
+    private const array MONTH_LABELS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
     private SocleGuard $socleGuard;
 
     private ClockInterface $clock;
@@ -44,6 +47,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
     private FbiCorrectionLedger $fbiCorrectionLedger;
 
     private PlanVenueClosures $planVenueClosures;
+
+    private ClubPublicHolidays $clubPublicHolidays;
 
     #[Required]
     public function setSocleGuard(SocleGuard $socleGuard): void
@@ -55,6 +60,12 @@ class FixtureStateProcessor extends AbstractStateProcessor
     public function setPlanVenueClosures(PlanVenueClosures $planVenueClosures): void
     {
         $this->planVenueClosures = $planVenueClosures;
+    }
+
+    #[Required]
+    public function setClubPublicHolidays(ClubPublicHolidays $clubPublicHolidays): void
+    {
+        $this->clubPublicHolidays = $clubPublicHolidays;
     }
 
     #[Required]
@@ -151,6 +162,9 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->getKickoffTime()?->format('H:i'),
             $entity->getMatchDate()->format('Y-m-d'),
         ];
+        $statusBefore = $entity->getStatus();
+        $competitionBefore = $entity->getCompetitionId();
+        $homeAwayBefore = $entity->getHomeAway();
         if (null !== $input->teamId) {
             $entity->setTeamId($input->teamId);
         }
@@ -203,7 +217,19 @@ class FixtureStateProcessor extends AbstractStateProcessor
             // legitimate precisely because nothing else moved in this PUT.
             $entity->setPlacementSource(FixturePlacementSource::SOLVER);
         }
-        $this->assertVenueAccessAllowed($entity);
+        // L'étape « accès match » ne juge qu'une vraie pose : « Marquer saisi », « Corriger »,
+        // « Verrouiller », « Rendre au système » renvoient le match à l'identique et ne posent rien.
+        // Indisponibilité et fermeture, elles, restent jugées à chaque PUT.
+        $isPlacing = FixtureStatus::UNPLACED === $statusBefore && FixtureStatus::UNPLACED !== $entity->getStatus();
+        $moved = $placementBefore !== [
+            $entity->getVenueId(),
+            $entity->getKickoffTime()?->format('H:i'),
+            $entity->getMatchDate()->format('Y-m-d'),
+        ];
+        $this->assertVenueAccessAllowed(
+            $entity,
+            $isPlacing || $moved || $competitionBefore !== $entity->getCompetitionId() || $homeAwayBefore !== $entity->getHomeAway(),
+        );
     }
 
     /**
@@ -240,17 +266,18 @@ class FixtureStateProcessor extends AbstractStateProcessor
      *  1bis. couvert par une FERMETURE du calendrier (`venue_closed`) à sa date → refus TOUJOURS
      *     (amical compris, P4-300 D4). Le FAIT brut (config, repli legacy) vient de la maison
      *     unique `PlanVenueClosures`, jamais de la composition `VenuePeriodOverride` ;
-     *  2. de COMPÉTITION (competitionId non null), quand le club déclare ≥ 1 accès
-     *     match : aucun accès (gymnase, jour) ou coup d'envoi hors fenêtre → refus ;
-     *     un amical reste libre (le solveur ne le pose plus, le radar signale).
+     *  2. de COMPÉTITION (competitionId non null), quand le club déclare ≥ 1 ligne d'accès
+     *     NON datée, et seulement à une vraie pose ($checkAccess) : aucune plage applicable à
+     *     cette date (ouvertures datées ∪ férié ou jour de semaine) ou coup d'envoi hors de ces
+     *     plages → refus ; un amical reste libre (le solveur ne le pose plus, le radar signale).
      *
      * Aucun refus sur l'enveloppe de ligue (radar seul, décision D2). Les fenêtres et
      * indisponibilités sont lues via les mêmes repos tenant-filtrés que le radar
      * ({@see ConflictRadarLoader}) ; l'appartenance du coup d'envoi est LE
-     * MÊME prédicat que le diagnostic ({@see MatchConflictDetector::kickoffInsideWindow},
+     * MÊME prédicat que le diagnostic ({@see MatchConflictDetector::kickoffInsideAccess},
      * aucune seconde implémentation). Un club sans aucun accès match n'a rien à imposer.
      */
-    private function assertVenueAccessAllowed(Fixture $entity): void
+    private function assertVenueAccessAllowed(Fixture $entity, bool $checkAccess = true): void
     {
         if (FixtureHomeAway::HOME !== $entity->getHomeAway()) {
             return;
@@ -302,47 +329,44 @@ class FixtureStateProcessor extends AbstractStateProcessor
         }
 
         // (2) accès match — COMPÉTITION seulement ; un amical est libre hors créneau.
-        if (null === $entity->getCompetitionId()) {
+        if (!$checkAccess || null === $entity->getCompetitionId()) {
             return;
         }
         /** @var list<VenueMatchWindow> $matchWindows */
         $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
-        if ([] === $matchWindows) {
-            // le club n'a pas adopté les accès match → rien à imposer.
+        $windowArrays = array_map(MatchConflictDetector::windowArray(...), $matchWindows);
+        if (!MatchConflictDetector::hasWeeklyAccess($windowArrays)) {
+            // le club n'a pas adopté les accès match → rien à imposer (une ouverture datée n'adopte rien).
             return;
         }
-        $day = (int) $matchDate->format('N');
-        $dayWindows = array_values(array_filter(
-            $matchWindows,
-            static fn (VenueMatchWindow $window): bool => $window->getVenueId() === $venueId && $window->getDayOfWeek() === $day,
-        ));
-        if ([] === $dayWindows) {
+        $isHoliday = \is_string($clubId) && '' !== $clubId
+            && [] !== $this->clubPublicHolidays->datesInWindow($clubId, $matchDate, $matchDate);
+        $applicable = MatchConflictDetector::applicableWindows($venueId, $date, $isHoliday, $windowArrays);
+        $dayAndMonth = \sprintf(
+            '%s %d %s',
+            self::DAY_LABELS[(int) $matchDate->format('N')],
+            (int) $matchDate->format('j'),
+            self::MONTH_LABELS[(int) $matchDate->format('n')],
+        );
+        if ([] === $applicable) {
             $this->refuse(\sprintf(
-                'Pas d\'accès match le %s à %s : le match ne peut pas y être placé. Choisissez un autre gymnase, ou ajoutez un accès match ce jour-là dans Configuration.',
-                self::DAY_LABELS[$day],
+                '%s n\'a pas d\'accès match le %s%s. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.',
                 $this->venueName($venueId),
+                $dayAndMonth,
+                $isHoliday ? ', jour férié' : '',
             ));
         }
         $kickoffTime = $entity->getKickoffTime();
         if (!$kickoffTime instanceof DateTimeImmutable) {
             return;
         }
-        $windowArrays = array_map(static fn (VenueMatchWindow $window): array => [
-            'venueId' => $window->getVenueId(),
-            'dayOfWeek' => $window->getDayOfWeek(),
-            'startTime' => $window->getStartTime()->format('H:i'),
-            'endTime' => $window->getEndTime()->format('H:i'),
-        ], $matchWindows);
-        if (!MatchConflictDetector::kickoffInsideWindow($venueId, $day, $kickoffTime->format('H:i'), $windowArrays)) {
-            $ranges = implode(', ', array_map(
-                static fn (VenueMatchWindow $window): string => \sprintf('%s–%s', $window->getStartTime()->format('H:i'), $window->getEndTime()->format('H:i')),
-                $dayWindows,
-            ));
+        if (!MatchConflictDetector::kickoffInsideAccess($venueId, $date, $isHoliday, $kickoffTime->format('H:i'), $windowArrays)) {
+            usort($applicable, static fn (array $a, array $b): int => $a['startTime'] <=> $b['startTime']);
             $this->refuse(\sprintf(
-                'Coup d\'envoi hors fenêtre d\'accès match (%s) le %s à %s : le match ne peut pas y être placé. Choisissez une heure dans la fenêtre, ou ajustez l\'accès match dans Configuration.',
-                $ranges,
-                self::DAY_LABELS[$day],
+                'Coup d\'envoi hors des accès match de %s le %s (%s). Choisissez une heure dans ces plages, ou ouvrez-le ce jour-là depuis le panneau du match.',
                 $this->venueName($venueId),
+                $dayAndMonth,
+                implode(', ', array_map(static fn (array $window): string => \sprintf('%s – %s', $window['startTime'], $window['endTime']), $applicable)),
             ));
         }
     }

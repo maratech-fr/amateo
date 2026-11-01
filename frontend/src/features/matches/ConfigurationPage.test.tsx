@@ -7,6 +7,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/utils";
 
 import { ConfigurationPage } from "./ConfigurationPage";
+import { MATCHES_TEXTS } from "./texts";
+
+function UrlProbe() {
+  const [params] = useSearchParams();
+  return <span data-testid="url-search">{params.toString()}</span>;
+}
+
+function UrlHarness() {
+  return (
+    <>
+      <ConfigurationPage />
+      <UrlProbe />
+    </>
+  );
+}
 
 // PR 2a — la Configuration perd le gabarit + les créneaux (partis en Semaine type) et gagne la
 // section « Accès match ». Défaut = tout replié. On mute la couche api (PROD) ; react-query tourne.
@@ -227,6 +242,68 @@ describe("ConfigurationPage — la section « Accès match » (PR 2a)", () => {
     const dialog = await screen.findByRole("dialog", { name: "Accès match" });
     expect(within(dialog).getByRole("heading", { name: "Accès match · Gymnase Alpha" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Ajouter la fenêtre match" })).toBeInTheDocument();
+  });
+
+  it("D5bis : ?acces=&date=&debut= préremplit la ligne d'ajout d'une ouverture", async () => {
+    renderWithProviders(<Harness />, { route: "/matchs/configuration?acces=venue-1&date=2026-11-11&debut=18:30" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+    expect(within(dialog).getByLabelText(MATCHES_TEXTS.openingDateLabel)).toHaveValue("2026-11-11");
+    expect(within(dialog).getByLabelText(MATCHES_TEXTS.openingStartLabel)).toHaveValue("18:00");
+    expect(within(dialog).getByLabelText(MATCHES_TEXTS.openingEndLabel)).toHaveValue("22:00");
+  });
+
+  it("A8 : fermer l'éditeur ouvert par le lien retire les trois clés de l'URL", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<UrlHarness />, { route: "/matchs/configuration?acces=venue-1&date=2026-11-11&debut=18:30" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+    await user.click(within(dialog.querySelector("footer") ?? dialog).getByRole("button", { name: "Fermer" }));
+    await waitFor(() => expect(screen.getByTestId("url-search").textContent).not.toMatch(/acces=|date=|debut=/));
+  });
+
+  it("retour visuel : arrivé par le lien d'un conflit, un bandeau nomme le gymnase et le jour juste au-dessus de la ligne préremplie", async () => {
+    renderWithProviders(<Harness />, { route: "/matchs/configuration?acces=venue-1&date=2026-11-11&debut=18:30" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+    const banner = within(dialog).getByText(MATCHES_TEXTS.openVenueDialogTitle("Gymnase Alpha", "mer. 11 nov."));
+    const dateField = within(dialog).getByLabelText(MATCHES_TEXTS.openingDateLabel);
+    expect(banner.compareDocumentPosition(dateField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("retour visuel : la ligne préremplie est amenée à l'écran et reçoit le focus", async () => {
+    const scrolled = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      renderWithProviders(<Harness />, { route: "/matchs/configuration?acces=venue-1&date=2026-11-11&debut=18:30" });
+
+      const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+      await waitFor(() => expect(within(dialog).getByLabelText(MATCHES_TEXTS.openingDateLabel)).toHaveFocus());
+      expect(scrolled).toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("témoin : ouvert sans date (?acces seul), ni bandeau ni vol de focus vers la ligne d'ouverture", async () => {
+    renderWithProviders(<Harness />, { route: "/matchs/configuration?acces=venue-1" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+    expect(within(dialog).queryByText(/^Ouvrir Gymnase Alpha le /)).toBeNull();
+    expect(within(dialog).getByLabelText(MATCHES_TEXTS.openingDateLabel)).not.toHaveFocus();
+  });
+
+  it("retour visuel : l'intro de la section et de l'éditeur ne dit plus qu'un gymnase sans fenêtre n'accueille rien", async () => {
+    const user = userEvent.setup();
+    const rule = /Un gymnase sans accès ni ouverture exceptionnelle n'accueille pas de matchs\./;
+    renderWithProviders(<Harness />, { route: "/matchs/configuration?section=reglages" });
+
+    expect(await screen.findByText(rule)).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Modifier les accès match de Gymnase Alpha" }));
+    const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+    expect(within(dialog).getByText(rule)).toBeInTheDocument();
+    expect(screen.queryByText(/un gymnase sans fenêtre/i)).toBeNull();
   });
 
   it("à la fermeture, le focus revient au « Modifier » de la ligne (refocus explicite)", async () => {

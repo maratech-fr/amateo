@@ -1,4 +1,5 @@
 import { anchorIsWritable, usePeriodAnchor } from "@/features/cockpit/queries";
+import { matchVenueIds } from "@/features/matches/lib/matchAccess";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import type { Reservation, Team, Venue, VenueTrainingSlot } from "../api";
@@ -261,10 +262,10 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
   // sur un gymnase volontairement désactivé, le temps que les overrides arrivent.
   const periodGridReady =
     "period" === periodAnchor.state && !readLoading(periodSlotsQuery) && !readLoading(periodOverridesQuery);
-  const matchVenueIds = new Set((matchWindowsQuery.data ?? []).map((w) => w.venueId));
+  const matchVenues = matchVenueIds(matchWindowsQuery.data ?? []);
   const emptyVenues = periodMode
-    ? (periodGridReady ? venuesWithoutSlot(layerVenues, periodSlots, matchVenueIds) : [])
-    : venuesWithoutSlot(venues, slots, matchVenueIds);
+    ? (periodGridReady ? venuesWithoutSlot(layerVenues, periodSlots, matchVenues) : [])
+    : venuesWithoutSlot(venues, slots, matchVenues);
 
   if ("venues" === stepId) {
     const errors: string[] = [];

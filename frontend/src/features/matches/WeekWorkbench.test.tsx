@@ -81,6 +81,7 @@ function baseProps(over: Partial<Props> = {}): Props {
     filteredFixtures: [],
     allFixtures: [],
     radarConflicts: [],
+    allConflicts: [],
     radarLoaded: true,
     seasonPlanChosen: true,
     conflictsError: false,

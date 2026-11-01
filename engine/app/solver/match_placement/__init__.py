@@ -123,6 +123,9 @@ from .weights import (
     W_HABIT_VENUE as W_HABIT_VENUE,
 )
 from .weights import (
+    W_IMPORTED_POSITION as W_IMPORTED_POSITION,
+)
+from .weights import (
     W_LINK_NOT_SIMULTANEOUS as W_LINK_NOT_SIMULTANEOUS,
 )
 from .weights import (
@@ -146,6 +149,14 @@ logger = logging.getLogger("engine.match_placement")
 # wall-clock deadline over the hot loops and abort with a named diagnostic rather
 # than let a request hang. 10 s is orders of magnitude over a real club's build.
 BUILD_BUDGET_SECONDS = 10.0
+
+
+def _is_imported_position(cand: _Candidate, match: MatchSchema) -> bool:
+    return (
+        match.imported_venue_id == cand.venue_id
+        and match.imported_kickoff is not None
+        and _minutes(match.imported_kickoff) == cand.kickoff_min
+    )
 
 
 def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
@@ -236,8 +247,8 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     # ── Warm-start (ADR-0003): a deterministic greedy first-fit over the pruned
     # domains hands CP-SAT ONE coherent hint per match — a feasible placement to
     # improve on — so the budget is spent optimising, not rediscovering a feasible
-    # point. Order (date, team) is stable; per match the preferred candidate is the
-    # habit slot, else the current SOLVER placement, else the first legal
+    # point. Order (date, team) is stable; per match the preferred candidate is the imported
+    # position, else the habit slot, else the current SOLVER placement, else the first legal
     # free slot, each checked against the FIXED anchors AND the slots the greedy has
     # already taken. It ABSORBS the old stability hint: exactly one hint set, never
     # two contradictory ones on the same match.
@@ -246,21 +257,23 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         habit: TeamHabitSchema | None,
         match: MatchSchema,
     ) -> tuple[int, str, int]:
-        # rank 0 = habit ideal slot ; 1 = current SOLVER placement ;
-        # 2 = any other legal slot. Ties broken by (venue, kickoff) = domain order.
-        rank = 2
-        if (
+        # rank 0 = imported position ; 1 = habit ideal slot ; 2 = current SOLVER placement ;
+        # 3 = any other legal slot. Ties broken by (venue, kickoff) = domain order.
+        rank = 3
+        if _is_imported_position(cand, match):
+            rank = 0
+        elif (
             habit is not None
             and cand.kickoff_min == _minutes(habit.kickoff)
             and (habit.venue_id is None or cand.venue_id == habit.venue_id)
         ):
-            rank = 0
+            rank = 1
         elif (
             match.current_venue_id == cand.venue_id
             and match.current_kickoff is not None
             and _minutes(match.current_kickoff) == cand.kickoff_min
         ):
-            rank = 1
+            rank = 2
         return (rank, cand.venue_id, cand.kickoff_min)
 
     def _apply_greedy_hints() -> None:
@@ -424,6 +437,8 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                 # contradictory hints on the same match). `_apply_greedy_hints`
                 # posts ONE coherent hint per match — and prefers this current
                 # placement when it is still free (see its preference tiers).
+            if _is_imported_position(cand, match):
+                weight += W_IMPORTED_POSITION
             # Protection is a VENUE conflict → the candidate's MATCH window (deduped
             # set). Skipped when the candidate IS the team's own ideal (P4-271).
             if not is_own_ideal:

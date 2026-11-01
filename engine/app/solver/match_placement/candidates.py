@@ -39,6 +39,13 @@ def _candidate_kickoffs(
     # from the domain (never chosen), but tracked apart: if a legal (access ∩ league ∩
     # club-rule) slot existed ONLY on forbidden venues, the reason is `team_venue_forbidden`.
     forbidden_venues = set(team.forbidden_venue_ids) if team else set()
+    # Position du fichier de la ligue (contrat 1.9) : son heure exacte est candidate, même hors du pas
+    # de 15 min, sur SON gymnase et sous les mêmes tests que la boucle. Il faut les deux champs.
+    imported_kick = (
+        _minutes(match.imported_kickoff)
+        if match.imported_venue_id is not None and match.imported_kickoff is not None
+        else None
+    )
 
     domain: dict[str, list[int]] = {}
     saw_open_venue = False
@@ -54,7 +61,11 @@ def _candidate_kickoffs(
             # Un jour férié : SEULES les lignes « Jours fériés » comptent (la fenêtre du jour de
             # semaine ne s'applique pas). Un jour ordinaire : SEULES les lignes de jour de semaine
             # de ce jour (une ligne férié, dayOfWeek nul, ne fuit jamais sur un jour ordinaire).
-            if is_holiday:
+            # Une ouverture datée (contrat 1.9) S'AJOUTE à sa date, férié ou non, et ne vaut que pour elle.
+            if window.opening_date is not None:
+                if window.opening_date != match.match_date:
+                    continue
+            elif is_holiday:
                 if not window.applies_on_public_holidays:
                     continue
             elif window.applies_on_public_holidays or window.day_of_week != day:
@@ -64,8 +75,11 @@ def _candidate_kickoffs(
             # court, so a match may start at the very opening of the window.
             first = _minutes(window.start)
             last = _minutes(window.end) - match_min
-            kick = ((first + STEP_MIN - 1) // STEP_MIN) * STEP_MIN
-            while kick <= last:
+            grid_start = ((first + STEP_MIN - 1) // STEP_MIN) * STEP_MIN
+            window_kicks = list(range(grid_start, last + 1, STEP_MIN))
+            if venue.id == match.imported_venue_id and imported_kick is not None and first <= imported_kick <= last:
+                window_kicks.append(imported_kick)
+            for kick in window_kicks:
                 saw_access_candidate = True
                 # League HARD only when the team maps: the kickoff must fall in
                 # SOME league window of that day. PR2 — un jour FÉRIÉ, la fenêtre de ligue du jour
@@ -80,10 +94,10 @@ def _candidate_kickoffs(
                     saw_league_candidate = True
                     # Club HARD rules (P4-272 ③): every rule covering this day must
                     # accept the kickoff. A club rule that empties an otherwise-legal
-                    # domain is told apart below (`club_rule_no_slot`).
-                    if all(_kick_in_club_rule(kick, rule) for rule in hard_rules):
+                    # domain is told apart below (`club_rule_no_slot`). Une plage en chevauche une
+                    # autre sans doublon : l'ouverture datée et la ligne du jour peuvent se recouvrir.
+                    if kick not in kicks and all(_kick_in_club_rule(kick, rule) for rule in hard_rules):
                         kicks.append(kick)
-                kick += STEP_MIN
         if not kicks:
             continue
         # P4-272 ④ — a forbidden venue never enters the domain (the solver must never

@@ -44,6 +44,8 @@ export interface EnvelopeResult {
   dayOk: boolean;
   /** Whether the kickoff falls inside an allowed window (only meaningful when mapped && dayOk). */
   timeOk: (kickoff: string) => boolean;
+  /** La date est fériée : la ligue a posé ce jour exprès, sa fenêtre du jour de semaine ne s'applique pas. */
+  holiday: boolean;
 }
 
 /**
@@ -61,20 +63,24 @@ export function resolveEnvelope(
   fixture: Fixture,
   resolvedTeamWindows: Record<string, string[]>,
   windows: LeagueWindow[],
+  holidays: string[],
 ): EnvelopeResult {
   const ids = new Set(resolvedTeamWindows[fixture.teamId] ?? []);
   const matched = windows.filter((w) => ids.has(w.id));
 
   const day = isoWeekday(fixture.matchDate);
   const dayWindows = matched.filter((w) => w.dayOfWeek === day);
+  // Miroir de `RuleWindowConflicts::leagueWindowViolations` : un férié est dans l'enveloppe.
+  const holiday = holidays.includes(fixture.matchDate);
 
   return {
     mapped: matched.length > 0,
     windows: matched,
-    dayOk: dayWindows.length > 0,
+    dayOk: holiday || dayWindows.length > 0,
     // Miroir déclaré ci-dessus : le prédicat d'appartenance à l'enveloppe ligue vit
     // dans `kickoffInsideLeagueWindow` (filtré sur le jour), gardé en parité avec le backend.
-    timeOk: (kickoff: string) => kickoffInsideLeagueWindow(day, kickoff, matched),
+    timeOk: (kickoff: string) => holiday || kickoffInsideLeagueWindow(day, kickoff, matched),
+    holiday,
   };
 }
 

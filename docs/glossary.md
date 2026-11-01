@@ -73,7 +73,7 @@
 | **Écart au socle** (`SocleDeviation`) | Comparaison créneau par créneau entre le socle et une version de FERMETURE `COMPLETED` : `moved[]` (appariement chronologique socle→période, `to.slotId` vise la carte de la grille) et `unplaced[]` (reliquat sans contrepartie, `reason` motivée ou nulle). Calculé par `SocleDeviationCalculator`, servi en LECTURE par `GET /api/schedules/{id}/socle-deviation`. Marqué dans la grille par un symbole ⇄ (token `--diff`, violet) AVANT le nom d'équipe — jamais un mot à l'écran, jamais de légende. |
 | **Garder ses créneaux de saison** (`ConstraintFamily::SEASON_SLOTS`) | Préférence TEAM, toujours PRÉFÉRÉE, sans config — créée par « Transférer au planning » pour une équipe dont le coach a coché « garder mes créneaux habituels ». Famille FILTRÉE du payload moteur : son effet passe par `socleReferenceAssignments` en régime `keep` (détail : `engine/docs/constraint-vocabulary.md` §Référence socle), pas par une contrainte reçue. Visible/supprimable à l'étape Équipes en mode période (pastille `PeriodTeams`). |
 
-## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 1.8)
+## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 1.9)
 
 Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverSeed` (déterminisme) ·
 `solverTimeoutSeconds` (**plafond**, jamais le budget réel — paliers adaptatifs 60/180/600 s) ·

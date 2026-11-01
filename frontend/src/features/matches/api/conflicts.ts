@@ -83,6 +83,8 @@ export type ConflictType =
   | "MATCH_COACH_UNAVAILABLE"
   | "VENUE_UNAVAILABLE"
   | "ACCESS_WINDOW_LOST"
+  // Une séance d'une AUTRE équipe occupe le gymnase du match posé : signal, jamais un déplacement.
+  | "VENUE_TRAINING_OVERLAP"
   | "COMPETITION_INCOMPLETE"
   | "AWAY_NO_FOOTPRINT"
   | "FRIENDLY_ON_MATCH_SLOT"
@@ -129,11 +131,20 @@ export interface LeagueKickoffWindow {
   kickoffMax: string;
 }
 
-/** ACCESS_WINDOW_LOST — one match-access window of the fixture's venue. */
+/** ACCESS_WINDOW_LOST — one match-access window of the fixture's venue, applicable on the match date. */
 export interface VenueAccessWindow {
-  dayOfWeek: number;
+  dayOfWeek: number | null;
   startTime: string;
   endTime: string;
+  appliesOnPublicHolidays?: boolean;
+  openingDate?: string | null;
+}
+
+/** VENUE_TRAINING_OVERLAP — une séance d'une autre équipe au gymnase du match, sur la plage du match. */
+export interface VenueTrainingOverlap {
+  teamId: string;
+  start: string;
+  end: string;
 }
 
 /** CLUB_RULE_VIOLATION — one HARD club match rule the placed kickoff violates (P4-272 ③). */
@@ -171,15 +182,18 @@ export interface Conflict {
   right?: ConflictFixtureView;
   fixture?: ConflictFixtureView | ConflictUnavailableFixtureView;
   training?: ConflictTrainingView;
-  /** VENUE_OVERLAP / VENUE_UNAVAILABLE / ACCESS_WINDOW_LOST. */
+  /** VENUE_OVERLAP / VENUE_UNAVAILABLE / ACCESS_WINDOW_LOST / VENUE_TRAINING_OVERLAP. */
   venueId?: string;
+  /** VENUE_TRAINING_OVERLAP — les séances, et la fin du match (« HH:MM ») calculée par le serveur. */
+  trainings?: VenueTrainingOverlap[];
+  matchEnd?: string;
   unavailabilityId?: string;
   label?: string | null;
   unavailableFrom?: string;
   unavailableUntil?: string;
   /**
    * LEAGUE_WINDOW_VIOLATION — the allowed kickoff windows the placement violates (`kickoffMin`/`kickoffMax`).
-   * ACCESS_WINDOW_LOST — the fixture's venue match-access windows, the match weekday first (`startTime`/`endTime`).
+   * ACCESS_WINDOW_LOST — the fixture's venue match-access windows applicable on the match date (`startTime`/`endTime`).
    */
   windows?: LeagueKickoffWindow[] | VenueAccessWindow[];
   /** CLUB_RULE_VIOLATION (severity 3, P4-272 ③) — the HARD club rules the placed kickoff violates. */

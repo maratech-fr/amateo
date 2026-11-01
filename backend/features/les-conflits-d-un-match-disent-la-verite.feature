@@ -108,3 +108,14 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Et une rencontre de coupe à domicile ce samedi, coup d'envoi le soir hors de la fenêtre
     Quand je demande les conflits des matchs
     Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau
+
+  Scénario: Un entraînement dans le gymnase du match est signalé, le match reste placé
+    Le radar lit le planning EFFECTIF ce jour-là : la séance d'une autre équipe au même gymnase, sur la
+    plage du match, se signale sans rien déplacer ; la gravité reste celle d'une information.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et une fermeture racine découpée en milieu et fin, la racine et le milieu partageant leur date de départ
+    Et le plan du milieu pointe une version portant un entraînement de l'équipe sœur le jeudi à 20h45 sur ce gymnase
+    Et un match à domicile de l'équipe posé ce jeudi à 20h45 sur ce gymnase
+    Quand je demande les conflits des matchs
+    Alors le radar signale l'entraînement de l'équipe sœur dans le gymnase de ce match, en gravité 5

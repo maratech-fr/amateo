@@ -656,3 +656,194 @@ def test_unknown_solver_status_names_each_unplaced_match(monkeypatch: pytest.Mon
     result = solve_match_placement(payload(matches=[to_place()], venues=[venue()], teams=[team()]))
     assert result["placements"] == []
     assert [item["reason"] for item in result["unplaced"]] == ["not_selected"]
+
+
+# ── Position importée : une vraie garde (A1, réponse fondateur, contrat 1.9) ─────────────────
+# Promesse : « Placer automatiquement » garde le gymnase et l'heure importés d'un match quand ils sont
+# légaux, même contre une habitude ET un conflit de personne ; illégaux, le moteur choisit ailleurs
+# et ne laisse jamais le match non placé pour cette raison.
+# `test_stability_keeps_the_previous_solver_placement` ne prouve rien de tout ça : sans concurrent, le
+# stable gagne même à poids 8.
+
+_ANCHOR_SHARED_COACH = {
+    "id": "anchor",
+    "teamId": "t2",
+    "date": SATURDAY,
+    "kind": "FIXED",
+    "venueId": "v3",
+    "kickoff": "15:00",
+}
+_TEAMS_HABIT_AND_SHARED_COACH = [
+    team(
+        "t1",
+        habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v2"}],
+        coaches=[{"coachId": "c1", "role": "MAIN"}],
+    ),
+    team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}]),
+]
+
+
+def imported(venue_id: str = "v1", kickoff: str = "15:00", **over: Any) -> dict[str, Any]:
+    return to_place(importedVenueId=venue_id, importedKickoff=kickoff, **over)
+
+
+def position(result: dict[str, Any], match_id: str = "m1") -> tuple[str, str]:
+    placement = next(p for p in result["placements"] if p["matchId"] == match_id)
+    return placement["venueId"], placement["kickoff"].strftime("%H:%M")
+
+
+def test_imported_position_beats_a_habit_and_a_person_conflict_together() -> None:
+    # Sans la garde : l'habitude (15+5) et le coach pris à 15:00 (60) envoient le match à 15:30 v2.
+    result = solve_match_placement(
+        payload(
+            matches=[imported(), _ANCHOR_SHARED_COACH],
+            venues=[venue("v1"), venue("v2"), venue("v3")],
+            teams=_TEAMS_HABIT_AND_SHARED_COACH,
+        )
+    )
+    assert position(result) == ("v1", "15:00")
+
+
+def test_the_same_competitors_win_without_an_imported_position() -> None:
+    # Témoin : même décor sans champs importés, le match part bien ailleurs. Prouve que le test
+    # ci-dessus oppose de vrais concurrents.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place(), _ANCHOR_SHARED_COACH],
+            venues=[venue("v1"), venue("v2"), venue("v3")],
+            teams=_TEAMS_HABIT_AND_SHARED_COACH,
+        )
+    )
+    assert position(result) != ("v1", "15:00")
+
+
+def test_a_legal_imported_kickoff_off_the_15_minute_grid_is_kept() -> None:
+    result = solve_match_placement(payload(matches=[imported(kickoff="15:10")], venues=[venue()], teams=[team()]))
+    assert position(result) == ("v1", "15:10")
+
+
+def test_an_off_grid_kickoff_without_its_venue_is_not_a_candidate() -> None:
+    # A1 : la garde exige les DEUX champs ; le builder n'en émet jamais un seul.
+    result = solve_match_placement(
+        payload(matches=[to_place(importedKickoff="15:10")], venues=[venue()], teams=[team()])
+    )
+    assert int(position(result)[1][3:]) % 15 == 0
+
+
+@pytest.mark.parametrize(
+    ("label", "kickoff", "team_over", "rules", "imported_venue"),
+    [
+        ("hors de la plage", "20:00", {}, [], "v1"),
+        ("le match entier ne tient pas", "17:00", {}, [], "v1"),
+        (
+            "hors fenêtre de ligue",
+            "15:00",
+            {"leagueWindows": [{"dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "17:00"}]},
+            [],
+            "v1",
+        ),
+        (
+            "règle dure du club",
+            "15:00",
+            {},
+            [{"ruleType": "HARD", "daysOfWeek": [6], "kickoffMin": "16:00", "kickoffMax": None}],
+            "v1",
+        ),
+        ("gymnase interdit à l'équipe", "15:00", {"forbiddenVenueIds": ["v-ban"]}, [], "v-ban"),
+        ("gymnase fermé", "15:00", {}, [], "v-closed"),
+        ("gymnase inconnu du run", "15:00", {}, [], "v-ghost"),
+    ],
+)
+def test_an_illegal_imported_position_is_never_kept_and_the_match_is_placed_elsewhere(
+    label: str, kickoff: str, team_over: dict[str, Any], rules: list[dict[str, Any]], imported_venue: str
+) -> None:
+    # W_PLACE reste dominant : une position importée illégale ne laisse jamais le match non placé
+    # s'il existe un autre créneau légal (v1 samedi 14:00-18:00).
+    venues = [
+        venue("v1"),
+        venue("v-ban"),
+        venue("v-closed", unavailabilities=[{"startDate": SATURDAY, "endDate": SATURDAY}]),
+    ]
+    result = solve_match_placement(
+        payload(matches=[imported(imported_venue, kickoff)], venues=venues, teams=[team(**team_over)], clubRules=rules)
+    )
+    assert result["unplaced"] == [], label
+    assert position(result) != (imported_venue, kickoff), label
+
+
+def test_an_illegal_imported_kickoff_gives_the_same_reason_as_without_it() -> None:
+    # A1 : illégale, « même raison d'échec » qu'aujourd'hui, le champ ne crée aucune raison nouvelle.
+    venues = [venue(windows=[{"dayOfWeek": 7, "start": "14:00", "end": "18:00"}])]
+    plain = solve_match_placement(payload(matches=[to_place()], venues=venues, teams=[team()]))
+    guarded = solve_match_placement(payload(matches=[imported()], venues=venues, teams=[team()]))
+    assert guarded["unplaced"] == plain["unplaced"]
+
+
+def test_the_only_legal_slot_wins_over_an_illegal_imported_position() -> None:
+    result = solve_match_placement(
+        payload(
+            matches=[imported()],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "18:00", "end": "19:45"}])],
+            teams=[team()],
+        )
+    )
+    assert result["unplaced"] == []
+    assert position(result) == ("v1", "18:00")
+
+
+def test_a_rerun_keeps_a_legal_imported_position_against_a_habit() -> None:
+    # Re-run : PLACED+SOLVER importé, position courante = position importée (le builder lit la même entité).
+    result = solve_match_placement(
+        payload(
+            matches=[imported(currentVenueId="v1", currentKickoff="15:00")],
+            venues=[venue("v1"), venue("v2")],
+            teams=[team(habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v2"}])],
+        )
+    )
+    assert position(result) == ("v1", "15:00")
+
+
+def test_two_matches_imported_on_the_same_slot_are_both_placed_without_overlap() -> None:
+    # La garde reste un objectif : l'exclusion de gymnase est dure, l'un des deux garde la position.
+    result = solve_match_placement(
+        payload(
+            matches=[imported(match_id="m1", team_id="t1"), imported(match_id="m2", team_id="t2")],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "22:00"}])],
+            teams=[team("t1"), team("t2")],
+        )
+    )
+    assert result["unplaced"] == []
+    kicks = {position(result, "m1")[1], position(result, "m2")[1]}
+    assert "15:00" in kicks
+    assert len(kicks) == 2
+
+
+def test_a_fixed_anchor_on_the_imported_slot_keeps_it() -> None:
+    result = solve_match_placement(
+        payload(
+            matches=[
+                imported(),
+                {
+                    "id": "anchor",
+                    "teamId": "t2",
+                    "date": SATURDAY,
+                    "kind": "FIXED",
+                    "venueId": "v1",
+                    "kickoff": "15:00",
+                },
+            ],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "22:00"}])],
+            teams=[team("t1"), team("t2")],
+        )
+    )
+    assert result["unplaced"] == []
+    assert position(result) != ("v1", "15:00")
+
+
+def test_the_imported_weight_stays_under_a_placement_even_with_every_penalty() -> None:
+    # 975 = pire cumul réaliste d'un candidat (A1) : protection 25 + habitude 20 + règle 30 + indispo 60
+    # + 2 coachs 120 + 12 joueurs 720. La garde bat ce cumul, le placement bat la garde plus ce cumul.
+    from app.solver.match_placement import weights
+
+    assert weights.W_IMPORTED_POSITION > 975
+    assert weights.W_PLACE > weights.W_IMPORTED_POSITION + 975

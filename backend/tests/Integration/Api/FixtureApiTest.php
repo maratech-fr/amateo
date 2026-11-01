@@ -11,6 +11,7 @@ use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\OpponentVenueLink;
+use App\Entity\PublicHoliday;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -34,6 +35,7 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -53,6 +55,13 @@ final class FixtureApiTest extends WebTestCase
 
     private const VENUE_ID = '22222222-2222-4222-8222-222222222222';
 
+    // ── Ouverture datée d'un gymnase ─────────────────────────────────────────────────────────
+    private const string HOLIDAY_WEDNESDAY = '2026-11-11';
+
+    private const string ORDINARY_WEDNESDAY = '2026-11-18';
+
+    private const string ORDINARY_SATURDAY = '2026-11-21';
+
     private KernelBrowser $client;
 
     private EntityManagerInterface $em;
@@ -62,6 +71,20 @@ final class FixtureApiTest extends WebTestCase
     private Season $season;
 
     private User $user;
+
+    /**
+     * A2 : témoins de l'autre sens, un vrai changement de position ou de nature repasse par la garde.
+     * Verts aujourd'hui (la garde tourne à chaque PUT) ; ils rougiraient si NEO coupait la garde trop large.
+     *
+     * @return array<string, array{0: array<string, string>}>
+     */
+    public static function placementChanges(): array
+    {
+        return [
+            'heure' => [['kickoffTime' => '17:00']],
+            'date' => [['matchDate' => '2026-11-14']],
+        ];
+    }
 
     public function testCreatesAFriendlyWithNoCompetition(): void
     {
@@ -343,8 +366,7 @@ final class FixtureApiTest extends WebTestCase
             'status' => 'PLACED',
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
-        // NB: le corps JSON échappe l'apostrophe en ' — on assert sur un fragment sans apostrophe.
-        self::assertStringContainsString('accès match le samedi', (string) $this->client->getResponse()->getContent());
+        self::assertSame('Gymnase Matéo n\'a pas d\'accès match le samedi 7 novembre. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
     }
 
     public function testRefusesCompetitionPlacementWhenKickoffOutsideMatchWindow(): void
@@ -372,7 +394,231 @@ final class FixtureApiTest extends WebTestCase
             'status' => 'PLACED',
         ]);
         self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('hors fenêtre', (string) $this->client->getResponse()->getContent());
+        self::assertSame('Coup d\'envoi hors des accès match de Gymnase Matéo le samedi 7 novembre (14:00 – 18:00). Choisissez une heure dans ces plages, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+    }
+
+    public function testAnOpeningLetsACompetitionMatchLandOnThatDate(): void
+    {
+        // Promesse centrale : refus sans ouverture, pose acceptée avec. Ligne samedi = club adopté.
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistMatchWindow(6, '14:00', '18:00');
+        $body = $this->competitionBody($competitionId, self::ORDINARY_WEDNESDAY, '19:00');
+
+        $this->post($body);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->persistOpening(self::ORDINARY_WEDNESDAY, '18:00', '22:00');
+        $this->post($body);
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testAnOpeningDoesNotOpenAnotherHourNorAnotherDate(): void
+    {
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistMatchWindow(6, '14:00', '18:00');
+        $this->persistOpening(self::ORDINARY_WEDNESDAY, '18:00', '22:00');
+
+        $this->post($this->competitionBody($competitionId, self::ORDINARY_WEDNESDAY, '16:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Coup d\'envoi hors des accès match de Gymnase Matéo le mercredi 18 novembre (18:00 – 22:00). Choisissez une heure dans ces plages, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+
+        $this->post($this->competitionBody($competitionId, '2026-11-25', '19:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Gymnase Matéo n\'a pas d\'accès match le mercredi 25 novembre. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+    }
+
+    public function testAnOpeningNeverLiftsAnUnavailabilityNorACalendarClosure(): void
+    {
+        // Les fermetures restent refusées, amical comme compétition, et leur message reste le leur.
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistOpening(self::ORDINARY_WEDNESDAY, '18:00', '22:00');
+        $this->persistUnavailability(self::ORDINARY_WEDNESDAY, self::ORDINARY_WEDNESDAY, 'travaux');
+        $this->post($this->competitionBody($competitionId, self::ORDINARY_WEDNESDAY, '19:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('indisponible', (string) $this->client->getResponse()->getContent());
+
+        $this->persistOpening('2026-11-25', '18:00', '22:00');
+        $this->persistClosure('2026-11-25', '2026-11-25', 'Fermeture mairie');
+        $this->post($this->competitionBody($competitionId, '2026-11-25', '19:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('fermée', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testAClubWithOnlyAnOpeningKeepsAnOrdinarySaturdayFree(): void
+    {
+        // D1bis/A3 : une ouverture ne fait pas basculer tout le club en « accès obligatoire ».
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistOpening(self::HOLIDAY_WEDNESDAY, '14:00', '20:00');
+
+        $this->post($this->competitionBody($competitionId, self::ORDINARY_SATURDAY, '15:00'));
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testAMatchDatedOutsideTheSeasonFindsItsOpening(): void
+    {
+        // A4 : rien n'interdit ce match sur `Fixture` : la ligne hors bornes doit lui donner une issue.
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistMatchWindow(6, '14:00', '18:00');
+        $outside = $this->season->getEndDate()->modify('+10 days')->format('Y-m-d');
+        $this->persistOpening($outside, '09:00', '22:00');
+
+        $this->post($this->competitionBody($competitionId, $outside, '15:00'));
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testTheHolidayLineAloneAllowsAPlacementOnAHoliday(): void
+    {
+        // D3 : la pose lit enfin le férié comme le radar et le moteur (422 sur le seul jour de semaine jusqu'ici).
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->seedHoliday(self::HOLIDAY_WEDNESDAY);
+        $this->persistHolidayLine('14:00', '20:00');
+
+        $this->post($this->competitionBody($competitionId, self::HOLIDAY_WEDNESDAY, '15:00'));
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testTheWeekdayLineDoesNotAllowAPlacementOnAHoliday(): void
+    {
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->seedHoliday(self::HOLIDAY_WEDNESDAY);
+        $this->persistMatchWindow(3, '14:00', '20:00');
+
+        $this->post($this->competitionBody($competitionId, self::HOLIDAY_WEDNESDAY, '15:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Gymnase Matéo n\'a pas d\'accès match le mercredi 11 novembre, jour férié. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+    }
+
+    public function testAnOpeningAddsToTheHolidayLineAtPlacement(): void
+    {
+        // D2 : « Jours fériés 10:00-12:00 » + ouverture 14:00-20:00 → 11:00 ok, 15:00 ok, 13:00 refusé.
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->seedHoliday(self::HOLIDAY_WEDNESDAY);
+        $this->persistHolidayLine('10:00', '12:00');
+        $this->persistOpening(self::HOLIDAY_WEDNESDAY, '14:00', '20:00');
+
+        $this->post($this->competitionBody($competitionId, self::HOLIDAY_WEDNESDAY, '11:00'));
+        self::assertResponseStatusCodeSame(201);
+        $this->post($this->competitionBody($competitionId, self::HOLIDAY_WEDNESDAY, '15:00'));
+        self::assertResponseStatusCodeSame(201);
+        $this->post($this->competitionBody($competitionId, self::HOLIDAY_WEDNESDAY, '13:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Coup d\'envoi hors des accès match de Gymnase Matéo le mercredi 11 novembre (10:00 – 12:00, 14:00 – 20:00). Choisissez une heure dans ces plages, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+    }
+
+    public function testFollowUpGesturesOnAMatchOutOfAccessAreNotRefused(): void
+    {
+        // A2 : « Marquer saisi », « Corriger », « Verrouiller », « Rendre au système » sont des PUT d'écho :
+        // ils ne posent rien et ne doivent plus buter sur la garde d'accès (cul-de-sac des 422 d'aujourd'hui).
+        [$id, $body] = $this->placedOutOfAccess();
+
+        foreach ([
+            'Marquer saisi' => ['status' => 'SUBMITTED'],
+            'Corriger' => ['status' => 'PLACED'],
+            'Verrouiller' => [],
+            'Rendre au système' => ['placementSource' => 'SOLVER'],
+        ] as $gesture => $change) {
+            $this->putFixture($id, $change + $body);
+            self::assertResponseStatusCodeSame(200, $gesture . ' doit passer : ' . $this->client->getResponse()->getContent());
+        }
+    }
+
+    public function testCorrectingAValidatedMatchOutOfAccessIsNotRefused(): void
+    {
+        // D3bis : un match VALIDATED à l'import garde toujours la sortie « Corriger ».
+        [$id, $body] = $this->placedOutOfAccess();
+        $fixture = $this->em->find(Fixture::class, $id);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        $fixture->setStatus(FixtureStatus::VALIDATED, new DateTimeImmutable);
+        $this->em->flush();
+
+        $this->putFixture($id, $body);
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /** @param array<string, string> $change */
+    #[DataProvider('placementChanges')]
+    public function testAChangedPlacementIsGuardedAgain(array $change): void
+    {
+        [$id, $body] = $this->placedOutOfAccess();
+
+        $this->putFixture($id, $change + $body);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testMovingToAnotherVenueIsGuardedAgain(): void
+    {
+        [$id, $body] = $this->placedOutOfAccess();
+        $other = new Venue;
+        $other->setClubId($this->club->getId());
+        $other->setSeasonId($this->season->getId());
+        $other->setName('Gymnase Autre');
+        $other->setSource('manual');
+        $this->em->persist($other);
+        $this->em->flush();
+
+        $this->putFixture($id, ['venueId' => $other->getId()] + $body);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testChangingTheCompetitionIsGuardedAgain(): void
+    {
+        [$id, $body] = $this->placedOutOfAccess();
+
+        $coupe = new Competition;
+        $coupe->setClubId($this->club->getId());
+        $coupe->setSeasonId($this->season->getId());
+        $coupe->setTeamId(self::TEAM_ID);
+        $coupe->setName('Coupe');
+        $coupe->setCompetitionType(CompetitionType::CUP);
+        $this->em->persist($coupe);
+        $this->em->flush();
+
+        $this->putFixture($id, ['competitionId' => $coupe->getId()] + $body);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testComingBackHomeIsGuardedAgain(): void
+    {
+        [$id, $body] = $this->placedOutOfAccess();
+        $fixture = $this->em->find(Fixture::class, $id);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $this->em->flush();
+
+        $this->putFixture($id, ['homeAway' => 'HOME'] + $body);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testAnUnplacedMatchBecomingPlacedIsGuardedAgainWithoutAnyOtherChange(): void
+    {
+        // UNPLACED importé avec son gymnase et son heure : la pose ne change que le statut.
+        [$id, $body] = $this->placedOutOfAccess();
+        $fixture = $this->em->find(Fixture::class, $id);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->em->flush();
+
+        $this->putFixture($id, $body);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testMarkingSubmittedInAClosedVenueStaysRefused(): void
+    {
+        // A2 : les étapes indisponibilité et fermeture restent à chaque PUT, seule l'étape accès s'allège.
+        [$id, $body] = $this->placedOutOfAccess();
+        $this->persistClosure('2026-11-07', '2026-11-07', 'Fermeture mairie');
+
+        $this->putFixture($id, ['status' => 'SUBMITTED'] + $body);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('fermée', (string) $this->client->getResponse()->getContent());
     }
 
     public function testAllowsFriendlyPlacementOutsideMatchWindow(): void
@@ -476,6 +722,88 @@ final class FixtureApiTest extends WebTestCase
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->user = $this->createClubUser();
+    }
+
+    /**
+     * Un match de compétition posé le samedi 7 nov. à 16:30 AVANT que le club n'adopte une ligne qui
+     * ne le couvre pas : l'état réel d'un match importé validé, ou d'une fenêtre déplacée après la pose.
+     *
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private function placedOutOfAccess(): array
+    {
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $body = $this->competitionBody($competitionId, '2026-11-07', '16:30');
+        $created = $this->post($body);
+        self::assertResponseStatusCodeSame(201);
+        $this->persistMatchWindow(1, '18:00', '22:00');
+
+        return [(string) $created['id'], $body];
+    }
+
+    /** @return array<string, mixed> */
+    private function competitionBody(string $competitionId, string $date, string $kickoff): array
+    {
+        return [
+            'teamId' => self::TEAM_ID,
+            'competitionId' => $competitionId,
+            'matchDate' => $date,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => $kickoff,
+            'status' => 'PLACED',
+        ];
+    }
+
+    private function firstViolation(): string
+    {
+        $violations = $this->responseData()['violations'] ?? [];
+        self::assertIsArray($violations);
+        self::assertIsArray($violations[0] ?? null, 'le 422 porte une violation, jamais muet');
+
+        return (string) $violations[0]['message'];
+    }
+
+    private function persistOpening(string $date, string $start, string $end): void
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId($this->club->getId());
+        $window->setSeasonId($this->season->getId());
+        $window->setVenueId(self::VENUE_ID);
+        $window->setOpeningDate(new DateTimeImmutable($date));
+        $window->setStartTime(new DateTimeImmutable($start));
+        $window->setEndTime(new DateTimeImmutable($end));
+        $this->em->persist($window);
+        $this->em->flush();
+    }
+
+    private function persistHolidayLine(string $start, string $end): void
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId($this->club->getId());
+        $window->setSeasonId($this->season->getId());
+        $window->setVenueId(self::VENUE_ID);
+        $window->setAppliesOnPublicHolidays(true);
+        $window->setStartTime(new DateTimeImmutable($start));
+        $window->setEndTime(new DateTimeImmutable($end));
+        $this->em->persist($window);
+        $this->em->flush();
+    }
+
+    private function seedHoliday(string $date): void
+    {
+        $repository = $this->em->getRepository(PublicHoliday::class);
+        if (null !== $repository->findOneBy(['zone' => PublicHoliday::NATIONAL, 'date' => new DateTimeImmutable($date)])) {
+            return;
+        }
+        $holiday = new PublicHoliday;
+        $holiday->setZone(PublicHoliday::NATIONAL);
+        $holiday->setDate(new DateTimeImmutable($date));
+        $holiday->setLabel('11 novembre');
+        $this->em->persist($holiday);
+        $this->em->flush();
     }
 
     /** @return array<string, mixed> the full-replace body of a freshly PLACED fixture */

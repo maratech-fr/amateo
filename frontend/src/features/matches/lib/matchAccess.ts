@@ -2,14 +2,68 @@ import type { VenueClosure, VenueMatchWindow, VenueUnavailability } from "../api
 
 // D-30 : cette implémentation (midi UTC) était la plus défensive des trois — elle est
 // devenue le foyer partagé.
-import { frDateShortNoYear } from "@/shared/lib/date";
-import { dayLabelLong, isoDayOf } from "@/shared/lib/days";
+import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
+import { isoDayOf } from "@/shared/lib/days";
+import { formatMinutes, parseTime } from "@/shared/lib/time";
 
 export { isoDayOf };
 
-/** Venues that hold ≥ 1 match access window — the derived « match venue » flag. */
+/**
+ * Venues that hold ≥ 1 NON-dated match access window — the derived « match venue » flag. Une
+ * ouverture datée ne fait pas un gymnase de match : elle vaut un jour, elle ne vaut pas convention.
+ */
 export function matchVenueIds(windows: VenueMatchWindow[]): Set<string> {
-  return new Set(windows.map((w) => w.venueId));
+  return new Set(windows.filter((w) => null == w.openingDate).map((w) => w.venueId));
+}
+
+/**
+ * « Le club a adopté les accès match » : au moins une ligne NON datée. MIROIR DÉCLARÉ de
+ * `App\Service\MatchConflictDetector::hasWeeklyAccess` (cas `adoptionCases` de `matchAccess.parity.json`).
+ */
+export function hasWeeklyAccess(windows: VenueMatchWindow[]): boolean {
+  return windows.some((w) => null == w.openingDate);
+}
+
+/**
+ * Les plages APPLICABLES à (gymnase, date) : ses ouvertures datées de ce jour ∪ (férié ? ses lignes
+ * « Jours fériés » : ses lignes du jour de semaine). MIROIR DÉCLARÉ de
+ * `App\Service\MatchConflictDetector::applicableWindows`, même union côté moteur (`candidates.py`) ;
+ * cas `accessCases` de `matchAccess.parity.json`.
+ */
+export function applicableWindows(venueId: string, matchDate: string, isHoliday: boolean, windows: VenueMatchWindow[]): VenueMatchWindow[] {
+  const day = isoDayOf(matchDate);
+  return windows.filter((w) => {
+    if (w.venueId !== venueId) {
+      return false;
+    }
+    if (null != w.openingDate) {
+      return w.openingDate === matchDate;
+    }
+    return isHoliday ? true === w.appliesOnPublicHolidays : !w.appliesOnPublicHolidays && w.dayOfWeek === day;
+  });
+}
+
+/** Le coup d'envoi tombe-t-il dans une plage applicable ? `[start, end[`. Miroir de `MatchConflictDetector::kickoffInsideAccess`. */
+export function kickoffInsideAccess(venueId: string, matchDate: string, isHoliday: boolean, kickoff: string, windows: VenueMatchWindow[]): boolean {
+  return applicableWindows(venueId, matchDate, isHoliday, windows).some((w) => kickoff >= w.startTime && kickoff < w.endTime);
+}
+
+const OPENING_DEFAULT_START = 14 * 60;
+const OPENING_MIN_SPAN = 4 * 60;
+const OPENING_LATEST_END = 23 * 60;
+const QUARTER = 15;
+
+/**
+ * La plage que propose le raccourci d'ouverture : assez large pour plusieurs matchs le même jour.
+ * Début = coup d'envoi arrondi à l'heure inférieure (14:00 sans heure) ; fin = le plus tard de
+ * (coup d'envoi + durée du match, arrondi au quart d'heure supérieur) et (début + 4 h), plafonné à 23:00.
+ * Le moteur juge le match entier, la pose le coup d'envoi : c'est cette largeur qui évite l'écart.
+ */
+export function proposedOpeningRange(kickoff: string | null, matchMinutes: number): { start: string; end: string } {
+  const kickoffMin = parseTime(kickoff);
+  const start = null === kickoffMin ? OPENING_DEFAULT_START : Math.floor(kickoffMin / 60) * 60;
+  const matchEnd = Math.ceil(((kickoffMin ?? start) + matchMinutes) / QUARTER) * QUARTER;
+  return { start: formatMinutes(start), end: formatMinutes(Math.min(Math.max(matchEnd, start + OPENING_MIN_SPAN), OPENING_LATEST_END)) };
 }
 
 /**
@@ -58,6 +112,8 @@ export function dateInsideClosure(matchDate: string, startDate: string, endDate:
 /** Le geste de placement est-il refusé (error) ou seulement signalé (warning) ? */
 export interface VenueAccessIssue {
   level: "error" | "warning";
+  /** La RAISON : seuls `no_window` et `outside_window` ouvrent le raccourci d'ouverture. */
+  reason: "unavailable" | "closed" | "no_window" | "outside_window" | "friendly_off_slot";
   message: string;
 }
 
@@ -77,13 +133,13 @@ export interface VenueAccessIssue {
  * Rules, in order:
  * 1. venue unavailable on the match date (all-circumstances closure) → error;
  * 1bis. venue closed by the CALENDAR on the match date (P4-300) → error, friendly included;
- * 2. the club declares match windows but this venue has none on that day;
- * 3. a kickoff outside every window of (venue, day).
- * A club with NO window anywhere has not adopted the data → nothing to enforce.
+ * 2. the club declares match windows but this venue has none APPLICABLE on that date;
+ * 3. a kickoff outside every applicable window.
+ * A club with NO non-dated window has not adopted the data → nothing to enforce.
  *
- * PR2 « jours fériés » — quand `matchDate` est un jour férié (`holidays`, feed `GET public-holidays`),
- * l'accès se juge contre la ligne « Jours fériés » du gymnase (`appliesOnPublicHolidays`), JAMAIS
- * la fenêtre du jour de semaine : la ligue a posé ce match ce jour férié exprès.
+ * Les plages applicables viennent de {@link applicableWindows} : une ouverture datée s'ajoute, un
+ * jour férié (`holidays`, feed `GET public-holidays`) lit la ligne « Jours fériés », JAMAIS la fenêtre
+ * du jour de semaine : la ligue a posé ce match ce jour férié exprès.
  */
 export function venueAccessError(
   venueId: string,
@@ -101,6 +157,7 @@ export function venueAccessError(
       const label = null !== unavailability.label ? ` (${unavailability.label})` : "";
       return {
         level: "error",
+        reason: "unavailable",
         message: `${venueName} est indisponible du ${frDateShortNoYear(unavailability.startDate)} au ${frDateShortNoYear(unavailability.endDate)}${label}.`,
       };
     }
@@ -112,32 +169,32 @@ export function venueAccessError(
     if (closure.venueId === venueId && dateInsideClosure(matchDate, closure.startDate, closure.endDate)) {
       return {
         level: "error",
+        reason: "closed",
         message: `${venueName} est fermée du ${frDateShortNoYear(closure.startDate)} au ${frDateShortNoYear(closure.endDate)} — ${closure.title}.`,
       };
     }
   }
 
-  if (0 === windows.length) {
+  if (!hasWeeklyAccess(windows)) {
     return null; // the club has not adopted match windows — nothing to enforce
   }
 
   // Un amical hors créneau match n'est pas bloqué : placement libre, on signale.
-  const friendlyOffSlot: VenueAccessIssue = { level: "warning", message: "Amical hors créneau match — placement libre." };
+  const friendlyOffSlot: VenueAccessIssue = { level: "warning", reason: "friendly_off_slot", message: "Amical hors créneau match — placement libre." };
 
-  const day = isoDayOf(matchDate);
-  // PR2 — un jour férié on lit la ligne « Jours fériés » ; un jour ordinaire la fenêtre du jour.
   const isHoliday = holidays.includes(matchDate);
-  const relevantWindows = isHoliday
-    ? windows.filter((w) => w.venueId === venueId && w.appliesOnPublicHolidays)
-    : windows.filter((w) => w.venueId === venueId && !w.appliesOnPublicHolidays && w.dayOfWeek === day);
+  const relevantWindows = applicableWindows(venueId, matchDate, isHoliday, windows);
   if (0 === relevantWindows.length) {
-    const when = isHoliday ? "les jours fériés" : `le ${dayLabelLong(day) || "?"}`;
-    return isFriendly ? friendlyOffSlot : { level: "error", message: `Pas d'accès match ${when} à ${venueName}.` };
+    const when = `${frDateWeekdayNoYear(matchDate)}${isHoliday ? " (jour férié)" : ""}`;
+    return isFriendly ? friendlyOffSlot : { level: "error", reason: "no_window", message: `Pas d'accès match le ${when} à ${venueName}.` };
   }
-  const inside = isHoliday ? kickoffInsideHolidayWindow(venueId, kickoff ?? "", windows) : kickoffInsideWindow(venueId, day, kickoff ?? "", windows);
-  if (null !== kickoff && "" !== kickoff && !inside) {
-    const ranges = relevantWindows.map((w) => `${w.startTime}–${w.endTime}`).join(", ");
-    return isFriendly ? friendlyOffSlot : { level: "error", message: `Hors fenêtre d'accès match (${ranges}).` };
+  if (null !== kickoff && "" !== kickoff && !kickoffInsideAccess(venueId, matchDate, isHoliday, kickoff, windows)) {
+    const ranges = relevantWindows
+      .slice()
+      .sort((a, b) => a.startTime.localeCompare(b.startTime))
+      .map((w) => `${w.startTime} – ${w.endTime}`)
+      .join(", ");
+    return isFriendly ? friendlyOffSlot : { level: "error", reason: "outside_window", message: `Hors des accès match de ce jour (${ranges}).` };
   }
 
   return null;

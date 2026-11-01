@@ -824,31 +824,197 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame(['ACCESS_WINDOW_LOST'], array_column($this->detect([$placed], [], null, [], [], [], [], [], $atEnd), 'type'));
     }
 
-    public function testAccessWindowLostCarriesTheVenueWindowsMatchDayFirst(): void
+    public function testAccessWindowLostCarriesOnlyTheWindowsApplicableThatDay(): void
     {
         // Placé le samedi 15:00, hors des accès match de son gymnase → ACCESS_WINDOW_LOST.
-        // Le conflit porte les accès match DE SON GYMNASE, jour du match (samedi) d'abord —
-        // de quoi dire à l'écran « placé hors des accès (samedi 16:00–18:00, …) ».
+        // D20 : le conflit ne porte que les plages APPLICABLES à cette date (jamais celle du mercredi,
+        // jamais celle d'un autre gymnase), de quoi dire « placé hors des accès (samedi 16:00–18:00) ».
         $placed = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
         $placed->setVenueId('venue-mateo');
         $placed->setCompetitionId('comp-1');
 
         $windows = [
-            $this->matchWindow('venue-mateo', 3, '18:00', '20:00'), // mercredi
+            $this->matchWindow('venue-mateo', 3, '18:00', '20:00'), // mercredi → exclu
             $this->matchWindow('venue-mateo', 6, '16:00', '18:00'), // samedi (jour du match)
             $this->matchWindow('venue-autre', 6, '14:00', '18:00'), // autre gymnase → exclu
         ];
         $conflicts = $this->detect([$placed], [], null, [], [], [], [], [], $windows);
 
         self::assertSame(['ACCESS_WINDOW_LOST'], array_column($conflicts, 'type'));
-        self::assertSame(
-            [
-                ['dayOfWeek' => 6, 'startTime' => '16:00', 'endTime' => '18:00', 'appliesOnPublicHolidays' => false],
-                ['dayOfWeek' => 3, 'startTime' => '18:00', 'endTime' => '20:00', 'appliesOnPublicHolidays' => false],
-            ],
-            $conflicts[0]['windows'],
-            'les accès du gymnase de la fixture, jour du match (samedi) en premier ; l\'autre gymnase est exclu',
-        );
+        self::assertCount(1, $conflicts[0]['windows']);
+        self::assertSame(6, $conflicts[0]['windows'][0]['dayOfWeek']);
+        self::assertSame('16:00', $conflicts[0]['windows'][0]['startTime']);
+        self::assertArrayHasKey('openingDate', $conflicts[0]['windows'][0]);
+        self::assertNull($conflicts[0]['windows'][0]['openingDate']);
+    }
+
+    // ── Ouverture datée d'un gymnase ─────────────────────────────────────────────────────────
+    public function testAnOpeningAloneDoesNotAdoptAccessForTheWholeClub(): void
+    {
+        // D1bis/A3 — club sans ligne hebdo + 1 ouverture ailleurs : un samedi ordinaire reste libre.
+        $placed = $this->competitionAt('fx-1', '2026-11-21', '15:00');
+        $windows = [$this->openingWindow('venue-mateo', self::HOLIDAY, '14:00', '20:00')];
+
+        self::assertNotContains('ACCESS_WINDOW_LOST', array_column($this->detect([$placed], [], null, [], [], [], [], [], $windows), 'type'));
+    }
+
+    public function testAMatchOnItsOpeningIsNotOutOfAccess(): void
+    {
+        // D2 : l'ouverture s'ajoute à la ligne du samedi seule déclarée par ailleurs.
+        $placed = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '15:00');
+        $windows = [$this->matchWindow('venue-mateo', 6, '14:00', '18:00'), $this->openingWindow('venue-mateo', self::ORDINARY_WEDNESDAY, '14:00', '20:00')];
+
+        self::assertSame([], $this->detect([$placed], [], null, [], [], [], [], [], $windows));
+    }
+
+    public function testRemovingTheOpeningLeavesTheMatchPlacedButOutOfAccess(): void
+    {
+        // Parcours P1 inverse : sans son ouverture, la ligne hebdo seule ne couvre plus ce mercredi.
+        $placed = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '15:00');
+        $windows = [$this->matchWindow('venue-mateo', 6, '14:00', '18:00')];
+
+        $conflicts = $this->detect([$placed], [], null, [], [], [], [], [], $windows);
+        self::assertSame(['ACCESS_WINDOW_LOST'], array_column($conflicts, 'type'));
+        self::assertSame([], $conflicts[0]['windows'], 'D20 : aucune plage applicable ce jour, jamais celle du samedi');
+    }
+
+    public function testAccessLostOnAHolidayNamesTheHolidayLineAndTheOpeningOnly(): void
+    {
+        // D20/A8 : 13:00 entre la ligne férié et l'ouverture → le conflit ne porte que les plages de CE jour,
+        // chacune avec son `openingDate` (nul pour la ligne férié), jamais la ligne du mercredi.
+        $placed = $this->competitionAt('fx-1', self::HOLIDAY, '13:00');
+        $windows = [
+            $this->matchWindow('venue-mateo', 3, '18:00', '22:00'),
+            $this->holidayMatchWindow('venue-mateo', '10:00', '12:00'),
+            $this->openingWindow('venue-mateo', self::HOLIDAY, '14:00', '20:00'),
+            $this->openingWindow('venue-mateo', '2026-11-18', '14:00', '20:00'),
+            $this->openingWindow('venue-autre', self::HOLIDAY, '13:00', '14:00'),
+        ];
+
+        $conflicts = $this->detect([$placed], [], null, [], [], [], [], [], $windows, publicHolidays: [self::HOLIDAY]);
+        self::assertSame(['ACCESS_WINDOW_LOST'], array_column($conflicts, 'type'));
+        self::assertSame(['10:00', '14:00'], array_column($conflicts[0]['windows'], 'startTime'));
+        self::assertSame([null, self::HOLIDAY], array_column($conflicts[0]['windows'], 'openingDate'));
+    }
+
+    public function testFriendlyOnAnOpeningRaisesTheWindowReason(): void
+    {
+        // D9 : un amical sur une ouverture est sur un créneau de match, comme sur une ligne hebdo.
+        $friendly = $this->fixture('fx-1', self::TEAM_1, self::ORDINARY_WEDNESDAY, '15:00');
+        $friendly->setVenueId('venue-mateo');
+        $windows = [$this->openingWindow('venue-mateo', self::ORDINARY_WEDNESDAY, '14:00', '20:00')];
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$friendly], [], null, [], [], [], [], [], $windows),
+            static fn (array $c): bool => 'FRIENDLY_ON_MATCH_SLOT' === $c['type'],
+        ));
+        self::assertCount(1, $conflicts);
+        self::assertSame(['MATCH_SLOT_WINDOW'], $conflicts[0]['reasons']);
+    }
+
+    public function testFriendlyOnAnotherDateOfTheOpeningStaysSilent(): void
+    {
+        // Le 18 nov. n'est pas sur l'ouverture du 11, malgré le même jour de semaine.
+        $friendly = $this->fixture('fx-1', self::TEAM_1, self::ORDINARY_WEDNESDAY, '15:00');
+        $friendly->setVenueId('venue-mateo');
+        $windows = [$this->openingWindow('venue-mateo', self::HOLIDAY, '14:00', '20:00')];
+
+        self::assertNotContains('FRIENDLY_ON_MATCH_SLOT', array_column($this->detect([$friendly], [], null, [], [], [], [], [], $windows), 'type'));
+    }
+
+    // ── Entraînement dans le gymnase (D8) : signal seulement ─────────────────────────────────
+    public function testTrainingOfAnotherTeamInTheSameVenueIsSignalled(): void
+    {
+        $conflicts = $this->overlapConflicts($this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30'));
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(5, $conflicts[0]['severity']);
+        self::assertSame('venue-mateo', $conflicts[0]['venueId']);
+        self::assertSame('fx-1', $conflicts[0]['fixture']['fixtureId']);
+        self::assertSame([['teamId' => self::TEAM_2, 'start' => '18:00', 'end' => '19:30']], $conflicts[0]['trainings']);
+    }
+
+    public function testAFriendlyAlsoGetsTheTrainingSignal(): void
+    {
+        $friendly = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30');
+        $friendly->setCompetitionId(null);
+
+        self::assertCount(1, $this->overlapConflicts($friendly));
+    }
+
+    public function testEveryTrainingOfTheVenueIsListedOnOneConflict(): void
+    {
+        // Le panneau dit « Deux entraînements occupent… » : une seule empreinte par match.
+        $second = $this->venueSlot('slot-3', 'team-3', 3, '19:30', 90);
+
+        $conflicts = $this->overlapConflicts($this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30'), [$second]);
+        self::assertCount(1, $conflicts);
+        self::assertSame(['18:00', '19:30'], array_column($conflicts[0]['trainings'], 'start'));
+    }
+
+    public function testOwnTeamTrainingIsNotSignalled(): void
+    {
+        // I2 : la séance de l'équipe du match est exclue, comme pour le conflit de personne.
+        $fixture = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30');
+        $own = $this->venueSlot('slot-own', self::TEAM_1, 3, '18:00', 90);
+
+        self::assertSame([], $this->overlapConflicts($fixture, [$own], withOtherTeam: false));
+    }
+
+    public function testTrainingInAnotherVenueIsNotSignalled(): void
+    {
+        $fixture = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30');
+        $fixture->setVenueId('venue-autre');
+
+        self::assertSame([], $this->overlapConflicts($fixture));
+    }
+
+    public function testTrainingThatDoesNotOverlapTheMatchIsNotSignalled(): void
+    {
+        // La plage salle exclut l'échauffement : 19:30 + 90 min de séance ne touche pas un match à 16:30 (fin 18:15 au plus).
+        self::assertSame([], $this->overlapConflicts($this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '16:00')));
+    }
+
+    public function testTrainingIsNotSignalledOnAHoliday(): void
+    {
+        // Q3/A6 : un férié, la séance n'a pas lieu, sans « sauf période ».
+        $conflicts = $this->overlapConflicts($this->competitionAt('fx-1', self::HOLIDAY, '18:30'), [], publicHolidays: [self::HOLIDAY]);
+
+        self::assertSame([], $conflicts);
+    }
+
+    public function testAccessLossStaysSignalledOnAHolidayWhenTheTrainingIsSilent(): void
+    {
+        // A6 : le silence porte sur l'entraînement, pas sur « Hors accès match » le même jour.
+        $placed = $this->competitionAt('fx-1', self::HOLIDAY, '18:30');
+        $slots = [self::BASELINE => [$this->venueSlot('slot-2', self::TEAM_2, 3, '18:00', 90)]];
+        $windows = [$this->holidayMatchWindow('venue-mateo', '10:00', '12:00')];
+
+        $types = array_column($this->detect([$placed], [], self::BASELINE, [], $slots, [], [], [], $windows, publicHolidays: [self::HOLIDAY]), 'type');
+        self::assertContains('ACCESS_WINDOW_LOST', $types);
+        self::assertNotContains('VENUE_TRAINING_OVERLAP', $types);
+    }
+
+    public function testAwayAndUnplacedMatchesGetNoTrainingSignal(): void
+    {
+        // D8 : « domicile posé » : le gymnase et l'heure importés d'un match à placer ne sont pas une occupation.
+        $unplaced = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30');
+        $unplaced->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        self::assertSame([], $this->overlapConflicts($unplaced));
+
+        $away = $this->competitionAt('fx-2', self::ORDINARY_WEDNESDAY, '18:30');
+        $away->setHomeAway(FixtureHomeAway::AWAY);
+        self::assertSame([], $this->overlapConflicts($away));
+    }
+
+    public function testTheEffectivePeriodScheduleDecidesTheTraining(): void
+    {
+        // « planning effectif » : une période active remplace la séance du socle ce jour-là.
+        $fixture = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30');
+        $slots = [self::BASELINE => [$this->venueSlot('slot-2', self::TEAM_2, 3, '18:00', 90)], self::OVERLAY => []];
+        $period = [['start' => new DateTimeImmutable(self::ORDINARY_WEDNESDAY), 'end' => new DateTimeImmutable(self::ORDINARY_WEDNESDAY), 'scheduleId' => self::OVERLAY]];
+
+        self::assertNotContains('VENUE_TRAINING_OVERLAP', array_column($this->detect([$fixture], [], self::BASELINE, $period, $slots), 'type'));
     }
 
     public function testCoachRoleIsMainOnlyWhenMainOnEveryInvolvedTeam(): void
@@ -2042,6 +2208,53 @@ final class MatchConflictDetectorTest extends TestCase
             'type',
         );
         self::assertContains('LEAGUE_WINDOW_VIOLATION', $leagueTypes, 'un mercredi ordinaire conserve la violation de fenêtre de ligue');
+    }
+
+    private function competitionAt(string $id, string $date, string $kickoff): Fixture
+    {
+        $fixture = $this->fixture($id, self::TEAM_1, $date, $kickoff);
+        $fixture->setVenueId('venue-mateo');
+        $fixture->setCompetitionId('comp-1');
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+
+        return $fixture;
+    }
+
+    private function venueSlot(string $id, string $teamId, int $day, string $start, int $minutes): ScheduleSlotTemplate
+    {
+        $slot = $this->slot($id, self::BASELINE, $teamId, $day, $start, $minutes);
+        $slot->setVenueId('venue-mateo');
+
+        return $slot;
+    }
+
+    /**
+     * @param list<ScheduleSlotTemplate> $extraSlots
+     * @param list<string>               $publicHolidays
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function overlapConflicts(Fixture $fixture, array $extraSlots = [], bool $withOtherTeam = true, array $publicHolidays = []): array
+    {
+        $slots = $withOtherTeam ? [$this->venueSlot('slot-2', self::TEAM_2, 3, '18:00', 90)] : [];
+
+        return array_values(array_filter(
+            $this->detect([$fixture], [], self::BASELINE, [], [self::BASELINE => [...$slots, ...$extraSlots]], publicHolidays: $publicHolidays),
+            static fn (array $c): bool => 'VENUE_TRAINING_OVERLAP' === $c['type'],
+        ));
+    }
+
+    private function openingWindow(string $venueId, string $date, string $start, string $end): VenueMatchWindow
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId('club');
+        $window->setSeasonId('season');
+        $window->setVenueId($venueId);
+        $window->setOpeningDate(new DateTimeImmutable($date));
+        $window->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $start) ?: new DateTimeImmutable('00:00'));
+        $window->setEndTime(DateTimeImmutable::createFromFormat('!H:i', $end) ?: new DateTimeImmutable('00:00'));
+
+        return $window;
     }
 
     /** @param list<string>|null $opponents the poule's club names (for exempt counting) */

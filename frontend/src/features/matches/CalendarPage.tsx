@@ -311,13 +311,13 @@ export function CalendarPage() {
       if (!isPlacedOnGrid(fixture) || null === fixture.kickoffTime || null === fixture.competitionId) {
         continue;
       }
-      const envelope = resolveEnvelope(fixture, resolvedTeamWindows, windows);
+      const envelope = resolveEnvelope(fixture, resolvedTeamWindows, windows, placementGuards.holidays);
       if (envelope.mapped && !isInEnvelope(envelope, fixture.kickoffTime)) {
         set.add(fixture.id);
       }
     }
     return set;
-  }, [allFixtures, resolvedTeamWindows, windows]);
+  }, [allFixtures, resolvedTeamWindows, windows, placementGuards.holidays]);
 
   // ── Temporalité SEMAINE ────────────────────────────────────────────────────────
   const { weekends, activeWeekend, weekendIndex, weekendFixtures, weekConflicts, weekFamilyCounts, radarConflicts, weekCounts, weekHiddenBreakdown } = useWeekView(
@@ -673,6 +673,7 @@ export function CalendarPage() {
               coachesMap={coachesMap}
               venues={venues.data ?? []}
               guards={placementGuards}
+              allConflicts={allConflicts}
               habits={habits}
               coachRoles={coachTeamRoles}
               resolvedTeamWindows={resolvedTeamWindows}

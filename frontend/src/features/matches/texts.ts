@@ -40,7 +40,14 @@ export const MATCHES_TEXTS = {
   // M11 + M6 (retours Nico, BCCL 2026-10-27) : nomme l'équipe, la date (avec son jour) et le gymnase.
   accessWindowLostPhrase: (team: string, date: string, venue: string, windows: string) =>
     `${team} — match du ${date} placé hors des accès match de ${venue} (${windows}). Déplacez le match ou ajustez l'accès.`,
-  accessWindowLostConfigureLink: "Configurer les accès",
+  // Un match encore à placer n'est pas « placé » : son gymnase et son heure sont seulement proposés.
+  accessWindowLostProposedPhrase: (team: string, date: string, venue: string, windows: string) =>
+    `${team} — match du ${date} proposé hors des accès match de ${venue} (${windows}). Choisissez un autre gymnase ou ouvrez-le ce jour-là.`,
+  accessWindowLostOpenLink: "Ouvrir ce gymnase ce jour-là",
+  accessWindowOpeningLine: (date: string, range: string) => `le ${date} ${range}`,
+  accessWindowHolidayLine: (range: string) => `jours fériés ${range}`,
+  venueTrainingOverlapTitle: "Entraînement dans le gymnase",
+  venueTrainingOverlapSummary: (venue: string, date: string, match: string, training: string) => `${venue} · ${date} · match ${match} · entraînement ${training}`,
   venueUnavailableConflictTitle: (label: string | null | undefined) => `Gymnase indisponible${null != label && "" !== label ? ` (${label})` : ""}`,
 
   // ── Onglet Adversaires (OpponentsPage) ─────────────────────────────────────────────────────
@@ -235,8 +242,7 @@ export const MATCHES_TEXTS = {
   radarToTreatSr: "à traiter",
   // MatchWindowsEditor (accès match d'un gymnase) — PR2 « jours fériés » (8ᵉ ligne)
   matchWindowsLoadError: "Les fenêtres d’accès match n’ont pas pu être chargées.",
-  matchWindowsEmpty:
-    "Aucune fenêtre d’accès match — ce gymnase n’accueille pas de matchs. Ajoutez les créneaux qui vous sont accordés les jours de match.",
+  matchWindowsEmpty: "Aucun accès habituel : ce gymnase n'accueille des matchs que sur ses ouvertures exceptionnelles.",
   matchWindowDayLabel: "Jour",
   matchWindowStartLabel: "Début",
   matchWindowEndLabel: "Fin",
@@ -250,4 +256,67 @@ export const MATCHES_TEXTS = {
   matchWindowDeleteTitle: "Supprimer cette fenêtre d’accès match ?",
   matchWindowDeleteDescription: (what: string) => `La fenêtre ${what} sera retirée de ce gymnase.`,
   matchWindowDeleteConfirm: "Supprimer",
+  // Ouverture datée d'un gymnase : éditeur.
+  openingSectionTitle: "Ouvertures exceptionnelles",
+  openingSectionHelp:
+    "Pour un jour précis seulement. Ce jour-là, le gymnase accueille des matchs en plus de ses accès habituels. Les fenêtres de la ligue, les règles du club, les fermetures et les entraînements ne changent pas.",
+  openingsEmpty: "Aucune ouverture exceptionnelle.",
+  openingDateLabel: "Date",
+  openingStartLabel: "Début",
+  openingEndLabel: "Fin",
+  openingLabelLabel: "Motif (facultatif)",
+  openingLabelPlaceholder: "Coupe, tournoi…",
+  openingAdd: "Ajouter l'ouverture",
+  openingOutOfSeason: (from: string, to: string) => `Cette date est hors de la saison en cours (du ${from} au ${to}).`,
+  openingDelete: (what: string) => `Supprimer l'ouverture du ${what}`,
+  openingDeleteTitle: "Supprimer cette ouverture ?",
+  openingDeleteDescription: (date: string, range: string) =>
+    `L'ouverture du ${date} (${range}) sera retirée de ce gymnase. Les matchs placés sur cette ouverture restent placés et peuvent être signalés dans Conflits.`,
+  // Ouverture datée : le raccourci du panneau.
+  openVenueAction: "Ouvrir ce gymnase ce jour-là",
+  venueNoAccessThatDay: "Pas d'accès match ce jour-là",
+  leagueHolidayNote: "Jour férié — la fenêtre de ligue ne s'applique pas.",
+  openVenueDialogTitle: (venue: string, date: string) => `Ouvrir ${venue} le ${date}`,
+  openVenueDialogBody: (venue: string, start: string, end: string) =>
+    `Ce jour-là seulement, ${venue} accueillera des matchs de ${start} à ${end}. Ses accès habituels, les entraînements, les fenêtres de la ligue et les règles du club ne changent pas.`,
+  openVenueConfirm: "Ouvrir",
+  openVenueCancel: "Annuler",
+  trainingOverlapOne: (venue: string, details: string) => `Un entraînement occupe ${venue} ce jour-là (${details}). Le match reste placé.`,
+  trainingOverlapTwo: (venue: string, details: string) => `Deux entraînements occupent ${venue} ce jour-là (${details}). Le match reste placé.`,
+  trainingOverlapMany: (count: number, venue: string, details: string) => `${count} entraînements occupent ${venue} ce jour-là (${details}). Le match reste placé.`,
+  // Panneau de pose d'un match.
+  panelFallbackVenue: "ce gymnase",
+  panelAnchorLock: "Ancre manuelle",
+  panelClose: "Fermer",
+  panelCategoryRow: "Catégorie",
+  panelOpponentRow: "Adversaire",
+  panelDateRow: "Date",
+  panelSubmittedNote: "Ce match est ancré : les prochaines générations ne le déplaceront plus. À corriger seulement en cas d'erreur (gymnase indisponible, saisie erronée).",
+  panelValidatedNote: "Ce match est ancré sur les date, heure et salle enregistrées côté ligue. Corrigez-le si l'une d'elles doit changer ; un futur import qui diverge le signalera dans Importer.",
+  panelReopen: "Corriger — repasser en Placé",
+  panelMarkSubmitted: "Marquer saisi dans FBI",
+  panelVenueField: "Gymnase",
+  panelVenuePlaceholder: "Gymnase…",
+  panelKickoffField: "Heure de coup d'envoi",
+  panelVenueLostHint: (reason: string) => `${reason} — choisissez-en un autre.`,
+  panelHabit: (kickoff: string, venue: string | null) => `Habitude : ${kickoff}${null !== venue ? ` · ${venue}` : ""}`,
+  panelGuardsFailed: "Impossible de vérifier les accès match et les indisponibilités de ce gymnase. Le placement est suspendu.",
+  panelGuardsLoading: "Vérification des accès match…",
+  panelImportConfirmHint: "Gymnase et heure repris de l'import — vérifiez, puis confirmez.",
+  panelConfirmImport: "Confirmer ce placement",
+  panelMove: "Déplacer",
+  panelPlace: "Placer",
+  panelUnplace: "Dé-placer",
+  panelUnlockHint: "Le système pourra re-placer ce match au prochain passage",
+  panelLockHint: "Figer ce placement — le système ne le bougera plus",
+  panelUnlock: "Rendre au système",
+  panelLock: "Verrouiller",
+  panelSwap: "Échanger avec…",
+  panelEdit: "Modifier",
+  panelDelete: "Supprimer",
+  panelDeleteTitle: (opponent: string) => `Supprimer le match contre « ${opponent} » ?`,
+  panelDeleteDescription: "Le match disparaît du calendrier. S'il vient d'un import FBI, le prochain import le recréera.",
+  panelEnvelopeHintIndicative: (windows: string) => `Fenêtres ligue (indicatif) : ${windows}`,
+  panelEnvelopeOk: "Dans la fenêtre autorisée par la ligue",
+  panelEnvelopeOut: "Hors fenêtre autorisée (jour ou heure)",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

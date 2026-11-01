@@ -4,7 +4,7 @@ import type { Competition, SportCategoryDuration, Venue, VenueLabelInventoryRow,
 import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary } from "./configSummaries";
 
 const venue = (id: string): Venue => ({ id, name: `Gymnase ${id}`, color: null, externalLabels: [] });
-const matchWindow = (venueId: string): VenueMatchWindow => ({ id: `${venueId}-w`, venueId, dayOfWeek: 6, appliesOnPublicHolidays: false, startTime: "14:00", endTime: "22:00" });
+const matchWindow = (venueId: string): VenueMatchWindow => ({ id: `${venueId}-w`, venueId, dayOfWeek: 6, appliesOnPublicHolidays: false, openingDate: null, label: null, startTime: "14:00", endTime: "22:00" });
 
 const invRow = (over: Partial<VenueLabelInventoryRow> = {}): VenueLabelInventoryRow => ({
   labelKey: "gymnase mateo",
@@ -116,5 +116,18 @@ describe("accessSummary (PR 2a — la section « Accès match »)", () => {
 
   it("un seul gymnase avec accès ⇒ singulier", () => {
     expect(accessSummary([matchWindow("v1")], [venue("v1"), venue("v2")])).toBe("1 gymnase");
+  });
+});
+
+/** D1bis : un gymnase n'a « un accès match » que par une ligne non datée. */
+describe("accessSummary — ouverture datée", () => {
+  const opening: VenueMatchWindow = { id: "o", venueId: "a", dayOfWeek: null, appliesOnPublicHolidays: false, openingDate: "2026-11-11", label: null, startTime: "14:00", endTime: "20:00" };
+
+  it("une ouverture seule ne fait pas un gymnase avec accès match", () => {
+    expect(accessSummary([opening], [venue("a")])).toBe("aucun gymnase avec accès match");
+  });
+
+  it("une ligne hebdo, si", () => {
+    expect(accessSummary([opening, matchWindow("b")], [venue("a"), venue("b")])).toBe("1 gymnase");
   });
 });

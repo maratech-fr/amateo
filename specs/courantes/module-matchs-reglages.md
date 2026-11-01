@@ -32,6 +32,17 @@ pas de jour de semaine (`dayOfWeek`), elle s'applique à tout jour férié offic
 club (national ∪ zone, `module-matchs-modele-donnees.md` §1). Les fenêtres existantes groupent la
 ligne férié à part, APRÈS dimanche, dans tout résumé compact (`formatMatchAccessWindows`).
 
+**Ouvertures exceptionnelles** (lot « ouverture datée ») : sous les accès habituels d'un gymnase,
+l'éditeur (`MatchWindowsEditor`) liste ses ouvertures DATÉES — une date, une plage, un motif libre
+(« Coupe ») — qui s'ajoutent aux lignes de leur date, férié ou non, et valent pour tout match ce
+jour-là. Une date hors de la saison en cours est acceptée avec un avertissement non bloquant sous le
+champ. Le raccourci « Ouvrir ce gymnase ce jour-là » du panneau de placement (`OpenVenueDialog`)
+n'écrit que ce fait du gymnase, jamais la pose : la plage proposée couvre le match entier arrondi au
+quart d'heure supérieur, sur au moins quatre heures. Le deep-link `?acces=<venueId>&date=<jour>&debut=<heure>` (lien d'un conflit
+« Hors accès match ») ouvre l'éditeur avec la ligne d'ouverture préremplie ; `date` et `debut` sont
+retirés avec `acces` à la fermeture. Un club n'« adopte » les accès qu'avec ≥ 1 ligne non datée :
+des ouvertures seules n'interdisent rien ailleurs.
+
 **Écran d'appariement des libellés** (`VenueLabelsSection`) : une ligne par LIBELLÉ de l'inventaire
 (`GET /api/venues/fbi-labels`), `VenueSelect` dont la valeur effective est le gymnase confirmé sinon
 la suggestion « d'après les rencontres » pré-sélectionnée. Trois gestes : **Confirmer** (additif,

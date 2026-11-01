@@ -15222,6 +15222,7 @@
                                                             "MATCH_TRAINING",
                                                             "VENUE_UNAVAILABLE",
                                                             "ACCESS_WINDOW_LOST",
+                                                            "VENUE_TRAINING_OVERLAP",
                                                             "COMPETITION_INCOMPLETE",
                                                             "AWAY_NO_FOOTPRINT",
                                                             "FRIENDLY_ON_MATCH_SLOT"
@@ -15385,19 +15386,54 @@
                                                     },
                                                     "windows": {
                                                         "type": "array",
-                                                        "description": "ACCESS_WINDOW_LOST: the match-access windows of the fixture's venue, the match weekday first \u2014 so the screen can name where the kickoff should have sat",
+                                                        "description": "ACCESS_WINDOW_LOST: the match-access windows of the fixture's venue that apply on the match date \u2014 so the screen can name where the kickoff should have sat",
                                                         "items": {
                                                             "type": "object",
                                                             "properties": {
                                                                 "dayOfWeek": {
                                                                     "type": "integer",
-                                                                    "description": "ISO weekday 1..7"
+                                                                    "nullable": true,
+                                                                    "description": "ISO weekday 1..7, null on a public-holiday line or a dated opening"
                                                                 },
                                                                 "startTime": {
                                                                     "type": "string",
                                                                     "description": "\u00ab HH:MM \u00bb"
                                                                 },
                                                                 "endTime": {
+                                                                    "type": "string",
+                                                                    "description": "\u00ab HH:MM \u00bb"
+                                                                },
+                                                                "appliesOnPublicHolidays": {
+                                                                    "type": "boolean",
+                                                                    "description": "True on the public-holiday line"
+                                                                },
+                                                                "openingDate": {
+                                                                    "type": "string",
+                                                                    "format": "date",
+                                                                    "nullable": true,
+                                                                    "description": "The date of a dated opening, null otherwise"
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "matchEnd": {
+                                                        "type": "string",
+                                                        "description": "VENUE_TRAINING_OVERLAP: the end of the match, \u00ab HH:MM \u00bb"
+                                                    },
+                                                    "trainings": {
+                                                        "type": "array",
+                                                        "description": "VENUE_TRAINING_OVERLAP: the sessions of other teams in the match venue during the match",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "teamId": {
+                                                                    "type": "string"
+                                                                },
+                                                                "start": {
+                                                                    "type": "string",
+                                                                    "description": "\u00ab HH:MM \u00bb"
+                                                                },
+                                                                "end": {
                                                                     "type": "string",
                                                                     "description": "\u00ab HH:MM \u00bb"
                                                                 }
@@ -34220,6 +34256,14 @@
                             "integer",
                             "null"
                         ]
+                    },
+                    "label": {
+                        "maxLength": 40,
+                        "description": "E12 (essai fondateur 30/10) \u2014 \u00ab Nom du groupe \u00bb FACULTATIF, persist\u00e9 en POST/PUT ; vide = null\n(la lecture retombe sur l'affichage par les \u00e9quipes). Born\u00e9 \u00e0 la longueur de la colonne.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 },
                 "required": [
@@ -37186,7 +37230,7 @@
                         "type": "string"
                     },
                     "dayOfWeek": {
-                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2).",
+                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line and for a dated opening.",
                         "type": [
                             "integer",
                             "null"
@@ -37196,6 +37240,20 @@
                         "description": "PR2 \u2014 TRUE for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "openingDate": {
+                        "description": "Dated opening: Y-m-d. NULL for a weekday or \u00ab Jours f\u00e9ri\u00e9s \u00bb line.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "description": "Reason of a dated opening.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "startTime": {
                         "description": "HH:MM",
@@ -37231,7 +37289,7 @@
                     "dayOfWeek": {
                         "minimum": 1,
                         "maximum": 7,
-                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2). Exactly one of\ndayOfWeek / appliesOnPublicHolidays must be set \u2014 enforced in the state processor\nvia `$this->refuse(...)` (a 422 with a violation, never a muet one).",
+                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line and for a dated opening.",
                         "type": [
                             "integer",
                             "null"
@@ -37241,6 +37299,24 @@
                         "description": "PR2 (Q1 option c) \u2014 TRUE marks the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
                         "type": [
                             "boolean",
+                            "null"
+                        ]
+                    },
+                    "openingDate": {
+                        "description": "Dated opening: this venue, this day only (Y-m-d).",
+                        "externalDocs": {
+                            "url": "https://schema.org/Date"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "maxLength": 120,
+                        "description": "Reason of a dated opening (\u00ab Coupe \u00bb).",
+                        "type": [
+                            "string",
                             "null"
                         ]
                     },
@@ -37285,7 +37361,7 @@
                         "type": "string"
                     },
                     "dayOfWeek": {
-                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2).",
+                        "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line and for a dated opening.",
                         "type": [
                             "integer",
                             "null"
@@ -37295,6 +37371,20 @@
                         "description": "PR2 \u2014 TRUE for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "openingDate": {
+                        "description": "Dated opening: Y-m-d. NULL for a weekday or \u00ab Jours f\u00e9ri\u00e9s \u00bb line.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "description": "Reason of a dated opening.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "startTime": {
                         "description": "HH:MM",
@@ -37337,7 +37427,7 @@
                                 "type": "string"
                             },
                             "dayOfWeek": {
-                                "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (PR2).",
+                                "description": "Weekday line: ISO 1..7. NULL for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line and for a dated opening.",
                                 "type": [
                                     "integer",
                                     "null"
@@ -37347,6 +37437,20 @@
                                 "description": "PR2 \u2014 TRUE for the \u00ab Jours f\u00e9ri\u00e9s \u00bb line (no weekday).",
                                 "default": false,
                                 "type": "boolean"
+                            },
+                            "openingDate": {
+                                "description": "Dated opening: Y-m-d. NULL for a weekday or \u00ab Jours f\u00e9ri\u00e9s \u00bb line.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "label": {
+                                "description": "Reason of a dated opening.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
                             },
                             "startTime": {
                                 "description": "HH:MM",

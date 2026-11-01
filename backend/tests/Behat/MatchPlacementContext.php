@@ -91,6 +91,13 @@ final class MatchPlacementContext extends BaseContext
 
     private string $otherSaturday = '';
 
+    private string $wednesday = '';
+
+    private string $openingId = '';
+
+    /** @var list<array{id: string, venueId: string, startTime: string, endTime: string}> */
+    private array $wednesdayWindows = [];
+
     /** @var array<mixed> */
     private array $otherFixture = [];
 
@@ -746,6 +753,80 @@ final class MatchPlacementContext extends BaseContext
         );
     }
 
+    #[Given('deux matchs à domicile le même mercredi, un par équipe, et aucune autre fenêtre d\'accès le mercredi')]
+    public function deuxMatchsUnMercredi(): void
+    {
+        $this->wednesday = new DateTimeImmutable($this->saturday, new DateTimeZone('Europe/Paris'))->modify('next wednesday')->format('Y-m-d');
+        $windows = $this->apiGet('venue_match_windows?itemsPerPage=100', $this->token);
+        foreach ($this->members($windows['json']) as $window) {
+            $id = $window['id'] ?? null;
+            $venueId = $window['venueId'] ?? null;
+            $startTime = $window['startTime'] ?? null;
+            $endTime = $window['endTime'] ?? null;
+            if (3 !== ($window['dayOfWeek'] ?? null) || !\is_string($id) || !\is_string($venueId) || !\is_string($startTime) || !\is_string($endTime)) {
+                continue;
+            }
+            $this->wednesdayWindows[] = ['id' => $id, 'venueId' => $venueId, 'startTime' => $startTime, 'endTime' => $endTime];
+            $this->apiDelete(\sprintf('venue_match_windows/%s', $id), $this->token);
+        }
+        $this->competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Coupe jetable', 'competitionType' => 'CUP'], $this->token),
+            'compétition',
+        );
+        $secondCompetition = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Coupe jetable B', 'competitionType' => 'CUP'], $this->token),
+            'compétition B',
+        );
+        $this->fxSat = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->wednesday, 'homeAway' => 'HOME', 'opponentLabel' => 'Coupe A', 'competitionId' => $this->competitionId], $this->token),
+            'premier match du mercredi',
+        );
+        $this->fxSat2 = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->wednesday, 'homeAway' => 'HOME', 'opponentLabel' => 'Coupe B', 'competitionId' => $secondCompetition], $this->token),
+            'second match du mercredi',
+        );
+    }
+
+    #[Then('poser le premier à la main ce mercredi à 18h00 est refusé, faute d\'accès ce jour-là')]
+    public function poserLePremierEstRefuse(): void
+    {
+        $response = $this->poserLePremierMercredi();
+        if (422 !== $response['status']) {
+            throw new RuntimeException(\sprintf('la pose sans accès ce mercredi aurait dû être refusée (422), obtenu %d', $response['status']));
+        }
+    }
+
+    #[When('j\'ouvre ce gymnase ce mercredi de 18h00 à 22h00 pour une coupe')]
+    public function jOuvreCeGymnase(): void
+    {
+        $this->openingId = $this->createdId(
+            $this->apiPost('venue_match_windows', ['venueId' => $this->venueId, 'openingDate' => $this->wednesday, 'startTime' => '18:00', 'endTime' => '22:00', 'label' => 'Coupe'], $this->token),
+            'ouverture exceptionnelle',
+        );
+    }
+
+    #[Then('poser le premier à la main ce mercredi à 18h00 est accepté')]
+    public function poserLePremierEstAccepte(): void
+    {
+        $response = $this->poserLePremierMercredi();
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('la pose sur l\'ouverture aurait dû passer (200), obtenu %d', $response['status']));
+        }
+    }
+
+    #[Then('le second match du mercredi est posé par le solveur dans ce gymnase, à 19h45 dans l\'ouverture')]
+    public function leSecondMatchEstPoseDansLOuverture(): void
+    {
+        $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat2), $this->token)['json'];
+        if ('PLACED' !== ($fixture['status'] ?? null) || 'SOLVER' !== ($fixture['placementSource'] ?? null) || $this->venueId !== ($fixture['venueId'] ?? null)) {
+            throw new RuntimeException(\sprintf('le second match n\'est pas posé par le solveur dans ce gymnase : %s', json_encode($fixture, \JSON_THROW_ON_ERROR)));
+        }
+        $kickoff = $fixture['kickoffTime'] ?? '';
+        if (!\is_string($kickoff) || !str_starts_with($kickoff, '19:45')) {
+            throw new RuntimeException(\sprintf('coup d\'envoi attendu à 19:45, juste après le premier match de l\'ouverture : « %s »', \is_string($kickoff) ? $kickoff : '?'));
+        }
+    }
+
     #[Given('plus aucune fenêtre d\'accès le dimanche dans tout le club')]
     public function plusAucuneFenetreLeDimanche(): void
     {
@@ -1098,6 +1179,9 @@ final class MatchPlacementContext extends BaseContext
         if ('' !== $this->windowId) {
             $this->apiDelete(\sprintf('venue_match_windows/%s', $this->windowId), $this->token);
         }
+        if ('' !== $this->openingId) {
+            $this->apiDelete(\sprintf('venue_match_windows/%s', $this->openingId), $this->token);
+        }
         foreach ([$this->teamId, $this->secondTeamId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('teams/%s', $id), $this->token);
@@ -1111,6 +1195,14 @@ final class MatchPlacementContext extends BaseContext
             $this->apiPost('venue_match_windows', [
                 'venueId' => $window['venueId'],
                 'dayOfWeek' => 7,
+                'startTime' => $window['startTime'],
+                'endTime' => $window['endTime'],
+            ], $this->token);
+        }
+        foreach ($this->wednesdayWindows as $window) {
+            $this->apiPost('venue_match_windows', [
+                'venueId' => $window['venueId'],
+                'dayOfWeek' => 3,
                 'startTime' => $window['startTime'],
                 'endTime' => $window['endTime'],
             ], $this->token);
@@ -1130,6 +1222,21 @@ final class MatchPlacementContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /** @return array{status: int, json: array<mixed>} */
+    private function poserLePremierMercredi(): array
+    {
+        return $this->apiPut(\sprintf('fixtures/%s', $this->fxSat), [
+            'teamId' => $this->teamId,
+            'matchDate' => $this->wednesday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Coupe A',
+            'competitionId' => $this->competitionId,
+            'venueId' => $this->venueId,
+            'kickoffTime' => '18:00',
+            'status' => 'PLACED',
+        ], $this->token);
     }
 
     /**

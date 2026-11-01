@@ -13,7 +13,7 @@ const anchorState: { failed: boolean; absent: boolean } = { failed: false, absen
 // Le plan de la période : ancre des réservations depuis le lot C3 (inv. 5).
 // P1-4 PR B — l'exemption fenêtre match vient du module matches ; sans mock,
 // le hook réel exigerait un QueryClient. État mutable pour tester l'exemption.
-const matchWindowsState = vi.hoisted(() => ({ windows: [] as { id: string; venueId: string; dayOfWeek: number; startTime: string; endTime: string }[] }));
+const matchWindowsState = vi.hoisted(() => ({ windows: [] as { id: string; venueId: string; dayOfWeek: number | null; startTime: string; endTime: string; openingDate?: string | null }[] }));
 vi.mock("@/features/matches/queries", () => ({
   useVenueMatchWindows: () => ({ data: matchWindowsState.windows, isLoading: false }),
 }));
@@ -274,6 +274,17 @@ describe("useStepValidation — venue slot rule (période : #8 PR-B, la grille e
       });
       const { result: periodResult } = renderHook(() => useStepValidation("venues"));
       expect(periodResult.current.errors).toEqual([]);
+    } finally {
+      matchWindowsState.windows = [];
+    }
+  });
+
+  it("D1bis : une ouverture datée seule ne fait pas un gymnase de match : le gymnase sans créneau reste signalé", () => {
+    matchWindowsState.windows = [{ id: "o1", venueId: "v1", dayOfWeek: null, startTime: "14:00", endTime: "20:00", openingDate: "2026-11-11" }];
+    try {
+      useWizardStore.setState({ mode: "season", calendarEntryId: null, stepId: "venues" });
+      const { result } = renderHook(() => useStepValidation("venues"));
+      expect(result.current.errors.some((e) => /sans créneau/.test(e))).toBe(true);
     } finally {
       matchWindowsState.windows = [];
     }

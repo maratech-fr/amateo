@@ -97,7 +97,7 @@ vigueur, il n'a rien à comparer.
   Le moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions
   TEAM dans `teams[].forbiddenVenueIds` (liste triée, déterministe) et les indisponibilités COACH
   dans le bloc top-level `coachUnavailabilities` (verbatim {coachId, daysOfWeek, kickoffMin,
-  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.8) — un domaine vidé par les
+  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.9) — un domaine vidé par les
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
@@ -146,7 +146,15 @@ vigueur, il n'a rien à comparer.
   (`VenueMatchWindowStateProcessor`). Une ligne férié s'applique à tout jour férié officiel du
   territoire du club (national ∪ zone, maison UNIQUE `App\Service\ClubPublicHolidays`, partagée
   avec le radar et le placement — § « Jours fériés » de `module-matchs-radar-et-placement.md`),
-  jamais à un jour de semaine particulier. **Fermeture du calendrier** (`venue_closed`,
+  jamais à un jour de semaine particulier. **Ouverture datée** (lot « ouverture datée », migration
+  `Version20261101120000`) : 3ᵉ cible, `openingDate` (date) + `label` (motif libre ≤ 120, écran
+  seulement, jamais envoyé au moteur) — **exactement l'une des trois cibles** (jour, férié, date),
+  422 sinon. Une ouverture S'AJOUTE aux lignes de sa date (férié ou non) et ne vaut que pour elle ;
+  elle vaut pour TOUT match ce jour-là (décision fondateur, pas de ciblage par compétition) ; une
+  date hors saison est acceptée (l'écran avertit, ne bloque pas) ; jamais recopiée au passage de
+  saison (`SeasonTransitionService`, fait d'un jour comme `VenueUnavailability`). **Le club n'« adopte »
+  les accès match qu'avec ≥ 1 ligne NON datée** (`MatchConflictDetector::hasWeeklyAccess`) : une
+  ouverture seule ne bascule pas le club en « accès obligatoire ». **Fermeture du calendrier** (`venue_closed`,
   P4-300) : pas une entité propre — une contrainte `Constraint`/FACILITY datée, portée par une
   entrée de calendrier (§ « Gymnases » de `accueil-cockpit-temporel.md`). Elle s'applique AUSSI
   aux matchs : maison unique `PlanVenueClosures::closureIntervals` (le FAIT brut — dates du
