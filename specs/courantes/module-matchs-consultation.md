@@ -175,6 +175,41 @@ le layout — la nav des onglets reste inchangée.
   « Tout marquer saisi » reste borné aux lignes « à saisir » affichées. Filtre Équipe conservé, le
   filtre Date a disparu (la liste est globale, triée par date de match).
 
+### Export des matchs pour les parents (bouton « Exporter » du Calendrier)
+
+Le bouton « Exporter » de la barre d'actions du Calendrier (`CalendarPage.tsx`) ouvre
+`ExportMatchesDialog` : **tout le club** ou **une équipe**, **du … au …** (un seul jour = deux
+dates égales), puis « Télécharger le PDF » (`POST /api/fixtures/export-pdf`, rail synchrone,
+`ExportMatchesPdfController`). **Tout membre exporte**, pas seulement le gestionnaire (parité avec
+l'export du planning) ; l'export consomme un crédit selon les règles existantes (Découverte :
+mention dans la fenêtre, bouton désactivé à zéro ; le crédit ne se décompte qu'au 200, donc jamais
+sans fichier livré — `CreditBudgetSubscriber`) et passe par un limiteur dédié `fixtures_pdf_export`
+(60 par heure et par club, distinct du limiteur de l'export du planning). Pré-remplissage de la
+fenêtre : `lib/exportRange.ts` (ce qui est à l'écran — semaine, mois, phase —, sinon le mois en cours).
+
+Le document est un PDF **portrait** (`MatchesPdfGenerator` → worker PDF partagé, fichier supprimé
+dès lu) : en-tête (logo, nom du club, plage, date d'édition), **une partie par équipe** (tout le
+club : les équipes ayant au moins un match dans la saison ; une équipe sans match dans la plage
+imprime « Aucun match sur cette période. »), colonnes Date · Heure · Adversaire · Où · Lieu, sans
+statut, conflit ni coach. Ce qui s'imprime est décidé par `MatchesExportDataProvider` :
+
+- **Heure « à confirmer »** : heure absente, ou écart fédéral ouvert, ou domicile de championnat
+  non validé (un amical, un extérieur et un terrain neutre n'ont rien à faire valider par le club).
+  Un match **déjà joué** n'est jamais « à confirmer » (le passé prime), sauf sans heure ; un
+  match joué dont l'écart reste ouvert s'imprime sans mention. À l'extérieur, l'heure s'imprime
+  sans mention.
+- **Lieu** : domicile = gymnase du match (nom — adresse) ; extérieur = adresse du gymnase
+  **apparié** dans Adversaires seulement. Un lieu non certain (gymnase supposé, ville seule,
+  domicile sans gymnase, terrain neutre) est masqué (« — ») : le renseigner est la responsabilité du
+  gestionnaire.
+- **Trajet** : à l'extérieur seulement, après l'adresse, avec une légende d'en-tête unique si au
+  moins un trajet est imprimé ; un trajet non calculé n'apparaît pas.
+- Crédit de marque en pied de page (même pied que l'export du planning).
+
+Limites : `502` sans crédit si le rendu échoue ; les fichiers `matchs-*.pdf` orphelins sont
+purgés au bout d'une heure (`PurgeExportsCommand`). Le format image (Instagram, Facebook) reste à
+faire (roadmap).
+
 ## 6. Écran Conflits (`/matchs/conflits`)
 
 Lecture seule, en regard du Calendrier : « qu'est-ce qui cloche sur TOUTE la saison, regroupé par

@@ -1,4 +1,4 @@
-# Roadmap (77) — ce qui reste à faire
+# Roadmap (79) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -166,7 +166,9 @@
 | P4-421 | **`make -C frontend e2e` n'accepte aucun argument** | ⚪ | S | Ni fichier, ni `-g`, ni `--repeat-each` : lancer un seul spec sur la stack d'épreuve oblige à contourner le préflight superadmin et le garde bac à sable. La cible s'arrête aussi à la première capture en écart en local, les références visuelles venant de la CI. Non cadré |
 | P4-422 | **Visuel : `retries: 0` à reconsidérer** | ⚪ | XS | `frontend/playwright.config.ts` fixe `retries: 0` pour le projet visuel. À mesurer d'abord sur plusieurs runs CI (écart stable < 0,5 %) avant de décider quoi que ce soit. Non cadré |
 | P4-423 | **Mutualiser une séance sur un planning sans verdict du moteur : garde exacte seulement** | ⚪ | S | Constat (31/10) : `MutualizeSlotService` n'interroge pas le moteur ; sa seule garde est `TeamCaseOccupancyGuard::conflictSentence` (`backend/src/Service/MutualizeSlotService.php:171,382`), qui ne voit qu'un doublon EXACT de case. Une mutualisation qui fait chevaucher partiellement une équipe, ou sortir d'une règle, n'est donc ni refusée ni signalée. Même famille que P4-328 (garde par intervalle). À cadrer. |
-| P4-424 | **Export des matchs pour les parents : par équipe, de date A à date B** | 🟡 | M | Retour d'une gestionnaire (2026-11-01) : elle veut transmettre aux parents la liste des matchs et les horaires d'une phase, par exemple de début novembre à fin décembre. Aucun export de matchs n'existe (`backend/src/Export/`). Périmètre : une équipe ou tout le club ; une semaine, un mois ou de la date A à la date B. Colonnes : sans statut ni conflit, avec adresse et temps de trajet, éventuellement en option. Format image (Instagram, Facebook) juste derrière le premier export. Non cadré. |
+| P4-424 | **Export des matchs pour les parents : format image (Instagram, Facebook)** | 🟡 | M | Le PDF par équipe ou club, de la date A à la date B, est livré (voir l'état des lieux). Reste le format image, pour publier la liste sur les réseaux du club : par exemple le week-end des U13 en une image carrée prête à poster. Non cadré. |
+| P4-436 | **Dédoublonner les dates françaises** | ⚪ | XS | Deux implémentations de la même mise en forme coexistent : `App\Support\FrenchDate` (« 1er novembre 2026 », « sam. 14 nov. », ajoutée par l'export des matchs) et `SchedulePlanProvisioner::frenchDate`. Exemple : corriger l'abréviation d'un mois dans l'une laisse l'autre fausse. À faire : une seule maison, `SchedulePlanProvisioner` la consomme. |
+| P4-437 | **Filtre tenant Doctrine encore actif entre deux requêtes d'un même processus** | ⚪ | S | `TenantFilterListener.php:68`, `:145`, `:253` : le filtre n'est pas relâché en fin de requête. Aucun effet avec php-fpm (un processus reprend à zéro), mais sous un runtime persistant (FrankenPHP, Swoole, worker), le second utilisateur d'un même processus serait refusé à tort : le club A est traité, puis le club B hérite de son filtre. À traiter avant tout changement de runtime. Non cadré. |
 
 ---
 
