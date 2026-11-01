@@ -80,7 +80,7 @@ Déclare les jours où un entraîneur est indisponible (ou, à l'inverse, les se
 `config.coachId` — le solveur ne lit que le scope (`constraints/parsing.py` : `scope_target_id`).
 `targetTag` reste une cible légitime : il désigne un GROUPE, ce que le scope ne sait pas exprimer.
 
-Clés : `unavailableDays`/`availableDays` (whitelist), et `fromTime`/`untilTime` optionnels pour borner l'indisponibilité dans la journée (absents = journée entière).
+Clés : `unavailableDays`/`availableDays` (whitelist), et `fromTime`/`untilTime` optionnels pour borner l'indisponibilité dans la journée (absents = journée entière). Lecture : la pose libre du moteur et le candidat d'un déplacement testent le chevauchement demi-ouvert, sans marge, avec la séance ; l'existant (verrous, base figée, miroirs PHP/TS, garde, radar, modale) reste jugé à l'heure de début. Le Récap suit la pose libre.
 
 > Exemple : `scopeTargetId: "uuid-enzo"` avec `config: {unavailableDays: [5]}` signifie que l'entraîneur n'est jamais disponible le vendredi. Avec `fromTime: "18:00"` et `untilTime: "20:00"`, l'indisponibilité ne couvre que ce créneau.
 
