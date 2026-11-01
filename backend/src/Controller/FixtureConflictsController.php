@@ -73,7 +73,7 @@ final class FixtureConflictsController extends AbstractController
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
 
-        [$season, $conflicts, $seasonPlanChosen] = $this->computeConflicts($clubId);
+        [$season, $conflicts, $seasonPlanChosen, $held] = $this->computeConflicts($clubId);
 
         // P4-207 — champ ADDITIF `resolution` : le statut de traitement posé par le
         // gestionnaire, joint par empreinte sur les lignes du club+saison courants. La
@@ -94,6 +94,9 @@ final class FixtureConflictsController extends AbstractController
             'clubId' => $clubId,
             'seasonId' => $season?->getId(),
             'conflicts' => $conflicts,
+            // Les lignes qu'un autre coach tient ce jour-là : rien à traiter, donc ni gravité, ni
+            // empreinte, ni traitement, et hors du compteur et du delta de visite.
+            'held' => $held,
             // Même raison que le radar des périodes : sans version pointée, la saison
             // n'a pas de calendrier, `MATCH_TRAINING` ne peut rien détecter hors période,
             // et `conflicts: []` devient indiscernable d'une saison réellement saine. Le
@@ -260,7 +263,7 @@ final class FixtureConflictsController extends AbstractController
      * fingerprint and the away-side place decoration. Shared by the GET feed and the
      * resolution writes (which need the CURRENT flow to reject a vanished conflict).
      *
-     * @return array{0: Season|null, 1: list<array<string, mixed>>, 2: bool} season, conflicts (with fingerprint), seasonPlanChosen
+     * @return array{0: Season|null, 1: list<array<string, mixed>>, 2: bool, 3: list<array<string, mixed>>} season, conflicts (with fingerprint), seasonPlanChosen, held lines
      */
     private function computeConflicts(string $clubId): array
     {
@@ -280,11 +283,13 @@ final class FixtureConflictsController extends AbstractController
         // AWAY des familles PERSONNE (MATCH_MATCH left/right, MATCH_TRAINING fixture).
         // Décoré EN AVAL (le détecteur ne le connaît pas), résolu en BATCH par
         // OpponentPlaceResolver ; un côté HOME ne porte jamais la clé.
+        $held = $radar['held'];
         if ($season instanceof Season) {
             $conflicts = $this->decorateOpponentPlace($conflicts, $radar['fixtures'], $season->getId());
+            $held = $this->decorateOpponentPlace($held, $radar['fixtures'], $season->getId());
         }
 
-        return [$season, $conflicts, null !== $radar['seasonScheduleId']];
+        return [$season, $conflicts, null !== $radar['seasonScheduleId'], $held];
     }
 
     /**

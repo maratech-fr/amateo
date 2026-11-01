@@ -424,7 +424,7 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
   it("Membre → aucun bouton d'action (ni « Nouveau match » ni le lien « Importer »), la vue reste visible (2026-10-04)", async () => {
     meState.role = "member";
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([]);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, held: [], conflicts: [] });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     // La vue reste visible (lecture), seuls les gestes disparaissent.
     expect(await screen.findByText("Aucun match importé")).toBeInTheDocument();
@@ -499,6 +499,7 @@ describe("CalendarPage — filtres PR-1 + navigation de semaine", () => {
       clubId: "c",
       seasonId: "s",
       seasonPlanChosen: true,
+      held: [],
       conflicts: [
         { type: "MATCH_MATCH", severity: 3, resolution: null, coachRole: "MAIN", coachId: "thomas", left: { fixtureId: "fx-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "14:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-u15", teamId: "u15m1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" } },
         { type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-1", left: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" } },
@@ -532,7 +533,7 @@ describe("CalendarPage — filtres PR-1 + navigation de semaine", () => {
       { id: "fx-past", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-05", homeAway: "HOME", opponentLabel: "Anciens", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
       { id: "fx-future", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-19", homeAway: "HOME", opponentLabel: "Futurs", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
     ]);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, held: [], conflicts: [] });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     expect(await screen.findByText(/Semaine du 14 sept\. au 20 sept\./)).toBeInTheDocument();
     expect(screen.queryByText(/au 6 sept\./)).not.toBeInTheDocument();
@@ -542,7 +543,7 @@ describe("CalendarPage — filtres PR-1 + navigation de semaine", () => {
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
       { id: "fx-away-1", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "Grenoble", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle Clemenceau", externalRef: null, placementSource: null, unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
     ]);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, held: [], conflicts: [] });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     expect(await screen.findByRole("heading", { name: "À placer" })).toBeInTheDocument();
     expect(screen.getByText(/À l'extérieur ce week-end/)).toBeInTheDocument();
@@ -576,7 +577,7 @@ describe("CalendarPage — filtres PR-1 + navigation de semaine", () => {
 
   it("saison vide ⇒ EmptyState « Aucun match importé » + lien Importer (compteurs à zéro)", async () => {
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([]);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, held: [], conflicts: [] });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     expect(await screen.findByText("Aucun match importé")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Importer des rencontres/ })).toHaveAttribute("href", "/matchs/importer");
@@ -853,7 +854,7 @@ describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", 
     setTodayOverride("2026-10-01");
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce(mix as never);
     vi.mocked(matchesApi.getCompetitions).mockResolvedValueOnce([champComp] as never);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] } as never);
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, held: [], conflicts: [] } as never);
   }
 
   it("état vierge : amicaux masqués (type), extérieurs masqués (interrupteur) ; puces par défaut", async () => {
@@ -950,7 +951,7 @@ describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", 
       fx({ id: "fx-amical", teamId: "team-2", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "AmicalHome", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00" }),
     ] as never);
     vi.mocked(matchesApi.getCompetitions).mockResolvedValueOnce([champComp] as never);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] } as never);
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, held: [], conflicts: [] } as never);
     renderWithProviders(<CalendarPage />, { route: "/" });
     expect(await screen.findByText("1 match masqué cette semaine (1 amical).")).toBeInTheDocument();
   });

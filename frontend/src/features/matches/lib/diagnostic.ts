@@ -31,7 +31,7 @@ const GROUP_TITLES: Record<number, string> = {
 /** Tonalité d'une gravité (worst first) — exportée pour l'onglet Conflits, qui
  *  colorise ses lignes sans re-décider la gravité (émise par le serveur). */
 export function toneOf(severity: number): DiagnosticGroup["tone"] {
-  if (severity <= 2) {
+  if (severity <= 3) {
     return "destructive";
   }
   return severity <= 5 ? "warning" : "muted";

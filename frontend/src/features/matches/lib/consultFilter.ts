@@ -1,4 +1,4 @@
-import type { Competition, Conflict, ConflictType, Fixture } from "../api";
+import type { Competition, Conflict, ConflictCore, ConflictType, Fixture } from "../api";
 import { isOpenConflict } from "./conflictResolution";
 import { datelessConflicts } from "./loopSteps";
 import { weekBounds } from "./weekendGrid";
@@ -157,7 +157,7 @@ export function scopeConflictsToRange(conflicts: Conflict[], from: string, to: s
  * date portée (conflit « sans date », ex. COMPETITION_INCOMPLETE). Maison unique du
  * datage, partagée par le scoping calendaire ET le pivot « par journée » (onglet Conflits).
  */
-export function dateOf(conflict: Conflict): string | null {
+export function dateOf(conflict: Conflict | ConflictCore): string | null {
   if (undefined !== conflict.start) {
     return conflict.start.slice(0, 10);
   }

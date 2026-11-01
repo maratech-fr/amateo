@@ -16,6 +16,7 @@ use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
 use App\Service\Conflicts\ConflictMoments;
+use App\Service\Conflicts\DayHoldings;
 use App\Service\Conflicts\PersonConflicts;
 use App\Service\Conflicts\RuleWindowConflicts;
 use App\Service\Conflicts\VenueConflicts;
@@ -34,6 +35,11 @@ use DateTimeImmutable;
  * conflict carries its {@see ConflictPersonRole} on THAT team (`role`), and the
  * aggregate `coachRole` (kept for compat) is MAIN when every side is MAIN,
  * ASSISTANT as soon as one side is ASSISTANT, PLAYER otherwise.
+ *
+ * A person double-booked on paper is not always a conflict: each date has ONE holder per session or
+ * match ({@see DayHoldings}). When someone else holds the side this person leaves, the line is HELD:
+ * it carries `heldBy`, `heldSide`, `heldByTeamId` and no gravity, and the loader serves it apart. The
+ * coach stored on a slot never moves.
  *
  * Conflict kinds. The person families are built on {@see MatchFootprint}
  * PERSON-CONFLICT windows:
@@ -59,9 +65,9 @@ use DateTimeImmutable;
  *   is checked against BOTH calendar days it spans. ⚠ D1 (2026-09-13), EXTENDED
  *   to players: a training of the fixture's OWN team is skipped for its coaches
  *   AND its players (the players who play don't also train); a SISTER team's
- *   training (coach or player on two teams) still clashes. When the slot has an
- *   assigned coach, he replaces the OTHER coaches of the slot's team (anti false-
- *   positive) but NEVER evicts its players. ⚠ Lot M / P4-240 ③ — the MATCH side
+ *   training (coach or player on two teams) still clashes. The day's assignment
+ *   says who holds the session: the assigned coach comes first, then the main
+ *   coaches of its team and of its declared group. ⚠ Lot M / P4-240 ③ — the MATCH side
  *   uses its PERSON-CONFLICT window: at HOME the warm-up is dropped (a warm-up-only
  *   overlap with a session the person reaches by kickoff is silent), while an AWAY
  *   match counts the warm-up before departure (décision C). A real overlap (the
@@ -96,6 +102,8 @@ use DateTimeImmutable;
  * - MATCH_TRAINING: severity 3 (match played × training coached MAIN, or
  *   match played × training played), EXCEPT a match COACHED (MAIN) against a
  *   training where she only PLAYS → 5, and any ASSISTANT side → 5.
+ * - On all three coach families, a free assistant on a match side where the person
+ *   is MAIN turns a 3 into a 4 and sets `relief`.
  * New finding kinds:
  * - VENUE_OVERLAP (1): two placed fixtures, same venue, overlapping VENUE windows
  *   ([kickoff, kickoff + match], no warm-up — D1, 2026-09-13, so two matches
@@ -374,55 +382,61 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param list<Fixture>                                                                                          $fixtures              season fixtures (already club+season scoped)
-     * @param list<TeamCoach>                                                                                        $teamCoachRows         coach↔team links (scoped)
-     * @param string|null                                                                                            $seasonScheduleId      the season's calendar (the version its plan points at), or null
+     * @param list<Fixture>                                                                                          $fixtures                season fixtures (already club+season scoped)
+     * @param list<TeamCoach>                                                                                        $teamCoachRows           coach↔team links (scoped)
+     * @param string|null                                                                                            $seasonScheduleId        the season's calendar (the version its plan points at), or null
      * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $activePeriods
-     *                                                                                                                                      active period windows (ordered), scheduleId = their overlay or null
-     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule       slots indexed by their scheduleId
-     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities      indispos déclarées + fermetures `venue_closed`, forme commune (P4-300)
-     * @param list<TeamMatchHabit>                                                                                   $habits                scoped habitual windows (estimation source)
-     * @param list<VenueMatchWindow>                                                                                 $matchWindows          scoped access windows (ACCESS_WINDOW_LOST)
-     * @param array<string, list<LeagueWindowInterface>>                                                             $envelope              teamId → resolved league windows ([] = unmapped)
-     * @param list<Competition>                                                                                      $competitions          scoped competitions (COMPETITION_INCOMPLETE — severity 6 alerte / 7 info)
-     * @param array<string, MatchDurationProfile>                                                                    $profilesByTeam        teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
+     *                                                                                                                                        active period windows (ordered), scheduleId = their overlay or null
+     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule         slots indexed by their scheduleId
+     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities        indispos déclarées + fermetures `venue_closed`, forme commune (P4-300)
+     * @param list<TeamMatchHabit>                                                                                   $habits                  scoped habitual windows (estimation source)
+     * @param list<VenueMatchWindow>                                                                                 $matchWindows            scoped access windows (ACCESS_WINDOW_LOST)
+     * @param array<string, list<LeagueWindowInterface>>                                                             $envelope                teamId → resolved league windows ([] = unmapped)
+     * @param list<Competition>                                                                                      $competitions            scoped competitions (COMPETITION_INCOMPLETE — severity 6 alerte / 7 info)
+     * @param array<string, MatchDurationProfile>                                                                    $profilesByTeam          teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
      * @param array<string, int>                                                                                     $roundTripByFixtureId
-     *                                                                                                                                      fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
-     *                                                                                                                                      (no travel modelled → no spatial extension of the footprint). The controller projects it
-     *                                                                                                                                      via OpponentTravelProjection (link gym → constant travel cache, 2 × one-way), the detector stays pure.
+     *                                                                                                                                        fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
+     *                                                                                                                                        (no travel modelled → no spatial extension of the footprint). The controller projects it
+     *                                                                                                                                        via OpponentTravelProjection (link gym → constant travel cache, 2 × one-way), the detector stays pure.
      * @param DateTimeImmutable|null                                                                                 $clubToday
-     *                                                                                                                                      the club's civil today ({@see ClubDay}); a fixture whose matchDate is strictly BEFORE
-     *                                                                                                                                      it is already played — it neither PORTS nor RECEIVES a conflict (D1, rule 3). null
-     *                                                                                                                                      (the pure test path) disables the filter entirely.
+     *                                                                                                                                        the club's civil today ({@see ClubDay}); a fixture whose matchDate is strictly BEFORE
+     *                                                                                                                                        it is already played — it neither PORTS nor RECEIVES a conflict (D1, rule 3). null
+     *                                                                                                                                        (the pure test path) disables the filter entirely.
      * @param list<CoachPlayerMembership>                                                                            $playerMemberships
-     *                                                                                                                                      scoped coach↔team PLAYER links; only the active ones count. A person is a PLAYER of
-     *                                                                                                                                      that team UNLESS she already coaches it (the coach role then wins). Both callers load
-     *                                                                                                                                      and pass these (parité MatchVisitDeltaParityTest).
+     *                                                                                                                                        scoped coach↔team PLAYER links; only the active ones count. A person is a PLAYER of
+     *                                                                                                                                        that team UNLESS she already coaches it (the coach role then wins). Both callers load
+     *                                                                                                                                        and pass these (parité MatchVisitDeltaParityTest).
      * @param list<array{ruleType: string, daysOfWeek: list<int>, kickoffMin: string|null, kickoffMax: string|null}> $clubRules
-     *                                                                                                                                      the club's CLUB-scoped match rules (P4-272 ③). Only HARD rules make a
-     *                                                                                                                                      violation (CLUB_RULE_VIOLATION); PREFERRED ones only nudge the solver.
+     *                                                                                                                                        the club's CLUB-scoped match rules (P4-272 ③). Only HARD rules make a
+     *                                                                                                                                        violation (CLUB_RULE_VIOLATION); PREFERRED ones only nudge the solver.
      * @param array<string, list<string>>                                                                            $forbiddenVenuesByTeam
-     *                                                                                                                                      teamId → the venue ids that team is FORBIDDEN to play at (P4-272 ④,
-     *                                                                                                                                      scope TEAM HARD rules). A HOME fixture posed in one is TEAM_VENUE_FORBIDDEN.
+     *                                                                                                                                        teamId → the venue ids that team is FORBIDDEN to play at (P4-272 ④,
+     *                                                                                                                                        scope TEAM HARD rules). A HOME fixture posed in one is TEAM_VENUE_FORBIDDEN.
      * @param array<string, TeamLevel>                                                                               $levelByTeam
-     *                                                                                                                                      teamId → niveau de l'équipe ; une équipe LOISIR est muette pour AWAY_NO_FOOTPRINT
-     *                                                                                                                                      (décision fondateur 2026-10-01). Une équipe ABSENTE de cette table ayant une
-     *                                                                                                                                      rencontre retenue est signalée TEAM_LEVEL_MISSING (P4-288)
+     *                                                                                                                                        teamId → niveau de l'équipe ; une équipe LOISIR est muette pour AWAY_NO_FOOTPRINT
+     *                                                                                                                                        (décision fondateur 2026-10-01). Une équipe ABSENTE de cette table ayant une
+     *                                                                                                                                        rencontre retenue est signalée TEAM_LEVEL_MISSING (P4-288)
      * @param array<string, DateTimeImmutable>                                                                       $deadlineByCompetition
-     *                                                                                                                                      competitionId → échéance de saisie effective (club gagne, sinon défaut
-     *                                                                                                                                      communautaire) ; gradue la cohérence de complétude (info vs alerte)
+     *                                                                                                                                        competitionId → échéance de saisie effective (club gagne, sinon défaut
+     *                                                                                                                                        communautaire) ; gradue la cohérence de complétude (info vs alerte)
      * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}>         $coachUnavailabilities
-     *                                                                                                                                      chantier H volet matchs — indisponibilités DÉCLARÉES des coachs (scope COACH),
-     *                                                                                                                                      par jour ISO + fenêtre de coup d'envoi (bornes facultatives, intervalle FERMÉ).
-     *                                                                                                                                      Alimente la famille MATCH_COACH_UNAVAILABLE et le relief des familles personne.
+     *                                                                                                                                        chantier H volet matchs — indisponibilités DÉCLARÉES des coachs (scope COACH),
+     *                                                                                                                                        par jour ISO + fenêtre de coup d'envoi (bornes facultatives, intervalle FERMÉ).
+     *                                                                                                                                        Alimente la famille MATCH_COACH_UNAVAILABLE et le relief des familles personne.
      * @param list<string>                                                                                           $publicHolidays
-     *                                                                                                                                      PR2 — les dates FÉRIÉES (Y-m-d) du territoire du club. Un match un jour férié n'est
-     *                                                                                                                                      pas un week-end libre : la ligue a posé ce jour exprès. Le radar TAIT alors
-     *                                                                                                                                      MATCH_TRAINING (pas d'entraînement un férié) et LEAGUE_WINDOW_VIOLATION (la fenêtre du
-     *                                                                                                                                      jour de semaine ne s'applique pas), et juge ACCESS_WINDOW_LOST contre la seule ligne
-     *                                                                                                                                      « Jours fériés » du gymnase.
+     *                                                                                                                                        PR2 — les dates FÉRIÉES (Y-m-d) du territoire du club. Un match un jour férié n'est
+     *                                                                                                                                        pas un week-end libre : la ligue a posé ce jour exprès. Le radar TAIT alors
+     *                                                                                                                                        MATCH_TRAINING (pas d'entraînement un férié) et LEAGUE_WINDOW_VIOLATION (la fenêtre du
+     *                                                                                                                                        jour de semaine ne s'applique pas), et juge ACCESS_WINDOW_LOST contre la seule ligne
+     *                                                                                                                                        « Jours fériés » du gymnase.
+     * @param array<string, array<string, list<array{0: int, 1: int, 2: int}>>>                                      $wizardBlockedBySchedule
+     *                                                                                                                                        version → coach → [jour ISO, début, fin] : les indisponibilités d'entraînement du plan
+     *                                                                                                                                        effectif (forme de CoachDoubleBookingDetector::blockedIntervalsByCoach). Retirent un
+     *                                                                                                                                        coach d'une séance, jamais d'un match.
+     * @param array<string, list<list<string>>>                                                                      $groupsBySchedule
+     *                                                                                                                                        version → listes d'équipes : les groupes déclarés du plan de cette version
      *
-     * @return list<array<string, mixed>> conflict items ready to serialize
+     * @return list<array<string, mixed>> conflict items ready to serialize, mixed with the held lines (those carrying `heldBy`)
      */
     public function detect(
         array $fixtures,
@@ -445,6 +459,8 @@ final class MatchConflictDetector
         array $deadlineByCompetition = [],
         array $coachUnavailabilities = [],
         array $publicHolidays = [],
+        array $wizardBlockedBySchedule = [],
+        array $groupsBySchedule = [],
     ): array {
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
@@ -566,18 +582,19 @@ final class MatchConflictDetector
             ];
         }
         $personViews = array_values(array_filter($views, static fn (array $view): bool => [] !== $view['personIds']));
+        $holdings = new DayHoldings($personViews, $roleByTeamPerson, $this->effectiveScheduleResolver, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $wizardBlockedBySchedule, $groupsBySchedule);
 
         return [
             ...$this->venueConflicts->venueOverlapConflicts($views),
             ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope, $publicHolidays),
             ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules),
             ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam),
-            ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities),
-            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays),
+            ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities, $holdings),
+            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $holdings),
             // Chantier H volet matchs (amendement b) — coup d'envoi dans l'indispo DÉCLARÉE d'un
             // coach principal → ROUGE (3), JAUNE (5) si l'indispo ne touche que la durée du match
-            // à domicile, ORANGE (4) si un adjoint/autre principal disponible peut couvrir.
-            ...$this->personConflicts->coachUnavailableConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities),
+            // à domicile, ORANGE (4) si un adjoint libre peut couvrir, ligne tenue si un autre principal tient.
+            ...$this->personConflicts->coachUnavailableConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities, $holdings),
             ...$this->venueConflicts->venueUnavailableConflicts($activeFixtures, $unavailabilities),
             ...$this->venueConflicts->accessWindowLostConflicts($activeFixtures, $matchWindows, $publicHolidays),
             ...$this->venueConflicts->venueTrainingOverlapConflicts($views, $seasonScheduleId, $activePeriods, $slotsBySchedule, $publicHolidays),

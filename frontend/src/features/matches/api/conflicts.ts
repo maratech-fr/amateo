@@ -164,9 +164,9 @@ export interface Conflict {
   coachRole?: ConflictSideRole;
   coachId?: string;
   /**
-   * Chantier H — un conflit de coach ADOUCI : une équipe a un adjoint (ou un autre
-   * principal) disponible qui peut tenir ce côté. Sur MATCH_MATCH/MATCH_TRAINING il fait
-   * passer un conflit dur (3) à 5 ; sur MATCH_COACH_UNAVAILABLE un rouge (3) à orange (4).
+   * Chantier H — un conflit de coach ADOUCI : l'équipe d'un match où la personne est
+   * principale a un adjoint libre qui peut couvrir. Fait passer un rouge (3) à orange (4)
+   * sur les trois familles MATCH_MATCH, MATCH_TRAINING, MATCH_COACH_UNAVAILABLE.
    * Rendu par un TAG texte + icône (jamais la couleur seule, a11y).
    */
   relief?: boolean;
@@ -236,10 +236,27 @@ export interface Conflict {
   resolution: ConflictResolution | null;
 }
 
+/** Le corps commun d'une ligne de personne, conflit ou ligne tenue. */
+export type ConflictCore = Omit<Conflict, "severity" | "fingerprint" | "resolution">;
+
+/**
+ * Une ligne qu'un autre coach tient ce jour-là : rien à traiter, donc ni gravité, ni empreinte,
+ * ni traitement. Calculée par le serveur, jamais redérivée ici.
+ */
+export interface HeldConflict extends ConflictCore {
+  /** Le coach qui tient le côté nommé par `heldSide`. */
+  heldBy: string;
+  heldSide: "training" | "match" | "left" | "right";
+  /** L'équipe du tenant quand elle diffère de celle de la séance : un groupe. */
+  heldByTeamId: string | null;
+}
+
 export interface ConflictsResponse {
   clubId: string;
   seasonId: string | null;
   conflicts: Conflict[];
+  /** Les lignes tenues, à part des conflits et hors des compteurs. */
+  held: HeldConflict[];
   /**
    * Le plan de la saison pointe-t-il une version ? Sinon la saison n'a pas de
    * calendrier : les conflits match↔entraînement ne peuvent pas être détectés hors

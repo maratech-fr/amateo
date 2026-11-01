@@ -1,4 +1,4 @@
-import type { Conflict } from "../api";
+import type { Conflict, ConflictCore } from "../api";
 
 /**
  * Correctif 2 (retour terrain 2026-09-27) — le FOCUS d'un conflit sur le Calendrier :
@@ -15,7 +15,7 @@ import type { Conflict } from "../api";
  * portent `left`/`right` ; MATCH_TRAINING / LEAGUE_WINDOW_VIOLATION / CLUB_RULE_VIOLATION / … portent `fixture`
  * (l'entraînement n'a pas de `fixtureId`). Dédoublonné, ordre stable.
  */
-export function conflictFixtureIds(conflict: Conflict): string[] {
+export function conflictFixtureIds(conflict: ConflictCore): string[] {
   const ids = [conflict.left?.fixtureId, conflict.right?.fixtureId, conflict.fixture?.fixtureId].filter(
     (id): id is string => undefined !== id && "" !== id,
   );
