@@ -50,11 +50,11 @@ type DialogQueries = ReturnType<typeof within>;
 
 /** Le déclencheur de `TeamSelect` : son nom accessible est « Équipe + valeur choisie ». */
 function queryTeamTrigger(dialog: DialogQueries): HTMLElement | null {
-  return dialog.queryByRole("button", { name: (name) => name.includes(TEXTS.teamLabel) });
+  return dialog.queryByRole("button", { name: (name: string) => name.includes(TEXTS.teamLabel) });
 }
 
 function teamTrigger(dialog: DialogQueries): HTMLElement {
-  return dialog.getByRole("button", { name: (name) => name.includes(TEXTS.teamLabel) });
+  return dialog.getByRole("button", { name: (name: string) => name.includes(TEXTS.teamLabel) });
 }
 
 function credits(remaining: number): Partial<ClubEntitlements> {
