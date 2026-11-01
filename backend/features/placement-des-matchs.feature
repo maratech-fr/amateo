@@ -18,6 +18,20 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Et le match du samedi atterrit sur son créneau idéal, sur le gymnase à 15h30
     Et le match du dimanche reste sans créneau, faute de fenêtre d'accès ce jour-là
 
+  Scénario: Une ouverture datée suffit à poser un match un mercredi, à la main comme en automatique
+    Le gestionnaire ne veut pas ouvrir tous les mercredis pour une coupe : il ouvre ce gymnase, ce
+    jour-là, de telle heure à telle heure. Le refus d'avant devient une pose, et le solveur lit la même
+    ouverture pour l'autre match du jour.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et deux matchs à domicile le même mercredi, un par équipe, et aucune autre fenêtre d'accès le mercredi
+    Alors poser le premier à la main ce mercredi à 19h00 est refusé, faute d'accès ce jour-là
+    Quand j'ouvre ce gymnase ce mercredi de 18h00 à 22h00 pour une coupe
+    Alors poser le premier à la main ce mercredi à 19h00 est accepté
+    Quand je lance le placement des matchs
+    Alors le second match du mercredi est posé par le solveur dans ce gymnase, dans l'ouverture
+
   Scénario: Deux domiciles à deux heures d'écart tiennent dans le même gymnase
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

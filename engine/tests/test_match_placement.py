@@ -727,7 +727,7 @@ def test_an_off_grid_kickoff_without_its_venue_is_not_a_candidate() -> None:
     result = solve_match_placement(
         payload(matches=[to_place(importedKickoff="15:10")], venues=[venue()], teams=[team()])
     )
-    assert 0 == int(position(result)[1][3:]) % 15
+    assert int(position(result)[1][3:]) % 15 == 0
 
 
 @pytest.mark.parametrize(
@@ -815,7 +815,7 @@ def test_two_matches_imported_on_the_same_slot_are_both_placed_without_overlap()
     assert result["unplaced"] == []
     kicks = {position(result, "m1")[1], position(result, "m2")[1]}
     assert "15:00" in kicks
-    assert 2 == len(kicks)
+    assert len(kicks) == 2
 
 
 def test_a_fixed_anchor_on_the_imported_slot_keeps_it() -> None:

@@ -532,6 +532,43 @@ final class ConflictTruthContext extends BaseContext
         $this->assertCoachUnavailableSeverity(4, 'orange');
     }
 
+    #[Given('un match à domicile de l\'équipe posé ce jeudi à 20h45 sur ce gymnase')]
+    public function unMatchPoseCeJeudiSoir(): void
+    {
+        $fixture = $this->apiPost('fixtures', [
+            'teamId' => $this->teamId,
+            'matchDate' => $this->matchThursday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire jetable',
+            'venueId' => $this->venueId,
+            'kickoffTime' => '20:45',
+            'status' => 'PLACED',
+        ], $this->token);
+        $this->fixtureId = $this->idOf($fixture, 'match posé');
+    }
+
+    #[Then('le radar signale l\'entraînement de l\'équipe sœur dans le gymnase de ce match, en gravité 5')]
+    public function leRadarSignaleLEntrainementDansLeGymnase(): void
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'VENUE_TRAINING_OVERLAP' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            if (!\is_array($fixtureBlock) || $this->fixtureId !== ($fixtureBlock['fixtureId'] ?? null)) {
+                continue;
+            }
+            $teams = array_column(\is_array($conflict['trainings'] ?? null) ? $conflict['trainings'] : [], 'teamId');
+            if (5 !== ($conflict['severity'] ?? null) || !\in_array($this->sisterTeamId, $teams, true)) {
+                throw new RuntimeException(\sprintf('signal inattendu : %s', json_encode($conflict, \JSON_THROW_ON_ERROR)));
+            }
+
+            return;
+        }
+
+        throw new RuntimeException('aucun VENUE_TRAINING_OVERLAP ne porte ce match');
+    }
+
     #[When('je demande les conflits des matchs')]
     public function jeDemandeLesConflits(): void
     {

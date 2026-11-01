@@ -152,6 +152,38 @@ final class MatchTenantIsolationTest extends WebTestCase
 
     // ── Capacité matchs (P1-4 PR B) : mêmes frontières pour les deux nouvelles entités ──
 
+    /** Axe tenant : une ouverture datée (même table, colonnes neuves) reste scopée, tamponnée et hors d'atteinte d'un autre club. */
+    public function testDatedOpeningsAreScopedAndStampTheResolvedClub(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $venueA = $this->createVenue($clubA, $seasonA, 'Gymnase A');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('b');
+        $this->createVenue($clubB, $seasonB, 'Gymnase B');
+
+        $body = json_encode(['venueId' => $venueA->getId(), 'openingDate' => '2026-11-11', 'startTime' => '14:00', 'endTime' => '20:00', 'label' => 'Coupe du club A'], \JSON_THROW_ON_ERROR);
+        $this->client->request('POST', '/api/venue_match_windows', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], $body);
+        self::assertResponseStatusCodeSame(201);
+        $id = (string) $this->responseData()['id'];
+
+        $window = $this->em->getRepository(VenueMatchWindow::class)->find($id);
+        self::assertInstanceOf(VenueMatchWindow::class, $window);
+        self::assertSame($clubA->getId(), $window->getClubId());
+        self::assertSame($seasonA->getId(), $window->getSeasonId());
+
+        $this->client->request('GET', '/api/venue_match_windows', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        self::assertCount(0, $this->responseData()['member'] ?? ['sentinel'], 'B ne voit pas la ligne ni son motif');
+
+        $this->client->request('GET', '/api/venue_match_windows/' . $id, [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(404);
+        $this->client->request('DELETE', '/api/venue_match_windows/' . $id, [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(404);
+
+        // B ne peut pas ouvrir le gymnase de A.
+        $this->client->request('POST', '/api/venue_match_windows', [], [], $this->authHeaders($userB) + ['CONTENT_TYPE' => 'application/json'], $body);
+        self::assertNotSame(201, $this->client->getResponse()->getStatusCode());
+    }
+
     public function testVenueMatchWindowsAreScopedAndStampTheResolvedClub(): void
     {
         [$clubA, $userA, $seasonA] = $this->createClubUser('a');

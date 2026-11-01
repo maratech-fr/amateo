@@ -257,6 +257,170 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertSame('TO_PLACE', $byId[$seededFixture->getId()]['kind'] ?? null);
     }
 
+    /**
+     * D19 (axe contrat, 1.9) : seule une ligne datée porte `openingDate`, et le `label` ne quitte
+     * jamais le backend ; les lignes jour/férié gardent à l'octet leur forme 1.8.
+     */
+    #[Group('phase1')]
+    public function testADatedWindowCarriesItsDateAndWeeklyLinesKeepTheirForm(): void
+    {
+        [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $this->persistOpening($em, $club, $season, $venue, $fixture->getMatchDate()->format('Y-m-d'));
+        $em->flush();
+
+        $windows = $builder->build($club, $season->getId())['payload']['venues'][0]['matchWindows'];
+        self::assertCount(2, $windows);
+        self::assertSame(['dayOfWeek' => 6, 'start' => '14:00', 'end' => '22:00', 'appliesOnPublicHolidays' => false], $windows[0]);
+        $dated = $windows[1];
+        self::assertSame($fixture->getMatchDate()->format('Y-m-d'), $dated['openingDate'] ?? null);
+        self::assertSame('09:00', $dated['start']);
+        self::assertSame('12:00', $dated['end']);
+        self::assertArrayNotHasKey('label', $dated);
+        self::assertNull($dated['dayOfWeek'] ?? null);
+        self::assertFalse($dated['appliesOnPublicHolidays'] ?? false);
+    }
+
+    /**
+     * A5 : 60 ouvertures dont une seule à une date à placer, avec le bouton global (`window` nul) comme
+     * avec une fenêtre : le plafond moteur de 50 lignes par gymnase (`MAX_WINDOWS_PER_VENUE`) tient, le run n'est pas
+     * refusé par une saison chargée. Les lignes hebdo, elles, partent toujours.
+     */
+    #[Group('phase1')]
+    public function testOnlyOpeningsOfADateToPlaceAreEmitted(): void
+    {
+        [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $useful = $fixture->getMatchDate()->format('Y-m-d');
+        $this->persistOpening($em, $club, $season, $venue, $useful);
+        for ($i = 1; $i < 60; ++$i) {
+            $this->persistOpening($em, $club, $season, $venue, $fixture->getMatchDate()->modify('+' . $i . ' days')->format('Y-m-d'));
+        }
+        $em->flush();
+
+        foreach (['bouton global' => null, 'fenêtre' => ['from' => $useful, 'to' => $fixture->getMatchDate()->modify('+70 days')->format('Y-m-d')]] as $case => $window) {
+            $windows = $builder->build($club, $season->getId(), $window)['payload']['venues'][0]['matchWindows'];
+            $dates = array_values(array_filter(array_column($windows, 'openingDate')));
+            self::assertSame([$useful], $dates, $case . ' : la seule date à placer');
+            self::assertCount(2, $windows, $case . ' : la ligne hebdo plus l\'ouverture utile');
+        }
+    }
+
+    /** A5 : la date d'une ANCRE ne justifie pas une ouverture, seules comptent les dates à placer. */
+    #[Group('phase1')]
+    public function testAnOpeningOnlyUsedByAnAnchorIsNotEmitted(): void
+    {
+        [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $fixture->setVenueId($venue->getId());
+        $fixture->setKickoffTime(new DateTimeImmutable('10:00'));
+        $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
+        $this->persistOpening($em, $club, $season, $venue, $fixture->getMatchDate()->format('Y-m-d'));
+        $em->flush();
+
+        $windows = $builder->build($club, $season->getId())['payload']['venues'][0]['matchWindows'];
+        self::assertSame([], array_values(array_filter(array_column($windows, 'openingDate'))));
+    }
+
+    /** A1 : un match à placer importé avec gymnase ET heure confie sa position au moteur, UNPLACED comme PLACED+SOLVER. */
+    #[Group('phase1')]
+    public function testAnImportedMatchToPlaceCarriesItsImportedPosition(): void
+    {
+        [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $fixture->setExternalRef('FBI-42');
+        $fixture->setVenueId($venue->getId());
+        $fixture->setKickoffTime(new DateTimeImmutable('15:10'));
+        $em->flush();
+
+        $match = $builder->build($club, $season->getId())['payload']['matches'][0];
+        self::assertSame('TO_PLACE', $match['kind']);
+        self::assertSame($venue->getId(), $match['importedVenueId'] ?? null);
+        self::assertSame('15:10', $match['importedKickoff'] ?? null);
+
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
+        $em->flush();
+        $match = $builder->build($club, $season->getId())['payload']['matches'][0];
+        self::assertSame('TO_PLACE', $match['kind']);
+        self::assertSame($venue->getId(), $match['importedVenueId'] ?? null);
+        self::assertSame('15:10', $match['importedKickoff'] ?? null);
+    }
+
+    /** A1 : manuel, gymnase seul, heure seule : champs absents ; une ancre n'en porte jamais. */
+    #[Group('phase1')]
+    public function testNoImportedPositionWithoutRefOrWithoutBothFields(): void
+    {
+        [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+
+        $fixture->setVenueId($venue->getId());
+        $fixture->setKickoffTime(new DateTimeImmutable('15:00'));
+        $em->flush();
+        self::assertArrayNotHasKey('importedVenueId', $builder->build($club, $season->getId())['payload']['matches'][0], 'sans référence d\'import');
+
+        $fixture->setExternalRef('FBI-43');
+        $fixture->setVenueId(null);
+        $em->flush();
+        $match = $builder->build($club, $season->getId())['payload']['matches'][0];
+        self::assertArrayNotHasKey('importedVenueId', $match, 'heure sans gymnase');
+        self::assertArrayNotHasKey('importedKickoff', $match, 'heure sans gymnase');
+
+        $fixture->setVenueId($venue->getId());
+        $fixture->setKickoffTime(null);
+        $em->flush();
+        $match = $builder->build($club, $season->getId())['payload']['matches'][0];
+        self::assertArrayNotHasKey('importedVenueId', $match, 'gymnase sans heure');
+        self::assertArrayNotHasKey('importedKickoff', $match, 'gymnase sans heure');
+
+        $fixture->setKickoffTime(new DateTimeImmutable('15:00'));
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
+        $em->flush();
+        $match = $builder->build($club, $season->getId())['payload']['matches'][0];
+        self::assertSame('FIXED', $match['kind']);
+        self::assertArrayNotHasKey('importedVenueId', $match, 'une ancre ne se replace pas');
+    }
+
+    /** Axe contrat : le vrai moteur accepte le payload 1.9 et pose le match importé à sa position exacte, hors pas de 15 min. */
+    #[Group('contract')]
+    public function testRealEngineKeepsAnImportedPositionOnAnOpening(): void
+    {
+        [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $fixture->setExternalRef('FBI-44');
+        $fixture->setMatchDate(new DateTimeImmutable('2026-11-18')); // mercredi sans ligne hebdo
+        $fixture->setVenueId($venue->getId());
+        $fixture->setKickoffTime(new DateTimeImmutable('09:10'));
+        $this->persistOpening($em, $club, $season, $venue, '2026-11-18');
+        $em->flush();
+
+        $client = HttpClient::create(['timeout' => 5]);
+        try {
+            $response = $client->request('POST', self::ENGINE_URL, ['json' => $builder->build($club, $season->getId())['payload']]);
+            self::assertSame(200, $response->getStatusCode(), $response->getContent(false));
+        } catch (TransportExceptionInterface $exception) {
+            self::markTestSkipped('Engine not available: ' . $exception->getMessage());
+        }
+        $placement = $response->toArray(false)['placements'][0] ?? [];
+        self::assertSame($venue->getId(), $placement['venueId'] ?? null);
+        self::assertSame('09:10', substr((string) ($placement['kickoff'] ?? ''), 0, 5));
+    }
+
+    private function persistOpening(EntityManagerInterface $em, Club $club, Season $season, Venue $venue, string $date): void
+    {
+        $opening = new VenueMatchWindow;
+        $opening->setClubId($club->getId());
+        $opening->setSeasonId($season->getId());
+        $opening->setVenueId($venue->getId());
+        $opening->setOpeningDate(new DateTimeImmutable($date));
+        $opening->setLabel('Coupe');
+        $opening->setStartTime(new DateTimeImmutable('09:00'));
+        $opening->setEndTime(new DateTimeImmutable('12:00'));
+        $em->persist($opening);
+    }
+
     private function makeFixture(EntityManagerInterface $em, Club $club, Season $season, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
     {
         $fixture = new Fixture;

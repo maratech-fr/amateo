@@ -189,6 +189,29 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertNull($customInTarget);
     }
 
+    /** D12 : la convention mairie se renouvelle, un fait daté non : une ouverture n'existe pas la saison suivante. */
+    public function testADatedOpeningIsNeverCopiedToTheNextSeason(): void
+    {
+        [, $season, $refs] = $this->createClubGraph();
+        $opening = new VenueMatchWindow;
+        $opening->setClubId($season->getClubId());
+        $opening->setSeasonId($season->getId());
+        $opening->setVenueId($refs['venueA']->getId());
+        $opening->setOpeningDate(new DateTimeImmutable('2027-03-14'));
+        $opening->setLabel('Tournoi');
+        $opening->setStartTime(new DateTimeImmutable('09:00'));
+        $opening->setEndTime(new DateTimeImmutable('18:00'));
+        $this->em->persist($opening);
+        $this->em->flush();
+
+        $target = $this->service->transition($season);
+
+        $copied = $this->em->getRepository(VenueMatchWindow::class)->findBy(['seasonId' => $target->getId()]);
+        self::assertCount(1, $copied, 'seule la ligne du samedi suit');
+        self::assertSame(6, $copied[0]->getDayOfWeek());
+        self::assertNull($copied[0]->getOpeningDate());
+    }
+
     public function testConstraintsArePermanentOnlyWithRemappedTargets(): void
     {
         [, $season, $refs] = $this->createClubGraph();

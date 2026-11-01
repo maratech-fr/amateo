@@ -100,5 +100,438 @@
     { "name": "borne de fin INCLUSE", "matchDate": "2026-10-16", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": true },
     { "name": "hors intervalle, avant — dehors", "matchDate": "2026-08-30", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": false },
     { "name": "hors intervalle, après — dehors", "matchDate": "2026-10-17", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": false }
+  ],
+  "accessCases": [
+    {
+      "name": "ouverture un mercredi ordinaire, coup d'envoi dedans",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "14:00"
+      ]
+    },
+    {
+      "name": "ouverture un jour férié, coup d'envoi dedans",
+      "venueId": "v1",
+      "matchDate": "2026-11-11",
+      "isHoliday": true,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-11"
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "14:00"
+      ]
+    },
+    {
+      "name": "férié : la ligne « Jours fériés » reste lue à côté de l'ouverture",
+      "venueId": "v1",
+      "matchDate": "2026-11-11",
+      "isHoliday": true,
+      "kickoff": "11:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "10:00",
+          "endTime": "12:00",
+          "appliesOnPublicHolidays": true,
+          "openingDate": null
+        },
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-11"
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "10:00",
+        "14:00"
+      ]
+    },
+    {
+      "name": "férié : l'ouverture s'ajoute à la ligne « Jours fériés »",
+      "venueId": "v1",
+      "matchDate": "2026-11-11",
+      "isHoliday": true,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "10:00",
+          "endTime": "12:00",
+          "appliesOnPublicHolidays": true,
+          "openingDate": null
+        },
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-11"
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "10:00",
+        "14:00"
+      ]
+    },
+    {
+      "name": "férié : entre la ligne et l'ouverture, refusé",
+      "venueId": "v1",
+      "matchDate": "2026-11-11",
+      "isHoliday": true,
+      "kickoff": "13:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "10:00",
+          "endTime": "12:00",
+          "appliesOnPublicHolidays": true,
+          "openingDate": null
+        },
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-11"
+        }
+      ],
+      "inside": false,
+      "applicableStarts": [
+        "10:00",
+        "14:00"
+      ]
+    },
+    {
+      "name": "jour ordinaire : l'ouverture s'ajoute à la ligne du jour",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "09:30",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": 3,
+          "startTime": "18:00",
+          "endTime": "22:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": null
+        },
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "09:00",
+          "endTime": "12:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "09:00",
+        "18:00"
+      ]
+    },
+    {
+      "name": "jour ordinaire : la ligne du jour reste lue à côté de l'ouverture",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "18:30",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": 3,
+          "startTime": "18:00",
+          "endTime": "22:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": null
+        },
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "09:00",
+          "endTime": "12:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "09:00",
+        "18:00"
+      ]
+    },
+    {
+      "name": "borne de début de l'ouverture INCLUSE",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "14:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "14:00"
+      ]
+    },
+    {
+      "name": "borne de fin de l'ouverture EXCLUE",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "20:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "inside": false,
+      "applicableStarts": [
+        "14:00"
+      ]
+    },
+    {
+      "name": "ouverture hors plage, refusé",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "12:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "inside": false,
+      "applicableStarts": [
+        "14:00"
+      ]
+    },
+    {
+      "name": "ouverture d'une AUTRE date, même jour de semaine : refusé",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-11"
+        }
+      ],
+      "inside": false,
+      "applicableStarts": []
+    },
+    {
+      "name": "ouverture d'un AUTRE gymnase : refusé",
+      "venueId": "v2",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "inside": false,
+      "applicableStarts": []
+    },
+    {
+      "name": "une ligne de jour de semaine ne fuit pas un jour férié",
+      "venueId": "v1",
+      "matchDate": "2026-11-11",
+      "isHoliday": true,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": 3,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": null
+        }
+      ],
+      "inside": false,
+      "applicableStarts": []
+    },
+    {
+      "name": "une ligne « Jours fériés » ne fuit pas un jour ordinaire",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": true,
+          "openingDate": null
+        }
+      ],
+      "inside": false,
+      "applicableStarts": []
+    },
+    {
+      "name": "la ligne du jour vaut sans aucune ouverture",
+      "venueId": "v1",
+      "matchDate": "2026-11-18",
+      "isHoliday": false,
+      "kickoff": "15:00",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": 3,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": null
+        }
+      ],
+      "inside": true,
+      "applicableStarts": [
+        "14:00"
+      ]
+    }
+  ],
+  "adoptionCases": [
+    {
+      "name": "aucune ligne : accès non adoptés",
+      "windows": [],
+      "adopted": false
+    },
+    {
+      "name": "seulement des ouvertures datées : accès non adoptés",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-11"
+        },
+        {
+          "venueId": "v2",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-18"
+        }
+      ],
+      "adopted": false
+    },
+    {
+      "name": "une ligne de jour de semaine : adoptés",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": 6,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": null
+        }
+      ],
+      "adopted": true
+    },
+    {
+      "name": "une ligne « Jours fériés » : adoptés",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": true,
+          "openingDate": null
+        }
+      ],
+      "adopted": true
+    },
+    {
+      "name": "une ouverture et une ligne de jour : adoptés",
+      "windows": [
+        {
+          "venueId": "v1",
+          "dayOfWeek": null,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": "2026-11-11"
+        },
+        {
+          "venueId": "v1",
+          "dayOfWeek": 6,
+          "startTime": "14:00",
+          "endTime": "20:00",
+          "appliesOnPublicHolidays": false,
+          "openingDate": null
+        }
+      ],
+      "adopted": true
+    }
   ]
 }

@@ -59,6 +59,22 @@ final class ConflictFingerprinterTest extends TestCase
         self::assertSame('VENUE_OVERLAP:venue-3:fix-a,fix-z', $this->fingerprinter->fingerprint($conflict));
     }
 
+    /** D8 : le signal d'entraînement n'a qu'une identité par match ; la liste des séances peut bouger sans la changer. */
+    public function testVenueTrainingOverlapIsTypePlusFixture(): void
+    {
+        $conflict = [
+            'type' => 'VENUE_TRAINING_OVERLAP',
+            'severity' => 5,
+            'venueId' => 'venue-1',
+            'fixture' => ['fixtureId' => 'fix-42'],
+            'trainings' => [['teamId' => 't1', 'start' => '18:00', 'end' => '19:30']],
+        ];
+        $moved = ['trainings' => [['teamId' => 't2', 'start' => '19:00', 'end' => '20:30']]] + $conflict;
+
+        self::assertSame('VENUE_TRAINING_OVERLAP:fix-42', $this->fingerprinter->fingerprint($conflict));
+        self::assertSame('VENUE_TRAINING_OVERLAP:fix-42', $this->fingerprinter->fingerprint($moved));
+    }
+
     public function testSingleFixtureTypesAreFixtureId(): void
     {
         foreach (['LEAGUE_WINDOW_VIOLATION', 'ACCESS_WINDOW_LOST', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT'] as $type) {
