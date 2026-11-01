@@ -193,8 +193,9 @@ describe("FeedbackDialog — retours serveur", () => {
     expect(useToastStore.getState().toasts.some((t) => t.message.includes("Signalement envoyé"))).toBe(true);
   });
 
-  it("sur 429 : message doux, la modale reste ouverte", async () => {
-    mockSubmit.mockRejectedValue(httpError(429, { error: "throttled" }));
+  // Sans message du serveur, le 429 garde son repli doux. Avec message : `FeedbackDialogRefusal.test.tsx`.
+  it("sur 429 sans message du serveur : message doux, la modale reste ouverte", async () => {
+    mockSubmit.mockRejectedValue(httpError(429));
     const onClose = vi.fn();
     renderWithProviders(<FeedbackDialog variant="free" onClose={onClose} />, { route: "/matchs" });
 
