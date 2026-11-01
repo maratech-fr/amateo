@@ -193,8 +193,10 @@ describe("ExportMatchesDialog — le sélecteur d'équipe", () => {
     const user = userEvent.setup();
     const { dialog } = open({ teamId: "team-13", from: "2026-11-01", to: "2026-11-30" });
 
+    // Le déclencheur vit dans la fenêtre ; sa liste s'ouvre dans un portail, donc hors d'elle.
+    expect(teamTrigger(dialog)).toBeInTheDocument();
     const list = await openListbox(user, TEXTS.teamLabel);
-    expect(dialog.getByRole("listbox")).toBe(list);
+    expect(teamTrigger(dialog)).toHaveAttribute("aria-expanded", "true");
 
     const ctc = within(list).getByRole("option", { name: /U15 F/ });
     expect(within(ctc).getByRole("img", { name: "Entente (CTC) avec Les Lions" })).toBeInTheDocument();
