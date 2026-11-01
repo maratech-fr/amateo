@@ -48,9 +48,13 @@ def _collect_session_causes(
             for cause in closures:
                 key = (cause.get("kind"), cause.get("constraintId"), cause.get("label"))
                 aggregated[team_id][key] += 1
-                interval, case = cause.get("interval"), cause.get("case")
-                if interval and case and cause.get("coachId") and case[0] < interval[0] < case[1]:
-                    cuts[team_id].add((str(cause["coachId"]), *interval, *case))
+            # Un créneau fermé aussi par une autre règle ne pouvait pas servir l'équipe : corriger la plage
+            # ne lui rendrait rien, il n'est jamais cité.
+            if all(cause.get("kind") == "coach_unavailability" for cause in closures):
+                for cause in closures:
+                    interval, case = cause.get("interval"), cause.get("case")
+                    if interval and case and cause.get("coachId") and case[0] < interval[0] < case[1]:
+                        cuts[team_id].add((str(cause["coachId"]), *interval, *case))
         else:
             open_counts[team_id] += 1  # existe, non fermé, non retenu → resté ouvert
 
@@ -76,7 +80,7 @@ def _collect_session_causes(
 # ne touche à AUCUN message existant.
 
 
-def _imprecise_entry_suggestion(coach: str, iv_from: int, iv_to: int, start: int, end: int) -> str:
+def _imprecise_entry_sentence(coach: str, iv_from: int, iv_to: int, start: int, end: int) -> str:
     """Une plage saisie trop tôt coûte une séance : dire laquelle et quoi corriger."""
     window = f"dès {_format_time(iv_from)}" if iv_to >= 1440 else f"de {_format_time(iv_from)} à {_format_time(iv_to)}"
     return (
@@ -174,12 +178,16 @@ def _diagnose_session_below_effective_min(
             # (aucune donnée mesurée) → causes vide + openCandidates None : on garde alors le
             # message NEUTRE et les suggestions statiques, sans inventer de cause.
             team_causes = causes_by_team.get(team_id, {})
-            # Une indisponibilité qui commence PENDANT la séance : la phrase remplace les suggestions
-            # statiques. Une plage qui couvre le début, ou la journée, n'est pas une saisie imprécise.
-            imprecise = [
-                _imprecise_entry_suggestion(coach_names.get(coach_id, coach_id), *cut)
-                for coach_id, *cut in team_causes.get("cuts", ())
-            ]
+            # Une indisponibilité qui commence PENDANT la séance : la phrase suit le fait, dans le ``message``
+            # (seul affiché par le panneau). Une par coach et par plage, sur son premier créneau coupé (``cuts``
+            # est trié). Une plage qui couvre le début, ou la journée, n'est pas une saisie imprécise.
+            first_cuts: dict[tuple[str, int, int], tuple[int, int]] = {}
+            for coach_id, iv_from, iv_to, start, end in team_causes.get("cuts", ()):
+                first_cuts.setdefault((coach_id, iv_from, iv_to), (start, end))
+            imprecise = "".join(
+                f" {_imprecise_entry_sentence(coach_names.get(coach_id, coach_id), iv_from, iv_to, *case)}"
+                for (coach_id, iv_from, iv_to), case in first_cuts.items()
+            )
             diagnostics.append(
                 {
                     "id": f"diag-session-below-min-{team_id}",
@@ -188,10 +196,9 @@ def _diagnose_session_below_effective_min(
                     "teamId": team_id,
                     "message": (
                         f"L'équipe {team_name} : {spw} séance(s) demandée(s) par semaine, "
-                        f"seulement {placed} placée(s){reason}"
+                        f"seulement {placed} placée(s){reason}{imprecise}"
                     ),
-                    "suggestions": imprecise
-                    or [
+                    "suggestions": [
                         "Ajoutez de la disponibilité de gymnase ou un créneau supplémentaire pour cette équipe.",
                         "Vérifiez le tier de priorité et le nombre de séances/semaine de l'équipe.",
                     ],
