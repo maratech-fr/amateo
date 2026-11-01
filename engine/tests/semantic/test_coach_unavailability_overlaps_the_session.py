@@ -202,6 +202,42 @@ def test_a_block_keeps_its_case_while_one_coach_of_the_union_stays() -> None:
     assert sorted(slot["teamId"] for slot in result["slots"]) == ["U11A", "U11B"]
 
 
+def _reserved_block_solve(*locked_teams: str) -> dict[str, Any]:
+    """Le groupe U11A + U11B, toute son union partant à 19:00, les membres donnés déjà réservés sur sa case."""
+    payload = make_payload(
+        teams=[make_team("U11A"), make_team("U11B")],
+        venues=[make_venue("V", [(MONDAY, "18:00")], capacity=2)],
+        coaches=_coaches(),
+        constraints=[
+            team_coach("tc-a", "U11A", "anna"),
+            team_coach("tc-b", "U11B", "ben"),
+            _anna_off(from_time="19:00"),
+            _anna_off(from_time="19:00", coach_id="ben"),
+        ],
+        slot_templates=[_locked(team, "V", MONDAY) for team in locked_teams],
+    )
+    payload["sharedBlocks"] = [{"id": "b", "teamIds": ["U11A", "U11B"], "commonSessions": 1}]
+    return solve_payload(payload)
+
+
+def test_a_block_whose_members_are_all_reserved_stays_judged_at_its_start() -> None:
+    """Rail de l'existant : un groupe entièrement réservé ne rend pas la génération infaisable, son union part à
+    19:00 mais tient la séance à son début."""
+    result = _reserved_block_solve("U11A", "U11B")
+
+    assert result["status"] == "completed", f"le groupe réservé est gardé : {result['diagnostics']}"
+    assert sorted(slot["teamId"] for slot in result["slots"]) == ["U11A", "U11B"]
+    assert _diagnostics_of(result, "conflict") == []
+    assert _diagnostics_of(result, "shared_block_not_honored") == []
+
+
+def test_a_block_with_a_member_left_to_place_is_judged_on_the_overlap() -> None:
+    """TÉMOIN : U11B reste à poser, c'est une pose libre. La case ne sert pas le groupe, U11B n'y rejoint pas U11A."""
+    result = _reserved_block_solve("U11A")
+
+    assert [slot["teamId"] for slot in result["slots"]] == ["U11A"], f"{result['status']} : {result['diagnostics']}"
+
+
 def test_a_day_whose_every_slot_is_cut_for_the_employees_is_called_impossible() -> None:
     """La règle salarié suit la pose : leur plage dès 19:00 coupe l'unique 18:00-19:30 du jeudi, le jour est
     impossible, on ne le reproche pas au planning."""
