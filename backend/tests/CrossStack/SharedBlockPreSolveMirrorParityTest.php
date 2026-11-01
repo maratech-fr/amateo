@@ -109,9 +109,76 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         );
     }
 
+    /**
+     * NR (groupe réservé) — un groupe réservé entier, sans coach au début, n'est pas un échec : le miroir
+     * se tait ET le moteur produit le planning en nommant l'écart. Le TÉMOIN du scénario sans réservation
+     * (miroir avertit, moteur `failed`) est {@see testBlockWithoutUnionCoachIsWarnedAndInfeasibleWhileServableBlockIsSilentAndCompleted}.
+     */
+    public function testAFullyReservedBlockIsNeitherAnnouncedAsFailureNorFailed(): void
+    {
+        $payload = [
+            ...$this->payload(venueDays: [2], aDays: [3], bDays: [3]),
+            'slotTemplates' => [$this->pin('t1', 2), $this->pin('t2', 2)],
+        ];
+
+        self::assertSame(
+            [],
+            array_values(array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'Groupe'))),
+            'PARITÉ ROMPUE : le miroir annonce un échec pour un groupe entièrement réservé.',
+        );
+        $result = $this->solve($payload);
+        self::assertSame('completed', $result['status'], 'PARITÉ ROMPUE : le miroir se tait mais le moteur échoue.');
+        self::assertContains('rule_sacrificed', array_column($result['diagnostics'], 'type'), 'la réservation gagne, et l\'écart est nommé');
+    }
+
+    /** NR (groupe réservé) — plus de cases réservées que de séances communes : le miroir avertit ET le moteur échoue. */
+    public function testAnOverpinnedBlockIsWarnedAndFails(): void
+    {
+        $payload = [
+            ...$this->payload(venueDays: [2, 3], aDays: [2, 3], bDays: [2, 3]),
+            'slotTemplates' => [$this->pin('t1', 2), $this->pin('t2', 2), $this->pin('t1', 3), $this->pin('t2', 3)],
+        ];
+
+        self::assertNotEmpty(
+            array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'réservé sur 2 cases')),
+            'le miroir doit AVERTIR : ces réservations se contredisent',
+        );
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir annonce un échec mais le moteur a résolu.');
+    }
+
+    /** NR (groupe réservé) — deux groupes imbriqués réunis par une seule case réservée : le miroir avertit ET le moteur échoue. */
+    public function testNestedBlocksOnOneReservedCaseAreWarnedAndFail(): void
+    {
+        $payload = [
+            ...$this->payload(venueDays: [2], aDays: [2], bDays: [2]),
+            'teams' => [$this->team('t1'), $this->team('t2'), $this->team('t3')],
+            'sharedBlocks' => [
+                ['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1],
+                ['id' => 'c', 'teamIds' => ['t1', 't2', 't3'], 'commonSessions' => 1],
+            ],
+            'slotTemplates' => [$this->pin('t1', 2), $this->pin('t2', 2), $this->pin('t3', 2)],
+        ];
+
+        self::assertNotEmpty(
+            array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'une seule case réservée')),
+            'le miroir doit AVERTIR : une seule case pour deux séances communes',
+        );
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir annonce un échec mais le moteur a résolu.');
+    }
+
     protected function setUp(): void
     {
         $this->warnings = new PreSolvePreventionWarnings;
+    }
+
+    /**
+     * Une réservation de l'équipe sur l'unique gymnase, ce jour à 18:00.
+     *
+     * @return array<string, mixed>
+     */
+    private function pin(string $teamId, int $day): array
+    {
+        return ['id' => 'pin-' . $teamId . '-' . $day, 'teamId' => $teamId, 'venueId' => '11111111-1111-4111-8111-111111111111', 'dayOfWeek' => $day, 'startTime' => '18:00', 'durationMinutes' => 90, 'lockLevel' => 'HARD'];
     }
 
     /**

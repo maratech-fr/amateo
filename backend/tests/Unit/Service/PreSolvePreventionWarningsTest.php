@@ -977,9 +977,214 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe'))));
     }
 
+    // ── Groupe réservé : la réservation gagne, le Récap ne crie pas à l'échec (miroir de la parité
+    // CrossStack/SharedBlockPreSolveMirrorParityTest et de engine/tests/semantic/test_coach_unavailability_overlaps_the_session.py) ──
+
+    /** A et B réservés sur leur case, l'union part à 19:00 : la génération tient, aucun « échouera ». */
+    public function testAFullyReservedBlockCutDuringTheSlotIsSilent(): void
+    {
+        $payload = [...$this->overlapBlockPayload('19:00'), 'slotTemplates' => $this->pinsOf(['t1', 't2'], 2)];
+
+        self::assertSame([], $this->groupWarnings($this->warnings->detect($payload)));
+    }
+
+    /** A et B réservés sur leur case, l'union absente au début : le planning sortira avec une alerte, pas un échec. */
+    public function testAFullyReservedBlockAbsentAtItsStartIsSilent(): void
+    {
+        $payload = [...$this->absentOnTuesdayBlock([2]), 'slotTemplates' => $this->pinsOf(['t1', 't2'], 2)];
+
+        self::assertSame([], $this->groupWarnings($this->warnings->detect($payload)));
+    }
+
+    /** 2 séances communes : la case réservée en vaut une, le mercredi à coach donne l'autre. Silence. */
+    public function testATwoSessionBlockWithOneReservedCaseAndOneServableIsSilent(): void
+    {
+        $payload = [
+            ...$this->absentOnTuesdayBlock([2, 3]),
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 2]],
+            'slotTemplates' => $this->pinsOf(['t1', 't2'], 2),
+        ];
+
+        self::assertSame([], $this->groupWarnings($this->warnings->detect($payload)));
+    }
+
+    /** TÉMOIN : t2 reste à poser sur une case sans coach, c'est une pose libre, le moteur échouera. Le Récap le dit. */
+    public function testAPartiallyReservedBlockIsStillWarned(): void
+    {
+        $payload = [...$this->absentOnTuesdayBlock([2]), 'slotTemplates' => $this->pinsOf(['t1'], 2)];
+
+        $found = $this->groupWarnings($this->warnings->detect($payload));
+
+        self::assertCount(1, $found);
+        self::assertStringContainsString('la génération échouera', $found[0]);
+    }
+
+    /** Plus de cases réservées que de séances communes : ces réservations se contredisent, texte exact, accord au pluriel. */
+    public function testAnOverpinnedBlockIsWarnedWithItsCounts(): void
+    {
+        $oneSession = [...$this->servableBlock([2, 3]), 'slotTemplates' => [...$this->pinsOf(['t1', 't2'], 2), ...$this->pinsOf(['t1', 't2'], 3)]];
+        self::assertContains(
+            'Groupe U9F1, U9F2 : réservé sur 2 cases pour 1 séance commune — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+            $this->warnings->detect($oneSession),
+        );
+
+        $twoSessions = [
+            ...$this->servableBlock([2, 3, 4]),
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 2]],
+            'slotTemplates' => [...$this->pinsOf(['t1', 't2'], 2), ...$this->pinsOf(['t1', 't2'], 3), ...$this->pinsOf(['t1', 't2'], 4)],
+        ];
+        self::assertContains(
+            'Groupe U9F1, U9F2 : réservé sur 3 cases pour 2 séances communes — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+            $this->warnings->detect($twoSessions),
+        );
+    }
+
+    /** Deux groupes imbriqués réunis par une seule case réservée : une case ne porte qu'une séance commune, texte exact. */
+    public function testNestedBlocksOnASingleReservedCaseAreWarned(): void
+    {
+        $payload = [
+            ...$this->servableBlock([2]),
+            'teams' => [$this->team('t1', 'U9F1'), $this->team('t2', 'U9F2'), $this->team('t3', 'U9F3')],
+            'sharedBlocks' => [
+                ['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1],
+                ['id' => 'c', 'teamIds' => ['t1', 't2', 't3'], 'commonSessions' => 1],
+            ],
+            'slotTemplates' => $this->pinsOf(['t1', 't2', 't3'], 2),
+        ];
+
+        self::assertContains(
+            'Groupes U9F1, U9F2 et U9F1, U9F2, U9F3 : une seule case réservée les réunit, pour 2 séances communes à placer — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+            $this->warnings->detect($payload),
+        );
+    }
+
+    /** 2 séances, mardi réservé, mercredi sans coach : le Récap cite l'indisponibilité du mercredi, jamais celle de la case réservée, qui n'y est pour rien. */
+    public function testAWarnedBlockCitesOnlyTheRulesClosingItsUnreservedCases(): void
+    {
+        $payload = [
+            ...$this->absentOnTuesdayBlock([2, 3]),
+            'constraints' => [
+                $this->teamCoach('t1', 'cA'),
+                $this->teamCoach('t2', 'cB'),
+                $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Indispo mardi A'),
+                $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Indispo mardi B'),
+                $this->coachAvailabilityRule('wedA', 'cA', unavailableDays: [3], name: 'Indispo mercredi A'),
+                $this->coachAvailabilityRule('wedB', 'cB', unavailableDays: [3], name: 'Indispo mercredi B'),
+            ],
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 2]],
+            'slotTemplates' => $this->pinsOf(['t1', 't2'], 2),
+        ];
+
+        $found = $this->groupWarnings($this->warnings->detect($payload));
+
+        self::assertCount(1, $found);
+        self::assertStringContainsString('Indispo mercredi A', $found[0]);
+        self::assertStringNotContainsString('Indispo mardi', $found[0]);
+    }
+
+    // ── Jour imposé fermé par une autre règle : le moteur crédite le jour par le verrou ──────────
+
+    /** Le verrou sur un jour imposé sert l'exigence, y compris un jour imposé que le Récap ne compte pas candidat (mercredi interdit). */
+    public function testAForcedDayClosedByAnotherRuleIsSilentWhenALockSitsOnAForcedDay(): void
+    {
+        foreach ([[[1], [], 1], [[1, 3], [3], 3]] as [$forced, $forbidden, $lockDay]) {
+            $found = $this->warnings->detect([
+                ...$this->payload(
+                    venues: [$this->venueWithStarts('v1', 'Matéo', [[1, '18:00:00'], [3, '18:00:00']])],
+                    teams: [$this->team('t1', 'U13 F1')],
+                    coaches: [$this->coach('c1', 'Anna', 'B')],
+                    constraints: [
+                        $this->dayRule('TEAM', 't1', ['forcedDays' => $forced, 'forbiddenDays' => $forbidden]),
+                        $this->teamCoach('t1', 'c1', 'MAIN'),
+                        $this->coachUnavailable('c1', [1]),
+                    ],
+                ),
+                'slotTemplates' => [$this->reservation('t1', 'v1', $lockDay, '18:00')],
+            ]);
+
+            self::assertSame([], $this->anyClosedForcedDayWarning($found), 'verrou le jour ' . $lockDay);
+        }
+    }
+
+    /** TÉMOIN : un verrou un autre jour ne sert pas l'exigence du lundi, l'échec reste annoncé. */
+    public function testAForcedDayClosedByAnotherRuleStaysWarnedWhenTheLockSitsElsewhere(): void
+    {
+        $found = $this->warnings->detect([
+            ...$this->payload(
+                venues: [$this->venueWithStarts('v1', 'Matéo', [[1, '18:00:00'], [2, '18:00:00']])],
+                teams: [$this->team('t1', 'U13 F1', 2)],
+                coaches: [$this->coach('c1', 'Anna', 'B')],
+                constraints: [
+                    $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+                    $this->teamCoach('t1', 'c1', 'MAIN'),
+                    $this->coachUnavailable('c1', [1]),
+                ],
+            ),
+            'slotTemplates' => [$this->reservation('t1', 'v1', 2, '18:00')],
+        ]);
+
+        self::assertCount(1, $this->closedForcedDayWarnings($found));
+    }
+
     protected function setUp(): void
     {
         $this->warnings = new PreSolvePreventionWarnings;
+    }
+
+    /**
+     * Le bloc {t1,t2}, gymnase ouvert les jours donnés, cA et cB indisponibles le mardi.
+     *
+     * @param list<int> $venueDays
+     *
+     * @return array<string, mixed>
+     */
+    private function absentOnTuesdayBlock(array $venueDays): array
+    {
+        return $this->blockPayload(
+            venueDays: $venueDays,
+            coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Indispo mardi A'),
+            coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Indispo mardi B'),
+        );
+    }
+
+    /**
+     * Le bloc {t1,t2}, gymnase ouvert les jours donnés, coachs présents partout.
+     *
+     * @param list<int> $venueDays
+     *
+     * @return array<string, mixed>
+     */
+    private function servableBlock(array $venueDays): array
+    {
+        return $this->blockPayload(
+            venueDays: $venueDays,
+            coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [6]),
+            coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [6]),
+        );
+    }
+
+    /**
+     * Les réservations HARD des équipes sur v1, ce jour à 18:00.
+     *
+     * @param list<string> $teamIds
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function pinsOf(array $teamIds, int $day): array
+    {
+        return array_map(fn (string $teamId): array => $this->reservation($teamId, 'v1', $day, '18:00'), $teamIds);
+    }
+
+    /**
+     * Tout ce que le Récap dit d'un groupe, quel que soit le libellé : un silence se prouve sans dépendre du texte.
+     *
+     * @param list<string> $found
+     *
+     * @return list<string>
+     */
+    private function groupWarnings(array $found): array
+    {
+        return array_values(array_filter($found, static fn (string $w): bool => str_starts_with($w, 'Groupe')));
     }
 
     /**
