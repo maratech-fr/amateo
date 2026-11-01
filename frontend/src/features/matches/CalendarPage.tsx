@@ -588,7 +588,7 @@ export function CalendarPage() {
       {runInFlight ? <NoticeBanner tone="accent" role="status" message={slowNotice ? PLACEMENT_SLOW : PLACEMENT_RUNNING} /> : null}
       {null !== run && "FAILED" === run.status ? <NoticeBanner tone="destructive" role="alert" message={run.result?.error ?? PLACEMENT_FAILED_FALLBACK} /> : null}
 
-      <ExportMatchesDialog open={exportOpen} onClose={() => setExportOpen(false)} teams={teams.data ?? []} defaults={exportDefaults} />
+      <ExportMatchesDialog open={exportOpen} onClose={() => setExportOpen(false)} teams={teams.data ?? []} tiers={priorityTiers.data ?? []} defaults={exportDefaults} />
 
       {/* Filtre PR-1 partagé (équipe/coach/gymnase). */}
       <MatchesFilterBar

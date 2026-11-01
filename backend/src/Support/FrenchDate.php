@@ -33,10 +33,14 @@ final class FrenchDate
 
     /**
      * « du 9 au 15 novembre 2026 », « du 1er novembre au 31 décembre 2026 », et l'année sur les deux
-     * bornes seulement quand elle change : « du 15 décembre 2026 au 15 janvier 2027 ».
+     * bornes seulement quand elle change : « du 15 décembre 2026 au 15 janvier 2027 ». Un seul jour se lit
+     * comme un jour : « du 14 novembre 2026 ».
      */
     public static function range(DateTimeImmutable $from, DateTimeImmutable $to): string
     {
+        if ($from->format('Y-m-d') === $to->format('Y-m-d')) {
+            return 'du ' . self::long($from);
+        }
         if ($from->format('Y') !== $to->format('Y')) {
             return \sprintf('du %s au %s', self::long($from), self::long($to));
         }

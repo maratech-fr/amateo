@@ -4,11 +4,11 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
-import { Select } from "@/shared/components/ui/select";
+import { TeamSelect } from "@/shared/components/ui/team-select";
 import { useCredits } from "@/shared/credits/useCredits";
 import { slugFilename } from "@/shared/lib/download";
 
-import type { Team } from "./api";
+import type { PriorityTier, Team } from "./api";
 import { useExportFixturesPdf } from "./queries";
 import { MATCHES_EXPORT_TEXTS as TEXTS } from "./texts/export";
 
@@ -24,15 +24,16 @@ interface ExportMatchesDialogProps {
   open: boolean;
   onClose: () => void;
   teams: Team[];
+  tiers: PriorityTier[];
   defaults: ExportDefaults;
 }
 
 /** La fenêtre naît à chaque ouverture : elle reprend ce qui est à l'écran à cet instant. */
-export function ExportMatchesDialog({ open, onClose, teams, defaults }: ExportMatchesDialogProps) {
-  return open ? <ExportForm onClose={onClose} teams={teams} defaults={defaults} /> : null;
+export function ExportMatchesDialog({ open, onClose, teams, tiers, defaults }: ExportMatchesDialogProps) {
+  return open ? <ExportForm onClose={onClose} teams={teams} tiers={tiers} defaults={defaults} /> : null;
 }
 
-function ExportForm({ onClose, teams, defaults }: Omit<ExportMatchesDialogProps, "open">) {
+function ExportForm({ onClose, teams, tiers, defaults }: Omit<ExportMatchesDialogProps, "open">) {
   const fieldId = useId();
   const [scope, setScope] = useState<Scope>(null === defaults.teamId ? "club" : "team");
   const [teamId, setTeamId] = useState(defaults.teamId ?? "");
@@ -94,17 +95,8 @@ function ExportForm({ onClose, teams, defaults }: Omit<ExportMatchesDialogProps,
 
         {"team" === scope ? (
           <div className="flex flex-col gap-1">
-            <label htmlFor={`${fieldId}-team`} className="text-muted-foreground">
-              {TEXTS.teamLabel}
-            </label>
-            <Select id={`${fieldId}-team`} value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-              <option value="">{TEXTS.teamPlaceholder}</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </Select>
+            <span className="text-muted-foreground">{TEXTS.teamLabel}</span>
+            <TeamSelect aria-label={TEXTS.teamLabel} teams={teams} tiers={tiers} value={teamId} placeholder={TEXTS.teamPlaceholder} onValueChange={setTeamId} />
           </div>
         ) : null}
 
