@@ -71,6 +71,24 @@ describe("ConflictLine — une ligne qu'un autre coach tient nomme qui tient quo
   });
 });
 
+describe("ConflictLine — une ligne « coach principal indisponible » dit de quel match il s'agit", () => {
+  const coach = { id: "coach-b", firstName: "Lea", lastName: "Martin", gender: "F" } as unknown as Coach;
+  const withCoach = new Map<string, Coach>([["coach-b", coach]]);
+  // 2025-11-14 = un vendredi.
+  const unavailable = (kickoffTime: string | null) =>
+    ({ type: "MATCH_COACH_UNAVAILABLE", severity: 3, resolution: null, fingerprint: "fp-unavailable", coachId: "coach-b", fixture: { ...side("fx-1", "team-1", "2025-11-14"), kickoffTime } }) as unknown as Conflict;
+
+  it("heure connue : la ligne nomme l'équipe, la date et l'heure du match", () => {
+    renderLine({ conflict: unavailable("20:30"), coaches: withCoach });
+    expect(screen.getByText(MATCHES_TEXTS.coachUnavailableSummary("U13", "ven. 14 nov. à 20:30"))).toBeInTheDocument();
+  });
+
+  it("heure inconnue : la ligne donne seulement la date, sans « à »", () => {
+    renderLine({ conflict: unavailable(null), coaches: withCoach });
+    expect(screen.getByText(MATCHES_TEXTS.coachUnavailableSummary("U13", "ven. 14 nov."))).toBeInTheDocument();
+  });
+});
+
 describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
   it("chantier H — un conflit de coach ADOUCI (relief) montre un tag « un adjoint peut couvrir », pas seulement une couleur", () => {
     // Amendement a : un conflit MATCH_MATCH dont une équipe a un adjoint disponible est adouci et
