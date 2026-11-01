@@ -64,19 +64,24 @@ final readonly class MatchesPdfGenerator
         return \sprintf(
             '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>%1$s</title><style>
                 * { box-sizing: border-box; }
-                body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 10px; color: #111; font-size: 11px; }
+                body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 10px; color: #111; font-size: 13.5px; line-height: 1.4; }
                 header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; border-bottom: 2px solid #111; padding-bottom: 8px; }
                 header .logo { height: 40px; width: 40px; object-fit: contain; }
                 header h1 { font-size: 16px; margin: 0; }
-                header .meta { font-size: 11px; color: #444; margin-top: 2px; }
-                .legend { font-size: 10px; color: #444; margin: 0 0 12px; }
-                h2 { font-size: 13px; margin: 16px 0 6px; break-after: avoid; }
-                table { width: 100%%; border-collapse: collapse; }
+                header .meta { font-size: 12px; color: #444; margin-top: 2px; }
+                .legend { font-size: 12px; color: #444; margin: 0 0 12px; }
+                h2 { font-size: 15px; margin: 16px 0 6px; break-after: avoid; }
+                table { width: 100%%; border-collapse: collapse; table-layout: fixed; }
+                col.date { width: 14%%; }
+                col.time { width: 13%%; }
+                col.opponent { width: 21%%; }
+                col.where { width: 11%%; }
+                col.place { width: 41%%; }
                 thead { display: table-header-group; }
                 tr { break-inside: avoid; }
-                th, td { border: 1px solid #bbb; padding: 4px 5px; text-align: left; vertical-align: top; }
+                th, td { border: 1px solid #bbb; padding: 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
                 th { background: #f0f0f0; }
-                td.date, td.time { white-space: nowrap; }
+                td.date { white-space: nowrap; }
                 .none { color: #444; font-style: italic; margin: 4px 0 0; }
             </style></head><body><header>%2$s<div><h1>%1$s</h1><div class="meta">%3$s · Édité le %4$s</div></div></header>%5$s%6$s</body></html>',
             $this->escape($title),
@@ -112,7 +117,7 @@ final readonly class MatchesPdfGenerator
             );
         }
 
-        return $heading . '<table><thead><tr><th>Date</th><th>Heure</th><th>Adversaire</th><th>Où</th><th>Lieu</th></tr></thead><tbody>' . $rows . '</tbody></table>';
+        return $heading . '<table><colgroup><col class="date"><col class="time"><col class="opponent"><col class="where"><col class="place"></colgroup><thead><tr><th>Date</th><th>Heure</th><th>Adversaire</th><th>Où</th><th>Lieu</th></tr></thead><tbody>' . $rows . '</tbody></table>';
     }
 
     private function timeCell(MatchesExportRow $row): string
