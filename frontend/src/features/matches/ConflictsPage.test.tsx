@@ -8,6 +8,7 @@ import type { Conflict } from "./api";
 import * as matchesApi from "./api";
 import { ConflictsPage } from "./ConflictsPage";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 function side(fixtureId: string, teamId: string, matchDate = "2026-10-03") {
   return { fixtureId, teamId, homeAway: "HOME" as const, matchDate, kickoffTime: "16:00", windowStart: "", windowEnd: "" };
@@ -21,7 +22,7 @@ const DEFAULT_CONFLICTS: Conflict[] = [
   { type: "VENUE_UNAVAILABLE", severity: 1, resolution: null, fixture: side("fx-1", "team-1", "2026-10-03") },
 ];
 
-const state = vi.hoisted(() => ({ conflicts: [] as Conflict[] }));
+const state = vi.hoisted(() => ({ conflicts: [] as Conflict[], held: [] as unknown[] }));
 
 // P4-207 — gestionnaire par défaut : l'éditeur de traitement est proposé (« Traiter »).
 const meState = vi.hoisted(() => ({ role: "admin" as string | null }));
@@ -30,7 +31,7 @@ vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { role: meSta
 const compState = vi.hoisted(() => ({ competitions: [] as unknown[] }));
 
 vi.mock("./api", () => ({
-  getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: state.conflicts })),
+  getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: state.conflicts, held: state.held })),
   getCompetitions: vi.fn(() => Promise.resolve(compState.competitions)),
   putConflictResolution: vi.fn(() => Promise.resolve({ fingerprint: "fp", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } })),
   deleteConflictResolution: vi.fn(() => Promise.resolve(undefined)),
@@ -82,6 +83,7 @@ function renderAt(path = "/matchs/conflits") {
 beforeEach(() => {
   vi.clearAllMocks();
   state.conflicts = DEFAULT_CONFLICTS;
+  state.held = [];
   compState.competitions = [];
   meState.role = "admin";
   useMatchesStore.setState({ selectedWeekend: null, conflictsPivot: "coach", conflictsFamilies: null, conflictsTreatments: null, conflictsHomeOnly: false, consultKinds: null, consultAway: false });
@@ -140,6 +142,60 @@ describe("ConflictsPage — chips familles (compteurs saison, séparés de Consu
     expect(await screen.findByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Personne en double/ })).toHaveTextContent("2");
     expect(screen.getByRole("button", { name: /Personne en double/ })).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("ConflictsPage — la section « Un autre coach tient »", () => {
+  const heldLine = {
+    type: "MATCH_TRAINING",
+    coachId: "coach-1",
+    heldBy: "coach-1",
+    heldSide: "training",
+    heldByTeamId: null,
+    fixture: { ...side("fx-1", "team-1"), homeAway: "AWAY" as const },
+    training: { slotTemplateId: "t", scheduleId: "sc", teamId: "team-2", venueId: "venue-1", dayOfWeek: 6, startTime: "16:00", durationMinutes: 90, windowStart: "", windowEnd: "" },
+  };
+
+  it("sans conflit à traiter : l'état vide reste en tête, la section repliée suit", async () => {
+    state.conflicts = [];
+    state.held = [heldLine];
+    renderAt();
+
+    expect(await screen.findByText(MATCHES_TEXTS.noSeasonConflictsTitle)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: new RegExp(MATCHES_TEXTS.heldSectionTitle(1)) })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("sans conflit ni ligne tenue : l'état vide seul, aucune section", async () => {
+    state.conflicts = [];
+    state.held = [];
+    renderAt();
+
+    expect(await screen.findByText(MATCHES_TEXTS.noSeasonConflictsTitle)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: new RegExp(MATCHES_TEXTS.heldSectionTitle(1)) })).not.toBeInTheDocument();
+  });
+
+  it("ouverte : l'aide, qui tient, « Voir la semaine » et aucun menu de traitement", async () => {
+    const user = userEvent.setup();
+    state.conflicts = [];
+    state.held = [heldLine];
+    renderAt();
+
+    await user.click(await screen.findByRole("button", { name: new RegExp(MATCHES_TEXTS.heldSectionTitle(1)) }));
+
+    expect(screen.getByText(MATCHES_TEXTS.heldSectionHint)).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.heldSessionTag("Seniors", "Mara"))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Voir la semaine" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Traiter/ })).not.toBeInTheDocument();
+  });
+
+  it("ignore les filtres de la page : un extérieur tenu reste listé avec le filtre domicile, et les comptes ne le voient pas", async () => {
+    state.conflicts = [DEFAULT_CONFLICTS[3] as Conflict];
+    state.held = [heldLine];
+    useMatchesStore.setState({ conflictsHomeOnly: true, conflictsFamilies: [] });
+    renderAt();
+
+    expect(await screen.findByRole("button", { name: new RegExp(MATCHES_TEXTS.heldSectionTitle(1)) })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mara · 1/ })).not.toBeInTheDocument();
   });
 });
 

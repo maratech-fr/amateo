@@ -24,14 +24,14 @@ const visit = vi.hoisted(() => ({ count: 0 }));
 const fixturesState = vi.hoisted(() => ({ rows: [] as { reviewState: string; pendingDeviations: { autoApplied: boolean }[] }[], fail: false }));
 // P4-207 — les conflits nourrissent le badge de l'onglet Conflits (openConflictCount). Mutable
 // par test pour piloter le compte à traiter.
-const conflictsState = vi.hoisted(() => ({ rows: [] as { type: string; severity: number; resolution: unknown }[] }));
+const conflictsState = vi.hoisted(() => ({ rows: [] as { type: string; severity: number; resolution: unknown }[], held: [] as { type: string; heldBy: string }[] }));
 vi.mock("./api", () => ({
   postModuleVisit: vi.fn(() => {
     visit.count += 1;
     return Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" });
   }),
   getFixtures: vi.fn(() => (fixturesState.fail ? Promise.reject(new Error("boom")) : Promise.resolve(fixturesState.rows))),
-  getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: conflictsState.rows })),
+  getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: conflictsState.rows, held: conflictsState.held })),
 }));
 
 // L'en-tête « Matchs » porte désormais le bouton « Signaler » (feat/entete-page-signaler) — un
@@ -60,6 +60,7 @@ beforeEach(() => {
   fixturesState.rows = [];
   fixturesState.fail = false;
   conflictsState.rows = [];
+  conflictsState.held = [];
 });
 
 function renderAt(path: string) {
@@ -207,6 +208,14 @@ describe("MatchesLayout — le badge de l'onglet Conflits (P4-207)", () => {
     ];
     renderAt("/matchs");
     expect(await screen.findByRole("link", { name: "Conflits · 2" })).toBeInTheDocument();
+  });
+
+  it("une ligne qu'un autre coach tient ne pèse pas dans le compte de l'onglet", async () => {
+    meState.chosen = "s1";
+    conflictsState.rows = [{ type: "VENUE_OVERLAP", severity: 1, resolution: null }];
+    conflictsState.held = [{ type: "MATCH_TRAINING", heldBy: "coach-e" }];
+    renderAt("/matchs");
+    expect(await screen.findByRole("link", { name: "Conflits · 1" })).toBeInTheDocument();
   });
 
   it("aucun compte quand tout est traité — jamais « Conflits · 0 »", async () => {

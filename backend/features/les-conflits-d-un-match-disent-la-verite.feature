@@ -87,6 +87,17 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors le radar signale le coach principal indisponible, en orange
 
+  Scénario: Un second coach principal tient l'entraînement : le match ne crie plus
+    Le coach d'un match a aussi un entraînement d'une autre équipe au même moment, mais cette équipe
+    a un second coach principal, libre ce soir-là. Il tient la séance : le radar ne compte plus de
+    conflit et nomme qui tient. Le coach affiché sur le planning ne bouge pas.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et l'équipe sœur a un second coach principal et un entraînement du vendredi soir, coach stocké le coach jetable
+    Et un match à domicile de l'équipe ce vendredi soir, pendant cet entraînement
+    Quand je demande les conflits des matchs
+    Alors aucun conflit d'entraînement ne porte ce match, et une ligne tenue nomme le second coach
+
   Scénario: Un match un jour férié ne crie jamais hors fenêtre de ligue (PR2)
     Un match fixé par la ligue un jour férié n'est pas un week-end libre : la ligue a posé ce jour
     exprès. Le radar ne lève donc jamais de violation de fenêtre de ligue pour un match un jour

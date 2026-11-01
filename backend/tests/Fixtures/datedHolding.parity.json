@@ -1,0 +1,105 @@
+{
+  "_doc": "Cas partagés de l'affectation datée : UN tenant par besoin, ou personne. Lus par Unit/Service/Conflicts/DatedHoldingTest ; le miroir moteur les lira aussi. Minutes depuis minuit, demi-ouvert.",
+  "cases": [
+    {
+      "name": "second coach : le match prend le premier, l'autre tient la séance",
+      "needs": [
+        {"id": "s-u15", "kind": "session", "teamId": "u15", "startMinutes": 1200, "endMinutes": 1290, "candidates": ["b", "e"], "players": []},
+        {"id": "m-u18", "kind": "match", "teamId": "u18", "startMinutes": 1230, "endMinutes": 1335, "candidates": ["b", "e"], "players": []}
+      ],
+      "holders": {"m-u18": "b", "s-u15": "e"},
+      "unheld": []
+    },
+    {
+      "name": "deux matchs à la même heure, deux coachs communs",
+      "needs": [
+        {"id": "m-u20", "kind": "match", "teamId": "u20", "startMinutes": 1230, "endMinutes": 1335, "candidates": ["b", "e"], "players": []},
+        {"id": "m-u18", "kind": "match", "teamId": "u18", "startMinutes": 1230, "endMinutes": 1335, "candidates": ["b", "e"], "players": []}
+      ],
+      "holders": {"m-u18": "b", "m-u20": "e"},
+      "unheld": []
+    },
+    {
+      "name": "deux matchs figés décalés : les deux coachs sont pris",
+      "needs": [
+        {"id": "m-a", "kind": "match", "teamId": "u18", "startMinutes": 930, "endMinutes": 1035, "candidates": ["b", "e"], "players": []},
+        {"id": "m-b", "kind": "match", "teamId": "u20", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b", "e"], "players": []}
+      ],
+      "holders": {"m-b": "b", "m-a": "e"},
+      "unheld": []
+    },
+    {
+      "name": "trois pour deux : le même besoin reste intenable",
+      "needs": [
+        {"id": "m-c", "kind": "match", "teamId": "u21", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b", "e"], "players": []},
+        {"id": "m-a", "kind": "match", "teamId": "u18", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b", "e"], "players": []},
+        {"id": "m-b", "kind": "match", "teamId": "u20", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b", "e"], "players": []}
+      ],
+      "holders": {"m-a": "b", "m-b": "e"},
+      "unheld": ["m-c"]
+    },
+    {
+      "name": "retour arrière : le premier cède son premier candidat pour tenir les deux",
+      "needs": [
+        {"id": "m-a", "kind": "match", "teamId": "u18", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b", "e"], "players": []},
+        {"id": "m-b", "kind": "match", "teamId": "u20", "startMinutes": 930, "endMinutes": 1035, "candidates": ["b"], "players": []}
+      ],
+      "holders": {"m-a": "e", "m-b": "b"},
+      "unheld": []
+    },
+    {
+      "name": "personne en dernier : à nombre égal, la première solution dans l'ordre gagne",
+      "needs": [
+        {"id": "m-a", "kind": "match", "teamId": "u18", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b"], "players": []},
+        {"id": "m-b", "kind": "match", "teamId": "u20", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b", "e"], "players": []},
+        {"id": "m-c", "kind": "match", "teamId": "u21", "startMinutes": 900, "endMinutes": 1005, "candidates": ["e"], "players": []}
+      ],
+      "holders": {"m-a": "b", "m-b": "e"},
+      "unheld": ["m-c"]
+    },
+    {
+      "name": "le match passe avant une séance qui commence plus tôt",
+      "needs": [
+        {"id": "s-u15", "kind": "session", "teamId": "u15", "startMinutes": 1140, "endMinutes": 1290, "candidates": ["b"], "players": []},
+        {"id": "m-u18", "kind": "match", "teamId": "u18", "startMinutes": 1230, "endMinutes": 1335, "candidates": ["b"], "players": []}
+      ],
+      "holders": {"m-u18": "b"},
+      "unheld": ["s-u15"]
+    },
+    {
+      "name": "qui joue un besoin qui chevauche ne tient pas : l'autre candidat tient",
+      "needs": [
+        {"id": "m-u18", "kind": "match", "teamId": "u18", "startMinutes": 1230, "endMinutes": 1335, "candidates": ["c"], "players": ["b"]},
+        {"id": "s-u15", "kind": "session", "teamId": "u15", "startMinutes": 1200, "endMinutes": 1290, "candidates": ["b", "e"], "players": []}
+      ],
+      "holders": {"m-u18": "c", "s-u15": "e"},
+      "unheld": []
+    },
+    {
+      "name": "qui joue une séance qui chevauche ne tient pas le match",
+      "needs": [
+        {"id": "m-u18", "kind": "match", "teamId": "u18", "startMinutes": 1230, "endMinutes": 1335, "candidates": ["b"], "players": []},
+        {"id": "s-u15", "kind": "session", "teamId": "u15", "startMinutes": 1200, "endMinutes": 1290, "candidates": ["e"], "players": ["b"]}
+      ],
+      "holders": {"s-u15": "e"},
+      "unheld": ["m-u18"]
+    },
+    {
+      "name": "aucun repli : sans candidat, le besoin est intenable",
+      "needs": [
+        {"id": "s-u15", "kind": "session", "teamId": "u15", "startMinutes": 1200, "endMinutes": 1290, "candidates": [], "players": []}
+      ],
+      "holders": {},
+      "unheld": ["s-u15"]
+    },
+    {
+      "name": "demi-ouvert : deux besoins bout à bout gardent le même tenant",
+      "needs": [
+        {"id": "m-a", "kind": "match", "teamId": "u18", "startMinutes": 900, "endMinutes": 1005, "candidates": ["b"], "players": []},
+        {"id": "m-b", "kind": "match", "teamId": "u20", "startMinutes": 1005, "endMinutes": 1110, "candidates": ["b"], "players": []}
+      ],
+      "holders": {"m-a": "b", "m-b": "b"},
+      "unheld": []
+    }
+  ]
+}
