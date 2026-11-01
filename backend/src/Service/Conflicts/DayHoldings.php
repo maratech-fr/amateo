@@ -65,36 +65,9 @@ final class DayHoldings
         }
     }
 
-    private static function matchNeedId(string $fixtureId): string
-    {
-        return 'match:' . $fixtureId;
-    }
-
-    private static function startMinutes(ScheduleSlotTemplate $slot): int
-    {
-        $start = $slot->getStartTime();
-
-        return (int) $start->format('H') * 60 + (int) $start->format('i');
-    }
-
-    /** @param list<list<string>> $groups */
-    private static function sameGroup(string $teamA, string $teamB, array $groups): bool
-    {
-        if ($teamA === $teamB) {
-            return true;
-        }
-        foreach ($groups as $group) {
-            if (\in_array($teamA, $group, true) && \in_array($teamB, $group, true)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public function holderOfMatch(DateTimeImmutable $date, string $fixtureId): ?string
     {
-        return $this->board($date)['assignment']->holders[self::matchNeedId($fixtureId)] ?? null;
+        return $this->board($date)['assignment']->holders[$this->matchNeedId($fixtureId)] ?? null;
     }
 
     /** Une séance sans besoin ce jour-là (son équipe est au match) ne retient personne. */
@@ -131,6 +104,33 @@ final class DayHoldings
         return null;
     }
 
+    private function matchNeedId(string $fixtureId): string
+    {
+        return 'match:' . $fixtureId;
+    }
+
+    private function startMinutes(ScheduleSlotTemplate $slot): int
+    {
+        $start = $slot->getStartTime();
+
+        return (int) $start->format('H') * 60 + (int) $start->format('i');
+    }
+
+    /** @param list<list<string>> $groups */
+    private function sameGroup(string $teamA, string $teamB, array $groups): bool
+    {
+        if ($teamA === $teamB) {
+            return true;
+        }
+        foreach ($groups as $group) {
+            if (\in_array($teamA, $group, true) && \in_array($teamB, $group, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return Board */
     private function board(DateTimeImmutable $date): array
     {
@@ -143,7 +143,7 @@ final class DayHoldings
         $matches = $this->dayMatches->forDate($date, $this->views);
         foreach ($matches as $match) {
             $needs[] = [
-                'id' => self::matchNeedId($match['fixtureId']),
+                'id' => $this->matchNeedId($match['fixtureId']),
                 'kind' => 'match',
                 'teamId' => $match['teamId'],
                 'startMinutes' => $match['startMinutes'],
@@ -245,7 +245,7 @@ final class DayHoldings
         foreach ($slots as $slot) {
             foreach ($buckets as $key => $bucket) {
                 $first = $bucket[0];
-                if ($first->getVenueId() === $slot->getVenueId() && self::startMinutes($first) === self::startMinutes($slot) && self::sameGroup($first->getTeamId(), $slot->getTeamId(), $groups)) {
+                if ($first->getVenueId() === $slot->getVenueId() && $this->startMinutes($first) === $this->startMinutes($slot) && $this->sameGroup($first->getTeamId(), $slot->getTeamId(), $groups)) {
                     $buckets[$key][] = $slot;
 
                     continue 2;
@@ -260,7 +260,7 @@ final class DayHoldings
     /** @param list<array{fixtureId: string, teamId: string, homeAway: string, startMinutes: int, endMinutes: int, personIds: list<string>}> $matches */
     private function teamIsAtItsMatch(ScheduleSlotTemplate $slot, array $matches): bool
     {
-        $start = self::startMinutes($slot);
+        $start = $this->startMinutes($slot);
         $end = $start + $slot->getDurationMinutes();
         foreach ($matches as $match) {
             if ($match['teamId'] === $slot->getTeamId() && $start < $match['endMinutes'] && $match['startMinutes'] < $end) {
@@ -278,7 +278,7 @@ final class DayHoldings
      */
     private function sessionNeed(DateTimeImmutable $date, array $bucket): array
     {
-        $start = self::startMinutes($bucket[0]);
+        $start = $this->startMinutes($bucket[0]);
         $end = $start;
         $candidates = [];
         $players = [];
