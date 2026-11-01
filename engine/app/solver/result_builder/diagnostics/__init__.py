@@ -160,6 +160,7 @@ def _generate_diagnostics(
             implicit_rules if implicit_rules is not None else ResolvedImplicitRules(),
             team_coach_map or {},
             team_player_map or {},
+            coach_unavailability=getattr(model, "coach_unavailability", None) or {},
         )
         diagnostics.extend(implicit_diags)
         rest_flagged_coaches = {

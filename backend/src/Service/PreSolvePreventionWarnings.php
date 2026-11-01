@@ -65,6 +65,8 @@ final readonly class PreSolvePreventionWarnings
             ...$this->forcedDayEmptiedByClosingRules($teams, $venues, $constraints),
             ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
             ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins),
+            ...$this->daysWithoutAnyAvailableEmployee($payload, $venues, $constraints),
+            ...$this->teamReservedOnOverlappingCases($payload),
         ];
     }
 
@@ -179,12 +181,13 @@ final readonly class PreSolvePreventionWarnings
     }
 
     /**
-     * 3. Un coach dont la charge dépasse ses jours disponibles.
+     * 3. Un coach principal dont la charge dépasse ses jours disponibles.
      *
-     * Somme des séances hebdomadaires de SES équipes contre le nombre de jours où un créneau
-     * lui reste ouvert (ses indisponibilités retirées). Au-dessus, il devra cumuler plusieurs
-     * séances le même jour — ce que le solveur sait faire, mais que le gestionnaire gagne à
-     * décider plutôt qu'à subir.
+     * La charge ne compte que les séances des équipes dont il est le SEUL principal : un adjoint
+     * n'est pas requis, un co-entraîneur principal peut tenir la séance à sa place. Un jour lui
+     * reste disponible s'il y garde au moins un créneau ({@see daysClosedForCoach}). Au-dessus, il
+     * devra cumuler plusieurs séances le même jour — ce que le solveur sait faire, mais que le
+     * gestionnaire gagne à décider plutôt qu'à subir.
      *
      * ⚠ AVERTISSEMENT et non bloqueur, précisément parce que le cumul est légal : deux séances
      * le même soir dans deux gymnases voisins peuvent très bien convenir. C'est le
@@ -200,38 +203,18 @@ final readonly class PreSolvePreventionWarnings
      */
     private function overloadedCoaches(array $payload, array $teams, array $venues, array $constraints): array
     {
-        $openDays = [];
-        foreach ($venues as $venue) {
-            foreach ($this->listOf($venue, 'trainingSlots') as $slot) {
-                $openDays[(int) ($slot['dayOfWeek'] ?? 0)] = true;
-            }
-        }
-        if ([] === $openDays) {
+        $openDays = \count($this->slotStartsByDay($venues));
+        if (0 === $openDays) {
             return []; // Aucun créneau du tout : le récap le dit déjà, mieux et plus tôt.
         }
 
-        $sessionsByTeam = [];
-        foreach ($teams as $team) {
-            $sessionsByTeam[$this->stringOf($team, 'id')] = (int) ($team['sessionsPerWeek'] ?? 0);
-        }
-
-        // ⚠ Le lien équipe⇄coach voyage en forme **v1** dans le payload (`type: TEAM_COACH`,
-        // `teamId`, `metadata.coachId`) — PAS en contrainte v2 : il n'y a pas de famille
-        // `TEAM_COACH`, les familles sont TIME/DAY/FACILITY/COACH_AVAILABILITY. Lire ici un
-        // `family` aurait rendu ce warning silencieusement inerte, jamais faux : le pire des
-        // deux mondes, un garde qui ne garde rien sans que rien ne le dise.
+        $mainCoaches = $this->teamMainCoaches($constraints);
         $load = [];
-        foreach ($constraints as $constraint) {
-            if ('TEAM_COACH' !== ($constraint['type'] ?? null)) {
-                continue;
+        foreach ($teams as $team) {
+            $coaches = $mainCoaches[$this->stringOf($team, 'id')] ?? [];
+            if (1 === \count($coaches)) {
+                $load[$coaches[0]] = ($load[$coaches[0]] ?? 0) + (int) ($team['sessionsPerWeek'] ?? 0);
             }
-            $metadata = \is_array($constraint['metadata'] ?? null) ? $constraint['metadata'] : [];
-            $coachId = $this->stringOf($metadata, 'coachId');
-            $teamId = $this->stringOf($constraint, 'teamId');
-            if ('' === $coachId || '' === $teamId) {
-                continue;
-            }
-            $load[$coachId] = ($load[$coachId] ?? 0) + ($sessionsByTeam[$teamId] ?? 0);
         }
 
         $messages = [];
@@ -242,15 +225,17 @@ final readonly class PreSolvePreventionWarnings
                 continue;
             }
 
-            $available = array_diff(array_keys($openDays), $this->unavailableDaysOf($coachId, $constraints));
-            if ($sessions > \count($available)) {
+            $available = $openDays - \count($this->daysClosedForCoach($coachId, $venues, $constraints));
+            if ($sessions > $available) {
                 $messages[] = \sprintf(
-                    '%s encadre %d séances par semaine mais n\'a que %d jour%s disponible%s : plusieurs séances tomberont le même jour.',
-                    trim(($coach['firstName'] ?? '') . ' ' . ($coach['lastName'] ?? '')) ?: 'Ce coach',
-                    $sessions,
-                    \count($available),
-                    1 === \count($available) ? '' : 's',
-                    1 === \count($available) ? '' : 's',
+                    '%s est le seul coach de %s par semaine mais n\'a %s : plusieurs séances tomberont le même jour.',
+                    $this->coachName($coach),
+                    1 === $sessions ? '1 séance' : $sessions . ' séances',
+                    match ($available) {
+                        0 => 'aucun jour disponible',
+                        1 => 'qu\'un jour disponible',
+                        default => 'que ' . $available . ' jours disponibles',
+                    },
                 );
             }
         }
@@ -258,6 +243,191 @@ final readonly class PreSolvePreventionWarnings
         sort($messages);
 
         return $messages;
+    }
+
+    /**
+     * Les jours ouverts dont TOUS les créneaux sont fermés à ce coach. Une plage qui commence après
+     * le dernier créneau ne ferme donc pas le jour, une liste blanche de jours ferme les autres.
+     *
+     * @param list<array<string, mixed>> $venues
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<int>
+     */
+    private function daysClosedForCoach(string $coachId, array $venues, array $constraints): array
+    {
+        $closed = [];
+        foreach ($this->slotStartsByDay($venues) as $day => $starts) {
+            if ($this->coachBlockedOnAllStarts($coachId, $day, $starts, $constraints)) {
+                $closed[] = $day;
+            }
+        }
+
+        return $closed;
+    }
+
+    /**
+     * @param list<int>                  $starts
+     * @param list<array<string, mixed>> $constraints
+     */
+    private function coachBlockedOnAllStarts(string $coachId, int $day, array $starts, array $constraints): bool
+    {
+        foreach ($starts as $start) {
+            if (!$this->coachBlockedAt($coachId, $day, $start, $constraints)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Les minutes de début distinctes des créneaux de la grille, par jour, jours triés.
+     *
+     * @param list<array<string, mixed>> $venues
+     *
+     * @return array<int, list<int>>
+     */
+    private function slotStartsByDay(array $venues): array
+    {
+        $starts = [];
+        foreach ($venues as $venue) {
+            foreach ($this->listOf($venue, 'trainingSlots') as $slot) {
+                $starts[(int) ($slot['dayOfWeek'] ?? 0)][$this->minutesOf($this->stringOf($slot, 'startTime'))] = true;
+            }
+        }
+        ksort($starts);
+
+        return array_map(array_keys(...), $starts);
+    }
+
+    /**
+     * Un jour ouvré de la grille où aucun salarié ne peut venir sur aucun créneau : la règle « un
+     * salarié présent chaque jour » ne pourra pas y être tenue. Même seuil (2 salariés) et mêmes
+     * jours (lundi-vendredi) que le moteur. Un jour où un salarié est libre mais où rien n'est
+     * réservé ne dit rien : le solveur y reste libre.
+     *
+     * @param array<string, mixed>       $payload
+     * @param list<array<string, mixed>> $venues
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<string>
+     */
+    private function daysWithoutAnyAvailableEmployee(array $payload, array $venues, array $constraints): array
+    {
+        $employees = array_values(array_filter(
+            $this->listOf($payload, 'coaches'),
+            static fn (array $coach): bool => true === ($coach['isEmployee'] ?? false),
+        ));
+        if (\count($employees) < 2) {
+            return [];
+        }
+
+        $messages = [];
+        foreach ($this->slotStartsByDay($venues) as $day => $starts) {
+            if ($day < 1 || $day > 5) {
+                continue;
+            }
+            foreach ($employees as $employee) {
+                if (!$this->coachBlockedOnAllStarts($this->stringOf($employee, 'id'), $day, $starts, $constraints)) {
+                    continue 2;
+                }
+            }
+            $messages[] = \sprintf(
+                'Aucun salarié n\'est disponible sur les créneaux du %s : %s sont indisponibles ce jour-là.',
+                self::DAY_NAMES[$day],
+                $this->frenchList(array_map($this->coachName(...), $employees)),
+            );
+        }
+
+        return $messages;
+    }
+
+    /**
+     * Une même équipe réservée deux fois sur des créneaux qui se chevauchent le même jour. Le moteur
+     * produit quand même le planning (la réservation gagne) : le gestionnaire le lit avant de générer.
+     * Intervalles demi-ouverts : deux séances qui s'enchaînent ne se chevauchent pas.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return list<string>
+     */
+    private function teamReservedOnOverlappingCases(array $payload): array
+    {
+        $teamNames = [];
+        foreach ($this->listOf($payload, 'teams') as $team) {
+            $teamNames[$this->stringOf($team, 'id')] = $this->nameOf($team);
+        }
+        $venueNames = [];
+        foreach ($this->listOf($payload, 'venues') as $venue) {
+            $venueNames[$this->stringOf($venue, 'id')] = $this->nameOf($venue);
+        }
+
+        $reserved = [];
+        foreach ($this->listOf($payload, 'slotTemplates') as $slot) {
+            $teamId = $this->stringOf($slot, 'teamId');
+            if ('HARD' !== ($slot['lockLevel'] ?? null) || !isset($teamNames[$teamId])) {
+                continue;
+            }
+            $start = $this->minutesOf($this->stringOf($slot, 'startTime'));
+            $reserved[$teamId][(int) ($slot['dayOfWeek'] ?? 0)][] = [
+                'start' => $start,
+                'end' => $start + (int) ($slot['durationMinutes'] ?? 0),
+                'venueId' => $this->stringOf($slot, 'venueId'),
+            ];
+        }
+
+        $messages = [];
+        foreach ($reserved as $teamId => $days) {
+            foreach ($days as $day => $cases) {
+                usort($cases, static fn (array $a, array $b): int => $a['start'] <=> $b['start']);
+                foreach ($cases as $index => $first) {
+                    foreach (\array_slice($cases, $index + 1) as $second) {
+                        if ($second['start'] >= $first['end'] || $first['start'] >= $second['end']) {
+                            continue;
+                        }
+                        $firstRange = $this->clockRange($first['start'], $first['end']);
+                        $secondRange = $this->clockRange($second['start'], $second['end']);
+                        $firstVenue = $venueNames[$first['venueId']] ?? 'Sans nom';
+                        $messages[] = \sprintf(
+                            '%s est réservée deux fois le %s sur des créneaux qui se chevauchent : %s.',
+                            $teamNames[$teamId],
+                            self::DAY_NAMES[$day] ?? (string) $day,
+                            $first['venueId'] === $second['venueId']
+                                ? \sprintf('%s et %s à %s', $firstRange, $secondRange, $firstVenue)
+                                : \sprintf('%s à %s et %s à %s', $firstRange, $firstVenue, $secondRange, $venueNames[$second['venueId']] ?? 'Sans nom'),
+                        );
+                    }
+                }
+            }
+        }
+
+        sort($messages);
+
+        return $messages;
+    }
+
+    private function clockRange(int $start, int $end): string
+    {
+        return \sprintf('%02d:%02d-%02d:%02d', intdiv($start, 60), $start % 60, intdiv($end, 60), $end % 60);
+    }
+
+    /** @param array<string, mixed> $coach */
+    private function coachName(array $coach): string
+    {
+        return trim($this->stringOf($coach, 'firstName') . ' ' . $this->stringOf($coach, 'lastName')) ?: 'Ce coach';
+    }
+
+    /**
+     * « a et b », « a, b et c ».
+     *
+     * @param list<string> $items
+     */
+    private function frenchList(array $items): string
+    {
+        $last = array_pop($items);
+
+        return [] === $items ? (string) $last : implode(', ', $items) . ' et ' . $last;
     }
 
     /**
