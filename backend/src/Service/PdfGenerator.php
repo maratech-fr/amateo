@@ -17,6 +17,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use finfo;
 use RuntimeException;
+use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpClientExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -122,7 +123,20 @@ class PdfGenerator
         return ['pdf' => \sprintf('/api/schedules/%s/export-pdf/%s', $schedule->getId(), $pdfFilename)];
     }
 
-    private function callWorker(string $html, string $filename, string $footerTemplate): void
+    /**
+     * Un autre document que le planning (ex. la liste des matchs, en portrait) passe par le même
+     * worker, avec le même pied de marque. Toute panne du worker sort en RuntimeException.
+     */
+    public function renderDocument(string $html, string $filename, bool $landscape = true, bool $multiSection = true): void
+    {
+        try {
+            $this->callWorker($html, $filename, $this->buildFooterTemplate(), $landscape, $multiSection);
+        } catch (HttpClientExceptionInterface $e) {
+            throw new RuntimeException('PDF worker unreachable: ' . $e->getMessage(), $e->getCode(), $e);
+        }
+    }
+
+    private function callWorker(string $html, string $filename, string $footerTemplate, bool $landscape = true, bool $multiSection = true): void
     {
         // L'export porte TOUJOURS ses deux sections depuis le retrait du PNG : le drapeau
         // reste explicite dans le payload plutôt qu'implicite côté worker.
@@ -131,8 +145,8 @@ class PdfGenerator
         $json = [
             'html' => $html,
             'filename' => $filename,
-            'landscape' => true,
-            'multiSection' => true,
+            'landscape' => $landscape,
+            'multiSection' => $multiSection,
             'footerTemplate' => $footerTemplate,
         ];
 

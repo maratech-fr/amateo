@@ -108,6 +108,7 @@ final class MatchesPdfGeneratorTest extends TestCase
     private function data(): MatchesExportData
     {
         return new MatchesExportData(
+            clubId: '11111111-1111-4111-8111-111111111111',
             clubName: 'Les Lions',
             logoDataUri: null,
             from: new DateTimeImmutable('2026-11-09'),

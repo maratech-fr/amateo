@@ -22,6 +22,7 @@ use App\Enum\SeasonStatus;
 use App\Export\MatchesExportData;
 use App\Export\MatchesExportDataProvider;
 use App\Export\MatchesExportRow;
+use App\Export\MatchesExportTeamSection;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
@@ -283,7 +284,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         $this->matchFor($this->makeTeam('Zola', 3, 0));
         $this->matchFor($this->makeTeam('École', 3, 0));
 
-        $names = array_map(static fn ($section): string => $section->teamName, $this->load()->sections);
+        $names = array_map(static fn (MatchesExportTeamSection $section): string => $section->teamName, $this->load()->sections);
 
         self::assertSame(['Rang 1 pos 0', 'Rang 1 pos 1', 'Rang 2', 'École', 'Zola'], $names);
     }
@@ -293,7 +294,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         $this->homeMatch('A', '2026-11-14', '15:30', FixtureStatus::PLACED, null);
         $this->makeTeam('Sans match', 1, 0);
 
-        $names = array_map(static fn ($section): string => $section->teamName, $this->load()->sections);
+        $names = array_map(static fn (MatchesExportTeamSection $section): string => $section->teamName, $this->load()->sections);
 
         self::assertSame([$this->team->getName()], $names);
     }

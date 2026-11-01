@@ -105,6 +105,47 @@ final class OpponentTravelProjection
     }
 
     /**
+     * fixtureId → le gymnase APPARIÉ d'une rencontre AWAY (lien exact seulement : ni « gymnase
+     * supposé », ni ville seule). Ne lit AUCUNE coordonnée du club : un lien reste un lieu certain
+     * même quand le siège n'est pas localisé, là où {@see awayTravelByFixtureId} ne rend rien.
+     *
+     * @param list<Fixture> $fixtures
+     *
+     * @return array<string, array{venueLabel: string, address: string|null, postalCode: string|null, city: string|null}>
+     */
+    public function linkedPlaceByFixtureId(array $fixtures): array
+    {
+        if ([] === $fixtures) {
+            return [];
+        }
+
+        $linkByKey = [];
+        foreach ($this->linkRepository->findByClub($fixtures[0]->getClubId()) as $link) {
+            $linkByKey[$link->getOpponentOrganismeCode() . '|' . $link->getFbiLabelNorm()] = $link;
+        }
+
+        $result = [];
+        foreach ($fixtures as $fixture) {
+            $norm = $this->normalizedLabel($fixture);
+            if (FixtureHomeAway::AWAY !== $fixture->getHomeAway() || null === $norm) {
+                continue;
+            }
+            $code = $this->pairingKey->fromOpponent($fixture->getOpponentOrganismeCode(), trim($fixture->getOpponentLabel()));
+            $link = $linkByKey[$code . '|' . $norm] ?? null;
+            if ($link instanceof OpponentVenueLink) {
+                $result[$fixture->getId()] = [
+                    'venueLabel' => $link->getVenueLabel(),
+                    'address' => $link->getAddress(),
+                    'postalCode' => $link->getPostalCode(),
+                    'city' => $link->getCity(),
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Le foyer de résolution : fixtureId → détail complet, pour les seules rencontres AWAY
      * dont au moins un LIEU est connu (lien, gymnase supposé, ou ville).
      *

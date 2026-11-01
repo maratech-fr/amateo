@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CalendarX2, Info, Plus, Upload, Wand2 } from "lucide-react";
+import { ArrowRight, CalendarX2, Download, Info, Plus, Upload, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -11,7 +11,7 @@ import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
-import { todayISO } from "@/shared/lib/clock";
+import { todayISO, useTodayISO } from "@/shared/lib/clock";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { isManagementRole } from "@/shared/lib/roles";
 import { useCredits } from "@/shared/credits/useCredits";
@@ -20,6 +20,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { Category, Coach, Competition, Conflict, Fixture, PlaceMatchesResult, PlacementRunResult, Team, Venue } from "./api";
 import { CalendarControls } from "./CalendarControls";
+import { ExportMatchesDialog } from "./ExportMatchesDialog";
 import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
@@ -28,6 +29,7 @@ import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
 import { dateOf, DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
+import { defaultExportRange, phaseDateBounds } from "./lib/exportRange";
 import { datelessConflicts } from "./lib/loopSteps";
 import { monthLabel } from "./lib/monthView";
 import { placementToastMessage } from "./lib/placementToast";
@@ -70,6 +72,7 @@ import {
   useVenueUnavailabilities,
 } from "./queries";
 import { useMatchesStore } from "./store";
+import { MATCHES_EXPORT_TEXTS } from "./texts/export";
 import { HiddenMatchesWeekNotice } from "./UnpairedVenueLabelsBanner";
 import { WeekCounters } from "./WeekCounters";
 import { GRID_CONTAINER_ID, PLACE_HEADING_ID, WeekWorkbench } from "./WeekWorkbench";
@@ -147,6 +150,8 @@ export function CalendarPage() {
   // depuis l'URL (l'adresse fait foi — l'état vit dans l'URL, pas posé après coup).
   const [fbiModalOpen, setFbiModalOpen] = useState(() => decodeFbiParam(new URLSearchParams(window.location.search)));
   const [ffbbDialogOpen, setFfbbDialogOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const today = useTodayISO();
 
   const {
     selectedWeekend,
@@ -516,6 +521,16 @@ export function CalendarPage() {
   // seul juge du type réel.
   const competitionsFailed = readFailed(competitions);
 
+  // La fenêtre d'export s'ouvre sur ce que le gestionnaire regarde.
+  const exportDefaults = defaultExportRange({
+    temporality: consultTemporality,
+    activeWeekend,
+    activeMonth,
+    phase: isPhase && undefined !== activePhaseCompetition ? { teamId: activePhaseCompetition.teamId, ...phaseDateBounds(allFixtures, activePhaseCompetition.id) } : null,
+    filterTeamId: "equipe" === filterMode && 1 === filterIds.length ? filterIds[0] : null,
+    today,
+  });
+
   return (
     <div className="flex flex-col gap-4">
       {/* A5 — annonce sr-only : vide au montage, remplie après la levée des masques. */}
@@ -527,6 +542,11 @@ export function CalendarPage() {
           (MatchesLayout), visible sur tous les onglets. */}
       <div className="flex flex-col items-end gap-1">
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Comme l'export du planning : tout membre exporte, ce n'est pas un geste de gestion. */}
+          <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
+            <Download className="size-4" aria-hidden="true" />
+            {MATCHES_EXPORT_TEXTS.exportButton}
+          </Button>
           {/* Décision fondateur 2026-10-04 : tout le monde VOIT l'écran des matchs, seul le
               gestionnaire peut AGIR. Tous les boutons d'action (création, placement, édition,
               suppression, import, saisie FBI, appariement FFBB) sont donc gardés par `canManage`
@@ -567,6 +587,8 @@ export function CalendarPage() {
           (poli) l'annonce une fois au changement de texte, pas en boucle. */}
       {runInFlight ? <NoticeBanner tone="accent" role="status" message={slowNotice ? PLACEMENT_SLOW : PLACEMENT_RUNNING} /> : null}
       {null !== run && "FAILED" === run.status ? <NoticeBanner tone="destructive" role="alert" message={run.result?.error ?? PLACEMENT_FAILED_FALLBACK} /> : null}
+
+      <ExportMatchesDialog open={exportOpen} onClose={() => setExportOpen(false)} teams={teams.data ?? []} defaults={exportDefaults} />
 
       {/* Filtre PR-1 partagé (équipe/coach/gymnase). */}
       <MatchesFilterBar

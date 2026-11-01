@@ -326,6 +326,13 @@ export const editFixtureBody = (fixture: Fixture, input: EditFixtureInput): Reco
 export const updateFixture = (fixture: Fixture, input: EditFixtureInput): Promise<Fixture> =>
   api.put(`fixtures/${fixture.id}`, { json: editFixtureBody(fixture, input) }).json<Fixture>();
 
+/**
+ * La liste des matchs en PDF. 60 s de délai, au-delà des 30 s du worker : avec les 10 s par défaut
+ * de ky, un export club entier serait abandonné ici alors que le serveur le livre et compte le crédit.
+ */
+export const exportFixturesPdf = (input: { from: string; to: string; teamId: string | null }): Promise<Blob> =>
+  api.post("fixtures/export-pdf", { json: input, timeout: 60_000 }).blob();
+
 export const deleteFixture = (id: string): Promise<void> => api.delete(`fixtures/${id}`).then(() => undefined);
 
 /** Back to the "à placer" list: placement cleared, placementSource cleared server-side. */

@@ -187,6 +187,7 @@ final class MatchesPdfHtmlTest extends TestCase
     private function build(array $overrides = []): string
     {
         $data = new MatchesExportData(
+            clubId: '11111111-1111-4111-8111-111111111111',
             clubName: $overrides['clubName'] ?? 'Les Lions',
             logoDataUri: $overrides['logoDataUri'] ?? null,
             from: new DateTimeImmutable($overrides['from'] ?? '2026-11-01'),
