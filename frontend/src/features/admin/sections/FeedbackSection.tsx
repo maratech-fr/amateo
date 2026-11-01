@@ -219,6 +219,8 @@ function FeedbackDetailDialog({ id, fallback, onClose }: { id: string; fallback:
   const [confirming, setConfirming] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+  const screenshotUrl = `/api/admin/feedback/${encodeURIComponent(id)}/screenshot`;
 
   // Métadonnées : le détail serveur dès qu'il arrive, sinon la ligne de liste (deep-link : null).
   const data = detail.data ?? fallback;
@@ -293,12 +295,20 @@ function FeedbackDetailDialog({ id, fallback, onClose }: { id: string; fallback:
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{ADMIN_SECTIONS_TEXTS.feedbackScreenshot}</p>
             {/* Aperçu chargé depuis le rail superadmin (session cookie) — seule porte du blob. */}
-            <img
-              src={`/api/admin/feedback/${encodeURIComponent(id)}/screenshot`}
-              alt={ADMIN_SECTIONS_TEXTS.feedbackScreenshotAlt}
-              loading="lazy"
-              className="mt-1 max-h-96 w-full max-w-md rounded-md border border-border object-contain"
-            />
+            <button
+              type="button"
+              aria-label={ADMIN_SECTIONS_TEXTS.feedbackScreenshotEnlarge}
+              onClick={() => setZoomed(true)}
+              className="mt-1 block w-full max-w-md cursor-zoom-in overflow-hidden rounded-md border border-border outline-none hover:border-ring focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <img src={screenshotUrl} alt={ADMIN_SECTIONS_TEXTS.feedbackScreenshotAlt} loading="lazy" className="max-h-96 w-full object-contain" />
+            </button>
+            {zoomed ? (
+              <Modal label={ADMIN_SECTIONS_TEXTS.feedbackScreenshot} title={ADMIN_SECTIONS_TEXTS.feedbackScreenshot} onClose={() => setZoomed(false)} size="xl">
+                {/* Borne = l'écran moins le cadre de la modale (marges, en-tête) : l'image entière se voit sans défiler. */}
+                <img src={screenshotUrl} alt={ADMIN_SECTIONS_TEXTS.feedbackScreenshotAlt} className="max-h-[calc(100dvh-8rem)] w-full object-contain" />
+              </Modal>
+            ) : null}
           </div>
         ) : null}
 
