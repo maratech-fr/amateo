@@ -54,21 +54,38 @@ compat, plus utilisé à l'affichage.
   l'entité surveillée. Sévérité (`PersonConflicts::coachUnavailableConflicts`) : coup d'envoi DANS
   l'indispo → 3, à domicile comme à l'extérieur ; indispo qui ne touche que la DURÉE du
   match (coup d'envoi libre) → 5 à domicile, 3 à l'extérieur (le coach doit être sur
-  place à l'heure). Une entrée par (coach, rencontre), la plus grave retenue. ⚠ 3/4/5 partagent le
-  MÊME ton visuel `warning` (`toneOf`, `lib/diagnostic.ts` — seuls 1-2 sont `destructive` et 6-7
-  `muted`) : ce ne sont PAS trois couleurs distinctes, la gradation se lit au NUMÉRO de sévérité et,
-  pour le relief, au tag dédié ci-dessous — jamais à la teinte.
+  place à l'heure). Une entrée par (coach, rencontre), la plus grave retenue. Tons (`toneOf`,
+  `lib/diagnostic.ts`) : 1 à 3 `destructive` (vrai rouge : personne en double, règle stricte du club,
+  gymnase interdit), 4-5 `warning` (orange), 6-7 `muted`. Le relief (4) se lit aussi au tag dédié
+  ci-dessous, jamais à la teinte seule. La ligne « coach indisponible » nomme le match concerné
+  (`coachUnavailableSummary`, « Indisponible pour le match de U18, vendredi 20:30 »).
 
-**Adoucissement « relief » (chantier H, les trois familles ci-dessus)** : un conflit DUR (sévérité
-3) où la personne est MAIN sur au moins un côté retombe d'un cran (4 ou 5 selon la famille) si un
-AUTRE coach de la même équipe — adjoint OU autre principal — est DISPONIBLE au même coup d'envoi
-pour tenir ce côté (`PersonConflicts::reliefAvailable`/`coverAvailable` ; un joueur ne couvre jamais
-un coach, un côté JOUEUR n'est jamais adouci). `MATCH_COACH_UNAVAILABLE` retombe de 3 à 4 (jamais à
-5, déjà la sévérité la plus clémente de la famille) ; `MATCH_MATCH`/`MATCH_TRAINING` retombent de 3
-à 5. Le relief est porté par le champ additif `relief` (bool) — jamais déduit du seul changement de
+**Adoucissement « relief » (les trois familles ci-dessus)** : un conflit DUR (sévérité 3) où la
+personne est principale d'un côté MATCH passe à **4** (orange, sur les trois familles) si un
+ADJOINT de l'équipe est libre : aucun match à lui qui chevauche, coup d'envoi hors de sa plage
+d'indisponibilité. Un autre principal libre n'adoucit plus : il TIENT, la ligne quitte les conflits
+(section suivante). Un joueur ne couvre jamais un coach ; un côté JOUEUR et un côté SÉANCE
+ne sont jamais adoucis (un adjoint ne tient pas une séance). Le relief est porté par le champ additif `relief` (bool) — jamais déduit du seul changement de
 sévérité (3-5 partagent le même ton), l'écran affiche un TAG dédié (icône + texte « Un adjoint peut
 couvrir », `ConflictLine.tsx`) en plus du ton, jamais
 la couleur seule.
+
+**Tenue datée — « Un autre coach tient »** (fondateur, 2026-11-02) : chaque ligne personne se juge
+depuis une affectation faite UNE FOIS PAR DATE (`Conflicts/DatedHolding`, lue via `DayHoldings`) :
+chaque séance du planning effectif ce jour-là et chaque match figé a au plus un tenant, choisi
+parmi les principaux de l'équipe (et du groupe déclaré sur la même case), plus le coach nommé sur la
+séance s'il n'est pas adjoint ; un coach n'en tient pas deux qui se chevauchent ni un où il joue.
+Une personne est « retenue » par un côté si elle le tient ou y joue. Retenue d'un côté et l'autre
+tenu par quelqu'un d'autre : la ligne sort de `conflicts[]` (et du compteur) vers `held[]`
+(`heldBy`, `heldSide`, `heldByTeamId`, sans gravité), affichée dans la section repliée « Un autre
+coach tient » (`ConflictsPage`, ignore les filtres de page, ligne sans menu de traitement). Retenue
+des deux côtés, ou côté sans tenant : conflit à sa gravité. Exemple : U15 (Karim B. et Emma D.)
+s'entraîne le vendredi 20:00, U18 (Karim B. seul) joue à 20:30 : Emma tient la séance, Karim coache
+le match, rien à traiter. Chaque domaine d'indisponibilité reste le sien : celle du wizard
+(chevauchant la séance sur sa durée) empêche de tenir une séance, celle du module Matchs (contenant
+le coup d'envoi) empêche de tenir un match. Le coach stocké sur le planning ne bouge jamais, le
+planning et le PDF restent inchangés (l'imprévu reste à la charge du club). Limite : le placement
+des matchs ne suit pas encore (roadmap, P4-397).
 
 **Chevauchement demi-ouvert** (créneaux jointifs = pas de conflit). Une empreinte qui passe minuit
 est vérifiée sur les deux jours. Résolution déterministe par la période la plus ÉTROITE en cas de
@@ -159,9 +176,9 @@ fenêtres ou « aucun accès match ce jour-là » sans aucune — retours Nico B
 avant, seuls le gymnase et les fenêtres étaient nommés — et porte un bouton **« Configurer les
 accès »** vers `/matchs/configuration?acces=<venueId>` (deep-link d'état dans l'URL, `ConfigurationPage`
 ouvre directement l'éditeur d'accès de ce gymnase, § `module-matchs-reglages.md`)) +
-`MATCH_COACH_UNAVAILABLE` ADOUCI (chantier H — un adjoint ou un autre principal
-disponible peut couvrir, tag dédié « Un adjoint peut couvrir », § ci-dessus) · 5 clash adouci
-(`MATCH_MATCH`/`MATCH_TRAINING` avec relief, § ci-dessus) + `MATCH_COACH_UNAVAILABLE` quand
+clash adouci (`MATCH_MATCH`/`MATCH_TRAINING`/`MATCH_COACH_UNAVAILABLE` avec relief : un
+adjoint libre peut couvrir, tag dédié « Un adjoint peut couvrir », § ci-dessus) · 5 clash adouci par le
+rôle (un côté ADJOINT, ou match coaché × séance simplement jouée ; `pairSeverity`/`trainingSeverity`) + `MATCH_COACH_UNAVAILABLE` quand
 l'indisponibilité ne touche que la DURÉE du match à DOMICILE (coup d'envoi libre, § ci-dessus) +
 `FRIENDLY_ON_MATCH_SLOT` (amical HOME placé sur un créneau de match — `reasons`:
 `MATCH_SLOT_WINDOW`/`MATCH_WEEKEND`, samedi = clé du week-end, le vendredi ne compte jamais) · 6
