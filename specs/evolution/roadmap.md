@@ -1,4 +1,4 @@
-# Roadmap (82) — ce qui reste à faire
+# Roadmap (86) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -172,6 +172,10 @@
 | P4-424 | **Export des matchs pour les parents : format image (Instagram, Facebook)** | 🟡 | M | Le PDF par équipe ou club, de la date A à la date B, est livré (voir l'état des lieux). Reste le format image, pour publier la liste sur les réseaux du club : par exemple le week-end des U13 en une image carrée prête à poster. Non cadré. |
 | P4-436 | **Dédoublonner les dates françaises** | ⚪ | XS | Deux implémentations de la même mise en forme coexistent : `App\Support\FrenchDate` (« 1er novembre 2026 », « sam. 14 nov. », ajoutée par l'export des matchs) et `SchedulePlanProvisioner::frenchDate`. Exemple : corriger l'abréviation d'un mois dans l'une laisse l'autre fausse. À faire : une seule maison, `SchedulePlanProvisioner` la consomme. |
 | P4-437 | **Filtre tenant Doctrine encore actif entre deux requêtes d'un même processus** | ⚪ | S | `TenantFilterListener.php:68`, `:145`, `:253` : le filtre n'est pas relâché en fin de requête. Aucun effet avec php-fpm (un processus reprend à zéro), mais sous un runtime persistant (FrankenPHP, Swoole, worker), le second utilisateur d'un même processus serait refusé à tort : le club A est traité, puis le club B hérite de son filtre. À traiter avant tout changement de runtime. Non cadré. |
+| P4-452 | **Écran Conflits à 360 px : le tableau du conflit défile sans indice** | ⚪ | XS | Contrôle visuel du 2026-11-02 (`ConflictLine.tsx`) : les colonnes « Fin / retour » et « Durée » sont coupées dans leur conteneur, sans repère de défilement, et la colonne de l'adversaire tombe à environ 100 px. Exemple : un adversaire long occupe 10 lignes, sans débordement de page. |
+| P4-453 | **Fenêtres Liens et Import : sélecteurs tronqués** | ⚪ | XS | Contrôle visuel du 2026-11-02. Exemples : « À choisir » devient « À chois » dans `TeamsImportModal.tsx` ; « 1 séance commu… », « Équipe … », « Jamais en m… » dans la fenêtre Liens. Le pied de la fenêtre d'import passe aussi sur deux rangées. |
+| P4-454 | **Fenêtre Liens : un groupe nommé cache ses équipes** | ⚪ | XS | Contrôle visuel du 2026-11-02 (`SharedTrainingBlockPanel.tsx`) : un groupe nommé n'affiche que son nom, sans équipes ni nombre de séances communes. Exemple : « Poussines » ne dit pas qu'il réunit U11F1 et U11F2. Les cases du formulaire sont aussi en bleu natif, pas à la couleur du club. |
+| P4-455 | **Échéances de saisie : « Tout cocher » ne ressemble pas à un bouton** | ⚪ | XS | Contrôle visuel du 2026-11-02 (`EntryDeadlinesEditor.tsx`) : un texte sans cadre, à côté du filtre « Sans échéance / Tous ». |
 
 ---
 

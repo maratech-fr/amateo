@@ -41,7 +41,7 @@ fichier/classe interne (`frontend/src/features/wizard/steps/SharedTrainingBlockP
 
 `SharedTrainingBlockPanel` (`frontend/src/features/wizard/steps/SharedTrainingBlockPanel.tsx`),
 onglet « Mutualisation » de la modale **Liens** (`TeamLinksModal`, deux onglets ; ouverture sur « Passerelles », sauf si l'équipe a un groupe et aucune passerelle — alors « Mutualisation », décidé une fois les deux lectures finies, `wizard/lib/linksTab.ts` `initialLinksTab`, portée de la période ouverte seulement) : lister les groupes (ceux de l'équipe ouverte d'abord), puis créer/modifier/supprimer un groupe depuis l'accordéon replié « Nouveau groupe » (le crayon l'ouvre en « Modifier le groupe ») en choisissant
-ses équipes (compteur de cochées sous les cases) et son nombre de séances communes (liste déroulante bornée, jamais une saisie libre).
+ses équipes (compteur de cochées au-dessus des cases) et son nombre de séances communes (liste déroulante bornée, jamais une saisie libre).
 Rail API Platform standard sur la ressource `SharedTrainingBlockResource`
 (`SharedTrainingBlockStateProcessor`), même portée socle/période que ci-dessus. Le serveur reste
 seul juge ; tout ce que l'écran calcule (borne de la liste, repère « déjà dans N groupes ») est
