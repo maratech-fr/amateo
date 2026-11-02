@@ -150,7 +150,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
   const missingGenderCount = rows.filter(
     (r) => checked.has(r.row) && "" === (genderByRow[r.row] ?? r.suggestedGender ?? ""),
   ).length;
-  const importDisabledReason = missingGenderCount > 0 ? `${missingGenderCount} équipe${missingGenderCount > 1 ? "s" : ""} sans genre` : undefined;
+  const importDisabledReason = missingGenderCount > 0 ? `${missingGenderCount} équipe${missingGenderCount > 1 ? "s" : ""} sans genre — choisissez-le pour importer` : undefined;
 
   return (
     <Modal
@@ -163,11 +163,11 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
           <Button variant="outline" size="sm" onClick={onClose}>
             Fermer
           </Button>
+          {showSelection && undefined !== importDisabledReason ? <span className="text-xs text-warning">{importDisabledReason}</span> : null}
           {showSelection ? (
             <Button
               size="sm"
               disabled={0 === count || importing || missingGenderCount > 0}
-              disabledReason={importDisabledReason}
               onClick={doImport}
             >
               {importing ? <Spinner className="size-4" /> : null}

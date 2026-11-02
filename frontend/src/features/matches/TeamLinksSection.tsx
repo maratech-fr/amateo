@@ -14,6 +14,13 @@ import { INTENSITY_LABEL } from "./lib/teamLinkLabel";
 import { linkableBTeams } from "./lib/linkableTeams";
 
 
+/** La phrase d'exemple parle des équipes du club : celle qui est ouverte et la première autre, sinon les deux premières. */
+function linkExample<T extends TeamLike>(teams: T[], filterTeamId: string | undefined): string {
+  const opened = teams.find((t) => t.id === filterTeamId);
+  const [first, second] = undefined === opened ? teams : [opened, ...teams.filter((t) => t.id !== opened.id)];
+  return undefined === first || undefined === second ? "Si deux équipes partagent des joueurs, déclarez une passerelle." : `Si ${first.name} et ${second.name} partagent des joueurs, déclarez une passerelle.`;
+}
+
 /**
  * Passerelles entre équipes — la SECTION seule (extraite de `HabitsLinksDialog`, lot P2-45).
  * Le dialog des matchs la RECOMPOSE (comportement `/matchs` inchangé) ; le wizard l'ouvre depuis
@@ -134,7 +141,7 @@ function EditableLinks<T extends TeamLike>({
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        « SM1 et SM2 partagent des joueurs » → déclarez une passerelle. Deux réglages <strong>indépendants</strong> :
+        {linkExample(teams, filterTeamId)} Deux réglages <strong>indépendants</strong> :
       </p>
       <ul className="ml-4 list-disc text-xs text-muted-foreground">
         <li>

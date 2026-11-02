@@ -1174,6 +1174,19 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertContains(self::ASSISTANT_WITHOUT_MAIN, $found);
     }
 
+    /** Plusieurs adjoints sans principal : tous nommés, au pluriel. */
+    public function testSeveralAssistantsWithoutMainCoachAreAllNamed(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U15')],
+            coaches: [$this->coach('c1', 'Emma', 'Dupont'), $this->coach('c2', 'Paul', 'Roux')],
+            constraints: [$this->teamCoach('t1', 'c1', 'ASSISTANT'), $this->teamCoach('t1', 'c2', 'ASSISTANT')],
+        ));
+
+        self::assertContains('U15 a des adjoints (Emma D., Paul R.) mais aucun coach principal : nommez un coach principal, ou retirez les adjoints si l\'équipe est en autonomie.', $found);
+    }
+
     /** Un principal à côté de l'adjoint : l'équipe est en règle, silence. */
     public function testAMainCoachBesideTheAssistantIsSilent(): void
     {

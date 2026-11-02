@@ -201,7 +201,7 @@ function CoachWishesHubReady({
         ) : undefined
       }
     >
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} ariaLabel="Sections des doléances" idPrefix="doleances" />
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} ariaLabel="Sections des doléances" idPrefix="doleances" listClassName="flex-nowrap overflow-x-auto [&>*]:shrink-0" />
 
       {/* Seul le panneau ACTIF est monté (patron A11Y-23) : la todo-list et la liste de coachs
           portent chacune des lectures lourdes, et l'état de réglages vit dans `useCampaignSettings`

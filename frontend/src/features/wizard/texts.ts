@@ -237,7 +237,10 @@ export const WIZARD_TEXTS = {
   blockDeleteWithSessions: (name: string) => `Supprimer le groupe « ${name} » retirera ces séances du planning :`,
   blockDeleteNoSessions: (name: string, teams: string) => `Supprimer le groupe « ${name} » retirera du planning les séances communes de ${teams}, et ces équipes ne seront plus placées ensemble.`,
   blockNone: "Aucun groupe déclaré.",
-  blockIntro: "Un ensemble d'équipes qui se comporte comme une seule : cochez-les, puis choisissez son nombre de séances communes. Une équipe peut appartenir à plusieurs groupes.",
+  blockIntro: "Un groupe est un ensemble d'équipes qui se comporte comme une seule, avec son propre nombre de séances communes. Une équipe peut appartenir à plusieurs groupes.",
+  blockFormHint: "Choisissez les équipes du groupe : cochez-les, puis choisissez son nombre de séances communes.",
+  blockCheckedCount: (n: number) => (0 === n ? "Aucune équipe cochée" : `${n} équipe${n > 1 ? "s" : ""} cochée${n > 1 ? "s" : ""}`),
+  blockPausedMember: (name: string) => `${name} : en pause sur cette période, reste membre du groupe`,
   /** E12 — champ « Nom du groupe » facultatif (visible + nom accessible). */
   blockNameLabel: "Nom du groupe",
   // Refus d'une réservation : chaque coach, et ce qui l'empêche de tenir la séance.

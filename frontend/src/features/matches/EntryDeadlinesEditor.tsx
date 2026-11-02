@@ -5,6 +5,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import type { TeamLike } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
@@ -28,10 +29,14 @@ import { useSetEntryDeadlines } from "./queries";
  * communautaire pré-rempli, `Info` + « proposée » — une info, pas une alarme), AUCUNE.
  * Une compétition APPARIÉE porte le badge « partagée avec les autres clubs » (poser sa
  * date la partage comme défaut) ; une non appariée ne le porte pas.
+ *
+ * Le filtre « Sans échéance | Tous » lit la valeur servie : une date proposée compte comme datée.
+ * Compte et envoi portent sur les lignes VISIBLES cochées : rien de masqué ne part.
  */
 export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }: { competitions: Competition[]; teams: T[] }) {
   const setDeadlines = useSetEntryDeadlines();
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<"missing" | "all">("all");
   const [date, setDate] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -45,7 +50,11 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
     [competitions, teamName],
   );
 
-  const allChecked = rows.length > 0 && rows.every((c) => checked.has(c.id));
+  const missingRows = rows.filter((c) => null === (c.effectiveEntryDeadline ?? null));
+  const visibleRows = "missing" === filter ? missingRows : rows;
+  const visibleIds = new Set(visibleRows.map((c) => c.id));
+  const checkedIds = [...checked].filter((id) => visibleIds.has(id));
+  const allChecked = visibleRows.length > 0 && checkedIds.length === visibleRows.length;
 
   const toggle = (id: string): void =>
     setChecked((prev) => {
@@ -58,15 +67,20 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
       return next;
     });
 
-  const toggleAll = (): void => setChecked(allChecked ? new Set() : new Set(rows.map((c) => c.id)));
+  const toggleAll = (): void => setChecked(allChecked ? new Set() : new Set(visibleRows.map((c) => c.id)));
+
+  const changeFilter = (next: "missing" | "all"): void => {
+    setFilter(next);
+    setChecked(new Set());
+  };
 
   const apply = (deadline: string | null): void => {
-    if (0 === checked.size || setDeadlines.isPending) {
+    if (0 === checkedIds.length || setDeadlines.isPending) {
       return;
     }
     setFormError(null);
     setDeadlines.mutate(
-      { competitionIds: [...checked], deadline },
+      { competitionIds: checkedIds, deadline },
       {
         onSuccess: () => setChecked(new Set()),
         // 422/409 lisible SUR le formulaire (en plus du toast global du hook).
@@ -88,57 +102,74 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
     <section className="flex flex-col gap-3">
       <Header />
 
-      {/* La barre de saisie groupée : une date, appliquée aux lignes cochées. */}
-      <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border px-3 py-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Échéance
-          <Input type="date" aria-label="Échéance à appliquer" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <Button size="sm" disabled={0 === checked.size || "" === date || setDeadlines.isPending} onClick={() => apply(date)}>
-          Appliquer{checked.size > 0 ? ` (${checked.size})` : ""}
-        </Button>
-        <Button variant="outline" size="sm" disabled={0 === checked.size || setDeadlines.isPending} onClick={() => apply(null)}>
-          <Eraser className="size-4" />
-          Effacer l'échéance
-        </Button>
-        <span className="ml-auto text-xs text-muted-foreground">
-          {checked.size > 0 ? `${checked.size} cochée${checked.size > 1 ? "s" : ""}` : "Cochez les compétitions à régler"}
-        </span>
-      </div>
+      <SegmentedControl
+        mode="single"
+        label="Filtrer les compétitions"
+        value={filter}
+        onValueChange={changeFilter}
+        options={[
+          { key: "missing", label: "Sans échéance", count: missingRows.length, ariaLabel: `Sans échéance : ${missingRows.length}` },
+          { key: "all", label: "Tous", count: rows.length, ariaLabel: `Tous : ${rows.length}` },
+        ]}
+      />
 
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={toggleAll}>
-          {allChecked ? "Tout décocher" : "Tout cocher"}
-        </Button>
-      </div>
+      {0 === visibleRows.length ? <EmptyHint>Toutes vos compétitions ont une échéance.</EmptyHint> : null}
 
-      <ul className="flex flex-col gap-1.5">
-        {rows.map((c) => (
-          <li key={c.id} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
-            <label className="flex min-w-0 flex-1 items-center gap-3">
-              <input
-                type="checkbox"
-                aria-label={`${c.name} — ${teamName(c.teamId)}`}
-                className="size-4 shrink-0"
-                checked={checked.has(c.id)}
-                onChange={() => toggle(c.id)}
-              />
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{c.name}</span>
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                  <span>{teamName(c.teamId)}</span>
-                  {null !== (c.ffbbCompetitionId ?? null) ? (
-                    <StatusPill variant="accent" icon={<Users className="size-3 text-accent" aria-hidden />}>
-                      partagée avec les autres clubs
-                    </StatusPill>
-                  ) : null}
-                </span>
-              </span>
+      {visibleRows.length > 0 ? (
+        <>
+          {/* La barre de saisie groupée : une date, appliquée aux lignes cochées. */}
+          <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border px-3 py-2">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Échéance
+              <Input type="date" aria-label="Échéance à appliquer" value={date} onChange={(e) => setDate(e.target.value)} />
             </label>
-            <Provenance competition={c} />
-          </li>
-        ))}
-      </ul>
+            <Button size="sm" disabled={0 === checkedIds.length || "" === date || setDeadlines.isPending} onClick={() => apply(date)}>
+              Appliquer{checkedIds.length > 0 ? ` (${checkedIds.length})` : ""}
+            </Button>
+            <Button variant="outline" size="sm" disabled={0 === checkedIds.length || setDeadlines.isPending} onClick={() => apply(null)}>
+              <Eraser className="size-4" />
+              Effacer l'échéance
+            </Button>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {checkedIds.length > 0 ? `${checkedIds.length} cochée${checkedIds.length > 1 ? "s" : ""}` : "Cochez les compétitions à régler"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={toggleAll}>
+              {allChecked ? "Tout décocher" : "Tout cocher"}
+            </Button>
+          </div>
+
+          <ul className="flex flex-col gap-1.5">
+            {visibleRows.map((c) => (
+              <li key={c.id} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
+                <label className="flex min-w-0 flex-1 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    aria-label={`${c.name} — ${teamName(c.teamId)}`}
+                    className="size-4 shrink-0"
+                    checked={checked.has(c.id)}
+                    onChange={() => toggle(c.id)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{c.name}</span>
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                      <span>{teamName(c.teamId)}</span>
+                      {null !== (c.ffbbCompetitionId ?? null) ? (
+                        <StatusPill variant="accent" icon={<Users className="size-3 text-accent" aria-hidden />}>
+                          partagée avec les autres clubs
+                        </StatusPill>
+                      ) : null}
+                    </span>
+                  </span>
+                </label>
+                <Provenance competition={c} />
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
 
       {null !== formError ? (
         <p role="alert" className="text-xs text-destructive">

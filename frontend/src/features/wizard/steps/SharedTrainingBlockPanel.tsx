@@ -1,5 +1,7 @@
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+
+import { AccordionSection } from "@/shared/components/ui/accordion";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
@@ -15,7 +17,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { PriorityTier, SharedTrainingBlock, Team } from "../api";
 import { filterCandidates, sharedGroupLabel } from "../lib/sharedTraining";
-import { blockCommonSessionOptions, blockMembershipCount } from "../lib/sharedTrainingBlock";
+import { blockCommonSessionOptions, blockMembershipCount, blocksInScope } from "../lib/sharedTrainingBlock";
 import { useCreateSharedTrainingBlock, useDeleteSharedTrainingBlock, useSharedTrainingBlocks, useTeamPeriodOverrides, useUpdateSharedTrainingBlock } from "../queries";
 import { WIZARD_TEXTS as T } from "../texts";
 
@@ -39,6 +41,10 @@ import { WIZARD_TEXTS as T } from "../texts";
  * (lit `detail` + `violations[].message`, la forme d'un 422 API Platform). La multi-appartenance est
  * PERMISE (aucun verrou « déjà dans un autre groupe », juste un repère informatif), et les séances
  * communes se choisissent en LISTE DÉROULANTE (verbatim fondateur), pas en saisie libre.
+ *
+ * Liste d'abord (les groupes de l'équipe ouverte en tête), formulaire replié : le crayon l'ouvre en
+ * modification, enregistrer, annuler ou le replier en sortent. Compteur et seuils portent sur les
+ * équipes cochées et actives ; un membre en pause reste membre, jamais retiré en silence.
  */
 export function SharedTrainingBlockPanel({
   teams,
@@ -57,14 +63,18 @@ export function SharedTrainingBlockPanel({
   initialTeamId?: string;
 }) {
   const { data: allBlocks = [] } = useSharedTrainingBlocks(schedulePlanId);
-  // En portée socle le provider renvoie socle ET périodes : on ne garde que le socle.
-  const scopeBlocks = null === schedulePlanId ? allBlocks.filter((b) => null === b.schedulePlanId) : allBlocks;
+  const scopeBlocks = blocksInScope(allBlocks, schedulePlanId);
+  const listedBlocks = undefined === initialTeamId ? scopeBlocks : [...scopeBlocks.filter((b) => b.teamIds.includes(initialTeamId)), ...scopeBlocks.filter((b) => !b.teamIds.includes(initialTeamId))];
   const { data: overrides = [] } = useTeamPeriodOverrides(schedulePlanId);
   const create = useCreateSharedTrainingBlock();
   const update = useUpdateSharedTrainingBlock();
   const del = useDeleteSharedTrainingBlock();
 
-  const [checked, setChecked] = useState<Set<string>>(new Set(undefined === initialTeamId ? [] : [initialTeamId]));
+  // L'ancre en pause n'est pas pré-cochée : la mutualiser serait un no-op.
+  const anchorSelection = (): Set<string> => new Set(undefined === initialTeamId || true === pausedTeamIds?.has(initialTeamId) ? [] : [initialTeamId]);
+  const [checked, setChecked] = useState<Set<string>>(anchorSelection);
+  const [formOpen, setFormOpen] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
   const [commonSessions, setCommonSessions] = useState(1);
   const [groupName, setGroupName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -83,12 +93,13 @@ export function SharedTrainingBlockPanel({
   ).flatMap((g) => g.teams);
 
   const checkedTeams = candidates.filter((t) => checked.has(t.id));
+  const pausedMembers = teams.filter((t) => checked.has(t.id) && true === pausedTeamIds?.has(t.id));
   // La borne de la LISTE DÉROULANTE : 1..min(séances effectives). Plafond de CONFORT, le serveur
   // (garde Σ) tranche plus finement — voir `sharedTrainingBlock.ts`.
   const sessionOptions = blockCommonSessionOptions(checkedTeams, overrideByTeamId);
   const cap = sessionOptions.length; // = max des options (1..cap)
   const effectiveK = cap > 0 ? Math.min(Math.max(commonSessions, 1), cap) : 1;
-  const enoughTeams = checked.size >= 2;
+  const enoughTeams = checkedTeams.length >= 2;
   // La liste déroulante n'a de choix RÉEL qu'une fois la sélection bornable (≥ 2 équipes, cap ≥ 1) —
   // divulgation progressive : sinon elle est désactivée avec le motif dit.
   const sessionsReady = enoughTeams && cap > 0;
@@ -105,10 +116,19 @@ export function SharedTrainingBlockPanel({
 
   const resetForm = () => {
     setEditingId(null);
-    setChecked(new Set());
+    setChecked(anchorSelection());
     setCommonSessions(1);
     setGroupName("");
     setError(null);
+    setFormOpen(false);
+  };
+
+  const toggleForm = (next: boolean) => {
+    if (!next && null !== editingId) {
+      resetForm();
+    } else {
+      setFormOpen(next);
+    }
   };
 
   const toggle = (teamId: string) =>
@@ -128,6 +148,9 @@ export function SharedTrainingBlockPanel({
     setCommonSessions(b.commonSessions);
     setGroupName(b.label ?? "");
     setError(null);
+    setFormOpen(true);
+    // `scrollIntoView` optionnel : absent en jsdom (même garde que CoachesStep).
+    formRef.current?.scrollIntoView?.({ block: "start" });
   };
 
   const submit = async () => {
@@ -149,7 +172,7 @@ export function SharedTrainingBlockPanel({
   };
 
   const busy = create.isPending || update.isPending;
-  const tooMany = checked.size > 3;
+  const tooMany = checkedTeams.length > 3;
   const blockNames = (teamIds: string[]): string => teamIds.map(nameOf).join(" + ");
   // Heure de pendule : foyer unique `formatMinutes` (jamais un « 18h » fait main). La séance vient
   // du serveur sous forme d'instant ISO ; `parseTime` en tire les minutes.
@@ -179,90 +202,11 @@ export function SharedTrainingBlockPanel({
     <div>
       <p className="mb-3 text-sm text-muted-foreground">{T.blockIntro}</p>
 
-      <div className="mb-4 rounded-lg border border-border bg-card p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{null !== editingId ? T.blockEditTitle : T.blockNewTitle}</p>
-
-        {0 === candidates.length ? (
-          <EmptyHint>{T.blockNoTeamsYet}</EmptyHint>
-        ) : (
-          <>
-            <Input type="search" aria-label={T.blockSearchTeam} placeholder={T.blockSearchTeam} className="mb-2" value={query} onChange={(e) => setQuery(e.target.value)} />
-
-            {searching ? (
-              <>
-                <p aria-live="polite" className="mb-1 text-xs text-muted-foreground">
-                  {T.blockTeamsFound(filtered.length)}
-                </p>
-                {0 === filtered.length ? <EmptyHint>{T.blockNoMatch(query.trim())}</EmptyHint> : <div className="flex flex-col gap-1">{filtered.map(candidateRow)}</div>}
-              </>
-            ) : (
-              <div className="flex flex-col gap-1">{candidates.map(candidateRow)}</div>
-            )}
-
-            {/* Au-delà de 3 équipes cochées : inhabituel, jamais bloquant (le serveur va jusqu'à 10). */}
-            {tooMany ? (
-              <p role="alert" className="mt-3 text-xs text-warning">
-                {T.blockTooMany(checked.size)}
-              </p>
-            ) : null}
-
-            {/* E12 — « Nom du groupe » facultatif, borné à 40 (colonne serveur). */}
-            <label className="mt-3 block text-xs text-muted-foreground">
-              {T.blockNameLabel}
-              <Input aria-label={T.blockNameLabel} placeholder={T.blockNamePlaceholder} className="mt-0.5" maxLength={40} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
-            </label>
-
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <label className="text-xs text-muted-foreground">
-                {T.blockCommonSessions}
-                <Select
-                  aria-label={T.blockCommonSessions}
-                  aria-describedby="block-sessions-help"
-                  className="mt-0.5"
-                  wrapperClassName="w-40"
-                  disabled={!sessionsReady}
-                  value={String(effectiveK)}
-                  onChange={(e) => setCommonSessions(Number(e.target.value) || 1)}
-                >
-                  {sessionsReady ? (
-                    sessionOptions.map((n) => (
-                      <option key={n} value={n}>
-                        {T.blockCommonSessionsOption(n)}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="1">{T.blockPickTwoTeamsFirst}</option>
-                  )}
-                </Select>
-              </label>
-              <span id="block-sessions-help" className="text-xs text-muted-foreground">
-                {sessionsReady ? T.blockSessionsCap(cap) : T.blockSessionsCapHint}
-              </span>
-              {null !== editingId ? (
-                <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm}>
-                  {T.blockCancel}
-                </Button>
-              ) : null}
-              <Button size="sm" className={cn("gap-1", null === editingId && "ml-auto")} disabled={!enoughTeams || !sessionsReady || busy} onClick={() => void submit()}>
-                {null !== editingId ? <Check className="size-4" /> : <Plus className="size-4" />}
-                {null !== editingId ? T.blockSave : T.blockCreate}
-              </Button>
-            </div>
-            {!enoughTeams ? <p className="mt-1 text-xs text-muted-foreground">{T.blockPickTwoTeams}</p> : null}
-            {null !== error ? (
-              <p role="alert" className="mt-2 text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-
       {0 === scopeBlocks.length ? (
         <EmptyHint>{T.blockNone}</EmptyHint>
       ) : (
         <ul className="flex flex-col gap-1">
-          {scopeBlocks.map((b) => (
+          {listedBlocks.map((b) => (
             <li key={b.id} className={cn("flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm", editingId === b.id ? "border-accent ring-1 ring-accent" : "border-border")}>
               <span className="flex-1">{displayNameOf(b)}</span>
               <button type="button" aria-label={T.blockEditAria(blockNames(b.teamIds))} className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => editBlock(b)}>
@@ -275,6 +219,96 @@ export function SharedTrainingBlockPanel({
           ))}
         </ul>
       )}
+
+      <div ref={formRef} className="mt-4">
+        <AccordionSection title={null !== editingId ? T.blockEditTitle : T.blockNewTitle} open={formOpen} onToggle={toggleForm}>
+          {0 === candidates.length ? (
+            <EmptyHint>{T.blockNoTeamsYet}</EmptyHint>
+          ) : (
+            <>
+              <p className="mb-2 text-xs text-muted-foreground">{T.blockFormHint}</p>
+              <Input type="search" aria-label={T.blockSearchTeam} placeholder={T.blockSearchTeam} className="mb-2" value={query} onChange={(e) => setQuery(e.target.value)} />
+
+              {searching ? (
+                <>
+                  <p aria-live="polite" className="mb-1 text-xs text-muted-foreground">
+                    {T.blockTeamsFound(filtered.length)}
+                  </p>
+                  {0 === filtered.length ? <EmptyHint>{T.blockNoMatch(query.trim())}</EmptyHint> : <div className="flex flex-col gap-1">{filtered.map(candidateRow)}</div>}
+                </>
+              ) : (
+                <div className="flex flex-col gap-1">{candidates.map(candidateRow)}</div>
+              )}
+
+              {pausedMembers.map((t) => (
+                <p key={t.id} className="mt-1 text-xs text-muted-foreground">
+                  {T.blockPausedMember(t.name)}
+                </p>
+              ))}
+
+              <p aria-live="polite" className="mt-2 text-xs text-muted-foreground">
+                {T.blockCheckedCount(checkedTeams.length)}
+              </p>
+
+              {/* Au-delà de 3 équipes cochées : inhabituel, jamais bloquant (le serveur va jusqu'à 10). */}
+              {tooMany ? (
+                <p role="alert" className="mt-3 text-xs text-warning">
+                  {T.blockTooMany(checkedTeams.length)}
+                </p>
+              ) : null}
+
+              {/* E12 — « Nom du groupe » facultatif, borné à 40 (colonne serveur). */}
+              <label className="mt-3 block text-xs text-muted-foreground">
+                {T.blockNameLabel}
+                <Input aria-label={T.blockNameLabel} placeholder={T.blockNamePlaceholder} className="mt-0.5" maxLength={40} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+              </label>
+
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <label className="text-xs text-muted-foreground">
+                  {T.blockCommonSessions}
+                  <Select
+                    aria-label={T.blockCommonSessions}
+                    aria-describedby="block-sessions-help"
+                    className="mt-0.5"
+                    wrapperClassName="w-40"
+                    disabled={!sessionsReady}
+                    value={String(effectiveK)}
+                    onChange={(e) => setCommonSessions(Number(e.target.value) || 1)}
+                  >
+                    {sessionsReady ? (
+                      sessionOptions.map((n) => (
+                        <option key={n} value={n}>
+                          {T.blockCommonSessionsOption(n)}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="1">{T.blockPickTwoTeamsFirst}</option>
+                    )}
+                  </Select>
+                </label>
+                <span id="block-sessions-help" className="text-xs text-muted-foreground">
+                  {sessionsReady ? T.blockSessionsCap(cap) : T.blockSessionsCapHint}
+                </span>
+                {null !== editingId ? (
+                  <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm}>
+                    {T.blockCancel}
+                  </Button>
+                ) : null}
+                <Button size="sm" className={cn("gap-1", null === editingId && "ml-auto")} disabled={!enoughTeams || !sessionsReady || busy} onClick={() => void submit()}>
+                  {null !== editingId ? <Check className="size-4" /> : <Plus className="size-4" />}
+                  {null !== editingId ? T.blockSave : T.blockCreate}
+                </Button>
+              </div>
+              {!enoughTeams ? <p className="mt-1 text-xs text-muted-foreground">{T.blockPickTwoTeams}</p> : null}
+              {null !== error ? (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {error}
+                </p>
+              ) : null}
+            </>
+          )}
+        </AccordionSection>
+      </div>
 
       <ConfirmDialog
         open={pendingDelete !== null}

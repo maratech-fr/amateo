@@ -64,6 +64,7 @@ final readonly class PreSolvePreventionWarnings
             ...$this->mergedForcedDayRules($teams, $constraints),
             ...$this->forcedDayEmptiedByClosingRules($payload, $teams, $venues, $constraints),
             ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
+            ...$this->assistantsWithoutMainCoach($payload, $teams, $constraints),
             ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins),
             ...$this->daysWithoutAnyAvailableEmployee($payload, $venues, $constraints),
             ...$this->teamReservedOnOverlappingCases($payload),
@@ -722,6 +723,70 @@ final readonly class PreSolvePreventionWarnings
                 : 'Les indisponibilités de %s (adjoints uniquement) ne ferment aucune séance : seul un entraîneur principal indisponible en empêche une. Elles ferment seulement le relais d\'arrivée tardive que ces adjoints auraient pu assurer.',
             implode(', ', $names),
         )];
+    }
+
+    /**
+     * Une équipe qui a au moins un adjoint et aucun coach principal (décision fondateur 2026-11-02 :
+     * on ne peut pas être adjoint sans coach, soit autonomie, soit au moins un coach). Avertissement
+     * seulement : la génération reste permise. Une équipe sans aucun coach est en autonomie : silence.
+     *
+     * @param array<string, mixed>       $payload
+     * @param list<array<string, mixed>> $teams
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<string>
+     */
+    private function assistantsWithoutMainCoach(array $payload, array $teams, array $constraints): array
+    {
+        $assistants = [];
+        foreach ($constraints as $constraint) {
+            if ('TEAM_COACH' !== ($constraint['type'] ?? null)) {
+                continue;
+            }
+            $metadata = \is_array($constraint['metadata'] ?? null) ? $constraint['metadata'] : [];
+            if ('ASSISTANT' === strtoupper((string) ($metadata['role'] ?? 'MAIN'))) {
+                $assistants[$this->stringOf($constraint, 'teamId')][] = $this->stringOf($metadata, 'coachId');
+            }
+        }
+        if ([] === $assistants) {
+            return [];
+        }
+
+        $mains = $this->teamMainCoaches($constraints);
+        $coachesById = [];
+        foreach ($this->listOf($payload, 'coaches') as $coach) {
+            $coachesById[$this->stringOf($coach, 'id')] = $coach;
+        }
+
+        $warnings = [];
+        foreach ($teams as $team) {
+            $teamId = $this->stringOf($team, 'id');
+            if (!isset($assistants[$teamId]) || isset($mains[$teamId])) {
+                continue;
+            }
+            $names = array_map(fn (string $id): string => $this->shortCoachName($coachesById[$id] ?? []), $assistants[$teamId]);
+            $warnings[] = \sprintf(
+                1 === \count($names)
+                    ? '%s a un adjoint (%s) mais aucun coach principal : nommez un coach principal, ou retirez l\'adjoint si l\'équipe est en autonomie.'
+                    : '%s a des adjoints (%s) mais aucun coach principal : nommez un coach principal, ou retirez les adjoints si l\'équipe est en autonomie.',
+                $this->nameOf($team),
+                implode(', ', $names),
+            );
+        }
+
+        return $warnings;
+    }
+
+    /**
+     * « Emma D. » : le prénom et l'initiale du nom.
+     *
+     * @param array<string, mixed> $coach
+     */
+    private function shortCoachName(array $coach): string
+    {
+        $initial = mb_substr($this->stringOf($coach, 'lastName'), 0, 1);
+
+        return trim($this->stringOf($coach, 'firstName') . ('' !== $initial ? ' ' . $initial . '.' : '')) ?: 'Un adjoint';
     }
 
     /**

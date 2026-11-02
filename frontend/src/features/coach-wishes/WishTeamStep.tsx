@@ -171,12 +171,13 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
             {/* Une ligne par personne, principaux puis adjoints. Pressé = disponible, comme au-dessus ;
                 la donnée reste les jours d'ABSENCE. Masqué si l'équipe n'a aucun lien. */}
             {team.staff.length > 0 ? (
-              <div className="mt-3 space-y-2 border-t border-border pt-2">
+              <div className="mt-3 ml-4 space-y-2 border-t border-border pt-2">
                 <p className="text-sm font-medium">{TEXTS.staffTitle}</p>
                 <p className="text-xs text-muted-foreground">{TEXTS.staffHelp}</p>
                 {team.staff.map((member) => {
                   const absent = s.staff.get(member.coachId) ?? new Set<number>();
                   const present = ALL_DAYS.filter((d) => !absent.has(d));
+                  const markedDays = absencesElsewhere.filter((a) => a.teamId === team.id && a.weekStart === week && a.coachId === member.coachId).flatMap((a) => a.days);
                   return (
                     <DayMultiPicker
                       key={member.coachId}
@@ -184,6 +185,8 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
                       legendVisible
                       tone="accent"
                       value={present}
+                      markedDays={markedDays}
+                      markedReason={TEXTS.absentElsewhereMark}
                       onChange={(next) => replayToggles(new Set(present), next, (day) => onToggleStaffDay(key, member.coachId, day))}
                     />
                   );

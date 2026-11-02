@@ -84,6 +84,7 @@ export const COACH_WISHES_PUBLIC_TEXTS = {
   staffMemberLegend: (firstName: string, lastName: string, role: "MAIN" | "ASSISTANT") => `${`${firstName} ${lastName}`.trim()} — ${"MAIN" === role ? "principal" : "adjoint"}`,
   absentElsewhere: (firstName: string, dayLabels: string[]) =>
     `${firstName} est déjà noté absent ${dayLabels.length > 1 ? "les" : "le"} ${inSentence(dayLabels)} cette semaine, pour une autre équipe. Cette absence vaut pour toutes ses équipes. Si c'est une erreur, prévenez le club.`,
+  absentElsewhereMark: "Déjà noté absent ce jour, pour une autre équipe",
   keepSeasonSlots: "Garder mes créneaux habituels",
   commentLabel: "Commentaire",
   commentAria: (team: string, week: string) => `Commentaire — ${team}, semaine du ${week}`,
@@ -91,7 +92,7 @@ export const COACH_WISHES_PUBLIC_TEXTS = {
   // Récapitulatif
   recapNothing: "aucune modification",
   recapMutualization: (slots: number, partners: string[]) => `mutualise ${slots} séance${slots > 1 ? "s" : ""} avec : ${partners.join(", ")}`,
-  recapWeek: (week: string, summary: string) => `semaine du ${week} : ${summary}`,
+  recapWeek: (week: string) => `semaine du ${week} :`,
   recapEdit: "Modifier",
   recapPartnerFallback: "équipe",
   recapSlots: (slots: number) => `${slots} séance${slots > 1 ? "s" : ""}`,

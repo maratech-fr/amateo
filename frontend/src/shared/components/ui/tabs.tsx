@@ -50,6 +50,8 @@ export interface TabsProps {
   /** Peau : `app` par DÉFAUT (l'application club) ; la console superadmin doit passer
    *  `console` explicitement — l'oublier peint des tokens clairs sur fond sombre. */
   variant?: SurfaceSkin;
+  /** Classes ajoutées à la barre, après la peau (p. ex. une ligne qui défile plutôt qu'un retour à la ligne). */
+  listClassName?: string;
 }
 
 /**
@@ -62,7 +64,7 @@ export interface TabsProps {
  *   required by the WAI-ARIA spec for the manual-activation fallback).
  * - Tab key exits to the panel (browser default with roving tabindex).
  */
-export function Tabs({ tabs, activeTab, onTabChange, ariaLabel, idPrefix, variant = "app" }: TabsProps) {
+export function Tabs({ tabs, activeTab, onTabChange, ariaLabel, idPrefix, variant = "app", listClassName }: TabsProps) {
   const skin = TAB_SKINS[variant];
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -107,7 +109,7 @@ export function Tabs({ tabs, activeTab, onTabChange, ariaLabel, idPrefix, varian
   }
 
   return (
-    <div role="tablist" aria-label={ariaLabel} className={cn("flex flex-wrap gap-1", skin.list)}>
+    <div role="tablist" aria-label={ariaLabel} className={cn("flex flex-wrap gap-1", skin.list, listClassName)}>
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab;
         const Icon = tab.icon;
@@ -159,6 +161,8 @@ export interface TabPanelProps {
   ariaLabel?: string;
   className?: string;
   variant?: SurfaceSkin;
+  /** Classes ajoutées à la barre, après la peau (p. ex. une ligne qui défile plutôt qu'un retour à la ligne). */
+  listClassName?: string;
 }
 
 export function TabPanel({ tabId, idPrefix, active, children, ariaLabel, className, variant = "app" }: TabPanelProps) {

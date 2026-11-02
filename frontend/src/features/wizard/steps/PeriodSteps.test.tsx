@@ -550,6 +550,7 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     expect(screen.queryByLabelText(/Intensité d'entraînement, passerelle/)).toBeNull();
     // La mutualisation, elle, RESTE éditable en période (onglet « Mutualisation » voisin).
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 });

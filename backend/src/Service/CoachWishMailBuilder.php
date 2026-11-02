@@ -29,6 +29,7 @@ final class CoachWishMailBuilder
      * par un humain hors e-mail.
      */
     private const string CTA_LABEL = 'Donner les disponibilités de mon équipe';
+    private const string CTA_LABEL_PLURAL = 'Donner les disponibilités de mes équipes';
 
     public function __construct(
         #[Autowire('%env(default::FRONTEND_BASE_URL)%')]
@@ -45,8 +46,9 @@ final class CoachWishMailBuilder
      * `$senderFirstName` = le prénom du GESTIONNAIRE qui déclenche l'envoi/la relance (Formule
      * A, D1) : « {Prénom} ({libellé club}) prépare le planning … ». Le libellé club est
      * {@see Club::emailLabel} quand le club est connu, sinon le nom passé en repli.
+     * `$teamCount` = les équipes du jeton du coach, jamais une valeur du corps de la requête.
      */
-    public function buildCoachLink(string $to, string $coachFirstName, string $clubName, CoachWishCampaign $campaign, string $periodTitle, string $token, string $senderFirstName, bool $isReminder = false, ?Club $club = null): Email
+    public function buildCoachLink(string $to, string $coachFirstName, string $clubName, CoachWishCampaign $campaign, string $periodTitle, string $token, string $senderFirstName, bool $isReminder = false, ?Club $club = null, int $teamCount = 1): Email
     {
         $subject = $isReminder
             ? \sprintf('Rappel — vos disponibilités pour %s', $periodTitle)
@@ -57,7 +59,7 @@ final class CoachWishMailBuilder
         $lines = [
             \sprintf('Bonjour %s,', $coachFirstName),
             '',
-            \sprintf('%s (%s) prépare le planning de « %s » et a besoin, pour chacune de vos équipes, des souhaits d\'entraînement et des disponibilités de tout le staff : vous répondez pour l\'équipe entière.', $senderFirstName, $label, $periodTitle),
+            \sprintf('%s (%s) prépare le planning de « %s » et a besoin, %s, des souhaits d\'entraînement et des disponibilités de tout le staff : vous répondez pour l\'équipe entière.', $senderFirstName, $label, $periodTitle, $teamCount > 1 ? 'pour chacune de vos équipes' : 'pour votre équipe'),
             \sprintf('Merci de répondre avant le %s — le lien reste modifiable jusque-là.', $campaign->getDeadline()->format('d/m/Y')),
         ];
         // Sans base front configurée, un chemin nu « /doleances/… » n'est pas cliquable :
@@ -85,7 +87,7 @@ final class CoachWishMailBuilder
         if (null !== $link) {
             $headers = $email->getHeaders();
             $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
-            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, self::CTA_LABEL);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, $teamCount > 1 ? self::CTA_LABEL_PLURAL : self::CTA_LABEL);
         }
 
         return $email;

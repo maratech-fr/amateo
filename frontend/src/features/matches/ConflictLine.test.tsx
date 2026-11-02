@@ -44,7 +44,7 @@ describe("ConflictSeverityGroups — la gravité 3 en trois groupes", () => {
 
     render(<ConflictSeverityGroups conflicts={conflicts} teams={teams} coaches={coaches} venues={venues} renderConflict={() => null} />);
 
-    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Personne", "Gymnase", "Règle"]);
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.firstChild?.textContent)).toEqual(["Personne", "Gymnase", "Règle"]);
     expect(consoleError.mock.calls.filter(([message]) => String(message).includes("same key"))).toEqual([]);
     consoleError.mockRestore();
   });

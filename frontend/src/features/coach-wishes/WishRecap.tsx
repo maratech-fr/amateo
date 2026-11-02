@@ -22,8 +22,8 @@ const dayLabel = (day: number): string => dayLabelShort(day) || String(day);
 
 const daysList = (set: Set<number>): string[] => [...set].sort((a, b) => a - b).map(dayLabel);
 
-/** Résumé lisible d'une semaine modifiée. */
-function weekSummary(s: SectionState, staff: PublicStaffMember[]): string {
+/** Résumé lisible d'une semaine modifiée : une ligne par partie, une ligne par personne absente. */
+function weekSummary(s: SectionState, staff: PublicStaffMember[]): string[] {
   const parts = [TEXTS.recapSlots(s.slotsWanted)];
   if (s.wishedDays.size > 0) {
     parts.push(TEXTS.recapWished(daysList(s.wishedDays)));
@@ -31,14 +31,15 @@ function weekSummary(s: SectionState, staff: PublicStaffMember[]): string {
   if (s.days.size > 0) {
     parts.push(TEXTS.recapTeamClosed(daysList(s.days)));
   }
-  const absent = staff.filter((m) => (s.staff.get(m.coachId)?.size ?? 0) > 0).map((m) => ({ firstName: m.firstName, dayLabels: daysList(s.staff.get(m.coachId) as Set<number>) }));
-  if (absent.length > 0) {
-    parts.push(TEXTS.recapAbsent(absent));
+  for (const member of staff) {
+    if ((s.staff.get(member.coachId)?.size ?? 0) > 0) {
+      parts.push(TEXTS.recapAbsent([{ firstName: member.firstName, dayLabels: daysList(s.staff.get(member.coachId) as Set<number>) }]));
+    }
   }
   if (s.keepSeasonSlots) {
     parts.push(TEXTS.recapKeepsSlots);
   }
-  return parts.join(" · ");
+  return parts;
 }
 
 /**
@@ -67,7 +68,14 @@ export function WishRecap({ teams, weeks, sections, initial, mutualizations, par
                       <li>{TEXTS.recapMutualization(mutu?.sharedSlots ?? 0, partners)}</li>
                     ) : null}
                     {changedWeeks.map((week) => (
-                      <li key={week}>{TEXTS.recapWeek(frDate(week), weekSummary(sections.get(sectionKey(team.id, week)) as SectionState, team.staff))}</li>
+                      <li key={week}>
+                        <span>{TEXTS.recapWeek(frDate(week))}</span>
+                        <ul className="ml-4 list-disc">
+                          {weekSummary(sections.get(sectionKey(team.id, week)) as SectionState, team.staff).map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      </li>
                     ))}
                   </ul>
                 )}

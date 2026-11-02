@@ -16,6 +16,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Aperçu COACH PAR COACH d'une campagne de collecte (feature #10, lot D2) : le gestionnaire
@@ -52,7 +53,8 @@ final class CoachWishCampaignPreviewController extends AbstractController
     {
         $this->managementAccessGuard->assertManager(); // SEC-07 — AVANT toute résolution
 
-        $campaign = $this->entityManager->getRepository(CoachWishCampaign::class)->find($id);
+        // Un identifiant malformé rend le même 404 qu'une collecte d'un autre club, jamais un 500.
+        $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         // Le club vient de la LIGNE, jamais du corps : un id d'un autre club est déjà invisible
         // ici (RLS + filtre tenant), la comparaison est le filet app-layer. 404 byte-identique.
         $currentClubId = $this->resolveCurrentClubId($this->requestStack);

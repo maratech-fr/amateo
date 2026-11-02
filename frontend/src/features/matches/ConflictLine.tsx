@@ -264,7 +264,7 @@ function ConflictSideRow({ side }: { side: ConflictSideLine }) {
             <span className="text-foreground">{side.place}</span>
           </span>
           {undefined !== side.opponent ? (
-            <span className="min-w-0 text-foreground [overflow-wrap:anywhere]">
+            <span className="min-w-0 text-foreground break-words">
               <span aria-hidden="true">· </span>
               {side.opponent}
             </span>
@@ -365,7 +365,7 @@ function ConflictVenueRow({ side }: { side: ConflictSideLine }) {
             {true === side.isCtc ? <CtcMark partner={side.ctcPartner} /> : null}
             {side.teamName}
           </span>
-          {undefined !== side.opponent ? <span className="min-w-0 text-foreground [overflow-wrap:anywhere]">{side.opponent}</span> : null}
+          {undefined !== side.opponent ? <span className="min-w-0 text-foreground break-words">{side.opponent}</span> : null}
         </span>
       </th>
       <TableCell className="px-1.5 py-0.5 align-top">
@@ -559,16 +559,16 @@ interface ConflictSeverityGroupsProps {
  */
 export function ConflictSeverityGroups({ conflicts, teams, coaches, venues, newFingerprints, renderConflict }: ConflictSeverityGroupsProps) {
   const groups = groupBySeverity(conflicts);
-  const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
+  const [unfolded, setUnfolded] = useState<Set<string>>(new Set());
 
   const isNew = (conflict: Conflict): boolean => undefined !== conflict.fingerprint && true === newFingerprints?.has(conflict.fingerprint);
 
   return (
     <div className="flex flex-col gap-3">
       {groups.map((group) => {
-        const folded = group.folded && !unfolded.has(group.severity);
+        const folded = group.folded && !unfolded.has(group.key);
         return (
-          <section key={group.severity}>
+          <section key={group.key}>
             <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {group.folded ? (
                 <button
@@ -577,10 +577,10 @@ export function ConflictSeverityGroups({ conflicts, teams, coaches, venues, newF
                   aria-expanded={!folded}
                   onClick={() => {
                     const next = new Set(unfolded);
-                    if (next.has(group.severity)) {
-                      next.delete(group.severity);
+                    if (next.has(group.key)) {
+                      next.delete(group.key);
                     } else {
-                      next.add(group.severity);
+                      next.add(group.key);
                     }
                     setUnfolded(next);
                   }}
