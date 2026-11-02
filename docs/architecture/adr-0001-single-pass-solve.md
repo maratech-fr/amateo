@@ -197,7 +197,10 @@ historical `constraint_not_honored` / `session_below_effective_min` / `conflict`
   alert (founder, 2026-11-01). On `failed` the alert is dropped (`RESERVED_BLOCK_ALERT_ID_PREFIX`,
   « maintenue » would be false), not downgraded. A partially pinned group is unchanged (free placement,
   per-team alerts). The causality probe KEEPS the locks of such a group (`_reserved_group_locks`): they are
-  the group's session, not the cause, otherwise the case becomes a free placement again. Over-pinned groups
+  the group's session, not the cause, otherwise the case becomes a free placement again; when that first probe
+  stays infeasible, a SECOND probe (same 15 s budget) releases every lock, because the group may itself be the
+  cause, e.g. it occupies the only case of a team's imposed day (2026-11-02): that team loses the session with
+  `blocked_by_reservation`, the group keeps its reservation. Over-pinned groups
   (exclusive fully pinned cases > common sessions) and nested groups sharing one pinned case stay
   INFEASIBLE, now announced by the pre-solve recap (`PreSolvePreventionWarnings`). No contract change
   (stays 1.9).

@@ -1170,15 +1170,24 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
     pleine). S'il devient faisable, l'infaisabilité tenait aux verrous → on peut relâcher la règle
     qu'ils bloquent (réservation souveraine). S'il reste infaisable (ou ne tranche pas dans le
     budget court), le conflit est règle-contre-règle / règle-contre-grille — « la réservation est la
-    SEULE exception » — et on NE relâche RIEN : le planning reste ``failed`` et expliqué."""
-    probe_status, *_ = await asyncio.to_thread(
-        _solve,
-        _without_hard_locks(data, keep=_reserved_group_locks(data)),
-        input_data,
-        budget_override=BEST_EFFORT_PROBE_MAX_SECONDS,
-        placement_only=True,
-    )
-    return probe_status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    SEULE exception » — et on NE relâche RIEN : le planning reste ``failed`` et expliqué.
+
+    Deux sondes au plus : la première garde les verrous d'un groupe réservé entier (leur case redevenue
+    libre serait sans coach) ; si elle reste infaisable, la seconde libère TOUS les verrous, car ce groupe
+    peut être lui-même la cause (un jour imposé dont il occupe la case). Chacune a le budget court."""
+    kept = _reserved_group_locks(data)
+    probes = (kept, frozenset()) if kept else (frozenset(),)
+    for keep in probes:
+        probe_status, *_ = await asyncio.to_thread(
+            _solve,
+            _without_hard_locks(data, keep=keep),
+            input_data,
+            budget_override=BEST_EFFORT_PROBE_MAX_SECONDS,
+            placement_only=True,
+        )
+        if probe_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return True
+    return False
 
 
 def _lock_identity(template: Mapping[str, Any]) -> tuple[str, str, int, str]:
@@ -1193,7 +1202,8 @@ def _lock_identity(template: Mapping[str, Any]) -> tuple[str, str, int, str]:
 
 def _reserved_group_locks(data: dict[str, Any]) -> frozenset[tuple[str, str, int, str]]:
     """Les verrous des cases où un groupe entier est réservé : ils sont la séance du groupe, pas la cause
-    de son infaisabilité. La sonde les garde, sinon la case redevient une pose libre, sans coach."""
+    de son infaisabilité, le plus souvent. La première sonde les garde, sinon la case redevient une pose libre,
+    sans coach ; la seconde les libère, pour le cas où ce groupe prend la case d'un jour imposé."""
     teams_by_case: dict[tuple[str, int, str], set[str]] = {}
     for pin in data.get("slotTemplates") or data.get("slot_templates") or []:
         if str(pin.get("lockLevel") or pin.get("lock_level") or "").upper() == "HARD":
