@@ -62,6 +62,22 @@ final class CoachWishCampaignActionsTest extends WebTestCase
 
     private CoachWishToken $tokenNoEmail;
 
+    /** @return iterable<string, array{array<string, mixed>}> */
+    public static function malformedRecipientPayloads(): iterable
+    {
+        yield 'équipe : texte' => [['teamId' => 'pas-un-uuid', 'coachId' => 'COACH']];
+        yield 'équipe : quote SQL' => [['teamId' => '\' OR 1=1 --', 'coachId' => 'COACH']];
+        yield 'équipe : nombre' => [['teamId' => 42, 'coachId' => 'COACH']];
+        yield 'équipe : tableau' => [['teamId' => ['x'], 'coachId' => 'COACH']];
+        yield 'équipe : absente' => [['coachId' => 'COACH']];
+        yield 'coach : texte' => [['teamId' => 'TEAM', 'coachId' => 'pas-un-uuid']];
+        yield 'coach : quote SQL' => [['teamId' => 'TEAM', 'coachId' => '\' OR 1=1 --']];
+        yield 'coach : nombre' => [['teamId' => 'TEAM', 'coachId' => 42]];
+        yield 'coach : tableau' => [['teamId' => 'TEAM', 'coachId' => ['x']]];
+        yield 'coach : absent' => [['teamId' => 'TEAM']];
+        yield 'les deux : texte' => [['teamId' => 'abc', 'coachId' => 'def']];
+    }
+
     public function testSendLinksMailsOnlyUnsentCoachesWithEmailAndStampsSentAt(): void
     {
         $this->client->enableProfiler();
@@ -225,22 +241,6 @@ final class CoachWishCampaignActionsTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(422);
         self::assertSame(0, $this->markedCount($teamId), 'aucun refus n\'écrit');
-    }
-
-    /** @return iterable<string, array{array<string, mixed>}> */
-    public static function malformedRecipientPayloads(): iterable
-    {
-        yield 'équipe : texte' => [['teamId' => 'pas-un-uuid', 'coachId' => 'COACH']];
-        yield 'équipe : quote SQL' => [['teamId' => "' OR 1=1 --", 'coachId' => 'COACH']];
-        yield 'équipe : nombre' => [['teamId' => 42, 'coachId' => 'COACH']];
-        yield 'équipe : tableau' => [['teamId' => ['x'], 'coachId' => 'COACH']];
-        yield 'équipe : absente' => [['coachId' => 'COACH']];
-        yield 'coach : texte' => [['teamId' => 'TEAM', 'coachId' => 'pas-un-uuid']];
-        yield 'coach : quote SQL' => [['teamId' => 'TEAM', 'coachId' => "' OR 1=1 --"]];
-        yield 'coach : nombre' => [['teamId' => 'TEAM', 'coachId' => 42]];
-        yield 'coach : tableau' => [['teamId' => 'TEAM', 'coachId' => ['x']]];
-        yield 'coach : absent' => [['teamId' => 'TEAM']];
-        yield 'les deux : texte' => [['teamId' => 'abc', 'coachId' => 'def']];
     }
 
     /** Un identifiant de collecte malformé dans l'URL répond comme une collecte inconnue, jamais un 500. */
