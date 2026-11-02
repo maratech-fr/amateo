@@ -119,7 +119,7 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
 ## 7. Workflow rules (orchestrator)
 
-Agents/skills = **manuels, déclenchés par le user** (exceptions : hook `code-review-graph`, `smith` sur les plans sensibles, étape 2).
+Agents/skills = **manuels, déclenchés par le user** (exception : `smith` sur les plans sensibles, étape 2).
 ⚠ **Les subagents ne reçoivent PAS ce fichier** — leurs définitions leur ordonnent de le lire en
 première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
 branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready » ;

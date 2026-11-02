@@ -1,14 +1,5 @@
 {
   "mcpServers": {
-    "code-review-graph": {
-      "command": "uvx",
-      "args": [
-        "code-review-graph",
-        "serve"
-      ],
-      "cwd": "/home/marabou/projects/scheduler",
-      "type": "stdio"
-    },
     "playwright": {
       "command": "npx",
       "args": [
@@ -16,23 +7,6 @@
         "--headless",
         "--browser",
         "chromium"
-      ],
-      "cwd": "/home/marabou/projects/scheduler",
-      "type": "stdio"
-    },
-    "serena": {
-      "command": "uvx",
-      "args": [
-        "--python",
-        "3.12",
-        "--from",
-        "git+https://github.com/oraios/serena",
-        "serena",
-        "start-mcp-server",
-        "--context",
-        "ide-assistant",
-        "--project",
-        "/home/marabou/projects/scheduler"
       ],
       "cwd": "/home/marabou/projects/scheduler",
       "type": "stdio"
