@@ -56,6 +56,19 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Alors le match à domicile est placé par le solveur, sans être bloqué par l'extérieur
     Et le radar signale le conflit de personne entre le domicile et l'extérieur du coach partagé
 
+  Scénario: Le second coach tient l'entraînement, l'autre match se pose sur son créneau
+    La seconde équipe s'entraîne le samedi avec deux coachs. L'un a un match à placer sur ce créneau,
+    l'autre non : ce dernier tient la séance, et le match reste sur son créneau idéal.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et un créneau idéal le samedi à 15h30 sur ce gymnase pour la première équipe
+    Et un entraîneur qui partage les deux équipes
+    Et la seconde équipe a un second coach principal et un entraînement du samedi à 15h00, coach stocké l'entraîneur partagé
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors le match du samedi atterrit sur son créneau idéal, sur le gymnase à 15h30
+
   Scénario: Placer un seul week-end ne déplace pas un match déjà posé sur un autre week-end
     « Placer ce week-end » ne résout QUE la semaine affichée : un match déjà posé par le solveur
     sur un AUTRE week-end est une ancre — sa salle reste protégée, son coup d'envoi ne bouge pas.

@@ -12,6 +12,8 @@ from __future__ import annotations
 from datetime import date, time, timedelta
 from typing import Any
 
+import pytest
+
 from app.main import read_contract_version
 from app.schemas.match_input_schema import MatchPlacementInputSchema, MatchTeamSchema
 from app.schemas.match_output_schema import MatchPlacementOutputSchema
@@ -966,3 +968,247 @@ def test_an_opening_does_not_lift_a_venue_forbidden_to_the_team() -> None:
     result = _opening_solve(team_over={"forbiddenVenueIds": ["gym-b"]})
     assert result["placements"] == []
     assert result["unplaced"][0]["reason"] == "team_venue_forbidden"
+
+
+# ── « Un coach tient la séance » face aux matchs (axe §7.1 constraint semantics) ──────────────────
+# Une équipe joue tant qu'UN principal est libre. Décisions fondateur : adjoint libre = -10, personne
+# de libre = -60 ; aucun poids ne change. Le côté payload se prouve dans
+# `backend/tests/CrossStack/TrainingOccupancyHoldingParityTest.php`, le fil complet contre le vrai
+# moteur dans `backend/tests/CrossStack/MatchPlacementSemanticsGateTest.php`.
+
+
+def _main(coach_id: str) -> dict[str, str]:
+    return {"coachId": coach_id, "role": "MAIN"}
+
+
+def _assistant(coach_id: str) -> dict[str, str]:
+    return {"coachId": coach_id, "role": "ASSISTANT"}
+
+
+def _unavailable(coach_id: str, kickoff_min: str = "14:00", kickoff_max: str = "15:10") -> dict[str, Any]:
+    return {"coachId": coach_id, "daysOfWeek": [6], "kickoffMin": kickoff_min, "kickoffMax": kickoff_max}
+
+
+def _occupied(coach_id: str, start: str = "15:00", end: str = "16:45") -> dict[str, str]:
+    return {"date": SATURDAY, "start": start, "end": end, "coachId": coach_id}
+
+
+def _kickoff_of_u9(
+    u9_coaches: list[dict[str, str]],
+    *,
+    fixed: list[dict[str, Any]] | None = None,
+    occupancies: list[dict[str, str]] | None = None,
+    unavailabilities: list[dict[str, Any]] | None = None,
+    ideal: str = "15:00",
+    first_kickoff: str = "13:00",
+    u9_players: list[str] | None = None,
+) -> str:
+    """Le coup d'envoi retenu pour le match U9 à placer le samedi, idéal `ideal` sur le gymnase v.
+
+    Un match figé se décrit par {"id", "coaches", "players"?} : il se joue à 15:00 sur son propre
+    gymnase, pour que seule la personne pèse, jamais la salle ni la compaction.
+    """
+    fixed = fixed or []
+    teams: list[dict[str, Any]] = [
+        {
+            "id": "u9",
+            "name": "U9",
+            "leagueWindows": [],
+            "habits": [{"dayOfWeek": 6, "kickoff": ideal, "venueId": "v"}],
+            "coaches": u9_coaches,
+            "players": u9_players or [],
+        }
+    ]
+    matches: list[dict[str, Any]] = [{"id": "m-u9", "teamId": "u9", "date": SATURDAY, "kind": "TO_PLACE"}]
+    for index, row in enumerate(fixed):
+        teams.append(
+            {
+                "id": row["id"],
+                "name": row["id"],
+                "leagueWindows": [],
+                "habits": [],
+                "coaches": row["coaches"],
+                "players": row.get("players", []),
+            }
+        )
+        matches.append(
+            {
+                "id": f"m-{row['id']}",
+                "teamId": row["id"],
+                "date": SATURDAY,
+                "kind": "FIXED",
+                "venueId": f"w{index}",
+                "kickoff": "15:00",
+            }
+        )
+    raw: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-tenue",
+        "seasonId": "season-tenue",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": matches,
+        "venues": [
+            {
+                "id": "v",
+                "name": "V",
+                "matchWindows": [{"dayOfWeek": 6, "start": first_kickoff, "end": "22:30"}],
+                "unavailabilities": [],
+            },
+            *[
+                {
+                    "id": f"w{index}",
+                    "name": f"W{index}",
+                    "matchWindows": [{"dayOfWeek": 6, "start": "08:00", "end": "23:00"}],
+                    "unavailabilities": [],
+                }
+                for index in range(len(fixed))
+            ],
+        ],
+        "teams": teams,
+        "teamLinks": [],
+        "trainingOccupancies": occupancies or [],
+        "coachUnavailabilities": unavailabilities or [],
+    }
+    input_data = MatchPlacementInputSchema.model_validate(raw)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+    assert_no_hard_violation(input_data, output)
+    assert output.unplaced == []
+    return next(p for p in output.placements if p.match_id == "m-u9").kickoff.strftime("%H:%M")
+
+
+def test_a_fixed_match_held_by_the_second_main_leaves_the_first_free_for_his_match() -> None:
+    # U18 figé (B, E) à 15:00, U9 (B) à placer : B a un match à placer, E non, donc E tient U18.
+    kickoff = _kickoff_of_u9([_main("b")], fixed=[{"id": "u18", "coaches": [_main("b"), _main("e")]}])
+    assert kickoff == "15:00"
+
+
+def test_the_fixed_match_is_held_by_whoever_has_no_match_to_place_whatever_the_link_order() -> None:
+    # Même décor avec U9 confiée à E : E a un match à placer, donc B tient U18 et E reste libre.
+    kickoff = _kickoff_of_u9([_main("e")], fixed=[{"id": "u18", "coaches": [_main("b"), _main("e")]}])
+    assert kickoff == "15:00"
+
+
+def test_two_fixed_matches_take_both_mains_and_chase_the_third_team() -> None:
+    # Cas (iii) : deux figés (B, E) à la même heure, B et E sont pris, U9 (B) quitte son idéal.
+    kickoff = _kickoff_of_u9(
+        [_main("b")],
+        fixed=[
+            {"id": "u18", "coaches": [_main("b"), _main("e")]},
+            {"id": "u20", "coaches": [_main("b"), _main("e")]},
+        ],
+    )
+    assert kickoff != "15:00"
+
+
+def test_an_occupancy_received_counts_as_taken_when_the_engine_assigns_a_fixed_match() -> None:
+    # E tient une séance (occupation reçue du backend) : seul B peut tenir U18, U9 (B) quitte l'idéal.
+    kickoff = _kickoff_of_u9(
+        [_main("b")],
+        fixed=[{"id": "u18", "coaches": [_main("b"), _main("e")]}],
+        occupancies=[_occupied("e")],
+    )
+    assert kickoff != "15:00"
+
+
+def test_a_fixed_match_nobody_can_hold_projects_all_its_mains() -> None:
+    # Les deux principaux d'U18 sont indisponibles au coup d'envoi 15:00 : intenable, donc prudent.
+    # L'idéal 15:30 d'U9 (E) tombe hors de la plage, seule la projection le chasse.
+    kickoff = _kickoff_of_u9(
+        [_main("e")],
+        fixed=[{"id": "u18", "coaches": [_main("b"), _main("e")]}],
+        unavailabilities=[_unavailable("b", "14:00", "15:15"), _unavailable("e", "14:00", "15:15")],
+        ideal="15:30",
+    )
+    assert kickoff != "15:30"
+
+
+def test_the_match_unavailability_rail_decides_who_holds_a_fixed_match() -> None:
+    # B indisponible à 15:00 : E tient U18, et B est libre à 15:30 pour U9.
+    free = _kickoff_of_u9(
+        [_main("b")],
+        fixed=[{"id": "u18", "coaches": [_main("b"), _main("e")]}],
+        unavailabilities=[_unavailable("b", "14:00", "15:15")],
+        ideal="15:30",
+    )
+    assert free == "15:30"
+    # E indisponible à 15:00 : aucun repli, B tient U18 malgré son match à placer, U9 quitte 15:30.
+    taken = _kickoff_of_u9(
+        [_main("b")],
+        fixed=[{"id": "u18", "coaches": [_main("b"), _main("e")]}],
+        unavailabilities=[_unavailable("e", "14:00", "15:15")],
+        ideal="15:30",
+    )
+    assert taken != "15:30"
+
+
+@pytest.mark.parametrize(
+    ("u9_coaches", "u18"),
+    [
+        pytest.param([_main("a")], {"coaches": [_main("b"), _assistant("a")]}, id="adjoint-du-fige"),
+        pytest.param([_main("p")], {"coaches": [_main("b")], "players": ["p"]}, id="joueur-du-fige"),
+    ],
+)
+def test_a_fixed_match_still_projects_its_assistants_and_its_players(
+    u9_coaches: list[dict[str, str]], u18: dict[str, Any]
+) -> None:
+    assert _kickoff_of_u9(u9_coaches, fixed=[{"id": "u18", **u18}]) != "15:00"
+
+
+def test_a_free_assistant_softens_the_taken_main_to_minus_ten() -> None:
+    # P tient un figé à 15:00, l'adjoint A est libre : +20 -10 = +10, le match reste sur l'idéal.
+    kickoff = _kickoff_of_u9([_main("p"), _assistant("a")], fixed=[{"id": "v2", "coaches": [_main("p")]}])
+    assert kickoff == "15:00"
+
+
+@pytest.mark.parametrize(
+    "assistant_taken",
+    [
+        pytest.param({"occupancies": [_occupied("a")]}, id="adjoint-occupe"),
+        pytest.param({"unavailabilities": [_unavailable("a")]}, id="adjoint-indisponible"),
+    ],
+)
+def test_a_taken_assistant_gives_no_relief_and_the_match_is_chased(assistant_taken: dict[str, Any]) -> None:
+    # Personne de libre : -60, le match quitte son idéal.
+    kickoff = _kickoff_of_u9(
+        [_main("p"), _assistant("a")],
+        fixed=[{"id": "v2", "coaches": [_main("p")]}],
+        **assistant_taken,
+    )
+    assert kickoff != "15:00"
+
+
+@pytest.mark.parametrize(
+    "first_main_taken",
+    [
+        pytest.param({"occupancies": [_occupied("p")]}, id="occupe"),
+        pytest.param({"unavailabilities": [_unavailable("p")]}, id="indisponible"),
+    ],
+)
+def test_one_free_main_is_enough_and_costs_nothing(first_main_taken: dict[str, Any]) -> None:
+    assert _kickoff_of_u9([_main("p"), _main("q")], **first_main_taken) == "15:00"
+
+
+def _every_other_kickoff_costs_a_player_clash() -> dict[str, Any]:
+    # Fenêtre ouverte à 15:00 et joueur X pris dès 16:45 : tout autre coup d'envoi coûte 60.
+    # L'idéal vaut donc +20 -60 = -40 s'il paie une fois, et -100 s'il paie deux fois.
+    return {"first_kickoff": "15:00", "u9_players": ["x"]}
+
+
+def test_two_taken_mains_cost_sixty_once_not_twice() -> None:
+    kickoff = _kickoff_of_u9(
+        [_main("p"), _main("q")],
+        occupancies=[_occupied("p"), _occupied("q"), _occupied("x", "16:45", "22:30")],
+        **_every_other_kickoff_costs_a_player_clash(),
+    )
+    assert kickoff == "15:00"
+
+
+def test_a_main_both_occupied_and_unavailable_costs_sixty_once_not_twice() -> None:
+    kickoff = _kickoff_of_u9(
+        [_main("p")],
+        occupancies=[_occupied("p"), _occupied("x", "16:45", "22:30")],
+        unavailabilities=[_unavailable("p")],
+        **_every_other_kickoff_costs_a_player_clash(),
+    )
+    assert kickoff == "15:00"

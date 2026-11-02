@@ -70,6 +70,12 @@ final class MatchPlacementContext extends BaseContext
 
     private string $teamCoachBId = '';
 
+    private string $secondCoachId = '';
+
+    private string $secondCoachLinkId = '';
+
+    private string $sessionTeamId = '';
+
     private string $awayId = '';
 
     private string $homeId = '';
@@ -420,6 +426,40 @@ final class MatchPlacementContext extends BaseContext
             $this->apiPost('team_coaches', ['teamId' => $this->secondTeamId, 'coachId' => $this->coachId, 'role' => 'MAIN'], $this->token),
             'affectation coach↔équipe B',
         );
+    }
+
+    #[Given('la seconde équipe a un second coach principal et un entraînement du samedi à 15h00, coach stocké l\'entraîneur partagé')]
+    public function unSecondCoachEtUnEntrainement(): void
+    {
+        $this->secondCoachId = $this->createdId(
+            $this->apiPost('coaches', ['firstName' => 'Emma', 'lastName' => 'Seconde'], $this->token),
+            'second coach',
+        );
+        $this->secondCoachLinkId = $this->createdId(
+            $this->apiPost('team_coaches', ['teamId' => $this->secondTeamId, 'coachId' => $this->secondCoachId, 'role' => 'MAIN'], $this->token),
+            'affectation du second coach',
+        );
+        // Pose en SQL : le créneau d'une version pointée n'a pas de geste d'API direct. Supprimé en fin de scénario.
+        $chosen = $this->dbalScalar(
+            \sprintf('SELECT chosen_schedule_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        $seasonId = $this->dbalScalar(\sprintf('SELECT season_id AS behatval FROM schedule WHERE id=\'%s\'', $chosen), admin: true);
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO schedule_slot_template'
+                . ' (id, version, created_at, updated_at, club_id, season_id, schedule_id, team_id, venue_id, coach_id, day_of_week, start_time, duration_minutes, lock_level)'
+                . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', 6, \'15:00\', 90, \'NONE\')',
+                $this->clubId,
+                $seasonId,
+                $chosen,
+                $this->secondTeamId,
+                $this->venueId,
+                $this->coachId,
+            ),
+            admin: true,
+        );
+        $this->sessionTeamId = $this->secondTeamId;
     }
 
     #[Given('un match extérieur de la seconde équipe le samedi à 14h00, à long trajet aller-retour')]
@@ -1159,13 +1199,18 @@ final class MatchPlacementContext extends BaseContext
         if ('' !== $this->closureEntryId) {
             $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE id=\'%s\'', $this->closureEntryId), admin: true);
         }
-        foreach ([$this->teamCoachAId, $this->teamCoachBId] as $id) {
+        if ('' !== $this->sessionTeamId) {
+            $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE team_id=\'%s\'', $this->sessionTeamId), admin: true);
+        }
+        foreach ([$this->teamCoachAId, $this->teamCoachBId, $this->secondCoachLinkId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
             }
         }
-        if ('' !== $this->coachId) {
-            $this->apiDelete(\sprintf('coaches/%s', $this->coachId), $this->token);
+        foreach ([$this->coachId, $this->secondCoachId] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('coaches/%s', $id), $this->token);
+            }
         }
         if ('' !== $this->habitIdealId) {
             $this->apiDelete(\sprintf('team_match_habits/%s', $this->habitIdealId), $this->token);

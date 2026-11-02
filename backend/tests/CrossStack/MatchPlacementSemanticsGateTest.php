@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\CrossStack;
 
+use App\Entity\TeamMatchHabit;
+use App\Entity\VenueMatchWindow;
+use App\Enum\MatchWeek;
 use App\Service\MatchPlacementPayloadBuilder;
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
@@ -23,6 +27,11 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  *      raisons que le solveur produit à partir des DONNÉES (gymnase fermé → `venue_unavailable` ;
  *      gymnase saturé → `venue_full`), et on interdit tout code hors énumération.
  *
+ * Troisième promesse, de la saisie jusqu'au résultat : quand un second coach tient la séance, l'autre
+ * match se pose sur son idéal ; dès que ce second coach ne peut plus tenir, le match s'écarte. Le
+ * détail des poids : `engine/tests/semantic/test_match_placement_semantics.py`, celui du payload :
+ * `TrainingOccupancyHoldingParityTest`.
+ *
  * Étape NOMMÉE du job `blocking-tests` de `.github/workflows/ci.yml` (qui démarre déjà php-fpm +
  * engine) ET ligne de `docs/testing/blocking-tests.md` — gardé par `BlockingTestsListMatchesCiTest`.
  * Groupe `phase1` pour être ramassé par `--group phase1`. Skip propre si le moteur est absent
@@ -30,8 +39,14 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  */
 #[Group('phase1')]
 #[Group('contract')]
-final class MatchPlacementSemanticsGateTest extends TestCase
+final class MatchPlacementSemanticsGateTest extends KernelTestCase
 {
+    use PlacementHoldingDecorTrait {
+        team as decorTeam;
+    }
+
+    private const string KARIM = 'bbbbbbbb-0000-4000-8000-000000000001';
+    private const string EMMA = 'eeeeeeee-0000-4000-8000-000000000002';
     private const string ENGINE_URL = 'http://engine:8000/place-matches';
     private const string SATURDAY = '2026-10-03'; // ISO day 6
     private const string HOLIDAY_WEDNESDAY = '2026-11-11'; // Armistice — mercredi (ISO 3) férié
@@ -45,6 +60,38 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         'venue_full',
         'not_selected',
     ];
+
+    /**
+     * Le besoin d'origine, du planning saisi au vrai moteur : U15 (Karim, Emma) s'entraîne vendredi
+     * 20:00, U18 (Karim seul) a son idéal à 20:30. Emma tient, U18 reste sur l'idéal.
+     */
+    public function testTheSecondCoachHoldsTheSessionAndTheMatchKeepsItsIdeal(): void
+    {
+        $this->sessionAndMatchDecor();
+
+        self::assertSame('20:30', $this->kickoffFromTheRealChain());
+    }
+
+    /** Sens inverse : Emma indisponible pour entraîner ce soir-là, Karim tient, U18 quitte 20:30. */
+    public function testWithoutASecondCoachTheMatchLeavesItsIdeal(): void
+    {
+        $this->sessionAndMatchDecor();
+        $this->wizardUnavailable(self::EMMA);
+
+        self::assertNotSame('20:30', $this->kickoffFromTheRealChain());
+    }
+
+    /** Le côté moteur seul : U18 figé (Karim, Emma), Emma le tient, U9 (Karim) garde son idéal. */
+    public function testASecondCoachHoldsAFixedMatchAndTheOtherMatchKeepsItsIdeal(): void
+    {
+        self::assertStringStartsWith('15:00', $this->kickoffOfU9NextToFixedMatches(1));
+    }
+
+    /** Sens inverse : deux matchs figés prennent Karim et Emma, U9 (Karim) quitte son idéal. */
+    public function testTwoFixedMatchesTakeBothCoachesAndTheOtherMatchLeavesItsIdeal(): void
+    {
+        self::assertStringStartsNotWith('15:00', $this->kickoffOfU9NextToFixedMatches(2));
+    }
 
     public function testEveryPlaceableMatchIsPlaced(): void
     {
@@ -329,6 +376,76 @@ final class MatchPlacementSemanticsGateTest extends TestCase
             ]])),
             'un type de lien inconnu doit être refusé (422), jamais laissé tomber en silence',
         );
+    }
+
+    private function sessionAndMatchDecor(): void
+    {
+        self::bootKernel();
+        $this->seedDecor();
+
+        $u15 = $this->decorTeam('U15');
+        $this->link(self::KARIM, $u15);
+        $this->link(self::EMMA, $u15);
+        $this->session($u15, self::KARIM);
+        $u18 = $this->decorTeam('U18');
+        $this->link(self::KARIM, $u18);
+        $this->homeToPlace($u18);
+
+        $window = new VenueMatchWindow;
+        $window->setClubId($this->club->getId());
+        $window->setSeasonId($this->season->getId());
+        $window->setVenueId($this->venueId);
+        $window->setDayOfWeek(5);
+        $window->setStartTime(new DateTimeImmutable('18:00'));
+        $window->setEndTime(new DateTimeImmutable('23:00'));
+        $this->em->persist($window);
+
+        $habit = new TeamMatchHabit;
+        $habit->setClubId($this->club->getId());
+        $habit->setSeasonId($this->season->getId());
+        $habit->setTeamId($u18);
+        $habit->setDayOfWeek(5);
+        $habit->setKickoffTime(new DateTimeImmutable('20:30'));
+        $habit->setWeek(MatchWeek::A);
+        $habit->setVenueId($this->venueId);
+        $this->em->persist($habit);
+        $this->em->flush();
+    }
+
+    /** Le payload du vrai builder, envoyé au vrai moteur : le coup d'envoi retenu pour l'unique match. */
+    private function kickoffFromTheRealChain(): string
+    {
+        $client = HttpClient::create(['timeout' => 60]);
+
+        try {
+            $response = $client->request('POST', self::ENGINE_URL, ['json' => $this->payload()]);
+            self::assertSame(200, $response->getStatusCode());
+            $result = $response->toArray(false);
+        } catch (TransportExceptionInterface $exception) {
+            self::markTestSkipped('Engine not available: ' . $exception->getMessage());
+        }
+        self::assertSame([], $result['unplaced']);
+        self::assertCount(1, $result['placements']);
+
+        return substr((string) $result['placements'][0]['kickoff'], 0, 5);
+    }
+
+    private function kickoffOfU9NextToFixedMatches(int $fixedCount): string
+    {
+        $coaches = [['coachId' => 'karim', 'role' => 'MAIN'], ['coachId' => 'emma', 'role' => 'MAIN']];
+        $matches = [['id' => 'u9', 'teamId' => 'u9', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']];
+        $venues = [$this->venue('v1', [['13:00', '22:30']])];
+        $teams = [$this->teamWithCoach('u9', 6, '15:00', 'v1', 'karim', 'MAIN')];
+        for ($i = 0; $i < $fixedCount; ++$i) {
+            $matches[] = ['id' => 'fx' . $i, 'teamId' => 'fix' . $i, 'date' => self::SATURDAY, 'kind' => 'FIXED', 'venueId' => 'w' . $i, 'kickoff' => '15:00'];
+            $venues[] = $this->venue('w' . $i, [['13:00', '22:30']]);
+            $teams[] = ['id' => 'fix' . $i, 'name' => 'FIX' . $i, 'leagueWindows' => [], 'habits' => [], 'coaches' => $coaches];
+        }
+
+        $result = $this->solve(['matches' => $matches, 'venues' => $venues, 'teams' => $teams]);
+        self::assertSame([], $result['unplaced']);
+
+        return (string) $result['placements'][0]['kickoff'];
     }
 
     /**
