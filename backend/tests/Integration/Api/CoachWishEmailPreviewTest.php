@@ -62,7 +62,7 @@ final class CoachWishEmailPreviewTest extends WebTestCase
         self::assertSame('Vos disponibilités pour Toussaint', $body['subject']);
         self::assertStringContainsString('via Amateo', $body['from']);
         // Le gabarit HTML (bouton + corps) est rendu, avec le prénom du gestionnaire (Formule A).
-        self::assertStringContainsString('Donner mes disponibilités', $body['html']);
+        self::assertStringContainsString('Donner les disponibilités de mon équipe', $body['html']);
         self::assertStringContainsString('Gérald (', $body['html']);
     }
 
