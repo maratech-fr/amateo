@@ -98,6 +98,32 @@ final class CoachWishCampaignTokenSyncTest extends KernelTestCase
         self::assertEqualsCanonicalizing([$this->u11->getId(), $this->u13->getId()], $fresh->getTeamIds());
     }
 
+    public function testGainingATeamResetsARecipientWhoAnsweredByACopiedLinkExceptOnAClosedCampaign(): void
+    {
+        // Règle fondateur : il a répondu sans jamais recevoir le mail (`sentAt` nul), mais il manque
+        // des données pour l'équipe gagnée : il repasse « à envoyer ». Collecte fermée : rien ne bouge.
+        $this->club->setIsDemo(true)->setSimulatedToday(new DateTimeImmutable('2030-05-10 00:00:00'));
+        $this->em->flush();
+        $julie = $this->coach('Julie');
+        $this->link($this->u13, $julie, TeamCoachRole::MAIN, '2026-01-01');
+        $this->link($this->u11, $julie, TeamCoachRole::MAIN, '2026-01-01');
+        $open = $this->campaign('2030-05-10');
+        $closed = $this->campaign('2030-05-09', null, $this->otherEntry());
+        $this->seedToken($open, $julie, [$this->u13->getId()], responded: true);
+        $this->seedToken($closed, $julie, [$this->u13->getId()], responded: true);
+
+        $this->sync->syncSeason($this->club->getId(), $this->season->getId());
+
+        $fresh = $this->token($open, $julie);
+        self::assertNull($fresh?->getRespondedAt(), 'équipe gagnée : la réponse par lien copié ne suffit plus');
+        self::assertNull($fresh->getSentAt());
+        self::assertEqualsCanonicalizing([$this->u11->getId(), $this->u13->getId()], $fresh->getTeamIds());
+
+        $untouched = $this->token($closed, $julie);
+        self::assertNotNull($untouched?->getRespondedAt(), 'collecte fermée : la réponse reste');
+        self::assertSame([$this->u13->getId()], $untouched->getTeamIds());
+    }
+
     public function testLosingATeamShrinksTheTokenWithoutAnyReset(): void
     {
         $maxime = $this->coach('Maxime');

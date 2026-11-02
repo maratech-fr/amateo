@@ -219,6 +219,20 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         self::assertSame('La date limite de cette collecte est passée.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
     }
 
+    public function testRecipientActionOnAnArchivedSeasonIs409WithoutWriting(): void
+    {
+        // Même patron que send-links (testActionsAreRefusedOnAnArchivedSeason) : saison gelée = lecture seule.
+        $this->scopeGucToClub($this->club->getId());
+        $this->season->setStatus(SeasonStatus::ARCHIVED);
+        $this->em->flush();
+        $teamId = $this->campaign->getTeamIds()[0];
+
+        $this->postRecipient($teamId, $this->noEmail->getId());
+        self::assertResponseStatusCodeSame(409);
+
+        self::assertSame(0, $this->markedCount($teamId), 'rien n\'est écrit sur une saison gelée');
+    }
+
     public function testRecipientActionNotFoundIsByteIdenticalAcrossClubs(): void
     {
         $teamId = $this->campaign->getTeamIds()[0];
