@@ -1068,7 +1068,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               <Button
                 size="sm"
                 variant="outline"
-                disabled={null === validScheduleId || fillMutation.isPending}
+                disabled={null === validScheduleId || fillMutation.isPending || notLoaded}
+                disabledReason={gesturesBlockedReason ?? undefined}
                 onClick={() => {
                   if (null === validScheduleId) {
                     return;

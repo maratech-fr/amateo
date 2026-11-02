@@ -154,7 +154,9 @@ export function PlanningToolbar({
   const loadedLabel = undefined !== loaded && loaded.id !== selectedScheduleId ? versionLabelOf(schedules, loaded.id) : null;
   // Supprimer la version chargée : la suivante prend le relais, on la nomme avant le geste (même
   // repli que le serveur : la dernière terminée).
-  const nextLoaded = null !== selected && true === selected.isLiveContext ? representativeVersion(visibleSeasonPlans(schedules).filter((s) => s.id !== selected.id)) : null;
+  // Saison ou période : la suivante se cherche dans le plan de la version supprimée.
+  const planVersions = null !== selected && !isSeasonPlanType(selected.planType) && null !== selected.schedulePlanId ? visibleOverlayVersions(schedules, selected.schedulePlanId) : visibleSeasonPlans(schedules);
+  const nextLoaded = undefined !== loaded && loaded.id === selectedScheduleId ? representativeVersion(planVersions.filter((s) => s.id !== loaded.id)) : null;
   const deleteNote = null === nextLoaded ? undefined : PLANNING_TEXTS.deleteLoadedVersionNote(versionLabelOf(schedules, nextLoaded.id) ?? nextLoaded.name);
 
   return (

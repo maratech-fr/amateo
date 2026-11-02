@@ -285,6 +285,9 @@ export function useMutualizeSlot() {
       void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides"] });
     },
     onError: (error) => {
+      if (ownNotLoadedRefusal(queryClient, error)) {
+        return;
+      }
       if (error instanceof MutualizationRefusedError || error instanceof GenerationInProgressError) {
         return; // refus NOMMÉ affiché par la modale, jamais un second toast
       }
@@ -722,6 +725,8 @@ export function useFillSchedule() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
     // Un blocage se dit dans le bandeau de la page, avec le chemin vers le Récap : pas de toast.
     onError: (error) => {
+      // Refus « version plus chargée » (deux onglets) : la liste relue regrise l'écran, patron useLockSlot.
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       if (!isBlockerRefusal(error)) {
         void errorMessage(error).then((message) => toast.error(message));
       }

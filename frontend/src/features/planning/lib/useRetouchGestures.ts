@@ -913,7 +913,7 @@ export function useRetouchGestures(
                 // (le hook, lui, toaste le transport — ne jamais le doubler ici, P4-306).
                 setUndo(null);
                 setEvictionNotice(null);
-                if (isBusinessSlotEditError(error)) {
+                if (isBusinessSlotEditError(error) && !isNotLoadedRefusal(error)) {
                   toast.error(`${teamNameOf(current.sourceTeamId)} est revenue, ${teamNameOf(current.evicted.teamId)} reste à replacer.`);
                 }
               },
@@ -925,7 +925,7 @@ export function useRetouchGestures(
           // erreur MÉTIER — le transport est déjà toasté par le hook (ne pas le doubler, P4-306).
           setUndo(null);
           setEvictionNotice(null);
-          if (isBusinessSlotEditError(error)) {
+          if (isBusinessSlotEditError(error) && !isNotLoadedRefusal(error)) {
             toast.error("Annulation impossible — réessayez.");
           }
         },
@@ -955,7 +955,7 @@ export function useRetouchGestures(
           // par le hook, ne pas le doubler (P4-306).
           setEvictionNotice(null);
           setUndo(null);
-          if (isBusinessSlotEditError(error)) {
+          if (isBusinessSlotEditError(error) && !isNotLoadedRefusal(error)) {
             toast.error(error instanceof MoveRejectedError ? (error.violations[0]?.message ?? "Replacement refusé par le moteur.") : "Replacement impossible — réessayez.");
           }
         },
