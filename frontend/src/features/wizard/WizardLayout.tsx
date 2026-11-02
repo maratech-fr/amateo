@@ -44,6 +44,7 @@ import { RecapStep } from "./steps/RecapStep";
 import { TeamsStep } from "./steps/TeamsStep";
 import { VenuesStep } from "./steps/VenuesStep";
 import { useWizardStore } from "./store";
+import { WIZARD_TEXTS } from "./texts";
 import { venuesWithoutSlot } from "./lib/useStepValidation";
 
 function StepContent({ stepId }: { stepId: WizardStepId }) {
@@ -659,6 +660,7 @@ export function WizardPage() {
             {isLast ? null : (
               <Button
                 disabled={blocked}
+                disabledReason={"recap" === stepId && recapValidation.errors.length > 0 ? WIZARD_TEXTS.generationBlocked : undefined}
                 onClick={() => {
                   armNavTransition(); // GESTE → arme le voile
                   next();

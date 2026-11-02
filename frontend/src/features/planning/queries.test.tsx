@@ -1,3 +1,4 @@
+import { HTTPError } from "ky";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -503,6 +504,18 @@ describe("planning queries — régénérations", () => {
     // Les deux familles sans lecteur monté ici → l'espion.
     expect(spy).toHaveBeenCalledWith({ queryKey: ["wizard"] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ["priority_tiers"] });
+  });
+
+  it("useRegenerateOverlay : un refus 4xx supprime la version qu'il vient de créer et relance l'erreur", async () => {
+    const refused = new HTTPError(new Response("{}", { status: 422 }), new Request("http://localhost/api/schedules/overlay-1/generate"), {} as never);
+    vi.mocked(planningApi.generateSchedule).mockRejectedValueOnce(refused);
+    const { result } = renderHook(() => useRegenerateOverlay(), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.mutate("plan-1");
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(planningApi.deleteSchedule).toHaveBeenCalledWith("overlay-1");
+    expect(result.current.error).toBe(refused);
   });
 
   it("useRegenerateOverlay : onSettled → schedules refetche MÊME quand le generate échoue APRÈS le create (la version existe déjà serveur)", async () => {

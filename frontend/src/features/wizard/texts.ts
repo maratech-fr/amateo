@@ -254,4 +254,5 @@ export const WIZARD_TEXTS = {
   reservationCoachPlaying: (coach: string, place: { team: string; time: string; venue: string }) => `${coach} joue déjà avec ${place.team} à ${place.time} à ${place.venue}`,
   reservationCoachUnavailable: (coach: string) => `${coach} est indisponible à cette heure`,
   blockNamePlaceholder: "Nom du groupe (facultatif)",
+  generationBlocked: "Des conditions bloquent la génération",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

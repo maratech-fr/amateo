@@ -188,7 +188,8 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertTrue($body['blocker'] ?? false);
-        self::assertStringContainsString('réservé sur 2 cases pour 1 séance commune', (string) ($body['error'] ?? ''));
+        self::assertStringContainsString('placé sur 2 cases pour 1 séance commune', (string) ($body['error'] ?? ''));
+        self::assertStringNotContainsString('Retirez une réservation', (string) $body['error'], 'aucune réservation ici : le geste nommé est celui du comblement');
     }
 
     /** TÉMOIN des épingles : le groupe réuni sur une seule case, le comblement part. */
@@ -218,6 +219,19 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         }, $guard, GenerationBlockersGuard::class)();
 
         self::assertNull($guard->firstBlockerMessage($schedule));
+    }
+
+    /** Sans payload, le Récap garde la sur-réservation : elle se lit alors sur le volume de l'équipe. */
+    public function testOverbookingStaysVisibleOnEntitiesWithoutAPayload(): void
+    {
+        $ctx = $this->seedGroup(coachesAvailable: true);
+        $reservations = array_map(fn (int $day): Reservation => (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($ctx['teamA'])
+            ->setVenueId($ctx['venueId'])->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90), [2, 3]);
+
+        $found = self::getContainer()->get(GenerationBlockersGuard::class)->overBookedOnEntities($reservations, $ctx['clubId'], $ctx['seasonId']);
+
+        self::assertCount(1, $found);
+        self::assertStringContainsString('U11 A a 2 réservations pour 1 séance par semaine', $found[0]);
     }
 
     protected function setUp(): void

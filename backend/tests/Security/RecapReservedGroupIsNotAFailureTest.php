@@ -165,7 +165,8 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
             'HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($user),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['calendarEntryId' => $entry->getId()], \JSON_THROW_ON_ERROR));
-        self::assertResponseIsSuccessful();
+        // 422 quand le Récap bloque (groupe inservable) : le corps reste le verdict.
+        self::assertContains($this->client->getResponse()->getStatusCode(), [200, 422]);
 
         /* @var array{warnings: list<string>} */
         return json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);

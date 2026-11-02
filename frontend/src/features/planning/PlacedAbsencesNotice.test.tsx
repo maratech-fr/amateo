@@ -32,6 +32,13 @@ describe("PlacedAbsencesNotice", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("compte les cases : 3 lignes, « 3 séances sans coach »", () => {
+    renderWithProviders(<PlacedAbsencesNotice absences={[absence(), absence({ dayOfWeek: 2 }), absence({ dayOfWeek: 3, teamNames: ["U15", "U13"] })]} />);
+
+    expect(screen.getByText("3 séances sans coach")).toBeInTheDocument();
+    expect(within(screen.getByRole("list")).getAllByRole("listitem")).toHaveLength(3);
+  });
+
   it("titre et une ligne par séance, en alerte", () => {
     renderWithProviders(<PlacedAbsencesNotice absences={[absence(), absence({ dayOfWeek: 2, venueName: "Sud" })]} />);
 

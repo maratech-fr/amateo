@@ -255,8 +255,30 @@ describe("wizard queries — useLaunchGeneration", () => {
     expect(wizardApi.deleteSchedule).not.toHaveBeenCalled();
   });
 
-  it("témoin : un refus qui n'est pas un blocage garde la version créée", async () => {
+  it("tout refus 4xx sur une version créée : supprimée aussi", async () => {
     vi.mocked(wizardApi.generateSchedule).mockRejectedValueOnce(refused({ error: "Une génération est déjà en cours." }));
+    const { result } = renderHook(() => useLaunchGeneration(), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.mutate({ schedulePlanId: "plan-1" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(wizardApi.deleteSchedule).toHaveBeenCalledWith("sched-new");
+  });
+
+  it("le DELETE échoue : l'erreur d'origine remonte quand même", async () => {
+    vi.mocked(wizardApi.generateSchedule).mockRejectedValueOnce(refused({ error: "Groupe bloqué.", blocker: true }));
+    vi.mocked(wizardApi.deleteSchedule).mockRejectedValueOnce(new Error("DELETE en échec"));
+    const { result } = renderHook(() => useLaunchGeneration(), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.mutate({ schedulePlanId: "plan-1" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(HTTPError);
+  });
+
+  it("témoin : une panne serveur (5xx) garde la version créée", async () => {
+    const down = new HTTPError(new Response("", { status: 500 }), new Request("http://localhost/api/schedules/sched-new/generate"), {} as never);
+    vi.mocked(wizardApi.generateSchedule).mockRejectedValueOnce(down);
     const { result } = renderHook(() => useLaunchGeneration(), { wrapper: wrapperFor(makeClient()) });
 
     result.current.mutate({ schedulePlanId: "plan-1" });

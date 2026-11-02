@@ -1256,6 +1256,16 @@ export interface PlacedRelay {
  * `seasonPlanChosen` false = aucune version pointée : pas de planning en vigueur à scanner, donc
  * une liste vide ne veut pas dire « tout va bien ». Le backend décide TOUT ; le front AFFICHE.
  */
+/** Une séance de la version affichée dont aucun coach attendu n'est disponible à son début. */
+export interface PlacedAbsence {
+  scheduleId: string;
+  dayOfWeek: number;
+  startTime: string;
+  venueName: string;
+  teamNames: string[];
+  coachNames: string[];
+}
+
 export interface PlacedConflicts {
   clubId: string;
   seasonId: string | null;
@@ -1265,11 +1275,13 @@ export interface PlacedConflicts {
    *  Optionnel au TYPE (un vieux feed/mock sans la clé reste valide) mais TOUJOURS normalisé à `[]`
    *  par {@link getPlacedConflicts} au runtime ; les consommateurs lisent `?? []`. */
   relays?: PlacedRelay[];
+  /** Calculées sur `scheduleId` s'il est fourni, sinon sur la version en vigueur. Toujours présentes. */
+  absences: PlacedAbsence[];
 }
 
-export const getPlacedConflicts = async (): Promise<PlacedConflicts> => {
-  const raw = await api.get("training/placed-conflicts").json<PlacedConflicts>();
+export const getPlacedConflicts = async (scheduleId?: string): Promise<PlacedConflicts> => {
+  const raw = await api.get("training/placed-conflicts", scheduleId ? { searchParams: { scheduleId } } : undefined).json<PlacedConflicts>();
   // Normalisation défensive : on mute la PROD, jamais un mock — un feed sans `conflicts`/`relays`
   // (jamais servi ainsi, mais un contrat qui glisse ne doit pas casser l'écran) reste sûr.
-  return { ...raw, conflicts: Array.isArray(raw.conflicts) ? raw.conflicts : [], relays: Array.isArray(raw.relays) ? raw.relays : [] };
+  return { ...raw, conflicts: Array.isArray(raw.conflicts) ? raw.conflicts : [], relays: Array.isArray(raw.relays) ? raw.relays : [], absences: Array.isArray(raw.absences) ? raw.absences : [] };
 };

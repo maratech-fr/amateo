@@ -10,6 +10,7 @@ use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
 use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
+use App\Service\GenerationBlockersGuard;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
 use App\Service\OrphanPinGuard;
@@ -35,6 +36,7 @@ final class GenerateScheduleController extends AbstractController implements Sea
 
     public function __construct(
         private readonly CoachInTwoPlacesGuard $coachInTwoPlacesGuard,
+        private readonly GenerationBlockersGuard $generationBlockersGuard,
         private EntityManagerInterface $entityManager,
         private MessageBusInterface $messageBus,
         private RequestStack $requestStack,
@@ -120,12 +122,18 @@ final class GenerateScheduleController extends AbstractController implements Sea
         // redéfinit ses créneaux ou retire l'épinglage (décision fondateur 2026-07-24).
         $orphanPin = $this->orphanPinGuard->firstOrphanMessage($schedule);
         if (null !== $orphanPin) {
-            return $this->json(['error' => $orphanPin], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['error' => $orphanPin, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $coachInTwoPlaces = $this->coachInTwoPlacesGuard->firstConflictMessage($schedule);
         if (null !== $coachInTwoPlaces) {
-            return $this->json(['error' => $coachInTwoPlaces], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['error' => $coachInTwoPlaces, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // Ce que le Récap dit bloquant : refusé ici aussi, rien d'écrit (`blocker` : le front le reconnaît).
+        $blocker = $this->generationBlockersGuard->firstBlockerMessage($schedule);
+        if (null !== $blocker) {
+            return $this->json(['error' => $blocker, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // Launching the first generation completes onboarding (the wizard is done);

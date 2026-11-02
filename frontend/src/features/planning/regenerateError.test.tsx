@@ -14,6 +14,7 @@ vi.mock("./api", () => ({
   regenerate: vi.fn(),
   createOverlayVersion: vi.fn(),
   generateSchedule: vi.fn(),
+  deleteSchedule: vi.fn().mockResolvedValue(undefined),
 }));
 
 /**

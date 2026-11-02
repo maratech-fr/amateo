@@ -811,3 +811,25 @@ def test_a_reserved_group_stays_on_its_case_when_a_second_case_is_free(off: tupl
 
     assert result["status"] == "completed", f"{result['diagnostics']}"
     assert (_slots_of(result, "A"), _slots_of(result, "B")) == ([1], [1])
+
+
+def test_the_second_probe_never_runs_when_the_first_does_not_decide(monkeypatch: Any) -> None:
+    """Sonde 1 hors budget (ni faisable ni prouvée infaisable) : pas de seconde sonde, rien n'est relâché."""
+    payload = make_payload(
+        teams=[make_team("A"), make_team("B")],
+        venues=[make_venue("V", [(1, "18:00")])],
+        coaches=[_coach("anna"), _coach("ben")],
+        constraints=[team_coach("tc-a", "A", "anna"), team_coach("tc-b", "B", "ben")],
+        slot_templates=[_reservation("A", "V", 1), _reservation("B", "V", 1)],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+    calls: list[Any] = []
+
+    def undecided(*args: Any, **kwargs: Any) -> tuple[Any, ...]:
+        calls.append(args)
+        return (cp_model.UNKNOWN,)
+
+    monkeypatch.setattr(main, "_solve", undecided)
+
+    assert asyncio.run(main._locks_are_the_cause(payload, ScheduleInputSchema.model_validate(payload))) is False
+    assert len(calls) == 1

@@ -557,6 +557,20 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         self::assertSame(['U13F'], $absences[0]['teamNames']);
     }
 
+    /** Même case, sans groupe, les deux équipes sans personne : une case, une ligne, tous nommés. */
+    public function testOneCaseIsOneLineEvenWithoutAGroup(): void
+    {
+        $ctx = $this->seedGroupOnOneCase(declared: false);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+        $this->coachOff($ctx, $ctx['partner'], ['unavailableDays' => [2]]);
+
+        $absences = $this->detectOnDisplayed($ctx)['absences'];
+
+        self::assertCount(1, $absences);
+        self::assertEqualsCanonicalizing(['U13F', 'U11M1'], $absences[0]['teamNames']);
+        self::assertSame(['Anna Dupont', 'Bea Dupont'], $absences[0]['coachNames']);
+    }
+
     /** Un adjoint présent ne tient pas la séance : le principal absent reste signalé. */
     public function testAnAssistantPresentDoesNotHoldTheSession(): void
     {
@@ -643,7 +657,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $work = $this->workVersion($ctx);
         $this->place([...$ctx, 'scheduleId' => $work->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
 
-        $onWork = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $onWork = $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $work);
         self::assertCount(1, $onWork['absences']);
         self::assertSame($work->getId(), $onWork['absences'][0]['scheduleId']);
 
@@ -659,7 +673,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $work = $this->workVersion($ctx);
         $this->place([...$ctx, 'scheduleId' => $work->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $work);
 
         self::assertFalse($result['seasonPlanChosen']);
         self::assertCount(1, $result['absences']);
@@ -685,7 +699,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place([...$ctx, 'scheduleId' => $period->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
 
         self::assertSame([], $this->detectOnDisplayed($ctx)['absences'], 'le planning annuel ne lit que les règles permanentes');
-        self::assertCount(1, $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['absences']);
+        self::assertCount(1, $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $period)['absences']);
     }
 
     protected function setUp(): void
@@ -707,7 +721,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
         self::assertInstanceOf(Schedule::class, $schedule);
 
-        return $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        return $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $schedule);
     }
 
     /** @param array{clubId: string, seasonId: string} $ctx */

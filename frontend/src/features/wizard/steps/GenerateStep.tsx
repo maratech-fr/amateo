@@ -25,6 +25,7 @@ import { isManagementRole } from "@/shared/lib/roles";
 import { useStepValidation } from "../lib/useStepValidation";
 import { useLaunchGeneration, useScheduleStatus, useTranscribeFromSocle } from "../queries";
 import { useWizardStore } from "../store";
+import { WIZARD_TEXTS } from "../texts";
 import { BlockerList } from "./BlockerList";
 
 // D-31 : foyer unique — importé du module qui porte le type.
@@ -369,7 +370,12 @@ export function GenerateStep() {
             </LoadErrorHint>
           ) : null}
           <div className="flex flex-col items-center gap-3 sm:flex-row">
-            <Button size="lg" onClick={start} disabled={creditsBlocked || gateClosed || (periodMode && (!periodEntry || !periodAnchorReady))}>
+            <Button
+              size="lg"
+              onClick={start}
+              disabled={creditsBlocked || gateClosed || (periodMode && (!periodEntry || !periodAnchorReady))}
+              disabledReason={blockers.length > 0 ? WIZARD_TEXTS.generationBlocked : undefined}
+            >
               <Rocket className="size-4" />
               {periodMode ? "Générer le planning de période" : "Lancer la génération"}{creditSuffix}
             </Button>

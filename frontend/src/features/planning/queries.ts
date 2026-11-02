@@ -4,7 +4,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { download, slugFilename } from "@/shared/lib/download";
-import { errorMessage } from "@/shared/lib/errorMessage";
+import { errorMessage, isBlockerRefusal } from "@/shared/lib/errorMessage";
+import { generateCreatedVersion } from "./lib/generateCreatedVersion";
 import { registerLongAction, unregisterLongAction } from "@/shared/lib/longActionAbort";
 import { exportScopeToken } from "./lib/exportScopeToken";
 import { isScheduleStreamConnected, useScheduleStream } from "./lib/scheduleStream";
@@ -32,6 +33,8 @@ function invalidateMovePacket(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["diagnostics"] });
   // P2-44 PR-5 : le placement qui change rejoue le diff socle↔période.
   void queryClient.invalidateQueries({ queryKey: ["socle-deviation"] });
+  // Le préfixe : la version affichée comme celle en vigueur.
+  void queryClient.invalidateQueries({ queryKey: ["training", "placed-conflicts"] });
 }
 
 /**
@@ -215,8 +218,14 @@ export function useCoachPlayers() {
  * refléter vite (les mutations de lien invalident aussi cette clé). Consommé par l'étape Coachs
  * du wizard, le bandeau de `/planning` et la pastille du plan de saison du cockpit.
  */
-export function usePlacedConflicts() {
-  return useQuery({ queryKey: ["training", "placed-conflicts"], queryFn: planningApi.getPlacedConflicts, staleTime: 10_000 });
+export function usePlacedConflicts(scheduleId: string | null = null) {
+  return useQuery({
+    queryKey: ["training", "placed-conflicts", scheduleId ?? "season"],
+    queryFn: () => planningApi.getPlacedConflicts(scheduleId ?? undefined),
+    // Une version supprimée entre-temps : un 404 attendu, le bandeau se tait.
+    meta: { silent404: true },
+    staleTime: 10_000,
+  });
 }
 
 // --- 2b: adjust + regenerate loop ---------------------------------------------
@@ -636,7 +645,7 @@ export function useRegenerateOverlay() {
     meta: { veil: false },
     mutationFn: async (schedulePlanId: string) => {
       const created = await planningApi.createOverlayVersion(schedulePlanId);
-      await planningApi.generateSchedule(created.id);
+      await generateCreatedVersion(created.id, planningApi.generateSchedule, planningApi.deleteSchedule);
       return created;
     },
     // Invalidate on settled, not just success: if generate fails AFTER the create,
@@ -681,6 +690,11 @@ export function useFillSchedule() {
     meta: { veil: false },
     mutationFn: (id: string) => planningApi.fillSchedule(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+    // Un blocage se dit dans le bandeau de la page, avec le chemin vers le Récap : pas de toast.
+    onError: (error) => {
+      if (!isBlockerRefusal(error)) {
+        void errorMessage(error).then((message) => toast.error(message));
+      }
+    },
   });
 }

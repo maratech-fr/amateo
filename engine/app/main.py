@@ -1173,21 +1173,25 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
     SEULE exception » — et on NE relâche RIEN : le planning reste ``failed`` et expliqué.
 
     Deux sondes au plus : la première garde les verrous d'un groupe réservé entier (leur case redevenue
-    libre serait sans coach) ; si elle reste infaisable, la seconde libère TOUS les verrous, car ce groupe
-    peut être lui-même la cause (un jour imposé dont il occupe la case). Chacune a le budget court."""
-    kept = _reserved_group_locks(data)
-    probes = (kept, frozenset()) if kept else (frozenset(),)
-    for keep in probes:
-        probe_status, *_ = await asyncio.to_thread(
+    libre serait sans coach). Seulement si elle a gardé au moins un verrou ET prouvé l'infaisabilité, la
+    seconde libère TOUS les verrous, car ce groupe peut être lui-même la cause (un jour imposé dont il
+    occupe la case). « Ne tranche pas » n'en lance aucune autre. Chacune a le budget court."""
+
+    async def probe(keep: frozenset[tuple[str, str, int, str]]) -> Any:
+        status, *_ = await asyncio.to_thread(
             _solve,
             _without_hard_locks(data, keep=keep),
             input_data,
             budget_override=BEST_EFFORT_PROBE_MAX_SECONDS,
             placement_only=True,
         )
-        if probe_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            return True
-    return False
+        return status
+
+    kept = _reserved_group_locks(data)
+    status = await probe(kept)
+    if kept and status == cp_model.INFEASIBLE:
+        status = await probe(frozenset())
+    return status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
 def _lock_identity(template: Mapping[str, Any]) -> tuple[str, str, int, str]:

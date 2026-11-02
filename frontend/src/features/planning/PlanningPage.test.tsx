@@ -321,7 +321,7 @@ beforeEach(() => {
   // P2-44 PR-5 : ré-armement (mockResolvedValue survit) — défaut « aucun écart », les cas surchargent.
   vi.mocked(getSocleDeviation).mockResolvedValue({ socleScheduleId: "socle", moved: [], unplaced: [] });
   // P4-269 : ré-armement — défaut « aucun conflit de personne », le cas dédié surcharge.
-  vi.mocked(getPlacedConflicts).mockResolvedValue({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, conflicts: [] });
+  vi.mocked(getPlacedConflicts).mockResolvedValue({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, absences: [], conflicts: [] });
   navigate.mockClear();
   seasonState.isReadonly = false;
   usePlanningStore.setState({ viewMode: "gymnase", selectedScheduleId: null, selectedSlotId: null, resourceFilter: [] });
@@ -395,6 +395,7 @@ describe("PlanningPage (integration)", () => {
       clubId: "club-1",
       seasonId: "s1",
       seasonPlanChosen: true,
+      absences: [],
       conflicts: [{
         personId: "anna",
         personName: "Anna Dupont",
@@ -417,6 +418,7 @@ describe("PlanningPage (integration)", () => {
       clubId: "club-1",
       seasonId: "s1",
       seasonPlanChosen: true,
+      absences: [],
       conflicts: [],
       relays: [{
         personId: "sebastien",
@@ -2976,6 +2978,18 @@ describe("PlanningPage — séances sans coach sur la version affichée", () => 
     renderWithProviders(<PlanningPage />);
 
     expect(await screen.findByText(PLANNING_TEXTS.absenceLine(absence))).toBeInTheDocument();
+  });
+
+  it("embarquée sur une période non pointée (seul chemin vers cette version) : même bandeau", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([
+      { id: SID, name: "Toussaint V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
+    ]);
+    vi.mocked(getPlacedConflicts).mockResolvedValue(radar);
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+
+    expect(await screen.findByText(PLANNING_TEXTS.absenceLine(absence))).toBeInTheDocument();
+    expect(vi.mocked(getPlacedConflicts)).toHaveBeenCalledWith(SID);
   });
 
   it("témoin : aucune absence, aucun bandeau", async () => {

@@ -43,14 +43,10 @@ final readonly class PreSolvePreventionWarnings
 
     /**
      * @param array<string, mixed> $payload
-     * @param array<string, bool>  $constraintOrigins constraintId => héritée du planning de saison
-     *                                                (calendarEntryId NULL) ; `false` = posée pour
-     *                                                la période. Vide ⇒ aucune origine composée
-     *                                                (la SERVABILITÉ reste calculée du payload seul).
      *
      * @return list<string>
      */
-    public function detect(array $payload, array $constraintOrigins = []): array
+    public function detect(array $payload): array
     {
         $venues = $this->listOf($payload, 'venues');
         $teams = $this->listOf($payload, 'teams');
@@ -58,14 +54,14 @@ final readonly class PreSolvePreventionWarnings
 
         return [
             ...$this->venuesWithoutSlots($venues),
-            ...$this->teamsNoSlotCanHost($teams, $venues, $constraints),
+            ...$this->teamsNoSlotCanHost($payload, $teams, $venues, $constraints),
+            ...$this->reservationsOutsideTheDayRule($payload, $teams, $constraints),
             ...$this->overloadedCoaches($payload, $teams, $venues, $constraints),
             ...$this->constraintsTargetingAbsentTeams($teams, $constraints),
             ...$this->mergedForcedDayRules($teams, $constraints),
-            ...$this->forcedDayEmptiedByClosingRules($payload, $teams, $venues, $constraints),
+            ...$this->forcedDayEmptiedByClosingRules($payload, $teams, $venues, $constraints)['warnings'],
             ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
             ...$this->assistantsWithoutMainCoach($payload, $teams, $constraints),
-            ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins),
             ...$this->daysWithoutAnyAvailableEmployee($payload, $venues, $constraints),
             ...$this->teamReservedOnOverlappingCases($payload),
         ];
@@ -73,20 +69,29 @@ final readonly class PreSolvePreventionWarnings
 
     /**
      * ALIGN-09 — les BLOQUEURS pré-solve calculés depuis LE PAYLOAD (même foyer, saison ET
-     * période). Aujourd'hui un seul : une équipe à qui l'on impose « au moins une séance l'un
-     * de ces jours » alors qu'AUCUN de ces jours n'a de créneau candidat.
+     * période) : ce que le moteur refuserait à coup sûr. Jour imposé sans créneau, jour imposé
+     * vidé par une autre règle quand aucun relais de groupe ne peut le sauver, groupe inservable.
+     * Parité avec le vrai moteur : {@see SharedBlockPreSolveMirrorParityTest}.
      *
      * @param array<string, mixed> $payload
+     * @param array<string, bool>  $constraintOrigins constraintId => héritée du planning de saison
+     *                                                (calendarEntryId NULL) ; `false` = posée pour
+     *                                                la période. Vide ⇒ aucune origine composée
+     *                                                (la SERVABILITÉ reste calculée du payload seul).
      *
      * @return list<string>
      */
-    public function detectBlockers(array $payload): array
+    public function detectBlockers(array $payload, array $constraintOrigins = []): array
     {
-        return $this->forcedDaysWithoutCandidateSlot(
-            $this->listOf($payload, 'teams'),
-            $this->listOf($payload, 'venues'),
-            $this->listOf($payload, 'constraints'),
-        );
+        $venues = $this->listOf($payload, 'venues');
+        $teams = $this->listOf($payload, 'teams');
+        $constraints = $this->listOf($payload, 'constraints');
+
+        return [
+            ...$this->forcedDaysWithoutCandidateSlot($teams, $venues, $constraints),
+            ...$this->forcedDayEmptiedByClosingRules($payload, $teams, $venues, $constraints)['blockers'],
+            ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins),
+        ];
     }
 
     /**
@@ -134,13 +139,17 @@ final readonly class PreSolvePreventionWarnings
      * capacité globale est déjà couverte par le récap). Un avertissement qui crie au loup
      * cesse d'être lu.
      *
+     * Les règles de jour se lisent comme le moteur : HARD seulement, autorisés moins interdits, et ce
+     * que les réservations servent déjà n'est plus à placer.
+     *
+     * @param array<string, mixed>       $payload
      * @param list<array<string, mixed>> $teams
      * @param list<array<string, mixed>> $venues
      * @param list<array<string, mixed>> $constraints
      *
      * @return list<string>
      */
-    private function teamsNoSlotCanHost(array $teams, array $venues, array $constraints): array
+    private function teamsNoSlotCanHost(array $payload, array $teams, array $venues, array $constraints): array
     {
         $slotDaysByVenue = [];
         $allDays = [];
@@ -151,6 +160,11 @@ final readonly class PreSolvePreventionWarnings
                 $slotDaysByVenue[$venueId][$day] = true;
                 $allDays[$day] = true;
             }
+        }
+
+        $reservedByTeam = [];
+        foreach ($this->hardPins($payload) as $pin) {
+            $reservedByTeam[$pin['teamId']] = ($reservedByTeam[$pin['teamId']] ?? 0) + 1;
         }
 
         $messages = [];
@@ -167,11 +181,36 @@ final readonly class PreSolvePreventionWarnings
                 continue;
             }
 
-            $allowed = $this->allowedDaysOf($teamId, $constraints);
-            if (null !== $allowed && [] === array_intersect_key($reachable, array_flip($allowed))) {
+            $openDays = $this->daysOpenedByTheRules($teamId, $constraints);
+            $reserved = $reservedByTeam[$teamId] ?? 0;
+            $demand = (int) ($team['sessionsPerWeek'] ?? 0) - $reserved;
+            if (null === $openDays || $demand <= 0) {
+                continue;
+            }
+
+            if (\count($openDays) < $demand) {
                 $messages[] = \sprintf(
-                    '%s n\'autorise que des jours où aucun créneau ne lui est ouvert : elle ne pourra pas être placée.',
+                    0 === $reserved ? '%s demande %s, mais ses règles n\'ouvrent %s.' : '%s : il lui reste %s à placer, mais ses règles n\'ouvrent %s.',
                     $this->nameOf($team),
+                    $this->sessionCount($demand),
+                    match (\count($openDays)) {
+                        0 => 'aucun jour',
+                        1 => 'qu\'un seul jour',
+                        default => 'que ' . \count($openDays) . ' jours',
+                    },
+                );
+            } elseif ([] === array_intersect_key($reachable, array_flip($openDays))) {
+                $messages[] = \sprintf(
+                    '%s n\'autorise que des jours où aucun créneau ne lui est ouvert : %s.',
+                    $this->nameOf($team),
+                    0 === $reserved
+                        ? 'elle ne pourra pas être placée'
+                        : \sprintf(
+                            '%s, %s %s',
+                            1 === $reserved ? '1 séance est réservée' : $reserved . ' séances sont réservées',
+                            $this->sessionCount($demand),
+                            1 === $demand ? 'manquera' : 'manqueront',
+                        ),
                 );
             }
         }
@@ -179,6 +218,61 @@ final readonly class PreSolvePreventionWarnings
         sort($messages);
 
         return $messages;
+    }
+
+    /**
+     * Une réservation sur un jour que les règles HARD de son équipe ferment : le moteur la maintient,
+     * le gestionnaire le lit avant de générer.
+     *
+     * @param array<string, mixed>       $payload
+     * @param list<array<string, mixed>> $teams
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<string>
+     */
+    private function reservationsOutsideTheDayRule(array $payload, array $teams, array $constraints): array
+    {
+        $names = [];
+        foreach ($teams as $team) {
+            $names[$this->stringOf($team, 'id')] = $this->nameOf($team);
+        }
+
+        $messages = [];
+        foreach ($this->hardPins($payload) as $pin) {
+            $openDays = isset($names[$pin['teamId']]) ? $this->daysOpenedByTheRules($pin['teamId'], $constraints) : null;
+            if (null !== $openDays && !\in_array($pin['day'], $openDays, true)) {
+                $messages[] = \sprintf(
+                    '%s est réservée %s, hors de sa règle : la réservation gagne.',
+                    $names[$pin['teamId']],
+                    self::DAY_NAMES[$pin['day']] ?? (string) $pin['day'],
+                );
+            }
+        }
+
+        return array_values(array_unique($messages));
+    }
+
+    /**
+     * Les jours que les règles HARD laissent à l'équipe : autorisés (ou tous) moins interdits. `null`
+     * quand aucune règle ne restreint ses jours (un jour imposé seul n'en ferme aucun).
+     *
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<int>|null
+     */
+    private function daysOpenedByTheRules(string $teamId, array $constraints): ?array
+    {
+        $rules = $this->teamHardDayRules($teamId, $constraints);
+        if (null === $rules['allowed'] && [] === $rules['forbidden']) {
+            return null;
+        }
+
+        return array_values(array_diff($rules['allowed'] ?? array_keys(self::DAY_NAMES), $rules['forbidden']));
+    }
+
+    private function sessionCount(int $count): string
+    {
+        return 1 === $count ? '1 séance' : $count . ' séances';
     }
 
     /**
@@ -586,6 +680,11 @@ final readonly class PreSolvePreventionWarnings
      * le ferme. On ne crie QUE si TOUS les jours imposés candidats sont fermés — sinon la règle
      * reste satisfiable et il n'y a rien à prévenir.
      *
+     * Le moteur échoue alors à coup sûr, donc BLOCAGE. Seule exception, un membre de groupe dont un jour
+     * n'est fermé que par l'indisponibilité de son coach : un coach du groupe peut relayer la séance
+     * (`closures.py`), donc ALERTE. Un jour fermé par une fenêtre horaire ne se relaie pas : la fenêtre
+     * s'applique à l'équipe, quel que soit le coach. Parité : {@see SharedBlockPreSolveMirrorParityTest}.
+     *
      * ⚠ L'indispo d'un ADJOINT ne ferme jamais un créneau côté moteur (parsing.py exclut les
      * adjoints) : seul l'entraîneur PRINCIPAL compte ici (ALIGN-19).
      *
@@ -594,7 +693,7 @@ final readonly class PreSolvePreventionWarnings
      * @param list<array<string, mixed>> $venues
      * @param list<array<string, mixed>> $constraints
      *
-     * @return list<string>
+     * @return array{blockers: list<string>, warnings: list<string>}
      */
     private function forcedDayEmptiedByClosingRules(array $payload, array $teams, array $venues, array $constraints): array
     {
@@ -616,7 +715,18 @@ final readonly class PreSolvePreventionWarnings
             }
         }
 
-        $messages = [];
+        $groupMembers = [];
+        foreach ($this->listOf($payload, 'sharedBlocks') as $block) {
+            $memberIds = \is_array($block['teamIds'] ?? null) ? $block['teamIds'] : [];
+            if (\count($memberIds) >= 2 && (int) ($block['commonSessions'] ?? 0) > 0) {
+                foreach ($memberIds as $memberId) {
+                    $groupMembers[(string) $memberId] = true;
+                }
+            }
+        }
+
+        $blockers = [];
+        $warnings = [];
         foreach ($teams as $team) {
             $teamId = $this->stringOf($team, 'id');
             $rules = $this->teamHardDayRules($teamId, $constraints);
@@ -655,6 +765,8 @@ final readonly class PreSolvePreventionWarnings
             $mainUnavailableDays = $this->mainCoachFullDayUnavailableDays($teamId, $venues, $constraints);
 
             $allEmptied = true;
+            // Jour par jour : un jour fermé par une fenêtre ne se relaie pas, quel que soit le coach.
+            $relayDays = [];
             foreach ($candidateDays as $day => $daySlots) {
                 $closedByCoach = isset($mainUnavailableDays[$day]);
                 $closedByWindow = [] !== $windows && !$this->anySlotFitsAllWindows($daySlots, $windows);
@@ -662,10 +774,22 @@ final readonly class PreSolvePreventionWarnings
                     $allEmptied = false;
                     break;
                 }
+                if (!$closedByWindow) {
+                    $relayDays[] = $day;
+                }
+            }
+            if (!$allEmptied) {
+                continue;
             }
 
-            if ($allEmptied) {
-                $messages[] = \sprintf(
+            if (isset($groupMembers[$teamId]) && [] !== $relayDays) {
+                $warnings[] = \sprintf(
+                    '%s : au moins une séance exigée le(s) %s, mais une autre règle (indisponibilité de l\'entraîneur principal sur tous les créneaux de ce jour) n\'y laisse aucun créneau — la séance ne tiendra que si un coach de son groupe est disponible.',
+                    $this->nameOf($team),
+                    $this->dayList($relayDays),
+                );
+            } else {
+                $blockers[] = \sprintf(
                     '%s : au moins une séance exigée le(s) %s, mais une autre règle (indisponibilité de l\'entraîneur principal sur tous les créneaux de ce jour, ou fenêtre horaire) n\'y laisse aucun créneau — la génération échouera. Levez la règle qui ferme ces jours, ou retirez l\'exigence (étape Contraintes).',
                     $this->nameOf($team),
                     $this->dayList(array_keys($candidateDays)),
@@ -673,9 +797,10 @@ final readonly class PreSolvePreventionWarnings
             }
         }
 
-        sort($messages);
+        sort($blockers);
+        sort($warnings);
 
-        return $messages;
+        return ['blockers' => $blockers, 'warnings' => $warnings];
     }
 
     /**
@@ -958,7 +1083,8 @@ final readonly class PreSolvePreventionWarnings
             }
             $unionIds = array_keys($union);
 
-            $servable = \count($exclusiveKeys);
+            $reserved = \count($exclusiveKeys);
+            $servable = $reserved;
             foreach (array_diff_key($cases, array_flip($exclusiveKeys)) as [$day, $start, $end]) {
                 foreach ($unionIds as $coachId) {
                     if (!$this->coachBlockedAt($coachId, $day, $start, $end, $constraints)) {
@@ -973,9 +1099,18 @@ final readonly class PreSolvePreventionWarnings
 
             $names = $groupNames($memberIds);
             $cited = $this->citedCoachConstraints($unionIds, array_values(array_diff_key($cases, array_flip($pinnedKeys))), $constraints, $constraintOrigins);
+            $free = $servable - $reserved;
+            $slots = 1 === $free ? '1 créneau' : $free . ' créneaux';
+            $sessions = 1 === $commonSessions ? '1 séance commune' : $commonSessions . ' séances communes';
             $head = 0 === $servable
                 ? \sprintf('Groupe %s : aucun créneau où au moins un coach du groupe n\'est disponible pour une séance commune — la génération échouera.', $names)
-                : \sprintf('Groupe %s : seulement %d créneau(x) où un coach du groupe est disponible, pour %d séance(s) commune(s) — la génération échouera.', $names, $servable, $commonSessions);
+                : \sprintf(
+                    'Groupe %s : %s%s où un coach du groupe est disponible, pour %s — la génération échouera.',
+                    $names,
+                    0 === $reserved ? '' : (1 === $reserved ? '1 case réservée' : $reserved . ' cases réservées') . ' et ',
+                    0 === $free ? 'aucun créneau' : 'seulement ' . $slots,
+                    $sessions,
+                );
             $messages[] = '' !== $cited ? $head . ' ' . $cited : $head;
         }
 
@@ -1433,32 +1568,6 @@ final readonly class PreSolvePreventionWarnings
         sort($days);
 
         return implode(', ', array_map(static fn (int $day): string => self::DAY_NAMES[$day] ?? (string) $day, $days));
-    }
-
-    /**
-     * Les jours autorisés d'une équipe, ou `null` quand elle n'en restreint aucun.
-     *
-     * @param list<array<string, mixed>> $constraints
-     *
-     * @return list<int>|null
-     */
-    private function allowedDaysOf(string $teamId, array $constraints): ?array
-    {
-        $allowed = null;
-        foreach ($constraints as $constraint) {
-            if ($this->stringOf($constraint, 'scopeTargetId') !== $teamId) {
-                continue;
-            }
-            $days = ($constraint['config'] ?? [])['allowedDays'] ?? null;
-            if (!\is_array($days) || [] === $days) {
-                continue;
-            }
-            $current = array_map(intval(...), array_values($days));
-            // Deux whitelists se CROISENT (chacune est une restriction), elles ne s'ajoutent pas.
-            $allowed = null === $allowed ? $current : array_values(array_intersect($allowed, $current));
-        }
-
-        return $allowed;
     }
 
     /**

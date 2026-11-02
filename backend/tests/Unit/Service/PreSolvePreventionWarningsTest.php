@@ -993,6 +993,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
                 coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Coach A · indispo mardi'),
                 coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Coach B · indispo mardi'),
             ),
+            ['avA' => true, 'avB' => true],
         );
 
         $blockWarnings = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
@@ -1009,6 +1010,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
                 coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Coach A · indispo vacances'),
                 coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Coach B · indispo vacances'),
             ),
+            ['avA' => false, 'avB' => false],
         );
 
         $blockWarnings = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
@@ -1304,7 +1306,43 @@ final class PreSolvePreventionWarningsTest extends TestCase
         ];
 
         self::assertContains(
-            'U15 : au moins une séance exigée le(s) jeudi, mais une autre règle (indisponibilité de l\'entraîneur principal sur tous les créneaux de ce jour, ou fenêtre horaire) n\'y laisse aucun créneau — la séance ne tiendra que si un coach de son groupe est disponible.',
+            'U15 : au moins une séance exigée le(s) jeudi, mais une autre règle (indisponibilité de l\'entraîneur principal sur tous les créneaux de ce jour) n\'y laisse aucun créneau — la séance ne tiendra que si un coach de son groupe est disponible.',
+            $this->warnings->detect($payload),
+        );
+        self::assertSame([], $this->warnings->detectBlockers($payload));
+    }
+
+    /** Fenêtre horaire sur un membre de groupe : aucun coach ne la lève, le moteur échoue, donc blocage et jamais la phrase du relais. */
+    public function testAForcedDayEmptiedByAWindowForAGroupMemberBlocks(): void
+    {
+        $payload = [
+            ...$this->forcedThursdayPayload(['scope' => 'TEAM', 'scopeTargetId' => 'u15', 'family' => 'TIME', 'ruleType' => 'HARD', 'config' => ['minStartTime' => '20:00']]),
+            'teams' => [$this->team('u15', 'U15'), $this->team('u13', 'U13')],
+            'sharedBlocks' => [['id' => 'g', 'teamIds' => ['u15', 'u13'], 'commonSessions' => 1]],
+        ];
+
+        self::assertStringContainsString('la génération échouera', implode(' ', $this->warnings->detectBlockers($payload)));
+        self::assertSame([], array_values(array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'un coach de son groupe'))));
+    }
+
+    /** Deux jours imposés, jeudi fermé par une fenêtre, vendredi par l'indisponibilité : le vendredi peut se relayer, alerte qui ne nomme que lui. */
+    public function testAForcedDayMixingAWindowAndAnAbsenceStaysAWarningOnTheRelayableDay(): void
+    {
+        $payload = $this->payload(
+            venues: [$this->venueWithStarts('v1', 'Matéo', [[4, '18:00:00'], [5, '20:30:00']])],
+            teams: [$this->team('u15', 'U15'), $this->team('u13', 'U13')],
+            coaches: [$this->coach('anna', 'Anna', 'Martin')],
+            constraints: [
+                $this->dayRule('TEAM', 'u15', ['forcedDays' => [4, 5]]),
+                $this->teamCoach('u15', 'anna'),
+                $this->coachUnavailable('anna', [5]),
+                ['scope' => 'TEAM', 'scopeTargetId' => 'u15', 'family' => 'TIME', 'ruleType' => 'HARD', 'config' => ['minStartTime' => '20:00']],
+            ],
+        );
+        $payload['sharedBlocks'] = [['id' => 'g', 'teamIds' => ['u15', 'u13'], 'commonSessions' => 1]];
+
+        self::assertContains(
+            'U15 : au moins une séance exigée le(s) vendredi, mais une autre règle (indisponibilité de l\'entraîneur principal sur tous les créneaux de ce jour) n\'y laisse aucun créneau — la séance ne tiendra que si un coach de son groupe est disponible.',
             $this->warnings->detect($payload),
         );
         self::assertSame([], $this->warnings->detectBlockers($payload));
@@ -1366,7 +1404,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ),
             'slotTemplates' => [$this->reservation('t1', 'v1', 1, '18:00')],
         ]);
-        self::assertContains('U15 demande 2 séances, mais ses règles n\'ouvrent qu\'un seul jour.', $stillShort);
+        self::assertContains('U15 : il lui reste 2 séances à placer, mais ses règles n\'ouvrent qu\'un seul jour.', $stillShort);
     }
 
     /** Deux règles « jours autorisés » s'ajoutent : lundi + mardi ouvrent 2 jours, rien à dire pour 2 séances. */

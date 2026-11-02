@@ -47,6 +47,33 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         yield 'fenêtre' => [['id' => 'win', 'scope' => 'TEAM', 'scopeTargetId' => 't1', 'family' => 'TIME', 'ruleType' => 'HARD', 'name' => 'Pas avant 20h', 'config' => ['minStartTime' => '20:00'], 'sortOrder' => 0, 'isActive' => true]];
     }
 
+    /** @return iterable<string, array{list<int>, int, list<array{string, int}>, list<int>, string}> */
+    public static function partlyPinnedBlocks(): iterable
+    {
+        yield '1 case réservée et aucun créneau' => [[2, 3], 2, [['t1', 2], ['t2', 2]], [4], '1 case réservée et aucun créneau'];
+        yield '1 case réservée et seulement 1 créneau' => [[2, 3, 4], 3, [['t1', 2], ['t2', 2]], [3], '1 case réservée et seulement 1 créneau'];
+        yield 'un seul membre réservé, case sans coach' => [[2], 1, [['t1', 2]], [3], 'aucun créneau'];
+    }
+
+    /** NR (axe constraint semantics) : jeudi fermé par une fenêtre, vendredi par l'indisponibilité : le vendredi se relaie, le miroir ne bloque pas ET le moteur produit le planning. */
+    public function testAForcedDayMixingAWindowAndAnAbsenceIsNotBlockedAndCompletes(): void
+    {
+        $payload = $this->forcedDayPayload(['id' => 'win', 'scope' => 'TEAM', 'scopeTargetId' => 't1', 'family' => 'TIME', 'ruleType' => 'HARD', 'name' => 'Pas avant 20h', 'config' => ['minStartTime' => '20:00'], 'sortOrder' => 0, 'isActive' => true], withGroup: true);
+        $venue = $payload['venues'][0];
+        $late = $venue['trainingSlots'][1];
+        $venue['trainingSlots'][] = [...$late, 'dayOfWeek' => 5, 'startTime' => '20:30:00'];
+        $payload['venues'] = [$venue];
+        foreach ($payload['constraints'] as $index => $constraint) {
+            if ('forced' === $constraint['id']) {
+                $payload['constraints'][$index]['config'] = ['forcedDays' => [4, 5]];
+            }
+        }
+        $payload['constraints'][] = ['id' => 'off', 'scope' => 'COACH', 'scopeTargetId' => 'cA', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'name' => 'Indispo', 'config' => ['unavailableDays' => [5]], 'sortOrder' => 0, 'isActive' => true];
+
+        self::assertSame([], $this->warnings->detectBlockers($payload), 'PARITÉ ROMPUE : le miroir bloque un jour que le relais du groupe tient.');
+        self::assertSame('completed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir laisse passer mais le moteur échoue.');
+    }
+
     public function testBlockWithoutUnionCoachIsWarnedAndInfeasibleWhileServableBlockIsSilentAndCompleted(): void
     {
         // (1) MIROIR AVERTIT ⇒ MOTEUR INFEASIBLE — gymnase ouvert le mardi (jour 2) SEUL ; cA (t1) et
@@ -199,6 +226,37 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         self::assertSame('completed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir laisse passer mais le moteur échoue.');
     }
 
+    /** NR (axe constraint semantics) : jour vidé par une FENÊTRE sur un membre de groupe : aucun coach ne la lève, le miroir BLOQUE et le moteur échoue. */
+    public function testAForcedDayEmptiedByAWindowForAGroupMemberBlocksAndFails(): void
+    {
+        $payload = $this->forcedDayPayload(['id' => 'win', 'scope' => 'TEAM', 'scopeTargetId' => 't1', 'family' => 'TIME', 'ruleType' => 'HARD', 'name' => 'Pas avant 20h', 'config' => ['minStartTime' => '20:00'], 'sortOrder' => 0, 'isActive' => true], withGroup: true);
+
+        self::assertNotSame([], $this->warnings->detectBlockers($payload), 'le miroir doit BLOQUER : la fenêtre ferme le jour, quel que soit le coach');
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir bloque mais le moteur a résolu.');
+    }
+
+    /**
+     * NR (axe constraint semantics) : formes du groupe en partie réservé : le miroir BLOQUE et le moteur échoue. Le groupe
+     * a un coach seulement les jours `$coachDays`.
+     *
+     * @param list<int>                $venueDays
+     * @param list<array{string, int}> $pins
+     * @param list<int>                $coachDays
+     */
+    #[DataProvider('partlyPinnedBlocks')]
+    public function testAPartlyPinnedBlockThatCannotBeServedBlocksAndFails(array $venueDays, int $commonSessions, array $pins, array $coachDays, string $form): void
+    {
+        $payload = [
+            ...$this->payload(venueDays: $venueDays, aDays: $coachDays, bDays: $coachDays),
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => $commonSessions]],
+            'teams' => [$this->teamWithSessions('t1', $commonSessions), $this->teamWithSessions('t2', $commonSessions)],
+            'slotTemplates' => array_map(fn (array $pin): array => $this->pin($pin[0], $pin[1]), $pins),
+        ];
+
+        self::assertNotSame([], array_filter($this->warnings->detectBlockers($payload), static fn (string $w): bool => str_contains($w, $form)), 'le miroir doit BLOQUER sous cette forme');
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir bloque mais le moteur a résolu.');
+    }
+
     protected function setUp(): void
     {
         $this->warnings = new PreSolvePreventionWarnings;
@@ -321,6 +379,12 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
             'slotTemplates' => [],
             'sharedBlocks' => $withGroup ? [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]] : [],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function teamWithSessions(string $id, int $sessions): array
+    {
+        return [...$this->team($id), 'sessionsPerWeek' => $sessions];
     }
 
     /** @return array<string, mixed> */

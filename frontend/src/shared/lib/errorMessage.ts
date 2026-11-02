@@ -37,6 +37,18 @@ function isEnglishStatusText(value: string): boolean {
 }
 
 /**
+ * Un refus `{error, blocker: true}` : ce que le Récap dit bloquant, refusé par le guichet. Le motif se
+ * lit avec {@link errorMessage}.
+ */
+export function isBlockerRefusal(error: unknown): boolean {
+  if (!(error instanceof HTTPError) || 422 !== error.response.status) {
+    return false;
+  }
+  const data = (error as { data?: unknown }).data;
+  return null !== data && typeof data === "object" && true === (data as { blocker?: unknown }).blocker;
+}
+
+/**
  * Best-effort French, user-facing message from an unknown error (FRT-01/02).
  * Prefers a server-provided message, then falls back to a status-based sentence.
  * Async because reading the ky HTTPError response body is async.

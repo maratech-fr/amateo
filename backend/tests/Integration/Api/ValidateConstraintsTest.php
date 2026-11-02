@@ -386,7 +386,7 @@ final class ValidateConstraintsTest extends WebTestCase
     {
         $warnings = implode(' | ', $this->validateSeasonCoachUnavailabilityForPeriod(CalendarEntryPeriodType::CLOSURE)['warnings']);
 
-        self::assertStringContainsString('malgré son indisponibilité', $warnings, 'en fermeture, la dispo coach héritée AVERTIT');
+        self::assertStringContainsString('personne pour tenir', $warnings, 'en fermeture, la dispo coach héritée AVERTIT');
         self::assertStringContainsString('Emerick', $warnings);
     }
 
@@ -828,6 +828,24 @@ final class ValidateConstraintsTest extends WebTestCase
 
         self::assertContains(\sprintf($expected, $this->teamName($teamId)), $warnings);
         self::assertSame([], array_values(array_filter($warnings, static fn (string $w): bool => str_contains($w, 'personne pour tenir'))));
+    }
+
+    /** Anna absente dès 17:00, Ben part à 19:00, Chloé à 19:15 : une phrase par heure de départ, et Anna n'y « part » pas. */
+    public function testEachDepartureHasItsOwnSentenceAndAnAbsentCoachDoesNotLeave(): void
+    {
+        $venueId = $this->venue('Matéo');
+        $teamId = $this->team(sessionsPerWeek: 1);
+        $this->trainingSlot($venueId, dayOfWeek: 2, start: '18:00');
+        $this->reservation($teamId, $venueId, dayOfWeek: 2, start: '18:00');
+        $this->coachOff($this->mainCoach($teamId, 'Anna'), ['unavailableDays' => [2], 'fromTime' => '17:00']);
+        $this->coachOff($this->mainCoach($teamId, 'Ben'), ['unavailableDays' => [2], 'fromTime' => '19:00']);
+        $this->coachOff($this->mainCoach($teamId, 'Chloe'), ['unavailableDays' => [2], 'fromTime' => '19:15']);
+        $team = $this->teamName($teamId);
+
+        self::assertContains(
+            \sprintf('Ben Dupont part à 19:00 le mardi, pendant la séance de %1$s réservée à Matéo (18:00-19:30) : la séance est maintenue. Chloe Dupont part à 19:15 le mardi, pendant la séance de %1$s réservée à Matéo (18:00-19:30) : la séance est maintenue.', $team),
+            $this->validate()['warnings'],
+        );
     }
 
     protected function setUp(): void
