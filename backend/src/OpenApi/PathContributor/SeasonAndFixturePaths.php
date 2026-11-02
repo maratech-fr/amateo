@@ -195,6 +195,13 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                                 'updatedAt' => ['type' => 'string', 'format' => 'date-time'],
                             ]],
                         ]]],
+                        'held' => ['type' => 'array', 'description' => 'The lines another coach holds on that date: same shape as a conflict, with no severity, fingerprint or resolution, outside the counters and the visit delta', 'items' => ['type' => 'object', 'properties' => [
+                            'type' => ['type' => 'string', 'enum' => ['MATCH_MATCH', 'MATCH_TRAINING', 'MATCH_COACH_UNAVAILABLE']],
+                            'coachId' => ['type' => 'string', 'description' => 'The person this line is about'],
+                            'heldBy' => ['type' => 'string', 'description' => 'The coach who holds the other side on that date'],
+                            'heldSide' => ['type' => 'string', 'enum' => ['training', 'match', 'left', 'right'], 'description' => 'The side that coach holds'],
+                            'heldByTeamId' => ['type' => 'string', 'nullable' => true, 'description' => 'The team of that coach when it differs from the session\'s: a declared group'],
+                        ]]],
                     ],
                 ]),
                 '400' => new Response('No club in context'),

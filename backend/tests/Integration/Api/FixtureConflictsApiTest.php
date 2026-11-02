@@ -197,6 +197,65 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertArrayNotHasKey('opponentPlace', $sides['HOME'], 'jamais de lieu adverse décoré sur un domicile');
     }
 
+    // ── Un autre coach tient : la ligne part dans `held`, hors conflits, sans gravité ni traitement ──
+
+    /** Une ligne tenue est servie dans `held`, décorée comme un conflit, sans gravité, empreinte ni résolution. */
+    public function testAHeldLineIsServedApartWithoutSeverityFingerprintOrResolution(): void
+    {
+        [$club, $user] = $this->createClubWithHomeAwayOverlap('hl', 'ARA0069778', 'Villeurbanne');
+        $this->secondMainCoachOnTheConflict($club, $this->conflictsFor($user)[0]);
+
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        $data = $this->responseData();
+
+        self::assertSame([], $this->withoutTeamLevelMissing($data['conflicts']), 'rien à traiter : un autre coach tient');
+        self::assertNotEmpty($data['held'] ?? []);
+        $line = $data['held'][0];
+        self::assertArrayHasKey('heldBy', $line);
+        self::assertArrayNotHasKey('severity', $line);
+        self::assertArrayNotHasKey('fingerprint', $line);
+        self::assertArrayNotHasKey('resolution', $line);
+        $sides = [];
+        foreach (['left', 'right'] as $key) {
+            $sides[$line[$key]['homeAway']] = $line[$key];
+        }
+        self::assertSame('Villeurbanne', $sides['AWAY']['opponentPlace'] ?? null, 'même lieu adverse que sur un conflit');
+    }
+
+    /** Sans ligne tenue, la clé reste présente et vide : le contrat ne change pas de forme. */
+    public function testTheHeldListIsAlwaysPresent(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('hl0');
+
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+
+        self::assertSame([], $this->responseData()['held'] ?? null);
+    }
+
+    /** Un traitement ne se pose pas sur une ligne tenue, et celui déjà posé revient avec le conflit. */
+    public function testAResolutionIsRefusedWhileHeldAndComesBackWithTheConflict(): void
+    {
+        [$club, $user] = $this->createClubWithOverlappingMatches('hl1');
+        $conflict = $this->conflictsFor($user)[0];
+        $fingerprint = $conflict['fingerprint'];
+        $this->putResolution($user, $fingerprint, ['status' => 'RESOLVED_INTERNALLY']);
+        self::assertResponseStatusCodeSame(200);
+
+        $secondCoachId = $this->secondMainCoachOnTheConflict($club, $conflict);
+
+        $this->putResolution($user, $fingerprint, ['status' => 'NO_SOLUTION_YET']);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->getConnection()->executeStatement('DELETE FROM team_coach WHERE coach_id = :id', ['id' => $secondCoachId]);
+
+        $back = $this->conflictsFor($user);
+        self::assertCount(1, $back);
+        self::assertSame('RESOLVED_INTERNALLY', $back[0]['resolution']['status'] ?? null);
+    }
+
     // ── P4-207 « Résolution des conflits » (champ additif + PUT/DELETE) ──
 
     public function testGetCarriesNullResolutionByDefault(): void
@@ -594,6 +653,40 @@ final class FixtureConflictsApiTest extends WebTestCase
         $this->em->flush();
 
         return [$club, $user, $coach->getId()];
+    }
+
+    /**
+     * Un second coach principal commun aux deux équipes d'un conflit MATCH_MATCH : chaque match a
+     * désormais son tenant. Rend son id.
+     *
+     * @param array<string, mixed> $conflict
+     */
+    private function secondMainCoachOnTheConflict(Club $club, array $conflict): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $seasonId = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $club->getId()])?->getId();
+        self::assertNotNull($seasonId);
+
+        $coach = new Coach;
+        $coach->setClubId($club->getId());
+        $coach->setSeasonId($seasonId);
+        $coach->setFirstName('Second');
+        $coach->setLastName('Coach');
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        foreach ([$conflict['left']['teamId'], $conflict['right']['teamId']] as $teamId) {
+            $link = new TeamCoach;
+            $link->setClubId($club->getId());
+            $link->setSeasonId($seasonId);
+            $link->setTeamId($teamId);
+            $link->setCoachId($coach->getId());
+            $link->setRole(TeamCoachRole::MAIN);
+            $this->em->persist($link);
+        }
+        $this->em->flush();
+
+        return $coach->getId();
     }
 
     private function fixture(Club $club, Season $season, string $teamId, string $kickoff, string $matchDate): void

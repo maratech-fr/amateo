@@ -37,6 +37,7 @@ export const MATCHES_TEXTS = {
   awayAt: (city: string) => `extérieur à ${city}`,
   matchVsTrainingSummary: (match: string, training: string) => `Match ${match} × entraînement ${training}`,
   teamLevelMissingSummary: (team: string) => `${team} — ses matchs sont placés sans les créneaux de sa ligue`,
+  coachUnavailableSummary: (team: string, moment: string) => `Indisponible pour le match de ${team}, ${moment}`,
   // M11 + M6 (retours Nico, BCCL 2026-10-27) : nomme l'équipe, la date (avec son jour) et le gymnase.
   accessWindowLostPhrase: (team: string, date: string, venue: string, windows: string) =>
     `${team} — match du ${date} placé hors des accès match de ${venue} (${windows}). Déplacez le match ou ajustez l'accès.`,
@@ -210,6 +211,12 @@ export const MATCHES_TEXTS = {
   // Chantier H — le tag d'un conflit de coach ADOUCI : un adjoint disponible peut tenir ce côté.
   // Rendu avec une icône (jamais la couleur seule, a11y).
   coachReliefTag: "Un adjoint peut couvrir",
+  // Les lignes qu'un autre coach tient ce jour-là : rien à traiter, section à part sur l'écran Conflits.
+  heldSectionTitle: (count: number) => `Un autre coach tient · ${count}`,
+  heldSectionHint: "Quelqu'un tient chaque séance ou match listé ici ce jour-là : rien à traiter, le coach affiché sur le planning ne change pas.",
+  heldSessionTag: (team: string, coach: string) => `Séance ${team} tenue par ${coach}`,
+  heldGroupSessionTag: (team: string, coach: string, holderTeam: string) => `Séance commune ${team} tenue par ${coach} (${holderTeam})`,
+  heldMatchTag: (team: string, coach: string) => `Match ${team} tenu par ${coach}`,
 
   // ── Lisibilité BCCL (PR1, 2026-10-27) — écrans migrés dans le même lot (la migration ne recule jamais) ──
   // WeekendGridLegend

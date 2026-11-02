@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { coachFullName } from "@/shared/lib/coachName";
@@ -15,9 +16,9 @@ import { isManagementRole } from "@/shared/lib/roles";
 import { cn } from "@/shared/lib/utils";
 import { useMe } from "@/shared/session/queries";
 
-import type { Coach, Competition, Conflict, Team, Venue } from "./api";
+import type { Coach, Competition, Conflict, ConflictCore, HeldConflict, Team, Venue } from "./api";
 import { ConflictResolutionControl } from "./ConflictResolutionControl";
-import { ConflictSeverityGroups } from "./ConflictLine";
+import { ConflictLine, ConflictSeverityGroups } from "./ConflictLine";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
 import { type ConflictPivotAxis, type ConflictPivotEntry, PIVOT_AXES, pivotConflicts } from "./lib/conflictPivot";
 import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, TREATMENT_KEYS, type TreatmentKey, treatmentChipKeys, treatmentOf } from "./lib/conflictResolution";
@@ -113,6 +114,7 @@ export function ConflictsPage() {
 
   // Mobile (< sm) : les filtres autres que le pivot se replient derrière « Filtres ».
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [heldOpen, setHeldOpen] = useState(false);
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
@@ -121,6 +123,7 @@ export function ConflictsPage() {
   const fixturesById = useMemo(() => byId(fixtures.data), [fixtures.data]);
 
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
+  const heldLines = useMemo<HeldConflict[]>(() => conflicts.data?.held ?? [], [conflicts.data]);
   const newFingerprints = useMemo<Set<string>>(() => new Set(moduleVisit.data?.newConflictFingerprints ?? []), [moduleVisit.data]);
 
   // Compteurs par famille : SAISON, À TRAITER seulement (countByFamily filtre l'annoté).
@@ -338,7 +341,7 @@ export function ConflictsPage() {
   // le seed de `CalendarPage` REDÉFINIT l'état Consulter depuis l'URL (l'URL fait foi), donc
   // poser le store ne suffirait pas — il serait écrasé. On PRÉSERVE l'état Consulter courant
   // (kinds/familles/semaine type) et on n'ÉTEINT jamais un masque déjà levé.
-  const revealSearch = (conflict: Conflict, weekendKey: string): string => {
+  const revealSearch = (conflict: ConflictCore, weekendKey: string): string => {
     const targets = [conflict.left?.fixtureId, conflict.right?.fixtureId, conflict.fixture?.fixtureId]
       .filter((id): id is string => undefined !== id)
       .map((id) => fixturesById.get(id))
@@ -380,7 +383,7 @@ export function ConflictsPage() {
   // Le lien d'action d'un conflit (lot N) : « Calendrier incomplet » n'a pas de date, donc
   // pas de semaine — il pointe vers l'écran d'Import (les matchs manquants s'y importent).
   // Tout autre conflit DATÉ offre « Voir la semaine » ; un conflit sans date ni import, rien.
-  const renderConflictAction = (conflict: Conflict): ReactNode => {
+  const renderConflictAction = (conflict: ConflictCore): ReactNode => {
     if ("COMPETITION_INCOMPLETE" === conflict.type) {
       return (
         <Button variant="outline" size="sm" title={MATCHES_TEXTS.conflictsImportMissingTitle} onClick={() => navigate("/matchs/importer")}>
@@ -444,13 +447,36 @@ export function ConflictsPage() {
     );
   }
 
+  // Les lignes qu'un autre coach tient : à part, repliées, jamais filtrées ni comptées, sans traitement.
+  const heldSection =
+    heldLines.length > 0 ? (
+      <AccordionSection title={MATCHES_TEXTS.heldSectionTitle(heldLines.length)} open={heldOpen} onToggle={setHeldOpen}>
+        <div className="flex flex-col gap-2">
+          <NoticeBanner tone="muted" message={MATCHES_TEXTS.heldSectionHint} />
+          <ul className="flex flex-col gap-2">
+            {heldLines.map((line, index) => (
+              <ConflictLine key={`${line.type}-${line.coachId ?? ""}-${index}`} conflict={line} teams={teamsMap} coaches={coachesMap} venues={venuesMap} tone="muted" isNew={false} trailing={renderConflictAction(line)} />
+            ))}
+          </ul>
+        </div>
+      </AccordionSection>
+    ) : null;
+
   if (0 === allConflicts.length) {
-    return (
+    const empty = (
       <EmptyState
         icon={ShieldCheck}
         title={MATCHES_TEXTS.noSeasonConflictsTitle}
         description="Tous les matchs placés respectent les gymnases, les coachs et les fenêtres ligue."
       />
+    );
+    return null === heldSection ? (
+      empty
+    ) : (
+      <div className="flex flex-col gap-4">
+        {empty}
+        {heldSection}
+      </div>
     );
   }
 
@@ -619,6 +645,8 @@ export function ConflictsPage() {
           ))}
         </div>
       )}
+
+      {heldSection}
     </div>
   );
 }

@@ -42,6 +42,11 @@ final class MatchConflictDetectorTest extends TestCase
     private const TEAM_2 = 'team-2';
     private const BASELINE = 'sched-baseline';
     private const OVERLAY = 'sched-overlay';
+    private const string U15 = 'team-u15';
+    private const string U18 = 'team-u18';
+    private const string U20 = 'team-u20';
+    private const string COACH_E = 'coach-e';
+    private const string HOLDING_FRIDAY = '2026-10-02'; // vendredi, ISO 5
 
     /**
      * @param list<Fixture>                                                                                          $fixtures
@@ -74,6 +79,12 @@ final class MatchConflictDetectorTest extends TestCase
     public static function coherentCounts(): array
     {
         return ['phase pas sortie' => [0], 'aller simple' => [5], 'aller-retour' => [10]];
+    }
+
+    /** @return array<string, array{0: string|null}> */
+    public static function storedCoachOfTheSession(): array
+    {
+        return ['coach stocké' => [self::COACH_B], 'sans coach stocké' => [null]];
     }
 
     public function testTwoMatchesOfSameCoachOverlappingRaiseOneConflict(): void
@@ -1052,12 +1063,11 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('ASSISTANT', $assistant[0]['coachRole']);
     }
 
-    public function testAMatchMatchMainClashIsSoftenedToFiveWhenATeamHasAnAvailableAdjoint(): void
+    public function testAMatchMatchMainClashIsSoftenedToFourWhenATeamHasAnAvailableAdjoint(): void
     {
-        // Chantier H volet matchs (amendement a) — un conflit MATCH_MATCH MAIN×MAIN (gravité 3)
-        // est ADOUCI à 5 quand UNE des équipes a un ADJOINT disponible qui peut couvrir ce côté
-        // (« un adjoint peut tenir », convention P4-189 — 5 pour MATCH_MATCH, distinct du 4 de la
-        // famille b). Le champ `relief` porte le libellé. CÔTÉ JOUEUR jamais adouci (docblock).
+        // Un conflit MATCH_MATCH MAIN×MAIN (gravité 3) passe en ORANGE (4) quand UNE des équipes a
+        // un ADJOINT libre qui peut couvrir ce côté : même cran sur les trois familles (décision du
+        // fondateur du 2026-11-02). Le champ `relief` porte le libellé. CÔTÉ JOUEUR jamais adouci.
         $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
         $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-03', '15:30');
 
@@ -1071,7 +1081,7 @@ final class MatchConflictDetectorTest extends TestCase
         ));
 
         self::assertCount(1, $conflicts);
-        self::assertSame(5, $conflicts[0]['severity'], 'un adjoint disponible sur une équipe adoucit le MATCH_MATCH MAIN×MAIN (3→5)');
+        self::assertSame(4, $conflicts[0]['severity'], 'un adjoint libre sur une équipe adoucit le MATCH_MATCH MAIN×MAIN (3→4)');
         self::assertTrue($conflicts[0]['relief'], 'le champ relief porte le libellé du relais');
     }
 
@@ -1152,10 +1162,10 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertTrue($conflicts[0]['relief'], 'un adjoint disponible ouvre le relief');
     }
 
-    public function testAnotherAvailableMainCoachAlsoSoftensItToOrange(): void
+    public function testAnotherAvailableMainCoachHoldsTheMatchSoTheLineIsNoLongerAConflict(): void
     {
-        // Factuellement il reste un coach PRINCIPAL disponible → orange aussi (fondateur : « on
-        // alerte, mais il y a un coach »).
+        // Un autre coach PRINCIPAL disponible tient le match : la ligne quitte les conflits et part
+        // chez les lignes tenues (plus d'orange ni de tag adjoint, plus d'empreinte).
         $home = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
         $home->setVenueId('venue-mateo');
 
@@ -1170,8 +1180,10 @@ final class MatchConflictDetectorTest extends TestCase
         ));
 
         self::assertCount(1, $conflicts);
-        self::assertSame(4, $conflicts[0]['severity'], 'un autre principal disponible adoucit aussi en orange (4)');
-        self::assertTrue($conflicts[0]['relief']);
+        self::assertSame(self::COACH_B, $conflicts[0]['heldBy'] ?? null, 'l\'autre principal tient le match');
+        self::assertSame('match', $conflicts[0]['heldSide']);
+        self::assertArrayNotHasKey('severity', $conflicts[0], 'une ligne tenue n\'a pas de gravité');
+        self::assertArrayNotHasKey('relief', $conflicts[0], 'pas de tag adjoint sur une ligne tenue');
     }
 
     public function testAnAssistantOnlyCoachUnavailabilityNeverRaisesTheFamily(): void
@@ -1781,6 +1793,336 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame(5, $conflicts[0]['severity']);
         self::assertSame('MAIN', $conflicts[0]['fixture']['role']);
         self::assertSame('PLAYER', $conflicts[0]['training']['role']);
+    }
+
+    // ── Un coach tient la séance face aux matchs : le verdict se lit dans l'affectation du jour ──
+    // Vendredi 2 octobre 2026 (ISO 5). U15 = B + E, séance 20:00-21:30 ; U18 = B, match 20:30.
+    // Les deux derniers arguments de detect() : les indispos d'entraînement par version
+    // (versionId → coachId → [jour, début, fin], forme de blockedIntervalsByCoach) et les groupes
+    // déclarés par version (versionId → liste de listes d'équipes).
+
+    /** Le coach nommé ou l'absence de coach donnent le même verdict : l'autre principal tient, rien à traiter. */
+    #[DataProvider('storedCoachOfTheSession')]
+    public function testASecondMainCoachHoldsTheSessionAndTheLineLeavesTheConflicts(?string $storedCoach): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, $storedCoach)],
+        );
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertCount(1, $radar['held']);
+        $line = $radar['held'][0];
+        self::assertSame('MATCH_TRAINING', $line['type']);
+        self::assertSame(self::COACH_B, $line['coachId']);
+        self::assertSame(self::COACH_E, $line['heldBy']);
+        self::assertSame('training', $line['heldSide']);
+        self::assertNull($line['heldByTeamId']);
+        self::assertArrayNotHasKey('severity', $line, 'une ligne tenue n\'a pas de gravité');
+        self::assertArrayNotHasKey('fingerprint', $line);
+        self::assertArrayNotHasKey('resolution', $line);
+    }
+
+    /** Une indispo d'entraînement qui ne touche qu'une partie de la séance suffit : rouge, sans repli. */
+    public function testAWizardUnavailabilityOverlappingPartOfTheSessionBreaksTheHold(): void
+    {
+        $radar = $this->referenceHoldingRadar(wizardBlocked: [self::BASELINE => [self::COACH_E => [[5, 20 * 60 + 30, 22 * 60]]]]);
+
+        self::assertSame([], $radar['held']);
+        self::assertCount(1, $radar['conflicts']);
+        self::assertSame(self::COACH_B, $radar['conflicts'][0]['coachId']);
+        self::assertSame(3, $radar['conflicts'][0]['severity']);
+        self::assertFalse($radar['conflicts'][0]['relief']);
+    }
+
+    /** Une indispo d'entraînement qui s'arrête au début de la séance ne l'empêche pas de tenir. */
+    public function testAWizardUnavailabilityEndingAtTheSessionStartKeepsTheHold(): void
+    {
+        $radar = $this->referenceHoldingRadar(wizardBlocked: [self::BASELINE => [self::COACH_E => [[5, 18 * 60, 20 * 60]]]]);
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertSame(self::COACH_E, $radar['held'][0]['heldBy']);
+    }
+
+    /** Décision du fondateur : Emma indisponible dans les Contraintes des matchs tient quand même la séance. */
+    public function testAMatchUnavailabilityDoesNotStopACoachFromHoldingASession(): void
+    {
+        $radar = $this->referenceHoldingRadar(coachUnavailabilities: [$this->coachUnavailability(self::COACH_E, 5, '19:00', '23:00')]);
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertSame(self::COACH_E, $radar['held'][0]['heldBy']);
+    }
+
+    /** Symétrique : une indispo d'entraînement n'empêche pas de tenir un match. */
+    public function testAWizardUnavailabilityDoesNotStopACoachFromHoldingAMatch(): void
+    {
+        $radar = $this->twoMatchesRadar(wizardBlocked: [self::BASELINE => [self::COACH_E => [[5, 0, 1440]]]]);
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertNotSame([], $radar['held']);
+    }
+
+    /** Une indispo de match dont la plage contient le coup d'envoi retire le coach de ce match. */
+    public function testAMatchUnavailabilityRemovesTheCoachFromTheMatch(): void
+    {
+        $radar = $this->twoMatchesRadar(coachUnavailabilities: [$this->coachUnavailability(self::COACH_E, 5, '19:00', '23:00')]);
+
+        $personLines = array_values(array_filter($radar['conflicts'], static fn (array $c): bool => 'MATCH_MATCH' === $c['type']));
+        self::assertCount(1, $personLines);
+        self::assertSame(self::COACH_B, $personLines[0]['coachId']);
+        self::assertSame(3, $personLines[0]['severity']);
+    }
+
+    /** B joue le match U18 et est principal de U15 : Emma, libre, tient la séance. */
+    public function testACoachWhoPlaysTheMatchLeavesTheSessionToTheOtherMainCoach(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B)],
+            playerMemberships: [$this->membership(self::COACH_B, self::U18)],
+        );
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertSame(self::COACH_E, $radar['held'][0]['heldBy']);
+    }
+
+    /** Même cas, Emma prise par un autre match : la personne qui joue reste en rouge, sans adoucissement. */
+    public function testACoachWhoPlaysStaysRedWhenTheOtherMainCoachIsTaken(): void
+    {
+        $radar = $this->holdingRadar(
+            [
+                $this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30'),
+                $this->fixture('fx-u20', self::U20, self::HOLDING_FRIDAY, '20:30'),
+            ],
+            [$this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15), $this->link(self::COACH_E, self::U20)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B)],
+            playerMemberships: [$this->membership(self::COACH_B, self::U18)],
+        );
+
+        $lines = array_values(array_filter($radar['conflicts'], static fn (array $c): bool => self::COACH_B === $c['coachId']));
+        self::assertCount(1, $lines);
+        self::assertSame(3, $lines[0]['severity']);
+        self::assertFalse($lines[0]['relief']);
+        self::assertSame([], array_values(array_filter($radar['held'], static fn (array $c): bool => self::COACH_B === $c['coachId'])));
+    }
+
+    /** Un coach nommé qui n'est qu'adjoint de l'équipe ne tient pas sa séance : le principal reste en rouge. */
+    public function testANamedAssistantDoesNotHoldTheSession(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15, TeamCoachRole::ASSISTANT)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_E)],
+        );
+
+        self::assertSame([], $radar['held']);
+        self::assertCount(1, $radar['conflicts']);
+        self::assertSame(self::COACH_B, $radar['conflicts'][0]['coachId']);
+        self::assertSame(3, $radar['conflicts'][0]['severity']);
+    }
+
+    /** Un coach nommé hors de l'équipe tient sa séance. */
+    public function testANamedCoachOutsideTheTeamHoldsTheSession(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_E)],
+        );
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertCount(1, $radar['held']);
+        self::assertSame(self::COACH_E, $radar['held'][0]['heldBy']);
+    }
+
+    /** Groupe déclaré sur la même case : un coach de l'équipe partenaire tient la séance commune. */
+    public function testACoachOfTheDeclaredGroupHoldsTheSharedSession(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U20)],
+            [
+                $this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B),
+                $this->slot('sl-u20', self::BASELINE, self::U20, 5, '20:00', 90, self::COACH_E),
+            ],
+            groups: [self::BASELINE => [[self::U15, self::U20]]],
+        );
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertCount(1, $radar['held']);
+        self::assertSame(self::COACH_E, $radar['held'][0]['heldBy']);
+        self::assertSame(self::U20, $radar['held'][0]['heldByTeamId']);
+    }
+
+    /** Même case sans groupe déclaré : chacun ses coachs, le voisin ne tient pas. */
+    public function testTheSameCaseWithoutADeclaredGroupGivesNoHolder(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U20)],
+            [
+                $this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B),
+                $this->slot('sl-u20', self::BASELINE, self::U20, 5, '20:00', 90, self::COACH_E),
+            ],
+        );
+
+        self::assertSame([], $radar['held']);
+        self::assertCount(1, $radar['conflicts']);
+        self::assertSame(3, $radar['conflicts'][0]['severity']);
+    }
+
+    /** Trois matchs pour deux coachs : le même match reste sans tenant, en rouge et sans adjoint annoncé. */
+    public function testThreeMatchesForTwoCoachesLeaveTheSameOneRed(): void
+    {
+        $fixtures = [
+            $this->fixture('fx-a', self::U15, self::HOLDING_FRIDAY, '20:30'),
+            $this->fixture('fx-b', self::U18, self::HOLDING_FRIDAY, '20:30'),
+            $this->fixture('fx-c', self::U20, self::HOLDING_FRIDAY, '20:30'),
+        ];
+        $links = [];
+        foreach ([self::U15, self::U18, self::U20] as $team) {
+            $links[] = $this->link(self::COACH_B, $team);
+            $links[] = $this->link(self::COACH_E, $team);
+        }
+
+        foreach ([$fixtures, array_reverse($fixtures)] as $order) {
+            $radar = $this->holdingRadar($order, $links, []);
+
+            self::assertNotSame([], $radar['conflicts']);
+            foreach ($radar['conflicts'] as $conflict) {
+                self::assertSame(3, $conflict['severity']);
+                self::assertFalse($conflict['relief']);
+                self::assertContains('fx-c', [$conflict['left']['fixtureId'], $conflict['right']['fixtureId']], 'toujours le même match reste sans tenant');
+            }
+        }
+    }
+
+    /** Un principal qui joue ailleurs et l'autre pris par un match : personne ne tient, deux rouges, aucun adjoint annoncé. */
+    public function testACoachPlayingElsewhereCannotHoldAndTheSessionStaysRed(): void
+    {
+        $radar = $this->holdingRadar(
+            [
+                $this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30'),
+                $this->fixture('fx-u20', self::U20, self::HOLDING_FRIDAY, '20:30'),
+            ],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B)],
+            playerMemberships: [$this->membership(self::COACH_E, self::U20)],
+        );
+
+        $training = array_values(array_filter($radar['conflicts'], static fn (array $c): bool => 'MATCH_TRAINING' === $c['type']));
+        self::assertEqualsCanonicalizing([self::COACH_B, self::COACH_E], array_column($training, 'coachId'));
+        foreach ($training as $conflict) {
+            self::assertSame(3, $conflict['severity']);
+            self::assertFalse($conflict['relief']);
+        }
+    }
+
+    /** La séance d'une équipe qui joue n'est pas un besoin : elle ne consomme aucun coach. */
+    public function testTheSessionOfTheTeamPlayingDoesNotTakeACoach(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_E, self::U18), $this->link(self::COACH_E, self::U15)],
+            [
+                $this->slot('sl-a-u18', self::BASELINE, self::U18, 5, '20:00', 90),
+                $this->slot('sl-b-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_E),
+            ],
+        );
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertSame(self::COACH_B, $radar['held'][0]['heldBy']);
+    }
+
+    /** Un extérieur compte pour décider qui tient : Emma tient la séance quand B part en déplacement. */
+    public function testAnAwayMatchAlsoDecidesWhoHoldsTheSession(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->awayFixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B)],
+        );
+
+        self::assertSame([], $radar['conflicts']);
+        self::assertSame(self::COACH_E, $radar['held'][0]['heldBy']);
+    }
+
+    /** Adjoint libre du match face à une séance : orange 4 et tag, comme les deux autres familles. */
+    public function testAFreeAssistantOfTheMatchMakesTheTrainingClashOrange(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_E, self::U18, TeamCoachRole::ASSISTANT), $this->link(self::COACH_B, self::U15)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B)],
+        );
+
+        self::assertCount(1, $radar['conflicts']);
+        self::assertSame(4, $radar['conflicts'][0]['severity']);
+        self::assertTrue($radar['conflicts'][0]['relief']);
+    }
+
+    /** Un adjoint pris par son propre match n'est pas libre : le tag ne ment plus, la ligne reste rouge. */
+    public function testAnAssistantBusyOnHisOwnMatchGivesNoRelief(): void
+    {
+        $radar = $this->holdingRadar(
+            [
+                $this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30'),
+                $this->fixture('fx-u20', self::U20, self::HOLDING_FRIDAY, '20:30'),
+            ],
+            [
+                $this->link(self::COACH_B, self::U18),
+                $this->link(self::COACH_E, self::U18, TeamCoachRole::ASSISTANT),
+                $this->link(self::COACH_E, self::U20),
+                $this->link(self::COACH_B, self::U15),
+            ],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B)],
+        );
+
+        $training = array_values(array_filter($radar['conflicts'], static fn (array $c): bool => 'MATCH_TRAINING' === $c['type'] && self::COACH_B === $c['coachId']));
+        self::assertCount(1, $training);
+        self::assertSame(3, $training[0]['severity']);
+        self::assertFalse($training[0]['relief']);
+    }
+
+    /** L'indispo de match d'un principal avec un adjoint pris ailleurs reste rouge, sans tag. */
+    public function testAnAssistantBusyOnHisOwnMatchGivesNoReliefOnTheUnavailableFamily(): void
+    {
+        $radar = $this->holdingRadar(
+            [
+                $this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30'),
+                $this->fixture('fx-u20', self::U20, self::HOLDING_FRIDAY, '20:30'),
+            ],
+            [
+                $this->link(self::COACH_B, self::U18),
+                $this->link(self::COACH_E, self::U18, TeamCoachRole::ASSISTANT),
+                $this->link(self::COACH_E, self::U20),
+            ],
+            [],
+            coachUnavailabilities: [$this->coachUnavailability(self::COACH_B, 5, '19:00', '23:00')],
+        );
+
+        $lines = array_values(array_filter($radar['conflicts'], static fn (array $c): bool => 'MATCH_COACH_UNAVAILABLE' === $c['type']));
+        self::assertCount(1, $lines);
+        self::assertSame(3, $lines[0]['severity']);
+        self::assertFalse($lines[0]['relief']);
+    }
+
+    /** Un adjoint de l'équipe qui s'entraîne ne rend pas la séance tenable : rouge si le match n'a pas d'adjoint. */
+    public function testAnAssistantOfTheSessionTeamNeverHoldsItSoTheClashStaysRed(): void
+    {
+        $radar = $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15, TeamCoachRole::ASSISTANT)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90)],
+        );
+
+        self::assertSame([], $radar['held']);
+        $lines = array_values(array_filter($radar['conflicts'], static fn (array $c): bool => self::COACH_B === $c['coachId']));
+        self::assertCount(1, $lines);
+        self::assertSame(3, $lines[0]['severity']);
+        self::assertFalse($lines[0]['relief']);
     }
 
     public function testAPlayerMatchOnHerOwnTeamTrainingStaysSilent(): void
@@ -2472,6 +2814,77 @@ final class MatchConflictDetectorTest extends TestCase
         }
 
         return $out;
+    }
+
+    /**
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     * @param array<string, array<string, list<array{0: int, 1: int, 2: int}>>>                              $wizardBlocked
+     *
+     * @return array{conflicts: list<array<string, mixed>>, held: list<array<string, mixed>>}
+     */
+    private function referenceHoldingRadar(array $coachUnavailabilities = [], array $wizardBlocked = []): array
+    {
+        return $this->holdingRadar(
+            [$this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30')],
+            [$this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U15), $this->link(self::COACH_E, self::U15)],
+            [$this->slot('sl-u15', self::BASELINE, self::U15, 5, '20:00', 90, self::COACH_B)],
+            coachUnavailabilities: $coachUnavailabilities,
+            wizardBlocked: $wizardBlocked,
+        );
+    }
+
+    /**
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     * @param array<string, array<string, list<array{0: int, 1: int, 2: int}>>>                              $wizardBlocked
+     *
+     * @return array{conflicts: list<array<string, mixed>>, held: list<array<string, mixed>>}
+     */
+    private function twoMatchesRadar(array $coachUnavailabilities = [], array $wizardBlocked = []): array
+    {
+        return $this->holdingRadar(
+            [
+                $this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '20:30'),
+                $this->fixture('fx-u20', self::U20, self::HOLDING_FRIDAY, '20:30'),
+            ],
+            [
+                $this->link(self::COACH_B, self::U18),
+                $this->link(self::COACH_E, self::U18),
+                $this->link(self::COACH_B, self::U20),
+                $this->link(self::COACH_E, self::U20),
+            ],
+            [],
+            coachUnavailabilities: $coachUnavailabilities,
+            wizardBlocked: $wizardBlocked,
+        );
+    }
+
+    /**
+     * Le radar personne d'un vendredi, séparé comme le fait ConflictRadarLoader : une ligne qui porte
+     * `heldBy` est tenue, toutes les autres sont des conflits. Les deux derniers arguments passent en
+     * position : tant que detect() ne les prend pas, PHP les ignore et les tests rougissent sur leur
+     * verdict.
+     *
+     * @param list<Fixture>                                                                                  $fixtures
+     * @param list<TeamCoach>                                                                                $links
+     * @param list<ScheduleSlotTemplate>                                                                     $slots
+     * @param list<CoachPlayerMembership>                                                                    $playerMemberships
+     * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
+     * @param array<string, array<string, list<array{0: int, 1: int, 2: int}>>>                              $wizardBlocked
+     * @param array<string, list<list<string>>>                                                              $groups
+     *
+     * @return array{conflicts: list<array<string, mixed>>, held: list<array<string, mixed>>}
+     */
+    private function holdingRadar(array $fixtures, array $links, array $slots, array $playerMemberships = [], array $coachUnavailabilities = [], array $wizardBlocked = [], array $groups = []): array
+    {
+        $levels = [self::U15 => TeamLevel::DEPARTEMENTAL, self::U18 => TeamLevel::DEPARTEMENTAL, self::U20 => TeamLevel::DEPARTEMENTAL];
+
+        $lines = new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
+            ->detect($fixtures, $links, self::BASELINE, [], [self::BASELINE => $slots], [], [], [], [], [], [], [], null, $playerMemberships, [], [], $levels, [], $coachUnavailabilities, [], $wizardBlocked, $groups);
+
+        return [
+            'conflicts' => array_values(array_filter($lines, static fn (array $line): bool => !isset($line['heldBy']))),
+            'held' => array_values(array_filter($lines, static fn (array $line): bool => isset($line['heldBy']))),
+        ];
     }
 
     /** Ids are DB-generated (no setter) — set the private field for pure-unit assertions. */

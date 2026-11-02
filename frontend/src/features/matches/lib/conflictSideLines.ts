@@ -3,7 +3,7 @@ import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import { formatDuration } from "@/shared/lib/duration";
 import { formatMinutes, parseTime } from "@/shared/lib/time";
 
-import type { Conflict, ConflictFixtureView, ConflictTrainingView, HomeAway, Team, Venue } from "../api";
+import type { Conflict, ConflictCore, ConflictFixtureView, ConflictTrainingView, HomeAway, Team, Venue } from "../api";
 import { sideRoleWord } from "./conflictLabels";
 
 /**
@@ -231,7 +231,7 @@ function isFixtureView(fixture: Conflict["fixture"]): fixture is ConflictFixture
  * VENUE_OVERLAP (left/right + venueId) → variante `venue`. Un VENUE_OVERLAP sans
  * `venueId` (donnée dégradée : on ne peut pas nommer le gymnase) retombe sur `null`.
  */
-export function buildConflictSideLines(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>, coachGender: CoachGender = "UNSPECIFIED"): ConflictSideModel | null {
+export function buildConflictSideLines(conflict: ConflictCore, teams: Map<string, Team>, venues: Map<string, Venue>, coachGender: CoachGender = "UNSPECIFIED"): ConflictSideModel | null {
   if ("MATCH_MATCH" === conflict.type && undefined !== conflict.left && undefined !== conflict.right && undefined !== conflict.start && undefined !== conflict.end) {
     return {
       kind: "person",

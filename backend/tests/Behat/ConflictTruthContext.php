@@ -142,6 +142,9 @@ final class ConflictTruthContext extends BaseContext
     /** @var list<mixed> Conflits rendus par GET /api/fixtures/conflicts. */
     private array $conflicts = [];
 
+    /** Les lignes qu'un autre coach tient, servies à part des conflits. */
+    private array $held = [];
+
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
     {
@@ -520,6 +523,70 @@ final class ConflictTruthContext extends BaseContext
         ], $this->token), 'lien adjoint');
     }
 
+    #[Given('l\'équipe sœur a un second coach principal et un entraînement du vendredi soir, coach stocké le coach jetable')]
+    public function lEquipeSoeurAUnSecondCoachEtUnEntrainement(): void
+    {
+        // Le second coach réutilise les champs nettoyés de l'adjoint : même cycle de vie, même scénario jamais les deux.
+        $this->matchAdjointCoachId = $this->idOf($this->apiPost('coaches', ['firstName' => 'Emma', 'lastName' => 'Seconde'], $this->token), 'second coach');
+        $this->matchAdjointLinkId = $this->idOf($this->apiPost('team_coaches', [
+            'teamId' => $this->sisterTeamId,
+            'coachId' => $this->matchAdjointCoachId,
+            'role' => 'MAIN',
+        ], $this->token), 'lien second coach');
+
+        // Le créneau part avec l'équipe sœur (nettoyer() le supprime par team_id).
+        $chosen = $this->dbalScalar(
+            \sprintf('SELECT chosen_schedule_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        $seasonId = $this->dbalScalar(\sprintf('SELECT season_id AS behatval FROM schedule WHERE id=\'%s\'', $chosen), admin: true);
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO schedule_slot_template'
+                . ' (id, version, created_at, updated_at, club_id, season_id, schedule_id, team_id, venue_id, coach_id, day_of_week, start_time, duration_minutes, lock_level)'
+                . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', 5, \'20:00\', 90, \'NONE\')',
+                $this->clubId,
+                $seasonId,
+                $chosen,
+                $this->sisterTeamId,
+                $this->venueId,
+                $this->coachId,
+            ),
+            admin: true,
+        );
+    }
+
+    #[Given('un match à domicile de l\'équipe ce vendredi soir, pendant cet entraînement')]
+    public function unMatchPendantCetEntrainement(): void
+    {
+        // Vendredi 2026-12-04, juste après l'horloge épinglée 2026-12-01.
+        $this->fixtureId = $this->idOf($this->apiPost('fixtures', [
+            'teamId' => $this->teamId,
+            'matchDate' => '2026-12-04',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire (séance tenue)',
+            'kickoffTime' => '20:30',
+            'venueId' => $this->venueId,
+        ], $this->token), 'match à domicile du vendredi');
+    }
+
+    #[Then('aucun conflit d\'entraînement ne porte ce match, et une ligne tenue nomme le second coach')]
+    public function aucunConflitEtUneLigneTenue(): void
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (\is_array($conflict) && 'MATCH_TRAINING' === ($conflict['type'] ?? null) && $this->fixtureId === ($conflict['fixture']['fixtureId'] ?? null)) {
+                throw new RuntimeException('le match ne devrait plus porter de conflit d\'entraînement : le second coach tient la séance');
+            }
+        }
+        foreach ($this->held as $line) {
+            if (\is_array($line) && $this->fixtureId === ($line['fixture']['fixtureId'] ?? null) && $this->matchAdjointCoachId === ($line['heldBy'] ?? null)) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('le radar aurait dû servir une ligne tenue par le second coach pour ce match');
+    }
+
     #[Then('le radar signale le coach principal indisponible, en rouge')]
     public function leRadarSignaleCoachEnRouge(): void
     {
@@ -578,6 +645,8 @@ final class ConflictTruthContext extends BaseContext
         }
         $conflicts = $response['json']['conflicts'] ?? null;
         $this->conflicts = \is_array($conflicts) ? array_values($conflicts) : [];
+        $held = $response['json']['held'] ?? null;
+        $this->held = \is_array($held) ? array_values($held) : [];
     }
 
     #[Then('un conflit d\'entraînement porte ce match et sa borne de début est l\'heure murale sans décalage')]

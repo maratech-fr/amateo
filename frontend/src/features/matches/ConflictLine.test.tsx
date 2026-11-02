@@ -2,6 +2,8 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
+import { coachShortName } from "@/shared/lib/coachName";
+
 import type { Coach, Conflict, Team, Venue } from "./api";
 import { ConflictLine } from "./ConflictLine";
 import { MATCHES_TEXTS } from "./texts";
@@ -30,6 +32,62 @@ function renderLine(props: Partial<React.ComponentProps<typeof ConflictLine>> = 
     </MemoryRouter>,
   );
 }
+
+describe("ConflictLine — une ligne qu'un autre coach tient nomme qui tient quoi", () => {
+  const holder = { id: "coach-e", firstName: "Emma", lastName: "Durand", gender: "F" } as unknown as Coach;
+  const held = new Map<string, Coach>([["coach-e", holder]]);
+  const training = { slotTemplateId: "t", scheduleId: "sc", teamId: "team-1", venueId: "v-1", dayOfWeek: 6, startTime: "16:00", durationMinutes: 90, windowStart: "", windowEnd: "" };
+  const line = (extra: object) => ({ coachId: "coach-b", ...extra }) as unknown as Conflict;
+
+  it("séance de la même équipe, ou tenue par un coach nommé hors équipe : « Séance U13 tenue par … »", () => {
+    renderLine({ conflict: line({ type: "MATCH_TRAINING", fixture: side("fx-1", "team-2"), training, heldBy: "coach-e", heldSide: "training", heldByTeamId: null }), coaches: held, tone: "muted" });
+    expect(screen.getByText(MATCHES_TEXTS.heldSessionTag("U13", coachShortName(holder)))).toBeInTheDocument();
+  });
+
+  it("séance commune tenue par le coach d'une autre équipe du groupe : le texte nomme son équipe", () => {
+    renderLine({ conflict: line({ type: "MATCH_TRAINING", fixture: side("fx-1", "team-2"), training, heldBy: "coach-e", heldSide: "training", heldByTeamId: "team-2" }), coaches: held, tone: "muted" });
+    expect(screen.getByText(MATCHES_TEXTS.heldGroupSessionTag("U13", coachShortName(holder), "Seniors"))).toBeInTheDocument();
+  });
+
+  it("côté match d'un conflit match × entraînement : « Match … tenu par … »", () => {
+    renderLine({ conflict: line({ type: "MATCH_TRAINING", fixture: side("fx-1", "team-2"), training, heldBy: "coach-e", heldSide: "match", heldByTeamId: null }), coaches: held, tone: "muted" });
+    expect(screen.getByText(MATCHES_TEXTS.heldMatchTag("Seniors", coachShortName(holder)))).toBeInTheDocument();
+  });
+
+  it("deux matchs : le texte nomme l'équipe du côté tenu", () => {
+    renderLine({ conflict: line({ type: "MATCH_MATCH", left: side("fx-1", "team-1"), right: side("fx-2", "team-2"), heldBy: "coach-e", heldSide: "right", heldByTeamId: null }), coaches: held, tone: "muted" });
+    expect(screen.getByText(MATCHES_TEXTS.heldMatchTag("Seniors", coachShortName(holder)))).toBeInTheDocument();
+  });
+
+  it("indisponibilité d'un coach dont le match est tenu : « Match … tenu par … »", () => {
+    renderLine({ conflict: line({ type: "MATCH_COACH_UNAVAILABLE", fixture: side("fx-1", "team-1"), heldBy: "coach-e", heldSide: "match", heldByTeamId: null }), coaches: held, tone: "muted" });
+    expect(screen.getByText(MATCHES_TEXTS.heldMatchTag("U13", coachShortName(holder)))).toBeInTheDocument();
+  });
+
+  it("une ligne tenue n'annonce jamais « Un adjoint peut couvrir »", () => {
+    renderLine({ conflict: line({ type: "MATCH_TRAINING", fixture: side("fx-1", "team-2"), training, heldBy: "coach-e", heldSide: "training", heldByTeamId: null }), coaches: held, tone: "muted" });
+    expect(screen.getByText(MATCHES_TEXTS.heldSessionTag("U13", coachShortName(holder)))).toBeInTheDocument();
+    expect(screen.queryByText(MATCHES_TEXTS.coachReliefTag)).not.toBeInTheDocument();
+  });
+});
+
+describe("ConflictLine — une ligne « coach principal indisponible » dit de quel match il s'agit", () => {
+  const coach = { id: "coach-b", firstName: "Lea", lastName: "Martin", gender: "F" } as unknown as Coach;
+  const withCoach = new Map<string, Coach>([["coach-b", coach]]);
+  // 2025-11-14 = un vendredi.
+  const unavailable = (kickoffTime: string | null) =>
+    ({ type: "MATCH_COACH_UNAVAILABLE", severity: 3, resolution: null, fingerprint: "fp-unavailable", coachId: "coach-b", fixture: { ...side("fx-1", "team-1", "2025-11-14"), kickoffTime } }) as unknown as Conflict;
+
+  it("heure connue : la ligne nomme l'équipe, la date et l'heure du match", () => {
+    renderLine({ conflict: unavailable("20:30"), coaches: withCoach });
+    expect(screen.getByText(MATCHES_TEXTS.coachUnavailableSummary("U13", "ven. 14 nov. à 20:30"))).toBeInTheDocument();
+  });
+
+  it("heure inconnue : la ligne donne seulement la date, sans « à »", () => {
+    renderLine({ conflict: unavailable(null), coaches: withCoach });
+    expect(screen.getByText(MATCHES_TEXTS.coachUnavailableSummary("U13", "ven. 14 nov."))).toBeInTheDocument();
+  });
+});
 
 describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
   it("chantier H — un conflit de coach ADOUCI (relief) montre un tag « un adjoint peut couvrir », pas seulement une couleur", () => {

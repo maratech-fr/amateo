@@ -27,6 +27,14 @@ describe("groupBySeverity (P1-4 PR E2)", () => {
     expect(groups.map((g) => g.tone)).toEqual(["destructive", "destructive", "warning", "muted"]);
   });
 
+  it.each(["MATCH_MATCH", "CLUB_RULE_VIOLATION", "TEAM_VENUE_FORBIDDEN"] as const)("la gravité 3 est un vrai rouge, quelle que soit sa source : %s", (type) => {
+    expect(groupBySeverity([conflict(type, 3)])[0]?.tone).toBe("destructive");
+  });
+
+  it.each(["MATCH_MATCH", "MATCH_TRAINING", "MATCH_COACH_UNAVAILABLE"] as const)("un adjoint libre face à un match reste orange, sur les trois familles : %s", (type) => {
+    expect(groupBySeverity([conflict(type, 4)])[0]?.tone).toBe("warning");
+  });
+
   it("intitule le groupe gravité 3 « Personne en double » (coach OU joueuse en double)", () => {
     // Le lot « une personne = ses équipes » : la gravité 3 n'est plus « Coach principal
     // en double » — une joueuse en double y tombe aussi.
@@ -49,10 +57,11 @@ describe("groupBySeverity (P1-4 PR E2)", () => {
 });
 
 describe("toneOf (exporté pour l'onglet Conflits)", () => {
-  it("grade la tonalité : 1-2 destructive, 3-5 warning, 6-7 muted", () => {
+  it("grade la tonalité : 1-3 destructive, 4-5 warning, 6-7 muted", () => {
     expect(toneOf(1)).toBe("destructive");
     expect(toneOf(2)).toBe("destructive");
-    expect(toneOf(3)).toBe("warning");
+    expect(toneOf(3)).toBe("destructive");
+    expect(toneOf(4)).toBe("warning");
     expect(toneOf(5)).toBe("warning");
     expect(toneOf(6)).toBe("muted");
     expect(toneOf(7)).toBe("muted");

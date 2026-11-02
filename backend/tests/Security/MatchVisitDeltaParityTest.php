@@ -389,6 +389,40 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         );
     }
 
+    /**
+     * Une ligne qu'un autre coach tient n'est ni servie en conflit ni comptée « nouvelle » ; quand
+     * elle redevient un conflit après une rotation de la référence, elle compte comme nouvelle.
+     */
+    public function testAHeldLineStaysOutOfTheDeltaAndComesBackAsNewAfterRotation(): void
+    {
+        [$club, $season, $admin] = $this->createClub('hld');
+        $t1 = $this->teamId('hld', 1);
+        $t2 = $this->teamId('hld', 2);
+        $coachId = $this->coachOnTeams('hld', $season, [$t1, $t2]);
+        $fa = $this->homeFixture($season, $t1, '16:00');
+        $fb = $this->homeFixture($season, $t2, '16:30');
+        $fingerprint = $this->matchMatchFingerprint($coachId, $fa->getId(), $fb->getId());
+
+        $this->stamp($admin); // référence : le conflit y est
+
+        // Un second principal commun : chaque match a son tenant, la ligne quitte les conflits.
+        $secondCoachId = $this->coachOnTeams('hld2', $season, [$t1, $t2]);
+        $served = array_map(static fn (array $c): string => (string) ($c['fingerprint'] ?? ''), $this->conflictsFeed($admin));
+        self::assertNotContains($fingerprint, $served, 'une ligne tenue n\'est plus servie en conflit');
+
+        $this->expireGrace($admin, $season->getId());
+        $held = $this->stamp($admin); // la référence tourne pendant que la ligne est tenue
+        self::assertNotContains($fingerprint, $held['newConflictFingerprints'], 'une ligne tenue ne compte jamais comme nouvelle');
+
+        // Le second coach part : le conflit revient, absent de la référence qui a tourné.
+        $this->scopeGucToClub($club->getId());
+        $this->conn()->executeStatement('DELETE FROM team_coach WHERE coach_id = :id', ['id' => $secondCoachId]);
+
+        $this->expireGrace($admin, $season->getId());
+        $back = $this->stamp($admin);
+        self::assertContains($fingerprint, $back['newConflictFingerprints'], 'le retour du conflit après rotation est nouveau');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

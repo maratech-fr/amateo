@@ -6,14 +6,14 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
-import { coachFullName } from "@/shared/lib/coachName";
+import { coachFullName, coachShortName } from "@/shared/lib/coachName";
 import type { CoachGender } from "@/shared/lib/coachWording";
 import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import { dayLabelLong } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
 import { cn } from "@/shared/lib/utils";
 
-import type { Coach, Conflict, ConflictSideRole, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
+import type { Coach, Conflict, ConflictCore, ConflictSideRole, HeldConflict, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
 import { clubRuleLabel } from "./lib/clubRuleLabel";
 import { sideRoleWord } from "./lib/conflictLabels";
 import { buildConflictSideLines, type ConflictOverlapLine, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
@@ -51,7 +51,7 @@ function annotateSide(name: string, role: ConflictSideRole | undefined, gender: 
   return undefined !== role ? `${name} (${sideRoleWord(role, gender)})` : name;
 }
 
-function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string {
+function conflictTitle(conflict: ConflictCore, coaches: Map<string, Coach>): string {
   // Personne en double : le nom seul. Le rôle vit désormais PAR CÔTÉ dans le résumé
   // (« SF2 (coach) et SM2 (joueur) ») — la ligne ne relit plus `coachRole`.
   if (undefined !== conflict.coachId) {
@@ -85,7 +85,7 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
 
 /** Une ligne d'accès selon sa sorte : « le 11 nov. 14:00–20:00 », « jours fériés 14:00–18:00 », « mercredi 14:00–18:00 ».
  *  Le serveur ne sert que les plages applicables à la date ; aucune → « aucun accès match ce jour-là ». */
-function accessWindowsPhrase(conflict: Conflict): string {
+function accessWindowsPhrase(conflict: ConflictCore): string {
   const windows = (conflict.windows ?? []) as VenueAccessWindow[];
   if (0 === windows.length) {
     return "aucun accès match ce jour-là";
@@ -101,7 +101,7 @@ function accessWindowsPhrase(conflict: Conflict): string {
     .join(", ");
 }
 
-function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>, coachGender: CoachGender): string {
+function conflictSummary(conflict: ConflictCore, teams: Map<string, Team>, venues: Map<string, Venue>, coachGender: CoachGender): string {
   if ("VENUE_OVERLAP" === conflict.type && conflict.left && conflict.right) {
     return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDateWeekdayNoYear(conflict.left.matchDate)}`;
   }
@@ -123,6 +123,11 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     return allMain
       ? MATCHES_TEXTS.matchVsTrainingSummary(matchName, trainingName)
       : `Match ${annotateSide(matchName, matchRole, coachGender)} × entraînement ${annotateSide(trainingName, conflict.training.role, coachGender)}`;
+  }
+  if ("MATCH_COACH_UNAVAILABLE" === conflict.type && conflict.fixture) {
+    const date = frDateWeekdayNoYear(conflict.fixture.matchDate);
+    const moment = null != conflict.fixture.kickoffTime ? `${date} à ${conflict.fixture.kickoffTime}` : date;
+    return MATCHES_TEXTS.coachUnavailableSummary(teamName(teams, conflict.fixture.teamId), moment);
   }
   if ("VENUE_UNAVAILABLE" === conflict.type && conflict.fixture) {
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
@@ -187,8 +192,19 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
 }
 
 /** « heure estimée » when a side's window borrows the team's habit (P1-4 PR C). */
-function estimatedTag(conflict: Conflict): boolean {
+function estimatedTag(conflict: ConflictCore): boolean {
   return true === conflict.fixture?.estimatedKickoff || true === conflict.left?.estimatedKickoff || true === conflict.right?.estimatedKickoff;
+}
+
+/** Qui tient quoi sur une ligne tenue : le côté et le tenant viennent du serveur, ceci ne fait que les nommer. */
+function heldTag(line: HeldConflict, teams: Map<string, Team>, coaches: Map<string, Coach>): string {
+  const coach = coachShortName(coaches.get(line.heldBy));
+  if ("training" === line.heldSide) {
+    const team = teamName(teams, line.training?.teamId ?? "");
+    return null === line.heldByTeamId ? MATCHES_TEXTS.heldSessionTag(team, coach) : MATCHES_TEXTS.heldGroupSessionTag(team, coach, teamName(teams, line.heldByTeamId));
+  }
+  const side = "left" === line.heldSide ? line.left : "right" === line.heldSide ? line.right : line.fixture;
+  return MATCHES_TEXTS.heldMatchTag(teamName(teams, side?.teamId ?? ""), coach);
 }
 
 /** L'icône de lieu par côté (domicile/extérieur/entraînement) — TABLE, pas un décideur. */
@@ -416,7 +432,7 @@ const TONE_CLASSES = {
 } as const;
 
 interface ConflictLineProps {
-  conflict: Conflict;
+  conflict: Conflict | HeldConflict;
   teams: Map<string, Team>;
   coaches: Map<string, Coach>;
   /** Les gymnases — pour nommer le lieu d'un entraînement dans le détail par côté. */
@@ -464,6 +480,11 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         {true === conflict.relief ? (
           <StatusPill variant="warning" className="px-1.5 text-[0.65rem]" icon={<UserCheck className="size-3" aria-hidden="true" />}>
             {MATCHES_TEXTS.coachReliefTag}
+          </StatusPill>
+        ) : null}
+        {"heldBy" in conflict ? (
+          <StatusPill variant="neutral" className="px-1.5 text-[0.65rem]" icon={<UserCheck className="size-3" aria-hidden="true" />}>
+            {heldTag(conflict, teams, coaches)}
           </StatusPill>
         ) : null}
       </p>
