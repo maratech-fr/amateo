@@ -165,6 +165,7 @@ final class CoachWishesContext extends BaseContext
                 'weekStart' => $this->monday,
                 'slotsWanted' => 2,
                 'unavailableDays' => [3],
+                'staffUnavailability' => [['coachId' => $this->coachId, 'days' => [4]]],
                 'wishedDays' => [2],
                 'comment' => 'smoke',
             ]],
@@ -191,6 +192,20 @@ final class CoachWishesContext extends BaseContext
         }
 
         throw new RuntimeException('le vœu soumis est introuvable côté gestionnaire');
+    }
+
+    #[Then('l\'absence déclarée pour l\'entraîneur remonte côté gestionnaire')]
+    public function lAbsenceDeclareeRemonteCoteGestionnaire(): void
+    {
+        $wishes = $this->apiGet(\sprintf('coach_wishes?calendarEntryId=%s', $this->entryId), $this->token);
+        foreach ($this->members($wishes['json']) as $wish) {
+            if (($wish['teamId'] ?? null) === $this->teamId
+                && ($wish['staffUnavailability'] ?? null) === [['coachId' => $this->coachId, 'days' => [4]]]) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('l\'absence déclarée pour l\'entraîneur est introuvable côté gestionnaire');
     }
 
     #[Then('le jour souhaité par l\'entraîneur remonte côté gestionnaire')]
@@ -392,6 +407,14 @@ final class CoachWishesContext extends BaseContext
             'teamIds' => $teamIds,
         ], $this->token);
         $this->campaignId = $this->idOf($campaign, 'campagne');
+
+        // L'équipe du club de démonstration a déjà son principal : le gestionnaire désigne
+        // l'entraîneur du scénario comme destinataire (un seul destinataire par équipe).
+        $chosen = $this->apiPost(\sprintf('coach_wish_campaigns/%s/recipient', $this->campaignId), ['teamId' => $this->teamId, 'coachId' => $this->coachId], $this->token);
+        if (200 !== $chosen['status']) {
+            throw new RuntimeException(\sprintf('le choix du destinataire a répondu %d (200 attendu)', $chosen['status']));
+        }
+        $campaign = ['status' => $chosen['status'], 'json' => $this->asArray($chosen['json']['campaign'] ?? [])];
 
         foreach ($this->asArray($campaign['json']['coaches'] ?? []) as $entry) {
             if (\is_array($entry) && ($entry['coachId'] ?? null) === $this->coachId) {

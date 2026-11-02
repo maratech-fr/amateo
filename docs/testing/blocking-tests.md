@@ -335,6 +335,7 @@ seulement) restent un ÉCHEC NOMMÉ (`failed` + `diag-infeasible`), jamais un `r
 l'angle est « la réservation est la SEULE exception »). Skip propre si l'engine est absent. Sans ce
 gate, soit la réservation cesserait d'être souveraine (INFEASIBLE muet revenu), soit un second
 « cas d'exception » s'ouvrirait en silence ·
+`CrossStack/CoachWishUnavailabilityGateTest` (axe *constraint semantics* : une disponibilité saisie dans une doléance puis transférée est honorée par le VRAI moteur, de la doléance à `/generate`. Cinq variantes sur un plan de période : un principal absent laisse le jour ouvert, les deux le ferment ; une réservation est tenue par l'autre coach, sinon produite avec l'écart nommé ; un bloc reste possible si un coach de l'union est là ; une équipe qui ferme la seule case commune fait échouer la génération en nommant le groupe, sans rien propager à l'autre équipe ; l'absence d'un adjoint ferme le relais d'arrivée tardive, TÉMOIN sans absence. Skip propre si l'engine est absent) ·
 `CrossStack/OneCoachHoldsTheSessionGateTest` (axes *constraint semantics* + *backend↔engine
 contract*, fondateur 2026-10-30 — « tant qu'un coach tient la séance, c'est OK »). De bout en bout
 contre le VRAI moteur (`/generate`) : deux séances simultanées dans deux gymnases, U15 = A + B et

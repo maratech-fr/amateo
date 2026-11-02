@@ -209,6 +209,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -235,7 +237,9 @@ describe("CoachWishesHub", () => {
       respondedCoachCount: 0,
       openWishCount: 0,
       lastReminderAt: null,
-      coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: null, token: "a".repeat(64), respondedAt: null, sentAt: null }],
+      coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: null, token: "a".repeat(64), respondedAt: null, sentAt: null, teamIds: ["t1"] }],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
     expect(screen.getByRole("tab", { name: /Sollicitation/ })).toHaveAttribute("aria-selected", "false");
@@ -288,6 +292,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -326,6 +332,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -351,6 +359,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -378,7 +388,9 @@ describe("CoachWishesHub", () => {
         respondedCoachCount: 0,
         openWishCount: 0,
         lastReminderAt: null,
-        coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: null, token: "a".repeat(64), respondedAt: null, sentAt: null }],
+        coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: null, token: "a".repeat(64), respondedAt: null, sentAt: null, teamIds: ["t1"] }],
+      teams: [],
+      open: true,
       }),
     );
     renderHub();
@@ -402,6 +414,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -463,6 +477,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -485,6 +501,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -511,6 +529,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -533,6 +553,8 @@ describe("CoachWishesHub", () => {
       openWishCount: 0,
       lastReminderAt: null,
       coaches: [],
+      teams: [],
+      open: true,
     };
     renderHub({ existing });
 
@@ -553,7 +575,9 @@ describe("CoachWishesHub", () => {
         respondedCoachCount: 0,
         openWishCount: 0,
         lastReminderAt: null,
-        coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: null, token: "a".repeat(64), respondedAt: null, sentAt: null }],
+        coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: null, token: "a".repeat(64), respondedAt: null, sentAt: null, teamIds: ["t1"] }],
+      teams: [],
+      open: true,
       }),
     );
     renderHub();

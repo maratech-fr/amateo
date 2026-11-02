@@ -10,10 +10,10 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
-use App\Entity\CoachWishCampaign;
-use App\Entity\CoachWishToken;
 use App\Entity\Constraint;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamPeriodOverride;
@@ -44,11 +44,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  - planning lifecycle : {@see self::testTransferNeverBirthsAPlanNorTouchesValidatedSocle} —
  *    le transfert n'écrit que des objets de PÉRIODE, ne fait jamais naître un plan et ne
  *    touche ni le socle ni sa version choisie ;
- *  - constraint semantics (au niveau ÉCRITURE) : le transfert écrit la BONNE contrainte selon
- *    la règle Q-A (mono-coach → COACH_AVAILABILITY HARD ; co-coachée partielle → forbiddenDays
- *    TEAM HARD ; co-coachée tous répondants → COACH_AVAILABILITY HARD). Que le MOTEUR honore
- *    ces familles est gardé par ailleurs (ConstraintKeysAreHonouredByEngine,
- *    CoachUnavailabilityPayloadParity) ; le smoke moteur « transférer » vit en Behat.
+ *  - constraint semantics (au niveau ÉCRITURE) : « l'équipe ne s'entraîne pas ce jour-là » →
+ *    forbiddenDays TEAM HARD, pour l'équipe déclarante seule ; chaque absence d'une personne du
+ *    staff COURANT → COACH_AVAILABILITY HARD de cette personne, adjoints compris. Que le MOTEUR
+ *    honore ce qui est écrit : {@see \App\Tests\CrossStack\CoachWishUnavailabilityGateTest}.
  *
  * Tests d'ABUS (§8.4) : garde management FALSIFIÉE, doléance d'un autre club jamais convertie,
  * seules les cochées partent, idempotence par (source, occurrence), 409 si génération en cours.
@@ -80,7 +79,8 @@ final class CoachWishTransferTest extends WebTestCase
 
     public function testTransferConvertsSelectedWishIntoOverrideAndDatedConstraint(): void
     {
-        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 3, unavailableDays: [4, 5]);
+        $this->requireCoach($this->teamS->getId(), $this->coach->getId(), TeamCoachRole::MAIN);
+        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 3, staff: [['coachId' => $this->coach->getId(), 'days' => [4, 5]]]);
 
         $recap = $this->transfer([$wish->getId()]);
         self::assertResponseIsSuccessful();
@@ -138,57 +138,131 @@ final class CoachWishTransferTest extends WebTestCase
         self::assertSame(CoachWishTransferService::SOURCE, $override->getSource());
     }
 
-    public function testNoCoachWritesForbiddenTeamDays(): void
+    public function testTeamClosedDaysWriteForbiddenTeamDays(): void
     {
-        // Q5/D-a — doléance sans coach : « l'équipe ne s'entraîne pas ces jours-là ».
-        $wish = $this->createWish($this->teamS->getId(), null, slots: 2, unavailableDays: [4, 5]);
+        // « L'équipe ne s'entraîne pas ce jour-là » : TEAM HARD, que la doléance ait un coach ou non.
+        $this->requireCoach($this->teamS->getId(), $this->coach->getId(), TeamCoachRole::MAIN);
+        $withCoach = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, unavailableDays: [4, 5]);
+        $withoutCoach = $this->createWish($this->team('U15', 3)->getId(), null, slots: 2, unavailableDays: [6]);
 
-        $this->transfer([$wish->getId()]);
+        $this->transfer([$withCoach->getId(), $withoutCoach->getId()]);
 
-        $constraint = $this->transferConstraintsFor($wish->getId())[0];
-        self::assertSame(ConstraintScope::TEAM, $constraint->getScope());
-        self::assertSame($this->teamS->getId(), $constraint->getScopeTargetId());
-        self::assertSame(ConstraintFamily::DAY, $constraint->getFamily());
-        self::assertSame(ConstraintRuleType::HARD, $constraint->getRuleType());
-        self::assertSame(['forbiddenDays' => [4, 5]], $constraint->getConfig());
+        $constraints = $this->transferConstraintsFor($withCoach->getId());
+        self::assertCount(1, $constraints, 'une fermeture d\'équipe n\'écrit aucune indisponibilité de personne');
+        self::assertSame(ConstraintScope::TEAM, $constraints[0]->getScope());
+        self::assertSame($this->teamS->getId(), $constraints[0]->getScopeTargetId());
+        self::assertSame(ConstraintFamily::DAY, $constraints[0]->getFamily());
+        self::assertSame(ConstraintRuleType::HARD, $constraints[0]->getRuleType());
+        self::assertSame(['forbiddenDays' => [4, 5]], $constraints[0]->getConfig());
+        self::assertSame(['forbiddenDays' => [6]], $this->transferConstraintsFor($withoutCoach->getId())[0]->getConfig());
     }
 
-    public function testMultiCoachPartialResponseClosesTeamDayForTheTeam(): void
+    public function testEachStaffAbsenceWritesACoachAvailability(): void
     {
-        // Q-A — U11M1 co-coachée (Maxime + Julie), un SEUL a répondu : on ne suppose rien sur
-        // l'autre, le jour déclaré est FERMÉ pour l'ÉQUIPE (forbiddenDays TEAM HARD).
-        $team = $this->team('U11M1', 2);
-        $julie = $this->coachNamed('Julie', 'Martin');
-        $this->requireCoach($team->getId(), $this->coach->getId(), TeamCoachRole::MAIN);
-        $this->requireCoach($team->getId(), $julie->getId(), TeamCoachRole::ASSISTANT);
-        $this->campaignWithResponders([$this->coach->getId()]); // seul Maxime a répondu
+        // Une personne non renseignée reste disponible : aucune contrainte pour Emma.
+        $team = $this->team('U15', 2);
+        $karim = $this->coachNamed('Karim', 'Benali');
+        $benoit = $this->coachNamed('Benoît', 'Roux');
+        $emma = $this->coachNamed('Emma', 'Morel');
+        $this->requireCoach($team->getId(), $karim->getId(), TeamCoachRole::MAIN);
+        $this->requireCoach($team->getId(), $emma->getId(), TeamCoachRole::MAIN);
+        $this->requireCoach($team->getId(), $benoit->getId(), TeamCoachRole::MAIN);
 
-        $wish = $this->createWish($team->getId(), $this->coach->getId(), slots: 2, unavailableDays: [4]);
+        $wish = $this->createWish($team->getId(), $karim->getId(), slots: 2, staff: [
+            ['coachId' => $karim->getId(), 'days' => [4]],
+            ['coachId' => $benoit->getId(), 'days' => [2]],
+        ]);
         $this->transfer([$wish->getId()]);
 
-        $constraint = $this->transferConstraintsFor($wish->getId())[0];
-        self::assertSame(ConstraintScope::TEAM, $constraint->getScope());
-        self::assertSame(ConstraintFamily::DAY, $constraint->getFamily());
-        self::assertSame(['forbiddenDays' => [4]], $constraint->getConfig());
+        $byCoach = [];
+        foreach ($this->transferConstraintsFor($wish->getId()) as $constraint) {
+            self::assertSame(ConstraintScope::COACH, $constraint->getScope());
+            self::assertSame(ConstraintFamily::COACH_AVAILABILITY, $constraint->getFamily());
+            self::assertSame(ConstraintRuleType::HARD, $constraint->getRuleType());
+            self::assertSame($this->mother->getId(), $constraint->getCalendarEntryId());
+            $byCoach[(string) $constraint->getScopeTargetId()] = $constraint;
+        }
+        self::assertCount(2, $byCoach);
+        self::assertSame(['unavailableDays' => [4]], $byCoach[$karim->getId()]->getConfig());
+        self::assertSame('Indisponibilité de Karim Benali (doléances U15)', $byCoach[$karim->getId()]->getName());
+        self::assertSame(['unavailableDays' => [2]], $byCoach[$benoit->getId()]->getConfig());
+        self::assertSame('Indisponibilité de Benoît Roux (doléances U15)', $byCoach[$benoit->getId()]->getName());
+        self::assertArrayNotHasKey($emma->getId(), $byCoach, 'personne non renseignée = disponible');
     }
 
-    public function testMultiCoachAllRespondedWritesCoachAvailability(): void
+    public function testAnAssistantsAbsenceIsWrittenAsHisOwn(): void
     {
-        // Q-A — co-coachée dont TOUS les coachs requis ont répondu : COACH_AVAILABILITY HARD du
-        // coach de la doléance (le moteur applique « un coach suffit »).
-        $team = $this->team('U11M2', 2);
-        $julie = $this->coachNamed('Julie', 'Martin');
-        $this->requireCoach($team->getId(), $this->coach->getId(), TeamCoachRole::MAIN);
-        $this->requireCoach($team->getId(), $julie->getId(), TeamCoachRole::ASSISTANT);
-        $this->campaignWithResponders([$this->coach->getId(), $julie->getId()]);
+        $team = $this->team('U15', 2);
+        $karim = $this->coachNamed('Karim', 'Benali');
+        $benoit = $this->coachNamed('Benoît', 'Roux');
+        $this->requireCoach($team->getId(), $karim->getId(), TeamCoachRole::MAIN);
+        $this->requireCoach($team->getId(), $benoit->getId(), TeamCoachRole::ASSISTANT);
 
-        $wish = $this->createWish($team->getId(), $this->coach->getId(), slots: 2, unavailableDays: [4]);
+        $wish = $this->createWish($team->getId(), $karim->getId(), slots: 2, staff: [['coachId' => $benoit->getId(), 'days' => [2]]]);
         $this->transfer([$wish->getId()]);
 
-        $constraint = $this->transferConstraintsFor($wish->getId())[0];
-        self::assertSame(ConstraintScope::COACH, $constraint->getScope());
-        self::assertSame($this->coach->getId(), $constraint->getScopeTargetId());
-        self::assertSame(ConstraintFamily::COACH_AVAILABILITY, $constraint->getFamily());
+        $constraints = $this->transferConstraintsFor($wish->getId());
+        self::assertCount(1, $constraints);
+        self::assertSame(ConstraintScope::COACH, $constraints[0]->getScope());
+        self::assertSame($benoit->getId(), $constraints[0]->getScopeTargetId(), 'l\'adjoint a sa contrainte : le moteur s\'en sert pour le relais');
+    }
+
+    public function testAStaffLineOfSomeoneWhoLeftTheTeamIsSkipped(): void
+    {
+        // Emma a quitté l'équipe, et un id ne désigne plus personne : ignorés. Le reste est écrit.
+        $team = $this->team('U15', 2);
+        $karim = $this->coachNamed('Karim', 'Benali');
+        $emma = $this->coachNamed('Emma', 'Morel');
+        $this->requireCoach($team->getId(), $karim->getId(), TeamCoachRole::MAIN);
+
+        $wish = $this->createWish($team->getId(), $karim->getId(), slots: 3, unavailableDays: [5], staff: [
+            ['coachId' => $emma->getId(), 'days' => [4]],
+            ['coachId' => '77777777-7777-4777-8777-777777777777', 'days' => [3]],
+            ['coachId' => $karim->getId(), 'days' => [2]],
+        ]);
+        $recap = $this->transfer([$wish->getId()]);
+        self::assertSame(1, $recap['converted']);
+
+        $targets = array_map(static fn (Constraint $c): ?string => $c->getScopeTargetId(), $this->transferConstraintsFor($wish->getId()));
+        self::assertEqualsCanonicalizing([$team->getId(), $karim->getId()], $targets, 'seuls l\'équipe fermée et le staff courant sont écrits');
+        self::assertSame(3, $this->overrideFor($team->getId())?->getSessionsPerWeek(), 'l\'override reste écrit');
+    }
+
+    public function testAClosedDayNeverSpreadsToTheOtherTeamOfASharedBlock(): void
+    {
+        // Aucune propagation : l'équipe partenaire du groupe n'hérite de rien.
+        $a = $this->team('U15A', 2);
+        $b = $this->team('U15B', 2);
+        $block = (new SharedTrainingBlock)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId($this->planId)->setCommonSessions(1);
+        $this->em->persist($block);
+        $this->em->flush();
+        foreach ([$a, $b] as $member) {
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                ->setSchedulePlanId($this->planId)->setBlockId($block->getId())->setTeamId($member->getId()));
+        }
+        $this->em->flush();
+
+        $wishA = $this->createWish($a->getId(), null, slots: 1, unavailableDays: [4]);
+        $this->transfer([$wishA->getId()]);
+
+        self::assertSame([], $this->em->getRepository(Constraint::class)->findBy(['source' => CoachWishTransferService::SOURCE, 'scopeTargetId' => $b->getId()]));
+    }
+
+    public function testTheCommentLivesOnASingleConstraint(): void
+    {
+        $team = $this->team('U15', 2);
+        $karim = $this->coachNamed('Karim', 'Benali');
+        $this->requireCoach($team->getId(), $karim->getId(), TeamCoachRole::MAIN);
+        $wish = $this->createWish($team->getId(), $karim->getId(), slots: 2, unavailableDays: [5], wishedDays: [1], staff: [['coachId' => $karim->getId(), 'days' => [4]]]);
+        $fresh = $this->reload($wish);
+        $fresh->setComment('Stage le week-end');
+        $this->em->flush();
+
+        $this->transfer([$wish->getId()]);
+
+        $described = array_filter($this->transferConstraintsFor($wish->getId()), static fn (Constraint $c): bool => null !== $c->getDescription());
+        self::assertCount(1, $described);
     }
 
     public function testWishedDaysWritePreferredTeamDays(): void
@@ -254,14 +328,15 @@ final class CoachWishTransferTest extends WebTestCase
         $this->em->flush();
         $manualId = $manual->getId();
 
-        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, unavailableDays: [4]);
+        $this->requireCoach($this->teamS->getId(), $this->coach->getId(), TeamCoachRole::MAIN);
+        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, staff: [['coachId' => $this->coach->getId(), 'days' => [4]]]);
         $this->transfer([$wish->getId()]);
         self::assertCount(1, $this->transferConstraintsFor($wish->getId()));
 
         // Re-soumission du coach : jours changés, done remis à false (hors de ce test), puis
         // re-transfert → la contrainte est MISE À JOUR, jamais empilée.
         $reloaded = $this->reload($wish);
-        $reloaded->setUnavailableDays([4, 6]);
+        $reloaded->setStaffUnavailability([['coachId' => $this->coach->getId(), 'days' => [4, 6]]]);
         $this->em->flush();
         $this->em->clear();
 
@@ -278,14 +353,15 @@ final class CoachWishTransferTest extends WebTestCase
         // JAMAIS le plan : seul un NOUVEAU transfert explicite recale (décision 8). On transfère,
         // puis on simule une re-soumission (done=false + jours changés) SANS re-transférer : le plan
         // garde l'override ET la contrainte du 1er transfert, inchangés.
-        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, unavailableDays: [4]);
+        $this->requireCoach($this->teamS->getId(), $this->coach->getId(), TeamCoachRole::MAIN);
+        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, staff: [['coachId' => $this->coach->getId(), 'days' => [4]]]);
         $this->transfer([$wish->getId()]);
         self::assertTrue($this->reload($wish)->isDone());
         self::assertSame(['unavailableDays' => [4]], $this->transferConstraintsFor($wish->getId())[0]->getConfig());
 
         // Re-soumission (ce que fait CoachWishUpserter côté public) : done=false + jours changés.
         $reloaded = $this->reload($wish);
-        $reloaded->setDone(false)->setUnavailableDays([6]);
+        $reloaded->setDone(false)->setStaffUnavailability([['coachId' => $this->coach->getId(), 'days' => [6]]]);
         $this->em->flush();
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());
@@ -525,30 +601,20 @@ final class CoachWishTransferTest extends WebTestCase
         $this->em->flush();
     }
 
-    /** @param list<string> $respondedCoachIds */
-    private function campaignWithResponders(array $respondedCoachIds): void
-    {
-        $campaign = (new CoachWishCampaign)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setCalendarEntryId($this->mother->getId())->setDeadline(new DateTimeImmutable('2026-02-10'));
-        $this->em->persist($campaign);
-        foreach ($respondedCoachIds as $coachId) {
-            $token = (new CoachWishToken)->setClubId($this->club->getId())->setCampaignId($campaign->getId())->setCoachId($coachId);
-            $token->markResponded(new DateTimeImmutable);
-            $this->em->persist($token);
-        }
-        $this->em->flush();
-    }
-
     /**
      * @param list<int> $unavailableDays
      * @param list<int> $wishedDays
+     * @param list<array{coachId: string, days: list<int>}> $staff
      */
-    private function createWish(string $teamId, ?string $coachId, int $slots = 2, array $unavailableDays = [], array $wishedDays = [], string $week = '2026-02-16'): CoachWish
+    private function createWish(string $teamId, ?string $coachId, int $slots = 2, array $unavailableDays = [], array $wishedDays = [], string $week = '2026-02-16', array $staff = []): CoachWish
     {
         $wish = (new CoachWish)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setCalendarEntryId($this->mother->getId())->setWeekStart(new DateTimeImmutable($week))
             ->setTeamId($teamId)->setCoachId($coachId)->setSlotsWanted($slots)
             ->setUnavailableDays($unavailableDays)->setWishedDays($wishedDays);
+        if ([] !== $staff) {
+            $wish->setStaffUnavailability($staff);
+        }
         $this->em->persist($wish);
         $this->em->flush();
 

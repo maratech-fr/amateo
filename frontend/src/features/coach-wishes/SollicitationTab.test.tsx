@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTodayOverride } from "@/shared/lib/clock";
 
-import type { CampaignCoach, CoachWishCampaign } from "./campaignApi";
+import type { CampaignCoach, CampaignTeam, CoachWishCampaign } from "./campaignApi";
+import { COACH_WISHES_MANAGER_TEXTS } from "./texts/manager";
 
 // Équipes/coachs de la campagne pour le sélecteur d'équipe (ResourceFilter) et l'envoi d'email.
 vi.mock("@/features/wizard/queries", () => ({
@@ -27,12 +28,14 @@ vi.mock("@/features/wizard/queries", () => ({
 }));
 
 const sendMut = vi.fn();
+const recipientMut = vi.fn();
 const remindMut = vi.fn();
 const refetchPreview = vi.fn();
 const sendState: { isError: boolean; error: unknown } = { isError: false, error: null };
 const remindState: { isError: boolean; error: unknown } = { isError: false, error: null };
 const previewState: { data: { subject: string; from: string; html: string } | undefined; isError: boolean } = { data: undefined, isError: false };
 vi.mock("./campaignQueries", () => ({
+  useSetCampaignRecipient: () => ({ mutate: recipientMut, isPending: false }),
   useSendCampaignLinks: () => ({ mutate: sendMut, isPending: false, isError: sendState.isError, error: sendState.error }),
   useRemindCampaignSilent: () => ({ mutate: remindMut, isPending: false, isError: remindState.isError, error: remindState.error }),
   useCoachWishEmailPreview: () => ({ data: previewState.data, isError: previewState.isError, refetch: refetchPreview }),
@@ -51,6 +54,7 @@ const coach = (over: Partial<CampaignCoach> = {}): CampaignCoach => ({
   token: "a".repeat(64),
   respondedAt: null,
   sentAt: null,
+  teamIds: ["t1"],
   ...over,
 });
 
@@ -65,6 +69,8 @@ const campaign = (over: Partial<CoachWishCampaign> = {}): CoachWishCampaign => (
   openWishCount: 0,
   lastReminderAt: null,
   coaches: [coach()],
+  teams: [],
+  open: true,
   ...over,
 });
 
@@ -75,6 +81,7 @@ describe("SollicitationTab", () => {
   beforeEach(() => {
     setTodayOverride("2026-02-01");
     sendMut.mockReset();
+    recipientMut.mockReset();
     remindMut.mockReset();
     copyMock.mockClear();
     sendState.isError = false;
@@ -138,7 +145,7 @@ describe("SollicitationTab", () => {
         teamIds: ["t1", "t2"],
         coaches: [
           coach({ coachId: "c1", firstName: "Maxime", lastName: "SM1", email: "max@test.fr" }),
-          coach({ coachId: "c2", firstName: "Mara", lastName: "U13", email: "mara@test.fr" }),
+          coach({ coachId: "c2", firstName: "Mara", lastName: "U13", email: "mara@test.fr", teamIds: ["t2"] }),
         ],
       }),
     );
@@ -151,6 +158,99 @@ describe("SollicitationTab", () => {
     await user.click(screen.getByRole("button", { name: "SM1" }));
     expect(inList("Maxime SM1")).toBeInTheDocument();
     expect(inList("Mara U13")).not.toBeInTheDocument();
+  });
+
+  it("le filtre par équipe lit les équipes du jeton, pas les liens du wizard", async () => {
+    // Le lien dit c2 sur t2 ; le jeton dit qu'il répond pour t1 : c'est le jeton qui fait foi.
+    const user = userEvent.setup();
+    renderTab(campaign({ teamIds: ["t1", "t2"], coaches: [coach({ coachId: "c2", firstName: "Julie", lastName: "Petit", teamIds: ["t1"] })] }));
+
+    await user.click(screen.getByRole("button", { name: /Équipes/ }));
+    await user.click(screen.getByRole("button", { name: "SM1" }));
+
+    expect(inList("Julie Petit")).toBeInTheDocument();
+  });
+
+  // ── Un seul destinataire par équipe, choisi par le gestionnaire ──
+
+  const MAXIME = { coachId: "c1", firstName: "Maxime", lastName: "Durand" };
+  const JULIE = { coachId: "c2", firstName: "Julie", lastName: "Petit" };
+  const twoMains: CampaignTeam = { teamId: "t1", recipientCoachId: "c1", candidates: [MAXIME, JULIE] };
+  const picker = () => screen.getByRole("combobox", { name: COACH_WISHES_MANAGER_TEXTS.recipientSelectLabel("SM1") });
+
+  it("propose le sélecteur sur une collecte ouverte à deux principaux, destinataire courant choisi", () => {
+    renderTab(campaign({ teams: [twoMains] }));
+
+    expect(screen.getByText(COACH_WISHES_MANAGER_TEXTS.recipientBlockTitle)).toBeInTheDocument();
+    expect(picker()).toHaveValue("c1");
+    expect(within(picker()).getByRole("option", { name: "Julie Petit" })).toBeInTheDocument();
+  });
+
+  it("aucun sélecteur sur une collecte fermée", () => {
+    renderTab(campaign({ open: false, teams: [twoMains] }));
+
+    expect(screen.queryByText(COACH_WISHES_MANAGER_TEXTS.recipientBlockTitle)).toBeNull();
+  });
+
+  it("aucun sélecteur quand chaque équipe n'a qu'un candidat", () => {
+    renderTab(campaign({ teams: [{ teamId: "t1", recipientCoachId: "c1", candidates: [MAXIME] }] }));
+
+    expect(screen.queryByText(COACH_WISHES_MANAGER_TEXTS.recipientBlockTitle)).toBeNull();
+  });
+
+  it("nomme les équipes sans coach principal", () => {
+    renderTab(campaign({ teamIds: ["t2", "t3"], teams: [{ teamId: "t2", recipientCoachId: null, candidates: [] }, { teamId: "t3", recipientCoachId: null, candidates: [] }] }));
+
+    expect(screen.getByText(COACH_WISHES_MANAGER_TEXTS.noMainCoach(["U13", "U11"]))).toBeInTheDocument();
+  });
+
+  it("change tout de suite quand le destinataire courant n'a ni lien ni réponse", async () => {
+    const user = userEvent.setup();
+    renderTab(campaign({ teams: [twoMains] }));
+
+    await user.selectOptions(picker(), "c2");
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(recipientMut).toHaveBeenCalledWith({ id: "camp1", teamId: "t1", coachId: "c2" });
+  });
+
+  it("demande confirmation quand le lien a été reçu sans réponse ; Annuler ne change rien", async () => {
+    const user = userEvent.setup();
+    renderTab(campaign({ teams: [twoMains], coaches: [coach({ sentAt: "2026-01-01T08:00:00Z" })] }));
+
+    await user.selectOptions(picker(), "c2");
+
+    const dialog = screen.getByRole("dialog", { name: COACH_WISHES_MANAGER_TEXTS.recipientConfirmTitle });
+    expect(dialog).toHaveTextContent(COACH_WISHES_MANAGER_TEXTS.recipientConfirmReceived("Maxime Durand", "Julie Petit", "SM1"));
+    await user.click(within(dialog).getByRole("button", { name: COACH_WISHES_MANAGER_TEXTS.recipientConfirmCancel }));
+    expect(recipientMut).not.toHaveBeenCalled();
+    expect(picker()).toHaveValue("c1");
+  });
+
+  it("dit que la réponse déjà saisie reste, et change sur confirmation", async () => {
+    const user = userEvent.setup();
+    renderTab(campaign({ teams: [twoMains], coaches: [coach({ sentAt: "2026-01-01T08:00:00Z", respondedAt: "2026-01-02T08:00:00Z" })] }));
+
+    await user.selectOptions(picker(), "c2");
+
+    const dialog = screen.getByRole("dialog", { name: COACH_WISHES_MANAGER_TEXTS.recipientConfirmTitle });
+    expect(dialog).toHaveTextContent(COACH_WISHES_MANAGER_TEXTS.recipientConfirmAnswered("Maxime Durand", "Julie Petit", "SM1"));
+    await user.click(within(dialog).getByRole("button", { name: COACH_WISHES_MANAGER_TEXTS.recipientConfirmChange }));
+    expect(recipientMut).toHaveBeenCalledWith({ id: "camp1", teamId: "t1", coachId: "c2" });
+  });
+
+  it("prévient que le nouveau destinataire déjà servi repasse « à envoyer »", async () => {
+    const user = userEvent.setup();
+    renderTab(
+      campaign({
+        teams: [twoMains],
+        coaches: [coach({ sentAt: "2026-01-01T08:00:00Z" }), coach({ coachId: "c2", firstName: "Julie", lastName: "Petit", sentAt: "2026-01-01T08:00:00Z", token: "b".repeat(64), teamIds: ["t2"] })],
+      }),
+    );
+
+    await user.selectOptions(picker(), "c2");
+
+    expect(screen.getByRole("dialog", { name: COACH_WISHES_MANAGER_TEXTS.recipientConfirmTitle })).toHaveTextContent(COACH_WISHES_MANAGER_TEXTS.recipientConfirmAlreadyServed("Julie Petit"));
   });
 
   // P4-178 — repli AA : la pastille « répondu le … » (StatusPill accent) et la puce de statut

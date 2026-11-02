@@ -162,6 +162,119 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    public function testRecipientActionMarksOneLinkAndMovesTheTeamToTheChosenCoach(): void
+    {
+        $teamId = $this->campaign->getTeamIds()[0];
+
+        $this->postRecipient($teamId, $this->noEmail->getId());
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame($this->noEmail->getId(), $body['campaign']['teams'][0]['recipientCoachId']);
+        self::assertSame($teamId, $body['campaign']['teams'][0]['teamId']);
+        self::assertEqualsCanonicalizing([$this->withEmail->getId(), $this->noEmail->getId()], array_column($body['campaign']['teams'][0]['candidates'], 'coachId'));
+        self::assertSame(['coachId', 'firstName', 'lastName'], array_keys($body['campaign']['teams'][0]['candidates'][0]));
+        self::assertSame(['recipient' => 1], ['recipient' => $this->markedCount($teamId)]);
+        self::assertSame([$teamId], $this->freshToken($this->noEmail)?->getTeamIds());
+        self::assertSame([], $this->freshToken($this->withEmail)?->getTeamIds());
+
+        // Un second choix l'emporte : jamais deux marqués, et la réponse reste mémorisée.
+        $this->postRecipient($teamId, $this->withEmail->getId());
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->markedCount($teamId));
+        self::assertSame($this->withEmail->getId(), json_decode((string) $this->client->getResponse()->getContent(), true)['campaign']['teams'][0]['recipientCoachId']);
+    }
+
+    public function testRecipientActionRefusals(): void
+    {
+        $teamId = $this->campaign->getTeamIds()[0];
+
+        // 422 : équipe hors collecte.
+        $this->postRecipient('77777777-7777-4777-8777-777777777777', $this->noEmail->getId());
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Cette équipe n\'est pas dans la collecte.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
+
+        // 422 : un adjoint n'est jamais destinataire.
+        $this->scopeGucToClub($this->club->getId());
+        $assistant = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Benoît')->setLastName('Roux');
+        $this->em->persist($assistant);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($teamId)->setCoachId($assistant->getId())->setRole(TeamCoachRole::ASSISTANT));
+        $this->em->flush();
+        $this->postRecipient($teamId, $assistant->getId());
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Ce coach n\'est pas coach principal de cette équipe.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
+
+        self::assertSame(0, $this->markedCount($teamId), 'aucun refus n\'écrit');
+    }
+
+    public function testRecipientActionOnAClosedCampaignIs409(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->campaign->setDeadline(new DateTimeImmutable('2020-01-06'));
+        $this->em->flush();
+
+        $this->postRecipient($this->campaign->getTeamIds()[0], $this->noEmail->getId());
+        self::assertResponseStatusCodeSame(409);
+        self::assertSame('La date limite de cette collecte est passée.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
+    }
+
+    public function testRecipientActionNotFoundIsByteIdenticalAcrossClubs(): void
+    {
+        $teamId = $this->campaign->getTeamIds()[0];
+        $this->client->request('POST', '/api/coach_wish_campaigns/77777777-7777-4777-8777-777777777777/recipient', [], [], $this->headers(), json_encode(['teamId' => $teamId, 'coachId' => $this->noEmail->getId()], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404);
+        $unknown = (string) $this->client->getResponse()->getContent();
+
+        $foreign = $this->seedForeignCampaignId();
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $foreign . '/recipient', [], [], $this->headers(), json_encode(['teamId' => $teamId, 'coachId' => $this->noEmail->getId()], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($unknown, (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testRecipientActionRefusesANonManagerWith403(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $hasher = self::getContainer()->get('security.user_password_hasher');
+        $user = (new User)->setEmail('viewer' . uniqid('', true) . '@test.com')->setFirstName('V')->setLastName('V');
+        $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
+        $this->em->persist($user);
+        $this->em->flush();
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('editor')->setIsActive(true));
+        $this->em->flush();
+        $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
+
+        $teamId = $this->campaign->getTeamIds()[0];
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/recipient', [], [], [
+            'HTTP_X-Season-Id' => $this->season->getId(),
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $jwt,
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['teamId' => $teamId, 'coachId' => $this->noEmail->getId()], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame(0, $this->markedCount($teamId));
+    }
+
+    public function testATokenWithoutTeamsIsNeverMailedRemindedNorPreviewed(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->tokenWithEmail->setTeamIds([]);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/send-links', [], [], $this->headers(), '{}');
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, json_decode((string) $this->client->getResponse()->getContent(), true)['sent'], 'envoi : ignoré');
+
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/send-links', [], [], $this->headers(), json_encode(['coachIds' => [$this->withEmail->getId()]], \JSON_THROW_ON_ERROR));
+        self::assertSame(0, json_decode((string) $this->client->getResponse()->getContent(), true)['sent'], 'renvoi ciblé : ignoré aussi');
+
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/remind', [], [], $this->headers(), '{}');
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, json_decode((string) $this->client->getResponse()->getContent(), true)['sent'], 'relance : ignoré');
+
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/preview?coachId=' . $this->withEmail->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(404);
+    }
+
     public function testPreviewRendersTheCoachFacingFormInReadOnlyMode(): void
     {
         // D2 — aperçu gestionnaire : la VRAIE page du coach, mais vidée de ses données.
@@ -172,10 +285,11 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         // Lecture seule : aucune donnée du coach, aucune réponse.
         self::assertSame([], $body['wishes']);
         self::assertSame([], $body['mutualizations']);
+        self::assertSame([], $body['absencesElsewhere'], 'aperçu : aucune donnée');
         self::assertNull($body['respondedAt']);
         // Même forme que le GET public.
         self::assertSame(
-            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'mutualizations', 'respondedAt'],
+            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'absencesElsewhere', 'mutualizations', 'respondedAt'],
             array_keys($body),
         );
     }
@@ -268,13 +382,33 @@ final class CoachWishCampaignActionsTest extends WebTestCase
             ->setWeeks(['2026-02-16'])->setTeamIds([$team->getId()]);
         $this->em->persist($this->campaign);
 
-        $this->tokenWithEmail = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->withEmail->getId())->setClubId($this->club->getId());
-        $this->tokenNoEmail = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->noEmail->getId())->setClubId($this->club->getId());
+        $this->tokenWithEmail = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->withEmail->getId())->setClubId($this->club->getId())->setTeamIds([$team->getId()]);
+        $this->tokenNoEmail = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->noEmail->getId())->setClubId($this->club->getId())->setTeamIds([$team->getId()]);
         $this->em->persist($this->tokenWithEmail);
         $this->em->persist($this->tokenNoEmail);
         $this->em->flush();
 
         $this->jwt = $container->get(JWTTokenManagerInterface::class)->create($user);
+    }
+
+    private function postRecipient(string $teamId, string $coachId): void
+    {
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/recipient', [], [], $this->headers(), json_encode(['teamId' => $teamId, 'coachId' => $coachId], \JSON_THROW_ON_ERROR));
+    }
+
+    private function markedCount(string $teamId): int
+    {
+        $this->scopeGucToClub($this->club->getId());
+
+        return (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM team_coach WHERE team_id = :t AND wish_recipient', ['t' => $teamId]);
+    }
+
+    private function freshToken(Coach $coach): ?CoachWishToken
+    {
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+
+        return $this->em->getRepository(CoachWishToken::class)->findOneBy(['campaignId' => $this->campaign->getId(), 'coachId' => $coach->getId()]);
     }
 
     /** Crée un club étranger avec sa propre campagne et retourne son id (invisible au club courant). */

@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\CalendarEntry;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\CoachWish;
 use App\Entity\Feedback;
+use App\Entity\Team;
 use App\Entity\User;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use App\Storage\FeedbackScreenshotStorage;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -78,6 +83,38 @@ final class RgpdExportTest extends WebTestCase
         foreach (['season', 'team', 'coach', 'venue', 'constraint', 'schedule', 'members'] as $key) {
             self::assertArrayHasKey($key, $data);
         }
+    }
+
+    public function testClubExportCarriesNoStaffLineOfADeletedCoach(): void
+    {
+        [$token, $userId] = $this->registerVerified('EXPW');
+        $clubId = $this->clubIdOf($userId);
+        $seasonId = $this->seasonOf($clubId);
+        $this->scopeGucToClub($clubId);
+        $em = $this->em();
+        $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('U15');
+        $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Parti')->setLastName('Test');
+        $entry = (new CalendarEntry)->setClubId($clubId)->setSeasonId($seasonId)->setKind(CalendarEntryKind::PERIOD)
+            ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
+        $em->persist($team);
+        $em->persist($coach);
+        $em->persist($entry);
+        $em->flush();
+        $coachId = $coach->getId();
+        $em->persist((new CoachWish)->setClubId($clubId)->setSeasonId($seasonId)->setCalendarEntryId($entry->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1)
+            ->setStaffUnavailability([['coachId' => $coachId, 'days' => [4]]]));
+        $em->flush();
+        $em->clear();
+        $this->clearGuc();
+
+        $this->client->request('DELETE', '/api/coaches/' . $coachId, [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'HTTP_X-Season-Id' => $seasonId]);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseIsSuccessful();
+        self::assertStringNotContainsString($coachId, (string) $this->client->getResponse()->getContent(), 'l\'export ne porte plus l\'identifiant d\'un coach supprimé');
     }
 
     public function testClubExportRequiresAManagementRole(): void

@@ -48,7 +48,7 @@ final class CoachWishMailBuilderTest extends TestCase
         $builder = new CoachWishMailBuilder('https://app.example.test');
         $body = (string) $builder->buildCoachLink('c@x.fr', 'Maxime', 'Nom long', $this->campaign(), 'Toussaint', str_repeat('a', 64), 'Gérard', club: $club)->getTextBody();
 
-        self::assertStringContainsString('Gérard (BCCL) prépare le planning de « Toussaint » et a besoin de vos souhaits d\'entraînement.', $body);
+        self::assertStringContainsString('Gérard (BCCL) prépare le planning de « Toussaint » et a besoin, pour chacune de vos équipes, des souhaits d\'entraînement et des disponibilités de tout le staff : vous répondez pour l\'équipe entière.', $body);
         // Le reste du texte est conservé (date limite + « C'est un souhait… »).
         self::assertStringContainsString('Merci de répondre avant le 30/06/2027', $body);
         self::assertStringContainsString('C\'est un souhait, pas un engagement : le club arbitre ensuite.', $body);
@@ -71,7 +71,7 @@ final class CoachWishMailBuilderTest extends TestCase
         $headers = $builder->buildCoachLink('c@x.fr', 'Maxime', 'Club', $this->campaign(), 'Toussaint', str_repeat('a', 64), 'Gérard')->getHeaders();
 
         self::assertSame('https://app.example.test/doleances/' . str_repeat('a', 64), $headers->getHeaderBody(EmailTemplateRenderer::CTA_URL_HEADER));
-        self::assertSame('Donner mes disponibilités', $headers->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        self::assertSame('Donner les disponibilités de mon équipe', $headers->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
     }
 
     public function testNoCtaHeadersWhenTheLinkIsOmitted(): void

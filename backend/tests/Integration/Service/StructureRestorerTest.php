@@ -6,12 +6,16 @@ namespace App\Tests\Integration\Service;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
+use App\Entity\Coach;
+use App\Entity\CoachWishCampaign;
+use App\Entity\CoachWishToken;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -22,6 +26,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
@@ -242,6 +247,43 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertSame($venueId, $afterV2->getVenueId(), 'le match retrouve un pointeur valide');
         self::assertSame(FixtureStatus::SUBMITTED, $afterV2->getStatus());
         self::assertNull($afterV2->getUnplacedReason());
+    }
+
+    public function testLoadingRecreatesTheRecipientsTokenAndKeepsTheMark(): void
+    {
+        // « Charger » supprime les coachs : la clé étrangère emporte les jetons. La règle les recrée.
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U11M1');
+        $maxime = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Maxime')->setLastName('Durand');
+        $julie = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Julie')->setLastName('Petit');
+        $this->em->persist($maxime);
+        $this->em->persist($julie);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setTeamId($team->getId())->setCoachId($maxime->getId())->setRole(TeamCoachRole::MAIN)->setCreatedAt(new DateTimeImmutable('2025-09-01')));
+        $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setTeamId($team->getId())->setCoachId($julie->getId())->setRole(TeamCoachRole::MAIN)->setCreatedAt(new DateTimeImmutable('2025-09-02'))->setWishRecipient(true));
+        $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
+        $this->em->persist($entry);
+        $campaign = (new CoachWishCampaign)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setCalendarEntryId($entry->getId())->setDeadline(new DateTimeImmutable('2030-01-01'))
+            ->setWeeks(['2026-04-06'])->setTeamIds([$team->getId()]);
+        $this->em->persist($campaign);
+        $this->em->persist((new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($julie->getId())->setClubId($club->getId())->setTeamIds([$team->getId()]));
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        $link = $this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $julie->getId()]);
+        self::assertTrue($link?->isWishRecipient(), 'le choix du gestionnaire revient avec la photo');
+        $token = $this->em->getRepository(CoachWishToken::class)->findOneBy(['campaignId' => $campaign->getId(), 'coachId' => $julie->getId()]);
+        self::assertSame([$team->getId()], $token?->getTeamIds(), 'le destinataire a de nouveau un jeton dans la collecte ouverte');
+        self::assertNull($this->em->getRepository(CoachWishToken::class)->findOneBy(['campaignId' => $campaign->getId(), 'coachId' => $maxime->getId()]));
     }
 
     protected function setUp(): void

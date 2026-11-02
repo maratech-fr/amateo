@@ -35,6 +35,27 @@ final class CoachWishUpserterTest extends TestCase
         $upserter->upsert(new CoachWishCampaign, 'team-1', new DateTimeImmutable('2026-02-16 00:00:00'), 'coach-1', 2, [3], [3], null);
     }
 
+    public function testNormalizesStaffLinesLastWinsDaysSortedEmptyOmitted(): void
+    {
+        $repo = $this->createMock(EntityRepository::class);
+        $repo->method('findOneBy')->willReturn(null);
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->method('getRepository')->willReturn($repo);
+        $campaign = (new CoachWishCampaign)->setClubId('club-1')->setSeasonId('season-1')->setCalendarEntryId('entry-1');
+
+        $wish = new CoachWishUpserter($em)->upsert($campaign, 'team-1', new DateTimeImmutable('2026-02-16 00:00:00'), 'coach-1', 2, [], [], null, false, [
+            ['coachId' => 'karim', 'days' => [1]],
+            ['coachId' => 'benoit', 'days' => [4, 2, 4]],
+            ['coachId' => 'karim', 'days' => [5, 3]],
+            ['coachId' => 'emma', 'days' => []],
+        ]);
+
+        self::assertEqualsCanonicalizing([
+            ['coachId' => 'karim', 'days' => [3, 5]],
+            ['coachId' => 'benoit', 'days' => [2, 4]],
+        ], $wish->getStaffUnavailability());
+    }
+
     public function testCopiesKeepSeasonSlotsOntoANewWish(): void
     {
         // P2-63 B — le foyer d'écriture public reporte le drapeau « garder ses créneaux » sur

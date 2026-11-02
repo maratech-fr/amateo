@@ -61,6 +61,95 @@ final class CoachWishCampaignApiTest extends WebTestCase
 
     private Coach $coachB;
 
+    public function testResourceExposesTeamsCandidatesAndOpenState(): void
+    {
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));
+        self::assertResponseStatusCodeSame(201);
+
+        self::assertTrue($body['open']);
+        self::assertSame([$this->teamA->getId()], $body['coaches'][0]['teamIds']);
+        self::assertSame([[
+            'teamId' => $this->teamA->getId(),
+            'recipientCoachId' => $this->coachA->getId(),
+            'candidates' => [['coachId' => $this->coachA->getId(), 'firstName' => 'Maxime', 'lastName' => 'Durand']],
+        ]], $body['teams']);
+    }
+
+    public function testAClosedCampaignSaysSo(): void
+    {
+        $created = $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));
+        $this->scopeGucToClub($this->club->getId());
+        $campaign = $this->em->getRepository(CoachWishCampaign::class)->find($created['id']);
+        self::assertInstanceOf(CoachWishCampaign::class, $campaign);
+        $campaign->setDeadline(new DateTimeImmutable('2020-01-06'));
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $created['id'], [], [], $this->headers());
+        self::assertFalse(json_decode((string) $this->client->getResponse()->getContent(), true)['open']);
+    }
+
+    public function testASecondMainGetsNoTokenAtCreationAndAnAssistantNever(): void
+    {
+        $julie = $this->newCoach('Julie', 'Petit');
+        $benoit = $this->newCoach('Benoît', 'Roux');
+        $this->em->flush();
+        $this->addLink($this->teamA, $julie, TeamCoachRole::MAIN, '+1 day');
+        $this->addLink($this->teamA, $benoit, TeamCoachRole::ASSISTANT, '+1 day');
+        $this->backdateLinkOf($this->coachA);
+
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));
+        self::assertResponseStatusCodeSame(201);
+
+        self::assertSame([$this->coachA->getId()], array_column($body['coaches'], 'coachId'), 'un seul destinataire par équipe');
+        self::assertSame(1, $body['totalCoachCount']);
+        self::assertCount(1, $this->em->getRepository(CoachWishToken::class)->findBy(['campaignId' => $body['id']]));
+    }
+
+    public function testLinkingAMainToATeamWithoutOneServesHimAtOnce(): void
+    {
+        $orphan = $this->newTeam('U9');
+        $this->em->flush();
+        $body = $this->post($this->payload(['teamIds' => [$orphan->getId()]]));
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame(0, $body['totalCoachCount']);
+
+        $this->client->request('POST', '/api/team_coaches', [], [], $this->headers(), json_encode(['teamId' => $orphan->getId(), 'coachId' => $this->coachB->getId(), 'role' => 'MAIN'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+
+        self::assertSame([$orphan->getId()], $this->coachRow($body['id'], $this->coachB)['teamIds'] ?? null, 'lié après l\'ouverture : son jeton naît sans autre geste');
+    }
+
+    public function testRemovingTheRecipientsLinkFallsBackToTheNextMain(): void
+    {
+        $julie = $this->newCoach('Julie', 'Petit');
+        $this->em->flush();
+        $this->addLink($this->teamA, $julie, TeamCoachRole::MAIN, '+1 day');
+        $this->backdateLinkOf($this->coachA);
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));
+
+        $link = $this->em->getRepository(TeamCoach::class)->findOneBy(['teamId' => $this->teamA->getId(), 'coachId' => $this->coachA->getId()]);
+        self::assertInstanceOf(TeamCoach::class, $link);
+        $this->client->request('DELETE', '/api/team_coaches/' . $link->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        self::assertSame([$this->teamA->getId()], $this->coachRow($body['id'], $julie)['teamIds'] ?? null, 'le suivant répond désormais');
+        self::assertNull($this->coachRow($body['id'], $this->coachA), 'l\'ancien sort de la liste');
+    }
+
+    public function testDeletingTheRecipientCoachServesTheNextMain(): void
+    {
+        $julie = $this->newCoach('Julie', 'Petit');
+        $this->em->flush();
+        $this->addLink($this->teamA, $julie, TeamCoachRole::MAIN, '+1 day');
+        $this->backdateLinkOf($this->coachA);
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));
+
+        $this->client->request('DELETE', '/api/coaches/' . $this->coachA->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        self::assertSame([$this->teamA->getId()], $this->coachRow($body['id'], $julie)['teamIds'] ?? null);
+    }
+
     public function testPostCreatesCampaignAndOneTokenPerCoachOfRetainedTeams(): void
     {
         // teamA (coachA) retenue ; teamB (coachB) NON → un seul token, celui de coachA.
@@ -294,6 +383,41 @@ final class CoachWishCampaignApiTest extends WebTestCase
         $this->seedWeekPlan($this->mother, '2026-02-23', '2026-03-01');
 
         $this->jwt = $container->get(JWTTokenManagerInterface::class)->create($user);
+    }
+
+    private function addLink(Team $team, Coach $coach, TeamCoachRole $role, string $createdAt): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($team->getId())->setCoachId($coach->getId())->setRole($role)->setCreatedAt(new DateTimeImmutable($createdAt)));
+        $this->em->flush();
+    }
+
+    private function backdateLinkOf(Coach $coach): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $link = $this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $coach->getId()]);
+        self::assertInstanceOf(TeamCoach::class, $link);
+        $link->setCreatedAt(new DateTimeImmutable('-1 year'));
+        $this->em->flush();
+    }
+
+    /**
+     * La ligne d'un coach dans la campagne relue par l'API, ou null s'il n'y figure pas.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function coachRow(string $campaignId, Coach $coach): ?array
+    {
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $campaignId, [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+        foreach (json_decode((string) $this->client->getResponse()->getContent(), true)['coaches'] as $row) {
+            if ($row['coachId'] === $coach->getId()) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     /** Matérialise une semaine-enfant planifiée (entrée + plan HOLIDAY ancré au lundi). */

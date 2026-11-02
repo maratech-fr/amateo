@@ -178,6 +178,9 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $newCoaches = $this->em->getRepository(Coach::class)->findBy(['seasonId' => $target->getId()], ['firstName' => 'ASC']);
         self::assertSame($newTeams[0]->getId(), $newLink?->getTeamId());
         self::assertSame($newCoaches[0]->getId(), $newLink?->getCoachId());
+        // Le destinataire choisi et l'ordre de liaison passent à la saison suivante (premier lié = défaut).
+        self::assertTrue($newLink?->isWishRecipient(), 'le choix du gestionnaire est mémorisé d\'une saison à l\'autre');
+        self::assertSame('2025-09-15', $newLink?->getCreatedAt()->format('Y-m-d'));
         $newMembership = $this->em->getRepository(CoachPlayerMembership::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertSame($newTeams[1]->getId(), $newMembership?->getTeamId());
 
@@ -641,6 +644,8 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $link->setCoachId($anna->getId());
         $link->setRole(TeamCoachRole::MAIN);
         $link->setIsRequired(true);
+        $link->setCreatedAt(new DateTimeImmutable('2025-09-15'));
+        $link->setWishRecipient(true);
         $this->em->persist($link);
 
         $membership = new CoachPlayerMembership;
