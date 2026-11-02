@@ -115,9 +115,8 @@ def team_coach(constraint_id: str, team_id: str, coach_id: str, *, role: str = "
         "id": constraint_id,
         "teamId": team_id,
         "type": "TEAM_COACH",
-        "severity": "HARD",
         "value": coach_id,
-        "metadata": {"coachId": coach_id, "role": role, "isRequired": True},
+        "metadata": {"coachId": coach_id, "role": role},
     }
 
 

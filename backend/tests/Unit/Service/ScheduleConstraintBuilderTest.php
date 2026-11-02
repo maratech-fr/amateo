@@ -167,6 +167,24 @@ final class ScheduleConstraintBuilderTest extends TestCase
         self::assertSame('ASSISTANT', $result[1]['metadata']['role']);
     }
 
+    /**
+     * NR axe backend↔engine contract : le lien équipe⇄coach part au moteur avec son rôle seul, sans
+     * `severity` ni `metadata.isRequired`, clés et ordre figés — « coach obligatoire » n'existe plus,
+     * et la commande de réalignement des empreintes reproduit exactement cette forme.
+     */
+    public function testTeamCoachLinkTravelsWithoutSeverityNorIsRequired(): void
+    {
+        $link = (new TeamCoach)->setTeamId('team-sm1')->setCoachId('coach-anna')->setRole(TeamCoachRole::MAIN);
+
+        $method = new ReflectionMethod($this->builder, 'serializeTeamCoachConstraints');
+
+        /** @var array<int, array{metadata: array<string, mixed>}> $result */
+        $result = $method->invoke($this->builder, [$link]);
+
+        self::assertSame(['id', 'teamId', 'type', 'value', 'metadata'], array_keys($result[0]));
+        self::assertSame(['coachId' => 'coach-anna', 'role' => 'MAIN'], $result[0]['metadata']);
+    }
+
     public function testClubWideConstraintExpandsToEveryTeam(): void
     {
         // Audit P0.1 (dead "Toutes les équipes" cell): a CLUB-scope TIME/DAY/
