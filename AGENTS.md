@@ -6,7 +6,7 @@
 Read order for any agent working in this repo:
 
 1. [`CLAUDE.md`](CLAUDE.md) — short operational index (stack, zones, boundaries, commands, conventions, workflow rules, scope checklist).
-2. [`docs/project-map.md`](docs/project-map.md) — detailed repo map (entities, controllers, services, messaging, infra, the code-review-graph hook).
+2. [`docs/project-map.md`](docs/project-map.md) — detailed repo map (entities, controllers, services, messaging, infra).
 3. [`specs/README.md`](specs/README.md) — the 3-tier living specs system; execution specs live in `specs/courantes/`.
 
 Package-level detail stays next to the code:

@@ -1,6 +1,6 @@
 # Project Map — Amateo (engine + backend)
 
-Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
+Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code.
 
 ---
 
@@ -176,17 +176,9 @@ ruff (line 120, py314, double quotes, LF) · mypy `strict` + `pydantic.mypy` (`o
 
 ---
 
-## 5. Knowledge graph & the auto-update hook (pre-existing automation)
+## 5. Dev tooling & Dependabot
 
-`code-review-graph` is installed (`uv tool`) and a graph is built over **all code zones** — backend (PHP), engine (Python) and frontend (TS/TSX). `.code-review-graphignore` excludes only build artifacts (`frontend/dist|node_modules|storybook-static`) and non-code dirs (`docs/`, `specs/`, `docker/`, `.github/`, `.claude/`). Its MCP tools back graph-aware exploration and review across the repo.
-
-Two hooks in `.claude/settings.json` (paths corrected to this checkout):
-- **`SessionStart`** → `code-review-graph status` (read-only).
-- **`PostToolUse` on `Edit|Write|Bash`** → `.claude/hooks/graph-update.sh`, which runs `code-review-graph update --skip-flows` detached and under a lock, so the hook timeout cannot kill it and runs do not stack — **the only automatic action in this repo**: it incrementally re-indexes the graph after each edit. It never touches application code. This is the documented exception to the "no hidden automation" rule. To make it manual, remove the `PostToolUse` block and run `code-review-graph update` by hand.
-
-The MCP server (`.mcp.json`: `uvx code-review-graph serve`) loads at session start; its tools (`semantic_search_nodes`, `query_graph`, `get_impact_radius`, `detect_changes`, …) are the preferred way to explore before Grep/Read. Semantic search additionally needs `code-review-graph embed` (not run — pulls a heavy local model).
-
-Two further MCP servers are configured in `.mcp.json` and enabled: **Serena** (`uvx … serena start-mcp-server`, LSP-based symbol navigation for PHP + Python + TS; `.serena/project.yml` excludes only frontend build artifacts `dist|node_modules|storybook-static`) and **Context7** (`@upstash/context7-mcp`, up-to-date external-library docs). Separately, the **Caveman** plugin is installed user-scope (opt-in compressed communication mode). All are dev-time tooling — no application-code impact.
+An MCP server worth naming is configured in `.mcp.json`: **Context7** (`@upstash/context7-mcp`, up-to-date external-library docs). Separately, the **Caveman** plugin is installed user-scope (opt-in compressed communication mode). All are dev-time tooling — no application-code impact.
 
 **Dependabot** (`.github/dependabot.yml`, audit supply-chain) scans the dependency ecosystems weekly — **pip** (`/engine`), **npm** (`/frontend`), **composer** (`/backend`), **github-actions** (`/`), **docker** (one entry per Dockerfile-containing directory: `docker/php`, `docker/engine`, `docker/frontend`, `docker/pdf-worker`, `docker/postgres` — base-image bumps) — opening grouped version-bump PRs (labelled `dependencies` + zone). Security PRs from GHSA alerts require Dependabot security-updates enabled at the repo (Settings → Code security). This is GitHub-side CI automation (not a local hook, not agent automation), so it is orthogonal to the "no hidden agent automation" rule (§7 CLAUDE.md). The open PRs are processed by the **manual `/dependabot` skill** (`.claude/skills/dependabot/`): verify → repair our code if the upgrade breaks it → zone test suite → merge; invoking the skill is the user's merge go **for those PRs only**.
 

@@ -11,7 +11,7 @@ Run **only when the user asks**, after an implementation that stayed within a va
 It does not blindly run everything. It (a) selects the **targeted** tests for the zone that actually changed, (b) adds the **cross-zone** integration/contract tests when a boundary is touched, and (c) **justifies** every test it could not run instead of silently skipping.
 
 ### Steps
-1. **Detect changed zone(s)** — engine / backend / frontend — from the diff (use `detect_changes` from `code-review-graph` if helpful).
+1. **Detect changed zone(s)** — engine / backend / frontend — from the diff.
 2. **Targeted tests for the changed zone:**
    - **Backend:** `cd backend && make test` (lint + phpunit `--group phase1`). For security/contract-touching changes, also run the blocking tests: `tests/Security/TenantIsolationTest.php`, `tests/Security/TenantCacheIsolationTest.php`, `tests/Queue/ConcurrentGenerationTest.php`, `tests/CrossStack/ContractSchemaTest.php`.
    - **Engine:** `cd engine && make test` (pytest + ruff + mypy).
