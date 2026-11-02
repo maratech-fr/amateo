@@ -21,6 +21,7 @@ import {
   useMoveDryRun,
   useMoveGroup,
   useMoveSlot,
+  usePlacedConflicts,
   usePlaceSlot,
   useRegenerate,
   useRegenerateFromVersion,
@@ -88,6 +89,7 @@ vi.mock("./api", async (importOriginal) => {
     regenerate: vi.fn().mockResolvedValue({ id: "sched-v2" }),
     createOverlayVersion: vi.fn().mockResolvedValue({ id: "overlay-1" }),
     fillSchedule: vi.fn().mockResolvedValue({ id: "sched-fill" }),
+    getPlacedConflicts: vi.fn().mockResolvedValue({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [], relays: [], absences: [] }),
     exportSchedulePdf: vi.fn().mockResolvedValue({}),
   };
 });
@@ -121,6 +123,22 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("planning queries — le paquet move/place accepté rafraîchit les 4 lecteurs (effet, pas espion)", () => {
+  it("useMoveSlot accepté → le bandeau des séances sans coach de la version affichée se relit, comme celui de la saison", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ displayed: usePlacedConflicts(SID), season: usePlacedConflicts(), move: useMoveSlot() }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.displayed.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.season.isSuccess).toBe(true));
+    expect(planningApi.getPlacedConflicts).toHaveBeenCalledWith(SID);
+    vi.mocked(planningApi.getPlacedConflicts).mockClear();
+
+    result.current.move.mutate({ id: "s1", patch: {} as never });
+
+    await waitFor(() => expect(planningApi.getPlacedConflicts).toHaveBeenCalledWith(SID));
+  });
+
   it("useMoveSlot accepté → refetche slots, schedules, diagnostics ET socle-deviation", async () => {
     const client = makeClient();
     const { result } = renderHook(

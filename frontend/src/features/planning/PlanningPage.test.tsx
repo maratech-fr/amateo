@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HTTPError } from "ky";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/api";
@@ -2949,5 +2950,113 @@ describe("PlanningPage — le dialogue de validation nomme ce qui manque", () =>
     const dialog = await openDialog();
 
     expect(dialog.queryByText(/non placée/)).not.toBeInTheDocument();
+  });
+});
+
+/** Promesse : la version affichée, de travail ou de période, dit ses séances sans coach ; la page embarquée ne le répète pas. */
+describe("PlanningPage — séances sans coach sur la version affichée", () => {
+  const absence = { scheduleId: SID, dayOfWeek: 1, startTime: "18:00", venueName: "Nord", teamNames: ["U15"], coachNames: ["Anna Martin"] };
+  const radar = { clubId: "club-1", seasonId: "s1", seasonPlanChosen: false, conflicts: [], relays: [], absences: [absence] };
+
+  it("sur une version de travail non pointée : demandée pour CETTE version, et dite", async () => {
+    vi.mocked(getPlacedConflicts).mockResolvedValue(radar);
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText(PLANNING_TEXTS.absenceLine(absence))).toBeInTheDocument();
+    expect(vi.mocked(getPlacedConflicts)).toHaveBeenCalledWith(SID);
+  });
+
+  it("sur une version de période : même bandeau", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([
+      { id: SID, name: "Toussaint V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
+    ]);
+    vi.mocked(getPlacedConflicts).mockResolvedValue(radar);
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText(PLANNING_TEXTS.absenceLine(absence))).toBeInTheDocument();
+  });
+
+  it("témoin : aucune absence, aucun bandeau", async () => {
+    vi.mocked(getPlacedConflicts).mockResolvedValue({ ...radar, absences: [] });
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+    renderWithProviders(<PlanningPage />);
+
+    await vi.waitFor(() => expect(vi.mocked(getPlacedConflicts)).toHaveBeenCalled());
+    expect(screen.queryByText(/sans coach/)).not.toBeInTheDocument();
+  });
+});
+
+/** Promesse : un comblement refusé dit pourquoi, là où on l'a demandé, et mène au Récap ; jamais un toast qui disparaît. */
+describe("PlanningPage — comblement refusé par un blocage", () => {
+  const MOTIF = "Groupe U15, U13 : réservé sur 2 cases pour 1 séance commune — la génération échouera.";
+
+  const rejection = (body: Record<string, unknown>) => {
+    const error = new HTTPError(new Response(JSON.stringify(body), { status: 422, headers: { "content-type": "application/json" } }), new Request("http://localhost/api/schedules/x/fill"), {} as never);
+    (error as unknown as { data?: unknown }).data = body;
+    return Promise.reject(error);
+  };
+
+  async function clickFill(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole("button", { name: /Combler automatiquement/i }));
+  }
+
+  function renderPeriodAdrift() {
+    vi.mocked(listSchedules).mockResolvedValue([
+      { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
+    ]);
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+    useToastStore.setState({ toasts: [] });
+    renderWithProviders(<PlanningPage />);
+  }
+
+  it("Récap vert mais épingles bloquantes : bandeau avec le motif et le lien, pas de toast", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fillSchedule).mockImplementation(() => rejection({ error: MOTIF, blocker: true }));
+    renderPeriodAdrift();
+
+    await clickFill(user);
+
+    expect(await screen.findByText(PLANNING_TEXTS.fillBlocked(MOTIF))).toBeInTheDocument();
+    expect(useToastStore.getState().toasts).toEqual([]);
+  });
+
+  it("le lien ouvre le Récap de CETTE période", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fillSchedule).mockImplementation(() => rejection({ error: MOTIF, blocker: true }));
+    renderPeriodAdrift();
+    await clickFill(user);
+
+    await user.click(await screen.findByRole("button", { name: PLANNING_TEXTS.seeRecap }));
+
+    expect(useWizardStore.getState().calendarEntryId).toBe("e-ete");
+    expect(navigate).toHaveBeenCalledWith("/wizard?step=recap");
+  });
+
+  it("un nouveau clic efface le motif précédent", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fillSchedule).mockImplementationOnce(() => rejection({ error: MOTIF, blocker: true }));
+    renderPeriodAdrift();
+    await clickFill(user);
+    await screen.findByText(PLANNING_TEXTS.fillBlocked(MOTIF));
+
+    vi.mocked(fillSchedule).mockImplementation(() => new Promise(() => {}));
+    await clickFill(user);
+
+    await waitFor(() => expect(screen.queryByText(PLANNING_TEXTS.fillBlocked(MOTIF))).not.toBeInTheDocument());
+  });
+
+  it("témoin : un 422 sans blocage toaste encore, sans bandeau", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fillSchedule).mockImplementation(() => rejection({ error: "Génération bloquée : trop de équipes (900, limite 200)." }));
+    renderPeriodAdrift();
+
+    await clickFill(user);
+
+    await vi.waitFor(() => expect(useToastStore.getState().toasts.some((t) => "error" === t.variant)).toBe(true));
+    expect(screen.queryByRole("button", { name: /Récapitulatif/ })).not.toBeInTheDocument();
   });
 });

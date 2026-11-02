@@ -218,6 +218,15 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         );
     }
 
+    /**
+     * Jours autorisés en PRÉFÉRENCE sur un jour sans créneau : l'équipe reste placée. C'est ce qui autorise le Récap à l'ignorer
+     * (`PreSolvePreventionWarningsTest::testAPreferredDayRuleIsIgnored`, jumeau voulu, point sensible contraintes).
+     */
+    public function testAPreferredAllowedDaysNeverStopsATeamFromBeingPlaced(): void
+    {
+        self::assertSame('placée', $this->observe('only', $this->payload('only', 'DAY', 'PREFERRED', ['allowedDays' => [3]])));
+    }
+
     /** Ce que le scénario regarde du résultat : heure, jour, gymnase, ou nombre placé. */
     public function testForcedDayHonouredByALockedSessionStaysFeasible(): void
     {

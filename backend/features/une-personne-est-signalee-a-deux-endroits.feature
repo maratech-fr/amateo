@@ -22,3 +22,8 @@ Fonctionnalité: Une personne à deux endroits en même temps est signalée
     Étant donné le club de démonstration, connecté, avec son planning de saison en vigueur
     Quand je place deux séances qui se chevauchent dans deux gymnases, dont la seconde tolère le retard et a un adjoint disponible
     Alors le radar ne compte aucun conflit pour cette personne, mais inscrit un relais
+
+  Scénario: Une séance dont aucun coach n'est disponible au début est signalée sur la version affichée
+    Étant donné le club de démonstration, connecté, avec son planning de saison en vigueur
+    Quand je consulte une version de travail où une séance tombe quand son seul coach est indisponible
+    Alors l'absence est signalée sur cette version, et la version en vigueur ne dit rien

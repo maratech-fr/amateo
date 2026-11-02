@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
+import { HTTPError } from "ky";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,6 +36,7 @@ vi.mock("./api", () => ({
   updateSlot: vi.fn().mockResolvedValue({ id: "s1" }),
   transcribeFromSocle: vi.fn().mockResolvedValue({ toReplace: [] }),
   createSchedule: vi.fn().mockResolvedValue({ id: "sched-new" }),
+  deleteSchedule: vi.fn().mockResolvedValue(undefined),
   generateSchedule: vi.fn().mockResolvedValue({}),
   updateImplicitRuleSetting: vi.fn().mockResolvedValue({}),
   resetImplicitRuleSetting: vi.fn().mockResolvedValue(undefined),
@@ -224,6 +226,43 @@ describe("wizard queries — useLaunchGeneration", () => {
     expect(wizardApi.createSchedule).toHaveBeenCalledWith("plan-1");
     expect(wizardApi.generateSchedule).toHaveBeenCalledWith("sched-new");
     expect(result.current.data).toBe("sched-new");
+  });
+
+  const refused = (body: Record<string, unknown>) => {
+    const error = new HTTPError(new Response(JSON.stringify(body), { status: 422 }), new Request("http://localhost/api/schedules/sched-new/generate"), {} as never);
+    (error as unknown as { data?: unknown }).data = body;
+    return error;
+  };
+
+  it("blocage serveur sur une version qu'il vient de créer : il la supprime, puis relance l'erreur", async () => {
+    vi.mocked(wizardApi.generateSchedule).mockRejectedValueOnce(refused({ error: "Groupe bloqué.", blocker: true }));
+    const { result } = renderHook(() => useLaunchGeneration(), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.mutate({ schedulePlanId: "plan-1" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(wizardApi.deleteSchedule).toHaveBeenCalledWith("sched-new");
+    expect(result.current.error).toBeInstanceOf(HTTPError);
+  });
+
+  it("témoin : une version existante n'est jamais supprimée, même bloquée", async () => {
+    vi.mocked(wizardApi.generateSchedule).mockRejectedValueOnce(refused({ error: "Groupe bloqué.", blocker: true }));
+    const { result } = renderHook(() => useLaunchGeneration(), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.mutate({ existingScheduleId: "sched-42" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(wizardApi.deleteSchedule).not.toHaveBeenCalled();
+  });
+
+  it("témoin : un refus qui n'est pas un blocage garde la version créée", async () => {
+    vi.mocked(wizardApi.generateSchedule).mockRejectedValueOnce(refused({ error: "Une génération est déjà en cours." }));
+    const { result } = renderHook(() => useLaunchGeneration(), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.mutate({ schedulePlanId: "plan-1" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(wizardApi.deleteSchedule).not.toHaveBeenCalled();
   });
 });
 

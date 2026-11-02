@@ -7,7 +7,9 @@ namespace App\Tests\Integration\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\Constraint;
 use App\Entity\PriorityTier;
+use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -16,6 +18,10 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
+use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
@@ -77,6 +83,82 @@ final class TrainingPlacedConflictsApiTest extends WebTestCase
         $this->client->request('GET', '/api/training/placed-conflicts', [], [], $this->authHeaders($userB));
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], $this->responseData()['conflicts']);
+    }
+
+    /** `absences` est toujours là : le front lit la clé sans repli, même sans rien à dire. */
+    public function testAbsencesAreAlwaysInTheResponse(): void
+    {
+        [, $user] = $this->createClubWithConflict('shape', withConflict: false);
+
+        $this->client->request('GET', '/api/training/placed-conflicts', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+
+        self::assertSame([], $this->responseData()['absences']);
+    }
+
+    /** `scheduleId` donné : les absences sont celles de cette version, les conflits restent ceux du plan en vigueur. */
+    public function testAbsencesAreComputedOnTheRequestedVersion(): void
+    {
+        [$club, $user, $ctx] = $this->createClubWithConflict('work', withConflict: false);
+        $seasonId = (string) $this->em->getRepository(Season::class)->findOneBy(['clubId' => $club->getId()])?->getId();
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $club->getId(), 'name' => 'U13F']);
+        $venue = $this->em->getRepository(Venue::class)->findOneBy(['clubId' => $club->getId(), 'name' => 'Gymnase A']);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertInstanceOf(Venue::class, $venue);
+
+        $constraint = new Constraint;
+        $constraint->setClubId($club->getId())->setSeasonId($seasonId);
+        $constraint->setName('Indisponibilité')->setScope(ConstraintScope::COACH)->setScopeTargetId($ctx['coach']);
+        $constraint->setFamily(ConstraintFamily::COACH_AVAILABILITY)->setRuleType(ConstraintRuleType::HARD);
+        $constraint->setConfig(['unavailableDays' => [2]]);
+        $constraint->setIsActive(true);
+        $this->em->persist($constraint);
+
+        $work = (new Schedule)->setClubId($club->getId())->setSeasonId($seasonId)->setName('Travail')->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($work);
+        $this->em->flush();
+        $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($seasonId)->setScheduleId($work->getId())
+            ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/training/placed-conflicts?scheduleId=' . $work->getId(), [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        $data = $this->responseData();
+        self::assertSame([[
+            'scheduleId' => $work->getId(),
+            'dayOfWeek' => 2,
+            'startTime' => '18:00',
+            'venueName' => 'Gymnase A',
+            'teamNames' => ['U13F'],
+            'coachNames' => ['Anna Dupont'],
+        ]], $data['absences']);
+        self::assertSame([], $data['conflicts']);
+
+        // TÉMOIN : sans paramètre, la version pointée n'a aucune séance.
+        $this->client->request('GET', '/api/training/placed-conflicts', [], [], $this->authHeaders($user));
+        self::assertSame([], $this->responseData()['absences']);
+    }
+
+    /** Tenant : la version d'un autre club et une version inexistante répondent pareil, 404. */
+    public function testAVersionOfAnotherClubOrUnknownIs404(): void
+    {
+        [$clubA] = $this->createClubWithConflict('owner');
+        [, $userB] = $this->createClubWithConflict('other', withConflict: false);
+        $this->scopeGucToClub($clubA->getId());
+        $foreign = $this->em->getRepository(Schedule::class)->findOneBy(['clubId' => $clubA->getId()]);
+        self::assertInstanceOf(Schedule::class, $foreign);
+        $foreignId = $foreign->getId();
+
+        $this->client->request('GET', '/api/training/placed-conflicts?scheduleId=' . $foreignId, [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(404);
+        $foreignBody = (string) $this->client->getResponse()->getContent();
+
+        $this->client->request('GET', '/api/training/placed-conflicts?scheduleId=99999999-9999-4999-8999-999999999999', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame((string) $this->client->getResponse()->getContent(), $foreignBody, 'même réponse : aucun oracle sur l\'existence');
+
+        $this->client->request('GET', '/api/training/placed-conflicts?scheduleId=pas-un-uuid', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(404);
     }
 
     protected function setUp(): void

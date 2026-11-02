@@ -323,6 +323,11 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
                 ->setVenueId($venues[$sameVenue ? 0 : $index]->getId())->setDayOfWeek(2)
                 ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         }
+        // Une grille sous les réservations : sans elle, chacune serait orpheline et le refus viendrait d'ailleurs.
+        foreach ($venues as $venue) {
+            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())
+                ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(3));
+        }
         $this->em->flush();
 
         return ['user' => $user, 'clubId' => $clubId, 'seasonId' => $seasonId];
@@ -353,9 +358,6 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
 
         foreach ($this->em->getRepository(Reservation::class)->findBy(['seasonId' => $ctx['seasonId']]) as $reservation) {
             $reservation->setSchedulePlanId($planId);
-            $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($reservation->getVenueId())
-                ->setDayOfWeek($reservation->getDayOfWeek())->setStartTime($reservation->getStartTime())->setDurationMinutes(90)->setCapacity(2)
-                ->setSchedulePlanId($planId));
         }
         $this->em->flush();
 

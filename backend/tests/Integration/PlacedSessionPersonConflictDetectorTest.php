@@ -4,18 +4,31 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration;
 
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
+use App\Entity\Constraint;
 use App\Entity\PriorityTier;
+use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
+use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
+use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\CoachDoubleBookingDetector;
@@ -459,11 +472,299 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         self::assertSame([], $this->detector->detect($ctxA['clubId'], $ctxA['seasonId'])['conflicts']);
     }
 
+    // ── Une séance sans coach au début est dite sur la version affichée, qu'elle soit ou non en vigueur ─────
+
+    /** Un seul coach principal absent au début : une alerte, même pour une seule séance au planning. */
+    public function testASessionWhoseOnlyMainCoachIsAbsentAtItsStartIsReported(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        $result = $this->detectOnDisplayed($ctx);
+
+        self::assertSame([[
+            'scheduleId' => $ctx['scheduleId'],
+            'dayOfWeek' => 2,
+            'startTime' => '18:00',
+            'venueName' => 'Gymnase A',
+            'teamNames' => ['U13F'],
+            'coachNames' => ['Anna Dupont'],
+        ]], $result['absences']);
+    }
+
+    /** Deux principaux absents : la liste est complète. */
+    public function testEveryAbsentMainCoachIsNamed(): void
+    {
+        $ctx = $this->seed();
+        $bea = $this->createCoach($ctx, 'Bea');
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamA'], $bea, TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+        $this->coachOff($ctx, $bea, ['unavailableDays' => [2]]);
+
+        [$absence] = $this->detectOnDisplayed($ctx)['absences'];
+
+        self::assertEqualsCanonicalizing(['Anna Dupont', 'Bea Dupont'], $absence['coachNames']);
+    }
+
+    /** TÉMOIN : un second principal libre tient la séance. */
+    public function testASecondMainCoachFreeKeepsTheSessionSilent(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamA'], $this->createCoach($ctx, 'Bea'), TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        self::assertSame([], $this->detectOnDisplayed($ctx)['absences']);
+    }
+
+    /** Groupe déclaré figé sur la case : tous absents, UNE alerte qui nomme les deux équipes. */
+    public function testADeclaredGroupOnTheCaseIsOneAbsenceNamingBothTeams(): void
+    {
+        $ctx = $this->seedGroupOnOneCase();
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+        $this->coachOff($ctx, $ctx['partner'], ['unavailableDays' => [2]]);
+
+        $absences = $this->detectOnDisplayed($ctx)['absences'];
+
+        self::assertCount(1, $absences);
+        self::assertEqualsCanonicalizing(['U13F', 'U11M1'], $absences[0]['teamNames']);
+        self::assertEqualsCanonicalizing(['Anna Dupont', 'Bea Dupont'], $absences[0]['coachNames']);
+    }
+
+    /** TÉMOIN : le coach du partenaire de groupe, présent, tient la séance commune. */
+    public function testAGroupPartnerPresentHoldsTheCommonSession(): void
+    {
+        $ctx = $this->seedGroupOnOneCase();
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        self::assertSame([], $this->detectOnDisplayed($ctx)['absences']);
+    }
+
+    /** TÉMOIN : même case sans groupe déclaré, chacun ses coachs, l'équipe d'Anna reste sans personne. */
+    public function testTheSameCaseWithoutAGroupLendsNoCoachToTheAbsence(): void
+    {
+        $ctx = $this->seedGroupOnOneCase(declared: false);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        $absences = $this->detectOnDisplayed($ctx)['absences'];
+
+        self::assertCount(1, $absences);
+        self::assertSame(['U13F'], $absences[0]['teamNames']);
+    }
+
+    /** Un adjoint présent ne tient pas la séance : le principal absent reste signalé. */
+    public function testAnAssistantPresentDoesNotHoldTheSession(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamA'], $this->createCoach($ctx, 'Jules'), TeamCoachRole::ASSISTANT);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        self::assertCount(1, $this->detectOnDisplayed($ctx)['absences']);
+    }
+
+    /** Le coach nommé sur la séance peut être périmé : il est ignoré, ce sont les principaux de l'équipe qui comptent. */
+    public function testAStaleCoachNamedOnTheSessionIsIgnored(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90, $this->createCoach($ctx, 'Parti'));
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        [$absence] = $this->detectOnDisplayed($ctx)['absences'];
+
+        self::assertSame(['Anna Dupont'], $absence['coachNames']);
+    }
+
+    /** Sans principal, personne n'est attendu : pas d'alerte, même avec un adjoint absent. */
+    public function testATeamWithoutMainCoachRaisesNoAbsence(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::ASSISTANT);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        self::assertSame([], $this->detectOnDisplayed($ctx)['absences']);
+    }
+
+    /** Une séance verrouillée n'est pas dispensée : c'est la réservation qui gagne, mais l'absence reste dite. */
+    public function testALockedSessionIsReportedToo(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+        foreach ($this->em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $ctx['scheduleId']]) as $slot) {
+            $slot->setLockLevel(LockLevel::HARD)->setLockOrigin(LockOrigin::MANUAL);
+        }
+        $this->em->flush();
+
+        self::assertCount(1, $this->detectOnDisplayed($ctx)['absences']);
+    }
+
+    /** Deux séances sans aucune paire en conflit : les absences sortent quand même, le chemin sans paire ne les perd pas. */
+    public function testAbsencesSurviveWhenThereIsNoCollidingPair(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 3, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+
+        $result = $this->detectOnDisplayed($ctx);
+
+        self::assertSame([], $result['conflicts']);
+        self::assertCount(1, $result['absences']);
+    }
+
+    /** Parti pendant la séance : présent à son début, c'est la phrase du Récap qui le dit, pas ce bandeau. */
+    public function testACoachLeavingDuringTheSessionIsNotAnAbsence(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2], 'fromTime' => '19:00']);
+
+        self::assertSame([], $this->detectOnDisplayed($ctx)['absences']);
+    }
+
+    /** Une version de travail, non pointée : l'alerte suit la version affichée, les conflits restent ceux de la version en vigueur. */
+    public function testAbsencesFollowTheDisplayedVersionNotTheChosenOne(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+        $work = $this->workVersion($ctx);
+        $this->place([...$ctx, 'scheduleId' => $work->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+
+        $onWork = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        self::assertCount(1, $onWork['absences']);
+        self::assertSame($work->getId(), $onWork['absences'][0]['scheduleId']);
+
+        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['absences'], 'sans version affichée : la version pointée, vide ici');
+    }
+
+    /** Aucune version pointée n'empêche pas de signaler une absence sur la version de travail affichée. */
+    public function testAbsencesAreReportedWithoutAChosenVersion(): void
+    {
+        $ctx = $this->seed(chooseVersion: false);
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]]);
+        $work = $this->workVersion($ctx);
+        $this->place([...$ctx, 'scheduleId' => $work->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+
+        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+
+        self::assertFalse($result['seasonPlanChosen']);
+        self::assertCount(1, $result['absences']);
+    }
+
+    /** Une absence DATÉE de la Toussaint alerte la version de cette période, jamais le planning annuel. */
+    public function testADatedAbsenceAlertsItsPeriodAndNotTheSeason(): void
+    {
+        $ctx = $this->seed();
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+
+        $entry = (new CalendarEntry)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTitle('Toussaint')
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)
+            ->setStartDate(new DateTimeImmutable('2026-10-19'))->setEndDate(new DateTimeImmutable('2026-11-01'));
+        $this->em->persist($entry);
+        $this->em->flush();
+        $this->coachOff($ctx, $ctx['coach'], ['unavailableDays' => [2]], $entry->getId());
+
+        $period = (new Schedule)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Toussaint')->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($period, $entry->getId());
+        $this->em->flush();
+        $this->place([...$ctx, 'scheduleId' => $period->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+
+        self::assertSame([], $this->detectOnDisplayed($ctx)['absences'], 'le planning annuel ne lit que les règles permanentes');
+        self::assertCount(1, $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['absences']);
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->detector = self::getContainer()->get(PlacedSessionPersonConflictDetector::class);
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string, scheduleId: string|null} $ctx
+     *
+     * @return array{seasonPlanChosen: bool, conflicts: list<mixed>, relays: list<mixed>, absences: list<array<string, mixed>>}
+     */
+    private function detectOnDisplayed(array $ctx): array
+    {
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertInstanceOf(Schedule::class, $schedule);
+
+        return $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+    }
+
+    /** @param array{clubId: string, seasonId: string} $ctx */
+    private function workVersion(array $ctx): Schedule
+    {
+        $work = (new Schedule)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Travail')->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($work);
+        $this->em->flush();
+
+        return $work;
+    }
+
+    /**
+     * U13F (Anna) et U11M1 (Bea) sur la même case, groupe déclaré ou simple coïncidence.
+     *
+     * @return array{clubId: string, seasonId: string, scheduleId: string|null, teamA: string, teamB: string, gym1: string, gym2: string, coach: string, partner: string}
+     */
+    private function seedGroupOnOneCase(bool $declared = true): array
+    {
+        $ctx = $this->seed();
+        $partner = $this->createCoach($ctx, 'Bea');
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $partner, TeamCoachRole::MAIN);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym1'], 2, '18:00', 90);
+        if ($declared) {
+            $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+            $this->em->persist($block);
+            $this->em->flush();
+            foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
+                $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+            }
+            $this->em->flush();
+        }
+
+        return [...$ctx, 'partner' => $partner];
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string} $ctx
+     * @param array<string, mixed>                    $config
+     */
+    private function coachOff(array $ctx, string $coachId, array $config, ?string $calendarEntryId = null): void
+    {
+        $constraint = new Constraint;
+        $constraint->setClubId($ctx['clubId']);
+        $constraint->setSeasonId($ctx['seasonId']);
+        $constraint->setName('Indisponibilité');
+        $constraint->setScope(ConstraintScope::COACH);
+        $constraint->setScopeTargetId($coachId);
+        $constraint->setFamily(ConstraintFamily::COACH_AVAILABILITY);
+        $constraint->setRuleType(ConstraintRuleType::HARD);
+        $constraint->setConfig($config);
+        $constraint->setIsActive(true);
+        $constraint->setCalendarEntryId($calendarEntryId);
+        $this->em->persist($constraint);
+        $this->em->flush();
     }
 
     /**

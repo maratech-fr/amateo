@@ -31,6 +31,7 @@ import pathlib
 import re
 from typing import Any
 
+import pytest
 from ortools.sat.python import cp_model
 
 from app import main
@@ -709,3 +710,104 @@ def test_the_causality_probe_stays_within_its_budget_and_skips_the_chaining_phas
     assert feasible is True
     assert len(budgets) == 1, f"la sonde ne lance pas la phase de chaînage (solves : {budgets})"
     assert budgets[0] <= main.BEST_EFFORT_PROBE_MAX_SECONDS
+
+
+# ── Un groupe réservé entier sur la case d'un jour imposé : la réservation gagne, comme pour une équipe seule ───
+# Rejeu 2026-11-02 sur le moteur réel : ``failed`` (conflit « Le groupe A + B et la règle se contredisent »), alors
+# que la même case prise par des équipes hors groupe sort ``completed``. La sonde de causalité garde les verrous du
+# groupe (``_reserved_group_locks``) et ne voit donc jamais que ce sont eux la cause.
+
+
+def _forced_friday_against_a_reserved_group(*off: dict[str, Any]) -> dict[str, Any]:
+    """T (2 séances) a vendredi imposé, le groupe A + B réserve l'unique case du vendredi, le lundi reste libre."""
+    payload = make_payload(
+        teams=[_named_team("T", "Seniors A", sessions_per_week=2), make_team("A"), make_team("B")],
+        venues=[make_venue("V", [(1, "18:00"), (FRIDAY, "18:00")])],
+        coaches=[_coach("anna"), _coach("ben"), _coach("chloe")],
+        constraints=[
+            _hard_team_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé"),
+            team_coach("tc-a", "A", "anna"),
+            team_coach("tc-b", "B", "ben"),
+            team_coach("tc-t", "T", "chloe"),
+            *off,
+        ],
+        slot_templates=[_reservation("A", "V", FRIDAY), _reservation("B", "V", FRIDAY)],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+    return solve_payload(payload)
+
+
+def test_a_forced_day_taken_by_a_whole_reserved_group_removes_only_that_session() -> None:
+    """Jumeau de ``test_a_forced_day_whose_only_case_is_taken_removes_only_that_session`` : pris par un GROUPE entier,
+    le vendredi imposé reste non placé, jamais déporté, T garde sa case libre et l'écart est nommé."""
+    result = _forced_friday_against_a_reserved_group()
+
+    assert _slots_of(result, "T") == [1], f"seule la séance du jour imposé tombe : {result['diagnostics']}"
+    assert sorted(_slots_of(result, "A") + _slots_of(result, "B")) == [FRIDAY, FRIDAY]
+    _only_block_of_kind(result, "day_forced")
+
+
+def test_a_forced_day_taken_by_a_reserved_group_without_coach_still_loses_to_the_reservation() -> None:
+    """Même décor, Anna et Ben absents le vendredi : la seconde sonde (tous verrous libérés) trouve le groupe sur
+    l'autre case, les verrous sont bien la cause. Le groupe garde sa réservation et le planning sort."""
+    result = _forced_friday_against_a_reserved_group(
+        _coach_off("off-anna", "anna", FRIDAY, "Indispo d'Anna"),
+        _coach_off("off-ben", "ben", FRIDAY, "Indispo de Ben"),
+    )
+
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    assert _slots_of(result, "T") == [1]
+    assert sorted(_slots_of(result, "A") + _slots_of(result, "B")) == [FRIDAY, FRIDAY]
+
+
+def test_a_forced_day_closed_by_its_own_coach_stays_failed_next_to_a_reserved_group() -> None:
+    """TÉMOIN de la seconde sonde : le groupe est réservé AILLEURS, T perd son vendredi par son propre coach. Règle
+    contre règle, aucun verrou n'y est pour rien : aucune sonde ne trouve, le résultat reste ``failed``."""
+    payload = make_payload(
+        teams=[_named_team("T", "Seniors A"), make_team("A"), make_team("B")],
+        venues=[make_venue("V", [(1, "18:00"), (FRIDAY, "18:00")])],
+        coaches=[_coach("anna"), _coach("ben"), _coach("chloe")],
+        constraints=[
+            _hard_team_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé"),
+            _coach_off("off-chloe", "chloe", FRIDAY, "Indispo de Chloé"),
+            team_coach("tc-a", "A", "anna"),
+            team_coach("tc-b", "B", "ben"),
+            team_coach("tc-t", "T", "chloe"),
+        ],
+        slot_templates=[_reservation("A", "V", 1), _reservation("B", "V", 1)],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "failed", f"aucun verrou n'est en cause : {result['diagnostics']}"
+    assert _sacrificed(result) == []
+
+
+# ── Groupe réservé avec une seconde case libre : le rejeu 2026-11-02 ne reproduit AUCUN échec, ce témoin le fige ─
+
+
+@pytest.mark.parametrize(
+    "off",
+    [
+        (),
+        (_coach_off("off-anna", "anna", 1, "Indispo d'Anna"), _coach_off("off-ben", "ben", 1, "Indispo de Ben")),
+    ],
+    ids=["coachs-presents", "union-absente-a-la-case-reservee"],
+)
+def test_a_reserved_group_stays_on_its_case_when_a_second_case_is_free(off: tuple[dict[str, Any], ...]) -> None:
+    """A + B réservés lundi 18:00, 1 commune, mardi libre, 1 séance chacun : le planning sort, le groupe reste sur sa
+    réservation, personne ne glisse sur le mardi, avec ou sans coach à la case."""
+    payload = make_payload(
+        teams=[make_team("A"), make_team("B")],
+        venues=[make_venue("V", [(1, "18:00"), (2, "18:00")])],
+        coaches=[_coach("anna"), _coach("ben")],
+        constraints=[team_coach("tc-a", "A", "anna"), team_coach("tc-b", "B", "ben"), *off],
+        slot_templates=[_reservation("A", "V", 1), _reservation("B", "V", 1)],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    assert (_slots_of(result, "A"), _slots_of(result, "B")) == ([1], [1])

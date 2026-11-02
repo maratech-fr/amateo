@@ -56,6 +56,18 @@ final class ConstraintHonoredContext extends BaseContext
 
     private string $finalStatus = '';
 
+    /** @var list<string> */
+    private array $disposableCoaches = [];
+
+    /** @var list<string> */
+    private array $disposableLinks = [];
+
+    /** @var list<string> */
+    private array $disposableConstraints = [];
+
+    /** @var array{status?: int, json?: array<mixed>} */
+    private array $refusal = [];
+
     #[Given('le club de démonstration, connecté, dont le planning de saison est rouvert')]
     public function leClubRouvert(): void
     {
@@ -169,6 +181,67 @@ final class ConstraintHonoredContext extends BaseContext
         }
     }
 
+    #[Given('un entraînement mutualisé dont aucun coach n\'est jamais disponible')]
+    public function unEntrainementMutualiseSansCoach(): void
+    {
+        $category = $this->members($this->apiGet('sport_categories', $this->token)['json'])[0]['id'] ?? null;
+        if (!\is_string($category) || '' === $category) {
+            throw new RuntimeException('aucune catégorie sportive pour bâtir une équipe jetable');
+        }
+
+        foreach (['Bloc Sans Coach A', 'Bloc Sans Coach B'] as $name) {
+            $team = $this->apiPost('teams', ['name' => $name, 'sportCategoryId' => $category, 'priorityTierId' => 1, 'sessionsPerWeek' => 1], $this->token);
+            $teamId = $this->stringField($team['json'], 'id');
+            $this->disposableTeams[] = $teamId;
+
+            $coach = $this->apiPost('coaches', ['firstName' => $name, 'lastName' => 'Jetable'], $this->token);
+            $coachId = $this->stringField($coach['json'], 'id');
+            $this->disposableCoaches[] = $coachId;
+            $link = $this->apiPost('team_coaches', ['teamId' => $teamId, 'coachId' => $coachId, 'role' => 'MAIN'], $this->token);
+            $this->disposableLinks[] = $this->stringField($link['json'], 'id');
+
+            $off = $this->apiPost('constraints', [
+                'name' => 'Jamais disponible (fonctionnel)',
+                'scope' => 'COACH',
+                'scopeTargetId' => $coachId,
+                'family' => 'COACH_AVAILABILITY',
+                'ruleType' => 'HARD',
+                'config' => ['unavailableDays' => [1, 2, 3, 4, 5, 6, 7]],
+                'isActive' => true,
+            ], $this->token);
+            $this->disposableConstraints[] = $this->stringField($off['json'], 'id');
+        }
+
+        $block = $this->apiPost('shared_training_blocks', ['teamIds' => $this->disposableTeams, 'commonSessions' => 1, 'schedulePlanId' => null], $this->token);
+        $this->blockId = $this->stringField($block['json'], 'id');
+    }
+
+    #[When('je tente de générer le planning de saison')]
+    public function jeTenteDeGenerer(): void
+    {
+        $created = $this->apiPost('schedules', ['name' => 'Planning refusé ' . date('Y-m-d_H:i:s'), 'status' => 'DRAFT'], $this->token);
+        $this->scheduleId = $this->stringField($created['json'], 'id');
+        $this->refusal = $this->apiPost(\sprintf('schedules/%s/generate', $this->scheduleId), [], $this->token);
+    }
+
+    #[Then('la génération est refusée sans partir au moteur, et le motif nomme le groupe')]
+    public function laGenerationEstRefusee(): void
+    {
+        $status = $this->refusal['status'] ?? 0;
+        if (422 !== $status) {
+            throw new RuntimeException(\sprintf('le guichet aurait dû refuser (422), obtenu HTTP %d', $status));
+        }
+        $error = (string) ($this->refusal['json']['error'] ?? '');
+        if (true !== ($this->refusal['json']['blocker'] ?? null) || !str_contains($error, 'Bloc Sans Coach A') || !str_contains($error, 'Bloc Sans Coach B')) {
+            throw new RuntimeException(\sprintf('le refus doit nommer le groupe : « %s »', $error));
+        }
+
+        $status = $this->stringField($this->apiGet(\sprintf('schedules/%s', $this->scheduleId), $this->token)['json'], 'status');
+        if ('DRAFT' !== $status) {
+            throw new RuntimeException(\sprintf('rien ne devait partir au moteur : statut « %s »', $status));
+        }
+    }
+
     /**
      * Retire la contrainte et restaure le pointeur du socle — quoi qu'il arrive (succès, échec,
      * exception). La version générée reste (espace de travail), comme dans SeasonGenerationContext.
@@ -185,6 +258,15 @@ final class ConstraintHonoredContext extends BaseContext
         }
         if ('' !== $this->blockId) {
             $this->apiDelete(\sprintf('shared_training_blocks/%s', $this->blockId), $this->token);
+        }
+        foreach ($this->disposableConstraints as $id) {
+            $this->apiDelete(\sprintf('constraints/%s', $id), $this->token);
+        }
+        foreach ($this->disposableLinks as $id) {
+            $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
+        }
+        foreach ($this->disposableCoaches as $id) {
+            $this->apiDelete(\sprintf('coaches/%s', $id), $this->token);
         }
         foreach ($this->disposableTeams as $teamId) {
             $this->apiDelete(\sprintf('teams/%s', $teamId), $this->token);

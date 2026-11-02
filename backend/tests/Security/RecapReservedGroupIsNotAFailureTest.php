@@ -87,13 +87,15 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
     }
 
     /**
-     * @param array{warnings: list<string>} $body
+     * Blocages et alertes réunis : le groupe qui reste à poser sans coach est un blocage, le silence se prouve sur les deux.
+     *
+     * @param array{warnings: list<string>, blockers?: list<string>} $body
      *
      * @return list<string>
      */
     private function groupWarnings(array $body): array
     {
-        return array_values(array_filter($body['warnings'], static fn (string $w): bool => str_starts_with($w, 'Groupe')));
+        return array_values(array_filter([...$body['warnings'], ...$body['blockers'] ?? []], static fn (string $w): bool => str_starts_with($w, 'Groupe')));
     }
 
     /**
