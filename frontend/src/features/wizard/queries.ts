@@ -2,6 +2,7 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tansta
 import { useEffect, useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
+import { generateCreatedVersion } from "@/features/planning/lib/generateCreatedVersion";
 import { readState, type ReadState } from "@/shared/lib/readState";
 import { toast } from "@/shared/stores/toastStore";
 import { isScheduleStreamConnected, useScheduleStream } from "@/features/planning/lib/scheduleStream";
@@ -1051,8 +1052,12 @@ export function useLaunchGeneration() {
     }) => {
       // Period mode reuses the entry's existing overlay schedule (regenerate);
       // otherwise create a fresh version under its plan (base plan, or first overlay).
-      const scheduleId = existingScheduleId ?? (await wizardApi.createSchedule(schedulePlanId)).id;
-      await wizardApi.generateSchedule(scheduleId);
+      if (undefined !== existingScheduleId) {
+        await wizardApi.generateSchedule(existingScheduleId);
+        return existingScheduleId;
+      }
+      const scheduleId = (await wizardApi.createSchedule(schedulePlanId)).id;
+      await generateCreatedVersion(scheduleId, wizardApi.generateSchedule, wizardApi.deleteSchedule);
       return scheduleId;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),

@@ -230,6 +230,36 @@ final class CoachDoubleBookingDetector
     }
 
     /**
+     * Les séances dont AUCUN coach attendu n'est disponible à leur début : les principaux de l'équipe et
+     * ceux de son groupe déclaré sur la même case. Sans principal, personne n'est attendu.
+     *
+     * @param list<array{id: string, teamId: string, venueId: string, dayOfWeek: int, startMinutes: int, durationMinutes: int}> $sessions
+     * @param array<string, list<string>>                                                                                       $mainCoachesByTeam
+     * @param array<string, list<array{0: int, 1: int, 2: int}>>                                                                $blockedByCoach
+     * @param list<list<string>>                                                                                                $groups
+     *
+     * @return array<string, list<string>> sessionId → coachs attendus, tous indisponibles
+     */
+    public static function sessionsWithoutAnyCoachAtStart(array $sessions, array $mainCoachesByTeam, array $blockedByCoach, array $groups): array
+    {
+        $absent = [];
+        foreach ($sessions as $session) {
+            $expected = self::holdCandidates($session, $sessions, $mainCoachesByTeam, $groups);
+            if ([] === $expected) {
+                continue;
+            }
+            foreach ($expected as $coachId) {
+                if (!self::blockedDuring($coachId, $session, $blockedByCoach)) {
+                    continue 2;
+                }
+            }
+            $absent[$session['id']] = $expected;
+        }
+
+        return $absent;
+    }
+
+    /**
      * Le coach à stocker sur une séance qu'on vient de poser : le premier de l'équipe, ou le suivant si
      * le premier est pris ailleurs (une séance qui le nomme, un rôle de joueur, son indisponibilité).
      * Personne de libre : le premier, le radar le signalera.
@@ -499,6 +529,18 @@ final class CoachDoubleBookingDetector
     }
 
     /**
+     * « a et b », « a, b et c ».
+     *
+     * @param list<string> $items
+     */
+    private static function frenchList(array $items): string
+    {
+        $last = array_pop($items);
+
+        return [] === $items ? (string) $last : implode(', ', $items) . ' et ' . $last;
+    }
+
+    /**
      * Les groupes déclarés d'un périmètre : les équipes de chaque séance commune.
      *
      * @return list<list<string>>
@@ -640,7 +682,7 @@ final class CoachDoubleBookingDetector
      * @param list<Reservation> $reservations le périmètre EXACT qui partira au solveur
      * @param list<Constraint>  $constraints  le jeu que le payload sérialisera (même source que le gate)
      *
-     * @return list<array{coachId: string, coachName: string, dayOfWeek: int, teamName: string, venueName: string, startTime: string}>
+     * @return list<array{coachId: string, coachName: string, coachNames: list<string>, dayOfWeek: int, teamName: string, venueName: string, startTime: string, endTime: string, leaving: list<array{time: string, coachNames: list<string>}>}>
      */
     public function detectUnavailabilityClashes(array $reservations, array $constraints, string $clubId, string $seasonId): array
     {
@@ -708,13 +750,33 @@ final class CoachDoubleBookingDetector
             // coachs requis, tous bloqués) — cohérent avec « une réservation place CETTE équipe ».
             $coachId = $firstCoachByTeam[$reservation->getTeamId() ?? ''] ?? '';
             $described = $this->describe($reservation, $names);
+            $start = $this->startMinutesOf($reservation);
+            // Jugée à son début : un coach encore là y tient la séance. Personne au début : « personne
+            // pour tenir ». Sinon, seuls ceux qui partent pendant la séance, regroupés par heure de départ.
+            $departures = [];
+            foreach (array_keys($requiredCoachIds) as $requiredId) {
+                if (!self::blockedDuring($requiredId, $this->bookingOf($reservation), $blocked)) {
+                    $departures[$this->firstBlockAfter($requiredId, $reservation, $blocked)][] = $names['coach'][$requiredId] ?? 'Ce coach';
+                }
+            }
+            ksort($departures);
+            $coachNames = array_map(static fn (string $id): string => $names['coach'][$id] ?? 'Ce coach', array_keys($requiredCoachIds));
+            sort($coachNames);
+            $leaving = [];
+            foreach ($departures as $minute => $leavers) {
+                sort($leavers);
+                $leaving[] = ['time' => $this->clock($minute), 'coachNames' => $leavers];
+            }
             $clashes[] = [
                 'coachId' => $coachId,
                 'coachName' => $names['coach'][$coachId] ?? 'Ce coach',
+                'coachNames' => $coachNames,
                 'dayOfWeek' => $reservation->getDayOfWeek(),
                 'teamName' => $described['teamName'],
                 'venueName' => $described['venueName'],
                 'startTime' => $described['startTime'],
+                'endTime' => $this->clock($start + $reservation->getDurationMinutes()),
+                'leaving' => $leaving,
             ];
         }
 
@@ -722,18 +784,63 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * @param array{coachId: string, coachName: string, dayOfWeek: int, teamName: string, venueName: string, startTime: string} $clash
+     * @param array{coachName: string, coachNames: list<string>, dayOfWeek: int, teamName: string, venueName: string, startTime: string, endTime: string, leaving: list<array{time: string, coachNames: list<string>}>} $clash
      */
     public function describeUnavailabilityForRecap(array $clash): string
     {
+        $several = \count($clash['coachNames']) > 1;
+        $coaches = self::frenchList($clash['coachNames']);
+        $day = self::DAY_NAMES[$clash['dayOfWeek']] ?? 'ce jour';
+
+        if ([] !== $clash['leaving']) {
+            return implode(' ', array_map(
+                static fn (array $departure): string => \sprintf(
+                    '%s %s à %s le %s, pendant la séance de %s réservée à %s (%s-%s) : la séance est maintenue.',
+                    self::frenchList($departure['coachNames']),
+                    \count($departure['coachNames']) > 1 ? 'partent' : 'part',
+                    $departure['time'],
+                    $day,
+                    $clash['teamName'],
+                    $clash['venueName'],
+                    $clash['startTime'],
+                    $clash['endTime'],
+                ),
+                $clash['leaving'],
+            ));
+        }
+
         return \sprintf(
-            '%s est indisponible le %s à %s, mais une réservation y place %s à %s : le créneau sera maintenu malgré son indisponibilité. Déplacez la réservation, ou ajustez la disponibilité du coach.',
-            $clash['coachName'],
-            self::DAY_NAMES[$clash['dayOfWeek']] ?? 'ce jour',
+            '%s %s le %s à %s : personne pour tenir %s, réservée à %s. La réservation gagne, la séance est maintenue. Déplacez la réservation, ou ajustez la disponibilité du coach.',
+            $coaches,
+            $several ? 'sont indisponibles' : 'est indisponible',
+            $day,
             $clash['startTime'],
             $clash['teamName'],
             $clash['venueName'],
         );
+    }
+
+    private function clock(int $minutes): string
+    {
+        return \sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+    }
+
+    /**
+     * La minute où ce coach cesse d'être disponible pendant la réservation.
+     *
+     * @param array<string, list<array{0: int, 1: int, 2: int}>> $blocked
+     */
+    private function firstBlockAfter(string $coachId, Reservation $reservation, array $blocked): int
+    {
+        $start = $this->startMinutesOf($reservation);
+        $first = $start + $reservation->getDurationMinutes();
+        foreach ($blocked[$coachId] ?? [] as [$day, $from]) {
+            if ($day === $reservation->getDayOfWeek() && $from > $start) {
+                $first = min($first, $from);
+            }
+        }
+
+        return $first;
     }
 
     /**

@@ -44,6 +44,7 @@ import { RecapStep } from "./steps/RecapStep";
 import { TeamsStep } from "./steps/TeamsStep";
 import { VenuesStep } from "./steps/VenuesStep";
 import { useWizardStore } from "./store";
+import { WIZARD_TEXTS } from "./texts";
 import { venuesWithoutSlot } from "./lib/useStepValidation";
 
 function StepContent({ stepId }: { stepId: WizardStepId }) {
@@ -656,6 +657,8 @@ export function WizardPage() {
           </Button>
           <div className="flex items-center gap-2">
             {footerExtra}
+            {/* Raison EN CLAIR à côté du bouton grisé (doctrine A11Y-30). */}
+            {!isLast && "recap" === stepId && recapValidation.errors.length > 0 ? <p className="text-xs text-warning">{WIZARD_TEXTS.generationBlocked}</p> : null}
             {isLast ? null : (
               <Button
                 disabled={blocked}

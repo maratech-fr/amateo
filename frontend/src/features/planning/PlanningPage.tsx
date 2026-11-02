@@ -13,6 +13,7 @@ import { ClosureWindowDialog } from "@/features/cockpit/ClosureWindowDialog";
 import type { SchedulePlan } from "@/features/cockpit/api";
 import { COCKPIT_TEXTS } from "@/features/cockpit/texts";
 import { useWizardStore } from "@/features/wizard/store";
+import { errorMessage, isBlockerRefusal } from "@/shared/lib/errorMessage";
 import { useConstraintValidation, useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -31,6 +32,7 @@ import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { type Slot } from "./api";
 import { PLANNING_TEXTS } from "./texts";
 import { CompromiseList } from "./CompromiseList";
+import { PlacedAbsencesNotice } from "./PlacedAbsencesNotice";
 import { PlacedConflictsNotice } from "./PlacedConflictsNotice";
 import { PlacedRelaysNotice } from "./PlacedRelaysNotice";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
@@ -254,6 +256,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // P4-269 — le radar « personne à deux endroits » du planning EN VIGUEUR (version pointée du
   // plan SEASON). Recalculé serveur ; ici on ne fait que l'AFFICHER, sur la version en vigueur.
   const { data: placedConflicts } = usePlacedConflicts();
+  const { data: displayedConflicts } = usePlacedConflicts(validScheduleId);
+  // Le motif d'un comblement refusé, pour CETTE version : changer de version le fait disparaître.
+  const [fillBlocker, setFillBlocker] = useState<{ scheduleId: string; reason: string } | null>(null);
   // Résolution tag→équipes (saison courante) : le wrap n'affiche une contrainte CLUB ciblant
   // un tag QUE sur les équipes taguées — miroir de l'éclatement `CLUB+targetTag` du backend
   // (ScheduleConstraintBuilder). Mêmes hooks que le wizard (ConstraintsStep), pas un second
@@ -865,6 +870,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       {/* P4-269 — « une personne à deux endroits » sur la version EN VIGUEUR (le radar scanne
           toujours la version pointée du plan SEASON) : on ne le montre que quand on REGARDE cette
           version en vigueur (`isReadOnly`), page autonome (ni embarquée, ni en portée période). */}
+      {null !== validScheduleId ? <PlacedAbsencesNotice absences={displayedConflicts?.absences ?? []} className="mb-4" /> : null}
       {!embedded && !scoped && isReadOnly ? <PlacedConflictsNotice conflicts={placedConflicts?.conflicts ?? []} className="mb-4" /> : null}
       {!embedded && !scoped && isReadOnly ? <PlacedRelaysNotice relays={placedConflicts?.relays ?? []} className="mb-4" /> : null}
 
@@ -1017,13 +1023,41 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                   if (null === validScheduleId) {
                     return;
                   }
-                  fillMutation.mutate(validScheduleId, { onSuccess: (created) => setSelectedScheduleId(created.id) });
+                  const scheduleId = validScheduleId;
+                  setFillBlocker(null);
+                  fillMutation.mutate(scheduleId, {
+                    onSuccess: (created) => setSelectedScheduleId(created.id),
+                    onError: (error) => {
+                      if (isBlockerRefusal(error)) {
+                        void errorMessage(error).then((reason) => setFillBlocker({ scheduleId, reason }));
+                      }
+                    },
+                  });
                 }}
               >
                 <Sparkles className="size-4" />
                 {PLANNING_TEXTS.fillAutomatically}
               </Button>
               <span className="text-xs text-muted-foreground">{PLANNING_TEXTS.fillHint}</span>
+              {null !== fillBlocker && fillBlocker.scheduleId === validScheduleId ? (
+                <NoticeBanner tone="warning" role="alert" className="w-full" message={PLANNING_TEXTS.fillBlocked(fillBlocker.reason)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 border-foreground/40 bg-card"
+                    onClick={() => {
+                      const entryId = (allSchedulePlans ?? []).find((plan) => plan.id === displayedPlan?.id)?.calendarEntryId;
+                      if (entryId) {
+                        setSelectedScheduleId(null);
+                        useWizardStore.getState().startPeriodMode(entryId);
+                        navigate("/wizard?step=recap");
+                      }
+                    }}
+                  >
+                    {PLANNING_TEXTS.seeRecap}
+                  </Button>
+                </NoticeBanner>
+              ) : null}
             </div>
           ) : null}
 

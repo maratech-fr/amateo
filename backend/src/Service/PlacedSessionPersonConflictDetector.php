@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Controller\ValidateConstraintsController;
+use App\Entity\CalendarEntry;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
@@ -15,6 +17,7 @@ use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\TeamCoachRole;
+use App\Repository\ConstraintRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -50,6 +53,10 @@ use Doctrine\ORM\EntityManagerInterface;
  * comportement pré-solve (MAIN seul) est INCHANGÉ — l'élargissement aux joueurs se fait ICI, en
  * amont, dans la construction des « personnes présentes », jamais dans la règle partagée.
  *
+ * Même feed, autre question (`absences`) : sur la version AFFICHÉE, une séance dont aucun coach attendu
+ * n'est disponible à son début. Elle lit les règles de CETTE version : permanentes pour le socle, celles
+ * de la période pour un plan de période.
+ *
  * Tenant : tout est chargé via les repositories mappés — les filtres Doctrine
  * club+saison s'appliquent (+ RLS) ; un club ne voit jamais que ses propres conflits.
  */
@@ -58,6 +65,9 @@ final class PlacedSessionPersonConflictDetector
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly ConstraintRepository $constraintRepository,
+        private readonly PeriodConstraintSelector $periodConstraintSelector,
+        private readonly CoachDoubleBookingDetector $coachDoubleBookingDetector,
     ) {}
 
     /**
@@ -80,19 +90,21 @@ final class PlacedSessionPersonConflictDetector
      *     adjointName: string,
      *     first: array{teamId: string, teamName: string, venueId: string, venueName: string, startTime: string},
      *     second: array{teamId: string, teamName: string, venueId: string, venueName: string, startTime: string},
-     * }>}
+     * }>, absences: list<array{scheduleId: string, dayOfWeek: int, startTime: string, venueName: string, teamNames: list<string>, coachNames: list<string>}>}
      */
-    public function detect(string $clubId, ?string $seasonId): array
+    public function detect(string $clubId, ?string $seasonId, ?Schedule $displayed = null): array
     {
         $seasonScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
+        $version = $displayed ?? (null !== $seasonScheduleId ? $this->entityManager->getRepository(Schedule::class)->find($seasonScheduleId) : null);
+        $absences = $version instanceof Schedule ? $this->absencesOn($version, $clubId) : [];
         if (null === $seasonScheduleId || null === $seasonId) {
-            return ['seasonPlanChosen' => false, 'conflicts' => [], 'relays' => []];
+            return ['seasonPlanChosen' => false, 'conflicts' => [], 'relays' => [], 'absences' => $absences];
         }
 
         /** @var list<ScheduleSlotTemplate> $slots */
         $slots = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $seasonScheduleId]);
         if (\count($slots) < 2) {
-            return ['seasonPlanChosen' => true, 'conflicts' => [], 'relays' => []];
+            return ['seasonPlanChosen' => true, 'conflicts' => [], 'relays' => [], 'absences' => $absences];
         }
 
         // teamId → coachs principaux et joueurs (memberships ACTIFS).
@@ -119,7 +131,7 @@ final class PlacedSessionPersonConflictDetector
 
         $pairs = $this->collidingPairs($slots, $sessionCoachesByTeam, $assistantsByTeam, $playersByTeam);
         if ([] === $pairs) {
-            return ['seasonPlanChosen' => true, 'conflicts' => [], 'relays' => []];
+            return ['seasonPlanChosen' => true, 'conflicts' => [], 'relays' => [], 'absences' => $absences];
         }
 
         // Chantier H — décor du relais (mêmes maisons partagées que le récap) : barème de trajet,
@@ -169,7 +181,95 @@ final class PlacedSessionPersonConflictDetector
             ];
         }
 
-        return ['seasonPlanChosen' => true, 'conflicts' => $conflicts, 'relays' => $relays];
+        return ['seasonPlanChosen' => true, 'conflicts' => $conflicts, 'relays' => $relays, 'absences' => $absences];
+    }
+
+    /**
+     * Les séances de cette version sans aucun coach disponible à leur début, une ligne par case, équipes et
+     * coachs réunis. Le coach nommé sur la séance est ignoré, il peut être périmé.
+     *
+     * @return list<array{scheduleId: string, dayOfWeek: int, startTime: string, venueName: string, teamNames: list<string>, coachNames: list<string>}>
+     */
+    private function absencesOn(Schedule $schedule, string $clubId): array
+    {
+        $seasonId = (string) $schedule->getSeasonId();
+        /** @var list<ScheduleSlotTemplate> $slots */
+        $slots = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $schedule->getId()], ['id' => 'ASC']);
+        if ([] === $slots) {
+            return [];
+        }
+
+        if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
+            $constraints = $this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId);
+            $planId = null;
+        } else {
+            $planId = (string) $schedule->getSchedulePlanId();
+            $entryId = $this->schedulePlanProvisioner->fetchPlanContext($planId)['calendarEntryId'] ?? null;
+            $entry = null !== $entryId ? $this->entityManager->getRepository(CalendarEntry::class)->find($entryId) : null;
+            if (!$entry instanceof CalendarEntry) {
+                return [];
+            }
+            $constraints = $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $planId, $entry)->kept;
+        }
+
+        $scope = ['clubId' => $clubId, 'seasonId' => $seasonId];
+        $mainCoaches = [];
+        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy($scope) as $link) {
+            if (TeamCoachRole::MAIN === $link->getRole()) {
+                $mainCoaches[$link->getTeamId()][] = $link->getCoachId();
+            }
+        }
+
+        $absent = CoachDoubleBookingDetector::sessionsWithoutAnyCoachAtStart(
+            array_map(fn (ScheduleSlotTemplate $slot): array => ['id' => $slot->getId()] + $this->bookingOf($slot), $slots),
+            $mainCoaches,
+            CoachDoubleBookingDetector::blockedIntervalsByCoach($constraints),
+            $this->coachDoubleBookingDetector->declaredGroups($clubId, $seasonId, $planId),
+        );
+        if ([] === $absent) {
+            return [];
+        }
+
+        [$coachNames] = $this->coachIndex($scope);
+        $teamNames = [];
+        foreach ($this->entityManager->getRepository(Team::class)->findBy($scope) as $team) {
+            $teamNames[$team->getId()] = $team->getName();
+        }
+        $venueNames = [];
+        foreach ($this->entityManager->getRepository(Venue::class)->findBy($scope) as $venue) {
+            $venueNames[$venue->getId()] = $venue->getName();
+        }
+
+        $byCase = [];
+        foreach ($slots as $slot) {
+            $coachIds = $absent[$slot->getId()] ?? null;
+            if (null === $coachIds) {
+                continue;
+            }
+            $key = implode('|', [$slot->getDayOfWeek(), $slot->getStartTime()->format('H:i'), $slot->getVenueId()]);
+            $byCase[$key] ??= [
+                'scheduleId' => $schedule->getId(),
+                'dayOfWeek' => $slot->getDayOfWeek(),
+                'startTime' => $slot->getStartTime()->format('H:i'),
+                'venueName' => $venueNames[$slot->getVenueId()] ?? 'un gymnase',
+                'teamNames' => [],
+                'coachNames' => [],
+            ];
+            $byCase[$key]['teamNames'][] = $teamNames[$slot->getTeamId()] ?? 'une équipe';
+            foreach ($coachIds as $coachId) {
+                $name = $coachNames[$coachId] ?? 'Ce coach';
+                if (!\in_array($name, $byCase[$key]['coachNames'], true)) {
+                    $byCase[$key]['coachNames'][] = $name;
+                }
+            }
+        }
+        ksort($byCase);
+
+        return array_values(array_map(static function (array $line): array {
+            sort($line['coachNames']);
+
+            return $line;
+        }, $byCase));
     }
 
     /**

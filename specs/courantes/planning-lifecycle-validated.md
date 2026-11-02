@@ -64,9 +64,23 @@ jamais pour la règle de collision elle-même (`bookingsCollide`, inchangée). `
 PlacedSessionPersonConflictDetector::detect` rend les relais à part (`relays`, détail §ci-dessous),
 jamais mélangés aux conflits.
 
+**Séance sans coach au début (`absences`, 2026-11-02)** : une séance dont tous les coachs principaux sont
+indisponibles au début ne ferme plus rien au moteur (elle est jugée seule quand ses partenaires de groupe ne
+sont pas tous figés sur sa case) : les déplacements des autres séances restent possibles, et l'écart se dit à
+l'écran. `absences` (`{scheduleId, dayOfWeek, startTime, venueName, teamNames, coachNames}`, toujours présent,
+calculé même sans paire en conflit) suit la version AFFICHÉE : `?scheduleId=` (optionnel ; absent = version
+pointée ; autre club ou inconnu = 404) alors que `conflicts` et `relays` restent ceux de la version pointée.
+Candidats = principaux de l'équipe et des partenaires de groupe figés sur la même case
+(`CoachDoubleBookingDetector::sessionsWithoutAnyCoachAtStart`) ; un adjoint n'est jamais candidat, un coach
+nommé périmé est ignoré, une équipe sans principal ne déclenche rien. Les indisponibilités lues sont celles de
+la saison (plan SEASON) ou celles retenues pour la période (`selectForPeriodPlan(...)->kept`) : une absence
+datée d'un autre moment n'alerte pas. Rendu : `PlacedAbsencesNotice` (`planning/PlacedAbsencesNotice.tsx`, ton
+`warning`, « Une séance sans coach » / « N séances sans coach »), dès qu'une version est affichée, via `usePlacedConflicts(scheduleId)` (clé `["training","placed-conflicts", scheduleId ?? "season"]`,
+invalidée par préfixe après un déplacement).
+
 `GET /api/training/placed-conflicts` (club-scopé, réservé gestionnaire — SEC-07,
 `ManagementAccessGuard::assertManager()` tiré en premier) rend `{seasonPlanChosen, conflicts,
-relays}` : `seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en
+relays, absences}` : `seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en
 vigueur à scanner » — `conflicts: []` n'y signifie alors **pas** « tout va bien ». Un relais toléré
 sort de `conflicts` et entre dans `relays` (`{personId, personName, dayOfWeek, lateMinutes,
 adjointName, first, second}`) — **jamais compté parmi les conflits**, affiché à part

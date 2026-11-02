@@ -47,12 +47,13 @@ Authorization: Bearer <token>
 
 ### 2.3 Traitement par GenerateScheduleController
 
-Le contrôleur `GenerateScheduleController` commence par **quatre refus synchrones** — aucun ne crée de planning `PENDING` ni de diagnostic, l'appelant reçoit l'erreur immédiatement :
+Le contrôleur `GenerateScheduleController` commence par **cinq refus synchrones** — aucun ne crée de planning `PENDING` ni de diagnostic, l'appelant reçoit l'erreur immédiatement :
 
 1. **409 Conflict** si la version est celle que son plan **pointe** : c'est le planning en vigueur, il faut d'abord le **rouvrir** (`POST /api/schedules/{id}/reopen`).
 2. **422 Unprocessable Entity** si `GenerationComplexityGuard` juge le problème hors bornes (garde anti-DoS A10 « generation bomb » : plafonds généreux, ~10× un gros club FFBB ; les contraintes y sont comptées **permanentes only**, comme dans le payload).
 3. **422 Unprocessable Entity** si `OrphanPinGuard` trouve un **épinglage orphelin** — un verrou ou une réservation qui ne correspond plus à aucun créneau après une refonte de la grille de période. Le message nomme le gymnase et le jour ; c'est au gestionnaire de trancher (planning de période uniquement).
 4. **422 Unprocessable Entity** si `CoachInTwoPlacesGuard` trouve un **coach seul à deux endroits en même temps** (aucun autre coach de l'équipe ne peut tenir la séance : `CoachDoubleBookingDetector::holdersFor` rend `null` ; tant qu'un coach la tient, ce n'est pas un conflit) : mêmes réservations et contraintes que ce qui part au solveur, même détecteur que le Récap, qui le disait déjà mais que ces guichets ne traversent pas. Le message nomme le coach et les deux gymnases. La même garde est posée sur `/regenerate` et `/fill`.
+5. **422 Unprocessable Entity `{error, blocker: true}`** si `GenerationBlockersGuard::firstBlockerMessage` trouve un blocage que le Récap dit voué à l'échec (décision fondateur 2026-11-02) : jour imposé sans créneau, saturation de la grille, sur-réservation lue sur le payload (volume de période), réservation orpheline, groupe de séances communes inservable, jour imposé vidé (équipe seule ou fenêtre horaire d'un membre de groupe). Même payload que celui du solveur (saison : `buildForClubSeason` + contraintes permanentes + réservations hors plan ; période : `PeriodConstraintSelector` + `buildForPeriodPlan` + réservations du plan hors gymnases désactivés ; comblement : épingles de la version source ajoutées, motif dit avec les mots du geste), même texte que `/api/constraints/validate` (`GenerationBlockersGuard::blockersFor` + `PreSolvePreventionWarnings::detectBlockers`). Rien n'est écrit, rien n'est mis en file. Un build qui lève est journalisé et ne ferme pas le guichet : le moteur tranche. ⚠ Le refus consomme 1 des 5 générations par heure (`ClubQuotaSubscriber` passe avant le contrôleur).
 
 Ces gardes passées, il exécute trois actions :
 

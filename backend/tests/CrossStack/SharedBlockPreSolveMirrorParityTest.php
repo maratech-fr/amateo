@@ -6,6 +6,7 @@ namespace App\Tests\CrossStack;
 
 use App\Service\PreSolvePreventionWarnings;
 use App\Service\ScheduleConstraintBuilder;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\HttpClient;
@@ -39,13 +40,66 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
 
     private PreSolvePreventionWarnings $warnings;
 
+    /** @return iterable<string, array{array<string, mixed>}> */
+    public static function forcedDayClosers(): iterable
+    {
+        yield 'indisponibilité' => [['id' => 'off', 'scope' => 'COACH', 'scopeTargetId' => 'cA', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'name' => 'Indispo', 'config' => ['unavailableDays' => [4]], 'sortOrder' => 0, 'isActive' => true]];
+        yield 'fenêtre' => [['id' => 'win', 'scope' => 'TEAM', 'scopeTargetId' => 't1', 'family' => 'TIME', 'ruleType' => 'HARD', 'name' => 'Pas avant 20h', 'config' => ['minStartTime' => '20:00'], 'sortOrder' => 0, 'isActive' => true]];
+    }
+
+    /** @return iterable<string, array{list<int>, int, list<array{string, int}>, list<int>, string}> */
+    public static function partlyPinnedBlocks(): iterable
+    {
+        yield '1 case réservée et aucun créneau' => [[2, 3], 2, [['t1', 2], ['t2', 2]], [4], '1 case réservée et aucun créneau'];
+        yield '1 case réservée et seulement 1 créneau' => [[2, 3, 4], 3, [['t1', 2], ['t2', 2]], [3], '1 case réservée et seulement 1 créneau'];
+        yield 'un seul membre réservé, case sans coach' => [[2], 1, [['t1', 2]], [3], 'aucun créneau'];
+    }
+
+    /** NR (la réservation gagne) : jour imposé de t3 sur l'unique case d'un groupe réservé sans coach : le miroir alerte sans bloquer ET le moteur produit le planning. */
+    public function testAForcedDayOnTheCaseOfACoachlessReservedGroupWarnsAndCompletes(): void
+    {
+        $payload = $this->forcedDayAgainstAReservedGroup(venueDays: [5], groupCoachDays: [3], forcedTeamCoachDays: [5], pinDay: 5);
+
+        self::assertSame([], $this->warnings->detectBlockers($payload));
+        self::assertNotSame([], array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'la réservation gagne, cette séance manquera')));
+        self::assertSame('completed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir laisse passer mais le moteur échoue.');
+    }
+
+    /** NR, l'autre sens : le jour imposé de t3 fermé par son propre coach, le groupe réservé ailleurs : le miroir bloque ET le moteur échoue. */
+    public function testAForcedDayClosedByItsOwnCoachNextToAReservedGroupBlocksAndFails(): void
+    {
+        $payload = $this->forcedDayAgainstAReservedGroup(venueDays: [1, 5], groupCoachDays: [1], forcedTeamCoachDays: [1], pinDay: 1);
+
+        self::assertNotSame([], $this->warnings->detectBlockers($payload), 'le miroir doit BLOQUER');
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir bloque mais le moteur a résolu.');
+    }
+
+    /** NR (axe constraint semantics) : jeudi fermé par une fenêtre, vendredi par l'indisponibilité : le vendredi se relaie, le miroir ne bloque pas ET le moteur produit le planning. */
+    public function testAForcedDayMixingAWindowAndAnAbsenceIsNotBlockedAndCompletes(): void
+    {
+        $payload = $this->forcedDayPayload(['id' => 'win', 'scope' => 'TEAM', 'scopeTargetId' => 't1', 'family' => 'TIME', 'ruleType' => 'HARD', 'name' => 'Pas avant 20h', 'config' => ['minStartTime' => '20:00'], 'sortOrder' => 0, 'isActive' => true], withGroup: true);
+        $venue = $payload['venues'][0];
+        $late = $venue['trainingSlots'][1];
+        $venue['trainingSlots'][] = [...$late, 'dayOfWeek' => 5, 'startTime' => '20:30:00'];
+        $payload['venues'] = [$venue];
+        foreach ($payload['constraints'] as $index => $constraint) {
+            if ('forced' === $constraint['id']) {
+                $payload['constraints'][$index]['config'] = ['forcedDays' => [4, 5]];
+            }
+        }
+        $payload['constraints'][] = ['id' => 'off', 'scope' => 'COACH', 'scopeTargetId' => 'cA', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'name' => 'Indispo', 'config' => ['unavailableDays' => [5]], 'sortOrder' => 0, 'isActive' => true];
+
+        self::assertSame([], $this->warnings->detectBlockers($payload), 'PARITÉ ROMPUE : le miroir bloque un jour que le relais du groupe tient.');
+        self::assertSame('completed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir laisse passer mais le moteur échoue.');
+    }
+
     public function testBlockWithoutUnionCoachIsWarnedAndInfeasibleWhileServableBlockIsSilentAndCompleted(): void
     {
         // (1) MIROIR AVERTIT ⇒ MOTEUR INFEASIBLE — gymnase ouvert le mardi (jour 2) SEUL ; cA (t1) et
         // cB (t2) disponibles le mercredi (jour 3) seulement : aucun coach de l'union le mardi. Le
         // bloc n'a aucune case servable → le moteur ferme sa séance (Σb ne vaut pas commonSessions).
         $infeasible = $this->payload(venueDays: [2], aDays: [3], bDays: [3]);
-        $warned = $this->blockWarnings($this->warnings->detect($infeasible));
+        $warned = $this->blockWarnings($this->warnings->detectBlockers($infeasible));
         self::assertNotEmpty($warned, 'le miroir doit AVERTIR : aucun créneau n\'a de coach de l\'union pour le bloc');
         self::assertSame(
             'failed',
@@ -60,7 +114,7 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         $feasible = $this->payload(venueDays: [2], aDays: [2], bDays: [2]);
         self::assertSame(
             [],
-            $this->blockWarnings($this->warnings->detect($feasible)),
+            $this->blockWarnings($this->warnings->detectBlockers($feasible)),
             'PARITÉ ROMPUE : le miroir avertit alors que le bloc est servable (coach de l\'union le mardi).',
         );
         self::assertSame(
@@ -87,7 +141,7 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         $feasible = $this->payloadTwoCoachesOnFirstTeam(venueDays: [2], a1Days: [3], a2Days: [2], bDays: [3]);
         self::assertSame(
             [],
-            $this->blockWarnings($this->warnings->detect($feasible)),
+            $this->blockWarnings($this->warnings->detectBlockers($feasible)),
             'PARITÉ ROMPUE : le miroir avertit alors que le 2ᵉ coach principal de t1 couvre la case du mardi.',
         );
         self::assertSame(
@@ -99,7 +153,7 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         // Le 2ᵉ principal de t1 bascule au mercredi lui aussi : plus aucun coach de l'union le mardi.
         $infeasible = $this->payloadTwoCoachesOnFirstTeam(venueDays: [2], a1Days: [3], a2Days: [3], bDays: [3]);
         self::assertNotEmpty(
-            $this->blockWarnings($this->warnings->detect($infeasible)),
+            $this->blockWarnings($this->warnings->detectBlockers($infeasible)),
             'le miroir doit AVERTIR : aucun coach de l\'union n\'est disponible le mardi',
         );
         self::assertSame(
@@ -123,7 +177,7 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
 
         self::assertSame(
             [],
-            array_values(array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'Groupe'))),
+            array_values(array_filter($this->warnings->detectBlockers($payload), static fn (string $w): bool => str_contains($w, 'Groupe'))),
             'PARITÉ ROMPUE : le miroir annonce un échec pour un groupe entièrement réservé.',
         );
         $result = $this->solve($payload);
@@ -140,7 +194,7 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         ];
 
         self::assertNotEmpty(
-            array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'réservé sur 2 cases')),
+            array_filter($this->warnings->detectBlockers($payload), static fn (string $w): bool => str_contains($w, 'réservé sur 2 cases')),
             'le miroir doit AVERTIR : ces réservations se contredisent',
         );
         self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir annonce un échec mais le moteur a résolu.');
@@ -160,10 +214,66 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         ];
 
         self::assertNotEmpty(
-            array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'une seule case réservée')),
+            array_filter($this->warnings->detectBlockers($payload), static fn (string $w): bool => str_contains($w, 'une seule case réservée')),
             'le miroir doit AVERTIR : une seule case pour deux séances communes',
         );
         self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir annonce un échec mais le moteur a résolu.');
+    }
+
+    /**
+     * NR (axe constraint semantics) : jour imposé vidé par l'indisponibilité du principal ou une fenêtre, équipe HORS de
+     * tout groupe : le miroir BLOQUE et le moteur sort `failed`. Si l'une des deux copies dérive, le Récap bloquerait un
+     * planning faisable, ou enverrait au moteur un échec certain.
+     *
+     * @param array<string, mixed> $closing
+     */
+    #[DataProvider('forcedDayClosers')]
+    public function testAForcedDayEmptiedForATeamAloneBlocksAndFails(array $closing): void
+    {
+        $payload = $this->forcedDayPayload($closing, withGroup: false);
+
+        self::assertNotSame([], $this->warnings->detectBlockers($payload), 'le miroir doit BLOQUER : aucune case ne tient ce jour');
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir bloque mais le moteur a résolu.');
+    }
+
+    /** NR (axe constraint semantics) : même jour vidé pour un membre de groupe, un coach du groupe relaie : le miroir ne bloque pas ET le moteur produit le planning. */
+    public function testAForcedDayEmptiedForAGroupMemberIsNotBlockedAndCompletes(): void
+    {
+        $payload = $this->forcedDayPayload(['id' => 'off', 'scope' => 'COACH', 'scopeTargetId' => 'cA', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'name' => 'Indispo', 'config' => ['unavailableDays' => [4]], 'sortOrder' => 0, 'isActive' => true], withGroup: true);
+
+        self::assertSame([], $this->warnings->detectBlockers($payload), 'PARITÉ ROMPUE : le miroir bloque un jour que le relais du groupe tient.');
+        self::assertSame('completed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir laisse passer mais le moteur échoue.');
+    }
+
+    /** NR (axe constraint semantics) : jour vidé par une FENÊTRE sur un membre de groupe : aucun coach ne la lève, le miroir BLOQUE et le moteur échoue. */
+    public function testAForcedDayEmptiedByAWindowForAGroupMemberBlocksAndFails(): void
+    {
+        $payload = $this->forcedDayPayload(['id' => 'win', 'scope' => 'TEAM', 'scopeTargetId' => 't1', 'family' => 'TIME', 'ruleType' => 'HARD', 'name' => 'Pas avant 20h', 'config' => ['minStartTime' => '20:00'], 'sortOrder' => 0, 'isActive' => true], withGroup: true);
+
+        self::assertNotSame([], $this->warnings->detectBlockers($payload), 'le miroir doit BLOQUER : la fenêtre ferme le jour, quel que soit le coach');
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir bloque mais le moteur a résolu.');
+    }
+
+    /**
+     * NR (axe constraint semantics) : formes du groupe en partie réservé : le miroir BLOQUE et le moteur échoue. Le groupe
+     * a un coach seulement les jours `$coachDays`.
+     *
+     * @param list<int>                $venueDays
+     * @param list<array{string, int}> $pins
+     * @param list<int>                $coachDays
+     */
+    #[DataProvider('partlyPinnedBlocks')]
+    public function testAPartlyPinnedBlockThatCannotBeServedBlocksAndFails(array $venueDays, int $commonSessions, array $pins, array $coachDays, string $form): void
+    {
+        $payload = [
+            ...$this->payload(venueDays: $venueDays, aDays: $coachDays, bDays: $coachDays),
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => $commonSessions]],
+            'teams' => [$this->teamWithSessions('t1', $commonSessions), $this->teamWithSessions('t2', $commonSessions)],
+            'slotTemplates' => array_map(fn (array $pin): array => $this->pin($pin[0], $pin[1]), $pins),
+        ];
+
+        self::assertNotSame([], array_filter($this->warnings->detectBlockers($payload), static fn (string $w): bool => str_contains($w, $form)), 'le miroir doit BLOQUER sous cette forme');
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir bloque mais le moteur a résolu.');
     }
 
     protected function setUp(): void
@@ -257,6 +367,69 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
             'slotTemplates' => [],
             'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]],
         ];
+    }
+
+    /**
+     * t1 (cA) a le jeudi imposé, créneaux lundi et jeudi, capacité 2, la règle donnée ferme le jeudi. Avec groupe : t2 (cB) rejoint t1.
+     *
+     * @param array<string, mixed> $closing
+     *
+     * @return array<string, mixed>
+     */
+    private function forcedDayPayload(array $closing, bool $withGroup): array
+    {
+        $venue = $this->venue('11111111-1111-4111-8111-111111111111', [1, 4]);
+        $venue['trainingSlots'] = array_map(static fn (array $slot): array => [...$slot, 'capacity' => 2], $venue['trainingSlots']);
+
+        return [
+            'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-block-presolve-mirror',
+            'seasonId' => 'season-block-presolve-mirror',
+            'solverSeed' => 42,
+            'teams' => $withGroup ? [$this->team('t1'), $this->team('t2')] : [$this->team('t1')],
+            'venues' => [$venue],
+            'coaches' => [],
+            'constraints' => [
+                $this->teamCoach('tcA', 't1', 'cA'),
+                ...($withGroup ? [$this->teamCoach('tcB', 't2', 'cB')] : []),
+                ['id' => 'forced', 'scope' => 'TEAM', 'scopeTargetId' => 't1', 'family' => 'DAY', 'ruleType' => 'HARD', 'name' => 'Jeudi imposé', 'config' => ['forcedDays' => [4]], 'sortOrder' => 0, 'isActive' => true],
+                $closing,
+            ],
+            'slotTemplates' => [],
+            'sharedBlocks' => $withGroup ? [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]] : [],
+        ];
+    }
+
+    /**
+     * Le groupe t1+t2 réservé sur `pinDay`, t3 (cC) a le vendredi imposé. Coachs disponibles les seuls jours donnés.
+     *
+     * @param list<int> $venueDays
+     * @param list<int> $groupCoachDays
+     * @param list<int> $forcedTeamCoachDays
+     *
+     * @return array<string, mixed>
+     */
+    private function forcedDayAgainstAReservedGroup(array $venueDays, array $groupCoachDays, array $forcedTeamCoachDays, int $pinDay): array
+    {
+        $payload = $this->payload(venueDays: $venueDays, aDays: $groupCoachDays, bDays: $groupCoachDays);
+
+        return [
+            ...$payload,
+            'teams' => [...$payload['teams'], $this->team('t3')],
+            'constraints' => [
+                ...$payload['constraints'],
+                $this->teamCoach('tcC', 't3', 'cC'),
+                ['id' => 'forced', 'scope' => 'TEAM', 'scopeTargetId' => 't3', 'family' => 'DAY', 'ruleType' => 'HARD', 'name' => 'Vendredi imposé', 'config' => ['forcedDays' => [5]], 'sortOrder' => 0, 'isActive' => true],
+                ['id' => 'avC', 'scope' => 'COACH', 'scopeTargetId' => 'cC', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'name' => 'Dispo C', 'config' => ['availableDays' => $forcedTeamCoachDays], 'sortOrder' => 0, 'isActive' => true],
+            ],
+            'slotTemplates' => [$this->pin('t1', $pinDay), $this->pin('t2', $pinDay)],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function teamWithSessions(string $id, int $sessions): array
+    {
+        return [...$this->team($id), 'sessionsPerWeek' => $sessions];
     }
 
     /** @return array<string, mixed> */

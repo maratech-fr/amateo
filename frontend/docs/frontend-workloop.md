@@ -372,10 +372,12 @@ recomposé — même donnée que le bandeau existant) est non vide, un bouton `o
 appelle `useFillSchedule` (`queries.ts`), miroir strict de `useRegenerate` — POST
 `schedules/{id}/fill`, invalide `["schedules"]`, sélectionne la V+1 créée en `onSuccess`. Un refus
 serveur (409 non-période/version choisie/génération en cours, 422 complexité/épinglage orphelin,
-429 quota club) est **affiché** via `errorMessage`/toast, jamais muet. Désactivé pendant une
+429 quota club) est **affiché** via `errorMessage`/toast, jamais muet — sauf le 422 `blocker: true` (blocage du Récap) : pas de toast, `PlanningPage` pose le motif (`fillBlocker`, propre à la version affichée, effacé au clic suivant) dans un bandeau « Le comblement n'a pas été lancé : {motif} » avec le bouton « Voir le Récapitulatif » (`startPeriodMode(calendarEntryId)` puis `/wizard?step=recap`). Désactivé pendant une
 génération en cours ou sans version valide sélectionnée. **Outil d'appoint** : « Régénérer » (solve
 complet) reste dans la barre d'outils à côté — le comblement ne le remplace pas, il évite un solve
 complet pour le cas courant (un gymnase a fermé, une équipe a repris son volume).
+
+**Blocages du Récap et alerte d'absence (2026-11-02).** Le serveur refuse `generate`/`regenerate`/`fill` en 422 `blocker: true` pour ce que le Récap dit voué à l'échec ; le wizard (`GenerateStep`, `WizardLayout`) désactive déjà le bouton avec `WIZARD_TEXTS.generationBlocked` quand le Récap a des blocages. Une version créée par le geste (`generateCreatedVersion`, `planning/lib/`) puis refusée en 4xx est supprimée (`DELETE /api/schedules/{id}`) avant que l'erreur remonte ; une version préexistante (`existingScheduleId`) n'est jamais supprimée. `PlacedAbsencesNotice` (« Une séance sans coach ») s'affiche dès qu'une version est affichée : `usePlacedConflicts(validScheduleId)` interroge `placed-conflicts?scheduleId=`, et un déplacement invalide le préfixe `["training","placed-conflicts"]`.
 
 **Les écarts NOMMÉS — panneau « Écarts avec le planning de saison » (P2-44 PR-5, ADR-0004,
 2026-08-20)** : sur l'écran embarqué (`transcriptionSurface`, donc `embedded && scoped`) d'une

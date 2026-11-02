@@ -25,6 +25,10 @@ use RuntimeException;
  * gymnases et un coach JETABLES, on lie le coach aux deux équipes (principal des deux), puis on
  * pose deux séances placées sur la version en vigueur (insertion directe, comme
  * la génération l'aurait fait). Tout est retiré en fin de scénario, quoi qu'il arrive.
+ *
+ * Même radar, autre promesse : une séance sans aucun coach disponible à son début est dite sur la
+ * version AFFICHÉE, y compris une version de travail (`?scheduleId=`). Jumeau plus bas :
+ * `Integration/PlacedSessionPersonConflictDetectorTest`.
  */
 final class PlacedPersonConflictContext extends BaseContext
 {
@@ -61,6 +65,10 @@ final class PlacedPersonConflictContext extends BaseContext
 
     /** @var list<string> ids des lignes de trajet insérées à nettoyer */
     private array $travelRowIds = [];
+
+    private string $workScheduleId = '';
+
+    private string $offConstraintId = '';
 
     #[Given('le club de démonstration, connecté, avec son planning de saison en vigueur')]
     public function leClubAvecSonPlanningEnVigueur(): void
@@ -167,6 +175,56 @@ final class PlacedPersonConflictContext extends BaseContext
         }
     }
 
+    // ── Une séance sans coach au début, sur la version affichée (pas seulement celle en vigueur) ──
+
+    #[When('je consulte une version de travail où une séance tombe quand son seul coach est indisponible')]
+    public function uneVersionDeTravailSansCoachAuDebut(): void
+    {
+        $this->offConstraintId = $this->createdId($this->apiPost('constraints', [
+            'name' => 'Anna absente le mardi (fonctionnel)',
+            'scope' => 'COACH',
+            'scopeTargetId' => $this->coachId,
+            'family' => 'COACH_AVAILABILITY',
+            'ruleType' => 'HARD',
+            'config' => ['unavailableDays' => [2]],
+            'isActive' => true,
+        ], $this->token), 'indisponibilité');
+
+        // Une version terminée à côté de celle en vigueur, sur le même plan : rien ne s'y génère, on y pose la séance.
+        $this->workScheduleId = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO schedule (id, version, created_at, updated_at, club_id, season_id, name, status, solver_seed, snapshot_data, schedule_plan_id, version_number)'
+                . ' SELECT \'%s\', 1, now(), now(), club_id, season_id, \'Travail (fonctionnel)\', \'COMPLETED\', solver_seed, snapshot_data, schedule_plan_id,'
+                . ' (SELECT MAX(version_number) + 1 FROM schedule o WHERE o.schedule_plan_id = s.schedule_plan_id) FROM schedule s WHERE id=\'%s\'',
+                $this->workScheduleId,
+                $this->scheduleId,
+            ),
+            admin: true,
+        );
+        $inForce = $this->scheduleId;
+        $this->scheduleId = $this->workScheduleId;
+        $this->placeSlot($this->teamAId, $this->venue1Id);
+        $this->scheduleId = $inForce;
+    }
+
+    #[Then('l\'absence est signalée sur cette version, et la version en vigueur ne dit rien')]
+    public function lAbsenceEstSignalee(): void
+    {
+        $onWork = $this->apiGet(\sprintf('training/placed-conflicts?scheduleId=%s', $this->workScheduleId), $this->token);
+        if (200 !== $onWork['status']) {
+            throw new RuntimeException(\sprintf('le radar a répondu HTTP %d', $onWork['status']));
+        }
+        if ([] === $this->absencesNamingTheCoach($onWork['json']['absences'] ?? null)) {
+            throw new RuntimeException('la version de travail porte une séance sans coach au début : l\'absence aurait dû être signalée');
+        }
+
+        $inForce = $this->apiGet('training/placed-conflicts', $this->token);
+        if ([] !== $this->absencesNamingTheCoach($inForce['json']['absences'] ?? null)) {
+            throw new RuntimeException('la version en vigueur ne porte pas cette séance : rien à signaler');
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -177,6 +235,12 @@ final class PlacedPersonConflictContext extends BaseContext
         // Les séances insérées d'abord (elles référencent équipes et gymnases).
         foreach ($this->slotIds as $slotId) {
             $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE id=\'%s\'', $slotId), admin: true);
+        }
+        if ('' !== $this->workScheduleId) {
+            $this->dbalExec(\sprintf('DELETE FROM schedule WHERE id=\'%s\'', $this->workScheduleId), admin: true);
+        }
+        if ('' !== $this->offConstraintId) {
+            $this->apiDelete(\sprintf('constraints/%s', $this->offConstraintId), $this->token);
         }
         foreach ($this->travelRowIds as $travelId) {
             $this->dbalExec(\sprintf('DELETE FROM venue_travel_time WHERE id=\'%s\'', $travelId), admin: true);
@@ -205,6 +269,15 @@ final class PlacedPersonConflictContext extends BaseContext
                 $this->apiDelete(\sprintf('venues/%s', $venueId), $this->token);
             }
         }
+    }
+
+    /** @return list<mixed> Les absences qui nomment notre coach jetable. */
+    private function absencesNamingTheCoach(mixed $absences): array
+    {
+        return array_values(array_filter(
+            \is_array($absences) ? $absences : [],
+            static fn (mixed $entry): bool => \is_array($entry) && \in_array('Anna Jetable', (array) ($entry['coachNames'] ?? []), true),
+        ));
     }
 
     /** Le radar courant liste-t-il notre coach jetable dans ses CONFLITS ? */

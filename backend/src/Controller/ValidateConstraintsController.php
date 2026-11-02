@@ -14,6 +14,7 @@ use App\Repository\TeamRepository;
 use App\Repository\VenueRepository;
 use App\Service\CoachDoubleBookingDetector;
 use App\Service\ConstraintValidationService;
+use App\Service\GenerationBlockersGuard;
 use App\Service\ManagementAccessGuard;
 use App\Service\PayloadCapacityMirror;
 use App\Service\PeriodConstraintSelection;
@@ -41,9 +42,6 @@ final class ValidateConstraintsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
 
-    /** ISO-8601 : 1 = lundi (même table que {@see CoachDoubleBookingDetector}). */
-    private const array DAY_NAMES = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
-
     public function __construct(
         private readonly ConstraintRepository $constraintRepository,
         private readonly CalendarEntryRepository $calendarEntryRepository,
@@ -61,6 +59,7 @@ final class ValidateConstraintsController extends AbstractController
         private readonly ScheduleConstraintBuilder $scheduleConstraintBuilder,
         private readonly LoggerInterface $logger,
         private readonly PreSolvePreventionWarnings $preventionWarnings,
+        private readonly GenerationBlockersGuard $generationBlockersGuard,
     ) {}
 
     #[Route('/api/constraints/validate', name: 'api_constraints_validate', methods: ['POST'])]
@@ -165,7 +164,7 @@ final class ValidateConstraintsController extends AbstractController
                     // solveur va réellement recevoir : gymnase sans créneau, équipe qu'aucun
                     // créneau ne peut accueillir, coach surchargé, contrainte visant une équipe
                     // absente. Chacune ne se voyait qu'APRÈS génération, en diagnostic.
-                    ...$this->preventionWarnings->detect($capacityPayload, $this->constraintOrigins($constraints)),
+                    ...$this->preventionWarnings->detect($capacityPayload),
                 ];
             }
         } catch (Throwable $exception) {
@@ -201,31 +200,19 @@ final class ValidateConstraintsController extends AbstractController
         //    de l'équipe à ce gymnase (P4-97 : effective_min = minimum − jours verrouillés).
         //    Décision fondateur 2026-10-30 : si la grille dépasse même sans verrou → BLOQUEUR
         //    (échec certain). Si seules les réservations saturent → AVERTISSEMENT, on génère.
-        $saturation = null !== $capacityPayload ? $this->venueMinimumSaturation($capacityPayload) : ['blockers' => [], 'warnings' => []];
-        $saturationBlockers = $saturation['blockers'];
-        $warnings = [...$warnings, ...$saturation['warnings']];
+        if (null !== $capacityPayload) {
+            $warnings = [...$warnings, ...$this->generationBlockersGuard->venueMinimumSaturation($capacityPayload)['warnings']];
+        }
 
         // P2-9 PR B — IMPOSSIBILITÉ PHYSIQUE : un verrou qui met un coach à deux endroits
         // en même temps. Le solveur ne peut PAS l'attraper (un verrou HARD est pré-placé
         // hors modèle, ALIGN-07), et ce n'est pas une préférence bafouée — le gestionnaire
         // n'a jamais choisi que son coach se dédouble. Décision fondateur : ça BLOQUE.
         $blockers = [
-            ...$saturationBlockers,
-            // ALIGN-09 — « au moins une séance l'un de ces jours » quand AUCUN de ces jours n'a
-            // de créneau candidat : INFEASIBLE certain, on BLOQUE (le gate prévient pour un
-            // risque, bloque pour une certitude arithmétique). Lu sur le MÊME payload que les
-            // avertissements, donc saison ET période.
-            ...(null !== $capacityPayload ? $this->preventionWarnings->detectBlockers($capacityPayload) : []),
-            // 3. P4-44 — une réservation qui ne retombe sur AUCUN créneau de la grille.
-            //    Sur une PÉRIODE, `OrphanPinGuard` refusait déjà la génération, mais
-            //    l'écran « Réserver » ne peut pas montrer la ligne fautive (il boucle
-            //    sur les créneaux) : le gestionnaire était mis en échec sans recours.
-            //    Sur le SOCLE, pire : le moteur PLACE la séance à l'horaire mort et rend
-            //    `completed` (mesuré) — le planning distribué envoie les équipes devant
-            //    une porte fermée. On le NOMME ici, avec l'heure, et le récap offre de la
-            //    retirer : c'est ce qui rend le blocage légitime.
-            ...$this->orphanReservationBlockers($reservations, $capacityPayload),
-            ...$this->overBookedTeamBlockers($reservations, $clubId, $seasonId),
+            // La même liste que les guichets `/generate`, `/regenerate` et `/fill` : une seule vérité.
+            ...(null !== $capacityPayload
+                ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints, null !== $calendarEntryId)
+                : $this->generationBlockersGuard->overBookedOnEntities($reservations, $clubId, $seasonId)),
             ...array_map(
                 fn (array $conflict): string => $this->coachDoubleBookingDetector->describeForRecap($conflict),
                 // Chantier H — `$constraints` passés : une paire tolérée + adjoint disponible n'est
@@ -339,190 +326,6 @@ final class ValidateConstraintsController extends AbstractController
         return $this->capacityMirror->offer($payload);
     }
 
-    /**
-     * PR A — saturation des « au moins N ici » par gymnase. L'ALGÈBRE vit dans
-     * {@see PayloadCapacityMirror} (parité épinglée contre le vrai moteur) ; ici,
-     * seulement la PHRASE que lit le gestionnaire, et le partage bloquant/avertissement.
-     *
-     * @param array<string, mixed> $payload
-     *
-     * @return array{blockers: list<string>, warnings: list<string>}
-     */
-    private function venueMinimumSaturation(array $payload): array
-    {
-        $gridSaturated = $this->capacityMirror->venuesSaturatedWithoutLocks($payload);
-        $result = ['blockers' => [], 'warnings' => []];
-        foreach ($this->capacityMirror->venueMinimumSaturation($payload) as $s) {
-            if (\in_array($s['venueId'], $gridSaturated, true)) {
-                $result['blockers'][] = \sprintf(
-                    'Vos contraintes « au moins » réclament %s à %s, mais il n\'y reste que %s libre%s une fois les réservations déduites : la génération échouera. Ajoutez des créneaux dans ce gymnase, libérez des réservations, ou assouplissez ces contraintes.',
-                    $this->plural($s['demand'], 'place de créneau', 'places de créneau'),
-                    $s['venueName'],
-                    $this->plural($s['free'], 'place', 'places'),
-                    1 === $s['free'] ? '' : 's',
-                );
-            } else {
-                $result['warnings'][] = $this->reservationSaturationWarning($s);
-            }
-        }
-
-        return $result;
-    }
-
-    /**
-     * « Poussins et Benjamins demandent chacune au moins 1 séance à Platane, mais il n'y reste qu'une
-     * place : la réservation de Seniors C occupe l'autre. Une équipe restera sans séance. ».
-     *
-     * @param array{venueName: string, demand: int, free: int, teams: array<string, int>, reservedBy: list<string>, pinnedCases: int, freeElsewhere: int} $s
-     */
-    private function reservationSaturationWarning(array $s): string
-    {
-        $names = $this->frenchList(array_map(strval(...), array_keys($s['teams'])));
-        $amounts = array_values(array_unique($s['teams']));
-        $count = \count($s['teams']);
-        if (1 === $count) {
-            $asks = \sprintf('%s demande au moins %s', $names, $this->plural($amounts[0], 'séance', 'séances'));
-        } elseif (1 === \count($amounts)) {
-            $asks = \sprintf('%s demandent chacune au moins %s', $names, $this->plural($amounts[0], 'séance', 'séances'));
-        } else {
-            $asks = \sprintf('%s demandent ensemble au moins %s', $names, $this->plural($s['demand'], 'séance', 'séances'));
-        }
-
-        $left = match ($s['free']) {
-            0 => 'il n\'y reste aucune place',
-            1 => 'il n\'y reste qu\'une place',
-            default => \sprintf('il n\'y reste que %d places', $s['free']),
-        };
-
-        $reservedBy = $s['reservedBy'];
-        if (1 === $s['pinnedCases'] && 1 === \count($reservedBy)) {
-            $taken = \sprintf('la réservation de %s occupe %s', $reservedBy[0], 1 === $s['free'] ? 'l\'autre' : (0 === $s['free'] ? 'la case' : 'une autre'));
-        } else {
-            $taken = \sprintf('les réservations de %s occupent les autres', $this->frenchList($reservedBy));
-        }
-
-        // « Sans séance » n'est dit que si c'est vrai : chaque équipe n'en réclame qu'une, et nul autre
-        // gymnase n'a de place. Sinon l'équipe joue ailleurs, seul le minimum manque.
-        $missing = $s['demand'] - $s['free'];
-        if (0 === $s['freeElsewhere'] && [1] === $amounts) {
-            $outcome = 1 === $missing ? 'Une équipe restera sans séance.' : \sprintf('%d équipes resteront sans séance.', $missing);
-        } else {
-            $outcome = \sprintf('Le minimum ne sera pas tenu : %s %s à %s.', $this->plural($missing, 'séance', 'séances'), 1 === $missing ? 'manquera' : 'manqueront', $s['venueName']);
-        }
-
-        return \sprintf('%s à %s, mais %s : %s. %s', $asks, $s['venueName'], $left, $taken, $outcome);
-    }
-
-    /** @param list<string> $items */
-    private function frenchList(array $items): string
-    {
-        $last = array_pop($items);
-
-        return [] === $items ? (string) $last : implode(', ', $items) . ' et ' . $last;
-    }
-
-    /**
-     * P3-20 (décision fondateur 2026-08-06) — « si j'ai déclaré 3 réservations alors que
-     * l'équipe ne veut que 2 créneaux, on bloque : c'est une INCOHÉRENCE gestionnaire ».
-     *
-     * Ce n'est pas une préférence bafouée : le gestionnaire a ordonné plus de séances que
-     * ce qu'il a lui-même déclaré pour l'équipe. Le solveur ne peut pas arbitrer — un
-     * verrou est pré-placé hors modèle (ALIGN-07), donc les trois s'imposeraient et
-     * l'équipe jouerait plus que prévu, en silence. D'où le BLOQUEUR, aux côtés du coach
-     * dédoublé.
-     *
-     * Le cas naît naturellement du geste de désactivation : un gymnase désactivé conserve
-     * ses réservations (elles reviennent à la réactivation) ; déplacer la séance ailleurs
-     * entre-temps en fabrique une de trop, et c'est ICI qu'on l'attrape.
-     *
-     * @param list<Reservation> $reservations le périmètre EXACT qui partira au solveur
-     *
-     * @return list<string>
-     */
-    private function overBookedTeamBlockers(array $reservations, string $clubId, string $seasonId): array
-    {
-        if ([] === $reservations) {
-            return [];
-        }
-
-        $countByTeam = [];
-        foreach ($reservations as $reservation) {
-            $countByTeam[$reservation->getTeamId()] = ($countByTeam[$reservation->getTeamId()] ?? 0) + 1;
-        }
-
-        $blockers = [];
-        foreach ($this->teamRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $team) {
-            $reserved = $countByTeam[$team->getId()] ?? 0;
-            $sessions = $team->getSessionsPerWeek();
-            if ($reserved <= $sessions) {
-                continue;
-            }
-            $blockers[] = \sprintf(
-                '%s a %s pour %s par semaine : retirez %s, ou augmentez le nombre de séances de l\'équipe.',
-                $team->getName(),
-                $this->plural($reserved, 'réservation', 'réservations'),
-                $this->plural($sessions, 'séance', 'séances'),
-                $this->plural($reserved - $sessions, 'réservation', 'réservations'),
-            );
-        }
-
-        return $blockers;
-    }
-
-    /**
-     * P4-44 — les réservations HORS GRILLE, nommées avec leur heure.
-     *
-     * La grille lue est celle du PAYLOAD (`venues[].trainingSlots`) : exactement ce que
-     * le solveur recevra, gymnases désactivés déjà retirés. Sans payload (période sans
-     * plan), on ne sait rien — on n'invente pas un bloqueur.
-     *
-     * @param list<Reservation>         $reservations
-     * @param array<string, mixed>|null $payload
-     *
-     * @return list<string>
-     */
-    private function orphanReservationBlockers(array $reservations, ?array $payload): array
-    {
-        if ([] === $reservations || null === $payload) {
-            return [];
-        }
-
-        // P3-19 — la grille (triplets servis) vient du MIROIR partagé : même clé que
-        // l'offre et la saturation, une seule normalisation d'heure.
-        $grid = $this->capacityMirror->gridKeys($payload);
-        $venueNames = [];
-        foreach (\is_array($payload['venues'] ?? null) ? $payload['venues'] : [] as $venue) {
-            if (\is_array($venue)) {
-                $venueNames[(string) ($venue['id'] ?? '')] = (string) ($venue['name'] ?? ($venue['id'] ?? ''));
-            }
-        }
-
-        // Les noms d'équipe ne sont chargés QUE s'il y a un orphelin à nommer : le cas
-        // normal (aucun) ne paie pas la requête.
-        $teamNames = [];
-        $blockers = [];
-        foreach ($reservations as $reservation) {
-            $key = $this->capacityMirror->key($reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getStartTime()->format('H:i'));
-            if (isset($grid[$key])) {
-                continue;
-            }
-            if ([] === $teamNames) {
-                foreach ($this->teamRepository->findBy(['clubId' => $reservation->getClubId(), 'seasonId' => $reservation->getSeasonId()]) as $team) {
-                    $teamNames[$team->getId()] = $team->getName();
-                }
-            }
-            $blockers[] = \sprintf(
-                'La réservation de %s à %s le %s à %s ne correspond à aucun créneau : ce créneau a été déplacé ou supprimé. Retirez-la depuis le récapitulatif, ou recréez le créneau.',
-                $teamNames[$reservation->getTeamId()] ?? 'cette équipe',
-                $venueNames[$reservation->getVenueId()] ?? 'ce gymnase',
-                self::DAY_NAMES[$reservation->getDayOfWeek()] ?? 'ce jour',
-                $reservation->getStartTime()->format('H:i'),
-            );
-        }
-
-        return $blockers;
-    }
-
     private function plural(int $count, string $singular, string $plural): string
     {
         return \sprintf('%d %s', $count, 1 === $count ? $singular : $plural);
@@ -538,29 +341,6 @@ final class ValidateConstraintsController extends AbstractController
         $id = \is_array($data) ? ($data['calendarEntryId'] ?? null) : null;
 
         return \is_string($id) && '' !== $id ? $id : null;
-    }
-
-    /**
-     * P2-14 — le gate ne recopie plus la sélection : il la DEMANDE à la source unique
-     * (`PeriodConstraintSelector`), la même que `buildForPeriodPlan`. Ce qui reste ici est
-     * l'habillage : transformer les drops en messages pour le gestionnaire.
-     *
-     * L'ORIGINE de chaque contrainte en vigueur : `true` = héritée du planning de saison
-     * (`calendarEntryId` NULL), `false` = posée pour une période. Nourrit les préventions pré-solve
-     * qui citent une contrainte (le payload, lui, ne porte pas l'origine).
-     *
-     * @param list<Constraint> $constraints
-     *
-     * @return array<string, bool>
-     */
-    private function constraintOrigins(array $constraints): array
-    {
-        $origins = [];
-        foreach ($constraints as $constraint) {
-            $origins[$constraint->getId()] = null === $constraint->getCalendarEntryId();
-        }
-
-        return $origins;
     }
 
     /**

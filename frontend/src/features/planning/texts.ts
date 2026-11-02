@@ -3,6 +3,12 @@
 // DiagnosticsPanel). Convention : clé camelCase par intention ; interpolation par fonctions typées.
 // Pas de lib i18n. JAMAIS en valeur : jour (→ shared/lib/days), heure/durée (→ time/duration),
 // marque (→ product), identifiant interne.
+import { dayLabelLong } from "@/shared/lib/days";
+
+import type { PlacedAbsence } from "./api";
+
+const frenchList = (items: string[]): string => (items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} et ${items.at(-1)}`);
+
 export const PLANNING_TEXTS = {
   heldBy: (coach: string) => `tenue par ${coach}`,
   lockWillBeLost: "Elle est verrouillée — le verrou sera perdu.",
@@ -77,4 +83,9 @@ export const PLANNING_TEXTS = {
   exportScreenFilteredPrefix: (count: number): string =>
     `L'écran est filtré (${count} ${1 === count ? "ressource" : "ressources"}), mais l'export porte sur`,
   exportScreenFilteredSuffix: " — le filtre d'affichage ne le restreint pas.",
+  absencesHeading: (count: number) => (1 === count ? "Une séance sans coach" : `${count} séances sans coach`),
+  absenceLine: (absence: PlacedAbsence) =>
+    `${frenchList(absence.coachNames)} ${1 === absence.coachNames.length ? "est indisponible" : "sont indisponibles"} le ${dayLabelLong(absence.dayOfWeek)} à ${absence.startTime} : personne pour tenir ${frenchList(absence.teamNames)} (${absence.venueName}).`,
+  fillBlocked: (reason: string) => `Le comblement n'a pas été lancé : ${reason}`,
+  seeRecap: "Voir le Récapitulatif",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

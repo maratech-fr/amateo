@@ -30,6 +30,7 @@ use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -54,6 +55,20 @@ final class ValidateConstraintsTest extends WebTestCase
     private User $user;
 
     private Season $season;
+
+    /** @return iterable<string, array{list<string>, string}> */
+    public static function absentAtStart(): iterable
+    {
+        yield 'un coach' => [['Anna'], 'Anna Dupont est indisponible le mardi à 17:00 : personne pour tenir %s, réservée à Matéo. La réservation gagne, la séance est maintenue. Déplacez la réservation, ou ajustez la disponibilité du coach.'];
+        yield 'deux coachs' => [['Anna', 'Ben'], 'Anna Dupont et Ben Dupont sont indisponibles le mardi à 17:00 : personne pour tenir %s, réservée à Matéo. La réservation gagne, la séance est maintenue. Déplacez la réservation, ou ajustez la disponibilité du coach.'];
+    }
+
+    /** @return iterable<string, array{list<string>, string}> */
+    public static function leavingDuring(): iterable
+    {
+        yield 'un coach' => [['Anna'], 'Anna Dupont part à 19:00 le mardi, pendant la séance de %s réservée à Matéo (18:00-19:30) : la séance est maintenue.'];
+        yield 'deux coachs' => [['Anna', 'Ben'], 'Anna Dupont et Ben Dupont partent à 19:00 le mardi, pendant la séance de %s réservée à Matéo (18:00-19:30) : la séance est maintenue.'];
+    }
 
     public function testCleanConstraintsAreValid(): void
     {
@@ -371,7 +386,7 @@ final class ValidateConstraintsTest extends WebTestCase
     {
         $warnings = implode(' | ', $this->validateSeasonCoachUnavailabilityForPeriod(CalendarEntryPeriodType::CLOSURE)['warnings']);
 
-        self::assertStringContainsString('malgré son indisponibilité', $warnings, 'en fermeture, la dispo coach héritée AVERTIT');
+        self::assertStringContainsString('personne pour tenir', $warnings, 'en fermeture, la dispo coach héritée AVERTIT');
         self::assertStringContainsString('Emerick', $warnings);
     }
 
@@ -772,6 +787,67 @@ final class ValidateConstraintsTest extends WebTestCase
         self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['notices']);
     }
 
+    /**
+     * Coach indisponible au DÉBUT d'une réservation : la phrase dit qui manque, ce qui reste et le geste possible. Liste complète
+     * des coachs bloqués. Jumeau voulu du bandeau du planning (`PlacedSessionPersonConflictDetectorTest`).
+     *
+     * @param list<string> $coaches
+     */
+    #[DataProvider('absentAtStart')]
+    public function testACoachAbsentAtTheStartOfAReservationIsSaid(array $coaches, string $expected): void
+    {
+        $venueId = $this->venue('Matéo');
+        $teamId = $this->team(sessionsPerWeek: 1);
+        $this->trainingSlot($venueId, dayOfWeek: 2, start: '17:00');
+        $this->reservation($teamId, $venueId, dayOfWeek: 2, start: '17:00');
+        foreach ($coaches as $firstName) {
+            $this->coachOff($this->mainCoach($teamId, $firstName), ['unavailableDays' => [2]]);
+        }
+
+        self::assertContains(\sprintf($expected, $this->teamName($teamId)), $this->validate()['warnings']);
+    }
+
+    /**
+     * Coach qui part PENDANT une réservation : jugée à son début, la séance a un coach, elle est maintenue. Une autre phrase,
+     * jamais « personne pour tenir », et le départ est dit au bon moment.
+     *
+     * @param list<string> $coaches
+     */
+    #[DataProvider('leavingDuring')]
+    public function testACoachLeavingDuringAReservationIsSaid(array $coaches, string $expected): void
+    {
+        $venueId = $this->venue('Matéo');
+        $teamId = $this->team(sessionsPerWeek: 1);
+        $this->trainingSlot($venueId, dayOfWeek: 2, start: '18:00');
+        $this->reservation($teamId, $venueId, dayOfWeek: 2, start: '18:00');
+        foreach ($coaches as $firstName) {
+            $this->coachOff($this->mainCoach($teamId, $firstName), ['unavailableDays' => [2], 'fromTime' => '19:00']);
+        }
+
+        $warnings = $this->validate()['warnings'];
+
+        self::assertContains(\sprintf($expected, $this->teamName($teamId)), $warnings);
+        self::assertSame([], array_values(array_filter($warnings, static fn (string $w): bool => str_contains($w, 'personne pour tenir'))));
+    }
+
+    /** Anna absente dès 17:00, Ben part à 19:00, Chloé à 19:15 : une phrase par heure de départ, et Anna n'y « part » pas. */
+    public function testEachDepartureHasItsOwnSentenceAndAnAbsentCoachDoesNotLeave(): void
+    {
+        $venueId = $this->venue('Matéo');
+        $teamId = $this->team(sessionsPerWeek: 1);
+        $this->trainingSlot($venueId, dayOfWeek: 2, start: '18:00');
+        $this->reservation($teamId, $venueId, dayOfWeek: 2, start: '18:00');
+        $this->coachOff($this->mainCoach($teamId, 'Anna'), ['unavailableDays' => [2], 'fromTime' => '17:00']);
+        $this->coachOff($this->mainCoach($teamId, 'Ben'), ['unavailableDays' => [2], 'fromTime' => '19:00']);
+        $this->coachOff($this->mainCoach($teamId, 'Chloe'), ['unavailableDays' => [2], 'fromTime' => '19:15']);
+        $team = $this->teamName($teamId);
+
+        self::assertContains(
+            \sprintf('Ben Dupont part à 19:00 le mardi, pendant la séance de %1$s réservée à Matéo (18:00-19:30) : la séance est maintenue. Chloe Dupont part à 19:15 le mardi, pendant la séance de %1$s réservée à Matéo (18:00-19:30) : la séance est maintenue.', $team),
+            $this->validate()['warnings'],
+        );
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -817,6 +893,28 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->em->persist($this->season);
 
         $this->em->flush();
+    }
+
+    /** @param array<string, mixed> $config */
+    private function coachOff(string $coachId, array $config): void
+    {
+        $constraint = new Constraint;
+        $constraint->setClubId($this->club->getId());
+        $constraint->setSeasonId($this->season->getId());
+        $constraint->setName('Indisponibilité');
+        $constraint->setScope(ConstraintScope::COACH);
+        $constraint->setScopeTargetId($coachId);
+        $constraint->setFamily(ConstraintFamily::COACH_AVAILABILITY);
+        $constraint->setRuleType(ConstraintRuleType::HARD);
+        $constraint->setConfig($config);
+        $constraint->setIsActive(true);
+        $this->em->persist($constraint);
+        $this->em->flush();
+    }
+
+    private function teamName(string $teamId): string
+    {
+        return (string) $this->em->getRepository(Team::class)->find($teamId)?->getName();
     }
 
     private function seedThreeMinimumsForTwoPlaces(string $venueName): void

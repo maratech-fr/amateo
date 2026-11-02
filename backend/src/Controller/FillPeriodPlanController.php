@@ -9,6 +9,7 @@ use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
 use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
+use App\Service\GenerationBlockersGuard;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
 use App\Service\OrphanPinGuard;
@@ -56,6 +57,7 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
 
     public function __construct(
         private readonly CoachInTwoPlacesGuard $coachInTwoPlacesGuard,
+        private readonly GenerationBlockersGuard $generationBlockersGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly MessageBusInterface $messageBus,
         private readonly RequestStack $requestStack,
@@ -148,12 +150,18 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         // grille de la période : on NOMME le problème plutôt que de le replacer en silence.
         $orphanPin = $this->orphanPinGuard->firstOrphanMessage($source);
         if (null !== $orphanPin) {
-            return $this->json(['error' => $orphanPin], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['error' => $orphanPin, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $coachInTwoPlaces = $this->coachInTwoPlacesGuard->firstConflictMessage($source);
         if (null !== $coachInTwoPlaces) {
-            return $this->json(['error' => $coachInTwoPlaces], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['error' => $coachInTwoPlaces, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // Ce que le Récap dit bloquant : refusé ici aussi, rien d'écrit (`blocker` : le front le reconnaît).
+        $blocker = $this->generationBlockersGuard->firstBlockerMessage($source, $source);
+        if (null !== $blocker) {
+            return $this->json(['error' => $blocker, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // Nouvelle version PENDING du MÊME plan (V+1), puis dispatch. Pas de copie de créneau : le

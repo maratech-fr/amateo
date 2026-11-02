@@ -141,6 +141,10 @@ def add_coach_unavailability_constraints(
         d'infaisabilité nomme la cause (patron ``_assume``/``_record_closure``).
     Hors bloc (relais vide) : la case reste fermée, comme une équipe seule sans aucun coach libre.
 
+    SÉANCE FIGÉE. Elle n'entre au relais de bloc que si tous les autres membres sont figés sur sa case.
+    Sinon elle est jugée seule : tous ses coachs indisponibles au début ne ferment rien, le verdict ne
+    tient pas pour infaisable un planning déjà là, l'écart est dit à l'écran. La pose libre ne change pas.
+
     La question « cette case a-t-elle un coach requis disponible pour cet ensemble d'équipes ? » a
     une seule maison (``..availability``) — réutilisée par le diagnostic de bloc (PR B).
     """
@@ -155,6 +159,7 @@ def add_coach_unavailability_constraints(
     case_bvars: Mapping[tuple[str, str], list[tuple[frozenset[str], Any]]] = (
         getattr(model, "shared_block_case_bvars", {}) or {}
     )
+    frozen_seats = {(str(a.team_id), str(a.venue_id), str(a.slot_id)) for a in assignments if a.fixed}
     added = 0
     for assignment in assignments:
         intrinsic = assignment.coach_unavailable
@@ -191,10 +196,12 @@ def add_coach_unavailability_constraints(
             # (le bloc emprunte le coach libre d'un autre membre). Pas de fermeture dure ; si aucun
             # bloc n'est actif sur la case, Σb = 0 ⇒ x = 0 (équivalent fermeture). Jamais pour une
             # indispo intrinsèque (drapeau legacy per-assignment, byte-identique).
-            relay_bvars = [] if intrinsic else _relay_block_vars(assignment, case_bvars)
+            relay_bvars = [] if intrinsic else _relay_block_vars(assignment, case_bvars, frozen_seats)
             if relay_bvars:
                 model.Add(assignment.var <= sum(relay_bvars))
                 added += 1
+                continue
+            if assignment.fixed and not intrinsic:
                 continue
             # P4-96 — hypothèque la fermeture sur la littérale de la (première) règle d'indispo qui
             # la provoque ; toutes les fermetures d'une même règle PARTAGENT sa littérale, son nom
@@ -267,15 +274,20 @@ def _measured_cut(source: Mapping[str, Any], day: int | None, start: int | None,
 def _relay_block_vars(
     assignment: AssignmentVariable,
     case_bvars: Mapping[tuple[str, str], list[tuple[frozenset[str], Any]]],
+    frozen_seats: set[tuple[str, str, str]],
 ) -> list[Any]:
     """Les variables de décision ``b`` des blocs qui CONTIENNENT l'équipe de ``assignment`` sur SA
     case ``(venue, slot_id)``. Vide si l'équipe n'est membre d'aucun bloc présent sur cette case
-    (chemin solo, byte-identique)."""
+    (chemin solo, byte-identique). Séance figée : seulement les blocs dont tous les membres y sont figés."""
     if not case_bvars:
         return []
-    key = (str(assignment.venue_id), str(assignment.slot_id))
+    venue, slot = str(assignment.venue_id), str(assignment.slot_id)
     team = str(assignment.team_id)
-    return [b for members, b in case_bvars.get(key, ()) if team in members]
+    return [
+        b
+        for members, b in case_bvars.get((venue, slot), ())
+        if team in members and (not assignment.fixed or all((m, venue, slot) in frozen_seats for m in members))
+    ]
 
 
 def _close_coachless_block_cases(

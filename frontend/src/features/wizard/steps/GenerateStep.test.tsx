@@ -22,6 +22,8 @@ const h = {
   schedulesLoading: false,
   // La liste des versions (bug fondateur 2026-08-19 — `showPlanning` en dérive en période).
   schedules: [] as StubSchedule[],
+  // Les blocages du Récap, tels que la porte les lit.
+  recapErrors: [] as string[],
   setSelected: vi.fn(),
   // AUD-FRT-09 — spy STABLE : le harnais en recréait un à chaque rendu, donc l'argument
   // du lancement était inobservable. On ne pouvait pas voir ce que l'écran demandait.
@@ -53,7 +55,7 @@ vi.mock("@/features/planning/GenerationWaiting", () => ({ GenerationWaiting: () 
 vi.mock("@/features/planning/GenerationServiceDown", () => ({ GenerationServiceDown: (props: { scheduleId?: string | null }) => <div data-testid="service-down" data-schedule={props.scheduleId ?? ""} /> }));
 // P2-44 — errorMessage mocké pour un motif SERVI observable (le 409 socle non pointé s'affiche).
 vi.mock("@/shared/lib/errorMessage", () => ({ errorMessage: async (e: unknown) => (e as { reason?: string }).reason ?? "Une erreur est survenue" }));
-vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => ({ errors: [], warnings: [], pending: false }) }));
+vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => ({ errors: h.recapErrors, warnings: [], pending: false }) }));
 vi.mock("../store", () => ({ useWizardStore: () => ({ mode: h.mode, calendarEntryId: h.entryId }) }));
 vi.mock("../queries", () => ({
   // Le lancement rend un id → le composant poll useScheduleStatus, que le
@@ -64,6 +66,7 @@ vi.mock("../queries", () => ({
   useTranscribeFromSocle: () => ({ isPending: false, mutateAsync: h.transcribe, reset: vi.fn() }),
 }));
 
+import { WIZARD_TEXTS } from "../texts";
 import { GenerateStep } from "./GenerateStep";
 
 function renderStep() {
@@ -80,6 +83,7 @@ function renderStep() {
 // les champs qu'ils ne touchent pas, pour tout cas d'ordre d'exécution).
 beforeEach(() => {
   h.status = null;
+  h.recapErrors = [];
   h.diagnostics = [];
   h.diagLoading = false;
   h.mode = "season";
@@ -572,5 +576,24 @@ describe("GenerateStep — aiguillage panne du service vs planning infaisable (P
 
     expect(screen.queryByTestId("service-down")).not.toBeInTheDocument();
     expect(screen.getByText(/n'a pas abouti/)).toBeInTheDocument();
+  });
+});
+
+/** Promesse : un bouton de génération grisé dit pourquoi, au clavier aussi (le `disabled` seul se tait). */
+describe("GenerateStep — porte fermée par un blocage du Récap", () => {
+  it("le bouton est désactivé et dit la raison", () => {
+    h.recapErrors = ["Groupe U15, U13 : aucun créneau."];
+    renderStep();
+
+    expect(screen.getByRole("button", { name: /Lancer la génération/ })).toBeDisabled();
+    expect(WIZARD_TEXTS.generationBlocked).toBe("Des conditions bloquent la génération");
+    expect(screen.getByText(WIZARD_TEXTS.generationBlocked)).toBeInTheDocument();
+  });
+
+  it("témoin : sans blocage, ni raison ni bouton grisé", () => {
+    renderStep();
+
+    expect(screen.getByRole("button", { name: /Lancer la génération/ })).toBeEnabled();
+    expect(screen.queryByText("Des conditions bloquent la génération")).not.toBeInTheDocument();
   });
 });

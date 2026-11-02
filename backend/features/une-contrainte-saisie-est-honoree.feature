@@ -16,3 +16,9 @@ Fonctionnalité: Ce que le gestionnaire saisit, le planning le respecte
     Et un entraînement mutualisé qu'aucun créneau ne peut accueillir
     Quand je génère le planning de saison
     Alors la génération échoue avec un diagnostic nommé, sans planning produit
+
+  Scénario: Un groupe sans coach disponible est refusé avant le moteur, motif nommé
+    Étant donné le club de démonstration, connecté, dont le planning de saison est rouvert
+    Et un entraînement mutualisé dont aucun coach n'est jamais disponible
+    Quand je tente de générer le planning de saison
+    Alors la génération est refusée sans partir au moteur, et le motif nomme le groupe

@@ -514,6 +514,89 @@ def test_moving_another_team_stays_accepted_after_unlocking_the_absent_group() -
     assert "baseline_infeasible" not in {v["rule"] for v in verdict["violations"]}
 
 
+# ── 2.2 bis Indisponible au DÉBUT sur le rail de l'existant : le planning reste jugeable ─────────────
+# Une séance figée passe au relais de bloc seulement si tous les autres membres sont figés sur sa case ; sinon elle
+# est jugée seule, et tous ses principaux indisponibles au début ne ferment rien. La pose libre ne change pas, témoins :
+# ``test_a_session_lost_to_a_whole_day_keeps_the_static_suggestions`` et ``test_one_coach_holds_the_session.py`` (vrai
+# conflit refusé). Jumeau voulu : ``Integration/PlacedSessionPersonConflictDetectorTest``, l'absence reste DITE à l'écran.
+
+
+def test_moving_another_team_stays_accepted_when_the_frozen_session_has_no_coach_at_its_start() -> None:
+    """U15 figée lundi, Anna absente tout le lundi : U13 se déplace, le verdict ne répond pas « déjà infaisable »."""
+    verdict = _verdict([_frozen("U15", "V", MONDAY)], _frozen("U13", "W", TUESDAY), WEDNESDAY, _anna_off())
+
+    assert verdict["valid"] is True, verdict["violations"]
+
+
+@pytest.mark.parametrize("session", [_frozen, _locked], ids=["libre", "verrouillee"])
+def test_moving_another_team_stays_accepted_when_both_main_coaches_are_absent(session: Any) -> None:
+    """Les deux principaux de U15 absents : « tous bloqués au début » vaut pour une séance figée comme verrouillée."""
+    verdict = _verdict(
+        [session("U15", "V", MONDAY)],
+        _frozen("U13", "W", TUESDAY),
+        WEDNESDAY,
+        _anna_off(),
+        _anna_off(coach_id="ben"),
+        coaches_of_u15=("anna", "ben"),
+    )
+
+    assert verdict["valid"] is True, verdict["violations"]
+
+
+def _verdict_around_a_group(frozen: list[dict[str, Any]], *off: dict[str, Any]) -> dict[str, Any]:
+    """C passe de mardi à mercredi sur un planning où U15 (Anna) et U13 (Bob) forment un groupe à une séance commune."""
+    bob = {"id": "bob", "firstName": "Bob", "lastName": "Roy", "isEmployee": False}
+    payload = make_payload(
+        teams=[make_team("U15", sessions_per_week=2), make_team("U13"), make_team("R"), make_team("C")],
+        venues=[
+            make_venue("V", [(MONDAY, "18:00"), (TUESDAY, "18:00"), (WEDNESDAY, "18:00")], capacity=2),
+            make_venue("W", [(MONDAY, "18:00"), (TUESDAY, "18:00"), (WEDNESDAY, "18:00")], capacity=2),
+        ],
+        coaches=[*_coaches(), bob],
+        constraints=[
+            team_coach("tc-u15", "U15", "anna"),
+            team_coach("tc-u13", "U13", "bob"),
+            team_coach("tc-r", "R", "bob"),
+            *off,
+        ],
+        slot_templates=frozen,
+        timeout=5,
+    )
+    payload["sharedBlocks"] = [{"id": "g", "teamIds": ["U15", "U13"], "commonSessions": 1}]
+    return validate_assignment(
+        ValidateAssignmentsInputSchema.model_validate(
+            as_validate_payload(
+                {**payload, "candidate": _case("C", "W", WEDNESDAY), "reference": _case("C", "W", TUESDAY)}
+            )
+        )
+    )
+
+
+def test_a_member_frozen_alone_on_a_case_is_judged_alone_not_relayed_by_its_group() -> None:
+    """U15 figée SEULE lundi, Anna absente : aucun partenaire sur la case pour la relayer, le groupe tient sa séance
+    commune mardi. La séance du lundi reste et ne rend pas la base infaisable."""
+    frozen = [
+        _frozen("U15", "V", TUESDAY),
+        _frozen("U13", "V", TUESDAY),
+        {**_frozen("U15", "V", MONDAY), "id": "frozen-U15-lundi"},
+    ]
+
+    assert _verdict_around_a_group(frozen)["valid"] is True, "témoin : sans l'absence, le décor est accepté"
+    verdict = _verdict_around_a_group(frozen, _anna_off())
+
+    assert verdict["valid"] is True, verdict["violations"]
+
+
+def test_a_group_frozen_together_stays_judgeable_when_its_other_coach_is_reserved_elsewhere() -> None:
+    """U15 + U13 figées ensemble lundi, Anna absente, Bob pris par une réservation HARD à la même heure : personne ne
+    tient le groupe, c'est un écart déjà là, le geste sur une autre équipe n'est pas refusé pour autant."""
+    frozen = [_frozen("U15", "V", MONDAY), _frozen("U13", "V", MONDAY), _locked("R", "W", MONDAY)]
+
+    verdict = _verdict_around_a_group(frozen, _anna_off())
+
+    assert verdict["valid"] is True, verdict["violations"]
+
+
 # ── 2.3 Candidat d'un déplacement : le refus dit quand le coach manque ───────────────────────────────
 
 

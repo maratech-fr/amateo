@@ -900,6 +900,7 @@ export async function validateConstraints(calendarEntryId?: string): Promise<Val
  *  ressortait dans la liste des plannings et le nom du fichier exporté. */
 export const createSchedule = (schedulePlanId?: string): Promise<{ id: string }> =>
   api.post("schedules", { json: { status: "DRAFT", ...(schedulePlanId ? { schedulePlanId } : {}) } }).json();
+export const deleteSchedule = (id: string): Promise<void> => api.delete(`schedules/${id}`).then(() => undefined);
 export const generateSchedule = (id: string): Promise<unknown> => api.post(`schedules/${id}/generate`).json();
 
 // --- P2-44 : transcription depuis le socle (ADR-0004) ---

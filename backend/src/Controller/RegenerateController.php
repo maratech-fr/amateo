@@ -9,6 +9,7 @@ use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
 use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
+use App\Service\GenerationBlockersGuard;
 use App\Service\GenerationComplexityGuard;
 use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
@@ -45,6 +46,7 @@ final class RegenerateController extends AbstractController implements SeasonSco
 
     public function __construct(
         private readonly CoachInTwoPlacesGuard $coachInTwoPlacesGuard,
+        private readonly GenerationBlockersGuard $generationBlockersGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly MessageBusInterface $messageBus,
         private readonly RequestStack $requestStack,
@@ -127,7 +129,13 @@ final class RegenerateController extends AbstractController implements SeasonSco
 
         $coachInTwoPlaces = $this->coachInTwoPlacesGuard->firstConflictMessage($source);
         if (null !== $coachInTwoPlaces) {
-            return $this->json(['error' => $coachInTwoPlaces], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['error' => $coachInTwoPlaces, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // Ce que le Récap dit bloquant : refusé ici aussi, rien d'écrit (`blocker` : le front le reconnaît).
+        $blocker = $this->generationBlockersGuard->firstBlockerMessage($source);
+        if (null !== $blocker) {
+            return $this->json(['error' => $blocker, 'blocker' => true], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // New PENDING version, then dispatch (a dispatch failure only strands a

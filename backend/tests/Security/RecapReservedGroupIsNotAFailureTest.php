@@ -87,13 +87,15 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
     }
 
     /**
-     * @param array{warnings: list<string>} $body
+     * Blocages et alertes réunis : le groupe qui reste à poser sans coach est un blocage, le silence se prouve sur les deux.
+     *
+     * @param array{warnings: list<string>, blockers?: list<string>} $body
      *
      * @return list<string>
      */
     private function groupWarnings(array $body): array
     {
-        return array_values(array_filter($body['warnings'], static fn (string $w): bool => str_starts_with($w, 'Groupe')));
+        return array_values(array_filter([...$body['warnings'], ...$body['blockers'] ?? []], static fn (string $w): bool => str_starts_with($w, 'Groupe')));
     }
 
     /**
@@ -163,7 +165,8 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
             'HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($user),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['calendarEntryId' => $entry->getId()], \JSON_THROW_ON_ERROR));
-        self::assertResponseIsSuccessful();
+        // 422 quand le Récap bloque (groupe inservable) : le corps reste le verdict.
+        self::assertContains($this->client->getResponse()->getStatusCode(), [200, 422]);
 
         /* @var array{warnings: list<string>} */
         return json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
