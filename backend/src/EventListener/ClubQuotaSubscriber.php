@@ -47,9 +47,12 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
 
     private const string EXPORT_PDF_ROUTE = 'export_pdf';
 
+    private const string MATCHES_EXPORT_ROUTE = 'api_fixtures_export_pdf';
+
     public function __construct(
         private readonly RateLimiterFactory $scheduleGenerationLimiter,
         private readonly RateLimiterFactory $schedulePdfExportLimiter,
+        private readonly RateLimiterFactory $fixturesPdfExportLimiter,
     ) {}
 
     /** @return array<string, array{0: string, 1: int}> */
@@ -70,6 +73,7 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
         $limiter = match (true) {
             \in_array($route, self::SOLVE_ROUTES, true) => $this->scheduleGenerationLimiter,
             self::EXPORT_PDF_ROUTE === $route => $this->schedulePdfExportLimiter,
+            self::MATCHES_EXPORT_ROUTE === $route => $this->fixturesPdfExportLimiter,
             default => null,
         };
 

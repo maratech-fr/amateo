@@ -48,6 +48,16 @@ final class ExportContext extends BaseContext
 
     private int $unauthStatus = 0;
 
+    private string $fixtureId = '';
+
+    private string $matchDate = '';
+
+    private int $matchesStatus = 0;
+
+    private string $matchesContentType = '';
+
+    private string $matchesBytes = '';
+
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
     {
@@ -168,6 +178,67 @@ final class ExportContext extends BaseContext
         if (!\in_array($this->unauthStatus, [401, 403], true)) {
             throw new RuntimeException(\sprintf('l\'export sans session aurait dû être refusé (401/403), obtenu %d', $this->unauthStatus));
         }
+    }
+
+    #[Given('un match amical de mon club dans la plage exportée')]
+    public function unMatchAmicalDansLaPlage(): void
+    {
+        // Une équipe de la saison en cours et une date de cette saison : le scénario crée ce qu'il vérifie.
+        $row = $this->dbalScalar(
+            \sprintf('SELECT t.id || \'|\' || LEAST(GREATEST(CURRENT_DATE + 7, s.start_date), s.end_date) AS behatval FROM team t JOIN season s ON s.id=t.season_id WHERE t.club_id=\'%s\' AND CURRENT_DATE BETWEEN s.start_date AND s.end_date LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        [$teamId, $date] = array_pad(explode('|', $row), 2, '');
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $teamId) || 1 !== preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            throw new RuntimeException('aucune équipe dans la saison en cours — la base est-elle seedée ?');
+        }
+        $this->matchDate = $date;
+
+        $created = $this->apiPost('fixtures', ['teamId' => $teamId, 'matchDate' => $date, 'homeAway' => 'AWAY', 'opponentLabel' => 'Export Parents Jetable'], $this->token);
+        $fixtureId = $created['json']['id'] ?? null;
+        if (!\is_string($fixtureId) || '' === $fixtureId) {
+            throw new RuntimeException(\sprintf('la création du match a répondu %d', $created['status']));
+        }
+        $this->fixtureId = $fixtureId;
+    }
+
+    #[When('j\'exporte les matchs de cette plage')]
+    public function jExporteLesMatchs(): void
+    {
+        $response = $this->client->request('POST', $this->renderOrigin() . '/api/fixtures/export-pdf', [
+            'headers' => ['Authorization' => 'Bearer ' . $this->token],
+            'json' => ['from' => $this->matchDate, 'to' => $this->matchDate, 'teamId' => null],
+            // Le rendu Puppeteer est synchrone sur ce rail : le délai du client couvre les 30 s du worker.
+            'timeout' => 60,
+        ]);
+        $this->matchesStatus = $response->getStatusCode();
+        $this->matchesContentType = $response->getHeaders(false)['content-type'][0] ?? '';
+        $this->matchesBytes = $response->getContent(false);
+    }
+
+    #[Then('je repars avec le PDF des matchs')]
+    public function jeReparsAvecLePdfDesMatchs(): void
+    {
+        if (200 !== $this->matchesStatus) {
+            throw new RuntimeException(\sprintf('l\'export des matchs a répondu %d (200 attendu)', $this->matchesStatus));
+        }
+        if (!str_contains($this->matchesContentType, 'application/pdf')) {
+            throw new RuntimeException(\sprintf('l\'export des matchs n\'est pas servi comme un PDF (type « %s »)', $this->matchesContentType));
+        }
+        if (!str_starts_with($this->matchesBytes, '%PDF')) {
+            throw new RuntimeException('l\'export des matchs ne porte pas l\'entête d\'un PDF (« %PDF »)');
+        }
+    }
+
+    /** Retire le match créé par le scénario — quoi qu'il arrive. */
+    #[AfterScenario]
+    public function retirerLeMatchJetable(): void
+    {
+        if ('' === $this->fixtureId) {
+            return;
+        }
+        $this->apiDelete(\sprintf('fixtures/%s', $this->fixtureId), $this->token);
+        $this->fixtureId = '';
     }
 
     /**

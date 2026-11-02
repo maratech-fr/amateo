@@ -1,0 +1,21 @@
+/** Textes de l'export des matchs pour les parents : le bouton du Calendrier et sa fenêtre. */
+export const MATCHES_EXPORT_TEXTS = {
+  exportButton: "Exporter",
+  dialogTitle: "Exporter les matchs",
+  scopeLabel: "Équipes",
+  scopeClub: "Tout le club",
+  scopeTeam: "Une équipe",
+  teamLabel: "Équipe",
+  teamPlaceholder: "Choisissez une équipe",
+  fromLabel: "Du",
+  toLabel: "Au",
+  fixedNote: "Un lieu n'apparaît que si le gymnase est choisi sur le match ou apparié dans l'onglet Adversaires. Un trajet non calculé n'apparaît pas.",
+  creditNotice: "Cet export utilise 1 crédit gratuit.",
+  creditsExhausted: "Vos crédits gratuits sont épuisés.",
+  rangeError: "Choisissez une date de fin postérieure ou égale à la date de début.",
+  downloadButton: "Télécharger le PDF",
+  downloading: "Téléchargement…",
+  cancel: "Annuler",
+  generationFailed: "Le document n'a pas pu être généré. Réessayez dans un instant.",
+  timedOut: "Le document met trop de temps à se générer. Réessayez dans un instant.",
+} as const satisfies Record<string, string | ((...args: never[]) => string)>;

@@ -90,6 +90,33 @@ final class PlanEntitlementsTest extends WebTestCase
         // Revue sécu PR B : sans cette route dans le pool, le mur PDF se contournait
         // par le second bouton d'export (même livrable en tableur).
         self::assertSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/export-xlsx'), 'exporter un XLSX sans crédit doit être refusé');
+        // Même livrable de sortie : sans cette route dans le pool, l'export des matchs contournerait le mur.
+        self::assertSame(403, $this->post($ctx['user'], '/api/fixtures/export-pdf'), 'exporter les matchs sans crédit doit être refusé');
+    }
+
+    /** L'export des matchs consomme le pool commun au succès seulement : un refus 422 ne brûle rien. */
+    public function testMatchesExportDecrementsOnSuccessOnly(): void
+    {
+        $ctx = $this->seedClub(credits: 0);
+
+        $this->fireResponse($ctx, 'api_fixtures_export_pdf', 422);
+        self::assertSame(0, $this->creditsOf($ctx['club']->getId()), 'une plage refusée ne décompte rien');
+
+        $this->fireResponse($ctx, 'api_fixtures_export_pdf', 502);
+        self::assertSame(0, $this->creditsOf($ctx['club']->getId()), 'une panne du worker ne décompte rien');
+
+        $this->fireResponse($ctx, 'api_fixtures_export_pdf', 200);
+        self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'le PDF livré décompte un crédit');
+    }
+
+    /** Pool partagé : le dernier crédit pris par un export de matchs ferme aussi la génération. */
+    public function testMatchesExportDrawsFromTheSharedPool(): void
+    {
+        $ctx = $this->seedClub(credits: 9);
+
+        $this->fireResponse($ctx, 'api_fixtures_export_pdf', 200);
+
+        self::assertSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'le crédit consommé par l\'export manque à la génération');
     }
 
     /**

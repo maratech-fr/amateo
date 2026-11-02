@@ -50,7 +50,7 @@ backend/
 │   ├── AdminJob/             # Catalogue + exécution des jobs planifiés de la console superadmin (SA3)
 │   ├── Clock/                # ClubClock (horloge PAR CLUB, décore `clock`) + DevClockStore (Redis)/SimulatedClock — horloge dev globale (§3 Module démo)
 │   ├── Seed/                 # BcclSeeder + BcclSeedProfile (club de démo permanent)
-│   ├── Export/                # ScheduleExportData(Provider) — table plate consommée par l'export Excel/PDF
+│   ├── Export/                # ScheduleExportData(Provider) — table plate consommée par l'export Excel/PDF ; MatchesExportData(Provider)/Row/Place/TeamSection — la liste des matchs pour les parents (`POST /api/fixtures/export-pdf`, `ExportMatchesPdfController`, rendu `Service/MatchesPdfGenerator` via `PdfGenerator::renderDocument`, dates `Support/FrenchDate`, lieu extérieur `OpponentTravelProjection::linkedPlaceByFixtureId` ; limiteur `fixtures_pdf_export`) — détail : `specs/courantes/module-matchs-consultation.md` § Export des matchs
 │   ├── OpenApi/               # CustomRoutesOpenApiFactory (composeur) + PathContributor/ (un par domaine, §3)
 │   └── DataFixtures/         # Assets seedés (`assets/` — logo BCCL) ; aucune fixture Doctrine
 ├── config/

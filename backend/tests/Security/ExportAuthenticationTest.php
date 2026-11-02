@@ -9,6 +9,7 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Service\PdfGenerator;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -19,11 +20,12 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * Chemin d'abus « export anonyme » (axe *auth & memberships*, charte des parcours §5) : les DEUX
- * routes d'export d'un planning — `POST /api/schedules/{id}/export-pdf` (rail async) ET
- * `/export-xlsx` (rail sync) — sont derrière le firewall JWT. Demander l'export SANS session est
- * refusé 401, ET rien n'est enfilé : le planning visé n'est pas mis en file (son
- * `pdfExportStatus` ne passe JAMAIS à « pending »).
+ * Chemin d'abus « export anonyme » (axe *auth & memberships*, charte des parcours §5) : les TROIS
+ * routes d'export — `POST /api/schedules/{id}/export-pdf` (rail async), `/export-xlsx` (rail sync)
+ * et `POST /api/fixtures/export-pdf` (les matchs pour les parents, rail sync) — sont derrière le
+ * firewall JWT. Demander l'export SANS session est refusé 401, ET rien n'est produit : le planning
+ * visé n'est pas mis en file (son `pdfExportStatus` ne passe JAMAIS à « pending »), aucun fichier
+ * de matchs n'apparaît dans le répertoire de rendus.
  *
  * Témoin de falsification : les 401. Le firewall `access_control` catch-all `^/api →
  * IS_AUTHENTICATED_FULLY` (`config/packages/security.yaml`) court-circuite les deux contrôleurs
@@ -103,6 +105,24 @@ final class ExportAuthenticationTest extends WebTestCase
             (string) $this->client->getResponse()->getContent(),
             'rien n’est servi : une requête refusée ne doit jamais rendre les octets d’un PDF',
         );
+    }
+
+    /**
+     * La liste des matchs d'un club (dates, lieux) ne sort pas sans session : 401, et aucun fichier
+     * `matchs-*` n'est écrit. Témoin : le 401 — ouvrir la route en PUBLIC_ACCESS le fait tomber.
+     */
+    public function testTheMatchesExportIsRefusedWithoutSessionAndWritesNothing(): void
+    {
+        $before = glob(PdfGenerator::outputDir() . '/matchs-*') ?: [];
+
+        // Requête ANONYME : aucun cookie JWT ni Bearer n'est posé.
+        $this->client->request('POST', '/api/fixtures/export-pdf', [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], '{"from":"2026-11-09","to":"2026-11-15","teamId":null}');
+
+        self::assertResponseStatusCodeSame(401, 'l\'export des matchs sans session est refusé par le firewall JWT');
+        self::assertStringStartsNotWith('%PDF', (string) $this->client->getResponse()->getContent());
+        self::assertSame($before, glob(PdfGenerator::outputDir() . '/matchs-*') ?: [], 'une requête refusée n\'écrit aucun fichier');
     }
 
     protected function setUp(): void

@@ -34,6 +34,8 @@ final class PurgeExportsVerdictTest extends TestCase
 
     private const int CUTOFF = 1_000_000;
 
+    private const string MATCHES_RENDER = 'matchs-' . self::LIVE . '-' . self::GONE . '.pdf';
+
     public function testAnOrphanRenderIsRemovedEvenWhenRecent(): void
     {
         self::assertSame('orphan', $this->verdict(self::GONE, modifiedAt: self::CUTOFF + 5_000));
@@ -113,6 +115,33 @@ final class PurgeExportsVerdictTest extends TestCase
     {
         self::assertNull(PurgeExportsCommand::verdictFor('.gitignore', [], [], 0, self::CUTOFF));
         self::assertNull(PurgeExportsCommand::verdictFor('rapport-2026.pdf', [], [], 0, self::CUTOFF));
+    }
+
+    /**
+     * Export des matchs : le fichier se supprime dès la réponse, un survivant = un crash entre
+     * l'écriture et la réponse. Il ne reste pas 90 jours : passé 1 h il part, quel que soit le planning.
+     * Le 6ᵉ argument est la borne « 1 h » propre à ces fichiers.
+     */
+    public function testAnOrphanMatchesRenderExpiresAfterOneHour(): void
+    {
+        self::assertSame('expired', PurgeExportsCommand::verdictFor(self::MATCHES_RENDER, [], [], self::CUTOFF - 1, 0, self::CUTOFF));
+    }
+
+    public function testARecentMatchesRenderIsKept(): void
+    {
+        self::assertSame('keep', PurgeExportsCommand::verdictFor(self::MATCHES_RENDER, [], [], self::CUTOFF + 1, 0, self::CUTOFF));
+    }
+
+    /** Même défense que pour les rendus de planning : le motif refuse tout séparateur. */
+    public function testAMatchesNameCarryingATraversalIsNotARender(): void
+    {
+        self::assertNull(PurgeExportsCommand::verdictFor('matchs-' . self::GONE . '-../../etc/passwd.pdf', [], [], 0, 0, self::CUTOFF));
+    }
+
+    /** La borne d'1 h ne touche pas les rendus de planning : un rendu vivant vieux d'1 h reste. */
+    public function testTheOneHourBoundLeavesScheduleRendersAlone(): void
+    {
+        self::assertSame('keep', PurgeExportsCommand::verdictFor($this->renderName(self::LIVE), [self::LIVE => true], [], self::CUTOFF + 5_000, self::CUTOFF, self::CUTOFF + 9_000));
     }
 
     private function verdict(string $scheduleId, int $modifiedAt): ?string

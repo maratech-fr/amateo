@@ -10,6 +10,7 @@ use ApiPlatform\OpenApi\Model\Paths;
 use ApiPlatform\OpenApi\Model\Response;
 use App\OpenApi\CustomPathContributor;
 use App\OpenApi\OpenApiSchemas;
+use ArrayObject;
 
 /** Season-transition and fixture/match custom routes. */
 final readonly class SeasonAndFixturePaths implements CustomPathContributor
@@ -467,6 +468,33 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 'properties' => [
                     'from' => ['type' => 'string', 'format' => 'date', 'description' => 'First day of the window (AAAA-MM-JJ), inclusive'],
                     'to' => ['type' => 'string', 'format' => 'date', 'description' => 'Last day of the window (AAAA-MM-JJ), inclusive'],
+                ],
+            ]),
+        )));
+
+        $paths->addPath('/api/fixtures/export-pdf', new PathItem(post: new Operation(
+            operationId: 'exportFixturesPdf',
+            tags: ['Match'],
+            responses: [
+                '200' => new Response('The PDF list of matches for the requested range. Never cached; no file remains on the server.', new ArrayObject([
+                    'application/pdf' => ['schema' => ['type' => 'string', 'format' => 'binary']],
+                ])),
+                '400' => new Response('No club or no season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Free credits exhausted on the Découverte plan'),
+                '404' => new Response('Team not found in this club and season'),
+                '422' => new Response('Invalid range (a bound is not a date, or from is after to)'),
+                '429' => new Response('Club quota reached for this export'),
+                '502' => new Response('The PDF could not be rendered; no credit is consumed'),
+            ],
+            summary: 'Download the list of matches of one team or of the whole club, between two dates, with addresses and travel times',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'required' => ['from', 'to'],
+                'properties' => [
+                    'from' => ['type' => 'string', 'format' => 'date', 'description' => 'First day (AAAA-MM-JJ), inclusive'],
+                    'to' => ['type' => 'string', 'format' => 'date', 'description' => 'Last day (AAAA-MM-JJ), inclusive'],
+                    'teamId' => ['type' => 'string', 'nullable' => true, 'description' => 'One team; null = the whole club'],
                 ],
             ]),
         )));

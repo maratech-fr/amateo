@@ -194,6 +194,12 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'
+        # 60/h : la liste des matchs pour les parents, un PDF par équipe (25 équipes et des reprises).
+        # Seau à part : ces exports ne doivent pas manger celui du planning, ni l'inverse.
+        fixtures_pdf_export:
+            policy: 'sliding_window'
+            limit: 60
+            interval: '1 hour'
         rgpd_export:
             policy: 'sliding_window'
             limit: 10
@@ -244,6 +250,10 @@ when@dev:
                 limit: 200
                 interval: '1 hour'
             schedule_pdf_export:
+                policy: 'sliding_window'
+                limit: 200
+                interval: '1 hour'
+            fixtures_pdf_export:
                 policy: 'sliding_window'
                 limit: 200
                 interval: '1 hour'

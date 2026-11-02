@@ -1,12 +1,43 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { HTTPError, TimeoutError } from "ky";
 import { useState } from "react";
 
+import { downloadBlob } from "@/shared/lib/download";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { useMe } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CreateFixtureInput, Fixture, PlaceFixtureInput } from "./api";
 import * as matchesApi from "./api";
+import { MATCHES_EXPORT_TEXTS } from "./texts/export";
+
+/**
+ * Télécharge le PDF des matchs et relit le solde de crédits. Un 5xx ou un délai dépassé rendent un
+ * texte fixe (le corps d'un 5xx ne dit rien d'utile) ; un 4xx reprend le message du serveur.
+ */
+export function useExportFixturesPdf() {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ input }: { input: Parameters<typeof matchesApi.exportFixturesPdf>[0]; filename: string }) => matchesApi.exportFixturesPdf(input),
+    onSuccess: (blob, { filename }) => {
+      downloadBlob(blob, filename);
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (error) => {
+      if (error instanceof TimeoutError) {
+        toast.error(MATCHES_EXPORT_TEXTS.timedOut);
+      } else if (error instanceof HTTPError && error.response.status >= 500) {
+        toast.error(MATCHES_EXPORT_TEXTS.generationFailed);
+      } else {
+        void errorMessage(error).then((message) => toast.error(message));
+      }
+    },
+  });
+  return {
+    run: (input: Parameters<typeof matchesApi.exportFixturesPdf>[0], filename: string, onDone?: () => void): void => mutation.mutate({ input, filename }, { onSuccess: onDone }),
+    busy: mutation.isPending,
+  };
+}
 
 export function useFixtures() {
   return useQuery({ queryKey: ["fixtures"], queryFn: matchesApi.getFixtures, staleTime: 30_000 });

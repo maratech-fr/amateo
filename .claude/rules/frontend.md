@@ -264,7 +264,9 @@ paths:
   viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
   `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`, matchs `ConflictLine`, assistant
   `SlotReservationModal`/`ConstraintsStep`/`RecapStep`. Depuis (progressif, lot 5) : matchs
-  `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`, puis
+  `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`, matchs
+  `ExportMatchesDialog` (export des matchs pour les parents, née migrée dans
+  `features/matches/texts/export.ts`, `MATCHES_EXPORT_TEXTS`), puis
   (D4, 2026-10-26) wizard `TeamsStep`/`TeamLinksModal` — scindés dans leur propre
   `features/wizard/texts/teams.ts` (`TEAMS_TEXTS`) plutôt que le `texts.ts` commun de la feature
   (le volume de l'étape Équipes dépassait le seuil de scission). La

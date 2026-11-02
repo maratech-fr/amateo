@@ -12,6 +12,7 @@ import { renderWithProviders } from "@/test/utils";
 import * as matchesApi from "./api";
 import { CalendarPage } from "./CalendarPage";
 import { useMatchesStore } from "./store";
+import { MATCHES_EXPORT_TEXTS as EXPORT_TEXTS } from "./texts/export";
 
 // Sonde d'URL : le Calendrier re-synchronise l'URL depuis le store (effet d'écriture,
 // `replace`) ; on rend la page À CÔTÉ d'un lecteur de `location.search` pour l'observer.
@@ -1058,6 +1059,65 @@ describe("CalendarPage — mémoire de session des filtres Consulter", () => {
 });
 
 // ── Rail ASYNCHRONE du placement (ADR-0003) ────────────────────────────────────────
+describe("CalendarPage — export des matchs pour les parents", () => {
+  it("le bouton est offert au gestionnaire et ouvre la fenêtre", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+
+    await user.click(await screen.findByRole("button", { name: EXPORT_TEXTS.exportButton }));
+
+    expect(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle })).toBeInTheDocument();
+  });
+
+  // Décision fondateur : parité planning, tout membre exporte (au Calendrier, le reste est réservé).
+  it("le bouton est aussi offert à un membre", async () => {
+    meState.role = "member";
+    const user = userEvent.setup();
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+
+    await user.click(await screen.findByRole("button", { name: EXPORT_TEXTS.exportButton }));
+
+    expect(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle })).toBeInTheDocument();
+  });
+
+  it("la fenêtre reprend le week-end affiché : semaine du lundi au dimanche", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+
+    await user.click(await screen.findByRole("button", { name: EXPORT_TEXTS.exportButton }));
+    const dialog = within(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle }));
+
+    // Le jeu de données place ses matchs le week-end du samedi 03/10/2026.
+    expect(dialog.getByLabelText(EXPORT_TEXTS.fromLabel)).toHaveValue("2026-09-28");
+    expect(dialog.getByLabelText(EXPORT_TEXTS.toLabel)).toHaveValue("2026-10-04");
+  });
+
+  it("une seule équipe filtrée : la fenêtre s'ouvre sur elle", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    await screen.findByRole("button", { name: EXPORT_TEXTS.exportButton });
+    act(() => useMatchesStore.setState({ filterMode: "equipe", filterIds: ["team-1"] }));
+
+    await user.click(screen.getByRole("button", { name: EXPORT_TEXTS.exportButton }));
+    const dialog = within(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle }));
+
+    // Déclencheur de `TeamSelect` : nom accessible « Équipe + valeur choisie ».
+    expect(dialog.getByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) && name.includes("U13") })).toBeInTheDocument();
+  });
+
+  it("le filtre sur un coach ne présélectionne aucune équipe", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    await screen.findByRole("button", { name: EXPORT_TEXTS.exportButton });
+    act(() => useMatchesStore.setState({ filterMode: "coach", filterIds: ["coach-1"] }));
+
+    await user.click(screen.getByRole("button", { name: EXPORT_TEXTS.exportButton }));
+    const dialog = within(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle }));
+
+    expect(dialog.queryByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) })).not.toBeInTheDocument();
+  });
+});
+
 describe("CalendarPage — placement asynchrone (en cours · 2 min · échec · 409)", () => {
   const runningRun = { id: "run-1", status: "RUNNING" as const, createdAt: "2026-10-03T10:00:00+00:00", startedAt: null, finishedAt: null, result: null };
 

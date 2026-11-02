@@ -58,6 +58,14 @@ final class PurgeExportsCommand extends Command
      */
     private const string RENDER_PATTERN = '/^schedule-([0-9a-f-]{36})-[a-z0-9-]+\.pdf$/i';
 
+    /**
+     * `matchs-{clubId}-{uuid}.pdf` — la liste des matchs pour les parents. Le fichier part dès la
+     * réponse : un survivant est le reste d'un crash, il ne se rattache à aucun planning.
+     */
+    private const string MATCHES_RENDER_PATTERN = '/^matchs-[0-9a-f-]{36}-[0-9a-f-]{36}\.pdf$/i';
+
+    private const int MATCHES_RENDER_MAX_AGE_SECONDS = 3600;
+
     public function __construct(
         private readonly ManagerRegistry $managerRegistry,
     ) {
@@ -72,15 +80,19 @@ final class PurgeExportsCommand extends Command
      * Le test devenait un combat contre le harnais au lieu d'une preuve de la règle. Sortie
      * d'ici, elle se falsifie cas par cas (cf. `retryTarget.ts`, même journée, même leçon).
      *
-     * `null` = ce fichier n'est pas un rendu, on passe.
+     * `null` = ce fichier n'est pas un rendu, on passe. `$matchesCutoff` borne les seuls `matchs-*`.
      *
      * @param array<string, true> $knownScheduleIds
      * @param array<string, true> $pinnedUrls
      *
      * @return 'keep'|'orphan'|'expired'|null
      */
-    public static function verdictFor(string $name, array $knownScheduleIds, array $pinnedUrls, int $modifiedAt, int $cutoff): ?string
+    public static function verdictFor(string $name, array $knownScheduleIds, array $pinnedUrls, int $modifiedAt, int $cutoff, int $matchesCutoff = 0): ?string
     {
+        if (1 === preg_match(self::MATCHES_RENDER_PATTERN, $name)) {
+            return $modifiedAt < $matchesCutoff ? 'expired' : 'keep';
+        }
+
         if (1 !== preg_match(self::RENDER_PATTERN, $name, $matches)) {
             return null;
         }
@@ -145,13 +157,14 @@ final class PurgeExportsCommand extends Command
         $pinnedUrls = array_fill_keys($pinnedRows, true);
 
         $cutoff = new DateTimeImmutable(\sprintf('-%d days', $days))->getTimestamp();
+        $matchesCutoff = time() - self::MATCHES_RENDER_MAX_AGE_SECONDS;
         $orphans = 0;
         $expired = 0;
         $kept = 0;
 
         foreach ((array) scandir($directory) as $entry) {
             $name = (string) $entry;
-            $verdict = self::verdictFor($name, $knownScheduleIds, $pinnedUrls, (int) @filemtime($directory . '/' . $name), $cutoff);
+            $verdict = self::verdictFor($name, $knownScheduleIds, $pinnedUrls, (int) @filemtime($directory . '/' . $name), $cutoff, $matchesCutoff);
             if (null === $verdict) {
                 continue;
             }

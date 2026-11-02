@@ -51,6 +51,7 @@ final class CreditBudgetSubscriber implements EventSubscriberInterface
         'export_xlsx',              // POST /api/schedules/{id}/export-xlsx — même livrable que le
         // PDF : l'exempter contournerait le mur par le 2ᵉ bouton
         // d'export (revue sécu PR B, décision fondateur 2026-08-10)
+        'api_fixtures_export_pdf',  // POST /api/fixtures/export-pdf — la liste des matchs, même pool
     ];
 
     /**
@@ -66,6 +67,7 @@ final class CreditBudgetSubscriber implements EventSubscriberInterface
         'api_schedule_regenerate',
         'export_pdf',
         'export_xlsx',
+        'api_fixtures_export_pdf',
     ];
 
     public function __construct(

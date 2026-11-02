@@ -6,21 +6,32 @@ namespace App\Tests\Security;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\Season;
+use App\Entity\Team;
 use App\Entity\User;
+use App\Enum\FixtureHomeAway;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Service\BrandAssets;
 use App\Service\PdfGenerator;
+use App\Service\ProductIdentity;
 use App\Service\SchedulePlanProvisioner;
+use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
+use ArrayObject;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use ReflectionClass;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * P4-357 — NR d'axe *tenant isolation* (§7.1). Le rendu PDF d'un planning ne se télécharge plus
@@ -45,6 +56,11 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * `Security/ExportAuthenticationTest::testTheRenderedPdfIsNotServedWithoutASession` couvre le refus
  * 401 de la MÊME route pour un anonyme ; ici on couvre le refus 404 CROSS-TENANT d'un club
  * authentifié et la robustesse du nom de fichier — deux abus distincts du même chemin.
+ *
+ * Export des matchs (`POST /api/fixtures/export-pdf`, troisième route d'export) : même promesse.
+ * Une équipe d'un autre club se voit refuser par un 404 identique à celui d'une équipe inconnue, et
+ * l'export « tout le club » ne contient jamais un match d'un autre club. Témoin : le propriétaire
+ * obtient son PDF (200). Angle voisin, cité : `ExportMatchesTest::testAnUnknownTeamIs404`.
  *
  * ⚠ Ce test LIT et ÉCRIT dans le répertoire de rendus réel via l'accesseur
  * `PdfGenerator::outputDir()` (jamais une constante recopiée) : il suit le déplacement du
@@ -147,6 +163,50 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
         );
     }
 
+    /**
+     * Une équipe d'un autre club : 404 identique à une équipe inconnue, aucune divulgation
+     * d'existence. Son match n'apparaît pas non plus dans l'export « tout le club » du voisin.
+     */
+    public function testAnotherClubsTeamIsIndistinguishableFromAnUnknownOneInTheMatchesExport(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->seedClub('mat-a');
+        $teamAId = $this->seedTeamWithMatch($clubA, $seasonA, 'Adversaire du club A');
+        [$clubB, $userB, $seasonB] = $this->seedClub('mat-b');
+        $this->seedTeamWithMatch($clubB, $seasonB, 'Adversaire du club B');
+        $tokenA = self::getContainer()->get(JWTTokenManagerInterface::class)->create($userA);
+        $tokenB = self::getContainer()->get(JWTTokenManagerInterface::class)->create($userB);
+        $htmlSeen = new ArrayObject;
+        $this->em->clear();
+
+        $range = ['from' => $seasonA->getStartDate()->format('Y-m-d'), 'to' => $seasonA->getEndDate()->format('Y-m-d')];
+
+        // Témoin : sur SA propre équipe, le propriétaire obtient son PDF.
+        $this->postMatchesExport($htmlSeen, $tokenA, $range + ['teamId' => $teamAId]);
+        self::assertResponseStatusCodeSame(200, 'le club exporte les matchs de sa propre équipe');
+
+        // Club B, équipe du club A → 404, identique à une équipe inconnue.
+        $this->postMatchesExport($htmlSeen, $tokenB, $range + ['teamId' => $teamAId]);
+        self::assertResponseStatusCodeSame(404, 'une équipe d\'un autre club ne s\'exporte pas');
+        $crossTenantBody = (string) $this->client->getResponse()->getContent();
+
+        $this->postMatchesExport($htmlSeen, $tokenB, $range + ['teamId' => $this->uuid()]);
+        self::assertResponseStatusCodeSame(404, 'une équipe inconnue → 404');
+
+        self::assertSame(
+            $this->withoutDebugTrace($crossTenantBody),
+            $this->withoutDebugTrace((string) $this->client->getResponse()->getContent()),
+            'le 404 cross-tenant doit être byte-identique à celui d\'une équipe inconnue',
+        );
+
+        // Export « tout le club » du club B : le match du club A n'y est pas.
+        $htmlSeen->exchangeArray([]);
+        $this->postMatchesExport($htmlSeen, $tokenB, $range + ['teamId' => null]);
+        self::assertResponseStatusCodeSame(200);
+        $html = (string) ($htmlSeen[0] ?? '');
+        self::assertStringContainsString('Adversaire du club B', $html);
+        self::assertStringNotContainsString('Adversaire du club A', $html, 'aucun match d\'un autre club dans le document');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -160,6 +220,83 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
         }
         $this->writtenFiles = [];
         parent::tearDown();
+    }
+
+    /**
+     * Le worker est doublé : il écrit le fichier demandé et consigne le HTML reçu.
+     *
+     * @param ArrayObject<int, string> $htmlSeen
+     */
+    private function doubleTheWorker(ArrayObject $htmlSeen): void
+    {
+        $reflection = new ReflectionClass(PdfGenerator::class);
+        $pdf = $reflection->newInstanceWithoutConstructor();
+        $reflection->getProperty('httpClient')->setValue($pdf, new MockHttpClient(function (string $method, string $url, array $options) use ($htmlSeen): ResponseInterface {
+            $payload = json_decode((string) $options['body'], true);
+            \assert(\is_array($payload));
+            $htmlSeen[] = (string) $payload['html'];
+            $this->writeRender((string) $payload['filename']);
+
+            return new MockResponse((string) json_encode(['success' => true]));
+        }));
+        $reflection->getProperty('brandAssets')->setValue($pdf, new BrandAssets);
+        $reflection->getProperty('productIdentity')->setValue($pdf, new ProductIdentity(productName: 'Zephyr'));
+        self::getContainer()->set(PdfGenerator::class, $pdf);
+    }
+
+    /**
+     * Un kernel NEUF par requête, comme php-fpm en production. Un kernel gardé entre deux clubs ferait
+     * refuser le second à tort : le `tenant_filter` de l'EntityManager, posé pour le premier
+     * (`TenantFilterListener`), masquerait l'adhésion du second lors de la résolution de son club.
+     *
+     * @param ArrayObject<int, string>   $htmlSeen
+     * @param array<string, string|null> $body
+     */
+    private function postMatchesExport(ArrayObject $htmlSeen, string $token, array $body): void
+    {
+        self::ensureKernelShutdown();
+        $this->client = self::createClient();
+        $this->doubleTheWorker($htmlSeen);
+        $this->client->request('POST', '/api/fixtures/export-pdf', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+            'CONTENT_TYPE' => 'application/json',
+            'REMOTE_ADDR' => \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254)),
+        ], json_encode($body, \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Une équipe et son match, dans une saison recalée sur l'année courante : l'export lit la saison
+     * courante du club. Rend l'id de l'équipe.
+     */
+    private function seedTeamWithMatch(Club $club, Season $season, string $opponent): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $season->setName((string) $year);
+        $season->setStartDate(new DateTimeImmutable($year . '-08-01'));
+        $season->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'));
+
+        $team = (new Team)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setSportCategoryId('11111111-1111-4111-8111-111111111111')
+            ->setPriorityTierId(1)
+            ->setName('U13 M1')
+            ->setSessionsPerWeek(2)
+            ->setIsActive(true);
+        $this->em->persist($team);
+
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($team->getId());
+        $fixture->setMatchDate(new DateTimeImmutable($year . '-11-14'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel($opponent);
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $team->getId();
     }
 
     /** Écrit un rendu minimal mais valide (entête %PDF) dans le répertoire réel d'exports. */
