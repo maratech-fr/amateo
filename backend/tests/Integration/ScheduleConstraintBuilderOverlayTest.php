@@ -7,6 +7,8 @@ namespace App\Tests\Integration;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Coach;
+use App\Entity\CoachWish;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Reservation;
@@ -14,6 +16,7 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
@@ -31,14 +34,12 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Enum\VenuePeriodMode;
-use App\Service\PeriodConstraintSelector;
-use App\Entity\Coach;
-use App\Entity\CoachWish;
-use App\Entity\TeamCoach;
 use App\Enum\TeamCoachRole;
+use App\Enum\VenuePeriodMode;
 use App\Service\CoachWishTransferService;
+use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\CrossStack\CoachWishUnavailabilityGateTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -531,7 +532,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     }
 
     /**
-     * Variante PÉRIODE de {@see \App\Tests\CrossStack\CoachWishUnavailabilityGateTest} : ce que le
+     * Variante PÉRIODE de {@see CoachWishUnavailabilityGateTest} : ce que le
      * transfert d'une doléance écrit part bien dans le payload du plan de période, alors qu'une
      * contrainte COACH ou TEAM PERMANENTE y est coupée par défaut en vacances.
      */

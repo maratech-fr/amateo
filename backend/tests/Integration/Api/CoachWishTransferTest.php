@@ -27,6 +27,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ClubGenerationLock;
 use App\Service\CoachWishTransferService;
+use App\Tests\CrossStack\CoachWishUnavailabilityGateTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -47,7 +48,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  - constraint semantics (au niveau ÉCRITURE) : « l'équipe ne s'entraîne pas ce jour-là » →
  *    forbiddenDays TEAM HARD, pour l'équipe déclarante seule ; chaque absence d'une personne du
  *    staff COURANT → COACH_AVAILABILITY HARD de cette personne, adjoints compris. Que le MOTEUR
- *    honore ce qui est écrit : {@see \App\Tests\CrossStack\CoachWishUnavailabilityGateTest}.
+ *    honore ce qui est écrit : {@see CoachWishUnavailabilityGateTest}.
  *
  * Tests d'ABUS (§8.4) : garde management FALSIFIÉE, doléance d'un autre club jamais convertie,
  * seules les cochées partent, idempotence par (source, occurrence), 409 si génération en cours.
@@ -602,8 +603,8 @@ final class CoachWishTransferTest extends WebTestCase
     }
 
     /**
-     * @param list<int> $unavailableDays
-     * @param list<int> $wishedDays
+     * @param list<int>                                     $unavailableDays
+     * @param list<int>                                     $wishedDays
      * @param list<array{coachId: string, days: list<int>}> $staff
      */
     private function createWish(string $teamId, ?string $coachId, int $slots = 2, array $unavailableDays = [], array $wishedDays = [], string $week = '2026-02-16', array $staff = []): CoachWish
