@@ -1,4 +1,4 @@
-# Roadmap (85) — ce qui reste à faire
+# Roadmap (86) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -100,6 +100,7 @@
 | P4-441 | **Contraste au survol du titre d'une section repliée : 4,09:1** | ⚪ | XS | `shared/components/ui/accordion.tsx:55` : au survol, le titre passe en `hover:text-accent` sur `hover:bg-accent/10` et tombe à 4,09:1, sous les 4,5:1 attendus. Exemple : survoler « Un autre coach tient · 1 » sur l'écran Conflits. À corriger en gardant la couleur du texte au survol. |
 | P4-442 | **Déploiement : `release` non recalée quand un fichier de CI a changé** | 🟡 | S | Le déploiement v1.3.2 a basculé la prod puis fini en échec sur « Point `release` at the deployed commit » : le jeton du workflow n'a pas la permission `workflows` et GitHub refuse de pousser un commit qui change `.github/workflows/ci.yml` (`deploy.yml:506`). `release` reste alors sur la version d'avant, et un correctif rapide partirait d'une base en retard. Recalage manuel fait le 2026-11-02 avec les droits du fondateur. |
 | P4-443 | **Doc de déploiement : `docker compose exec` ne fonctionne pas tel quel sur la VM** | ⚪ | XS | Dans `/srv/amateo`, `docker compose exec php-fpm …` répond « no configuration file provided » ; `docker exec amateo-php-fpm …` fonctionne (constaté le 2026-11-02). `docs/ops/deploy.md` écrit la première forme à plusieurs endroits, dont l'étape post-déploiement des empreintes : à corriger partout, ou donner le fichier de configuration attendu. |
+| P4-444 | **Tests backend : saison calculée sur aujourd'hui, dates fixes 2026-2027** | ⚪ | S | 74 fichiers de `backend/tests` construisent leur saison depuis la date du jour ; ceux qui la combinent à des dates fixes sortiront de la saison à partir du 15/07/2027, comme le test de fermeture qui a bloqué `main` le 02/11/2026. Cas constaté en date simulée au 15/09/2027 : le test d'adaptation d'une fermeture coupée en deux (`PeriodPlanBirthTest`). À balayer avant juillet 2027, en posant l'horloge. |
 
 ### Sécurité & données
 
