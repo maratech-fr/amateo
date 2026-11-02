@@ -12,13 +12,13 @@ import type { TeamLink, TeamLinkIntensity, TeamLinkType } from "./api";
 import { useCreateTeamLink, useDeleteTeamLink, useTeamLinks, useUpdateTeamLink } from "./queries";
 import { INTENSITY_LABEL } from "./lib/teamLinkLabel";
 import { linkableBTeams } from "./lib/linkableTeams";
-
+import { MATCHES_TEAM_LINKS_TEXTS as TEXTS } from "./texts/teamLinks";
 
 /** La phrase d'exemple parle des équipes du club : celle qui est ouverte et la première autre, sinon les deux premières. */
 function linkExample<T extends TeamLike>(teams: T[], filterTeamId: string | undefined): string {
   const opened = teams.find((t) => t.id === filterTeamId);
   const [first, second] = undefined === opened ? teams : [opened, ...teams.filter((t) => t.id !== opened.id)];
-  return undefined === first || undefined === second ? "Si deux équipes partagent des joueurs, déclarez une passerelle." : `Si ${first.name} et ${second.name} partagent des joueurs, déclarez une passerelle.`;
+  return undefined === first || undefined === second ? TEXTS.exampleGeneric : TEXTS.exampleNamed(first.name, second.name);
 }
 
 /**
@@ -49,13 +49,13 @@ export function TeamLinksSection<T extends TeamLike>({
   const linksQuery = useTeamLinks();
   const links = linksQuery.data ?? [];
   const filteredLinks = undefined === filterTeamId ? links : links.filter((l) => l.teamAId === filterTeamId || l.teamBId === filterTeamId);
-  const teamName = (id: string): string => teams.find((t) => t.id === id)?.name ?? "Équipe ?";
+  const teamName = (id: string): string => teams.find((t) => t.id === id)?.name ?? TEXTS.teamFallback;
 
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold">Passerelles entre équipes</h3>
+      <h3 className="text-sm font-semibold">{TEXTS.title}</h3>
 
-      {linksQuery.isError ? <p className="text-sm text-destructive">Les passerelles n’ont pas pu être chargées.</p> : null}
+      {linksQuery.isError ? <p className="text-sm text-destructive">{TEXTS.loadError}</p> : null}
 
       {readOnly ? (
         <ReadOnlyLinks links={filteredLinks} teamName={teamName} filtered={undefined !== filterTeamId} />
@@ -71,18 +71,18 @@ function ReadOnlyLinks({ links, teamName, filtered }: { links: TeamLink[]; teamN
   return (
     <>
       {/* La raison, en information et non en panne : pleine lisibilité, ton muet, jamais grisé. */}
-      <p className="text-xs text-muted-foreground">Les passerelles se déclarent au niveau de la saison — elles s’appliquent à toutes les périodes.</p>
+      <p className="text-xs text-muted-foreground">{TEXTS.seasonOnly}</p>
       {0 === links.length ? (
-        <EmptyHint className="text-xs">{filtered ? "Aucune passerelle pour cette équipe." : "Aucune passerelle déclarée."}</EmptyHint>
+        <EmptyHint className="text-xs">{filtered ? TEXTS.noneForTeam : TEXTS.none}</EmptyHint>
       ) : (
         <ul className="flex flex-col gap-1">
           {links.map((link) => (
             <li key={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card px-2 py-1.5 text-sm">
               <span className="flex-1">
                 {teamName(link.teamAId)} ↔ {teamName(link.teamBId)} ·{" "}
-                <span className="text-muted-foreground">{"NOT_SIMULTANEOUS" === link.linkType ? "jamais en même temps" : "l'un après l'autre"}</span>
+                <span className="text-muted-foreground">{"NOT_SIMULTANEOUS" === link.linkType ? TEXTS.neverTogether : TEXTS.oneAfterOther}</span>
               </span>
-              <span className="text-xs text-muted-foreground">Entraînement : {INTENSITY_LABEL[link.trainingIntensity]}</span>
+              <span className="text-xs text-muted-foreground">{TEXTS.trainingIntensity(INTENSITY_LABEL[link.trainingIntensity])}</span>
             </li>
           ))}
         </ul>
@@ -141,15 +141,23 @@ function EditableLinks<T extends TeamLike>({
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        {linkExample(teams, filterTeamId)} Deux réglages <strong>indépendants</strong> :
+        {linkExample(teams, filterTeamId)}
+        {TEXTS.twoSettingsBefore}
+        <strong>{TEXTS.twoSettingsStrong}</strong>
+        {TEXTS.twoSettingsAfter}
       </p>
       <ul className="ml-4 list-disc text-xs text-muted-foreground">
         <li>
-          <strong>Côté matchs</strong> — « jamais en même temps » (le radar alerte) ou « l'un après l'autre » (enchaînement respecté au placement).
+          <strong>{TEXTS.matchesSide}</strong>
+          {TEXTS.matchesSideDetail}
         </li>
         <li>
-          <strong>Côté entraînement</strong> — <em>Préféré</em> : les séances des deux équipes évitent de se chevaucher. <em>Obligatoire</em> : jamais en
-          même temps — peut rendre le planning infaisable si trop contraint.
+          <strong>{TEXTS.trainingSide}</strong>
+          {TEXTS.trainingSideSeparator}
+          <em>{TEXTS.preferred}</em>
+          {TEXTS.preferredDetail}
+          <em>{TEXTS.mandatory}</em>
+          {TEXTS.mandatoryDetail}
         </li>
       </ul>
 
@@ -158,12 +166,12 @@ function EditableLinks<T extends TeamLike>({
           <li key={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card px-2 py-1.5 text-sm">
             <span className="flex-1">
               {teamName(link.teamAId)} ↔ {teamName(link.teamBId)} ·{" "}
-              <span className="text-muted-foreground">{"NOT_SIMULTANEOUS" === link.linkType ? "jamais en même temps" : "l'un après l'autre"}</span>
+              <span className="text-muted-foreground">{"NOT_SIMULTANEOUS" === link.linkType ? TEXTS.neverTogether : TEXTS.oneAfterOther}</span>
             </span>
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              Entraînement
+              {TEXTS.training}
               <Select
-                aria-label={`Intensité d'entraînement, passerelle ${teamName(link.teamAId)} – ${teamName(link.teamBId)}`}
+                aria-label={TEXTS.intensityAria(teamName(link.teamAId), teamName(link.teamBId))}
                 wrapperClassName="w-32"
                 value={link.trainingIntensity}
                 disabled={updateLink.isPending}
@@ -177,7 +185,7 @@ function EditableLinks<T extends TeamLike>({
               variant="ghost"
               size="icon"
               className="size-8 text-destructive"
-              aria-label={`Supprimer la passerelle ${teamName(link.teamAId)} – ${teamName(link.teamBId)}`}
+              aria-label={TEXTS.deleteAria(teamName(link.teamAId), teamName(link.teamBId))}
               disabled={deleteLink.isPending}
               onClick={() => setPendingDeleteId(link.id)}
             >
@@ -189,7 +197,7 @@ function EditableLinks<T extends TeamLike>({
 
       {noLinkableB ? (
         // Ancrée, toutes les équipes déjà liées à A : jamais un sélecteur vide muet, une phrase.
-        <p className="text-xs text-muted-foreground">Toutes les équipes sont déjà liées à {teamName(teamAId)}.</p>
+        <p className="text-xs text-muted-foreground">{TEXTS.allLinked(teamName(teamAId))}</p>
       ) : (
         // Correctif 4 — les CINQ champs d'ajout sur UNE ligne (grille), chacun avec son libellé
         // AU-DESSUS et aligné en bas (`items-end`) — fini « Équipe A/B » d'un côté, « Match/
@@ -198,32 +206,32 @@ function EditableLinks<T extends TeamLike>({
           {/* Équipe A — `<div>` + légende décorative (jamais `<label>` : le Listbox se nomme
               via son `aria-label`, un `<label>` doublonnerait l'association). */}
           <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Équipe A
+            {TEXTS.teamA}
             {anchored ? (
               // A FIGÉE : un FAIT en texte (« SM1 ↔ … »), pas un champ désactivé (qui se lirait comme une panne).
               <span className="flex h-9 items-center gap-1.5 text-sm">
-                <span className="sr-only">Passerelle depuis {teamName(teamAId)} — choisir la seconde équipe</span>
+                <span className="sr-only">{TEXTS.anchoredHint(teamName(teamAId))}</span>
                 <span className="font-medium text-foreground">{teamName(teamAId)}</span>
                 <span aria-hidden className="text-muted-foreground">↔</span>
               </span>
             ) : (
-              <TeamSelect aria-label="Première équipe du lien" wrapperClassName="w-full" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onValueChange={setSelectedA} />
+              <TeamSelect aria-label={TEXTS.firstTeamAria} wrapperClassName="w-full" teams={teams} tiers={tiers} placeholder={TEXTS.teamAPlaceholder} value={selectedA} onValueChange={setSelectedA} />
             )}
           </div>
           <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Équipe B
-            <TeamSelect aria-label="Seconde équipe du lien" wrapperClassName="w-full" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onValueChange={setLinkTeamBId} />
+            {TEXTS.teamB}
+            <TeamSelect aria-label={TEXTS.secondTeamAria} wrapperClassName="w-full" teams={bTeams} tiers={tiers} placeholder={TEXTS.teamBPlaceholder} value={linkTeamBId} onValueChange={setLinkTeamBId} />
           </div>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Matchs
-            <Select aria-label="Type de lien côté matchs" className="h-9" wrapperClassName="w-full" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
-              <option value="NOT_SIMULTANEOUS">Jamais en même temps</option>
-              <option value="BACK_TO_BACK">L'un après l'autre</option>
+            {TEXTS.matches}
+            <Select aria-label={TEXTS.linkTypeAria} className="h-9" wrapperClassName="w-full" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
+              <option value="NOT_SIMULTANEOUS">{TEXTS.optionNeverTogether}</option>
+              <option value="BACK_TO_BACK">{TEXTS.optionOneAfterOther}</option>
             </Select>
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Entraînement
-            <Select aria-label="Intensité d'entraînement du lien" className="h-9" wrapperClassName="w-full" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
+            {TEXTS.training}
+            <Select aria-label={TEXTS.newIntensityAria} className="h-9" wrapperClassName="w-full" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
               <option value="PREFERRED">{INTENSITY_LABEL.PREFERRED}</option>
               <option value="MANDATORY">{INTENSITY_LABEL.MANDATORY}</option>
             </Select>
@@ -234,16 +242,16 @@ function EditableLinks<T extends TeamLike>({
             onClick={addLink}
           >
             <Plus className="size-3.5" />
-            Ajouter la passerelle
+            {TEXTS.add}
           </Button>
         </div>
       )}
 
       <ConfirmDialog
         open={null !== pendingDelete}
-        title="Supprimer cette passerelle ?"
-        description={pendingDelete ? <>La passerelle {teamName(pendingDelete.teamAId)} ↔ {teamName(pendingDelete.teamBId)} sera supprimée.</> : null}
-        confirmLabel="Supprimer"
+        title={TEXTS.deleteTitle}
+        description={pendingDelete ? TEXTS.deleteDescription(teamName(pendingDelete.teamAId), teamName(pendingDelete.teamBId)) : null}
+        confirmLabel={TEXTS.deleteConfirm}
         destructive
         onConfirm={() => {
           if (null !== pendingDelete) {

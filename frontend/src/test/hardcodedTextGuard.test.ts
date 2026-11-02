@@ -67,6 +67,10 @@ const MIGRATED_FILES = [
   "features/planning/SlotDetail.tsx",
   "features/planning/DiagnosticsPanel.tsx",
   "features/matches/ConflictLine.tsx",
+  // Finitions — les trois écrans touchés par le lot, migrés dans le même lot (la migration ne recule jamais).
+  "features/matches/EntryDeadlinesEditor.tsx",
+  "features/matches/TeamLinksSection.tsx",
+  "features/wizard/steps/TeamsImportModal.tsx",
   // Retours Nico (BCCL 2026-10-27), PR1 — écrans touchés par la passe de lisibilité, migrés dans
   // le même lot (la migration ne recule jamais) : file d'import, rattrapage, légende, radar, cockpit FBI.
   "features/matches/WeekendGridLegend.tsx",

@@ -13,6 +13,7 @@ import { cn } from "@/shared/lib/utils";
 import type { Competition } from "./api";
 import { frShortDate } from "./lib/deadlineLabel";
 import { useSetEntryDeadlines } from "./queries";
+import { MATCHES_ENTRY_DEADLINES_TEXTS as TEXTS } from "./texts/entryDeadlines";
 
 /**
  * RMM-6 PR-2 — l'éditeur « Échéances de saisie » du SET-UP (`/matchs/configuration`),
@@ -42,7 +43,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
 
   const teamName = useMemo(() => {
     const map = new Map(teams.map((t) => [t.id, t.name]));
-    return (id: string): string => map.get(id) ?? "Équipe ?";
+    return (id: string): string => map.get(id) ?? TEXTS.teamFallback;
   }, [teams]);
 
   const rows = useMemo(
@@ -93,7 +94,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
     return (
       <section className="flex flex-col gap-3">
         <Header />
-        <EmptyHint>Aucune compétition — importez le calendrier FBI ou appariez vos engagements FFBB pour saisir des échéances.</EmptyHint>
+        <EmptyHint>{TEXTS.noCompetition}</EmptyHint>
       </section>
     );
   }
@@ -104,40 +105,40 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
 
       <SegmentedControl
         mode="single"
-        label="Filtrer les compétitions"
+        label={TEXTS.filterLabel}
         value={filter}
         onValueChange={changeFilter}
         options={[
-          { key: "missing", label: "Sans échéance", count: missingRows.length, ariaLabel: `Sans échéance : ${missingRows.length}` },
-          { key: "all", label: "Tous", count: rows.length, ariaLabel: `Tous : ${rows.length}` },
+          { key: "missing", label: TEXTS.filterMissing, count: missingRows.length, ariaLabel: TEXTS.filterMissingAria(missingRows.length) },
+          { key: "all", label: TEXTS.filterAll, count: rows.length, ariaLabel: TEXTS.filterAllAria(rows.length) },
         ]}
       />
 
-      {0 === visibleRows.length ? <EmptyHint>Toutes vos compétitions ont une échéance.</EmptyHint> : null}
+      {0 === visibleRows.length ? <EmptyHint>{TEXTS.allDated}</EmptyHint> : null}
 
       {visibleRows.length > 0 ? (
         <>
           {/* La barre de saisie groupée : une date, appliquée aux lignes cochées. */}
           <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border px-3 py-2">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Échéance
-              <Input type="date" aria-label="Échéance à appliquer" value={date} onChange={(e) => setDate(e.target.value)} />
+              {TEXTS.deadlineLabel}
+              <Input type="date" aria-label={TEXTS.deadlineAria} value={date} onChange={(e) => setDate(e.target.value)} />
             </label>
             <Button size="sm" disabled={0 === checkedIds.length || "" === date || setDeadlines.isPending} onClick={() => apply(date)}>
-              Appliquer{checkedIds.length > 0 ? ` (${checkedIds.length})` : ""}
+              {TEXTS.apply(checkedIds.length)}
             </Button>
             <Button variant="outline" size="sm" disabled={0 === checkedIds.length || setDeadlines.isPending} onClick={() => apply(null)}>
               <Eraser className="size-4" />
-              Effacer l'échéance
+              {TEXTS.clear}
             </Button>
             <span className="ml-auto text-xs text-muted-foreground">
-              {checkedIds.length > 0 ? `${checkedIds.length} cochée${checkedIds.length > 1 ? "s" : ""}` : "Cochez les compétitions à régler"}
+              {checkedIds.length > 0 ? TEXTS.checkedCount(checkedIds.length) : TEXTS.checkHint}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={toggleAll}>
-              {allChecked ? "Tout décocher" : "Tout cocher"}
+              {allChecked ? TEXTS.uncheckAll : TEXTS.checkAll}
             </Button>
           </div>
 
@@ -147,7 +148,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
                 <label className="flex min-w-0 flex-1 items-center gap-3">
                   <input
                     type="checkbox"
-                    aria-label={`${c.name} — ${teamName(c.teamId)}`}
+                    aria-label={TEXTS.rowAria(c.name, teamName(c.teamId))}
                     className="size-4 shrink-0"
                     checked={checked.has(c.id)}
                     onChange={() => toggle(c.id)}
@@ -158,7 +159,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
                       <span>{teamName(c.teamId)}</span>
                       {null !== (c.ffbbCompetitionId ?? null) ? (
                         <StatusPill variant="accent" icon={<Users className="size-3 text-accent" aria-hidden />}>
-                          partagée avec les autres clubs
+                          {TEXTS.sharedPill}
                         </StatusPill>
                       ) : null}
                     </span>
@@ -183,11 +184,8 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
 function Header() {
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-sm font-semibold">Échéances de saisie</h3>
-      <p className="text-xs text-muted-foreground">
-        La date limite pour saisir vos rencontres dans FBI, fixée par la ligue ou le comité — une par compétition. Cochez les
-        compétitions concernées, posez la date, appliquez. Une date proposée vient d'un autre club : elle est modifiable.
-      </p>
+      <h3 className="text-sm font-semibold">{TEXTS.title}</h3>
+      <p className="text-xs text-muted-foreground">{TEXTS.intro}</p>
     </div>
   );
 }
@@ -196,7 +194,7 @@ function Header() {
 function Provenance({ competition }: { competition: Competition }) {
   const effective = competition.effectiveEntryDeadline ?? null;
   if (null === effective) {
-    return <span className="shrink-0 text-xs italic text-muted-foreground">aucune échéance</span>;
+    return <span className="shrink-0 text-xs italic text-muted-foreground">{TEXTS.noDeadline}</span>;
   }
   const community = "community" === competition.deadlineSource;
   return (
@@ -208,7 +206,7 @@ function Provenance({ competition }: { competition: Competition }) {
     >
       {community ? <Info className="size-3.5" aria-hidden /> : <CalendarCheck className="size-3.5" aria-hidden />}
       {frShortDate(effective)}
-      {community ? <span className="text-muted-foreground"> · proposée</span> : null}
+      {community ? <span className="text-muted-foreground">{TEXTS.proposedSuffix}</span> : null}
     </span>
   );
 }
