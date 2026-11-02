@@ -243,6 +243,8 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $overlayVenue = '20000000-0000-4000-8000-000000000002';
         $this->slot($base, $baseVenue);
         $this->slot($overlay, $overlayVenue);
+        // Le payload de saison reprend la version chargée : une version terminée.
+        $base->setStatus(ScheduleStatus::COMPLETED);
         $this->em->flush();
 
         $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());

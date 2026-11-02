@@ -13,11 +13,14 @@ use Symfony\Component\Serializer\Attribute\Groups;
  * serveur possède déjà (motif des 40 défauts d'ADR-0002).
  *
  * Chaque booléen reflète EXACTEMENT le garde de son geste :
- *  - canDelete       ⇄ ScheduleStateProcessor::processDelete (choisie / en vol / seul planning de saison)
- *  - canValidate     ⇄ ValidateScheduleController (terminée, aucune sœur en vol ; la version CHOISIE
- *                       reste validable — re-pointage no-op accepté)
+ *  - canDelete       ⇄ ScheduleStateProcessor::processDelete (choisie / en vol / seul planning de saison /
+ *                       version chargée d'où repart une génération en cours)
+ *  - canValidate     ⇄ ValidateScheduleController (terminée, aucune sœur en vol, version chargée ; la
+ *                       version CHOISIE reste validable — re-pointage no-op accepté)
  *  - canRegenerateFrom ⇄ RegenerateFromVersionController (socle terminé non-choisi, aucune génération
- *                       en cours dans la saison, photo de structure présente)
+ *                       en cours dans la saison, restauration possible : photo présente, équipes
+ *                       engagées intactes) ; regenerateFromBlockedReason dit le motif, mot pour mot
+ *  - canEdit         ⇄ les neuf guichets de retouche (VersionEditability) ; editBlockedReason dit le code
  *  - canLoadLocks    ⇄ LoadLocksController (V1bis, « Charger » pour une période) : version de PÉRIODE
  *                       terminée, plan non validé, aucune génération en cours ET pas DÉJÀ la source
  *                       des verrous (le geste serait un no-op — on ne l'offre pas)
@@ -43,5 +46,11 @@ final class ScheduleCapabilities
         public int $versionsDeletedOnValidate,
         #[Groups(['read'])]
         public int $overlaysDroppedOnValidate,
+        #[Groups(['read'])]
+        public bool $canEdit = true,
+        #[Groups(['read'])]
+        public ?string $editBlockedReason = null,
+        #[Groups(['read'])]
+        public ?string $regenerateFromBlockedReason = null,
     ) {}
 }

@@ -26,6 +26,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Throwable;
 
@@ -155,6 +156,12 @@ final class GenerateScheduleController extends AbstractController implements Sea
             if ($isSeasonSchedule) {
                 $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($seasonId));
                 $this->socleGuard->assertSeasonPlanNotChosen($seasonId);
+                // Une version de saison TERMINÉE ne se réécrit pas : c'est le rail du brouillon et de la
+                // reprise après échec. Passer par ici écraserait une version en place, chargée ou non ;
+                // « Régénérer » en crée une nouvelle.
+                if (ScheduleStatus::COMPLETED === $schedule->getStatus()) {
+                    throw new ConflictHttpException('Cette version est déjà générée. Utilisez « Régénérer » pour en créer une nouvelle.');
+                }
             }
             $schedule->setStatus(ScheduleStatus::PENDING);
             // P5-10 — instant de mise en file (attente queue → generating mesurable).

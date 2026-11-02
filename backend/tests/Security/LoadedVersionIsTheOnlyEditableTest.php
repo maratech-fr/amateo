@@ -246,7 +246,7 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $older = $this->seasonVersion();
         $loaded = $this->seasonVersion();
 
-        $this->client->request('GET', '/api/schedules?seasonId=' . $this->season->getId(), [], [], $this->headers() + ['HTTP_ACCEPT' => 'application/ld+json']);
+        $this->client->request('GET', '/api/schedules?seasonId=' . $this->season->getId(), [], [], ['HTTP_ACCEPT' => 'application/ld+json'] + $this->headers());
         self::assertResponseIsSuccessful();
         $byId = [];
         foreach ((array) ($this->decode()['member'] ?? []) as $row) {

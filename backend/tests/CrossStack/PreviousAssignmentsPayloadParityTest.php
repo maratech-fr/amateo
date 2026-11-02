@@ -121,7 +121,8 @@ final class PreviousAssignmentsPayloadParityTest extends KernelTestCase
         // la régression que PR B a évitée. Le solveur n'a rien importé (résultat vide), donc la
         // structure recalculée est identique à celle gelée.
         self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
-        $currentStructureHash = ScheduleConstraintBuilder::structureHash($this->builder->buildForClubSeason($club->getId(), $season->getId()));
+        // Le moteur simulé n'a rien réimporté : on compare à la version de départ, celle d'où vient le verrou.
+        $currentStructureHash = ScheduleConstraintBuilder::structureHash($this->builder->buildForClubSeason($club->getId(), $season->getId(), lockVersionId: $source->getId()));
         self::assertSame(
             $currentStructureHash,
             $reloaded->getSnapshotHash(),

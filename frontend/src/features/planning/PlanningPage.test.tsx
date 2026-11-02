@@ -3115,7 +3115,7 @@ describe("PlanningPage — version chargée", () => {
 
   it("aucune bannière de consultation sur une version en échec", async () => {
     await open([loaded(), version("v3", "2026-03-01T00:00:00Z", { status: "FAILED", capabilities: NOT_LOADED_CAPS } as Partial<Schedule>)], "v2");
-    usePlanningStore.setState({ selectedScheduleId: "v3" });
+    act(() => usePlanningStore.setState({ selectedScheduleId: "v3" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: PLANNING_TEXTS.openLoadedVersion })).not.toBeInTheDocument());
   });
 

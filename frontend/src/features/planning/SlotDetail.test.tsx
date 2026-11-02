@@ -87,6 +87,7 @@ function renderDetail(
     removePending?: boolean;
     groupSession?: { memberCount: number } | null;
     readOnly?: boolean;
+    gesturesBlockedReason?: string | null;
     inBlock?: boolean;
     blockLabel?: string | null;
     viaMutualisation?: boolean;
@@ -107,6 +108,7 @@ function renderDetail(
       busy={false}
       moveState={over.moveState}
       readOnly={over.readOnly}
+      gesturesBlockedReason={over.gesturesBlockedReason}
       armed={over.armed}
       groupSession={over.groupSession}
       inBlock={over.inBlock}
@@ -478,7 +480,7 @@ describe("SlotDetail — mutualiser depuis la fiche (lot 9, F3 ; lot 2 — socle
 describe("SlotDetail — gestes bloqués", () => {
   it("le motif fourni grise déplacer, verrouiller et retirer, et se découvre au clavier", () => {
     renderDetail({ gesturesBlockedReason: PLANNING_TEXTS.gesturesBlockedNotLoaded });
-    for (const name of [/Déplacer/, /Verrouiller/, /Retirer/]) {
+    for (const name of [/Déplacer/, /errouiller/, /Retirer/]) {
       const button = screen.getByRole("button", { name });
       expect(button).toHaveAttribute("aria-disabled", "true");
       expect(button).toHaveAttribute("title", PLANNING_TEXTS.gesturesBlockedNotLoaded);

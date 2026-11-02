@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Command;
 
 use App\Command\DedupeSnapshotPinsCommand;
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -12,6 +13,8 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -24,9 +27,6 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
-use App\Entity\CalendarEntry;
-use App\Enum\CalendarEntryKind;
-use App\Enum\CalendarEntryPeriodType;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -279,6 +279,12 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         self::assertSame($this->reload($a)->getSnapshotHash(), $this->reload($id)->getSnapshotHash());
     }
 
+    protected function setUp(): void
+    {
+        self::bootKernel();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
     /** @return array{0: string, 1: string, 2: string, 3: string} */
     private function twoVersionsWithSamePlacementsInverted(): array
     {
@@ -306,12 +312,6 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         self::assertInstanceOf(Schedule::class, $schedule);
 
         return $schedule;
-    }
-
-    protected function setUp(): void
-    {
-        self::bootKernel();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
     /**

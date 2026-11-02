@@ -433,6 +433,32 @@ final class RegenerateFromVersionTest extends WebTestCase
         $this->assertCapabilityEqualsTheRefusal($v1, 'SM1');
     }
 
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $container = self::getContainer();
+        $this->em = $container->get(EntityManagerInterface::class);
+        $hasher = $container->get('security.user_password_hasher');
+        $uid = uniqid('', true);
+
+        $this->club = (new Club)->setName('Regen ' . $uid)->setSlug('regen-' . $uid)
+            ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($this->club);
+        $user = (new User)->setEmail('regen' . $uid . '@test.com')->setFirstName('R')->setLastName('G');
+        $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
+        $this->em->persist($user);
+        $this->em->flush();
+
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('admin')->setIsActive(true));
+        $this->season = (new Season)->setClubId($this->club->getId())->setName('2025-2026')
+            ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($this->season);
+        $this->em->flush();
+
+        $this->token = $container->get(JWTTokenManagerInterface::class)->create($user);
+    }
+
     private function assertCapabilityEqualsTheRefusal(Schedule $version, string $teamName): void
     {
         $capabilities = $this->capabilitiesOf($version);
@@ -441,7 +467,7 @@ final class RegenerateFromVersionTest extends WebTestCase
         self::assertIsString($reason);
         self::assertStringContainsString($teamName, $reason);
 
-        $this->client->request('POST', "/api/schedules/{$version->getId()}/regenerate-from", [], [], $this->headers());
+        $this->client->request('POST', "/api/schedules/{$version->getId()}/regenerate-from", [], [], $this->headers() + ['HTTP_ACCEPT' => 'application/json']);
         self::assertResponseStatusCodeSame(409);
         $refusal = (string) ($this->decode()['detail'] ?? $this->decode()['error'] ?? '');
         self::assertSame($reason, $refusal, 'capacité affichée = verdict du refus');
@@ -468,32 +494,6 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setOpponentLabel('AS Voisins')
             ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable));
         $this->em->flush();
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $container = self::getContainer();
-        $this->em = $container->get(EntityManagerInterface::class);
-        $hasher = $container->get('security.user_password_hasher');
-        $uid = uniqid('', true);
-
-        $this->club = (new Club)->setName('Regen ' . $uid)->setSlug('regen-' . $uid)
-            ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
-        $this->em->persist($this->club);
-        $user = (new User)->setEmail('regen' . $uid . '@test.com')->setFirstName('R')->setLastName('G');
-        $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
-        $this->em->persist($user);
-        $this->em->flush();
-
-        $this->scopeGucToClub($this->club->getId());
-        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('admin')->setIsActive(true));
-        $this->season = (new Season)->setClubId($this->club->getId())->setName('2025-2026')
-            ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
-        $this->em->persist($this->season);
-        $this->em->flush();
-
-        $this->token = $container->get(JWTTokenManagerInterface::class)->create($user);
     }
 
     /** @return array<string, mixed> */

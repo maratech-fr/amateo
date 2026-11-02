@@ -88,8 +88,8 @@ final class SeasonPlanInForceTest extends WebTestCase
      */
     public function testValidatingASeasonVersionLeavesExactlyOneSeasonVersion(): void
     {
-        $chosen = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
         $this->seedSeasonVersion(ScheduleStatus::COMPLETED); // une sœur COMPLETED
+        $chosen = $this->seedSeasonVersion(ScheduleStatus::COMPLETED); // la version chargée, seule validable
 
         $seasonPlanId = $this->seasonPlanId();
         $this->scopeGucToClub($this->club->getId());
@@ -139,7 +139,7 @@ final class SeasonPlanInForceTest extends WebTestCase
     /** Non-régression : rien de pointé (espace de travail) → generate passe (202). */
     public function testGeneratingAWorkspaceVersionStillWorks(): void
     {
-        $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        $version = $this->seedSeasonVersion(ScheduleStatus::DRAFT);
 
         $this->request('POST', '/api/schedules/' . $version->getId() . '/generate');
 

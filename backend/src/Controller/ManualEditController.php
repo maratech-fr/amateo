@@ -20,11 +20,12 @@ use App\Exception\SlotUnavailableException;
 use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
+use App\Service\ClubGenerationLock;
 use App\Service\ManagementAccessGuard;
 use App\Service\ManualEditService;
 use App\Service\MoveSlotService;
 use App\Service\MutualizeSlotService;
-use App\Service\SchedulePlanProvisioner;
+use App\Service\VersionEditability;
 use App\Service\WriteTargetSeasonResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -44,10 +45,11 @@ final class ManualEditController extends AbstractController implements SeasonSco
         private ManualEditService $manualEditService,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly LoggerInterface $logger,
-        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly MoveSlotService $moveSlotService,
         private readonly MutualizeSlotService $mutualizeSlotService,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly VersionEditability $versionEditability,
+        private readonly ClubGenerationLock $clubGenerationLock,
     ) {}
 
     /**
@@ -96,8 +98,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
         }
 
-        if ($this->scheduleIsLocked($slot)) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusalOfSlot($slot);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -125,6 +128,11 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'SOFT lock is not supported (no solver effect); use NONE or HARD.'], Response::HTTP_BAD_REQUEST);
         }
 
+        // Poser un verrou pendant qu'une génération réécrit le planning le perdrait : même refus que déplacer.
+        if ($this->clubGenerationLock->isGenerating($slot->getClubId())) {
+            return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
+        }
+
         $this->manualEditService->applyLock($slot, $lockLevel);
 
         return $this->json(['message' => 'Lock applied.'], Response::HTTP_OK);
@@ -146,8 +154,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
         }
 
-        if ($this->scheduleIsLocked($slot)) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusalOfSlot($slot);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -289,8 +298,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
         }
 
         // ADR-0002 inv. 1 : la version choisie du plan est le calendrier — lecture seule.
-        if ($this->schedulePlanProvisioner->isChosen($schedule->getId())) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusal($schedule);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -429,8 +439,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
         }
 
         // ADR-0002 inv. 1 : la version choisie du plan est le calendrier — lecture seule.
-        if ($this->schedulePlanProvisioner->isChosen($schedule->getId())) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusal($schedule);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         $blockId = isset($data['blockId']) && \is_string($data['blockId']) ? $data['blockId'] : '';
@@ -592,8 +603,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
         }
 
         // Lecture seule : la version choisie du plan est le calendrier (ADR-0002 inv. 1).
-        if ($this->scheduleIsLocked($source)) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusalOfSlot($source);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         // P2-32 — `dryRun` : un ESSAI. Même chemin jusqu'au verdict (gardes pré-moteur comprises),
@@ -688,8 +700,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
         }
 
-        if ($this->scheduleIsLocked($slot)) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusalOfSlot($slot);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         // Corps OPTIONNEL : `{}` (retrait réel) ou `{dryRun:true}` (appel à blanc). Le retrait n'a
@@ -739,8 +752,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
         }
 
         // ADR-0002 inv. 1 : la version choisie du plan est le calendrier — lecture seule.
-        if ($this->schedulePlanProvisioner->isChosen($schedule->getId())) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusal($schedule);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         $blockId = isset($data['blockId']) && \is_string($data['blockId']) ? $data['blockId'] : '';
@@ -794,8 +808,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
         }
 
-        if ($this->scheduleIsLocked($slot)) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusalOfSlot($slot);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -881,8 +896,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
         }
 
-        if ($this->scheduleIsLocked($source)) {
-            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        $refusal = $this->editRefusalOfSlot($source);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
         }
 
         $label = null;
@@ -1031,12 +1047,21 @@ final class ManualEditController extends AbstractController implements SeasonSco
         return $team instanceof Team ? $team : null;
     }
 
-    /** A slot whose parent schedule is VALIDATED is read-only. */
-    private function scheduleIsLocked(ScheduleSlotTemplate $slot): bool
+    /** Le geste sur une séance se juge sur sa version. */
+    private function editRefusalOfSlot(ScheduleSlotTemplate $slot): ?JsonResponse
     {
         $schedule = $this->entityManager->getRepository(Schedule::class)->find($slot->getScheduleId());
 
-        // ADR-0002 inv. 1 : « verrouillé » = c'est la version choisie du plan.
-        return $schedule instanceof Schedule && $this->schedulePlanProvisioner->isChosen($schedule->getId());
+        return $schedule instanceof Schedule ? $this->editRefusal($schedule) : null;
+    }
+
+    /** Le refus codé d'un geste sur une version qui ne se modifie pas : même verdict que `capabilities.canEdit`. */
+    private function editRefusal(Schedule $schedule): ?JsonResponse
+    {
+        return match ($this->versionEditability->check($schedule)) {
+            VersionEditability::CHOSEN => $this->json(['code' => VersionEditability::CHOSEN, 'error' => VersionEditability::CHOSEN_EDIT_MESSAGE], Response::HTTP_CONFLICT),
+            VersionEditability::NOT_LOADED => $this->json(['code' => VersionEditability::NOT_LOADED, 'error' => VersionEditability::NOT_LOADED_EDIT_MESSAGE], Response::HTTP_CONFLICT),
+            default => null,
+        };
     }
 }

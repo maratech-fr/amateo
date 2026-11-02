@@ -9,8 +9,9 @@ import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
 import { STATUS_LABELS, type Schedule } from "./api";
-import { isSeasonPlanType, liveContextScheduleId, overlayVersionLabels, versionLabels, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
+import { isSeasonPlanType, liveContextScheduleId, loadedVersionOf, overlayVersionLabels, representativeVersion, versionLabelOf, versionLabels, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
 import type { ViewMode } from "./store";
+import { PLANNING_TEXTS } from "./texts";
 
 const VIEWS: { key: ViewMode; label: string }[] = [
   { key: "gymnase", label: "Par gymnase" },
@@ -143,6 +144,18 @@ export function PlanningToolbar({
   // visible but greyed with a reason, so the state reads as deliberate. The
   // page computes the actual comparison (snapshot hash vs current structure hash).
   const isLiveContext = null !== selected && isSeasonPlanType(selected.planType) && selected.id === seasonLiveId;
+  // Une version non chargée se consulte : « Valider » reste visible, grisé avec son motif, au lieu
+  // de disparaître sans explication. Le serveur décide, capacité absente = aucun motif.
+  const validateNeedsLoad = "COMPLETED" === selected?.status && "not_loaded_version" === selected.capabilities?.editBlockedReason;
+  // Pourquoi « Charger » est impossible : le texte même du refus du serveur.
+  const loadBlockedReason = isLiveContext ? null : (selected?.capabilities?.regenerateFromBlockedReason ?? null);
+  // D'où repartira « Régénérer » quand on regarde une autre version que la chargée.
+  const loaded = loadedVersionOf(schedules, selected);
+  const loadedLabel = undefined !== loaded && loaded.id !== selectedScheduleId ? versionLabelOf(schedules, loaded.id) : null;
+  // Supprimer la version chargée : la suivante prend le relais, on la nomme avant le geste (même
+  // repli que le serveur : la dernière terminée).
+  const nextLoaded = null !== selected && true === selected.isLiveContext ? representativeVersion(visibleSeasonPlans(schedules).filter((s) => s.id !== selected.id)) : null;
+  const deleteNote = null === nextLoaded ? undefined : PLANNING_TEXTS.deleteLoadedVersionNote(versionLabelOf(schedules, nextLoaded.id) ?? nextLoaded.name);
 
   return (
     <div className="flex w-full flex-col gap-2">
@@ -186,7 +199,7 @@ export function PlanningToolbar({
             {!isSeasonPlanType(selected.planType) ? <StatusPill variant="accent">Période</StatusPill> : null}
           </span>
         ) : null}
-        {embedded && canValidate && !isChosen ? (
+        {embedded && (canValidate || validateNeedsLoad) && !isChosen ? (
           // Choosing a version the plan ALREADY points at is a no-op: the status
           // used to hide this (le statut « validé » n'était pas COMPLETED) ; seul le
           // pointeur dit « en vigueur » désormais, donc on le lui demande directement.
@@ -197,7 +210,7 @@ export function PlanningToolbar({
           // D4 (lot 2) — « Valider » passe en accent PLEIN (`default`) : c'est l'action de SORTIE
           // de l'espace de travail, elle doit se lire comme le bouton principal. Même place, même
           // taille (`size="sm"`).
-          <Button size="sm" variant="default" disabled={actionBusy} onClick={onValidate}>
+          <Button size="sm" variant="default" disabled={actionBusy || validateNeedsLoad} disabledReason={validateNeedsLoad ? PLANNING_TEXTS.validateNeedsLoad : undefined} onClick={onValidate}>
             <CheckCircle2 className="size-4" />
             Valider
           </Button>
@@ -244,16 +257,18 @@ export function PlanningToolbar({
             </Button>
             {/* La garantie ne vivait qu'en commentaire de code (api.ts) : on la DIT ici, contre le
                 bouton qui la déclenche, sans modale ni ligne supplémentaire dans la toolbar. */}
-            <span className="text-xs text-muted-foreground">Vos créneaux verrouillés sont conservés à la régénération.</span>
+            <span className="text-xs text-muted-foreground">{null !== loadedLabel ? PLANNING_TEXTS.regenerateKeepsLoadedLocks(loadedLabel) : "Vos créneaux verrouillés sont conservés à la régénération."}</span>
           </>
         )}
-        {canRegenerateFrom ? (
+        {canRegenerateFrom || null !== loadBlockedReason ? (
           <Button
             size="sm"
             variant="ghost"
-            disabled={actionBusy || isGenerating || isLiveContext}
+            disabled={actionBusy || isGenerating || isLiveContext || null !== loadBlockedReason}
+            disabledReason={loadBlockedReason ?? undefined}
             onClick={onRegenerateFrom}
-            title={isLiveContext ? "Déjà le contexte courant — rien à recharger (utilisez « Régénérer »)" : "Recharge la structure de cette version (sans régénérer) et affiche son planning"}
+            // Grisé pour un motif, le bouton pose ce motif en `title` : ne pas le recouvrir.
+            {...(null === loadBlockedReason ? { title: isLiveContext ? "Déjà le contexte courant — rien à recharger (utilisez « Régénérer »)" : "Recharge la structure de cette version (sans régénérer) et affiche son planning" } : {})}
           >
             <History className="size-4" />
             Charger cette version
@@ -281,6 +296,7 @@ export function PlanningToolbar({
       <DeleteConfirm
         open={confirmDelete}
         entityName={selected ? labelOf(selected) : ""}
+        note={deleteNote}
         onConfirm={() => {
           onDelete();
           setConfirmDelete(false);

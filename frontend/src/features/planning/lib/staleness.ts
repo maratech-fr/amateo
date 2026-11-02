@@ -15,15 +15,18 @@
  * décision fondateur) : c'est le calendrier qui fait foi, on le rouvre avant de régénérer — la
  * bannière ne crie pas sur lui. `readOnly` ⇒ `null`.
  *
+ * Une version NON CHARGÉE (`notLoaded`) se tait aussi : on la consulte, et sa bannière dit déjà tout.
+ *
  * Retourne `null` quand rien n'est périmé (aucune bannière).
  */
 export function stalenessMessage(opts: {
   manuallyEdited: boolean;
   structureChanged: boolean;
   readOnly: boolean;
+  notLoaded?: boolean;
 }): string | null {
-  // Un planning validé (en vigueur) est muet : pas de signal « à régénérer » dessus.
-  if (opts.readOnly) {
+  // Un planning validé (en vigueur) ou consulté est muet : pas de signal « à régénérer » dessus.
+  if (opts.readOnly || true === opts.notLoaded) {
     return null;
   }
 

@@ -16,6 +16,7 @@ use App\Service\OrphanedFixtureFinder;
 use App\Service\OverlayManager;
 use App\Service\ScheduleCapabilityResolver;
 use App\Service\SchedulePlanProvisioner;
+use App\Service\VersionEditability;
 use App\Service\WriteTargetSeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -54,6 +55,7 @@ final class ValidateScheduleController extends AbstractController implements Sea
         private readonly OrphanedFixtureFinder $orphanedFixtureFinder,
         private readonly FixtureVenueLossMarker $fixtureVenueLossMarker,
         private readonly FutureHolidayCollectePurger $collectePurger,
+        private readonly VersionEditability $versionEditability,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -136,6 +138,12 @@ final class ValidateScheduleController extends AbstractController implements Sea
             }
             if (ScheduleStatus::COMPLETED->value !== $fresh) {
                 return $this->json(['error' => 'Cette version a changé entre-temps — rechargez le planning.'], Response::HTTP_CONFLICT);
+            }
+
+            // Seule la version chargée se valide : valider celle qu'on consulte détruirait la version
+            // où le gestionnaire travaille. Lu sous le verrou, avec le même verdict que la capacité.
+            if (VersionEditability::NOT_LOADED === $this->versionEditability->check($schedule)) {
+                return $this->json(['code' => VersionEditability::NOT_LOADED, 'error' => VersionEditability::NOT_LOADED_VALIDATE_MESSAGE], Response::HTTP_CONFLICT);
             }
 
             // Les versions sœurs de MÊME portée = MÊME plan (C4 : schedulePlanId, plus

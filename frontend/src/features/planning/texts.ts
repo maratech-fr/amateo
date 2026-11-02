@@ -42,6 +42,29 @@ export const PLANNING_TEXTS = {
   unlockReservedDescription:
     "Ce créneau vient d'une réservation de gymnase. En le déverrouillant, la prochaine génération pourra le déplacer ou le libérer — vérifiez auprès du gymnase avant de continuer.",
   loadVersionTitle: "Charger cette version ?",
+  loadVersionDescriptionGeneric: "La structure actuelle sera remplacée par celle de cette version et son planning s'affichera. Vous pourrez ensuite « Régénérer » pour créer une nouvelle version.",
+  // Version chargée : une version non chargée se consulte, ne se modifie pas.
+  notLoadedBanner: (viewed: string, loaded: string, canLoad: boolean): string =>
+    canLoad
+      ? `Vous consultez la version ${viewed} en lecture seule. La version chargée est la version ${loaded} : chargez la version ${viewed} pour la modifier, ou régénérez à partir de la version ${loaded}.`
+      : `Vous consultez la version ${viewed} en lecture seule. Elle ne peut pas être chargée. La version chargée est la version ${loaded} : modifiez-la, ou régénérez à partir d'elle.`,
+  openLoadedVersion: "Ouvrir la version chargée",
+  gesturesBlockedNotLoaded: "Chargez cette version pour la modifier.",
+  validateNeedsLoad: "Chargez cette version pour la valider.",
+  loadedVersionSuffix: (label: string): string => `(${label} chargée)`,
+  sourceVersionSuffix: (label: string): string => `(${label} source)`,
+  regenerateFromLoadedDescription: (o: { viewed: string; loaded: string; lockCount: number; viewedHasLocks: boolean; canLoad: boolean }): string =>
+    [
+      `Vous regardez la version ${o.viewed}, mais la version chargée est la version ${o.loaded}. La régénération repartira de la version ${o.loaded} (${o.lockCount} verrou${o.lockCount > 1 ? "s" : ""}).`,
+      o.viewedHasLocks ? `Les verrous de la version ${o.viewed} ne seront pas repris.` : null,
+      o.canLoad ? `Pour repartir de la version ${o.viewed}, chargez-la d'abord.` : `La version ${o.viewed} ne peut pas être chargée.`,
+    ]
+      .filter((sentence) => null !== sentence)
+      .join(" "),
+  regenerateFromLoadedConfirm: (label: string): string => `Régénérer depuis la version ${label}`,
+  regenerateFromLoadedToast: (label: string): string => `Régénération lancée depuis la version ${label}.`,
+  regenerateKeepsLoadedLocks: (label: string): string => `La régénération repart de la version ${label} : ses créneaux verrouillés sont conservés.`,
+  deleteLoadedVersionNote: (next: string): string => `C'est la version chargée : la version ${next} prendra le relais.`,
   regenerateFromCurrentTitle: "Régénérer à partir des données en cours ?",
   // SlotDetail
   closeLabel: "Fermer",

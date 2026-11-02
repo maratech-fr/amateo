@@ -60,7 +60,7 @@ final class StructureRestorer
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly TeamEngagementGuard $teamEngagementGuard,
+        private readonly RestoreFeasibility $restoreFeasibility,
         private readonly CoachWishCampaignTokenSync $coachWishTokenSync,
     ) {}
 
@@ -76,7 +76,7 @@ final class StructureRestorer
         $snapshot = $this->entityManager->getRepository(ScheduleStructureSnapshot::class)
             ->findOneBy(['scheduleId' => $source->getId()]);
         if (!$snapshot instanceof ScheduleStructureSnapshot) {
-            throw new ConflictHttpException('Cette version n\'a pas de photo de structure (générée avant l\'historique) — impossible de restaurer ses conditions.');
+            throw new ConflictHttpException(RestoreFeasibility::NO_PHOTO_MESSAGE);
         }
 
         return $snapshot->getData();
@@ -249,57 +249,9 @@ final class StructureRestorer
      */
     private function assertRestoreKeepsEngagedTeams(string $clubId, string $seasonId, array $data): void
     {
-        /** @var list<Team> $teams */
-        $teams = $this->entityManager->getRepository(Team::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]);
-        if ([] === $teams) {
-            return;
-        }
-
-        $engaged = $this->teamEngagementGuard->engagedTeamIds(array_map(static fn (Team $t): string => $t->getId(), $teams));
-        if ([] === $engaged) {
-            return;
-        }
-
-        // La clé de famille est le nom COURT de la classe ('Team'), pas un pluriel :
-        // la lire en dur ferait taire la garde sur un tableau vide. array_search sur la
-        // table de correspondance qui sert déjà à l'hydratation — une seule source.
-        $teamFamily = array_search(Team::class, self::FAMILY_CLASS, true);
-        $inPhoto = [];
-        foreach ($data[$teamFamily] ?? [] as $row) {
-            if (isset($row['id']) && \is_string($row['id'])) {
-                $inPhoto[$row['id']] = $row;
-            }
-        }
-
-        $lost = [];
-        $releveled = [];
-        foreach ($teams as $team) {
-            if (!isset($engaged[$team->getId()])) {
-                continue;
-            }
-            $row = $inPhoto[$team->getId()] ?? null;
-            if (null === $row) {
-                $lost[] = $team->getName();
-                continue;
-            }
-            // Présente ne suffit pas : `level` est un champ mappé, donc la photo le
-            // porte et `hydrate()` le réinsère tel quel. Une photo antérieure à la
-            // correction du niveau le RÉÉCRIRAIT en silence — la divergence même que
-            // le gel total du niveau existe pour rendre impossible, atteinte par
-            // l'autre bout. Et le processor refuse ensuite (409) toute correction :
-            // le club resterait avec un niveau faux, sans issue par l'UI.
-            $photoLevel = $row['level'] ?? null;
-            if ($team->getLevel()?->value !== (\is_string($photoLevel) ? $photoLevel : null)) {
-                $releveled[] = $team->getName();
-            }
-        }
-
-        if ([] !== $lost) {
-            throw new ConflictHttpException(\sprintf('Cette version est antérieure à %s, qui joue%s déjà en compétition : la charger %s supprimerait et laisserait %s matchs sans équipe.', implode(', ', $lost), 1 === \count($lost) ? '' : 'nt', 1 === \count($lost) ? 'la' : 'les', 1 === \count($lost) ? 'ses' : 'leurs'));
-        }
-
-        if ([] !== $releveled) {
-            throw new ConflictHttpException(\sprintf('Cette version a été générée quand %s %s un autre niveau de jeu. %s joue%s déjà en compétition : la charger rétablirait un niveau qui ne correspond plus à %s engagement.', implode(', ', $releveled), 1 === \count($releveled) ? 'avait' : 'avaient', 1 === \count($releveled) ? 'Elle' : 'Elles', 1 === \count($releveled) ? '' : 'nt', 1 === \count($releveled) ? 'son' : 'leur'));
+        $conflict = $this->restoreFeasibility->restoreConflict($clubId, $seasonId, $data['Team'] ?? []);
+        if (null !== $conflict) {
+            throw new ConflictHttpException($conflict);
         }
     }
 

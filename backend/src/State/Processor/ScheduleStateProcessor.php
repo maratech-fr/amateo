@@ -207,6 +207,11 @@ class ScheduleStateProcessor extends AbstractStateProcessor
                 if ($this->capabilityResolver->isInFlight($schedule)) {
                     throw new ConflictHttpException('Ce planning est encore en cours de génération — attendez la fin avant de le supprimer.');
                 }
+                // La génération en cours repart de la version chargée : la retirer sous le worker
+                // ferait échouer le solve.
+                if ($this->capabilityResolver->isLoadedVersionOfRunningGeneration($schedule)) {
+                    throw new ConflictHttpException('Une génération repart de cette version — attendez sa fin avant de la supprimer.');
+                }
                 // La DERNIÈRE version terminée du plan de la saison ancre la saison :
                 // la supprimer laisserait un club établi sans aucun calendrier, donc
                 // sans cockpit ni matchs (inv. 8/16 le renverrait au wizard guidé, ses

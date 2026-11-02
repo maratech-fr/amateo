@@ -165,7 +165,7 @@ final class DeploymentImminentFreezeTest extends WebTestCase
     public function testAFutureDeploymentDoesNotFreezeTheGuichets(): void
     {
         $this->seedDeployment('scheduled', '+2 hours');
-        $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        $version = $this->seedSeasonVersion(ScheduleStatus::DRAFT);
 
         $this->request('POST', '/api/schedules/' . $version->getId() . '/generate');
 
@@ -176,7 +176,7 @@ final class DeploymentImminentFreezeTest extends WebTestCase
     public function testACancelledDeploymentDoesNotFreezeTheGuichets(): void
     {
         $this->seedDeployment('cancelled', '-2 minutes');
-        $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        $version = $this->seedSeasonVersion(ScheduleStatus::DRAFT);
 
         $this->request('POST', '/api/schedules/' . $version->getId() . '/generate');
 
@@ -195,7 +195,7 @@ final class DeploymentImminentFreezeTest extends WebTestCase
         $this->seedDeployment('scheduled', '+2 days'); // pas encore à H en temps RÉEL
         [$token, $versionId] = $this->bootDemoClub(new DateTimeImmutable('+30 days'));
 
-        $this->requestAs($token, 'POST', '/api/schedules/' . $versionId . '/generate');
+        $this->requestAs($token, 'POST', '/api/schedules/' . $versionId . '/regenerate');
 
         self::assertResponseStatusCodeSame(202, 'le gel suit l\'horloge RÉELLE : l\'horloge simulée future d\'un club démo ne gèle pas un déploiement encore futur');
     }

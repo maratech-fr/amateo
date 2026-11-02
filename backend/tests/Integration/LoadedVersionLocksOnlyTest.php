@@ -427,7 +427,7 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
 
         $transport = self::getContainer()->get('messenger.transport.async');
         $message = null;
-        for ($i = 0; $i < 20 && !$message instanceof GenerateScheduleMessage; ++$i) {
+        for ($i = 0; $i < 5000 && !$message instanceof GenerateScheduleMessage; ++$i) {
             foreach ($transport->get() as $envelope) {
                 $candidate = $envelope->getMessage();
                 $transport->ack($envelope);

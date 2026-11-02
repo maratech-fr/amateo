@@ -96,6 +96,11 @@ export interface ScheduleCapabilities {
   canLoadLocks: boolean;
   versionsDeletedOnValidate: number;
   overlaysDroppedOnValidate: number;
+  /** Absent d'un cache antérieur : aucun motif n'est alors inventé, le serveur refusera seul. */
+  canEdit?: boolean;
+  editBlockedReason?: string | null;
+  /** Pourquoi cette version ne se charge pas, mot pour mot le refus du serveur. */
+  regenerateFromBlockedReason?: string | null;
 }
 // isSeasonPlanType vit dans ./lib/versions (module PUR, jamais mocké) : le définir ici,
 // où plusieurs tests posent un vi.mock("./api") manuel, le rendait indéfini sous le mock.
@@ -650,6 +655,16 @@ export class SlotEditError extends Error {
 }
 
 /**
+ * Deux onglets : la version a cessé d'être chargée ailleurs. Le refus 409 codé devient une
+ * {@link SlotEditError}, que les hooks reconnaissent pour recharger la liste des versions.
+ */
+function throwIfNotLoadedVersion(status: number, body: { code?: string; error?: string }): void {
+  if (409 === status && "not_loaded_version" === body.code) {
+    throw new SlotEditError(body.code, body.error ?? "Chargez cette version pour la modifier.");
+  }
+}
+
+/**
  * Déplacer un créneau (jour / heure / gymnase) SOUS LE VERDICT DU MOTEUR (F2b).
  *
  * Remplace l'ancien rail `manual-edit/one-time` (chevauchements bruts, ni capacité ni
@@ -685,6 +700,7 @@ export async function moveSlot(id: string, patch: SlotMovePatch, signal?: AbortS
         }
         throw new MoveRejectedError(body.violations ?? []);
       }
+      throwIfNotLoadedVersion(error.response.status, body);
       if (409 === error.response.status && "generation_in_progress" === body.code) {
         throw new GenerationInProgressError();
       }
@@ -721,6 +737,7 @@ export async function placeSlot(scheduleId: string, body: PlaceSlotBody, signal?
         }
         throw new MoveRejectedError(data.violations ?? []);
       }
+      throwIfNotLoadedVersion(error.response.status, data);
       if (409 === error.response.status && "generation_in_progress" === data.code) {
         throw new GenerationInProgressError();
       }
@@ -802,6 +819,7 @@ export async function moveGroup(body: MoveGroupBody, signal?: AbortSignal): Prom
         }
         throw new MoveRejectedError(data.violations ?? []);
       }
+      throwIfNotLoadedVersion(error.response.status, data);
       if (409 === error.response.status && "generation_in_progress" === data.code) {
         throw new GenerationInProgressError();
       }
@@ -862,6 +880,7 @@ export async function swapSlots(body: SwapBody, signal?: AbortSignal): Promise<S
         }
         throw new MoveRejectedError(data.violations ?? []);
       }
+      throwIfNotLoadedVersion(error.response.status, data);
       if (409 === error.response.status && "generation_in_progress" === data.code) {
         throw new GenerationInProgressError();
       }
@@ -907,6 +926,7 @@ export async function mutualizeAtCase(body: MutualizeAtCaseBody): Promise<Mutual
   } catch (error) {
     if (error instanceof HTTPError) {
       const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string };
+      throwIfNotLoadedVersion(error.response.status, data);
       if (409 === error.response.status && "generation_in_progress" === data.code) {
         throw new GenerationInProgressError();
       }
@@ -974,7 +994,8 @@ export async function removeSlot(id: string, opts?: { dryRun?: boolean }): Promi
     return await api.post(`schedule-slots/${id}/remove`, { json: true === opts?.dryRun ? { dryRun: true } : {} }).json<RemoveSlotResult>();
   } catch (error) {
     if (error instanceof HTTPError && 409 === error.response.status) {
-      const body = ((error as { data?: unknown }).data ?? {}) as { code?: string };
+      const body = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string };
+      throwIfNotLoadedVersion(409, body);
       if ("generation_in_progress" === body.code) {
         throw new GenerationInProgressError();
       }
@@ -994,6 +1015,7 @@ export async function removeSlotGroup(body: RemoveSlotGroupBody): Promise<Remove
   } catch (error) {
     if (error instanceof HTTPError) {
       const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string };
+      throwIfNotLoadedVersion(error.response.status, data);
       if (409 === error.response.status && "generation_in_progress" === data.code) {
         throw new GenerationInProgressError();
       }
@@ -1085,7 +1107,7 @@ export const regenerateFromVersion = (id: string): Promise<{ id: string }> => ap
 export const loadLocks = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/load-locks`).json();
 /** planning-versions: the plain "Régénérer" creates a NEW linear version (V2…)
  *  from the current structure, carrying the version's HARD-locked slots. */
-export const regenerate = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/regenerate`).json();
+export const regenerate = (id: string): Promise<{ id: string; status: string; sourceScheduleId: string | null }> => api.post(`schedules/${id}/regenerate`).json();
 
 /**
  * P2-44 PR-3 (comblement) — un solve PARTIEL d'une version de plan de PÉRIODE : les placements
@@ -1162,6 +1184,7 @@ export async function mutualizeSlot(id: string, body: MutualizeBody): Promise<Mu
     if (error instanceof HTTPError) {
       // ky 2.x : le corps d'erreur vit dans error.data (re-lire la réponse jette).
       const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string };
+      throwIfNotLoadedVersion(error.response.status, data);
       if (409 === error.response.status && "generation_in_progress" === data.code) {
         throw new GenerationInProgressError();
       }

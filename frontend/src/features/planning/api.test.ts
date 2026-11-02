@@ -124,7 +124,11 @@ describe("moveSlot / placeSlot — le refus d'une version non chargée est recon
   const refuse = () =>
     mockPost.mockReturnValueOnce({
       json: async () => {
-        throw new HTTPError(new Response(JSON.stringify({ code: "not_loaded_version", error: "Chargez cette version pour la modifier." }), { status: 409 }), new Request("http://x/"), {} as never);
+        const body = { code: "not_loaded_version", error: "Chargez cette version pour la modifier." };
+        const error = new HTTPError(new Response(JSON.stringify(body), { status: 409 }), new Request("http://x/"), {} as never);
+        // ky 2.x expose le corps d'erreur parsé sur error.data (patron `moveSlot.test.ts`).
+        (error as unknown as { data: unknown }).data = body;
+        throw error;
       },
     } as never);
 

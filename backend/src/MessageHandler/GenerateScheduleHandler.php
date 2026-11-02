@@ -233,9 +233,26 @@ final class GenerateScheduleHandler
             }
         }
 
+        // Plan de saison : on repart de la version que la régénération a nommée. Si elle a disparu
+        // (supprimée entre la mise en file et le solve), repartir d'une autre serait un mensonge : échec
+        // nommé. Sans source explicite (première génération), le builder lit la version chargée.
+        $sourceId = $message->getSourceScheduleId();
+        if (!$overlayEntry instanceof CalendarEntry && null !== $sourceId) {
+            $source = $this->findSchedule($sourceId);
+            if (!$source instanceof Schedule || $source->getSchedulePlanId() !== $schedule->getSchedulePlanId()) {
+                $failure = 'La version de départ de cette génération n\'existe plus. Relancez la régénération.';
+                $this->failSchedule($schedule, 'source_version_missing', $failure);
+                $this->metricsRecorder?->record($schedule);
+                $this->entityManager->flush();
+                $this->progressPublisher->publishSafely($schedule, ['warnings' => [$failure]]);
+
+                return;
+            }
+        }
+
         $scheduleInput = $overlayEntry instanceof CalendarEntry
             ? $this->constraintBuilder->buildForOverlay($schedule, $overlayEntry)
-            : $this->buildFrozenSnapshot($schedule);
+            : $this->buildFrozenSnapshot($schedule, $sourceId);
 
         // P2-44 PR-3 (comblement) — solve PARTIEL : les placements de la version SOURCE de la
         // période sont épinglés HARD dans le payload (jamais persistés en base), seuls les trous
@@ -453,18 +470,19 @@ final class GenerateScheduleHandler
     }
 
     /** @return array<string, mixed> */
-    private function buildFrozenSnapshot(Schedule $schedule): array
+    private function buildFrozenSnapshot(Schedule $schedule, ?string $lockVersionId): array
     {
         return $this->constraintBuilder->buildForClubSeason(
             $schedule->getClubId(),
             $schedule->getSeasonId(),
+            lockVersionId: $lockVersionId,
         );
     }
 
     /**
      * P3-21 — les placements de la version « précédente » à faire converger (terme de
-     * stabilité). Source EXPLICITE d'abord (`sourceScheduleId` = la version que le
-     * gestionnaire REGARDE en régénérant) ; à défaut, repli sur la dernière version
+     * stabilité). Source EXPLICITE d'abord (`sourceScheduleId` = la version chargée d'où
+     * part la régénération) ; à défaut, repli sur la dernière version
      * COMPLETED du MÊME plan. Aucune ⇒ première génération : bloc vide.
      *
      * La source est TOUJOURS de la MÊME lignée (le même `schedulePlanId`) : ADR-0002 —

@@ -5,10 +5,17 @@ import type { EvictFailureKind } from "../EvictConfirmDialog";
 import type { MoveFeedback } from "../SlotDetail";
 import type { ViewMode } from "../store";
 import { toast } from "@/shared/stores/toastStore";
-import { isBusinessSlotEditError, useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveGroupDryRun, useMoveSlot, useMutualizeAtCase, usePlaceSlot, useSwapDryRun, useSwapSlot } from "../queries";
+import { isBusinessSlotEditError, isNotLoadedRefusal, useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveGroupDryRun, useMoveSlot, useMutualizeAtCase, usePlaceSlot, useSwapDryRun, useSwapSlot } from "../queries";
 import type { DriftEntry } from "./drift";
 import { isEmptySlotId } from "./emptySlots";
 import { toHourMinute } from "./grid";
+
+/** Le motif serveur d'un refus, sauf « version plus chargée » : le hook l'a déjà dit, et a regrisé l'écran. */
+const toastRefusal = (error: Error): void => {
+  if (!isNotLoadedRefusal(error)) {
+    toast.error(error.message);
+  }
+};
 
 /**
  * P4-329 — le contexte d'un déplacement de GROUPE porté par la modale d'éviction : le bloc et sa
@@ -355,7 +362,7 @@ export function useRetouchGestures(
           // Verrou de cible / cible incohérente / moteur trop lent : message serveur propre (le
           // timeout est NOMMÉ, pas un numéro nu), on RESTE en mode cible.
           if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
-            toast.error(error.message);
+            toastRefusal(error);
           }
           // Un refus de légalité (MoveRejectedError) s'affiche dans le panneau (moveState) et
           // surligne le conflit (phase de rendu) — le mode cible reste armé pour réessayer.
@@ -417,7 +424,7 @@ export function useRetouchGestures(
             return; // déjà nommé + resynchronisé par le hook
           }
           if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
-            toast.error(error.message);
+            toastRefusal(error);
           }
           // MoveRejectedError / GenerationInProgress / interruption : rendus par le panneau
           // (`moveGroupState`) + surlignage — le mode cible reste armé pour réessayer ailleurs.
@@ -466,7 +473,7 @@ export function useRetouchGestures(
             // P4-119 (b) : attente coupée côté client — on NOMME l'interruption, jamais « indisponible ».
             toast.error("La vérification a été interrompue avant la réponse — réessayez.");
           } else if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
-            toast.error(error.message);
+            toastRefusal(error);
           } else {
             toast.error("Le moteur n'a pas répondu — réessayez.");
           }
@@ -503,7 +510,7 @@ export function useRetouchGestures(
       // la modale se ferme, le motif est toasté, le mode cible reste armé.
       if (error instanceof TargetLockedError || error instanceof SlotEditError) {
         setEvictDialog(null);
-        toast.error(error.message);
+        toastRefusal(error);
         return;
       }
       if (error instanceof GenerationInProgressError) {
@@ -681,7 +688,7 @@ export function useRetouchGestures(
     const onError = (error: unknown) => {
       if (error instanceof TargetLockedError || error instanceof SlotEditError) {
         setSwapDialog(null);
-        toast.error(error.message);
+        toastRefusal(error);
         return;
       }
       if (error instanceof GenerationInProgressError) {
@@ -736,7 +743,7 @@ export function useRetouchGestures(
             toast.error(error.violations[0]?.message ?? "Échange refusé par le moteur.");
             highlightViolations(error.violations);
           } else if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
-            toast.error(error.message);
+            toastRefusal(error);
           }
         },
       },
