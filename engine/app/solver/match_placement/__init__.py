@@ -15,7 +15,9 @@ personnes ``_team_players``) · ``weights`` (les poids d'objectif SOFT, ADR-0003
 (table ``REASON_MESSAGES`` et reclassement ``_remaining_reason``) · ``budget`` (dépassement de
 build ``_BuildBudgetExceeded`` et réponse ``_too_large_result``) · ``candidates`` (seule arête
 interne : ``_candidate_kickoffs`` assis sur ``geometry``, et la classe ``_Candidate``) · ``weeks``
-(partition ``_partition_by_iso_week`` / clé ``_iso_week`` et fusion ``_merge_week_results``).
+(partition ``_partition_by_iso_week`` / clé ``_iso_week`` et fusion ``_merge_week_results``) ·
+``holding`` (assis sur ``geometry`` : qui tient chaque match figé d'une date, miroir de
+``App\\Service\\Conflicts\\DatedHolding``).
 
 ⚠ Coutures : ``tests/test_match_placement.py`` fait
 ``monkeypatch.setattr(match_placement, "BUILD_BUDGET_SECONDS", 0.0)`` — ``_place_matches`` lit cette
@@ -83,6 +85,7 @@ from .geometry import (
 from .geometry import (
     _to_time as _to_time,
 )
+from .holding import fixed_person_windows
 from .reasons import (
     REASON_MESSAGES as REASON_MESSAGES,
 )
@@ -156,6 +159,24 @@ def _is_imported_position(cand: _Candidate, match: MatchSchema) -> bool:
         match.imported_venue_id == cand.venue_id
         and match.imported_kickoff is not None
         and _minutes(match.imported_kickoff) == cand.kickoff_min
+    )
+
+
+def _coach_is_taken(
+    coach_id: str,
+    kickoff: int,
+    match: MatchSchema,
+    match_min: int,
+    person_windows: dict[tuple[str, date], list[tuple[int, int]]],
+    unavailabilities: list[CoachUnavailabilitySchema],
+) -> bool:
+    """Is this coach held elsewhere over the candidate's person window, or unavailable at its kickoff?"""
+    held = any(
+        kickoff < f_end and f_start < kickoff + match_min
+        for f_start, f_end in person_windows.get((coach_id, match.match_date), [])
+    )
+    return held or any(
+        unav.coach_id == coach_id and _kick_in_unavailability(kickoff, unav) for unav in unavailabilities
     )
 
 
@@ -324,24 +345,9 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     # so no travel leg survives here. Lot M — the person window is warm-up-FREE, and
     # FIXED = home = no travel, so it is [kickoff, kickoff + matchMinutes]. A PERSON is
     # a coach OR an active player (P4-240 ③): both project the same window.
-    fixed_windows_by_coach: dict[tuple[str, date], list[tuple[int, int]]] = {}
-    for match in fixed:
-        if match.kickoff is None:  # guarded by the schema (a FIXED match is anchored)
-            continue
-        team = teams_by_id.get(match.team_id)
-        if team is None:
-            continue
-        match_min, _ = _durations(team)
-        start = _minutes(match.kickoff)
-        end = start + match_min
-        for ref in team.coaches:
-            fixed_windows_by_coach.setdefault((ref.coach_id, match.match_date), []).append((start, end))
-        for player_id in _team_players(team):
-            fixed_windows_by_coach.setdefault((player_id, match.match_date), []).append((start, end))
-    for occupancy in input_data.training_occupancies:
-        fixed_windows_by_coach.setdefault((occupancy.coach_id, occupancy.occupancy_date), []).append(
-            (_minutes(occupancy.start), _minutes(occupancy.end))
-        )
+    # Since the "one coach holds" rule, a FIXED match retains only ONE of its MAIN coaches, its holder of
+    # the day, on top of its players and assistants (holding.py); received occupancies count as taken.
+    fixed_windows_by_coach = fixed_person_windows(input_data, teams_by_id)
 
     # Habit-window protection (P4-271): dates where a team with a venue-anchored
     # habit has NO match at all — its habitual MATCH window [kickoff, kickoff +
@@ -353,23 +359,16 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     match_dates = sorted({m.match_date for m in input_data.matches})
     team_dates = {(m.team_id, m.match_date) for m in input_data.matches}
     protected: dict[tuple[str, date], set[tuple[int, int]]] = {}
-    for team in input_data.teams:
-        match_min, _ = _durations(team)
-        for habit in team.habits:
+    for habit_team in input_data.teams:
+        match_min, _ = _durations(habit_team)
+        for habit in habit_team.habits:
             if habit.venue_id is None:
                 continue
             for day_key in match_dates:
-                if _iso_day(day_key) != habit.day_of_week or (team.id, day_key) in team_dates:
+                if _iso_day(day_key) != habit.day_of_week or (habit_team.id, day_key) in team_dates:
                     continue
                 kick = _minutes(habit.kickoff)
                 protected.setdefault((habit.venue_id, day_key), set()).add((kick, kick + match_min))
-
-    # P4-272 ⑤ — coach unavailabilities indexed by coach id (SOFT). A candidate whose
-    # kickoff falls in an unavailable window of one of the match team's coaches, on a
-    # covered ISO day, is penalised W_COACH_UNAVAILABLE below.
-    coach_unavailabilities: dict[str, list[CoachUnavailabilitySchema]] = {}
-    for unav in input_data.coach_unavailabilities:
-        coach_unavailabilities.setdefault(unav.coach_id, []).append(unav)
 
     for match in solvable:
         _ensure_budget()
@@ -386,22 +385,9 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             for r in input_data.club_rules
             if r.rule_type == "PREFERRED" and _iso_day(match.match_date) in r.days_of_week
         ]
-        # P4-272 ⑤ — coach unavailabilities of THIS team's coaches covering this ISO day.
+        # P4-272 ⑤ — the coach unavailabilities covering this ISO day (SOFT, never a block).
         match_day = _iso_day(match.match_date)
-        # Chantier H volet matchs (amendement c) — le POIDS de l'indisponibilité dépend du RÔLE du
-        # coach sur l'équipe : un principal (MAIN) pèse W_COACH_UNAVAILABLE (60), un adjoint
-        # (ASSISTANT) seulement W_COACH_ASSISTANT (10) — un adjoint indisponible ne doit pas chasser
-        # le match comme le ferait le principal. On retient donc `(role, unav)`.
-        team_coach_unavailabilities = (
-            [
-                (ref.role, unav)
-                for ref in team.coaches
-                for unav in coach_unavailabilities.get(ref.coach_id, [])
-                if match_day in unav.days_of_week
-            ]
-            if team is not None
-            else []
-        )
+        team_unav = [unav for unav in input_data.coach_unavailabilities if match_day in unav.days_of_week]
         for cand in candidates[match.id]:
             weight = 0
             venue_start = cand.kickoff_min
@@ -448,11 +434,29 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             # Person clash (coach OR active player) → the warm-up-FREE person window
             # (lot M). A player weighs W_COACH_MAIN, like a MAIN coach (P4-240 ③).
             if team is not None:
+                # A team plays as long as ONE main is free: all mains taken costs once, W_COACH_MAIN
+                # with no free assistant, W_COACH_ASSISTANT with one. A team without a main never
+                # enters this branch and keeps its assistants' cumulated terms below.
+                mains_taken = [
+                    _coach_is_taken(ref.coach_id, cand.kickoff_min, match, match_min, fixed_windows_by_coach, team_unav)
+                    for ref in team.coaches
+                    if ref.role == "MAIN"
+                ]
+                if mains_taken and all(mains_taken):
+                    a_free_assistant = any(
+                        not _coach_is_taken(
+                            ref.coach_id, cand.kickoff_min, match, match_min, fixed_windows_by_coach, team_unav
+                        )
+                        for ref in team.coaches
+                        if ref.role != "MAIN"
+                    )
+                    weight -= W_COACH_ASSISTANT if a_free_assistant else W_COACH_MAIN
                 for ref in team.coaches:
-                    role_weight = W_COACH_MAIN if ref.role == "MAIN" else W_COACH_ASSISTANT
+                    if ref.role == "MAIN":
+                        continue
                     for f_start, f_end in fixed_windows_by_coach.get((ref.coach_id, match.match_date), []):
                         if person_start < f_end and f_start < person_end:
-                            weight -= role_weight
+                            weight -= W_COACH_ASSISTANT
                 for player_id in _team_players(team):
                     for f_start, f_end in fixed_windows_by_coach.get((player_id, match.match_date), []):
                         if person_start < f_end and f_start < person_end:
@@ -463,12 +467,15 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             for rule in preferred_rules:
                 if not _kick_in_club_rule(cand.kickoff_min, rule):
                     weight -= W_CLUB_RULE
-            # P4-272 ⑤ — a coach of this team is unavailable at this candidate's kickoff
-            # (a declared window on this ISO day) → W_COACH_UNAVAILABLE. SOFT: it steers
-            # the match out of the window when an alternative exists, never blocks it.
-            for role, unav in team_coach_unavailabilities:
-                if _kick_in_unavailability(cand.kickoff_min, unav):
-                    weight -= W_COACH_UNAVAILABLE if role == "MAIN" else W_COACH_ASSISTANT
+            # P4-272 ⑤ — an ASSISTANT unavailable at this candidate's kickoff weighs W_COACH_ASSISTANT (an
+            # assistant must not chase the match as a main would). A main's unavailability makes him
+            # « taken » in the person-clash term above: one cost per main, never a second one here.
+            if team is not None:
+                for ref in team.coaches:
+                    if ref.role != "MAIN":
+                        for unav in team_unav:
+                            if unav.coach_id == ref.coach_id and _kick_in_unavailability(cand.kickoff_min, unav):
+                                weight -= W_COACH_ASSISTANT
             if weight:
                 objective.append(weight * cand.var)
 

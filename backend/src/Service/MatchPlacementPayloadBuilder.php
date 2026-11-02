@@ -20,22 +20,23 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\ConflictPersonRole;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
-use DateInterval;
+use App\Service\Conflicts\DayHoldings;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Builds the engine `/place-matches` payload (contract 1.3, ADR-0003). The
  * backend PROJECTS, the engine stays flat:
- * - training occupancies are dated projections of the EFFECTIVE schedules
- *   (ADR-0002 rules via TrainingCalendarContext/EffectiveScheduleResolver —
- *   never re-implemented engine-side);
+ * - training occupancies say who each session of the EFFECTIVE schedule retains on a date carrying a
+ *   match to place (ADR-0002 rules via TrainingCalendarContext/EffectiveScheduleResolver —
+ *   never re-implemented engine-side): its holder of the day and its players;
  * - away kickoffs are estimated by the SAME AwayKickoffEstimator the radar
  *   uses;
  * - teams carry their active shared PLAYERS (teams[].players, P4-240 ③) alongside
@@ -93,6 +94,9 @@ final class MatchPlacementPayloadBuilder
         private readonly MatchDurationResolver $matchDurationResolver,
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly ClubPublicHolidays $clubPublicHolidays,
+        private readonly MatchConflictDetector $conflictDetector,
+        private readonly OpponentTravelProjection $opponentTravelProjection,
+        private readonly PlanHoldingInputs $planHoldingInputs,
     ) {}
 
     /**
@@ -128,8 +132,9 @@ final class MatchPlacementPayloadBuilder
         $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([]);
         /** @var list<TeamLink> $teamLinks */
         $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([]);
+        // L'ordre de lien départage qui tient une séance ou un match, ici et côté moteur.
         /** @var list<TeamCoach> $teamCoaches */
-        $teamCoaches = $this->entityManager->getRepository(TeamCoach::class)->findBy([]);
+        $teamCoaches = $this->entityManager->getRepository(TeamCoach::class)->findBy([], ['createdAt' => 'ASC', 'id' => 'ASC']);
         /** @var list<CoachPlayerMembership> $playerMemberships */
         $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
         // P4-272 ① — la COPIE club de l'enveloppe ligue (scopée club+saison par les
@@ -394,7 +399,7 @@ final class MatchPlacementPayloadBuilder
                     'teamBId' => $link->getTeamBId(),
                     'type' => $link->getLinkType()->value,
                 ], $teamLinks),
-                'trainingOccupancies' => $this->trainingOccupancies($fixtures, $seasonId, $teamCoaches, $playerIdsByTeam, $publicHolidays),
+                'trainingOccupancies' => $this->trainingOccupancies($club->getId(), $fixtures, $seasonId, $matchRows, $habitIndex, $categoriesById, $teams, $teamCoaches, $playerIdsByTeam, $coachUnavailabilityRows, $publicHolidays),
                 // PR2 — dates fériées du club : le moteur les lit pour juger/placer un match férié
                 // contre la ligne « Jours fériés » (jamais la fenêtre du jour de semaine ni la ligue).
                 'publicHolidays' => $publicHolidays,
@@ -508,74 +513,109 @@ final class MatchPlacementPayloadBuilder
     }
 
     /**
-     * Dated projection of the training sessions on every date the horizon
-     * touches — one occupancy per (slot, person). The slot's own coach when set,
-     * else every coach of the slot's team (the radar's exact rule), PLUS the
-     * slot's team's active players in EVERY case (P4-240 ③ : an assigned coach
-     * replaces the other COACHES, never the players — parité MatchConflictDetector).
-     * The `coachId` field carries any PERSON id (a player rides the same field).
+     * Qui les séances retiennent, sur chaque date qui porte un match à placer : le tenant du jour et les
+     * joueurs de l'équipe. Une séance que personne ne peut tenir retient tous ses candidats, ceux qu'une
+     * indisponibilité d'entraînement n'a pas retirés. Une séance dont l'équipe joue un match figé ou un
+     * extérieur n'a pas lieu et ne retient personne ; face à un match À PLACER de son équipe elle retient
+     * encore, l'occupation ne portant pas d'équipe. Le champ `coachId` porte un id de personne.
      *
-     * PR2 — aucune occupation d'entraînement n'est projetée un jour FÉRIÉ : l'entraînement n'a
-     * pas lieu ce jour-là, donc il ne doit pas gêner le placement d'un match férié (parité radar
-     * MATCH_TRAINING). La date fériée est écartée AVANT toute projection.
+     * Les matchs figés et les extérieurs du jour prennent leur tenant d'abord (mêmes fenêtres que le
+     * radar, {@see DayMatches}) ; à candidats égaux, celui qui n'a pas de match à placer tient. Un jour
+     * férié n'a pas de séance.
      *
-     * @param list<Fixture>               $fixtures
-     * @param list<TeamCoach>             $teamCoaches
-     * @param array<string, list<string>> $playerIdsByTeam teamId → active player person ids (coach-excluded)
-     * @param list<string>                $publicHolidays  dates fériées (Y-m-d) à ne jamais projeter
+     * @param list<Fixture>                                                                                         $fixtures
+     * @param list<array<string, mixed>>                                                                            $matchRows
+     * @param array<string, array<int, TeamMatchHabit>>                                                             $habitIndex
+     * @param array<string, SportCategory>                                                                          $categoriesById
+     * @param list<Team>                                                                                            $teams
+     * @param list<TeamCoach>                                                                                       $teamCoaches
+     * @param array<string, list<string>>                                                                           $playerIdsByTeam         teamId → active player person ids (coach-excluded)
+     * @param list<array{coachId: string, daysOfWeek: list<int>, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilityRows
+     * @param list<string>                                                                                          $publicHolidays          dates fériées (Y-m-d)
      *
      * @return list<array<string, string>>
      */
-    private function trainingOccupancies(array $fixtures, ?string $seasonId, array $teamCoaches, array $playerIdsByTeam, array $publicHolidays = []): array
+    private function trainingOccupancies(string $clubId, array $fixtures, ?string $seasonId, array $matchRows, array $habitIndex, array $categoriesById, array $teams, array $teamCoaches, array $playerIdsByTeam, array $coachUnavailabilityRows, array $publicHolidays): array
     {
-        $context = $this->trainingCalendarContext->load($seasonId);
-        $coachesByTeam = [];
-        foreach ($teamCoaches as $link) {
-            $coachesByTeam[$link->getTeamId()][] = $link->getCoachId();
+        $toPlaceRows = array_filter($matchRows, static fn (array $row): bool => 'TO_PLACE' === $row['kind']);
+        if ([] === $toPlaceRows) {
+            return [];
         }
 
-        $dates = [];
-        foreach ($fixtures as $fixture) {
-            $dates[$fixture->getMatchDate()->format('Y-m-d')] = $fixture->getMatchDate();
+        $roleByTeamPerson = [];
+        foreach ($teamCoaches as $link) {
+            $role = ConflictPersonRole::from($link->getRole()->value);
+            if (ConflictPersonRole::MAIN !== ($roleByTeamPerson[$link->getTeamId()][$link->getCoachId()] ?? null)) {
+                $roleByTeamPerson[$link->getTeamId()][$link->getCoachId()] = $role;
+            }
         }
+        foreach ($playerIdsByTeam as $teamId => $personIds) {
+            foreach ($personIds as $personId) {
+                $roleByTeamPerson[$teamId][$personId] = ConflictPersonRole::PLAYER;
+            }
+        }
+
+        $busyToPlaceByDate = [];
+        $toPlaceIds = [];
+        foreach ($toPlaceRows as $row) {
+            $toPlaceIds[$row['id']] = true;
+            foreach (array_keys($roleByTeamPerson[$row['teamId']] ?? []) as $personId) {
+                $busyToPlaceByDate[$row['date']][$personId] = true;
+            }
+        }
+
+        $profilesByTeam = [];
+        foreach ($teams as $team) {
+            $category = $categoriesById[$team->getSportCategoryId()] ?? null;
+            if (null !== $category) {
+                $profilesByTeam[$team->getId()] = $this->matchDurationResolver->resolve($category);
+            }
+        }
+        $roundTrips = $this->opponentTravelProjection->roundTripByFixtureId($seasonId, $fixtures);
+        $views = [];
+        foreach ($fixtures as $fixture) {
+            $personIds = array_map(strval(...), array_keys($roleByTeamPerson[$fixture->getTeamId()] ?? []));
+            if (isset($toPlaceIds[$fixture->getId()]) || [] === $personIds) {
+                continue;
+            }
+            $view = $this->conflictDetector->fixtureView($fixture, $profilesByTeam, $roundTrips, $habitIndex, $personIds);
+            if (null !== $view) {
+                $views[] = $view;
+            }
+        }
+
+        $unavailabilities = [];
+        foreach ($coachUnavailabilityRows as $row) {
+            foreach ($row['daysOfWeek'] as $dayOfWeek) {
+                $unavailabilities[] = ['coachId' => $row['coachId'], 'dayOfWeek' => $dayOfWeek, 'kickoffMin' => $row['kickoffMin'], 'kickoffMax' => $row['kickoffMax']];
+            }
+        }
+
+        $context = $this->trainingCalendarContext->load($seasonId);
+        [$wizardBlocked, $groups] = $this->planHoldingInputs->load($clubId, $seasonId, array_keys($context['slotsBySchedule']));
+        $holdings = new DayHoldings($views, $roleByTeamPerson, $this->effectiveScheduleResolver, $context['seasonScheduleId'], $context['activePeriods'], $context['slotsBySchedule'], $unavailabilities, $publicHolidays, $wizardBlocked, $groups, $busyToPlaceByDate);
 
         $occupancies = [];
-        foreach ($dates as $dateKey => $date) {
-            // PR2 — un jour férié, aucun entraînement n'a lieu : on ne projette rien.
-            if (\in_array($dateKey, $publicHolidays, true)) {
-                continue;
-            }
-            $scheduleId = $this->effectiveScheduleResolver->resolve(
-                $date,
-                $context['activePeriods'],
-                $context['seasonScheduleId'],
-            );
-            if (null === $scheduleId) {
-                continue;
-            }
-            $isoWeekday = (int) $date->format('N');
-            foreach ($context['slotsBySchedule'][$scheduleId] ?? [] as $slot) {
-                if ($slot->getDayOfWeek() !== $isoWeekday) {
-                    continue;
-                }
-                $start = $slot->getStartTime()->format('H:i');
-                $end = $slot->getStartTime()->add(new DateInterval('PT' . $slot->getDurationMinutes() . 'M'))->format('H:i');
-                $slotCoach = $slot->getCoachId();
-                $coachIds = null !== $slotCoach ? [$slotCoach] : ($coachesByTeam[$slot->getTeamId()] ?? []);
-                // Coaches (assigned or all) PLUS the team's active players — a player
-                // is held by his team's training too (P4-240 ③, parité radar). Deduped
-                // so an id never yields two occupancies.
-                $personIds = array_values(array_unique([
-                    ...$coachIds,
-                    ...($playerIdsByTeam[$slot->getTeamId()] ?? []),
-                ]));
-                foreach ($personIds as $personId) {
-                    $occupancies[] = ['date' => $dateKey, 'start' => $start, 'end' => $end, 'coachId' => $personId];
+        foreach (array_unique(array_column($toPlaceRows, 'date')) as $dateKey) {
+            foreach ($holdings->sessionsOn(new DateTimeImmutable($dateKey)) as $session) {
+                $coachIds = null !== $session['holder'] ? [$session['holder']] : $session['candidates'];
+                foreach (array_unique([...$coachIds, ...$session['players']]) as $personId) {
+                    $occupancies[] = [
+                        'date' => $dateKey,
+                        'start' => $this->clockTime($session['startMinutes']),
+                        'end' => $this->clockTime($session['endMinutes']),
+                        'coachId' => $personId,
+                    ];
                 }
             }
         }
 
         return $occupancies;
+    }
+
+    private function clockTime(int $minutes): string
+    {
+        return \sprintf('%02d:%02d', intdiv($minutes, 60) % 24, $minutes % 60);
     }
 
     /**
