@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Deletion\CoachWishStaffLineStep;
+use App\Deletion\DeletionTarget;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
@@ -92,6 +94,7 @@ final class StructureRestorer
     {
         $this->disableTenantFilters($this->entityManager);
         $this->assertRestoreKeepsEngagedTeams($clubId, $seasonId, $data);
+        $this->eraseStaffLinesOfCoachesAbsentFromPhoto($clubId, $seasonId, $data);
         $this->wipeStructure($clubId, $seasonId);
         // Bulk DQL DELETE removes the rows but leaves the (now-stale) objects in
         // the identity map — re-inserting the SAME ids would raise an identity
@@ -124,6 +127,28 @@ final class StructureRestorer
         // La règle du destinataire les recrée dans les collectes ouvertes (les anciens liens sont perdus).
         $this->coachWishTokenSync->syncSeason($clubId, $seasonId);
         $this->entityManager->flush();
+    }
+
+    /**
+     * Un coach absent de la photo est retiré comme par une suppression : sa ligne d'absence quitte
+     * les doléances (et donc l'export RGPD). À faire avant l'effacement, seul moment où les coachs
+     * actuels sont encore lisibles. Un coach présent dans la photo revient avec le même id : sa
+     * ligne reste.
+     *
+     * @param array<string, list<array<string, mixed>>> $data
+     */
+    private function eraseStaffLinesOfCoachesAbsentFromPhoto(string $clubId, string $seasonId, array $data): void
+    {
+        /** @var list<string> $currentCoachIds */
+        $currentCoachIds = $this->entityManager->createQuery('SELECT c.id FROM App\Entity\Coach c WHERE c.clubId = :c AND c.seasonId = :s')
+            ->setParameter('c', $clubId)
+            ->setParameter('s', $seasonId)
+            ->getSingleColumnResult();
+
+        $step = new CoachWishStaffLineStep;
+        foreach (array_diff($currentCoachIds, array_column($data['Coach'] ?? [], 'id')) as $removedCoachId) {
+            $step->execute($this->entityManager, new DeletionTarget($removedCoachId, $clubId, $seasonId));
+        }
     }
 
     private function purgeDanglingCalendarRefs(string $clubId, string $seasonId): void

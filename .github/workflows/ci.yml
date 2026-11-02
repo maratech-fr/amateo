@@ -756,6 +756,15 @@ jobs:
       - name: MutualizeSlotApiTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Api/MutualizeSlotApiTest.php --group phase1'
 
+      # Axes planning lifecycle + tenant isolation : « Charger » une version de saison remplace la
+      # structure du club sans passer par la suppression d'un coach. La ligne d'absence d'un coach
+      # absent de la photo doit partir (elle sort sinon dans l'export RGPD), celle d'un coach
+      # présent reste, et l'effacement ne franchit ni le club ni la saison.
+      - name: StructureRestorerTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/StructureRestorerTest.php --group phase1'
+      - name: RgpdExportTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RgpdExportTest.php --group phase1'
+
       # P2-9ter — le fichier portait déjà #[Group('phase1')] sans qu'AUCUN step de CE job
       # ne le lance : il tournait bien, mais dans la suite complète `backend-tests` (qui exécute
       # `phpunit tests/`) — c'est-à-dire sans gater `build-docker`. Il ne

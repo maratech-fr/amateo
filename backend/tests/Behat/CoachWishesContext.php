@@ -24,6 +24,8 @@ use RuntimeException;
  */
 final class CoachWishesContext extends BaseContext
 {
+    use SmallClubFixtureTrait;
+
     private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     private const string COACH_FIRST_NAME = 'Smoke';
@@ -53,6 +55,10 @@ final class CoachWishesContext extends BaseContext
     private string $holidayPlanId = '';
 
     private int $transferConverted = 0;
+
+    private string $versionWithoutKarimId = '';
+
+    private string $karimId = '';
 
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
@@ -266,6 +272,12 @@ final class CoachWishesContext extends BaseContext
     #[AfterScenario]
     public function nettoyer(): void
     {
+        if ('' !== $this->karimId) {
+            // Scénario du petit club : la purge du workspace emporte tout.
+            $this->teardownSmallClub();
+
+            return;
+        }
         if ('' === $this->token) {
             return;
         }
@@ -375,6 +387,97 @@ final class CoachWishesContext extends BaseContext
             throw new RuntimeException(\sprintf('la collecte APRÈS planning a répondu %d (201 attendu)', $campaign['status']));
         }
         $this->campaignId = $this->idOf($campaign, 'campagne');
+    }
+
+    #[Given('un petit club dont une version de saison précède l\'arrivée de Karim')]
+    public function unPetitClubDontUneVersionPrecedeKarim(): void
+    {
+        $this->buildSmallClub();
+        $this->versionWithoutKarimId = $this->generateSmallClubSeason();
+    }
+
+    #[Given('Karim rejoint après cette version le staff d\'une équipe sollicitée pour les vacances')]
+    public function karimRejointLeStaff(): void
+    {
+        $this->token = $this->smallClubToken;
+        $this->teamId = $this->smallClubTeamIds['SF1'];
+        $this->coachId = $this->smallClubCoachIds['Dominique'];
+
+        $karim = $this->apiPost('coaches', ['firstName' => 'Karim'], $this->token);
+        $this->karimId = $this->idOf($karim, 'entraîneur Karim');
+        $link = $this->apiPost('team_coaches', ['teamId' => $this->teamId, 'coachId' => $this->karimId, 'role' => 'ASSISTANT'], $this->token);
+        if (201 !== $link['status']) {
+            throw new RuntimeException(\sprintf('le rattachement de Karim a répondu %d (201 attendu)', $link['status']));
+        }
+
+        $this->monday = date('Y-m-d', (int) strtotime('next monday +28 days'));
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'holiday',
+            'title' => 'Vacances vœux Karim',
+            'startDate' => $this->monday,
+            'endDate' => date('Y-m-d', (int) strtotime($this->monday . ' +13 days')),
+        ], $this->token);
+        $this->entryId = $this->idOf($entry, 'période de vacances');
+        $this->openCampaignAndSendLinks([$this->teamId]);
+    }
+
+    #[Given('le coach principal répond sans se connecter en déclarant son absence et celle de Karim')]
+    public function leCoachPrincipalDeclareLesAbsences(): void
+    {
+        $submission = $this->publicPost(\sprintf('coach-wishes/public/%s', $this->wishToken), [
+            'submissions' => [[
+                'teamId' => $this->teamId,
+                'weekStart' => $this->monday,
+                'slotsWanted' => 1,
+                'staffUnavailability' => [
+                    ['coachId' => $this->coachId, 'days' => [1]],
+                    ['coachId' => $this->karimId, 'days' => [4]],
+                ],
+            ]],
+        ]);
+        if (200 !== $submission['status']) {
+            throw new RuntimeException(\sprintf('la soumission publique a répondu %d (200 attendu)', $submission['status']));
+        }
+    }
+
+    #[When('le gestionnaire charge la version où Karim n\'existe pas')]
+    public function leGestionnaireChargeLaVersion(): void
+    {
+        $loaded = $this->apiPost(\sprintf('schedules/%s/regenerate-from', $this->versionWithoutKarimId), [], $this->token);
+        if (200 !== $loaded['status']) {
+            throw new RuntimeException(\sprintf('« Charger » a répondu %d (200 attendu)', $loaded['status']));
+        }
+    }
+
+    #[Then('la doléance garde la ligne du coach principal et perd celle de Karim')]
+    public function laDoleanceGardeLaLigneDuPrincipal(): void
+    {
+        $wishes = $this->apiGet(\sprintf('coach_wishes?calendarEntryId=%s', $this->entryId), $this->token);
+        foreach ($this->members($wishes['json']) as $wish) {
+            if (($wish['teamId'] ?? null) === $this->teamId) {
+                $lines = $wish['staffUnavailability'] ?? null;
+                if ([['coachId' => $this->coachId, 'days' => [1]]] !== $lines) {
+                    throw new RuntimeException(\sprintf('lignes d\'absence inattendues : %s', json_encode($lines)));
+                }
+
+                return;
+            }
+        }
+
+        throw new RuntimeException('la doléance n\'a pas survécu au chargement');
+    }
+
+    #[Then('l\'export du club ne porte plus l\'identifiant de Karim')]
+    public function lExportNePortePlusKarim(): void
+    {
+        $export = $this->apiGet('club/export', $this->token);
+        if (200 !== $export['status']) {
+            throw new RuntimeException(\sprintf('l\'export a répondu %d (200 attendu)', $export['status']));
+        }
+        if (str_contains((string) json_encode($export['json']), $this->karimId)) {
+            throw new RuntimeException('l\'export porte encore l\'identifiant de Karim');
+        }
     }
 
     /**

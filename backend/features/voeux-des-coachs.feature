@@ -43,3 +43,11 @@ Fonctionnalité: Les entraîneurs expriment leurs vœux par un lien public, sans
     Quand le gestionnaire tente d'ouvrir une campagne sans planning de vacances
     Alors la collecte est refusée tant qu'aucun planning n'existe
     Et une fois le planning des vacances créé, la campagne s'ouvre
+
+  Scénario: Charger une version sans Karim efface sa ligne d'absence
+    Étant donné un petit club dont une version de saison précède l'arrivée de Karim
+    Et Karim rejoint après cette version le staff d'une équipe sollicitée pour les vacances
+    Et le coach principal répond sans se connecter en déclarant son absence et celle de Karim
+    Quand le gestionnaire charge la version où Karim n'existe pas
+    Alors la doléance garde la ligne du coach principal et perd celle de Karim
+    Et l'export du club ne porte plus l'identifiant de Karim
