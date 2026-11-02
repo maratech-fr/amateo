@@ -44,6 +44,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *    `scheduleId` du corps ;
  *  - POST validate sur une version non chargée : 409 `not_loaded_version`, « Chargez cette version
  *    pour la valider. », et `capabilities.canValidate` à false ;
+ *  - POST fill sur une version de période autre que la source : même 409, aucune version créée ;
  *  - période : la « chargée » est la source des verrous (`lockSourceScheduleIdOfPlan`), « Charger »
  *    (load-locks) reste gratuit.
  *
@@ -294,8 +295,7 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
     /** Période : même refus de validation, la source se valide. */
     public function testValidatingAPeriodVersionOtherThanTheSourceIsRefused(): void
     {
-        $socle = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Socle')->setStatus(ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($socle);
+        $this->chooseSocle();
         $entry = $this->period();
         $older = $this->periodVersion($entry);
         $source = $this->periodVersion($entry);
@@ -305,6 +305,50 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
 
         $this->post('/api/schedules/' . $source->getId() . '/validate', []);
         self::assertResponseIsSuccessful();
+    }
+
+    /**
+     * « Combler » dérive une V+1 de la version nommée : hors de la source il aurait figé une version
+     * que le gestionnaire ne travaille pas. Refusé sans créer de version ; la source part toujours.
+     * Le contrôleur ne distingue ni séance réservée ni libre : le verdict porte sur la version seule.
+     * Jumeau écran : PlanningPage.test.tsx, « Combler » grisé sur une version non source.
+     */
+    public function testFillingAPeriodVersionOtherThanTheSourceIsRefused(): void
+    {
+        $this->chooseSocle();
+        $entry = $this->period();
+        $older = $this->periodVersion($entry);
+        $source = $this->periodVersion($entry);
+        $versions = $this->versionCount();
+
+        $this->post('/api/schedules/' . $older->getId() . '/fill', []);
+
+        $this->assertRefused('not_loaded_version', 'combler une version non source');
+        self::assertStringContainsString('Chargez cette version', (string) ($this->decode()['error'] ?? ''));
+        self::assertSame($versions, $this->versionCount(), 'aucune version créée, donc aucun solve lancé');
+
+        $this->post('/api/schedules/' . $source->getId() . '/fill', []);
+
+        self::assertSame(202, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+        self::assertSame($versions + 1, $this->versionCount(), 'la source dérive sa V+1');
+    }
+
+    /** « Charger » déplace aussi le droit de combler : la version chargée part, l'ancienne source est refusée. */
+    public function testLoadingAPeriodVersionMovesTheRightToFill(): void
+    {
+        $this->chooseSocle();
+        $entry = $this->period();
+        $older = $this->periodVersion($entry);
+        $source = $this->periodVersion($entry);
+
+        $this->client->request('POST', '/api/schedules/' . $older->getId() . '/load-locks', [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+
+        $this->post('/api/schedules/' . $source->getId() . '/fill', []);
+        $this->assertRefused('not_loaded_version', 'combler l’ancienne source');
+
+        $this->post('/api/schedules/' . $older->getId() . '/fill', []);
+        self::assertSame(202, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
     }
 
     protected function setUp(): void
@@ -439,6 +483,16 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $this->seedSlots($schedule);
 
         return $schedule;
+    }
+
+    private function chooseSocle(): void
+    {
+        $this->choosePlanVersion((new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Socle')->setStatus(ScheduleStatus::COMPLETED));
+    }
+
+    private function versionCount(): int
+    {
+        return (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM schedule WHERE club_id = :c', ['c' => $this->club->getId()]);
     }
 
     private function period(): CalendarEntry

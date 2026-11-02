@@ -386,6 +386,46 @@ describe("PlanningToolbar — version chargée", () => {
     expect(screen.getByRole("button", { name: /Valider/ })).not.toHaveAttribute("aria-disabled");
   });
 
+  describe("supprimer : la confirmation nomme la version qui prend le relais", () => {
+    const deletable = { canDelete: true } as Partial<ScheduleCapabilities>;
+    const openDelete = async () => userEvent.setup().click(screen.getByRole("button", { name: "Supprimer cette version" }));
+
+    it("la version chargée de saison : la dernière terminée restante est nommée, jamais une version en échec", async () => {
+      renderToolbar(
+        [
+          schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01T09:00:00+00:00", isLiveContext: false, capabilities: deletable }),
+          schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00", isLiveContext: false, capabilities: deletable }),
+          schedule("COMPLETED", { id: "s3", createdAt: "2026-03-01T09:00:00+00:00", isLiveContext: true, capabilities: deletable }),
+          schedule("FAILED", { id: "s4", createdAt: "2026-04-01T09:00:00+00:00", isLiveContext: false, capabilities: deletable }),
+        ],
+        { selectedScheduleId: "s3" },
+      );
+      await openDelete();
+      expect(await screen.findByText(PLANNING_TEXTS.deleteLoadedVersionNote("V2"))).toBeInTheDocument();
+    });
+
+    it("une version non chargée : aucune note, rien ne change de main", async () => {
+      renderToolbar([older({ capabilities: deletable }), loaded()]);
+      await openDelete();
+      await screen.findByRole("dialog");
+      expect(screen.queryByText(/prendra le relais/)).not.toBeInTheDocument();
+    });
+
+    it("la version chargée d'une période : la suivante de SA période est nommée, pas une version de saison", async () => {
+      const period = { planType: "HOLIDAY", schedulePlanId: "ete-plan", isLiveContext: false } as const;
+      renderToolbar(
+        [
+          schedule("COMPLETED", { id: "season", createdAt: "2026-05-01T09:00:00+00:00", isLiveContext: true }),
+          schedule("COMPLETED", { id: "p1", createdAt: "2026-01-01T09:00:00+00:00", ...period, capabilities: deletable }),
+          schedule("COMPLETED", { id: "p2", createdAt: "2026-02-01T09:00:00+00:00", ...period, isLockSource: true, capabilities: deletable }),
+        ],
+        { selectedScheduleId: "p2" },
+      );
+      await openDelete();
+      expect(await screen.findByText(PLANNING_TEXTS.deleteLoadedVersionNote("V1"))).toBeInTheDocument();
+    });
+  });
+
   it("la barre annonce la version de départ quand on en regarde une autre", () => {
     renderToolbar([older(), loaded()]);
     expect(screen.getByText(PLANNING_TEXTS.regenerateKeepsLoadedLocks("V2"))).toBeInTheDocument();

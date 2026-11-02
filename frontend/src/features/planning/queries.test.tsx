@@ -22,6 +22,7 @@ import {
   useMoveDryRun,
   useMoveGroup,
   useMoveSlot,
+  useMutualizeSlot,
   usePlacedConflicts,
   usePlaceSlot,
   useRegenerate,
@@ -77,6 +78,7 @@ vi.mock("./api", async (importOriginal) => {
     getSchedule: vi.fn().mockResolvedValue({}),
     // écritures
     lockSlot: vi.fn().mockResolvedValue({}),
+    mutualizeSlot: vi.fn(),
     moveSlot: vi.fn().mockResolvedValue({ valid: true, compromises: [] }),
     moveGroup: vi.fn().mockResolvedValue({ valid: true, compromises: [], movedSlotIds: [] }),
     placeSlot: vi.fn().mockResolvedValue({ valid: true, compromises: [] }),
@@ -282,6 +284,49 @@ describe("planning queries — useLockSlot n'invalide QUE ce qu'un verrou change
     await new Promise((r) => setTimeout(r, 60));
     expect(planningApi.getDiagnostics).toHaveBeenCalledTimes(1);
     expect(planningApi.listSchedules).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Deux onglets : la version a cessé d'être chargée ailleurs. Un refus de verrou relit la liste, pour
+// griser l'écran au lieu de laisser retenter en vain, et dit le motif du serveur une seule fois.
+describe("planning queries — useLockSlot, version plus chargée", () => {
+  it("le refus relit la liste des versions et toaste le motif du serveur, une fois", async () => {
+    const motive = "Chargez cette version pour la modifier.";
+    const body = { code: "not_loaded_version", error: motive };
+    const refusal = new HTTPError(new Response(JSON.stringify(body), { status: 409, headers: { "content-type": "application/json" } }), new Request("http://localhost/api/schedule-slots/s1/manual-edit/lock"), {} as never);
+    (refusal as unknown as { data?: unknown }).data = body;
+    vi.mocked(planningApi.lockSlot).mockRejectedValueOnce(refusal);
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    const { result } = renderHook(() => ({ schedules: useSchedules(), lock: useLockSlot() }), { wrapper: wrapperFor(makeClient()) });
+    await waitFor(() => expect(result.current.schedules.isSuccess).toBe(true));
+    const reads = vi.mocked(planningApi.listSchedules).mock.calls.length;
+
+    result.current.lock.mutate({ id: "s1", lockLevel: "HARD" });
+
+    await waitFor(() => expect(vi.mocked(planningApi.listSchedules).mock.calls.length).toBe(reads + 1));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith(motive));
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Mutualiser depuis la fiche : un refus « version plus chargée » dit son motif, jamais une panne réseau.
+describe("planning queries — useMutualizeSlot, version plus chargée", () => {
+  it("le refus relit la liste des versions et toaste le motif du serveur, une fois", async () => {
+    const motive = "Chargez cette version pour la modifier.";
+    vi.mocked(planningApi.mutualizeSlot).mockRejectedValueOnce(new planningApi.SlotEditError("not_loaded_version", motive));
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    const { result } = renderHook(() => ({ schedules: useSchedules(), mutualize: useMutualizeSlot() }), { wrapper: wrapperFor(makeClient()) });
+    await waitFor(() => expect(result.current.schedules.isSuccess).toBe(true));
+    const reads = vi.mocked(planningApi.listSchedules).mock.calls.length;
+
+    result.current.mutualize.mutate({ id: "s1", body: { teamIds: ["t"] } as never });
+
+    await waitFor(() => expect(result.current.mutualize.isError).toBe(true));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledTimes(1));
+    expect(errorSpy).toHaveBeenCalledWith(motive);
+    await waitFor(() => expect(vi.mocked(planningApi.listSchedules).mock.calls.length).toBe(reads + 1));
   });
 });
 

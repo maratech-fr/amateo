@@ -3129,6 +3129,40 @@ describe("PlanningPage — version chargée", () => {
     expect(screen.queryByText(/il est périmé/)).not.toBeInTheDocument();
   });
 
+  // « Combler » dérive une version : il suit la règle des autres gestes. Jumeau serveur :
+  // LoadedVersionIsTheOnlyEditableTest::testFillingAPeriodVersionOtherThanTheSourceIsRefused.
+  const periodAdrift = () => {
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
+    vi.mocked(fillSchedule).mockClear();
+    vi.mocked(fillSchedule).mockResolvedValue({ id: "sched-fill" });
+    return [
+      version("p1", "2026-01-01T00:00:00Z", { planType: "HOLIDAY", schedulePlanId: "ete-plan", capabilities: NOT_LOADED_CAPS } as Partial<Schedule>),
+      version("p2", "2026-02-01T00:00:00Z", { planType: "HOLIDAY", schedulePlanId: "ete-plan", isLockSource: true, capabilities: LOADED_CAPS } as Partial<Schedule>),
+    ];
+  };
+
+  it("« Combler » est grisé avec son motif sur une version de période non source, et n'appelle rien", async () => {
+    const user = userEvent.setup();
+    await open(periodAdrift(), "p1");
+
+    const fill = await screen.findByRole("button", { name: PLANNING_TEXTS.fillAutomatically });
+    expect(fill).toHaveAttribute("aria-disabled", "true");
+    expect(fill).toHaveAttribute("title", PLANNING_TEXTS.gesturesBlockedNotLoaded);
+    await user.click(fill);
+    expect(vi.mocked(fillSchedule)).not.toHaveBeenCalled();
+  });
+
+  it("« Combler » reste actif sur la version source de la période", async () => {
+    const user = userEvent.setup();
+    await open(periodAdrift(), "p2");
+
+    const fill = await screen.findByRole("button", { name: PLANNING_TEXTS.fillAutomatically });
+    expect(fill).not.toHaveAttribute("aria-disabled");
+    await user.click(fill);
+    await vi.waitFor(() => expect(vi.mocked(fillSchedule)).toHaveBeenCalledWith("p2"));
+  });
+
   it("les gestes de la fiche sont grisés sur une version non chargée, avec le motif", async () => {
     const user = userEvent.setup();
     await open([older(), loaded()], "v1");

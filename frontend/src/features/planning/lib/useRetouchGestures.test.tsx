@@ -285,3 +285,103 @@ describe("useMoveSlot — version plus chargée", () => {
     expect(toastError).toHaveBeenCalledWith("Chargez cette version pour la modifier.");
   });
 });
+
+// Deux onglets : la version a cessé d'être chargée ailleurs. Le hook dit le motif et regrise l'écran ;
+// le geste, lui, ne redit rien. Un seul toast, sur tous les chemins qui appellent le serveur.
+describe("useRetouchGestures — refus not_loaded_version : un seul toast", () => {
+  const MOTIVE = "Chargez cette version pour la modifier.";
+  const refusal = () => new planningApi.SlotEditError("not_loaded_version", MOTIVE);
+  const EVICTED: EvictedSlot = { slotId: "occ", teamId: "b", dayOfWeek: 4, startTime: "20:00", venueId: V2, durationMinutes: 90 };
+  const emptyCase = slot({ id: "empty:w1", teamId: "", venueId: V2, dayOfWeek: 4, startTime: "20:00" });
+
+  function renderFull(slots: Slot[], gridSlots: Slot[], selectedSlotId: string | null, drift: { teamId: string }[] = []) {
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>{children}</QueryClientProvider>;
+    return renderHook(() => useRetouchGestures(slots, "sched-1", selectedSlotId, "gymnase", false, false, true, new Map<string, string>(), gridSlots, drift as never, (id) => `T-${id}`, () => {}, () => {}, () => {}), { wrapper });
+  }
+
+  async function expectOneToast(errorSpy: { mock: { calls: unknown[][] } }) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(errorSpy.mock.calls).toEqual([[MOTIVE]]);
+  }
+
+  const spyOnToast = () => {
+    const errorSpy = vi.spyOn(toast, "error");
+    errorSpy.mockClear();
+    return errorSpy;
+  };
+
+  beforeEach(() => {
+    vi.mocked(planningApi.moveSlot).mockReset();
+    vi.mocked(planningApi.placeSlot).mockReset();
+  });
+
+  it("déplacer", async () => {
+    vi.mocked(planningApi.moveSlot).mockRejectedValueOnce(refusal());
+    const { result } = renderFull([slot({ id: "src", teamId: "a" })], [emptyCase], "src");
+    const errorSpy = spyOnToast();
+
+    act(() => result.current.armMove("src"));
+    act(() => result.current.onPickTarget("empty:w1"));
+    await waitFor(() => expect(result.current.moveMutation.isError).toBe(true));
+
+    await expectOneToast(errorSpy);
+  });
+
+  it("placer une séance à la dérive", async () => {
+    vi.mocked(planningApi.placeSlot).mockRejectedValueOnce(refusal());
+    const { result } = renderFull([], [emptyCase], null, [{ teamId: "a" }]);
+    const errorSpy = spyOnToast();
+
+    act(() => result.current.armPlace("a"));
+    act(() => result.current.onPickTarget("empty:w1"));
+    await waitFor(() => expect(result.current.placeMutation.isError).toBe(true));
+
+    await expectOneToast(errorSpy);
+  });
+
+  it("annuler le dernier geste", async () => {
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true } as never);
+    const { result } = renderFull([slot({ id: "src", teamId: "a" })], [emptyCase], "src");
+    act(() => result.current.armMove("src"));
+    act(() => result.current.onPickTarget("empty:w1"));
+    await waitFor(() => expect(result.current.undo?.kind).toBe("move"));
+    vi.mocked(planningApi.moveSlot).mockRejectedValueOnce(refusal());
+    const errorSpy = spyOnToast();
+
+    act(() => result.current.runUndo());
+    await waitFor(() => expect(result.current.moveMutation.isError).toBe(true));
+
+    await expectOneToast(errorSpy);
+  });
+
+  it("annuler un déplacement avec éviction : le replacement de l'évincée est refusé", async () => {
+    const occupant = slot({ id: "occ", teamId: "b", venueId: V2, dayOfWeek: 4, startTime: "20:00" });
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true, evicted: EVICTED } as never);
+    const { result } = renderFull([slot({ id: "src", teamId: "a" }), occupant], [], "src");
+    act(() => result.current.setEvictDialog({ phase: "accepted", sourceSlotId: "src", targetSlot: occupant, compromises: [] }));
+    act(() => result.current.confirmEvict());
+    await waitFor(() => expect(result.current.undo?.kind).toBe("move-evict"));
+    vi.mocked(planningApi.moveSlot).mockResolvedValue({ valid: true } as never);
+    vi.mocked(planningApi.placeSlot).mockRejectedValueOnce(refusal());
+    const errorSpy = spyOnToast();
+
+    act(() => result.current.runUndo());
+    await waitFor(() => expect(result.current.placeMutation.isError).toBe(true));
+
+    await expectOneToast(errorSpy);
+  });
+
+  it("raccourci « Remettre »", async () => {
+    vi.mocked(planningApi.placeSlot).mockRejectedValueOnce(refusal());
+    const { result } = renderFull([slot({ id: "src", teamId: "a" })], [], "src");
+    act(() => result.current.setEvictionNotice({ evicted: EVICTED, freed: { dayOfWeek: 4, startTime: "20:00", venueId: V2 } }));
+    const errorSpy = spyOnToast();
+
+    act(() => result.current.placeEvictedShortcut());
+    await waitFor(() => expect(result.current.placeMutation.isError).toBe(true));
+
+    await expectOneToast(errorSpy);
+  });
+});
