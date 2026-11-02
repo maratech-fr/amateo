@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
@@ -24,6 +25,7 @@ use App\Enum\ImplicitRuleKey;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Service\ClosureSegmentation;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -156,10 +158,11 @@ final class PeriodPlanBirthTest extends WebTestCase
 
     public function testAdaptGestureBirthsAClosurePlan(): void
     {
-        [$user, $club] = $this->createClubWithSeason();
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $monday = $this->pinClockBeforeAMondayOf($season);
         // Fenêtre lun→dim ALIGNÉE (deux semaines pleines = un seul segment « milieu ») : « d'un
         // bloc » reste permis sur une fermeture qui ne se décompose qu'en UN segment (fondateur 2026-09-05).
-        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-01');
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', $monday->format('Y-m-d'), $monday->modify('+13 days')->format('Y-m-d'));
         self::assertNull($this->planOf($club->getId(), $entryId), 'Signaler une indisponibilité ne crée pas de plan.');
 
         $this->adaptPeriod($user, $entryId);
@@ -172,16 +175,21 @@ final class PeriodPlanBirthTest extends WebTestCase
     /**
      * NR (décision fondateur 2026-09-05), axe *planning lifecycle* : le geste « d'un bloc » (plan
      * sur la racine) n'est permis pour une FERMETURE que si sa fenêtre se décompose en UN SEUL
-     * segment. Une fermeture qui a une semaine ENTAMÉE (ici lun 19/10 → lun 02/11 : deux semaines
-     * pleines + une entame de queue = milieu + fin) doit être adaptée par début·milieu·fin — le
+     * segment. Une fermeture qui a une semaine ENTAMÉE (ici d'un lundi au lundi deux semaines plus
+     * tard : deux semaines pleines + une entame de queue = milieu + fin) doit être adaptée par début·milieu·fin — le
      * bloc est refusé (422, message parlant, sans identifiant interne). Le cas « 1 segment accepté »
      * est gardé par {@see testAdaptGestureBirthsAClosurePlan}.
+     *
+     * Horloge pinnée AVANT la fenêtre : le découpage omet les semaines révolues en tête
+     * ({@see ClosureSegmentation::segments}), donc une fenêtre en dates fixes cesse de compter deux
+     * segments le jour où ses semaines pleines sont passées (ce test a rougi ainsi le 02/11/2026).
      */
     public function testAdaptDunBlocIsRefusedWhenAClosureHasAStartedWeek(): void
     {
-        [$user, $club] = $this->createClubWithSeason();
-        // lun 19/10 → lun 02/11 : le milieu (19/10→01/11) + une entame de queue (02/11) = 2 segments.
-        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux prolongés', '2026-10-19', '2026-11-02');
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $monday = $this->pinClockBeforeAMondayOf($season);
+        // Lundi → lundi + 14 j : le milieu (deux semaines pleines) + une entame de queue = 2 segments.
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux prolongés', $monday->format('Y-m-d'), $monday->modify('+14 days')->format('Y-m-d'));
 
         $this->adaptPeriodExpecting(422, $user, $entryId);
         self::assertStringContainsString('semaine entamée', (string) $this->client->getResponse()->getContent());
@@ -1067,6 +1075,24 @@ final class PeriodPlanBirthTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    protected function tearDown(): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set(null);
+        parent::tearDown();
+    }
+
+    /**
+     * Pinne l'horloge au 1er septembre de la saison et rend le premier lundi d'octobre : une fenêtre
+     * qui part de ce lundi est entièrement à venir et dans la saison, quel que soit le jour réel.
+     */
+    private function pinClockBeforeAMondayOf(Season $season): DateTimeImmutable
+    {
+        $year = $season->getStartDate()->format('Y');
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable($year . '-09-01T12:00:00+00:00'));
+
+        return new DateTimeImmutable('first monday of october ' . $year);
     }
 
     private function adaptPeriod(User $user, string $entryId, int $expected = 201): string
