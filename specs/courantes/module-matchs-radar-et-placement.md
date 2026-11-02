@@ -81,7 +81,7 @@ tenu par quelqu'un d'autre : la ligne sort de `conflicts[]` (et du compteur) ver
 coach tient » (`ConflictsPage`, ignore les filtres de page, ligne sans menu de traitement). Retenue
 des deux côtés, ou côté sans tenant : conflit à sa gravité. Exemple : U15 (Karim B. et Emma D.)
 s'entraîne le vendredi 20:00, U18 (Karim B. seul) joue à 20:30 : Emma tient la séance, Karim coache
-le match, rien à traiter. Chaque domaine d'indisponibilité reste le sien : celle du wizard
+le match, rien à traiter. Un adjoint NOMMÉ sur une séance ne la tient jamais (2026-11-02) : la tenue retient les principaux de l'équipe, comme le radar d'entraînement. Chaque domaine d'indisponibilité reste le sien : celle du wizard
 (chevauchant la séance sur sa durée) empêche de tenir une séance, celle du module Matchs (contenant
 le coup d'envoi) empêche de tenir un match. Le coach stocké sur le planning ne bouge jamais, le
 planning et le PDF restent inchangés (l'imprévu reste à la charge du club). Le placement des
@@ -90,6 +90,8 @@ matchs applique la même tenue (§3, « Un coach tient la séance »).
 **Chevauchement demi-ouvert** (créneaux jointifs = pas de conflit). Une empreinte qui passe minuit
 est vérifiée sur les deux jours. Résolution déterministe par la période la plus ÉTROITE en cas de
 chevauchement de périodes.
+
+**Écran Conflits, gravité 3 en trois groupes** (fondateur, 2026-11-02 ; `lib/diagnostic.ts` `groupBySeverity`, table de présentation, la gravité reste celle du serveur) : « Personne » (`MATCH_MATCH`, `MATCH_TRAINING`, `MATCH_COACH_UNAVAILABLE`), puis « Gymnase » (`TEAM_VENUE_FORBIDDEN`), puis « Règle » (`CLUB_RULE_VIOLATION`) ; un type de gravité 3 absent de la table tombe sous « Autres ». Chaque groupe porte sa propre clé (`DiagnosticGroup.key`), la gravité seule ne l'identifie plus.
 
 **D1 (échauffement salle seule, hors des conflits de PERSONNE)** : la fenêtre SALLE (sans
 échauffement) sert `VENUE_OVERLAP`/`MATCH_SLOT_WINDOW` — deux matchs enchaînés à 2 h d'écart ne

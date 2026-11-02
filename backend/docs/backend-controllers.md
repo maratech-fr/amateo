@@ -391,6 +391,8 @@ Champs `Club` : `accentColor` (hex), `accentPalette` (json ≤3 hex), `logoUrl`,
 | `/api/clubs/{clubId}/logo` | GET | `ClubLogoController` | Sert le logo (public, stream + mime via finfo). |
 | `/api/club/short-name` | PATCH | `ClubShortNameController` | Pose le nom COURT du club (D1, libellé affiché dans les e-mails aux coachs — `Club::emailLabel()`, nom court sinon nom long). PATCH dédié (pas un champ du PUT club générique : le nom court ne peut donc jamais y être écrasé en silence). 1-20 caractères (lettres Unicode, chiffres, espaces, `& . - '`), trim ; chaîne vide ou `null` RETIRE le nom court (repli sur le nom long). Normalisation (trim, vide → null) dans `Club::setShortName()`, foyer unique. Gate management (SEC-07). |
 
+**Identifiant de collecte, quatre routes** (`send-links`, `remind`, `preview`, `email-preview`) : un identifiant qui n'est pas un UUID et une collecte d'un autre club rendent le MÊME 404, au corps propre à chaque route (plus de 500 sur `abc` ; `send-links` et `remind` répondaient 403 pour une collecte d'un autre club). Le libellé du bouton et la phrase du mail s'accordent au nombre d'équipes du JETON du coach (`CoachWishMailBuilder::buildCoachLink`, `$teamCount`), jamais d'un champ du corps de la requête ; l'aperçu de l'e-mail garde le singulier.
+
 ### Aperçu de l'e-mail coach (D1)
 
 | Route | Méthode | Contrôleur | Description |
