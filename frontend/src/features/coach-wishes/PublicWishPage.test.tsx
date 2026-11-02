@@ -541,7 +541,7 @@ describe("PublicWishPage — disponibilités du staff", () => {
     const { container } = renderAt();
     await start();
 
-    expect(container.querySelector(".border-dashed.border-warning")).toBeNull();
+    expect(container.querySelector("button[aria-pressed].border-dashed")).toBeNull();
     expect(container.textContent).not.toContain("t-autre");
   });
 

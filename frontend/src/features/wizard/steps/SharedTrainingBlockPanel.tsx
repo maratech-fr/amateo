@@ -229,6 +229,11 @@ export function SharedTrainingBlockPanel({
               <p className="mb-2 text-xs text-muted-foreground">{T.blockFormHint}</p>
               <Input type="search" aria-label={T.blockSearchTeam} placeholder={T.blockSearchTeam} className="mb-2" value={query} onChange={(e) => setQuery(e.target.value)} />
 
+              {/* Au-dessus des cases : la liste peut être longue, le compte reste visible sans défiler. */}
+              <p aria-live="polite" className="mb-2 text-xs text-muted-foreground">
+                {T.blockCheckedCount(checkedTeams.length)}
+              </p>
+
               {searching ? (
                 <>
                   <p aria-live="polite" className="mb-1 text-xs text-muted-foreground">
@@ -245,10 +250,6 @@ export function SharedTrainingBlockPanel({
                   {T.blockPausedMember(t.name)}
                 </p>
               ))}
-
-              <p aria-live="polite" className="mt-2 text-xs text-muted-foreground">
-                {T.blockCheckedCount(checkedTeams.length)}
-              </p>
 
               {/* Au-delà de 3 équipes cochées : inhabituel, jamais bloquant (le serveur va jusqu'à 10). */}
               {tooMany ? (

@@ -386,11 +386,13 @@ describe("SharedTrainingBlockPanel — liste d'abord, formulaire replié", () =>
 });
 
 describe("SharedTrainingBlockPanel — compteur de cochées", () => {
-  it("le compteur suit les cases cochées, sous les cases", async () => {
+  it("le compteur suit les cases cochées, sous la recherche et au-dessus des cases", async () => {
     const user = userEvent.setup();
     await renderOpenPanel(user);
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
-    expect(screen.getByText(/^1 équipe cochée/)).toBeInTheDocument();
+    const counter = screen.getByText(/^1 équipe cochée/);
+    expect(screen.getByRole("searchbox", { name: T.blockSearchTeam }).compareDocumentPosition(counter) & Node.DOCUMENT_POSITION_FOLLOWING, "sous la recherche").toBeTruthy();
+    expect(counter.compareDocumentPosition(screen.getAllByRole("checkbox")[0]) & Node.DOCUMENT_POSITION_FOLLOWING, "au-dessus de la première case").toBeTruthy();
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
     expect(screen.getByText(/^2 équipes cochées/)).toBeInTheDocument();
   });

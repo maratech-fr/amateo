@@ -108,8 +108,9 @@ export function DayMultiPicker({ value, onChange, legend, legendVisible = false,
               className={cn(
                 "inline-flex min-h-6 min-w-9 items-center justify-center rounded-md border px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
                 isDisabled ? "cursor-not-allowed border-border text-muted-foreground opacity-50" : on ? PRESSED[tone] : "border-border text-muted-foreground",
-                // Après PRESSED : la bordure du repère reste visible sur un jour pressé.
-                isMarked && "border-dashed border-warning",
+                // Au repos, la bordure du repère. Pressé, cette bordure se perd sur le fond plein : le repère passe
+                // en pointillé À L'INTÉRIEUR, dans la couleur du texte, donc lisible pour tout ton et tout accent de club.
+                isMarked && (on ? "border-dashed outline-1 outline-dashed -outline-offset-3 outline-current focus-visible:outline-dashed" : "border-dashed border-warning"),
               )}
             >
               {dayLabelShort(n)}

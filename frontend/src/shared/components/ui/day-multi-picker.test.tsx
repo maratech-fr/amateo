@@ -133,7 +133,9 @@ describe("DayMultiPicker", () => {
 
     const thursday = screen.getByRole("button", { name: "jeudi" });
     expect(thursday).toHaveClass("border-dashed");
-    expect(thursday).toHaveClass("border-warning");
+    // Pressé : le repère vit dans le fond plein, en couleur de texte (la bordure warning y était illisible).
+    expect(thursday).toHaveClass("outline-dashed", "outline-current");
+    expect(thursday).not.toHaveClass("border-warning");
     expect(thursday).toHaveAttribute("aria-pressed", "true");
     expect(thursday).toHaveAttribute("title", "Absent avec une autre équipe");
     expect(document.getElementById(thursday.getAttribute("aria-describedby") as string)).toHaveTextContent("Absent avec une autre équipe");
@@ -145,6 +147,14 @@ describe("DayMultiPicker", () => {
 
     await user.click(thursday);
     expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  it("un jour marqué non pressé garde sa bordure pointillée warning, sans repère intérieur", () => {
+    render(<DayMultiPicker value={[]} onChange={() => {}} legend="Jours" markedDays={[4]} markedReason="Absent avec une autre équipe" />);
+
+    const thursday = screen.getByRole("button", { name: "jeudi" });
+    expect(thursday).toHaveClass("border-dashed", "border-warning");
+    expect(thursday).not.toHaveClass("outline-dashed");
   });
 
   it("markedDays sans motif ne marque rien : un repère doit pouvoir s'expliquer", () => {
