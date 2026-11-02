@@ -21,6 +21,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\ScheduleConstraintBuilder;
+use App\Service\SchedulePlanProvisioner;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -75,7 +76,7 @@ final class HardLockSurvivesPayloadTest extends KernelTestCase
 
         // Le payload est servi du cache AVANT tout calcul : sans ce purge, un hit rendrait le test
         // creux (vert sans jamais reconstruire le payload avec le verrou et la règle).
-        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
         $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
 
@@ -101,6 +102,31 @@ final class HardLockSurvivesPayloadTest extends KernelTestCase
         ));
         self::assertCount(1, $dayRulesForTeam, 'la règle de jours contraire doit voyager avec le verrou : le moteur arbitre, elle n’est jamais retirée en amont');
         self::assertSame(ConstraintRuleType::HARD->value, $dayRulesForTeam[0]['ruleType'] ?? null, 'la règle contraire garde son caractère HARD dans le payload');
+    }
+
+    /** Deux versions terminées : le verrou de la version chargée voyage, celui de l'autre non. */
+    public function testWithTwoFinishedVersionsOnlyTheLoadedLockReachesTheEngine(): void
+    {
+        [$club, $season] = $this->seed();
+        $loadedTeam = $this->team($club, $season, 'SM1');
+        $otherTeam = $this->team($club, $season, 'SM2');
+        $this->venue($club, $season, self::VENUE_ID, 'Gymnase');
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $loaded = $this->baseSchedule($club, $season);
+        $provisioner->linkSchedule($loaded);
+        $this->em->flush();
+        $other = $this->baseSchedule($club, $season);
+        $provisioner->linkSchedule($other);
+        $this->hardLockedSlot($loaded, $loadedTeam, self::VENUE_ID, self::LOCK_DAY);
+        $this->hardLockedSlot($other, $otherTeam, self::VENUE_ID, self::LOCK_DAY + 1);
+        $season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        $teams = array_map(static fn (array $s): mixed => $s['teamId'] ?? null, $this->rows($payload, 'slotTemplates'));
+        self::assertSame([$loadedTeam->getId()], $teams);
     }
 
     protected function setUp(): void

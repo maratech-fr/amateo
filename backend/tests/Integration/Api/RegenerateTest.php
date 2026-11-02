@@ -117,6 +117,68 @@ final class RegenerateTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    /** Régénérer depuis une autre version repart de la version chargée, et la réponse la nomme. */
+    public function testTheResponseNamesTheLoadedVersionAsSource(): void
+    {
+        $loaded = $this->seedSchedule(ScheduleStatus::COMPLETED);
+        $viewed = $this->seedSchedule(ScheduleStatus::COMPLETED);
+        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+
+        $this->post($viewed->getId());
+
+        self::assertResponseStatusCodeSame(202);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame($loaded->getId(), $body['sourceScheduleId'] ?? null);
+    }
+
+    /** Une version en échec reste régénérable : on repart de la version chargée. */
+    public function testAFailedVersionRegeneratesFromTheLoadedOne(): void
+    {
+        $loaded = $this->seedSchedule(ScheduleStatus::COMPLETED);
+        $failed = $this->seedSchedule(ScheduleStatus::FAILED);
+        $this->em->flush();
+
+        $this->post($failed->getId());
+
+        self::assertResponseStatusCodeSame(202);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame($loaded->getId(), $body['sourceScheduleId'] ?? null);
+    }
+
+    /** Supprimer la version chargée pendant une génération est refusé : le worker repart d'elle. */
+    public function testDeletingTheLoadedVersionDuringAGenerationIsRefused(): void
+    {
+        $this->seedSchedule(ScheduleStatus::COMPLETED);
+        $loaded = $this->seedSchedule(ScheduleStatus::COMPLETED);
+        $this->seedSchedule(ScheduleStatus::PENDING);
+        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/schedules/' . $loaded->getId(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token, 'HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseIsSuccessful();
+        $item = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertFalse($item['capabilities']['canDelete'] ?? null, 'la capacité vaut le refus');
+
+        $this->client->request('DELETE', '/api/schedules/' . $loaded->getId(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token]);
+        self::assertResponseStatusCodeSame(409);
+    }
+
+    /** Hors génération, supprimer la version chargée est permis : la dernière terminée prend le relais. */
+    public function testDeletingTheLoadedVersionOutsideAGenerationHandsOverToTheLatest(): void
+    {
+        $latest = $this->seedSchedule(ScheduleStatus::COMPLETED);
+        $loaded = $this->seedSchedule(ScheduleStatus::COMPLETED);
+        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+
+        $this->client->request('DELETE', '/api/schedules/' . $loaded->getId(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token]);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->client->request('GET', '/api/schedules/' . $latest->getId(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token, 'HTTP_ACCEPT' => 'application/json']);
+        self::assertTrue(json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['isLiveContext'] ?? null);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

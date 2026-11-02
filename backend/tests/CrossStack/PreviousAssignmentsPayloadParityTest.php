@@ -120,7 +120,7 @@ final class PreviousAssignmentsPayloadParityTest extends KernelTestCase
         // … et ce hash reste ÉGAL à currentStructureHash (recalculé SANS previousAssignments) :
         // la régression que PR B a évitée. Le solveur n'a rien importé (résultat vide), donc la
         // structure recalculée est identique à celle gelée.
-        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
         $currentStructureHash = ScheduleConstraintBuilder::structureHash($this->builder->buildForClubSeason($club->getId(), $season->getId()));
         self::assertSame(
             $currentStructureHash,

@@ -1,0 +1,8 @@
+{
+  "cases": [
+    { "label": "la plus ancienne est V1", "id": "a", "expected": "V1", "versions": [{ "id": "a", "createdAt": "2026-01-01T10:00:00+00:00" }, { "id": "b", "createdAt": "2026-02-01T10:00:00+00:00" }] },
+    { "label": "le rang suit la création, pas l'ordre reçu", "id": "a", "expected": "V2", "versions": [{ "id": "a", "createdAt": "2026-02-01T10:00:00+00:00" }, { "id": "b", "createdAt": "2026-01-01T10:00:00+00:00" }] },
+    { "label": "une version supprimée décale le rang", "id": "c", "expected": "V2", "versions": [{ "id": "a", "createdAt": "2026-01-01T10:00:00+00:00" }, { "id": "c", "createdAt": "2026-03-01T10:00:00+00:00" }] },
+    { "label": "une version seule est V1", "id": "z", "expected": "V1", "versions": [{ "id": "z", "createdAt": "2026-03-01T10:00:00+00:00" }] }
+  ]
+}

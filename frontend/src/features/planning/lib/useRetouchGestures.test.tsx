@@ -8,6 +8,7 @@ import { toast } from "@/shared/stores/toastStore";
 import * as planningApi from "../api";
 import { MoveRejectedError } from "../api";
 import type { EvictedSlot, LockLevel, Slot } from "../api";
+import { useMoveSlot } from "../queries";
 import { useRetouchGestures } from "./useRetouchGestures";
 
 // P4-306 — on MUTE la PROD (le vrai hook, ses vrais hooks de mutation), on ne mocke QUE les deux
@@ -264,5 +265,23 @@ describe("useRetouchGestures — transport double toast (P4-306)", () => {
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith("Case déjà occupée.");
+  });
+});
+
+// Deux onglets : un geste refusé parce que la version n'est plus chargée recharge la liste des
+// versions, pour griser l'écran au lieu de laisser retenter en vain.
+describe("useMoveSlot — version plus chargée", () => {
+  it("un refus not_loaded_version invalide la liste des versions et dit le motif", async () => {
+    vi.mocked(planningApi.moveSlot).mockRejectedValueOnce(new planningApi.SlotEditError("not_loaded_version", "Chargez cette version pour la modifier."));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const toastError = vi.spyOn(toast, "error");
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const { result } = renderHook(() => useMoveSlot(), { wrapper });
+
+    act(() => result.current.mutate({ id: "s", patch: { dayOfWeek: 1, startTime: "18:00", venueId: V1 } } as never));
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["schedules"] }));
+    expect(toastError).toHaveBeenCalledWith("Chargez cette version pour la modifier.");
   });
 });

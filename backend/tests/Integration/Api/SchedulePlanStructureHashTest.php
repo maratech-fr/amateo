@@ -360,9 +360,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
 
     private function invalidateSeasonCache(Club $club, Season $season): void
     {
-        self::getContainer()->get('cache.schedule')->deleteItem(
-            ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()),
-        );
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
     }
 
     /** Une version de socle portant le snapshotHash que le rail de génération poserait. */

@@ -222,12 +222,12 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
 
         /** @var CacheItemPoolInterface&CacheInterface $pool */
         $pool = self::getContainer()->get('cache.schedule');
-        $pool->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
+        $pool->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
         $this->builder->buildForOverlay($schedule, $entry);
 
         self::assertFalse(
-            $pool->getItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()))->isHit(),
+            $pool->getItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId(), null))->isHit(),
             'overlay build must not populate the base schedule-input cache',
         );
     }
@@ -648,7 +648,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
 
         // Le cache est servi AVANT tout calcul : sans ce purge, un hit rendrait le test
         // creux — vert sans avoir jamais exécuté serializeTeam.
-        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
         // Contrat 1.3 (ENG-53) — le champ `tags` a quitté le payload moteur (jamais lu par le
         // solveur ; les tags servent encore à la résolution `targetTag` → contraintes TEAM, via
@@ -841,8 +841,8 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->flush();
 
         $pool = self::getContainer()->get('cache.schedule');
-        $pool->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonA->getId()));
-        $pool->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonB->getId()));
+        $pool->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
+        $pool->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
         $payloadA = $this->builder->buildForClubSeason($club->getId(), $seasonA->getId());
         $payloadB = $this->builder->buildForClubSeason($club->getId(), $seasonB->getId());
@@ -855,14 +855,14 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         // Le BUILDER doit taguer ce qu'il écrit — sinon `CacheInvalidationListener`, qui
         // ne purge plus que par tag, ne pourrait plus rien invalider et tous les tests
         // resteraient verts. NR-4 pose les tags à la main : lui ne garde que le listener.
-        self::assertTrue($pool->hasItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonA->getId())), 'garde : le build doit avoir peuplé le cache');
+        self::assertTrue($pool->hasItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonA->getId(), null)), 'garde : le build doit avoir peuplé le cache');
         $pool->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
         self::assertFalse(
-            $pool->hasItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonA->getId())),
+            $pool->hasItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonA->getId(), null)),
             'les entrées écrites par le builder doivent porter le tag du club',
         );
         self::assertFalse(
-            $pool->hasItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonB->getId())),
+            $pool->hasItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $seasonB->getId(), null)),
             'toutes les saisons du club partent avec le tag',
         );
     }

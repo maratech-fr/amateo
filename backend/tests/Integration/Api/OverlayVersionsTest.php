@@ -22,6 +22,7 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use App\Enum\LockOrigin;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -186,6 +187,28 @@ final class OverlayVersionsTest extends WebTestCase
         self::assertSame(2, $byId[$source->getId()]['hardLockCount'], 'hardLockCount compte les seuls verrous HARD (le NONE ne compte pas)');
         self::assertFalse($byId[$older->getId()]['isLockSource'], 'une version antérieure n’est pas la source');
         self::assertSame(0, $byId[$older->getId()]['hardLockCount']);
+    }
+
+    /** hardLockCount annonce les verrous du gestionnaire : une réservation réimportée ne compte pas. */
+    public function testHardLockCountLeavesReservationsOut(): void
+    {
+        [$user, $club, $season] = $this->seed('OVVRES');
+        $entry = $this->period($club, $season, 'P');
+        $version = $this->overlay($club, $season, $entry, ScheduleStatus::COMPLETED);
+        $this->hardLock($version, 'aaaaaaaa-0000-4000-8000-000000000001', 1, '18:00', LockLevel::HARD);
+        $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())->setScheduleId($version->getId())
+            ->setTeamId('aaaaaaaa-0000-4000-8000-000000000002')->setVenueId('aaaaaaaa-0000-4000-8000-00000000000f')->setDayOfWeek(2)
+            ->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90)->setLockLevel(LockLevel::HARD)->setLockOrigin(LockOrigin::RESERVATION));
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $this->client->request('GET', '/api/schedules/' . $version->getId(), [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame(1, $body['hardLockCount'] ?? null);
     }
 
     protected function setUp(): void

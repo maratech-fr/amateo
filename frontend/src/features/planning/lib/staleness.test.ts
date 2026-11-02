@@ -36,3 +36,13 @@ describe("stalenessMessage", () => {
     expect(stalenessMessage({ ...NONE, structureChanged: true, readOnly: true })).toBeNull();
   });
 });
+
+describe("stalenessMessage — version non chargée", () => {
+  it("se tait sur une version consultée : la bannière de consultation dit déjà tout", () => {
+    expect(stalenessMessage({ manuallyEdited: true, structureChanged: true, readOnly: false, notLoaded: true })).toBeNull();
+  });
+
+  it("parle encore sur la version chargée", () => {
+    expect(stalenessMessage({ manuallyEdited: true, structureChanged: false, readOnly: false, notLoaded: false })).not.toBeNull();
+  });
+});

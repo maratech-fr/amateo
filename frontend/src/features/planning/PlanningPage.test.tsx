@@ -9,6 +9,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
 import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
+import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
 import { usePlanningStore } from "./store";
@@ -165,6 +166,7 @@ vi.mock("./api", () => {
     Promise.resolve({ removedSlotIds: ["slot-1"], removed: [], unmetPresence: [], ...(true === body?.dryRun ? { dryRun: true } : {}) }),
   ),
   generateSchedule: vi.fn(),
+  regenerate: vi.fn(() => Promise.resolve({ id: "regen-new", status: "PENDING", sourceScheduleId: "v2" })),
   // V1 — « Régénérer » un overlay crée une nouvelle version puis la génère (useRegenerateOverlay).
   createOverlayVersion: vi.fn(() => Promise.resolve({ id: "ov-new" })),
   // V1bis — « Charger » les verrous d'une version de période (pose le pointeur, ne génère pas).
@@ -3072,5 +3074,160 @@ describe("PlanningPage — comblement refusé par un blocage", () => {
 
     await vi.waitFor(() => expect(useToastStore.getState().toasts.some((t) => "error" === t.variant)).toBe(true));
     expect(screen.queryByRole("button", { name: /Récapitulatif/ })).not.toBeInTheDocument();
+  });
+});
+
+// Plan « version chargée » : une version non chargée se consulte, ne se modifie pas. Le serveur décide
+// (`capabilities.canEdit`), la page affiche ; capacité absente = aucun motif, le serveur refusera seul.
+describe("PlanningPage — version chargée", () => {
+  const CAPS = { canDelete: false, canValidate: true, canRegenerateFrom: true, canLoadLocks: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
+  const LOADED_CAPS = { ...CAPS, canEdit: true, editBlockedReason: null };
+  const NOT_LOADED_CAPS = { ...CAPS, canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version" };
+  const version = (id: string, createdAt: string, extra: Partial<Schedule> = {}): Schedule => ({ id, name: "Planning A", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan", ...extra });
+  const older = (extra: Partial<Schedule> = {}) => version("v1", "2026-01-01T00:00:00Z", { capabilities: NOT_LOADED_CAPS, ...extra } as Partial<Schedule>);
+  const loaded = (extra: Partial<Schedule> = {}) => version("v2", "2026-02-01T00:00:00Z", { isLiveContext: true, capabilities: LOADED_CAPS, ...extra } as Partial<Schedule>);
+
+  const open = async (schedules: Schedule[], selected: string, embedded = true) => {
+    vi.mocked(listSchedules).mockResolvedValue(schedules);
+    usePlanningStore.setState({ selectedScheduleId: selected });
+    renderWithProviders(<PlanningPage embedded={embedded} />);
+    await screen.findByText("U11");
+  };
+
+  it("une version non chargée porte la bannière, et « Ouvrir la version chargée » y mène", async () => {
+    const user = userEvent.setup();
+    await open([older(), loaded()], "v1");
+
+    expect(screen.getByText(PLANNING_TEXTS.notLoadedBanner("V1", "V2", true))).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: PLANNING_TEXTS.openLoadedVersion }));
+    expect(usePlanningStore.getState().selectedScheduleId).toBe("v2");
+  });
+
+  it("la phrase de la bannière suit les gestes disponibles : version impossible à charger", async () => {
+    await open([older({ capabilities: { ...NOT_LOADED_CAPS, canRegenerateFrom: false, regenerateFromBlockedReason: "Pas de photo." } } as Partial<Schedule>), loaded()], "v1");
+    expect(screen.getByText(PLANNING_TEXTS.notLoadedBanner("V1", "V2", false))).toBeInTheDocument();
+  });
+
+  it("aucune bannière sur la version chargée", async () => {
+    await open([older(), loaded()], "v2");
+    expect(screen.queryByRole("button", { name: PLANNING_TEXTS.openLoadedVersion })).not.toBeInTheDocument();
+  });
+
+  it("aucune bannière de consultation sur une version en échec", async () => {
+    await open([loaded(), version("v3", "2026-03-01T00:00:00Z", { status: "FAILED", capabilities: NOT_LOADED_CAPS } as Partial<Schedule>)], "v2");
+    usePlanningStore.setState({ selectedScheduleId: "v3" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: PLANNING_TEXTS.openLoadedVersion })).not.toBeInTheDocument());
+  });
+
+  it("« Ouvrir la dernière version » disparaît sur la version chargée, même plus ancienne", async () => {
+    await open([version("v0", "2026-01-01T00:00:00Z", { isLiveContext: true, capabilities: LOADED_CAPS } as Partial<Schedule>), version("v9", "2026-06-01T00:00:00Z", { capabilities: NOT_LOADED_CAPS } as Partial<Schedule>)], "v0");
+    expect(screen.queryByRole("button", { name: PLANNING_TEXTS.openLatestVersion })).not.toBeInTheDocument();
+  });
+
+  it("le signal « périmé » se tait sur une version non chargée", async () => {
+    await open([older({ manuallyEditedSinceGeneration: true }), loaded()], "v1");
+    expect(screen.queryByText(/il est périmé/)).not.toBeInTheDocument();
+  });
+
+  it("les gestes de la fiche sont grisés sur une version non chargée, avec le motif", async () => {
+    const user = userEvent.setup();
+    await open([older(), loaded()], "v1");
+
+    await user.click(screen.getByText("U11"));
+
+    const move = await screen.findByRole("button", { name: /Déplacer/ });
+    expect(move).toHaveAttribute("aria-disabled", "true");
+    expect(move).toHaveAttribute("title", PLANNING_TEXTS.gesturesBlockedNotLoaded);
+  });
+
+  it("capacité absente : aucun motif inventé, les gestes restent offerts", async () => {
+    const user = userEvent.setup();
+    await open([older({ capabilities: null }), loaded()], "v1");
+
+    await user.click(screen.getByText("U11"));
+
+    expect(await screen.findByRole("button", { name: /Déplacer/ })).not.toHaveAttribute("aria-disabled");
+  });
+
+  describe("regenerateDisabled lit la version chargée", () => {
+    const regenerateButton = () => screen.getByRole("button", { name: /^Régénérer/ });
+
+    it("données identiques à la chargée : grisé, même si la version regardée diverge", async () => {
+      vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "same" });
+      await open([older({ snapshotHash: "other" }), loaded({ snapshotHash: "same" })], "v1");
+      await waitFor(() => expect(regenerateButton()).toBeDisabled());
+    });
+
+    it("données différentes de la chargée : actif, même si la version regardée coïncide", async () => {
+      vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "same" });
+      await open([older({ snapshotHash: "same" }), loaded({ snapshotHash: "other" })], "v1");
+      await waitFor(() => expect(vi.mocked(getStructureHash)).toHaveBeenCalled());
+      expect(regenerateButton()).toBeEnabled();
+    });
+  });
+
+  it("le titre nomme la version chargée, en saison", async () => {
+    expect(PLANNING_TEXTS.loadedVersionSuffix("V2")).toBe("(V2 chargée)");
+    await open([older(), loaded()], "v1");
+    expect(screen.getByRole("heading", { level: 1, name: new RegExp(PLANNING_TEXTS.loadedVersionSuffix("V2").replace(/[()]/g, "\\$&")) })).toBeInTheDocument();
+  });
+
+  it("le titre nomme la version source, en période", async () => {
+    expect(PLANNING_TEXTS.sourceVersionSuffix("V2")).toBe("(V2 source)");
+    const period = (id: string, createdAt: string, extra: Partial<Schedule>) => version(id, createdAt, { planType: "CLOSURE", schedulePlanId: "ete-plan", ...extra });
+    vi.mocked(listSchedules).mockResolvedValue([period("p1", "2026-01-01T00:00:00Z", { capabilities: NOT_LOADED_CAPS } as Partial<Schedule>), period("p2", "2026-02-01T00:00:00Z", { isLockSource: true, capabilities: LOADED_CAPS } as Partial<Schedule>)]);
+    usePlanningStore.setState({ selectedScheduleId: "p1" });
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+    await screen.findByText("U11");
+    expect(screen.getByRole("heading", { level: 1, name: new RegExp(PLANNING_TEXTS.sourceVersionSuffix("V2").replace(/[()]/g, "\\$&")) })).toBeInTheDocument();
+  });
+
+  describe("Régénérer depuis une autre version que la chargée", () => {
+    it.each([
+      [{ hardLockCount: 2, canRegenerateFrom: true }],
+      [{ hardLockCount: 0, canRegenerateFrom: true }],
+      [{ hardLockCount: 2, canRegenerateFrom: false }],
+      [{ hardLockCount: 0, canRegenerateFrom: false }],
+    ])("le dialogue dit la version de départ : %j", async ({ hardLockCount, canRegenerateFrom }) => {
+      const user = userEvent.setup();
+      await open([older({ hardLockCount, capabilities: { ...NOT_LOADED_CAPS, canRegenerateFrom } } as Partial<Schedule>), loaded({ hardLockCount: 3, snapshotHash: "x" })], "v1");
+
+      await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
+
+      expect(await screen.findByText(PLANNING_TEXTS.regenerateFromLoadedDescription({ viewed: "V1", loaded: "V2", lockCount: 3, viewedHasLocks: hardLockCount > 0, canLoad: canRegenerateFrom }))).toBeInTheDocument();
+      expect(vi.mocked(regenerate)).not.toHaveBeenCalled();
+    });
+
+    it("confirmer lance, annonce la version de départ et retient le lancement pour la session", async () => {
+      const user = userEvent.setup();
+      vi.mocked(regenerate).mockClear();
+      await open([older(), loaded({ hardLockCount: 3 })], "v1");
+
+      await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
+      await user.click(await screen.findByRole("button", { name: PLANNING_TEXTS.regenerateFromLoadedConfirm("V2") }));
+
+      await waitFor(() => expect(vi.mocked(regenerate)).toHaveBeenCalled());
+      await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(PLANNING_TEXTS.regenerateFromLoadedToast("V2")));
+      expect(usePlanningStore.getState().sessionLaunchedScheduleId).toBe("regen-new");
+    });
+
+    it("sur la version chargée, pas de dialogue", async () => {
+      const user = userEvent.setup();
+      vi.mocked(regenerate).mockClear();
+      await open([older(), loaded()], "v2");
+
+      await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
+
+      await waitFor(() => expect(vi.mocked(regenerate)).toHaveBeenCalled());
+    });
+  });
+
+  it("le dialogue « Charger » a toujours une description, même sans compte d'équipes", async () => {
+    const user = userEvent.setup();
+    await open([older({ generatedTeamCount: null } as Partial<Schedule>), loaded()], "v1");
+
+    await user.click(screen.getByRole("button", { name: /Charger cette version/ }));
+
+    expect(await screen.findByText(PLANNING_TEXTS.loadVersionDescriptionGeneric)).toBeInTheDocument();
   });
 });

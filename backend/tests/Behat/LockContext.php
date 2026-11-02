@@ -136,6 +136,12 @@ final class LockContext extends BaseContext
         // régénérable ; restauré en fin de scénario.
         $this->pointSocleTo('');
         $this->reopenedSocle = true;
+        // La version d'entrée doit être la version CHARGÉE, seule modifiable. Pointeur posé en SQL pour
+        // la même raison que ci-dessus (« Charger » écraserait la structure du club de démonstration).
+        $this->dbalExec(
+            \sprintf('UPDATE season SET live_context_schedule_id=\'%s\' WHERE id=(SELECT season_id FROM schedule WHERE id=\'%s\')', $this->socleVersionId, $this->socleVersionId),
+            admin: true,
+        );
     }
 
     #[Given('une séance de cette version verrouillée en dur')]
@@ -285,15 +291,6 @@ final class LockContext extends BaseContext
             $this->apiDelete(\sprintf('constraints/%s', $this->constraintId), $this->token);
         }
 
-        // La séance choisie était LIBRE : retirer le verrou la remet dans son état d'origine (NONE).
-        if ('' !== $this->slotId) {
-            $this->apiPost(
-                \sprintf('schedule-slots/%s/manual-edit/lock', $this->slotId),
-                ['lockLevel' => 'NONE'],
-                $this->token,
-            );
-        }
-
         // Supprime toute version de saison née depuis l'entrée (la régénération). Le socle étant
         // dépointé, la version née n'est pas la version choisie et n'est pas la SEULE terminée du
         // plan (les préexistantes demeurent) : le DELETE API passe et purge ses enfants.
@@ -302,6 +299,17 @@ final class LockContext extends BaseContext
                 continue;
             }
             $this->apiDelete(\sprintf('schedules/%s', $versionId), $this->token);
+        }
+
+        // La séance choisie était LIBRE : retirer le verrou la remet dans son état d'origine (NONE).
+        // APRÈS la suppression des versions nées : tant qu'elles existent, la version d'entrée n'est
+        // plus la version chargée, et le guichet refuse de la modifier (409 not_loaded_version).
+        if ('' !== $this->slotId) {
+            $this->apiPost(
+                \sprintf('schedule-slots/%s/manual-edit/lock', $this->slotId),
+                ['lockLevel' => 'NONE'],
+                $this->token,
+            );
         }
 
         // Restaure « socle en vigueur » (SQL brut, voir l'en-tête) : la version d'entrée si elle

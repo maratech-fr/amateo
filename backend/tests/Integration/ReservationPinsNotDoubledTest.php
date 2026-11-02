@@ -301,6 +301,43 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         $this->assertNotStaleAfterGenerating($club, $season, $schedule->getId(), $planId);
     }
 
+    /** Régénérer depuis une version chargée plus ancienne : la réservation part une fois, et rien n'est périmé. */
+    public function testRegeneratingFromAnOlderLoadedVersionKeepsTheReservationSingleAndNotStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->seedReservedAndFreeTeams($club, $season, null);
+        $planId = $this->seasonPlanIdOf($season);
+        $older = $this->pendingVersion($club, $season, $planId, null);
+        $this->em->flush();
+        $this->generate($club->getId(), $older->getId());
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        $club = $this->em->getRepository(Club::class)->find($club->getId());
+        $season = $this->em->getRepository(Season::class)->find($season->getId());
+        self::assertInstanceOf(Club::class, $club);
+        self::assertInstanceOf(Season::class, $season);
+        $newer = $this->pendingVersion($club, $season, $planId, null);
+        $this->em->flush();
+        $this->generate($club->getId(), $newer->getId());
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        $season = $this->em->getRepository(Season::class)->find($season->getId());
+        self::assertInstanceOf(Season::class, $season);
+        $season->setLiveContextScheduleId($older->getId());
+        $this->em->flush();
+        $this->purgeCache($club, $season);
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertCount(1, $this->pinsAtReservationPlacement($payload));
+        $olderRow = $this->em->getRepository(Schedule::class)->find($older->getId());
+        self::assertSame($olderRow?->getSnapshotHash(), $this->provisioner->structureHashOfPlan($planId), 'la version chargée ne se dit pas périmée');
+        self::assertSame(1, \count(array_filter(
+            (array) $payload['slotTemplates'],
+            static fn (mixed $s): bool => \is_array($s) && self::FREE_TEAM_ID === ($s['teamId'] ?? null),
+        )), 'une seule séance libre : celle de la version chargée');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -417,9 +454,7 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
 
     private function purgeCache(Club $club, Season $season): void
     {
-        self::getContainer()->get('cache.schedule')->deleteItem(
-            ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()),
-        );
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
     }
 
     private function baseSchedule(Club $club, Season $season): Schedule

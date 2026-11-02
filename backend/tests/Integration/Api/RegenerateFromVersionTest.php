@@ -387,6 +387,89 @@ final class RegenerateFromVersionTest extends WebTestCase
         self::assertFalse($this->decode()['isLiveContext'], 'a non-pointed version is not the loaded context');
     }
 
+    /** Sans photo : consultable, « Charger » annoncé impossible avec son motif, le refus dit la même chose. */
+    public function testAVersionWithoutPhotoAnnouncesWhyItCannotBeLoaded(): void
+    {
+        $v1 = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
+        $this->makeSchedule(ScheduleStatus::COMPLETED, null);
+        $this->em->flush();
+
+        $capabilities = $this->capabilitiesOf($v1);
+
+        self::assertFalse($capabilities['canRegenerateFrom']);
+        self::assertIsString($capabilities['regenerateFromBlockedReason'] ?? null);
+        $this->client->request('POST', "/api/schedules/{$v1->getId()}/regenerate-from", [], [], $this->headers());
+        self::assertResponseStatusCodeSame(409);
+    }
+
+    /** Équipe engagée absente de la photo : la capacité vaut le refus, mot pour mot. */
+    public function testALostEngagedTeamIsAnnouncedWithTheRefusalWording(): void
+    {
+        $this->persistTeam('SM1');
+        $v1 = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
+        $this->makeSchedule(ScheduleStatus::COMPLETED, null);
+        $this->em->flush();
+        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
+        $snapshotter->store($v1, $snapshotter->serialize($this->club->getId(), $this->season->getId()));
+        $sm2 = $this->persistTeam('SM2');
+        $this->engage($sm2);
+
+        $this->assertCapabilityEqualsTheRefusal($v1, 'SM2');
+    }
+
+    /** Niveau changé depuis la photo pour une équipe engagée : la capacité vaut le refus, mot pour mot. */
+    public function testAChangedLevelIsAnnouncedWithTheRefusalWording(): void
+    {
+        $sm1 = $this->persistTeam('SM1');
+        $v1 = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
+        $this->makeSchedule(ScheduleStatus::COMPLETED, null);
+        $this->em->flush();
+        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
+        $snapshotter->store($v1, $snapshotter->serialize($this->club->getId(), $this->season->getId()));
+        $sm1->setLevel(TeamLevel::cases()[0]);
+        $this->em->flush();
+        $this->engage($sm1);
+
+        $this->assertCapabilityEqualsTheRefusal($v1, 'SM1');
+    }
+
+    private function assertCapabilityEqualsTheRefusal(Schedule $version, string $teamName): void
+    {
+        $capabilities = $this->capabilitiesOf($version);
+        self::assertFalse($capabilities['canRegenerateFrom'] ?? null);
+        $reason = $capabilities['regenerateFromBlockedReason'] ?? null;
+        self::assertIsString($reason);
+        self::assertStringContainsString($teamName, $reason);
+
+        $this->client->request('POST', "/api/schedules/{$version->getId()}/regenerate-from", [], [], $this->headers());
+        self::assertResponseStatusCodeSame(409);
+        $refusal = (string) ($this->decode()['detail'] ?? $this->decode()['error'] ?? '');
+        self::assertSame($reason, $refusal, 'capacité affichée = verdict du refus');
+    }
+
+    /** @return array<string, mixed> */
+    private function capabilitiesOf(Schedule $version): array
+    {
+        $this->client->request('GET', "/api/schedules/{$version->getId()}", [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+        $capabilities = $this->decode()['capabilities'] ?? null;
+        self::assertIsArray($capabilities);
+
+        return $capabilities;
+    }
+
+    private function engage(Team $team): void
+    {
+        $this->em->persist((new Fixture)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($team->getId())
+            ->setMatchDate(new DateTimeImmutable('2026-10-04'))
+            ->setHomeAway(FixtureHomeAway::HOME)
+            ->setOpponentLabel('AS Voisins')
+            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable));
+        $this->em->flush();
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

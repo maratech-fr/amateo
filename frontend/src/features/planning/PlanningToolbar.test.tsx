@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Schedule, ScheduleCapabilities } from "./api";
 import { PlanningToolbar } from "./PlanningToolbar";
+import { PLANNING_TEXTS } from "./texts";
 
 const noop = () => {};
 
@@ -363,5 +364,42 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
     expect(screen.queryByText(/9051/)).not.toBeInTheDocument();
     // …et le badge de statut, lui, reste : on retire le score, pas la ligne.
     expect(screen.getByText("Terminé")).toBeInTheDocument();
+  });
+});
+
+// Plan « version chargée » : une version non chargée se consulte, ne se valide pas, et la barre dit
+// d'où repartira la régénération.
+describe("PlanningToolbar — version chargée", () => {
+  const older = (over: ScheduleOver = {}) => schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01T09:00:00+00:00", isLiveContext: false, capabilities: { canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities>, ...over });
+  const loaded = () => schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00", isLiveContext: true, capabilities: { canEdit: true, editBlockedReason: null } as Partial<ScheduleCapabilities> });
+
+  it("« Valider » reste visible, grisé avec son motif, sur une version non chargée", () => {
+    renderToolbar([older(), loaded()]);
+    const validate = screen.getByRole("button", { name: /Valider/ });
+    expect(validate).toHaveAttribute("aria-disabled", "true");
+    expect(validate).toHaveAttribute("title", PLANNING_TEXTS.validateNeedsLoad);
+  });
+
+  it("« Valider » reste actif sur la version chargée", () => {
+    renderToolbar([older(), loaded()], { selectedScheduleId: "s2" });
+    expect(screen.getByRole("button", { name: /Valider/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Valider/ })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("la barre annonce la version de départ quand on en regarde une autre", () => {
+    renderToolbar([older(), loaded()]);
+    expect(screen.getByText(PLANNING_TEXTS.regenerateKeepsLoadedLocks("V2"))).toBeInTheDocument();
+  });
+
+  it("sur la version chargée, la barre garde sa phrase", () => {
+    renderToolbar([older(), loaded()], { selectedScheduleId: "s2" });
+    expect(screen.queryByText(PLANNING_TEXTS.regenerateKeepsLoadedLocks("V2"))).not.toBeInTheDocument();
+  });
+
+  it.each(["Cette version n'a pas de photo.", "Cette version est antérieure à SM2.", "Cette version a été générée quand SM1 avait un autre niveau."])("« Charger » est grisé et dit le motif du serveur : %s", (reason) => {
+    renderToolbar([older({ capabilities: { canRegenerateFrom: false, regenerateFromBlockedReason: reason } as Partial<ScheduleCapabilities> }), loaded()]);
+    const load = screen.getByRole("button", { name: /Charger cette version/ });
+    expect(load).toHaveAttribute("aria-disabled", "true");
+    expect(load).toHaveAttribute("title", reason);
   });
 });

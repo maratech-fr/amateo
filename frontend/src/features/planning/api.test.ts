@@ -1,3 +1,4 @@
+import { HTTPError } from "ky";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/shared/api/client";
@@ -113,5 +114,27 @@ describe("moveSlot / placeSlot — verdict indéterminé (ENG-51) résolu, jamai
     const result = await placeSlot("sched-1", { teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1" });
     expect(result.valid).toBe(false);
     expect(result.indeterminate).toBe(true);
+  });
+});
+
+// Deux onglets : la version a cessé d'être chargée ailleurs. Le refus codé doit se reconnaître.
+describe("moveSlot / placeSlot — le refus d'une version non chargée est reconnu", () => {
+  afterEach(() => mockPost.mockReset());
+
+  const refuse = () =>
+    mockPost.mockReturnValueOnce({
+      json: async () => {
+        throw new HTTPError(new Response(JSON.stringify({ code: "not_loaded_version", error: "Chargez cette version pour la modifier." }), { status: 409 }), new Request("http://x/"), {} as never);
+      },
+    } as never);
+
+  it("moveSlot le rend en SlotEditError codée", async () => {
+    refuse();
+    await expect(moveSlot("s", { dayOfWeek: 1, startTime: "18:00", venueId: "v" })).rejects.toMatchObject({ name: "SlotEditError", code: "not_loaded_version" });
+  });
+
+  it("placeSlot le rend en SlotEditError codée", async () => {
+    refuse();
+    await expect(placeSlot("s", { teamId: "t", dayOfWeek: 1, startTime: "18:00", venueId: "v" })).rejects.toMatchObject({ name: "SlotEditError", code: "not_loaded_version" });
   });
 });

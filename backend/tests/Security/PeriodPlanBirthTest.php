@@ -729,7 +729,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         // ci-dessus sont écrites hors requête, donc sans invalidation. Sans ce purge,
         // un hit rendrait l'assertion creuse — verte quoi qu'il arrive. Ne pas
         // dépendre du fait que l'env de test mappe ce pool sur un adaptateur array.
-        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
         $payload = $builder->buildForClubSeason($club->getId(), $season->getId());
 
         $slots = [];

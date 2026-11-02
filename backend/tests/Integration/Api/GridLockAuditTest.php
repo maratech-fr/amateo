@@ -21,6 +21,7 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use App\Service\ClubGenerationLock;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -315,6 +316,29 @@ final class GridLockAuditTest extends WebTestCase
             self::assertStringNotContainsString($this->manager->getLastName(), $json, 'pas de nom dans details');
             self::assertStringNotContainsString($emailLocalPart, $json, 'pas d\'e-mail dans details');
         }
+    }
+
+    /** Un verrou posé pendant une génération est refusé (409 codé), rien écrit, rien tracé. */
+    public function testLockingDuringAGenerationIsRefusedAndLeavesNoTrace(): void
+    {
+        $schedule = $this->createSchedule(ScheduleStatus::COMPLETED);
+        $slot = $this->createSlot($schedule, dayOfWeek: 2, startHm: '18:00');
+        $generationLock = self::getContainer()->get(ClubGenerationLock::class);
+        $token = $generationLock->acquire($this->club->getId(), 60);
+        self::assertNotNull($token, 'seed: le verrou de génération doit être acquis');
+
+        try {
+            $this->postLock($slot->getId(), 'HARD');
+            self::assertResponseStatusCodeSame(409);
+            self::assertSame('generation_in_progress', $this->decode()['code'] ?? null);
+        } finally {
+            $generationLock->release($this->club->getId(), $token);
+        }
+
+        self::assertSame([], $this->auditRows('lock.changed'), 'un refus ne laisse pas de trace');
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(LockLevel::NONE, $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId())?->getLockLevel());
     }
 
     protected function setUp(): void

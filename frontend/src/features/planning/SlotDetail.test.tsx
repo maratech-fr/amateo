@@ -474,3 +474,19 @@ describe("SlotDetail — mutualiser depuis la fiche (lot 9, F3 ; lot 2 — socle
     expect(screen.getByText(PLANNING_TEXTS.mutualizedBadge)).toBeInTheDocument();
   });
 });
+
+describe("SlotDetail — gestes bloqués", () => {
+  it("le motif fourni grise déplacer, verrouiller et retirer, et se découvre au clavier", () => {
+    renderDetail({ gesturesBlockedReason: PLANNING_TEXTS.gesturesBlockedNotLoaded });
+    for (const name of [/Déplacer/, /Verrouiller/, /Retirer/]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button).toHaveAttribute("title", PLANNING_TEXTS.gesturesBlockedNotLoaded);
+    }
+  });
+
+  it("sans motif, les gestes restent offerts", () => {
+    renderDetail({ gesturesBlockedReason: null });
+    expect(screen.getByRole("button", { name: /Déplacer/ })).not.toHaveAttribute("aria-disabled");
+  });
+});

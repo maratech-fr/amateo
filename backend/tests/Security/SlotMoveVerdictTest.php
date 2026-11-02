@@ -759,6 +759,37 @@ final class SlotMoveVerdictTest extends KernelTestCase
         );
     }
 
+    /** Le verdict juge le geste contre la version chargée : le verrou d'une autre version ne pèse pas. */
+    public function testTheVerdictIgnoresTheLocksOfAnotherVersion(): void
+    {
+        $ctx = $this->seed();
+        $older = (new Schedule)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Ancienne')->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($older);
+        $this->em->flush();
+        $foreign = (new ScheduleSlotTemplate)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setScheduleId($older->getId())
+            ->setTeamId(self::CONFLICTING_TEAM_ID)->setVenueId($ctx['venue2'])->setDayOfWeek(4)
+            ->setStartTime(new DateTimeImmutable('20:00'))->setDurationMinutes(90)->setLockLevel(LockLevel::HARD)->setLockOrigin(LockOrigin::MANUAL);
+        $this->em->persist($foreign);
+        $season = $this->em->getRepository(Season::class)->find($ctx['seasonId']);
+        self::assertInstanceOf(Season::class, $season);
+        $season->setLiveContextScheduleId($ctx['scheduleId']);
+        $this->em->flush();
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($ctx['clubId'])]);
+
+        $captured = null;
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use (&$captured): MockResponse {
+            $captured = json_decode((string) $options['body'], true, 512, \JSON_THROW_ON_ERROR);
+
+            return new MockResponse(self::ACCEPT, ['http_code' => 200]);
+        });
+
+        $this->service($client)->move($ctx['slot'], 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+
+        self::assertIsArray($captured);
+        $ids = array_map(static fn (array $t): string => (string) ($t['id'] ?? ''), $captured['slotTemplates']);
+        self::assertNotContains($foreign->getId(), $ids);
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

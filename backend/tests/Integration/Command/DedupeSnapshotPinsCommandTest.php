@@ -24,6 +24,9 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
+use App\Entity\CalendarEntry;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -64,6 +67,8 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
     private const string HEALTHY_PIN_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
     private EntityManagerInterface $em;
+
+    private string $recalibratedClubId = '';
 
     /** @return iterable<string, array{string}> */
     public static function oldContractVersions(): iterable
@@ -220,6 +225,89 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         );
     }
 
+    /** Recalage : deux versions au même placement, ids inversés, finissent à la même empreinte, sans réécrire le snapshot. */
+    public function testTheNewRecipeIsAppliedToEveryVersionWithoutTouchingTheSnapshotData(): void
+    {
+        [$a, $b] = $this->twoVersionsWithSamePlacementsInverted();
+        $dataBefore = $this->reload($a)->getSnapshotData();
+
+        $this->runCommand([])->assertCommandIsSuccessful();
+
+        self::assertSame($this->reload($a)->getSnapshotHash(), $this->reload($b)->getSnapshotHash());
+        self::assertSame($dataBefore, $this->reload($a)->getSnapshotData(), 'hors doublon, aucune donnée de snapshot n’est réécrite');
+    }
+
+    /** Le dry-run ne recale rien, et une seconde passe ne retouche plus rien. */
+    public function testRecalibrationHonoursDryRunAndIsIdempotent(): void
+    {
+        [$a] = $this->twoVersionsWithSamePlacementsInverted();
+        $stale = 'ancienne-recette';
+        $this->reload($a)->setSnapshotHash($stale);
+        $this->em->flush();
+
+        $this->runCommand(['--dry-run' => true])->assertCommandIsSuccessful();
+        self::assertSame($stale, $this->reload($a)->getSnapshotHash());
+
+        $this->runCommand([])->assertCommandIsSuccessful();
+        $hash = $this->reload($a)->getSnapshotHash();
+        self::assertNotSame($stale, $hash);
+
+        $second = $this->runCommand([]);
+        $second->assertCommandIsSuccessful();
+        self::assertStringContainsString('0 schedule', $second->getDisplay());
+        self::assertSame($hash, $this->reload($a)->getSnapshotHash());
+    }
+
+    /** Le recalage vaut aussi pour une version de plan de période. */
+    public function testRecalibrationCoversAPeriodVersion(): void
+    {
+        [$a, , $clubId, $seasonId] = $this->twoVersionsWithSamePlacementsInverted();
+        $entry = (new CalendarEntry)->setClubId($clubId)->setSeasonId($seasonId)
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::CLOSURE)
+            ->setTitle('Fermeture')->setStartDate(new DateTimeImmutable('2026-02-01'))->setEndDate(new DateTimeImmutable('2026-02-10'));
+        $this->em->persist($entry);
+        $this->em->flush();
+        $snapshot = ['slotTemplates' => [$this->pin('dddddddd-0000-4000-8000-000000000002', 3, '20:00:00'), $this->pin('dddddddd-0000-4000-8000-000000000001', 2, '18:00:00')], 'venues' => [], 'teams' => []];
+        $period = (new Schedule)->setClubId($clubId)->setSeasonId($seasonId)->setName('Période')->setStatus(ScheduleStatus::COMPLETED)
+            ->setSnapshotData($snapshot)->setSnapshotHash('ancienne-recette');
+        $this->linkSeededSchedule($period, $entry->getId());
+        $this->em->flush();
+        $id = $period->getId();
+
+        $this->runCommand([])->assertCommandIsSuccessful();
+
+        self::assertSame($this->reload($a)->getSnapshotHash(), $this->reload($id)->getSnapshotHash());
+    }
+
+    /** @return array{0: string, 1: string, 2: string, 3: string} */
+    private function twoVersionsWithSamePlacementsInverted(): array
+    {
+        $f = $this->seed();
+        $this->recalibratedClubId = $f['clubId'];
+        $this->em->clear();
+        $this->scopeGucToClub($f['clubId']);
+        $club = $this->em->getRepository(Club::class)->find($f['clubId']);
+        $seasonId = (string) $this->em->getRepository(Schedule::class)->find($f['doubled'])?->getSeasonId();
+        $season = $this->em->getRepository(Season::class)->find($seasonId);
+        self::assertInstanceOf(Club::class, $club);
+        self::assertInstanceOf(Season::class, $season);
+        $a = $this->schedule($club, $season, [$this->pin('aaaa0000-0000-4000-8000-000000000001', 2, '18:00:00'), $this->pin('aaaa0000-0000-4000-8000-000000000002', 3, '20:00:00')]);
+        $b = $this->schedule($club, $season, [$this->pin('bbbb0000-0000-4000-8000-000000000001', 3, '20:00:00'), $this->pin('bbbb0000-0000-4000-8000-000000000002', 2, '18:00:00')]);
+        $this->em->flush();
+
+        return [$a->getId(), $b->getId(), $f['clubId'], $seasonId];
+    }
+
+    private function reload(string $id): Schedule
+    {
+        $this->em->clear();
+        $this->scopeGucToClub($this->recalibratedClubId);
+        $schedule = $this->em->getRepository(Schedule::class)->find($id);
+        self::assertInstanceOf(Schedule::class, $schedule);
+
+        return $schedule;
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -315,7 +403,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
     /** @param array{clubId: string, seasonId: string} $f */
     private function purgeCache(array $f): void
     {
-        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId']));
+        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($f['clubId'])]);
     }
 
     /**
