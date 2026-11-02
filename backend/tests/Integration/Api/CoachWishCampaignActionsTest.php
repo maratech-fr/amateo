@@ -22,6 +22,7 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -206,6 +207,48 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         self::assertSame('Ce coach n\'est pas coach principal de cette équipe.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
 
         self::assertSame(0, $this->markedCount($teamId), 'aucun refus n\'écrit');
+    }
+
+    /**
+     * Un identifiant qui n'est pas un UUID, dans le corps de la demande de destinataire, rend le 422 prévu, jamais un 500, et n'écrit rien.
+     *
+     * @param array<string, mixed> $payload `TEAM`/`COACH` = l'identifiant réel du décor
+     */
+    #[DataProvider('malformedRecipientPayloads')]
+    public function testRecipientActionRefusesAMalformedIdentifierWith422(array $payload): void
+    {
+        $teamId = $this->campaign->getTeamIds()[0];
+        $coachId = $this->noEmail->getId();
+        $resolved = array_map(static fn (mixed $v): mixed => 'TEAM' === $v ? $teamId : ('COACH' === $v ? $coachId : $v), $payload);
+
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/recipient', [], [], $this->headers(), json_encode($resolved, \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame(0, $this->markedCount($teamId), 'aucun refus n\'écrit');
+    }
+
+    /** @return iterable<string, array{array<string, mixed>}> */
+    public static function malformedRecipientPayloads(): iterable
+    {
+        yield 'équipe : texte' => [['teamId' => 'pas-un-uuid', 'coachId' => 'COACH']];
+        yield 'équipe : quote SQL' => [['teamId' => "' OR 1=1 --", 'coachId' => 'COACH']];
+        yield 'équipe : nombre' => [['teamId' => 42, 'coachId' => 'COACH']];
+        yield 'équipe : tableau' => [['teamId' => ['x'], 'coachId' => 'COACH']];
+        yield 'équipe : absente' => [['coachId' => 'COACH']];
+        yield 'coach : texte' => [['teamId' => 'TEAM', 'coachId' => 'pas-un-uuid']];
+        yield 'coach : quote SQL' => [['teamId' => 'TEAM', 'coachId' => "' OR 1=1 --"]];
+        yield 'coach : nombre' => [['teamId' => 'TEAM', 'coachId' => 42]];
+        yield 'coach : tableau' => [['teamId' => 'TEAM', 'coachId' => ['x']]];
+        yield 'coach : absent' => [['teamId' => 'TEAM']];
+        yield 'les deux : texte' => [['teamId' => 'abc', 'coachId' => 'def']];
+    }
+
+    /** Un identifiant de collecte malformé dans l'URL répond comme une collecte inconnue, jamais un 500. */
+    public function testRecipientActionOnAMalformedCampaignIdIs404(): void
+    {
+        $this->client->request('POST', '/api/coach_wish_campaigns/pas-un-uuid/recipient', [], [], $this->headers(), json_encode(['teamId' => $this->campaign->getTeamIds()[0], 'coachId' => $this->noEmail->getId()], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(404);
     }
 
     public function testRecipientActionOnAClosedCampaignIs409(): void

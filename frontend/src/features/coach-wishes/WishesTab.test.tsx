@@ -10,6 +10,9 @@ import { dayLabelShort } from "@/shared/lib/days";
 import { COACH_WISHES_MANAGER_TEXTS } from "./texts/manager";
 import { WishesTab, type WishTransferFooter } from "./WishesTab";
 
+/** Un jour tel qu'il s'écrit au milieu d'une phrase de récap, jamais avec la majuscule du bouton. */
+const lowDay = (day: number): string => dayLabelShort(day).toLowerCase();
+
 // Saison couvrant les deux semaines des vacances de test (lun 2026-02-16 → dim 2026-03-01).
 // P3-14 : le tri des filtres (staffing / rang) et le bornage du coach aux MAIN de l'équipe
 // se lisent tous deux dans ces fixtures. `t2`/U13 n'a VOLONTAIREMENT aucun lien coach —
@@ -338,11 +341,11 @@ describe("WishesTab", () => {
 
   // ── P4-312 — jours souhaités (informatif) ──
 
-  it("affiche les jours souhaités d'une doléance remontée", () => {
+  it("affiche les jours souhaités d'une doléance remontée, en minuscules dans la phrase", () => {
     wishesState.data = [wish({ id: "w1", wishedDays: [2], unavailableDays: [3] })];
     render(<WishesTab mother={mother} weekFilter={null} />);
-    expect(screen.getByText(/souhaité : Mar/)).toBeInTheDocument();
-    expect(screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listTeamClosed([dayLabelShort(3)])))).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listWished([lowDay(2)])))).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listTeamClosed([lowDay(3)])))).toBeInTheDocument();
   });
 
   // ── Disponibilités par personne : la liste relit le staff COURANT (décision P11) ──
@@ -359,8 +362,8 @@ describe("WishesTab", () => {
       screen.getByText((text) =>
         text.includes(
           COACH_WISHES_MANAGER_TEXTS.listAbsent([
-            { firstName: "Maxime", dayLabels: [dayLabelShort(4)] },
-            { firstName: "Léa", dayLabels: [dayLabelShort(2)] },
+            { firstName: "Maxime", dayLabels: [lowDay(4)] },
+            { firstName: "Léa", dayLabels: [lowDay(2)] },
           ]),
         ),
       ),
@@ -371,7 +374,7 @@ describe("WishesTab", () => {
     wishesState.data = [wish({ id: "w1", staffUnavailability: [{ coachId: "c2", days: [2] }] })]; // c2 n'est pas lié à t1
     render(<WishesTab mother={mother} weekFilter={null} />);
 
-    expect(screen.queryByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listAbsent([{ firstName: "Léa", dayLabels: [dayLabelShort(2)] }])))).toBeNull();
+    expect(screen.queryByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listAbsent([{ firstName: "Léa", dayLabels: [lowDay(2)] }])))).toBeNull();
   });
 
   it("signale une absence déclarée pour la même personne sur une autre équipe, sans l'écrire comme la sienne", () => {
@@ -384,7 +387,7 @@ describe("WishesTab", () => {
     render(<WishesTab mother={mother} weekFilter={null} />);
 
     expect(
-      screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listDeclaredElsewhere([{ firstName: "Maxime", dayLabels: [dayLabelShort(4)], teamName: "Fanion" }]))),
+      screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listDeclaredElsewhere([{ firstName: "Maxime", dayLabels: [lowDay(4)], teamName: "Fanion" }]))),
     ).toBeInTheDocument();
   });
 

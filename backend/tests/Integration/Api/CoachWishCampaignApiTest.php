@@ -336,6 +336,102 @@ final class CoachWishCampaignApiTest extends WebTestCase
         self::assertSame(1, $body['openWishCount'], 'seule la doléance d’une équipe de la campagne compte');
     }
 
+    /** Une équipe supprimée sort de la Sollicitation tout de suite : ni dans la collecte, ni sur un coach, et le coach qui n'avait qu'elle disparaît de la liste. */
+    public function testADeletedTeamLeavesTheManagerViewAtOnce(): void
+    {
+        $doomed = $this->doomedTeamOfCoachA();
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId(), $this->teamB->getId(), $doomed->getId()]]));
+        self::assertResponseStatusCodeSame(201);
+        self::assertContains($doomed->getId(), $this->coachRow($body['id'], $this->coachA)['teamIds'] ?? [], 'témoin : l\'équipe est bien servie avant la suppression');
+
+        $this->deleteTeam($this->teamB);
+        $this->deleteTeam($doomed);
+
+        $resource = $this->campaignResource($body['id']);
+        self::assertSame([$this->teamA->getId()], $resource['teamIds']);
+        self::assertSame([$this->teamA->getId()], array_column($resource['teams'], 'teamId'));
+        self::assertSame([$this->teamA->getId()], $this->coachRow($body['id'], $this->coachA)['teamIds'] ?? null);
+        self::assertNull($this->coachRow($body['id'], $this->coachB), 'son unique équipe est partie : plus personne à solliciter chez lui');
+        self::assertSame(1, $resource['totalCoachCount']);
+    }
+
+    /** Même promesse sur une collecte à date passée : la règle du destinataire n'y rejoue plus, l'équipe morte n'y reste pas pour autant. */
+    public function testADeletedTeamLeavesAClosedCampaignToo(): void
+    {
+        $doomed = $this->doomedTeamOfCoachA();
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId(), $doomed->getId()]]));
+        self::assertResponseStatusCodeSame(201);
+        $this->closeCampaign($body['id']);
+
+        $this->deleteTeam($doomed);
+
+        $resource = $this->campaignResource($body['id']);
+        self::assertFalse($resource['open'], 'témoin : la collecte est bien close');
+        self::assertSame([$this->teamA->getId()], $resource['teamIds']);
+        self::assertSame([$this->teamA->getId()], array_column($resource['teams'], 'teamId'));
+        self::assertSame([$this->teamA->getId()], $this->coachRow($body['id'], $this->coachA)['teamIds'] ?? null);
+    }
+
+    /** Une équipe supprimée perdue par le coach ne remet pas à zéro la réponse qu'il a déjà donnée pour ses autres équipes. */
+    public function testADeletedTeamKeepsTheAnswerOfItsCoach(): void
+    {
+        $doomed = $this->doomedTeamOfCoachA();
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId(), $doomed->getId()]]));
+        $token = $this->coachRow($body['id'], $this->coachA)['token'] ?? '';
+        $this->publicPost($token, ['submissions' => [['teamId' => $this->teamA->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'comment' => null]]]);
+        self::assertResponseIsSuccessful();
+
+        $this->deleteTeam($doomed);
+
+        self::assertNotNull($this->coachRow($body['id'], $this->coachA)['respondedAt'] ?? null);
+    }
+
+    /** Le lien d'un coach ne propose plus une équipe supprimée, ni comme équipe à remplir ni comme partenaire. */
+    public function testThePublicPageNoLongerShowsADeletedTeam(): void
+    {
+        $doomed = $this->doomedTeamOfCoachA();
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId(), $doomed->getId()]]));
+        $token = $this->coachRow($body['id'], $this->coachA)['token'] ?? '';
+        self::assertContains($doomed->getId(), array_column($this->publicGet($token)['teams'], 'id'), 'témoin : proposée avant la suppression');
+
+        $this->deleteTeam($doomed);
+
+        $context = $this->publicGet($token);
+        self::assertSame([$this->teamA->getId()], array_column($context['teams'], 'id'));
+        self::assertSame([$this->teamA->getId()], array_column($context['partnerTeams'], 'id'));
+    }
+
+    /** Un lien déjà ouvert qui poste sur une équipe supprimée reçoit 422, rien n'est écrit et le coach n'est pas noté « a répondu ». */
+    public function testAPublicSubmitOnADeletedTeamIsRefusedWithoutWriting(): void
+    {
+        $doomed = $this->doomedTeamOfCoachA();
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId(), $doomed->getId()]]));
+        $token = $this->coachRow($body['id'], $this->coachA)['token'] ?? '';
+        $this->deleteTeam($doomed);
+
+        $this->publicPost($token, ['submissions' => [['teamId' => $doomed->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'comment' => null]]]);
+
+        self::assertResponseStatusCodeSame(422);
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM coach_wish WHERE team_id = :t', ['t' => $doomed->getId()]), 'aucune doléance sur une équipe morte');
+        self::assertNull($this->coachRow($body['id'], $this->coachA)['respondedAt'] ?? null, 'un refus ne compte pas comme une réponse');
+    }
+
+    /** Une équipe supprimée n'est plus un partenaire de mutualisation acceptable : 422, rien d'écrit. */
+    public function testAPublicMutualizationWithADeletedPartnerIsRefusedWithoutWriting(): void
+    {
+        $doomed = $this->doomedTeamOfCoachA();
+        $body = $this->post($this->payload(['teamIds' => [$this->teamA->getId(), $doomed->getId()]]));
+        $token = $this->coachRow($body['id'], $this->coachA)['token'] ?? '';
+        $this->deleteTeam($doomed);
+
+        $this->publicPost($token, ['submissions' => [], 'mutualizations' => [['teamId' => $this->teamA->getId(), 'partnerTeamIds' => [$doomed->getId()], 'sharedSlots' => 1]]]);
+
+        self::assertResponseStatusCodeSame(422);
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM coach_wish_mutualization WHERE team_id = :t', ['t' => $this->teamA->getId()]));
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -400,6 +496,57 @@ final class CoachWishCampaignApiTest extends WebTestCase
         self::assertInstanceOf(TeamCoach::class, $link);
         $link->setCreatedAt(new DateTimeImmutable('-1 year'));
         $this->em->flush();
+    }
+
+    /** Une équipe de plus au coach A, seul principal : celle que le test supprimera. */
+    private function doomedTeamOfCoachA(): Team
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $team = $this->newTeam('U9M1');
+        $this->em->flush();
+        $this->addLink($team, $this->coachA, TeamCoachRole::MAIN, 'now');
+
+        return $team;
+    }
+
+    /** Le geste réel du gestionnaire : la suppression par l'API, cascade comprise. */
+    private function deleteTeam(Team $team): void
+    {
+        $this->client->request('DELETE', '/api/teams/' . $team->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+    }
+
+    private function closeCampaign(string $campaignId): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $campaign = $this->em->getRepository(CoachWishCampaign::class)->find($campaignId);
+        self::assertInstanceOf(CoachWishCampaign::class, $campaign);
+        $campaign->setDeadline(new DateTimeImmutable('2020-01-06'));
+        $this->em->flush();
+    }
+
+    /** @return array<string, mixed> */
+    private function campaignResource(string $campaignId): array
+    {
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $campaignId, [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+
+        return json_decode((string) $this->client->getResponse()->getContent(), true);
+    }
+
+    /** @return array<string, mixed> */
+    private function publicGet(string $token): array
+    {
+        $this->client->request('GET', '/api/coach-wishes/public/' . $token);
+        self::assertResponseIsSuccessful();
+
+        return json_decode((string) $this->client->getResponse()->getContent(), true);
+    }
+
+    /** @param array<string, mixed> $body */
+    private function publicPost(string $token, array $body): void
+    {
+        $this->client->request('POST', '/api/coach-wishes/public/' . $token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode($body, \JSON_THROW_ON_ERROR));
     }
 
     /**

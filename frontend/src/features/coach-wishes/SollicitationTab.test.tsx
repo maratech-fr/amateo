@@ -204,6 +204,22 @@ describe("SollicitationTab", () => {
     expect(screen.getByText(COACH_WISHES_MANAGER_TEXTS.noMainCoach(["U13", "U11"]))).toBeInTheDocument();
   });
 
+  it("une équipe sans coach principal ne passe pas inaperçue : bandeau d'avertissement", () => {
+    renderTab(campaign({ teamIds: ["t3"], teams: [{ teamId: "t3", recipientCoachId: null, candidates: [] }] }));
+
+    expect(screen.getByText(COACH_WISHES_MANAGER_TEXTS.noMainCoach(["U11"])).closest(".bg-surface-warning")).not.toBeNull();
+  });
+
+  it("changer de destinataire est réversible : le bouton de confirmation n'a pas le style destructif", async () => {
+    const user = userEvent.setup();
+    renderTab(campaign({ teams: [twoMains], coaches: [coach({ sentAt: "2026-01-01T08:00:00Z" })] }));
+
+    await user.selectOptions(picker(), "c2");
+
+    const dialog = screen.getByRole("dialog", { name: COACH_WISHES_MANAGER_TEXTS.recipientConfirmTitle });
+    expect(within(dialog).getByRole("button", { name: COACH_WISHES_MANAGER_TEXTS.recipientConfirmChange }).className).not.toContain("destructive");
+  });
+
   it("change tout de suite quand le destinataire courant n'a ni lien ni réponse", async () => {
     const user = userEvent.setup();
     renderTab(campaign({ teams: [twoMains] }));

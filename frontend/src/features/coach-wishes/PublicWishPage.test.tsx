@@ -474,22 +474,27 @@ describe("PublicWishPage — disponibilités du staff", () => {
     expect(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("le récap dit l'équipe fermée et les absents", async () => {
+  it("le récap dit l'équipe fermée, les souhaits et les absents, jours en minuscules ; les boutons gardent leur casse", async () => {
     h.getContext.mockResolvedValue(context({ wishes: [] }));
     renderAt();
     await start();
 
-    await userEvent.click(within(screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend })).getByRole("button", { name: "vendredi" }));
+    const closedDay = within(screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend })).getByRole("button", { name: "vendredi" });
+    expect(closedDay).toHaveTextContent(dayLabelShort(5));
+    await userEvent.click(closedDay);
+    await userEvent.click(within(screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.wishedDaysLegend })).getByRole("button", { name: "lundi" }));
     await userEvent.click(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" }));
     await userEvent.click(within(staffPicker("Benoît", "Roux", "ASSISTANT")).getByRole("button", { name: "mardi" }));
     await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
 
     const line = screen.getByText(/semaine du/).textContent;
-    expect(line).toContain(COACH_WISHES_PUBLIC_TEXTS.recapTeamClosed([dayLabelShort(5)]));
+    const lowDay = (day: number) => dayLabelShort(day).toLowerCase();
+    expect(line).toContain(COACH_WISHES_PUBLIC_TEXTS.recapWished([lowDay(1)]));
+    expect(line).toContain(COACH_WISHES_PUBLIC_TEXTS.recapTeamClosed([lowDay(5)]));
     expect(line).toContain(
       COACH_WISHES_PUBLIC_TEXTS.recapAbsent([
-        { firstName: "Maxime", dayLabels: [dayLabelShort(4)] },
-        { firstName: "Benoît", dayLabels: [dayLabelShort(2)] },
+        { firstName: "Maxime", dayLabels: [lowDay(4)] },
+        { firstName: "Benoît", dayLabels: [lowDay(2)] },
       ]),
     );
   });
