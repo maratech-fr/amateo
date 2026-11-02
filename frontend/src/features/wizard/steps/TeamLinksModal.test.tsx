@@ -1,6 +1,9 @@
-import { screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { useState } from "react";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
@@ -9,15 +12,26 @@ import type { TeamLink } from "@/features/matches/api";
 
 import type { PriorityTier, SharedTrainingBlock, Team } from "../api";
 
-const blocksState: { data: SharedTrainingBlock[] } = { data: [] };
-const teamLinksState: { data: TeamLink[] } = { data: [] };
+// `loading`/`failed` : l'état de la lecture, indépendant des données, pour éprouver le choix de l'onglet d'ouverture.
+const blocksState: { data: SharedTrainingBlock[]; loading: boolean; failed: boolean } = { data: [], loading: false, failed: false };
+const teamLinksState: { data: TeamLink[]; loading: boolean; failed: boolean } = { data: [], loading: false, failed: false };
+
+const readOf = (state: { data: unknown; loading: boolean; failed: boolean }) => ({
+  data: state.loading || state.failed ? undefined : state.data,
+  isPending: state.loading,
+  isLoading: state.loading,
+  isFetching: state.loading,
+  isError: state.failed,
+  isSuccess: !state.loading && !state.failed,
+  isFetched: !state.loading,
+});
 // D4 — l'onglet « Entente (CTC) » règle l'entente par un PUT d'équipe complet (useUpdateTeam).
 const updateMut = vi.fn();
 
 vi.mock("../queries", () => ({
   useTeamPeriodOverrides: () => ({ data: [] }),
   // P2-51 — le BLOC est la SEULE notion de mutualisation montée dans la modale.
-  useSharedTrainingBlocks: () => ({ data: blocksState.data }),
+  useSharedTrainingBlocks: () => readOf(blocksState),
   useCreateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
   useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
   useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
@@ -25,7 +39,7 @@ vi.mock("../queries", () => ({
   useUpdateTeam: () => ({ mutate: updateMut }),
 }));
 vi.mock("@/features/matches/queries", () => ({
-  useTeamLinks: () => ({ data: teamLinksState.data, isError: false }),
+  useTeamLinks: () => readOf(teamLinksState),
   useCreateTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
@@ -87,8 +101,99 @@ const ctcTeams = (ctc: Partial<Pick<Team, "isCtc" | "ctcPartner">>): Team[] => [
 
 beforeEach(() => {
   blocksState.data = [];
+  blocksState.loading = false;
+  blocksState.failed = false;
   teamLinksState.data = [];
+  teamLinksState.loading = false;
+  teamLinksState.failed = false;
   updateMut.mockClear();
+});
+
+const groupOf = (teamIds: string[], schedulePlanId: string | null = null): SharedTrainingBlock => ({
+  id: "b1",
+  version: 1,
+  createdAt: "2026-08-31T00:00:00+00:00",
+  updatedAt: "2026-08-31T00:00:00+00:00",
+  schedulePlanId,
+  teamIds,
+  commonSessions: 1,
+  label: null,
+  sessions: [],
+});
+const bridge: TeamLink = { id: "l1", teamAId: "t1", teamBId: "t2", linkType: "NOT_SIMULTANEOUS", trainingIntensity: "PREFERRED" };
+
+const expectOpenOn = (name: "Passerelles" | "Mutualisation") => expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true");
+
+const Providers = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={new QueryClient()}>
+    <MemoryRouter>{children}</MemoryRouter>
+  </QueryClientProvider>
+);
+
+const modal = (schedulePlanId: string | null = null) => <TeamLinksModal team={{ id: "t1", name: "SM1" }} teams={TEAMS} tiers={TIERS} schedulePlanId={schedulePlanId} readOnlyLinks={false} onClose={vi.fn()} />;
+
+/** La modale s'ouvre là où l'équipe a quelque chose à voir, et ne change plus d'onglet ensuite. */
+describe("TeamLinksModal — l'onglet d'ouverture", () => {
+  it("un groupe et aucune passerelle : s'ouvre sur Mutualisation", () => {
+    blocksState.data = [groupOf(["t1", "t2"])];
+    renderModal();
+    expectOpenOn("Mutualisation");
+  });
+
+  it("une passerelle et un groupe : s'ouvre sur Passerelles", () => {
+    blocksState.data = [groupOf(["t1", "t2"])];
+    teamLinksState.data = [bridge];
+    renderModal();
+    expectOpenOn("Passerelles");
+  });
+
+  it("depuis la saison, un groupe d'une période ne compte pas : s'ouvre sur Passerelles", () => {
+    blocksState.data = [groupOf(["t1", "t2"], "plan-toussaint")];
+    renderModal(false, null);
+    expectOpenOn("Passerelles");
+  });
+
+  it("depuis une période, le groupe de cette période compte : s'ouvre sur Mutualisation", () => {
+    blocksState.data = [groupOf(["t1", "t2"], "plan-9")];
+    renderModal(false, "plan-9");
+    expectOpenOn("Mutualisation");
+  });
+
+  it.each([
+    ["les groupes", blocksState],
+    ["les passerelles", teamLinksState],
+  ])("tant que %s se lisent, rien n'est décidé : un indicateur de chargement, aucun onglet", (_label, state) => {
+    state.loading = true;
+    renderModal();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByLabelText("Chargement")).toBeInTheDocument();
+  });
+
+  it("une lecture en échec ne bloque pas la modale : s'ouvre sur Passerelles", () => {
+    blocksState.failed = true;
+    renderModal();
+    expectOpenOn("Passerelles");
+  });
+
+  it("l'onglet ne bouge pas quand la dernière passerelle disparaît et qu'un groupe existe", () => {
+    teamLinksState.data = [bridge];
+    blocksState.data = [groupOf(["t1", "t2"])];
+    const { rerender } = render(modal(), { wrapper: Providers });
+    expectOpenOn("Passerelles");
+
+    teamLinksState.data = [];
+    rerender(modal());
+    expectOpenOn("Passerelles");
+  });
+
+  it("l'onglet ne bouge pas quand le premier groupe arrive après l'ouverture", () => {
+    const { rerender } = render(modal(), { wrapper: Providers });
+    expectOpenOn("Passerelles");
+
+    blocksState.data = [groupOf(["t1", "t2"])];
+    rerender(modal());
+    expectOpenOn("Passerelles");
+  });
 });
 
 describe("TeamLinksModal — deux ONGLETS (Passerelles · Mutualisation)", () => {
@@ -119,6 +224,7 @@ describe("TeamLinksModal — deux ONGLETS (Passerelles · Mutualisation)", () =>
     renderModal();
 
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
     // Les passerelles sont alors dans le panneau inactif.
     expect(screen.queryByRole("button", { name: "Ajouter la passerelle" })).toBeNull();
@@ -137,6 +243,7 @@ describe("TeamLinksModal — deux ONGLETS (Passerelles · Mutualisation)", () =>
     renderModal(false);
     expect(screen.getByRole("button", { name: "Ajouter la passerelle" })).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 
@@ -148,6 +255,7 @@ describe("TeamLinksModal — deux ONGLETS (Passerelles · Mutualisation)", () =>
     expect(screen.queryByRole("button", { name: "Ajouter la passerelle" })).toBeNull();
     // La mutualisation reste éditable (ancrée au plan) même quand les passerelles ne le sont pas.
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 });

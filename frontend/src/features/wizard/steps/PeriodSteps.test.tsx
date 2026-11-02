@@ -524,6 +524,7 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
     // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée. D13 — la « Mutualisation » est
     // rendue par SharedTrainingBlockPanel : créer écrit un « bloc » ancré au plan de période.
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     await user.click(screen.getByRole("checkbox", { name: "U13" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 

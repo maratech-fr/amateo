@@ -292,6 +292,13 @@ describe("Tabs", () => {
     expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
   });
 
+  it("listClassName laisse un écran garder ses onglets sur une ligne qui défile, sans perdre la peau", () => {
+    render(<Tabs tabs={[{ id: "a", label: "A" }]} activeTab="a" onTabChange={() => {}} ariaLabel="Ligne" idPrefix="ligne" listClassName="flex-nowrap overflow-x-auto" />);
+    const list = screen.getByRole("tablist", { name: "Ligne" });
+    expect(list).toHaveClass("flex-nowrap", "overflow-x-auto", "bg-card");
+    expect(list).not.toHaveClass("flex-wrap");
+  });
+
   // P4-265 — la peau `app` pose une BARRE OPAQUE (bg-card) sur le tablist pour ne plus laisser
   // traverser le fond à motifs ; la peau `console` garde son simple filet `border-b`, sans fond.
   it("peau app : barre opaque bg-card sur le tablist ; peau console : filet border-b sans fond", () => {

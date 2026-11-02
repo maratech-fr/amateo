@@ -126,6 +126,36 @@ describe("DayMultiPicker", () => {
     expect(onChange).toHaveBeenCalledWith([1]);
   });
 
+  it("markedDays pose un repère pointillé et son motif, sans changer la sélection ni bloquer le clic", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<DayMultiPicker value={[4]} onChange={onChange} legend="Jours" markedDays={[4]} markedReason="Absent avec une autre équipe" />);
+
+    const thursday = screen.getByRole("button", { name: "jeudi" });
+    expect(thursday).toHaveClass("border-dashed");
+    expect(thursday).toHaveClass("border-warning");
+    expect(thursday).toHaveAttribute("aria-pressed", "true");
+    expect(thursday).toHaveAttribute("title", "Absent avec une autre équipe");
+    expect(document.getElementById(thursday.getAttribute("aria-describedby") as string)).toHaveTextContent("Absent avec une autre équipe");
+
+    // Un jour non marqué ne porte rien.
+    const monday = screen.getByRole("button", { name: "lundi" });
+    expect(monday).not.toHaveClass("border-dashed");
+    expect(monday).not.toHaveAttribute("title");
+
+    await user.click(thursday);
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  it("markedDays sans motif ne marque rien : un repère doit pouvoir s'expliquer", () => {
+    render(<DayMultiPicker value={[]} onChange={() => {}} legend="Jours" markedDays={[4]} />);
+
+    const thursday = screen.getByRole("button", { name: "jeudi" });
+    expect(thursday).not.toHaveClass("border-dashed");
+    expect(thursday).not.toHaveAttribute("aria-describedby");
+    expect(thursday).not.toHaveAttribute("title");
+  });
+
   it("le ton destructive habille l'état pressé d'une surface opaque (polarité « bloqué »)", () => {
     render(<DayMultiPicker value={[6]} onChange={() => {}} legend="Jours indisponibles" tone="destructive" />);
 

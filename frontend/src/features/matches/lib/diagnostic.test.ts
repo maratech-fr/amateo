@@ -35,11 +35,35 @@ describe("groupBySeverity (P1-4 PR E2)", () => {
     expect(groupBySeverity([conflict(type, 4)])[0]?.tone).toBe("warning");
   });
 
-  it("intitule le groupe gravité 3 « Personne en double » (coach OU joueuse en double)", () => {
-    // Le lot « une personne = ses équipes » : la gravité 3 n'est plus « Coach principal
-    // en double » — une joueuse en double y tombe aussi.
-    const groups = groupBySeverity([conflict("MATCH_MATCH", 3)]);
-    expect(groups.find((g) => 3 === g.severity)?.title).toBe("Personne en double");
+  it("la gravité 3 se lit en trois groupes, dans cet ordre : Personne, Gymnase, Règle", () => {
+    const groups = groupBySeverity([conflict("CLUB_RULE_VIOLATION", 3), conflict("TEAM_VENUE_FORBIDDEN", 3), conflict("MATCH_MATCH", 3)]);
+    expect(groups.map((g) => g.title)).toEqual(["Personne", "Gymnase", "Règle"]);
+    expect(groups.map((g) => g.severity)).toEqual([3, 3, 3]);
+  });
+
+  it.each(["MATCH_MATCH", "MATCH_TRAINING", "MATCH_COACH_UNAVAILABLE"] as const)("%s tombe sous « Personne » : doublons et coach indisponible sont regroupés", (type) => {
+    expect(groupBySeverity([conflict(type, 3)])[0]?.title).toBe("Personne");
+  });
+
+  it("un type inconnu de gravité 3 tombe sous « Autres », après les trois groupes, sans se perdre", () => {
+    const unknown = conflict("VENUE_OVERLAP", 3);
+    const groups = groupBySeverity([unknown, conflict("CLUB_RULE_VIOLATION", 3), conflict("MATCH_MATCH", 3)]);
+    expect(groups.map((g) => g.title)).toEqual(["Personne", "Règle", "Autres"]);
+    expect(groups[2]?.conflicts).toEqual([unknown]);
+  });
+
+  it("chaque groupe porte une clé distincte, y compris deux « Autres » de gravités différentes", () => {
+    const groups = groupBySeverity([conflict("MATCH_MATCH", 3), conflict("TEAM_VENUE_FORBIDDEN", 3), conflict("CLUB_RULE_VIOLATION", 3), conflict("VENUE_OVERLAP", 3), conflict("VENUE_OVERLAP", 9), conflict("VENUE_OVERLAP", 1)]);
+    const keys = groups.map((g) => g.key);
+    expect(keys.every((k) => undefined !== k)).toBe(true);
+    expect(new Set(keys).size).toBe(groups.length);
+  });
+
+  it("le pivot garde le même ordre : à plat, Personne passe avant Gymnase et Règle", () => {
+    const person = conflict("MATCH_MATCH", 3);
+    const venue = conflict("TEAM_VENUE_FORBIDDEN", 3);
+    const rule = conflict("CLUB_RULE_VIOLATION", 3);
+    expect(groupBySeverity([rule, venue, person]).flatMap((g) => g.conflicts)).toEqual([person, venue, rule]);
   });
 
   it("folds the structural groups 6 and 7 (N teams = N lines max, not N alerts)", () => {

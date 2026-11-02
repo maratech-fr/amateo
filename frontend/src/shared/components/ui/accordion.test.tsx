@@ -77,6 +77,17 @@ describe("AccordionSection", () => {
     expect(container.firstElementChild?.className).toContain("bg-card");
   });
 
+  it("le survol teinte le fond sans teinter le texte, qui garde son contraste", () => {
+    render(
+      <AccordionSection title="Visuel">
+        <p>body</p>
+      </AccordionSection>,
+    );
+    const header = screen.getByRole("button", { name: /Visuel/ });
+    expect(header).toHaveClass("hover:bg-accent/10");
+    expect(header).not.toHaveClass("hover:text-accent");
+  });
+
   it("l'état ouvert se marque par un liseré accent à gauche (border-l-2), le fermé par un liseré transparent — pas de fond", () => {
     const { rerender } = render(
       <AccordionSection title="Visuel">

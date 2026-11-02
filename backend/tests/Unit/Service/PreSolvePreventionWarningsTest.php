@@ -28,6 +28,8 @@ use ReflectionMethod;
 #[Group('phase1')]
 final class PreSolvePreventionWarningsTest extends TestCase
 {
+    private const string ASSISTANT_WITHOUT_MAIN = 'U15 a un adjoint (Emma D.) mais aucun coach principal : nommez un coach principal, ou retirez l\'adjoint si l\'équipe est en autonomie.';
+
     private PreSolvePreventionWarnings $warnings;
 
     public function testAVenueWithoutAnySlotIsFlagged(): void
@@ -1143,6 +1145,88 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertCount(1, $this->closedForcedDayWarnings($found));
     }
 
+    // ── Finitions : on ne peut pas être adjoint sans coach ──
+
+    /** Un adjoint sans coach principal : le Récap le nomme avant de générer, et ne bloque rien. */
+    public function testATeamWithAnAssistantButNoMainCoachIsFlaggedWithoutBlocking(): void
+    {
+        $payload = $this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U15')],
+            coaches: [$this->coach('c1', 'Emma', 'Dupont')],
+            constraints: [$this->teamCoach('t1', 'c1', 'ASSISTANT')],
+        );
+
+        self::assertContains(self::ASSISTANT_WITHOUT_MAIN, $this->warnings->detect($payload));
+        self::assertSame([], $this->warnings->detectBlockers($payload));
+    }
+
+    /** Même constat quand le lien vient du vrai sérialiseur, celui qui part au moteur. */
+    public function testAnAssistantWithoutMainCoachFiresFromBuilderSerializedLink(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U15')],
+            coaches: [$this->coach('c1', 'Emma', 'Dupont')],
+            constraints: [$this->builderTeamCoach('t1', 'c1', TeamCoachRole::ASSISTANT)],
+        ));
+
+        self::assertContains(self::ASSISTANT_WITHOUT_MAIN, $found);
+    }
+
+    /** Un principal à côté de l'adjoint : l'équipe est en règle, silence. */
+    public function testAMainCoachBesideTheAssistantIsSilent(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U15')],
+            coaches: [$this->coach('c1', 'Emma', 'Dupont'), $this->coach('c2', 'Karim', 'Martin')],
+            constraints: [$this->teamCoach('t1', 'c1', 'ASSISTANT'), $this->teamCoach('t1', 'c2', 'MAIN')],
+        ));
+
+        self::assertSame([], $this->assistantWithoutMainWarnings($found));
+    }
+
+    /** Un lien sans rôle vaut principal, comme pour le moteur : silence. */
+    public function testALinkWithoutRoleCountsAsMain(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U15')],
+            coaches: [$this->coach('c1', 'Emma', 'Dupont'), $this->coach('c2', 'Karim', 'Martin')],
+            constraints: [
+                $this->teamCoach('t1', 'c1', 'ASSISTANT'),
+                ['type' => 'TEAM_COACH', 'teamId' => 't1', 'metadata' => ['coachId' => 'c2']],
+            ],
+        ));
+
+        self::assertSame([], $this->assistantWithoutMainWarnings($found));
+    }
+
+    /** Une équipe sans aucun coach est en autonomie : silence. */
+    public function testATeamWithoutAnyCoachIsSilent(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U15')],
+        ));
+
+        self::assertSame([], $this->assistantWithoutMainWarnings($found));
+    }
+
+    /** En période, le payload ne porte que les équipes engagées : une équipe en pause ne déclenche rien. */
+    public function testATeamAbsentFromThePeriodPayloadIsSilent(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t2', 'U17')],
+            coaches: [$this->coach('c1', 'Emma', 'Dupont')],
+            constraints: [$this->teamCoach('t1', 'c1', 'ASSISTANT')],
+        ));
+
+        self::assertSame([], $this->assistantWithoutMainWarnings($found));
+    }
+
     protected function setUp(): void
     {
         $this->warnings = new PreSolvePreventionWarnings;
@@ -1387,6 +1471,16 @@ final class PreSolvePreventionWarningsTest extends TestCase
         $serialized = $method->invoke($builder, [$teamCoach]);
 
         return $serialized[0];
+    }
+
+    /**
+     * @param list<string> $found
+     *
+     * @return list<string>
+     */
+    private function assistantWithoutMainWarnings(array $found): array
+    {
+        return array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'aucun coach principal')));
     }
 
     /**

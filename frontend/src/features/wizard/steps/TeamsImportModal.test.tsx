@@ -363,11 +363,13 @@ describe("TeamsImportModal", () => {
     await user.upload(screen.getByLabelText("Fichier FBI (.xlsx)"), xlsx());
     await screen.findByRole("checkbox", { name: /^Loisir Détente/ });
 
-    // La ligne est cochée (neuve) MAIS sans genre : « Importer » est désarmé AVEC sa raison (A11Y-30,
-    // prop `disabledReason` → aria-disabled, patron ParcImportModal), la raison compte « 1 équipe sans genre ».
+    // La ligne est cochée (neuve) MAIS sans genre : « Importer » est désactivé, et la raison se lit EN CLAIR à
+    // côté du bouton, pas seulement au lecteur d'écran (exception A11Y-30 : raison visible, pas de `disabledReason`).
     const importBtn = screen.getByRole("button", { name: /^Importer/ });
-    expect(importBtn).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText(/sans genre/i), "la raison comptée nomme le manque de genre").toBeInTheDocument();
+    expect(importBtn).toBeDisabled();
+    const reason = screen.getByText("1 équipe sans genre — choisissez-le pour importer");
+    expect(reason, "la raison est du texte visible").not.toHaveClass("sr-only");
+    expect(reason).toHaveClass("text-warning");
 
     // Le menu Genre : option vide « À choisir » (plus « — »), valeur vide, et signalé invalide.
     const gender = screen.getByRole("combobox", { name: "Genre de Loisir Détente" });
@@ -388,7 +390,8 @@ describe("TeamsImportModal", () => {
     expect(gender).toBeValid();
 
     const importBtn = screen.getByRole("button", { name: /^Importer/ });
-    expect(importBtn).not.toHaveAttribute("aria-disabled", "true");
+    expect(importBtn).toBeEnabled();
+    expect(screen.queryByText(/sans genre/i), "le genre choisi fait disparaître la raison").toBeNull();
 
     await user.click(importBtn);
     expect(sentOverrides()[2]?.gender, "le genre tranché part dans l'override").toBe("F");

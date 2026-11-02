@@ -107,6 +107,18 @@ const renderHub = (opts: { existing?: CoachWishCampaign | null; wishes?: unknown
   return render(<CoachWishesHub mother={entry} weekFilter={null} source={opts.source ?? "cockpit"} onClose={vi.fn()} />);
 };
 
+describe("CoachWishesHub — barre d'onglets", () => {
+  it("les onglets restent sur une ligne qui défile, ils ne passent jamais à la ligne", () => {
+    setTodayOverride("2026-02-01");
+    campaignsState.isError = false;
+    wishesState.isError = false;
+    renderHub();
+    const list = screen.getByRole("tablist", { name: "Sections des doléances" });
+    expect(list).toHaveClass("flex-nowrap", "overflow-x-auto");
+    expect(list).not.toHaveClass("flex-wrap");
+  });
+});
+
 describe("CoachWishesHub", () => {
   // P3-13/P3-15 (c) — la campagne ne propose que les semaines À VENIR. Ces fixtures sont
   // datées (fév. 2026) : sans horloge pilotable, elles deviennent du passé au fil du temps

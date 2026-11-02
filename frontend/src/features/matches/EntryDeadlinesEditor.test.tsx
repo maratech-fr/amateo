@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,6 +38,90 @@ const COMPETITIONS: Competition[] = [
 
 beforeEach(() => {
   setDeadlinesMutate.mockReset();
+});
+
+// Deux compétitions sans échéance + une datée + une proposée : le filtre a de quoi trier.
+const MIXED: Competition[] = [
+  ...COMPETITIONS,
+  comp({ id: "c4", teamId: "t3", name: "Coupe U11", entryDeadline: null, effectiveEntryDeadline: null, deadlineSource: null, ffbbCompetitionId: null }),
+];
+const DATED: Competition[] = COMPETITIONS.slice(0, 2);
+
+const filterSegment = (name: RegExp) => screen.getByRole("button", { name });
+const NO_DEADLINE = /Sans échéance/;
+const ALL = /^Tous/;
+
+describe("EntryDeadlinesEditor — filtre « Sans échéance | Tous »", () => {
+  it("ouvre sur Tous, avec les deux compteurs ; une date proposée compte comme datée", () => {
+    renderWithProviders(<EntryDeadlinesEditor competitions={MIXED} teams={TEAMS} />);
+    expect(filterSegment(ALL)).toHaveAttribute("aria-pressed", "true");
+    expect(filterSegment(ALL)).toHaveTextContent("4");
+    expect(filterSegment(NO_DEADLINE)).toHaveAttribute("aria-pressed", "false");
+    expect(filterSegment(NO_DEADLINE)).toHaveTextContent("2");
+    expect(screen.getAllByRole("checkbox")).toHaveLength(4);
+  });
+
+  it("Sans échéance ne montre que les compétitions sans date, ni club ni proposée", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EntryDeadlinesEditor competitions={MIXED} teams={TEAMS} />);
+    await user.click(filterSegment(NO_DEADLINE));
+    expect(screen.queryByRole("checkbox", { name: /Départemental U13/ })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Régional U15/ })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: /Amical U11/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Coupe U11/ })).toBeInTheDocument();
+  });
+
+  it("Tout cocher n'agit que sur les lignes visibles : le POST n'envoie aucune ligne masquée", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EntryDeadlinesEditor competitions={MIXED} teams={TEAMS} />);
+    await user.click(filterSegment(NO_DEADLINE));
+    await user.click(screen.getByRole("button", { name: "Tout cocher" }));
+    await user.type(screen.getByLabelText(/Échéance à appliquer/), "2026-10-01");
+    await user.click(screen.getByRole("button", { name: /Appliquer/ }));
+
+    expect(setDeadlinesMutate).toHaveBeenCalledTimes(1);
+    expect([...setDeadlinesMutate.mock.calls[0][0].competitionIds].sort()).toEqual(["c3", "c4"]);
+  });
+
+  it("changer de filtre vide la sélection", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EntryDeadlinesEditor competitions={MIXED} teams={TEAMS} />);
+    await user.click(screen.getByRole("checkbox", { name: /Départemental U13/ }));
+    expect(screen.getByRole("button", { name: /Effacer l'échéance/ })).toBeEnabled();
+
+    await user.click(filterSegment(NO_DEADLINE));
+    expect(screen.getByRole("button", { name: /Effacer l'échéance/ })).toBeDisabled();
+
+    await user.click(filterSegment(ALL));
+    expect(screen.getByRole("checkbox", { name: /Départemental U13/ })).not.toBeChecked();
+  });
+
+  it("un rechargement qui date une ligne cochée la sort du compte et de l'envoi : rien de masqué ne part", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<EntryDeadlinesEditor competitions={MIXED} teams={TEAMS} />);
+    await user.click(filterSegment(NO_DEADLINE));
+    await user.click(screen.getByRole("checkbox", { name: /Amical U11/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Coupe U11/ }));
+    expect(screen.getByRole("button", { name: "Appliquer (2)" })).toBeInTheDocument();
+
+    const reloaded = MIXED.map((c) => ("c3" === c.id ? { ...c, entryDeadline: "2026-09-20", effectiveEntryDeadline: "2026-09-20", deadlineSource: "club" as const } : c));
+    rerender(<EntryDeadlinesEditor competitions={reloaded} teams={TEAMS} />);
+
+    expect(screen.getByRole("button", { name: "Appliquer (1)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Effacer l'échéance/ }));
+    expect(setDeadlinesMutate.mock.calls[0][0].competitionIds).toEqual(["c4"]);
+  });
+
+  it("toutes datées : le contrôle reste affiché et Sans échéance le dit, sans aucune ligne", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EntryDeadlinesEditor competitions={DATED} teams={TEAMS} />);
+    await user.click(filterSegment(NO_DEADLINE));
+
+    expect(filterSegment(ALL)).toBeInTheDocument();
+    expect(screen.getByText(/Toutes vos compétitions ont une échéance/)).toBeInTheDocument();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.queryByText(/Aucune compétition/)).toBeNull();
+  });
 });
 
 describe("EntryDeadlinesEditor — les échéances de saisie (RMM-6 PR-2)", () => {
