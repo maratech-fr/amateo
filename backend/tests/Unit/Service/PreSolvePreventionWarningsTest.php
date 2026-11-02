@@ -663,7 +663,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'se combinent')));
     }
 
-    // ── ALIGN-19 — indispo d'un coach UNIQUEMENT adjoint = indicative ─────────────────────────
+    // ── ALIGN-19 — indispo d'un coach UNIQUEMENT adjoint : ne ferme aucune séance, ferme le relais ──
 
     public function testAdjointOnlyCoachUnavailabilityIsFlaggedAsIndicative(): void
     {
@@ -677,12 +677,29 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ],
         ));
 
-        self::assertNotSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'Anna B') && str_contains($w, 'indicative')));
+        self::assertContains('L\'indisponibilité de Anna B (adjoint uniquement) ne ferme aucune séance : seul un entraîneur principal indisponible en empêche une. Elle ferme seulement le relais d\'arrivée tardive que cet adjoint aurait pu assurer.', $found);
+    }
+
+    public function testSeveralAdjointsUnavailabilitiesNameTheRelayInThePlural(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna', 'B'), $this->coach('c2', 'Benoît', 'R')],
+            constraints: [
+                $this->teamCoach('t1', 'c1', 'ASSISTANT'),
+                $this->teamCoach('t1', 'c2', 'ASSISTANT'),
+                $this->coachUnavailable('c1', [3]),
+                $this->coachUnavailable('c2', [4]),
+            ],
+        ));
+
+        self::assertContains('Les indisponibilités de Anna B, Benoît R (adjoints uniquement) ne ferment aucune séance : seul un entraîneur principal indisponible en empêche une. Elles ferment seulement le relais d\'arrivée tardive que ces adjoints auraient pu assurer.', $found);
     }
 
     public function testAMainCoachUnavailabilityIsNotFlaggedAsIndicative(): void
     {
-        // Même indisponibilité, mais le coach est PRINCIPAL : elle ferme bien → pas « indicative ».
+        // Même indisponibilité, mais le coach est PRINCIPAL : elle ferme bien → pas de phrase « adjoint ».
         $found = $this->warnings->detect($this->payload(
             venues: [$this->venue('v1', 'Matéo', [1])],
             teams: [$this->team('t1', 'U13 F1')],
@@ -693,7 +710,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ],
         ));
 
-        self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'indicative')));
+        self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'adjoint uniquement')));
     }
 
     // ── ALIGN-16 — jour imposé VIDÉ par une autre règle HARD (créneau existe mais fermé) ──────

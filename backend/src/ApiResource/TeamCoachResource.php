@@ -50,6 +50,10 @@ class TeamCoachResource
     #[Groups(['read'])]
     public bool $isRequired = false;
 
+    /** Le coach principal choisi pour recevoir le lien de collecte de l'équipe. */
+    #[Groups(['read'])]
+    public bool $wishRecipient = false;
+
     public static function fromEntity(TeamCoach $entity): self
     {
         $dto = new self;
@@ -61,6 +65,7 @@ class TeamCoachResource
         $dto->coachId = $entity->getCoachId();
         $dto->role = $entity->getRole();
         $dto->isRequired = $entity->getIsRequired();
+        $dto->wishRecipient = $entity->isWishRecipient();
 
         return $dto;
     }

@@ -72,6 +72,19 @@ final class CoachWishDigestCommandTest extends KernelTestCase
         self::assertStringContainsString('Maxime', $this->sentSubjects[0] ?? '');
     }
 
+    public function testATokenWithoutTeamsTriggersNoDigest(): void
+    {
+        // Ex-destinataire ou adjoint : sa réponse ancienne ne compte plus, même lié à l'équipe.
+        [$club, $season] = $this->seedClub('NOTEAM');
+        $campaign = $this->campaign($club, $season, deadline: '2026-02-20');
+        $this->token($campaign, $club, 'Maxime', respondedAt: new DateTimeImmutable('2026-01-31 18:00:00'))->setTeamIds([]);
+        $this->em->flush();
+
+        $this->runCommand();
+
+        self::assertSame([], $this->sentTo);
+    }
+
     public function testSilenceSinceLastDigestSendsNothing(): void
     {
         // Une réponse ANTÉRIEURE au dernier digest : rien de neuf → aucun email (fondateur).
@@ -256,7 +269,7 @@ final class CoachWishDigestCommandTest extends KernelTestCase
         $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($campaign->getSeasonId())
             ->setTeamId($teamId)->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
 
-        $token = (new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($coach->getId())->setClubId($club->getId());
+        $token = (new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($coach->getId())->setClubId($club->getId())->setTeamIds([$teamId]);
         if ($respondedAt instanceof DateTimeImmutable) {
             $token->markResponded($respondedAt);
         }

@@ -31,8 +31,9 @@ final class CoachWishUpserter
     ) {}
 
     /**
-     * @param list<int> $unavailableDays
-     * @param list<int> $wishedDays
+     * @param list<int>                                       $unavailableDays
+     * @param list<int>                                       $wishedDays
+     * @param array<array{coachId: string, days: array<int>}> $staffUnavailability
      */
     public function upsert(
         CoachWishCampaign $campaign,
@@ -44,6 +45,7 @@ final class CoachWishUpserter
         array $wishedDays,
         ?string $comment,
         bool $keepSeasonSlots = false,
+        array $staffUnavailability = [],
     ): CoachWish {
         // Garde de dernier recours (défense en profondeur) : un jour ne peut pas être à la fois
         // souhaité ET indisponible. Le contrôleur public refuse déjà en amont (422) — ce foyer
@@ -71,6 +73,7 @@ final class CoachWishUpserter
         $wish->setCoachId($coachId);
         $wish->setSlotsWanted($slotsWanted);
         $wish->setUnavailableDays($unavailableDays);
+        $wish->setStaffUnavailability(CoachWish::normalizeStaffLines($staffUnavailability));
         $wish->setWishedDays($wishedDays);
         $wish->setComment(null === $comment || '' === trim($comment) ? null : $comment);
         $wish->setKeepSeasonSlots($keepSeasonSlots);

@@ -87,6 +87,7 @@ final class CascadePlan
             // à l'affichage, qui résout les ids en noms depuis les équipes vivantes — choix le
             // plus simple et sûr (une étape de purge JSON n'existe pas dans ce plan scalaire).
             new DeleteByFieldStep(CoachWishMutualization::class, 'teamId', new ImpactLabel('team_coach_mutualization', 'demande de mutualisation', 'demandes de mutualisation')),
+            new CoachWishCampaignTeamStep,
             new ScopedConstraintStep(ConstraintScope::TEAM, new ImpactLabel('team_constraint', 'contrainte visant cette équipe', 'contraintes visant cette équipe')),
             // P2-51 — le bloc de mutualisation (SEULE notion de mutualisation depuis PR-7) meurt
             // ENTIER quand une équipe membre part : toutes ses lignes membres + le bloc lui-même.
@@ -163,6 +164,7 @@ final class CascadePlan
             // #10 — la doléance SURVIT au coach supprimé, dé-attribuée : son info d'équipe
             // reste utile au plan de vacances.
             new ClearFieldStep(CoachWish::class, 'coachId', new ImpactLabel('coach_wish', 'demande qui perdra son auteur', 'demandes qui perdront leur auteur')),
+            new CoachWishStaffLineStep,
             // #10 D2 — la demande de mutualisation SURVIT au coach supprimé, dé-attribuée (parité).
             new ClearFieldStep(CoachWishMutualization::class, 'coachId', new ImpactLabel('coach_mutualization', 'mutualisation qui perdra son auteur', 'mutualisations qui perdront leur auteur')),
             new ClearFieldStep(Coach::class, 'parentCoachId', new ImpactLabel('coach_child', 'coach rattaché qui perdra son coach parent', 'coachs rattachés qui perdront leur coach parent')),

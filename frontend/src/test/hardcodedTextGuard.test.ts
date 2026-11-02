@@ -132,6 +132,13 @@ const MIGRATED_FILES = [
   "features/admin/sections/CapacitySection.tsx",
   "features/admin/sections/ClubRequestsSection.tsx",
   "features/admin/sections/ContainersSection.tsx",
+  // Doléances — les six écrans touchés par « disponibilités par personne, un seul destinataire ».
+  "features/coach-wishes/PublicWishPage.tsx",
+  "features/coach-wishes/WishTeamStep.tsx",
+  "features/coach-wishes/WishRecap.tsx",
+  "features/coach-wishes/CoachWishForm.tsx",
+  "features/coach-wishes/WishesTab.tsx",
+  "features/coach-wishes/SollicitationTab.tsx",
   "features/admin/sections/DemosSection.tsx",
   "features/admin/sections/DeploymentSection.tsx",
   "features/admin/sections/ExternalDepsSection.tsx",

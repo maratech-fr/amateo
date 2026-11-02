@@ -7,6 +7,8 @@ namespace App\Tests\Integration;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Coach;
+use App\Entity\CoachWish;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Reservation;
@@ -14,6 +16,7 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
@@ -31,9 +34,12 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
+use App\Service\CoachWishTransferService;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\CrossStack\CoachWishUnavailabilityGateTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -523,6 +529,37 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         self::assertNotContains('Team paused perm', $names, 'une contrainte d\'équipe en pause reste hors payload de toute façon');
         self::assertNotContains('Coach perm', $names, 'une contrainte COACH est OFF par défaut en vacances (PR C)');
         self::assertNotContains('Facility perm', $names, 'une contrainte GYMNASE est OFF par défaut en vacances (inchangé)');
+    }
+
+    /**
+     * Variante PÉRIODE de {@see CoachWishUnavailabilityGateTest} : ce que le
+     * transfert d'une doléance écrit part bien dans le payload du plan de période, alors qu'une
+     * contrainte COACH ou TEAM PERMANENTE y est coupée par défaut en vacances.
+     */
+    public function testATransferredWishReachesThePeriodPayload(): void
+    {
+        [$club, $season] = $this->seed();
+        $team = $this->team($club, $season, 'U15');
+        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Karim')->setLastName('Benali');
+        $this->em->persist($coach);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $entry = $this->holidayPeriod($club, $season);
+        $this->em->flush();
+        $planId = $this->planIdOf($entry);
+        $wish = (new CoachWish)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setCalendarEntryId($entry->getId())->setWeekStart(new DateTimeImmutable('2026-05-04'))
+            ->setTeamId($team->getId())->setCoachId($coach->getId())->setSlotsWanted(1)
+            ->setUnavailableDays([5])->setStaffUnavailability([['coachId' => $coach->getId(), 'days' => [4]]]);
+        $this->em->persist($wish);
+        $this->em->flush();
+
+        self::getContainer()->get(CoachWishTransferService::class)->transfer($club->getId(), $season->getId(), [$wish->getId()]);
+
+        $byName = array_column($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)['constraints'], null, 'name');
+        self::assertSame(['unavailableDays' => [4]], $byName['Indisponibilité de Karim Benali (doléances U15)']['config'] ?? null);
+        self::assertSame(['forbiddenDays' => [5]], $byName['Jours interdits U15 (doléances)']['config'] ?? null);
     }
 
     public function testRepriseOverrideDeviatesFromDefault(): void

@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CalendarEntry } from "@/features/cockpit/api";
 import { toast } from "@/shared/stores/toastStore";
 
+import { dayLabelShort } from "@/shared/lib/days";
+
+import { COACH_WISHES_MANAGER_TEXTS } from "./texts/manager";
 import { WishesTab, type WishTransferFooter } from "./WishesTab";
+
+/** Un jour tel qu'il s'écrit au milieu d'une phrase de récap, jamais avec la majuscule du bouton. */
+const lowDay = (day: number): string => dayLabelShort(day).toLowerCase();
 
 // Saison couvrant les deux semaines des vacances de test (lun 2026-02-16 → dim 2026-03-01).
 // P3-14 : le tri des filtres (staffing / rang) et le bornage du coach aux MAIN de l'équipe
@@ -25,7 +31,7 @@ const coachesState = { data: [
 const teamCoachesState = { data: [
   { id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" },
   { id: "tc3", teamId: "t3", coachId: "c2", role: "MAIN" },
-] as { id: string; teamId: string; coachId: string; role: string }[] };
+] as { id: string; teamId: string; coachId: string; role: string; wishRecipient?: boolean }[] };
 const coachPlayersState = { data: [] as { coachId: string; isActive: boolean }[] };
 const tiersState = { data: [
   { id: 1, label: "S", name: "Fanion", color: null },
@@ -92,6 +98,7 @@ const wish = (over: Record<string, unknown>) => ({
   comment: null,
   done: false,
   keepSeasonSlots: false,
+  staffUnavailability: [],
   ...over,
 });
 
@@ -334,11 +341,112 @@ describe("WishesTab", () => {
 
   // ── P4-312 — jours souhaités (informatif) ──
 
-  it("affiche les jours souhaités d'une doléance remontée", () => {
+  it("affiche les jours souhaités d'une doléance remontée, en minuscules dans la phrase", () => {
     wishesState.data = [wish({ id: "w1", wishedDays: [2], unavailableDays: [3] })];
     render(<WishesTab mother={mother} weekFilter={null} />);
-    expect(screen.getByText(/souhaité : Mar/)).toBeInTheDocument();
-    expect(screen.getByText(/indispo : Mer/)).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listWished([lowDay(2)])))).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listTeamClosed([lowDay(3)])))).toBeInTheDocument();
+  });
+
+  // ── Disponibilités par personne : la liste relit le staff COURANT (décision P11) ──
+
+  it("la ligne dit les absents, au singulier comme au pluriel", () => {
+    teamCoachesState.data = [
+      { id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" },
+      { id: "tc2", teamId: "t1", coachId: "c2", role: "ASSISTANT" },
+    ];
+    wishesState.data = [wish({ id: "w1", staffUnavailability: [{ coachId: "c1", days: [4] }, { coachId: "c2", days: [2] }] })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+
+    expect(
+      screen.getByText((text) =>
+        text.includes(
+          COACH_WISHES_MANAGER_TEXTS.listAbsent([
+            { firstName: "Maxime", dayLabels: [lowDay(4)] },
+            { firstName: "Léa", dayLabels: [lowDay(2)] },
+          ]),
+        ),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("n'affiche pas l'absence d'une personne partie de l'équipe", () => {
+    wishesState.data = [wish({ id: "w1", staffUnavailability: [{ coachId: "c2", days: [2] }] })]; // c2 n'est pas lié à t1
+    render(<WishesTab mother={mother} weekFilter={null} />);
+
+    expect(screen.queryByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listAbsent([{ firstName: "Léa", dayLabels: [lowDay(2)] }])))).toBeNull();
+  });
+
+  it("signale une absence déclarée pour la même personne sur une autre équipe, sans l'écrire comme la sienne", () => {
+    // Maxime coache SM1 et Fanion ; la doléance de Fanion le dit absent jeudi, celle de SM1 ne dit rien.
+    teamCoachesState.data = [
+      { id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" },
+      { id: "tc3", teamId: "t3", coachId: "c1", role: "MAIN" },
+    ];
+    wishesState.data = [wish({ id: "w1", teamId: "t1" }), wish({ id: "w3", teamId: "t3", staffUnavailability: [{ coachId: "c1", days: [4] }] })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+
+    expect(
+      screen.getByText((text) => text.includes(COACH_WISHES_MANAGER_TEXTS.listDeclaredElsewhere([{ firstName: "Maxime", dayLabels: [lowDay(4)], teamName: "Fanion" }]))),
+    ).toBeInTheDocument();
+  });
+
+  it("le formulaire propose un sélecteur par personne du staff courant, et se recale au changement d'équipe", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    expect(screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formStaffMemberLegend("Maxime", "Durand", "MAIN") })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formStaffMemberLegend("Léa", "Roy", "MAIN") })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
+    await user.click(screen.getByRole("option", { name: "Fanion" }));
+
+    expect(screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formStaffMemberLegend("Léa", "Roy", "MAIN") })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formStaffMemberLegend("Maxime", "Durand", "MAIN") })).toBeNull();
+  });
+
+  it("le formulaire masque le bloc staff d'une équipe sans lien", async () => {
+    const user = userEvent.setup();
+    teamCoachesState.data = [];
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    expect(screen.queryByText(COACH_WISHES_MANAGER_TEXTS.formStaffTitle)).toBeNull();
+  });
+
+  it("le formulaire envoie les absences par personne", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    await user.click(within(screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formStaffMemberLegend("Maxime", "Durand", "MAIN") })).getByRole("button", { name: "jeudi" }));
+    await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
+
+    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ staffUnavailability: [{ coachId: "c1", days: [4] }] }), expect.anything());
+  });
+
+  it("enregistrer abandonne la ligne d'une personne partie, sans 422", async () => {
+    wishesState.data = [wish({ id: "w1", staffUnavailability: [{ coachId: "c1", days: [4] }, { coachId: "c2", days: [2] }] })]; // c2 parti de t1
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ staffUnavailability: [{ coachId: "c1", days: [4] }] }) }), expect.anything());
+  });
+
+  it("à la création, le coach déduit est le principal marqué destinataire, sinon le premier", async () => {
+    teamCoachesState.data = [
+      { id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" },
+      { id: "tc2", teamId: "t1", coachId: "c2", role: "MAIN", wishRecipient: true },
+    ];
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+    await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
+
+    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ coachId: "c2" }), expect.anything());
   });
 
   // Lot 5 (fondateur 2026-10-10) — un jour souhaité est au minimum un jour DISPONIBLE : rendre un
@@ -349,7 +457,7 @@ describe("WishesTab", () => {
     render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formTeamDaysLegend });
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
     // mercredi rendu indisponible (dépressé côté disponibles) → désactivé côté souhaités.
     await user.click(within(dispo).getByRole("button", { name: "mercredi" }));
@@ -367,7 +475,7 @@ describe("WishesTab", () => {
     render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formTeamDaysLegend });
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
     expect(dispo.compareDocumentPosition(wished) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -390,7 +498,7 @@ describe("WishesTab", () => {
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formTeamDaysLegend });
     // Tous les jours pressés par défaut (le coach EST disponible partout, il dépresse les creux).
     expect(within(dispo).getByRole("button", { name: "lundi" })).toHaveAttribute("aria-pressed", "true");
     await user.click(within(dispo).getByRole("button", { name: "jeudi" }));
@@ -404,7 +512,7 @@ describe("WishesTab", () => {
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
     await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formTeamDaysLegend });
     expect(within(dispo).getByRole("button", { name: "jeudi" })).toHaveAttribute("aria-pressed", "false");
     expect(within(dispo).getByRole("button", { name: "lundi" })).toHaveAttribute("aria-pressed", "true");
   });

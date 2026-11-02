@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
+use App\Entity\CoachWish;
 use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
@@ -121,6 +122,25 @@ final class CascadeDeleteApiTest extends WebTestCase
         self::assertNull($this->em->getRepository(ScheduleDiagnostic::class)->find($diagnosticId), 'diagnostic dangling');
         // The coach itself is a peer, not a child — it survives the team delete.
         self::assertNotNull($this->em->getRepository(Coach::class)->find($coach->getId()));
+    }
+
+    public function testDeletingACoachDropsHisStaffLineThroughTheApi(): void
+    {
+        // Chemin API de DeletionImpactParityTest::testDeletingACoachRemovesHisStaffLineAndKeepsTheWish.
+        $team = $this->persistTeam('U15');
+        $coach = $this->persistCoach();
+        $entryId = $this->persist((new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19')));
+        $wishId = $this->persist((new CoachWish)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setCalendarEntryId($entryId)->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1)
+            ->setStaffUnavailability([['coachId' => $coach->getId(), 'days' => [4]]]));
+
+        $this->client->request('DELETE', '/api/coaches/' . $coach->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $this->em->clear();
+        self::assertSame([], $this->em->getRepository(CoachWish::class)->find($wishId)?->getStaffUnavailability());
     }
 
     public function testDeletingAvailabilitySlotPurgesItsReservations(): void

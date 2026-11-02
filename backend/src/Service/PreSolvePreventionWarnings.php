@@ -679,8 +679,9 @@ final readonly class PreSolvePreventionWarnings
 
     /**
      * ALIGN-19 — l'indisponibilité d'un entraîneur qui n'est ADJOINT sur AUCUNE équipe (jamais
-     * principal) est INDICATIVE : le moteur ne la lit pas (parsing.py exclut les adjoints), elle ne
-     * bloquera jamais une séance. On le DIT au récap pour que le gestionnaire ne croie pas avoir
+     * principal) ne bloquera jamais une séance : le lien adjoint n'entre pas dans « qui tient la
+     * séance ». Le moteur lit cette indisponibilité pour le relais d'arrivée tardive (common.py,
+     * `_late_arrival_relay_opens`). On le DIT au récap pour que le gestionnaire ne croie pas avoir
      * protégé un créneau qui reste ouvert. Un entraîneur principal, même sur une seule équipe, sort
      * de ce lot (son indisponibilité, elle, ferme bien).
      *
@@ -717,8 +718,8 @@ final readonly class PreSolvePreventionWarnings
 
         return [\sprintf(
             1 === \count($names)
-                ? 'L\'indisponibilité de %s (adjoint uniquement) est indicative : un adjoint indisponible ne bloque jamais une séance — seul un entraîneur principal indisponible en empêche une.'
-                : 'Les indisponibilités de %s (adjoints uniquement) sont indicatives : un adjoint indisponible ne bloque jamais une séance — seul un entraîneur principal indisponible en empêche une.',
+                ? 'L\'indisponibilité de %s (adjoint uniquement) ne ferme aucune séance : seul un entraîneur principal indisponible en empêche une. Elle ferme seulement le relais d\'arrivée tardive que cet adjoint aurait pu assurer.'
+                : 'Les indisponibilités de %s (adjoints uniquement) ne ferment aucune séance : seul un entraîneur principal indisponible en empêche une. Elles ferment seulement le relais d\'arrivée tardive que ces adjoints auraient pu assurer.',
             implode(', ', $names),
         )];
     }

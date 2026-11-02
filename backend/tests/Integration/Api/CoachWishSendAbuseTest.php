@@ -176,6 +176,41 @@ final class CoachWishSendAbuseTest extends WebTestCase
         self::assertResponseStatusCodeSame(429);
     }
 
+    public function testRecipientActionNeverFlagsALinkOfAnotherClub(): void
+    {
+        // Abus : équipe ou coach d'un AUTRE club, passés au sélecteur : 422, et son lien reste intact.
+        $uid = uniqid('', true);
+        $other = (new Club)->setName('Autre ' . $uid)->setSlug('autre-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($other);
+        $this->em->flush();
+        $this->scopeGucToClub($other->getId());
+        $otherSeason = (new Season)->setClubId($other->getId())->setName('2025-2026')
+            ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($otherSeason);
+        $otherTeam = (new Team)->setClubId($other->getId())->setSeasonId($otherSeason->getId())
+            ->setSportCategoryId('22222222-2222-4222-8222-222222222222')->setPriorityTierId(1)->setName('Autre');
+        $this->em->persist($otherTeam);
+        $otherCoach = (new Coach)->setClubId($other->getId())->setSeasonId($otherSeason->getId())->setFirstName('Autre')->setLastName('Coach');
+        $this->em->persist($otherCoach);
+        $this->em->flush();
+        $otherLink = (new TeamCoach)->setClubId($other->getId())->setSeasonId($otherSeason->getId())
+            ->setTeamId($otherTeam->getId())->setCoachId($otherCoach->getId())->setRole(TeamCoachRole::MAIN);
+        $this->em->persist($otherLink);
+        $this->em->flush();
+        $this->scopeGucToClub($this->club->getId());
+
+        $url = '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/recipient';
+        $this->client->request('POST', $url, [], [], $this->headers(), json_encode(['teamId' => $otherTeam->getId(), 'coachId' => $otherCoach->getId()], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        $this->client->request('POST', $url, [], [], $this->headers(), json_encode(['teamId' => $this->campaign->getTeamIds()[0], 'coachId' => $otherCoach->getId()], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        $this->em->clear();
+        $this->scopeGucToClub($other->getId());
+        // SQL direct : l'EntityManager de la requête garde le filtre tenant du club courant.
+        self::assertSame([false], array_map(boolval(...), $this->em->getConnection()->fetchFirstColumn('SELECT wish_recipient FROM team_coach WHERE id = :id', ['id' => $otherLink->getId()])), 'le lien de l\'autre club n\'est jamais marqué');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -218,7 +253,7 @@ final class CoachWishSendAbuseTest extends WebTestCase
             ->setWeeks(['2026-02-16'])->setTeamIds([$team->getId()]);
         $this->em->persist($this->campaign);
 
-        $this->token = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->coach->getId())->setClubId($this->club->getId());
+        $this->token = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->coach->getId())->setClubId($this->club->getId())->setTeamIds([$team->getId()]);
         $this->em->persist($this->token);
         $this->em->flush();
 
@@ -281,7 +316,7 @@ final class CoachWishSendAbuseTest extends WebTestCase
             ->setFirstName(ucfirst($emailLocal))->setLastName('Extra')->setEmail($emailLocal . '@test.com');
         $this->em->persist($coach);
         $this->em->flush();
-        $this->em->persist((new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($coach->getId())->setClubId($this->club->getId()));
+        $this->em->persist((new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($coach->getId())->setClubId($this->club->getId())->setTeamIds($this->campaign->getTeamIds()));
         $this->em->flush();
     }
 
@@ -307,7 +342,7 @@ final class CoachWishSendAbuseTest extends WebTestCase
             ->setCalendarEntryId($entry->getId())->setDeadline(new DateTimeImmutable('2027-06-30'))
             ->setWeeks(['2026-12-21'])->setTeamIds([$team->getId()]);
         $this->em->persist($campaign);
-        $this->em->persist((new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($coach->getId())->setClubId($this->club->getId()));
+        $this->em->persist((new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($coach->getId())->setClubId($this->club->getId())->setTeamIds([$team->getId()]));
         $this->em->flush();
 
         return $campaign->getId();

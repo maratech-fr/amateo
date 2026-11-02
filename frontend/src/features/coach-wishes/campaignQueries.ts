@@ -1,7 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
+
+import { toast } from "@/shared/stores/toastStore";
 
 import * as campaignApi from "./campaignApi";
-import type { CoachWishCampaignPayload } from "./campaignApi";
+import type { CoachWishCampaign, CoachWishCampaignPayload } from "./campaignApi";
+import { COACH_WISHES_MANAGER_TEXTS } from "./texts/manager";
 
 /**
  * Toutes les campagnes de collecte du club (une par période) — le radar y lit les
@@ -38,6 +41,19 @@ export function useSendCampaignLinks() {
   return useMutation({
     mutationFn: ({ id, coachIds }: { id: string; coachIds?: string[] }) => campaignApi.sendCampaignLinks(id, coachIds),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["coach-wish-campaigns"] }),
+  });
+}
+
+/** Choisir qui répond pour une équipe. L'échec se dit ici : le geste n'a pas d'autre retour à l'écran. */
+export function useSetCampaignRecipient(options?: { onSuccess?: (result: { campaign: CoachWishCampaign }) => void }): UseMutationResult<{ campaign: CoachWishCampaign }, unknown, { id: string; teamId: string; coachId: string }> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, teamId, coachId }: { id: string; teamId: string; coachId: string }) => campaignApi.setCampaignRecipient(id, teamId, coachId),
+    onSuccess: (result) => {
+      options?.onSuccess?.(result);
+      return queryClient.invalidateQueries({ queryKey: ["coach-wish-campaigns"] });
+    },
+    onError: () => toast.error(COACH_WISHES_MANAGER_TEXTS.recipientSaveFailed),
   });
 }
 

@@ -76,11 +76,15 @@ final class PublicCoachWishTest extends WebTestCase
         // Et RIEN de plus que le contrat attendu (la page publique ne voit que ce périmètre).
         // D2 PR B — ajout de partnerTeams / teamLinks / mutualizations (demande de mutualisation).
         self::assertSame(
-            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'mutualizations', 'respondedAt'],
+            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'absencesElsewhere', 'mutualizations', 'respondedAt'],
             array_keys($body),
         );
         self::assertSame(['2026-02-16', '2026-02-23'], $body['weeks']);
-        self::assertSame([['id' => $this->team->getId(), 'name' => 'SM1']], $body['teams']);
+        self::assertSame([[
+            'id' => $this->team->getId(),
+            'name' => 'SM1',
+            'staff' => [['coachId' => $this->coach->getId(), 'firstName' => 'Maxime', 'lastName' => 'Durand', 'role' => 'MAIN']],
+        ]], $body['teams']);
         self::assertCount(1, $body['wishes']);
         self::assertSame(2, $body['wishes'][0]['slotsWanted']);
         self::assertSame([3], $body['wishes'][0]['unavailableDays']);
@@ -211,13 +215,13 @@ final class PublicCoachWishTest extends WebTestCase
 
         // Le contexte garde EXACTEMENT ses clés (aucune clé de grille ajoutée par le volet B).
         self::assertSame(
-            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'mutualizations', 'respondedAt'],
+            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'absencesElsewhere', 'mutualizations', 'respondedAt'],
             array_keys($body),
         );
         // Une doléance n'expose que son souhait + les drapeaux NUS — jamais un horaire/gymnase,
         // jamais un nom ou un identifiant de coach (option A : `byAnotherCoach` est un BOOLÉEN).
         self::assertSame(
-            ['teamId', 'weekStart', 'slotsWanted', 'unavailableDays', 'wishedDays', 'comment', 'keepSeasonSlots', 'byAnotherCoach'],
+            ['teamId', 'weekStart', 'slotsWanted', 'unavailableDays', 'staffUnavailability', 'wishedDays', 'comment', 'keepSeasonSlots', 'byAnotherCoach'],
             array_keys($body['wishes'][0]),
         );
         self::assertFalse($body['wishes'][0]['keepSeasonSlots'], 'drapeau nu, défaut false');
@@ -559,6 +563,142 @@ final class PublicCoachWishTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    public function testTheStaffListsMainsThenAssistantsWithFourFieldsOnly(): void
+    {
+        // Le jeton expose des noms de l'équipe : exactement 4 champs, jamais un email.
+        $benoit = $this->staffMember('Benoît', TeamCoachRole::ASSISTANT, 'benoit-prive@test.fr');
+        $julie = $this->staffMember('Julie', TeamCoachRole::MAIN, 'julie-prive@test.fr');
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $raw = (string) $this->client->getResponse()->getContent();
+        $staff = json_decode($raw, true)['teams'][0]['staff'];
+
+        self::assertSame([$this->coach->getId(), $julie->getId(), $benoit->getId()], array_column($staff, 'coachId'), 'principaux puis adjoints');
+        foreach ($staff as $member) {
+            self::assertSame(['coachId', 'firstName', 'lastName', 'role'], array_keys($member));
+        }
+        self::assertStringNotContainsString('prive@test.fr', $raw);
+    }
+
+    public function testPrefillDropsTheLineOfSomeoneWhoLeftTheTeam(): void
+    {
+        $gone = $this->unlinkedCoach('Emma');
+        $wish = $this->seedStaffWish($this->team, [['coachId' => $this->coach->getId(), 'days' => [4]], ['coachId' => $gone->getId(), 'days' => [2]]]);
+        self::assertNotNull($wish);
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        self::assertSame([['coachId' => $this->coach->getId(), 'days' => [4]]], $body['wishes'][0]['staffUnavailability'], 'la personne partie n\'est plus pré-remplie');
+    }
+
+    public function testAbsencesElsewhereGiveDaysOnlyAndFilterOnTheOtherTeamsCurrentStaff(): void
+    {
+        // Maxime a dit « pas jeudi » sur une AUTRE équipe. Nora y figure aussi, mais n'en fait plus partie.
+        $nora = $this->staffMember('Nora', TeamCoachRole::ASSISTANT, null);
+        $other = $this->newTeam('U13');
+        $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($other->getId())->setCoachId($this->coach->getId())->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+        $this->seedStaffWish($other, [['coachId' => $this->coach->getId(), 'days' => [4]], ['coachId' => $nora->getId(), 'days' => [2]]]);
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        self::assertSame([[
+            'teamId' => $this->team->getId(),
+            'weekStart' => '2026-02-16',
+            'coachId' => $this->coach->getId(),
+            'days' => [4],
+        ]], $body['absencesElsewhere'], 'des jours, jamais le nom de l\'autre équipe ; Nora, partie de U13, est écartée');
+        self::assertStringNotContainsString('U13', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testSubmitPersistsNormalizedStaffLines(): void
+    {
+        $benoit = $this->staffMember('Benoît', TeamCoachRole::ASSISTANT, null);
+
+        $this->submitStaff([
+            ['coachId' => $this->coach->getId(), 'days' => [1]],
+            ['coachId' => $benoit->getId(), 'days' => [5, 2, 5]],
+            ['coachId' => $this->coach->getId(), 'days' => [4]],
+        ]);
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        $wish = $this->em->getRepository(CoachWish::class)->findOneBy(['teamId' => $this->team->getId()]);
+        self::assertNotNull($wish);
+        self::assertEqualsCanonicalizing([
+            ['coachId' => $this->coach->getId(), 'days' => [4]],
+            ['coachId' => $benoit->getId(), 'days' => [2, 5]],
+        ], $wish->getStaffUnavailability());
+    }
+
+    public function testAStaffLineForACoachOutsideTheTeamIsRefusedWithoutWriting(): void
+    {
+        // Abus : autre équipe du club, autre club, inconnu — même 422, sonde impossible, rien d'écrit.
+        $sameClub = $this->unlinkedCoach('Zoé');
+        [, , $foreignCoachId] = $this->seedIntruderClubWithCoach();
+        $bodies = [];
+        foreach ([$sameClub->getId(), $foreignCoachId, '77777777-7777-4777-8777-777777777777'] as $coachId) {
+            $this->submitStaff([['coachId' => $coachId, 'days' => [4]]]);
+            self::assertResponseStatusCodeSame(422);
+            $bodies[] = (string) $this->client->getResponse()->getContent();
+        }
+        self::assertCount(1, array_unique($bodies), 'corps 422 identique');
+        self::assertSame('Coach hors de l\'équipe.', json_decode($bodies[0], true)['error']);
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['teamId' => $this->team->getId()]), 'rien écrit');
+    }
+
+    public function testMalformedAndOversizedStaffLinesAreRefusedWithoutWriting(): void
+    {
+        $this->submitStaff([['coachId' => 12, 'days' => [4]]]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Ligne de staff invalide.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
+
+        $this->submitStaff([['coachId' => $this->coach->getId(), 'days' => [8]]]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Jour invalide.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
+
+        $this->submitStaff(array_fill(0, 51, ['coachId' => $this->coach->getId(), 'days' => [4]]));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Trop de lignes de staff.', json_decode((string) $this->client->getResponse()->getContent(), true)['error']);
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['teamId' => $this->team->getId()]), 'rien écrit');
+    }
+
+    public function testATokenWithoutTeamsCannotWrite(): void
+    {
+        // Adjoint ou ex-destinataire : le lien répond, sans équipe, et n'écrit jamais — même lié à l'équipe.
+        $former = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setClubId($this->club->getId())
+            ->setCoachId($this->staffMember('Benoît', TeamCoachRole::ASSISTANT, null)->getId())->setTeamIds([]);
+        $this->em->persist($former);
+        $this->em->flush();
+        $secret = $former->getToken();
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $secret);
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['teams']);
+
+        $this->client->request('POST', '/api/coach-wishes/public/' . $secret, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'comment' => null]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['teamId' => $this->team->getId()]), 'rien écrit');
+    }
+
     public function testPublicSubmissionAloneNeverWritesPlanObjects(): void
     {
         // §8.4 — le SEUL chemin d'écriture non authentifié (page à jeton) ne crée JAMAIS d'objet de
@@ -629,10 +769,68 @@ final class PublicCoachWishTest extends WebTestCase
             ->setWeeks(['2026-02-16', '2026-02-23'])->setTeamIds([$this->team->getId()]);
         $this->em->persist($this->campaign);
 
-        $tokenEntity = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->coach->getId())->setClubId($this->club->getId());
+        $tokenEntity = (new CoachWishToken)->setCampaignId($this->campaign->getId())->setCoachId($this->coach->getId())->setClubId($this->club->getId())->setTeamIds([$this->team->getId()]);
         $this->em->persist($tokenEntity);
         $this->em->flush();
         $this->token = $tokenEntity->getToken();
+    }
+
+    /** @param list<array<string, mixed>> $lines */
+    private function submitStaff(array $lines): void
+    {
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'staffUnavailability' => $lines, 'comment' => null]],
+        ], \JSON_THROW_ON_ERROR));
+    }
+
+    private function unlinkedCoach(string $firstName): Coach
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName($firstName)->setLastName('Test');
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        return $coach;
+    }
+
+    private function staffMember(string $firstName, TeamCoachRole $role, ?string $email): Coach
+    {
+        $coach = $this->unlinkedCoach($firstName)->setEmail($email);
+        $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            // Date explicite : la colonne est à la seconde, le lien du setUp et celui-ci tomberaient à égalité.
+            ->setTeamId($this->team->getId())->setCoachId($coach->getId())->setRole($role)->setCreatedAt(new DateTimeImmutable('+1 day')));
+        $this->em->flush();
+
+        return $coach;
+    }
+
+    /** @param list<array{coachId: string, days: list<int>}> $lines */
+    private function seedStaffWish(Team $team, array $lines): CoachWish
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $wish = (new CoachWish)->setCalendarEntryId($this->mother->getId())->setTeamId($team->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-02-16 00:00:00'))->setCoachId($this->coach->getId())
+            ->setSlotsWanted(1)->setStaffUnavailability($lines);
+        $wish->setClubId($this->club->getId());
+        $wish->setSeasonId($this->season->getId());
+        $this->em->persist($wish);
+        $this->em->flush();
+
+        return $wish;
+    }
+
+    /** @return array{0: string, 1: string, 2: string} clubId, teamId, coachId de l'intrus */
+    private function seedIntruderClubWithCoach(): array
+    {
+        [$clubId, $teamId] = $this->seedIntruderClub();
+        $this->scopeGucToClub($clubId);
+        $seasonId = $this->em->getConnection()->fetchOne('SELECT season_id FROM team WHERE id = :id', ['id' => $teamId]);
+        $coach = (new Coach)->setClubId($clubId)->setSeasonId((string) $seasonId)->setFirstName('Intrus')->setLastName('Test');
+        $this->em->persist($coach);
+        $this->em->flush();
+        $this->scopeGucToClub($this->club->getId());
+
+        return [$clubId, $teamId, $coach->getId()];
     }
 
     private function newTeam(string $name): Team

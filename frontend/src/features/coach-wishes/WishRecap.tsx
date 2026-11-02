@@ -2,11 +2,13 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { dayLabelShort } from "@/shared/lib/days";
 
+import type { PublicStaffMember } from "./publicApi";
+import { COACH_WISHES_PUBLIC_TEXTS as TEXTS } from "./texts/public";
 import type { MutualizationState } from "./wishMutualizations";
 import { frDate, isSectionDirty, sectionKey, type SectionState } from "./wishSections";
 
 interface WishRecapProps {
-  teams: { id: string; name: string }[];
+  teams: { id: string; name: string; staff: PublicStaffMember[] }[];
   weeks: string[];
   sections: Map<string, SectionState>;
   initial: Map<string, SectionState>;
@@ -18,19 +20,23 @@ interface WishRecapProps {
 
 const dayLabel = (day: number): string => dayLabelShort(day) || String(day);
 
-const daysList = (set: Set<number>): string => [...set].sort((a, b) => a - b).map(dayLabel).join(", ");
+const daysList = (set: Set<number>): string[] => [...set].sort((a, b) => a - b).map(dayLabel);
 
 /** Résumé lisible d'une semaine modifiée. */
-function weekSummary(s: SectionState): string {
-  const parts = [`${s.slotsWanted} séance${s.slotsWanted > 1 ? "s" : ""}`];
+function weekSummary(s: SectionState, staff: PublicStaffMember[]): string {
+  const parts = [TEXTS.recapSlots(s.slotsWanted)];
   if (s.wishedDays.size > 0) {
-    parts.push(`souhaité ${daysList(s.wishedDays)}`);
+    parts.push(TEXTS.recapWished(daysList(s.wishedDays)));
   }
   if (s.days.size > 0) {
-    parts.push(`indispo ${daysList(s.days)}`);
+    parts.push(TEXTS.recapTeamClosed(daysList(s.days)));
+  }
+  const absent = staff.filter((m) => (s.staff.get(m.coachId)?.size ?? 0) > 0).map((m) => ({ firstName: m.firstName, dayLabels: daysList(s.staff.get(m.coachId) as Set<number>) }));
+  if (absent.length > 0) {
+    parts.push(TEXTS.recapAbsent(absent));
   }
   if (s.keepSeasonSlots) {
-    parts.push("garde ses créneaux habituels");
+    parts.push(TEXTS.recapKeepsSlots);
   }
   return parts.join(" · ");
 }
@@ -46,7 +52,7 @@ export function WishRecap({ teams, weeks, sections, initial, mutualizations, par
       {teams.map((team) => {
         const changedWeeks = weeks.filter((week) => isSectionDirty(sections.get(sectionKey(team.id, week)), initial.get(sectionKey(team.id, week))));
         const mutu = mutualizations.get(team.id);
-        const partners = [...(mutu?.partnerTeamIds ?? new Set<string>())].map((id) => partnerName.get(id) ?? "équipe").sort((a, b) => a.localeCompare(b));
+        const partners = [...(mutu?.partnerTeamIds ?? new Set<string>())].map((id) => partnerName.get(id) ?? TEXTS.recapPartnerFallback).sort((a, b) => a.localeCompare(b));
         const nothing = 0 === changedWeeks.length && 0 === partners.length;
         return (
           <li key={team.id} className="rounded-lg border border-border bg-card p-3">
@@ -54,24 +60,20 @@ export function WishRecap({ teams, weeks, sections, initial, mutualizations, par
               <div className="min-w-0">
                 <p className="text-sm font-medium">{team.name}</p>
                 {nothing ? (
-                  <EmptyHint className="mt-0.5">aucune modification</EmptyHint>
+                  <EmptyHint className="mt-0.5">{TEXTS.recapNothing}</EmptyHint>
                 ) : (
                   <ul className="mt-0.5 space-y-0.5 text-sm text-muted-foreground">
                     {partners.length > 0 ? (
-                      <li>
-                        mutualise {mutu?.sharedSlots} séance{(mutu?.sharedSlots ?? 0) > 1 ? "s" : ""} avec : {partners.join(", ")}
-                      </li>
+                      <li>{TEXTS.recapMutualization(mutu?.sharedSlots ?? 0, partners)}</li>
                     ) : null}
                     {changedWeeks.map((week) => (
-                      <li key={week}>
-                        semaine du {frDate(week)} : {weekSummary(sections.get(sectionKey(team.id, week)) as SectionState)}
-                      </li>
+                      <li key={week}>{TEXTS.recapWeek(frDate(week), weekSummary(sections.get(sectionKey(team.id, week)) as SectionState, team.staff))}</li>
                     ))}
                   </ul>
                 )}
               </div>
               <Button variant="ghost" size="sm" className="shrink-0" onClick={() => onEditTeam(team.id)}>
-                Modifier
+                {TEXTS.recapEdit}
               </Button>
             </div>
           </li>

@@ -47,7 +47,7 @@ final readonly class CoachWishPaths implements CustomPathContributor
             operationId: 'transferCoachWishes',
             tags: ['CoachWish'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Converts the SELECTED coach wishes (manager-only gesture) into standard plan objects of their week: slotsWanted>0 → a team period override (active + sessionsPerWeek), slotsWanted=0 → the team is deactivated for that week; unavailableDays → one DATED HARD constraint (coach availability, or team forbidden-days when there is no coach / a co-coached team only partly answered); wishedDays → one DATED PREFERRED team day constraint. Idempotent by (source=coach_wish, occurrence = wish id). A week with no plan is NEVER born, it is counted as ignored with its reason.', [
+                '200' => $this->schemas->jsonResponse('Converts the SELECTED coach wishes (manager-only gesture) into standard plan objects of their week: slotsWanted>0 → a team period override (active + sessionsPerWeek), slotsWanted=0 → the team is deactivated for that week; unavailableDays → one DATED HARD team forbidden-days constraint; each staffUnavailability line of a person still in the team → one DATED HARD coach availability constraint; wishedDays → one DATED PREFERRED team day constraint. Idempotent by (source=coach_wish, occurrence = wish id). A week with no plan is NEVER born, it is counted as ignored with its reason.', [
                     'type' => 'object',
                     'properties' => [
                         'converted' => ['type' => 'integer', 'description' => 'Wishes converted into plan objects (and marked done)'],

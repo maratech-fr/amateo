@@ -14,6 +14,7 @@ import { frDateNumericNoYear } from "@/shared/lib/date";
 import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicMutualizationSubmission, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
+import { COACH_WISHES_PUBLIC_TEXTS as TEXTS } from "./texts/public";
 import { useWishStepper } from "./useWishStepper";
 import { WishRecap } from "./WishRecap";
 import { WishTeamStep } from "./WishTeamStep";
@@ -36,14 +37,32 @@ import { buildInitialSections, cloneSections, frDate, isSectionDirty, toSubmissi
  * Une seule ligne, mark aligné sur le texte (`items-center`) ; discret (hérite `text-sm`
  * `text-muted-foreground` du conteneur d'`AuthLayout`), il ne concurrence pas le CTA de la carte.
  */
+/** Le message d'un refus d'envoi : un 422 dit quoi faire selon son motif, le brouillon reste. */
+function submitErrorMessage(error: unknown): string {
+  if (!isPublicWishError(error) || 422 !== error.response.status) {
+    return TEXTS.sendFailed;
+  }
+  const data = error.data as { error?: unknown } | undefined;
+  const message = "string" === typeof data?.error ? data.error : "";
+  if ("" === message) {
+    return TEXTS.sendFailed;
+  }
+  const known: Record<string, string> = {
+    "Équipe hors de votre périmètre.": TEXTS.refusedPerimeter,
+    "Coach hors de l'équipe.": TEXTS.refusedStaff,
+    "Semaine hors de la collecte.": TEXTS.refusedWeeks,
+  };
+  return known[message] ?? TEXTS.refusedOther(message);
+}
+
 function PoweredByFooter() {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span>Propulsé par</span>
+      <span>{TEXTS.poweredBy}</span>
       <BrandMark size="sm" />
       <span aria-hidden>—</span>
       <a href={PRODUCT_SITE_URL} target="_blank" rel="noopener" className="underline underline-offset-2 transition-colors hover:text-foreground">
-        découvrir
+        {TEXTS.poweredByLink}
       </a>
     </span>
   );
@@ -61,10 +80,10 @@ export function PublicWishPage() {
 
   if (query.isLoading) {
     return (
-      <AuthLayout title="Vos disponibilités" description="Chargement…" footer={<PoweredByFooter />}>
+      <AuthLayout title={TEXTS.loadingTitle} description={TEXTS.loadingDescription} footer={<PoweredByFooter />}>
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner className="size-4" />
-          Un instant…
+          {TEXTS.loadingHint}
         </p>
       </AuthLayout>
     );
@@ -74,14 +93,14 @@ export function PublicWishPage() {
     const status = isPublicWishError(query.error) ? query.error.response.status : 0;
     if (410 === status) {
       return (
-        <AuthLayout title="Lien expiré" description="La collecte est close." footer={<PoweredByFooter />}>
-          <p className="text-sm text-muted-foreground">La période de collecte est terminée. Rapprochez-vous de votre club si vous souhaitez encore transmettre vos disponibilités.</p>
+        <AuthLayout title={TEXTS.expiredTitle} description={TEXTS.expiredDescription} footer={<PoweredByFooter />}>
+          <p className="text-sm text-muted-foreground">{TEXTS.expiredBody}</p>
         </AuthLayout>
       );
     }
     return (
-      <AuthLayout title="Lien invalide" description="Ce lien n'est pas reconnu." footer={<PoweredByFooter />}>
-        <p className="text-sm text-muted-foreground">Ce lien est invalide. Vérifiez qu'il est complet, ou demandez-en un nouveau à votre club.</p>
+      <AuthLayout title={TEXTS.invalidTitle} description={TEXTS.invalidDescription} footer={<PoweredByFooter />}>
+        <p className="text-sm text-muted-foreground">{TEXTS.invalidBody}</p>
       </AuthLayout>
     );
   }
@@ -104,11 +123,14 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
   const [sections, setSections] = useState<Map<string, SectionState>>(() => {
     const base = cloneSections(initial);
     if (null !== draft) {
+      const staffOfTeam = new Map(context.teams.map((t) => [t.id, new Set(t.staff.map((m) => m.coachId))]));
       for (const [key, value] of draft.sections) {
         if (base.has(key)) {
+          // Une personne partie de l'équipe depuis le brouillon n'est ni rendue ni renvoyée.
+          const current = staffOfTeam.get(key.split("|")[0]);
           // Le brouillon ne porte que les champs ÉDITABLES ; `byAnotherCoach` reste celui de
           // l'état serveur (base), jamais écrasé par un brouillon.
-          base.set(key, { slotsWanted: value.slotsWanted, days: new Set(value.days), wishedDays: new Set(value.wishedDays), comment: value.comment, keepSeasonSlots: value.keepSeasonSlots, byAnotherCoach: base.get(key)?.byAnotherCoach ?? false });
+          base.set(key, { slotsWanted: value.slotsWanted, days: new Set(value.days), wishedDays: new Set(value.wishedDays), comment: value.comment, keepSeasonSlots: value.keepSeasonSlots, byAnotherCoach: base.get(key)?.byAnotherCoach ?? false, staff: new Map([...value.staff].filter(([coachId]) => current?.has(coachId))) });
         }
       }
     }
@@ -216,6 +238,25 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
       return map;
     });
 
+  const toggleStaffDay = (key: string, coachId: string, day: number) =>
+    setSections((prev) => {
+      const map = new Map(prev);
+      const cur = map.get(key);
+      if (undefined === cur) {
+        return prev;
+      }
+      const staff = new Map(cur.staff);
+      const days = new Set(staff.get(coachId));
+      if (days.has(day)) {
+        days.delete(day);
+      } else {
+        days.add(day);
+      }
+      staff.set(coachId, days);
+      map.set(key, { ...cur, staff });
+      return map;
+    });
+
   // Bascule d'un partenaire de mutualisation pour une équipe (une par équipe, pour la période).
   const togglePartner = (teamId: string, partnerId: string) =>
     setMutualizations((prev) => {
@@ -260,36 +301,34 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
 
   if (0 === context.teams.length) {
     return (
-      <AuthLayout title="Aucune équipe concernée" description={context.periodTitle} footer={<PoweredByFooter />}>
-        <EmptyHint>Aucune de vos équipes n'est concernée par cette collecte pour le moment. Rapprochez-vous de votre club.</EmptyHint>
+      <AuthLayout title={TEXTS.noTeamTitle} description={context.periodTitle} footer={<PoweredByFooter />}>
+        <EmptyHint>{TEXTS.noTeamBody}</EmptyHint>
       </AuthLayout>
     );
   }
 
   if (done) {
     return (
-      <AuthLayout title="Merci !" description="Vos disponibilités sont enregistrées." footer={<PoweredByFooter />}>
-        <p className="text-sm text-muted-foreground">C'est transmis à votre club. Vous pouvez revenir modifier ce formulaire jusqu'au {frDate(context.deadline)}.</p>
+      <AuthLayout title={TEXTS.thanksTitle} description={1 === context.teams.length ? TEXTS.thanksOneTeam : TEXTS.thanksManyTeams} footer={<PoweredByFooter />}>
+        <p className="text-sm text-muted-foreground">{TEXTS.thanksBody(frDate(context.deadline))}</p>
       </AuthLayout>
     );
   }
 
   const { current } = stepper;
 
-  const title = "intro" === current.kind ? `Bonjour ${context.coachFirstName}` : "team" === current.kind ? (context.teams[current.teamIndex ?? 0]?.name ?? "Votre équipe") : "Récapitulatif";
+  const title = "intro" === current.kind ? TEXTS.greeting(context.coachFirstName) : "team" === current.kind ? (context.teams[current.teamIndex ?? 0]?.name ?? TEXTS.fallbackTeamTitle) : TEXTS.recapTitle;
 
   return (
     <AuthLayout title={title} description={context.periodTitle} footer={<PoweredByFooter />} width="2xl">
       <div className="mb-4 flex flex-wrap gap-2">
         {null !== context.periodStart && null !== context.periodEnd ? (
-          <StatusPill variant="neutral">
-            Vacances du {frDateNumericNoYear(context.periodStart)} au {frDateNumericNoYear(context.periodEnd)}
-          </StatusPill>
+          <StatusPill variant="neutral">{TEXTS.periodPill(frDateNumericNoYear(context.periodStart), frDateNumericNoYear(context.periodEnd))}</StatusPill>
         ) : null}
-        <StatusPill variant="accent">Répondre avant le {frDateNumericNoYear(context.deadline)}</StatusPill>
+        <StatusPill variant="accent">{TEXTS.deadlinePill(frDateNumericNoYear(context.deadline))}</StatusPill>
       </div>
 
-      {preview ? <NoticeBanner tone="accent" className="mb-4" message={`Aperçu — ce que voit ${context.coachFirstName}. L'envoi est désactivé.`} /> : null}
+      {preview ? <NoticeBanner tone="accent" className="mb-4" message={TEXTS.previewNotice(context.coachFirstName)} /> : null}
 
       <WishProgress stepper={stepper} teams={context.teams} />
 
@@ -297,7 +336,7 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
         <BrandSplash
           phase={splash}
           ready
-          announcement="Préparation de votre formulaire…"
+          announcement={TEXTS.splashAnnouncement}
           onIntroComplete={() => setSplash("outro")}
           onBreathingSettled={() => setSplash("outro")}
           onOutroComplete={() => setSplash("done")}
@@ -310,24 +349,21 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
           {null !== context.respondedAt ? (
             <NoticeBanner
               tone="accent"
-              message={
-                <>
-                  Vous avez déjà répondu le {frDate(context.respondedAt.slice(0, 10))}. Révisable jusqu'au {frDate(context.deadline)}.
-                </>
-              }
+              message={TEXTS.alreadyAnswered(frDate(context.respondedAt.slice(0, 10)), frDate(context.deadline))}
             />
           ) : null}
           <div className="space-y-3 text-sm text-foreground">
-            <p>Votre club prépare le planning de {context.periodTitle}.</p>
+            <p>{TEXTS.introResponsibility}</p>
+            <p>{TEXTS.introPeriod(context.periodTitle)}</p>
             <ul className="list-disc space-y-1.5 pl-5">
-              <li>Pour chaque équipe&nbsp;: nombre de séances, jours souhaités et jours de disponibilité, semaine par semaine.</li>
-              <li>Comptez 5&nbsp;minutes&nbsp;: vos réponses partent en une seule fois, à la fin.</li>
-              <li>Vous pouvez revenir modifier jusqu'à la date limite.</li>
+              <li>{TEXTS.introBulletPerTeam}</li>
+              <li>{TEXTS.introBulletDuration}</li>
+              <li>{TEXTS.introBulletRevise}</li>
             </ul>
-            <p>C'est un souhait, pas un engagement&nbsp;: le club arbitre selon les gymnases disponibles.</p>
+            <p>{TEXTS.introWish}</p>
           </div>
           <Button className="w-full" onClick={beginFromIntro}>
-            {null !== context.respondedAt ? "Réviser mes réponses" : "Commencer"}
+            {null !== context.respondedAt ? TEXTS.reviseButton : TEXTS.startButton}
           </Button>
         </div>
       ) : null}
@@ -341,26 +377,28 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
             partnerTeams={context.partnerTeams}
             teamLinks={context.teamLinks}
             mutualization={mutualizations.get(context.teams[current.teamIndex ?? 0]?.id ?? "")}
+            absencesElsewhere={context.absencesElsewhere}
             onPatch={patch}
             onToggleDay={toggleDay}
             onToggleWishedDay={toggleWishedDay}
+            onToggleStaffDay={toggleStaffDay}
             onTogglePartner={togglePartner}
             onSharedSlots={setSharedSlots}
             readOnly={preview}
           />
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" onClick={() => stepper.prev()}>
-              Précédent
+              {TEXTS.previous}
             </Button>
             <div className="flex-1" />
             {stepper.returningToRecap ? (
-              <Button onClick={() => stepper.next()}>Revenir au récapitulatif</Button>
+              <Button onClick={() => stepper.next()}>{TEXTS.backToRecap}</Button>
             ) : (
               <>
                 <Button variant="ghost" onClick={() => stepper.next()}>
-                  Rien à signaler
+                  {TEXTS.nothingToReport}
                 </Button>
-                <Button onClick={() => stepper.next()}>Suivant</Button>
+                <Button onClick={() => stepper.next()}>{TEXTS.next}</Button>
               </>
             )}
           </div>
@@ -370,15 +408,15 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
       {"recap" === current.kind ? (
         <div className="space-y-4">
           <WishRecap teams={context.teams} weeks={context.weeks} sections={sections} initial={initial} mutualizations={mutualizations} partnerName={partnerName} onEditTeam={(id) => stepper.editTeam(id)} />
-          {mutation.isError ? <p className="text-sm text-destructive">Envoi impossible pour le moment. Réessayez dans un instant.</p> : null}
+          {mutation.isError ? <p className="text-sm text-destructive">{submitErrorMessage(mutation.error)}</p> : null}
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" onClick={() => stepper.prev()}>
-              Précédent
+              {TEXTS.previous}
             </Button>
             <div className="flex-1" />
-            <Button disabled={preview || mutation.isPending} disabledReason={preview ? "Aperçu : l'envoi est désactivé" : undefined} onClick={submit}>
+            <Button disabled={preview || mutation.isPending} disabledReason={preview ? TEXTS.previewSendDisabled : undefined} onClick={submit}>
               {mutation.isPending ? <Spinner className="size-4" /> : null}
-              {0 === dirtyCount ? "Confirmer sans modification" : `Valider et envoyer${dirtyCount > 1 ? ` (${dirtyCount})` : ""}`}
+              {0 === dirtyCount ? TEXTS.confirmUnchanged : TEXTS.validateAndSend(dirtyCount)}
             </Button>
           </div>
         </div>
@@ -392,16 +430,16 @@ function WishProgress({ stepper, teams }: { stepper: ReturnType<typeof useWishSt
   const label = (index: number): string => {
     const step = stepper.steps[index];
     if ("intro" === step.kind) {
-      return "Début";
+      return TEXTS.progressStart;
     }
     if ("recap" === step.kind) {
-      return "Récap";
+      return TEXTS.progressRecap;
     }
-    return teams[step.teamIndex ?? 0]?.name ?? "Équipe";
+    return teams[step.teamIndex ?? 0]?.name ?? TEXTS.progressTeam;
   };
 
   return (
-    <nav aria-label="Progression" className="mb-4">
+    <nav aria-label={TEXTS.progressLabel} className="mb-4">
       <ol className="flex flex-wrap items-center gap-1.5 text-xs">
         {stepper.steps.map((step, i) => {
           const isCurrent = i === stepper.index;

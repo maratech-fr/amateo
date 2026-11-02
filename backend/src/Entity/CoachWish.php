@@ -70,13 +70,24 @@ class CoachWish implements TenantOwnedInterface
     private int $slotsWanted = 0;
 
     /**
-     * Jours indisponibles, jours ISO 1–7 (1 = lundi), même convention que dayOfWeek
-     * partout ailleurs.
+     * Jours où L'ÉQUIPE ne s'entraîne pas, jours ISO 1–7 (1 = lundi), même convention que
+     * dayOfWeek partout ailleurs. Le nom historique reste (colonne et API) ; les absences d'une
+     * personne vivent dans {@see self::$staffUnavailability}.
      *
      * @var list<int>
      */
     #[ORM\Column(type: 'json')]
     private array $unavailableDays = [];
+
+    /**
+     * Jours d'absence de chaque membre du staff, une entrée par personne ; une personne non
+     * renseignée est disponible. Donnée BRUTE : qui relit passe par
+     * {@see self::staffUnavailabilityAmong()}, une personne partie de l'équipe n'y compte plus.
+     *
+     * @var list<array{coachId: string, days: list<int>}>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $staffUnavailability = [];
 
     /**
      * Jours SOUHAITÉS, jours ISO 1–7 (1 = lundi), même convention que `unavailableDays`.
@@ -111,6 +122,33 @@ class CoachWish implements TenantOwnedInterface
         $now = new DateTimeImmutable;
         $this->createdAt = $now;
         $this->updatedAt = $now;
+    }
+
+    /**
+     * La normalisation d'une saisie, page publique ET gestionnaire : pour une même personne la
+     * dernière ligne gagne, jours triés sans doublon, ligne sans jour omise.
+     *
+     * @param array<array{coachId: string, days: array<int>}> $lines
+     *
+     * @return list<array{coachId: string, days: list<int>}>
+     */
+    public static function normalizeStaffLines(array $lines): array
+    {
+        $byCoach = [];
+        foreach ($lines as $line) {
+            $byCoach[$line['coachId']] = $line['days'];
+        }
+        $normalized = [];
+        foreach ($byCoach as $coachId => $days) {
+            $days = array_values(array_unique(array_map(intval(...), $days)));
+            if ([] === $days) {
+                continue;
+            }
+            sort($days);
+            $normalized[] = ['coachId' => (string) $coachId, 'days' => $days];
+        }
+
+        return $normalized;
     }
 
     public function getId(): string
@@ -240,6 +278,33 @@ class CoachWish implements TenantOwnedInterface
         $this->unavailableDays = $unavailableDays;
 
         return $this;
+    }
+
+    /** @return list<array{coachId: string, days: list<int>}> */
+    public function getStaffUnavailability(): array
+    {
+        return $this->staffUnavailability;
+    }
+
+    /** @param list<array{coachId: string, days: list<int>}> $staffUnavailability */
+    public function setStaffUnavailability(array $staffUnavailability): self
+    {
+        $this->staffUnavailability = $staffUnavailability;
+
+        return $this;
+    }
+
+    /**
+     * Le filtre « staff courant », maison unique : les lignes des seules personnes encore dans
+     * l'équipe. Ne touche jamais la donnée brute.
+     *
+     * @param array<string, true> $allowedCoachIds
+     *
+     * @return list<array{coachId: string, days: list<int>}>
+     */
+    public function staffUnavailabilityAmong(array $allowedCoachIds): array
+    {
+        return array_values(array_filter($this->staffUnavailability, static fn (array $line): bool => isset($allowedCoachIds[$line['coachId']])));
     }
 
     /**

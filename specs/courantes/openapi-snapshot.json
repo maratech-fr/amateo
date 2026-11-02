@@ -7164,7 +7164,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Converts the SELECTED coach wishes (manager-only gesture) into standard plan objects of their week: slotsWanted>0 \u2192 a team period override (active + sessionsPerWeek), slotsWanted=0 \u2192 the team is deactivated for that week; unavailableDays \u2192 one DATED HARD constraint (coach availability, or team forbidden-days when there is no coach / a co-coached team only partly answered); wishedDays \u2192 one DATED PREFERRED team day constraint. Idempotent by (source=coach_wish, occurrence = wish id). A week with no plan is NEVER born, it is counted as ignored with its reason.",
+                        "description": "Converts the SELECTED coach wishes (manager-only gesture) into standard plan objects of their week: slotsWanted>0 \u2192 a team period override (active + sessionsPerWeek), slotsWanted=0 \u2192 the team is deactivated for that week; unavailableDays \u2192 one DATED HARD team forbidden-days constraint; each staffUnavailability line of a person still in the team \u2192 one DATED HARD coach availability constraint; wishedDays \u2192 one DATED PREFERRED team day constraint. Idempotent by (source=coach_wish, occurrence = wish id). A week with no plan is NEVER born, it is counted as ignored with its reason.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8180,6 +8180,95 @@
                             "format": "uuid"
                         },
                         "description": "A coach of the campaign perimeter to preview"
+                    }
+                ]
+            }
+        },
+        "/api/coach_wish_campaigns/{id}/recipient": {
+            "post": {
+                "operationId": "set_recipient_coach_wish_campaign",
+                "tags": [
+                    "CoachWishCampaign"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "CoachWishCampaign resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishCampaign.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishCampaign"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishCampaign.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a CoachWishCampaign resource.",
+                "description": "Creates a CoachWishCampaign resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "CoachWishCampaign identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
                     }
                 ]
             }
@@ -18130,6 +18219,31 @@
                                                     },
                                                     "name": {
                                                         "type": "string"
+                                                    },
+                                                    "staff": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "coachId": {
+                                                                    "type": "string",
+                                                                    "format": "uuid"
+                                                                },
+                                                                "firstName": {
+                                                                    "type": "string"
+                                                                },
+                                                                "lastName": {
+                                                                    "type": "string"
+                                                                },
+                                                                "role": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "MAIN",
+                                                                        "ASSISTANT"
+                                                                    ]
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -18165,6 +18279,31 @@
                                                             "maximum": 7
                                                         }
                                                     },
+                                                    "staffUnavailability": {
+                                                        "type": "array",
+                                                        "maxItems": 50,
+                                                        "description": "Absence days per staff member; a person left out is available",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "required": [
+                                                                "coachId"
+                                                            ],
+                                                            "properties": {
+                                                                "coachId": {
+                                                                    "type": "string",
+                                                                    "format": "uuid"
+                                                                },
+                                                                "days": {
+                                                                    "type": "array",
+                                                                    "items": {
+                                                                        "type": "integer",
+                                                                        "minimum": 1,
+                                                                        "maximum": 7
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    },
                                                     "wishedDays": {
                                                         "type": "array",
                                                         "items": {
@@ -18179,6 +18318,34 @@
                                                             "null"
                                                         ],
                                                         "maxLength": 2000
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "absencesElsewhere": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "teamId": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "weekStart": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "coachId": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "days": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "integer",
+                                                            "minimum": 1,
+                                                            "maximum": 7
+                                                        }
                                                     }
                                                 }
                                             }
@@ -18248,7 +18415,7 @@
                         "description": "Campaign past its deadline, or its season is archived (read-only)"
                     },
                     "422": {
-                        "description": "Missing/oversized submissions, team outside the perimeter, week outside the collection, invalid slot/day, or a day both wished and unavailable"
+                        "description": "Missing/oversized submissions, team outside the perimeter, week outside the collection, invalid slot/day, a day both wished and unavailable, or a malformed, oversized or out-of-team staff line"
                     },
                     "429": {
                         "description": "Too many attempts from this IP (rate limited before any resolution)"
@@ -18305,6 +18472,31 @@
                                                         "type": "integer",
                                                         "minimum": 1,
                                                         "maximum": 7
+                                                    }
+                                                },
+                                                "staffUnavailability": {
+                                                    "type": "array",
+                                                    "maxItems": 50,
+                                                    "description": "Absence days per staff member; a person left out is available",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "required": [
+                                                            "coachId"
+                                                        ],
+                                                        "properties": {
+                                                            "coachId": {
+                                                                "type": "string",
+                                                                "format": "uuid"
+                                                            },
+                                                            "days": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "integer",
+                                                                    "minimum": 1,
+                                                                    "maximum": 7
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 },
                                                 "wishedDays": {
@@ -28793,6 +28985,26 @@
                             "type": "integer"
                         }
                     },
+                    "staffUnavailability": {
+                        "description": "Jours d'absence par personne du staff. Brut : le front filtre sur les liens courants.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        }
+                    },
                     "wishedDays": {
                         "description": "Jours souhait\u00e9s, ISO 1\u20137 \u2014 informatif, aucun effet solveur.",
                         "type": "array",
@@ -28880,10 +29092,31 @@
                     "unavailableDays": {
                         "uniqueItems": true,
                         "maxItems": 7,
-                        "description": "Jours indisponibles, jours ISO 1\u20137 (1 = lundi), sans doublon.",
+                        "description": "Jours o\u00f9 l'\u00e9quipe ne s'entra\u00eene pas, jours ISO 1\u20137 (1 = lundi), sans doublon.",
                         "type": "array",
                         "items": {
                             "type": "integer"
+                        }
+                    },
+                    "staffUnavailability": {
+                        "maxItems": 50,
+                        "description": "Jours d'absence de chaque membre du staff : une ligne par personne li\u00e9e \u00e0 l'\u00e9quipe.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    }
+                                ]
+                            }
                         }
                     },
                     "wishedDays": {
@@ -28962,6 +29195,26 @@
                             "type": "integer"
                         }
                     },
+                    "staffUnavailability": {
+                        "description": "Jours d'absence par personne du staff. Brut : le front filtre sur les liens courants.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        }
+                    },
                     "wishedDays": {
                         "description": "Jours souhait\u00e9s, ISO 1\u20137 \u2014 informatif, aucun effet solveur.",
                         "type": "array",
@@ -29037,6 +29290,26 @@
                                 "type": "array",
                                 "items": {
                                     "type": "integer"
+                                }
+                            },
+                            "staffUnavailability": {
+                                "description": "Jours d'absence par personne du staff. Brut : le front filtre sur les liens courants.",
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "anyOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            {
+                                                "type": "string"
+                                            }
+                                        ]
+                                    }
                                 }
                             },
                             "wishedDays": {
@@ -29123,12 +29396,53 @@
                         "items": {
                             "type": "object",
                             "additionalProperties": {
-                                "type": [
-                                    "string",
-                                    "null"
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
                                 ]
                             }
                         }
+                    },
+                    "teams": {
+                        "description": "Par \u00e9quipe de la collecte : le coach principal qui r\u00e9pond, et les principaux possibles.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "open": {
+                        "description": "La date limite n'est pas pass\u00e9e, au jour du club (le jour m\u00eame compris).",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -29236,12 +29550,53 @@
                         "items": {
                             "type": "object",
                             "additionalProperties": {
-                                "type": [
-                                    "string",
-                                    "null"
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
                                 ]
                             }
                         }
+                    },
+                    "teams": {
+                        "description": "Par \u00e9quipe de la collecte : le coach principal qui r\u00e9pond, et les principaux possibles.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "open": {
+                        "description": "La date limite n'est pas pass\u00e9e, au jour du club (le jour m\u00eame compris).",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -29306,12 +29661,53 @@
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": {
-                                        "type": [
-                                            "string",
-                                            "null"
+                                        "anyOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            {
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
                                         ]
                                     }
                                 }
+                            },
+                            "teams": {
+                                "description": "Par \u00e9quipe de la collecte : le coach principal qui r\u00e9pond, et les principaux possibles.",
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "anyOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            "open": {
+                                "description": "La date limite n'est pas pass\u00e9e, au jour du club (le jour m\u00eame compris).",
+                                "default": false,
+                                "type": "boolean"
                             }
                         }
                     }
@@ -35656,6 +36052,11 @@
                     "isRequired": {
                         "default": false,
                         "type": "boolean"
+                    },
+                    "wishRecipient": {
+                        "description": "Le coach principal choisi pour recevoir le lien de collecte de l'\u00e9quipe.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -35741,6 +36142,11 @@
                     "isRequired": {
                         "default": false,
                         "type": "boolean"
+                    },
+                    "wishRecipient": {
+                        "description": "Le coach principal choisi pour recevoir le lien de collecte de l'\u00e9quipe.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -35784,6 +36190,11 @@
                                 ]
                             },
                             "isRequired": {
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "wishRecipient": {
+                                "description": "Le coach principal choisi pour recevoir le lien de collecte de l'\u00e9quipe.",
                                 "default": false,
                                 "type": "boolean"
                             }

@@ -56,6 +56,16 @@ class CoachWishToken implements TenantOwnedInterface
     #[ORM\Column(type: 'datetimetz_immutable')]
     private DateTimeImmutable $createdAt;
 
+    /**
+     * Les équipes pour lesquelles ce coach répond dans cette campagne : vérité persistée, posée
+     * par la règle du destinataire (CoachWishCampaignTokenSync). Vide = ex-destinataire : son lien répond encore,
+     * sans équipe.
+     *
+     * @var list<string>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $teamIds = [];
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -131,6 +141,29 @@ class CoachWishToken implements TenantOwnedInterface
     public function markResponded(DateTimeImmutable $at): self
     {
         $this->respondedAt = $at;
+
+        return $this;
+    }
+
+    /** Le coach répond pour une équipe de plus : il repasse « à envoyer », même lien. */
+    public function backToSend(): self
+    {
+        $this->sentAt = null;
+        $this->respondedAt = null;
+
+        return $this;
+    }
+
+    /** @return list<string> */
+    public function getTeamIds(): array
+    {
+        return $this->teamIds;
+    }
+
+    /** @param list<string> $teamIds */
+    public function setTeamIds(array $teamIds): self
+    {
+        $this->teamIds = $teamIds;
 
         return $this;
     }

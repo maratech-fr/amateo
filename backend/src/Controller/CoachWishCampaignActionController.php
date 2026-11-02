@@ -180,7 +180,7 @@ final class CoachWishCampaignActionController extends AbstractController
      * Les destinataires éligibles de CETTE requête (après filtres d'éligibilité), chacun avec son
      * token et son email de forme valide — résolus AVANT l'envoi pour compter le budget à consommer.
      *
-     * Éligible : coach du périmètre courant, porteur d'un token, avec un email de forme
+     * Éligible : coach porteur d'un token qui liste au moins une équipe, avec un email de forme
      * valide, ET — envoi initial : `sentAt` null (ou listé dans `$onlyCoachIds`, renvoi
      * ciblé explicite) — relance : `respondedAt` null (les répondants ne sont pas harcelés).
      *
@@ -194,6 +194,9 @@ final class CoachWishCampaignActionController extends AbstractController
         $wanted = null === $onlyCoachIds ? null : array_flip($onlyCoachIds);
         $recipients = [];
         foreach ($tokens as $token) {
+            if ([] === $token->getTeamIds()) {
+                continue; // ex-destinataire : il ne répond plus pour rien, on ne l'écrit plus.
+            }
             if (null !== $wanted && !isset($wanted[$token->getCoachId()])) {
                 continue;
             }

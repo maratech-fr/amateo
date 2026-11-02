@@ -16,6 +16,8 @@ const campaign = (over: Partial<CoachWishCampaign> = {}): CoachWishCampaign => (
   openWishCount: 1,
   lastReminderAt: null,
   coaches: [],
+  teams: [],
+  open: true,
   ...over,
 });
 

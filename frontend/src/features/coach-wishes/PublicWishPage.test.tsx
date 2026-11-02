@@ -6,9 +6,11 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { HTTPError } from "ky";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { dayLabelLong, dayLabelShort } from "@/shared/lib/days";
 import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 import type { PublicWishContext } from "./publicApi";
+import { COACH_WISHES_PUBLIC_TEXTS } from "./texts/public";
 
 const h = { getContext: vi.fn(), submit: vi.fn() };
 vi.mock("./publicApi", async (importOriginal) => ({
@@ -19,6 +21,11 @@ vi.mock("./publicApi", async (importOriginal) => ({
 
 import { PublicWishPage } from "./PublicWishPage";
 
+const STAFF: PublicWishContext["teams"][number]["staff"] = [
+  { coachId: "c1", firstName: "Maxime", lastName: "Durand", role: "MAIN" },
+  { coachId: "c2", firstName: "Benoît", lastName: "Roux", role: "ASSISTANT" },
+];
+
 const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   coachFirstName: "Maxime",
   periodTitle: "Vacances de février",
@@ -26,10 +33,11 @@ const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   periodEnd: "2026-03-01",
   deadline: "2027-06-30",
   weeks: ["2026-02-16"],
-  teams: [{ id: "t1", name: "SM1" }],
+  teams: [{ id: "t1", name: "SM1", staff: STAFF }],
   partnerTeams: [],
   teamLinks: [],
-  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false, byAnotherCoach: false }],
+  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false, byAnotherCoach: false, staffUnavailability: [] }],
+  absencesElsewhere: [],
   mutualizations: [],
   respondedAt: null,
   ...over,
@@ -111,7 +119,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     // Pré-remplissage « au nom de » sur l'étape de l'équipe.
     expect(screen.getByLabelText(/Séances souhaitées — SM1/)).toHaveValue(2);
     // P2-63 A — « Jours disponibles » : mercredi (indisponible) est dépressé, pas pressé.
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend });
     expect(within(dispo).getByRole("button", { name: "mercredi" })).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -133,7 +141,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     // La validation, depuis le récap, envoie EXACTEMENT la section modifiée.
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" , keepSeasonSlots: false }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" , keepSeasonSlots: false, staffUnavailability: [] }], []);
   });
 
   it("P2-63 lot 5 — un jour non disponible est DÉSACTIVÉ côté souhaités ; le rendre disponible permet de le souhaiter", async () => {
@@ -142,7 +150,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     renderAt();
     await start();
 
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend });
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
     // mercredi indisponible → le jour souhaité correspondant est DÉSACTIVÉ (aria-disabled), pas cochable.
     expect(within(wished).getByRole("button", { name: "mercredi" })).toHaveAttribute("aria-disabled", "true");
@@ -156,7 +164,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Suivant" })); // récap
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" , keepSeasonSlots: false }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" , keepSeasonSlots: false, staffUnavailability: [] }], []);
   });
 
   // Lot 5 — « Jours disponibles » est rendu AU-DESSUS de « Jours souhaités » sur la page coach aussi.
@@ -165,7 +173,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     renderAt();
     await start();
 
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend });
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
     expect(dispo.compareDocumentPosition(wished) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -178,7 +186,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     renderAt();
     await start();
 
-    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const dispo = screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend });
     // Les six autres jours sont PRESSÉS (disponibles) ; mercredi (indisponible) est dépressé.
     expect(within(dispo).getByRole("button", { name: "lundi" })).toHaveAttribute("aria-pressed", "true");
     expect(within(dispo).getByRole("button", { name: "mercredi" })).toHaveAttribute("aria-pressed", "false");
@@ -188,7 +196,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3, 4], wishedDays: [], comment: "note manager" , keepSeasonSlots: false }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3, 4], wishedDays: [], comment: "note manager" , keepSeasonSlots: false, staffUnavailability: [] }], []);
   });
 
   it("P2-63 B — cocher « Garder mes créneaux habituels » envoie keepSeasonSlots: true", async () => {
@@ -201,13 +209,13 @@ describe("PublicWishPage — parcours en étapes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: true }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: true, staffUnavailability: [] }], []);
   });
 
   it("NR D2 — cocher un partenaire envoie une mutualisation (passerelle en tête)", async () => {
     h.getContext.mockResolvedValue(
       context({
-        teams: [{ id: "t1", name: "SM1" }],
+        teams: [{ id: "t1", name: "SM1", staff: [] }],
         partnerTeams: [
           { id: "t1", name: "SM1" },
           { id: "t2", name: "SF1" },
@@ -261,10 +269,10 @@ describe("PublicWishPage — parcours en étapes", () => {
     h.getContext.mockResolvedValue(
       context({
         teams: [
-          { id: "t1", name: "SM1" },
-          { id: "t2", name: "U13" },
+          { id: "t1", name: "SM1", staff: [] },
+          { id: "t2", name: "U13", staff: [] },
         ],
-        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false, byAnotherCoach: false }],
+        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false, byAnotherCoach: false, staffUnavailability: [] }],
       }),
     );
     h.submit.mockResolvedValue({ deadline: "2027-06-30" });
@@ -285,7 +293,7 @@ describe("PublicWishPage — parcours en étapes", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], wishedDays: [], comment: null , keepSeasonSlots: false }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], wishedDays: [], comment: null , keepSeasonSlots: false, staffUnavailability: [] }], []);
   });
 
   it("depuis le récap, « Modifier » saute à l'équipe puis revient au récap", async () => {
@@ -356,6 +364,189 @@ describe("PublicWishPage — parcours en étapes", () => {
   });
 });
 
+/** Le groupe de jours d'une personne du staff, trouvé par son rôle et son nom accessible. */
+const staffPicker = (firstName: string, lastName: string, role: "MAIN" | "ASSISTANT") =>
+  screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.staffMemberLegend(firstName, lastName, role) });
+
+/** Les réponses du serveur, comme ky 2 les expose (`error.data`). */
+const refusal = (status: number, error: string): HTTPError => {
+  const failure = new HTTPError(new Response(null, { status }), new Request("http://x/api/coach-wishes/public/abc"), {} as never);
+  (failure as unknown as { data: unknown }).data = { error };
+  return failure;
+};
+
+// Promesse : le destinataire répond pour toute l'équipe, une ligne d'absences par personne, et
+// personne non renseignée = disponible. Maison serveur : PublicCoachWishTest.
+describe("PublicWishPage — disponibilités du staff", () => {
+  beforeEach(() => {
+    h.getContext.mockReset();
+    h.submit.mockReset();
+    sessionStorage.clear();
+  });
+
+  it("chaque personne a son sélecteur, tout pressé : personne non renseignée = disponible", async () => {
+    h.getContext.mockResolvedValue(context());
+    renderAt();
+    await start();
+
+    expect(screen.getByText(COACH_WISHES_PUBLIC_TEXTS.staffTitle)).toBeInTheDocument();
+    expect(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(staffPicker("Benoît", "Roux", "ASSISTANT")).getByRole("button", { name: "mardi" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("une équipe sans lien n'a pas de bloc staff", async () => {
+    h.getContext.mockResolvedValue(context({ teams: [{ id: "t1", name: "SM1", staff: [] }] }));
+    renderAt();
+    await start();
+
+    expect(screen.queryByText(COACH_WISHES_PUBLIC_TEXTS.staffTitle)).toBeNull();
+  });
+
+  it("retirer des jours part dans staffUnavailability, trié par personne puis par jour, sans toucher à l'équipe", async () => {
+    h.getContext.mockResolvedValue(context());
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+
+    await userEvent.click(within(staffPicker("Benoît", "Roux", "ASSISTANT")).getByRole("button", { name: "mardi" }));
+    await userEvent.click(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "vendredi" }));
+    await userEvent.click(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+
+    await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
+    expect(h.submit.mock.calls[0][1][0].unavailableDays).toEqual([3]);
+    expect(h.submit.mock.calls[0][1][0].staffUnavailability).toEqual([
+      { coachId: "c1", days: [4, 5] },
+      { coachId: "c2", days: [2] },
+    ]);
+  });
+
+  it("une absence pré-remplie est dépressée ; la re-presser rend la section modifiée, sans ligne vide", async () => {
+    h.getContext.mockResolvedValue(
+      context({ wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [], comment: null, keepSeasonSlots: false, byAnotherCoach: false, staffUnavailability: [{ coachId: "c1", days: [4] }] }] }),
+    );
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+
+    const jeudi = within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" });
+    expect(jeudi).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(jeudi);
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+
+    await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
+    expect(h.submit.mock.calls[0][1][0].staffUnavailability).toEqual([]);
+  });
+
+  it("le brouillon restauré oublie une personne partie de l'équipe : aucun 422 à l'envoi", async () => {
+    sessionStorage.setItem(
+      DRAFT_KEY("abc"),
+      JSON.stringify({ sections: { "t1|2026-02-16": { slotsWanted: 2, days: [3], comment: "note manager", staff: { c1: [4], cGone: [2] } } }, stepIndex: 1 }),
+    );
+    h.getContext.mockResolvedValue(context());
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+
+    await screen.findByLabelText(/Séances souhaitées — SM1/);
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+
+    await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
+    expect(h.submit.mock.calls[0][1][0].staffUnavailability).toEqual([{ coachId: "c1", days: [4] }]);
+  });
+
+  it("une absence déclarée ailleurs est un bandeau par personne, un ou plusieurs jours, jamais un jour pré-pressé", async () => {
+    h.getContext.mockResolvedValue(
+      context({
+        absencesElsewhere: [
+          { teamId: "t1", weekStart: "2026-02-16", coachId: "c1", days: [4] },
+          { teamId: "t1", weekStart: "2026-02-16", coachId: "c2", days: [2, 4] },
+        ],
+      }),
+    );
+    renderAt();
+    await start();
+
+    expect(screen.getByText(COACH_WISHES_PUBLIC_TEXTS.absentElsewhere("Maxime", [dayLabelLong(4)]))).toBeInTheDocument();
+    expect(screen.getByText(COACH_WISHES_PUBLIC_TEXTS.absentElsewhere("Benoît", [dayLabelLong(2), dayLabelLong(4)]))).toBeInTheDocument();
+    expect(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("le récap dit l'équipe fermée, les souhaits et les absents, jours en minuscules ; les boutons gardent leur casse", async () => {
+    h.getContext.mockResolvedValue(context({ wishes: [] }));
+    renderAt();
+    await start();
+
+    const closedDay = within(screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend })).getByRole("button", { name: "vendredi" });
+    expect(closedDay).toHaveTextContent(dayLabelShort(5));
+    await userEvent.click(closedDay);
+    await userEvent.click(within(screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.wishedDaysLegend })).getByRole("button", { name: "lundi" }));
+    await userEvent.click(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" }));
+    await userEvent.click(within(staffPicker("Benoît", "Roux", "ASSISTANT")).getByRole("button", { name: "mardi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+
+    const line = screen.getByText(/semaine du/).textContent;
+    const lowDay = (day: number) => dayLabelShort(day).toLowerCase();
+    expect(line).toContain(COACH_WISHES_PUBLIC_TEXTS.recapWished([lowDay(1)]));
+    expect(line).toContain(COACH_WISHES_PUBLIC_TEXTS.recapTeamClosed([lowDay(5)]));
+    expect(line).toContain(
+      COACH_WISHES_PUBLIC_TEXTS.recapAbsent([
+        { firstName: "Maxime", dayLabels: [lowDay(4)] },
+        { firstName: "Benoît", dayLabels: [lowDay(2)] },
+      ]),
+    );
+  });
+
+  it.each([
+    ["Équipe hors de votre périmètre.", () => COACH_WISHES_PUBLIC_TEXTS.refusedPerimeter],
+    ["Coach hors de l'équipe.", () => COACH_WISHES_PUBLIC_TEXTS.refusedStaff],
+    ["Semaine hors de la collecte.", () => COACH_WISHES_PUBLIC_TEXTS.refusedWeeks],
+    ["Jour invalide.", () => COACH_WISHES_PUBLIC_TEXTS.refusedOther("Jour invalide.")],
+  ])("un refus « %s » dit quoi faire et garde le brouillon", async (serverError, expected) => {
+    h.getContext.mockResolvedValue(context());
+    h.submit.mockRejectedValue(refusal(422, serverError));
+    renderAt();
+    await start();
+
+    await userEvent.click(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+
+    expect(await screen.findByText(expected())).toBeInTheDocument();
+    expect(sessionStorage.getItem(DRAFT_KEY("abc"))).not.toBeNull();
+  });
+
+  it("un autre statut garde le message d'envoi existant", async () => {
+    h.getContext.mockResolvedValue(context());
+    h.submit.mockRejectedValue(httpError(500));
+    renderAt();
+    await start();
+    await userEvent.click(within(staffPicker("Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+
+    expect(await screen.findByText(/Envoi impossible pour le moment/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["une équipe", [{ id: "t1", name: "SM1", staff: [] }], () => COACH_WISHES_PUBLIC_TEXTS.thanksOneTeam],
+    ["plusieurs équipes", [{ id: "t1", name: "SM1", staff: [] }, { id: "t2", name: "U13", staff: [] }], () => COACH_WISHES_PUBLIC_TEXTS.thanksManyTeams],
+  ])("le merci parle de l'équipe : %s", async (_label, teams, expected) => {
+    h.getContext.mockResolvedValue(context({ teams, wishes: [] }));
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+    for (let i = 0; i < teams.length; i += 1) {
+      await userEvent.click(screen.getByRole("button", { name: /Rien à signaler/ }));
+    }
+    await userEvent.click(screen.getByRole("button", { name: /Confirmer sans modification/ }));
+
+    expect(await screen.findByText(expected())).toBeInTheDocument();
+  });
+});
+
 // D2 PR A — en-tête de la page publique : largeur, dates en pastilles, intro découpée, animation
 // de bienvenue jouée au clic « Commencer ».
 describe("PublicWishPage — en-tête D2 (dates, intro, animation)", () => {
@@ -385,7 +576,8 @@ describe("PublicWishPage — en-tête D2 (dates, intro, animation)", () => {
     expect(screen.queryByText(/Bonjour Maxime —/)).not.toBeInTheDocument();
 
     expect(container.querySelectorAll("ul li")).toHaveLength(3);
-    expect(screen.getByText(/nombre de séances, jours souhaités et jours de disponibilité/)).toBeInTheDocument();
+    expect(screen.getByText(COACH_WISHES_PUBLIC_TEXTS.introBulletPerTeam)).toBeInTheDocument();
+    expect(screen.getByText(COACH_WISHES_PUBLIC_TEXTS.introResponsibility)).toBeInTheDocument();
     expect(screen.getByText(/vos réponses partent en une seule fois/)).toBeInTheDocument();
     expect(screen.getByText(/revenir modifier jusqu'à la date limite/)).toBeInTheDocument();
     expect(screen.getByText(/C'est un souhait, pas un engagement/)).toBeInTheDocument();

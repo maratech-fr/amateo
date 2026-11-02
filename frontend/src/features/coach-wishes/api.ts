@@ -14,8 +14,10 @@ export interface CoachWish {
   teamId: string;
   coachId: string | null;
   slotsWanted: number;
-  /** Jours indisponibles, ISO 1–7 (1 = lundi). */
+  /** Jours où l'équipe ne s'entraîne pas, ISO 1–7 (1 = lundi). */
   unavailableDays: number[];
+  /** Jours d'absence par personne du staff. Brut : à relire sur les liens courants de l'équipe. */
+  staffUnavailability: { coachId: string; days: number[] }[];
   /** Jours souhaités, ISO 1–7 (informatif ; disjoint des indisponibilités). */
   wishedDays: number[];
   comment: string | null;
@@ -32,6 +34,7 @@ export interface CoachWishPayload {
   coachId: string | null;
   slotsWanted: number;
   unavailableDays: number[];
+  staffUnavailability: { coachId: string; days: number[] }[];
   wishedDays: number[];
   comment: string | null;
   done: boolean;

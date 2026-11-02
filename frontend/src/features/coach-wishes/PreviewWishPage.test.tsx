@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PublicWishContext } from "./publicApi";
+import { COACH_WISHES_PUBLIC_TEXTS } from "./texts/public";
 
 const h = { preview: vi.fn() };
 vi.mock("./campaignApi", async (importOriginal) => ({
@@ -21,13 +22,14 @@ const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   periodEnd: "2026-03-01",
   deadline: "2027-06-30",
   weeks: ["2026-02-16"],
-  teams: [{ id: "t1", name: "SM1" }],
+  teams: [{ id: "t1", name: "SM1", staff: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", role: "MAIN" }] }],
   partnerTeams: [
     { id: "t1", name: "SM1" },
     { id: "t2", name: "SF1" },
   ],
   teamLinks: [],
   wishes: [],
+  absencesElsewhere: [],
   mutualizations: [],
   respondedAt: null,
   ...over,
@@ -71,6 +73,15 @@ describe("PreviewWishPage — aperçu gestionnaire (lecture seule)", () => {
     expect(validate).toHaveAttribute("aria-disabled", "true");
     // Aucun brouillon posé par l'aperçu.
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it("aperçu : le staff est visible, ses sélecteurs désactivés", async () => {
+    h.preview.mockResolvedValue(context());
+    renderPreview();
+    await userEvent.click(await screen.findByRole("button", { name: /Commencer/ }));
+
+    const picker = screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.staffMemberLegend("Maxime", "Durand", "MAIN") });
+    expect(within(picker).getByRole("button", { name: "jeudi" })).toBeDisabled();
   });
 
   it("affiche un état indisponible si le coach n'est pas dans la collecte (404)", async () => {

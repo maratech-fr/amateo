@@ -285,7 +285,9 @@ abstract class AbstractStateProcessor implements ProcessorInterface
     /**
      * Hook post-flush (POST/PUT) — no-op par défaut. Permet à un processor de réagir à un
      * effet de bord une fois l'entité persistée (ex. recaler un nom dérivé d'une donnée qui
-     * arrive dans une requête voisine). Ne jamais y placer de logique métier obligatoire.
+     * arrive dans une requête voisine). Ne jamais y placer une logique que les AUTRES chemins
+     * d'écriture (suppression, cascade, « Charger ») n'appelleraient pas : ce qui vit ici est une
+     * synchronisation idempotente, rejouable, que ces chemins appellent aussi.
      */
     protected function afterPersist(object $entity): void {}
 

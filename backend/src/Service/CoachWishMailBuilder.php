@@ -28,7 +28,7 @@ final class CoachWishMailBuilder
      * rend un bouton (le renderer valide l'URL `https?://` et l'échappe). Interne, jamais lu
      * par un humain hors e-mail.
      */
-    private const string CTA_LABEL = 'Donner mes disponibilités';
+    private const string CTA_LABEL = 'Donner les disponibilités de mon équipe';
 
     public function __construct(
         #[Autowire('%env(default::FRONTEND_BASE_URL)%')]
@@ -57,7 +57,7 @@ final class CoachWishMailBuilder
         $lines = [
             \sprintf('Bonjour %s,', $coachFirstName),
             '',
-            \sprintf('%s (%s) prépare le planning de « %s » et a besoin de vos souhaits d\'entraînement.', $senderFirstName, $label, $periodTitle),
+            \sprintf('%s (%s) prépare le planning de « %s » et a besoin, pour chacune de vos équipes, des souhaits d\'entraînement et des disponibilités de tout le staff : vous répondez pour l\'équipe entière.', $senderFirstName, $label, $periodTitle),
             \sprintf('Merci de répondre avant le %s — le lien reste modifiable jusque-là.', $campaign->getDeadline()->format('d/m/Y')),
         ];
         // Sans base front configurée, un chemin nu « /doleances/… » n'est pas cliquable :

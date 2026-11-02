@@ -113,6 +113,7 @@ les champs `anonymizedAt`/`erasureScheduledAt` restaurés re-déclenchent les m�
 - **Doléances (#10)** : le **commentaire libre** d'une doléance est un champ à contenu non maîtrisé
   (le coach y écrit ce qu'il veut, potentiellement des données personnelles) — **jamais loggé**,
   jamais inclus dans un payload Mercure ni dans un message d'erreur.
+  Les absences saisies pour le staff (`CoachWish.staffUnavailability`) portent l'identifiant du coach et ses jours : la suppression d'un coach retire sa ligne (`CoachWishStaffLineStep`). « Charger » ne passe pas par cette étape, écart suivi en roadmap (P4-448).
 - **Sentry (diagnostic d'erreurs, inerte tant que le DSN est vide)** : chaque événement envoyé porte
   l'**identifiant INTERNE de l'utilisateur** (pseudonyme — jamais email/nom/IP) et le **code FFBB du
   club** en tag `club_ffbb` (identifiant public FFBB), posés explicitement côté back

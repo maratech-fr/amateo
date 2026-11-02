@@ -98,9 +98,9 @@ describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
   // (17:00-18:30) ; on pose SM4 sur le créneau v1 18:00-19:30. Le coach enchaîne : il quitte SM3 à
   // 18:30 et rejoint SM4 à 18:00 → retard 30 (trajet v1↔v2 nul). Tolérable, et j peut ouvrir.
   const SHARED_COACHES = [
-    { id: "tc-c", teamId: "c", coachId: "m", role: "MAIN" as const },
-    { id: "tc-d", teamId: "d", coachId: "m", role: "MAIN" as const },
-    { id: "tc-j", teamId: "d", coachId: "j", role: "ASSISTANT" as const },
+    { id: "tc-c", teamId: "c", coachId: "m", role: "MAIN" as const, wishRecipient: false },
+    { id: "tc-d", teamId: "d", coachId: "m", role: "MAIN" as const, wishRecipient: false },
+    { id: "tc-j", teamId: "d", coachId: "j", role: "ASSISTANT" as const, wishRecipient: false },
   ];
   const V2: Venue = { id: "v2", name: "Gymnase B", color: null, canSplit: false, isActive: true };
   // Les coachs NOMMÉS, comme `useWizardCoaches`/`listCoaches` les sert : le CTA de relais doit
@@ -166,7 +166,7 @@ describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
 
   it("un second coach principal tient la séance : ni refus ni tolérance à proposer", async () => {
     // SM3 (m) réservée au gymnase 2 au même moment que SM4 (m + l) qu'on pose ici : l tient SM4.
-    const secondMain = { id: "tc-l", teamId: "d", coachId: "l", role: "MAIN" as const };
+    const secondMain = { id: "tc-l", teamId: "d", coachId: "l", role: "MAIN" as const, wishRecipient: false };
     renderRelay({ teamCoaches: [...SHARED_COACHES, secondMain], reservations: [resa("c", "v2", 1, "18:00")] });
     await pickListboxOption(userEvent.setup(), "Ajouter une équipe", "SM4");
 
@@ -177,9 +177,9 @@ describe("SlotReservationModal — relais de l'adjoint (chantier H)", () => {
   // Le refus dit la vraie cause, coach par coach : sans ça le gestionnaire ne sait pas quoi changer.
   describe("le refus nomme chaque coach et ce qui le prend", () => {
     const TWO_MAINS = [
-      { id: "tc-c", teamId: "c", coachId: "m", role: "MAIN" as const },
-      { id: "tc-d", teamId: "d", coachId: "m", role: "MAIN" as const },
-      { id: "tc-l", teamId: "d", coachId: "l", role: "MAIN" as const },
+      { id: "tc-c", teamId: "c", coachId: "m", role: "MAIN" as const, wishRecipient: false },
+      { id: "tc-d", teamId: "d", coachId: "m", role: "MAIN" as const, wishRecipient: false },
+      { id: "tc-l", teamId: "d", coachId: "l", role: "MAIN" as const, wishRecipient: false },
     ];
     const NAMED: Coach[] = [...COACHES, { id: "l", firstName: "Léa", lastName: "Petit" } as Coach];
     const maximeCoaches = WIZARD_TEXTS.reservationCoachCoaching("Maxime Durand", { team: "SM3", time: "18:00", venue: "Gymnase B" });

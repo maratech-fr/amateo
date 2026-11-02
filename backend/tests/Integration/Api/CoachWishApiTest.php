@@ -11,10 +11,12 @@ use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -83,6 +85,45 @@ final class CoachWishApiTest extends WebTestCase
         self::assertSame(3, $body['slotsWanted']);
         self::assertSame([6], $body['unavailableDays']);
         self::assertTrue($body['done']);
+    }
+
+    public function testStaffUnavailabilityRoundTripsNormalized(): void
+    {
+        // Saisie manuelle : une ligne par personne, dernière ligne gagnante, jours triés, vide omise.
+        $emma = $this->linkedCoach('Emma', TeamCoachRole::MAIN);
+        $benoit = $this->linkedCoach('Benoît', TeamCoachRole::ASSISTANT);
+
+        $created = $this->post($this->payload(['staffUnavailability' => [
+            ['coachId' => $emma->getId(), 'days' => [1]],
+            ['coachId' => $benoit->getId(), 'days' => [5, 2]],
+            ['coachId' => $emma->getId(), 'days' => [4]],
+        ]]));
+        self::assertResponseStatusCodeSame(201);
+        self::assertEqualsCanonicalizing([
+            ['coachId' => $emma->getId(), 'days' => [4]],
+            ['coachId' => $benoit->getId(), 'days' => [2, 5]],
+        ], $created['staffUnavailability']);
+
+        $this->client->request('PUT', '/api/coach_wishes/' . $created['id'], [], [], $this->headers(), json_encode($this->payload([
+            'staffUnavailability' => [['coachId' => $emma->getId(), 'days' => []]],
+        ]), \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['staffUnavailability'], 'une ligne sans jour n\'est pas gardée');
+    }
+
+    public function testAStaffLineOutsideTheTeamIsRefusedWithoutWriting(): void
+    {
+        $stranger = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Zoé')->setLastName('Hors');
+        $this->em->persist($stranger);
+        $this->em->flush();
+
+        $this->post($this->payload(['staffUnavailability' => [['coachId' => $stranger->getId(), 'days' => [4]]]]));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Ce coach ne fait pas partie de l', (string) $this->client->getResponse()->getContent());
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['teamId' => $this->team->getId()]), 'rien écrit');
     }
 
     public function testKeepSeasonSlotsRoundTripsOnCreateAndUpdate(): void
@@ -268,6 +309,18 @@ final class CoachWishApiTest extends WebTestCase
         $this->mother = $this->holidayMother('2026-02-16', '2026-03-01');
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($user);
+    }
+
+    private function linkedCoach(string $firstName, TeamCoachRole $role): Coach
+    {
+        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName($firstName)->setLastName('Test');
+        $this->em->persist($coach);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($this->team->getId())->setCoachId($coach->getId())->setRole($role));
+        $this->em->flush();
+
+        return $coach;
     }
 
     private function holidayMother(string $start, string $end): CalendarEntry

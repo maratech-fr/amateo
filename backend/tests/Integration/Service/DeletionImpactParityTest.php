@@ -6,8 +6,10 @@ namespace App\Tests\Integration\Service;
 
 use App\Deletion\CascadePlan;
 use App\Deletion\DeletionImpactCounter;
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\CoachWish;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\Reservation;
@@ -22,6 +24,8 @@ use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
@@ -79,7 +83,7 @@ final class DeletionImpactParityTest extends KernelTestCase
      * son sujet, et l'annoncer n'aiderait personne à décider — c'est du bruit dans une modale
      * qui doit se lire en trois secondes. Toute autre étape muette est un OUBLI.
      */
-    private const SILENT_STEPS = ['ScheduleDiagnostic.teamId', 'ScheduleDiagnostic.venueId', 'ScheduleDiagnostic.coachId'];
+    private const SILENT_STEPS = ['ScheduleDiagnostic.teamId', 'ScheduleDiagnostic.venueId', 'ScheduleDiagnostic.coachId', 'CoachWishStaffLineStep.?', 'CoachWishCampaignTeamStep.?'];
 
     private EntityManagerInterface $em;
 
@@ -405,6 +409,40 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNull($reloaded->getCoachId(), 'elle perd son coach, pas son créneau');
         self::assertSame(1, $reloaded->getDayOfWeek());
         self::assertSame($venue->getId(), $reloaded->getVenueId());
+    }
+
+    /**
+     * Coach supprimé : sa ligne de staff part des doléances, la doléance et les lignes des autres
+     * restent. Étape muette (déclarée dans SILENT_STEPS) : la demande survit, rien à annoncer de plus.
+     * Le chemin API + export : CascadeDeleteApiTest, RgpdExportTest.
+     */
+    public function testDeletingACoachRemovesHisStaffLineAndKeepsTheWish(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Matéo');
+        $team = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $gone = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Alex')->setLastName('Martin');
+        $stays = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Emma')->setLastName('Morel');
+        $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
+        $this->em->persist($gone);
+        $this->em->persist($stays);
+        $this->em->persist($entry);
+        $this->em->flush();
+        $wish = (new CoachWish)->setClubId($club->getId())->setSeasonId($season->getId())->setCalendarEntryId($entry->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1)
+            ->setStaffUnavailability([['coachId' => $gone->getId(), 'days' => [4]], ['coachId' => $stays->getId(), 'days' => [2]]]);
+        $this->em->persist($wish);
+        $this->em->flush();
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfCoach($gone);
+        $this->em->flush();
+        $this->em->clear();
+
+        $fresh = $this->em->getRepository(CoachWish::class)->find($wish->getId());
+        self::assertNotNull($fresh, 'la doléance survit');
+        self::assertSame([['coachId' => $stays->getId(), 'days' => [2]]], $fresh->getStaffUnavailability());
     }
 
     /**

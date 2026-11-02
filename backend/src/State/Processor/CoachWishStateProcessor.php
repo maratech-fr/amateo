@@ -10,6 +10,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use DateTimeImmutable;
@@ -103,6 +104,8 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         if ([] !== array_intersect($wishedDays, $unavailableDays)) {
             $this->refuse('Un jour ne peut pas être à la fois souhaité et indisponible.');
         }
+        $this->assertStaffLinesBelongToTeam($input->staffUnavailability, $entity->getTeamId());
+        $entity->setStaffUnavailability(CoachWish::normalizeStaffLines($input->staffUnavailability));
         $entity->setCoachId($input->coachId);
         $entity->setSlotsWanted($input->slotsWanted ?? 0);
         $entity->setUnavailableDays($unavailableDays);
@@ -110,6 +113,23 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         $entity->setComment(null === $input->comment || '' === trim($input->comment) ? null : $input->comment);
         $entity->setDone($input->done);
         $entity->setKeepSeasonSlots($input->keepSeasonSlots);
+    }
+
+    /** @param list<array{coachId: string, days: list<int>}> $lines */
+    private function assertStaffLinesBelongToTeam(array $lines, string $teamId): void
+    {
+        if ([] === $lines) {
+            return;
+        }
+        $linked = [];
+        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(['teamId' => $teamId]) as $link) {
+            $linked[$link->getCoachId()] = true;
+        }
+        foreach ($lines as $line) {
+            if (!isset($linked[$line['coachId']])) {
+                $this->refuse('Ce coach ne fait pas partie de l\'équipe.');
+            }
+        }
     }
 
     /**

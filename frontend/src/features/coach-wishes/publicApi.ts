@@ -15,8 +15,10 @@ export interface PublicWish {
   teamId: string;
   weekStart: string;
   slotsWanted: number;
-  /** Jours indisponibles ISO 1–7. */
+  /** Jours où l'équipe ne s'entraîne pas, ISO 1–7. */
   unavailableDays: number[];
+  /** Jours d'absence par personne du staff courant de l'équipe. */
+  staffUnavailability: { coachId: string; days: number[] }[];
   /** Jours souhaités ISO 1–7 (informatif ; disjoint des indisponibilités). */
   wishedDays: number[];
   comment: string | null;
@@ -45,6 +47,14 @@ export interface PublicTeamLink {
   teamBId: string;
 }
 
+/** Une personne du staff d'une équipe : ces quatre champs, rien d'autre. */
+export interface PublicStaffMember {
+  coachId: string;
+  firstName: string;
+  lastName: string;
+  role: "MAIN" | "ASSISTANT";
+}
+
 export interface PublicWishContext {
   coachFirstName: string;
   periodTitle: string;
@@ -55,12 +65,14 @@ export interface PublicWishContext {
   deadline: string;
   /** Lundis Y-m-d retenus. */
   weeks: string[];
-  teams: { id: string; name: string }[];
+  teams: { id: string; name: string; staff: PublicStaffMember[] }[];
   /** Équipes de la campagne proposables en partenaires (le front retire l'équipe courante). */
   partnerTeams: { id: string; name: string }[];
   /** Passerelles restreintes aux équipes de la campagne (partenaires à hisser en tête). */
   teamLinks: PublicTeamLink[];
   wishes: PublicWish[];
+  /** Jours déclarés par d'AUTRES équipes pour une personne du staff : des jours, jamais leur nom. */
+  absencesElsewhere: { teamId: string; weekStart: string; coachId: string; days: number[] }[];
   /** Mutualisations déjà déclarées par le coach (pré-remplissage). */
   mutualizations: PublicMutualization[];
   respondedAt: string | null;
@@ -75,6 +87,7 @@ export interface PublicWishSubmission {
   comment: string | null;
   /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
   keepSeasonSlots: boolean;
+  staffUnavailability: { coachId: string; days: number[] }[];
 }
 
 /** La soumission d'une mutualisation (0 partenaire = supprimer la ligne côté serveur). */
