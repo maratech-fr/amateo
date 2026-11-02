@@ -46,7 +46,7 @@ class CoachWishInput
     public ?int $slotsWanted = 0;
 
     /**
-     * Jours indisponibles, jours ISO 1–7 (1 = lundi), sans doublon.
+     * Jours où l'équipe ne s'entraîne pas, jours ISO 1–7 (1 = lundi), sans doublon.
      *
      * @var list<int>
      */
@@ -55,6 +55,24 @@ class CoachWishInput
     #[Assert\Count(max: 7)]
     #[Groups(['write'])]
     public array $unavailableDays = [];
+
+    /**
+     * Jours d'absence de chaque membre du staff : une ligne par personne liée à l'équipe.
+     *
+     * @var list<array{coachId: string, days: list<int>}>
+     */
+    #[Assert\All([new Assert\Collection(fields: [
+        'coachId' => [new Assert\NotBlank, new Assert\Uuid],
+        'days' => [
+            new Assert\Type('array'),
+            new Assert\All([new Assert\Type('integer'), new Assert\Range(min: 1, max: 7)]),
+            new Assert\Unique,
+            new Assert\Count(max: 7),
+        ],
+    ])])]
+    #[Assert\Count(max: 50)]
+    #[Groups(['write'])]
+    public array $staffUnavailability = [];
 
     /**
      * Jours souhaités, jours ISO 1–7 (1 = lundi), sans doublon. Informatif : aucun effet

@@ -6,8 +6,6 @@ namespace App\Service;
 
 use App\Entity\Coach;
 use App\Entity\CoachWish;
-use App\Entity\CoachWishCampaign;
-use App\Entity\CoachWishToken;
 use App\Entity\Constraint;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -32,7 +30,10 @@ use Symfony\Component\Uid\Uuid;
  *  - `slotsWanted > 0` → {@see TeamPeriodOverride} de la semaine : actif, `sessionsPerWeek`,
  *    `source = coach_wish` (F — réactive une équipe hors périmètre, trace « via doléances ») ;
  *  - `slotsWanted = 0` → override `isActive = false` (décision 12) ;
- *  - `unavailableDays` → UNE contrainte DATÉE HARD (ci-dessous), commentaire en description ;
+ *  - `unavailableDays` → UNE contrainte DATÉE TEAM `forbiddenDays` HARD : l'équipe ne s'entraîne
+ *    pas ces jours-là, pour l'équipe déclarante seule (aucune propagation à un groupe) ;
+ *  - chaque ligne de `staffUnavailability` d'une personne du staff COURANT → UNE contrainte DATÉE
+ *    `COACH_AVAILABILITY` HARD de cette personne, adjoints compris ;
  *  - `wishedDays` → UNE contrainte DATÉE TEAM/DAY `preferredDays` PREFERRED (décision 6) ;
  *  - la doléance passe `done = true` (Q7).
  *
@@ -41,19 +42,11 @@ use Symfony\Component\Uid\Uuid;
  * Elles restent donc actives MÊME en vacances, malgré le défaut OFF des contraintes de saison
  * permanentes (lot 3b C) : une datée est un geste explicite POUR cette période.
  *
- * INDISPONIBILITÉ COACH — Q-A (CONFIRMÉE fondateur 2026-10-10), qui AMENDE D-a/Q2 :
- *  - doléance SANS coach (saisie manuelle, Q5) → `forbiddenDays` TEAM HARD : « l'équipe ne
- *    s'entraîne pas ces jours-là » ;
- *  - équipe à UN SEUL coach requis → `COACH_AVAILABILITY` HARD du coach (comportement du plan) ;
- *  - équipe à PLUSIEURS coachs requis (ex. U11M1 = Maxime + Julie) :
- *      • si TOUS les coachs requis ont répondu à la collecte → `COACH_AVAILABILITY` HARD du
- *        coach de la doléance ; le moteur applique « un coach suffit » (lot 3b A : le jour n'est
- *        fermé que si TOUS les coachs requis sont indisponibles) — Maxime indispo jeudi, Julie
- *        libre ⇒ l'équipe peut s'entraîner le jeudi ;
- *      • si UN SEUL a répondu → on ne suppose rien sur l'autre : le jour déclaré est FERMÉ pour
- *        l'ÉQUIPE (`forbiddenDays` TEAM HARD).
- *  « A répondu » = le jeton du coach dans la campagne de la période porte un `respondedAt`
- *  ({@see CoachWishToken::$respondedAt}, horodatage de sa dernière soumission).
+ * ABSENCE D'UNE PERSONNE : le moteur applique « un coach suffit » entre principaux (le jour n'est
+ * fermé que si AUCUN principal ne peut tenir la séance) ; l'absence d'un adjoint ne ferme aucune
+ * séance, seulement le relais d'arrivée tardive qu'il aurait pu assurer. Une absence n'atteint le
+ * moteur qu'au transfert de la doléance qui la porte. Une ligne dont la personne a quitté l'équipe
+ * est ignorée, le reste de la doléance est écrit. Le commentaire vit sur la première contrainte.
  *
  * IDEMPOTENCE (décision 7) : `source = coach_wish` + `sourceOccurrenceId = id de la doléance`.
  * Re-transférer EFFACE d'abord les contraintes du précédent transfert de CETTE doléance puis
@@ -202,8 +195,12 @@ final class CoachWishTransferService
         $comment = $wish->getComment();
 
         if ([] !== $wish->getUnavailableDays()) {
-            $this->createUnavailabilityConstraint($wish, $entryId, $clubId, $seasonId, $comment);
+            $this->createForbiddenDaysConstraint($wish, $entryId, $clubId, $seasonId, $wish->getUnavailableDays(), $comment);
             $comment = null; // le commentaire vit sur UNE contrainte, pas dupliqué.
+        }
+        foreach ($wish->staffUnavailabilityAmong($this->currentStaffOf($teamId)) as $line) {
+            $this->createStaffAbsenceConstraint($wish, $entryId, $clubId, $seasonId, $line['coachId'], $line['days'], $comment);
+            $comment = null;
         }
         if ([] !== $wish->getWishedDays()) {
             $this->createPreferredDaysConstraint($wish, $entryId, $clubId, $seasonId, $comment);
@@ -244,35 +241,12 @@ final class CoachWishTransferService
         $override->setSource(self::SOURCE);
     }
 
-    /**
-     * Q-A — l'indisponibilité : COACH_AVAILABILITY HARD du coach, ou `forbiddenDays` TEAM HARD
-     * fermant le jour pour l'équipe (sans coach, ou co-coachée dont un seul a répondu).
-     */
-    private function createUnavailabilityConstraint(CoachWish $wish, string $entryId, string $clubId, string $seasonId, ?string $comment): void
+    /** @param list<int> $days */
+    private function createStaffAbsenceConstraint(CoachWish $wish, string $entryId, string $clubId, string $seasonId, string $coachId, array $days, ?string $comment): void
     {
-        $coachId = $wish->getCoachId();
-        $days = $wish->getUnavailableDays();
-
-        if (null === $coachId) {
-            // Q5/D-a — doléance sans coach : « l'équipe ne s'entraîne pas ces jours-là ».
-            $this->createForbiddenDaysConstraint($wish, $entryId, $clubId, $seasonId, $days, $comment);
-
-            return;
-        }
-
-        $requiredCoachIds = $this->requiredCoachIds($wish->getTeamId());
-        if (\count($requiredCoachIds) >= 2 && !$this->allRequiredCoachesResponded($wish->getCalendarEntryId(), $requiredCoachIds)) {
-            // Équipe co-coachée, un seul a répondu : on ne suppose rien sur l'autre → jour FERMÉ.
-            $this->createForbiddenDaysConstraint($wish, $entryId, $clubId, $seasonId, $days, $comment);
-
-            return;
-        }
-
-        // Mono-coach, OU co-coachée tous répondants : indispo du coach (le moteur applique
-        // « un coach suffit » quand l'équipe a plusieurs coachs, lot 3b A).
         $constraint = $this->newTransferConstraint($wish, $clubId, $seasonId, $entryId, $comment);
         $constraint
-            ->setName($this->coachAvailabilityName($coachId))
+            ->setName($this->coachAvailabilityName($coachId, $wish->getTeamId()))
             ->setScope(ConstraintScope::COACH)
             ->setScopeTargetId($coachId)
             ->setFamily(ConstraintFamily::COACH_AVAILABILITY)
@@ -352,61 +326,25 @@ final class CoachWishTransferService
         }
     }
 
-    /**
-     * Les ids DISTINCTS des coachs REQUIS d'une équipe (TeamCoach.isRequired) — base de la
-     * règle Q-A (mono vs multi-coach).
-     *
-     * @return list<string>
-     */
-    private function requiredCoachIds(string $teamId): array
+    /** @return array<string, true> les personnes encore liées à l'équipe, tout rôle */
+    private function currentStaffOf(string $teamId): array
     {
-        $ids = [];
+        $staff = [];
         foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(['teamId' => $teamId]) as $link) {
-            if ($link->getIsRequired()) {
-                $ids[$link->getCoachId()] = true;
-            }
+            $staff[$link->getCoachId()] = true;
         }
 
-        return array_keys($ids);
+        return $staff;
     }
 
-    /**
-     * Tous les coachs requis ont-ils répondu à la collecte de la période ? « A répondu » =
-     * le jeton du coach dans la campagne porte un `respondedAt`. Pas de campagne (saisie
-     * purement manuelle) → personne n'a « répondu » → false.
-     *
-     * @param list<string> $requiredCoachIds
-     */
-    private function allRequiredCoachesResponded(string $motherEntryId, array $requiredCoachIds): bool
-    {
-        $campaign = $this->entityManager->getRepository(CoachWishCampaign::class)
-            ->findOneBy(['calendarEntryId' => $motherEntryId]);
-        if (!$campaign instanceof CoachWishCampaign) {
-            return false;
-        }
-
-        $responded = [];
-        foreach ($this->entityManager->getRepository(CoachWishToken::class)->findBy(['campaignId' => $campaign->getId()]) as $token) {
-            if (null !== $token->getRespondedAt()) {
-                $responded[$token->getCoachId()] = true;
-            }
-        }
-
-        foreach ($requiredCoachIds as $coachId) {
-            if (!isset($responded[$coachId])) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function coachAvailabilityName(string $coachId): string
+    private function coachAvailabilityName(string $coachId, string $teamId): string
     {
         $coach = $this->entityManager->getRepository(Coach::class)->find($coachId);
         $name = $coach instanceof Coach ? trim($coach->getFirstName() . ' ' . $coach->getLastName()) : '';
+        $team = $this->entityManager->getRepository(Team::class)->find($teamId);
+        $source = $team instanceof Team ? \sprintf('doléances %s', $team->getName()) : 'doléances';
 
-        return $this->cap('' !== $name ? \sprintf('Indisponibilité de %s (doléances)', $name) : 'Indisponibilité du coach (doléances)');
+        return $this->cap('' !== $name ? \sprintf('Indisponibilité de %s (%s)', $name, $source) : \sprintf('Indisponibilité du coach (%s)', $source));
     }
 
     private function teamDayName(string $prefix, string $teamId): string

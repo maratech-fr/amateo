@@ -30,7 +30,7 @@ import { sectionKey, type SectionState } from "@/features/coach-wishes/wishSecti
 import { expectNoA11yViolations } from "./utils";
 
 // Fixture: la page publique de doléances est le cas MOBILE (coach sans login).
-const wishSections = (over: Partial<SectionState> = {}): Map<string, SectionState> => new Map([[sectionKey("t1", "2026-02-16"), { slotsWanted: 2, days: new Set([3]), wishedDays: new Set([2]), comment: "note", keepSeasonSlots: false, byAnotherCoach: false, ...over }]]);
+const wishSections = (over: Partial<SectionState> = {}): Map<string, SectionState> => new Map([[sectionKey("t1", "2026-02-16"), { slotsWanted: 2, days: new Set([3]), wishedDays: new Set([2]), comment: "note", keepSeasonSlots: false, byAnotherCoach: false, staff: new Map(), ...over }]]);
 
 describe("a11y — shared UI primitives", () => {
   it("Button has no violations", async () => {
@@ -81,15 +81,17 @@ describe("a11y — étapes de doléances (cas public mobile)", () => {
   it("WishTeamStep (une équipe × ses semaines) has no violations", async () => {
     await expectNoA11yViolations(
       <WishTeamStep
-        team={{ id: "t1", name: "SM1" }}
+        team={{ id: "t1", name: "SM1", staff: [] }}
         weeks={["2026-02-16"]}
         sections={wishSections()}
         partnerTeams={[{ id: "t2", name: "SF1" }]}
         teamLinks={[]}
         mutualization={{ partnerTeamIds: new Set(), sharedSlots: 1 }}
+        absencesElsewhere={[]}
         onPatch={() => {}}
         onToggleDay={() => {}}
         onToggleWishedDay={() => {}}
+        onToggleStaffDay={() => {}}
         onTogglePartner={() => {}}
         onSharedSlots={() => {}}
       />,
@@ -100,8 +102,8 @@ describe("a11y — étapes de doléances (cas public mobile)", () => {
     await expectNoA11yViolations(
       <WishRecap
         teams={[
-          { id: "t1", name: "SM1" },
-          { id: "t2", name: "U13" },
+          { id: "t1", name: "SM1", staff: [] },
+          { id: "t2", name: "U13", staff: [] },
         ]}
         weeks={["2026-02-16"]}
         sections={wishSections({ slotsWanted: 4 })}

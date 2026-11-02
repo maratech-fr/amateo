@@ -67,6 +67,14 @@ class CoachWishResource
     public array $unavailableDays = [];
 
     /**
+     * Jours d'absence par personne du staff. Brut : le front filtre sur les liens courants.
+     *
+     * @var list<array{coachId: string, days: list<int>}>
+     */
+    #[Groups(['read'])]
+    public array $staffUnavailability = [];
+
+    /**
      * Jours souhaités, ISO 1–7 — informatif, aucun effet solveur.
      *
      * @var list<int>
@@ -97,6 +105,7 @@ class CoachWishResource
         $dto->coachId = $entity->getCoachId();
         $dto->slotsWanted = $entity->getSlotsWanted();
         $dto->unavailableDays = $entity->getUnavailableDays();
+        $dto->staffUnavailability = $entity->getStaffUnavailability();
         $dto->wishedDays = $entity->getWishedDays();
         $dto->comment = $entity->getComment();
         $dto->done = $entity->isDone();

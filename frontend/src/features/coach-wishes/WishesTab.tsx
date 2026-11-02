@@ -6,7 +6,6 @@ import { periodAdjustWeeks } from "@/features/cockpit/lib/date";
 import { useWorkingSeason } from "@/shared/session/queries";
 import { ResourceFilter } from "@/features/planning/ResourceFilter";
 import { usePriorityTiers, useWizardCoachPlayers, useWizardCoaches, useWizardTeamCoaches, useWizardTeams } from "@/features/wizard/queries";
-import { dayLabel } from "@/features/wizard/lib/days";
 import { groupedCoaches } from "@/features/wizard/lib/ranking";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -15,11 +14,13 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { dayLabelShort } from "@/shared/lib/days";
 import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CoachWish, CoachWishPayload, CoachWishTransferRecap } from "./api";
 import { CoachWishForm } from "./CoachWishForm";
+import { COACH_WISHES_MANAGER_TEXTS as TEXTS } from "./texts/manager";
 import type { CoachWishMutualization, CoachWishMutualizationPayload } from "./mutualizationApi";
 import { MutualizationForm } from "./MutualizationForm";
 import { useCoachWishMutualizations, useCreateCoachWishMutualization, useDeleteCoachWishMutualization, useUpdateCoachWishMutualization } from "./mutualizationQueries";
@@ -36,17 +37,10 @@ export interface WishTransferFooter {
   run: () => void;
 }
 
-/** Libellés FR des motifs d'ignorance du serveur (`CoachWishTransferService`) — on INFORME toujours
- *  de la raison d'une ignorée (retour fondateur 2026-10-11). Clé inconnue → « autre » (jamais un code
+/** Libellé d'un motif d'ignorance du serveur (`CoachWishTransferService`) — on INFORME toujours de la
+ *  raison d'une ignorée (retour fondateur 2026-10-11). Clé inconnue → « autre » (jamais un code
  *  serveur brut à l'écran). */
-const IGNORED_REASON_LABELS: Record<string, string> = {
-  semaine_sans_plan: "semaine sans planning",
-  introuvable: "introuvable",
-  id_invalide: "identifiant invalide",
-  autre_saison: "autre saison",
-};
-
-const ignoredReasonLabel = (key: string): string => IGNORED_REASON_LABELS[key] ?? "autre";
+const ignoredReasonLabel = TEXTS.ignoredReason;
 
 /** Résume les motifs d'ignorance, regroupés et comptés : un seul motif couvrant TOUTES les ignorées
  *  → juste son libellé (« semaine sans planning ») ; plusieurs → comptés (« 2 semaine sans planning,
@@ -67,11 +61,11 @@ function ignoredReasonsSummary(reasons: Record<string, number>, total: number): 
 /** Le texte de récap d'un transfert : « N converties · M ignorées : <raisons> » (singulier/pluriel
  *  soignés). On donne TOUJOURS la raison des ignorées (retour fondateur 2026-10-11). */
 function transferRecapMessage(recap: CoachWishTransferRecap): string {
-  const converted = `${recap.converted} convertie${recap.converted > 1 ? "s" : ""}`;
+  const converted = TEXTS.transferConverted(recap.converted);
   if (0 === recap.ignored) {
-    return 0 === recap.converted ? "Aucune doléance à transférer" : converted;
+    return 0 === recap.converted ? TEXTS.transferNothing : converted;
   }
-  const ignored = `${recap.ignored} ignorée${recap.ignored > 1 ? "s" : ""}`;
+  const ignored = TEXTS.transferIgnored(recap.ignored);
   const reasons = ignoredReasonsSummary(recap.ignoredReasons, recap.ignored);
   return `${converted} · ${ignored}${"" === reasons ? "" : ` : ${reasons}`}`;
 }
@@ -154,9 +148,9 @@ export function WishesTab({
   const coachStaffing = useMemo(() => groupedCoaches(coaches, new Set(coachPlayers.filter((cp) => cp.isActive).map((cp) => cp.coachId))), [coaches, coachPlayers]);
   const coachGroups = (
     [
-      ["Salariés", coachStaffing.salaried],
-      ["Coachs-joueurs", coachStaffing.player],
-      ["Bénévoles", coachStaffing.other],
+      [TEXTS.groupSalaried, coachStaffing.salaried],
+      [TEXTS.groupPlayers, coachStaffing.player],
+      [TEXTS.groupVolunteers, coachStaffing.other],
     ] as const
   )
     .filter(([, group]) => group.length > 0)
@@ -186,6 +180,29 @@ export function WishesTab({
 
     return map;
   }, [wishes]);
+
+  // Le staff COURANT de chaque équipe : une personne partie ne compte plus dans une relecture.
+  const currentStaff = new Map<string, Set<string>>();
+  for (const tc of teamCoaches) {
+    currentStaff.set(tc.teamId, (currentStaff.get(tc.teamId) ?? new Set<string>()).add(tc.coachId));
+  }
+  const currentLines = (w: CoachWish) => w.staffUnavailability.filter((line) => currentStaff.get(w.teamId)?.has(line.coachId));
+  const firstName = new Map(coaches.map((c) => [c.id, c.firstName]));
+  const shortDays = (days: number[]): string[] => days.map(dayLabelShort);
+
+  /** Les jours que la doléance d'une AUTRE équipe, même semaine, déclare pour une personne de ce staff, et que celle-ci ne déclare pas. */
+  const declaredElsewhere = (w: CoachWish) =>
+    wishes
+      .filter((other) => other.id !== w.id && other.weekStart === w.weekStart)
+      .flatMap((other) =>
+        currentLines(other)
+          .filter((line) => currentStaff.get(w.teamId)?.has(line.coachId))
+          .map((line) => {
+            const own = currentLines(w).find((l) => l.coachId === line.coachId)?.days ?? [];
+            return { firstName: firstName.get(line.coachId) ?? TEXTS.coachFallback, dayLabels: shortDays(line.days.filter((d) => !own.includes(d))), teamName: teamName.get(other.teamId) ?? TEXTS.teamFallbackLower };
+          }),
+      )
+      .filter((entry) => entry.dayLabels.length > 0);
 
   const visible = wishes.filter(
     (w) =>
@@ -306,21 +323,21 @@ export function WishesTab({
           variant="outline"
           className="ml-auto"
           disabled={0 === teams.length}
-          disabledReason={0 === teams.length ? "Aucune équipe dans ce club" : undefined}
+          disabledReason={0 === teams.length ? TEXTS.noTeamReason : undefined}
           onClick={() => {
             setEditing(null);
             setFormOpen(true);
           }}
         >
           <Plus className="size-4" />
-          Ajouter
+          {TEXTS.add}
         </Button>
       </div>
 
       {/* P2-63 PR 5 — le geste de MASSE vit dans le PIED de la fenêtre (retour fondateur 2026-10-11) :
           ici, juste l'aide qui explique les cases (prose → corps défilant, jamais le pied). */}
       {visible.length > 0 ? (
-        <p className="mt-2 text-xs text-muted-foreground">Cochez les doléances à transférer : elles deviennent des réglages du plan de leur semaine.</p>
+        <p className="mt-2 text-xs text-muted-foreground">{TEXTS.transferHelp}</p>
       ) : null}
 
       {/* Sans équipe du tout, « Ajouter » n'ouvrirait qu'un formulaire sans cible. Sur une lecture
@@ -329,7 +346,7 @@ export function WishesTab({
         <NoticeBanner
           tone="muted"
           className="mt-2"
-          message="Aucune équipe dans ce club : ajoutez-en une pour pouvoir saisir une doléance."
+          message={TEXTS.noTeamNotice}
         />
       ) : null}
 
@@ -342,6 +359,7 @@ export function WishesTab({
             teams={teams}
             tiers={tiers}
             teamCoaches={teamCoaches}
+            coaches={coaches}
             servedByWeek={servedByWeek}
             editing={editing}
             pending={createWish.isPending || updateWish.isPending}
@@ -359,9 +377,9 @@ export function WishesTab({
           const items = visible.filter((w) => w.weekStart === week.monday);
           return (
             <section key={week.monday}>
-              {null === weekFilter ? <h3 className="mb-1 text-xs font-semibold text-muted-foreground">Semaine du {frDate(week.startDate)}</h3> : null}
+              {null === weekFilter ? <h3 className="mb-1 text-xs font-semibold text-muted-foreground">{TEXTS.weekTitle(frDate(week.startDate))}</h3> : null}
               {0 === items.length ? (
-                <EmptyHint className="text-xs">Aucune doléance pour cette semaine.</EmptyHint>
+                <EmptyHint className="text-xs">{TEXTS.noWishThisWeek}</EmptyHint>
               ) : (
                 <ul className="space-y-1">
                   {items.map((w) => (
@@ -369,7 +387,7 @@ export function WishesTab({
                       {/* Case de SÉLECTION du transfert, à gauche. Une doléance TRAITÉE est déjà
                           transférée : elle n'a plus de case (retour fondateur 2026-10-11). */}
                       {w.done ? null : (
-                        <input type="checkbox" aria-label={`Sélectionner la doléance — ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
+                        <input type="checkbox" aria-label={TEXTS.selectWish(teamName.get(w.teamId) ?? TEXTS.teamFallbackLower, frDate(week.startDate))} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
                       )}
                       <div className="min-w-0 flex-1">
                         {/* Pas de coach (coachId null) = doléance manuelle sans coach : on n'affiche
@@ -379,27 +397,29 @@ export function WishesTab({
                         <div className="flex flex-wrap items-center gap-1.5">
                           <p className="font-medium">
                             {teamById.get(w.teamId)?.isCtc ? <CtcMark partner={teamById.get(w.teamId)?.ctcPartner} /> : null}
-                            {teamName.get(w.teamId) ?? "Équipe"}
-                            {null !== w.coachId ? <> · {coachName.get(w.coachId) ?? <span className="italic text-muted-foreground">coach dé-attribué</span>}</> : null}
+                            {teamName.get(w.teamId) ?? TEXTS.teamFallback}
+                            {null !== w.coachId ? <> · {coachName.get(w.coachId) ?? <span className="italic text-muted-foreground">{TEXTS.coachUnassigned}</span>}</> : null}
                           </p>
                           {/* Pastille VERTE « Traité » À CÔTÉ du nom (plus de case à droite), retour
                               fondateur 2026-10-11 : une doléance transférée/traitée est marquée ici. */}
                           {w.done ? (
                             <StatusPill variant="success" icon={<Check className="size-3 text-success" aria-hidden="true" />}>
-                              Traité
+                              {TEXTS.treated}
                             </StatusPill>
                           ) : null}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {0 === w.slotsWanted ? "Aucun créneau souhaité" : `${w.slotsWanted} créneau${w.slotsWanted > 1 ? "x" : ""} souhaité${w.slotsWanted > 1 ? "s" : ""}`}
-                          {w.wishedDays.length > 0 ? ` · souhaité : ${w.wishedDays.map(dayLabel).join(", ")}` : ""}
-                          {w.unavailableDays.length > 0 ? ` · indispo : ${w.unavailableDays.map(dayLabel).join(", ")}` : ""}
+                          {0 === w.slotsWanted ? TEXTS.noSlotWanted : TEXTS.slotsWanted(w.slotsWanted)}
+                          {w.wishedDays.length > 0 ? ` ${TEXTS.listWished(shortDays(w.wishedDays))}` : ""}
+                          {w.unavailableDays.length > 0 ? ` ${TEXTS.listTeamClosed(shortDays(w.unavailableDays))}` : ""}
+                          {currentLines(w).length > 0 ? ` ${TEXTS.listAbsent(currentLines(w).map((line) => ({ firstName: firstName.get(line.coachId) ?? TEXTS.coachFallback, dayLabels: shortDays(line.days) })))}` : ""}
+                          {declaredElsewhere(w).length > 0 ? ` ${TEXTS.listDeclaredElsewhere(declaredElsewhere(w))}` : ""}
                         </p>
                         {null !== w.comment ? <p className="mt-0.5 text-xs">{w.comment}</p> : null}
                         {/* Volet B — le coach souhaite garder ses créneaux habituels (saison). */}
                         {w.keepSeasonSlots ? (
                           <StatusPill variant="accent" className="mt-1">
-                            souhaite garder ses créneaux
+                            {TEXTS.keepsSlots}
                           </StatusPill>
                         ) : null}
                       </div>
@@ -411,7 +431,7 @@ export function WishesTab({
                           size="icon"
                           variant="ghost"
                           className="size-7"
-                          aria-label={`Modifier la doléance · ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`}
+                          aria-label={TEXTS.editWish(teamName.get(w.teamId) ?? TEXTS.teamFallbackLower, frDate(week.startDate))}
                           onClick={() => {
                             setEditing(w);
                             setFormOpen(true);
@@ -419,7 +439,7 @@ export function WishesTab({
                         >
                           <Pencil className="size-4" />
                         </Button>
-                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={`Supprimer la doléance · ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} disabled={deleteWish.isPending} onClick={() => setToDelete(w)}>
+                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={TEXTS.deleteWish(teamName.get(w.teamId) ?? TEXTS.teamFallbackLower, frDate(week.startDate))} disabled={deleteWish.isPending} onClick={() => setToDelete(w)}>
                           <Trash2 className="size-4" />
                         </Button>
                       </div>
@@ -435,21 +455,21 @@ export function WishesTab({
       {/* Mutualisations — grain PÉRIODE (une par équipe), hors de la boucle des semaines. */}
       <section className="mt-5 border-t border-border pt-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold">Mutualisations</h3>
+          <h3 className="text-sm font-semibold">{TEXTS.mutualizationsTitle}</h3>
           <Button
             type="button"
             size="sm"
             variant="outline"
             className="ml-auto"
             disabled={0 === teamsWithMainCoach.length}
-            disabledReason={0 === teamsWithMainCoach.length ? "Aucune équipe n'a de coach principal" : undefined}
+            disabledReason={0 === teamsWithMainCoach.length ? TEXTS.noMainCoachReason : undefined}
             onClick={() => {
               setEditingMut(null);
               setMutFormOpen(true);
             }}
           >
             <Plus className="size-4" />
-            Ajouter une mutualisation
+            {TEXTS.addMutualization}
           </Button>
         </div>
 
@@ -474,20 +494,18 @@ export function WishesTab({
         ) : null}
 
         {0 === visibleMut.length ? (
-          <EmptyHint className="mt-2 text-xs">Aucune mutualisation déclarée pour cette période.</EmptyHint>
+          <EmptyHint className="mt-2 text-xs">{TEXTS.noMutualization}</EmptyHint>
         ) : (
           <ul className="mt-2 space-y-1">
             {visibleMut.map((m) => (
               <li key={m.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                <input type="checkbox" aria-label={`Traité — mutualisation ${teamName.get(m.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={m.done} onChange={() => toggleMutDone(m)} />
+                <input type="checkbox" aria-label={TEXTS.treatedMutualization(teamName.get(m.teamId) ?? TEXTS.teamFallbackLower)} className="mt-1 size-4" checked={m.done} onChange={() => toggleMutDone(m)} />
                 <div className={cn("min-w-0 flex-1", m.done && "line-through")}>
                   <p className="font-medium">
                     {teamById.get(m.teamId)?.isCtc ? <CtcMark partner={teamById.get(m.teamId)?.ctcPartner} /> : null}
-                    {teamName.get(m.teamId) ?? "Équipe"} · {null === m.coachId ? <span className="italic text-muted-foreground">coach dé-attribué</span> : (coachName.get(m.coachId) ?? "Coach")}
+                    {teamName.get(m.teamId) ?? TEXTS.teamFallback} · {null === m.coachId ? <span className="italic text-muted-foreground">{TEXTS.coachUnassigned}</span> : (coachName.get(m.coachId) ?? TEXTS.coachFallback)}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    souhaite mutualiser {m.sharedSlots} séance{m.sharedSlots > 1 ? "s" : ""} avec : {m.partnerTeamIds.map((id) => teamName.get(id) ?? "équipe").join(", ")}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{TEXTS.mutualizationLine(m.sharedSlots, m.partnerTeamIds.map((id) => teamName.get(id) ?? TEXTS.teamFallbackLower))}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <Button
@@ -495,7 +513,7 @@ export function WishesTab({
                     size="icon"
                     variant="ghost"
                     className="size-7"
-                    aria-label={`Modifier la mutualisation · ${teamName.get(m.teamId) ?? "équipe"}`}
+                    aria-label={TEXTS.editMutualization(teamName.get(m.teamId) ?? TEXTS.teamFallbackLower)}
                     onClick={() => {
                       setEditingMut(m);
                       setMutFormOpen(true);
@@ -503,7 +521,7 @@ export function WishesTab({
                   >
                     <Pencil className="size-4" />
                   </Button>
-                  <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={`Supprimer la mutualisation · ${teamName.get(m.teamId) ?? "équipe"}`} disabled={deleteMut.isPending} onClick={() => setToDeleteMut(m)}>
+                  <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={TEXTS.deleteMutualization(teamName.get(m.teamId) ?? TEXTS.teamFallbackLower)} disabled={deleteMut.isPending} onClick={() => setToDeleteMut(m)}>
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -515,9 +533,9 @@ export function WishesTab({
 
       <ConfirmDialog
         open={null !== toDeleteMut}
-        title="Supprimer cette mutualisation ?"
-        description={null !== toDeleteMut ? `La mutualisation de « ${teamName.get(toDeleteMut.teamId) ?? "l'équipe"} » sera définitivement retirée.` : undefined}
-        confirmLabel="Supprimer"
+        title={TEXTS.deleteMutualizationTitle}
+        description={null !== toDeleteMut ? TEXTS.deleteMutualizationBody(teamName.get(toDeleteMut.teamId) ?? TEXTS.theTeamFallback) : undefined}
+        confirmLabel={TEXTS.deleteConfirm}
         destructive
         onConfirm={() => {
           if (null !== toDeleteMut) {
@@ -530,9 +548,9 @@ export function WishesTab({
 
       <ConfirmDialog
         open={null !== toDelete}
-        title="Supprimer cette doléance ?"
-        description={null !== toDelete ? `La doléance de « ${teamName.get(toDelete.teamId) ?? "l'équipe"} » sera définitivement retirée.` : undefined}
-        confirmLabel="Supprimer"
+        title={TEXTS.deleteWishTitle}
+        description={null !== toDelete ? TEXTS.deleteWishBody(teamName.get(toDelete.teamId) ?? TEXTS.theTeamFallback) : undefined}
+        confirmLabel={TEXTS.deleteConfirm}
         destructive
         onConfirm={() => {
           if (null !== toDelete) {

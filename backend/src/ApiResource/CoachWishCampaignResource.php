@@ -45,6 +45,14 @@ use Symfony\Component\Serializer\Attribute\Groups;
         read: false,
         name: 'remind_coach_wish_campaign',
     ),
+    // Choisir le coach principal qui répond pour une équipe (mêmes gardes que send-links).
+    new Post(
+        uriTemplate: '/coach_wish_campaigns/{id}/recipient',
+        controller: 'App\\Controller\\CoachWishRecipientController',
+        input: false,
+        read: false,
+        name: 'set_recipient_coach_wish_campaign',
+    ),
 ], input: CoachWishCampaignInput::class, paginationEnabled: false, provider: CoachWishCampaignStateProvider::class, processor: CoachWishCampaignStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['calendarEntryId' => 'exact'])]
 class CoachWishCampaignResource
@@ -85,8 +93,20 @@ class CoachWishCampaignResource
     public ?string $lastReminderAt = null;
 
     /**
-     * @var list<array{coachId: string, firstName: string, lastName: string, email: string|null, token: string, respondedAt: string|null, sentAt: string|null}>
+     * @var list<array{coachId: string, firstName: string, lastName: string, email: string|null, token: string, respondedAt: string|null, sentAt: string|null, teamIds: list<string>}>
      */
     #[Groups(['read'])]
     public array $coaches = [];
+
+    /**
+     * Par équipe de la collecte : le coach principal qui répond, et les principaux possibles.
+     *
+     * @var list<array{teamId: string, recipientCoachId: string|null, candidates: list<array{coachId: string, firstName: string, lastName: string}>}>
+     */
+    #[Groups(['read'])]
+    public array $teams = [];
+
+    /** La date limite n'est pas passée, au jour du club (le jour même compris). */
+    #[Groups(['read'])]
+    public bool $open = false;
 }

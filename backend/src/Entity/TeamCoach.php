@@ -50,6 +50,10 @@ class TeamCoach implements TenantOwnedInterface
     #[ORM\Column(type: 'boolean')]
     private bool $isRequired = true;
 
+    /** Le gestionnaire a choisi ce coach principal pour recevoir le lien de collecte de l'équipe. */
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $wishRecipient = false;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -178,6 +182,18 @@ class TeamCoach implements TenantOwnedInterface
     public function setIsRequired(bool $isRequired): self
     {
         $this->isRequired = $isRequired;
+
+        return $this;
+    }
+
+    public function isWishRecipient(): bool
+    {
+        return $this->wishRecipient;
+    }
+
+    public function setWishRecipient(bool $wishRecipient): self
+    {
+        $this->wishRecipient = $wishRecipient;
 
         return $this;
     }

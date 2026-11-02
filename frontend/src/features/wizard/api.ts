@@ -573,6 +573,8 @@ export interface TeamCoach {
   teamId: string;
   coachId: string;
   role: TeamCoachRole;
+  /** Le coach principal choisi pour recevoir le lien de collecte de l'équipe. */
+  wishRecipient: boolean;
 }
 
 export interface CoachPlayerMembership {

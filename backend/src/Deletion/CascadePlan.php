@@ -163,6 +163,7 @@ final class CascadePlan
             // #10 — la doléance SURVIT au coach supprimé, dé-attribuée : son info d'équipe
             // reste utile au plan de vacances.
             new ClearFieldStep(CoachWish::class, 'coachId', new ImpactLabel('coach_wish', 'demande qui perdra son auteur', 'demandes qui perdront leur auteur')),
+            new CoachWishStaffLineStep,
             // #10 D2 — la demande de mutualisation SURVIT au coach supprimé, dé-attribuée (parité).
             new ClearFieldStep(CoachWishMutualization::class, 'coachId', new ImpactLabel('coach_mutualization', 'mutualisation qui perdra son auteur', 'mutualisations qui perdront leur auteur')),
             new ClearFieldStep(Coach::class, 'parentCoachId', new ImpactLabel('coach_child', 'coach rattaché qui perdra son coach parent', 'coachs rattachés qui perdront leur coach parent')),

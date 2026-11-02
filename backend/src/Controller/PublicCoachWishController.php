@@ -9,11 +9,11 @@ use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
-use App\Entity\TeamCoach;
 use App\Repository\CoachWishTokenRepository;
 use App\Service\ClubDay;
 use App\Service\CoachWishFormPresenter;
 use App\Service\CoachWishMutualizationUpserter;
+use App\Service\CoachWishPerimeter;
 use App\Service\CoachWishSeasonGuard;
 use App\Service\CoachWishUpserter;
 use App\Service\TenantConnectionContext;
@@ -41,7 +41,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *  - rate limit PAR IP avant tout lookup (GET compris — le pré-remplissage est énumérable) ;
  *  - forme du token validée + réponse 404 BYTE-IDENTIQUE pour inconnu et malformé (anti-énumération) ;
  *  - deadline dépassée → 410 (l'extension côté gestionnaire ranime le lien) ;
- *  - écriture BORNÉE au périmètre du token (ce coach, ses équipes ∩ campagne, les semaines
+ *  - écriture BORNÉE au périmètre du token (les équipes du jeton ∩ campagne, les semaines
  *    de la campagne) — une seule violation → 422 et RIEN d'écrit ;
  *  - GUC `app.club_id` posé depuis le token, TOUJOURS relâché en finally (patron verifyEmail).
  */
@@ -50,6 +50,9 @@ final class PublicCoachWishController extends AbstractController
 {
     /** Plafond dur du nombre de sections soumises — largement au-dessus d'un périmètre réel. */
     private const MAX_SUBMISSIONS = 200;
+
+    /** Plafond dur des lignes de staff d'une section, très au-dessus d'un staff réel. */
+    private const MAX_STAFF_LINES = 50;
 
     public function __construct(
         private readonly CoachWishTokenRepository $tokenRepository,
@@ -62,6 +65,7 @@ final class PublicCoachWishController extends AbstractController
         private readonly RateLimiterFactory $coachWishPublicLimiter,
         private readonly CoachWishSeasonGuard $seasonGuard,
         private readonly ClubDay $clubDay,
+        private readonly CoachWishPerimeter $perimeter,
     ) {}
 
     #[Route('/api/coach-wishes/public/{token}', name: 'public_coach_wish_get', methods: ['GET'])]
@@ -148,7 +152,9 @@ final class PublicCoachWishController extends AbstractController
                 return $this->json(['error' => 'expired'], Response::HTTP_GONE);
             }
             $coachId = $entity['token']->getCoachId();
-            $perimeter = array_flip($this->perimeterTeamIds($coachId, $campaign));
+            $teamIds = $this->perimeter->teamIdsForCoach($campaign, $coachId);
+            $perimeter = array_flip($teamIds);
+            $staffByTeam = $this->perimeter->staffOfTeams($teamIds);
             // La semaine doit encore recouper la période mère À L'ÉCRITURE (parité avec le
             // chemin authentifié) : `campaign.weeks` est un instantané non re-purgé si le
             // gestionnaire raccourcit la période après le lancement.
@@ -195,12 +201,37 @@ final class PublicCoachWishController extends AbstractController
                 if ([] !== array_intersect($wished, $days)) {
                     return $this->json(['error' => 'Un jour ne peut pas être à la fois souhaité et indisponible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
                 }
+                $staffLines = \is_array($item) && \is_array($item['staffUnavailability'] ?? null) ? $item['staffUnavailability'] : [];
+                if (\count($staffLines) > self::MAX_STAFF_LINES) {
+                    return $this->json(['error' => 'Trop de lignes de staff.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                }
+                $currentStaff = array_fill_keys(array_column($staffByTeam[$teamId] ?? [], 'coachId'), true);
+                $staff = [];
+                foreach ($staffLines as $line) {
+                    $staffCoachId = \is_array($line) ? ($line['coachId'] ?? null) : null;
+                    if (!\is_string($staffCoachId)) {
+                        return $this->json(['error' => 'Ligne de staff invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                    }
+                    // Message 422 UNIFORME : autre équipe, autre club ou inconnu, le corps est le même.
+                    if (!isset($currentStaff[$staffCoachId])) {
+                        return $this->json(['error' => 'Coach hors de l\'équipe.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                    }
+                    $lineDays = [];
+                    foreach (\is_array($line['days'] ?? null) ? $line['days'] : [] as $d) {
+                        $d = (int) $d;
+                        if ($d < 1 || $d > 7) {
+                            return $this->json(['error' => 'Jour invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                        }
+                        $lineDays[] = $d;
+                    }
+                    $staff[] = ['coachId' => $staffCoachId, 'days' => $lineDays];
+                }
                 $comment = \is_array($item) && \is_string($item['comment'] ?? null) ? mb_substr($item['comment'], 0, 2000) : null;
                 // Volet B : booléen NU. Le périmètre (équipe ∩ campagne, semaines de la campagne)
                 // est déjà vérifié ci-dessus — cocher « garder mes créneaux » n'élargit RIEN et
                 // n'inclut aucune équipe au plan (ça, c'est un geste gestionnaire).
                 $keepSeasonSlots = \is_array($item) && true === ($item['keepSeasonSlots'] ?? false);
-                $clean[$teamId . '|' . $weekStart] = ['teamId' => $teamId, 'weekStart' => $weekStart, 'slots' => $slots, 'days' => $days, 'wished' => $wished, 'comment' => $comment, 'keepSeasonSlots' => $keepSeasonSlots];
+                $clean[$teamId . '|' . $weekStart] = ['teamId' => $teamId, 'weekStart' => $weekStart, 'slots' => $slots, 'days' => $days, 'wished' => $wished, 'comment' => $comment, 'keepSeasonSlots' => $keepSeasonSlots, 'staff' => $staff];
             }
 
             // Mutualisations (D2) : une par équipe DU COACH, partenaires PARMI les équipes de la
@@ -234,7 +265,7 @@ final class PublicCoachWishController extends AbstractController
 
             $this->entityManager->wrapInTransaction(function () use ($clean, $cleanMut, $campaign, $coachId, $entity): void {
                 foreach ($clean as $c) {
-                    $this->upserter->upsert($campaign, $c['teamId'], new DateTimeImmutable($c['weekStart'] . ' 00:00:00'), $coachId, $c['slots'], $c['days'], $c['wished'], $c['comment'], $c['keepSeasonSlots']);
+                    $this->upserter->upsert($campaign, $c['teamId'], new DateTimeImmutable($c['weekStart'] . ' 00:00:00'), $coachId, $c['slots'], $c['days'], $c['wished'], $c['comment'], $c['keepSeasonSlots'], $c['staff']);
                 }
                 foreach ($cleanMut as $m) {
                     $this->mutualizationUpserter->upsert($campaign, $m['teamId'], $coachId, $m['partners'], $m['sharedSlots']);
@@ -286,24 +317,6 @@ final class PublicCoachWishController extends AbstractController
         $sunday = $monday->modify('+6 days');
 
         return $monday <= $entry->getEndDate() && $sunday >= $entry->getStartDate();
-    }
-
-    /**
-     * Les équipes du coach (TeamCoach) ∩ équipes de la campagne.
-     *
-     * @return list<string>
-     */
-    private function perimeterTeamIds(string $coachId, CoachWishCampaign $campaign): array
-    {
-        $campaignTeams = array_flip($campaign->getTeamIds());
-        $result = [];
-        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(['coachId' => $coachId]) as $link) {
-            if (isset($campaignTeams[$link->getTeamId()]) && !\in_array($link->getTeamId(), $result, true)) {
-                $result[] = $link->getTeamId();
-            }
-        }
-
-        return $result;
     }
 
     private function notFound(): JsonResponse

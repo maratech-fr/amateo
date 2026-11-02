@@ -7,7 +7,7 @@ import { cloneSections, type SectionState } from "./wishSections";
  * Restauré au montage, PURGÉ au succès de l'envoi. Clé par token.
  */
 interface SerializedDraft {
-  sections: Record<string, { slotsWanted: number; days: number[]; wishedDays?: number[]; comment: string; keepSeasonSlots?: boolean }>;
+  sections: Record<string, { slotsWanted: number; days: number[]; wishedDays?: number[]; comment: string; keepSeasonSlots?: boolean; staff?: Record<string, number[]> }>;
   /** Mutualisations par équipe (optionnel — rétro-compatible avec un brouillon C2/C3). */
   mutualizations?: Record<string, { partnerTeamIds: string[]; sharedSlots: number }>;
   stepIndex: number;
@@ -32,7 +32,7 @@ export function loadDraft(token: string): WishDraft | null {
     for (const [k, v] of Object.entries(parsed.sections)) {
       // `byAnotherCoach` est un drapeau SERVEUR (non éditable, non sérialisé) : le brouillon
       // repart à false, la fusion dans l'état serveur (PublicWishPage) rétablit la vérité.
-      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays ?? []), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots ?? false, byAnotherCoach: false });
+      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays ?? []), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots ?? false, byAnotherCoach: false, staff: new Map(Object.entries(v.staff ?? {}).map(([coachId, days]) => [coachId, new Set(days)])) });
     }
     const mutualizations = new Map<string, MutualizationState>();
     for (const [k, v] of Object.entries(parsed.mutualizations ?? {})) {
@@ -54,7 +54,7 @@ export function saveDraft(
     const snapshot = cloneSections(sections);
     const serialized: SerializedDraft = { sections: {}, mutualizations: {}, stepIndex };
     for (const [k, v] of snapshot) {
-      serialized.sections[k] = { slotsWanted: v.slotsWanted, days: [...v.days], wishedDays: [...v.wishedDays], comment: v.comment, keepSeasonSlots: v.keepSeasonSlots };
+      serialized.sections[k] = { slotsWanted: v.slotsWanted, days: [...v.days], wishedDays: [...v.wishedDays], comment: v.comment, keepSeasonSlots: v.keepSeasonSlots, staff: Object.fromEntries([...v.staff].map(([coachId, days]) => [coachId, [...days]])) };
     }
     for (const [k, v] of cloneMutualizations(mutualizations)) {
       (serialized.mutualizations ??= {})[k] = { partnerTeamIds: [...v.partnerTeamIds], sharedSlots: v.sharedSlots };

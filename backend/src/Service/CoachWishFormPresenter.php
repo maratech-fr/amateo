@@ -42,10 +42,11 @@ final class CoachWishFormPresenter
      *     periodEnd: string|null,
      *     deadline: string,
      *     weeks: list<string>,
-     *     teams: list<array{id: string, name: string}>,
+     *     teams: list<array{id: string, name: string, staff: list<array{coachId: string, firstName: string, lastName: string, role: 'MAIN'|'ASSISTANT'}>}>,
      *     partnerTeams: list<array{id: string, name: string}>,
      *     teamLinks: list<array{teamAId: string, teamBId: string}>,
-     *     wishes: list<array{teamId: string, weekStart: string, slotsWanted: int, unavailableDays: list<int>, wishedDays: list<int>, comment: string|null, keepSeasonSlots: bool, byAnotherCoach: bool}>,
+     *     wishes: list<array{teamId: string, weekStart: string, slotsWanted: int, unavailableDays: list<int>, staffUnavailability: list<array{coachId: string, days: list<int>}>, wishedDays: list<int>, comment: string|null, keepSeasonSlots: bool, byAnotherCoach: bool}>,
+     *     absencesElsewhere: list<array{teamId: string, weekStart: string, coachId: string, days: list<int>}>,
      *     mutualizations: list<array{teamId: string, partnerTeamIds: list<string>, sharedSlots: int}>,
      *     respondedAt: string|null
      * }
@@ -65,10 +66,11 @@ final class CoachWishFormPresenter
             }
         }
 
+        $staffByTeam = $this->perimeter->staffOfTeams($coachTeamIds);
         $teams = [];
         foreach ($coachTeamIds as $teamId) {
             if (isset($nameById[$teamId])) {
-                $teams[] = ['id' => $teamId, 'name' => $nameById[$teamId]];
+                $teams[] = ['id' => $teamId, 'name' => $nameById[$teamId], 'staff' => $staffByTeam[$teamId] ?? []];
             }
         }
 
@@ -93,6 +95,7 @@ final class CoachWishFormPresenter
         }
 
         $wishes = [];
+        $absencesElsewhere = [];
         $mutualizations = [];
         if ($includeExisting && [] !== $coachTeamIds) {
             // Doléances existantes des équipes DU COACH (pré-remplissage), bornées aux semaines
@@ -106,6 +109,8 @@ final class CoachWishFormPresenter
                     'weekStart' => $wish->getWeekStart()->format('Y-m-d'),
                     'slotsWanted' => $wish->getSlotsWanted(),
                     'unavailableDays' => $wish->getUnavailableDays(),
+                    // Le staff COURANT seul : une personne partie n'est plus pré-remplie, donc plus renvoyée.
+                    'staffUnavailability' => $wish->staffUnavailabilityAmong(array_fill_keys(array_column($staffByTeam[$wish->getTeamId()] ?? [], 'coachId'), true)),
                     'wishedDays' => $wish->getWishedDays(),
                     'comment' => $wish->getComment(),
                     // Booléen NU (volet B) : jamais les horaires de saison, juste le drapeau.
@@ -118,6 +123,8 @@ final class CoachWishFormPresenter
                     'byAnotherCoach' => null !== $wish->getCoachId() && $wish->getCoachId() !== $coach->getId(),
                 ];
             }
+
+            $absencesElsewhere = $this->absencesElsewhere($campaign, $staffByTeam);
 
             // Mutualisations existantes des équipes DU COACH (pré-remplissage) — jamais `done`
             // ni `coachId` (le coach ne voit pas l'arbitrage du gestionnaire).
@@ -141,8 +148,52 @@ final class CoachWishFormPresenter
             'partnerTeams' => $partnerTeams,
             'teamLinks' => $teamLinks,
             'wishes' => $wishes,
+            'absencesElsewhere' => $absencesElsewhere,
             'mutualizations' => $mutualizations,
             'respondedAt' => $respondedAt,
         ];
+    }
+
+    /**
+     * Pour chaque équipe du coach × semaine × personne de son staff : les jours que des doléances
+     * d'AUTRES équipes déclarent pour cette personne, chacune filtrée sur le staff courant de SA
+     * propre équipe. Des jours et rien d'autre : jamais le nom de l'autre équipe.
+     *
+     * @param array<string, list<array{coachId: string, firstName: string, lastName: string, role: 'MAIN'|'ASSISTANT'}>> $staffByTeam
+     *
+     * @return list<array{teamId: string, weekStart: string, coachId: string, days: list<int>}>
+     */
+    private function absencesElsewhere(CoachWishCampaign $campaign, array $staffByTeam): array
+    {
+        $wishes = $this->entityManager->getRepository(CoachWish::class)->findBy(['calendarEntryId' => $campaign->getCalendarEntryId()]);
+        $teamIds = array_values(array_unique(array_map(static fn (CoachWish $wish): string => $wish->getTeamId(), $wishes)));
+        $wishStaff = $this->perimeter->staffOfTeams($teamIds);
+
+        // [semaine][personne][équipe déclarante] = jours
+        $declared = [];
+        foreach ($wishes as $wish) {
+            $current = array_fill_keys(array_column($wishStaff[$wish->getTeamId()] ?? [], 'coachId'), true);
+            foreach ($wish->staffUnavailabilityAmong($current) as $line) {
+                $declared[$wish->getWeekStart()->format('Y-m-d')][$line['coachId']][$wish->getTeamId()] = $line['days'];
+            }
+        }
+
+        $absences = [];
+        foreach ($staffByTeam as $teamId => $staff) {
+            foreach ($campaign->getWeeks() as $week) {
+                foreach ($staff as $member) {
+                    $elsewhere = $declared[$week][$member['coachId']] ?? [];
+                    unset($elsewhere[$teamId]);
+                    if ([] === $elsewhere) {
+                        continue;
+                    }
+                    $days = array_values(array_unique(array_merge(...array_values($elsewhere))));
+                    sort($days);
+                    $absences[] = ['teamId' => (string) $teamId, 'weekStart' => $week, 'coachId' => $member['coachId'], 'days' => $days];
+                }
+            }
+        }
+
+        return $absences;
     }
 }

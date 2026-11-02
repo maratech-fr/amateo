@@ -21,6 +21,15 @@ export interface CampaignCoach {
   respondedAt: string | null;
   /** Dernier envoi du lien par email (C3) — null = jamais envoyé. */
   sentAt: string | null;
+  /** Les équipes pour lesquelles ce coach répond. */
+  teamIds: string[];
+}
+
+/** Une équipe de la collecte : qui répond, et les coachs principaux possibles. */
+export interface CampaignTeam {
+  teamId: string;
+  recipientCoachId: string | null;
+  candidates: { coachId: string; firstName: string; lastName: string }[];
 }
 
 export interface CoachWishCampaign {
@@ -38,6 +47,9 @@ export interface CoachWishCampaign {
   /** Dernière relance manuelle (C3) — le bouton se bloque le reste de la journée. */
   lastReminderAt: string | null;
   coaches: CampaignCoach[];
+  teams: CampaignTeam[];
+  /** La date limite n'est pas passée, au jour du club. */
+  open: boolean;
 }
 
 export interface CoachWishCampaignPayload {
@@ -68,6 +80,10 @@ export const sendCampaignLinks = (id: string, coachIds?: string[]): Promise<Camp
 
 /** Relance les silencieux (1×/jour — 422 si déjà relancé aujourd'hui). */
 export const remindCampaignSilent = (id: string): Promise<CampaignActionResult> => api.post(`coach_wish_campaigns/${id}/remind`, { json: {} }).json();
+
+/** Choisit le coach principal qui répond pour une équipe ; vaut pour les collectes suivantes. */
+export const setCampaignRecipient = (id: string, teamId: string, coachId: string): Promise<{ campaign: CoachWishCampaign }> =>
+  api.post(`coach_wish_campaigns/${id}/recipient`, { json: { teamId, coachId } }).json();
 
 /**
  * Aperçu de l'e-mail du lien coach (D1) : l'e-mail EXACT de l'envoi initial, bâti côté serveur

@@ -20,8 +20,8 @@ import { conflictingReservation, mainCoachByTeam } from "./coachDoubleBooking";
 
 const COACH_MAXIME = "coach-maxime";
 const links: TeamCoach[] = [
-  { id: "l1", teamId: "teamA", coachId: COACH_MAXIME, role: "MAIN" },
-  { id: "l2", teamId: "teamB", coachId: COACH_MAXIME, role: "MAIN" },
+  { id: "l1", teamId: "teamA", coachId: COACH_MAXIME, role: "MAIN", wishRecipient: false },
+  { id: "l2", teamId: "teamB", coachId: COACH_MAXIME, role: "MAIN", wishRecipient: false },
 ];
 
 function reservation(over: Partial<Reservation> & Pick<Reservation, "teamId" | "venueId">): Reservation {
@@ -58,14 +58,14 @@ describe("conflictingReservation (parité avec CoachDoubleBookingDetector)", () 
   });
 
   it("cas 5 — un ASSISTANT ne bloque pas (le solveur ne le traite pas en ressource exclusive)", () => {
-    const assistantLinks: TeamCoach[] = [links[0]!, { id: "l2", teamId: "teamB", coachId: COACH_MAXIME, role: "ASSISTANT" }];
+    const assistantLinks: TeamCoach[] = [links[0]!, { id: "l2", teamId: "teamB", coachId: COACH_MAXIME, role: "ASSISTANT", wishRecipient: false }];
     const existing = [reservation({ teamId: "teamA", venueId: "venue1" })];
 
     expect(conflictingReservation(candidate, existing, mainCoachByTeam(assistantLinks))).toBeNull();
   });
 
   it("cas 6 — deux coachs MAIN distincts : personne ne se dédouble", () => {
-    const distinct: TeamCoach[] = [links[0]!, { id: "l2", teamId: "teamB", coachId: "coach-nicolas", role: "MAIN" }];
+    const distinct: TeamCoach[] = [links[0]!, { id: "l2", teamId: "teamB", coachId: "coach-nicolas", role: "MAIN", wishRecipient: false }];
     const existing = [reservation({ teamId: "teamA", venueId: "venue1" })];
 
     expect(conflictingReservation(candidate, existing, mainCoachByTeam(distinct))).toBeNull();
@@ -79,7 +79,7 @@ describe("conflictingReservation (parité avec CoachDoubleBookingDetector)", () 
 });
 
 describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK", () => {
-  const twoCoaches: TeamCoach[] = [...links, { id: "l3", teamId: "teamB", coachId: "coach-lea", role: "MAIN" }];
+  const twoCoaches: TeamCoach[] = [...links, { id: "l3", teamId: "teamB", coachId: "coach-lea", role: "MAIN", wishRecipient: false }];
   const existing = [reservation({ teamId: "teamA", venueId: "venue1" })];
 
   it("un second coach principal tient la séance : le geste est légitime", () => {
@@ -97,7 +97,7 @@ describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK
   it("les deux coachs déjà pris par deux séances : plus personne pour tenir, le geste est refusé", () => {
     // La tenue se compte sur TOUTES les réservations : teamA prend Maxime, teamD prend Léa. Une
     // garde qui jugerait chaque paire isolément verrait toujours « un autre coach ».
-    const busy: TeamCoach[] = [...twoCoaches, { id: "l4", teamId: "teamD", coachId: "coach-lea", role: "MAIN" }];
+    const busy: TeamCoach[] = [...twoCoaches, { id: "l4", teamId: "teamD", coachId: "coach-lea", role: "MAIN", wishRecipient: false }];
     const both = [reservation({ teamId: "teamA", venueId: "venue1" }), reservation({ teamId: "teamD", venueId: "venue3" })];
 
     expect(conflictingReservation(candidate, both, mainCoachByTeam(busy))).not.toBeNull();
@@ -107,9 +107,9 @@ describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK
   // groupe déclaré. ⚠ Signature PROPOSÉE (4ᵉ paramètre) ; NEO l'adapte mécaniquement.
   it("le cas des trois appelants : U9 = A + B, A joue en SM1, U11-2 = B, le geste est refusé", () => {
     const threeLinks: TeamCoach[] = [
-      { id: "l1", teamId: "U9", coachId: "A", role: "MAIN" },
-      { id: "l2", teamId: "U9", coachId: "B", role: "MAIN" },
-      { id: "l3", teamId: "U11-2", coachId: "B", role: "MAIN" },
+      { id: "l1", teamId: "U9", coachId: "A", role: "MAIN", wishRecipient: false },
+      { id: "l2", teamId: "U9", coachId: "B", role: "MAIN", wishRecipient: false },
+      { id: "l3", teamId: "U11-2", coachId: "B", role: "MAIN", wishRecipient: false },
     ];
     const u112 = reservation({ teamId: "U11-2", venueId: "venue1" });
     const sm1 = reservation({ teamId: "SM1", venueId: "venue3" });
@@ -128,9 +128,9 @@ describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK
 
   it("même case sans groupe : chacun ses coachs ; groupe déclaré : le coach du groupe tient", () => {
     const sameCase: TeamCoach[] = [
-      { id: "l1", teamId: "T1", coachId: "A", role: "MAIN" },
-      { id: "l2", teamId: "T2", coachId: "B", role: "MAIN" },
-      { id: "l3", teamId: "T3", coachId: "A", role: "MAIN" },
+      { id: "l1", teamId: "T1", coachId: "A", role: "MAIN", wishRecipient: false },
+      { id: "l2", teamId: "T2", coachId: "B", role: "MAIN", wishRecipient: false },
+      { id: "l3", teamId: "T3", coachId: "A", role: "MAIN", wishRecipient: false },
     ];
     const here = [reservation({ teamId: "T1", venueId: "venue1" }), reservation({ teamId: "T2", venueId: "venue1" })];
     const t3 = { teamId: "T3", venueId: "venue2", dayOfWeek: 2, startTime: "17:00", durationMinutes: 90 };
@@ -144,7 +144,7 @@ describe("conflictingReservation — tant qu'un coach tient la séance, c'est OK
     const teamA = reservation({ teamId: "teamA", venueId: "venue1" });
 
     it("entraîne ailleurs : chaque coach avec la séance qui le prend", () => {
-      const busy: TeamCoach[] = [...twoCoaches, { id: "l4", teamId: "teamD", coachId: "coach-lea", role: "MAIN" }];
+      const busy: TeamCoach[] = [...twoCoaches, { id: "l4", teamId: "teamD", coachId: "coach-lea", role: "MAIN", wishRecipient: false }];
       const teamD = reservation({ teamId: "teamD", venueId: "venue3" });
 
       expect(conflictingReservation(candidate, [teamA, teamD], mainCoachByTeam(busy))?.holdFailures).toEqual([

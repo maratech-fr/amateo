@@ -59,6 +59,7 @@ final class StructureRestorer
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TeamEngagementGuard $teamEngagementGuard,
+        private readonly CoachWishCampaignTokenSync $coachWishTokenSync,
     ) {}
 
     /**
@@ -118,6 +119,10 @@ final class StructureRestorer
         // entity that did NOT exist at the photo's moment now dangles (its
         // target is gone) — clean those ghosts, like the E1 cascade would.
         $this->purgeDanglingCalendarRefs($clubId, $seasonId);
+
+        // Les coachs viennent d'être supprimés : la clé étrangère a emporté les jetons de collecte.
+        // La règle du destinataire les recrée dans les collectes ouvertes (les anciens liens sont perdus).
+        $this->coachWishTokenSync->syncSeason($clubId, $seasonId);
         $this->entityManager->flush();
     }
 

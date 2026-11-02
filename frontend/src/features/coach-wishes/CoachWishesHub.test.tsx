@@ -596,6 +596,7 @@ describe("CoachWishesHub", () => {
     token: "a".repeat(64),
     respondedAt: null,
     sentAt: null,
+    teamIds: ["t1"],
     ...over,
   });
   const campaignWith = (coaches: CoachWishCampaign["coaches"]): CoachWishCampaign => ({
@@ -609,6 +610,8 @@ describe("CoachWishesHub", () => {
     openWishCount: 0,
     lastReminderAt: null,
     coaches,
+    teams: [],
+    open: true,
   });
 
   // Décision 1 : le titre est « Doléances des coachs — {période} » PARTOUT, y compris la vue

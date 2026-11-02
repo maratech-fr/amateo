@@ -116,8 +116,22 @@ final readonly class PublicTokenPaths implements CustomPathContributor
                                 'teams' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
                                     'id' => ['type' => 'string', 'format' => 'uuid'],
                                     'name' => ['type' => 'string'],
+                                    // Le staff courant de l'équipe : ces quatre champs, jamais un email.
+                                    'staff' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                                        'coachId' => ['type' => 'string', 'format' => 'uuid'],
+                                        'firstName' => ['type' => 'string'],
+                                        'lastName' => ['type' => 'string'],
+                                        'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT']],
+                                    ]]],
                                 ]]],
                                 'wishes' => ['type' => 'array', 'items' => $this->coachWishSchema()],
+                                // Des jours déclarés par d'AUTRES équipes pour une personne du staff, jamais leur nom.
+                                'absencesElsewhere' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                                    'teamId' => ['type' => 'string', 'format' => 'uuid'],
+                                    'weekStart' => ['type' => 'string', 'format' => 'date'],
+                                    'coachId' => ['type' => 'string', 'format' => 'uuid'],
+                                    'days' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7]],
+                                ]]],
                                 'respondedAt' => ['type' => ['string', 'null'], 'format' => 'date-time'],
                             ],
                         ]),
@@ -139,7 +153,7 @@ final readonly class PublicTokenPaths implements CustomPathContributor
                         '404' => $notFound,
                         '410' => new Response('Campaign past its deadline, or its season is archived (read-only)'),
                         // Validation COMPLÈTE avant toute écriture : un 422 n'écrit rien.
-                        '422' => new Response('Missing/oversized submissions, team outside the perimeter, week outside the collection, invalid slot/day, or a day both wished and unavailable'),
+                        '422' => new Response('Missing/oversized submissions, team outside the perimeter, week outside the collection, invalid slot/day, a day both wished and unavailable, or a malformed, oversized or out-of-team staff line'),
                         '429' => $tooMany,
                     ],
                     summary: 'Submit the coach wishes for the weeks of the campaign',
@@ -173,6 +187,10 @@ final readonly class PublicTokenPaths implements CustomPathContributor
                 'weekStart' => ['type' => 'string', 'format' => 'date', 'description' => 'Must be one of the campaign weeks AND still intersect the parent period'],
                 'slotsWanted' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 7],
                 'unavailableDays' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7]],
+                'staffUnavailability' => ['type' => 'array', 'maxItems' => 50, 'description' => 'Absence days per staff member; a person left out is available', 'items' => ['type' => 'object', 'required' => ['coachId'], 'properties' => [
+                    'coachId' => ['type' => 'string', 'format' => 'uuid'],
+                    'days' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7]],
+                ]]],
                 // Jours souhaités — informatif ; disjoint de unavailableDays (422 sinon).
                 'wishedDays' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7]],
                 'comment' => ['type' => ['string', 'null'], 'maxLength' => 2000],
