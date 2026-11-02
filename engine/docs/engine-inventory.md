@@ -119,7 +119,12 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
   `MatchConflictDetector` — gardé par `PlayersPayloadParityTest`, **bloquant**). Le solveur
   applique la même exclusion en défense (`_team_players`) et pèse une joueuse comme un coach MAIN
   (`W_COACH_MAIN`, SOFT). `trainingOccupancies` est étendu côté backend aux joueurs actifs de
-  l'équipe du créneau, en plus des coachs.
+  l'équipe du créneau, en plus du tenant de la séance. **Sens depuis « un coach tient la séance »
+  (2026-11-02, contrat 1.9 constant)** : « personne retenue par une séance ce jour-là » (tenant daté,
+  plus le coach stocké), émis seulement sur les dates portant un match à placer ; le moteur affecte lui-même
+  les matchs FIGÉS (`solver/match_placement/holding.py`, miroir de `Conflicts/DatedHolding`, parité
+  `tests/test_dated_holding_parity.py`). Terme coach : tous les principaux pris = −60 une fois, −10 si
+  un adjoint est libre, un principal libre = 0 ; `W_COACH_UNAVAILABLE` n'est plus lue.
 - **`roundTripMinutes` / `kickoffEstimated` (RETIRÉS du contrat 1.3, ALIGN-20/ALIGN-13)** : le
   trajet aller-retour AWAY et le drapeau « heure estimée » étaient TRANSPORTÉS mais **jamais
   consommés** par le solveur depuis P4-240 ③ (décision B) — un match `AWAY` ne projette plus de
