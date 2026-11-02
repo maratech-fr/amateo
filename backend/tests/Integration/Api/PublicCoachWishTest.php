@@ -797,7 +797,8 @@ final class PublicCoachWishTest extends WebTestCase
     {
         $coach = $this->unlinkedCoach($firstName)->setEmail($email);
         $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setTeamId($this->team->getId())->setCoachId($coach->getId())->setRole($role));
+            // Date explicite : la colonne est à la seconde, le lien du setUp et celui-ci tomberaient à égalité.
+            ->setTeamId($this->team->getId())->setCoachId($coach->getId())->setRole($role)->setCreatedAt(new DateTimeImmutable('+1 day')));
         $this->em->flush();
 
         return $coach;

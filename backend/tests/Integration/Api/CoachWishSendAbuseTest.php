@@ -207,9 +207,8 @@ final class CoachWishSendAbuseTest extends WebTestCase
 
         $this->em->clear();
         $this->scopeGucToClub($other->getId());
-        $reloaded = $this->em->getRepository(TeamCoach::class)->find($otherLink->getId());
-        self::assertInstanceOf(TeamCoach::class, $reloaded);
-        self::assertFalse($reloaded->isWishRecipient(), 'le lien de l\'autre club n\'est jamais marqué');
+        // SQL direct : l'EntityManager de la requête garde le filtre tenant du club courant.
+        self::assertSame([false], array_map(boolval(...), $this->em->getConnection()->fetchFirstColumn('SELECT wish_recipient FROM team_coach WHERE id = :id', ['id' => $otherLink->getId()])), 'le lien de l\'autre club n\'est jamais marqué');
     }
 
     protected function setUp(): void
