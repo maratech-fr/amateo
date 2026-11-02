@@ -37,6 +37,7 @@ export const MATCHES_TEXTS = {
   awayAt: (city: string) => `extérieur à ${city}`,
   matchVsTrainingSummary: (match: string, training: string) => `Match ${match} × entraînement ${training}`,
   teamLevelMissingSummary: (team: string) => `${team} — ses matchs sont placés sans les créneaux de sa ligue`,
+  coachUnavailableSummary: (team: string, moment: string) => `Indisponible pour le match de ${team}, ${moment}`,
   // M11 + M6 (retours Nico, BCCL 2026-10-27) : nomme l'équipe, la date (avec son jour) et le gymnase.
   accessWindowLostPhrase: (team: string, date: string, venue: string, windows: string) =>
     `${team} — match du ${date} placé hors des accès match de ${venue} (${windows}). Déplacez le match ou ajustez l'accès.`,

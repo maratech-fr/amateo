@@ -124,6 +124,11 @@ function conflictSummary(conflict: ConflictCore, teams: Map<string, Team>, venue
       ? MATCHES_TEXTS.matchVsTrainingSummary(matchName, trainingName)
       : `Match ${annotateSide(matchName, matchRole, coachGender)} × entraînement ${annotateSide(trainingName, conflict.training.role, coachGender)}`;
   }
+  if ("MATCH_COACH_UNAVAILABLE" === conflict.type && conflict.fixture) {
+    const date = frDateWeekdayNoYear(conflict.fixture.matchDate);
+    const moment = null != conflict.fixture.kickoffTime ? `${date} à ${conflict.fixture.kickoffTime}` : date;
+    return MATCHES_TEXTS.coachUnavailableSummary(teamName(teams, conflict.fixture.teamId), moment);
+  }
   if ("VENUE_UNAVAILABLE" === conflict.type && conflict.fixture) {
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
   }
