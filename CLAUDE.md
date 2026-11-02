@@ -115,7 +115,8 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 - **Solveur** : single-pass, budget adaptatif 60/180/600 s, INFEASIBLE → `status="failed"` +
   diagnostics expliqués ; **SEULE exception : « la réservation gagne »** — un verrou HARD qui
   contredit une règle l'emporte, le planning est produit et l'écart nommé. Aucun autre repli de
-  relaxation. → `docs/architecture/adr-0001-single-pass-solve.md`.
+  relaxation. Ce que le Récap dit voué à l'échec est refusé 422 `blocker` AVANT le moteur, sur les
+  trois guichets de génération. → `docs/architecture/adr-0001-single-pass-solve.md`.
 
 ## 7. Workflow rules (orchestrator)
 
