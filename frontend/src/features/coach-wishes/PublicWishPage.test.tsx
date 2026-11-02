@@ -11,6 +11,7 @@ import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 import type { PublicWishContext } from "./publicApi";
 import { COACH_WISHES_PUBLIC_TEXTS } from "./texts/public";
+import { frDate } from "./wishSections";
 
 const h = { getContext: vi.fn(), submit: vi.fn() };
 vi.mock("./publicApi", async (importOriginal) => ({
@@ -487,16 +488,61 @@ describe("PublicWishPage — disponibilités du staff", () => {
     await userEvent.click(within(staffPicker("Benoît", "Roux", "ASSISTANT")).getByRole("button", { name: "mardi" }));
     await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
 
-    const line = screen.getByText(/semaine du/).textContent;
+    // Une ligne par partie du résumé, et une ligne par personne absente : plus rien de collé par « · ».
+    const week = screen.getByText(/semaine du/).closest("li") as HTMLElement;
+    const lines = within(week)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
     const lowDay = (day: number) => dayLabelShort(day).toLowerCase();
-    expect(line).toContain(COACH_WISHES_PUBLIC_TEXTS.recapWished([lowDay(1)]));
-    expect(line).toContain(COACH_WISHES_PUBLIC_TEXTS.recapTeamClosed([lowDay(5)]));
-    expect(line).toContain(
-      COACH_WISHES_PUBLIC_TEXTS.recapAbsent([
-        { firstName: "Maxime", dayLabels: [lowDay(4)] },
-        { firstName: "Benoît", dayLabels: [lowDay(2)] },
-      ]),
+    expect(lines).toContain(COACH_WISHES_PUBLIC_TEXTS.recapWished([lowDay(1)]));
+    expect(lines).toContain(COACH_WISHES_PUBLIC_TEXTS.recapTeamClosed([lowDay(5)]));
+    expect(lines).toContain(COACH_WISHES_PUBLIC_TEXTS.recapAbsent([{ firstName: "Maxime", dayLabels: [lowDay(4)] }]));
+    expect(lines).toContain(COACH_WISHES_PUBLIC_TEXTS.recapAbsent([{ firstName: "Benoît", dayLabels: [lowDay(2)] }]));
+    expect(week.textContent).not.toContain(" · ");
+  });
+
+  /** Le sélecteur d'une personne, dans le bloc d'une semaine : deux semaines portent la même légende de personne. */
+  const staffPickerOfWeek = (weekStart: string, firstName: string, lastName: string, role: "MAIN" | "ASSISTANT") =>
+    within(screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.weekLegend("SM1", frDate(weekStart)) })).getByRole("group", {
+      name: COACH_WISHES_PUBLIC_TEXTS.staffMemberLegend(firstName, lastName, role),
+    });
+
+  it("le jour déclaré ailleurs est repéré sur la personne et la semaine concernées, jamais ailleurs, et reste non pressé d'office", async () => {
+    h.getContext.mockResolvedValue(
+      context({
+        weeks: ["2026-02-16", "2026-02-23"],
+        wishes: [],
+        absencesElsewhere: [{ teamId: "t1", weekStart: "2026-02-16", coachId: "c1", days: [4] }],
+      }),
     );
+    renderAt();
+    await start();
+
+    const marked = within(staffPickerOfWeek("2026-02-16", "Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" });
+    expect(marked).toHaveClass("border-dashed");
+    expect(marked).toHaveAttribute("aria-describedby");
+    expect(marked).toHaveAttribute("aria-pressed", "true");
+    // Pas la semaine d'après, pas un autre membre du staff, pas un autre jour.
+    expect(within(staffPickerOfWeek("2026-02-23", "Maxime", "Durand", "MAIN")).getByRole("button", { name: "jeudi" })).not.toHaveClass("border-dashed");
+    expect(within(staffPickerOfWeek("2026-02-16", "Benoît", "Roux", "ASSISTANT")).getByRole("button", { name: "jeudi" })).not.toHaveClass("border-dashed");
+    expect(within(staffPickerOfWeek("2026-02-16", "Maxime", "Durand", "MAIN")).getByRole("button", { name: "lundi" })).not.toHaveClass("border-dashed");
+  });
+
+  it("abus : une absence d'une personne hors du staff, ou d'une autre équipe, ne pose aucun repère et ne révèle aucun nom d'équipe", async () => {
+    h.getContext.mockResolvedValue(
+      context({
+        wishes: [],
+        absencesElsewhere: [
+          { teamId: "t1", weekStart: "2026-02-16", coachId: "cHorsStaff", days: [4] },
+          { teamId: "t-autre", weekStart: "2026-02-16", coachId: "c1", days: [2] },
+        ],
+      }),
+    );
+    const { container } = renderAt();
+    await start();
+
+    expect(container.querySelector("button[aria-pressed].border-dashed")).toBeNull();
+    expect(container.textContent).not.toContain("t-autre");
   });
 
   it.each([

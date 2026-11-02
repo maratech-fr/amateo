@@ -524,6 +524,7 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
     // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée. D13 — la « Mutualisation » est
     // rendue par SharedTrainingBlockPanel : créer écrit un « bloc » ancré au plan de période.
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     await user.click(screen.getByRole("checkbox", { name: "U13" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
@@ -549,6 +550,7 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     expect(screen.queryByLabelText(/Intensité d'entraînement, passerelle/)).toBeNull();
     // La mutualisation, elle, RESTE éditable en période (onglet « Mutualisation » voisin).
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 });

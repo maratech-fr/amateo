@@ -11,6 +11,7 @@ import { tierGroupLabel } from "@/shared/lib/teamTiers";
 
 import type { Gender, TeamImportAnalysis, TeamImportOverride, TeamImportResult } from "../api";
 import { useAnalyzeTeamsImport, useImportTeams, usePriorityTiers } from "../queries";
+import { TEAMS_IMPORT_TEXTS as TEXTS } from "../texts/teamsImport";
 
 /**
  * Les options du contrôle Genre, miroir de `GENDERS` de l'éditeur d'équipes. Refonte PR2 (§0 point 1
@@ -18,10 +19,10 @@ import { useAnalyzeTeamsImport, useImportTeams, usePriorityTiers } from "../quer
  * tant qu'elle est sélectionnée sur une ligne cochée, « Importer » est désarmé avec sa raison.
  */
 const GENDER_OPTIONS: { value: Gender | ""; label: string }[] = [
-  { value: "", label: "À choisir" },
-  { value: "M", label: "Homme" },
-  { value: "F", label: "Femme" },
-  { value: "MIXTE", label: "Mixte" },
+  { value: "", label: TEXTS.genderToChoose },
+  { value: "M", label: TEXTS.genderMale },
+  { value: "F", label: TEXTS.genderFemale },
+  { value: "MIXTE", label: TEXTS.genderMixed },
 ];
 
 interface TeamsImportModalProps {
@@ -83,7 +84,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
     try {
       snapshot = await snapshotFile(next);
     } catch {
-      setHttpError("Le fichier n'a pas pu être lu — est-il ouvert dans un autre logiciel ?");
+      setHttpError(TEXTS.fileUnreadable);
       return;
     }
     setFile(snapshot);
@@ -150,28 +151,28 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
   const missingGenderCount = rows.filter(
     (r) => checked.has(r.row) && "" === (genderByRow[r.row] ?? r.suggestedGender ?? ""),
   ).length;
-  const importDisabledReason = missingGenderCount > 0 ? `${missingGenderCount} équipe${missingGenderCount > 1 ? "s" : ""} sans genre` : undefined;
+  const importDisabledReason = missingGenderCount > 0 ? TEXTS.missingGender(missingGenderCount) : undefined;
 
   return (
     <Modal
-      label="Importer vos équipes (export FBI)"
-      title="Importer vos équipes (export FBI)"
+      label={TEXTS.title}
+      title={TEXTS.title}
       size="md"
       onClose={onClose}
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>
-            Fermer
+            {TEXTS.close}
           </Button>
+          {showSelection && undefined !== importDisabledReason ? <span className="text-xs text-warning">{importDisabledReason}</span> : null}
           {showSelection ? (
             <Button
               size="sm"
               disabled={0 === count || importing || missingGenderCount > 0}
-              disabledReason={importDisabledReason}
               onClick={doImport}
             >
               {importing ? <Spinner className="size-4" /> : null}
-              Importer {count} équipe{count > 1 ? "s" : ""}
+              {TEXTS.importButton(count)}
             </Button>
           ) : null}
         </>
@@ -181,15 +182,12 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
         {/* Temps 1 — dépôt. Tant qu'aucune analyse n'a abouti, on montre le champ de fichier. */}
         {null === analysis && null === result ? (
           <>
-            <p className="text-sm text-muted-foreground">
-              Déposez l'export FBI de la liste de vos équipes (.xlsx, colonnes Nom, Catégorie, Numéro, Organisme). Un
-              autre fichier Excel ne sera pas reconnu.
-            </p>
-            <FilePicker label="Fichier FBI (.xlsx)" accept=".xlsx" disabled={analyzing} onFileChange={(f) => void onFileChange(f)} />
+            <p className="text-sm text-muted-foreground">{TEXTS.dropHint}</p>
+            <FilePicker label={TEXTS.fileLabel} accept=".xlsx" disabled={analyzing} onFileChange={(f) => void onFileChange(f)} />
             {analyzing ? (
               <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Spinner className="size-4" />
-                Analyse du fichier…
+                {TEXTS.analyzing}
               </p>
             ) : null}
           </>
@@ -199,12 +197,10 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
         {showSelection ? (
           <>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">
-                Cochez les équipes à importer. Celles déjà présentes sont décochées pour éviter les doublons.
-              </p>
+              <p className="text-sm text-muted-foreground">{TEXTS.selectHint}</p>
               {rows.length > 0 ? (
                 <Button variant="ghost" size="sm" onClick={toggleAll}>
-                  {allChecked ? "Tout décocher" : "Tout cocher"}
+                  {allChecked ? TEXTS.uncheckAll : TEXTS.checkAll}
                 </Button>
               ) : null}
             </div>
@@ -215,12 +211,12 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                     <input type="checkbox" className="size-4 shrink-0" checked={checked.has(r.row)} onChange={() => toggle(r.row)} />
                     <span className="min-w-0 flex-1 truncate">
                       {r.name} · {r.category}
-                      {r.alreadyPresent ? <span className="text-muted-foreground"> — déjà présente</span> : null}
+                      {r.alreadyPresent ? <span className="text-muted-foreground">{TEXTS.alreadyPresentSuffix}</span> : null}
                     </span>
                   </label>
                   {/* Rang + genre, pré-remplis par le serveur, édités avant l'import (#4). */}
                   <Select
-                    aria-label={`Rang de ${r.name}`}
+                    aria-label={TEXTS.tierAria(r.name)}
                     compact
                     wrapperClassName="w-32 shrink-0"
                     value={String(tierByRow[r.row] ?? r.suggestedTierId)}
@@ -233,7 +229,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                     ))}
                   </Select>
                   <Select
-                    aria-label={`Genre de ${r.name}`}
+                    aria-label={TEXTS.genderAria(r.name)}
                     compact
                     wrapperClassName="w-24 shrink-0"
                     aria-invalid={(checked.has(r.row) && "" === (genderByRow[r.row] ?? r.suggestedGender ?? "")) || undefined}
@@ -251,11 +247,11 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                     <input
                       type="checkbox"
                       className="size-4 shrink-0"
-                      aria-label={`Entente (CTC) pour ${r.name}`}
+                      aria-label={TEXTS.ctcAria(r.name)}
                       checked={ctcByRow[r.row] ?? r.suggestedCtc}
                       onChange={() => setCtcByRow((prev) => ({ ...prev, [r.row]: !(prev[r.row] ?? r.suggestedCtc) }))}
                     />
-                    <span aria-hidden="true">CTC</span>
+                    <span aria-hidden="true">{TEXTS.ctcShort}</span>
                   </label>
                 </li>
               ))}
@@ -273,10 +269,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
         {/* Temps 3 — rapport. La modale reste ouverte pour le lire. */}
         {null !== result ? (
           <div role="status" className="flex flex-col gap-2 text-sm">
-            <p className="font-medium">
-              {result.created} équipe{result.created > 1 ? "s" : ""} créée{result.created > 1 ? "s" : ""} · {result.skipped}{" "}
-              ignorée{result.skipped > 1 ? "s" : ""} (déjà présentes sous le même nom)
-            </p>
+            <p className="font-medium">{TEXTS.report(result.created, result.skipped)}</p>
             {result.errors.length > 0 ? (
               <ul className="list-inside list-disc text-xs text-destructive">
                 {result.errors.map((error, i) => (
@@ -284,13 +277,8 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                 ))}
               </ul>
             ) : null}
-            <p className="text-muted-foreground">
-              Complétez maintenant chaque équipe : genre, niveau de jeu, rang et séances.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              La fédération ne déclare pas toutes vos équipes (loisirs, école de basket…) : celles qui manquent
-              s'ajoutent à la main, ce n'est pas un oubli de l'import.
-            </p>
+            <p className="text-muted-foreground">{TEXTS.completeHint}</p>
+            <p className="text-xs text-muted-foreground">{TEXTS.federationHint}</p>
           </div>
         ) : null}
 

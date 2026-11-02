@@ -93,6 +93,20 @@ final class CoachWishEmailPreviewTest extends WebTestCase
         self::assertSame(['detail' => 'Not Found', 'status' => 404, 'title' => 'An error occurred'], $foreign);
     }
 
+    /** Abus : un identifiant malformé dans l'URL rend le même 404 qu'une collecte d'un autre club, jamais un 500 qui le distingue. */
+    public function testAMalformedCampaignIdIsIndistinguishableFromAForeignCampaign(): void
+    {
+        [$otherCampaignId] = $this->seedOtherClubCampaign();
+
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $otherCampaignId . '/email-preview', [], [], $this->headers($this->managerJwt));
+        self::assertResponseStatusCodeSame(404);
+        $foreign = $this->problemShape(json_decode((string) $this->client->getResponse()->getContent(), true));
+
+        $this->client->request('GET', '/api/coach_wish_campaigns/abc/email-preview', [], [], $this->headers($this->managerJwt));
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($foreign, $this->problemShape(json_decode((string) $this->client->getResponse()->getContent(), true)));
+    }
+
     public function testPreviewNeverExposesARealToken(): void
     {
         $realToken = $this->realToken->getToken();

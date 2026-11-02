@@ -27,6 +27,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
+use Symfony\Component\Uid\Uuid;
 use Throwable;
 
 /**
@@ -66,17 +67,14 @@ final class CoachWishCampaignActionController extends AbstractController
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
 
-        $campaign = $this->entityManager->getRepository(CoachWishCampaign::class)->find($id);
-        if (!$campaign instanceof CoachWishCampaign) {
-            return $this->json(['error' => 'Collecte introuvable.'], Response::HTTP_NOT_FOUND);
-        }
-
+        // Un identifiant malformé rend le même 404 qu'une collecte d'un autre club, jamais un 500.
+        $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         // Le club vient de la LIGNE, jamais du corps — un id d'un autre club est déjà
-        // invisible ici (RLS + filtre tenant), la comparaison est le filet app-layer.
+        // invisible ici (RLS + filtre tenant), la comparaison est le filet app-layer, au même 404.
         $request = $this->requestStack->getCurrentRequest();
         $currentClubId = $this->resolveCurrentClubId($this->requestStack);
-        if (null !== $currentClubId && $campaign->getClubId() !== $currentClubId) {
-            return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
+        if (!$campaign instanceof CoachWishCampaign || (null !== $currentClubId && $campaign->getClubId() !== $currentClubId)) {
+            return $this->json(['error' => 'Collecte introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
         // Une saison gelée est en lecture seule (invariant SeasonReadonly) : ces actions
@@ -244,7 +242,7 @@ final class CoachWishCampaignActionController extends AbstractController
             $token = $recipient['token'];
             $coach = $recipient['coach'];
             try {
-                $this->mailer->send($this->mailBuilder->buildCoachLink($recipient['email'], $coach->getFirstName(), $clubName, $campaign, $periodTitle, $token->getToken(), $senderFirstName, $isReminder, $club));
+                $this->mailer->send($this->mailBuilder->buildCoachLink($recipient['email'], $coach->getFirstName(), $clubName, $campaign, $periodTitle, $token->getToken(), $senderFirstName, $isReminder, $club, \count($token->getTeamIds())));
                 $token->markSent($this->clock->now());
                 ++$sent;
             } catch (Throwable) {

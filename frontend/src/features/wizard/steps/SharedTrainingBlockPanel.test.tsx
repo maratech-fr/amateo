@@ -61,10 +61,24 @@ const block = (id: string, teamIds: string[], commonSessions = 1, schedulePlanId
   sessions,
 });
 
-const renderPanel = (schedulePlanId: string | null = null, initialTeamId?: string) =>
-  renderWithProviders(<SharedTrainingBlockPanel teams={TEAMS} tiers={TIERS} schedulePlanId={schedulePlanId} initialTeamId={initialTeamId} />);
+const renderPanel = (schedulePlanId: string | null = null, initialTeamId?: string, pausedTeamIds?: ReadonlySet<string>) =>
+  renderWithProviders(<SharedTrainingBlockPanel teams={TEAMS} tiers={TIERS} schedulePlanId={schedulePlanId} initialTeamId={initialTeamId} pausedTeamIds={pausedTeamIds} />);
+
+type User = ReturnType<typeof userEvent.setup>;
+/** Le formulaire de création vit dans un accordéon replié (corps démonté) : on l'ouvre d'abord. */
+const openNewGroup = (user: User) => user.click(screen.getByRole("button", { name: T.blockNewTitle }));
+/** Monte le panneau et ouvre le formulaire. */
+const renderOpenPanel = async (user: User, schedulePlanId: string | null = null) => {
+  renderPanel(schedulePlanId);
+  await openNewGroup(user);
+};
+const formHeader = (name: string) => screen.getByRole("button", { name });
+const groupRows = () => screen.getAllByRole("listitem").map((li) => li.textContent);
+const nameOfTeam = (id: string): string => TEAMS.find((t) => t.id === id)?.name ?? id;
 
 beforeEach(() => {
+  // jsdom n'implémente pas le défilement : on observe l'appel qui amène le formulaire à l'écran.
+  Element.prototype.scrollIntoView = vi.fn();
   stbCreate.mockClear();
   stbUpdate.mockClear();
   stbDelete.mockClear();
@@ -73,15 +87,15 @@ beforeEach(() => {
 });
 
 describe("SharedTrainingBlockPanel — la LISTE DÉROULANTE des séances communes (bornée, affichée)", () => {
-  it("désactive la liste déroulante tant qu'il y a moins de deux équipes", () => {
-    renderPanel();
+  it("désactive la liste déroulante tant qu'il y a moins de deux équipes", async () => {
+    await renderOpenPanel(userEvent.setup());
     expect(screen.getByRole("combobox", { name: "Séances communes" })).toBeDisabled();
     expect(screen.getByText(/Choisissez au moins 2 équipes/)).toBeInTheDocument();
   });
 
   it("n'offre que 1..min(séances effectives) une fois deux équipes cochées, et annonce le plafond", async () => {
     const user = userEvent.setup();
-    renderPanel();
+    await renderOpenPanel(user);
     // U9F1 = 3 séances, U9F2 = 2 → plafond 2 : options 1 et 2, JAMAIS 3.
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
@@ -96,7 +110,7 @@ describe("SharedTrainingBlockPanel — la LISTE DÉROULANTE des séances commune
   it("suit l'override de période dans le plafond (l'override est prioritaire)", async () => {
     const user = userEvent.setup();
     overridesState.data = [{ id: "o", schedulePlanId: "plan-1", teamId: "t1", isActive: true, sessionsPerWeek: 1, source: null }];
-    renderPanel("plan-1");
+    await renderOpenPanel(user, "plan-1");
 
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
@@ -106,9 +120,9 @@ describe("SharedTrainingBlockPanel — la LISTE DÉROULANTE des séances commune
 });
 
 describe("SharedTrainingBlockPanel — multi-appartenance PERMISE (jamais de verrou)", () => {
-  it("une équipe déjà dans un autre bloc reste COCHABLE, avec un simple repère informatif", () => {
+  it("une équipe déjà dans un autre bloc reste COCHABLE, avec un simple repère informatif", async () => {
     blocksState.data = [block("b1", ["t1", "t3"])];
-    renderPanel();
+    await renderOpenPanel(userEvent.setup());
 
     const u9f1 = screen.getByRole("checkbox", { name: "U9F1" });
     // Multi-appartenance permise : jamais désactivée (contraste avec le groupe K).
@@ -121,7 +135,7 @@ describe("SharedTrainingBlockPanel — multi-appartenance PERMISE (jamais de ver
 describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
   it("crée un bloc : POST { schedulePlanId, teamIds, commonSessions } avec TOUTES les équipes cochées", async () => {
     const user = userEvent.setup();
-    renderPanel(null);
+    await renderOpenPanel(user, null);
 
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
@@ -137,7 +151,7 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
 
   it("le bouton reste inerte tant qu'il n'y a pas au moins deux équipes", async () => {
     const user = userEvent.setup();
-    renderPanel();
+    await renderOpenPanel(user);
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeDisabled();
   });
@@ -222,7 +236,7 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     const err = new HTTPError(new Response(null, { status: 422 }), new Request("http://localhost/"), { method: "POST" } as never);
     (err as { data?: unknown }).data = { title: "An error occurred", detail: message, violations: [{ propertyPath: "", message }] };
     stbCreate.mockRejectedValueOnce(err);
-    renderPanel();
+    await renderOpenPanel(user);
 
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
@@ -250,7 +264,7 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
 describe("SharedTrainingBlockPanel — E12 : nom du groupe (label)", () => {
   it("E12 (a) — le « Nom du groupe » saisi part dans le payload de création (label)", async () => {
     const user = userEvent.setup();
-    renderPanel();
+    await renderOpenPanel(user);
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
 
@@ -274,5 +288,159 @@ describe("SharedTrainingBlockPanel — E12 : nom du groupe (label)", () => {
     // Sans nom → l'affichage par les équipes DEMEURE (témoin VERT du fallback, promesse (c)).
     const nameOf = (id: string): string => TEAMS.find((t) => t.id === id)?.name ?? id;
     expect(screen.getByText(sharedGroupLabel(["t1", "t3"], 1, nameOf))).toBeInTheDocument();
+  });
+});
+
+/** Les groupes d'abord, et le formulaire seulement quand on le demande : la liste se lit sans chercher. */
+describe("SharedTrainingBlockPanel — liste d'abord, formulaire replié", () => {
+  it("l'intro définit le groupe ; la consigne de saisie n'apparaît qu'à l'ouverture du formulaire", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    expect(T.blockIntro).not.toMatch(/cochez/i);
+    expect(screen.getByText(T.blockIntro)).toBeInTheDocument();
+    expect(screen.queryByText(/cochez-les/i)).toBeNull();
+
+    await openNewGroup(user);
+    expect(screen.getByText(/cochez-les/i)).toBeInTheDocument();
+  });
+
+  it("« Nouveau groupe » est replié à l'ouverture : aucune case, le corps n'est pas monté", () => {
+    renderPanel(null, "t1");
+    expect(formHeader(T.blockNewTitle)).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("les groupes de l'équipe ouverte passent en tête, sans perdre les autres", () => {
+    blocksState.data = [block("b1", ["t2", "t3"]), block("b2", ["t1", "t2"])];
+    renderPanel(null, "t1");
+    expect(groupRows()).toEqual([sharedGroupLabel(["t1", "t2"], 1, nameOfTeam), sharedGroupLabel(["t2", "t3"], 1, nameOfTeam)]);
+  });
+
+  it("le crayon ouvre le formulaire en « Modifier le groupe » et l'amène à l'écran", async () => {
+    const user = userEvent.setup();
+    blocksState.data = [block("b1", ["t1", "t2"], 2)];
+    renderPanel();
+
+    await user.click(screen.getByRole("button", { name: T.blockEditAria("U9F1 + U9F2") }));
+
+    expect(formHeader(T.blockEditTitle)).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("checkbox", { name: "U9F2" })).toBeChecked();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("créer replie le formulaire et recoche l'équipe ouverte pour le groupe suivant", async () => {
+    const user = userEvent.setup();
+    renderPanel(null, "t1");
+    await openNewGroup(user);
+    await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
+
+    expect(await screen.findByRole("button", { name: T.blockNewTitle })).toHaveAttribute("aria-expanded", "false");
+    await openNewGroup(user);
+    expect(screen.getByRole("checkbox", { name: "U9F1" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "U9F2" })).not.toBeChecked();
+  });
+
+  it.each([
+    ["Enregistrer", T.blockSave],
+    ["Annuler", T.blockCancel],
+  ])("%s replie le formulaire et sort de la modification", async (_geste, label) => {
+    const user = userEvent.setup();
+    blocksState.data = [block("b1", ["t1", "t2"], 2)];
+    renderPanel(null, "t1");
+    await user.click(screen.getByRole("button", { name: T.blockEditAria("U9F1 + U9F2") }));
+
+    await user.click(screen.getByRole("button", { name: label }));
+
+    expect(await screen.findByRole("button", { name: T.blockNewTitle })).toHaveAttribute("aria-expanded", "false");
+    await openNewGroup(user);
+    expect(screen.getByRole("checkbox", { name: "U9F2" }), "la sélection du groupe édité ne reste pas").not.toBeChecked();
+  });
+
+  it("replier à la main sort de la modification : la prochaine ouverture repart d'un nouveau groupe", async () => {
+    const user = userEvent.setup();
+    blocksState.data = [block("b1", ["t1", "t2"], 2)];
+    renderPanel();
+    await user.click(screen.getByRole("button", { name: T.blockEditAria("U9F1 + U9F2") }));
+
+    await user.click(formHeader(T.blockEditTitle));
+
+    expect(formHeader(T.blockNewTitle)).toHaveAttribute("aria-expanded", "false");
+    await openNewGroup(user);
+    expect(screen.getByRole("checkbox", { name: "U9F1" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
+  });
+
+  it("supprimer le groupe en cours de modification sort de la modification", async () => {
+    const user = userEvent.setup();
+    blocksState.data = [block("b1", ["t1", "t2"], 2)];
+    renderPanel();
+    await user.click(screen.getByRole("button", { name: T.blockEditAria("U9F1 + U9F2") }));
+
+    await user.click(screen.getByRole("button", { name: T.blockDeleteAria("U9F1 + U9F2") }));
+    await user.click(screen.getByRole("button", { name: T.blockDeleteConfirm }));
+
+    expect(stbDelete).toHaveBeenCalledWith("b1");
+    expect(formHeader(T.blockNewTitle)).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("SharedTrainingBlockPanel — compteur de cochées", () => {
+  it("le compteur suit les cases cochées, sous la recherche et au-dessus des cases", async () => {
+    const user = userEvent.setup();
+    await renderOpenPanel(user);
+    await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
+    const counter = screen.getByText(/^1 équipe cochée/);
+    expect(screen.getByRole("searchbox", { name: T.blockSearchTeam }).compareDocumentPosition(counter) & Node.DOCUMENT_POSITION_FOLLOWING, "sous la recherche").toBeTruthy();
+    expect(counter.compareDocumentPosition(screen.getAllByRole("checkbox")[0]) & Node.DOCUMENT_POSITION_FOLLOWING, "au-dessus de la première case").toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
+    expect(screen.getByText(/^2 équipes cochées/)).toBeInTheDocument();
+  });
+});
+
+/** Une équipe en pause n'est jamais mutualisée d'office : ni cochée, ni comptée, ni envoyée à la création. */
+describe("SharedTrainingBlockPanel — équipe en pause", () => {
+  const PAUSED = new Set(["t1"]);
+
+  it("l'équipe ouverte en pause n'est pas pré-cochée : elle ne compte pas et ne part pas au serveur", async () => {
+    const user = userEvent.setup();
+    renderPanel("plan-1", "t1", PAUSED);
+    await openNewGroup(user);
+
+    await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
+    expect(screen.getByText(/^1 équipe cochée/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Créer le groupe" }), "une seule équipe réelle : pas de groupe").toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "U9M1" }));
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
+    expect([...(stbCreate.mock.calls[0][0] as { teamIds: string[] }).teamIds].sort()).toEqual(["t2", "t3"]);
+  });
+
+  it("en modification, un membre en pause reste une ligne muette : sans case, hors du compteur, toujours membre à l'enregistrement", async () => {
+    const user = userEvent.setup();
+    blocksState.data = [block("b1", ["t1", "t2", "t3"], 1, "plan-1")];
+    renderPanel("plan-1", undefined, PAUSED);
+
+    await user.click(screen.getByRole("button", { name: T.blockEditAria("U9F1 + U9F2 + U9M1") }));
+
+    const body = document.getElementById(formHeader(T.blockEditTitle).getAttribute("aria-controls") as string) as HTMLElement;
+    expect(within(body).queryByRole("checkbox", { name: "U9F1" })).toBeNull();
+    expect(within(body).getByText(/U9F1/)).toBeInTheDocument();
+    expect(within(body).getByText(/^2 équipes cochées/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: T.blockSave }));
+    expect([...(stbUpdate.mock.calls[0][0] as { body: { teamIds: string[] } }).body.teamIds].sort()).toEqual(["t1", "t2", "t3"]);
+  });
+
+  it("le seuil « inhabituel » se compte sur les équipes réellement cochées, pas sur les membres en pause", async () => {
+    const user = userEvent.setup();
+    const many = [...TEAMS, team({ id: "t4", name: "U9M2", priorityTierId: 2, tierOrder: 1 }), team({ id: "t5", name: "U9M3", priorityTierId: 2, tierOrder: 2 })];
+    blocksState.data = [block("b1", ["t1", "t2", "t3", "t4"], 1, "plan-1")];
+    renderWithProviders(<SharedTrainingBlockPanel teams={many} tiers={TIERS} schedulePlanId="plan-1" pausedTeamIds={PAUSED} />);
+
+    await user.click(screen.getByRole("button", { name: T.blockEditAria("U9F1 + U9F2 + U9M1 + U9M2") }));
+
+    // 4 membres dont 1 en pause : 3 cochées, sous le seuil.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

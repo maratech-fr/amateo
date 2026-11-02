@@ -1,11 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { coachShortName } from "@/shared/lib/coachName";
 
 import type { Coach, Conflict, Team, Venue } from "./api";
-import { ConflictLine } from "./ConflictLine";
+import { ConflictLine, ConflictSeverityGroups } from "./ConflictLine";
 import { MATCHES_TEXTS } from "./texts";
 
 const teams = new Map<string, Team>([
@@ -32,6 +32,23 @@ function renderLine(props: Partial<React.ComponentProps<typeof ConflictLine>> = 
     </MemoryRouter>,
   );
 }
+
+describe("ConflictSeverityGroups — la gravité 3 en trois groupes", () => {
+  it("rend Personne, Gymnase, Règle sans collision de clé React", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const conflicts = [
+      { type: "CLUB_RULE_VIOLATION", severity: 3, resolution: null },
+      { type: "TEAM_VENUE_FORBIDDEN", severity: 3, resolution: null },
+      { type: "MATCH_MATCH", severity: 3, resolution: null },
+    ] as unknown as Conflict[];
+
+    render(<ConflictSeverityGroups conflicts={conflicts} teams={teams} coaches={coaches} venues={venues} renderConflict={() => null} />);
+
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.firstChild?.textContent)).toEqual(["Personne", "Gymnase", "Règle"]);
+    expect(consoleError.mock.calls.filter(([message]) => String(message).includes("same key"))).toEqual([]);
+    consoleError.mockRestore();
+  });
+});
 
 describe("ConflictLine — une ligne qu'un autre coach tient nomme qui tient quoi", () => {
   const holder = { id: "coach-e", firstName: "Emma", lastName: "Durand", gender: "F" } as unknown as Coach;
@@ -490,11 +507,12 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     const longOpp = "VAULX EN VELIN BASKET CLUB SUD OUEST - 2"; // 40 caractères
     renderDetail({ ...matchMatch, right: { ...homeReal, opponentLabel: longOpp } });
 
-    // Le bloc adversaire s'enroule et se casse (overflow-wrap), jamais nowrap ni truncate.
+    // Le bloc adversaire s'enroule entre les mots, et ne coupe un mot que s'il ne tient pas seul sur sa ligne.
     const opponent = screen.getByText(new RegExp(longOpp));
     expect(opponent).not.toHaveClass("whitespace-nowrap");
     expect(opponent).not.toHaveClass("truncate");
-    expect(opponent).toHaveClass("[overflow-wrap:anywhere]");
+    expect(opponent).toHaveClass("break-words");
+    expect(opponent).not.toHaveClass("[overflow-wrap:anywhere]");
 
     // Une cellule horaire (le coup d'envoi) reste, elle, insécable.
     const table = screen.getByRole("table", { name: "Détail par équipe" });

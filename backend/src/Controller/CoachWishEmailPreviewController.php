@@ -21,6 +21,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * L'APERÇU de l'e-mail du lien coach (D1) — ce que le gestionnaire verra partir à l'envoi
@@ -70,7 +71,8 @@ final class CoachWishEmailPreviewController extends AbstractController
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
 
-        $campaign = $this->entityManager->getRepository(CoachWishCampaign::class)->find($id);
+        // Un identifiant malformé rend le même 404 qu'une collecte d'un autre club, jamais un 500.
+        $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         // 404 byte-identique : inconnue, ou d'un autre club (la RLS la masque déjà, ceci est le
         // filet). Jamais 403 ici — on ne distingue pas « existe ailleurs » de « n'existe pas ».

@@ -358,6 +358,7 @@ describe("TeamsStep", () => {
     await user.click(screen.getByRole("tab", { name: "Mutualisation" }));
     // SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée. D13 — la « Mutualisation »
     // est rendue par SharedTrainingBlockPanel : créer écrit un « bloc ».
+    await user.click(screen.getByRole("button", { name: "Nouveau groupe" }));
     await user.click(screen.getByRole("checkbox", { name: "SM4" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 

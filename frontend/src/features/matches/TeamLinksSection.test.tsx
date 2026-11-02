@@ -34,6 +34,29 @@ beforeEach(() => {
   linksState.data = [];
 });
 
+/** La phrase d'exemple parle des équipes du club, jamais de SM1 et SM2 quand le club n'en a pas. */
+describe("TeamLinksSection — la phrase d'introduction", () => {
+  const intro = (expected: string) => screen.getByText((_, el) => "P" === el?.tagName && true === el.textContent?.startsWith(expected));
+
+  it("ouverte depuis une équipe : cette équipe et la première autre", () => {
+    renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} filterTeamId="t3" />);
+    expect(intro("Si SF1 et SM1 partagent des joueurs, déclarez une passerelle.")).toBeInTheDocument();
+  });
+
+  it("sans équipe d'ouverture : les deux premières du club", () => {
+    renderWithProviders(<TeamLinksSection teams={[team("t8", "U11F"), team("t9", "U13F")]} tiers={TIERS} />);
+    expect(intro("Si U11F et U13F partagent des joueurs, déclarez une passerelle.")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["une seule équipe", [team("t8", "U11F")]],
+    ["aucune équipe", []],
+  ])("%s : la phrase reste générale", (_label, teams) => {
+    renderWithProviders(<TeamLinksSection teams={teams} tiers={TIERS} />);
+    expect(intro("Si deux équipes partagent des joueurs, déclarez une passerelle.")).toBeInTheDocument();
+  });
+});
+
 describe("TeamLinksSection — filtrage et pré-remplissage (filterTeamId)", () => {
   it("ne montre que les passerelles nommant l'équipe filtrée", () => {
     linksState.data = [teamLink({ id: "l1", teamAId: "t1", teamBId: "t2" }), teamLink({ id: "l2", teamAId: "t2", teamBId: "t3" })];

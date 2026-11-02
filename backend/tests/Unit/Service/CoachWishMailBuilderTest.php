@@ -48,10 +48,29 @@ final class CoachWishMailBuilderTest extends TestCase
         $builder = new CoachWishMailBuilder('https://app.example.test');
         $body = (string) $builder->buildCoachLink('c@x.fr', 'Maxime', 'Nom long', $this->campaign(), 'Toussaint', str_repeat('a', 64), 'Gérard', club: $club)->getTextBody();
 
-        self::assertStringContainsString('Gérard (BCCL) prépare le planning de « Toussaint » et a besoin, pour chacune de vos équipes, des souhaits d\'entraînement et des disponibilités de tout le staff : vous répondez pour l\'équipe entière.', $body);
+        self::assertStringContainsString('Gérard (BCCL) prépare le planning de « Toussaint » et a besoin, pour votre équipe, des souhaits d\'entraînement et des disponibilités de tout le staff : vous répondez pour l\'équipe entière.', $body);
         // Le reste du texte est conservé (date limite + « C'est un souhait… »).
         self::assertStringContainsString('Merci de répondre avant le 30/06/2027', $body);
         self::assertStringContainsString('C\'est un souhait, pas un engagement : le club arbitre ensuite.', $body);
+    }
+
+    /** Un coach de deux équipes lit un bouton et une phrase au pluriel. */
+    public function testCoachLinkForSeveralTeamsSpeaksInThePlural(): void
+    {
+        $email = new CoachWishMailBuilder('https://app.example.test')->buildCoachLink('c@x.fr', 'Maxime', 'Club', $this->campaign(), 'Toussaint', str_repeat('a', 64), 'Gérard', false, null, 2);
+
+        self::assertSame('Donner les disponibilités de mes équipes', $email->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        self::assertStringContainsString('pour chacune de vos équipes', (string) $email->getTextBody());
+    }
+
+    /** Par défaut, une seule équipe : aucun « chacune de vos équipes » pour un coach qui n'en a qu'une. */
+    public function testCoachLinkDefaultsToTheSingular(): void
+    {
+        $email = new CoachWishMailBuilder('https://app.example.test')->buildCoachLink('c@x.fr', 'Maxime', 'Club', $this->campaign(), 'Toussaint', str_repeat('a', 64), 'Gérard');
+
+        self::assertSame('Donner les disponibilités de mon équipe', $email->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        self::assertStringContainsString('pour votre équipe', (string) $email->getTextBody());
+        self::assertStringNotContainsString('chacune de vos équipes', (string) $email->getTextBody());
     }
 
     public function testCoachLinkSenderDisplayNameIsPrenomClubViaProduct(): void

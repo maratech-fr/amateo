@@ -20,6 +20,11 @@ import { maxCommonSessions } from "./sharedTraining";
  * effectives » est la MÊME donnée que pour le groupe K, lue par sa forme.
  */
 
+/** Les groupes de la portée ouverte : en portée socle, le provider renvoie socle ET périodes, on ne garde que le socle. */
+export function blocksInScope(blocks: SharedTrainingBlock[], schedulePlanId: string | null): SharedTrainingBlock[] {
+  return null === schedulePlanId ? blocks.filter((b) => null === b.schedulePlanId) : blocks;
+}
+
 /**
  * Les valeurs de la LISTE DÉROULANTE des séances communes du bloc : `1..cap`, où
  * `cap = min(séances/semaine EFFECTIVES des membres)` (override de période prioritaire). Liste

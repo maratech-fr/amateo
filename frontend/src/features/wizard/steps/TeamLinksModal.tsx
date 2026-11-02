@@ -2,12 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
+import { Spinner } from "@/shared/components/ui/spinner";
 import { Tabs, TabPanel } from "@/shared/components/ui/tabs";
+import { useTeamLinks } from "@/features/matches/queries";
 import { TeamLinksSection } from "@/features/matches/TeamLinksSection";
 
 import type { PriorityTier, Team } from "../api";
+import { initialLinksTab } from "../lib/linksTab";
+import { blocksInScope } from "../lib/sharedTrainingBlock";
 import { payload } from "../lib/teamPayload";
-import { useUpdateTeam } from "../queries";
+import { useSharedTrainingBlocks, useUpdateTeam } from "../queries";
 import { TEAMS_TEXTS } from "../texts/teams";
 import { SharedTrainingBlockPanel } from "./SharedTrainingBlockPanel";
 
@@ -17,8 +21,9 @@ import { SharedTrainingBlockPanel } from "./SharedTrainingBlockPanel";
  *
  * #10 (améliorations légères, retour Rillieux 2026-10-21) — les deux liens vivaient dans le MÊME
  * corps de modale, trop chargé : ils sont SÉPARÉS en onglets (primitive `Tabs`), « Passerelles »
- * actif par défaut (l'ordre historique haut → bas). Tous les panneaux restent montés (l'inactif est
- * `hidden`), chacun garde son propre état.
+ * à l'ouverture, ou « Mutualisation » si l'équipe a un groupe et aucune passerelle : décidé UNE fois,
+ * les deux lectures finies (une lecture en échec ouvre Passerelles), jamais rejoué ensuite. Tous les
+ * panneaux restent montés (l'inactif est `hidden`), chacun garde son propre état.
  *
  * Trois onglets :
  *  - les PASSERELLES sont de la structure de SAISON — éditables en saison, LECTURE SEULE en
@@ -49,33 +54,61 @@ export function TeamLinksModal({
   readOnlyLinks: boolean;
   onClose: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"passerelles" | "mutualisation" | "entente">("passerelles");
+  const linksRead = useTeamLinks();
+  const blocksRead = useSharedTrainingBlocks(schedulePlanId);
+  const pending = linksRead.isPending || blocksRead.isPending;
+  const openingTab = linksRead.isError || blocksRead.isError ? "passerelles" : initialLinksTab(team.id, linksRead.data ?? [], blocksInScope(blocksRead.data ?? [], schedulePlanId));
 
   return (
     <Modal label={TEAMS_TEXTS.linksModalTitle(team.name)} title={TEAMS_TEXTS.linksModalTitle(team.name)} onClose={onClose} size="lg">
-      <div className="flex flex-col gap-4">
-        <Tabs
-          tabs={[
-            { id: "passerelles", label: TEAMS_TEXTS.passerellesTab },
-            { id: "mutualisation", label: TEAMS_TEXTS.mutualisationTab },
-            { id: "entente", label: TEAMS_TEXTS.ctcTabLabel },
-          ]}
-          activeTab={activeTab}
-          onTabChange={(id) => setActiveTab(id as "passerelles" | "mutualisation" | "entente")}
-          ariaLabel={TEAMS_TEXTS.linkTypeAria}
-          idPrefix="team-links"
-        />
-        <TabPanel tabId="passerelles" idPrefix="team-links" active={"passerelles" === activeTab}>
-          <TeamLinksSection teams={teams} tiers={tiers} filterTeamId={team.id} readOnly={readOnlyLinks} />
-        </TabPanel>
-        <TabPanel tabId="mutualisation" idPrefix="team-links" active={"mutualisation" === activeTab}>
-          <SharedTrainingBlockPanel teams={teams} tiers={tiers} pausedTeamIds={pausedTeamIds} schedulePlanId={schedulePlanId} initialTeamId={team.id} />
-        </TabPanel>
-        <TabPanel tabId="entente" idPrefix="team-links" active={"entente" === activeTab}>
-          <TeamCtcPanel teamId={team.id} teams={teams} />
-        </TabPanel>
-      </div>
+      {pending ? <Spinner /> : <TeamLinksTabs openingTab={openingTab} team={team} teams={teams} tiers={tiers} schedulePlanId={schedulePlanId} pausedTeamIds={pausedTeamIds} readOnlyLinks={readOnlyLinks} />}
     </Modal>
+  );
+}
+
+/** Les onglets : monté une fois les lectures finies, `openingTab` ne sert qu'au montage. */
+function TeamLinksTabs({
+  openingTab,
+  team,
+  teams,
+  tiers,
+  schedulePlanId,
+  pausedTeamIds,
+  readOnlyLinks,
+}: {
+  openingTab: "passerelles" | "mutualisation";
+  team: Pick<Team, "id" | "name">;
+  teams: Team[];
+  tiers: PriorityTier[];
+  schedulePlanId: string | null;
+  pausedTeamIds?: ReadonlySet<string>;
+  readOnlyLinks: boolean;
+}) {
+  const [activeTab, setActiveTab] = useState<"passerelles" | "mutualisation" | "entente">(openingTab);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Tabs
+        tabs={[
+          { id: "passerelles", label: TEAMS_TEXTS.passerellesTab },
+          { id: "mutualisation", label: TEAMS_TEXTS.mutualisationTab },
+          { id: "entente", label: TEAMS_TEXTS.ctcTabLabel },
+        ]}
+        activeTab={activeTab}
+        onTabChange={(id) => setActiveTab(id as "passerelles" | "mutualisation" | "entente")}
+        ariaLabel={TEAMS_TEXTS.linkTypeAria}
+        idPrefix="team-links"
+      />
+      <TabPanel tabId="passerelles" idPrefix="team-links" active={"passerelles" === activeTab}>
+        <TeamLinksSection teams={teams} tiers={tiers} filterTeamId={team.id} readOnly={readOnlyLinks} />
+      </TabPanel>
+      <TabPanel tabId="mutualisation" idPrefix="team-links" active={"mutualisation" === activeTab}>
+        <SharedTrainingBlockPanel teams={teams} tiers={tiers} pausedTeamIds={pausedTeamIds} schedulePlanId={schedulePlanId} initialTeamId={team.id} />
+      </TabPanel>
+      <TabPanel tabId="entente" idPrefix="team-links" active={"entente" === activeTab}>
+        <TeamCtcPanel teamId={team.id} teams={teams} />
+      </TabPanel>
+    </div>
   );
 }
 

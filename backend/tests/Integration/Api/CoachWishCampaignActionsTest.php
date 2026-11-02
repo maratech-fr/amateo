@@ -78,6 +78,57 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         yield 'les deux : texte' => [['teamId' => 'abc', 'coachId' => 'def']];
     }
 
+    /** @return iterable<string, array{string, string}> */
+    public static function campaignRoutes(): iterable
+    {
+        yield 'envoi des liens' => ['POST', '/send-links'];
+        yield 'relance' => ['POST', '/remind'];
+        yield 'aperçu du formulaire' => ['GET', '/preview?coachId=COACH'];
+    }
+
+    /** Abus : le pluriel se lit dans le jeton, le corps de la requête ne le fait pas revenir au singulier. */
+    public function testTheBodyCannotForceTheSingularOnATokenOfTwoTeams(): void
+    {
+        $this->giveTokenASecondTeam();
+        $this->client->enableProfiler();
+
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/send-links', [], [], $this->headers(), '{"teamCount":1}');
+
+        self::assertResponseIsSuccessful();
+        $email = self::getMailerMessage();
+        self::assertNotNull($email);
+        self::assertEmailTextBodyContains($email, 'pour chacune de vos équipes');
+    }
+
+    /** Abus : le pluriel se lit dans le jeton, le corps de la requête ne le fait pas passer au pluriel. */
+    public function testTheBodyCannotForceThePluralOnATokenOfOneTeam(): void
+    {
+        $this->client->enableProfiler();
+
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/send-links', [], [], $this->headers(), '{"teamCount":9}');
+
+        self::assertResponseIsSuccessful();
+        $email = self::getMailerMessage();
+        self::assertNotNull($email);
+        self::assertEmailTextBodyContains($email, 'pour votre équipe');
+    }
+
+    /** Abus : un identifiant de collecte malformé dans l'URL rend le même 404 qu'une collecte d'un autre club, jamais un 500 qui le distingue. */
+    #[DataProvider('campaignRoutes')]
+    public function testAMalformedCampaignIdIsIndistinguishableFromAForeignCampaign(string $method, string $suffix): void
+    {
+        $suffix = str_replace('COACH', $this->withEmail->getId(), $suffix);
+        $body = 'POST' === $method ? '{}' : null;
+
+        $this->client->request($method, '/api/coach_wish_campaigns/' . $this->seedForeignCampaignId() . $suffix, [], [], $this->headers(), $body);
+        self::assertResponseStatusCodeSame(404);
+        $foreign = (string) $this->client->getResponse()->getContent();
+
+        $this->client->request($method, '/api/coach_wish_campaigns/abc' . $suffix, [], [], $this->headers(), $body);
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($foreign, (string) $this->client->getResponse()->getContent());
+    }
+
     public function testSendLinksMailsOnlyUnsentCoachesWithEmailAndStampsSentAt(): void
     {
         $this->client->enableProfiler();
@@ -446,6 +497,20 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         $this->em->flush();
 
         $this->jwt = $container->get(JWTTokenManagerInterface::class)->create($user);
+    }
+
+    private function giveTokenASecondTeam(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $second = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SM2');
+        $this->em->persist($second);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($second->getId())->setCoachId($this->withEmail->getId())->setRole(TeamCoachRole::MAIN));
+        $this->campaign->setTeamIds([...$this->campaign->getTeamIds(), $second->getId()]);
+        $this->tokenWithEmail->setTeamIds([...$this->tokenWithEmail->getTeamIds(), $second->getId()]);
+        $this->em->flush();
     }
 
     private function postRecipient(string $teamId, string $coachId): void

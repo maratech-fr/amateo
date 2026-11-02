@@ -246,7 +246,7 @@ paths:
   `frontend/src/test/dayPickerGuard.test.ts` (grep statique `src/features/**`/`src/app/**` : un
   triplet de libellés de jours consécutifs littéraux hors `shared/lib/days.ts` rougit, exemptions
   nominatives motivées) — hors portée délibérée : les lettres seules d'un en-tête de calendrier
-  (`MonthCalendar`, pas une table de libellés).
+  (`MonthCalendar`, pas une table de libellés). Contrat `markedDays` : `markedDays` + `markedReason` REPÈRENT des jours (bordure pointillée `warning`, `aria-describedby` + `title` portant le motif) sans toucher à la sélection ni au clic ; sans `markedReason`, rien n'est marqué (un repère s'explique) ; un jour désactivé n'est jamais repéré. `Tabs` (`shared/components/ui/tabs.tsx`) accepte `listClassName`, ajoutée à la barre APRÈS la peau (la barre garde `flex flex-wrap` par défaut ; p. ex. `flex-nowrap overflow-x-auto` pour une ligne qui défile plutôt que de passer à la ligne, hub des doléances).
 - 🔴 **Un écran MIGRÉ affiche ses textes depuis le `texts.ts` de sa feature — jamais un littéral FR
   en dur** (textes centralisés, fondation PR7, 2026-10-14) : maison unique
   `features/<feature>/texts.ts` (scission `texts/<écran>.ts` au-delà de ~300 lignes),
@@ -269,7 +269,7 @@ paths:
   `features/matches/texts/export.ts`, `MATCHES_EXPORT_TEXTS`), puis
   (D4, 2026-10-26) wizard `TeamsStep`/`TeamLinksModal` — scindés dans leur propre
   `features/wizard/texts/teams.ts` (`TEAMS_TEXTS`) plutôt que le `texts.ts` commun de la feature
-  (le volume de l'étape Équipes dépassait le seuil de scission). La
+  (le volume de l'étape Équipes dépassait le seuil de scission), puis (finitions, 2026-11-02, migrés dans le même lot) matchs `EntryDeadlinesEditor` (`features/matches/texts/entryDeadlines.ts`), matchs `TeamLinksSection` (`features/matches/texts/teamLinks.ts`) et wizard `TeamsImportModal` (`features/wizard/texts/teamsImport.ts`) — trois entrées de `MIGRATED_FILES`. La
   **console superadmin** (`features/admin/**`) a sa propre maison SCINDÉE par module —
   `features/admin/texts/<module>.ts` (pas un `texts.ts` unique), **entièrement migrée**
   (P4-346, PR A + PR B, 2026-10-19) : `texts/dashboard.ts` (`ADMIN_DASHBOARD_TEXTS`) couvre

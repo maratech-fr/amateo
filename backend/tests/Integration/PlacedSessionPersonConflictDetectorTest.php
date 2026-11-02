@@ -322,6 +322,114 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         self::assertCount(1, $result['conflicts'], 'sans adjoint disponible, la tolérance ne fait pas de relais');
     }
 
+    // ── Finitions : un adjoint nommé sur une séance ne la tient jamais, les principaux restent attendus ──
+
+    /** Karim, principal de U13 et U15, reste attendu aux deux endroits même si Emma, adjointe de U15, est nommée sur la séance de U15. */
+    public function testAnAssistantNamedOnASessionLeavesItsMainCoachExpected(): void
+    {
+        $ctx = $this->seed();
+        $emma = $this->createCoach($ctx, 'Emma');
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $emma, TeamCoachRole::ASSISTANT);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 5, '20:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 5, '20:00', 90, $emma);
+
+        $conflicts = $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'];
+
+        self::assertCount(1, $conflicts);
+        self::assertSame($ctx['coach'], $conflicts[0]['personId']);
+    }
+
+    /** Témoin du cas précédent : sans séance en face le même soir, le principal n'est nulle part en double. */
+    public function testAnAssistantNamedOnASessionWithoutOverlapIsSilent(): void
+    {
+        $ctx = $this->seed();
+        $emma = $this->createCoach($ctx, 'Emma');
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $emma, TeamCoachRole::ASSISTANT);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 4, '20:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 5, '20:00', 90, $emma);
+
+        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+    }
+
+    /** Retard toléré et adjointe libre : la séance où l'adjointe est nommée se lit comme un relais, pas comme un conflit. */
+    public function testAToleratedLateArrivalOnASessionNamingAnAssistantIsARelay(): void
+    {
+        $ctx = $this->seed();
+        $emma = $this->createCoach($ctx, 'Emma');
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $emma, TeamCoachRole::ASSISTANT);
+        $this->travel($ctx, $ctx['gym1'], $ctx['gym2'], 15);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 75);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, $emma, 30);
+
+        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+
+        self::assertSame([], $result['conflicts']);
+        self::assertCount(1, $result['relays']);
+        self::assertSame('Emma Dupont', $result['relays'][0]['adjointName']);
+    }
+
+    /**
+     * Karim, adjoint de U15 et principal de U17, n'ouvre pas U15 : sa séance de U17 l'occupe, même quand
+     * c'est son adjointe Emma qui y est nommée. Le relais serait faux, le conflit d'Anna reste.
+     */
+    public function testAMainCoachBusyOnASessionNamingHisAssistantOpensNothing(): void
+    {
+        $ctx = $this->seed();
+        $karim = $this->createCoach($ctx, 'Karim');
+        $emma = $this->createCoach($ctx, 'Emma');
+        $u17 = $this->thirdTeam($ctx);
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $karim, TeamCoachRole::ASSISTANT);
+        $this->link($ctx, $u17, $karim, TeamCoachRole::MAIN);
+        $this->link($ctx, $u17, $emma, TeamCoachRole::ASSISTANT);
+        $this->travel($ctx, $ctx['gym1'], $ctx['gym2'], 15);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 75);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, tolerance: 30);
+        $this->place($ctx, $u17, $this->thirdGym($ctx), 2, '20:00', 90, $emma);
+
+        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+
+        self::assertSame([], $result['relays'], 'Karim est pris par U17 : il n\'ouvre pas U15');
+        self::assertContains($ctx['coach'], array_column($result['conflicts'], 'personId'));
+    }
+
+    /** Équipe sans principal, adjointe nommée : l'adjointe n'y est ni candidate ni attendue, le radar se tait, sans repli. */
+    public function testAnAssistantNamedOnATeamWithoutMainCoachRaisesNothing(): void
+    {
+        $ctx = $this->seed();
+        $emma = $this->createCoach($ctx, 'Emma');
+        $this->link($ctx, $ctx['teamA'], $emma, TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamB'], $emma, TeamCoachRole::ASSISTANT);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90, $emma);
+
+        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+    }
+
+    /** Emma joue dans deux équipes : être nommée adjointe sur l'une n'en fait pas une coach, aucun coach ne la remplace sur le terrain. */
+    public function testAPlayerNamedAsAssistantStillOnlyPlays(): void
+    {
+        $ctx = $this->seed();
+        $emma = $this->createCoach($ctx, 'Emma');
+        $bob = $this->createCoach($ctx, 'Bob');
+        $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
+        $this->link($ctx, $ctx['teamA'], $emma, TeamCoachRole::ASSISTANT);
+        $this->link($ctx, $ctx['teamB'], $bob, TeamCoachRole::MAIN);
+        $this->playIn($ctx, $ctx['teamA'], $emma, true);
+        $this->playIn($ctx, $ctx['teamB'], $emma, true);
+        $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90, $emma);
+        $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
+
+        self::assertContains($emma, array_column($this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'personId'));
+    }
+
     /** Aucune version pointée → pas de planning en vigueur : seasonPlanChosen false, rien scanné. */
     public function testNoChosenVersionMeansNoScan(): void
     {

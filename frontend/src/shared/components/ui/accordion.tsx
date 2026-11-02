@@ -52,7 +52,7 @@ export function AccordionSection({ title, defaultOpen = false, open: controlledO
           // décalage de layout à l'ouverture), `border-accent` ouvert / `border-transparent` fermé.
           // Le survol garde `hover:bg-accent/10` (teinte au repos → survol, jamais `hover:bg-muted/50`
           // qui serait quasi invisible sur `bg-card`).
-          "group flex w-full items-center justify-between gap-2 rounded-lg border-l-2 px-4 py-3 text-left text-sm font-semibold transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "group flex w-full items-center justify-between gap-2 rounded-lg border-l-2 px-4 py-3 text-left text-sm font-semibold transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           open ? "border-accent" : "border-transparent",
         )}
       >
