@@ -1,4 +1,4 @@
-# Roadmap (83) — ce qui reste à faire
+# Roadmap (85) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -98,6 +98,8 @@
 | P4-386 | **Icône d'écran d'accueil absente — une web app ajoutée au téléphone affiche un « A » générique** | ⚪ | S | Constat (incident d'un club pilote, 30/10) : `frontend/index.html:5` ne porte qu'un `favicon.svg` — ni `manifest.webmanifest` ni `apple-touch-icon`, donc iOS/Android génèrent une icône générique à l'ajout sur l'écran d'accueil. À faire : PNG 180/192/512 (+ version maskable) depuis l'icône Amateo, `manifest.webmanifest` avec `PRODUCT_ACCENT` (jamais un hex en dur), deux balises dans `index.html`. Non cadré |
 | P4-440 | **Écran Conflits à 360 px : tableau des côtés tronqué dans la ligne** | ⚪ | XS | `ConflictLine.tsx` : le tableau des côtés est tronqué dans la ligne et un nom long est coupé lettre par lettre. Exemple : « Adversaire B » est coupé au milieu du mot. À corriger en laissant le nom passer à la ligne par mots. |
 | P4-441 | **Contraste au survol du titre d'une section repliée : 4,09:1** | ⚪ | XS | `shared/components/ui/accordion.tsx:55` : au survol, le titre passe en `hover:text-accent` sur `hover:bg-accent/10` et tombe à 4,09:1, sous les 4,5:1 attendus. Exemple : survoler « Un autre coach tient · 1 » sur l'écran Conflits. À corriger en gardant la couleur du texte au survol. |
+| P4-442 | **Déploiement : `release` non recalée quand un fichier de CI a changé** | 🟡 | S | Le déploiement v1.3.2 a basculé la prod puis fini en échec sur « Point `release` at the deployed commit » : le jeton du workflow n'a pas la permission `workflows` et GitHub refuse de pousser un commit qui change `.github/workflows/ci.yml` (`deploy.yml:506`). `release` reste alors sur la version d'avant, et un correctif rapide partirait d'une base en retard. Recalage manuel fait le 2026-11-02 avec les droits du fondateur. |
+| P4-443 | **Doc de déploiement : `docker compose exec` ne fonctionne pas tel quel sur la VM** | ⚪ | XS | Dans `/srv/amateo`, `docker compose exec php-fpm …` répond « no configuration file provided » ; `docker exec amateo-php-fpm …` fonctionne (constaté le 2026-11-02). `docs/ops/deploy.md` écrit la première forme à plusieurs endroits, dont l'étape post-déploiement des empreintes : à corriger partout, ou donner le fichier de configuration attendu. |
 
 ### Sécurité & données
 
