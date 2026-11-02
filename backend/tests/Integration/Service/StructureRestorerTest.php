@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
 use App\Entity\Constraint;
@@ -286,6 +287,86 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertNull($this->em->getRepository(CoachWishToken::class)->findOneBy(['campaignId' => $campaign->getId(), 'coachId' => $maxime->getId()]));
     }
 
+    /**
+     * Charger une version où Karim n'existe pas efface sa ligne d'absence, comme sa suppression :
+     * celle d'Anna et les deux doléances restent. Filets voisins : suppression directe
+     * (`Security/RgpdExportTest::testClubExportCarriesNoStaffLineOfADeletedCoach`), bornes club et
+     * saison (`Security/RgpdExportTest::testLoading*`).
+     */
+    public function testLoadingErasesTheStaffLineOfACoachAbsentFromThePhoto(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U11M1');
+        $partner = $this->persistTeam($club, $season, 'U13M1');
+        $anna = $this->persistCoach($club, $season, 'Anna');
+        $entry = $this->persistHoliday($club, $season);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+
+        $karim = $this->persistCoach($club, $season, 'Karim');
+        $this->em->flush();
+        $shared = $this->persistWish($club, $season, $entry, $team, [
+            ['coachId' => $anna->getId(), 'days' => [1]],
+            ['coachId' => $karim->getId(), 'days' => [4]],
+        ]);
+        $karimOnly = $this->persistWish($club, $season, $entry, $partner, [['coachId' => $karim->getId(), 'days' => [2]]]);
+        $this->em->flush();
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(Coach::class)->find($karim->getId()), 'la photo ne porte pas Karim');
+        self::assertSame([['coachId' => $anna->getId(), 'days' => [1]]], $this->staffLinesOf($shared), 'la ligne de Karim part, celle d\'Anna reste à l\'identique');
+        self::assertSame([], $this->staffLinesOf($karimOnly), 'la doléance survit à sa dernière ligne, avec une liste vide');
+    }
+
+    /**
+     * « Charger » supprime TOUS les coachs avant de réinsérer la photo : un coach présent dans la
+     * photo n'est pas un coach retiré, sa ligne reste.
+     */
+    public function testLoadingKeepsTheStaffLineOfACoachPresentInThePhoto(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U11M1');
+        $karim = $this->persistCoach($club, $season, 'Karim');
+        $entry = $this->persistHoliday($club, $season);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $wish = $this->persistWish($club, $season, $entry, $team, [['coachId' => $karim->getId(), 'days' => [4]]]);
+        $this->em->flush();
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame([['coachId' => $karim->getId(), 'days' => [4]]], $this->staffLinesOf($wish));
+    }
+
+    /** Un coach retiré par un chargement puis ramené par un autre revient SANS sa ligne d'absence : elle ne ressuscite pas. */
+    public function testACoachBroughtBackByALaterLoadReturnsWithoutHisStaffLine(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U11M1');
+        $entry = $this->persistHoliday($club, $season);
+        $withoutKarim = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($withoutKarim, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $karim = $this->persistCoach($club, $season, 'Karim');
+        $withKarim = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($withKarim, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $wish = $this->persistWish($club, $season, $entry, $team, [['coachId' => $karim->getId(), 'days' => [4]]]);
+        $this->em->flush();
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($withoutKarim));
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($withKarim));
+        $this->em->clear();
+
+        self::assertNotNull($this->em->getRepository(Coach::class)->find($karim->getId()), 'la seconde version ramène Karim');
+        self::assertSame([], $this->staffLinesOf($wish), 'sa ligne effacée ne revient pas avec lui');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -319,6 +400,44 @@ final class StructureRestorerTest extends KernelTestCase
         $this->em->persist($team);
 
         return $team;
+    }
+
+    private function persistCoach(Club $club, Season $season, string $firstName): Coach
+    {
+        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName($firstName)->setLastName('Test');
+        $this->em->persist($coach);
+
+        return $coach;
+    }
+
+    private function persistHoliday(Club $club, Season $season): CalendarEntry
+    {
+        $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
+        $this->em->persist($entry);
+
+        return $entry;
+    }
+
+    /** @param list<array{coachId: string, days: list<int>}> $lines */
+    private function persistWish(Club $club, Season $season, CalendarEntry $entry, Team $team, array $lines): string
+    {
+        $wish = (new CoachWish)->setClubId($club->getId())->setSeasonId($season->getId())->setCalendarEntryId($entry->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1)
+            ->setStaffUnavailability($lines);
+        $this->em->persist($wish);
+
+        return $wish->getId();
+    }
+
+    /** @return array<mixed> les lignes d'absence relues en base ; la doléance doit exister */
+    private function staffLinesOf(string $wishId): array
+    {
+        $wish = $this->em->getRepository(CoachWish::class)->find($wishId);
+        self::assertInstanceOf(CoachWish::class, $wish, 'la doléance survit au chargement');
+
+        return $wish->getStaffUnavailability();
     }
 
     private function makeSchedule(Club $club, Season $season): Schedule

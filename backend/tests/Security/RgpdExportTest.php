@@ -9,11 +9,18 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Feedback;
+use App\Entity\Schedule;
+use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ScheduleStatus;
+use App\Enum\SeasonStatus;
+use App\Service\SchedulePlanProvisioner;
+use App\Service\StructureSnapshotter;
 use App\Storage\FeedbackScreenshotStorage;
+use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -35,6 +42,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class RgpdExportTest extends WebTestCase
 {
+    use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -117,6 +125,61 @@ final class RgpdExportTest extends WebTestCase
         self::assertStringNotContainsString($coachId, (string) $this->client->getResponse()->getContent(), 'l\'export ne porte plus l\'identifiant d\'un coach supprimé');
     }
 
+    /**
+     * Charger une version sans Karim le sort de l'export RGPD : l'identifiant y est avant le
+     * chargement (témoin), plus après. Angle unitaire : `Integration/Service/StructureRestorerTest`.
+     */
+    public function testLoadingAVersionWithoutACoachRemovesHimFromTheClubExport(): void
+    {
+        [$token, $clubId, $seasonId, $versionId, $karimId] = $this->seedLoadableVersionAndKarim('EXPL');
+        $this->seedWish($clubId, $seasonId, $karimId, 'U15');
+
+        $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString($karimId, (string) $this->client->getResponse()->getContent(), 'témoin : l\'export porte Karim avant le chargement');
+
+        $this->load($token, $seasonId, $versionId);
+
+        $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseIsSuccessful();
+        self::assertStringNotContainsString($karimId, (string) $this->client->getResponse()->getContent(), 'l\'export ne porte plus l\'identifiant d\'un coach retiré par un chargement');
+    }
+
+    /** Abus (tenant) : le chargement d'un club n'efface jamais la ligne d'un AUTRE club portant le même identifiant de coach. */
+    public function testLoadingNeverErasesAStaffLineOfAnotherClub(): void
+    {
+        [$token, $clubId, $seasonId, $versionId, $karimId] = $this->seedLoadableVersionAndKarim('EXPM');
+        $ownWish = $this->seedWish($clubId, $seasonId, $karimId, 'U15');
+        [, $otherUser] = $this->registerVerified('EXPN');
+        $otherClub = $this->clubIdOf($otherUser);
+        $otherWish = $this->seedWish($otherClub, $this->seasonOf($otherClub), $karimId, 'U17');
+
+        $this->load($token, $seasonId, $versionId);
+
+        self::assertStringNotContainsString($karimId, $this->staffLinesOf($clubId, $ownWish), 'la ligne du club chargé part');
+        self::assertStringContainsString($karimId, $this->staffLinesOf($otherClub, $otherWish), 'celle de l\'autre club reste');
+    }
+
+    /** Abus (saison) : charger une version de saison n'efface jamais la ligne d'une AUTRE saison du club. */
+    public function testLoadingNeverErasesAStaffLineOfAnotherSeason(): void
+    {
+        [$token, $clubId, $seasonId, $versionId, $karimId] = $this->seedLoadableVersionAndKarim('EXPO');
+        $ownWish = $this->seedWish($clubId, $seasonId, $karimId, 'U15');
+        $this->scopeGucToClub($clubId);
+        $other = (new Season)->setClubId($clubId)->setName('Saison voisine')->setStatus(SeasonStatus::DRAFT)
+            ->setStartDate(new DateTimeImmutable('2030-09-01'))->setEndDate(new DateTimeImmutable('2031-06-30'));
+        $this->em()->persist($other);
+        $this->em()->flush();
+        $otherSeasonId = $other->getId();
+        $this->em()->clear();
+        $otherWish = $this->seedWish($clubId, $otherSeasonId, $karimId, 'U17');
+
+        $this->load($token, $seasonId, $versionId);
+
+        self::assertStringNotContainsString($karimId, $this->staffLinesOf($clubId, $ownWish), 'la ligne de la saison chargée part');
+        self::assertStringContainsString($karimId, $this->staffLinesOf($clubId, $otherWish), 'celle de l\'autre saison reste');
+    }
+
     public function testClubExportRequiresAManagementRole(): void
     {
         [, $userA, $emailA] = $this->registerVerified('EXPD');
@@ -178,6 +241,78 @@ final class RgpdExportTest extends WebTestCase
         self::assertStringContainsString('no-store', $cacheControl, $label . ' : une réponse nominative ne doit jamais être stockée en cache');
         self::assertStringContainsString('private', $cacheControl, $label . ' : jamais mise en cache partagée');
         self::assertStringNotContainsString('public', $cacheControl, $label . ' : jamais « public »');
+    }
+
+    /**
+     * Une version de saison terminée, non choisie, dont la photo ne porte pas Karim ; Karim arrive après.
+     *
+     * @return array{0: string, 1: string, 2: string, 3: string, 4: string} [token, clubId, seasonId, versionId, karimId]
+     */
+    private function seedLoadableVersionAndKarim(string $ara): array
+    {
+        [$token, $userId] = $this->registerVerified($ara);
+        $clubId = $this->clubIdOf($userId);
+        $seasonId = $this->seasonOf($clubId);
+        $this->scopeGucToClub($clubId);
+        $em = $this->em();
+        $season = $em->getRepository(Season::class)->find($seasonId);
+        self::assertInstanceOf(Season::class, $season);
+        $version = (new Schedule)->setClubId($clubId)->setSeasonId($seasonId)->setName('Sans Karim')
+            ->setStatus(ScheduleStatus::COMPLETED)->setSchedulePlanId($this->seasonPlanIdOf($season));
+        $em->persist($version);
+        self::getContainer()->get(SchedulePlanProvisioner::class)->linkSchedule($version);
+        $em->flush();
+        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
+        $snapshotter->store($version, $snapshotter->serialize($clubId, $seasonId));
+        $karim = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Karim')->setLastName('Test');
+        $em->persist($karim);
+        $em->flush();
+        $ids = [$token, $clubId, $seasonId, $version->getId(), $karim->getId()];
+        $em->clear();
+        $this->clearGuc();
+
+        return $ids;
+    }
+
+    /** Une doléance de vacances dont l'unique ligne d'absence nomme ce coach ; rend son id. */
+    private function seedWish(string $clubId, string $seasonId, string $coachId, string $teamName): string
+    {
+        $this->scopeGucToClub($clubId);
+        $em = $this->em();
+        $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName($teamName);
+        $entry = (new CalendarEntry)->setClubId($clubId)->setSeasonId($seasonId)->setKind(CalendarEntryKind::PERIOD)
+            ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
+        $em->persist($team);
+        $em->persist($entry);
+        $em->flush();
+        $wish = (new CoachWish)->setClubId($clubId)->setSeasonId($seasonId)->setCalendarEntryId($entry->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1)
+            ->setStaffUnavailability([['coachId' => $coachId, 'days' => [4]]]);
+        $em->persist($wish);
+        $em->flush();
+        $wishId = $wish->getId();
+        $em->clear();
+        $this->clearGuc();
+
+        return $wishId;
+    }
+
+    private function load(string $token, string $seasonId, string $versionId): void
+    {
+        $this->client->request('POST', '/api/schedules/' . $versionId . '/regenerate-from', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'HTTP_X-Season-Id' => $seasonId]);
+        self::assertResponseIsSuccessful();
+    }
+
+    /** Lecture directe sous le club propriétaire (RLS) : aucun filtre de saison ne masque la ligne. */
+    private function staffLinesOf(string $clubId, string $wishId): string
+    {
+        $this->scopeGucToClub($clubId);
+        $lines = $this->em()->getConnection()->fetchOne('SELECT staff_unavailability::text FROM coach_wish WHERE id = :id', ['id' => $wishId]);
+        $this->clearGuc();
+        self::assertIsString($lines, 'la doléance survit au chargement');
+
+        return $lines;
     }
 
     private function storage(): FeedbackScreenshotStorage
