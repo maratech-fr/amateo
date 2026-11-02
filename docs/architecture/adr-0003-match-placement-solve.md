@@ -131,7 +131,14 @@ indisponibilité de coach violée −60 (`W_COACH_UNAVAILABLE`, P4-272 ⑤ — M
 personne, jamais une raison `unplaced` ni un élagage de domaine : une indisponibilité de coach est
 TOUJOURS SOFT, PREFERRED forcé côté `MatchConstraint`, HARD refusé) — **rôle-aware depuis le
 chantier H** : ce poids ne s'applique qu'à un coach PRINCIPAL indisponible, un ADJOINT indisponible
-pèse seulement `W_COACH_ASSISTANT` (−10, même poids qu'un conflit personne côté adjoint) · passerelle NOT_SIMULTANEOUS
+pèse seulement `W_COACH_ASSISTANT` (−10, même poids qu'un conflit personne côté adjoint) —
+**amendé 2026-11-02, « un coach tient la séance »** : le terme coach d'une équipe à principal se juge
+sur l'équipe, plus par coach — tous les principaux « pris » (occupés ou indisponibles au coup d'envoi)
+coûtent −60 UNE fois, −10 s'il reste un adjoint libre, un principal libre = 0 ; `W_COACH_UNAVAILABLE`
+n'est plus lue par ce calcul (sa valeur reste, roadmap P4-446). `trainingOccupancies` change de sens à
+contrat 1.9 constant : « personne retenue par une séance ce jour-là » (tenant daté + joueurs), émis
+par le backend seulement sur les dates qui portent un match à placer ; le moteur affecte lui-même les
+matchs figés (`match_placement/holding.py`, miroir de `Conflicts/DatedHolding`) · passerelle NOT_SIMULTANEOUS
 violée −40 · règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE`,
 P4-272 ③ — entre l'habitude et la passerelle ; une règle HARD, elle, n'entre jamais dans l'objectif,
 elle élague le domaine, §3 ci-dessus) · habitude heure +15 / gymnase +5 (le jour est constant) ·

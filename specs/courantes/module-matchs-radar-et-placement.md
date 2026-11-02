@@ -84,8 +84,8 @@ s'entraîne le vendredi 20:00, U18 (Karim B. seul) joue à 20:30 : Emma tient la
 le match, rien à traiter. Chaque domaine d'indisponibilité reste le sien : celle du wizard
 (chevauchant la séance sur sa durée) empêche de tenir une séance, celle du module Matchs (contenant
 le coup d'envoi) empêche de tenir un match. Le coach stocké sur le planning ne bouge jamais, le
-planning et le PDF restent inchangés (l'imprévu reste à la charge du club). Limite : le placement
-des matchs ne suit pas encore (roadmap, P4-397).
+planning et le PDF restent inchangés (l'imprévu reste à la charge du club). Le placement des
+matchs applique la même tenue (§3, « Un coach tient la séance »).
 
 **Chevauchement demi-ouvert** (créneaux jointifs = pas de conflit). Une empreinte qui passe minuit
 est vérifiée sur les deux jours. Résolution déterministe par la période la plus ÉTROITE en cas de
@@ -342,6 +342,20 @@ cette équipe (le rôle coach gagne, parité `MatchConflictDetector`, gardé par
 `trainingOccupancies` projetées sont étendues de la même façon aux joueurs actifs de l'équipe du
 créneau (`MatchPlacementPayloadBuilder::trainingOccupancies`).
 
+**Un coach tient la séance, face aux matchs à placer** (fondateur, 2026-11-02, contrat 1.9 constant) :
+`trainingOccupancies` ne dit plus « le coach stocké de la séance + ses joueurs » mais « personne
+retenue par une séance ce jour-là » — le tenant daté de la séance (même calcul que le radar §2 :
+`Conflicts/DatedHolding` via `DayHoldings`, entrées `PlanHoldingInputs`, indisponibilités
+d'entraînement du plan effectif) et ses joueurs. Émis seulement sur les dates qui portent un match à
+placer ; une séance que personne ne peut tenir retient tous ses candidats restants, aucun si les
+indisponibilités d'entraînement les ont tous retirés. À candidats égaux, tient d'abord celui qui n'a
+pas de match à placer ce jour-là. Les tenants des matchs FIGÉS ne sont pas émis : le moteur les
+affecte lui-même (`match_placement/holding.py`, miroir de `DatedHolding`, parité gardée par
+`DatedHoldingMirrorParityTest` ⇄ `test_dated_holding_parity.py`). Exemple : U15 = Karim B. + Emma D.
+séance vendredi 20:00 ; U18 = Karim B. seul, match à placer : Emma tient, U18 reste sur l'idéal 20:30.
+Limite : une séance de l'équipe face à un match À PLACER de cette même équipe reste pénalisée
+(l'occupation ne porte pas l'équipe, roadmap P4-445).
+
 **Le solveur IGNORE toute empreinte personne d'un match EXTÉRIEUR (P4-240 ③, décision B)** : la
 boucle des fenêtres personne ne parcourt plus que les ancres FIXED (domicile, déjà posées) et les
 entraînements projetés — un match AWAY ne bloque plus aucun coach ni joueuse côté solveur
@@ -354,8 +368,9 @@ protection d'habitude de son équipe ce jour-là (`team_dates`). Conséquence : 
 personne du solveur ne provient plus JAMAIS d'un trajet ni d'un échauffement — elle vaut toujours la
 fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 
-**SOFT (golden-épinglés)** : conflit personne (coach MAIN ou joueuse active) −60 · indisponibilité
-de coach violée −60 (`W_COACH_UNAVAILABLE=60`, P4-272 ⑤, `match_placement/weights.py` — MÊME poids qu'un
+**SOFT (golden-épinglés)** : conflit personne (joueuse active, ou coach MAIN : voir le terme coach
+ci-dessous) −60 · indisponibilité de coach violée −60 (`W_COACH_UNAVAILABLE=60`, P4-272 ⑤,
+`match_placement/weights.py` — constante qui n'est plus lue par le calcul, roadmap P4-446 ; même poids qu'un
 conflit personne ; le coup d'envoi du candidat retenu tombe dans une plage d'un coach de l'équipe,
 sur un jour couvert par cette plage ; jamais d'élagage de domaine, jamais de raison `unplaced` — le
 placement l'évite quand une alternative existe, sans jamais rendre un match impossible) — **rôle-aware
@@ -363,7 +378,10 @@ depuis le chantier H** : ce poids ne s'applique qu'à un coach PRINCIPAL indispo
 indisponible ne pèse que `W_COACH_ASSISTANT=10` (`(role, unav)` porté par `team_coach_unavailabilities`,
 `engine/app/solver/match_placement/__init__.py`) ; le radar (§2, `MATCH_COACH_UNAVAILABLE`) lit
 désormais la même donnée (indisponibilités COACH) pour SIGNALER au gestionnaire, le solveur de
-placement continue de simplement pénaliser sans jamais bloquer · coach ASSISTANT −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie
+placement continue de simplement pénaliser sans jamais bloquer · coach ASSISTANT −10 · **terme coach d'une équipe à principal** (« un coach tient la séance »,
+2026-11-02) : « pris » = occupation ou fenêtre figée qui chevauche, ou indisponibilité contenant le
+coup d'envoi ; tous les principaux pris = −60 une seule fois, −10 s'il reste un adjoint libre, un
+principal libre = 0 (équipe sans principal ou à adjoint seul : inchangée) · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie
 délibérée** : le radar §2 ne signale jamais cette famille, le solveur GARDE cette préférence
 souple — sens sûr, une pénalité SOFT ne bloque jamais rien, à ne pas « aligner » en la retirant) ·
 règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE=30`, P4-272 ③, `match_placement/weights.py` —

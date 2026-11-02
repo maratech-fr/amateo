@@ -13,6 +13,9 @@ use DateTimeImmutable;
  * Qui tient quoi, date par date, pour le radar : monte les besoins d'une date et les confie à
  * {@see DatedHolding}. Calculé une fois par date, et seulement pour les dates qui portent une ligne.
  *
+ * Côté placement, `$busyToPlaceByDate` nomme les personnes qui ont un match à placer ce jour-là : à
+ * candidats égaux, les autres passent devant pour tenir (le radar n'en passe aucune).
+ *
  * Un besoin de match : un match du jour, avec un tenant parmi les principaux de son équipe dont la
  * plage d'indisponibilité du module Matchs ne contient pas le coup d'envoi.
  * Un besoin de séance : une séance du plan effectif de la date, avec un tenant parmi le coach nommé
@@ -25,7 +28,7 @@ use DateTimeImmutable;
  * @phpstan-import-type FixtureView from PersonConflicts
  * @phpstan-import-type Need from DatedHolding
  *
- * @phpstan-type Board array{assignment: DatedAssignment, needOfSlot: array<string, string>, teamsOfNeed: array<string, list<string>>}
+ * @phpstan-type Board array{assignment: DatedAssignment, needOfSlot: array<string, string>, teamsOfNeed: array<string, list<string>>, sessions: list<Need>}
  */
 final class DayHoldings
 {
@@ -46,6 +49,7 @@ final class DayHoldings
      * @param list<string>                                                                                   $publicHolidays
      * @param array<string, array<string, list<array{0: int, 1: int, 2: int}>>>                              $wizardBlockedBySchedule version → coach → [jour, début, fin]
      * @param array<string, list<list<string>>>                                                              $groupsBySchedule        version → listes d'équipes d'un groupe déclaré
+     * @param array<string, array<string, true>>                                                             $busyToPlaceByDate       date → personnes avec un match à placer ce jour-là
      */
     public function __construct(
         private readonly array $views,
@@ -58,11 +62,34 @@ final class DayHoldings
         private readonly array $publicHolidays,
         private readonly array $wizardBlockedBySchedule,
         private readonly array $groupsBySchedule,
+        private readonly array $busyToPlaceByDate = [],
     ) {
         $this->dayMatches = new DayMatches;
         foreach ($views as $view) {
             $this->viewByFixture[$view['fixture']->getId()] = $view;
         }
+    }
+
+    /**
+     * Les séances-besoins de la date, chacune avec son tenant ou null si personne ne peut la tenir.
+     *
+     * @return list<array{startMinutes: int, endMinutes: int, holder: string|null, candidates: list<string>, players: list<string>}>
+     */
+    public function sessionsOn(DateTimeImmutable $date): array
+    {
+        $board = $this->board($date);
+        $sessions = [];
+        foreach ($board['sessions'] as $need) {
+            $sessions[] = [
+                'startMinutes' => $need['startMinutes'],
+                'endMinutes' => $need['endMinutes'],
+                'holder' => $board['assignment']->holders[$need['id']] ?? null,
+                'candidates' => $need['candidates'],
+                'players' => $need['players'],
+            ];
+        }
+
+        return $sessions;
     }
 
     public function holderOfMatch(DateTimeImmutable $date, string $fixtureId): ?string
@@ -139,6 +166,7 @@ final class DayHoldings
             return $this->boards[$day];
         }
 
+        $busy = $this->busyToPlaceByDate[$day] ?? [];
         $needs = [];
         $matches = $this->dayMatches->forDate($date, $this->views);
         foreach ($matches as $match) {
@@ -148,16 +176,19 @@ final class DayHoldings
                 'teamId' => $match['teamId'],
                 'startMinutes' => $match['startMinutes'],
                 'endMinutes' => $match['endMinutes'],
-                'candidates' => $this->matchCandidates($match['fixtureId'], $match['teamId']),
+                'candidates' => $this->freeOfMatchesFirst($this->matchCandidates($match['fixtureId'], $match['teamId']), $busy),
                 'players' => $this->playersOf($match['teamId']),
             ];
         }
 
         $needOfSlot = [];
         $teamsOfNeed = [];
+        $sessions = [];
         foreach ($this->sessionBuckets($date, $matches) as $bucket) {
             $need = $this->sessionNeed($date, $bucket);
+            $need['candidates'] = $this->freeOfMatchesFirst($need['candidates'], $busy);
             $needs[] = $need;
+            $sessions[] = $need;
             $teams = [];
             foreach ($bucket as $slot) {
                 $needOfSlot[$slot->getId()] = $need['id'];
@@ -170,6 +201,23 @@ final class DayHoldings
             'assignment' => new DatedHolding()->assign($needs),
             'needOfSlot' => $needOfSlot,
             'teamsOfNeed' => $teamsOfNeed,
+            'sessions' => $sessions,
+        ];
+    }
+
+    /**
+     * @param list<string>        $candidates
+     * @param array<string, true> $busy
+     *
+     * @return list<string>
+     */
+    private function freeOfMatchesFirst(array $candidates, array $busy): array
+    {
+        $isBusy = static fn (string $person): bool => isset($busy[$person]);
+
+        return [
+            ...array_filter($candidates, static fn (string $person): bool => !$isBusy($person)),
+            ...array_filter($candidates, $isBusy),
         ];
     }
 

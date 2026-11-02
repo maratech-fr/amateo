@@ -847,3 +847,37 @@ def test_the_imported_weight_stays_under_a_placement_even_with_every_penalty() -
 
     assert weights.W_IMPORTED_POSITION > 975
     assert weights.W_PLACE > weights.W_IMPORTED_POSITION + 975
+
+
+def test_an_assistant_only_team_keeps_its_cumulated_ten_per_clash() -> None:
+    # « Un coach tient la séance » ne touche pas une équipe sans principal : l'adjoint occupé ET
+    # indisponible coûte 10 + 10. L'idéal vaut +20 -20 = 0, la position courante +8 gagne. S'il ne
+    # payait qu'une fois, l'idéal vaudrait +10 et gagnerait.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place(currentVenueId="v1", currentKickoff="18:00")],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "22:00"}])],
+            teams=[
+                team(
+                    coaches=[{"coachId": "a", "role": "ASSISTANT"}],
+                    habits=[{"dayOfWeek": 6, "kickoff": "15:00", "venueId": "v1"}],
+                )
+            ],
+            trainingOccupancies=[{"date": SATURDAY, "start": "15:00", "end": "16:45", "coachId": "a"}],
+            coachUnavailabilities=[{"coachId": "a", "daysOfWeek": [6], "kickoffMin": "14:00", "kickoffMax": "15:10"}],
+        )
+    )
+    assert kickoff_of(result, "m1") == "18:00"
+
+
+def test_a_team_without_any_coach_ignores_the_taken_people_of_the_day() -> None:
+    # Sans coach, l'équipe n'a aucun principal « pris » : ni pénalité, ni repli, l'idéal tient.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place()],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "22:00"}])],
+            teams=[team(habits=[{"dayOfWeek": 6, "kickoff": "15:00", "venueId": "v1"}])],
+            trainingOccupancies=[{"date": SATURDAY, "start": "15:00", "end": "16:45", "coachId": "someone"}],
+        )
+    )
+    assert kickoff_of(result, "m1") == "15:00"

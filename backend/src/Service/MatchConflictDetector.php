@@ -520,66 +520,18 @@ final class MatchConflictDetector
         // don't need a coach).
         $views = [];
         foreach ($activeFixtures as $fixture) {
-            // P2-54 RMM-9 — the footprint durations now depend on the team's
-            // category profile; a team missing from the map falls back to the
-            // documented 105/30 (MatchDurationProfile::fallback()).
-            $profile = $profilesByTeam[$fixture->getTeamId()] ?? MatchDurationProfile::fallback();
-            // P2-54 RMM-9 PR-3 — the AWAY footprint gains the round-trip travel leg
-            // (0 when the opponent has no known travel). Home fixtures ignore it
-            // (MatchFootprint only adds the leg for AWAY).
-            $roundTrip = $roundTripByFixtureId[$fixture->getId()] ?? 0;
-            $estimated = false;
-            // P2-54 conflict side details — the estimated kickoff « HH:MM » held for
-            // the per-side rendering, non-null ONLY when the window borrowed a habit.
-            $estimatedKickoffTime = null;
-            $window = $this->footprint->occupancy($fixture, $profile, $roundTrip);
-            $venueWindow = $this->footprint->venueOccupancy($fixture, $profile);
-            // Lot M / P4-240 ③ — the PERSON-conflict window: at home the warm-up is
-            // dropped (a person reaches a home game she is late for by its kickoff),
-            // before an away match the warm-up IS counted (she warms up at the away
-            // gym, décision C). Travel kept. The families of PERSON overlap on THIS.
-            $conflictWindow = $this->footprint->personConflictOccupancy($fixture, $profile, $roundTrip);
-            if (null === $window) {
-                $estimatedKickoff = $this->awayKickoffEstimator->estimate($fixture, $habitByTeamDay);
-                if ($estimatedKickoff instanceof DateTimeImmutable) {
-                    $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff, $profile, $roundTrip);
-                    $venueWindow = $this->footprint->venueOccupancyAt($fixture, $estimatedKickoff, $profile);
-                    $conflictWindow = $this->footprint->personConflictOccupancyAt($fixture, $estimatedKickoff, $profile, $roundTrip);
-                    $estimated = true;
-                    $estimatedKickoffTime = $estimatedKickoff->format('H:i');
-                }
-            }
-            // The three windows share the same kickoff source, so they are non-null
-            // together; the guards keep PHPStan honest about it (split so each narrows,
-            // Rector leaves a two-term OR alone).
-            if (null === $window || null === $venueWindow) {
-                continue;
-            }
-            if (null === $conflictWindow) {
-                continue;
-            }
-            // P2-54 conflict side details — the ONE-WAY travel leg (round trip / 2)
-            // for the per-side rendering. null = NOT modelled (the fixture carries no
-            // row in the projected map) so the UI says « trajet inconnu » rather than
-            // « 0 min » ; the footprint above still gets `?? 0`. Always null on HOME
-            // (the controller only projects AWAY rows), guarded here so the contract
-            // stays local to this class.
-            $travelOneWayMinutes = FixtureHomeAway::AWAY === $fixture->getHomeAway() && \array_key_exists($fixture->getId(), $roundTripByFixtureId)
-                ? intdiv($roundTripByFixtureId[$fixture->getId()], 2)
-                : null;
-            $views[] = [
-                'fixture' => $fixture,
-                'window' => $window,
-                'venueWindow' => $venueWindow,
-                'conflictWindow' => $conflictWindow,
-                'estimated' => $estimated,
-                'estimatedKickoffTime' => $estimatedKickoffTime,
-                'travelOneWayMinutes' => $travelOneWayMinutes,
-                'matchDurationMinutes' => $profile->matchMinutes,
+            $view = $this->fixtureView(
+                $fixture,
+                $profilesByTeam,
+                $roundTripByFixtureId,
+                $habitByTeamDay,
                 // The PERSONS of the fixture's team (coaches ∪ active players) —
                 // the keys of the per-team role map are exactly that union.
-                'personIds' => array_keys($roleByTeamPerson[$fixture->getTeamId()] ?? []),
-            ];
+                array_keys($roleByTeamPerson[$fixture->getTeamId()] ?? []),
+            );
+            if (null !== $view) {
+                $views[] = $view;
+            }
         }
         $personViews = array_values(array_filter($views, static fn (array $view): bool => [] !== $view['personIds']));
         $holdings = new DayHoldings($personViews, $roleByTeamPerson, $this->effectiveScheduleResolver, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $wizardBlockedBySchedule, $groupsBySchedule);
@@ -604,6 +556,80 @@ final class MatchConflictDetector
             // P4-288 — ajouté EN FIN pour que le $conflicts[0] des familles plus graves
             // reste inchangé : une info repliée (sévérité 7), jamais une alerte en tête.
             ...$this->teamLevelMissingItems($activeFixtures, $levelByTeam),
+        ];
+    }
+
+    /**
+     * La vue d'une rencontre : sa fenêtre de personne, de gymnase et d'occupation, sur une heure réelle
+     * ou estimée. Null sans heure. Le radar et le payload de placement lisent la même.
+     *
+     * @param array<string, MatchDurationProfile>       $profilesByTeam
+     * @param array<string, int>                        $roundTripByFixtureId
+     * @param array<string, array<int, TeamMatchHabit>> $habitByTeamDay
+     * @param list<string>                              $personIds
+     *
+     * @return FixtureView|null
+     */
+    public function fixtureView(Fixture $fixture, array $profilesByTeam, array $roundTripByFixtureId, array $habitByTeamDay, array $personIds): ?array
+    {
+        // P2-54 RMM-9 — the footprint durations now depend on the team's
+        // category profile; a team missing from the map falls back to the
+        // documented 105/30 (MatchDurationProfile::fallback()).
+        $profile = $profilesByTeam[$fixture->getTeamId()] ?? MatchDurationProfile::fallback();
+        // P2-54 RMM-9 PR-3 — the AWAY footprint gains the round-trip travel leg
+        // (0 when the opponent has no known travel). Home fixtures ignore it
+        // (MatchFootprint only adds the leg for AWAY).
+        $roundTrip = $roundTripByFixtureId[$fixture->getId()] ?? 0;
+        $estimated = false;
+        // P2-54 conflict side details — the estimated kickoff « HH:MM » held for
+        // the per-side rendering, non-null ONLY when the window borrowed a habit.
+        $estimatedKickoffTime = null;
+        $window = $this->footprint->occupancy($fixture, $profile, $roundTrip);
+        $venueWindow = $this->footprint->venueOccupancy($fixture, $profile);
+        // Lot M / P4-240 ③ — the PERSON-conflict window: at home the warm-up is
+        // dropped (a person reaches a home game she is late for by its kickoff),
+        // before an away match the warm-up IS counted (she warms up at the away
+        // gym, décision C). Travel kept. The families of PERSON overlap on THIS.
+        $conflictWindow = $this->footprint->personConflictOccupancy($fixture, $profile, $roundTrip);
+        if (null === $window) {
+            $estimatedKickoff = $this->awayKickoffEstimator->estimate($fixture, $habitByTeamDay);
+            if ($estimatedKickoff instanceof DateTimeImmutable) {
+                $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff, $profile, $roundTrip);
+                $venueWindow = $this->footprint->venueOccupancyAt($fixture, $estimatedKickoff, $profile);
+                $conflictWindow = $this->footprint->personConflictOccupancyAt($fixture, $estimatedKickoff, $profile, $roundTrip);
+                $estimated = true;
+                $estimatedKickoffTime = $estimatedKickoff->format('H:i');
+            }
+        }
+        // The three windows share the same kickoff source, so they are non-null
+        // together; the guards keep PHPStan honest about it (split so each narrows,
+        // Rector leaves a two-term OR alone).
+        if (null === $window || null === $venueWindow) {
+            return null;
+        }
+        if (null === $conflictWindow) {
+            return null;
+        }
+        // P2-54 conflict side details — the ONE-WAY travel leg (round trip / 2)
+        // for the per-side rendering. null = NOT modelled (the fixture carries no
+        // row in the projected map) so the UI says « trajet inconnu » rather than
+        // « 0 min » ; the footprint above still gets `?? 0`. Always null on HOME
+        // (the controller only projects AWAY rows), guarded here so the contract
+        // stays local to this class.
+        $travelOneWayMinutes = FixtureHomeAway::AWAY === $fixture->getHomeAway() && \array_key_exists($fixture->getId(), $roundTripByFixtureId)
+            ? intdiv($roundTripByFixtureId[$fixture->getId()], 2)
+            : null;
+
+        return [
+            'fixture' => $fixture,
+            'window' => $window,
+            'venueWindow' => $venueWindow,
+            'conflictWindow' => $conflictWindow,
+            'estimated' => $estimated,
+            'estimatedKickoffTime' => $estimatedKickoffTime,
+            'travelOneWayMinutes' => $travelOneWayMinutes,
+            'matchDurationMinutes' => $profile->matchMinutes,
+            'personIds' => $personIds,
         ];
     }
 

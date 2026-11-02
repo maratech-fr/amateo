@@ -4,25 +4,19 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
-use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
-use App\Entity\Schedule;
-use App\Entity\SchedulePlan;
 use App\Entity\Season;
-use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
-use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Repository\ClubRepository;
@@ -62,7 +56,7 @@ final class ConflictRadarLoader
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly ClubPublicHolidays $clubPublicHolidays,
-        private readonly PeriodConstraintSelector $periodConstraintSelector,
+        private readonly PlanHoldingInputs $planHoldingInputs,
     ) {}
 
     /**
@@ -254,7 +248,7 @@ final class ConflictRadarLoader
             ? $this->clubPublicHolidays->datesInWindow($clubId, $season->getStartDate(), $season->getEndDate())
             : [];
 
-        [$wizardBlockedBySchedule, $groupsBySchedule] = $this->holdingInputs($clubId, $seasonId, array_keys($context['slotsBySchedule']));
+        [$wizardBlockedBySchedule, $groupsBySchedule] = $this->planHoldingInputs->load($clubId, $seasonId, array_keys($context['slotsBySchedule']));
 
         $lines = $this->detector->detect(
             $fixtures,
@@ -287,49 +281,5 @@ final class ConflictRadarLoader
             'seasonScheduleId' => $context['seasonScheduleId'],
             'fixtures' => $fixtures,
         ];
-    }
-
-    /**
-     * Ce que le plan de chaque version dit de qui peut tenir une séance : ses indisponibilités
-     * d'entraînement (saison : les permanentes ; période : le jeu que la génération reçoit) et ses
-     * groupes déclarés (saison : sans plan ; période : ceux du plan, jamais un mélange).
-     *
-     * @param list<string> $scheduleIds
-     *
-     * @return array{0: array<string, array<string, list<array{0: int, 1: int, 2: int}>>>, 1: array<string, list<list<string>>>}
-     */
-    private function holdingInputs(string $clubId, ?string $seasonId, array $scheduleIds): array
-    {
-        if (null === $seasonId) {
-            return [[], []];
-        }
-
-        $teamsByPlanBlock = [];
-        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy([]) as $member) {
-            $teamsByPlanBlock[$member->getSchedulePlanId() ?? ''][$member->getBlockId()][] = $member->getTeamId();
-        }
-        $permanent = $this->entityManager->getRepository(Constraint::class)->findPermanentByClubSeason($clubId, $seasonId);
-
-        $blocked = [];
-        $groups = [];
-        foreach ($scheduleIds as $scheduleId) {
-            $schedule = $this->entityManager->getRepository(Schedule::class)->find($scheduleId);
-            if (!$schedule instanceof Schedule) {
-                continue;
-            }
-            $planId = $schedule->getSchedulePlanId();
-            $entryId = $this->entityManager->getRepository(SchedulePlan::class)->find($planId)?->getCalendarEntryId();
-            $entry = null !== $entryId ? $this->entityManager->getRepository(CalendarEntry::class)->find($entryId) : null;
-
-            if ($entry instanceof CalendarEntry && \in_array($entry->getPeriodType(), [CalendarEntryPeriodType::CLOSURE, CalendarEntryPeriodType::HOLIDAY], true)) {
-                $blocked[$scheduleId] = CoachDoubleBookingDetector::blockedIntervalsByCoach($this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $planId, $entry)->kept);
-                $groups[$scheduleId] = array_values($teamsByPlanBlock[$planId] ?? []);
-            } else {
-                $blocked[$scheduleId] = CoachDoubleBookingDetector::blockedIntervalsByCoach($permanent);
-                $groups[$scheduleId] = array_values($teamsByPlanBlock[''] ?? []);
-            }
-        }
-
-        return [$blocked, $groups];
     }
 }

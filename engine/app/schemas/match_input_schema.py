@@ -222,8 +222,12 @@ class TeamLinkSchema(SerializableModel):
 
 
 class TrainingOccupancySchema(SerializableModel):
-    """A dated training session projected by the backend from the EFFECTIVE
-    schedule (ADR-0002 rules live backend-side — the engine stays flat)."""
+    """A person retained by a training session on that date, resolved by the backend from the
+    EFFECTIVE schedule (ADR-0002 rules live backend-side — the engine stays flat): the session's
+    holder of the day and its players, not the stored coach. A session nobody can hold retains all its
+    candidates left after the training-unavailability filter (none if every one of them is
+    unavailable). Only the dates carrying a match to place are projected. `coachId` carries any
+    person id."""
 
     occupancy_date: date = Field(alias="date")
     start: time

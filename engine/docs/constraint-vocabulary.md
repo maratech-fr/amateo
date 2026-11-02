@@ -183,7 +183,8 @@
 > famille gouverne **uniquement** le solveur d'ENTRAÎNEMENT (`/generate`, toujours dure). Le rail
 > matchs (`/place-matches`) reçoit un bloc top-level SÉPARÉ, `coachUnavailabilities`
 > (`match_input_schema.py::CoachUnavailabilitySchema`) — TOUJOURS SOFT (`W_COACH_UNAVAILABLE=60`,
-> `engine/app/solver/match_placement/weights.py`), jamais un élagage de domaine ni un HARD. Les deux
+> `engine/app/solver/match_placement/weights.py`, constante que le calcul ne lit plus : un principal
+> indisponible compte comme « pris », −60 une fois si tous les principaux le sont), jamais un élagage de domaine ni un HARD. Les deux
 > mécanismes ne partagent ni schéma ni mécanisme — voir
 > [`../../specs/courantes/module-matchs-modele-donnees.md`](../../specs/courantes/module-matchs-modele-donnees.md) §1,
 > [`../../specs/courantes/module-matchs-radar-et-placement.md`](../../specs/courantes/module-matchs-radar-et-placement.md) §3.
