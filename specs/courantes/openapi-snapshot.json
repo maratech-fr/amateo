@@ -36049,10 +36049,6 @@
                             "ASSISTANT"
                         ]
                     },
-                    "isRequired": {
-                        "default": false,
-                        "type": "boolean"
-                    },
                     "wishRecipient": {
                         "description": "Le coach principal choisi pour recevoir le lien de collecte de l'\u00e9quipe.",
                         "default": false,
@@ -36096,12 +36092,6 @@
                             "string",
                             "null"
                         ]
-                    },
-                    "isRequired": {
-                        "type": [
-                            "boolean",
-                            "null"
-                        ]
                     }
                 }
             },
@@ -36138,10 +36128,6 @@
                             "MAIN",
                             "ASSISTANT"
                         ]
-                    },
-                    "isRequired": {
-                        "default": false,
-                        "type": "boolean"
                     },
                     "wishRecipient": {
                         "description": "Le coach principal choisi pour recevoir le lien de collecte de l'\u00e9quipe.",
@@ -36188,10 +36174,6 @@
                                     "MAIN",
                                     "ASSISTANT"
                                 ]
-                            },
-                            "isRequired": {
-                                "default": false,
-                                "type": "boolean"
                             },
                             "wishRecipient": {
                                 "description": "Le coach principal choisi pour recevoir le lien de collecte de l'\u00e9quipe.",

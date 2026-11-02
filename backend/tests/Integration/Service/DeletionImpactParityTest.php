@@ -379,7 +379,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->flush();
 
         $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN)->setIsRequired(true));
+            ->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
         $placed = (new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setScheduleId($schedule->getId())->setTeamId($team->getId())->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)

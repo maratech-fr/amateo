@@ -11,10 +11,12 @@ use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\TeamCoachRole;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
 use App\Service\ScheduleConstraintBuilder;
@@ -105,6 +107,49 @@ final class ContractSchemaTest extends TestCase
         self::assertArrayHasKey('slots', $data);
         self::assertArrayHasKey('diagnostics', $data);
         self::assertArrayHasKey('metrics', $data);
+    }
+
+    /**
+     * NR axe backend↔engine contract : le lien équipe⇄coach du payload ne porte plus ni `severity` ni
+     * `metadata.isRequired`, à contrat inchangé (le moteur lit le rôle, jamais ces clés).
+     */
+    #[Group('phase1')]
+    public function testTheTeamCoachLinkIsSentWithoutSeverityNorIsRequired(): void
+    {
+        $link = $this->teamCoachLinkOf($this->buildPayload([$this->mainCoachLink()]));
+
+        self::assertArrayNotHasKey('severity', $link);
+        self::assertSame(['coachId' => 'coach-1', 'role' => 'MAIN'], $link['metadata']);
+    }
+
+    /**
+     * Le vrai moteur accepte et résout un lien équipe⇄coach sans ces deux clés : aucune montée de
+     * `CONTRACT_VERSION` n'est nécessaire. Vert avant comme après le retrait, c'est voulu : il prouve
+     * que le schéma Pydantic n'exige ni l'une ni l'autre.
+     */
+    #[Group('contract')]
+    public function testTheRealEngineSolvesATeamCoachLinkWithoutSeverityNorIsRequired(): void
+    {
+        $payload = $this->buildPayload([$this->mainCoachLink()]);
+        foreach ($payload['constraints'] as $index => $constraint) {
+            if ('TEAM_COACH' === ($constraint['type'] ?? null)) {
+                unset($payload['constraints'][$index]['severity'], $payload['constraints'][$index]['metadata']['isRequired']);
+            }
+        }
+
+        try {
+            $response = HttpClient::create(['timeout' => 3])->request('POST', self::engineUrl(), ['json' => $payload]);
+            self::assertSame(200, $response->getStatusCode());
+            $data = $response->toArray(false);
+        } catch (TransportExceptionInterface $exception) {
+            if ($this->isEngineUnavailable($exception)) {
+                self::markTestSkipped('Engine not available');
+            }
+
+            throw $exception;
+        }
+
+        self::assertSame('completed', $data['status']);
     }
 
     /**
@@ -295,7 +340,8 @@ final class ContractSchemaTest extends TestCase
         return $captured[0];
     }
 
-    private function buildPayload(): array
+    /** @param list<TeamCoach> $teamCoaches */
+    private function buildPayload(array $teamCoaches = []): array
     {
         $venue = (new Venue)
             ->setId('venue-1')
@@ -340,6 +386,7 @@ final class ContractSchemaTest extends TestCase
             venues: [$venue],
             teams: [$team],
             coaches: [$coach],
+            teamCoaches: $teamCoaches,
             constraints: [$constraint],
         );
     }
@@ -421,6 +468,27 @@ final class ContractSchemaTest extends TestCase
         self::assertArrayNotHasKey('type', $payload['constraints'][0]);
         self::assertArrayNotHasKey('severity', $payload['constraints'][0]);
         self::assertArrayNotHasKey('value', $payload['constraints'][0]);
+    }
+
+    private function mainCoachLink(): TeamCoach
+    {
+        return (new TeamCoach)->setId('team-coach-1')->setClubId(self::CLUB_ID)->setSeasonId(self::SEASON_ID)
+            ->setTeamId('team-1')->setCoachId('coach-1')->setRole(TeamCoachRole::MAIN);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private function teamCoachLinkOf(array $payload): array
+    {
+        foreach ($payload['constraints'] as $constraint) {
+            if ('TEAM_COACH' === ($constraint['type'] ?? null)) {
+                return $constraint;
+            }
+        }
+        self::fail('le payload ne porte aucun lien équipe-coach');
     }
 
     private function isEngineUnavailable(TransportExceptionInterface $exception): bool

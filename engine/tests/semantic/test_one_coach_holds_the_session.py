@@ -3,7 +3,7 @@
 Seul, un coach principal est indispensable ; à trois, un seul suffit, comme pour les mutualisations.
 Le moteur ne doit donc plus occuper TOUS les coachs principaux d'une équipe à chaque séance : chaque
 séance a AU MOINS un coach qui la tient, et une personne ne tient qu'une séance à la fois, sauf dans
-le même gymnase (D-14). ``isRequired`` n'est ni lu ni retiré.
+le même gymnase (D-14).
 
 Cas réel (coachs anonymisés) : U15 = A + B, U13 = A. Les deux séances simultanées dans deux gymnases
 sont légitimes, B tient les U15 et A les U13.
@@ -176,18 +176,6 @@ def test_an_assistant_does_not_hold_a_session_and_is_not_occupied() -> None:
     result = _solve(["U15", "U13"], _simultaneous_gyms("V", "W"), constraints)
 
     assert _placed(result) == {"U15", "U13"}
-
-
-def test_is_required_is_not_read() -> None:
-    """Décision fondateur : la règle vaut pour toutes les équipes, ``isRequired`` n'entre pas en jeu.
-    Le même décor que le témoin « coach seul », lien marqué non obligatoire : A reste indispensable."""
-    constraints = _links(U15=["A"], U13=["A"])
-    for link in constraints:
-        link["metadata"]["isRequired"] = False
-
-    result = _solve(["U15", "U13"], _simultaneous_gyms("V", "W"), constraints)
-
-    assert len(_placed(result)) == 1, f"isRequired=false ne libère pas le coach : placés {_placed(result)}"
 
 
 # ── Le rôle de joueur occupe la personne ─────────────────────────────────────────────────────────

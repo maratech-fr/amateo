@@ -310,7 +310,6 @@ final class SeasonTransitionService
             $copy->setTeamId($teamId);
             $copy->setCoachId($coachId);
             $copy->setRole($link->getRole());
-            $copy->setIsRequired($link->getIsRequired());
             // Le premier lié reste le défaut, et le choix du gestionnaire reste retenu.
             $copy->setCreatedAt($link->getCreatedAt());
             $copy->setWishRecipient($link->isWishRecipient());

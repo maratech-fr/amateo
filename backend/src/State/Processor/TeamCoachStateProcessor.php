@@ -55,9 +55,6 @@ class TeamCoachStateProcessor extends AbstractStateProcessor
                 $entity->setRole($role);
             }
         }
-        if (null !== $input->isRequired) {
-            $entity->setIsRequired($input->isRequired);
-        }
 
         return $entity;
     }

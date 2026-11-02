@@ -277,7 +277,7 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
         $this->em->persist($coach);
         $this->em->flush();
 
-        $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN)->setIsRequired(true));
+        $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
 
         $off = new Constraint;
         $off->setClubId($club->getId());

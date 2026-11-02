@@ -145,8 +145,7 @@ final class DevScheduleReportWriter
             foreach ($teamCoaches as $tc) {
                 $teamName = $teamNames[$tc->getTeamId()] ?? $tc->getTeamId();
                 $coachName = $coachNames[$tc->getCoachId()] ?? $tc->getCoachId();
-                $required = $tc->getIsRequired() ? 'obligatoire' : 'optionnel';
-                $summaryLines[] = \sprintf('  %s — %s (%s)', $teamName, $coachName, $required);
+                $summaryLines[] = \sprintf('  %s — %s', $teamName, $coachName);
             }
             $summaryLines[] = '';
         }

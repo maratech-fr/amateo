@@ -795,6 +795,31 @@ docker compose exec php-fpm php bin/console app:schedule:dedupe-snapshot-pins   
 
 Détail et limite connue : [`backend/docs/commands.md`](../../backend/docs/commands.md).
 
+### Étape post-déploiement OBLIGATOIRE — réaligner les empreintes après le retrait de « coach obligatoire »
+
+À lancer **juste après** le déploiement de la version qui retire « coach obligatoire » (le lien coach du
+payload moteur perd `severity` et `metadata.isRequired`), y compris après une **mise en prod
+programmée** : la fenêtre entre le déploiement et la commande peut alors couvrir toute une nuit. Sur la
+VM, la forme qui fonctionne est `docker exec` (voir P4-443 dans la roadmap pour `docker compose exec`) :
+
+```bash
+docker exec amateo-php-fpm php bin/console app:schedule:normalize-team-coach-snapshots --dry-run   # compte, n'écrit rien
+docker exec amateo-php-fpm php bin/console app:schedule:normalize-team-coach-snapshots             # applique (idempotente)
+```
+
+- **Un club en cours de génération est sauté** et la commande rend `FAILURE` : la rejouer plus tard
+  jusqu'à `SUCCESS`. Une version en échec arrête la commande (`FAILURE`) ; rejouer termine le travail.
+- **Pendant la fenêtre** (déploiement fait, commande pas encore jouée), un planning non validé peut
+  paraître « périmé » à tort (bannière « vos données ont changé », « Régénérer » actif) : non
+  destructeur, la commande le corrige.
+- **Retour à une version antérieure APRÈS la commande** : l'ancien code recalcule l'empreinte avec les
+  clés retirées, les plannings non validés paraissent alors périmés.
+- **La colonne `team_coach.is_required` n'est pas supprimée par ce déploiement** (elle reçoit un défaut
+  et n'est plus écrite) : sa suppression vient au déploiement **suivant**, et après elle **aucun retour**
+  avant la version qui retire « coach obligatoire ».
+
+Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md).
+
 ### Rituel sécurité post-déploiement (ZAP + Nuclei) — obligatoire à CHAQUE déploiement
 
 Une fois le déploiement vert, rejouer le rituel décrit dans

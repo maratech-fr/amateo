@@ -282,7 +282,7 @@ final class CoachLateToleranceSemanticsGateTest extends KernelTestCase
     {
         $link = (new TeamCoach)
             ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setTeamId($teamId)->setCoachId($coachId)->setRole($role)->setIsRequired(true);
+            ->setTeamId($teamId)->setCoachId($coachId)->setRole($role);
         $this->em->persist($link);
     }
 

@@ -1515,12 +1515,10 @@ final class ScheduleConstraintBuilder
             'id' => \sprintf('team-coach:%s', $teamCoach->getId()),
             'teamId' => $teamCoach->getTeamId(),
             'type' => 'TEAM_COACH',
-            'severity' => $teamCoach->getIsRequired() ? 'HARD' : 'SOFT',
             'value' => $teamCoach->getCoachId(),
             'metadata' => [
                 'coachId' => $teamCoach->getCoachId(),
                 'role' => $teamCoach->getRole()->value,
-                'isRequired' => $teamCoach->getIsRequired(),
             ],
         ], $teamCoaches);
     }
