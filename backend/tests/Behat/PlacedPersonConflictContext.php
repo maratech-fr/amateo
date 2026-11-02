@@ -194,8 +194,8 @@ final class PlacedPersonConflictContext extends BaseContext
         $this->workScheduleId = $this->uuid();
         $this->dbalExec(
             \sprintf(
-                'INSERT INTO schedule (id, version, created_at, updated_at, club_id, season_id, name, status, schedule_plan_id, version_number)'
-                . ' SELECT \'%s\', 1, now(), now(), club_id, season_id, \'Travail (fonctionnel)\', \'COMPLETED\', schedule_plan_id,'
+                'INSERT INTO schedule (id, version, created_at, updated_at, club_id, season_id, name, status, solver_seed, snapshot_data, schedule_plan_id, version_number)'
+                . ' SELECT \'%s\', 1, now(), now(), club_id, season_id, \'Travail (fonctionnel)\', \'COMPLETED\', solver_seed, snapshot_data, schedule_plan_id,'
                 . ' (SELECT MAX(version_number) + 1 FROM schedule o WHERE o.schedule_plan_id = s.schedule_plan_id) FROM schedule s WHERE id=\'%s\'',
                 $this->workScheduleId,
                 $this->scheduleId,
