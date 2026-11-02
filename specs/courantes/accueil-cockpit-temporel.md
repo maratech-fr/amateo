@@ -367,20 +367,35 @@ DROITE en couleur d'ACCENT du club (jamais rouge, réservé au destructif) avec 
 sélection à gauche. Le geste convertit chaque doléance cochée en réglages STANDARDS du plan de sa
 semaine (`POST /api/coach-wishes/transfer`, 409 si une génération tourne) : le nombre de créneaux
 devient le volume de l'équipe (0 = désactivée cette semaine, une équipe hors périmètre comme les
-Vétérans y entre avec la pastille « via doléances ») ; une indisponibilité devient une
-indisponibilité du COACH si l'équipe est mono-coach ou si tous ses coachs requis ont répondu
-(« un coach suffit »), sinon un jour interdit pour l'ÉQUIPE (une équipe co-coachée dont un seul a
-répondu) ; les jours souhaités deviennent une préférence. Une semaine sans planning n'est JAMAIS
+Vétérans y entre avec la pastille « via doléances ») ; « l'équipe ne s'entraîne pas ce
+jour-là » (`unavailableDays`) devient un jour interdit pour l'ÉQUIPE déclarante seule (contrainte
+TEAM HARD, aucune propagation à un groupe mutualisé — le gestionnaire relit avant de transférer) ;
+chaque ligne d'absence de `staffUnavailability` devient une indisponibilité du COACH nommé
+(`COACH_AVAILABILITY` HARD, une par personne, adjoints compris) et le moteur applique « un coach
+suffit » entre principaux ; l'absence d'un adjoint ne ferme aucune séance mais ferme le relais
+d'arrivée tardive qu'il aurait pu assurer ; une personne qui a quitté l'équipe est ignorée ; les
+jours souhaités deviennent une préférence. Une semaine sans planning n'est JAMAIS
 créée : elle est ignorée, et le récap le dit toujours (« N converties · M ignorées : raison »,
 jamais un compte nu). Après transfert, la doléance passe « traité » (pastille verte à côté du nom,
 le marquage manuel se fait désormais par le crayon — champ « Traitée » du formulaire, plus de
 case à droite dans la liste).
 
-**Équipe à plusieurs coachs : une doléance par équipe × semaine, jamais par coach (option A,
-fondateur 2026-10-10).** Un second coach qui répond pour une équipe déjà servie cette semaine voit
-sa saisie PRÉ-REMPLIE de la réponse du premier et un bandeau « un autre coach a déjà répondu pour
-cette équipe cette semaine — votre envoi remplacera sa version » (`byAnotherCoach`, jamais le
-prénom de l'autre coach) ; le champ commentaire sert à préciser les particularités à la main.
+**Un destinataire répond pour toute l'équipe (fondateur, 2026-11-02).** Une doléance par équipe ×
+semaine : le destinataire donne les séances, les jours où l'équipe peut s'entraîner, et une ligne
+de jours d'absence PAR personne du staff (principaux et adjoints), semaine par semaine ; une
+personne non renseignée est disponible. Une absence vaut pour la personne, toutes ses équipes
+comprises, mais n'atteint le moteur qu'au transfert de la doléance qui la porte ; le formulaire
+signale en bandeau les jours déjà déclarés ailleurs (jours seuls, jamais le nom de l'autre équipe)
+et la liste gestionnaire écrit « déclaré ailleurs ». Un SEUL destinataire principal par équipe :
+le gestionnaire le choisit dans Sollicitation (`POST /api/coach_wish_campaigns/{id}/recipient`,
+collecte ouverte seulement), défaut = le premier coach principal lié, choix mémorisé
+(`TeamCoach.wishRecipient`) ; les adjoints n'ont ni lien ni mail. Le jeton porte la liste des
+équipes pour lesquelles il répond (`CoachWishToken.teamIds`), tenue par une règle unique
+(`CoachWishCampaignTokenSync`) rejouée à chaque changement de liens, de coach ou de destinataire,
+sur les collectes ouvertes : un destinataire qui gagne une équipe repasse « à envoyer » (même
+lien) ; une équipe supprimée sort de TOUTES les collectes, closes comprises
+(`CoachWishCampaignTeamStep`). Un coach supprimé voit ses lignes d'absence retirées des doléances
+(`CoachWishStaffLineStep`).
 
 **« Garder mes créneaux habituels »** : chaque doléance (page publique et modale gestionnaire)
 porte une case « garder les créneaux habituels » (`CoachWish.keepSeasonSlots`, booléen NU, défaut
