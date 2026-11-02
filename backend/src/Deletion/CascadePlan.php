@@ -87,6 +87,7 @@ final class CascadePlan
             // à l'affichage, qui résout les ids en noms depuis les équipes vivantes — choix le
             // plus simple et sûr (une étape de purge JSON n'existe pas dans ce plan scalaire).
             new DeleteByFieldStep(CoachWishMutualization::class, 'teamId', new ImpactLabel('team_coach_mutualization', 'demande de mutualisation', 'demandes de mutualisation')),
+            new CoachWishCampaignTeamStep,
             new ScopedConstraintStep(ConstraintScope::TEAM, new ImpactLabel('team_constraint', 'contrainte visant cette équipe', 'contraintes visant cette équipe')),
             // P2-51 — le bloc de mutualisation (SEULE notion de mutualisation depuis PR-7) meurt
             // ENTIER quand une équipe membre part : toutes ses lignes membres + le bloc lui-même.

@@ -3,7 +3,10 @@
 /** « Lundi, mardi et jeudi » : la liste lue dans une phrase. */
 const inSentence = (labels: string[]): string => (labels.length < 2 ? (labels[0] ?? "") : `${labels.slice(0, -1).join(", ")} et ${labels[labels.length - 1]}`);
 
-const absentList = (people: { firstName: string; dayLabels: string[] }[]): string => people.map((p) => `${p.firstName} (${p.dayLabels.join(", ")})`).join(", ");
+/** Les jours au milieu d'une phrase : en minuscules, contrairement aux boutons. */
+const dayList = (dayLabels: string[]): string => dayLabels.join(", ").toLowerCase();
+
+const absentList = (people: { firstName: string; dayLabels: string[] }[]): string => people.map((p) => `${p.firstName} (${dayList(p.dayLabels)})`).join(", ");
 
 export const COACH_WISHES_PUBLIC_TEXTS = {
   // États de la page
@@ -92,8 +95,8 @@ export const COACH_WISHES_PUBLIC_TEXTS = {
   recapEdit: "Modifier",
   recapPartnerFallback: "équipe",
   recapSlots: (slots: number) => `${slots} séance${slots > 1 ? "s" : ""}`,
-  recapWished: (dayLabels: string[]) => `souhaité ${dayLabels.join(", ")}`,
-  recapTeamClosed: (dayLabels: string[]) => `équipe fermée ${dayLabels.join(", ")}`,
+  recapWished: (dayLabels: string[]) => `souhaité ${dayList(dayLabels)}`,
+  recapTeamClosed: (dayLabels: string[]) => `équipe fermée ${dayList(dayLabels)}`,
   recapAbsent: (people: { firstName: string; dayLabels: string[] }[]) => `${people.length > 1 ? "absents" : "absent"} : ${absentList(people)}`,
   recapKeepsSlots: "garde ses créneaux habituels",
 } as const;

@@ -83,7 +83,7 @@ final class DeletionImpactParityTest extends KernelTestCase
      * son sujet, et l'annoncer n'aiderait personne à décider — c'est du bruit dans une modale
      * qui doit se lire en trois secondes. Toute autre étape muette est un OUBLI.
      */
-    private const SILENT_STEPS = ['ScheduleDiagnostic.teamId', 'ScheduleDiagnostic.venueId', 'ScheduleDiagnostic.coachId', 'CoachWishStaffLineStep.?'];
+    private const SILENT_STEPS = ['ScheduleDiagnostic.teamId', 'ScheduleDiagnostic.venueId', 'ScheduleDiagnostic.coachId', 'CoachWishStaffLineStep.?', 'CoachWishCampaignTeamStep.?'];
 
     private EntityManagerInterface $em;
 

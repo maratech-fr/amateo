@@ -20,6 +20,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Choisir le coach principal qui répond pour une équipe : le marqueur posé sous verrou de l'équipe
@@ -48,7 +49,8 @@ final class CoachWishRecipientController extends AbstractController
     {
         $this->managementAccessGuard->assertManager();
 
-        $campaign = $this->entityManager->getRepository(CoachWishCampaign::class)->find($id);
+        // Un identifiant malformé ne doit pas atteindre PostgreSQL : même réponse qu'une collecte inconnue.
+        $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         if (!$campaign instanceof CoachWishCampaign || (null !== $currentClubId && $campaign->getClubId() !== $currentClubId)) {
             return $this->json(['error' => 'not found'], Response::HTTP_NOT_FOUND);

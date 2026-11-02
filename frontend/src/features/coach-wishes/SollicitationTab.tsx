@@ -13,6 +13,7 @@ import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
@@ -182,7 +183,7 @@ export function SollicitationTab({
           </div>
         </div>
       ) : null}
-      {withoutMain.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{TEXTS.noMainCoach(withoutMain.map((t) => teamName.get(t.teamId) ?? TEXTS.teamFallback))}</p> : null}
+      {withoutMain.length > 0 ? <NoticeBanner tone="warning" className="mt-2" message={TEXTS.noMainCoach(withoutMain.map((t) => teamName.get(t.teamId) ?? TEXTS.teamFallback))} /> : null}
       <ConfirmDialog
         open={null !== pendingRecipient}
         title={TEXTS.recipientConfirmTitle}

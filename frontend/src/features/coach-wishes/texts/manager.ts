@@ -1,6 +1,9 @@
 /** Textes des écrans gestionnaire des doléances : liste, saisie manuelle, sollicitation. */
 
-const absentList = (people: { firstName: string; dayLabels: string[] }[]): string => people.map((p) => `${p.firstName} (${p.dayLabels.join(", ")})`).join(", ");
+/** Les jours au milieu d'une phrase : en minuscules, contrairement aux boutons. */
+const dayList = (dayLabels: string[]): string => dayLabels.join(", ").toLowerCase();
+
+const absentList = (people: { firstName: string; dayLabels: string[] }[]): string => people.map((p) => `${p.firstName} (${dayList(p.dayLabels)})`).join(", ");
 
 const IGNORED_REASONS: Record<string, string> = {
   semaine_sans_plan: "semaine sans planning",
@@ -32,11 +35,11 @@ export const COACH_WISHES_MANAGER_TEXTS = {
   treated: "Traité",
   noSlotWanted: "Aucun créneau souhaité",
   slotsWanted: (slots: number) => `${slots} créneau${slots > 1 ? "x" : ""} souhaité${slots > 1 ? "s" : ""}`,
-  listWished: (dayLabels: string[]) => `· souhaité : ${dayLabels.join(", ")}`,
-  listTeamClosed: (dayLabels: string[]) => `· équipe fermée : ${dayLabels.join(", ")}`,
+  listWished: (dayLabels: string[]) => `· souhaité : ${dayList(dayLabels)}`,
+  listTeamClosed: (dayLabels: string[]) => `· équipe fermée : ${dayList(dayLabels)}`,
   listAbsent: (people: { firstName: string; dayLabels: string[] }[]) => `· ${people.length > 1 ? "absents" : "absent"} : ${absentList(people)}`,
   listDeclaredElsewhere: (people: { firstName: string; dayLabels: string[]; teamName: string }[]) =>
-    `· déclaré ailleurs : ${people.map((p) => `${p.firstName} (${p.dayLabels.join(", ")}, via ${p.teamName})`).join(", ")}`,
+    `· déclaré ailleurs : ${people.map((p) => `${p.firstName} (${dayList(p.dayLabels)}, via ${p.teamName})`).join(", ")}`,
   keepsSlots: "souhaite garder ses créneaux",
   editWish: (team: string, week: string) => `Modifier la doléance · ${team} · semaine du ${week}`,
   deleteWish: (team: string, week: string) => `Supprimer la doléance · ${team} · semaine du ${week}`,
