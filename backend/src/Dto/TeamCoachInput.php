@@ -26,7 +26,4 @@ class TeamCoachInput
     #[Assert\Choice(callback: [TeamCoachRole::class, 'values'])]
     #[Groups(['write'])]
     public ?string $role = null;
-
-    #[Groups(['write'])]
-    public ?bool $isRequired = null;
 }

@@ -928,7 +928,6 @@ final class BcclSeeder
                 $teamCoach->setTeamId($link['team']->getId());
                 $teamCoach->setCoachId($link['coach']->getId());
                 $teamCoach->setRole($link['role']);
-                $teamCoach->setIsRequired(true);
                 $manager->persist($teamCoach);
             }
         }

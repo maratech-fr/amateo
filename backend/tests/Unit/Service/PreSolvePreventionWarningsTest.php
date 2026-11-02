@@ -1377,7 +1377,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
      */
     private function builderTeamCoach(string $teamId, string $coachId, TeamCoachRole $role): array
     {
-        $teamCoach = (new TeamCoach)->setTeamId($teamId)->setCoachId($coachId)->setRole($role)->setIsRequired(true);
+        $teamCoach = (new TeamCoach)->setTeamId($teamId)->setCoachId($coachId)->setRole($role);
 
         $builder = new ReflectionClass(ScheduleConstraintBuilder::class)->newInstanceWithoutConstructor();
         $method = new ReflectionMethod($builder, 'serializeTeamCoachConstraints');

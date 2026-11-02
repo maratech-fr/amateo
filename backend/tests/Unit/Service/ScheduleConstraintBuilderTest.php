@@ -153,8 +153,8 @@ final class ScheduleConstraintBuilderTest extends TestCase
      */
     public function testTeamCoachRoleIsSerializedAsBackedStringNotEnumObject(): void
     {
-        $main = (new TeamCoach)->setTeamId('team-sm1')->setCoachId('coach-anna')->setRole(TeamCoachRole::MAIN)->setIsRequired(true);
-        $assistant = (new TeamCoach)->setTeamId('team-sm1')->setCoachId('coach-bea')->setRole(TeamCoachRole::ASSISTANT)->setIsRequired(false);
+        $main = (new TeamCoach)->setTeamId('team-sm1')->setCoachId('coach-anna')->setRole(TeamCoachRole::MAIN);
+        $assistant = (new TeamCoach)->setTeamId('team-sm1')->setCoachId('coach-bea')->setRole(TeamCoachRole::ASSISTANT);
 
         $method = new ReflectionMethod($this->builder, 'serializeTeamCoachConstraints');
         $method->setAccessible(true);

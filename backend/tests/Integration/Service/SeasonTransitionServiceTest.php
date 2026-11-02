@@ -643,7 +643,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $link->setTeamId($teamA->getId());
         $link->setCoachId($anna->getId());
         $link->setRole(TeamCoachRole::MAIN);
-        $link->setIsRequired(true);
         $link->setCreatedAt(new DateTimeImmutable('2025-09-15'));
         $link->setWishRecipient(true);
         $this->em->persist($link);

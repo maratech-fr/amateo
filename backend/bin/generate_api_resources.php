@@ -247,7 +247,6 @@ $entities = [
             ['name' => 'teamId', 'type' => 'string', 'required' => true, 'assert' => 'NotBlank'],
             ['name' => 'coachId', 'type' => 'string', 'required' => true, 'assert' => 'NotBlank'],
             ['name' => 'role', 'type' => 'string', 'required' => true, 'assert' => 'Choice', 'choices' => ['"head"', '"assistant"', '"trainer"']],
-            ['name' => 'isRequired', 'type' => 'bool', 'required' => true],
         ],
     ],
     'TeamConstraint' => [

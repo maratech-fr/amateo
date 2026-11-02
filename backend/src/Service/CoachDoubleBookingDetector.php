@@ -46,7 +46,7 @@ use Doctrine\ORM\EntityManagerInterface;
  *
  * « Tant qu'un coach tient la séance, c'est OK » (fondateur 2026-10-30) : un coach partagé ne bloque
  * que si une séance n'a plus personne pour la tenir ({@see self::holdersFor}). Seul, il est
- * indispensable ; à plusieurs, un seul suffit. `isRequired` n'entre pas en jeu.
+ * indispensable ; à plusieurs, un seul suffit.
  *
  * Rend des données STRUCTURÉES, jamais des phrases : le récap et la modale formulent
  * différemment (« Maxime se trouve à deux créneaux en même temps » vs « Emerick coache

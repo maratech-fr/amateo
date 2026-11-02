@@ -534,7 +534,6 @@ final class LoadTestClubSeeder
         $teamCoach->setTeamId($teamId);
         $teamCoach->setCoachId($coachId);
         $teamCoach->setRole($role);
-        $teamCoach->setIsRequired(TeamCoachRole::MAIN === $role);
         $manager->persist($teamCoach);
     }
 

@@ -47,9 +47,6 @@ class TeamCoach implements TenantOwnedInterface
     #[ORM\Column(length: 20, enumType: TeamCoachRole::class)]
     private TeamCoachRole $role;
 
-    #[ORM\Column(type: 'boolean')]
-    private bool $isRequired = true;
-
     /** Le gestionnaire a choisi ce coach principal pour recevoir le lien de collecte de l'équipe. */
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $wishRecipient = false;
@@ -165,23 +162,6 @@ class TeamCoach implements TenantOwnedInterface
     public function setRole(TeamCoachRole $role): self
     {
         $this->role = $role;
-
-        return $this;
-    }
-
-    public function getIsRequired(): bool
-    {
-        return $this->isRequired;
-    }
-
-    public function isIsRequired(): bool
-    {
-        return $this->isRequired;
-    }
-
-    public function setIsRequired(bool $isRequired): self
-    {
-        $this->isRequired = $isRequired;
 
         return $this;
     }

@@ -81,7 +81,7 @@ final class CascadeDeleteApiTest extends WebTestCase
         $teamCoachId = $this->persist((new TeamCoach)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setTeamId($team->getId())->setCoachId($coach->getId())
-            ->setRole(TeamCoachRole::MAIN)->setIsRequired(false));
+            ->setRole(TeamCoachRole::MAIN));
         $coachPlayerId = $this->persist((new CoachPlayerMembership)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setCoachId($coach->getId())->setTeamId($team->getId())->setIsActive(true));

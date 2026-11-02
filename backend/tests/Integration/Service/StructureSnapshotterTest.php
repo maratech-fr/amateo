@@ -81,7 +81,7 @@ final class StructureSnapshotterTest extends KernelTestCase
         $this->em->flush();
         $link = (new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setTeamId($team->getId())->setCoachId($coach->getId())
-            ->setRole(TeamCoachRole::MAIN)->setIsRequired(false);
+            ->setRole(TeamCoachRole::MAIN);
         $this->em->persist($link);
         $schedule = $this->makeSchedule($club, $season);
         $this->em->flush();

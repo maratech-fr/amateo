@@ -9,7 +9,7 @@ Une séance à UN seul coach hors bloc n'a pas de tenue séparée, elle reste op
 d'un club sans co-coachs reste byte-identique (goldens intacts).
 
 Séance de bloc : un coach de l'union des membres tient la séance de tous (``Σh + Σb >= x``, et une
-tenue parmi les membres dès que ``b`` est actif). ``isRequired`` n'entre pas en jeu.
+tenue parmi les membres dès que ``b`` est actif).
 
 Verrous : un verrou est sans variable, souverain. Un verrou à plusieurs coachs consomme UN coach ; ceux
 d'un même groupe déclaré sur la même case partagent une tenue, sur l'union de leurs coachs. Si les règles

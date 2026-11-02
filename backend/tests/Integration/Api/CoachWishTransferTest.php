@@ -597,7 +597,7 @@ final class CoachWishTransferTest extends WebTestCase
     private function requireCoach(string $teamId, string $coachId, TeamCoachRole $role): void
     {
         $link = (new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setTeamId($teamId)->setCoachId($coachId)->setRole($role)->setIsRequired(true);
+            ->setTeamId($teamId)->setCoachId($coachId)->setRole($role);
         $this->em->persist($link);
         $this->em->flush();
     }
