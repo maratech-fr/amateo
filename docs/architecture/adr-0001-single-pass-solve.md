@@ -200,7 +200,7 @@ historical `constraint_not_honored` / `session_below_effective_min` / `conflict`
   the group's session, not the cause, otherwise the case becomes a free placement again; when that first probe
   kept a lock and proved infeasibility (never on a mere timeout), a SECOND probe (same 15 s budget) releases every lock, because the group may itself be the
   cause, e.g. it occupies the only case of a team's imposed day (2026-11-02): that team loses the session with
-  `blocked_by_reservation`, the group keeps its reservation. Over-pinned groups
+  `blocked_by_reservation`, the group keeps its reservation. That second probe no longer asks a group for what its reservations already serve (founder, 2026-11-02): a group whose fully pinned cases cover its common sessions leaves the probe and its members only claim their remaining sessions, so a group reserved on the only case, without a coach, still wins against the imposed day. A partly served group stays in the probe, what it misses can be impossible and stays a `failed`. Over-pinned groups
   (exclusive fully pinned cases > common sessions) and nested groups sharing one pinned case stay
   INFEASIBLE, now announced by the pre-solve recap (`PreSolvePreventionWarnings`). No contract change
   (stays 1.9).

@@ -145,6 +145,25 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         self::assertStringContainsString('ne correspond à aucun créneau', (string) ($body['error'] ?? ''));
     }
 
+    /** Un créneau libre sur la dernière place d'une case : la case reste occupée, ni le Récap ni le guichet ne s'en plaignent. */
+    public function testAFreeSlotOnTheLastPlaceOfACaseIsNotAnOrphan(): void
+    {
+        $ctx = $this->seedGroup(coachesAvailable: true);
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($ctx['venueId'])
+            ->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
+        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setLabel('Loto du club')
+            ->setVenueId($ctx['venueId'])->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
+        $this->em->flush();
+        $version = $this->version($ctx, ScheduleStatus::COMPLETED)->getId();
+
+        $this->post($ctx, $version, 'regenerate');
+        self::assertResponseStatusCodeSame(202);
+
+        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($ctx['clubId'], $ctx['seasonId']);
+        $days = array_column($payload['venues'][0]['trainingSlots'], 'dayOfWeek');
+        self::assertNotContains(4, $days, 'la case reste occupée : le solveur ne peut rien y poser');
+    }
+
     /**
      * La sur-réservation se lit sur le volume qui part au solveur : la période réduit l'équipe à 1 séance, 2 réservations
      * bloquent. TÉMOIN : au volume de saison (2), les mêmes réservations passent, côté saison.

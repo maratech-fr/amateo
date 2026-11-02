@@ -1348,6 +1348,25 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], $this->warnings->detectBlockers($payload));
     }
 
+    /** Vendredi imposé, unique case prise par un groupe réservé entier : la réservation gagne, c'est dit, jamais bloqué. Une place libre ailleurs le vendredi : silence. */
+    public function testAForcedDayTakenByAReservedGroupWarnsWithoutBlocking(): void
+    {
+        $build = fn (array $days): array => [
+            ...$this->payload(
+                venues: [$this->venueWithStarts('v1', 'Matéo', $days)],
+                teams: [$this->team('t', 'SA'), $this->team('a', 'A'), $this->team('b', 'B')],
+                constraints: [$this->dayRule('TEAM', 't', ['forcedDays' => [5]])],
+            ),
+            'sharedBlocks' => [['id' => 'g', 'teamIds' => ['a', 'b'], 'commonSessions' => 1]],
+            'slotTemplates' => [$this->reservation('a', 'v1', 5, '18:00'), $this->reservation('b', 'v1', 5, '18:00')],
+        ];
+        $phrase = 'SA : au moins une séance exigée le(s) vendredi, mais les réservations y occupent tous les créneaux : la réservation gagne, cette séance manquera.';
+
+        self::assertContains($phrase, $this->warnings->detect($build([[5, '18:00:00']])));
+        self::assertSame([], $this->warnings->detectBlockers($build([[5, '18:00:00']])));
+        self::assertNotContains($phrase, $this->warnings->detect($build([[5, '18:00:00'], [5, '19:30:00']])));
+    }
+
     /** Les quatre formes du groupe inservable, tous nombres dits en français : plus jamais « créneau(x) » ni « séance(s) ». */
     #[DataProvider('blockHeads')]
     public function testAnUnservableBlockSaysItsCountsInPlainFrench(array $venueDays, int $commonSessions, array $pinnedDays, array $absentDays, string $head): void

@@ -55,6 +55,25 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
         yield 'un seul membre réservé, case sans coach' => [[2], 1, [['t1', 2]], [3], 'aucun créneau'];
     }
 
+    /** NR (la réservation gagne) : jour imposé de t3 sur l'unique case d'un groupe réservé sans coach : le miroir alerte sans bloquer ET le moteur produit le planning. */
+    public function testAForcedDayOnTheCaseOfACoachlessReservedGroupWarnsAndCompletes(): void
+    {
+        $payload = $this->forcedDayAgainstAReservedGroup(venueDays: [5], groupCoachDays: [3], forcedTeamCoachDays: [5], pinDay: 5);
+
+        self::assertSame([], $this->warnings->detectBlockers($payload));
+        self::assertNotSame([], array_filter($this->warnings->detect($payload), static fn (string $w): bool => str_contains($w, 'la réservation gagne, cette séance manquera')));
+        self::assertSame('completed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir laisse passer mais le moteur échoue.');
+    }
+
+    /** NR, l'autre sens : le jour imposé de t3 fermé par son propre coach, le groupe réservé ailleurs : le miroir bloque ET le moteur échoue. */
+    public function testAForcedDayClosedByItsOwnCoachNextToAReservedGroupBlocksAndFails(): void
+    {
+        $payload = $this->forcedDayAgainstAReservedGroup(venueDays: [1, 5], groupCoachDays: [1], forcedTeamCoachDays: [1], pinDay: 1);
+
+        self::assertNotSame([], $this->warnings->detectBlockers($payload), 'le miroir doit BLOQUER');
+        self::assertSame('failed', $this->solve($payload)['status'], 'PARITÉ ROMPUE : le miroir bloque mais le moteur a résolu.');
+    }
+
     /** NR (axe constraint semantics) : jeudi fermé par une fenêtre, vendredi par l'indisponibilité : le vendredi se relaie, le miroir ne bloque pas ET le moteur produit le planning. */
     public function testAForcedDayMixingAWindowAndAnAbsenceIsNotBlockedAndCompletes(): void
     {
@@ -378,6 +397,32 @@ final class SharedBlockPreSolveMirrorParityTest extends TestCase
             ],
             'slotTemplates' => [],
             'sharedBlocks' => $withGroup ? [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]] : [],
+        ];
+    }
+
+    /**
+     * Le groupe t1+t2 réservé sur `pinDay`, t3 (cC) a le vendredi imposé. Coachs disponibles les seuls jours donnés.
+     *
+     * @param list<int> $venueDays
+     * @param list<int> $groupCoachDays
+     * @param list<int> $forcedTeamCoachDays
+     *
+     * @return array<string, mixed>
+     */
+    private function forcedDayAgainstAReservedGroup(array $venueDays, array $groupCoachDays, array $forcedTeamCoachDays, int $pinDay): array
+    {
+        $payload = $this->payload(venueDays: $venueDays, aDays: $groupCoachDays, bDays: $groupCoachDays);
+
+        return [
+            ...$payload,
+            'teams' => [...$payload['teams'], $this->team('t3')],
+            'constraints' => [
+                ...$payload['constraints'],
+                $this->teamCoach('tcC', 't3', 'cC'),
+                ['id' => 'forced', 'scope' => 'TEAM', 'scopeTargetId' => 't3', 'family' => 'DAY', 'ruleType' => 'HARD', 'name' => 'Vendredi imposé', 'config' => ['forcedDays' => [5]], 'sortOrder' => 0, 'isActive' => true],
+                ['id' => 'avC', 'scope' => 'COACH', 'scopeTargetId' => 'cC', 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'name' => 'Dispo C', 'config' => ['availableDays' => $forcedTeamCoachDays], 'sortOrder' => 0, 'isActive' => true],
+            ],
+            'slotTemplates' => [$this->pin('t1', $pinDay), $this->pin('t2', $pinDay)],
         ];
     }
 

@@ -322,6 +322,10 @@ final readonly class GenerationBlockersGuard
         }
         $blockers = [];
         foreach ($reservations as $reservation) {
+            // Un créneau libre retire sa case de la grille quand il en prend la dernière place : elle reste occupée, rien à reprocher.
+            if (null === $reservation->getTeamId()) {
+                continue;
+            }
             $key = $this->capacityMirror->key($reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getStartTime()->format('H:i'));
             if (isset($grid[$key])) {
                 continue;

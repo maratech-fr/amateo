@@ -60,6 +60,7 @@ final readonly class PreSolvePreventionWarnings
             ...$this->constraintsTargetingAbsentTeams($teams, $constraints),
             ...$this->mergedForcedDayRules($teams, $constraints),
             ...$this->forcedDayEmptiedByClosingRules($payload, $teams, $venues, $constraints)['warnings'],
+            ...$this->forcedDayTakenByReservations($payload, $teams, $venues, $constraints),
             ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
             ...$this->assistantsWithoutMainCoach($payload, $teams, $constraints),
             ...$this->daysWithoutAnyAvailableEmployee($payload, $venues, $constraints),
@@ -801,6 +802,79 @@ final readonly class PreSolvePreventionWarnings
         sort($warnings);
 
         return ['blockers' => $blockers, 'warnings' => $warnings];
+    }
+
+    /**
+     * Toutes les cases des jours imposés d'une équipe prises par les réservations des autres : le moteur
+     * maintient les réservations, l'équipe perd cette séance et l'écart est nommé. Un groupe réservé entier
+     * ne compte que pour une place. Silence si un jour est déjà fermé par une règle : le blocage parle.
+     *
+     * @param array<string, mixed>       $payload
+     * @param list<array<string, mixed>> $teams
+     * @param list<array<string, mixed>> $venues
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<string>
+     */
+    private function forcedDayTakenByReservations(array $payload, array $teams, array $venues, array $constraints): array
+    {
+        $pinnedByCase = [];
+        $pinnedDaysByTeam = [];
+        foreach ($this->hardPins($payload) as $pin) {
+            $pinnedByCase[$pin['venueId'] . '|' . $pin['day'] . '|' . $pin['start']][$pin['teamId']] = true;
+            $pinnedDaysByTeam[$pin['teamId']][] = $pin['day'];
+        }
+        if ([] === $pinnedByCase) {
+            return [];
+        }
+
+        $blocks = array_map(static fn (array $block): array => array_map(strval(...), \is_array($block['teamIds'] ?? null) ? $block['teamIds'] : []), $this->listOf($payload, 'sharedBlocks'));
+        $casesByDay = [];
+        foreach ($venues as $venue) {
+            $venueId = $this->stringOf($venue, 'id');
+            foreach ($this->listOf($venue, 'trainingSlots') as $slot) {
+                $key = $venueId . '|' . (int) ($slot['dayOfWeek'] ?? 0) . '|' . $this->minutesOf($this->stringOf($slot, 'startTime'));
+                $pinned = $pinnedByCase[$key] ?? [];
+                $places = \count($pinned);
+                foreach ($blocks as $members) {
+                    if (\count($members) >= 2 && [] === array_diff($members, array_keys($pinned))) {
+                        $places -= \count($members) - 1;
+                    }
+                }
+                $casesByDay[(int) ($slot['dayOfWeek'] ?? 0)][] = ['venueId' => $venueId, 'taken' => $places >= (int) ($slot['capacity'] ?? 1)];
+            }
+        }
+
+        $messages = [];
+        foreach ($teams as $team) {
+            $teamId = $this->stringOf($team, 'id');
+            $rules = $this->teamHardDayRules($teamId, $constraints);
+            if ([] === $rules['forced'] || [] !== array_intersect($rules['forced'], $pinnedDaysByTeam[$teamId] ?? [])) {
+                continue;
+            }
+            $forcedVenueId = $this->forcedVenueOf($team, $constraints);
+            $candidates = [];
+            foreach ($rules['forced'] as $day) {
+                if (!\in_array($day, $rules['forbidden'], true) && (null === $rules['allowed'] || \in_array($day, $rules['allowed'], true))) {
+                    foreach ($casesByDay[$day] ?? [] as $case) {
+                        if ('' === $forcedVenueId || $forcedVenueId === $case['venueId']) {
+                            $candidates[] = $case['taken'];
+                        }
+                    }
+                }
+            }
+            if ([] !== $candidates && !\in_array(false, $candidates, true)) {
+                $messages[] = \sprintf(
+                    '%s : au moins une séance exigée le(s) %s, mais les réservations y occupent tous les créneaux : la réservation gagne, cette séance manquera.',
+                    $this->nameOf($team),
+                    $this->dayList($rules['forced']),
+                );
+            }
+        }
+
+        sort($messages);
+
+        return $messages;
     }
 
     /**

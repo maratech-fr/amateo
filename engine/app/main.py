@@ -1175,12 +1175,14 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
     Deux sondes au plus : la première garde les verrous d'un groupe réservé entier (leur case redevenue
     libre serait sans coach). Seulement si elle a gardé au moins un verrou ET prouvé l'infaisabilité, la
     seconde libère TOUS les verrous, car ce groupe peut être lui-même la cause (un jour imposé dont il
-    occupe la case). « Ne tranche pas » n'en lance aucune autre. Chacune a le budget court."""
+    occupe la case). Elle ne lui redemande pas ce que ses réservations servent déjà : sans ces cases,
+    il ne faut pas qu'il réclame une case sans coach pour une séance qui existe. « Ne tranche pas »
+    n'en lance aucune autre. Chacune a le budget court."""
 
-    async def probe(keep: frozenset[tuple[str, str, int, str]]) -> Any:
+    async def probe(payload: dict[str, Any]) -> Any:
         status, *_ = await asyncio.to_thread(
             _solve,
-            _without_hard_locks(data, keep=keep),
+            payload,
             input_data,
             budget_override=BEST_EFFORT_PROBE_MAX_SECONDS,
             placement_only=True,
@@ -1188,9 +1190,9 @@ async def _locks_are_the_cause(data: dict[str, Any], input_data: ScheduleInputSc
         return status
 
     kept = _reserved_group_locks(data)
-    status = await probe(kept)
+    status = await probe(_without_hard_locks(data, keep=kept))
     if kept and status == cp_model.INFEASIBLE:
-        status = await probe(frozenset())
+        status = await probe(_without_served_groups(_without_hard_locks(data), data))
     return status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
@@ -1221,6 +1223,48 @@ def _reserved_group_locks(data: dict[str, Any]) -> frozenset[tuple[str, str, int
                 if members <= teams:
                     kept.update((team, venue, day, start) for team in members)
     return frozenset(kept)
+
+
+def _without_served_groups(probe: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    """La sonde sans les groupes que leurs réservations servent entièrement (autant de cases réservées
+    réunissant tout le groupe que de séances communes) : le groupe sort, et ses membres ne réclament plus
+    que les séances que ces cases ne couvrent pas. Un groupe servi en partie reste tel quel : ce qui lui
+    manque peut être impossible, et cela reste un échec."""
+    cases_by_team: dict[str, set[tuple[str, int, str]]] = {}
+    for pin in data.get("slotTemplates") or data.get("slot_templates") or []:
+        if str(pin.get("lockLevel") or pin.get("lock_level") or "").upper() == "HARD":
+            team, venue, day, start = _lock_identity(pin)
+            cases_by_team.setdefault(team, set()).add((venue, day, start))
+
+    blocks = data.get("sharedBlocks") or data.get("shared_blocks") or []
+    members_of = [[str(t) for t in (b.get("teamIds") or b.get("team_ids") or [])] for b in blocks]
+    together = [set.intersection(*(cases_by_team.get(m, set()) for m in ms)) if ms else set() for ms in members_of]
+    kept_blocks: list[Any] = []
+    served: dict[str, int] = {}
+    for index, block in enumerate(blocks):
+        members = members_of[index]
+        common = int(block.get("commonSessions") or block.get("common_sessions") or 0)
+        # Une case qu'un autre groupe réservé y réunit aussi ne sert aucun des deux (miroir de ``_overpinned_block_ids``).
+        others = [cases for other, cases in enumerate(together) if other != index]
+        exclusive = {case for case in together[index] if not any(case in cases for cases in others)}
+        if len(members) >= 2 and common > 0 and len(exclusive) >= common:
+            for member in members:
+                served[member] = max(served.get(member, 0), len(cases_by_team.get(member, set())))
+        else:
+            kept_blocks.append(block)
+    if not served:
+        return probe
+
+    teams: list[Any] = []
+    for team in probe.get("teams") or []:
+        team_id = str(team.get("id"))
+        sessions = int(team.get("sessionsPerWeek") or team.get("sessions_per_week") or 0) - served.get(team_id, 0)
+        if team_id not in served:
+            teams.append(team)
+        elif sessions > 0:
+            teams.append({**team, "sessionsPerWeek": sessions})
+    key = "sharedBlocks" if "sharedBlocks" in probe else "shared_blocks"
+    return {**probe, "teams": teams, key: kept_blocks}
 
 
 def _without_hard_locks(

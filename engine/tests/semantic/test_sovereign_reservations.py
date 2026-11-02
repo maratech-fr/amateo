@@ -833,3 +833,56 @@ def test_the_second_probe_never_runs_when_the_first_does_not_decide(monkeypatch:
 
     assert asyncio.run(main._locks_are_the_cause(payload, ScheduleInputSchema.model_validate(payload))) is False
     assert len(calls) == 1
+
+
+def _forced_friday_on_the_only_case_of_a_coachless_group(*, with_t: bool = True) -> dict[str, Any]:
+    """A + B réservés vendredi 18:00, unique case de la grille, leurs coachs absents ; T impose vendredi."""
+    teams = [make_team("A"), make_team("B")]
+    constraints = [
+        team_coach("tc-a", "A", "anna"),
+        team_coach("tc-b", "B", "ben"),
+        _coach_off("off-anna", "anna", FRIDAY, "Indispo d'Anna"),
+        _coach_off("off-ben", "ben", FRIDAY, "Indispo de Ben"),
+    ]
+    if with_t:
+        teams.append(_named_team("T", "Seniors A"))
+        constraints += [
+            _hard_team_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé"),
+            team_coach("tc-t", "T", "chloe"),
+        ]
+    payload = make_payload(
+        teams=teams,
+        venues=[make_venue("V", [(FRIDAY, "18:00")])],
+        coaches=[_coach("anna"), _coach("ben"), _coach("chloe")],
+        constraints=constraints,
+        slot_templates=[_reservation("A", "V", FRIDAY), _reservation("B", "V", FRIDAY)],
+    )
+    payload["sharedBlocks"] = [{"id": "ab", "teamIds": ["A", "B"], "commonSessions": 1}]
+    return solve_payload(payload)
+
+
+def test_a_forced_day_on_the_only_case_of_a_coachless_reserved_group_loses_to_the_reservation() -> None:
+    """Décision fondateur 2026-11-02 : la réservation gagne. Le groupe garde sa case, T perd sa séance, écart nommé."""
+    result = _forced_friday_on_the_only_case_of_a_coachless_group()
+
+    assert _slots_of(result, "T") == []
+    assert sorted(_slots_of(result, "A") + _slots_of(result, "B")) == [FRIDAY, FRIDAY]
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    kinds = {
+        c.get("kind")
+        for d in result["diagnostics"]
+        if d.get("type") == "blocked_by_reservation"
+        for c in d.get("causes", [])
+    }
+    assert "day_forced" in kinds, "T perd sa séance et l'écart est nommé"
+    assert [d["id"] for d in _sacrificed(result)] == ["rule-sacrificed-block-V|5|18:00"], (
+        "le groupe sans coach reste dit à part"
+    )
+
+
+def test_the_same_coachless_reserved_group_without_a_forced_day_stays_completed() -> None:
+    """TÉMOIN : sans T, le planning sort déjà, le correctif n'y change rien."""
+    result = _forced_friday_on_the_only_case_of_a_coachless_group(with_t=False)
+
+    assert result["status"] == "completed", f"{result['diagnostics']}"
+    assert sorted(_slots_of(result, "A") + _slots_of(result, "B")) == [FRIDAY, FRIDAY]
