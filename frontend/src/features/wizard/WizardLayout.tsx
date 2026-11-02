@@ -657,10 +657,11 @@ export function WizardPage() {
           </Button>
           <div className="flex items-center gap-2">
             {footerExtra}
+            {/* Raison EN CLAIR à côté du bouton grisé (doctrine A11Y-30). */}
+            {!isLast && "recap" === stepId && recapValidation.errors.length > 0 ? <p className="text-xs text-warning">{WIZARD_TEXTS.generationBlocked}</p> : null}
             {isLast ? null : (
               <Button
                 disabled={blocked}
-                disabledReason={"recap" === stepId && recapValidation.errors.length > 0 ? WIZARD_TEXTS.generationBlocked : undefined}
                 onClick={() => {
                   armNavTransition(); // GESTE → arme le voile
                   next();

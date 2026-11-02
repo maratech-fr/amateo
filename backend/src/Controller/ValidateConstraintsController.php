@@ -211,7 +211,7 @@ final class ValidateConstraintsController extends AbstractController
         $blockers = [
             // La même liste que les guichets `/generate`, `/regenerate` et `/fill` : une seule vérité.
             ...(null !== $capacityPayload
-                ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints)
+                ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints, null !== $calendarEntryId)
                 : $this->generationBlockersGuard->overBookedOnEntities($reservations, $clubId, $seasonId)),
             ...array_map(
                 fn (array $conflict): string => $this->coachDoubleBookingDetector->describeForRecap($conflict),

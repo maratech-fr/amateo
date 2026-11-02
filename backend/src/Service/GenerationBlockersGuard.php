@@ -78,7 +78,7 @@ final readonly class GenerationBlockersGuard
                 );
             }
 
-            $first = $this->blockersFor($payload, $reservations, $constraints)[0] ?? null;
+            $first = $this->blockersFor($payload, $reservations, $constraints, !$this->schedulePlanProvisioner->isSeasonSchedule($schedule))[0] ?? null;
 
             return $fillSource instanceof Schedule && null !== $first ? $this->sayingThePinsComeFromTheSource($first, [] !== $reservations) : $first;
         } catch (Throwable $exception) {
@@ -93,14 +93,15 @@ final readonly class GenerationBlockersGuard
      *
      * @param array<string, mixed> $payload      le payload que le solveur recevra
      * @param list<Reservation>    $reservations le périmètre EXACT qui partira au solveur
-     * @param list<Constraint>     $constraints  le jeu en vigueur : leur origine se cite dans le motif
+     * @param list<Constraint>     $constraints  le jeu en vigueur : sur une période, leur origine se cite dans le motif
      *
      * @return list<string>
      */
-    public function blockersFor(array $payload, array $reservations, array $constraints): array
+    public function blockersFor(array $payload, array $reservations, array $constraints, bool $forPeriod): array
     {
+        // « Héritée, désactivable pour cette période » n'a de sens que sur une période.
         $constraintOrigins = [];
-        foreach ($constraints as $constraint) {
+        foreach ($forPeriod ? $constraints : [] as $constraint) {
             // `true` = héritée du planning de saison, `false` = posée pour une période.
             $constraintOrigins[$constraint->getId()] = null === $constraint->getCalendarEntryId();
         }

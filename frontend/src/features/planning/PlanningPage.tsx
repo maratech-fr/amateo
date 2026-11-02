@@ -1044,6 +1044,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                   <Button
                     size="sm"
                     variant="outline"
+                    className="mt-2 border-foreground/40 bg-card"
                     onClick={() => {
                       const entryId = (allSchedulePlans ?? []).find((plan) => plan.id === displayedPlan?.id)?.calendarEntryId;
                       if (entryId) {

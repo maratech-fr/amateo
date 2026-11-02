@@ -31,7 +31,7 @@ describe("WizardLayout — la porte de la génération dit pourquoi elle est fer
     h.blockers = ["Groupe U15, U13 : aucun créneau."];
     renderWithProviders(<WizardPage />, { route: "/wizard?step=recap" });
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /Continuer vers la génération/ })).toHaveAttribute("aria-disabled", "true"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Continuer vers la génération/ })).toBeDisabled());
     expect(screen.getByText(WIZARD_TEXTS.generationBlocked)).toBeInTheDocument();
   });
 

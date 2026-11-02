@@ -934,7 +934,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
 
         $blockWarnings = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
         self::assertCount(1, $blockWarnings);
-        self::assertStringContainsString('Contrainte en cause : « Indispo cA »', $blockWarnings[0]);
+        self::assertStringContainsString('« Indispo cA »', $blockWarnings[0]);
     }
 
     /** TÉMOIN sans marge : dès 19:30, le groupe garde sa case, silence. */
@@ -1017,6 +1017,20 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertNotEmpty($blockWarnings);
         self::assertStringContainsString('posée pour cette période', $blockWarnings[0]);
         self::assertStringNotContainsString('héritée du planning de saison', $blockWarnings[0]);
+    }
+
+    /** Plusieurs contraintes citées : une seule phrase qui les énumère. Sans origines (Récap de saison) : aucune mention de période. */
+    public function testSeveralCitedConstraintsReadAsOneListWithoutPeriodMentionOnASeasonRecap(): void
+    {
+        $found = $this->warnings->detectBlockers($this->blockPayload(
+            venueDays: [2],
+            coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Coach A · indispo mardi'),
+            coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Coach B · indispo mardi'),
+        ));
+
+        $block = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
+        self::assertStringEndsWith('Contraintes en cause : « Coach A · indispo mardi » ; « Coach B · indispo mardi ».', $block[0]);
+        self::assertStringNotContainsString('cette période', $block[0]);
     }
 
     public function testASingleTeamMultiCoachIsNeverAccusedAsABlock(): void

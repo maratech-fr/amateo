@@ -585,7 +585,7 @@ describe("GenerateStep — porte fermée par un blocage du Récap", () => {
     h.recapErrors = ["Groupe U15, U13 : aucun créneau."];
     renderStep();
 
-    expect(screen.getByRole("button", { name: /Lancer la génération/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: /Lancer la génération/ })).toBeDisabled();
     expect(WIZARD_TEXTS.generationBlocked).toBe("Des conditions bloquent la génération");
     expect(screen.getByText(WIZARD_TEXTS.generationBlocked)).toBeInTheDocument();
   });

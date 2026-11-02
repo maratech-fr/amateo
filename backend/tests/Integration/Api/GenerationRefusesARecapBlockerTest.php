@@ -115,6 +115,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertSame($recap['blockers'][0] ?? '(le Récap ne bloque pas)', $body['error'] ?? null);
+        self::assertStringNotContainsString('cette période', (string) $body['error'], 'Récap de saison : aucune mention de période');
     }
 
     /** Comblement d'une période : même refus, aucune version V+1. */

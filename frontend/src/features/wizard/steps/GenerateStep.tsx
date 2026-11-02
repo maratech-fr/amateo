@@ -374,7 +374,6 @@ export function GenerateStep() {
               size="lg"
               onClick={start}
               disabled={creditsBlocked || gateClosed || (periodMode && (!periodEntry || !periodAnchorReady))}
-              disabledReason={blockers.length > 0 ? WIZARD_TEXTS.generationBlocked : undefined}
             >
               <Rocket className="size-4" />
               {periodMode ? "Générer le planning de période" : "Lancer la génération"}{creditSuffix}
@@ -389,6 +388,8 @@ export function GenerateStep() {
               </Button>
             ) : null}
           </div>
+          {/* Raison EN CLAIR sous le bouton grisé (doctrine A11Y-30). */}
+          {blockers.length > 0 ? <p className="text-xs text-warning">{WIZARD_TEXTS.generationBlocked}</p> : null}
           {null !== transcribeReason ? (
             <NoticeBanner tone="destructive" className="max-w-sm" message={transcribeReason} />
           ) : null}

@@ -1229,7 +1229,7 @@ final readonly class PreSolvePreventionWarnings
     private function citedCoachConstraints(array $unionIds, array $cases, array $constraints, array $constraintOrigins): string
     {
         $union = array_flip($unionIds);
-        $sentences = [];
+        $cited = [];
         $seen = [];
         foreach ($constraints as $constraint) {
             if (false === ($constraint['isActive'] ?? true)
@@ -1256,12 +1256,14 @@ final readonly class PreSolvePreventionWarnings
             }
             $seen[$label] = true;
             $origin = $this->constraintOrigin($this->stringOf($constraint, 'id'), $constraintOrigins);
-            $sentences[] = null !== $origin
-                ? \sprintf('Contrainte en cause : « %s » (%s).', $label, $origin)
-                : \sprintf('Contrainte en cause : « %s ».', $label);
+            $cited[] = null !== $origin ? \sprintf('« %s » (%s)', $label, $origin) : \sprintf('« %s »', $label);
         }
 
-        return implode(' ', $sentences);
+        return match (\count($cited)) {
+            0 => '',
+            1 => \sprintf('Contrainte en cause : %s.', $cited[0]),
+            default => \sprintf('Contraintes en cause : %s.', implode(' ; ', $cited)),
+        };
     }
 
     /**
