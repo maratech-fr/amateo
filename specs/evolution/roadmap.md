@@ -1,4 +1,4 @@
-# Roadmap (85) — ce qui reste à faire
+# Roadmap (87) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -175,6 +175,8 @@
 | P4-459 | **`GenerationBlockersGuard::sayingThePinsComeFromTheSource` réécrit un texte par remplacement de chaînes** | ⚪ | XS | Au comblement, le motif du Récap est réécrit avec les mots du geste (« réservé sur » devient « placé sur », « case réservée » devient « case déjà placée »…) par `str_replace` sur la phrase finie : toute reformulation d'un motif du Récap peut rendre le remplacement muet, et le motif sortirait avec « Retirez une réservation » alors qu'il n'y en a aucune. À faire : que le Récap produise lui-même le vocabulaire de la source (paramètre du texte, pas remplacement). |
 | P4-460 | **`_without_served_groups` recopie la logique de `_overpinned_block_ids`** | ⚪ | XS | `engine/app/main.py` : le calcul des cases réservées réunissant tout un groupe, sans autre groupe sur la même case (« miroir de `_overpinned_block_ids` » dit le commentaire), est écrit deux fois. Exemple : changer la règle d'exclusivité d'une case dans l'une laisse l'autre fausse, la sonde de causalité jugerait alors un groupe servi autrement que le diagnostic. À faire : une seule fonction partagée. |
 | P4-461 | **`scripts/prod-read.sh` : le port local 15432 est fixe, et se dispute avec une autre stack** | ⚪ | XS | `LOCAL_PORT=15432` est en dur (`scripts/prod-read.sh:58`) ; si une autre stack du poste (la stack d'épreuve, selon le constat du fondateur : non retrouvé dans les fichiers du dépôt) écoute déjà ce port, le tunnel ne s'ouvre pas. Vérifié à la lecture : le tunnel est lancé avec `ExitOnForwardFailure=yes` et `|| die`, donc le script s'arrête sur cet échec avant `psql` ; le constat « il continue vers psql » n'est PAS confirmé par le code, à reproduire avant de corriger. À faire : port configurable (ou libre), et message explicite si le port est pris. |
+| P4-462 | **Fiche de séance tronquée à l'état « armé »** | ⚪ | XS | Contrôle visuel du 2026-11-02 (`SlotDetail.tsx:249-272`) : à 1280 px, quand « Déplacer » est armé, le bouton « Verrouiller » devient « Verroui » et les flèches flottantes recouvrent le panneau. Exemple : armer le déplacement de U11. |
+| P4-463 | **La parité moteur du Récap se saute sans le dire quand le moteur n'est pas prêt** | 🟡 | XS | `SharedBlockPreSolveMirrorParityTest` répond 0 avec ses 15 tests ignorés juste après un redémarrage du moteur (constaté le 2026-11-02). Exemple : un run local vert qui n'a rien prouvé. À faire : échouer ou attendre le moteur, au moins en CI. |
 
 ---
 
