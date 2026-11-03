@@ -361,7 +361,7 @@ services:
     # Pinned to an EXACT 1.x tag — same immutability contract as our own images: a routine
     # `docker compose pull` must never silently swap the hub version. MÊME tag que
     # `docker-compose.yml` (cutover direct dev = prod, Mercure 1.0 — gardé par MercureHardeningTest).
-    image: dunglas/mercure:v1.1.2
+    image: dunglas/mercure:v1.1.5
     container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"
