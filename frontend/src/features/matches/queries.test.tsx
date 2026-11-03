@@ -16,7 +16,6 @@ import {
   useConflicts,
   useCreateTeamMatchHabit,
   useCreateVenueMatchWindow,
-  useCreateVenueUnavailability,
   useDeleteFixture,
   useDeleteVenueMatchWindow,
   useDetachVenueLabel,
@@ -39,13 +38,11 @@ import {
   useSportCategoryDurations,
   useSwapFixtures,
   useTeamMatchHabits,
-  useUnavailabilityImpact,
   useUpdateOpponents,
   useUpdateSportCategoryDuration,
   useVenueMatchWindows,
   useVenueLabelInventory,
   useVenues,
-  useVenueUnavailabilities,
 } from "./queries";
 
 // FRT-20 (2ᵉ tranche) — on n'exerce QUE `queries.ts` : le module voisin `./api` est le SEUL
@@ -61,8 +58,6 @@ vi.mock("./api", () => ({
   getConflicts: vi.fn().mockResolvedValue({ clubId: "c", seasonId: null, conflicts: [], seasonPlanChosen: true }),
   getCompetitions: vi.fn().mockResolvedValue([]),
   getOpponentTravel: vi.fn().mockResolvedValue({ clubGeolocated: true, opponents: [] }),
-  getVenueUnavailabilities: vi.fn().mockResolvedValue([]),
-  getUnavailabilityImpact: vi.fn().mockResolvedValue({ clubId: "c", seasonId: null, items: [] }),
   getTeamMatchHabits: vi.fn().mockResolvedValue([]),
   getLatestFbiIngestion: vi.fn().mockResolvedValue({ latest: null }),
   getVenueMatchWindows: vi.fn().mockResolvedValue([]),
@@ -87,7 +82,6 @@ vi.mock("./api", () => ({
     travel: { queued: true, alreadyRunning: false, pending: 40 },
     failedSteps: [],
   }),
-  createVenueUnavailability: vi.fn().mockResolvedValue({ id: "u1", venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02", label: null }),
   createTeamMatchHabit: vi.fn().mockResolvedValue({ id: "h1", teamId: "t", dayOfWeek: 6, kickoffTime: "18:00", venueId: null, week: "A" }),
   setEntryDeadlines: vi.fn().mockResolvedValue({ updated: [], deadline: null }),
   swapFixtures: vi.fn().mockResolvedValue(undefined),
@@ -374,29 +368,10 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. EFFET RÉEL — les surfaces d'alerte multiples (indisponibilité, habitude)
+// 3. EFFET RÉEL — les surfaces d'alerte multiples (habitude ; la fermeture vit dans cockpit/queries.test.tsx)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("matches queries — surfaces d'alerte multiples", () => {
-  it("useCreateVenueUnavailability refetche les TROIS surfaces : liste, carte d'impact ET radar", async () => {
-    const client = makeClient();
-    const { result } = renderHook(
-      () => ({ list: useVenueUnavailabilities(), impact: useUnavailabilityImpact(), conflicts: useConflicts(), create: useCreateVenueUnavailability() }),
-      { wrapper: wrapperFor(client) },
-    );
-
-    await waitFor(() => expect(result.current.list.isSuccess).toBe(true));
-    await waitFor(() => expect(result.current.impact.isSuccess).toBe(true));
-    await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
-
-    result.current.create.mutate({ venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02" });
-
-    await waitFor(() => expect(result.current.create.isSuccess).toBe(true));
-    await waitFor(() => expect(matchesApi.getVenueUnavailabilities).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(matchesApi.getUnavailabilityImpact).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
-  });
-
   it("useCreateTeamMatchHabit refetche les habitudes ET le radar (l'estimation away déplace un conflit)", async () => {
     const client = makeClient();
     const { result } = renderHook(

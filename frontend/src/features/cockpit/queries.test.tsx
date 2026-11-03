@@ -172,6 +172,30 @@ describe("useCreateVenueClosure — Enregistrer vaut geste (C3bis)", () => {
     expect(result.current.data).toEqual(expect.objectContaining({ entry: expect.objectContaining({ id: "e-new" }), removed: { locks: 10, reservations: 1 } }));
   });
 
+  /**
+   * Remplace `matches/queries.test.tsx` « useCreateVenueUnavailability refetche les TROIS surfaces »
+   * (indisponibilité séparée retirée, C1) : la fermeture est désormais le SEUL fait saisi, donc c'est
+   * elle qui doit rafraîchir le radar des conflits de matchs (`["fixtures","conflicts"]`, nature
+   * VENUE_UNAVAILABLE servie par `ConflictRadarLoader` depuis les fermetures) et le feed des fermetures
+   * lu par le placement (`["venue_closures"]`) — sinon le gestionnaire voit un match « placé » dans
+   * un gymnase qu'il vient de fermer, jusqu'au prochain rechargement.
+   */
+  it("une fermeture enregistrée rafraîchit le radar des matchs ET le feed des fermetures", async () => {
+    vi.mocked(createConstraint).mockResolvedValue({ id: "k1", removed: { locks: 0, reservations: 0 } } as never);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useCreateVenueClosure(), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    });
+
+    result.current.mutate(payload);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    expect(keys).toContain(JSON.stringify(["fixtures", "conflicts"]));
+    expect(keys).toContain(JSON.stringify(["venue_closures"]));
+  });
+
   it("409 generation_in_progress sur la contrainte : l'entrée est SUPPRIMÉE et le toast nomme la génération en cours", async () => {
     // Corps SANS phrase serveur : le front doit nommer le motif par sa clé, pas recopier un texte reçu.
     vi.mocked(createConstraint).mockRejectedValue(httpError(409, { code: "generation_in_progress" }));

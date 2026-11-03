@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { VenueClosure, VenueMatchWindow, VenueUnavailability } from "../api";
+import type { VenueClosure, VenueMatchWindow } from "../api";
 import { venueAccessError } from "./matchAccess";
 
 // Une fenêtre d'accès match le samedi (jour ISO 6), 14:00–18:00, sur venue-1.
@@ -15,14 +15,9 @@ const SUNDAY = "2026-10-04";
  * dur pour tous. `kickoffInsideWindow` et la parité mécanique ne bougent pas.
  */
 describe("venueAccessError — error dure vs warning amical", () => {
-  it("gymnase indisponible : error, même pour un amical", () => {
-    const unavail: VenueUnavailability[] = [{ id: "u1", venueId: "venue-1", startDate: "2026-10-01", endDate: "2026-10-05", label: "travaux" }];
-
-    expect(venueAccessError("venue-1", "Alpha", SATURDAY, "14:00", windows, unavail, false)?.level).toBe("error");
-    const friendly = venueAccessError("venue-1", "Alpha", SATURDAY, "14:00", windows, unavail, true);
-    expect(friendly?.level).toBe("error");
-    expect(friendly?.message).toMatch(/indisponible/);
-  });
+  // « Gymnase indisponible : error même pour un amical » est parti avec l'indisponibilité séparée
+  // (plan fermetures C1) — la même promesse sur la fermeture du calendrier est gardée plus bas
+  // (« venueAccessError — fermeture du calendrier » : error pour une compétition ET un amical).
 
   it("coup d'envoi hors fenêtre : error pour une compétition, warning pour un amical", () => {
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "20:00", windows, [], false)).toEqual({
@@ -116,11 +111,9 @@ describe("venueAccessError — ouverture datée", () => {
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", [opening(HOLIDAY)], [], false)).toBeNull();
   });
 
-  it("une ouverture ne lève jamais une indisponibilité ni une fermeture, et leur raison les distingue", () => {
-    const unavail: VenueUnavailability[] = [{ id: "u", venueId: "venue-1", startDate: WEDNESDAY, endDate: WEDNESDAY, label: null }];
+  it("une ouverture ne lève jamais une fermeture du calendrier, et sa raison est « closed »", () => {
     const closure: VenueClosure[] = [{ id: "c", venueId: "venue-1", startDate: WEDNESDAY, endDate: WEDNESDAY, title: "Mairie" } as VenueClosure];
     const open = [...windows, opening(WEDNESDAY)];
-    expect(venueAccessError("venue-1", "Alpha", WEDNESDAY, "19:00", open, unavail, false)?.reason).toBe("unavailable");
     expect(venueAccessError("venue-1", "Alpha", WEDNESDAY, "19:00", open, [], false, closure)?.reason).toBe("closed");
   });
 });

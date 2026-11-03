@@ -60,8 +60,6 @@ const createVenueClosureMutateAsync = vi.fn().mockResolvedValue({
   status: "active",
   createdBy: null,
 });
-let unavailabilitiesData: { id: string; venueId: string; startDate: string; endDate: string; label: string | null }[] | undefined = [];
-let impactItemsData: { unavailabilityId: string; trainingSlotCount: number }[] = [];
 // Promesse 5 — le feed des fermetures servies AVEC leur gymnase ({venueId}). C'est la SEULE source,
 // côté front, du gymnase d'une fermeture (une `CalendarEntry` n'en porte pas). Vide par défaut :
 // les cas existants ne voient aucun masquage de plus.
@@ -96,12 +94,12 @@ vi.mock("./queries", () => ({
   useEntryImpact: () => ({ data: entryImpactData, isPending: false }),
   useEntryImpactList: (ids: string[]) => ids.map(() => ({ data: entryImpactData, isPending: false })),
 }));
-// P4-68 — les indispos gymnase alimentent une carte du radar. Les trois lectures sont
-// simulées ici : une liste VIDE par défaut, chaque cas qui en veut une la pose lui-même.
+// L'indisponibilité séparée est retirée (plan fermetures C1) : ses deux lectures ne sont plus
+// que des souches VIDES, à supprimer mécaniquement quand le radar ne les importe plus.
 vi.mock("@/features/matches/queries", () => ({
-  useVenueUnavailabilities: () => ({ data: unavailabilitiesData }),
+  useVenueUnavailabilities: () => ({ data: [] }),
   useVenues: () => ({ data: [{ id: "gym-1", name: "Armand" }] }),
-  useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: "sn1", items: impactItemsData } }),
+  useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: "sn1", items: [] } }),
   // Promesse 5 — le feed des fermetures (gymnase d'une closure) consommé par RadarPanel ; vide par
   // défaut, aucun changement pour les cas existants.
   useVenueClosures: () => ({ data: venueClosuresData }),
@@ -194,8 +192,6 @@ describe("RadarPanel", () => {
     plansState.failed = false;
     createVenueClosureMutate.mockReset();
     createVenueClosureMutateAsync.mockClear();
-    unavailabilitiesData = [];
-    impactItemsData = [];
     venueClosuresData = [];
     schoolHolidaysData = { zone: "A", items: [] };
     calendarEntriesData = [];
@@ -962,104 +958,15 @@ describe("RadarPanel", () => {
     expect(screen.queryByText("Férié lointain")).not.toBeInTheDocument();
   });
 
-  // P4-68 (recadrage fondateur 2026-08-06) — « le gestionnaire est responsable et on
-  // fait le nécessaire pour qu'il soit ALERTÉ » : l'indispo gymnase entre au radar au
-  // moment d'agir, avec le geste qui ouvre le chemin (créer la fermeture → adapter).
-  //
-  // P2-36 (tranche 2) — cette indispo couvre PLUSIEURS semaines : « Adapter » passe désormais
-  // par la maison unique et OUVRE le choix des semaines AVANT toute création (l'entrée n'est
-  // pas encore née) ; « d'un bloc » matérialise ALORS la fermeture par le geste EXISTANT
-  // (createVenueClosure), sans réinventer de chemin parallèle.
-  it("alerte sur une indisponibilité MULTI-SEGMENTS, chiffre l'impact, « Adapter » ouvre le choix des semaines SANS rien créer et désactive « d'un bloc »", async () => {
-    const user = userEvent.setup();
-    const today = todayISO();
-    unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: addDays(today, 12), endDate: addDays(today, 20), label: "travaux" }];
-    impactItemsData = [{ unavailabilityId: "u1", trainingSlotCount: 3 }];
-    renderRadar();
-
-    expect(screen.getByText(COCKPIT_TEXTS.venueUnavailableTitle("Armand", "travaux"))).toBeInTheDocument();
-    expect(screen.getByText(/Dans 12 j · 3 créneaux d'entraînement\/sem\. concernés/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Adapter" }));
-
-    // Le picker s'ouvre — l'entrée n'est PAS encore née (rien créé tant que non tranché).
-    expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
-    expect(createVenueClosureMutate).not.toHaveBeenCalled();
-    expect(createVenueClosureMutateAsync).not.toHaveBeenCalled();
-
-    // Règle début·milieu·fin (fondateur 2026-09-05) : une fermeture à semaine entamée ne s'adapte
-    // PAS d'un bloc (le serveur refuserait) — le bouton est DÉSACTIVÉ. Le gestionnaire coche les
-    // segments début·milieu·fin, chacun devenant un planning.
-    expect(screen.getByRole("button", { name: /Adapter toute la période d'un bloc/i })).toBeDisabled();
-  });
-
-  // Témoin : une indispo d'UNE SEULE semaine calendaire n'a rien à choisir → création directe
-  // par le geste existant (mutate + adaptBlock), sans picker (comportement conservé).
-  it("témoin : une indisponibilité d'UNE seule semaine crée la fermeture directement (pas de picker)", async () => {
-    const user = userEvent.setup();
-    const today = todayISO();
-    const mon = mondayOf(addDays(today, 30));
-    unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: mon, endDate: addDays(mon, 2), label: null }];
-    renderRadar();
-
-    await user.click(screen.getByRole("button", { name: "Adapter" }));
-
-    expect(screen.queryByText(COCKPIT_TEXTS.whichWeeksToAdjust)).not.toBeInTheDocument();
-    expect(createVenueClosureMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ venueId: "gym-1", startDate: mon, endDate: addDays(mon, 2) }),
-      expect.anything(),
-    );
-  });
-
-  it("dit « impact non évalué » plutôt qu'un zéro rassurant quand la lecture n'a rien rendu", () => {
-    const today = todayISO();
-    unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: addDays(today, 5), endDate: addDays(today, 9), label: null }];
-    impactItemsData = []; // impact pas (encore) là
-    renderRadar();
-
-    expect(screen.getByText(/impact non évalué/)).toBeInTheDocument();
-  });
-
-  // ── Promesse 5 (bug fondateur BCCL local 2026-10-28) : le gymnase de la fermeture compte ──
-  // Angle du NIVEAU COMPOSANT : le CÂBLAGE de RadarPanel vers `unavailabilitiesToAlert`. La règle
-  // PURE (quelle couverture masque) est prouvée au plus bas et exhaustivement par le jumeau
-  // `lib/venueUnavailabilityRadar.test.ts:89-117` (autre gymnase ne masque plus / même gymnase
-  // masque / période club-entier masque) — on ne la re-prouve pas ici. Ce que SEUL le composant
-  // voit, et que le pur ne peut pas : RadarPanel branche bien les DEUX sources attendues — les
-  // périodes CLUB-ENTIER de `entries` ET le feed `useVenueClosures` ({venueId}) — dans la fonction.
-  // Domaine sensible (fermeture de gymnase, charte §1) : le doublon d'angle est assumé.
-  describe("câblage du masquage des indispos (promesse 5)", () => {
-    // ⚠ Dates calculées DANS le test (après `beforeEach`, horloge figée à 2998-12-15) : les sortir
-    // au corps du `describe` les figerait à la VRAIE date (collecte), hors de la plage de l'indispo.
-    const unavailability = () => [{ id: "u1", venueId: "gym-1", startDate: addDays(todayISO(), 12), endDate: addDays(todayISO(), 20), label: "travaux" }];
-    const covering = () => ({ startDate: addDays(todayISO(), 10), endDate: addDays(todayISO(), 25) });
-    const cardTitle = () => COCKPIT_TEXTS.venueUnavailableTitle("Armand", "travaux");
-
-    it("une période CLUB-ENTIER (vacances) qui couvre masque la carte : RadarPanel passe bien `entries` à la fonction", () => {
-      unavailabilitiesData = unavailability();
-      renderRadar({ entries: [{ id: "p1", kind: "period", periodType: "holiday", title: "Vacances", ...covering() } as CalendarEntry] });
-
-      expect(screen.queryByText(cardTitle())).not.toBeInTheDocument();
-    });
-
-    it("une FERMETURE du MÊME gymnase qui couvre masque la carte : RadarPanel câble bien `useVenueClosures`", () => {
-      unavailabilitiesData = unavailability();
-      venueClosuresData = [{ venueId: "gym-1", ...covering() }];
-      renderRadar();
-
-      expect(screen.queryByText(cardTitle())).not.toBeInTheDocument();
-    });
-
-    it("témoin du bug fondateur : une fermeture d'un AUTRE gymnase couvrant la plage ne masque PLUS la carte", () => {
-      unavailabilitiesData = unavailability();
-      // La fermeture Matéo (gym-2) EST une période du calendrier et sert son gymnase par le feed ;
-      // avant le fix, `entries` masquait AVEUGLÉMENT n'importe quel gymnase — plus maintenant.
-      venueClosuresData = [{ venueId: "gym-2", ...covering() }];
-      renderRadar({ entries: [{ id: "p2", kind: "period", periodType: "closure", title: "Matéo fermé", ...covering() } as CalendarEntry] });
-
-      expect(screen.getByText(cardTitle())).toBeInTheDocument();
-    });
-  });
+  // Les cartes « indisponibilité de gymnase » (P4-68, P2-36, P2-40, promesse 5 du masquage) sont
+  // parties avec l'indisponibilité séparée (plan fermetures C1 : un gymnase qui ferme = UN fait, la
+  // fermeture du calendrier, qui a sa propre carte). Filets : impact chiffré / non lu → ce fichier,
+  // « counts the sessions to replace on a closure without overlay » et « surfaces a closure whose
+  // impact could NOT be read » ; choix des semaines, exclusion des vacances, « Consigner », fenêtre
+  // déjà planifiée → `WeekPickerDialog.test.tsx` (« prechecks every segment… », « affiche la ligne
+  // d'info… », « 100 % sous vacances… », « D — 100 % déjà planifiée… ») et `DayDialog.test.tsx`
+  // (picker sur plusieurs semaines, adaptation directe sur une seule) ; même chiffre que l'aperçu →
+  // describe « fermeture gouvernée par un plan de période (C4/C5) » plus bas.
 
   it("P4-9 — un férié SANS séance ce jour-là disparaît (rien à protéger)", () => {
     const today = todayISO();
@@ -1137,99 +1044,6 @@ describe("RadarPanel", () => {
     await user.click(screen.getByRole("button", { name: "Reprendre" }));
     expect(screen.getByRole("button", { name: /Supprimer les versions et découper/i })).toBeDisabled();
   });
-
-  // P2-40 — quand une indispo de gymnase CHEVAUCHE des vacances, le picker EXCLUT (pas grise) les
-  // semaines gouvernées par les vacances, affiche une ligne d'info, et le chemin « d'un bloc »
-  // disparaît. 100 % sous vacances → info seule + « Consigner l'indisponibilité » (crée le fait).
-  describe("chevauchement vacances (P2-40)", () => {
-    it("EXCLUT les semaines sous vacances, affiche l'info, et RETIRE le chemin d'un bloc", async () => {
-      const user = userEvent.setup();
-      const today = todayISO();
-      const start = mondayOf(addDays(today, 12)); // un lundi, sous l'horizon 30 j
-      unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: start, endDate: addDays(start, 27), label: "travaux" }]; // 4 semaines
-      // Vacances alignées lundi couvrant les 2 premières semaines (pas de dropFirst).
-      schoolHolidaysData = { zone: "A", items: [{ id: "hol1", label: "Vacances test", holidayType: "custom", startDate: start, endDate: addDays(start, 13), schoolYear: "2998-2999" }] };
-      renderRadar();
-
-      await user.click(screen.getByRole("button", { name: "Adapter" }));
-
-      expect(screen.getByText(COCKPIT_TEXTS.whichWeeksToAdjust)).toBeInTheDocument();
-      expect(screen.getByText(/couvertes par Vacances test/)).toBeInTheDocument();
-      expect(screen.getByText(/le rappel vous attend/i)).toBeInTheDocument();
-      // P2-41 — les deux semaines pleines hors vacances forment UN segment (une coche). ALIGNEMENT
-      // fondateur (P2-38) : le chemin « d'un bloc » n'est plus CACHÉ mais DÉSACTIVÉ avec sa raison
-      // (bascule voulue) ; « Continuer d'un bloc » (libellé de l'état block) reste absent.
-      expect(screen.getAllByRole("checkbox")).toHaveLength(1);
-      expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
-      expect(screen.queryByRole("button", { name: /continuer d'un bloc/i })).not.toBeInTheDocument();
-      // Rien créé tant que non confirmé.
-      expect(createVenueClosureMutate).not.toHaveBeenCalled();
-      expect(createVenueClosureMutateAsync).not.toHaveBeenCalled();
-    });
-
-    it("indispo ENTIÈREMENT sous vacances (même sur une seule semaine) : info seule + « Consigner l'indisponibilité » crée le fait sans plan", async () => {
-      const user = userEvent.setup();
-      const today = todayISO();
-      const start = mondayOf(addDays(today, 12));
-      // Une seule semaine calendaire, entièrement sous vacances → jamais un chemin direct : le
-      // picker s'ouvre quand même (règle « 0 semaine offerte »).
-      unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: start, endDate: addDays(start, 4), label: "travaux" }];
-      schoolHolidaysData = { zone: "A", items: [{ id: "hol1", label: "Vacances test", holidayType: "custom", startDate: start, endDate: addDays(start, 6), schoolYear: "2998-2999" }] };
-      renderRadar();
-
-      await user.click(screen.getByRole("button", { name: "Adapter" }));
-
-      expect(screen.getByText(/couvertes par Vacances test/)).toBeInTheDocument();
-      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-      // ALIGNEMENT fondateur (P2-38) : « d'un bloc » présent mais DÉSACTIVÉ (au lieu de caché).
-      expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
-
-      await user.click(screen.getByRole("button", { name: /consigner l'indisponibilité/i }));
-      await waitFor(() =>
-        expect(createVenueClosureMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ venueId: "gym-1", startDate: start, endDate: addDays(start, 4) })),
-      );
-    });
-
-    // ⚑ Le message de confirmation DIT où le rappel attend — et depuis que la prévention ouvre
-    // « Consigner » au cas « fenêtre déjà gouvernée par un autre plan », « dans le planning des
-    // vacances » devenait FAUX la moitié du temps. Un message qui ment se réinstalle en silence :
-    // on le garde. Falsifié dans les deux sens (le cas vacances est le test ci-dessus).
-    it("« Consigner » sur une fenêtre déjà PLANIFIÉE : le message ne parle plus de vacances, il nomme le planning qui couvre", async () => {
-      const user = userEvent.setup();
-      const today = todayISO();
-      const start = mondayOf(addDays(today, 12));
-      // ⚠ Fenêtre MULTI-semaines : une mère d'une seule semaine part en adaptation directe sans
-      // ouvrir la modale — chemin volontairement HORS de la prévention (il garde le 409).
-      unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: start, endDate: addDays(start, 11), label: "travaux" }];
-      // Aucune vacance ici : c'est un PLAN de période qui gouverne toute la fenêtre.
-      schoolHolidaysData = { zone: "A", items: [] };
-      plannedWindowsData = [
-        {
-          entryId: "reprise-7",
-          title: "Reprise",
-          startDate: start,
-          endDate: addDays(start, 13),
-          label: "semaines du 11 au 24 janv.",
-          reason: "Ces dates sont déjà planifiées par « Reprise » (semaines du 11 au 24 janv.).",
-        },
-      ];
-      renderRadar();
-
-      await user.click(screen.getByRole("button", { name: "Adapter" }));
-      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-
-      // ⚠ Le store de toasts est un SINGLETON partagé par tout le fichier : sans ce vidage, on
-      // lirait les messages des tests précédents et l'assertion « ne dit pas vacances » serait
-      // fausse pour une raison qui n'a rien à voir avec le code (mordu en écrivant ce test).
-      useToastStore.setState({ toasts: [] });
-      await user.click(screen.getByRole("button", { name: /consigner l'indisponibilité/i }));
-      await waitFor(() => expect(createVenueClosureMutateAsync).toHaveBeenCalled());
-
-      const messages = useToastStore.getState().toasts.map((t) => t.message);
-      expect(messages.some((m) => /planning qui couvre ces dates/i.test(m))).toBe(true);
-      expect(messages.some((m) => /planning des vacances/i.test(m))).toBe(false);
-    });
-  });
 });
 
 /**
@@ -1274,8 +1088,6 @@ describe("RadarPanel — fermeture gouvernée par un plan de période (C4/C5)", 
     schedulesData = [];
     campaignsData = [];
     plansState.failed = false;
-    unavailabilitiesData = [];
-    impactItemsData = [];
     venueClosuresData = [];
     schoolHolidaysData = { zone: "A", items: [] };
     calendarEntriesData = [];

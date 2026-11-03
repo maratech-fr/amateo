@@ -66,7 +66,6 @@ interface Options {
   matchWindows?: VenueMatchWindow[];
   holidays?: string[];
   envelope?: EnvelopeResult;
-  unavailabilities?: { id: string; venueId: string; startDate: string; endDate: string; label: string | null }[];
   closures?: { id: string; venueId: string; startDate: string; endDate: string; title: string }[];
   matchMinutes?: number;
   conflicts?: Conflict[];
@@ -78,7 +77,7 @@ function panel(o: Options = {}) {
     <PlacementPanel
       fixture={o.fixture ?? fixture()}
       venues={venues}
-      guards={{ state: "ready", matchWindows: o.matchWindows ?? [saturdayAlpha], unavailabilities: o.unavailabilities ?? [], closures: (o.closures ?? []) as never, holidays: o.holidays ?? [HOLIDAY], retry: vi.fn() }}
+      guards={{ state: "ready", matchWindows: o.matchWindows ?? [saturdayAlpha], unavailabilities: [], closures: (o.closures ?? []) as never, holidays: o.holidays ?? [HOLIDAY], retry: vi.fn() }}
       habits={[]}
       teamLabel="U13"
       categoryLabel="U13"
@@ -156,12 +155,6 @@ describe("PlacementPanel — le raccourci d'ouverture (D5)", () => {
     render(panel({ fixture: fixture({ competitionId: null }) }));
     expect(openAction()).toBeNull();
     expect(placeButton()).toBeEnabled();
-  });
-
-  it("jamais sur une indisponibilité : une ouverture ne lève pas un gymnase fermé", () => {
-    render(panel({ unavailabilities: [{ id: "u", venueId: "venue-2", startDate: HOLIDAY, endDate: HOLIDAY, label: null }] }));
-    expect(openAction()).toBeNull();
-    expect(placeButton()).toBeDisabled();
   });
 
   it("jamais sur une fermeture du calendrier", () => {

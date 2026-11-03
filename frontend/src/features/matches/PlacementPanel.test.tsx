@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
 
-import type { Fixture, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow, VenueUnavailability } from "./api";
+import type { Fixture, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow } from "./api";
 import type { EnvelopeResult } from "./lib/envelope";
 import { PlacementPanel } from "./PlacementPanel";
 
@@ -49,7 +49,6 @@ const openEnvelope: EnvelopeResult = { mapped: false, windows: [], dayOk: false,
 
 interface Overrides {
   matchWindows?: VenueMatchWindow[];
-  unavailabilities?: VenueUnavailability[];
   closures?: VenueClosure[];
   /** PR2 — les dates `Y-m-d` fériées (feed GET /api/public-holidays) portées par les gardes. */
   holidays?: string[];
@@ -76,7 +75,7 @@ function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Ove
       guards={{
         state: overrides.guardState ?? "ready",
         matchWindows: overrides.matchWindows ?? [],
-        unavailabilities: overrides.unavailabilities ?? [],
+        unavailabilities: [], // ⚠ champ de la garde retiré avec l'indisponibilité séparée : ligne à supprimer mécaniquement avec lui
         closures: overrides.closures ?? [],
         holidays: overrides.holidays ?? [],
         retry: overrides.retry ?? vi.fn(),
@@ -200,23 +199,24 @@ describe("PlacementPanel", () => {
     expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-2", kickoffTime: "15:30" });
   });
 
-  it("blocks an unavailable venue and keeps the full list when no window exists", async () => {
+  // Adapté de l'indisponibilité séparée (retirée, plan fermetures C1) vers la FERMETURE du calendrier,
+  // seul fait saisi désormais : sans aucune fenêtre d'accès, la liste reste complète, le gymnase
+  // fermé à la date du match est grisé (non choisissable) et l'autre reste plaçable.
+  it("blocks a venue closed by the calendar and keeps the full list when no window exists", async () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
       // No window anywhere (club has not adopted the data) → full list, no
-      // window guard — but the unavailability still bites.
-      unavailabilities: [{ id: "u1", venueId: "venue-1", startDate: "2026-10-01", endDate: "2026-10-05", label: "travaux" }],
+      // window guard — but the calendar closure still bites.
+      closures: [{ id: "c1", venueId: "venue-1", title: "travaux", startDate: "2026-10-01", endDate: "2026-10-05" }],
     });
 
     const list = await openListbox(user, "Gymnase");
     expect(within(list).getByRole("option", { name: "Gymnase Beta" })).toBeInTheDocument();
-    await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
-    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
-    expect(screen.getByText(/indisponible du 1 oct\. au 5 oct\. \(travaux\)/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    expect(within(list).getByRole("option", { name: /Gymnase Alpha/ })).toHaveAttribute("aria-disabled", "true");
 
     // The other venue stays placeable.
-    await pickListboxOption(user, "Gymnase", "Gymnase Beta");
+    await user.click(within(list).getByRole("option", { name: "Gymnase Beta" }));
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
     expect(screen.getByRole("button", { name: "Placer" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Placer" }));
     expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-2", kickoffTime: "14:00" });
@@ -262,19 +262,18 @@ describe("PlacementPanel", () => {
     expect(onPlace).not.toHaveBeenCalled();
   });
 
-  it("un gymnase indisponible bloque même un amical (le seul refus dur pour tous)", async () => {
+  // Adapté de l'indisponibilité (retirée, C1) vers la fermeture du calendrier : même pour un amical
+  // (placement libre hors créneau), un gymnase FERMÉ à la date du match reste le refus dur pour tous.
+  it("un gymnase fermé par le calendrier bloque même un amical (le seul refus dur pour tous)", async () => {
     const user = userEvent.setup();
     renderPanel(openEnvelope, vi.fn(), {
       fixture: friendly,
-      unavailabilities: [{ id: "u1", venueId: "venue-1", startDate: "2026-10-01", endDate: "2026-10-05", label: "travaux" }],
+      closures: [{ id: "c1", venueId: "venue-1", title: "travaux", startDate: "2026-10-01", endDate: "2026-10-05" }],
     });
 
     const list = await openListbox(user, "Gymnase");
-    await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
-    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
-
-    expect(screen.getByText(/indisponible du 1 oct\. au 5 oct\. \(travaux\)/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    expect(within(list).getByRole("option", { name: /Gymnase Alpha/ })).toHaveAttribute("aria-disabled", "true");
+    expect(within(list).getByText(/Fermée du .* au .* — travaux/)).toBeInTheDocument();
   });
 
   it("l'enveloppe ligue ne bloque JAMAIS un amical (mapped + hors fenêtre → bouton actif)", async () => {
@@ -480,7 +479,7 @@ describe("PlacementPanel — D2 : le geste de placement suspendu tant que les ga
     // Témoin qui distingue « la lecture a renvoyé [] » de « la lecture n'a pas abouti » :
     // gardes prêtes + aucun accès/indispo déclaré → rien à imposer → placement autorisé.
     const user = userEvent.setup();
-    const onPlace = renderPanel(openEnvelope, vi.fn(), { guardState: "ready", matchWindows: [], unavailabilities: [] });
+    const onPlace = renderPanel(openEnvelope, vi.fn(), { guardState: "ready", matchWindows: [] });
 
     await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
@@ -505,16 +504,6 @@ describe("PlacementPanel — gymnase fermé ou indisponible grisé (P4-300)", ()
     const option = within(list).getByRole("option", { name: /Gymnase Alpha/ });
     expect(option).toHaveAttribute("aria-disabled", "true");
     expect(within(list).getByText(/Fermée du .* au .* — Gymnase en travaux/)).toBeInTheDocument();
-  });
-
-  it("grise aussi un gymnase indisponible à la date du match", async () => {
-    const user = userEvent.setup();
-    const unavailabilities: VenueUnavailability[] = [{ id: "u1", venueId: "venue-1", startDate: "2026-10-01", endDate: "2026-10-05", label: "travaux" }];
-    renderPanel(openEnvelope, vi.fn(), { matchWindows: windowVenue1, unavailabilities });
-
-    const list = await openListbox(user, "Gymnase");
-    expect(within(list).getByRole("option", { name: /Gymnase Alpha/ })).toHaveAttribute("aria-disabled", "true");
-    expect(within(list).getByText(/Indisponible du .* au .* — travaux/)).toBeInTheDocument();
   });
 
   it("ne grise pas un gymnase dont la fermeture ne couvre pas la date du match (falsification)", async () => {
