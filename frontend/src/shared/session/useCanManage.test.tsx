@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook } from "@testing-library/react";
+import { cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -29,6 +29,8 @@ function renderWithMe(me: Partial<MeResponse> | undefined) {
 
 describe("useCanManage — la question unique « peut-il modifier ? »", () => {
   afterEach(() => {
+    // Démonter AVANT de muter le store : sinon le hook encore monté se re-rend hors act().
+    cleanup();
     useAuthStore.setState({ isAuthenticated: false });
   });
 

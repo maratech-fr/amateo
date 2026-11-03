@@ -2,7 +2,9 @@ import { ArrowLeft, CalendarPlus, FileWarning, Info, Radar } from "lucide-react"
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
 import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -35,6 +37,8 @@ export function ReconciliationView() {
   const teams = useTeams();
   const tiers = usePriorityTiers();
   const applyFfbb = useApplyFfbbRencontres();
+  // Un Membre lit les rencontres publiées : choix d'équipe en lecture, aucun « Intégrer ».
+  const canManage = useCanManage();
 
   // rencontreId → teamId chosen for creation (missing/"" = not created).
   const [creationTeam, setCreationTeam] = useState<Record<string, string>>({});
@@ -116,6 +120,7 @@ export function ReconciliationView() {
       />
 
       {/* Présents à la FFBB, absents de l'app — proposés à la création (jamais imposés). */}
+      <ReadOnlyFieldset readOnly={!canManage}>
       <CreatableSection
         creatable={creatable}
         teams={teams.data ?? []}
@@ -123,6 +128,7 @@ export function ReconciliationView() {
         creationTeam={creationTeam}
         onPick={(rencontreId, teamId) => setCreationTeam((prev) => ({ ...prev, [rencontreId]: teamId }))}
       />
+      </ReadOnlyFieldset>
 
       {/* Barre sticky : l'ACTION d'écriture + l'abandon. */}
       <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-card/95 py-3 backdrop-blur">

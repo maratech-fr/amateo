@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,7 +62,11 @@ beforeEach(() => {
   applyFfbbRencontres.mockClear();
   useMatchesStore.setState({ reconciliation: null });
 });
-afterEach(() => useMatchesStore.setState({ reconciliation: null }));
+afterEach(() => {
+  // Démonter AVANT de vider le store : sinon la vue encore montée se re-rend hors act().
+  cleanup();
+  useMatchesStore.setState({ reconciliation: null });
+});
 
 describe("ReconciliationView (PR-3b — intégration des rencontres FFBB)", () => {
   it("accès direct SANS payload → renvoi propre, aucune écriture", () => {
