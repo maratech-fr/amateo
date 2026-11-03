@@ -1,4 +1,4 @@
-# Roadmap (90) — ce qui reste à faire
+# Roadmap (95) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -180,6 +180,11 @@
 | P4-465 | **`useMutualizeAtCase` ne reconnaît pas le refus `not_loaded_version`** | ⚪ | XS | Cas rare à deux onglets (la version chargée a changé entre-temps) : le geste de mutualisation échoue 409 codé, et l'écran annonce une erreur générique au lieu de « Chargez cette version pour la modifier. ». |
 | P4-466 | **Annuler un déplacement avec éviction refusé par version non chargée : le toast ne dit que le motif** | ⚪ | XS | Cas rare à deux onglets : l'annulation (`useRetouchGestures`) est refusée 409 `not_loaded_version` ; le toast donne le motif sans dire que le déplacement reste en place ni quoi faire. |
 | P4-467 | **Un Membre demande à devenir gestionnaire (reprise d'un club en fermeture)** | 🟡 | M | Décision fondateur : les gestionnaires, ou l'adresse officielle du club s'il n'en reste aucun, acceptent ou refusent ; accepté, il change de rôle et la fermeture est annulée. PR à part, hors lot « version chargée ». |
+| P4-468 | **Le recalage automatique de `release` échoue dès qu'un déploiement embarque une modification de workflow** | 🟠 | S | Le job `update-release-branch` de `deploy.yml` pousse avec un jeton sans droit `workflow` : si le commit déployé modifie un fichier de `.github/workflows/`, le push est refusé et le déploiement entier est marqué en échec alors que la prod est saine. |
+| P4-469 | **Le mail de mise en production programmée annonce « l'application est hors service » sur tout échec du workflow** | 🟠 | XS | `DeploymentTickCommand.php` (autour de `:195`) envoie ce texte même si seul le recalage de `release` a échoué et que la prod est saine ; le message doit distinguer l'échec du déploiement de l'échec d'une étape annexe. |
+| P4-470 | **Les boutons ronds de défilement recouvrent ce qui passe à mi-hauteur à droite** | ⚪ | XS | Dans `WizardLayout.tsx:90`, la colonne fixe « Haut/Bas de page » est collée à droite au milieu de l'écran et masque le contenu ; il faut lui choisir une autre place, sans heurter le pied collant (`:645`) ni les toasts. |
+| P4-471 | **« Combler » grisé affiche son motif dans la ligne de la barre, loin du bouton** | ⚪ | XS | Suite du motif en clair de la version non chargée : le geste grisé dit pourquoi, mais en ligne de barre et non à côté de « Combler automatiquement », si bien que le lien entre le bouton et son motif n'est pas immédiat. |
+| P4-472 | **Security Weekly échoue depuis plus de 5 semaines (scan Trivy des images de prod), non analysé** | 🟠 | S | Le workflow hebdomadaire est rouge sans qu'on ait lu pourquoi : trouver si ce sont des vulnérabilités réelles des images ou un défaut du scan, puis corriger ou accepter explicitement. |
 
 ---
 
