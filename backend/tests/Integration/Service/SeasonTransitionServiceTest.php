@@ -25,7 +25,6 @@ use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
-use App\Entity\VenueUnavailability;
 use App\Enum\CoachGender;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -95,11 +94,10 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertSame($newVenues[0]->getId(), $newSlot?->getVenueId());
 
         // P1-4 PR B — match access windows follow (city-hall convention renews),
-        // remapped to the copied venue; the dated unavailability does NOT.
+        // remapped to the copied venue.
         $newWindow = $this->em->getRepository(VenueMatchWindow::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertSame($newVenues[0]->getId(), $newWindow?->getVenueId());
         self::assertSame('14:00', $newWindow?->getStartTime()->format('H:i'));
-        self::assertNull($this->em->getRepository(VenueUnavailability::class)->findOneBy(['seasonId' => $target->getId()]));
 
         // P1-4 PR C — habitude remappée (équipe + gymnase), passerelle remappée
         // des DEUX côtés et toujours normalisée (teamAId < teamBId).
@@ -535,8 +533,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $slot->setCapacity(1);
         $this->em->persist($slot);
 
-        // P1-4 PR B — capacité : la fenêtre match se recopie (convention mairie),
-        // l'indisponibilité (fait daté one-shot) jamais.
+        // P1-4 PR B — capacité : la fenêtre match se recopie (convention mairie).
         $window = new VenueMatchWindow;
         $window->setClubId($club->getId());
         $window->setSeasonId($season->getId());
@@ -545,15 +542,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $window->setStartTime(new DateTimeImmutable('14:00'));
         $window->setEndTime(new DateTimeImmutable('22:00'));
         $this->em->persist($window);
-
-        $unavailability = new VenueUnavailability;
-        $unavailability->setClubId($club->getId());
-        $unavailability->setSeasonId($season->getId());
-        $unavailability->setVenueId($venueA->getId());
-        $unavailability->setStartDate(new DateTimeImmutable('2027-02-04'));
-        $unavailability->setEndDate(new DateTimeImmutable('2027-02-28'));
-        $unavailability->setLabel('travaux');
-        $this->em->persist($unavailability);
 
         // P4-311 — genre + case véhiculé NON-DÉFAUT : la recopie N+1 doit les transporter
         // (sinon le coach retomberait à UNSPECIFIED / non véhiculé au passage de saison —

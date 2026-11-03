@@ -28,7 +28,6 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
 use App\Enum\ConflictResolutionStatus;
 use App\Enum\ConstraintRuleType;
@@ -227,14 +226,48 @@ final class MatchTenantIsolationTest extends WebTestCase
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
 
-        $this->client->request('POST', '/api/venue_unavailabilities', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'venueId' => $venueB->getId(), 'startDate' => '2027-02-04', 'endDate' => '2027-02-28',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(422);
-
         $this->scopeGucToClub($clubB->getId());
         self::assertCount(0, $this->em->getRepository(VenueMatchWindow::class)->findBy(['venueId' => $venueB->getId()]));
-        self::assertCount(0, $this->em->getRepository(VenueUnavailability::class)->findBy(['venueId' => $venueB->getId()]));
+    }
+
+    /**
+     * NR tenant — remplace le cas « indisponibilité sur un gymnase étranger » (l'indisponibilité
+     * séparée disparaît : la fermeture du calendrier est le seul fait saisi). Une fermeture que A
+     * déclare en visant le gymnase de B n'atteint JAMAIS B : B ne la voit pas dans ses fermetures,
+     * et l'aperçu d'impact de A sur le gymnase de B est un 404 (jamais un chiffre sur les données
+     * de B), là où le même aperçu sur son propre gymnase répond 200 (témoin : la route existe).
+     */
+    public function testAClosureAimedAtAForeignVenueNeverReachesTheOtherClub(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $venueA = $this->createVenue($clubA, $seasonA, 'Gymnase A');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('b');
+        $venueB = $this->createVenue($clubB, $seasonB, 'Gymnase B');
+        $start = $seasonA->getStartDate()->modify('+60 days')->format('Y-m-d');
+        $end = $seasonA->getStartDate()->modify('+66 days')->format('Y-m-d');
+        $json = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+
+        // Le geste réel du cockpit (queries.ts useCreateVenueClosure) : entrée, puis contrainte datée.
+        $this->client->request('POST', '/api/calendar_entries', [], [], $json, json_encode([
+            'kind' => 'period', 'periodType' => 'closure', 'title' => 'Fermeture visant B', 'startDate' => $start, 'endDate' => $end,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $entryId = (string) ($this->responseData()['id'] ?? '');
+        $this->client->request('POST', '/api/constraints', [], [], $json, json_encode([
+            'name' => 'Fermeture visant B', 'scope' => 'FACILITY', 'scopeTargetId' => $venueB->getId(), 'family' => 'FACILITY', 'ruleType' => 'HARD',
+            'config' => ['type' => 'venue_closed', 'startDate' => $start, 'endDate' => $end], 'calendarEntryId' => $entryId,
+        ], \JSON_THROW_ON_ERROR));
+
+        // B ne voit aucune fermeture : rien de A n'a franchi la frontière du club.
+        $this->client->request('GET', '/api/venue_closures', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], $this->responseData()['member'] ?? ['sentinel'], 'B ne voit jamais une fermeture déclarée par A');
+
+        // L'aperçu d'impact de A : 404 sur le gymnase de B, 200 sur le sien (témoin positif).
+        $this->client->request('GET', '/api/venue-closure-impact?' . http_build_query(['venueId' => $venueB->getId(), 'startDate' => $start, 'endDate' => $end]), [], [], $this->authHeaders($userA));
+        self::assertResponseStatusCodeSame(404);
+        $this->client->request('GET', '/api/venue-closure-impact?' . http_build_query(['venueId' => $venueA->getId(), 'startDate' => $start, 'endDate' => $end]), [], [], $this->authHeaders($userA));
+        self::assertResponseStatusCodeSame(200, 'témoin : l’aperçu répond sur le gymnase du club');
     }
 
     public function testExternalLabelAttachCannotTargetAForeignVenueNorBackfillAcrossClubs(): void
@@ -290,30 +323,6 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->scopeGucToClub($clubB->getId());
         $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
         self::assertSame($venueB->getId(), (string) $connection->fetchOne('SELECT venue_id FROM fixture WHERE id = ?', [$foreignHome]), 'le domicile de B n\'est jamais re-pointé par une ré-affectation de A');
-    }
-
-    public function testVenueUnavailabilityIsManagementGatedAndSeasonGuarded(): void
-    {
-        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
-        $venueA = $this->createVenue($clubA, $seasonA, 'Gymnase A');
-
-        // Cockpit-surface write (SEC-07): a non-management member is refused.
-        $editor = $this->createMember($clubA, 'editor');
-        $this->client->request('POST', '/api/venue_unavailabilities', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'venueId' => $venueA->getId(), 'startDate' => '2027-02-04', 'endDate' => '2027-02-28',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(403);
-
-        // Archived-season writes refused (inherited SeasonAccessGuard).
-        $this->scopeGucToClub($clubA->getId());
-        $past = $this->season($clubA, SeasonResolver::seasonYear(new DateTimeImmutable('today')) - 1);
-        $this->em->flush();
-        $this->client->request('POST', '/api/venue_unavailabilities', [], [], $this->authHeaders($userA) + [
-            'HTTP_X-Season-Id' => $past->getId(), 'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'venueId' => $venueA->getId(), 'startDate' => '2026-02-04', 'endDate' => '2026-02-28',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(409);
     }
 
     // ── Préférences matchs (P1-4 PR C) : habitudes + passerelles ──────────────

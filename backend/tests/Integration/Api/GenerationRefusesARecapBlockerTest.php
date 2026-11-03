@@ -146,6 +146,39 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         self::assertStringContainsString('ne correspond à aucun créneau', (string) ($body['error'] ?? ''));
     }
 
+    /**
+     * Fermetures de gymnase (correction SMITH passe 3, C) — une réservation sur un gymnase fermé toute la période par une
+     * fermeture DÉCLARÉE : le motif NOMME la fermeture (son titre), au lieu de « ce créneau a été déplacé ou supprimé »
+     * qui enverrait le gestionnaire chercher un créneau qui n'a jamais bougé. TÉMOIN : sans la fermeture, la même
+     * réservation retombe sur la grille et ne bloque rien. Le motif grille, lui, reste celui de
+     * {@see testAnOrphanReservationRefusesRegeneration}.
+     */
+    public function testAReservationOnAVenueClosedAllThePeriodNamesTheClosure(): void
+    {
+        $ctx = $this->seedPeriod($this->seedGroup(coachesAvailable: true), planGroup: false);
+        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])
+            ->setTeamId($ctx['teamA'])->setVenueId($ctx['venueId'])->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
+        $this->em->flush();
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertInstanceOf(Schedule::class, $schedule);
+        $guard = self::getContainer()->get(GenerationBlockersGuard::class);
+
+        self::assertNull($guard->firstBlockerMessage($schedule), 'témoin : sans fermeture, la réservation retombe sur la grille');
+
+        $closure = new Constraint;
+        $closure->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId']);
+        $closure->setName('Gymnase Un en travaux')->setScope(ConstraintScope::FACILITY)->setScopeTargetId($ctx['venueId']);
+        $closure->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::HARD);
+        $closure->setCalendarEntryId((string) $this->em->getConnection()->fetchOne('SELECT calendar_entry_id FROM schedule_plan WHERE id = :pid', ['pid' => $ctx['planId']]));
+        $closure->setConfig(['type' => 'venue_closed', 'startDate' => '2026-10-19', 'endDate' => '2026-11-01']);
+        $this->em->persist($closure);
+        $this->em->flush();
+
+        $message = (string) $guard->firstBlockerMessage($schedule);
+        self::assertStringContainsString('Gymnase Un en travaux', $message, 'le motif nomme la fermeture');
+        self::assertStringNotContainsString('a été déplacé ou supprimé', $message, 'jamais le motif grille pour une fermeture');
+    }
+
     /** Un créneau libre sur la dernière place d'une case : la case reste occupée, ni le Récap ni le guichet ne s'en plaignent. */
     public function testAFreeSlotOnTheLastPlaceOfACaseIsNotAnOrphan(): void
     {

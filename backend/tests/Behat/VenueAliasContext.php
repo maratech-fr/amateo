@@ -54,7 +54,7 @@ final class VenueAliasContext extends BaseContext
 
     private int $lastStatus = 0;
 
-    private string $unavailabilityId = '';
+    private string $closureEntryId = '';
 
     private string $matchDate = '';
 
@@ -252,12 +252,27 @@ final class VenueAliasContext extends BaseContext
     #[When('le gymnase jetable est fermé à la date des matchs')]
     public function leGymnaseEstFerme(): void
     {
-        $result = $this->apiPost('venue_unavailabilities', [
-            'venueId' => $this->venueId,
+        // Le geste réel du cockpit (une fermeture = UN fait : l'entrée de calendrier `closure`
+        // puis sa contrainte datée `venue_closed`, frontend/src/features/cockpit/queries.ts
+        // useCreateVenueClosure) — l'indisponibilité séparée a disparu.
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'closure',
+            'title' => 'Gymnase jetable fermé',
             'startDate' => $this->matchDate,
             'endDate' => $this->matchDate,
         ], $this->token);
-        $this->unavailabilityId = $this->createdId($result, 'indisponibilité');
+        $this->closureEntryId = $this->createdId($entry, 'fermeture (entrée de calendrier)');
+        $constraint = $this->apiPost('constraints', [
+            'name' => 'Gymnase jetable fermé',
+            'scope' => 'FACILITY',
+            'scopeTargetId' => $this->venueId,
+            'family' => 'FACILITY',
+            'ruleType' => 'HARD',
+            'config' => ['type' => 'venue_closed', 'startDate' => $this->matchDate, 'endDate' => $this->matchDate],
+            'calendarEntryId' => $this->closureEntryId,
+        ], $this->token);
+        $this->createdId($constraint, 'fermeture (contrainte venue_closed)');
     }
 
     #[Then('un conflit « gymnase indisponible » vise la rencontre')]
@@ -281,8 +296,9 @@ final class VenueAliasContext extends BaseContext
         if ('' === $this->token) {
             return;
         }
-        if ('' !== $this->unavailabilityId) {
-            $this->apiDelete(\sprintf('venue_unavailabilities/%s', $this->unavailabilityId), $this->token);
+        // Supprimer l'entrée emporte sa contrainte datée (cascade de l'entrée de calendrier).
+        if ('' !== $this->closureEntryId) {
+            $this->apiDelete(\sprintf('calendar_entries/%s', $this->closureEntryId), $this->token);
         }
         foreach ([self::REF_1, self::REF_2] as $ref) {
             $id = $this->dbalScalar(

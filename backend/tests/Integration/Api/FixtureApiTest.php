@@ -16,7 +16,6 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CompetitionType;
 use App\Enum\ConstraintFamily;
@@ -309,25 +308,6 @@ final class FixtureApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
-    public function testRefusesPlacementOnAnUnavailableVenueEvenForAFriendly(): void
-    {
-        // D2 rule 1 — a venue unavailable on the match date refuses ANY placement,
-        // friendly included (no competition here).
-        $this->persistVenue();
-        $this->persistUnavailability('2026-11-01', '2026-11-30', 'Travaux');
-        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'teamId' => self::TEAM_ID,
-            'matchDate' => '2026-11-07',
-            'homeAway' => 'HOME',
-            'opponentLabel' => 'Voisin',
-            'venueId' => self::VENUE_ID,
-            'kickoffTime' => '16:30',
-            'status' => 'PLACED',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('indisponible', (string) $this->client->getResponse()->getContent());
-    }
-
     public function testRefusesPlacementOnAVenueClosedByTheCalendarEvenForAFriendly(): void
     {
         // P4-300 D4 — une FERMETURE du calendrier (`venue_closed`) couvrant la date du match
@@ -429,17 +409,12 @@ final class FixtureApiTest extends WebTestCase
         self::assertSame('Gymnase Matéo n\'a pas d\'accès match le mercredi 25 novembre. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
     }
 
-    public function testAnOpeningNeverLiftsAnUnavailabilityNorACalendarClosure(): void
+    public function testAnOpeningNeverLiftsACalendarClosure(): void
     {
-        // Les fermetures restent refusées, amical comme compétition, et leur message reste le leur.
+        // Une fermeture du calendrier reste refusée malgré une ouverture, et son message reste le sien
+        // (l'indisponibilité séparée a disparu : une fermeture est désormais le seul fait saisi).
         $this->persistVenue();
         $competitionId = $this->createCompetition();
-        $this->persistOpening(self::ORDINARY_WEDNESDAY, '18:00', '22:00');
-        $this->persistUnavailability(self::ORDINARY_WEDNESDAY, self::ORDINARY_WEDNESDAY, 'travaux');
-        $this->post($this->competitionBody($competitionId, self::ORDINARY_WEDNESDAY, '19:00'));
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('indisponible', (string) $this->client->getResponse()->getContent());
-
         $this->persistOpening('2026-11-25', '18:00', '22:00');
         $this->persistClosure('2026-11-25', '2026-11-25', 'Fermeture mairie');
         $this->post($this->competitionBody($competitionId, '2026-11-25', '19:00'));
@@ -968,19 +943,6 @@ final class FixtureApiTest extends WebTestCase
         $window->setStartTime(new DateTimeImmutable($start));
         $window->setEndTime(new DateTimeImmutable($end));
         $this->em->persist($window);
-        $this->em->flush();
-    }
-
-    private function persistUnavailability(string $start, string $end, ?string $label = null): void
-    {
-        $unavailability = new VenueUnavailability;
-        $unavailability->setClubId($this->club->getId());
-        $unavailability->setSeasonId($this->season->getId());
-        $unavailability->setVenueId(self::VENUE_ID);
-        $unavailability->setStartDate(new DateTimeImmutable($start));
-        $unavailability->setEndDate(new DateTimeImmutable($end));
-        $unavailability->setLabel($label);
-        $this->em->persist($unavailability);
         $this->em->flush();
     }
 
