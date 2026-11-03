@@ -33,8 +33,12 @@ import { loginSeededClub, registerAndVerify, settleVeil, uniqueAra, watchFailedA
 
 const PASSWORD = "Password123!";
 const READ_ONLY_NOTICE = "Consultation : réservé aux gestionnaires";
-/** Les marqueurs personnels qu'un Membre a le droit d'écrire en naviguant. */
-const ALLOWED_WRITES = [/^\/api\/matches\/module-visit$/, /^\/api\/release-notes\/seen$/];
+/**
+ * Les requêtes non-GET permises au Membre en naviguant : ses marqueurs personnels, et le contrôle
+ * des contraintes avant génération (une LECTURE pure en POST, ouverte au Membre — classée `open:`
+ * dans `MemberWriteSweepTest`, prouvée sans effet par `MemberReadsAreSideEffectFreeTest`).
+ */
+const ALLOWED_WRITES = [/^\/api\/matches\/module-visit$/, /^\/api\/release-notes\/seen$/, /^\/api\/constraints\/validate$/];
 const OUTBOUND = [/^\/api\/ffbb\//, /^\/api\/geocode/, /^\/api\/venues\/geo-check/, /\/email-preview$/];
 const WRITE_BUTTON = /^(Générer|Lancer la génération|Enregistrer|Ajouter|Supprimer|Valider|Rouvrir|Importer|Approuver|Copier le lien|Appliquer|Tout appliquer|Relancer)/;
 
@@ -64,8 +68,12 @@ function watchMember(page: Page): Watch {
   return watch;
 }
 
-/** Ouvre un écran comme le Membre et vérifie les invariants communs ; `banner` dit si la bannière y est attendue. */
-async function visit(page: Page, watch: Watch, path: string, banner: boolean): Promise<void> {
+/**
+ * Ouvre un écran comme le Membre et vérifie les invariants communs ; `banner` dit si la bannière y est
+ * attendue ; `writeButtons: false` pour un écran PERSONNEL (`/profile`) où « Enregistrer » et
+ * « Supprimer définitivement mon compte » sont légitimes (`PATCH`/`DELETE /api/me` ouverts au Membre).
+ */
+async function visit(page: Page, watch: Watch, path: string, banner: boolean, writeButtons = true): Promise<void> {
   await page.goto(path);
   await settleVeil(page);
   // Témoin positif : l'écran est RENDU (un titre de page), sinon tout ce qui suit serait vrai sur du vide.
@@ -77,7 +85,9 @@ async function visit(page: Page, watch: Watch, path: string, banner: boolean): P
   } else {
     await expect(notice, `${path} : pas de bannière de consultation ici`).toHaveCount(0);
   }
-  await expect(page.getByRole("button", { name: WRITE_BUTTON }), `${path} : un bouton d'écriture est offert au Membre`).toHaveCount(0);
+  if (writeButtons) {
+    await expect(page.getByRole("button", { name: WRITE_BUTTON }), `${path} : un bouton d'écriture est offert au Membre`).toHaveCount(0);
+  }
   expect(await page.content(), `${path} : un lien personnel de doléance est dans le DOM`).not.toContain("/doleances/");
   expect(watch.violations, `${path} : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
 }
@@ -151,7 +161,8 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       await expect(page.getByRole("button", { name: /Demandes d'adhésion/ })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^Invitations$/ })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^Membres$/ })).toHaveCount(0);
-      await visit(page, watch, "/profile", false);
+      // `/profile` : écran PERSONNEL — ses boutons d'écriture sont ceux du Membre lui-même.
+      await visit(page, watch, "/profile", false, false);
       await visit(page, watch, "/nouveautes", false);
     } finally {
       await eraseAccount(page);
