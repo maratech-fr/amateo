@@ -28,6 +28,7 @@ import { WIZARD_TEXTS } from "../texts";
 import { useWizardStore } from "../store";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { dayLabel, hhmm } from "../lib/days";
+import { dayLabelLong } from "@/shared/lib/days";
 import { unservedReservationIds } from "../lib/orphanReservations";
 import { closuresByVenue } from "../lib/venueClosures";
 import { useDeleteReservation } from "../queries";
@@ -69,11 +70,11 @@ function ReservationRow({
 
   return (
     <SummaryRow
-      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : label}
+      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : removable ? <span>{label} — {WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(reservation.dayOfWeek))}</span> : label}
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
         unserved || removable ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer la réservation de ${label}`} disabled={busy} onClick={onRemove}>
+          <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeReservationLabel(label, where)} disabled={busy} onClick={onRemove}>
             <Trash2 className="size-4" />
           </Button>
         ) : undefined
@@ -87,16 +88,16 @@ function ReservationRow({
  * fondent en CETTE ligne : membres nommés, retirés EN LOT (on ne retire pas une équipe d'un groupe,
  * on retire le groupe). Symétrique de {@link ReservationRow}, terminologie « entraînement mutualisé ».
  */
-function MutualisationRemovalRow({ label, where, reason, removable = false, onRemove, busy }: { label: string; where: string; reason: string | null; removable?: boolean; onRemove: () => void; busy: boolean }) {
+function MutualisationRemovalRow({ label, where, reason, removable = false, dayOfWeek, onRemove, busy }: { label: string; where: string; reason: string | null; removable?: boolean; dayOfWeek: number; onRemove: () => void; busy: boolean }) {
   const unserved = null !== reason;
 
   return (
     <SummaryRow
-      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : label}
+      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : removable ? <span>{label} — {WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(dayOfWeek))}</span> : label}
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
         unserved || removable ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer l'entraînement mutualisé ${label}`} disabled={busy} onClick={onRemove}>
+          <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeLotLabel(label, where)} disabled={busy} onClick={onRemove}>
             <Trash2 className="size-4" />
           </Button>
         ) : undefined
@@ -271,7 +272,7 @@ export function RecapStep() {
   // N2 (série « uniformité », PR 5/7) — tout retrait passe par une confirmation. Le récap porte
   // DEUX gestes destructifs (une réservation orpheline, un lot mutualisé) : une seule cible en
   // attente, discriminée, les deux confirmées par la même `ConfirmDialog`.
-  const [pendingRemoval, setPendingRemoval] = useState<{ kind: "reservation"; id: string; name: string } | { kind: "lot"; lot: PostedGroupLot; name: string } | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{ kind: "reservation"; id: string; name: string; where: string } | { kind: "lot"; lot: PostedGroupLot; name: string; where: string } | null>(null);
 
   // Lot 4bis — on sépare les réservations d'ÉQUIPE (groupées par rang) des créneaux LIBRES (sans
   // équipe, leur propre groupe). Les premières seules passent dans le tri/groupage par tier.
@@ -326,9 +327,9 @@ export function RecapStep() {
       }
       const lotName = lot.group.teamIds.map((id) => teamName.get(id) ?? "?").join(" + ");
       const where = `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}`;
-      return <MutualisationRemovalRow key={`lot-${r.id}`} label={lotName} where={where} reason={reservationReason(r)} removable={doubledIds.has(r.id)} onRemove={() => setPendingRemoval({ kind: "lot", lot, name: lotName })} busy={deleteReservation.isPending} />;
+      return <MutualisationRemovalRow key={`lot-${r.id}`} label={lotName} where={where} reason={reservationReason(r)} removable={doubledIds.has(r.id)} dayOfWeek={r.dayOfWeek} onRemove={() => setPendingRemoval({ kind: "lot", lot, name: lotName, where })} busy={deleteReservation.isPending} />;
     }
-    return <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} removable={doubledIds.has(r.id)} onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: teamName.get(r.teamId) ?? "?" })} busy={deleteReservation.isPending} />;
+    return <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} removable={doubledIds.has(r.id)} onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: teamName.get(r.teamId) ?? "?", where: `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}` })} busy={deleteReservation.isPending} />;
   };
   // Coaches split into staffing groups (Salariés / Coachs-joueurs / Bénévoles),
   // each shown under its own header (user request — same as the constraint tab).
@@ -584,7 +585,7 @@ export function RecapStep() {
                             label={r.label ?? "Créneau réservé"}
                             where={`${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}`}
                             reason={reservationReason(r)}
-                            onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: r.label ?? "Créneau réservé" })}
+                            onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: r.label ?? "Créneau réservé", where: `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}` })}
                             busy={deleteReservation.isPending}
                           />
                         ))}
@@ -615,7 +616,7 @@ export function RecapStep() {
       <ConfirmDialog
         open={null !== pendingRemoval}
         title={null !== pendingRemoval && "lot" === pendingRemoval.kind ? "Retirer cet entraînement mutualisé ?" : "Retirer cette réservation ?"}
-        description={null !== pendingRemoval ? `« ${pendingRemoval.name} » sera retiré de la période.` : undefined}
+        description={null !== pendingRemoval ? WIZARD_TEXTS.removeConfirmDescription(pendingRemoval.name, pendingRemoval.where, null !== periodEntryId) : undefined}
         confirmLabel="Retirer"
         destructive
         onConfirm={() => {

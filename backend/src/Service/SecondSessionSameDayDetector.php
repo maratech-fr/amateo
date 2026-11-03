@@ -36,7 +36,7 @@ final readonly class SecondSessionSameDayDetector
     /**
      * @param list<Reservation> $reservations le périmètre de saison qui partira au solveur
      *
-     * @return array{blockers: list<string>, reservationIds: list<string>}
+     * @return array{blockers: list<string>, reservationIds: list<string>, teamDays: list<string>} `teamDays` : les « équipe|jour » couverts
      */
     public function detect(array $reservations): array
     {
@@ -56,7 +56,7 @@ final readonly class SecondSessionSameDayDetector
             $idsByTeamDay[$key][] = $reservation->getId();
         }
         if (null === $seasonId) {
-            return ['blockers' => [], 'reservationIds' => []];
+            return ['blockers' => [], 'reservationIds' => [], 'teamDays' => []];
         }
 
         $loadedVersionId = $this->schedulePlanProvisioner->loadedVersionIdOfSeason($seasonId);
@@ -71,6 +71,7 @@ final readonly class SecondSessionSameDayDetector
 
         /** @var array<string, Bucket> $buckets */
         $buckets = [];
+        $teamDays = [];
         foreach ($reservedByTeamDay as $key => $reserved) {
             $locked = $lockedByTeamDay[$key] ?? [];
             if (\count($reserved) + \count($locked) < 2) {
@@ -78,6 +79,7 @@ final readonly class SecondSessionSameDayDetector
             }
             ksort($reserved);
             ksort($locked);
+            $teamDays[] = $key;
             [$teamId, $day] = explode('|', $key);
             $bucketKey = $day . '#' . implode(',', array_keys($reserved)) . '#' . implode(',', array_keys($locked));
             $buckets[$bucketKey] ??= ['day' => (int) $day, 'teams' => [], 'reserved' => $reserved, 'locked' => $locked, 'ids' => []];
@@ -98,7 +100,7 @@ final readonly class SecondSessionSameDayDetector
             array_push($ids, ...$bucket['ids']);
         }
 
-        return ['blockers' => $blockers, 'reservationIds' => $ids];
+        return ['blockers' => $blockers, 'reservationIds' => $ids, 'teamDays' => $teamDays];
     }
 
     /** @param Bucket $bucket */

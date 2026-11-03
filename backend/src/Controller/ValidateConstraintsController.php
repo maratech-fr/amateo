@@ -147,6 +147,10 @@ final class ValidateConstraintsController extends AbstractController
         // vient corriger les données douteuses, et un 500 l'y enfermerait (même garde que
         // `SchedulePlanProvisioner::structureHashOfPlan`, autre appelant interactif du builder,
         // qui rend `null` plutôt que de lever). La capacité est un CONFORT : sans elle, le récap reste utile.
+        $reservations = $this->reservationsInScope($clubId, $seasonId, $calendarEntryId, $selection);
+        // Une seule séance par jour, en saison : le Récap désigne aussi les lignes à retirer.
+        $secondSession = null === $calendarEntryId ? $this->secondSessionSameDayDetector->detect($reservations) : ['blockers' => [], 'reservationIds' => [], 'teamDays' => []];
+
         try {
             $capacityPayload = null;
             if (null !== $calendarEntryId) {
@@ -166,7 +170,12 @@ final class ValidateConstraintsController extends AbstractController
                     // solveur va réellement recevoir : gymnase sans créneau, équipe qu'aucun
                     // créneau ne peut accueillir, coach surchargé, contrainte visant une équipe
                     // absente. Chacune ne se voyait qu'APRÈS génération, en diagnostic.
-                    ...$this->preventionWarnings->detect($capacityPayload),
+                    // Le chevauchement d'une équipe déjà couverte par « une seule séance par jour » se tait.
+                    ...$this->preventionWarnings->detect(
+                        $capacityPayload,
+                        array_map(static fn (Reservation $reservation): string => $reservation->getId(), $reservations),
+                        $secondSession['teamDays'],
+                    ),
                 ];
             }
         } catch (Throwable $exception) {
@@ -177,8 +186,6 @@ final class ValidateConstraintsController extends AbstractController
             $warnings[] = 'La capacité des gymnases n\'a pas pu être vérifiée — les autres contrôles du récap restent valables.';
             $capacityPayload = null;
         }
-
-        $reservations = $this->reservationsInScope($clubId, $seasonId, $calendarEntryId, $selection);
 
         // PR A (2026-08-06) — deux préventions de plus, décision fondateur :
         // « on peut s'en prémunir » plutôt que le découvrir après génération.
@@ -210,9 +217,6 @@ final class ValidateConstraintsController extends AbstractController
         // en même temps. Le solveur ne peut PAS l'attraper (un verrou HARD est pré-placé
         // hors modèle, ALIGN-07), et ce n'est pas une préférence bafouée — le gestionnaire
         // n'a jamais choisi que son coach se dédouble. Décision fondateur : ça BLOQUE.
-        // Une seule séance par jour, en saison : le Récap désigne aussi les lignes à retirer.
-        $secondSession = null === $calendarEntryId ? $this->secondSessionSameDayDetector->detect($reservations) : ['blockers' => [], 'reservationIds' => []];
-
         $blockers = [
             // La même liste que les guichets `/generate`, `/regenerate` et `/fill` : une seule vérité.
             ...(null !== $capacityPayload
