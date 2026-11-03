@@ -109,6 +109,43 @@ describe("MutualizeDialog — lot 9 F3", () => {
     expect(options).toHaveLength(2);
   });
 
+  // Une seule séance par jour : l'équipe qui rejoint une case du mardi ne peut remplacer que sa séance du mardi.
+  describe("présélection de la séance remplacée", () => {
+    const renderWithSlots = (teamSlots: Slot[]) => {
+      const onConfirm = vi.fn();
+      renderWithProviders(
+        <MutualizeDialog
+          anchor={slots[0]}
+          teams={teams}
+          tiers={tiers}
+          slots={[slots[0], ...teamSlots]}
+          isSocle={false}
+          teamName={teamName}
+          venueName={venueName}
+          busy={false}
+          error={null}
+          onClose={vi.fn()}
+          onConfirm={onConfirm}
+        />,
+      );
+      return { onConfirm };
+    };
+
+    it("présélectionne la séance du jour de l'ancre, même rangée après une autre, et la confirme", async () => {
+      const { onConfirm } = renderWithSlots([slot("thu", "j2", { dayOfWeek: 4, startTime: "19:00:00" }), slot("tue", "j2", { dayOfWeek: 2, startTime: "20:00:00", venueId: "v2" })]);
+      await addTeam("U13M1");
+      expect(screen.getByRole("combobox", { name: /Séance remplacée pour U13M1/ })).toHaveValue("tue");
+      await userEvent.click(screen.getByRole("button", { name: "Mutualiser" }));
+      expect(onConfirm).toHaveBeenCalledWith({ teamIds: ["j2"], label: undefined, replacedSlotIds: ["tue"] });
+    });
+
+    it("sans séance ce jour-là, garde la première : rien n'est imposé", async () => {
+      renderWithSlots([slot("thu", "j2", { dayOfWeek: 4, startTime: "19:00:00" }), slot("fri", "j2", { dayOfWeek: 5, startTime: "20:00:00" })]);
+      await addTeam("U13M1");
+      expect(screen.getByRole("combobox", { name: /Séance remplacée pour U13M1/ })).toHaveValue("thu");
+    });
+  });
+
   it("confirme avec teamIds + replacedSlotIds (séance unique prise par défaut), sans la source", async () => {
     const { onConfirm } = renderDialog();
     await addTeam("U11M1");
