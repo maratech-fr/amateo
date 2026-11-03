@@ -249,12 +249,15 @@ final class ClubApprovalFlowTest extends WebTestCase
         self::assertInstanceOf(ClubCreationRequest::class, $stale);
         $this->makeStale($em, $stale, ClubCreationRequest::STATUS_PENDING);
 
+        // Le transport du container courant porte DÉJÀ le mail du gagnant (« … est prêt ») :
+        // on mesure ce que le perdant AJOUTE.
+        $mailsBeforeLoser = \count($this->mailsTo($email));
         $outcome = $this->approvalService()->approve($stale);
         self::assertSame('NoOp', $outcome->name, 'le perdant relit la demande sous verrou : rien à faire');
         self::assertSame(1, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM club WHERE ffbb_club_code = :a', ['a' => $ara]), 'un seul club');
         self::assertSame(1, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM club_user WHERE user_id = :u', ['u' => $body['user']['id']]), 'une seule adhésion pour le gagnant');
         self::assertSame(ClubCreationRequest::STATUS_APPROVED, $em->getConnection()->fetchOne('SELECT status FROM club_creation_request WHERE id = :id', ['id' => $requestId]));
-        self::assertSame([], $this->mailsTo($email), 'le perdant n\'envoie aucun mail');
+        self::assertCount($mailsBeforeLoser, $this->mailsTo($email), 'le perdant n\'envoie aucun mail');
 
         $this->client->request('POST', '/api/club-approvals/' . str_repeat('b', 64), [], [], ['REMOTE_ADDR' => $this->ip(), 'CONTENT_TYPE' => 'application/json'], (string) json_encode(['decision' => 'approve']));
         $unknown = (string) $this->client->getResponse()->getContent();
