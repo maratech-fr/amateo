@@ -83,6 +83,13 @@ final class ConflictsToCoachesContext extends BaseContext
             throw new RuntimeException(\sprintf('Emma n\'a pas pu rejoindre U15F1 comme joueuse (HTTP %d)', $joined['status']));
         }
         $this->awayMatch('U17F1', $this->saturday, '16:00');
+
+        // Témoin positif du décor : l'écran voit bien Karim ET Emma en double ce samedi — sinon
+        // un envoi « réussi » ne prouverait rien.
+        $doubled = $this->personsInDouble();
+        if ([] !== array_diff([$this->karimId, $this->emmaId], $doubled)) {
+            throw new RuntimeException(\sprintf('le décor devrait mettre Karim et Emma en double, le radar voit : %s', json_encode($doubled)));
+        }
     }
 
     #[When('le gestionnaire envoie les conflits aux coachs')]
@@ -142,6 +149,9 @@ final class ConflictsToCoachesContext extends BaseContext
         if (200 !== $moved['status']) {
             throw new RuntimeException(\sprintf('le déplacement du match a répondu %d (200 attendu)', $moved['status']));
         }
+        if ([] !== $this->personsInDouble()) {
+            throw new RuntimeException('une fois le match avancé, plus personne ne devrait être en double');
+        }
     }
 
     #[Then('Karim reçoit un e-mail qui lui dit que plus aucun conflit ne le concerne')]
@@ -171,6 +181,20 @@ final class ConflictsToCoachesContext extends BaseContext
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    /** @return list<string> les personnes que le radar voit en double sur deux matchs (MATCH_MATCH) */
+    private function personsInDouble(): array
+    {
+        $conflicts = $this->apiGet('fixtures/conflicts', $this->smallClubToken)['json']['conflicts'] ?? [];
+        $persons = [];
+        foreach (\is_array($conflicts) ? $conflicts : [] as $conflict) {
+            if (\is_array($conflict) && 'MATCH_MATCH' === ($conflict['type'] ?? null) && \is_string($conflict['coachId'] ?? null)) {
+                $persons[] = $conflict['coachId'];
+            }
+        }
+
+        return array_values(array_unique($persons));
     }
 
     private function newCoach(string $first, string $last, ?string $email): string
