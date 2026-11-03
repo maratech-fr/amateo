@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CalendarEntry } from "./api";
@@ -92,10 +93,13 @@ export function VenueClosureCard() {
           <CalendarOff className="size-4 text-warning" />
           {COCKPIT_TEXTS.closureCardTitle}
         </h2>
-        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-          <Plus className="size-4" />
-          {COCKPIT_TEXTS.declareCta}
-        </Button>
+        {/* Chantier Membre : un Membre lit les fermetures, n'en déclare ni n'en supprime aucune. */}
+        <ManagerOnly>
+          <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="size-4" />
+            {COCKPIT_TEXTS.declareCta}
+          </Button>
+        </ManagerOnly>
       </div>
 
       {0 === roots.length ? (
@@ -115,16 +119,18 @@ export function VenueClosureCard() {
                     </p>
                     {0 === names.length ? <p className="text-xs text-muted-foreground">{COCKPIT_TEXTS.closureNoVenue}</p> : null}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0 text-destructive"
-                    aria-label={COCKPIT_TEXTS.deleteClosureLabel(entry.title)}
-                    disabled={deleteEntry.isPending}
-                    onClick={() => setPendingDelete(entry)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <ManagerOnly>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="shrink-0 text-destructive"
+                      aria-label={COCKPIT_TEXTS.deleteClosureLabel(entry.title)}
+                      disabled={deleteEntry.isPending}
+                      onClick={() => setPendingDelete(entry)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </ManagerOnly>
                 </div>
               </li>
             );

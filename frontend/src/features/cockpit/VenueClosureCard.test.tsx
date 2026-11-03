@@ -64,9 +64,12 @@ vi.mock("@/features/planning/queries", () => ({
   useVenues: () => ({ data: [{ id: "v-mistral", name: "Mistral", color: null, canSplit: false, isActive: true }] }),
   useSchedules: () => ({ data: schedulesData }),
 }));
+// Chantier Membre : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
 vi.mock("@/shared/session/queries", () => ({
   useWorkingSeason: () => ({ id: "sn1", name: "2998-2999", startDate: "2998-07-15", endDate: "2999-07-14", isCurrent: true, isReadonly: false }),
   useMe: () => ({ data: { seasonPlan: { chosenScheduleId: "s-season" } } }),
+  useCanManage: () => session.canManage,
 }));
 
 const impact = (over: Record<string, unknown> = {}) => ({
@@ -237,5 +240,19 @@ describe("VenueClosureCard — un gymnase qui ferme = un seul fait (C1, C8)", ()
     await user.click(within(confirmDialog()).getByRole("button", { name: "Supprimer" }));
 
     expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(COCKPIT_TEXTS.closureDeletedToast("Mistral"));
+  });
+
+  /**
+   * Chantier Membre (report de `VenueUnavailabilityCard.test.tsx`, carte retirée par les fermetures) :
+   * un Membre lit les fermetures, n'en déclare aucune (témoin : « Déclarer ouvre la saisie unique »).
+   */
+  it("Membre : aucun bouton « Déclarer »", () => {
+    session.canManage = false;
+    try {
+      renderWithProviders(<VenueClosureCard />);
+      expect(screen.queryByRole("button", { name: "Déclarer" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

@@ -1216,8 +1216,6 @@ describe("RadarPanel — échec de lecture jamais « Tout roule » (UXS-09)", ()
       schedulesData = [];
       campaignsData = [];
       plansState.failed = false;
-      unavailabilitiesData = [];
-      impactItemsData = [];
       venueClosuresData = [];
       schoolHolidaysData = { zone: "A", items: [] };
       calendarEntriesData = [];
