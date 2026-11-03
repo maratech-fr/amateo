@@ -85,9 +85,12 @@ final class PurgeErasedClubsCommand extends Command
                 }
 
                 $this->tenantConnectionContext->setClubId($clubId);
-                $result = $this->entityManager->wrapInTransaction(fn (): string => $this->purgeUnderApprovalLock($clubId, $now, $io));
+                [$result, $memberUserIds] = $this->entityManager->wrapInTransaction(fn (): array => $this->purgeUnderApprovalLock($clubId, $now, $io));
                 if ('purged' === $result) {
                     ++$purged;
+                    // Préavis « espace supprimé » APRÈS le commit de la purge, jamais dans sa
+                    // transaction : un mail ne promet jamais une suppression non persistée.
+                    $this->erasedClubPurger->notifyMembersOfDeletion($memberUserIds);
                 } elseif ('held' === $result) {
                     ++$held;
                 }
@@ -120,13 +123,13 @@ final class PurgeErasedClubsCommand extends Command
      * parti (échéance repoussée à +7 j, rappel remis à zéro : le rappel repart, la purge suivra —
      * jamais retenue pour toujours), sinon purge.
      *
-     * @return 'purged'|'held'|'cancelled'|'skipped'
+     * @return array{0: 'purged'|'held'|'cancelled'|'skipped', 1: list<string>} [issue, titulaires d'adhésion à prévenir après commit]
      */
-    private function purgeUnderApprovalLock(string $clubId, DateTimeImmutable $now, SymfonyStyle $io): string
+    private function purgeUnderApprovalLock(string $clubId, DateTimeImmutable $now, SymfonyStyle $io): array
     {
         $freshClub = $this->entityManager->getRepository(Club::class)->find($clubId);
         if (!$freshClub instanceof Club) {
-            return 'skipped';
+            return ['skipped', []];
         }
         $ffbbCode = $freshClub->getFfbbClubCode();
         if (null !== $ffbbCode) {
@@ -142,13 +145,13 @@ final class PurgeErasedClubsCommand extends Command
         // programmation a pu être annulée entre temps, ou un gestionnaire actif est revenu.
         $scheduledAt = $freshClub->getErasureScheduledAt();
         if (!$scheduledAt instanceof DateTimeImmutable || $scheduledAt > $now) {
-            return 'skipped';
+            return ['skipped', []];
         }
         if ($this->clubUserRepository->hasActiveManager($clubId)) {
             $io->writeln(\sprintf('  <info>↺</info> club %s has an active manager again — erasure cancelled', $clubId));
             $this->clubWinBack->cancelClosure($freshClub, null, 'purge_revalidation');
 
-            return 'cancelled';
+            return ['cancelled', []];
         }
         // Jamais de destruction sans préavis : sans rappel J-7 réellement parti, la purge est
         // RETENUE et l'échéance repoussée de 7 jours (le rappel annoncera la nouvelle date).
@@ -157,12 +160,12 @@ final class PurgeErasedClubsCommand extends Command
             $freshClub->setErasureReminderSentAt(null);
             $io->warning(\sprintf('Club %s purge held: the J-7 reminder was never sent — rescheduled to %s', $clubId, $now->modify(self::HOLD_DELAY)->format('Y-m-d')));
 
-            return 'held';
+            return ['held', []];
         }
 
         $io->writeln(\sprintf('  <info>✓</info> purge workspace of club %s (%s, scheduled %s)', $freshClub->getName(), $clubId, $scheduledAt->format('Y-m-d')));
-        $this->erasedClubPurger->purge($freshClub);
+        [, $memberUserIds] = $this->erasedClubPurger->purgeAndCollectMembers($freshClub);
 
-        return 'purged';
+        return ['purged', $memberUserIds];
     }
 }

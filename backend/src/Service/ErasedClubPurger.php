@@ -109,6 +109,21 @@ final class ErasedClubPurger
     /** @return int nombre de lignes supprimées (workspace complet) */
     public function purge(Club $club): int
     {
+        [$deleted, $memberUserIds] = $this->purgeAndCollectMembers($club);
+        $this->notifyMembersOfDeletion($memberUserIds);
+
+        return $deleted;
+    }
+
+    /**
+     * La purge SANS le préavis « espace supprimé » : rend les titulaires des adhésions du club
+     * pour que l'appelant qui purge DANS une transaction (app:clubs:purge-erased, sous le verrou
+     * d'approbation) ne les prévienne qu'APRÈS le commit ({@see notifyMembersOfDeletion}).
+     *
+     * @return array{0: int, 1: list<string>} [lignes supprimées, ids des titulaires d'adhésion]
+     */
+    public function purgeAndCollectMembers(Club $club): array
+    {
         $clubId = $club->getId();
         $deleted = 0;
 
@@ -187,16 +202,21 @@ final class ErasedClubPurger
         // Audit APRÈS le clear (l'insert DBAL ne touche pas l'unit of work).
         $this->auditTrail->record(AuditAction::CLUB_PURGED, null, $clubId, 'Club', $clubId, ['rowsDeleted' => $deleted]);
 
-        // P4-301 — préavis « compte sans club » aux membres devenus orphelins par cette
-        // purge (adhésions de ce club déjà supprimées ci-dessus). Best-effort, hors
-        // transaction : chaque appel vérifie lui-même isOrphan et n'envoie rien sinon.
-        foreach ($memberUserIds as $userId) {
-            if (\is_string($userId)) {
-                $this->orphanAccountNotifier->notifyClubDeleted($userId);
-            }
-        }
+        return [$deleted, array_values(array_filter($memberUserIds, \is_string(...)))];
+    }
 
-        return $deleted;
+    /**
+     * P4-301 — préavis « compte sans club » aux membres devenus orphelins par une purge
+     * (adhésions du club déjà supprimées). Best-effort, HORS transaction : chaque appel
+     * vérifie lui-même isOrphan et n'envoie rien sinon.
+     *
+     * @param list<string> $memberUserIds
+     */
+    public function notifyMembersOfDeletion(array $memberUserIds): void
+    {
+        foreach ($memberUserIds as $userId) {
+            $this->orphanAccountNotifier->notifyClubDeleted($userId);
+        }
     }
 
     /**
