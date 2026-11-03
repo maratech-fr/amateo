@@ -137,7 +137,7 @@ Schedule (= Version)                    ← existant, recentré
      ces dates (`App\Service\ClosurePinRemover`, même calcul en lecture pour l'aperçu et en
      écriture à l'enregistrement). **Le socle n'est jamais touché** (`type <> SEASON`). Jamais un
      gymnase désactivé ni un jour décoché à la main (restent inertes, comme P3-20). Le plan devient
-     périmé par son empreinte (`structureHash`) et se régénère sans ces épingles ; une génération
+     périmé (son empreinte `structureHash` diverge) et se régénère sans ces épingles ; une génération
      du club en cours → 409 `generation_in_progress`, rien d'écrit (le retrait serait annulé par
      l'import). Le gestionnaire doit avoir lu l'aperçu avant d'enregistrer (formulaire) ; au
      re-datage qui retirerait quelque chose, 409 `closure_pins_preview_required` jusqu'à
