@@ -119,4 +119,17 @@ describe("ProfilePage — nommer un successeur avant de partir (D3)", () => {
     expect(screen.queryByRole("button", { name: /Nommer/ })).not.toBeInTheDocument();
     expect(auth.getMembers).not.toHaveBeenCalled();
   });
+
+  it("Membre du club courant mais seul gestionnaire d'un AUTRE club : l'avertissement le nomme, sans jamais interroger /api/memberships", async () => {
+    // Le cas qui arme réellement l'avertissement chez un Membre (multi-club) : sans lui, la garde
+    // « pas d'appel pour un Membre » serait verte pour rien (aucun avertissement → rien de monté).
+    session.getMe.mockResolvedValue(me("member", [{ id: "club-2", name: "AS Voisine" }]));
+    auth.getMembers.mockResolvedValue({ members: [marc, lea] });
+    renderProfile();
+
+    expect(await screen.findByText(PROFILE_TEXTS.soleManagerWarning("AS Voisine"))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Nommer/ })).not.toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(auth.getMembers).not.toHaveBeenCalled();
+  });
 });
