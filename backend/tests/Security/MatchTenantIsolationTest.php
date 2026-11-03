@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
-use Symfony\Component\Mime\RawMessage;
 use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
@@ -56,6 +55,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Mime\RawMessage;
 
 /**
  * Tenant/season isolation NR for the new match entities (spec gestion-matchs,
@@ -950,7 +950,10 @@ final class MatchTenantIsolationTest extends WebTestCase
 
         $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($userB));
         self::assertResponseStatusCodeSame(200);
-        self::assertNull($this->responseData()['coachMailing']['last'] ?? 'absent', 'B ne voit jamais l\'envoi de A');
+        $mailingB = $this->responseData()['coachMailing'] ?? null;
+        self::assertIsArray($mailingB, 'le GET de B sert coachMailing');
+        self::assertArrayHasKey('last', $mailingB);
+        self::assertNull($mailingB['last'], 'B ne voit jamais l\'envoi de A');
         $this->scopeGucToClub($clubB->getId());
         self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mailing WHERE club_id = :a', ['a' => $clubA->getId()]), 'la RLS cache la ligne de A à B');
 

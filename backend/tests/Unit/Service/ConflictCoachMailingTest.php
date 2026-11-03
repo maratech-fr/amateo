@@ -116,7 +116,8 @@ final class ConflictCoachMailingTest extends TestCase
     public function testClearedIsTheMemoryWithoutConflictAndPendingCountsOnlyReachableCoaches(): void
     {
         $ghost = 'dddddddd-0000-4000-8000-00000000dead';
-        $stillLea = $this->matchTraining($this->paul->getId(), self::U15, self::U13A, self::SOCLE);
+        // Paul joue avec SM2 (Emma) pendant la séance U13A, groupée avec U13B (Léa) : Karim n'y est pour rien.
+        $stillLea = $this->matchTraining($this->paul->getId(), self::SM2, self::U13A, self::SOCLE);
 
         $plan = $this->plan(
             [$stillLea],

@@ -278,15 +278,19 @@ final class ConflictCoachMailApiTest extends WebTestCase
 
     // ── Ce qui part : « à venir » = le radar, une mémoire par saison ──
 
-    /** Un match d'aujourd'hui (club) part encore ; un match d'hier, plus. */
-    public function testAMatchOfTodayIsMailedAndAPastOneIsNot(): void
+    /** Un match d'aujourd'hui (date civile du club) part encore le soir même. */
+    public function testAMatchOfTodayIsStillMailedTonight(): void
     {
         self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-10-04 20:00:00'));
         $this->aiglons();
         $this->post();
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(1, $this->json()['conflictCount'], 'le match joué ce matin est encore daté d\'aujourd\'hui');
+        self::assertSame(1, $this->json()['conflictCount'], 'le match joué cet après-midi est encore daté d\'aujourd\'hui');
+    }
 
+    /** Le lendemain, le match d'hier ne part plus : rien à envoyer. */
+    public function testAPastMatchIsNoLongerMailed(): void
+    {
         self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-10-05 08:00:00'));
         $this->aiglons();
         $this->post();
