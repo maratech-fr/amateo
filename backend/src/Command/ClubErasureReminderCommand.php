@@ -7,11 +7,13 @@ namespace App\Command;
 use App\Entity\Club;
 use App\Mail\ClubMailMetadata;
 use App\Mail\EmailTemplateRenderer;
-use App\Service\AccountErasureService;
+use App\Repository\ClubUserRepository;
 use App\Service\Basketball\FfbbClubDirectory;
 use App\Service\MailFrom;
+use App\Service\MembershipRequestMailBuilder;
 use App\Service\ProductIdentity;
 use App\Service\TenantConnectionContext;
+use Closure;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -34,9 +36,10 @@ use Throwable;
  * suppression est programmée dans 7 jours ou moins, pas encore rappelé. Idempotent
  * via `club.erasure_reminder_sent_at` (un seul rappel par échéance ; une (re)programmation
  * remet le stamp à null). Ne touche RIEN d'autre : c'est un nudge, la purge reste le
- * geste de `app:clubs:purge-erased`. Un club dont un membre actif est revenu est SAUTÉ
- * (l'effacement sera auto-annulé par la purge). Le mail part au mail institutionnel FFBB
- * (même ancre que l'approbation), repli `Club.contactEmail` ; sans adresse, rien à envoyer.
+ * geste de `app:clubs:purge-erased`. Un club dont un GESTIONNAIRE actif est revenu est SAUTÉ
+ * (l'effacement sera annulé par la purge). Le rappel part aux Membres restants D'ABORD, puis au
+ * mail institutionnel FFBB (même ancre que l'approbation), repli `Club.contactEmail` ; sans
+ * aucun destinataire, rien à envoyer. Le stamp n'est posé qu'après au moins un envoi accepté.
  */
 #[AsCommand(
     name: 'app:clubs:erasure-remind',
@@ -51,7 +54,8 @@ final class ClubErasureReminderCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TenantConnectionContext $tenantConnectionContext,
-        private readonly AccountErasureService $accountErasureService,
+        private readonly ClubUserRepository $clubUserRepository,
+        private readonly MembershipRequestMailBuilder $membershipMailBuilder,
         private readonly FfbbClubDirectory $ffbbClubDirectory,
         private readonly MailerInterface $mailer,
         private readonly MailFrom $mailFrom,
@@ -137,61 +141,100 @@ final class ClubErasureReminderCommand extends Command
             || $deadline > $now->modify(\sprintf('+%d days', self::WINDOW_DAYS))) {
             return 0;
         }
-        // Un membre actif est revenu → l'espace est repris/utilisé : pas d'alarme
-        // (la purge auto-annulera la programmation). On ne rappelle pas.
-        if ($this->accountErasureService->hasActiveMember($clubId)) {
+        // Un gestionnaire actif est revenu → l'espace est repris : pas d'alarme (la purge
+        // annulera la programmation). Un Membre seul ne retient pas le club : il est prévenu.
+        if ($this->clubUserRepository->hasActiveManager($clubId)) {
             return 0;
         }
 
+        // Destinataires : les Membres restants D'ABORD, puis l'adresse officielle — l'absence
+        // d'adresse officielle ne prive jamais les Membres de leur rappel.
+        $members = $this->clubUserRepository->findActiveMemberRecipients($clubId);
         $ffbbCode = $club->getFfbbClubCode();
-        $to = (null !== $ffbbCode ? $this->ffbbClubDirectory->lookupClubEmail($ffbbCode) : null) ?? $club->getContactEmail();
-        if (null === $to || '' === $to) {
-            return 0; // Aucune adresse connue : rien à envoyer (le superadmin voit le cas).
+        $official = (null !== $ffbbCode ? $this->ffbbClubDirectory->lookupClubEmail($ffbbCode) : null) ?? $club->getContactEmail();
+        if ('' === $official) {
+            $official = null;
+        }
+        if ([] === $members && null === $official) {
+            return 0; // Aucun destinataire connu : rien à envoyer (le superadmin voit le cas).
         }
 
         if ($dryRun) {
-            $io->writeln(\sprintf('  <comment>would remind</comment> %s (%s) → suppression le %s → %s', $club->getName(), $clubId, $deadline->format('d/m/Y'), $to));
+            $io->writeln(\sprintf('  <comment>would remind</comment> %s (%s) → suppression le %s → %d membre(s)%s', $club->getName(), $clubId, $deadline->format('d/m/Y'), \count($members), null !== $official ? ' + ' . $official : ''));
 
             return 1;
         }
 
-        $product = $this->productIdentity->name();
-        // Lien d'inscription (reprendre le club) sur sa propre ligne, omis sans base front.
-        $registerLink = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/register' : null;
-        $registerBlock = null !== $registerLink ? "\n\nInscrire un gestionnaire :\n" . $registerLink : '';
+        $delivered = 0;
+        foreach ($members as $member) {
+            $delivered += $this->send(
+                fn (): Email => $this->membershipMailBuilder->buildClubClosing($member['email'], $club, $member['firstName'], $deadline, true),
+                $member['email'],
+                $io,
+            );
+        }
+        if (null !== $official) {
+            $delivered += $this->send(fn (): Email => $this->officialReminder($official, $club, $deadline), $official, $io);
+        }
+
+        // Stamp posé dès qu'au moins UN envoi a été accepté (le bus accepte tout ou rien à
+        // l'enfilage) ; zéro réussite → pas de stamp, nouvel essai demain vers tous — et la
+        // purge reste retenue tant que ce stamp manque.
+        if (0 === $delivered) {
+            return 0;
+        }
+        $club->setErasureReminderSentAt($now);
+        $this->entityManager->flush();
+
+        return 1;
+    }
+
+    /**
+     * @param Closure(): Email $build
+     *
+     * @return int 1 si le mail est enfilé, 0 sinon (échec tracé)
+     */
+    private function send(Closure $build, string $to, SymfonyStyle $io): int
+    {
         try {
-            $email = (new Email)
-                ->from($this->mailFrom->address())
-                ->to($to)
-                ->subject(\sprintf('Rappel — l\'espace %s du club %s sera supprimé le %s', $product, $club->getName(), $deadline->format('d/m/Y')))
-                ->text(\sprintf(
-                    "Bonjour,\n\nL'espace {$product} du club %s n'a toujours pas de gestionnaire et sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.%s\n\n{$product}",
-                    $club->getName(),
-                    $deadline->format('d/m/Y'),
-                    $registerBlock,
-                ));
-            // Bouton CTA du HTML (D1) : s'inscrire pour reprendre le club (seulement si lien cliquable).
-            if (null !== $registerLink) {
-                $headers = $email->getHeaders();
-                $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $registerLink);
-                $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Inscrire un gestionnaire');
-            }
-            // Identité du club (logo + nom court) sur la carte d'e-mail (D1).
-            ClubMailMetadata::mark($email, $club);
-            $this->mailer->send($email);
+            $this->mailer->send($build());
+
+            return 1;
         } catch (Throwable $e) {
-            // Envoi raté → on NE pose PAS le stamp : la commande réessaiera demain
-            // (tant que l'échéance reste dans la fenêtre).
             $this->hadSendFailure = true;
             $io->warning(\sprintf('Email to %s failed: %s', $to, $e->getMessage()));
 
             return 0;
         }
+    }
 
-        $club->setErasureReminderSentAt($now);
-        $this->entityManager->flush();
+    /** Le rappel J-7 au contact officiel (texte inchangé). */
+    private function officialReminder(string $to, Club $club, DateTimeImmutable $deadline): Email
+    {
+        $product = $this->productIdentity->name();
+        // Lien d'inscription (reprendre le club) sur sa propre ligne, omis sans base front.
+        $registerLink = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/register' : null;
+        $registerBlock = null !== $registerLink ? "\n\nInscrire un gestionnaire :\n" . $registerLink : '';
+        $email = (new Email)
+            ->from($this->mailFrom->address())
+            ->to($to)
+            ->subject(\sprintf('Rappel — l\'espace %s du club %s sera supprimé le %s', $product, $club->getName(), $deadline->format('d/m/Y')))
+            ->text(\sprintf(
+                "Bonjour,\n\nL'espace {$product} du club %s n'a toujours pas de gestionnaire et sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.%s\n\n{$product}",
+                $club->getName(),
+                $deadline->format('d/m/Y'),
+                $registerBlock,
+            ));
+        // Bouton CTA du HTML (D1) : s'inscrire pour reprendre le club (seulement si lien cliquable).
+        if (null !== $registerLink) {
+            $headers = $email->getHeaders();
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $registerLink);
+            $headers->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Inscrire un gestionnaire');
+        }
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1).
+        ClubMailMetadata::mark($email, $club);
 
-        return 1;
+        return $email;
     }
 
     /** Strict: a real calendar date (rejects rollovers like 2026-02-30), else null. */

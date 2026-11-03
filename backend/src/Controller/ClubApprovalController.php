@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\ClubCreationRequest;
 use App\Entity\User;
 use App\Repository\ClubCreationRequestRepository;
+use App\Service\ApprovalOutcome;
 use App\Service\ClubApprovalService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
@@ -30,7 +31,10 @@ use Symfony\Component\Routing\Attribute\Route;
  *    déjà décidé (une demande close ne doit pas se distinguer d'un token
  *    inventé) ;
  *  - expirée → 410 (le superadmin reste la voie de secours, PR B) ;
- *  - la décision est UNIQUE : le premier POST gagne, les suivants revoient 404.
+ *  - la décision est UNIQUE : le premier POST gagne, les suivants revoient 404 (relecture de la
+ *    demande sous verrou dans le service — un perdant de course ne réécrit rien) ;
+ *  - la réponse dit l'issue réelle : `approved` (club créé ou repris), `superseded` (club déjà
+ *    géré : demande transmise à ses gestionnaires), `refused`.
  */
 #[AsController]
 final class ClubApprovalController extends AbstractController
@@ -92,12 +96,20 @@ final class ClubApprovalController extends AbstractController
             return $this->json(['error' => 'decision doit valoir "approve" ou "refuse".'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // La décision est relue sous verrou par le service : une demande décidée/annulée entre-temps
+        // (double clic, demandeur effacé) ne fait rien et répond le 404 byte-identique. La réponse
+        // dit ce que l'approbation a VRAIMENT fait : un club déjà géré n'est pas « approuvé », la
+        // demande y est seulement transmise à ses gestionnaires.
         if ('approve' === $decision) {
-            $this->approvalService->approve($creationRequest);
-
-            return $this->json(['status' => 'approved']);
+            return match ($this->approvalService->approve($creationRequest)) {
+                ApprovalOutcome::NoOp => $this->notFound(),
+                ApprovalOutcome::Created, ApprovalOutcome::Reprise => $this->json(['status' => 'approved']),
+                ApprovalOutcome::Pending, ApprovalOutcome::Superseded => $this->json(['status' => 'superseded']),
+            };
         }
-        $this->approvalService->refuse($creationRequest);
+        if (!$this->approvalService->refuse($creationRequest)) {
+            return $this->notFound();
+        }
 
         return $this->json(['status' => 'refused']);
     }

@@ -15,6 +15,7 @@ use App\Service\ClubInvitationManager;
 use App\Service\ClubProvisioner;
 use App\Service\OrphanAccountNotifier;
 use App\Service\PasswordPolicy;
+use App\Service\Registration\ClubWinBackService;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\DBAL\LockMode;
@@ -71,6 +72,7 @@ final class PublicInvitationController extends AbstractController
         #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
         private readonly RateLimiterFactory $invitationPublicLimiter,
+        private readonly ClubWinBackService $clubWinBack,
     ) {}
 
     #[Route('/api/invitations/public/{token}', name: 'api_invitations_public_show', methods: ['GET'])]
@@ -163,6 +165,7 @@ final class PublicInvitationController extends AbstractController
 
                 $this->clubProvisioner->createMembership($clubId, $user->getId(), true, $role);
                 $this->invitationManager->consume($locked);
+                $this->cancelClosureIfManager($clubId, $role, $user->getId());
                 $createdUserId = $user->getId();
             });
         } finally {
@@ -220,6 +223,7 @@ final class PublicInvitationController extends AbstractController
                 }
                 $this->activateMembership($clubId, $userId, $role);
                 $this->invitationManager->consume($locked);
+                $this->cancelClosureIfManager($clubId, $role, $userId);
             });
         } finally {
             $this->tenantConnectionContext->clear();
@@ -251,6 +255,23 @@ final class PublicInvitationController extends AbstractController
         }
         // Naissance d'une adhésion active (createMembership appelle lui-même cancelFor).
         $this->clubProvisioner->createMembership($clubId, $userId, true, $role);
+    }
+
+    /**
+     * Chantier Membre — une invitation GESTIONNAIRE acceptée rend un gestionnaire actif au club :
+     * une fermeture programmée (dernier gestionnaire parti après l'envoi de l'invitation) est
+     * annulée. Une invitation Membre ne sauve pas un club sans gestionnaire. Sous le GUC du club,
+     * dans la transaction de l'appelant.
+     */
+    private function cancelClosureIfManager(string $clubId, ClubRole $role, string $userId): void
+    {
+        if (ClubRole::MANAGER !== $role) {
+            return;
+        }
+        $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+        if ($club instanceof Club && $club->getErasureScheduledAt() instanceof DateTimeImmutable) {
+            $this->clubWinBack->cancelClosure($club, $userId, 'invitation');
+        }
     }
 
     /** Forme (64 hex) + existence + non-expiration — 404 identique pour tout le reste. */

@@ -7,6 +7,8 @@ namespace App\Controller;
 use App\Entity\ClubCreationRequest;
 use App\Entity\User;
 use App\Repository\ClubCreationRequestRepository;
+use App\Repository\ClubRepository;
+use App\Service\ApprovalOutcome;
 use App\Service\ClubApprovalService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -27,6 +29,7 @@ final class DevClubApprovalController extends AbstractController
     public function __construct(
         private readonly ClubCreationRequestRepository $requests,
         private readonly ClubApprovalService $approvalService,
+        private readonly ClubRepository $clubs,
         #[Autowire(param: 'kernel.debug')]
         private readonly bool $debug,
     ) {}
@@ -47,8 +50,11 @@ final class DevClubApprovalController extends AbstractController
             return $this->json(['error' => 'No pending club creation request.'], 404);
         }
 
-        $club = $this->approvalService->approve($request);
+        if (ApprovalOutcome::NoOp === $this->approvalService->approve($request)) {
+            return $this->json(['error' => 'No pending club creation request.'], 404);
+        }
+        $club = $this->clubs->findRealByFfbbCode($request->getAra());
 
-        return $this->json(['clubId' => $club->getId(), 'status' => 'approved']);
+        return $this->json(['clubId' => $club?->getId(), 'status' => 'approved']);
     }
 }

@@ -138,6 +138,19 @@ framework:
             policy: 'sliding_window'
             limit: 200
             interval: '1 day'
+        # Chantier Membre — les mails « demande d'adhésion » aux gestionnaires d'un club, keyés PAR
+        # CLUB (clubId) : 5 mails (un par transaction de demandes) par jour ; au-delà, UNE synthèse
+        # par jour (`membership_request_digest`), puis silence. Borne une inscription en rafale sur
+        # un code FFBB (hameçonnage, harcèlement des gestionnaires). Consommé seulement quand un
+        # gestionnaire actif existe (aucun destinataire = aucun budget).
+        membership_request_notify:
+            policy: 'sliding_window'
+            limit: 5
+            interval: '1 day'
+        membership_request_digest:
+            policy: 'sliding_window'
+            limit: 1
+            interval: '1 day'
         # P4-298 — le lookup public du NOM de club à l'inscription (GET /api/register/club-lookup),
         # par IP : surface anonyme énumérable (on y jette un code FFBB), même famille que
         # coach_wish_public. 30/15min — large pour une saisie debouncée (le front ne déclenche
@@ -377,6 +390,13 @@ when@test:
             # Envoi des conflits aux coachs : même patron par club (2/jour) pour que
             # ConflictCoachMailApiTest tripe le 429 ; chaque scénario crée son propre club.
             conflict_mail_send:
+                policy: 'sliding_window'
+                limit: 2
+                interval: '1 day'
+            # Chantier Membre : petit plafond PAR CLUB pour que MembershipRequestNotificationTest
+            # atteigne la synthèse en trois demandes. Keyé par clubId : chaque test crée son club,
+            # il ne fuit pas. Prod garde 5/jour.
+            membership_request_notify:
                 policy: 'sliding_window'
                 limit: 2
                 interval: '1 day'

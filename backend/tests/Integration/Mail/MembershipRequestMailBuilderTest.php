@@ -8,7 +8,6 @@ use App\Entity\Club;
 use App\Enum\ClubRole;
 use App\Mail\ClubBusinessMail;
 use App\Mail\ClubMailMetadata;
-use App\Mail\EmailTemplateRenderer;
 use App\Service\MembershipRequestMailBuilder;
 use App\Service\ProductIdentity;
 use App\Tests\AssertsActionMailCta;
@@ -122,18 +121,17 @@ final class MembershipRequestMailBuilderTest extends KernelTestCase
     public function testClubClosingTellsMembersTheDeadlineAndHowToKeepTheSpace(): void
     {
         $p = $this->product();
-        $j0 = $this->builder()->buildClubClosing('paul@test.fr', $this->club(), new DateTimeImmutable('2026-12-03'), false);
+        $j0 = $this->builder()->buildClubClosing('paul@test.fr', $this->club(), 'Paul', new DateTimeImmutable('2026-12-03'), false);
 
         self::assertSame("L'espace {$p} du club BC Testville n'a plus de gestionnaire", $j0->getSubject());
         $body = (string) $j0->getTextBody();
         self::assertStringStartsWith('Bonjour', $body);
         self::assertStringContainsString("Le dernier gestionnaire de l'espace {$p} du club BC Testville a quitté le service. Sans reprise par un gestionnaire, cet espace sera supprimé définitivement le 03/12/2026.", $body);
         self::assertStringContainsString("Vous gardez un accès en consultation jusque-là. Pour conserver l'espace, un gestionnaire du club doit s'inscrire sur {$p} avec le code FFBB du club : sa demande sera validée par l'adresse officielle du club.", $body);
-        self::assertSame(self::BASE . '/register', $j0->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_URL_HEADER));
-        self::assertSame('Inscrire un gestionnaire', $j0->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        $this->assertCtaHeadersPointToBodyLink($j0, self::BASE . '/register', 'Inscrire un gestionnaire');
         $this->assertClubBusiness($j0);
 
-        $j7 = $this->builder()->buildClubClosing('paul@test.fr', $this->club(), new DateTimeImmutable('2026-12-03'), true);
+        $j7 = $this->builder()->buildClubClosing('paul@test.fr', $this->club(), 'Paul', new DateTimeImmutable('2026-12-03'), true);
         self::assertStringStartsWith('Rappel — ', (string) $j7->getSubject());
         self::assertStringContainsString('supprimé définitivement le 03/12/2026, dans 7 jours.', (string) $j7->getTextBody());
         $this->assertClubBusiness($j7);

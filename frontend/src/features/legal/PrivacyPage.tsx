@@ -70,7 +70,7 @@ export function PrivacyPage() {
         <ul className="list-disc space-y-1 pl-5">
           <li><strong>Accès / portabilité</strong> : exportez vos données (page Profil) et celles du club (Gestion du club) au format JSON.</li>
           <li><strong>Rectification</strong> : modifiez vos informations dans la page Profil.</li>
-          <li><strong>Effacement</strong> : supprimez votre compte depuis la page Profil (anonymisation immédiate ; sans autre membre actif, les données du club sont supprimées après 30 jours).</li>
+          <li><strong>Effacement</strong> : supprimez votre compte depuis la page Profil (anonymisation immédiate ; si vous étiez le dernier gestionnaire, l'espace du club est supprimé après 30 jours, sauf reprise).</li>
           <li><strong>Opposition</strong> (contacts FFBB) : {PLACEHOLDER}</li>
         </ul>
         <p>Les coachs et membres saisis par un club exercent leurs droits auprès de leur club, responsable de traitement de ces données.</p>

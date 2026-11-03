@@ -166,4 +166,67 @@ final class ClubUserRepository extends ServiceEntityRepository
 
         return $emails;
     }
+
+    /**
+     * Le club a-t-il au moins un GESTIONNAIRE actif (owner/admin) ? Prédicat unique de la règle
+     * « un club sans gestionnaire ferme » (un Membre actif seul ne retient pas le club). Raw DBAL
+     * hors tenant : appelé par l'effacement, les crons et `/api/me`, sous des GUC variés.
+     */
+    public function hasActiveManager(string $clubId): bool
+    {
+        $placeholders = implode(', ', array_fill(0, \count(self::MANAGEMENT_ROLES), '?'));
+
+        $count = $this->tenantContext->runWithoutTenant(
+            fn (): mixed => $this->getEntityManager()->getConnection()->fetchOne(
+                'SELECT COUNT(*) FROM club_user WHERE club_id = ? AND is_active = true AND role IN (' . $placeholders . ')',
+                [$clubId, ...self::MANAGEMENT_ROLES],
+            ),
+        );
+
+        return ((int) $count) > 0;
+    }
+
+    /**
+     * Les membres ACTIFS d'un club (tous rôles), avec leur prénom — destinataires des avis de
+     * fermeture d'un club sans gestionnaire (J0, J-7). Raw DBAL hors tenant (crons, post-commit).
+     *
+     * @return list<array{email: string, firstName: string}>
+     */
+    public function findActiveMemberRecipients(string $clubId): array
+    {
+        /** @var list<array{email: string, first_name: string}> $rows */
+        $rows = $this->tenantContext->runWithoutTenant(
+            fn (): array => $this->getEntityManager()->getConnection()->fetchAllAssociative(
+                'SELECT u.email, u.first_name FROM club_user cu JOIN app_user u ON u.id = cu.user_id '
+                . 'WHERE cu.club_id = :cid AND cu.is_active = true AND u.anonymized_at IS NULL ORDER BY cu.created_at ASC, cu.id ASC',
+                ['cid' => $clubId],
+            ),
+        );
+
+        return array_map(static fn (array $row): array => ['email' => $row['email'], 'firstName' => $row['first_name']], $rows);
+    }
+
+    /**
+     * Les clubs dont l'utilisateur est le SEUL gestionnaire actif — ceux qui fermeraient si son
+     * compte était effacé. Raw DBAL hors tenant (effacement, préavis d'inactivité).
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    public function clubsWhereSoleActiveManager(string $userId): array
+    {
+        $placeholders = implode(', ', array_fill(0, \count(self::MANAGEMENT_ROLES), '?'));
+
+        /** @var list<array{id: string, name: string}> $rows */
+        $rows = $this->tenantContext->runWithoutTenant(
+            fn (): array => $this->getEntityManager()->getConnection()->fetchAllAssociative(
+                'SELECT c.id, c.name FROM club_user cu JOIN club c ON c.id = cu.club_id '
+                . 'WHERE cu.user_id = ? AND cu.is_active = true AND cu.role IN (' . $placeholders . ') '
+                . 'AND NOT EXISTS (SELECT 1 FROM club_user o WHERE o.club_id = cu.club_id AND o.user_id <> cu.user_id '
+                . 'AND o.is_active = true AND o.role IN (' . $placeholders . ')) ORDER BY c.name ASC',
+                [$userId, ...self::MANAGEMENT_ROLES, ...self::MANAGEMENT_ROLES],
+            ),
+        );
+
+        return array_map(static fn (array $row): array => ['id' => $row['id'], 'name' => $row['name']], $rows);
+    }
 }

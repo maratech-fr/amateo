@@ -25,6 +25,7 @@ import {
   useRequestEmailChange,
   useUpdateProfile,
 } from "./queries";
+import { PROFILE_TEXTS } from "./texts";
 
 function ProfileForm({
   firstName,
@@ -204,9 +205,10 @@ function ExportSection() {
 /**
  * RGPD — droit à l'effacement, self-service. Confirmation = ré-authentification
  * (mot de passe courant, patron changement de mot de passe) : un JWT volé ne
- * suffit pas à détruire le compte. L'anonymisation est immédiate ; sans autre
- * membre actif, les données du club sont supprimées après un délai de grâce de
- * 30 jours (annulé si un membre revient avant l'échéance).
+ * suffit pas à détruire le compte. L'anonymisation est immédiate ; si l'effacé
+ * était le dernier gestionnaire actif du club, son espace est supprimé après un
+ * délai de grâce de 30 jours (annulé si un gestionnaire reprend le club avant
+ * l'échéance) — les autres membres en sont prévenus.
  */
 function DangerZone({ readOnly }: { readOnly: boolean }) {
   const deleteAccount = useDeleteAccount();
@@ -218,9 +220,7 @@ function DangerZone({ readOnly }: { readOnly: boolean }) {
     deleteAccount.mutate(password, {
       onSuccess: (result) => {
         toast.info(
-          result.clubPurgeScheduled
-            ? `Compte supprimé. Sans autre membre actif, les données du club seront effacées dans ${result.gracePeriodDays} jours.`
-            : "Compte supprimé.",
+          result.clubPurgeScheduled ? PROFILE_TEXTS.deletedClubClosing(result.gracePeriodDays) : PROFILE_TEXTS.deleted,
         );
         logout();
       },
@@ -235,9 +235,9 @@ function DangerZone({ readOnly }: { readOnly: boolean }) {
       <CardContent>
         <form className="space-y-3" onSubmit={submit}>
           <p className="text-sm text-muted-foreground">
-            Action <strong>irréversible</strong> : vos données personnelles sont anonymisées immédiatement. Si vous êtes
-            le dernier membre actif, les données du club seront supprimées après un délai de 30 jours (seule la fiche
-            publique FFBB du club est conservée).
+            {PROFILE_TEXTS.deleteWarningLead}
+            <strong>{PROFILE_TEXTS.deleteWarningEmphasis}</strong>
+            {PROFILE_TEXTS.deleteWarningRest}
           </p>
           <div className="space-y-1">
             <Label htmlFor="deletePassword">Confirmez avec votre mot de passe</Label>

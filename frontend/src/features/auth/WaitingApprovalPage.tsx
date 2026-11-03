@@ -60,7 +60,9 @@ export function WaitingApprovalPage() {
           ? ({ title: "Demande refusée", description: `La création de l'espace ${request.clubName} a été refusée.`, icon: ShieldX } as const)
           : request.status === "expired"
             ? ({ title: "Demande expirée", description: `Le club n'a pas répondu dans les 7 jours.`, icon: MailX } as const)
-            : ({ title: "En attente du club", description: `Votre demande de création de l'espace ${request.clubName} est transmise.`, icon: Clock } as const);
+            : request.status === "superseded"
+              ? ({ title: "Demande transmise", description: `Le club ${request.clubName} existe déjà.`, icon: Clock } as const)
+              : ({ title: "En attente du club", description: `Votre demande de création de l'espace ${request.clubName} est transmise.`, icon: Clock } as const);
 
   // P4-301 : la phrase d'échéance, réutilisée là où un préavis de suppression court.
   const deadlineSentence = deletionDate
@@ -96,6 +98,10 @@ export function WaitingApprovalPage() {
         ) : request.status === "refused" ? (
           <p className="text-sm text-muted-foreground">
             Le club ({request.ara}) a refusé la demande. Si vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club — ou recommencez l'inscription après clarification.{deadlineSentence}
+          </p>
+        ) : request.status === "superseded" ? (
+          <p className="text-sm text-muted-foreground">
+            Le club existe déjà : votre demande d'adhésion est transmise à ses gestionnaires. Cette page se mettra à jour automatiquement dès l'approbation.
           </p>
         ) : request.status === "expired" ? (
           <p className="text-sm text-muted-foreground">

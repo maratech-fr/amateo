@@ -15,6 +15,7 @@ use App\Security\JwtCookieFactory;
 use App\Service\ClubApprovalService;
 use App\Service\ClubProvisioner;
 use App\Service\EmailVerifier;
+use App\Service\MembershipRequestNotifier;
 use App\Service\TenantConnectionContext;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
@@ -53,6 +54,7 @@ final class EmailVerificationService
         private readonly ClubProvisioner $clubProvisioner,
         private readonly ClubWinBackService $clubWinBackService,
         private readonly SerializerInterface $serializer,
+        private readonly MembershipRequestNotifier $membershipRequestNotifier,
     ) {}
 
     public function verify(Request $request): JsonResponse
@@ -84,8 +86,9 @@ final class EmailVerificationService
         // the club id is known, always clear afterwards (finally).
         $status = 'pending';
         $pendingRequestId = null;
+        $joinedClubId = null;
         try {
-            $this->entityManager->wrapInTransaction(function () use ($tokenId, $userId, $ara, $intentClubName, &$status, &$pendingRequestId): void {
+            $this->entityManager->wrapInTransaction(function () use ($tokenId, $userId, $ara, $intentClubName, &$status, &$pendingRequestId, &$joinedClubId): void {
                 // Serialize concurrent verifies of the SAME token (double-click / retry /
                 // two tabs): the winner holds the write lock and consumes the row; a loser
                 // then re-reads null and only resolves the (already-created) status — no
@@ -102,18 +105,19 @@ final class EmailVerificationService
                 $user->setEmailVerifiedAt($this->clock->now());
                 // Re-resolve under the lock: the ARA may have been created since the outer read.
                 $existingClub = $this->clubRepository->findRealByFfbbCode($ara);
-                if ($existingClub instanceof Club && !$this->clubWinBackService->isMemberless($existingClub->getId())) {
+                if ($existingClub instanceof Club && !$this->clubWinBackService->isManagerless($existingClub->getId())) {
                     $this->tenantConnectionContext->setClubId($existingClub->getId());
                     // Adhésion à un club encore PEUPLÉ : PENDING au moindre privilège
                     // (Membre) — un gestionnaire du club l'approuvera.
                     $this->clubProvisioner->createMembership($existingClub->getId(), $user->getId(), false, ClubRole::MEMBER);
+                    $joinedClubId = $existingClub->getId();
                     $status = 'pending';
                 } else {
                     // Décision fondateur (2026-10-03) — anti-squatting ET reprise : un ARA
-                    // réel INCONNU, ou un club réel SANS membre actif, ouvrent tous deux une
+                    // réel INCONNU, ou un club réel SANS gestionnaire actif, ouvrent tous deux une
                     // DEMANDE en attente d'approbation du contact officiel (club_pending).
                     // À l'approbation, ClubApprovalService crée le club (ARA neuf) OU reprend
-                    // le club sans membre (ClubWinBackService). Jamais de reprise/création
+                    // le club sans gestionnaire (ClubWinBackService). Jamais de reprise/création
                     // directe ici : la preuve du gestionnaire est l'approbation.
                     $clubName = $existingClub instanceof Club ? $existingClub->getName() : (string) $intentClubName;
                     $request = $this->clubApprovalService->openRequest($user, $ara, $clubName);
@@ -136,6 +140,13 @@ final class EmailVerificationService
             if (null !== $request && null !== $requester) {
                 $this->clubApprovalService->sendApprovalEmail($request, $requester);
             }
+        }
+
+        // Chantier Membre : une adhésion EN ATTENTE vient de naître (le gagnant d'un double
+        // clic seulement) → ses gestionnaires actifs sont prévenus, après commit, best-effort.
+        // La réponse ne dit jamais si un mail est parti.
+        if (null !== $joinedClubId) {
+            $this->membershipRequestNotifier->notifyManagers($joinedClubId, [$userId]);
         }
 
         $user = $this->entityManager->getRepository(User::class)->find($userId);
