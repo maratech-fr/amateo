@@ -1,6 +1,7 @@
 import type { Browser, Request, Response } from "@playwright/test";
 
 import { expect, test, type Page } from "./fixtures";
+import { SESSION_TEXTS } from "../../src/shared/session/texts";
 import { loginSeededClub, registerAndVerify, settleVeil, uniqueAra, watchFailedApiCalls } from "./support";
 
 /**
@@ -15,7 +16,8 @@ import { loginSeededClub, registerAndVerify, settleVeil, uniqueAra, watchFailedA
  *  - ne voit aucun bouton d'écriture, et lit la bannière « Consultation : réservé aux
  *    gestionnaires » là où l'écran est une saisie.
  * Variantes : club SANS planning (`/wizard` en lecture, navigation libre, pas de toast « première
- * génération ») ; club qui FERME (dernier gestionnaire parti → bandeau daté, sans bouton).
+ * génération ») ; club qui FERME (dernier gestionnaire parti → bandeau daté, dont le SEUL bouton est
+ * « Demander à devenir gestionnaire », PR 3).
  *
  * Seul un navigateur voit ces trois choses ENSEMBLE (requêtes réellement émises par l'écran monté,
  * DOM rendu, bannières) — jsdom les prouve écran par écran (Vitest), le serveur les refuse en 403
@@ -192,7 +194,7 @@ test.describe("Membre — lecture seule de bout en bout", () => {
     }
   });
 
-  test("club sans planning, puis club qui ferme : lecture libre, bandeau daté sans bouton", async ({ page, browser }) => {
+  test("club sans planning, puis club qui ferme : lecture libre, bandeau daté dont le seul geste est la demande", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const manager = await newPage(browser);
     const ara = uniqueAra("MBR");
@@ -225,7 +227,14 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       const closing = page.getByRole("status").filter({ hasText: /n'a plus de gestionnaire/ });
       await expect(closing).toBeVisible();
       await expect(closing).toContainText(/\d{2}\/\d{2}\/\d{4}/);
-      await expect(closing.getByRole("button")).toHaveCount(0);
+      // PR 3 : le bandeau porte UN geste, et un seul — demander à devenir gestionnaire (la reprise
+      // part à l'adresse officielle). Aucun autre bouton dans le bandeau, aucun bouton d'écriture
+      // ailleurs sur l'écran : le Membre n'obtient rien de plus qu'une demande.
+      const bannerButtons = closing.getByRole("button");
+      await expect(bannerButtons).toHaveCount(1);
+      await expect(bannerButtons.first()).toHaveAccessibleName(SESSION_TEXTS.requestManagerRole);
+      await expect(page.getByRole("button", { name: WRITE_BUTTON }), "/club (club qui ferme) : un bouton d'écriture est offert au Membre").toHaveCount(0);
+      expect(watch.violations, `le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
     } finally {
       await eraseAccount(page);
       if (!managerErased) {
