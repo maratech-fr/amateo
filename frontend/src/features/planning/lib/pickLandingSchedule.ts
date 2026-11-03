@@ -8,12 +8,16 @@ import { isSeasonPlanType, visibleSeasonPlans } from "./versions";
 // L'enjeu n'était pas cosmétique : un statut ajouté côté serveur aurait bougé le foyer sans
 // bouger la copie, et l'atterrissage aurait pu ouvrir sur un planning encore en cours de
 // génération.
-type LandingSchedule = { id: string; status: ScheduleStatus; createdAt: string; planType: string | null; schedulePlanId: string | null; isChosen?: boolean };
+type LandingSchedule = { id: string; status: ScheduleStatus; createdAt: string; planType: string | null; schedulePlanId: string | null; isChosen?: boolean; isLiveContext?: boolean };
 
 export function pickDefaultSchedule(schedules: LandingSchedule[]): string | null {
   const seasonPlans = visibleSeasonPlans(schedules);
   if (0 === seasonPlans.length) {
     return null;
+  }
+  const loaded = seasonPlans.find((s) => true === s.isLiveContext && "COMPLETED" === s.status);
+  if (undefined !== loaded) {
+    return loaded.id;
   }
   const byRecent = [...seasonPlans].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (byRecent.find((s) => "COMPLETED" === s.status) ?? byRecent[0]).id;

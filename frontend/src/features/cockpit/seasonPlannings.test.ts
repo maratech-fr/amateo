@@ -136,3 +136,15 @@ describe("seasonPlannings — open plannings & plan name (founder feedback 2026-
     expect(rows.some((r) => r.schedulePlanId === "pl-orphan")).toBe(false);
   });
 });
+
+describe("seasonPlannings — la ligne de saison est la version chargée", () => {
+  it("désigne la version chargée plutôt que la plus récente", () => {
+    const rows = seasonPlannings([s({ id: "v1", isLiveContext: true, createdAt: "2026-07-01T10:00:00+00:00" }), s({ id: "v2", createdAt: "2026-07-02T10:00:00+00:00" })]);
+    expect(rows[0].id).toBe("v1");
+  });
+
+  it("une période garde sa dernière terminée : le pointeur de saison ne la concerne pas", () => {
+    const rows = seasonPlannings([s({ id: "v1", isLiveContext: true }), s({ id: "p1", planType: "CLOSURE", schedulePlanId: "p", createdAt: "2026-07-01T10:00:00+00:00" }), s({ id: "p2", planType: "CLOSURE", schedulePlanId: "p", createdAt: "2026-07-02T10:00:00+00:00" })]);
+    expect(rows.find((r) => r.isOverlay)?.id).toBe("p2");
+  });
+});

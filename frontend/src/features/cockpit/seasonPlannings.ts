@@ -1,5 +1,5 @@
 import type { Schedule } from "@/features/planning/api";
-import { isSeasonPlanType, planRepresentative, visibleOverlayVersions, visibleSeasonPlans } from "@/features/planning/lib/versions";
+import { isSeasonPlanType, planRepresentative, seasonRepresentative, visibleOverlayVersions, visibleSeasonPlans } from "@/features/planning/lib/versions";
 
 import type { CalendarEntry, SchedulePlan } from "./api";
 
@@ -28,7 +28,7 @@ export function seasonPlannings(schedules: Schedule[], seasonPlanName: string | 
   const rows: PlanningRow[] = [];
   const seasonLabel = seasonPlanName ?? "Planning de saison";
   const seasonVersions = visibleSeasonPlans(schedules);
-  const seasonMain = planRepresentative(seasonVersions);
+  const seasonMain = seasonRepresentative(seasonVersions);
   // Un planning sans version terminée reste VISIBLE (retour fondateur 2026-07-18) :
   // il est « en cours », le gestionnaire a une action à faire — on montre la
   // dernière version quelle qu'elle soit, export masqué par l'appelant (isOpen).

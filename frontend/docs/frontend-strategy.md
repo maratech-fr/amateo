@@ -192,7 +192,7 @@ au-delà de 3 s est colorié dans le rapport : c'est là qu'on regarde si le sc�
 | @testing-library/jest-dom | 7.x | Matchers DOM |
 | jsdom | 30.x | Environnement DOM |
 | `vi.mock` (Vitest) | — | **Mock réseau EN SERVICE, le seul de la suite** : remplace NOTRE module (`queries`/`api` de la feature). |
-| Cliquet act-warnings | — | `tooling/actWarningsRatchet.ts` (reporter Vitest) : compte les avertissements React « not wrapped in act » au processus principal, rougit le run dès qu'ils dépassent le plafond versionné `act-warnings-ceiling.json` (FRT-34, même patron que le plancher de couverture ; fil de détente si le compte tombe à 0 alors que le plafond > 0 = capture cassée). |
+| Cliquet act-warnings | — | `tooling/actWarningsRatchet.ts` (reporter Vitest) : compte les avertissements React « not wrapped in act » au processus principal, rougit le run dès qu'ils dépassent le plafond versionné `act-warnings-ceiling.json` (FRT-34, même patron que le plancher de couverture ; fil de détente si le compte tombe à 0 alors que le plafond > 0 = capture cassée). **Plafond actuel 30, atteint** : un test nouveau ou modifié ne doit émettre aucun avertissement `act` supplémentaire (envelopper dans `act`/`waitFor`) ; ne pas relever `act-warnings-ceiling.json`. |
 | @playwright/test | 1.x | E2E (`frontend/tests/e2e/`) |
 | **vitest-axe** · **@axe-core/playwright** | 0.x · 4.x | **Assertions a11y** — suite unitaire (`src/test/a11y.test.tsx`) + spec de contraste e2e (`tests/e2e/a11y-contrast.spec.ts`) |
 | knip | 6.x | **Garde d'hygiène des dépendances** (`npm run lint:deps`, config `frontend/knip.json`), lancée par `make -C frontend lint` ET step CI du job `frontend` — mêmes commandes, détail : `docs/testing/testing-strategy.md` §1 |

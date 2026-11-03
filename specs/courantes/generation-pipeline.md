@@ -57,13 +57,16 @@ via `POST /generate` ; backend → frontend via Mercure SSE `/clubs/{clubId}/sch
 - **Affichage** : dès qu'une version existe pour le plan en cours (terminée OU en vol),
   `GenerateStep` bascule sur `<PlanningPage embedded scopePlanId={...} />`
   (`features/wizard/steps/GenerateStep.tsx`). **Règle d'atterrissage** : l'écran **EMBARQUÉ**
-  (cette étape) se pose sur la version la **plus RÉCENTE** du plan en portée (génération EN VOL
-  comprise) — le gestionnaire doit revoir la génération qu'il vient de lancer. Le **POINTEUR**
+  (cette étape) se pose, **en période**, sur la version la **plus RÉCENTE** du plan en portée
+  (génération EN VOL comprise) ; **en saison**, sur la version **CHARGÉE** (l'étoile,
+  `isLiveContext`), là où le gestionnaire travaille — sauf une génération en vol, ou un échec dans
+  la session qui l'a lancée (`sessionLaunchedScheduleId`, `useVersionLanding`). Cette règle
+  remplace celle du 2026-08-19 (« la plus récente »). Le **POINTEUR**
   (`seasonPlan.chosenScheduleId`, ADR-0002, via `pickLandingScheduleId`) ne l'emporte QUE sur la
   page `/planning` autonome et au cockpit ; il ne pilote **plus** l'atterrissage embarqué
   (`pickLanding.test.ts` garde le chemin autonome, `PlanningPage.test.tsx` l'embarqué — la
   préférence est dérivée de `embedded` dans `PlanningPage.tsx`, pas un one-shot). **En mode
-  saison**, `scopePlanId` est `null` : l'embarqué se pose sur la dernière version de saison,
+  saison**, `scopePlanId` est `null` : l'embarqué se pose sur la version chargée (règle ci-dessus),
   l'autonome sur celle que le plan SEASON pointe (sinon la dernière terminée). **En mode
   période**, `scopePlanId` porte l'id du plan de période : l'écran embarqué ne connaît QUE les
   versions de CE plan (atterrissage sur la plus récente, titre, toolbar, badge « principal »

@@ -208,6 +208,12 @@ final class SoclePlansContext extends BaseContext
         // qui détruirait déjà), puis on re-valide la même version : la garde voit un pointeur NULL,
         // qu'elle n'exempte pas, et efface les plannings de période à venir.
         $this->pointSocleTo('');
+        // Seule la version chargée se valide. Le dépointage silencieux ci-dessus laisse des sœurs qu'un
+        // vrai parcours n'a pas (valider les supprime) : on la désigne, en SQL pour la même raison.
+        $this->dbalExec(
+            \sprintf('UPDATE season SET live_context_schedule_id=\'%s\' WHERE id=\'%s\'', $this->chosenAtEntry, $this->seasonId),
+            admin: true,
+        );
 
         $validated = $this->apiPost(
             \sprintf('schedules/%s/validate', $this->chosenAtEntry),

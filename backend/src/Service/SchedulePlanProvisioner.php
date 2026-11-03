@@ -254,8 +254,12 @@ final class SchedulePlanProvisioner
      * de slotTemplates propres, et sans cette source les verrous ne voyageaient qu'en
      * `previousAssignments` (SOFT) et revenaient NONE — le bug que V1 corrige.
      *
-     * V1bis — DEUX régimes, un seul foyer : le POINTEUR `schedule_plan.lock_source_schedule_id`
-     * (posé par « Charger »/load-locks, re-pointé à chaque nouvelle version COMPLETED) FAIT FOI
+     * C'est aussi LA VERSION CHARGÉE : la seule qui se modifie ({@see VersionEditability}) et dont les
+     * verrous partent au moteur, plan de saison comme plan de période.
+     *
+     * V1bis — DEUX régimes, un seul foyer : le POINTEUR (`schedule_plan.lock_source_schedule_id` pour
+     * une période, posé par load-locks ; `season.live_context_schedule_id` pour la saison, posé par
+     * « Charger cette version » ; tous deux re-pointés à chaque nouvelle version COMPLETED) FAIT FOI
      * s'il désigne une version EXISTANTE, COMPLETED et DU MÊME plan ; sinon (pointeur nul ou devenu
      * incohérent — version supprimée/échouée) on retombe sur la DERNIÈRE version COMPLETED du plan.
      * Ce repli garde le comportement V1 pour tout plan dont personne n'a « chargé » une version.
@@ -273,9 +277,12 @@ final class SchedulePlanProvisioner
         $connection = $this->entityManager->getConnection();
 
         // Le pointeur fait foi s'il reste cohérent (version existante, COMPLETED, du même plan).
+        // Plan de saison : c'est l'étoile de la saison, que « Charger » et chaque génération terminée
+        // déplacent. Plan de période : le pointeur du plan.
         $pointer = $connection->fetchOne(
-            'SELECT lock_source_schedule_id FROM schedule_plan WHERE id = :pid',
-            ['pid' => $schedulePlanId],
+            'SELECT CASE WHEN p.type = :season THEN s.live_context_schedule_id ELSE p.lock_source_schedule_id END '
+            . 'FROM schedule_plan p JOIN season s ON s.id = p.season_id WHERE p.id = :pid',
+            ['pid' => $schedulePlanId, 'season' => SchedulePlanType::SEASON->value],
         );
         if (\is_string($pointer)) {
             $valid = $connection->fetchOne(
@@ -295,6 +302,17 @@ final class SchedulePlanProvisioner
         );
 
         return \is_string($id) ? $id : null;
+    }
+
+    /** La version chargée d'une saison : celle de son plan SEASON. Null si rien n'a encore abouti. */
+    public function loadedVersionIdOfSeason(string $seasonId): ?string
+    {
+        $planId = $this->entityManager->getConnection()->fetchOne(
+            'SELECT id FROM schedule_plan WHERE season_id = :sid AND type = :season',
+            ['sid' => $seasonId, 'season' => SchedulePlanType::SEASON->value],
+        );
+
+        return \is_string($planId) ? $this->lockSourceScheduleIdOfPlan($planId) : null;
     }
 
     /**

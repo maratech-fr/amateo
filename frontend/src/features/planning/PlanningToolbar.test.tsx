@@ -2,8 +2,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { visibleTextOccurrences } from "@/test/utils";
+
 import type { Schedule, ScheduleCapabilities } from "./api";
 import { PlanningToolbar } from "./PlanningToolbar";
+import { PLANNING_TEXTS } from "./texts";
 
 const noop = () => {};
 
@@ -363,5 +366,136 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
     expect(screen.queryByText(/9051/)).not.toBeInTheDocument();
     // …et le badge de statut, lui, reste : on retire le score, pas la ligne.
     expect(screen.getByText("Terminé")).toBeInTheDocument();
+  });
+});
+
+// Plan « version chargée » : une version non chargée se consulte, ne se valide pas, et la barre dit
+// d'où repartira la régénération.
+describe("PlanningToolbar — version chargée", () => {
+  const older = (over: ScheduleOver = {}) => schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01T09:00:00+00:00", isLiveContext: false, capabilities: { canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities>, ...over });
+  const loaded = () => schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00", isLiveContext: true, capabilities: { canEdit: true, editBlockedReason: null } as Partial<ScheduleCapabilities> });
+
+  it("« Valider » reste visible, grisé avec son motif, sur une version non chargée", () => {
+    renderToolbar([older(), loaded()]);
+    const validate = screen.getByRole("button", { name: /Valider/ });
+    expect(validate).toHaveAttribute("aria-disabled", "true");
+    expect(validate).toHaveAttribute("title", PLANNING_TEXTS.validateNeedsLoad);
+  });
+
+  it("« Valider » reste actif sur la version chargée", () => {
+    renderToolbar([older(), loaded()], { selectedScheduleId: "s2" });
+    expect(screen.getByRole("button", { name: /Valider/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Valider/ })).not.toHaveAttribute("aria-disabled");
+  });
+
+  describe("supprimer : la confirmation nomme la version qui prend le relais", () => {
+    const deletable = { canDelete: true } as Partial<ScheduleCapabilities>;
+    const openDelete = async () => userEvent.setup().click(screen.getByRole("button", { name: "Supprimer cette version" }));
+
+    it("la version chargée de saison : la dernière terminée restante est nommée, jamais une version en échec", async () => {
+      renderToolbar(
+        [
+          schedule("COMPLETED", { id: "s1", createdAt: "2026-01-01T09:00:00+00:00", isLiveContext: false, capabilities: deletable }),
+          schedule("COMPLETED", { id: "s2", createdAt: "2026-02-01T09:00:00+00:00", isLiveContext: false, capabilities: deletable }),
+          schedule("COMPLETED", { id: "s3", createdAt: "2026-03-01T09:00:00+00:00", isLiveContext: true, capabilities: deletable }),
+          schedule("FAILED", { id: "s4", createdAt: "2026-04-01T09:00:00+00:00", isLiveContext: false, capabilities: deletable }),
+        ],
+        { selectedScheduleId: "s3" },
+      );
+      await openDelete();
+      expect(await screen.findByText(PLANNING_TEXTS.deleteLoadedVersionNote("V2"))).toBeInTheDocument();
+    });
+
+    it("une version non chargée : aucune note, rien ne change de main", async () => {
+      renderToolbar([older({ capabilities: deletable }), loaded()]);
+      await openDelete();
+      await screen.findByRole("dialog");
+      expect(screen.queryByText(/prendra le relais/)).not.toBeInTheDocument();
+    });
+
+    it("la version chargée d'une période : la suivante de SA période est nommée, pas une version de saison", async () => {
+      const period = { planType: "HOLIDAY", schedulePlanId: "ete-plan", isLiveContext: false } as const;
+      renderToolbar(
+        [
+          schedule("COMPLETED", { id: "season", createdAt: "2026-05-01T09:00:00+00:00", isLiveContext: true }),
+          schedule("COMPLETED", { id: "p1", createdAt: "2026-01-01T09:00:00+00:00", ...period, capabilities: deletable }),
+          schedule("COMPLETED", { id: "p2", createdAt: "2026-02-01T09:00:00+00:00", ...period, isLockSource: true, capabilities: deletable }),
+        ],
+        { selectedScheduleId: "p2" },
+      );
+      await openDelete();
+      expect(await screen.findByText(PLANNING_TEXTS.deleteLoadedVersionNote("V1"))).toBeInTheDocument();
+    });
+  });
+
+  it("la barre annonce la version de départ quand on en regarde une autre", () => {
+    renderToolbar([older(), loaded()]);
+    expect(screen.getByText(PLANNING_TEXTS.regenerateKeepsLoadedLocks("V2"))).toBeInTheDocument();
+  });
+
+  it("sur la version chargée, la barre garde sa phrase", () => {
+    renderToolbar([older(), loaded()], { selectedScheduleId: "s2" });
+    expect(screen.queryByText(PLANNING_TEXTS.regenerateKeepsLoadedLocks("V2"))).not.toBeInTheDocument();
+  });
+
+  it.each(["Cette version n'a pas de photo.", "Cette version est antérieure à SM2.", "Cette version a été générée quand SM1 avait un autre niveau."])("« Charger » est grisé et dit le motif du serveur : %s", (reason) => {
+    renderToolbar([older({ capabilities: { canRegenerateFrom: false, regenerateFromBlockedReason: reason } as Partial<ScheduleCapabilities> }), loaded()]);
+    const load = screen.getByRole("button", { name: /Charger cette version/ });
+    expect(load).toHaveAttribute("aria-disabled", "true");
+    expect(load).toHaveAttribute("title", reason);
+  });
+
+  // Règle du fondateur : un geste grisé dit son motif en clair, sans survol. `title` et `sr-only` ne
+  // comptent pas (visibleTextOccurrences). Une seule ligne pour toute la barre, pas un texte par bouton.
+  describe("le motif en clair", () => {
+    const REASON = "Cette version n'a pas de photo.";
+    const unloadable = () => older({ capabilities: { canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version", canRegenerateFrom: false, regenerateFromBlockedReason: REASON } as Partial<ScheduleCapabilities> });
+
+    it("version non chargée : une ligne visible dit pourquoi la barre est grisée", () => {
+      renderToolbar([older(), loaded()]);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(1);
+    });
+
+    it("version de période non source : la même ligne", () => {
+      const period = { planType: "HOLIDAY", schedulePlanId: "ete-plan", isLiveContext: false } as const;
+      renderToolbar(
+        [
+          schedule("COMPLETED", { id: "p1", createdAt: "2026-01-01T09:00:00+00:00", ...period, capabilities: { canValidate: false, canRegenerateFrom: false, canLoadLocks: true, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }),
+          schedule("COMPLETED", { id: "p2", createdAt: "2026-02-01T09:00:00+00:00", ...period, isLockSource: true, capabilities: { canEdit: true, editBlockedReason: null } as Partial<ScheduleCapabilities> }),
+        ],
+        { selectedScheduleId: "p1" },
+      );
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(1);
+    });
+
+    it("version impossible à charger : la ligne dit qu'elle ne peut pas l'être, avec le motif du serveur", () => {
+      renderToolbar([unloadable(), loaded()]);
+      expect(PLANNING_TEXTS.cannotLoadLine(REASON)).toContain(REASON);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.cannotLoadLine(REASON))).toHaveLength(1);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
+
+    it("version impossible à charger : « Valider » ne demande plus de la charger, nulle part", () => {
+      renderToolbar([unloadable(), loaded()]);
+      const validate = screen.getByRole("button", { name: /Valider/ });
+      expect(validate).toHaveAttribute("aria-disabled", "true");
+      expect(validate).not.toHaveAttribute("title", PLANNING_TEXTS.validateNeedsLoad);
+      expect(screen.queryAllByText(PLANNING_TEXTS.validateNeedsLoad)).toHaveLength(0);
+    });
+
+    it("version chargée : aucune ligne", () => {
+      renderToolbar([older(), loaded()], { selectedScheduleId: "s2" });
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
+
+    it("version non terminée : aucune ligne, il n'y a rien à charger", () => {
+      renderToolbar([schedule("FAILED", { id: "s3", createdAt: "2026-03-01T09:00:00+00:00", isLiveContext: false, capabilities: { canValidate: false, canRegenerateFrom: false, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }), loaded()], { selectedScheduleId: "s3" });
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
+
+    it("capacité absente : aucun motif inventé", () => {
+      renderToolbar([older({ capabilities: null }), loaded()]);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
   });
 });

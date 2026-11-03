@@ -207,7 +207,7 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   **personnes** distinctes (pas les paires). Détail métier complet :
   [`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md) §2.
 - **Bandeau « version antérieure » (P4-98, 2026-09-29)** : `pickLandingScheduleId` atterrit
-  délibérément sur la version **en vigueur** (`isChosen`), qui peut être plus ancienne que la
+  (page autonome) sur la version **en vigueur** (`isChosen`), à défaut la version **chargée** (`isLiveContext`) — l'embarqué de saison, lui, sur la chargée —, qui peut être plus ancienne que la
   dernière `COMPLETED` — sans signal, le gestionnaire pouvait croire regarder du frais.
   `lib/versions.ts::laterCompletedVersionId(displayed, schedules)` compare `displayed` à
   `representativeVersion(...)` sur la MÊME portée de plan que `scopeInFlight` (saison via

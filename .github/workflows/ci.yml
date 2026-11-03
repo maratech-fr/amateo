@@ -797,6 +797,14 @@ jobs:
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/GenerationRefusesARecapBlockerTest.php --group phase1'
       - name: DedupeSnapshotPinsCommandTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Command/DedupeSnapshotPinsCommandTest.php --group phase1'
+      # Plan « version chargée » (axes generation pipeline + planning lifecycle) — seuls les verrous de
+      # la version chargée partent au moteur, et elle seule se modifie et se valide, saison et période.
+      # Sans ce gate, un verrou retiré revient d'une ancienne version, et un geste sur une version
+      # consultée se perd à la régénération suivante.
+      - name: LoadedVersionLocksOnlyTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/LoadedVersionLocksOnlyTest.php --group phase1'
+      - name: LoadedVersionIsTheOnlyEditableTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/LoadedVersionIsTheOnlyEditableTest.php --group phase1'
       - name: ReservationPinsNotDoubledTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/ReservationPinsNotDoubledTest.php --group phase1'
 

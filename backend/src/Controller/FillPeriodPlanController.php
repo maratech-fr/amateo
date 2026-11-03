@@ -15,6 +15,7 @@ use App\Service\ManagementAccessGuard;
 use App\Service\OrphanPinGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SocleGuard;
+use App\Service\VersionEditability;
 use App\Service\WriteTargetSeasonResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -68,6 +69,7 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         private readonly OrphanPinGuard $orphanPinGuard,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly DeploymentGate $deploymentGate,
+        private readonly VersionEditability $versionEditability,
     ) {}
 
     // SEC-13 — la cible est le Schedule (version) nommé dans l'URL.
@@ -122,6 +124,13 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
             return $this->json(['error' => 'La version choisie est le planning en vigueur. Rouvrez-le avant de combler.'], Response::HTTP_CONFLICT);
         }
 
+        // Seule la version chargée se travaille : combler une autre en dériverait une V+1 que le
+        // gestionnaire ne travaille pas. Réponse JSON : le motif d'une exception serait masqué en prod.
+        $refusal = $this->notLoadedRefusal($source);
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
+        }
+
         // Jamais dériver une version pendant qu'une génération de la saison tourne (un import
         // concurrent référencerait des entités que ce solve ne connaît pas).
         $inFlight = $this->entityManager->getRepository(Schedule::class)->count([
@@ -174,7 +183,7 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
             ->setStatus(ScheduleStatus::PENDING)
             ->setQueuedAt(new DateTimeImmutable)
             ->setSchedulePlanId($source->getSchedulePlanId());
-        $this->entityManager->wrapInTransaction(function () use ($newSchedule, $entryId, $source): void {
+        $refusal = $this->entityManager->wrapInTransaction(function () use ($newSchedule, $entryId, $source): ?JsonResponse {
             // Sous le verrou de portée du plan de PÉRIODE (sa clé = l'entrée de calendrier, comme la
             // transcription et la validation) : sans lui, deux comblements concurrents créeraient
             // deux V+1 avec le même numéro. `linkSchedule` numérote sous ce verrou.
@@ -185,10 +194,20 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
             if ($this->schedulePlanProvisioner->isChosen($source->getId())) {
                 throw new ConflictHttpException('La version choisie est le planning en vigueur. Rouvrez-le avant de combler.');
             }
+            // Même raison : un « Charger » concurrent a pu déplacer la version chargée.
+            $refusal = $this->notLoadedRefusal($source);
+            if ($refusal instanceof JsonResponse) {
+                return $refusal;
+            }
             $this->entityManager->persist($newSchedule);
             $this->schedulePlanProvisioner->linkSchedule($newSchedule);
             $this->entityManager->flush();
+
+            return null;
         });
+        if ($refusal instanceof JsonResponse) {
+            return $refusal;
+        }
 
         $this->messageBus->dispatch(new GenerateScheduleMessage(
             scheduleId: $newSchedule->getId(),
@@ -198,5 +217,12 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         ));
 
         return $this->json(['id' => $newSchedule->getId(), 'status' => ScheduleStatus::PENDING->value], Response::HTTP_ACCEPTED);
+    }
+
+    private function notLoadedRefusal(Schedule $schedule): ?JsonResponse
+    {
+        return VersionEditability::NOT_LOADED === $this->versionEditability->check($schedule)
+            ? $this->json(['code' => VersionEditability::NOT_LOADED, 'error' => VersionEditability::NOT_LOADED_EDIT_MESSAGE], Response::HTTP_CONFLICT)
+            : null;
     }
 }

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { expect } from "vitest";
 import type { ReactElement } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -18,6 +18,15 @@ export function renderWithProviders(ui: ReactElement, { route = "/" }: { route?:
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+}
+
+/**
+ * Les éléments qui montrent `text` à l'écran, sans survol : ni un `title` (jamais lu par getByText)
+ * ni le `sr-only` d'un `disabledReason` ne comptent. Pour la règle « un geste grisé dit son motif en
+ * clair » : `getByText` seul serait vert sur le span masqué que rend `Button`.
+ */
+export function visibleTextOccurrences(text: string): HTMLElement[] {
+  return screen.queryAllByText(text).filter((element) => null === element.closest(".sr-only"));
 }
 
 /**

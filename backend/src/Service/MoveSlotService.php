@@ -1287,9 +1287,9 @@ final class MoveSlotService
      *  - la SOURCE : sans elle, l'équipe entre en conflit AVEC ELLE-MÊME
      *    (`team_no_overlap` / `one_session_per_day`) — elle serait figée mardi ET candidate
      *    jeudi ;
-     *  - les créneaux des AUTRES versions du même plan : `buildForClubSeason` fige toutes
-     *    les versions du plan de saison ; l'équipe se heurterait à son propre placement
-     *    dans un brouillon voisin. On ne garde donc de la baseline QUE les créneaux de CE
+     *  - les créneaux des AUTRES versions du même plan : le payload de saison reprend la version
+     *    chargée, et un plan de période ses propres verrous ; l'équipe se heurterait à son propre
+     *    placement dans une version voisine. On ne garde donc de la baseline QUE les créneaux de CE
      *    planning (moins les ids exclus) et les réservations durables — jamais ceux d'un frère.
      *
      * `$source` (déplacement) et `$evicted` (occupant à évincer) sont retirés de la baseline

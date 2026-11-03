@@ -44,12 +44,27 @@ function invalidateMovePacket(queryClient: QueryClient): void {
  * toasté).
  */
 function onSlotEditError(queryClient: QueryClient, error: unknown): void {
+  if (ownNotLoadedRefusal(queryClient, error)) {
+    return;
+  }
   if (error instanceof VerdictAbandonedError) {
     invalidateMovePacket(queryClient);
     toast.info("Déplacement abandonné. Le serveur a pu l'appliquer quand même — le planning a été rechargé.");
     return;
   }
   ownSlotEditFeedback(error);
+}
+
+/** Le refus d'une version qui n'est plus chargée (deux onglets) : le motif, et l'écran se regrise. */
+export const isNotLoadedRefusal = (error: unknown): boolean => error instanceof SlotEditError && "not_loaded_version" === error.code;
+
+function ownNotLoadedRefusal(queryClient: QueryClient, error: unknown): boolean {
+  if (!isNotLoadedRefusal(error)) {
+    return false;
+  }
+  void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+  toast.error((error as SlotEditError).message);
+  return true;
 }
 
 /**
@@ -240,8 +255,12 @@ export function useLockSlot() {
       void queryClient.invalidateQueries({ queryKey: ["socle-deviation"] });
     },
     // Un verrouillage qui échoue (moteur/réseau) restait MUET : le cadenas ne bougeait pas
-    // sans un mot. On remonte le motif du serveur (patron useReopenSchedule/useRegenerate).
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+    // sans un mot. On remonte le motif du serveur (patron useReopenSchedule/useRegenerate), et la liste
+    // des versions est relue : un refus « version plus chargée » regrise l'écran (deux onglets).
+    onError: (error) => {
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void errorMessage(error).then((message) => toast.error(message));
+    },
   });
 }
 
@@ -266,6 +285,9 @@ export function useMutualizeSlot() {
       void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides"] });
     },
     onError: (error) => {
+      if (ownNotLoadedRefusal(queryClient, error)) {
+        return;
+      }
       if (error instanceof MutualizationRefusedError || error instanceof GenerationInProgressError) {
         return; // refus NOMMÉ affiché par la modale, jamais un second toast
       }
@@ -306,6 +328,7 @@ export function useMoveSlot() {
  * (onSuccess), il ne lève pas — seul un verrou/une génération/un transport passe par onError.
  */
 export function useMoveDryRun() {
+  const queryClient = useQueryClient();
   return useMutation({
     // Lot C PR-2 : l'essai passe aussi sous le voile LONG (mêmes secondes que le vrai geste) —
     // abandonnable, mais SANS resync (un essai n'écrit jamais : la modale garde sa phase interrupted).
@@ -315,7 +338,7 @@ export function useMoveDryRun() {
     // contextuel, un ÉCHEC de l'essai (timeout, moteur indisponible) laisse la modale ouverte en
     // état d'échec qui NOMME la cause. Le hook se tait donc (mais désarme le filet global, qui
     // sinon toasterait « Problème de connexion » par-dessus la modale) — cf. useMoveSlot.
-    onError: () => {},
+    onError: (error) => void ownNotLoadedRefusal(queryClient, error),
   });
 }
 
@@ -364,10 +387,11 @@ export function useMoveGroup() {
  * filet global, qui sinon toasterait « Problème de connexion » par-dessus la modale.
  */
 export function useMoveGroupDryRun() {
+  const queryClient = useQueryClient();
   return useMutation({
     meta: { veil: "long" },
     mutationFn: (body: planningApi.MoveGroupBody) => runLongAction((signal) => planningApi.moveGroup({ ...body, dryRun: true }, signal)),
-    onError: () => {},
+    onError: (error) => void ownNotLoadedRefusal(queryClient, error),
   });
 }
 
@@ -393,10 +417,11 @@ export function useSwapSlot() {
  * mais désarme le filet global, patron {@link useMoveDryRun}.
  */
 export function useSwapDryRun() {
+  const queryClient = useQueryClient();
   return useMutation({
     meta: { veil: "long" },
     mutationFn: (body: SwapBody) => runLongAction((signal) => planningApi.swapSlots({ ...body, dryRun: true }, signal)),
-    onError: () => {},
+    onError: (error) => void ownNotLoadedRefusal(queryClient, error),
   });
 }
 
@@ -445,7 +470,11 @@ export function useDeleteSlot() {
         invalidateMovePacket(queryClient);
       }
     },
-    onError: (error) => ownSlotEditFeedback(error),
+    onError: (error) => {
+      if (!ownNotLoadedRefusal(queryClient, error)) {
+        ownSlotEditFeedback(error);
+      }
+    },
   });
 }
 
@@ -459,7 +488,11 @@ export function useDeleteSlotGroup() {
         invalidateMovePacket(queryClient);
       }
     },
-    onError: (error) => ownSlotEditFeedback(error),
+    onError: (error) => {
+      if (!ownNotLoadedRefusal(queryClient, error)) {
+        ownSlotEditFeedback(error);
+      }
+    },
   });
 }
 
@@ -692,6 +725,8 @@ export function useFillSchedule() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
     // Un blocage se dit dans le bandeau de la page, avec le chemin vers le Récap : pas de toast.
     onError: (error) => {
+      // Refus « version plus chargée » (deux onglets) : la liste relue regrise l'écran, patron useLockSlot.
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       if (!isBlockerRefusal(error)) {
         void errorMessage(error).then((message) => toast.error(message));
       }

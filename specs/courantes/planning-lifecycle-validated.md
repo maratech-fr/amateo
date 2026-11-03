@@ -221,7 +221,8 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
 
 Le front ne re-dérive plus les règles de refus du planning : chaque `Schedule` de `GET /api/schedules` porte un
 bloc `capabilities` (`canDelete`, `canValidate`, `canRegenerateFrom`, `canLoadLocks`,
-`versionsDeletedOnValidate`, `overlaysDroppedOnValidate`), calculé par `App\Service\ScheduleCapabilityResolver` — les gardes d'écriture
+`versionsDeletedOnValidate`, `overlaysDroppedOnValidate`, `canEdit`, `editBlockedReason`,
+`regenerateFromBlockedReason`), calculé par `App\Service\ScheduleCapabilityResolver` — les gardes d'écriture
 (DELETE / validate / regenerate-from / load-locks) et le sérialiseur tirent le **même verdict** via les mêmes prédicats
 unitaires (`isInFlight`, `isChosen`, `isLastFinishedSeasonVersion`, `inFlightInSeason`), donc la capacité
 affichée EST le refus réel — pas de dérive front↔serveur possible. Le front lit, il n'infère plus ; repli
@@ -234,6 +235,20 @@ distinct lu sur `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`. Gardé pa
 (V1, renseignés EN BATCH par `ScheduleStateProvider`) — est-ce que CETTE version est la source des verrous
 de son plan, et combien elle en porte ; consommés par la confirmation de régénération ci-dessous (§4).
 
+**Seule la version CHARGÉE (l'étoile) se modifie** (`App\Service\VersionEditability`, maison unique du
+verdict) : les neuf guichets de retouche, la validation et « Combler » refusent toute autre version en
+409 codé `not_loaded_version` (la version en vigueur garde `chosen_version`) ; `canEdit` /
+`editBlockedReason` exposent ce même verdict. Même règle pour un plan de période : sa version source
+(`lockSourceScheduleIdOfPlan`). Les autres versions se consultent. Côté génération de saison, seule la
+chargée part au moteur et compte pour les verrous (`ScheduleConstraintBuilder::buildForClubSeason`,
+`lockVersionId`) ; `POST /regenerate` repart toujours de la chargée et répond 202 avec
+`sourceScheduleId` ; `POST /generate` sur une version de saison déjà `COMPLETED` → 409 (« Régénérer »
+en crée une nouvelle) ; si la version de départ a disparu avant le solve, l'échec est typé
+`source_version_missing`. `regenerateFromBlockedReason` dit, mot pour mot, pourquoi « Charger » est
+refusé (`RestoreFeasibility`). Supprimer la version d'où repart une génération en cours → 409.
+L'empreinte de structure ignore désormais l'id et l'ordre des lignes (placements dédoublonnés) : voir
+`docs/ops/deploy.md`.
+
 ## 4. Frontend
 
 - **Unions** : `ScheduleStatus` reste à **5** statuts (`planning/api.ts`, `wizard/api.ts`) — « validé » n'en est pas un.
@@ -243,7 +258,8 @@ de son plan, et combien elle en porte ; consommés par la confirmation de régé
   - Badge statut **traduit** (FR) pour les 5 statuts (voir §5).
   - Le titre porte le **nom réel du plan** (`displayedPlanName`, ex. « Planning de la saison 2026-2027 », défaut « Planning de saison ») — plus de badge générique « Planning principal » ; un planning de PÉRIODE se distingue par le mot « secondaire » dans ses propres phrases (compteur, confirmations), jamais une étiquette fixe sur le titre.
   - **Nom éditable** en ligne **uniquement si la version n'est pas choisie** (verrou total) ; le **nom du plan** se renomme par `PUT /api/schedule_plans/{id}`.
-- **pickLandingScheduleId** : la version choisie du plan SEASON (hors overlay, hors vol) → sinon `pickDefaultSchedule` (`COMPLETED` le plus récent).
+  - **Version non chargée** : un geste grisé dit son motif en clair, une ligne dans la barre (`notLoadedToolbarLine`, ou `cannotLoadLine` avec le motif serveur `regenerateFromBlockedReason` si elle ne peut pas être chargée) et dans la fiche de séance. Une bannière neutre de consultation s'affiche sur toute version `COMPLETED` non chargée, saison comme période ; sur une période non source, le bouton « Ouvrir la version source » y mène. Les textes vivent dans `PLANNING_TEXTS` (`planning/texts.ts`), `PlanningToolbar.tsx` est inscrit à la garde des textes centralisés.
+- **pickLandingScheduleId** : la version choisie du plan SEASON (hors overlay, hors vol) → sinon `pickDefaultSchedule` (la version chargée `COMPLETED`, à défaut la `COMPLETED` la plus récente). L'embarqué en saison suit la règle d'atterrissage de `generation-pipeline.md` (chargée).
 - **Read-only gating** : si la version sélectionnée est celle que pointe son plan → désactiver régénérer + renommage + passer `readOnly` à `SlotDetail` (move/lock off) et `WeekGrid` (clic slot off).
 - `IN_FLIGHT` a UN foyer, `shared/lib/scheduleStatus.ts` (`IN_FLIGHT_STATUSES`), consommé partout —
   y compris `planning/lib/pickLandingSchedule.ts` — jamais de copie littérale du statut.

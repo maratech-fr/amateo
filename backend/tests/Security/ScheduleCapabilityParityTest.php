@@ -160,9 +160,9 @@ final class ScheduleCapabilityParityTest extends WebTestCase
     /** versionsDeletedOnValidate == nombre de sœurs réellement supprimées par une validation. */
     public function testVersionsDeletedOnValidateMatchesActualDeletions(): void
     {
-        $target = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
         $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
         $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        $target = $this->seedSeasonVersion(ScheduleStatus::COMPLETED); // la version chargée, seule validable
         $planId = $target->getSchedulePlanId();
 
         self::assertSame(2, $this->capabilitiesOf($target->getId())['versionsDeletedOnValidate']);

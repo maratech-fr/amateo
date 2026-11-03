@@ -11,7 +11,6 @@ use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
-use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -28,7 +27,6 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
-use App\Enum\SchedulePlanType;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTrainingSlotRepository;
 use App\Repository\VenueTravelRuleSettingRepository;
@@ -146,11 +144,13 @@ final class ScheduleConstraintBuilder
 
     /**
      * P2-9ter — la clé porte la SAISON : `buildForClubSeason` en reçoit une, et sans elle
-     * un club à deux saisons se voyait resservir le payload de l'autre.
+     * un club à deux saisons se voyait resservir le payload de l'autre. Elle porte aussi la VERSION
+     * dont le payload reprend les séances : obligatoire, un appelant qui l'oublie ne compile pas au lieu
+     * de lire le payload d'une autre version.
      */
-    public static function cacheKey(string $clubId, string $seasonId): string
+    public static function cacheKey(string $clubId, string $seasonId, ?string $lockVersionId): string
     {
-        return \sprintf('club.%s.season.%s.schedule_input', $clubId, $seasonId);
+        return \sprintf('club.%s.season.%s.version.%s.schedule_input', $clubId, $seasonId, $lockVersionId ?? 'none');
     }
 
     /**
@@ -177,6 +177,10 @@ final class ScheduleConstraintBuilder
      * pas (`/validate-assignments` lit ces séances). Elle ignore enfin `version` : le numéro de contrat
      * n'est pas de la structure, sinon chaque montée de contrat ferait paraître tous les plannings périmés.
      *
+     * Elle décrit des PLACEMENTS : ni l'id d'une ligne (une version régénérée réimporte ses verrous sous
+     * des ids neufs), ni l'ordre des lignes, et le même placement répété compte une fois. Changer cette
+     * recette impose de rejouer `app:schedule:dedupe-snapshot-pins`, qui recale les versions existantes.
+     *
      * @param array<mixed> $payload
      */
     public static function structureHash(array $payload): string
@@ -187,10 +191,24 @@ final class ScheduleConstraintBuilder
                 $payload['slotTemplates'],
                 static fn (mixed $pin): bool => \is_array($pin) && 'HARD' === ($pin['lockLevel'] ?? null),
             ));
-            foreach ($pins as $index => $pin) {
-                unset($pins[$index]['coachId']);
+            $byPlacement = [];
+            foreach ($pins as $pin) {
+                unset($pin['id'], $pin['coachId']);
+                $placement = implode('|', [
+                    (string) ($pin['teamId'] ?? ''),
+                    (string) ($pin['venueId'] ?? ''),
+                    (string) ($pin['dayOfWeek'] ?? ''),
+                    substr((string) ($pin['startTime'] ?? ''), 0, 5),
+                    (string) ($pin['durationMinutes'] ?? ''),
+                ]);
+                $byPlacement[$placement][] = $pin;
             }
-            $payload['slotTemplates'] = $pins;
+            ksort($byPlacement, \SORT_STRING);
+            $payload['slotTemplates'] = [];
+            foreach ($byPlacement as $samePlacement) {
+                usort($samePlacement, static fn (array $a, array $b): int => json_encode($a, \JSON_THROW_ON_ERROR) <=> json_encode($b, \JSON_THROW_ON_ERROR));
+                $payload['slotTemplates'][] = $samePlacement[0];
+            }
         }
 
         return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
@@ -201,17 +219,24 @@ final class ScheduleConstraintBuilder
         return $time?->format('H:i:s');
     }
 
-    /** @return array<string, mixed> */
-    public function buildForClubSeason(string $clubId, string $seasonId, int $solverSeed = self::DEFAULT_SOLVER_SEED, ?EntityManagerInterface $entityManager = null): array
+    /**
+     * Le payload de saison reprend les séances d'UNE version : la version chargée, ou celle que
+     * `$lockVersionId` nomme (la source explicite d'une régénération).
+     *
+     * @return array<string, mixed>
+     */
+    public function buildForClubSeason(string $clubId, string $seasonId, int $solverSeed = self::DEFAULT_SOLVER_SEED, ?EntityManagerInterface $entityManager = null, ?string $lockVersionId = null): array
     {
         $em = $entityManager ?? $this->entityManager;
         if (!$em instanceof EntityManagerInterface) {
             throw new LogicException('ScheduleConstraintBuilder requires Doctrine for club/season builds.');
         }
 
+        $lockVersionId ??= $this->schedulePlanProvisioner?->loadedVersionIdOfSeason($seasonId);
+
         $cacheItem = null;
         if ($this->scheduleCachePool instanceof CacheItemPoolInterface) {
-            $cacheItem = $this->scheduleCachePool->getItem(self::cacheKey($clubId, $seasonId));
+            $cacheItem = $this->scheduleCachePool->getItem(self::cacheKey($clubId, $seasonId, $lockVersionId));
             if ($cacheItem->isHit()) {
                 $cached = $cacheItem->get();
                 if (\is_array($cached)) {
@@ -250,9 +275,9 @@ final class ScheduleConstraintBuilder
             coaches: $this->findByClubSeason(Coach::class, $clubId, $seasonId, $em),
             teamCoaches: $this->findByClubSeason(TeamCoach::class, $clubId, $seasonId, $em),
             coachPlayerMemberships: $this->findByClubSeason(CoachPlayerMembership::class, $clubId, $seasonId, $em),
-            // Base plan only: exclude OVERLAY schedules' slot templates (palier B),
-            // otherwise an overlay's locks would leak into the base generation.
-            slotTemplates: $this->findBaseSlotTemplates($clubId, $seasonId, $em),
+            // Les séances de la SEULE version chargée : ni celles d'un overlay (palier B), ni celles
+            // d'une version sœur, dont un verrou retiré ou déplacé reviendrait sinon.
+            slotTemplates: null === $lockVersionId ? [] : $this->findSlotTemplatesOfVersion($lockVersionId, $em),
             priorityTiers: $em->getRepository(PriorityTier::class)->findBy([], ['id' => 'ASC']),
             solverSeed: $solverSeed,
             constraints: $constraints,
@@ -1257,27 +1282,10 @@ final class ScheduleConstraintBuilder
         );
     }
 
-    /**
-     * Slot templates of the club/season that belong to a BASE schedule (not an
-     * overlay). Excludes overlay slots — and orphan slots whose schedule row is
-     * gone — from base-plan generation. See palier B.
-     *
-     * @return array<ScheduleSlotTemplate>
-     */
-    private function findBaseSlotTemplates(string $clubId, string $seasonId, EntityManagerInterface $em): array
+    /** @return array<ScheduleSlotTemplate> */
+    private function findSlotTemplatesOfVersion(string $scheduleId, EntityManagerInterface $em): array
     {
-        return $em->getRepository(ScheduleSlotTemplate::class)->createQueryBuilder('s')
-            ->andWhere('s.clubId = :clubId')
-            ->andWhere('s.seasonId = :seasonId')
-            // ADR-0002 C4 : « base » = la version d'un plan SEASON (plus de sch.calendarEntryId).
-            // Le socle a un unique plan SEASON par saison (inv. 3).
-            ->andWhere('s.scheduleId IN (SELECT sch.id FROM ' . Schedule::class . ' sch WHERE sch.clubId = :clubId AND sch.seasonId = :seasonId AND sch.schedulePlanId IN (SELECT p.id FROM ' . SchedulePlan::class . ' p WHERE p.seasonId = :seasonId AND p.type = :seasonType))')
-            ->setParameter('clubId', $clubId)
-            ->setParameter('seasonId', $seasonId)
-            ->setParameter('seasonType', SchedulePlanType::SEASON)
-            ->orderBy('s.id', 'ASC')
-            ->getQuery()
-            ->getResult();
+        return $em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $scheduleId], ['id' => 'ASC']);
     }
 
     /** @return array<string, mixed> */

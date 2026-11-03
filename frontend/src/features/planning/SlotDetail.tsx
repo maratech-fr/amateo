@@ -61,6 +61,8 @@ interface SlotDetailProps {
   moveState?: MoveFeedback;
   /** VALIDATED schedule → the slot is read-only (no move/lock). */
   readOnly?: boolean;
+  /** Version non chargée : les gestes restent visibles, grisés, avec ce motif. Null = gestes offerts. */
+  gesturesBlockedReason?: string | null;
   /** P2-30 geste 1 : ce créneau est la SOURCE d'un mode cible armé — le bouton bascule sur
    *  une consigne de choix de cible, et une aide « Échap pour annuler » s'affiche. */
   armed?: boolean;
@@ -142,7 +144,9 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
 
 const noName = (): string | undefined => undefined;
 
-export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, teamMainCoaches, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
+export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, teamMainCoaches, busy, moveState = { status: "idle" }, readOnly = false, gesturesBlockedReason = null, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
+  const gesturesBlocked = null !== gesturesBlockedReason;
+  const blockedReasonProp = gesturesBlockedReason ?? undefined;
   // Repliées par défaut : ouvrir un créneau ne doit pas agrandir l'aside (retour fondateur).
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
   const [constraintsOpen, setConstraintsOpen] = useState(false);
@@ -246,6 +250,8 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{PLANNING_TEXTS.readOnlyPlanningSlot}</p>
         ) : (
         <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+          {/* Un geste grisé dit son motif en clair : une ligne pour tous les gestes de la fiche. */}
+          {gesturesBlocked ? <p className="text-xs text-muted-foreground">{gesturesBlockedReason}</p> : null}
           {/* P2-30 (D11) : plus de formulaire jour/heure/gymnase — « Déplacer » ARME le mode
               cible click-click, la cible se choisit sur la grille. Armé, le bouton bascule sur
               une consigne, et une aide « Échap pour annuler » apparaît.
@@ -257,7 +263,8 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
               size="sm"
               variant={armed ? "default" : "outline"}
               className="flex-1"
-              disabled={busy}
+              disabled={busy || gesturesBlocked}
+              disabledReason={blockedReasonProp}
               onClick={onArmMove}
               aria-label={null !== groupSession && !armed ? `Déplacer le groupe, ${groupSession.memberCount} équipes` : undefined}
             >
@@ -273,7 +280,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
                 </>
               )}
             </Button>
-            <Button size="sm" variant={cell.locked ? "default" : "outline"} className="flex-1" disabled={busy} onClick={onToggleLock}>
+            <Button size="sm" variant={cell.locked ? "default" : "outline"} className="flex-1" disabled={busy || gesturesBlocked} disabledReason={blockedReasonProp} onClick={onToggleLock}>
               {cell.locked ? <LockOpen className="size-4" /> : <Lock className="size-4" />}
               {cell.locked ? "Déverrouiller" : "Verrouiller"}
             </Button>
@@ -294,7 +301,8 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
                 size="sm"
                 variant="outline"
                 className="w-full text-destructive"
-                disabled={busy}
+                disabled={busy || gesturesBlocked}
+                disabledReason={blockedReasonProp}
                 onClick={onRemove}
               >
                 {removePending ? (
@@ -374,8 +382,8 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
               size="sm"
               variant="outline"
               className="w-full"
-              disabled={busy || readOnly || inBlock}
-              disabledReason={readOnly ? "Planning validé — rouvrez-le pour mutualiser ce créneau." : inBlock ? "Cette séance fait déjà partie d'un groupe de mutualisation." : undefined}
+              disabled={busy || readOnly || inBlock || gesturesBlocked}
+              disabledReason={readOnly ? "Planning validé — rouvrez-le pour mutualiser ce créneau." : inBlock ? "Cette séance fait déjà partie d'un groupe de mutualisation." : blockedReasonProp}
               onClick={onMutualize}
             >
               <Users className="size-4" aria-hidden="true" />

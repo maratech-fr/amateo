@@ -781,7 +781,14 @@ Déployer ensuite est un geste séparé et délibéré, au choix :
 
 Vert dans *Actions → Deploy* = en prod.
 
-### Étape post-déploiement OBLIGATOIRE — réparer les empreintes des plannings (version « réservation souveraine »)
+### Étape post-déploiement OBLIGATOIRE — réparer les empreintes des plannings (version « réservation souveraine » ; REJOUER avec la version « version chargée »)
+
+⚠ **À rejouer au déploiement de « version chargée »** : l'empreinte `ScheduleConstraintBuilder::structureHash`
+ignore désormais l'id et l'ordre des lignes verrouillées (placements dédoublonnés). Sans rejouer
+`app:schedule:dedupe-snapshot-pins` (ci-dessous), **tous les plannings paraissent « périmés »**.
+**Rollback** : le code d'avant calcule l'empreinte à l'ancienne ; après `make deploy VERSION=<tag précédent>`
+(§ *Revenir en arrière*), rejouer la même commande depuis cette version (`--dry-run` puis sans) pour
+recaler les empreintes, sinon le même faux « périmé » apparaît dans l'autre sens.
 
 Juste après le déploiement de la version qui porte `ScheduleConstraintBuilder::structureHash` (empreinte
 sans `version` ni séances non HARD), lancée par le fondateur sur la VM, **avant** de laisser les

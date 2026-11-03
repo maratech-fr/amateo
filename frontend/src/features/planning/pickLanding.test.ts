@@ -47,3 +47,19 @@ describe("pickLandingScheduleId (UX-02)", () => {
     expect(pickDefaultSchedule([overlay("only-overlay")])).toBeNull();
   });
 });
+
+describe("pickLandingScheduleId — version chargée", () => {
+  const loaded = (id: string, createdAt: string): S & { isLiveContext: boolean } => ({ ...seasonPlan(id, "COMPLETED", createdAt), isLiveContext: true });
+
+  it("sans version en vigueur, atterrit sur la version chargée plutôt que sur la plus récente", () => {
+    expect(pickLandingScheduleId([loaded("charged", "2026-01-01T00:00:00Z"), seasonPlan("newer", "COMPLETED", "2026-06-01T00:00:00Z")])).toBe("charged");
+  });
+
+  it("la version en vigueur reste prioritaire", () => {
+    expect(pickLandingScheduleId([loaded("charged", "2026-01-01T00:00:00Z"), seasonPlan("chosen", "COMPLETED", "2026-02-01T00:00:00Z", true)])).toBe("chosen");
+  });
+
+  it("un pointeur posé sur une version non terminée est ignoré", () => {
+    expect(pickLandingScheduleId([{ ...seasonPlan("failed", "FAILED", "2026-06-01T00:00:00Z"), isLiveContext: true } as S, seasonPlan("done", "COMPLETED", "2026-01-01T00:00:00Z")])).toBe("done");
+  });
+});

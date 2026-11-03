@@ -11,7 +11,7 @@ import { Button } from "@/shared/components/ui/button";
 import { StatusPill } from "@/shared/components/ui/badge";
 
 import { SeasonSchedulesModal } from "./SeasonSchedulesModal";
-import { planRepresentative, visibleSeasonPlans } from "@/features/planning/lib/versions";
+import { seasonRepresentative, visibleSeasonPlans } from "@/features/planning/lib/versions";
 
 import type { CalendarEntry } from "./api";
 import { useSchedulePlans } from "./queries";
@@ -36,11 +36,11 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
   const [listOpen, setListOpen] = useState(false);
 
   // Le planning de la saison TEL QU'IL EST : la version pointée si le gestionnaire
-  // en a choisi une, sinon la dernière terminée. Le cockpit s'ouvre dès la première
+  // en a choisi une, sinon la version chargée. Le cockpit s'ouvre dès la première
   // génération (inv. 8/16) alors que le pointeur, lui, attend une validation — ne
   // lire que le pointeur laissait la bannière VIDE en état 2 et après chaque reopen,
   // c'est-à-dire précisément quand le gestionnaire vient regarder son planning.
-  const chosen = planRepresentative(visibleSeasonPlans(schedules));
+  const chosen = seasonRepresentative(visibleSeasonPlans(schedules));
   // Distinct plannings = the season main plan (1) + one per period overlay
   // (versions are navigated inside the planning, not counted here). Counts
   // include OPEN plannings (no finished version) — same rows as the modal —

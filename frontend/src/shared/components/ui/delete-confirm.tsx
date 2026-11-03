@@ -20,6 +20,8 @@ interface DeleteConfirmProps {
    * names them explicitly. Set for team / venue / slot (not coach).
    */
   affectsPeriodPlans?: boolean;
+  /** Une conséquence que seul l'appelant connaît, dite en clair avant le geste. */
+  note?: string;
   confirmLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
@@ -50,6 +52,7 @@ export function DeleteConfirm({
   impactLoading = false,
   impactFailed = false,
   affectsPeriodPlans = false,
+  note,
   confirmLabel = "Supprimer",
   onConfirm,
   onCancel,
@@ -69,6 +72,7 @@ export function DeleteConfirm({
   const lines = (impact?.lines ?? []).filter((line) => !(placedFixtures > 0 && "venue_fixture" === line.key));
   const description = (
     <>
+      {undefined !== note ? <p className="mb-3 text-foreground">{note}</p> : null}
       {blocked ? (
         <p className="font-medium text-foreground">{impact?.reason}</p>
       ) : (

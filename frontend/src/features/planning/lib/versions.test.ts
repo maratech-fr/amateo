@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Schedule } from "../api";
-import { laterCompletedVersionId, liveContextScheduleId, overlayVersionLabels, versionLabels, visibleOverlayVersions, visibleSeasonPlans } from "./versions";
+import { laterCompletedVersionId, liveContextScheduleId, seasonRepresentative, overlayVersionLabels, versionLabels, visibleOverlayVersions, visibleSeasonPlans } from "./versions";
 
 const plan = (over: Partial<Schedule>): Schedule => ({
   id: "id",
@@ -145,5 +145,20 @@ describe("laterCompletedVersionId (P4-98 — version antérieure)", () => {
 
   it("is null when nothing is displayed", () => {
     expect(laterCompletedVersionId(null, [plan({ id: "a" })])).toBeNull();
+  });
+});
+
+describe("version chargée — repli", () => {
+  const version = (id: string, createdAt: string, status: Schedule["status"] = "COMPLETED"): Schedule => ({ id, name: "P", status, score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan" });
+
+  it("sans pointeur, l'étoile va à la dernière TERMINÉE, jamais à un échec plus récent", () => {
+    expect(liveContextScheduleId([version("v1", "2026-01-01T10:00:00+00:00"), version("v2", "2026-02-01T10:00:00+00:00", "FAILED")], null)).toBe("v1");
+  });
+
+  it("le planning de saison affiché au cockpit est la version chargée, sauf une version en vigueur", () => {
+    const loaded = { ...version("v1", "2026-01-01T10:00:00+00:00"), isLiveContext: true };
+    const newer = version("v2", "2026-02-01T10:00:00+00:00");
+    expect(seasonRepresentative([loaded, newer])?.id).toBe("v1");
+    expect(seasonRepresentative([loaded, { ...newer, isChosen: true }])?.id).toBe("v2");
   });
 });

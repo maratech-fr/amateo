@@ -31,10 +31,9 @@ use Throwable;
  * planning-versions (décision 6): the plain "Régénérer" creates a NEW linear
  * version (V2, V3…) with the CURRENT club structure — never regenerates a
  * version in place (that would silently overwrite it, so no new version appears).
- * HARD locks survive without any copy here: the generation payload
- * (ScheduleConstraintBuilder::findBaseSlotTemplates) already feeds every base
- * version's HARD slots as pins, so the solver re-honours them — exactly as the
- * in-place regeneration used to. Contrast RegenerateFromVersion, which RESTORES
+ * It always starts from the LOADED version, whichever one is being viewed: its HARD
+ * slots are the pins of the generation payload, no copy here, and the response names it.
+ * Contrast RegenerateFromVersion, which RESTORES
  * a past version's structure photo first.
  */
 #[AsController]
@@ -159,13 +158,16 @@ final class RegenerateController extends AbstractController implements SeasonSco
             // (régénérer = une V+1 du même plan) ; linkSchedule ne fait que la numéroter.
             ->setSchedulePlanId($source->getSchedulePlanId());
         $seasonId = $source->getSeasonId();
-        $this->entityManager->wrapInTransaction(function () use ($newSchedule, $seasonId): void {
+        $loadedId = null;
+        $this->entityManager->wrapInTransaction(function () use ($newSchedule, $seasonId, $source, &$loadedId): void {
             // P2-9bis (planning lifecycle) : défense en profondeur du socle en vigueur.
             // SOUS le verrou de plan-scope de la saison (tenu jusqu'au commit — une garde
             // qui lit hors verrou n'est qu'un TOCTOU) : tant que le plan SEASON pointe une
             // version choisie, on refuse d'en préparer une autre. Miroir de processPost.
             $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($seasonId));
             $this->socleGuard->assertSeasonPlanNotChosen($seasonId);
+            // Lue sous le verrou, AVANT que la nouvelle version n'existe.
+            $loadedId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan((string) $source->getSchedulePlanId());
             $this->entityManager->persist($newSchedule);
             $this->schedulePlanProvisioner->linkSchedule($newSchedule);
             $this->entityManager->flush();
@@ -174,13 +176,12 @@ final class RegenerateController extends AbstractController implements SeasonSco
         $this->messageBus->dispatch(new GenerateScheduleMessage(
             scheduleId: $newSchedule->getId(),
             clubId: $newSchedule->getClubId(),
-            // P3-21 — la source de `previousAssignments` est la version que le gestionnaire
-            // REGARDE ($source), pas la dernière du plan : je regarde V2 alors que V5 existe,
-            // la convergence se mesure à V2. Le repli « dernière COMPLETED » n'a lieu que
-            // faute de source explicite (première génération wizard).
-            sourceScheduleId: $source->getId(),
+            // La version chargée : ses verrous partent au moteur (le worker la lit comme source) et la
+            // convergence se mesure à elle, même si le gestionnaire en regarde une autre. Null si aucune
+            // version n'a abouti : le worker n'a alors rien à reprendre.
+            sourceScheduleId: $loadedId,
         ));
 
-        return $this->json(['id' => $newSchedule->getId(), 'status' => ScheduleStatus::PENDING->value], Response::HTTP_ACCEPTED);
+        return $this->json(['id' => $newSchedule->getId(), 'status' => ScheduleStatus::PENDING->value, 'sourceScheduleId' => $loadedId], Response::HTTP_ACCEPTED);
     }
 }

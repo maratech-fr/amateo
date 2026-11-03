@@ -23,6 +23,9 @@ interface PlanningState {
   selectedSlotId: string | null;
   /** Resource ids to show for the current view; empty = show all used resources. */
   resourceFilter: string[];
+  /** La version de saison lancée par « Régénérer » dans CETTE session : son échec prime à l'atterrissage. Jamais persisté. */
+  sessionLaunchedScheduleId: string | null;
+  setSessionLaunchedScheduleId: (id: string | null) => void;
   setViewMode: (viewMode: ViewMode) => void;
   setSelectedScheduleId: (id: string | null) => void;
   setSelectedSlotId: (id: string | null) => void;
@@ -37,6 +40,8 @@ export const usePlanningStore = create<PlanningState>()(
       selectedScheduleId: null,
       selectedSlotId: null,
       resourceFilter: [],
+      sessionLaunchedScheduleId: null,
+      setSessionLaunchedScheduleId: (sessionLaunchedScheduleId) => set({ sessionLaunchedScheduleId }),
       // ⚠ Actions NEUTRES : elles n'arment PAS le voile. L'armement (`armNavTransition`) appartient
       // au GESTE (clic sur la bascule de vue / le sélecteur de version, dans `PlanningPage`), jamais
       // à l'action de store : `setSelectedScheduleId` est aussi appelée PROGRAMMATIQUEMENT (atterrir

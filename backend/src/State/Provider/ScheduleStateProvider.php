@@ -11,8 +11,8 @@ use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\ScheduleStructureSnapshot;
-use App\Entity\Season;
 use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Service\ScheduleCapabilityResolver;
 use App\Service\SchedulePlanProvisioner;
@@ -65,10 +65,10 @@ class ScheduleStateProvider extends AbstractStateProvider
         }
 
         $withPhoto = $this->scheduleIdsWithPhoto($ids);
-        $liveContext = $this->liveContextScheduleIds($ids);
         $chosen = $this->chosenScheduleIds($ids);
         $planType = $this->planTypeByScheduleId($ids);
-        $lockSource = $this->lockSourceScheduleIds(array_keys($planIds));
+        $loadedByPlan = $this->loadedVersionByPlan(array_keys($planIds));
+        $lockSource = array_fill_keys(array_values($loadedByPlan), true);
         $hardLockCount = $this->hardLockCountByScheduleId($ids);
         // P2-8 : le résolveur travaille sur les ENTITÉS (il lui faut club/saison, absents
         // du DTO). Une seule requête pour tout le lot (identity-map déjà chaude), puis les
@@ -78,13 +78,14 @@ class ScheduleStateProvider extends AbstractStateProvider
             $chosen,
             $planType,
             $withPhoto,
-            $lockSource,
+            $loadedByPlan,
         );
         foreach ($dtos as $dto) {
             $dto->hasStructurePhoto = isset($withPhoto[$dto->id]);
-            $dto->isLiveContext = isset($liveContext[$dto->id]);
             $dto->isChosen = isset($chosen[$dto->id]);
             $dto->planType = $planType[$dto->id] ?? null;
+            // La ★ est la version chargée, avec son repli : jamais une étoile absente ou périmée.
+            $dto->isLiveContext = isset($lockSource[$dto->id]) && SchedulePlanType::SEASON->value === $dto->planType;
             $dto->isLockSource = isset($lockSource[$dto->id]);
             $dto->hardLockCount = $hardLockCount[$dto->id] ?? 0;
             $dto->capabilities = $capabilities[$dto->id] ?? null;
@@ -114,16 +115,6 @@ class ScheduleStateProvider extends AbstractStateProvider
     private function scheduleIdsWithPhoto(array $scheduleIds): array
     {
         return $this->idSetFromColumn(ScheduleStructureSnapshot::class, 'scheduleId', $scheduleIds);
-    }
-
-    /**
-     * @param list<string> $scheduleIds
-     *
-     * @return array<string, true> set of schedule ids that ARE some season's loaded context (★)
-     */
-    private function liveContextScheduleIds(array $scheduleIds): array
-    {
-        return $this->idSetFromColumn(Season::class, 'liveContextScheduleId', $scheduleIds);
     }
 
     /**
@@ -181,25 +172,25 @@ class ScheduleStateProvider extends AbstractStateProvider
      *
      * @param list<string> $planIds
      *
-     * @return array<string, true>
+     * @return array<string, string> planId => version chargée ; un plan sans version terminée est absent
      */
-    private function lockSourceScheduleIds(array $planIds): array
+    private function loadedVersionByPlan(array $planIds): array
     {
-        $set = [];
+        $map = [];
         foreach ($planIds as $planId) {
             $sourceId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($planId);
             if (null !== $sourceId) {
-                $set[$sourceId] = true;
+                $map[$planId] = $sourceId;
             }
         }
 
-        return $set;
+        return $map;
     }
 
     /**
-     * V1 — le nombre de verrous HARD (épingles de work-loop) de chaque version du lot, en UN batch
-     * groupé. Tenant-filtré (ScheduleSlotTemplate porte un club_id). Une version sans verrou HARD est
-     * absente de la carte (→ 0 côté DTO).
+     * V1 — le nombre de verrous HARD posés par le gestionnaire sur chaque version du lot, en UN batch
+     * groupé : une réservation réimportée n'en est pas un. Tenant-filtré (ScheduleSlotTemplate porte un
+     * club_id). Une version sans verrou HARD est absente de la carte (→ 0 côté DTO).
      *
      * @param list<string> $scheduleIds
      *
@@ -213,9 +204,11 @@ class ScheduleStateProvider extends AbstractStateProvider
             ->from(ScheduleSlotTemplate::class, 't')
             ->where('t.scheduleId IN (:ids)')
             ->andWhere('t.lockLevel = :hard')
+            ->andWhere('t.lockOrigin IS NULL OR t.lockOrigin <> :reservation')
             ->groupBy('t.scheduleId')
             ->setParameter('ids', $scheduleIds)
             ->setParameter('hard', LockLevel::HARD)
+            ->setParameter('reservation', LockOrigin::RESERVATION)
             ->getQuery()
             ->getScalarResult();
 

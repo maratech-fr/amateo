@@ -73,6 +73,15 @@ Schedule (= Version)                    ← existant, recentré
    génère des versions (V4, V5…), on choisira. **Aucun pointage automatique** (l'auto-baseline
    au 1er COMPLETED disparaît) — seul le gestionnaire pointe.
 
+   **Amendement (version chargée, fondateur 2026-11-03) :** dans un plan, **seule la version
+   chargée** (l'étoile = la source des verrous, `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`)
+   se modifie, se valide, part au moteur et compte pour les verrous à la génération de saison ; même
+   règle pour un plan de période (sa version source). Les autres versions se consultent. Verdict
+   unique : `App\Service\VersionEditability` (409 codé `not_loaded_version`, exposé par
+   `capabilities.canEdit`). Remplace la règle d'atterrissage du 2026-08-19 : l'écran embarqué de saison
+   atterrit sur la chargée, sauf génération en cours ou échec dans la session. Gardé par
+   `Integration/LoadedVersionLocksOnlyTest` et `Security/LoadedVersionIsTheOnlyEditableTest`.
+
    **Amendement (prolonger une fermeture à travers des vacances, fondateur 2026-10-27) :**
    exception NOMMÉE, bornée au rail NEUF `POST /api/schedule_plans/{id}/window-preview` +
    `POST …/window` (ancré au PLAN d'une FERMETURE, `App\Service\ClosureWindowPlanner`/

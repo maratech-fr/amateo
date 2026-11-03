@@ -49,7 +49,7 @@ final readonly class FeedbackContextEnricher
      */
     private const array TECHNICAL_FAILURE_TYPES = [
         'engine_timeout', 'engine_error', 'engine_rejected', 'internal_error',
-        'engine_status', 'engine_failed', 'stuck_timeout', 'overlay_entry_missing',
+        'engine_status', 'engine_failed', 'stuck_timeout', 'overlay_entry_missing', 'source_version_missing',
         'club_mismatch', 'generation_failed',
     ];
 

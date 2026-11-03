@@ -90,8 +90,8 @@ final class TenantCacheIsolationTest extends TestCase
         ));
         $listener->flushInvalidations();
 
-        self::assertTrue($schedulePool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_A, self::SEASON_ONE)));
-        self::assertTrue($schedulePool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_B, self::SEASON_ONE)));
+        self::assertTrue($schedulePool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_A, self::SEASON_ONE, null)));
+        self::assertTrue($schedulePool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_B, self::SEASON_ONE, null)));
     }
 
     /** Club A en cache sur DEUX saisons + club B sur une — le décor de chaque test. */
@@ -99,7 +99,7 @@ final class TenantCacheIsolationTest extends TestCase
     {
         $pool = new TagAwareAdapter(new ArrayAdapter);
         foreach ([[self::CLUB_A, self::SEASON_ONE], [self::CLUB_A, self::SEASON_TWO], [self::CLUB_B, self::SEASON_ONE]] as [$club, $season]) {
-            $item = $pool->getItem(ScheduleConstraintBuilder::cacheKey($club, $season));
+            $item = $pool->getItem(ScheduleConstraintBuilder::cacheKey($club, $season, null));
             $item->set(['payload' => $club . $season]);
             $item->tag(ScheduleConstraintBuilder::cacheTag($club));
             $pool->save($item);
@@ -111,15 +111,15 @@ final class TenantCacheIsolationTest extends TestCase
     private function assertClubAPurgedClubBIntact(TagAwareAdapter $pool): void
     {
         self::assertFalse(
-            $pool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_A, self::SEASON_ONE)),
+            $pool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_A, self::SEASON_ONE, null)),
             'le payload de la saison 1 du club édité doit être purgé',
         );
         self::assertFalse(
-            $pool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_A, self::SEASON_TWO)),
+            $pool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_A, self::SEASON_TWO, null)),
             'purger par tag doit emporter TOUTES les saisons du club — une entité sans seasonId ne peut viser aucune clé',
         );
         self::assertTrue(
-            $pool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_B, self::SEASON_ONE)),
+            $pool->hasItem(ScheduleConstraintBuilder::cacheKey(self::CLUB_B, self::SEASON_ONE, null)),
             'le payload d\'un AUTRE club doit survivre — l\'isolation que ce gate garde',
         );
     }

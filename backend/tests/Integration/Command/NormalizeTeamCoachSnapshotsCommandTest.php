@@ -337,7 +337,7 @@ final class NormalizeTeamCoachSnapshotsCommandTest extends KernelTestCase
     protected function tearDown(): void
     {
         foreach ($this->primedCaches as [$clubId, $seasonId]) {
-            $this->cachePool()->deleteItem(ScheduleConstraintBuilder::cacheKey($clubId, $seasonId));
+            $this->cachePool()->invalidateTags([ScheduleConstraintBuilder::cacheTag($clubId)]);
         }
         parent::tearDown();
     }
@@ -397,7 +397,7 @@ final class NormalizeTeamCoachSnapshotsCommandTest extends KernelTestCase
         $this->em->clear();
         $this->scopeGucToClub($f['clubId']);
         if ($purge) {
-            $this->cachePool()->deleteItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId']));
+            $this->cachePool()->invalidateTags([ScheduleConstraintBuilder::cacheTag($f['clubId'])]);
         }
         $this->primedCaches[] = [$f['clubId'], $f['seasonId']];
         $hash = self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($f['planId']);
@@ -434,28 +434,38 @@ final class NormalizeTeamCoachSnapshotsCommandTest extends KernelTestCase
     /**
      * Met en cache un payload de l'ANCIEN code, tagué comme le fait le builder.
      *
-     * @param array{clubId: string, seasonId: string} $f
+     * @param array{clubId: string, seasonId: string, planId: string} $f
      */
     private function primeCache(array $f): void
     {
-        $item = $this->cachePool()->getItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId']));
+        $item = $this->cachePool()->getItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId'], $this->loadedVersionOf($f)));
         $item->set(['constraints' => [$this->legacyLink(['id' => 'x', 'teamId' => 't', 'value' => 'c', 'metadata' => ['coachId' => 'c', 'role' => 'MAIN']])]]);
         $item->tag(ScheduleConstraintBuilder::cacheTag($f['clubId']));
         $this->cachePool()->save($item);
         $this->primedCaches[] = [$f['clubId'], $f['seasonId']];
     }
 
-    /** @param array{clubId: string, seasonId: string} $f */
+    /**
+     * La clé du payload porte la version chargée : celle que le builder résout lui-même.
+     *
+     * @param array{clubId: string, seasonId: string, planId: string} $f
+     */
+    private function loadedVersionOf(array $f): ?string
+    {
+        return self::getContainer()->get(SchedulePlanProvisioner::class)->lockSourceScheduleIdOfPlan($f['planId']);
+    }
+
+    /** @param array{clubId: string, seasonId: string, planId: string} $f */
     private function cacheIsPrimed(array $f): bool
     {
-        return $this->cachePool()->hasItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId']));
+        return $this->cachePool()->hasItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId'], $this->loadedVersionOf($f)));
     }
 
     /** @return array{clubId: string, seasonId: string, planId: string, scheduleId: string} */
     private function seedLegacyVersion(): array
     {
         $f = $this->seedClubWithLink();
-        $this->cachePool()->deleteItem(ScheduleConstraintBuilder::cacheKey($f['clubId'], $f['seasonId']));
+        $this->cachePool()->invalidateTags([ScheduleConstraintBuilder::cacheTag($f['clubId'])]);
         $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($f['clubId'], $f['seasonId']);
         $this->primedCaches[] = [$f['clubId'], $f['seasonId']];
         $snapshot = $this->legacySnapshot($payload);

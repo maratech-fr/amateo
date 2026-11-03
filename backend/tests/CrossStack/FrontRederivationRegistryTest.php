@@ -118,6 +118,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\MatchFootprint::personConflictOccupancy (régime AWAY)',
             'parityTest' => 'AwayTimelineMirrorParityTest.php',
         ],
+        'features/planning/lib/versions.ts' => [
+            'decides' => 'le libellé court « V2 » d\'une version, par rang de création dans son plan — affiché dans les titres et les dialogues, cité par les messages du serveur ; sinon l\'écran et le serveur nomment deux versions différentes',
+            'backendTruth' => 'App\\Service\\VersionLabel::of',
+            'parityTest' => 'VersionLabelMirrorParityTest.php',
+        ],
         'features/cockpit/lib/holidayWorkweek.ts' => [
             'decides' => 'une semaine est-elle « de vacances » (lundi→vendredi couvert) — offerte en reprise, exclue de l\'offre fermeture ; sinon semaine de saison',
             'backendTruth' => 'App\\Service\\HolidayWorkweekRule::covers (garde du POST d\'une semaine-enfant de vacances)',

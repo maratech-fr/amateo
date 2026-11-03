@@ -34,6 +34,7 @@ final class ScheduleCapabilityResolver
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly OverlayManager $overlayManager,
+        private readonly RestoreFeasibility $restoreFeasibility,
     ) {}
 
     /** Une version en cours de solve (PENDING/GENERATING) — ni supprimable, ni « sœur » validable. */
@@ -71,6 +72,26 @@ final class ScheduleCapabilityResolver
         return $others <= 1;
     }
 
+    /**
+     * Cette version est-elle la version chargée d'un plan de saison dont une autre version est en vol ?
+     * Le worker repart d'elle (période : son comportement ne change pas, le worker ne lit pas de source).
+     */
+    public function isLoadedVersionOfRunningGeneration(Schedule $schedule): bool
+    {
+        $planId = $schedule->getSchedulePlanId();
+        if (!$this->schedulePlanProvisioner->planIsSeason($planId)
+            || $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($planId) !== $schedule->getId()) {
+            return false;
+        }
+
+        return $this->entityManager->getRepository(Schedule::class)->count([
+            'clubId' => $schedule->getClubId(),
+            'seasonId' => $schedule->getSeasonId(),
+            'schedulePlanId' => $planId,
+            'status' => self::IN_FLIGHT,
+        ]) > 0;
+    }
+
     /** Une génération est-elle en cours quelque part dans la saison ? (garde du restore destructif). */
     public function inFlightInSeason(string $clubId, string $seasonId): bool
     {
@@ -89,15 +110,15 @@ final class ScheduleCapabilityResolver
      * reproduisent EXACTEMENT les prédicats unitaires ci-dessus.
      *
      * @param list<Schedule>        $schedules
-     * @param array<string, true>   $chosenIds     ids des versions que leur plan pointe
-     * @param array<string, string> $planTypeById  scheduleId => type de plan (SEASON|CLOSURE|HOLIDAY)
-     * @param array<string, true>   $withPhoto     ids des versions portant une photo de structure
-     * @param array<string, true>   $lockSourceIds ids des versions qui SONT la source des verrous de
-     *                                             leur plan (maison {@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan})
+     * @param array<string, true>   $chosenIds    ids des versions que leur plan pointe
+     * @param array<string, string> $planTypeById scheduleId => type de plan (SEASON|CLOSURE|HOLIDAY)
+     * @param array<string, true>   $withPhoto    ids des versions portant une photo de structure
+     * @param array<string, string> $loadedByPlan planId => version chargée du plan (maison {@see
+     *                                            SchedulePlanProvisioner::lockSourceScheduleIdOfPlan})
      *
      * @return array<string, ScheduleCapabilities> scheduleId => capacités
      */
-    public function forSchedules(array $schedules, array $chosenIds, array $planTypeById, array $withPhoto, array $lockSourceIds = []): array
+    public function forSchedules(array $schedules, array $chosenIds, array $planTypeById, array $withPhoto, array $loadedByPlan = []): array
     {
         if ([] === $schedules) {
             return [];
@@ -111,6 +132,17 @@ final class ScheduleCapabilityResolver
         // V1bis — les plans VALIDÉS (chosen_schedule_id non-null) du lot : « Charger » (load-locks)
         // est refusé sur un plan validé (rouvrir d'abord), donc canLoadLocks le lit par plan.
         $validatedPlanIds = $this->validatedPlanIds(array_keys($planIds));
+
+        // Motif pour lequel une version de saison terminée ne se charge pas : une fois pour tout le lot.
+        $restoreReasons = $this->restoreFeasibility->blockedReasons(
+            array_values(array_filter(
+                $schedules,
+                static fn (Schedule $s): bool => ScheduleStatus::COMPLETED === $s->getStatus()
+                    && SchedulePlanType::SEASON->value === ($planTypeById[$s->getId()] ?? null)
+                    && !isset($chosenIds[$s->getId()]),
+            )),
+            $withPhoto,
+        );
 
         $seasonInFlight = []; // seasonId => bool, résolu une fois par saison
         $seasonOverlays = []; // seasonId => int, résolu une fois par saison
@@ -154,15 +186,24 @@ final class ScheduleCapabilityResolver
             $isPeriod = !$isSeason && null !== ($planTypeById[$id] ?? null);
             $planValidated = isset($validatedPlanIds[$schedule->getSchedulePlanId()]);
 
+            $loadedId = $loadedByPlan[$schedule->getSchedulePlanId()] ?? null;
+            $editBlockedReason = VersionEditability::verdict($id, $isChosen, $loadedId);
+            $isLoaded = $loadedId === $id;
+            $restoreReason = $restoreReasons[$id] ?? null;
+
             $capabilities[$id] = new ScheduleCapabilities(
-                canDelete: !$isChosen && !$isInFlight && !$isLastFinishedSeasonVersion,
-                canValidate: $isCompleted && !$hasInFlightSibling,
+                canDelete: !$isChosen && !$isInFlight && !$isLastFinishedSeasonVersion
+                    && !($isSeason && $isLoaded && $hasInFlightSibling),
+                canValidate: $isCompleted && !$hasInFlightSibling && VersionEditability::NOT_LOADED !== $editBlockedReason,
                 canRegenerateFrom: $isSeason && $isCompleted && !$isChosen
-                    && !$seasonInFlight[$seasonId] && isset($withPhoto[$id]),
+                    && !$seasonInFlight[$seasonId] && null === $restoreReason,
                 canLoadLocks: $isPeriod && $isCompleted && !$planValidated
-                    && !$seasonInFlight[$seasonId] && !isset($lockSourceIds[$id]),
+                    && !$seasonInFlight[$seasonId] && !$isLoaded,
                 versionsDeletedOnValidate: max(0, $stats['total'] - 1),
                 overlaysDroppedOnValidate: $overlaysDropped,
+                canEdit: null === $editBlockedReason,
+                editBlockedReason: $editBlockedReason,
+                regenerateFromBlockedReason: $restoreReason,
             );
         }
 

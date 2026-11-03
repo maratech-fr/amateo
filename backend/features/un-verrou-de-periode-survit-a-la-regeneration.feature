@@ -32,7 +32,7 @@ Fonctionnalité: Un verrou de plan de période survit à la régénération, sur
     verrous compris, et non de la plus récente. Sans « Charger », on repartirait des données en cours
     (la version récente) et les verrous de l'ancienne se perdraient.
     Étant donné un petit club réaliste dont le planning de saison est en vigueur, avec un plan de période jetable portant une version transcrite plus ancienne que les données en cours
+    Et je charge les verrous de cette version du petit club
     Et deux séances libres de cette version du petit club verrouillées en dur
-    Quand je charge les verrous de cette version du petit club
-    Et je régénère le plan de période du petit club
+    Quand je régénère le plan de période du petit club
     Alors la régénération aboutit et les deux séances reviennent verrouillées, aux mêmes cases

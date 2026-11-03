@@ -18,6 +18,8 @@ interface VersionLike {
   schedulePlanId: string | null;
   /** Server pointer (season plans only) — the loaded-context version (★). */
   isLiveContext?: boolean;
+  /** La version chargée d'un plan, saison comme période : la seule qui se modifie. Le serveur le dit. */
+  isLockSource?: boolean;
 }
 
 /** ADR-0002 C4: a version is the SOCLE iff its plan is the SEASON plan. */
@@ -34,6 +36,29 @@ const isSeasonVersion = (v: VersionLike): boolean => isSeasonPlanType(v.planType
  */
 export function planRepresentative<T extends VersionLike & { isChosen?: boolean }>(versions: T[]): T | null {
   return versions.find((v) => true === v.isChosen) ?? representativeVersion(versions);
+}
+
+/**
+ * Le planning de SAISON tel qu'il est : la version en vigueur, sinon la version chargée (celle où le
+ * gestionnaire travaille), sinon la dernière terminée. Une période garde {@link planRepresentative} :
+ * le pointeur de saison ne la concerne pas.
+ */
+export function seasonRepresentative<T extends VersionLike & { isChosen?: boolean }>(versions: T[]): T | null {
+  return versions.find((v) => true === v.isChosen) ?? versions.find((v) => true === v.isLiveContext && "COMPLETED" === v.status) ?? representativeVersion(versions);
+}
+
+/**
+ * La version chargée du plan de `viewed`, telle que le serveur la désigne (`isLiveContext` pour la
+ * saison, `isLockSource` pour une période). `undefined` si le serveur n'en désigne aucune : rien n'est
+ * alors déduit ici, et le serveur jugera seul.
+ */
+export function loadedVersionOf<T extends VersionLike>(schedules: T[], viewed: T | null): T | undefined {
+  if (null === viewed) {
+    return undefined;
+  }
+  return isSeasonPlanType(viewed.planType)
+    ? schedules.find((s) => isSeasonPlanType(s.planType) && true === s.isLiveContext)
+    : schedules.find((s) => s.schedulePlanId === viewed.schedulePlanId && true === s.isLockSource);
 }
 
 /**
@@ -56,16 +81,17 @@ export function visibleOverlayVersions<T extends VersionLike>(schedules: T[], sc
 /**
  * The version that is the loaded context (★): the one whose structure is live.
  * Prefer the server pointer (Schedule.isLiveContext, re-pointed by "Charger cette
- * version"), else fall back to the latest visible version — a pre-deploy season
+ * version"), else fall back to the latest FINISHED version, the same fallback as the
+ * server (a failed version is never the loaded one) — a pre-deploy season
  * (NULL pointer) or a pointer left on a deleted/archived version. Without the
  * fallback the ★ would vanish AND "Charger" would wrongly enable on the already-
  * current version (restoring an old photo → silent data loss). Restricted to the
  * relevant set: the selected overlay's own versions when an overlay is viewed
- * (overlays carry no pointer → always the latest), else the season versions.
+ * (its pointer is `isLockSource`), else the season versions.
  */
 export function liveContextScheduleId<T extends VersionLike & { id: string }>(schedules: T[], selectedOverlayPlanId: string | null): string | null {
   const set = null !== selectedOverlayPlanId ? visibleOverlayVersions(schedules, selectedOverlayPlanId) : visibleSeasonPlans(schedules);
-  return set.find((s) => true === s.isLiveContext)?.id ?? set.at(-1)?.id ?? null;
+  return set.find((s) => true === s.isLiveContext)?.id ?? set.find((s) => true === s.isLockSource)?.id ?? representativeVersion(set)?.id ?? set.at(-1)?.id ?? null;
 }
 
 /**
@@ -105,6 +131,21 @@ export function laterCompletedVersionId<T extends VersionLike & { id: string }>(
     return null;
   }
   return latestCompleted.createdAt.localeCompare(displayed.createdAt) > 0 ? latestCompleted.id : null;
+}
+
+/**
+ * Miroir déclaré de `App\\Service\\VersionLabel::of` (mêmes cas : `versionLabel.parity.json`, gardés par
+ * `VersionLabelMirrorParityTest` et `versionLabel.parity.test.ts`) : le libellé court « V2 » d'une version,
+ * son rang de création dans son plan. Le « V2 » que dit le serveur et celui que montre l'écran désignent
+ * la même version. `null` si la version n'est pas dans la liste.
+ */
+export function versionLabelOf<T extends VersionLike>(schedules: T[], id: string): string | null {
+  const target = schedules.find((s) => s.id === id);
+  if (undefined === target) {
+    return null;
+  }
+  const plan = schedules.filter((s) => s.schedulePlanId === target.schedulePlanId).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  return `V${plan.indexOf(target) + 1}`;
 }
 
 /** "V3 — 10 juil. 14:32" stamp shared by season and overlay version labels. */
