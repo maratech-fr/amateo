@@ -246,7 +246,7 @@ final class VenueClosureDays
      *
      * @param iterable<Constraint> $datedConstraints
      *
-     * @return list<array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string}>
+     * @return list<array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string, calendarEntryId: string}>
      */
     public static function rawIntervals(iterable $datedConstraints, DateTimeImmutable $fallbackStart, DateTimeImmutable $fallbackEnd): array
     {
@@ -272,6 +272,7 @@ final class VenueClosureDays
                 'title' => $constraint->getName(),
                 'startDate' => $start,
                 'endDate' => $end,
+                'calendarEntryId' => (string) $constraint->getCalendarEntryId(),
             ];
         }
 

@@ -430,33 +430,6 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             summary: 'League/committee entry-deadline outlook for the cockpit (read-only, open to any member)',
         )));
 
-        $paths->addPath('/api/venue-unavailability-impact', new PathItem(get: new Operation(
-            operationId: 'getVenueUnavailabilityImpact',
-            tags: ['Match'],
-            responses: [
-                '200' => $this->schemas->jsonResponse('Per-unavailability impact: affected placed matches + training sessions of the effective schedules (cockpit alert feed)', [
-                    'type' => 'object',
-                    'properties' => [
-                        'clubId' => ['type' => 'string'],
-                        'seasonId' => ['type' => 'string', 'nullable' => true],
-                        'items' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
-                            'unavailabilityId' => ['type' => 'string'],
-                            'venueId' => ['type' => 'string'],
-                            'startDate' => ['type' => 'string', 'format' => 'date'],
-                            'endDate' => ['type' => 'string', 'format' => 'date'],
-                            'label' => ['type' => 'string', 'nullable' => true],
-                            'affectedFixtures' => ['type' => 'array', 'items' => ['type' => 'object']],
-                            'trainingOccurrences' => ['type' => 'integer', 'description' => 'Dated training sessions inside the range'],
-                            'trainingSlotCount' => ['type' => 'integer', 'description' => 'Distinct weekly slots affected'],
-                        ]]],
-                    ],
-                ]),
-                '400' => new Response('No club in context'),
-                '401' => new Response('Unauthorized (missing/expired JWT)'),
-            ],
-            summary: 'Venue unavailability impact (alert-only, computed on the fly — blocks nothing)',
-        )));
-
         $placementRunResult = [
             'type' => 'object',
             'nullable' => true,

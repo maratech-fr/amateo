@@ -4335,6 +4335,216 @@
                 }
             }
         },
+        "/api/calendar-entries/{id}/impact": {
+            "get": {
+                "operationId": "getCalendarEntryImpact",
+                "tags": [
+                    "CalendarEntry"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "What a saved venue closure touches \u2014 the same figures as its preview before saving",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "venueIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "startDate": {
+                                            "type": "string",
+                                            "format": "date"
+                                        },
+                                        "endDate": {
+                                            "type": "string",
+                                            "format": "date"
+                                        },
+                                        "seasonPlanChosen": {
+                                            "type": "boolean"
+                                        },
+                                        "teams": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "tierLabel": {
+                                                        "type": "string"
+                                                    },
+                                                    "tierWeight": {
+                                                        "type": "integer"
+                                                    },
+                                                    "occurrences": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "trainingOccurrences": {
+                                            "type": "integer"
+                                        },
+                                        "trainingSlotCount": {
+                                            "type": "integer"
+                                        },
+                                        "matchesToMove": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "fixtureId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "opponentLabel": {
+                                                        "type": "string"
+                                                    },
+                                                    "matchDate": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "kickoffTime": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "governingPlans": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "entryId": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "title": {
+                                                        "type": "string"
+                                                    },
+                                                    "startDate": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "endDate": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "chosenScheduleId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "loadedScheduleId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "hasVersions": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "sessions": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "teamId": {
+                                                                    "type": "string"
+                                                                },
+                                                                "teamName": {
+                                                                    "type": "string"
+                                                                },
+                                                                "date": {
+                                                                    "type": "string",
+                                                                    "format": "date"
+                                                                },
+                                                                "venueId": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "toRemove": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "locks": {
+                                                                "type": "integer"
+                                                            },
+                                                            "reservations": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "teamId": {
+                                                                            "type": "string",
+                                                                            "nullable": true
+                                                                        },
+                                                                        "teamName": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "dayOfWeek": {
+                                                                            "type": "integer"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "regeneratedWithout": {
+                                                        "type": "boolean",
+                                                        "description": "The pointed version, born after the closure, no longer trains at the closed venue on days the season calendar did"
+                                                    },
+                                                    "regeneratedWithoutWeekdays": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "integer"
+                                                        },
+                                                        "description": "Those ISO weekdays (1 = Monday)"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "fullyGoverned": {
+                                            "type": "boolean"
+                                        },
+                                        "closedSessions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "removedAtDeclaration": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "An entry of another club"
+                    },
+                    "404": {
+                        "description": "Unknown entry"
+                    }
+                },
+                "summary": "Impact of a saved venue closure (read-only)"
+            }
+        },
         "/api/calendar_entries": {
             "get": {
                 "operationId": "api_calendar_entries_get_collection",
@@ -4836,6 +5046,219 @@
                     },
                     "required": false
                 }
+            }
+        },
+        "/api/venue-closure-impact": {
+            "get": {
+                "operationId": "getVenueClosureImpact",
+                "tags": [
+                    "CalendarEntry"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "What closing this venue on these dates would touch: training sessions, home matches to move, and the hard locks and reservations its saving would remove from the period plans governing those dates",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "venueIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "startDate": {
+                                            "type": "string",
+                                            "format": "date"
+                                        },
+                                        "endDate": {
+                                            "type": "string",
+                                            "format": "date"
+                                        },
+                                        "seasonPlanChosen": {
+                                            "type": "boolean"
+                                        },
+                                        "teams": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "tierLabel": {
+                                                        "type": "string"
+                                                    },
+                                                    "tierWeight": {
+                                                        "type": "integer"
+                                                    },
+                                                    "occurrences": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "trainingOccurrences": {
+                                            "type": "integer"
+                                        },
+                                        "trainingSlotCount": {
+                                            "type": "integer"
+                                        },
+                                        "matchesToMove": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "fixtureId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "opponentLabel": {
+                                                        "type": "string"
+                                                    },
+                                                    "matchDate": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "kickoffTime": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "governingPlans": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "entryId": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "title": {
+                                                        "type": "string"
+                                                    },
+                                                    "startDate": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "endDate": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "chosenScheduleId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "loadedScheduleId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "hasVersions": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "sessions": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "teamId": {
+                                                                    "type": "string"
+                                                                },
+                                                                "teamName": {
+                                                                    "type": "string"
+                                                                },
+                                                                "date": {
+                                                                    "type": "string",
+                                                                    "format": "date"
+                                                                },
+                                                                "venueId": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "toRemove": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "locks": {
+                                                                "type": "integer"
+                                                            },
+                                                            "reservations": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "teamId": {
+                                                                            "type": "string",
+                                                                            "nullable": true
+                                                                        },
+                                                                        "teamName": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "dayOfWeek": {
+                                                                            "type": "integer"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "regeneratedWithout": {
+                                                        "type": "boolean",
+                                                        "description": "The pointed version, born after the closure, no longer trains at the closed venue on days the season calendar did"
+                                                    },
+                                                    "regeneratedWithoutWeekdays": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "integer"
+                                                        },
+                                                        "description": "Those ISO weekdays (1 = Monday)"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "fullyGoverned": {
+                                            "type": "boolean"
+                                        },
+                                        "closedSessions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "removedAtDeclaration": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing venue or dates"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "404": {
+                        "description": "Unknown venue, or a venue of another club"
+                    },
+                    "422": {
+                        "description": "End date before start date"
+                    }
+                },
+                "summary": "Preview of a venue closure before saving it (read-only)"
             }
         },
         "/api/public-holidays": {
@@ -17126,82 +17549,6 @@
                 "summary": "Stamp the match-module visit and return what changed since the previous one (per user; open to any member)"
             }
         },
-        "/api/venue-unavailability-impact": {
-            "get": {
-                "operationId": "getVenueUnavailabilityImpact",
-                "tags": [
-                    "Match"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Per-unavailability impact: affected placed matches + training sessions of the effective schedules (cockpit alert feed)",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "clubId": {
-                                            "type": "string"
-                                        },
-                                        "seasonId": {
-                                            "type": "string",
-                                            "nullable": true
-                                        },
-                                        "items": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "unavailabilityId": {
-                                                        "type": "string"
-                                                    },
-                                                    "venueId": {
-                                                        "type": "string"
-                                                    },
-                                                    "startDate": {
-                                                        "type": "string",
-                                                        "format": "date"
-                                                    },
-                                                    "endDate": {
-                                                        "type": "string",
-                                                        "format": "date"
-                                                    },
-                                                    "label": {
-                                                        "type": "string",
-                                                        "nullable": true
-                                                    },
-                                                    "affectedFixtures": {
-                                                        "type": "array",
-                                                        "items": {
-                                                            "type": "object"
-                                                        }
-                                                    },
-                                                    "trainingOccurrences": {
-                                                        "type": "integer",
-                                                        "description": "Dated training sessions inside the range"
-                                                    },
-                                                    "trainingSlotCount": {
-                                                        "type": "integer",
-                                                        "description": "Distinct weekly slots affected"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "No club in context"
-                    },
-                    "401": {
-                        "description": "Unauthorized (missing/expired JWT)"
-                    }
-                },
-                "summary": "Venue unavailability impact (alert-only, computed on the fly \u2014 blocks nothing)"
-            }
-        },
         "/api/match_constraints": {
             "get": {
                 "operationId": "api_match_constraints_get_collection",
@@ -20410,6 +20757,18 @@
                                         "id": {
                                             "type": "string",
                                             "format": "uuid"
+                                        },
+                                        "removed": {
+                                            "type": "object",
+                                            "description": "What the newly closed days removed from the period plans governing them: hard locks and reservations at the closed venue",
+                                            "properties": {
+                                                "locks": {
+                                                    "type": "integer"
+                                                },
+                                                "reservations": {
+                                                    "type": "integer"
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -20426,7 +20785,7 @@
                         "description": "Unknown plan, or a plan belonging to another club"
                     },
                     "409": {
-                        "description": "Preview token stale/forged (the closure moved since the preview), or the season is archived"
+                        "description": "Preview token stale/forged (the closure moved since the preview), the season is archived, or a generation is running for the club (code generation_in_progress)"
                     },
                     "422": {
                         "description": "Missing preview token, not a closure plan, malformed dates, or a window below the \"past does not move\" floor"
@@ -20483,6 +20842,51 @@
                                         "token": {
                                             "type": "string",
                                             "description": "Canonical fingerprint of the read state \u2014 sent back as previewToken on the apply"
+                                        },
+                                        "pinRemoval": {
+                                            "type": "object",
+                                            "nullable": true,
+                                            "description": "What confirming would remove from the period plans governing the newly closed days: the closed venue, and each touched plan with its hard locks and reservations",
+                                            "properties": {
+                                                "venueName": {
+                                                    "type": "string"
+                                                },
+                                                "plans": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "entryId": {
+                                                                "type": "string"
+                                                            },
+                                                            "title": {
+                                                                "type": "string"
+                                                            },
+                                                            "locks": {
+                                                                "type": "integer"
+                                                            },
+                                                            "reservations": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "teamId": {
+                                                                            "type": "string",
+                                                                            "nullable": true
+                                                                        },
+                                                                        "teamName": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "dayOfWeek": {
+                                                                            "type": "integer"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         },
                                         "summary": {
                                             "type": "string",
@@ -27307,289 +27711,6 @@
                     "required": true
                 }
             }
-        },
-        "/api/venue_unavailabilities": {
-            "get": {
-                "operationId": "api_venue_unavailabilities_get_collection",
-                "tags": [
-                    "VenueUnavailability"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "VenueUnavailability collection",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "type": "object",
-                                    "description": "VenueUnavailability.jsonld collection.",
-                                    "allOf": [
-                                        {
-                                            "$ref": "#/components/schemas/HydraCollectionBaseSchema"
-                                        },
-                                        {
-                                            "type": "object",
-                                            "required": [
-                                                "member"
-                                            ],
-                                            "properties": {
-                                                "member": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "$ref": "#/components/schemas/VenueUnavailability.jsonld"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    ]
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/VenueUnavailability"
-                                    }
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/VenueUnavailability.html"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "summary": "Retrieves the collection of VenueUnavailability resources.",
-                "description": "Retrieves the collection of VenueUnavailability resources.",
-                "parameters": [
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "The collection page number",
-                        "required": false,
-                        "deprecated": false,
-                        "schema": {
-                            "type": "integer",
-                            "default": 1
-                        },
-                        "style": "form",
-                        "explode": true
-                    }
-                ]
-            },
-            "post": {
-                "operationId": "api_venue_unavailabilities_post",
-                "tags": [
-                    "VenueUnavailability"
-                ],
-                "responses": {
-                    "201": {
-                        "description": "VenueUnavailability resource created",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/VenueUnavailability.jsonld"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/VenueUnavailability"
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/VenueUnavailability.html"
-                                }
-                            }
-                        },
-                        "links": {}
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    },
-                    "422": {
-                        "description": "An error occurred",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Creates a VenueUnavailability resource.",
-                "description": "Creates a VenueUnavailability resource.",
-                "parameters": [],
-                "requestBody": {
-                    "description": "The new VenueUnavailability resource",
-                    "content": {
-                        "application/ld+json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/VenueUnavailability.VenueUnavailabilityInput"
-                            }
-                        },
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/VenueUnavailability.VenueUnavailabilityInput"
-                            }
-                        },
-                        "text/html": {
-                            "schema": {
-                                "$ref": "#/components/schemas/VenueUnavailability.VenueUnavailabilityInput"
-                            }
-                        }
-                    },
-                    "required": true
-                }
-            }
-        },
-        "/api/venue_unavailabilities/{id}": {
-            "get": {
-                "operationId": "api_venue_unavailabilities_id_get",
-                "tags": [
-                    "VenueUnavailability"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "VenueUnavailability resource",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/VenueUnavailability.jsonld"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/VenueUnavailability"
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/VenueUnavailability.html"
-                                }
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Retrieves a VenueUnavailability resource.",
-                "description": "Retrieves a VenueUnavailability resource.",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "VenueUnavailability identifier",
-                        "required": true,
-                        "deprecated": false,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "style": "simple",
-                        "explode": false
-                    }
-                ]
-            },
-            "delete": {
-                "operationId": "api_venue_unavailabilities_id_delete",
-                "tags": [
-                    "VenueUnavailability"
-                ],
-                "responses": {
-                    "204": {
-                        "description": "VenueUnavailability resource deleted"
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Removes the VenueUnavailability resource.",
-                "description": "Removes the VenueUnavailability resource.",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "VenueUnavailability identifier",
-                        "required": true,
-                        "deprecated": false,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "style": "simple",
-                        "explode": false
-                    }
-                ]
-            }
         }
     },
     "components": {
@@ -27673,6 +27794,16 @@
                         "description": "Vrai pour une indisponibilit\u00e9 D\u00c9COUP\u00c9E : re-dater ses dates passe par un aper\u00e7u des effets, puis confirmation. Exclusif de `redatable`.",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "removed": {
+                        "description": "Ce qu'un re-datage de fermeture a retir\u00e9 des plannings de p\u00e9riode (verrous et r\u00e9servations au\ngymnase ferm\u00e9, aux jours nouvellement ferm\u00e9s) ; null hors de ce geste.",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "type": "integer"
+                        }
                     }
                 }
             },
@@ -27779,6 +27910,13 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "confirmPinRemoval": {
+                        "description": "Re-dater une fermeture qui retire des verrous ou des r\u00e9servations exige d'avoir lu l'annonce :\n sans cette confirmation, le PUT r\u00e9pond 409 avec les nombres et ne change rien.",
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -27861,6 +27999,16 @@
                         "description": "Vrai pour une indisponibilit\u00e9 D\u00c9COUP\u00c9E : re-dater ses dates passe par un aper\u00e7u des effets, puis confirmation. Exclusif de `redatable`.",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "removed": {
+                        "description": "Ce qu'un re-datage de fermeture a retir\u00e9 des plannings de p\u00e9riode (verrous et r\u00e9servations au\ngymnase ferm\u00e9, aux jours nouvellement ferm\u00e9s) ; null hors de ce geste.",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "type": "integer"
+                        }
                     }
                 }
             },
@@ -27948,6 +28096,16 @@
                                 "description": "Vrai pour une indisponibilit\u00e9 D\u00c9COUP\u00c9E : re-dater ses dates passe par un aper\u00e7u des effets, puis confirmation. Exclusif de `redatable`.",
                                 "default": false,
                                 "type": "boolean"
+                            },
+                            "removed": {
+                                "description": "Ce qu'un re-datage de fermeture a retir\u00e9 des plannings de p\u00e9riode (verrous et r\u00e9servations au\ngymnase ferm\u00e9, aux jours nouvellement ferm\u00e9s) ; null hors de ce geste.",
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "additionalProperties": {
+                                    "type": "integer"
+                                }
                             }
                         }
                     }
@@ -30615,6 +30773,16 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "removed": {
+                        "description": "Ce que l'enregistrement d'une fermeture de gymnase a retir\u00e9 des plannings de p\u00e9riode (verrous\net r\u00e9servations au gymnase ferm\u00e9, ces jours-l\u00e0) ; null hors de ce geste.",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "type": "integer"
+                        }
                     }
                 }
             },
@@ -30833,6 +31001,16 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "removed": {
+                        "description": "Ce que l'enregistrement d'une fermeture de gymnase a retir\u00e9 des plannings de p\u00e9riode (verrous\net r\u00e9servations au gymnase ferm\u00e9, ces jours-l\u00e0) ; null hors de ce geste.",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "type": "integer"
+                        }
                     }
                 }
             },
@@ -30935,6 +31113,16 @@
                                     "string",
                                     "null"
                                 ]
+                            },
+                            "removed": {
+                                "description": "Ce que l'enregistrement d'une fermeture de gymnase a retir\u00e9 des plannings de p\u00e9riode (verrous\net r\u00e9servations au gymnase ferm\u00e9, ces jours-l\u00e0) ; null hors de ce geste.",
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "additionalProperties": {
+                                    "type": "integer"
+                                }
                             }
                         }
                     }
@@ -37867,6 +38055,11 @@
                         "default": "",
                         "type": "string",
                         "format": "date"
+                    },
+                    "calendarEntryId": {
+                        "description": "L'entr\u00e9e de calendrier qui porte la fermeture (la carte du cockpit l'apparie \u00e0 ses fermetures).",
+                        "default": "",
+                        "type": "string"
                     }
                 }
             },
@@ -37899,6 +38092,11 @@
                         "default": "",
                         "type": "string",
                         "format": "date"
+                    },
+                    "calendarEntryId": {
+                        "description": "L'entr\u00e9e de calendrier qui porte la fermeture (la carte du cockpit l'apparie \u00e0 ses fermetures).",
+                        "default": "",
+                        "type": "string"
                     }
                 }
             },
@@ -37935,6 +38133,11 @@
                                 "default": "",
                                 "type": "string",
                                 "format": "date"
+                            },
+                            "calendarEntryId": {
+                                "description": "L'entr\u00e9e de calendrier qui porte la fermeture (la carte du cockpit l'apparie \u00e0 ses fermetures).",
+                                "default": "",
+                                "type": "string"
                             }
                         }
                     }
@@ -39002,193 +39205,6 @@
                     }
                 ],
                 "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple."
-            },
-            "VenueUnavailability": {
-                "type": "object",
-                "description": "All-circumstances venue unavailability \u2014 alerts matches AND training, blocks nothing.",
-                "properties": {
-                    "id": {
-                        "default": "",
-                        "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "venueId": {
-                        "default": "",
-                        "type": "string"
-                    },
-                    "startDate": {
-                        "description": "Y-m-d, inclusive.",
-                        "default": "",
-                        "type": "string",
-                        "format": "date"
-                    },
-                    "endDate": {
-                        "description": "Y-m-d, inclusive.",
-                        "default": "",
-                        "type": "string",
-                        "format": "date"
-                    },
-                    "label": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    }
-                }
-            },
-            "VenueUnavailability.VenueUnavailabilityInput": {
-                "type": "object",
-                "description": "All-circumstances venue unavailability \u2014 alerts matches AND training, blocks nothing.",
-                "required": [
-                    "venueId",
-                    "startDate",
-                    "endDate"
-                ],
-                "properties": {
-                    "venueId": {
-                        "format": "uuid",
-                        "externalDocs": {
-                            "url": "https://schema.org/identifier"
-                        },
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "startDate": {
-                        "description": "Y-m-d, inclusive.",
-                        "externalDocs": {
-                            "url": "https://schema.org/Date"
-                        },
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "endDate": {
-                        "description": "Y-m-d, inclusive.",
-                        "externalDocs": {
-                            "url": "https://schema.org/Date"
-                        },
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "label": {
-                        "maxLength": 180,
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    }
-                }
-            },
-            "VenueUnavailability.html": {
-                "type": "object",
-                "description": "All-circumstances venue unavailability \u2014 alerts matches AND training, blocks nothing.",
-                "properties": {
-                    "id": {
-                        "default": "",
-                        "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "venueId": {
-                        "default": "",
-                        "type": "string"
-                    },
-                    "startDate": {
-                        "description": "Y-m-d, inclusive.",
-                        "default": "",
-                        "type": "string",
-                        "format": "date"
-                    },
-                    "endDate": {
-                        "description": "Y-m-d, inclusive.",
-                        "default": "",
-                        "type": "string",
-                        "format": "date"
-                    },
-                    "label": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    }
-                }
-            },
-            "VenueUnavailability.jsonld": {
-                "allOf": [
-                    {
-                        "$ref": "#/components/schemas/HydraItemBaseSchema"
-                    },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "default": "",
-                                "type": "string"
-                            },
-                            "version": {
-                                "default": 0,
-                                "type": "integer"
-                            },
-                            "createdAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            "updatedAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            "venueId": {
-                                "default": "",
-                                "type": "string"
-                            },
-                            "startDate": {
-                                "description": "Y-m-d, inclusive.",
-                                "default": "",
-                                "type": "string",
-                                "format": "date"
-                            },
-                            "endDate": {
-                                "description": "Y-m-d, inclusive.",
-                                "default": "",
-                                "type": "string",
-                                "format": "date"
-                            },
-                            "label": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
-                            }
-                        }
-                    }
-                ],
-                "description": "All-circumstances venue unavailability \u2014 alerts matches AND training, blocks nothing."
             }
         },
         "responses": {},
@@ -39369,10 +39385,6 @@
         {
             "name": "VenueTravelTime",
             "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple."
-        },
-        {
-            "name": "VenueUnavailability",
-            "description": "All-circumstances venue unavailability \u2014 alerts matches AND training, blocks nothing."
         }
     ],
     "webhooks": {}

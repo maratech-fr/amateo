@@ -170,8 +170,6 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/venue_training_slots' => ['/api/venue_training_slots', '{"venueId":"{venue}","dayOfWeek":2,"startTime":"18:00","durationMinutes":90,"capacity":1}', 403],
         'PUT /api/venue_training_slots/{id}' => ['/api/venue_training_slots/{slot}', '{"venueId":"{venue}","dayOfWeek":1,"startTime":"19:00","durationMinutes":90,"capacity":1}', 403],
         'DELETE /api/venue_training_slots/{id}' => ['/api/venue_training_slots/{slot}', null, 403],
-        'POST /api/venue_unavailabilities' => ['/api/venue_unavailabilities', '{"venueId":"{venue}","startDate":"2030-01-10","endDate":"2030-01-11"}', 403],
-        'DELETE /api/venue_unavailabilities/{id}' => ['/api/venue_unavailabilities/{venue_unavailability}', null, 403],
         'POST /api/venue_match_windows' => ['/api/venue_match_windows', '{"venueId":"{venue}","dayOfWeek":6,"startTime":"14:00","endTime":"18:00"}', 403],
         'DELETE /api/venue_match_windows/{id}' => ['/api/venue_match_windows/{venue_match_window}', null, 403],
         'POST /api/venue_period_overrides' => ['/api/venue_period_overrides', '{"schedulePlanId":"{period_plan}","venueId":"{venue2}","mode":"BLANK"}', 403],
@@ -408,7 +406,6 @@ final class MemberWriteSweepTest extends WebTestCase
         $this->ids['team_match_habit'] = $this->create($token, '/api/team_match_habits', ['teamId' => $this->ids['team'], 'dayOfWeek' => 7, 'kickoffTime' => '17:30']);
         $this->ids['team_coach'] = $this->create($token, '/api/team_coaches', ['teamId' => $this->ids['team'], 'coachId' => $this->ids['coach'], 'role' => 'MAIN']);
         $this->ids['coach_player_membership'] = $this->create($token, '/api/coach_player_memberships', ['coachId' => $this->ids['coach'], 'teamId' => $this->ids['team2'], 'isActive' => true]);
-        $this->ids['venue_unavailability'] = $this->create($token, '/api/venue_unavailabilities', ['venueId' => $this->ids['venue'], 'startDate' => $monday->modify('+1 day')->format('Y-m-d'), 'endDate' => $monday->modify('+2 days')->format('Y-m-d')]);
         $this->ids['venue_match_window'] = $this->create($token, '/api/venue_match_windows', ['venueId' => $this->ids['venue'], 'openingDate' => $monday->modify('+5 days')->format('Y-m-d'), 'startTime' => '14:00', 'endTime' => '20:00', 'label' => 'Tournoi SW']);
         $this->ids['venue_travel_time'] = $this->create($token, '/api/venue_travel_times', ['venueAId' => $this->ids['venue'], 'venueBId' => $this->ids['venue2'], 'drivingMinutes' => 15]);
         $this->ids['reservation'] = $this->create($token, '/api/reservations', ['teamId' => $this->ids['team'], 'venueId' => $this->ids['venue'], 'dayOfWeek' => 2, 'startTime' => '18:00', 'durationMinutes' => 90]);

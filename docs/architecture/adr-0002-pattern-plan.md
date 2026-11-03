@@ -117,6 +117,35 @@ Schedule (= Version)                    ← existant, recentré
    soit l'entrée qui la porte — priorité au **périmètre le plus fin** : la reprise gouverne,
    l'incident y entre. Le **FAIT reste libre** : déclarer une fermeture par-dessus une période
    déjà planifiée n'est jamais refusé — seul le **PLAN** d'adaptation est borné.
+
+   **Amendement (fermetures de gymnase, fondateur 2026-11-02) — un seul fait, la capture est
+   INVERSÉE, et « Enregistrer vaut geste ».**
+   - *Un seul fait.* Un gymnase qui ferme = une `CalendarEntry` `period/closure` + sa contrainte
+     `venue_closed`, saisie une fois (carte du cockpit ou jour du calendrier, même formulaire).
+     `VenueUnavailability` n'existe plus dans le code ; sa table reste orpheline en base
+     jusqu'à la release suivante (`docs/ops/deploy.md`).
+   - *Capture inversée* (`EffectiveScheduleResolver::resolve`). Une fermeture SANS version ne
+     capture plus sa date : le planning en vigueur s'applique (période pointée qui gouverne, sinon
+     socle) et c'est le **gymnase** fermé qui sort (`excludedVenueIds`), date par date, depuis
+     l'union de toutes les fermetures déclarées. La réouverture fait foi (masque OPEN / mode BLANK
+     du plan pointé) ; sous le socle, la fermeture est un fait brut. Vacances et coupures sans
+     version capturent toujours (aucun entraînement). Les lecteurs (impact, conflits de personnes,
+     de gymnase, occupation du jour) sautent les créneaux exclus.
+   - *Enregistrer vaut geste.* Déclarer, re-dater ou élargir une fermeture **retire, dans la même
+     transaction**, sur ce gymnase et aux seuls jours fermés NOUVEAUX, les verrous HARD (toute
+     origine) de la version chargée et les réservations de chaque plan de période qui gouverne
+     ces dates (`App\Service\ClosurePinRemover`, même calcul en lecture pour l'aperçu et en
+     écriture à l'enregistrement). **Le socle n'est jamais touché** (`type <> SEASON`). Jamais un
+     gymnase désactivé ni un jour décoché à la main (restent inertes, comme P3-20). Le plan devient
+     périmé (son empreinte `structureHash` diverge) et se régénère sans ces épingles ; une génération
+     du club en cours → 409 `generation_in_progress`, rien d'écrit (le retrait serait annulé par
+     l'import). Le gestionnaire doit avoir lu l'aperçu avant d'enregistrer (formulaire) ; au
+     re-datage qui retirerait quelque chose, 409 `closure_pins_preview_required` jusqu'à
+     confirmation. Chaque retrait est audité (`docs/security/rgpd.md`). Supprimer la
+     fermeture plus tard ne remet rien.
+   - *Filet.* `OrphanPinGuard` reste : une épingle posée APRÈS la fermeture bloque la génération
+     (motif nommant la fermeture) ; fin de l'ancienne exception P2-37 D4 (gymnase fermé toute la
+     période = inerte).
 5. **Les réglages de période s'accrochent au Plan** (pas au déclencheur calendrier) :
    coches équipes (`TeamPeriodOverride`), contraintes gardées/enlevées
    (`ConstraintPeriodOverride`), sa grille de gymnases (`VenueTrainingSlot` scopé période —
@@ -144,7 +173,10 @@ Schedule (= Version)                    ← existant, recentré
    RECOPIE depuis le modèle de saison. Un épinglage (verrou HARD ou réservation) qui ne retombe
    plus sur aucun créneau de cette grille **bloque la génération en 422**, nommant le gymnase et
    le jour (`OrphanPinGuard`, appelé par `GenerateScheduleController`) — jamais filtré en
-   silence. Même patron pour `ImplicitRuleSetting` (les 4 règles réglables du contrat moteur —
+   silence. **Exception : un gymnase DÉSACTIVÉ, ou fermé toute la période par des jours
+   décochés à la main seulement, reste inerte** (tout est conservé, rien ne bloque) ; un gymnase
+   fermé toute la période par une fermeture DÉCLARÉE n'est plus inerte (l'ancienne exception
+   P2-37 D4 est levée, voir l'amendement « Enregistrer vaut geste » ci-dessous). Même patron pour `ImplicitRuleSetting` (les 4 règles réglables du contrat moteur —
    repos coach, distribution salariés, enchaînements, âge croissant,
    `docs/architecture/constraint-matrix.md`) : l'ancre `schedulePlanId` (NULL = saison) porte,
    à la naissance du plan, une **copie totale** des 4 lignes (valeur saison si déviée, sinon

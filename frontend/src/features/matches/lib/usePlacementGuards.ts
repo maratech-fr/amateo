@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import type { ReadState } from "@/shared/lib/readState";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 
-import type { VenueClosure, VenueMatchWindow, VenueUnavailability } from "../api";
+import type { VenueClosure, VenueMatchWindow } from "../api";
 import type { PlacementGuards } from "../PlacementPanel";
 
 /** Une lecture qui GARDE le geste de placement : seules comptent la présence de sa donnée,
@@ -25,31 +25,28 @@ interface GuardRead<T> {
  */
 export function usePlacementGuards(
   matchWindows: GuardRead<VenueMatchWindow>,
-  unavailabilities: GuardRead<VenueUnavailability>,
   closures: GuardRead<VenueClosure>,
   leagueWindows: { data: unknown; isError: boolean; refetch: () => unknown },
   holidays: GuardRead<string>,
 ): PlacementGuards {
   return useMemo<PlacementGuards>(() => {
     const state: ReadState =
-      readFailed(matchWindows) || readFailed(unavailabilities) || readFailed(closures) || readFailed(leagueWindows) || readFailed(holidays)
+      readFailed(matchWindows) || readFailed(closures) || readFailed(leagueWindows) || readFailed(holidays)
         ? "failed"
-        : readLoading(matchWindows) || readLoading(unavailabilities) || readLoading(closures) || readLoading(leagueWindows) || readLoading(holidays)
+        : readLoading(matchWindows) || readLoading(closures) || readLoading(leagueWindows) || readLoading(holidays)
           ? "loading"
           : "ready";
     return {
       state,
       matchWindows: matchWindows.data ?? [],
-      unavailabilities: unavailabilities.data ?? [],
       closures: closures.data ?? [],
       holidays: holidays.data ?? [],
       retry: () => {
         void matchWindows.refetch();
-        void unavailabilities.refetch();
         void closures.refetch();
         void leagueWindows.refetch();
         void holidays.refetch();
       },
     };
-  }, [matchWindows, unavailabilities, closures, leagueWindows, holidays]);
+  }, [matchWindows, closures, leagueWindows, holidays]);
 }

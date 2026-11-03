@@ -114,6 +114,9 @@ final class ClosureWindowExtendTest extends WebTestCase
     /** Un vrai gymnase pour les séances copiées et la fermeture datée. */
     private const string VENUE_ID = '77777777-7777-4777-8777-777777777777';
 
+    /** Un gymnase que la fermeture NE vise PAS : ses verrous survivent à l'élargissement. */
+    private const string OTHER_VENUE_ID = '77777777-7777-4777-8777-777777777778';
+
     private const string TEAM_ID = '88888888-8888-4888-8888-888888888888';
 
     private KernelBrowser $client;
@@ -135,7 +138,11 @@ final class ClosureWindowExtendTest extends WebTestCase
         // bloc ») déjà COMMENCÉE : [mon(-2), sun(+1)], today = mon(0) à l'intérieur.
         $rootId = $this->postPeriod($user, 'Barros en travaux', $this->mon(-2), $this->sun(1));
         $srcPlanId = $this->adaptPeriod($user, $rootId);
-        $srcVersionId = $this->seedPointedVersionWithLockedSlots($club, $season, $srcPlanId);
+        // Verrous au gymnase FERMÉ (Barros, VENUE_ID) ET à un AUTRE gymnase, les mêmes jours : les
+        // premiers sont retirés des jours NOUVEAUX par « Enregistrer vaut geste » (C3bis, gardé par
+        // `ClosureRemovesPinsAtomicallyTest::testExtendingAClosureByItsWindowRemovesThePinsOfTheNewDaysOnly`),
+        // les seconds doivent voyager HARD/MANUAL dans chaque copie.
+        $srcVersionId = $this->seedPointedVersionWithLockedSlots($club, $season, $srcPlanId, alsoOnAnotherVenue: true);
         $srcSlotCount = $this->slotCount($club, $srcVersionId);
         // La datée `venue_closed` née du même geste (config == fenêtre de la racine).
         $datedId = $this->seedDatedClosure($club, $season, $rootId, $this->mon(-2), $this->sun(1));
@@ -190,8 +197,15 @@ final class ClosureWindowExtendTest extends WebTestCase
             $chosen = $this->chosenScheduleId($club, $planId);
             self::assertNotNull($chosen, 'la copie est VALIDÉE d’office (pointée)');
             self::assertSame(ScheduleStatus::COMPLETED->value, $this->scheduleStatus($club, $chosen), 'la copie est COMPLETED sans solve');
-            self::assertSame($srcSlotCount, $this->slotCount($club, $chosen), 'la copie reprend les slots de la version source');
-            self::assertSame([LockOrigin::MANUAL->value], $this->distinctLockOrigins($club, $chosen), 'les verrous HARD gardent leur ORIGINE vraie');
+            self::assertSame(
+                [['1', 'HARD', 'MANUAL'], ['3', 'HARD', 'MANUAL']],
+                $this->locksAtVenue($club, $chosen, self::OTHER_VENUE_ID),
+                'la copie reprend les verrous de l’AUTRE gymnase, HARD, à leur ORIGINE vraie',
+            );
+            self::assertSame([], array_values(array_filter(
+                $this->locksAtVenue($club, $chosen, self::VENUE_ID),
+                static fn (array $lock): bool => 'HARD' === $lock[1],
+            )), 'aucun verrou HARD ne reste au gymnase FERMÉ sur les jours nouveaux (C3bis)');
         }
 
         // (5) La datée `venue_closed` est ÉTENDUE à toute la fenêtre — début FIGÉ (plancher).
@@ -842,7 +856,7 @@ final class ClosureWindowExtendTest extends WebTestCase
      *
      * @return string l'id de la version pointée
      */
-    private function seedPointedVersionWithLockedSlots(Club $club, Season $season, string $planId): string
+    private function seedPointedVersionWithLockedSlots(Club $club, Season $season, string $planId, bool $alsoOnAnotherVenue = false): string
     {
         $this->scopeGucToClub($club->getId());
         $version = (new Schedule)
@@ -854,13 +868,19 @@ final class ClosureWindowExtendTest extends WebTestCase
         $this->em->persist($version);
         self::getContainer()->get(SchedulePlanProvisioner::class)->linkSchedule($version);
 
-        foreach ([[1, '18:00'], [3, '19:00']] as $slot) {
+        $slots = [[1, '18:00', self::VENUE_ID], [3, '19:00', self::VENUE_ID]];
+        if ($alsoOnAnotherVenue) {
+            // Mêmes jours, AUTRE gymnase (ouvert) : ces verrous-là doivent survivre à l'élargissement.
+            $slots[] = [1, '20:00', self::OTHER_VENUE_ID];
+            $slots[] = [3, '20:30', self::OTHER_VENUE_ID];
+        }
+        foreach ($slots as $slot) {
             $tpl = (new ScheduleSlotTemplate)
                 ->setClubId($club->getId())
                 ->setSeasonId($season->getId())
                 ->setScheduleId($version->getId())
                 ->setTeamId(self::TEAM_ID)
-                ->setVenueId(self::VENUE_ID)
+                ->setVenueId($slot[2])
                 ->setDayOfWeek($slot[0])
                 ->setStartTime(new DateTimeImmutable($slot[1]))
                 ->setDurationMinutes(90)
@@ -1018,15 +1038,20 @@ final class ClosureWindowExtendTest extends WebTestCase
         return (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM schedule_slot_template WHERE schedule_id = :sid', ['sid' => $scheduleId]);
     }
 
-    /** @return list<string> les origines de verrou DISTINCTES des slots d'une version */
-    private function distinctLockOrigins(Club $club, string $scheduleId): array
+    /**
+     * Les slots d'une version à UN gymnase, en [jour, niveau, origine|''] triés par jour.
+     *
+     * @return list<array{0: string, 1: string, 2: string}>
+     */
+    private function locksAtVenue(Club $club, string $scheduleId, string $venueId): array
     {
         $this->scopeGucToClub($club->getId());
-        $rows = $this->em->getConnection()->fetchFirstColumn('SELECT DISTINCT lock_origin FROM schedule_slot_template WHERE schedule_id = :sid AND lock_origin IS NOT NULL', ['sid' => $scheduleId]);
-        $origins = array_map(static fn (mixed $v): string => (string) $v, $rows);
-        sort($origins);
+        $rows = $this->em->getConnection()->fetchAllAssociative(
+            'SELECT day_of_week, lock_level, lock_origin FROM schedule_slot_template WHERE schedule_id = :sid AND venue_id = :vid ORDER BY day_of_week, start_time',
+            ['sid' => $scheduleId, 'vid' => $venueId],
+        );
 
-        return $origins;
+        return array_map(static fn (array $r): array => [(string) $r['day_of_week'], (string) $r['lock_level'], (string) ($r['lock_origin'] ?? '')], $rows);
     }
 
     /** @return array{0: string, 1: string} [start, end] Y-m-d du schedule_plan */

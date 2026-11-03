@@ -1,7 +1,7 @@
 import { IN_FLIGHT_STATUSES } from "@/shared/lib/scheduleStatus";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { download, slugFilename } from "@/shared/lib/download";
 import { errorMessage, isBlockerRefusal } from "@/shared/lib/errorMessage";
@@ -116,6 +116,19 @@ export function useSchedules(enabled = true) {
         : false,
   });
   useScheduleStream(enabled && (query.data ?? []).some((s) => IN_FLIGHT.includes(s.status)));
+  // Repli polling (flux muet) : une version en vol qui devient TERMINALE périme aussi l'impact des
+  // fermetures, comme l'événement terminal du flux (`invalidationKeysFor`).
+  const queryClient = useQueryClient();
+  const inFlightRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const data = query.data ?? [];
+    const nowInFlight = new Set(data.filter((s) => IN_FLIGHT.includes(s.status)).map((s) => s.id));
+    const landed = [...inFlightRef.current].some((id) => !nowInFlight.has(id));
+    inFlightRef.current = nowInFlight;
+    if (landed) {
+      void queryClient.invalidateQueries({ queryKey: ["calendar-entries", "impact"] });
+    }
+  }, [query.data, queryClient]);
 
   return query;
 }

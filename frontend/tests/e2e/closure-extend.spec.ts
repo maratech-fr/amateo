@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import type { Page } from "./fixtures";
-import { isoLocal, loginSeededClub, schoolHolidayWindows, settleVeil, watchFailedApiCalls } from "./support";
+import { isoLocal, loginSeededClub, schoolHolidayWindows, settleVeil, sweepCalendarEntriesTitled, watchFailedApiCalls } from "./support";
 
 /**
  * **Prolonger une fermeture À TRAVERS les vacances depuis « Tous les plannings » (PR2).**
@@ -139,6 +139,9 @@ async function cleanupClosure(page: Page): Promise<void> {
       await page.request.delete(`/api/calendar_entries/${p.calendarEntryId}`).catch(() => undefined);
     }
   }
+  // La racine devenue MÈRE DÉCOUPÉE par l'élargissement n'a plus de plan : le balayage par plans la
+  // rate et elle restait dans la base e2e (défaut relevé par SWITCH). Balayage par TITRE, vérifié.
+  await sweepCalendarEntriesTitled(page, TITLE);
 }
 
 test("prolonger une fermeture à travers les vacances depuis « Tous les plannings » fait naître les plannings", async ({ page }) => {
@@ -147,10 +150,10 @@ test("prolonger une fermeture à travers les vacances depuis « Tous les plannin
 
   await loginSeededClub(page);
   const win = await computeExtendWindow(page);
-  let created = false;
+  // Un résidu d'un run interrompu ferait collision de fenêtre : on part d'une base propre.
+  await cleanupClosure(page);
   try {
     await createValidatedClosure(page, win);
-    created = true;
 
     // --- Parcours : cockpit → « Tous les plannings » → ligne de la fermeture → « Dates ». ---
     await openAllPlannings(page);
@@ -180,8 +183,6 @@ test("prolonger une fermeture à travers les vacances depuis « Tous les plannin
       })
       .toBeGreaterThan(before);
   } finally {
-    if (created) {
-      await cleanupClosure(page);
-    }
+    await cleanupClosure(page);
   }
 });

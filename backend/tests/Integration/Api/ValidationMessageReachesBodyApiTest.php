@@ -28,8 +28,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * corps que le front lit (`detail` puis `violations[].message`, cf. `errorMessage.ts`).
  *
  * Preuve e2e complète sur la mutualisation (`violations[0].message` ET `detail`), puis un cas
- * par entité restée sans couturé : TeamMatchHabit, VenueMatchWindow, VenueUnavailability. Ces
- * trois portaient des messages ANGLAIS traduits dans la même passe — on garde la traduction ET
+ * par entité restée sans couturé : TeamMatchHabit, VenueMatchWindow (VenueUnavailability a
+ * disparu : une fermeture du calendrier est le seul fait saisi). Elles portaient des messages
+ * ANGLAIS traduits dans la même passe — on garde la traduction ET
  * le fait qu'elle voyage. ⚠ On n'assortit PAS ces messages à `MatchTenantIsolationTest` (step
  * bloquant) : une garde de COPIE ne se couple pas à une garde de sécurité.
  *
@@ -86,19 +87,6 @@ final class ValidationMessageReachesBodyApiTest extends WebTestCase
     public function testVenueMatchWindowUnknownVenueCarriesFrenchViolation(): void
     {
         $this->post('/api/venue_match_windows', ['venueId' => $this->uuid(), 'dayOfWeek' => 6, 'startTime' => '10:00', 'endTime' => '12:00']);
-        $this->assertBodyCarries(422, 'Gymnase inconnu pour ce club.');
-    }
-
-    public function testVenueUnavailabilityEndBeforeStartCarriesFrenchViolation(): void
-    {
-        $venue = $this->venue();
-        $this->post('/api/venue_unavailabilities', ['venueId' => $venue, 'startDate' => '2025-12-20', 'endDate' => '2025-12-10']);
-        $this->assertBodyCarries(422, 'L\'indisponibilité doit se terminer à sa date de début ou après.');
-    }
-
-    public function testVenueUnavailabilityUnknownVenueCarriesFrenchViolation(): void
-    {
-        $this->post('/api/venue_unavailabilities', ['venueId' => $this->uuid(), 'startDate' => '2025-12-10', 'endDate' => '2025-12-20']);
         $this->assertBodyCarries(422, 'Gymnase inconnu pour ce club.');
     }
 

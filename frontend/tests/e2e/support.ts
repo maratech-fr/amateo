@@ -359,6 +359,56 @@ export function watchFailedApiCalls(page: Page): string[] {
   return failures;
 }
 
+/**
+ * Nettoyage IDEMPOTENT des fermetures e2e par TITRE (défaut relevé par SWITCH : « Fermeture e2e à
+ * re-dater » / « … à prolonger » restaient dans la base e2e). Un `finally` qui ne supprime que l'id
+ * créé par CE run laisse les résidus d'un run tué avant l'affectation de l'id, et une mère devenue
+ * « découpée » (élargissement) n'a plus de plan : on la rate en balayant les plans seuls.
+ *
+ * Ordre : (1) dépointer les plans validés de ces entrées (la cascade refuse une fermeture aux plans
+ * validés), (2) supprimer les semaines-enfants, (3) puis les racines. Chaque suppression est
+ * VÉRIFIÉE (2xx ou 404 déjà parti) : un échec silencieux est ce qui laissait les résidus.
+ */
+export async function sweepCalendarEntriesTitled(page: Page, title: string): Promise<void> {
+  const today = new Date();
+  const from = isoLocal(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()));
+  const to = isoLocal(new Date(today.getFullYear() + 2, today.getMonth(), today.getDate()));
+  type Entry = { id: string; title: string; parentEntryId: string | null };
+  const entries: Entry[] = [];
+  for (let pageNumber = 1; pageNumber <= 20; pageNumber += 1) {
+    const res = await page.request.get(`/api/calendar_entries?from=${from}&to=${to}&page=${pageNumber}`);
+    if (!res.ok()) {
+      break;
+    }
+    const body = await res.json();
+    const batch = (Array.isArray(body) ? body : (body.member ?? body["hydra:member"] ?? [])) as Entry[];
+    entries.push(...batch);
+    if (0 === batch.length) {
+      break;
+    }
+  }
+  const mine = entries.filter((e) => e.title.includes(title));
+  if (0 === mine.length) {
+    return;
+  }
+  const ids = new Set(mine.map((e) => e.id));
+  const plansRes = await page.request.get("/api/schedule_plans");
+  if (plansRes.ok()) {
+    const body = await plansRes.json();
+    const plans = (Array.isArray(body) ? body : (body.member ?? body["hydra:member"] ?? [])) as { calendarEntryId?: string | null; chosenScheduleId?: string | null }[];
+    for (const plan of plans) {
+      if (ids.has(plan.calendarEntryId ?? "") && "string" === typeof plan.chosenScheduleId && "" !== plan.chosenScheduleId) {
+        await page.request.post(`/api/schedules/${plan.chosenScheduleId}/reopen`, { headers: { "Content-Type": "application/json" }, data: { confirmDeleteOverlays: true } });
+      }
+    }
+  }
+  const ordered = [...mine.filter((e) => null !== e.parentEntryId), ...mine.filter((e) => null === e.parentEntryId)];
+  for (const entry of ordered) {
+    const res = await page.request.delete(`/api/calendar_entries/${entry.id}`);
+    expect([204, 200, 404], `suppression de « ${entry.title} » (${res.status()})`).toContain(res.status());
+  }
+}
+
 // ── P4-353 — fenêtres de calendrier FUTURES, calculées depuis aujourd'hui ───────────────────────
 // Les specs qui posent une fermeture/indisponibilité datée ne doivent JAMAIS figer un mois en dur
 // (il devient « passé » dès que l'horloge réelle le dépasse, et la case-jour n'est plus cliquable).

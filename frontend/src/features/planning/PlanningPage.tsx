@@ -62,6 +62,7 @@ import { MutualizeAtCaseDialog } from "./MutualizeAtCaseDialog";
 import { GenerationInProgressError, MutualizationRefusedError } from "./api";
 
 import { stalenessMessage } from "./lib/staleness";
+import { ClosureStalePlanBanners } from "./StalePlanBanner";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
 import { isSeasonPlanType, laterCompletedVersionId, loadedVersionOf, overlayVersionLabels, seasonRepresentative, versionLabelOf, visibleSeasonPlans } from "./lib/versions";
 import { useVersionLanding } from "./lib/useVersionLanding";
@@ -870,6 +871,13 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           });
         return null === stale ? null : <NoticeBanner tone="warning" className="mb-4" message={stale} />;
       })()}
+
+      {/* Fermetures de gymnase (C5) — une fermeture DÉCLARÉE qui touche ce plan de période le rend
+          périmé : bandeau distinct de `stalenessMessage`, armé depuis l'entrée du plan affiché. */}
+      {showGenerationWaiting ? null : <ClosureStalePlanBanners
+          planEntryId={(allSchedulePlans ?? []).find((plan) => plan.id === displayedPlan?.id)?.calendarEntryId ?? null}
+          closureConstraintIds={(entryConflicts.data?.closures ?? []).map((c) => c.constraintId)}
+        />}
 
       {/* P4-98 — « version antérieure » : la version affichée n'est pas la dernière COMPLETED de son
           plan. Bandeau NEUTRE (ton muted, distinct du warning « périmé » et de l'accent d'éviction)

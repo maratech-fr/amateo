@@ -56,6 +56,14 @@ let meData: { seasonPlan: { chosenScheduleId: string | null } } = { seasonPlan: 
 vi.mock("./queries", () => ({
   useCreateEvent: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateVenueClosure: () => ({ mutate: closureMutate, isPending: false }),
+  // Fermetures PR 1 — la saisie unique lit l'aperçu avant d'enregistrer : ici, un aperçu LU (rien à retirer).
+  useClosureImpactPreview: () => ({
+    data: { venueIds: ["v1"], startDate: "2026-05-12", endDate: "2026-05-12", seasonPlanChosen: true, teams: [], trainingOccurrences: 0, trainingSlotCount: 0, matchesToMove: [], governingPlans: [], fullyGoverned: false, closedSessions: [] },
+    isPending: false,
+    isFetching: false,
+    isError: false,
+    isSuccess: true,
+  }),
   useCreateCutoff: () => ({ mutate: cutoffMutate, isPending: false }),
   useCreateHolidayPeriod: () => ({ mutate: vi.fn(), mutateAsync: holidayMutateAsync, isPending: false }),
   useCreateWeekChildren: () => ({ mutate: weekChildrenMutate, isPending: false }),
@@ -1063,6 +1071,64 @@ describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 
     expect(navigate).toHaveBeenCalledWith("/wizard");
   });
 
+  /**
+   * Fermetures PR 1, correction E2a — « on ne retire rien sans l'avoir annoncé ». Le serveur refuse
+   * le re-datage qui retirerait des épingles (409 `closure_pins_preview_required`, jumeau serveur
+   * `ClosureRemovesPinsAtomicallyTest`) : l'écran montre l'ANNONCE avec les nombres — les MÊMES
+   * textes que l'aperçu de création (`closureLocksRemoval`, `closureReservationsRemoval`) — et un
+   * bouton de confirmation qui renvoie le re-datage avec `confirmPinRemoval: true`. Jamais un toast
+   * d'erreur à la place, jamais une confirmation implicite.
+   */
+  it("re-datage qui retirerait des épingles : l'annonce s'affiche avec les nombres, et la confirmation renvoie le PUT confirmé", async () => {
+    const { ClosurePinsPreviewRequiredError } = await import("./api");
+    const { toast } = await import("@/shared/stores/toastStore");
+    const reservations = [{ teamId: "t-sm1", teamName: "SM1", dayOfWeek: 2 }];
+    const pinRemoval = { venueName: "Mistral", plans: [{ entryId: "mars", title: "Vacances de mars", locks: 2, reservations }] };
+    redateMutateAsync.mockRejectedValueOnce(new ClosurePinsPreviewRequiredError("Confirmez après avoir lu l’annonce.", pinRemoval));
+    const onClose = renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(await screen.findByText(COCKPIT_TEXTS.closureLocksRemoval(2, "Mistral", "Vacances de mars"))).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.closureReservationsRemoval(reservations, "Mistral"))).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(redateMutateAsync).toHaveBeenCalledTimes(1);
+    expect(redateMutateAsync).not.toHaveBeenCalledWith(expect.objectContaining({ confirmPinRemoval: true }));
+
+    await userEvent.click(screen.getByRole("button", { name: COCKPIT_TEXTS.confirmPinRemoval }));
+
+    await waitFor(() =>
+      expect(redateMutateAsync).toHaveBeenLastCalledWith(expect.objectContaining({ entry: expect.objectContaining({ id: "inc" }), startDate: "2026-05-12", endDate: "2026-06-20", confirmPinRemoval: true })),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  /**
+   * Défaut SWITCH : le toast du re-datage taisait ce que le geste a RETIRÉ, là où l'enregistrement
+   * d'une fermeture le dit (« … 1 verrou retiré à Mistral »). Le PUT renvoie `removed` : le toast le dit.
+   */
+  it("succès d'un re-datage qui a retiré des épingles : le toast dit les nombres retirés", async () => {
+    const { toast } = await import("@/shared/stores/toastStore");
+    redateMutateAsync.mockResolvedValueOnce({ ...incident(), endDate: "2026-06-20", removed: { locks: 2, reservations: 1 } });
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    const message = vi.mocked(toast.success).mock.calls.flat().join(" ");
+    expect(message).toMatch(/2 verrous/);
+    expect(message).toMatch(/1 réservation/);
+  });
+
   it("le refus est RÉINITIALISÉ à la soumission suivante (une nouvelle tentative ne colle pas l'ancien refus)", async () => {
     const { WindowAlreadyPlannedError } = await import("./api");
     redateMutateAsync.mockRejectedValueOnce(new WindowAlreadyPlannedError("déjà planifié", "toussaint-entry"));
@@ -1283,56 +1349,6 @@ describe("DayDialog — re-datage d'une indisponibilité découpée (« aperçu 
 
     expect(await screen.findByText(/déjà planifiées par « Vacances de Toussaint »/)).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
-  });
-});
-
-// ── Promesse 6 (décision fondateur option B, 2026-10-28) : l'indisponibilité de gymnase dans la modale du jour ──
-// Une `venue_unavailability` qui couvre le jour se LIT dans la modale comme une ligne « {gymnase}
-// indisponible », SANS geste (ni adapter ni supprimer depuis là — la suppression reste dans la carte
-// des indisponibilités), à côté de la fermeture (listée une fois, promesse 2). Contrat proposé à NEO :
-// prop `venueUnavailabilities` (les indispos DU JOUR, déjà résolues avec le nom du gymnase) ; texte via
-// la clé centralisée `COCKPIT_TEXTS.venueUnavailableTitle` (DayDialog migré). Hors scope : l'impact planning.
-describe("DayDialog — indisponibilité de gymnase listée dans la modale (promesse 6)", () => {
-  type UnavailabilityMark = { id: string; venueId: string; venueName: string; startDate: string; endDate: string; label: string | null };
-
-  function renderWithUnavailabilities(entries: CalendarEntry[], venueUnavailabilities: UnavailabilityMark[]) {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const props = { iso: "2026-05-12", entries, venueUnavailabilities, onClose: vi.fn() } as unknown as Parameters<typeof DayDialog>[0];
-    return render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <DayDialog {...props} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-  }
-
-  beforeEach(() => {
-    deleteMutate.mockReset();
-    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
-    allPlansMock = [];
-    plansByEntry = {};
-    schedulesData = [];
-    queriesNoData = false;
-    childEntriesData = [];
-  });
-
-  const adn: UnavailabilityMark = { id: "vu1", venueId: "v9", venueName: "ADN", startDate: "2026-05-12", endDate: "2026-05-12", label: "travaux" };
-
-  it("liste l'indisponibilité de gymnase du jour comme une ligne lisible (clé centralisée), sans geste", () => {
-    renderWithUnavailabilities([], [adn]);
-
-    // RED aujourd'hui : la modale ignore les indisponibilités — aucune ligne « ADN indisponible ».
-    expect(screen.getByText(COCKPIT_TEXTS.venueUnavailableTitle("ADN", "travaux"))).toBeInTheDocument();
-    // Aucun geste depuis là (la suppression vit dans la carte des indisponibilités, pas dans la modale).
-    expect(screen.queryByRole("button", { name: /Supprimer ADN/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Adapter ADN/ })).toBeNull();
-  });
-
-  it("témoin : sans indisponibilité servie, aucune ligne « indisponible » n'apparaît", () => {
-    renderWithUnavailabilities([], []);
-
-    expect(screen.queryByText(/indisponible/)).toBeNull();
   });
 });
 

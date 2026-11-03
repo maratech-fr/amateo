@@ -27,7 +27,6 @@ vi.mock("@/features/planning/queries", () => ({
 // Option B (2026-10-28) — CockpitPage résout les indisponibilités de gymnase pour la grille ;
 // enfants stubés ici, mais les hooks lus par la page doivent exister dans le mock.
 vi.mock("@/features/matches/queries", () => ({
-  useVenueUnavailabilities: () => ({ data: [] }),
   useVenues: () => ({ data: [] }),
 }));
 
@@ -59,7 +58,7 @@ vi.mock("./RadarPanel", () => ({
     </div>
   ),
 }));
-vi.mock("./VenueUnavailabilityCard", () => ({ VenueUnavailabilityCard: () => null }));
+vi.mock("./VenueClosureCard", () => ({ VenueClosureCard: () => null }));
 
 import { CockpitPage } from "./CockpitPage";
 

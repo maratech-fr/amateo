@@ -1,4 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { HTTPError } from "ky";
 
 import { createConstraint } from "@/features/wizard/api";
@@ -7,8 +8,9 @@ import { toast } from "@/shared/stores/toastStore";
 
 import * as cockpitApi from "./api";
 import type { CalendarEntry, CreateClosurePayload, CreateCutoffPayload, CreateEventPayload } from "./api";
-import { asWindowAlreadyPlanned, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { asWindowAlreadyPlanned, ClosurePinsPreviewRequiredError, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
 import { frDateShort, segmentWeekCount, type WeekSegment } from "./lib/date";
+import { COCKPIT_TEXTS } from "./texts";
 
 /**
  * ADR-0002 inv. 4 (P2-38 PR3) — LE HOOK POSSÈDE SON FEEDBACK (patron `ownSlotEditFeedback`,
@@ -20,7 +22,7 @@ import { frDateShort, segmentWeekCount, type WeekSegment } from "./lib/date";
  * jamais le doublant.
  */
 function ownWindowConflictFeedback(error: unknown): void {
-  if (error instanceof WindowAlreadyPlannedError || error instanceof PreviewTokenStaleError) {
+  if (error instanceof WindowAlreadyPlannedError || error instanceof PreviewTokenStaleError || error instanceof ClosurePinsPreviewRequiredError) {
     // Le dialogue du geste affiche ces deux refus lui-même (WindowAlreadyPlannedNotice pour le
     // chevauchement ; NoticeBanner + ré-aperçu pour le jeton périmé, D3 v2) — jamais un toast.
     return;
@@ -295,11 +297,18 @@ export function useCreateEvent() {
  * the closed venue. Two calls: if the constraint fails, roll back the entry. If
  * the rollback ALSO fails, surface a distinct error so the orphan period (a ⛔
  * marker with no closed-venue constraint) is not hidden behind a generic failure.
+ *
+ * Fermetures de gymnase (« Enregistrer vaut geste », C3bis) — c'est le POST de la contrainte qui
+ * COMPLÈTE la fermeture et retire, côté serveur, les verrous et réservations qu'elle met hors de
+ * portée : la mutation rend `{ entry, removed }` pour que le toast le confirme. Une génération en
+ * vol (409 `generation_in_progress`) : l'entrée est supprimée (rien ne reste fermé) et le motif est
+ * nommé. Une fermeture déplace aussi le radar des conflits de matchs et le feed des fermetures lu
+ * par le placement : les deux se rafraîchissent.
  */
 export function useCreateVenueClosure() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: CreateClosurePayload) => {
+    mutationFn: async (payload: CreateClosurePayload): Promise<{ entry: CalendarEntry; removed: cockpitApi.ClosureRemoved }> => {
       const entry = await cockpitApi.createCalendarEntry({
         kind: "period",
         periodType: "closure",
@@ -307,8 +316,9 @@ export function useCreateVenueClosure() {
         startDate: payload.startDate,
         endDate: payload.endDate,
       });
+      let removed: cockpitApi.ClosureRemoved = { locks: 0, reservations: 0 };
       try {
-        await createConstraint({
+        const constraint = (await createConstraint({
           name: payload.title,
           scope: "FACILITY",
           scopeTargetId: payload.venueId,
@@ -316,7 +326,8 @@ export function useCreateVenueClosure() {
           ruleType: "HARD",
           config: { type: "venue_closed", startDate: payload.startDate, endDate: payload.endDate },
           calendarEntryId: entry.id,
-        });
+        })) as { removed?: cockpitApi.ClosureRemoved | null };
+        removed = constraint.removed ?? removed;
       } catch (error) {
         try {
           await cockpitApi.deleteCalendarEntry(entry.id);
@@ -327,18 +338,87 @@ export function useCreateVenueClosure() {
         }
         throw error;
       }
-      return entry;
+      return { entry, removed };
     },
     // Hook-level (unmount-safe): surfaces the tailored rollback message even if
     // the DayDialog was closed while the two-call sequence was in flight.
     onError: (error) => {
+      if (error instanceof HTTPError && 409 === error.response.status && "generation_in_progress" === ((error as { data?: { code?: string } }).data ?? {}).code) {
+        toast.error(COCKPIT_TEXTS.generationInProgress);
+        return;
+      }
       if (error instanceof Error && !("response" in error)) {
         toast.error(error.message);
         return;
       }
       void errorMessage(error).then((message) => toast.error(message));
     },
-    onSuccess: () => invalidateEntries(queryClient),
+    onSuccess: () => {
+      invalidateEntries(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+      void queryClient.invalidateQueries({ queryKey: ["venue_closures"] });
+      void queryClient.invalidateQueries({ queryKey: ["venue-closure-impact"] });
+    },
+  });
+}
+
+/** Attente avant de lire l'aperçu d'une fermeture (ms). */
+const CLOSURE_PREVIEW_DEBOUNCE_MS = 400;
+
+/**
+ * Fermetures de gymnase (C3) — l'aperçu d'une fermeture PAS ENCORE saisie (`null` = rien à lire :
+ * formulaire incomplet ou hors saison). Le serveur seul calcule ; le formulaire n'enregistre qu'une
+ * fois cet aperçu LU pour ces dates (« Enregistrer vaut geste »).
+ */
+export function useClosureImpactPreview(params: cockpitApi.ClosureImpactParams | null) {
+  const key = null === params ? "" : `${params.venueId}|${params.startDate}|${params.endDate}`;
+  // On ne relit pas à chaque frappe : la lecture part après une courte attente ; tant que la saisie
+  // diffère de ce qui est lu, l'aperçu est « en vol » (jamais « prêt » pour d'autres dates).
+  const [debounced, setDebounced] = useState<{ key: string; params: cockpitApi.ClosureImpactParams | null }>({ key, params });
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced({ key, params }), CLOSURE_PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // `params` suit `key` (même saisie) : la clé suffit à décider.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const settled = debounced.key === key;
+  const query = useQuery({
+    queryKey: ["venue-closure-impact", debounced.params],
+    queryFn: () => cockpitApi.getClosureImpactPreview(debounced.params as cockpitApi.ClosureImpactParams),
+    enabled: null !== debounced.params,
+    staleTime: 0,
+    // Le formulaire DIT l'échec lui-même (« Impact non évalué » + « Réessayer ») : pas de toast générique.
+    meta: { ownsError: true },
+  });
+  const { refetch } = query;
+  return {
+    data: query.data,
+    isPending: query.isPending || !settled,
+    isError: query.isError,
+    isFetching: query.isFetching || !settled,
+    isSuccess: query.isSuccess && settled,
+    refetch,
+  };
+}
+
+/** Fermetures de gymnase (C4/C5/C8) — l'impact SERVI d'une fermeture enregistrée (même chiffre que son aperçu). */
+export function useEntryImpact(entryId: string | null) {
+  return useQuery({
+    queryKey: ["calendar-entries", "impact", entryId],
+    queryFn: () => cockpitApi.getEntryImpact(entryId as string),
+    enabled: null !== entryId,
+    staleTime: 30_000,
+  });
+}
+
+/** Les impacts de plusieurs fermetures (radar, écran du plan) — un `/impact` par fermeture (coût N accepté). */
+export function useEntryImpactList(entryIds: string[]) {
+  return useQueries({
+    queries: entryIds.map((id) => ({
+      queryKey: ["calendar-entries", "impact", id],
+      queryFn: () => cockpitApi.getEntryImpact(id),
+      staleTime: 30_000,
+    })),
   });
 }
 
@@ -497,8 +577,8 @@ export function useDeleteEntry() {
 export function useRedateEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { entry: CalendarEntry; startDate: string; endDate: string; previewToken?: string }) =>
-      cockpitApi.updateCalendarEntry(vars.entry, { startDate: vars.startDate, endDate: vars.endDate, previewToken: vars.previewToken }),
+    mutationFn: (vars: { entry: CalendarEntry; startDate: string; endDate: string; previewToken?: string; confirmPinRemoval?: boolean }) =>
+      cockpitApi.updateCalendarEntry(vars.entry, { startDate: vars.startDate, endDate: vars.endDate, previewToken: vars.previewToken, confirmPinRemoval: vars.confirmPinRemoval }),
     onSuccess: () => {
       invalidateEntries(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });

@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
+use App\Service\ClosurePinRemover;
 use App\Service\ClosureWindowApplier;
 use App\Service\ClosureWindowPlanner;
 use App\Service\ManagementAccessGuard;
@@ -49,6 +50,7 @@ final class ClosureWindowApplyController extends AbstractController implements S
         private readonly ClosureWindowApplier $applier,
         private readonly PeriodWindowUniquenessGuard $windowUniquenessGuard,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly ClosurePinRemover $closurePinRemover,
     ) {}
 
     // SEC-13 — la cible est le plan nommé dans l'URL ; sa saison gouverne le garde « archivée ».
@@ -91,7 +93,7 @@ final class ClosureWindowApplyController extends AbstractController implements S
 
         // Tout ce qui DÉCIDE et écrit vit sous les verrous et dans la transaction : club+saison
         // d'abord (unicité de fenêtre du club entier), plan ensuite — ordre uniforme, pas d'ABBA.
-        $this->entityManager->wrapInTransaction(function () use ($plan, $newStart, $newEnd, $previewToken): void {
+        $removed = $this->entityManager->wrapInTransaction(function () use ($plan, $newStart, $newEnd, $previewToken): array {
             $this->schedulePlanProvisioner->lockClubWindows((string) $plan->getClubId(), $plan->getSeasonId());
             $entryId = $plan->getCalendarEntryId();
             if (\is_string($entryId)) {
@@ -120,10 +122,17 @@ final class ClosureWindowApplyController extends AbstractController implements S
                 closuresOnly: true,
             );
 
+            // « Enregistrer vaut geste » (fermetures C3bis) — élargir la fermeture retire, pour les
+            // SEULS jours nouvellement fermés, les verrous et réservations des plans qui les gouvernent.
+            $clubId = (string) $plan->getClubId();
+            $before = $this->closurePinRemover->closedDatesSnapshot($clubId, $plan->getSeasonId());
             $this->applier->apply($plan, $computed);
+            $new = $this->closurePinRemover->newClosedDatesSince($clubId, $plan->getSeasonId(), $before);
+
+            return $this->closurePinRemover->applyAll($clubId, $plan->getSeasonId(), $new);
         });
 
-        return $this->json(['id' => $plan->getId()], Response::HTTP_OK);
+        return $this->json(['id' => $plan->getId(), 'removed' => $removed], Response::HTTP_OK);
     }
 
     private function parseDate(mixed $value): ?DateTimeImmutable

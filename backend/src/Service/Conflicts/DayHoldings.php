@@ -50,6 +50,7 @@ final class DayHoldings
      * @param array<string, array<string, list<array{0: int, 1: int, 2: int}>>>                              $wizardBlockedBySchedule version → coach → [jour, début, fin]
      * @param array<string, list<list<string>>>                                                              $groupsBySchedule        version → listes d'équipes d'un groupe déclaré
      * @param array<string, array<string, true>>                                                             $busyToPlaceByDate       date → personnes avec un match à placer ce jour-là
+     * @param array<string, array<string, true>>                                                             $closedDatesByVenue      fermetures de gymnase : venueId → dates fermées (C2)
      */
     public function __construct(
         private readonly array $views,
@@ -63,6 +64,7 @@ final class DayHoldings
         private readonly array $wizardBlockedBySchedule,
         private readonly array $groupsBySchedule,
         private readonly array $busyToPlaceByDate = [],
+        private readonly array $closedDatesByVenue = [],
     ) {
         $this->dayMatches = new DayMatches;
         foreach ($views as $view) {
@@ -274,7 +276,7 @@ final class DayHoldings
         if (\in_array($date->format('Y-m-d'), $this->publicHolidays, true)) {
             return [];
         }
-        $scheduleId = $this->effectiveScheduleResolver->resolve($date, $this->activePeriods, $this->seasonScheduleId);
+        ['scheduleId' => $scheduleId, 'excludedVenueIds' => $excludedVenueIds] = $this->effectiveScheduleResolver->resolve($date, $this->activePeriods, $this->seasonScheduleId, $this->closedDatesByVenue);
         if (null === $scheduleId) {
             return [];
         }
@@ -283,7 +285,8 @@ final class DayHoldings
 
         $slots = [];
         foreach ($this->slotsBySchedule[$scheduleId] ?? [] as $slot) {
-            if ($slot->getDayOfWeek() === $weekday && !$this->teamIsAtItsMatch($slot, $matches)) {
+            // Fermetures de gymnase (C2) — une séance au gymnase fermé ce jour-là n'a pas lieu.
+            if ($slot->getDayOfWeek() === $weekday && !\in_array($slot->getVenueId(), $excludedVenueIds, true) && !$this->teamIsAtItsMatch($slot, $matches)) {
                 $slots[] = $slot;
             }
         }

@@ -166,6 +166,7 @@ final class PersonConflicts
      * @param array<string, list<ScheduleSlotTemplate>>                                                      $slotsBySchedule
      * @param list<array{coachId: string, dayOfWeek: int, kickoffMin: string|null, kickoffMax: string|null}> $coachUnavailabilities
      * @param list<string>                                                                                   $publicHolidays        dates fériées (Y-m-d) — aucun entraînement n'a lieu un jour férié (PR2)
+     * @param array<string, array<string, true>>                                                             $closedDatesByVenue    fermetures de gymnase : venueId → dates fermées (C2)
      *
      * @return list<array<string, mixed>>
      */
@@ -180,6 +181,7 @@ final class PersonConflicts
         array $coachUnavailabilities,
         array $publicHolidays,
         DayHoldings $holdings,
+        array $closedDatesByVenue = [],
     ): array {
         $conflicts = [];
         foreach ($views as $view) {
@@ -192,14 +194,15 @@ final class PersonConflicts
                 if (\in_array($date->format('Y-m-d'), $publicHolidays, true)) {
                     continue;
                 }
-                $scheduleId = $this->effectiveScheduleResolver->resolve($date, $activePeriods, $seasonScheduleId);
+                ['scheduleId' => $scheduleId, 'excludedVenueIds' => $excludedVenueIds] = $this->effectiveScheduleResolver->resolve($date, $activePeriods, $seasonScheduleId, $closedDatesByVenue);
                 if (null === $scheduleId) {
                     continue;
                 }
                 $isoWeekday = (int) $date->format('N');
 
                 foreach ($slotsBySchedule[$scheduleId] ?? [] as $slot) {
-                    if ($slot->getDayOfWeek() !== $isoWeekday) {
+                    // Fermetures de gymnase (C2) — la séance au gymnase fermé ce jour-là n'a pas lieu.
+                    if ($slot->getDayOfWeek() !== $isoWeekday || \in_array($slot->getVenueId(), $excludedVenueIds, true)) {
                         continue;
                     }
                     // D1 rule 2 (2026-09-13), EXTENDED to players — a match of a team

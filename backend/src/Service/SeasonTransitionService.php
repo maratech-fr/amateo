@@ -227,8 +227,7 @@ final class SeasonTransitionService
         }
 
         // P1-4 PR B — les fenêtres d'accès MATCH se recopient comme les créneaux :
-        // la convention mairie se renouvelle. Les indisponibilités (VenueUnavailability),
-        // elles, sont des faits datés one-shot : JAMAIS recopiées.
+        // la convention mairie se renouvelle.
         foreach ($this->rows(VenueMatchWindow::class, $clubId, $sourceId) as $window) {
             // Une ouverture datée est un fait d'un jour, comme une indisponibilité : jamais recopiée.
             if ($window->getOpeningDate() instanceof DateTimeImmutable) {

@@ -6,12 +6,9 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Enum\FixtureHomeAway;
-use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -24,9 +21,9 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * Capacity layer HTTP contract (P1-4 PR B): venue match windows + venue
- * unavailabilities CRUD with their business validations, and the
- * alert-only impact feed.
+ * Capacity layer HTTP contract (P1-4 PR B): venue match windows CRUD with their
+ * business validations. (Venue unavailabilities and their impact feed are gone: a
+ * calendar closure is the single fact entered — its impact lives in VenueClosureImpact.).
  */
 #[Group('integration')]
 final class VenueCapacityApiTest extends WebTestCase
@@ -160,52 +157,6 @@ final class VenueCapacityApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(201, 'hors saison');
     }
 
-    public function testUnavailabilityValidationAndLabelTrim(): void
-    {
-        [$club, $user, $season] = $this->createClubUser();
-        $venue = $this->createVenue($club, $season);
-        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
-
-        $this->client->request('POST', '/api/venue_unavailabilities', [], [], $headers, json_encode([
-            'venueId' => $venue->getId(), 'startDate' => '2027-02-04', 'endDate' => '2027-02-28', 'label' => '  travaux  ',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(201);
-        self::assertSame('travaux', $this->responseData()['label']);
-
-        // End before start refused.
-        $this->client->request('POST', '/api/venue_unavailabilities', [], [], $headers, json_encode([
-            'venueId' => $venue->getId(), 'startDate' => '2027-02-28', 'endDate' => '2027-02-04',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(422);
-    }
-
-    public function testImpactFeedListsAffectedPlacedMatches(): void
-    {
-        [$club, $user, $season] = $this->createClubUser();
-        $venue = $this->createVenue($club, $season);
-
-        // One placed match inside the range, one outside, one on another venue-less date.
-        $this->createFixture($club, $season, $venue->getId(), '2027-02-14');
-        $this->createFixture($club, $season, $venue->getId(), '2027-03-06');
-        $this->createFixture($club, $season, null, '2027-02-14');
-
-        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
-        $this->client->request('POST', '/api/venue_unavailabilities', [], [], $headers, json_encode([
-            'venueId' => $venue->getId(), 'startDate' => '2027-02-04', 'endDate' => '2027-02-28', 'label' => 'travaux',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(201);
-
-        $this->client->request('GET', '/api/venue-unavailability-impact', [], [], $this->authHeaders($user));
-        self::assertResponseStatusCodeSame(200);
-        $items = $this->responseData()['items'] ?? [];
-        self::assertCount(1, $items);
-        self::assertSame('travaux', $items[0]['label']);
-        self::assertCount(1, $items[0]['affectedFixtures']);
-        self::assertSame('2027-02-14', $items[0]['affectedFixtures'][0]['matchDate']);
-        // The settled test plan has no slot at this venue → no phantom count.
-        self::assertSame(0, $items[0]['trainingOccurrences']);
-    }
-
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -272,25 +223,6 @@ final class VenueCapacityApiTest extends WebTestCase
         $this->em->flush();
 
         return $venue;
-    }
-
-    private function createFixture(Club $club, Season $season, ?string $venueId, string $date): Fixture
-    {
-        $fixture = new Fixture;
-        $fixture->setClubId($club->getId());
-        $fixture->setSeasonId($season->getId());
-        $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
-        $fixture->setMatchDate(new DateTimeImmutable($date));
-        $fixture->setHomeAway(FixtureHomeAway::HOME);
-        $fixture->setOpponentLabel('Adv');
-        $fixture->setVenueId($venueId);
-        if (null !== $venueId) {
-            $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
-        }
-        $this->em->persist($fixture);
-        $this->em->flush();
-
-        return $fixture;
     }
 
     /**

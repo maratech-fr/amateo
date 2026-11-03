@@ -4,6 +4,7 @@ import { fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { COCKPIT_TEXTS } from "./texts";
 
 /*
  * Tests ROUGES PR2 — « Modifier les dates d'une fermeture » (axe planning lifecycle).
@@ -316,5 +317,46 @@ describe("ClosureWindowDialog — « Confirmer » n'applique QUE l'aperçu vu", 
     } finally {
       session.canManage = true;
     }
+  });
+
+  /**
+   * Fermetures PR 1 (C3bis, élargissement) — « on ne retire rien sans l'avoir annoncé » : l'aperçu
+   * SERVI du rail `/window` porte l'annonce des retraits des jours NOUVEAUX (`pinRemoval`, même calcul
+   * que le `POST /window` qui les applique — jumeau serveur
+   * `ClosureRemovesPinsAtomicallyTest::testExtendingAClosureByItsWindowRemovesThePinsOfTheNewDaysOnly`),
+   * et le dialogue l'affiche AVANT « Confirmer », avec les mêmes textes que l'aperçu de création.
+   */
+  it("annonce, avant « Confirmer », les verrous et réservations que l'élargissement retirera", async () => {
+    const user = userEvent.setup();
+    open();
+    const reservations = [{ teamId: "t-u13", teamName: "U13", dayOfWeek: 4 }];
+    await loadPreview(user, { ...PREVIEW, pinRemoval: { venueName: "Mistral", plans: [{ entryId: "plan-x", title: "Gymnase Matéo indisponible", locks: 3, reservations }] } } as typeof PREVIEW);
+
+    expect(screen.getByText(COCKPIT_TEXTS.closureLocksRemoval(3, "Mistral", "Gymnase Matéo indisponible"))).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.closureReservationsRemoval(reservations, "Mistral"))).toBeInTheDocument();
+    expect(applyMutateAsync).not.toHaveBeenCalled();
+  });
+
+  /** Défaut SWITCH : le toast de l'élargissement dit les nombres RETIRÉS (`removed` du POST /window), comme l'enregistrement. */
+  it("confirmé : le toast dit les verrous et réservations retirés", async () => {
+    const user = userEvent.setup();
+    open();
+    await loadPreview(user);
+
+    applyMutateAsync.mockResolvedValueOnce({ id: PLAN.id, removed: { locks: 3, reservations: 1 } });
+    await user.click(screen.getByRole("button", { name: "Confirmer" }));
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    const message = toastSuccess.mock.calls.flat().join(" ");
+    expect(message).toMatch(/3 verrous/);
+    expect(message).toMatch(/1 réservation/);
+  });
+
+  it("témoin : un aperçu sans retrait n'annonce aucun verrou retiré", async () => {
+    const user = userEvent.setup();
+    open();
+    await loadPreview(user, { ...PREVIEW, pinRemoval: { venueName: "Mistral", plans: [] } } as typeof PREVIEW);
+
+    expect(screen.queryByText(/sera retiré|seront retirées|sera retirée/)).toBeNull();
   });
 });

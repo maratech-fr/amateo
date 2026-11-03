@@ -74,6 +74,10 @@ export function invalidationKeysFor(event: ScheduleStreamEvent): QueryKey[] {
     keys.push(
       null !== event.scheduleId ? ["slots", event.scheduleId] : ["slots"],
       null !== event.scheduleId ? ["diagnostics", event.scheduleId] : ["diagnostics"],
+      // Fermetures de gymnase (C5) — une génération terminée périme l'impact des fermetures (la
+      // bannière « périmé par une fermeture » se relit) ; préfixe : la version ne sait pas quelle
+      // fermeture la gouverne.
+      ["calendar-entries", "impact"],
     );
   }
 

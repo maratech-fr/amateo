@@ -125,7 +125,6 @@ vi.mock("./api", () => ({
   getCoaches: vi.fn(() => Promise.resolve([{ id: "coach-1", firstName: "Jean", lastName: "Dupont" }])),
   getLeagueWindows: vi.fn(() => Promise.resolve({ league: "AURA", items: [], resolvedTeamWindows: {} })),
   getVenueMatchWindows: vi.fn(() => Promise.resolve([])),
-  getVenueUnavailabilities: vi.fn(() => Promise.resolve([])),
   getVenueClosures: vi.fn(() => Promise.resolve([])),
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getTeamLinks: vi.fn(() => Promise.resolve([])),

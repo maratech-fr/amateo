@@ -203,39 +203,62 @@ final class OrphanPinGuardTest extends WebTestCase
     }
 
     /**
-     * NR — P2-37 D4 : un gymnase ENTIÈREMENT fermé sur la fenêtre du plan ne bloque PLUS.
-     * Il ne sert AUCUN jour : l'épinglage y est inerte (rien où le déplacer en silence), même
-     * doctrine que le gymnase désactivé (P3-20). La fermeture PARTIELLE, elle, bloque encore.
+     * NR — Fermetures de gymnase, « Enregistrer vaut geste » (fondateur 2026-11-02, retourne P2-37
+     * D4) : un gymnase ENTIÈREMENT fermé sur la fenêtre du plan par une fermeture DÉCLARÉE BLOQUE
+     * désormais, avec le motif FERMETURE. Déclarer la fermeture retire déjà ses épingles
+     * (`ClosurePinRemover`, gardé par `Security/ClosureRemovesPinsAtomicallyTest`) : celle qui
+     * subsiste a été posée APRÈS (un verrou à la main) — on la nomme au lieu de la garder inerte.
+     * Le gymnase DÉSACTIVÉ reste inerte (P3-20, {@see testAPinOnADisabledVenueNoLongerBlocksTheGeneration}).
      */
-    public function testAFullyClosedVenueNoLongerBlocks(): void
+    public function testAFullyClosedVenueBlocksAndNamesTheClosure(): void
     {
         // Fermeture couvrant toute la fenêtre 2025-10-20 → 2025-10-26.
         $this->em->persist($this->closureConstraint('Réquisition totale', '2025-10-20', '2025-10-26'));
-        // Verrou sur le seul créneau de la période (mardi 18:00), désormais dans un gymnase fermé-total.
+        // Verrou sur le seul créneau de la période (mardi 18:00), dans un gymnase fermé-total.
         $this->em->persist($this->slotTemplate(2, '18:00', LockLevel::HARD));
         $this->em->flush();
 
-        self::assertNull(
-            $this->guard->firstOrphanMessage($this->overlay),
-            'un gymnase entièrement fermé est inerte comme un désactivé : il ne bloque plus la génération',
-        );
+        $message = $this->guard->firstOrphanMessage($this->overlay);
+        self::assertIsString($message, 'un gymnase entièrement fermé par une fermeture déclarée bloque la génération');
+        self::assertStringContainsString('fermé', $message, 'le motif est la FERMETURE, pas la grille');
+        self::assertStringContainsString('Réquisition totale', $message, 'le titre de la fermeture est nommé');
+        self::assertStringContainsString('20/10', $message, 'les bornes de la fermeture');
+        self::assertStringContainsString($this->venue->getName(), $message);
     }
 
     /**
-     * NR — P2-37 D1/D4 : DEUX fermetures partielles qui se RELAIENT couvrent la fenêtre à
-     * elles deux → gymnase fermé-total → non bloquant. Un test « incident ⊇ fenêtre » naïf
-     * raterait ce cas (aucune des deux fermetures ne couvre seule la fenêtre).
+     * NR — même retournement : DEUX fermetures partielles qui se RELAIENT couvrent la fenêtre à
+     * elles deux → gymnase fermé-total → BLOQUANT, motif fermeture (un test « incident ⊇ fenêtre »
+     * naïf raterait ce cas : aucune des deux ne couvre seule la fenêtre).
      */
-    public function testTwoRelayingClosuresFullyCloseTheVenueAndNoLongerBlock(): void
+    public function testTwoRelayingClosuresFullyCloseTheVenueAndBlock(): void
     {
         $this->em->persist($this->closureConstraint('Première moitié', '2025-10-20', '2025-10-23'));
         $this->em->persist($this->closureConstraint('Seconde moitié', '2025-10-24', '2025-10-26'));
         $this->em->persist($this->slotTemplate(2, '18:00', LockLevel::HARD));
         $this->em->flush();
 
+        $message = $this->guard->firstOrphanMessage($this->overlay);
+        self::assertIsString($message, 'deux fermetures qui se relaient ferment tout le gymnase : bloquant');
+        self::assertStringContainsString('fermé', $message, 'le motif est la FERMETURE');
+        self::assertStringContainsString('Première moitié', $message, 'la fermeture qui couvre le mardi est nommée');
+    }
+
+    /**
+     * Correction SMITH passe 3 (A) — un gymnase fermé toute la période UNIQUEMENT par des jours
+     * DÉCOCHÉS à la main (masque CLOSED, aucune fermeture déclarée dessous) reste INERTE, comme un
+     * gymnase désactivé : seul un gymnase fermé-total par une fermeture DÉCLARÉE bloque. Témoin
+     * inverse de {@see testAFullyClosedVenueBlocksAndNamesTheClosure}.
+     */
+    public function testAVenueFullyClosedOnlyByHandUncheckedDaysStaysInert(): void
+    {
+        $this->mask([1 => 'CLOSED', 2 => 'CLOSED', 3 => 'CLOSED', 4 => 'CLOSED', 5 => 'CLOSED', 6 => 'CLOSED', 7 => 'CLOSED']);
+        $this->em->persist($this->slotTemplate(2, '18:00', LockLevel::HARD));
+        $this->em->flush();
+
         self::assertNull(
             $this->guard->firstOrphanMessage($this->overlay),
-            'deux fermetures qui se relaient ferment tout le gymnase : inerte, non bloquant',
+            'un gymnase fermé toute la période par des jours décochés à la main est inerte, comme un désactivé',
         );
     }
 
@@ -259,12 +282,11 @@ final class OrphanPinGuardTest extends WebTestCase
     }
 
     /**
-     * NR — P2-38 (R5) : un gymnase ENTIÈREMENT fermé par la fermeture d'une AUTRE entrée (fait
-     * transversal) est inerte comme un désactivé — l'épinglage n'a nulle part où glisser, donc
-     * il ne bloque pas. C'est le cas terrain : « Matéo en travaux » déclaré sur la période racine
-     * ferme le gymnase pendant la semaine de reprise, transparente au gestionnaire.
+     * NR — P2-38 (R5) retourné par « Enregistrer vaut geste » : un gymnase ENTIÈREMENT fermé par la
+     * fermeture d'une AUTRE entrée (fait transversal — « Matéo en travaux » déclaré sur la période
+     * racine pendant la semaine de reprise) BLOQUE désormais, et nomme la fermeture.
      */
-    public function testAVenueFullyClosedByAnotherEntryIsInert(): void
+    public function testAVenueFullyClosedByAnotherEntryBlocksAndNamesTheClosure(): void
     {
         $other = $this->otherEntry('2025-10-01', '2025-11-30');
         // Fermeture portée par l'AUTRE entrée, couvrant TOUTE la fenêtre du plan (2025-10-20→26).
@@ -272,10 +294,9 @@ final class OrphanPinGuardTest extends WebTestCase
         $this->em->persist($this->slotTemplate(2, '18:00', LockLevel::HARD)); // le créneau de la période
         $this->em->flush();
 
-        self::assertNull(
-            $this->guard->firstOrphanMessage($this->overlay),
-            'un gymnase fermé-total par la fermeture d’une AUTRE entrée est inerte : il ne bloque pas (R5)',
-        );
+        $message = $this->guard->firstOrphanMessage($this->overlay);
+        self::assertIsString($message, 'un gymnase fermé-total par la fermeture d’une AUTRE entrée bloque');
+        self::assertStringContainsString('Réquisition totale (autre entrée)', $message, 'la fermeture transversale est nommée');
     }
 
     /**
@@ -368,6 +389,26 @@ final class OrphanPinGuardTest extends WebTestCase
 
         // Rien n'a été mis en file : la version est restée DRAFT (le contrôleur rend AVANT
         // setStatus(PENDING) + flush + dispatch, qui sont séquentiels).
+        $this->em->clear();
+        self::assertSame(ScheduleStatus::DRAFT, $this->em->getRepository(Schedule::class)->find($overlayId)?->getStatus());
+    }
+
+    /**
+     * Branchement du filet fermé-total (§A.5) : `POST /generate` d'un plan dont un verrou subsiste
+     * sur un gymnase fermé toute la période rend 422 avec le motif FERMETURE, et rien n'est mis en file.
+     */
+    public function testGenerateIsRefusedWithTheClosureMotifOnAFullyClosedVenue(): void
+    {
+        $this->em->persist($this->closureConstraint('Réquisition totale', '2025-10-20', '2025-10-26'));
+        $this->em->persist($this->slotTemplate(2, '18:00', LockLevel::HARD));
+        $this->em->flush();
+        $overlayId = $this->overlay->getId();
+
+        $this->client->request('POST', '/api/schedules/' . $overlayId . '/generate', [], [], $this->headers());
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertStringContainsString('Réquisition totale', (string) ($body['error'] ?? ''), 'le refus nomme la fermeture');
         $this->em->clear();
         self::assertSame(ScheduleStatus::DRAFT, $this->em->getRepository(Schedule::class)->find($overlayId)?->getStatus());
     }

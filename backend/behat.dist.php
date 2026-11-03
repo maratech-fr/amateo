@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Tests\Behat\ClosurePinsSmallClubContext;
 use App\Tests\Behat\ClosureStraddleContext;
 use App\Tests\Behat\CoachLateRelayContext;
 use App\Tests\Behat\CoachWishesContext;
@@ -93,7 +94,7 @@ return (new Config)
             ->withSuite(
                 new Suite('overlay')
                     ->withPaths('%paths.base%/features/plan-de-periode-en-overlay.feature')
-                    ->withContexts(PeriodOverlayContext::class),
+                    ->withContexts(PeriodOverlayContext::class, ClosurePinsSmallClubContext::class),
             )
             ->withSuite(
                 new Suite('voeux')
@@ -133,7 +134,7 @@ return (new Config)
             ->withSuite(
                 new Suite('verrou-periode')
                     ->withPaths('%paths.base%/features/un-verrou-de-periode-survit-a-la-regeneration.feature')
-                    ->withContexts(PeriodLockSmallClubContext::class),
+                    ->withContexts(PeriodLockSmallClubContext::class, ClosurePinsSmallClubContext::class),
             )
             ->withSuite(
                 new Suite('fermeture-planning')

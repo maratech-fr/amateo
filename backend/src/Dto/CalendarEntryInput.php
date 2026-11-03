@@ -62,6 +62,11 @@ class CalendarEntryInput
     #[Groups(['write'])]
     public ?string $previewToken = null;
 
+    /** Re-dater une fermeture qui retire des verrous ou des réservations exige d'avoir lu l'annonce :
+     *  sans cette confirmation, le PUT répond 409 avec les nombres et ne change rien. */
+    #[Groups(['write'])]
+    public ?bool $confirmPinRemoval = null;
+
     #[Assert\Callback]
     public function validateShape(ExecutionContextInterface $context): void
     {

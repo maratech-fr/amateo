@@ -2,7 +2,7 @@ import { CalendarOff, CalendarRange, Minus, MoveRight, Plus, Sun, Trash2 } from 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { useSchedules, useVenues } from "@/features/planning/queries";
+import { useSchedules } from "@/features/planning/queries";
 import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
@@ -10,11 +10,11 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
-import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CalendarEntry, PublicHoliday, RedateEffect, RedateEffectKind, SchedulePlan, SchoolHoliday } from "./api";
-import { PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { ClosurePinsPreviewRequiredError, type PinRemoval, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { PinRemovalNotice } from "./ClosureImpactPanel";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useWorkingSeason } from "@/shared/session/queries";
@@ -25,27 +25,12 @@ import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isClosureChildWithMotherPresent, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
-import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useRedatePreview, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
+import { useCalendarEntries, useCreateCutoff, useCreateEvent, useDeleteEntry, useRedateEntry, useRedatePreview, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
+import { VenueClosureForm } from "./VenueClosureForm";
 import { WeekPickerDialog } from "./WeekPickerDialog";
 import { COCKPIT_TEXTS } from "./texts";
 
 type Mode = "list" | "event" | "closure" | "cutoff" | "redate";
-
-/**
- * Indisponibilité de gymnase résolue (avec le nom du gymnase, comme `holiday`/`publicHoliday`) —
- * posée depuis la page cockpit (décision fondateur « option B » 2026-10-28, amende P4-68 : désormais
- * radar + calendrier + modale du jour, sans impact sur les plannings — cadré à part). Le type vit ICI
- * (et non dans `MonthCalendar`) pour que `MonthCalendar`, qui importe déjà `DayDialog`, le réutilise
- * sans cycle d'import de valeur.
- */
-export interface CalendarVenueUnavailability {
-  id: string;
-  venueId: string;
-  venueName: string;
-  startDate: string;
-  endDate: string;
-  label: string | null;
-}
 
 interface DayDialogProps {
   iso: string;
@@ -54,13 +39,11 @@ interface DayDialogProps {
   holiday?: SchoolHoliday;
   /** Public holiday (jour férié) on this day, if any — shown as read-only info. */
   publicHoliday?: PublicHoliday;
-  /** Indisponibilités de gymnase couvrant ce jour (option B) — ligne lisible, SANS geste. */
-  venueUnavailabilities?: CalendarVenueUnavailability[];
   onClose: () => void;
 }
 
 /** Lightweight day dialog (annotation = modal, spec §5bis): lists the day's entries and creates an event / venue closure. */
-export function DayDialog({ iso, entries, holiday, publicHoliday, venueUnavailabilities, onClose }: DayDialogProps) {
+export function DayDialog({ iso, entries, holiday, publicHoliday, onClose }: DayDialogProps) {
   const [mode, setMode] = useState<Mode>("list");
   // D3 v1 PR-2 — le geste « Modifier les dates » ouvre un MODE du même dialogue (pas une modale
   // par-dessus) : l'entrée visée est retenue le temps du re-datage.
@@ -73,7 +56,7 @@ export function DayDialog({ iso, entries, holiday, publicHoliday, venueUnavailab
   return (
     <Modal label={`Jour ${iso}`} title={formatFrDate(iso)} onClose={onClose}>
       <div className="mt-4">
-        {mode === "list" ? <DayList entries={entries} holiday={holiday} publicHoliday={publicHoliday} venueUnavailabilities={venueUnavailabilities} onCreate={setMode} onRedate={startRedate} onClose={onClose} /> : null}
+        {mode === "list" ? <DayList entries={entries} holiday={holiday} publicHoliday={publicHoliday} onCreate={setMode} onRedate={startRedate} onClose={onClose} /> : null}
         {mode === "event" ? <EventForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "closure" ? <ClosureForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "cutoff" ? <CutoffForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
@@ -89,7 +72,7 @@ export function DayDialog({ iso, entries, holiday, publicHoliday, venueUnavailab
   );
 }
 
-function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCreate, onRedate, onClose }: { entries: CalendarEntry[]; holiday?: SchoolHoliday; publicHoliday?: PublicHoliday; venueUnavailabilities?: CalendarVenueUnavailability[]; onCreate: (m: Mode) => void; onRedate: (entry: CalendarEntry) => void; onClose: () => void }) {
+function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose }: { entries: CalendarEntry[]; holiday?: SchoolHoliday; publicHoliday?: PublicHoliday; onCreate: (m: Mode) => void; onRedate: (entry: CalendarEntry) => void; onClose: () => void }) {
   const deleteEntry = useDeleteEntry();
   const schedulesQuery = useSchedules();
   const [toDelete, setToDelete] = useState<CalendarEntry | null>(null);
@@ -221,13 +204,6 @@ function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCre
 
       {holiday ? <HolidayBlock holiday={holiday} entries={entries} onClose={onClose} /> : null}
 
-      {/* Option B (fondateur 2026-10-28) : les indisponibilités de gymnase du jour, en LECTURE seule
-          (« {gymnase} indisponible »). Aucun geste ici — la suppression vit dans la carte
-          « Indisponibilités gymnase », l'impact planning est cadré à part. */}
-      {(venueUnavailabilities ?? []).map((u) => (
-        <NoticeBanner key={u.id} tone="warning" icon={<CalendarOff className="size-4 text-warning" />} message={COCKPIT_TEXTS.venueUnavailableTitle(u.venueName, u.label)} />
-      ))}
-
       {null !== windowConflict && null === pickerFor ? <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => adjust(windowConflict.entryId)} /> : null}
 
       {deletable.length > 0 ? (
@@ -317,7 +293,7 @@ function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCre
           holiday est masquée de la liste supprimable (ancrage invisible), donc
           `deletable` peut être vide alors que le bloc vacances ci-dessus tient la
           journée — dire « la semaine type tourne normalement » se contredirait. */}
-      {deletable.length === 0 && !holiday && 0 === (venueUnavailabilities ?? []).length ? (
+      {deletable.length === 0 && !holiday ? (
         <EmptyHint>{COCKPIT_TEXTS.nothingThisDay}</EmptyHint>
       ) : null}
 
@@ -786,48 +762,14 @@ function EventForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; o
   );
 }
 
+/**
+ * Fermetures de gymnase (C1) — le jour du calendrier ouvre LA saisie unique d'une indisponibilité,
+ * la même que la carte du cockpit ({@link VenueClosureForm}), le jour cliqué en date de début.
+ */
 function ClosureForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; onDone: () => void }) {
-  const { data: venues } = useVenues();
-  const [title, setTitle] = useState("");
-  const { startDate, endDate, setStart, setEnd, valid } = useDateRange(iso);
-  const [venueId, setVenueId] = useState("");
-  const createClosure = useCreateVenueClosure();
-
-  const submit = () => {
-    if (venueId === "" || !valid) return;
-    const venueName = venues?.find((v) => v.id === venueId)?.name ?? "Gymnase";
-    // Structured "gymnase — raison" so the calendar tooltip names both the venue
-    // and why it's closed. Don't prefix when the typed reason already mentions the
-    // venue (avoids "Gymnase A — Gymnase A …"); default reason to "fermé" when
-    // blank; cap to the Constraint.name column (180) so a long reason can't make
-    // the paired FACILITY constraint fail to persist.
-    const reason = title.trim();
-    const base = reason === "" ? `${venueName} — fermé` : reason.includes(venueName) ? reason : `${venueName} — ${reason}`;
-    createClosure.mutate(
-      { title: base.slice(0, 180), startDate, endDate, venueId },
-      // Errors are toasted by the hook itself (unmount-safe rollback message).
-      { onSuccess: () => { toast.success("Indisponibilité enregistrée"); onDone(); } },
-    );
-  };
-
   return (
     <FormShell onBack={onBack}>
-      {/* autoFocus (dans une Modal : focaliser le premier champ au changement d'étape est voulu) —
-          le trigger du Listbox est focusable ; la primitive porte déjà le disable en interne. */}
-      <VenueSelect
-        aria-label={COCKPIT_TEXTS.unavailableVenueLabel}
-        placeholder={COCKPIT_TEXTS.unavailableVenuePlaceholder}
-        // eslint-disable-next-line jsx-a11y/no-autofocus
-        autoFocus
-        venues={(venues ?? []).map((v) => ({ id: v.id, name: v.name, color: v.color }))}
-        value={venueId}
-        onValueChange={setVenueId}
-      />
-      <Input aria-label={COCKPIT_TEXTS.unavailabilityTitleLabel} placeholder={COCKPIT_TEXTS.optionalTitlePlaceholder} maxLength={140} value={title} onChange={(e) => setTitle(e.target.value)} />
-      <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
-      <Button className="w-full" onClick={submit} disabled={createClosure.isPending || venueId === "" || !valid}>
-        {COCKPIT_TEXTS.save}
-      </Button>
+      <VenueClosureForm initialStartDate={iso} onDone={onDone} />
     </FormShell>
   );
 }
@@ -879,6 +821,8 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
   const floor = entry.startDate < todayISO() ? entry.startDate : todayISO();
   const { startDate, endDate, minStart, setStart, setEnd, valid } = useDateRange(entry.startDate, entry.endDate, floor);
   const [windowConflict, setWindowConflict] = useState<{ message: string; entryId: string } | null>(null);
+  // Fermetures E2a — le re-datage retirerait des épingles : l'annonce servie, puis la confirmation.
+  const [pinRemoval, setPinRemoval] = useState<PinRemoval | null>(null);
   const conflictRef = useRef<HTMLDivElement>(null);
   // Refus reçu → le focus part sur l'action de la notice (« Ouvrir le planning en place »).
   useEffect(() => {
@@ -899,18 +843,24 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
   const changed = startDate !== entry.startDate || endDate !== entry.endDate;
   const disabledReason = !changed ? "Aucune date n'a changé." : !valid ? "La fin doit suivre le début." : undefined;
 
-  const submit = async () => {
+  const submit = async (confirmPinRemoval = false) => {
     if (!changed || !valid) {
       return;
     }
     setWindowConflict(null); // réinitialisé à chaque tentative (jamais un refus périmé collé au geste)
+    setPinRemoval(null);
     try {
-      await redate.mutateAsync({ entry, startDate, endDate });
-      toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
+      const redated = await redate.mutateAsync(confirmPinRemoval ? { entry, startDate, endDate, confirmPinRemoval: true } : { entry, startDate, endDate });
+      const removed = redated?.removed ?? null;
+      toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}` + (null !== removed ? COCKPIT_TEXTS.removedSuffix(removed.locks, removed.reservations) : ""));
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {
         setWindowConflict({ message: error.message, entryId: error.conflictingEntryId });
+        return;
+      }
+      if (error instanceof ClosurePinsPreviewRequiredError) {
+        setPinRemoval(error.pinRemoval);
         return;
       }
       // Tout autre échec (422 hors saison / fin avant début, transport) → filet : le message serveur.
@@ -927,9 +877,18 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
           <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
         </div>
       ) : null}
-      <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} disabledReason={disabledReason}>
-        {COCKPIT_TEXTS.save}
-      </Button>
+      {null !== pinRemoval ? (
+        <>
+          <PinRemovalNotice pinRemoval={pinRemoval} />
+          <Button className="w-full" variant="destructive" onClick={() => void submit(true)} disabled={redate.isPending}>
+            {COCKPIT_TEXTS.confirmPinRemoval}
+          </Button>
+        </>
+      ) : (
+        <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} disabledReason={disabledReason}>
+          {COCKPIT_TEXTS.save}
+        </Button>
+      )}
     </FormShell>
   );
 }
@@ -1053,20 +1012,27 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
     }
   };
 
-  const confirm = async () => {
+  // Fermetures E2a — ce re-datage retirerait des épingles : l'annonce servie, puis la confirmation.
+  const [pinRemoval, setPinRemoval] = useState<PinRemoval | null>(null);
+  const confirm = async (confirmPinRemoval = false) => {
     if (null === loaded) {
       return;
     }
     const token = loaded.token;
     const hasDeletion = loaded.effects.some((e) => "absorb" === e.kind || "vanish" === e.kind);
     setWindowConflict(null);
+    setPinRemoval(null);
     try {
-      await redate.mutateAsync({ entry, startDate, endDate, previewToken: token });
+      await redate.mutateAsync(confirmPinRemoval ? { entry, startDate, endDate, previewToken: token, confirmPinRemoval: true } : { entry, startDate, endDate, previewToken: token });
       toast.success(hasDeletion ? "Dates modifiées — plans de période ajustés." : `Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {
         setWindowConflict({ message: error.message, entryId: error.conflictingEntryId });
+        return;
+      }
+      if (error instanceof ClosurePinsPreviewRequiredError) {
+        setPinRemoval(error.pinRemoval);
         return;
       }
       if (error instanceof PreviewTokenStaleError) {
@@ -1106,9 +1072,18 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
           <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
         </div>
       ) : null}
-      <Button className="w-full" variant={deletionAhead ? "destructive" : undefined} onClick={() => void (previewValid ? confirm() : loadPreview())} disabled={actionDisabled} disabledReason={actionTitle}>
-        {actionLabel}
-      </Button>
+      {null !== pinRemoval && previewValid ? (
+        <>
+          <PinRemovalNotice pinRemoval={pinRemoval} />
+          <Button className="w-full" variant="destructive" onClick={() => void confirm(true)} disabled={busy}>
+            {COCKPIT_TEXTS.confirmPinRemoval}
+          </Button>
+        </>
+      ) : (
+        <Button className="w-full" variant={deletionAhead ? "destructive" : undefined} onClick={() => void (previewValid ? confirm() : loadPreview())} disabled={actionDisabled} disabledReason={actionTitle}>
+          {actionLabel}
+        </Button>
+      )}
     </FormShell>
   );
 }

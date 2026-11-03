@@ -1,13 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
+import { HTTPError } from "ky";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createConstraint } from "@/features/wizard/api";
+import { useToastStore } from "@/shared/stores/toastStore";
 
 import * as cockpitApi from "./api";
 import { addDays, segmentsFromOffer, type WeekWindow } from "./lib/date";
-import { useCreateCutoff, useCreateHolidayPeriod, useCreateWeekChildren, usePlannedWindows, usePublicHolidays } from "./queries";
+import { useCreateCutoff, useCreateHolidayPeriod, useCreateVenueClosure, useCreateWeekChildren, usePlannedWindows, usePublicHolidays } from "./queries";
+import { COCKPIT_TEXTS } from "./texts";
 
 vi.mock("./api", () => ({
   getCalendarEntries: vi.fn(),
@@ -18,6 +21,7 @@ vi.mock("./api", () => ({
   getPlannedWindows: vi.fn().mockResolvedValue([]),
   createCalendarEntry: vi.fn().mockResolvedValue({ id: "e1" }),
   deleteCalendarEntry: vi.fn(),
+  getClosureImpactPreview: vi.fn(),
 }));
 vi.mock("@/features/wizard/api", () => ({
   createConstraint: vi.fn(),
@@ -130,5 +134,102 @@ describe("cockpit queries — payload contracts", () => {
       endDate: "2026-09-27",
       parentEntryId: "m1",
     });
+  });
+});
+
+/**
+ * Promesse (chantier « Fermetures de gymnase », PR 1, C3bis) : une fermeture se crée en DEUX POST
+ * (entrée puis contrainte `venue_closed`) ; c'est le POST de la contrainte qui retire les épingles
+ * et rend `removed`. Si ce POST est refusé — notamment 409 `generation_in_progress` (jumeau serveur
+ * `backend/tests/Api/ClosureRemovesPinsAtomicallyTest.php`) — l'entrée est supprimée (rien ne reste
+ * fermé) et le gestionnaire lit le motif NOMMÉ ; si elle réussit, `removed` remonte au formulaire.
+ */
+describe("useCreateVenueClosure — Enregistrer vaut geste (C3bis)", () => {
+  const payload = { title: "Mistral — fermé", startDate: "2999-01-05", endDate: "2999-01-09", venueId: "v-mistral" };
+
+  function httpError(status: number, data: unknown): HTTPError {
+    const error = new HTTPError(new Response(JSON.stringify(data), { status }), new Request("http://localhost/api/constraints"), {} as never);
+    (error as unknown as { data: unknown }).data = data;
+    return error;
+  }
+
+  beforeEach(() => {
+    vi.mocked(cockpitApi.createCalendarEntry).mockReset();
+    vi.mocked(cockpitApi.createCalendarEntry).mockResolvedValue({ id: "e-new" } as never);
+    vi.mocked(cockpitApi.deleteCalendarEntry).mockReset();
+    vi.mocked(cockpitApi.deleteCalendarEntry).mockResolvedValue(undefined as never);
+    vi.mocked(createConstraint).mockReset();
+    useToastStore.setState({ toasts: [] });
+  });
+
+  it("rend `removed` du POST de la contrainte (ce que le toast confirmera)", async () => {
+    vi.mocked(createConstraint).mockResolvedValue({ id: "k1", removed: { locks: 10, reservations: 1 } } as never);
+    const { result } = renderHook(() => useCreateVenueClosure(), { wrapper });
+
+    result.current.mutate(payload);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // Contrat supposé (à trancher par NEO) : `{ entry, removed }`.
+    expect(result.current.data).toEqual(expect.objectContaining({ entry: expect.objectContaining({ id: "e-new" }), removed: { locks: 10, reservations: 1 } }));
+  });
+
+  /**
+   * Remplace `matches/queries.test.tsx` « useCreateVenueUnavailability refetche les TROIS surfaces »
+   * (indisponibilité séparée retirée, C1) : la fermeture est désormais le SEUL fait saisi, donc c'est
+   * elle qui doit rafraîchir le radar des conflits de matchs (`["fixtures","conflicts"]`, nature
+   * VENUE_UNAVAILABLE servie par `ConflictRadarLoader` depuis les fermetures) et le feed des fermetures
+   * lu par le placement (`["venue_closures"]`) — sinon le gestionnaire voit un match « placé » dans
+   * un gymnase qu'il vient de fermer, jusqu'au prochain rechargement.
+   */
+  it("une fermeture enregistrée rafraîchit le radar des matchs ET le feed des fermetures", async () => {
+    vi.mocked(createConstraint).mockResolvedValue({ id: "k1", removed: { locks: 0, reservations: 0 } } as never);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useCreateVenueClosure(), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    });
+
+    result.current.mutate(payload);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    expect(keys).toContain(JSON.stringify(["fixtures", "conflicts"]));
+    expect(keys).toContain(JSON.stringify(["venue_closures"]));
+  });
+
+  it("409 generation_in_progress sur la contrainte : l'entrée est SUPPRIMÉE et le toast nomme la génération en cours", async () => {
+    // Corps SANS phrase serveur : le front doit nommer le motif par sa clé, pas recopier un texte reçu.
+    vi.mocked(createConstraint).mockRejectedValue(httpError(409, { code: "generation_in_progress" }));
+    const { result } = renderHook(() => useCreateVenueClosure(), { wrapper });
+
+    result.current.mutate(payload);
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(cockpitApi.deleteCalendarEntry).toHaveBeenCalledWith("e-new");
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(COCKPIT_TEXTS.generationInProgress));
+  });
+});
+
+/**
+ * Défaut relevé par SWITCH (`fermetures/02-form-08-echec.png`) : l'échec de lecture de l'aperçu est
+ * DÉJÀ dit dans le formulaire (« Impact non évalué — réessayez » + « Réessayer ») ; le filet global
+ * `QueryCache.onError` (`shared/lib/queryClient.ts`) y ajoutait un toast générique EN DOUBLE. L'aperçu
+ * possède son échec : aucun toast. Exercé avec le VRAI client de l'app (c'est lui qui porte le filet).
+ */
+describe("useClosureImpactPreview — l'échec de lecture n'est dit qu'une fois (dans le formulaire)", () => {
+  it("une lecture en échec ne pose AUCUN toast générique", async () => {
+    const { queryClient } = await import("@/shared/lib/queryClient");
+    const { useClosureImpactPreview } = await import("./queries");
+    vi.mocked(cockpitApi.getClosureImpactPreview).mockRejectedValue(new Error("Problème de connexion"));
+    useToastStore.setState({ toasts: [] });
+    const { result } = renderHook(() => useClosureImpactPreview({ venueId: "v-mistral", startDate: "2999-01-05", endDate: "2999-01-09" }), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 5_000 });
+    // Laisse au filet global le temps de résoudre son message (il passe par une promesse).
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(useToastStore.getState().toasts).toEqual([]);
+    queryClient.clear();
   });
 });

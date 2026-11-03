@@ -80,6 +80,15 @@ class CalendarEntryResource
     #[Groups(['read'])]
     public bool $redateNeedsPreview = false;
 
+    /**
+     * Ce qu'un re-datage de fermeture a retiré des plannings de période (verrous et réservations au
+     * gymnase fermé, aux jours nouvellement fermés) ; null hors de ce geste.
+     *
+     * @var array{locks: int, reservations: int}|null
+     */
+    #[Groups(['read'])]
+    public ?array $removed = null;
+
     public static function fromEntity(CalendarEntry $entity, bool $redatable = false, bool $redateNeedsPreview = false): self
     {
         $dto = new self;

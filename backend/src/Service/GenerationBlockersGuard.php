@@ -38,6 +38,7 @@ final readonly class GenerationBlockersGuard
         private LoggerInterface $logger,
         private TeamRepository $teamRepository,
         private SecondSessionSameDayDetector $secondSessionSameDayDetector,
+        private PlanVenueClosures $planVenueClosures,
     ) {}
 
     /**
@@ -334,8 +335,10 @@ final readonly class GenerationBlockersGuard
             if (isset($grid[$key])) {
                 continue;
             }
+            // Fermetures de gymnase (correction C) — le motif NOMME la fermeture quand c'en est une.
+            $closure = null !== $reservation->getSchedulePlanId() ? PlanVenueClosures::describeForVenue(array_values(array_filter($this->planVenueClosures->effectiveStateForPlan($reservation->getSchedulePlanId())['summaries'], static fn (array $summary): bool => \in_array($reservation->getDayOfWeek(), $summary['weekdays'], true))), $reservation->getVenueId()) : null;
             $blockers[] = \sprintf(
-                'La réservation de %s à %s le %s à %s ne correspond à aucun créneau : ce créneau a été déplacé ou supprimé. Retirez-la depuis le récapitulatif, ou recréez le créneau.',
+                null !== $closure ? 'La réservation de %s à %s le %s à %s tombe sur une fermeture du gymnase — ' . str_replace('%', '%%', $closure) . '. Retirez-la depuis le récapitulatif, ou ajustez la fermeture.' : 'La réservation de %s à %s le %s à %s ne correspond à aucun créneau : ce créneau a été déplacé ou supprimé. Retirez-la depuis le récapitulatif, ou recréez le créneau.',
                 $teamNames[$reservation->getTeamId()] ?? 'cette équipe',
                 $venueNames[$reservation->getVenueId()] ?? 'ce gymnase',
                 self::DAY_NAMES[$reservation->getDayOfWeek()] ?? 'ce jour',

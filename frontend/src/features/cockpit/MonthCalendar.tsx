@@ -1,4 +1,4 @@
-import { CalendarOff, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
@@ -6,10 +6,9 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
 
 import type { CalendarEntry, PublicHoliday, SchoolHoliday } from "./api";
-import { DayDialog, type CalendarVenueUnavailability } from "./DayDialog";
+import { DayDialog } from "./DayDialog";
 import { buildMonthGrid, isWithin, monthLabel, todayISO } from "./lib/date";
 import { entryIcon, entryLabel, holidayIcon, isClosureChildWithMotherPresent, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
-import { COCKPIT_TEXTS } from "./texts";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
 
@@ -19,9 +18,6 @@ interface MonthCalendarProps {
   entries: CalendarEntry[];
   holidays: SchoolHoliday[];
   publicHolidays: PublicHoliday[];
-  /** Indisponibilités de gymnase RÉSOLUES couvrant le mois (option B) — marque distincte + ligne
-   *  dans la modale du jour ; vide par défaut (une lecture en échec côté page ne casse pas la grille). */
-  venueUnavailabilities?: CalendarVenueUnavailability[];
   onPrev: () => void;
   onNext: () => void;
   /** UXS-09 (décision A) : le chargement/échec de la LECTURE des entrées ne touche QUE la grille —
@@ -32,7 +28,7 @@ interface MonthCalendarProps {
 }
 
 /** Month grid of the exception layer (events / closures / holidays) — NOT the weekly base plan. */
-export function MonthCalendar({ year, month, entries, holidays, publicHolidays, venueUnavailabilities = [], onPrev, onNext, loading, failed, onRetry }: MonthCalendarProps) {
+export function MonthCalendar({ year, month, entries, holidays, publicHolidays, onPrev, onNext, loading, failed, onRetry }: MonthCalendarProps) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const grid = buildMonthGrid(year, month);
   const today = todayISO();
@@ -40,7 +36,6 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
   const entriesOn = (iso: string): CalendarEntry[] => entries.filter((e) => isWithin(iso, e.startDate, e.endDate));
   const holidayOn = (iso: string): SchoolHoliday | undefined => holidays.find((h) => isWithin(iso, h.startDate, h.endDate));
   const publicHolidayOn = (iso: string): PublicHoliday | undefined => publicHolidays.find((h) => h.date === iso);
-  const unavailabilitiesOn = (iso: string): CalendarVenueUnavailability[] => venueUnavailabilities.filter((u) => isWithin(iso, u.startDate, u.endDate));
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -92,7 +87,6 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
               const dayEntries = onDay.filter((e) => !isHolidayAnchor(e) && !isHolidayWeekChild(e) && !isClosureChildWithMotherPresent(e, onDay));
               const holiday = holidayOn(cell.iso);
               const publicHoliday = publicHolidayOn(cell.iso);
-              const unavailabilities = unavailabilitiesOn(cell.iso);
               const isToday = cell.iso === today;
               // "On ne modifie pas le passé" : days strictly before today stay visible
               // (holidays still shown) but are not clickable — no DayDialog on the past.
@@ -105,9 +99,6 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
                 holiday ? `vacances — ${holiday.label}` : null,
                 publicHoliday ? `jour férié — ${publicHoliday.label}` : null,
                 ...dayEntries.map((e) => entryLabel(e)),
-                // Option B (2026-10-28) : l'indispo de gymnase s'annonce AUSSI au lecteur d'écran,
-                // distincte de la fermeture (« {gymnase} indisponible » + son libellé).
-                ...unavailabilities.map((u) => COCKPIT_TEXTS.venueUnavailableTitle(u.venueName, u.label)),
               ].filter((m): m is string => m !== null);
               // Derive the readable date from the ISO so the leading/trailing spill days
               // read "27 Avril", not the raw ISO — the same A11Y-07 fix must cover them
@@ -159,13 +150,6 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
                         {entryIcon(e)}
                       </span>
                     ))}
-                    {/* Indispo de gymnase : glyphe DISTINCT du ⛔ (lucide CalendarOff, `text-warning`),
-                        cohérent avec la carte « Indisponibilités gymnase » (passe design 2026-10-28). */}
-                    {unavailabilities.map((u) => (
-                      <span key={u.id} title={COCKPIT_TEXTS.venueUnavailableTitle(u.venueName, u.label)} className="inline-flex items-center text-warning">
-                        <CalendarOff className="size-3" />
-                      </span>
-                    ))}
                   </span>
                   {holiday && cell.inMonth ? (
                     <span className="w-full truncate text-[10px] leading-tight text-foreground" title={holiday.label}>
@@ -183,9 +167,6 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
             <span><span aria-hidden>⛔</span> fermeture</span>
             <span><span aria-hidden>🛑</span> date butoir</span>
             <span><span aria-hidden>🚫</span> événement perturbant</span>
-            <span className="inline-flex items-center gap-1">
-              <CalendarOff aria-hidden className="size-3 text-warning" /> gymnase indisponible
-            </span>
           </p>
         </>
       )}
@@ -196,7 +177,6 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
           entries={entriesOn(selectedDay)}
           holiday={holidayOn(selectedDay)}
           publicHoliday={publicHolidayOn(selectedDay)}
-          venueUnavailabilities={unavailabilitiesOn(selectedDay)}
           onClose={() => setSelectedDay(null)}
         />
       ) : null}
