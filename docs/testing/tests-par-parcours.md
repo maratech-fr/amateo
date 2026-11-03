@@ -197,7 +197,9 @@ B ≥ 80 % des séances ; aucune prioritaire ne perd.
 - 3→2 / mutualiser / diviser : overrides de période, gates `SharedBlock*`, capacité
   `VenueTrainingSlot`.
 - Bilan par rang : **manque produit** (ligne de roadmap P4-337). Aperçu « qui est touché » dès la
-  déclaration : **manque produit** (ligne de roadmap P4-338, patron `DeletionImpactParityTest`).
+  déclaration : **LIVRÉ** (fermetures de gymnase PR 1) — `Security/ClosureImpactSaysTheSameEverywhereTest`
+  (l'aperçu et l'impact enregistré disent le même chiffre), retrait des épingles à l'enregistrement
+  `Security/ClosureRemovesPinsAtomicallyTest`.
 - **LIVRÉ (P4-342, 2026-10-19)** : feature `une-fermeture-adapte-le-planning.feature`, suite
   `fermeture-planning` (`backend/behat.dist.php`), context `VenueClosureSmallClubContext`
   (`SmallClubFixtureTrait`, décor 11 équipes / 3 gymnases, palier 60 s). Le gestionnaire ferme deux

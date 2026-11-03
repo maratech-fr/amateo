@@ -827,6 +827,26 @@ docker exec amateo-php-fpm php bin/console app:schedule:normalize-team-coach-sna
 
 Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md).
 
+### Table `venue_unavailability` orpheline — DROP à la release SUIVANTE (fermetures de gymnase)
+
+La release qui fond « indisponibilité de gymnase » dans la fermeture du calendrier (une `CalendarEntry`
+`closure` + sa contrainte `venue_closed`) **retire du code** l'entité `VenueUnavailability`, son
+API (`/api/venue_unavailabilities`, `/api/venue-unavailability-impact`) et sa carte, mais **ne supprime
+pas la table** (règle d'écriture des migrations : arrêter de lire, puis supprimer, en deux releases).
+
+- **Pas de migration dans cette release.** La table reste en base, orpheline ; `schema_filter:
+  '~^(?!venue_unavailability$)~'` sur les connexions `default` ET `admin`
+  (`backend/config/packages/doctrine.yaml`) la cache à `doctrine:schema:validate` et aux diffs de
+  migration, jusqu'au DROP. Gardé par `Integration/SchemaFilterIgnoresOrphanTableTest`.
+- **Avant le DROP (release suivante)** : re-mesurer, clubs de démo exclus, `scripts/prod-read.sh "SELECT
+  c.name, count(*) FROM venue_unavailability u JOIN club c ON c.id = u.club_id WHERE NOT c.is_demo
+  GROUP BY c.name"`. Une ligne trouvée = indisponibilité à **re-saisir à la main** comme fermeture du
+  calendrier (rien ne la convertit). Mesure faite à la conception : zéro ligne en prod.
+- **Le DROP** est une migration à part (retrait du `schema_filter` dans la même PR).
+- **Retour arrière** vers la version d'avant : sans risque pour les données, la table est intacte ; les
+  fermetures déclarées entre-temps restent des fermetures du calendrier (l'ancien code les lit) mais
+  les verrous et réservations qu'elles ont retirés **ne sont pas remis**.
+
 ### Rituel sécurité post-déploiement (ZAP + Nuclei) — obligatoire à CHAQUE déploiement
 
 Une fois le déploiement vert, rejouer le rituel décrit dans

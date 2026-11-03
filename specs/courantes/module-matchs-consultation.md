@@ -67,8 +67,7 @@ le layout — la nav des onglets reste inchangée.
   gestionnaire, create ET update d'un domicile) refuse en 422 (0, P4-300) toute rencontre — amical
   compris — posée dans un gymnase couvert par une FERMETURE du calendrier (`venue_closed`) à sa
   date (« X est fermée du … au … — titre », même maison `PlanVenueClosures::closureIntervals`
-  que le payload de placement et le radar) ; (1) toute rencontre — amical compris
-  — posée dans un gymnase couvert par une `VenueUnavailability` à sa date ; (2) pour une rencontre
+  que le payload de placement et le radar) ; (1) pour une rencontre
   de COMPÉTITION seulement, quand le club déclare ≥ 1 `VenueMatchWindow` : aucune fenêtre `(gymnase,
   jour)` ou coup d'envoi hors fenêtre (même prédicat que le diagnostic,
   `MatchConflictDetector::kickoffInsideWindow` — une seule maison). Jamais de refus sur l'enveloppe

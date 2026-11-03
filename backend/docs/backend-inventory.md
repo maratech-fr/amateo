@@ -152,7 +152,7 @@ universel** — vérifier au besoin `grep paginationItemsPerPage backend/src/Api
   par un écran) : `SchedulePlan`, `TeamPeriodOverride`, `ConstraintPeriodOverride`,
   `VenuePeriodOverride`, `CoachWish`, `CoachWishCampaign`, `CoachWishMutualization`.
 - **Surchargée à 50 ou 100** (listes qui grossissent plus vite que le défaut 30 ne le tolère) :
-  `TeamLink`, `TeamMatchHabit`, `VenueUnavailability`, `Competition` (50) ; `Reservation`,
+  `TeamLink`, `TeamMatchHabit`, `Competition` (50) ; `Reservation`,
   `Fixture` (100).
 
 Les collections sont servies au format JSON-LD :

@@ -123,7 +123,7 @@ paths:
   (boutons `Enregistrer`/`Annuler` en texte) et le bouton d'enregistrement de `ConstraintsStep`.
   N2 : `ConfirmDialog` avant suppression d'un créneau idéal, d'une fenêtre d'accès match
   (`MatchWindowsEditor`), d'une passerelle (`TeamLinksSection`), d'une indisponibilité de gymnase
-  (`VenueUnavailabilityCard`), d'une réservation ou d'un lot mutualisé au récap (`RecapStep`) et
+  (`VenueClosureCard`), d'une réservation ou d'un lot mutualisé au récap (`RecapStep`) et
   d'une doléance coach (`CoachWishesModal`, PR 5/7) — seule exception : retirer une pastille de
   LIAISON coach/joueur↔équipe (`CoachesStep`) reste immédiate, geste réversible sans conséquence.
   `WeekWorkbench` (suppression de match) est une exemption légitime du garde, pas une lacune : ses

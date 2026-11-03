@@ -137,8 +137,7 @@ vigueur, il n'a rien à comparer.
   `engine/app/solver/objective/terms/rhythm.py`) — pour le bonus SOFT « jour de repos après un match ».
   Sans habitude, repli sur le champ déclaré `Team.matchDay` (0-based, converti en ISO à l'émission).
 - **`VenueMatchWindow`** (jour ISO + plage horaire, gymnase = « de match » ssi ≥ 1 fenêtre — aucun
-  booléen sur `Venue`) et **`VenueUnavailability`** (plage de dates + motif, toutes circonstances,
-  alerte seulement — jamais recopiée en N+1). **8ᵉ ligne « Jours fériés » (PR2, Q1 option c,
+  booléen sur `Venue`) (l'ancienne entité `VenueUnavailability` est retirée : une indisponibilité de gymnase est une fermeture du calendrier, voir plus bas ; sa table reste orpheline jusqu'à son DROP, `docs/ops/deploy.md`). **8ᵉ ligne « Jours fériés » (PR2, Q1 option c,
   décision fondateur 2026-10-27, migration `Version20261027120000`)** : `dayOfWeek` devient
   NULLABLE et la colonne `appliesOnPublicHolidays` (booléen, défaut `false`) porte la ligne férié
   — **exactement l'un des deux est posé** (ligne de jour de semaine : `dayOfWeek` + drapeau
@@ -152,7 +151,7 @@ vigueur, il n'a rien à comparer.
   422 sinon. Une ouverture S'AJOUTE aux lignes de sa date (férié ou non) et ne vaut que pour elle ;
   elle vaut pour TOUT match ce jour-là (décision fondateur, pas de ciblage par compétition) ; une
   date hors saison est acceptée (l'écran avertit, ne bloque pas) ; jamais recopiée au passage de
-  saison (`SeasonTransitionService`, fait d'un jour comme `VenueUnavailability`). **Le club n'« adopte »
+  saison (`SeasonTransitionService`, fait d'un jour comme une fermeture). **Le club n'« adopte »
   les accès match qu'avec ≥ 1 ligne NON datée** (`MatchConflictDetector::hasWeeklyAccess`) : une
   ouverture seule ne bascule pas le club en « accès obligatoire ». **Fermeture du calendrier** (`venue_closed`,
   P4-300) : pas une entité propre — une contrainte `Constraint`/FACILITY datée, portée par une
@@ -161,7 +160,7 @@ vigueur, il n'a rien à comparer.
   `config`, repli legacy = fenêtre de l'entrée porteuse, **jamais** la composition
   `VenuePeriodOverride` d'un plan d'entraînement) consommée par `MatchPlacementPayloadBuilder`
   (fusionnée dans `venues[].unavailabilities` du payload `/place-matches`, sans bump de contrat),
-  `ConflictRadarLoader` (fusionnée avec `VenueUnavailability` dans la même famille radar), et
+  `ConflictRadarLoader` (famille radar `VENUE_UNAVAILABLE`), et
   `FixtureStateProcessor::assertVenueAccessAllowed` (refus 422, placement manuel).
 - **`ConflictResolution`** (clé `(club, saison, fingerprint)`, l'empreinte STABLE d'un conflit) :
   statut de traitement — voir §6.
@@ -178,7 +177,7 @@ nuls) ; TEAM (interdiction de gymnase) : remap de l'équipe ET du gymnase (même
 correspondance que les habitudes) ; COACH (indisponibilité d'entraîneur) : remap du coach seul
 (jours + fourchette conservés) — dans les trois cas une référence PENDANTE (équipe, gymnase ou
 coach disparu en N+1) fait ABANDONNER la ligne, jamais un pointeur mort en base. Les
-indisponibilités de GYMNASE (`VenueUnavailability` — travaux, fermeture ponctuelle) et les
+fermetures de GYMNASE (entrées de calendrier `closure`, ex-`VenueUnavailability` — travaux, fermeture ponctuelle) et les
 échéances **ne sont jamais recopiées**.
 
 ### Tables GLOBALES fédérales (hors tenant, hors RLS)

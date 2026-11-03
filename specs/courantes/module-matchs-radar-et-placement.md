@@ -42,7 +42,7 @@ compat, plus utilisé à l'affichage.
   ci-dessous — échauffement retranché, trajet conservé). Gravité `pairSeverity` : dur (MAIN×MAIN,
   MAIN×PLAYER, PLAYER×PLAYER) = 3 ; un côté ASSISTANT = 5.
 - `MATCH_TRAINING` — une fixture chevauchant un entraînement (lu dans le planning **effectif à la
-  date du match** : overlay ACTIVE sinon version choisie du plan SEASON, `EffectiveScheduleResolver`)
+  date du match** : overlay ACTIVE sinon version choisie du plan SEASON, `EffectiveScheduleResolver` ; une FERMETURE sans version ne capture plus sa date, le planning en vigueur s'applique et seul le gymnase fermé sort — capture inversée, ADR-0002)
   sur la MÊME fenêtre de conflit côté match. Gravité `trainingSeverity` (asymétrique) : match joué ×
   entraînement joué/coaché MAIN = 3 ; match coaché MAIN × entraînement où elle ne fait que jouer = 5 ;
   tout côté ASSISTANT = 5. L'entraînement de l'équipe qui joue CE match n'est **jamais** un conflit

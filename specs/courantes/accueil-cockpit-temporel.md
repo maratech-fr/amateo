@@ -301,15 +301,20 @@ a un CTA.** C'est la version généralisée des alertes J-14 de la vision d'orig
 vacances y sont **proposées** comme période à adapter (CTA « Générer le plan »/« Adapter »),
 **jamais auto-appliquées** — c'est le gestionnaire qui déclenche.
 
-**Une indisponibilité de gymnase n'est plus confinée au radar** (amende la décision fermée P4-68
-— « l'indisponibilité entre au radar et nulle part ailleurs », `etat-des-lieux.md` §2) : elle porte
-en plus une marque DISTINCTE du ⛔ sur le calendrier, sur chacun de ses jours, et une ligne lecture
-seule dans la modale du jour (« {gymnase} indisponible », aucun geste — la suppression reste sur la
-carte radar « Indisponibilités gymnase »). Hors scope, délibérément : l'**impact** d'une
-indisponibilité sur les plannings (séances à replacer) — cadré à part (`roadmap.md` P4-372). Le
-radar lui-même ne masque plus une indisponibilité par une fermeture **d'un autre gymnase** — seule
-une période CLUB-ENTIER (vacances/coupure) ou une fermeture **du même gymnase** masque désormais
-(`unavailabilitiesToAlert`, `cockpit/lib/venueUnavailabilityRadar.ts`).
+**Une indisponibilité de gymnase est UN SEUL fait, saisi une fois** (fermetures de gymnase,
+fondateur 2026-11-02 ; remplace l'entité `VenueUnavailability` et amende la décision fermée P4-68
+« radar, et nulle part ailleurs », `etat-des-lieux.md` §2). C'est une entrée `closure` + sa
+contrainte `venue_closed`, saisie par la même modale `VenueClosureForm` depuis la carte
+« Indisponibilités de gymnase » (dates vides, `VenueClosureCard`) ou depuis un jour du calendrier
+(`DayDialog`). Le formulaire **montre l'impact avant d'enregistrer** (`GET /api/venue-closure-impact`,
+`ClosureImpactPanel`) : équipes à l'entraînement et leur rang, **matchs à déplacer nommés** (5 puis
+« + n autres »), et — annoncés avec leurs nombres — les **verrous HARD et réservations qu'enregistrer
+retirera** des plans de période concernés (« Enregistrer vaut geste », ADR-0002) ; « Enregistrer »
+reste inactif tant que l'aperçu n'a pas été lu. Le radar et la carte lisent le MÊME chiffre
+(`/impact`, `useEntryImpact`) ; un plan de période touché montre « Ouvrir le plan » (radar) et une
+bannière « périmé » sur son écran (`StalePlanBanner`) ; supprimer la fermeture dit que rien n'est
+remis. Le calendrier affiche l'entrée sur ses jours ; le bilan par rang après adaptation et le bouton
+« seulement les séances qui ont changé » ne sont PAS livrés (`roadmap.md`).
 
 ### 5.1 Le radar ne montre que l'AVENIR ACTIONNABLE
 
