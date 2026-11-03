@@ -433,6 +433,6 @@ final class MemberWriteSweepTest extends WebTestCase
         $this->ids['holiday_plan'] = $this->create($token, '/api/schedule_plans', ['calendarEntryId' => $this->ids['holiday']]);
         $this->ids['coach_wish_campaign'] = $this->create($token, '/api/coach_wish_campaigns', ['calendarEntryId' => $this->ids['holiday'], 'deadline' => $monday->modify('+7 days')->format('Y-m-d'), 'weeks' => [$holidayMonday], 'teamIds' => [$this->ids['team']]]);
         $this->ids['rule_key'] = 'coachRestDay';
-        $this->ids['season'] = $this->ids['season'] ?? self::DUMMY;
+        $this->ids['season'] ??= self::DUMMY;
     }
 }

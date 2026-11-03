@@ -31,6 +31,9 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  */
 trait MemberReadOnlyDecorTrait
 {
+    /** Transports mémoire du test : un message qui y passe est un effet de bord. */
+    private const array IN_MEMORY_TRANSPORTS = ['mailer_in_memory', 'travel_in_memory', 'placement_in_memory', 'ffbb_in_memory', 'reset_in_memory'];
+
     /** @var array<string, string> ids réels du décor, par nom de placeholder */
     private array $ids = [];
 
@@ -43,9 +46,6 @@ trait MemberReadOnlyDecorTrait
     private string $memberToken = '';
 
     private string $memberUserId = '';
-
-    /** Transports mémoire du test : un message qui y passe est un effet de bord. */
-    private const array IN_MEMORY_TRANSPORTS = ['mailer_in_memory', 'travel_in_memory', 'placement_in_memory', 'ffbb_in_memory', 'reset_in_memory'];
 
     /** Inscription réelle (club né, gestionnaire actif) ; pose `clubId`, `managerUserId`, `managerToken`. */
     private function registerManager(string $prefix): string
@@ -187,12 +187,12 @@ trait MemberReadOnlyDecorTrait
         $conn = $container->get(EntityManagerInterface::class)->getConnection();
         \assert($conn instanceof Connection);
         $tables = $conn->fetchAllAssociative(
-            "SELECT c.table_name, bool_or(u.column_name IS NOT NULL) AS has_updated
+            'SELECT c.table_name, bool_or(u.column_name IS NOT NULL) AS has_updated
                FROM information_schema.columns c
                LEFT JOIN information_schema.columns u
-                 ON u.table_schema = c.table_schema AND u.table_name = c.table_name AND u.column_name = 'updated_at'
-              WHERE c.table_schema = 'public' AND c.column_name = 'club_id'
-              GROUP BY c.table_name ORDER BY c.table_name",
+                 ON u.table_schema = c.table_schema AND u.table_name = c.table_name AND u.column_name = \'updated_at\'
+              WHERE c.table_schema = \'public\' AND c.column_name = \'club_id\'
+              GROUP BY c.table_name ORDER BY c.table_name',
         );
         $print = [];
         foreach ($tables as $t) {
