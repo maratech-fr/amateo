@@ -8,7 +8,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import * as cockpitApi from "./api";
 import type { CalendarEntry, CreateClosurePayload, CreateCutoffPayload, CreateEventPayload } from "./api";
-import { asWindowAlreadyPlanned, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { asWindowAlreadyPlanned, ClosurePinsPreviewRequiredError, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
 import { frDateShort, segmentWeekCount, type WeekSegment } from "./lib/date";
 import { COCKPIT_TEXTS } from "./texts";
 
@@ -22,7 +22,7 @@ import { COCKPIT_TEXTS } from "./texts";
  * jamais le doublant.
  */
 function ownWindowConflictFeedback(error: unknown): void {
-  if (error instanceof WindowAlreadyPlannedError || error instanceof PreviewTokenStaleError) {
+  if (error instanceof WindowAlreadyPlannedError || error instanceof PreviewTokenStaleError || error instanceof ClosurePinsPreviewRequiredError) {
     // Le dialogue du geste affiche ces deux refus lui-même (WindowAlreadyPlannedNotice pour le
     // chevauchement ; NoticeBanner + ré-aperçu pour le jeton périmé, D3 v2) — jamais un toast.
     return;
@@ -567,8 +567,8 @@ export function useDeleteEntry() {
 export function useRedateEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { entry: CalendarEntry; startDate: string; endDate: string; previewToken?: string }) =>
-      cockpitApi.updateCalendarEntry(vars.entry, { startDate: vars.startDate, endDate: vars.endDate, previewToken: vars.previewToken }),
+    mutationFn: (vars: { entry: CalendarEntry; startDate: string; endDate: string; previewToken?: string; confirmPinRemoval?: boolean }) =>
+      cockpitApi.updateCalendarEntry(vars.entry, { startDate: vars.startDate, endDate: vars.endDate, previewToken: vars.previewToken, confirmPinRemoval: vars.confirmPinRemoval }),
     onSuccess: () => {
       invalidateEntries(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });

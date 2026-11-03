@@ -118,6 +118,7 @@ export const COCKPIT_TEXTS = {
   deleteClosureLabel: (title: string) => `Supprimer ${title}`,
   closureNoVenue: "Aucun gymnase : sans effet sur le planning.",
   closureImpactEvaluating: "Évaluation de l'impact…",
+  confirmPinRemoval: "Retirer et enregistrer",
   closureSaveNeedsPreview: "L'aperçu de ce que la fermeture retire doit d'abord être lu.",
   dateFrom: "Du",
   dateUntil: "Jusqu'au",

@@ -8,6 +8,7 @@ use App\Entity\Reservation;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
 use App\Enum\AuditAction;
 use App\Enum\LockLevel;
@@ -214,6 +215,39 @@ final class ClosurePinRemover
         }
 
         return $totals;
+    }
+
+    /**
+     * L'ANNONCE détaillée de ce que {@see applyAll} retirerait (lecture pure) — servie par le refus
+     * d'un re-datage non confirmé et par l'aperçu de l'élargissement, rendue par l'écran avec les
+     * mêmes textes que l'aperçu de création : le gymnase, et chaque plan touché avec ses nombres.
+     *
+     * @param array<string, array<string, true>> $newByVenue
+     *
+     * @return array{venueName: string, plans: list<array{entryId: string, title: string, locks: int, reservations: list<array{teamId: string|null, teamName: string, dayOfWeek: int}>}>}
+     */
+    public function announcement(string $clubId, string $seasonId, array $newByVenue): array
+    {
+        $venueName = '';
+        $plans = [];
+        foreach ($newByVenue as $venueId => $dates) {
+            foreach ($this->preview($clubId, $seasonId, (string) $venueId, $dates, null) as $line) {
+                if (0 === $line['locks'] && [] === $line['reservations']) {
+                    continue;
+                }
+                if ('' === $venueName) {
+                    $venue = $this->entityManager->getRepository(Venue::class)->find((string) $venueId);
+                    $venueName = $venue instanceof Venue ? $venue->getName() : '';
+                }
+                $plans[$line['entryId']] ??= ['entryId' => $line['entryId'], 'title' => $line['title'], 'locks' => 0, 'reservations' => []];
+                $plans[$line['entryId']]['locks'] += $line['locks'];
+                foreach ($line['reservations'] as $reservation) {
+                    $plans[$line['entryId']]['reservations'][] = ['teamId' => $reservation['teamId'], 'teamName' => $reservation['teamName'], 'dayOfWeek' => $reservation['dayOfWeek']];
+                }
+            }
+        }
+
+        return ['venueName' => $venueName, 'plans' => array_values($plans)];
     }
 
     /**

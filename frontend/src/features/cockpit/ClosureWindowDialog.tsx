@@ -14,7 +14,8 @@ import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useCanManage, useWorkingSeason } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
-import { type ClosureWindowEffect, type ClosureWindowEffectKind, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { type ClosureWindowEffect, type ClosureWindowEffectKind, type PinRemoval, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { PinRemovalNotice } from "./ClosureImpactPanel";
 import { frDateShort } from "./lib/date";
 import { useApplyClosureWindow, useClosureWindowPreview } from "./queries";
 import { COCKPIT_TEXTS } from "./texts";
@@ -64,7 +65,7 @@ export function ClosureWindowDialog({ plan, onClose, onApplied, onOpenConflict, 
   const [endDate, setEndDate] = useState(plan.endDate);
 
   // L'aperçu VALIDE chargé (pour les dates courantes) ; null = pas d'aperçu → « Confirmer » verrouillé.
-  const [loaded, setLoaded] = useState<{ token: string; summary: string; futurePlansWarning: boolean; effects: ClosureWindowEffect[] } | null>(null);
+  const [loaded, setLoaded] = useState<{ token: string; summary: string; futurePlansWarning: boolean; effects: ClosureWindowEffect[]; pinRemoval?: PinRemoval | null } | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [staleWarning, setStaleWarning] = useState<string | null>(null);
   const [windowConflict, setWindowConflict] = useState<{ message: string; entryId: string } | null>(null);
@@ -249,6 +250,8 @@ export function ClosureWindowDialog({ plan, onClose, onApplied, onOpenConflict, 
               })}
             </ul>
             {loaded.futurePlansWarning ? <NoticeBanner tone="muted" message={COCKPIT_TEXTS.futurePlansWarning} /> : null}
+            {/* Fermetures (C3bis) — ce que « Confirmer » retirera, annoncé avant (mêmes textes que la création). */}
+            <PinRemovalNotice pinRemoval={loaded.pinRemoval} />
           </section>
         ) : null}
 

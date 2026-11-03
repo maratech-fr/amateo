@@ -48,6 +48,7 @@ final class ClosureWriteConflictListener implements EventSubscriberInterface
                 'code' => 'closure_pins_preview_required',
                 'error' => $exception->getMessage(),
                 'toRemove' => $exception->toRemove,
+                'pinRemoval' => $exception->pinRemoval,
             ], Response::HTTP_CONFLICT));
             $event->stopPropagation();
         }

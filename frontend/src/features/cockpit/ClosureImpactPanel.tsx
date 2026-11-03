@@ -1,6 +1,6 @@
 import { dayLabelLong, isoDayOf } from "@/shared/lib/days";
 
-import type { ClosureImpact } from "./api";
+import type { ClosureImpact, PinRemoval } from "./api";
 import { COCKPIT_TEXTS } from "./texts";
 
 /** Nombre de matchs nommés au plus ; au-delà, « + n autres ». */
@@ -76,6 +76,27 @@ export function ClosureImpactPanel({ impact, state, venueName }: { impact: Closu
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * L'annonce des retraits d'un re-datage ou d'un élargissement (« on ne retire rien sans l'avoir
+ * annoncé ») — les MÊMES textes que l'aperçu de création, plan par plan. Rien si rien n'est retiré.
+ */
+export function PinRemovalNotice({ pinRemoval }: { pinRemoval: PinRemoval | null | undefined }) {
+  const plans = (pinRemoval?.plans ?? []).filter((p) => p.locks > 0 || p.reservations.length > 0);
+  if (undefined === pinRemoval || null === pinRemoval || 0 === plans.length) {
+    return null;
+  }
+  return (
+    <div className="space-y-1 rounded-md border border-border bg-card p-3 text-sm" role="status">
+      {plans.map((plan) => (
+        <div key={plan.entryId} className="space-y-1">
+          {plan.locks > 0 ? <p>{COCKPIT_TEXTS.closureLocksRemoval(plan.locks, pinRemoval.venueName, plan.title)}</p> : null}
+          {plan.reservations.length > 0 ? <p>{COCKPIT_TEXTS.closureReservationsRemoval(plan.reservations, pinRemoval.venueName)}</p> : null}
+        </div>
+      ))}
     </div>
   );
 }

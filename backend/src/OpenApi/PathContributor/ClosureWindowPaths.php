@@ -26,6 +26,20 @@ final readonly class ClosureWindowPaths implements CustomPathContributor
                     'type' => 'object',
                     'properties' => [
                         'token' => ['type' => 'string', 'description' => 'Canonical fingerprint of the read state — sent back as previewToken on the apply'],
+                        'pinRemoval' => [
+                            'type' => 'object',
+                            'nullable' => true,
+                            'description' => 'What confirming would remove from the period plans governing the newly closed days: the closed venue, and each touched plan with its hard locks and reservations',
+                            'properties' => [
+                                'venueName' => ['type' => 'string'],
+                                'plans' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                                    'entryId' => ['type' => 'string'], 'title' => ['type' => 'string'], 'locks' => ['type' => 'integer'],
+                                    'reservations' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                                        'teamId' => ['type' => 'string', 'nullable' => true], 'teamName' => ['type' => 'string'], 'dayOfWeek' => ['type' => 'integer'],
+                                    ]]],
+                                ]]],
+                            ],
+                        ],
                         'summary' => ['type' => 'string', 'description' => 'Short French summary of the change'],
                         'futurePlansWarning' => ['type' => 'boolean', 'description' => 'Future segments would be swept by reopening the season plan'],
                         'effects' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [

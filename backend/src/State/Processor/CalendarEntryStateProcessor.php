@@ -335,7 +335,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
                     $toRemove = $this->closurePinRemover->previewTotals($closureClubId, $closureSeasonId, $new);
                     if (($toRemove['locks'] > 0 || $toRemove['reservations'] > 0) && true !== $input->confirmPinRemoval) {
                         // La transaction est annulée : rien n'est re-daté sans l'annonce lue.
-                        throw new ClosurePinsPreviewRequiredException($toRemove);
+                        throw new ClosurePinsPreviewRequiredException($toRemove, $this->closurePinRemover->announcement($closureClubId, $closureSeasonId, $new));
                     }
                     $output->removed = $this->closurePinRemover->applyAll($closureClubId, $closureSeasonId, $new, $this->closureConstraintIdByVenue($rootId));
                 }

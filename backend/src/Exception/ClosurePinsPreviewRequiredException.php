@@ -15,8 +15,11 @@ use RuntimeException;
  */
 final class ClosurePinsPreviewRequiredException extends RuntimeException
 {
-    /** @param array{locks: int, reservations: int} $toRemove */
-    public function __construct(public readonly array $toRemove)
+    /**
+     * @param array{locks: int, reservations: int}                                                                                                                                       $toRemove
+     * @param array{venueName: string, plans: list<array{entryId: string, title: string, locks: int, reservations: list<array{teamId: string|null, teamName: string, dayOfWeek: int}>}>} $pinRemoval l'annonce détaillée
+     */
+    public function __construct(public readonly array $toRemove, public readonly array $pinRemoval)
     {
         parent::__construct('Ce re-datage retire des séances verrouillées ou des réservations : confirmez après avoir lu l’annonce.');
     }

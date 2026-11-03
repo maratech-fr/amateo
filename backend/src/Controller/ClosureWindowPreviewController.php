@@ -6,6 +6,9 @@ namespace App\Controller;
 
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
+use App\Service\ClosurePinRemover;
+use App\Service\ClosureWindowApplier;
+use App\Service\ClosureWindowPlan;
 use App\Service\ClosureWindowPlanner;
 use App\Service\ManagementAccessGuard;
 use DateTimeImmutable;
@@ -42,6 +45,8 @@ final class ClosureWindowPreviewController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ClosureWindowPlanner $planner,
+        private readonly ClosureWindowApplier $applier,
+        private readonly ClosurePinRemover $closurePinRemover,
     ) {}
 
     #[Route('/api/schedule_plans/{id}/window-preview', name: 'api_schedule_plan_window_preview', methods: ['POST'])]
@@ -80,7 +85,37 @@ final class ClosureWindowPreviewController extends AbstractController
             'summary' => $plan->summary,
             'futurePlansWarning' => $plan->futurePlansWarning,
             'effects' => $plan->effects,
+            'pinRemoval' => $this->pinRemovalOf($context, $plan),
         ]);
+    }
+
+    /**
+     * Fermetures de gymnase (C3bis) — « on ne retire rien sans l'avoir annoncé » : ce que le
+     * `POST /window` retirerait pour les SEULS jours nouvellement fermés. Même calcul que l'apply, par
+     * construction : on JOUE l'apply dans une transaction ANNULÉE (les plans qui gouverneront les
+     * jours nouveaux n'existent qu'après lui), on lit l'annonce, puis tout est défait. Un apply qui
+     * refuserait (plancher, fenêtre déjà prise) n'annonce rien : la confirmation sera refusée.
+     *
+     * @return array{venueName: string, plans: list<array{entryId: string, title: string, locks: int, reservations: list<array{teamId: string|null, teamName: string, dayOfWeek: int}>}>}|null
+     */
+    private function pinRemovalOf(SchedulePlan $context, ClosureWindowPlan $plan): ?array
+    {
+        $clubId = (string) $context->getClubId();
+        $seasonId = $context->getSeasonId();
+        $connection = $this->entityManager->getConnection();
+        $connection->beginTransaction();
+        try {
+            $before = $this->closurePinRemover->closedDatesSnapshot($clubId, $seasonId);
+            $this->applier->apply($context, $plan);
+            $new = $this->closurePinRemover->newClosedDatesSince($clubId, $seasonId, $before);
+
+            return $this->closurePinRemover->announcement($clubId, $seasonId, $new);
+        } catch (Throwable) {
+            return null;
+        } finally {
+            $connection->rollBack();
+            $this->entityManager->clear();
+        }
     }
 
     private function parseDate(mixed $value): ?DateTimeImmutable

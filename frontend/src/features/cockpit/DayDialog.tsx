@@ -13,7 +13,8 @@ import { Modal } from "@/shared/components/ui/modal";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CalendarEntry, PublicHoliday, RedateEffect, RedateEffectKind, SchedulePlan, SchoolHoliday } from "./api";
-import { PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { ClosurePinsPreviewRequiredError, type PinRemoval, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
+import { PinRemovalNotice } from "./ClosureImpactPanel";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useWorkingSeason } from "@/shared/session/queries";
@@ -820,6 +821,8 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
   const floor = entry.startDate < todayISO() ? entry.startDate : todayISO();
   const { startDate, endDate, minStart, setStart, setEnd, valid } = useDateRange(entry.startDate, entry.endDate, floor);
   const [windowConflict, setWindowConflict] = useState<{ message: string; entryId: string } | null>(null);
+  // Fermetures E2a — le re-datage retirerait des épingles : l'annonce servie, puis la confirmation.
+  const [pinRemoval, setPinRemoval] = useState<PinRemoval | null>(null);
   const conflictRef = useRef<HTMLDivElement>(null);
   // Refus reçu → le focus part sur l'action de la notice (« Ouvrir le planning en place »).
   useEffect(() => {
@@ -840,18 +843,23 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
   const changed = startDate !== entry.startDate || endDate !== entry.endDate;
   const disabledReason = !changed ? "Aucune date n'a changé." : !valid ? "La fin doit suivre le début." : undefined;
 
-  const submit = async () => {
+  const submit = async (confirmPinRemoval = false) => {
     if (!changed || !valid) {
       return;
     }
     setWindowConflict(null); // réinitialisé à chaque tentative (jamais un refus périmé collé au geste)
+    setPinRemoval(null);
     try {
-      await redate.mutateAsync({ entry, startDate, endDate });
+      await redate.mutateAsync(confirmPinRemoval ? { entry, startDate, endDate, confirmPinRemoval: true } : { entry, startDate, endDate });
       toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {
         setWindowConflict({ message: error.message, entryId: error.conflictingEntryId });
+        return;
+      }
+      if (error instanceof ClosurePinsPreviewRequiredError) {
+        setPinRemoval(error.pinRemoval);
         return;
       }
       // Tout autre échec (422 hors saison / fin avant début, transport) → filet : le message serveur.
@@ -868,9 +876,18 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
           <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
         </div>
       ) : null}
-      <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} disabledReason={disabledReason}>
-        {COCKPIT_TEXTS.save}
-      </Button>
+      {null !== pinRemoval ? (
+        <>
+          <PinRemovalNotice pinRemoval={pinRemoval} />
+          <Button className="w-full" variant="destructive" onClick={() => void submit(true)} disabled={redate.isPending}>
+            {COCKPIT_TEXTS.confirmPinRemoval}
+          </Button>
+        </>
+      ) : (
+        <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} disabledReason={disabledReason}>
+          {COCKPIT_TEXTS.save}
+        </Button>
+      )}
     </FormShell>
   );
 }
@@ -994,20 +1011,27 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
     }
   };
 
-  const confirm = async () => {
+  // Fermetures E2a — ce re-datage retirerait des épingles : l'annonce servie, puis la confirmation.
+  const [pinRemoval, setPinRemoval] = useState<PinRemoval | null>(null);
+  const confirm = async (confirmPinRemoval = false) => {
     if (null === loaded) {
       return;
     }
     const token = loaded.token;
     const hasDeletion = loaded.effects.some((e) => "absorb" === e.kind || "vanish" === e.kind);
     setWindowConflict(null);
+    setPinRemoval(null);
     try {
-      await redate.mutateAsync({ entry, startDate, endDate, previewToken: token });
+      await redate.mutateAsync(confirmPinRemoval ? { entry, startDate, endDate, previewToken: token, confirmPinRemoval: true } : { entry, startDate, endDate, previewToken: token });
       toast.success(hasDeletion ? "Dates modifiées — plans de période ajustés." : `Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {
         setWindowConflict({ message: error.message, entryId: error.conflictingEntryId });
+        return;
+      }
+      if (error instanceof ClosurePinsPreviewRequiredError) {
+        setPinRemoval(error.pinRemoval);
         return;
       }
       if (error instanceof PreviewTokenStaleError) {
@@ -1047,9 +1071,18 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
           <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
         </div>
       ) : null}
-      <Button className="w-full" variant={deletionAhead ? "destructive" : undefined} onClick={() => void (previewValid ? confirm() : loadPreview())} disabled={actionDisabled} disabledReason={actionTitle}>
-        {actionLabel}
-      </Button>
+      {null !== pinRemoval && previewValid ? (
+        <>
+          <PinRemovalNotice pinRemoval={pinRemoval} />
+          <Button className="w-full" variant="destructive" onClick={() => void confirm(true)} disabled={busy}>
+            {COCKPIT_TEXTS.confirmPinRemoval}
+          </Button>
+        </>
+      ) : (
+        <Button className="w-full" variant={deletionAhead ? "destructive" : undefined} onClick={() => void (previewValid ? confirm() : loadPreview())} disabled={actionDisabled} disabledReason={actionTitle}>
+          {actionLabel}
+        </Button>
+      )}
     </FormShell>
   );
 }

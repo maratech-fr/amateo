@@ -280,14 +280,24 @@ export const deleteCalendarEntry = (id: string): Promise<unknown> => api.delete(
  * répond 422 (hors saison / fin avant début / cas gelés) — que l'appelant relaie au filet. Le front
  * ne recalcule aucune règle métier : `redatable` et ces codes disent tout.
  */
-export const updateCalendarEntry = async (entry: CalendarEntry, dates: { startDate: string; endDate: string; previewToken?: string }): Promise<CalendarEntry> => {
+export const updateCalendarEntry = async (
+  entry: CalendarEntry,
+  dates: { startDate: string; endDate: string; previewToken?: string; confirmPinRemoval?: boolean },
+): Promise<CalendarEntry> => {
   const json: Record<string, unknown> = { kind: entry.kind, periodType: entry.periodType, title: entry.title, startDate: dates.startDate, endDate: dates.endDate };
   if (undefined !== dates.previewToken) {
     json.previewToken = dates.previewToken; // D3 v2 : confirmer un aperçu de mère découpée
   }
+  if (true === dates.confirmPinRemoval) {
+    json.confirmPinRemoval = true; // fermetures E2a : l'annonce des retraits a été lue
+  }
   try {
     return await api.put(`calendar_entries/${entry.id}`, { json }).json<CalendarEntry>();
   } catch (error) {
+    const pins = asClosurePinsPreviewRequired(error);
+    if (null !== pins) {
+      throw pins;
+    }
     const conflict = asWindowAlreadyPlanned(error);
     if (null !== conflict) {
       throw conflict;
@@ -418,6 +428,8 @@ export interface ClosureWindowPreview {
   summary: string;
   futurePlansWarning: boolean;
   effects: ClosureWindowEffect[];
+  /** Fermetures de gymnase (C3bis) — ce que confirmer retirerait des plans qui gouvernent les jours nouveaux. */
+  pinRemoval?: PinRemoval | null;
 }
 
 /**
@@ -507,3 +519,36 @@ export const getClosureImpactPreview = (params: ClosureImpactParams): Promise<Cl
   api.get("venue-closure-impact", { searchParams: { venueId: params.venueId, startDate: params.startDate, endDate: params.endDate } }).json<ClosureImpact>();
 
 export const getEntryImpact = (entryId: string): Promise<ClosureImpact> => api.get(`calendar-entries/${entryId}/impact`).json<ClosureImpact>();
+
+/**
+ * Fermetures de gymnase (« Enregistrer vaut geste », E2a) — l'ANNONCE détaillée de ce qu'un re-datage
+ * ou un élargissement retirerait : le gymnase fermé, et chaque plan touché avec ses nombres. Servie
+ * par le 409 `closure_pins_preview_required` du re-datage et par l'aperçu du rail `/window`.
+ */
+export interface PinRemoval {
+  venueName: string;
+  plans: { entryId: string; title: string; locks: number; reservations: { teamId: string | null; teamName: string; dayOfWeek: number }[] }[];
+}
+
+/** Le re-datage retirerait des épingles : l'écran affiche l'annonce, puis confirme (`confirmPinRemoval`). */
+export class ClosurePinsPreviewRequiredError extends Error {
+  readonly pinRemoval: PinRemoval;
+
+  constructor(message: string, pinRemoval: PinRemoval) {
+    super(message);
+    this.name = "ClosurePinsPreviewRequiredError";
+    this.pinRemoval = pinRemoval;
+  }
+}
+
+/** Traduit le 409 `closure_pins_preview_required` en {@link ClosurePinsPreviewRequiredError} ; tout autre échec → `null`. */
+export function asClosurePinsPreviewRequired(error: unknown): ClosurePinsPreviewRequiredError | null {
+  if (error instanceof HTTPError && 409 === error.response.status) {
+    const body = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string; pinRemoval?: PinRemoval };
+    if ("closure_pins_preview_required" === body.code && undefined !== body.pinRemoval) {
+      return new ClosurePinsPreviewRequiredError(body.error ?? "", body.pinRemoval);
+    }
+  }
+
+  return null;
+}
