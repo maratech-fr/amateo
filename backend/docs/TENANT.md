@@ -114,7 +114,11 @@ services:
   exception was retired with `PUT /api/users`, nettoyage API : `User` is now read-only, edited via
   `PATCH /api/me`). Custom write controllers carry their own guard (same SEC-07 rule). A
   non-management member reads everything, writes nothing. Guarded by `ManagementRoleTest`
-  (blocking gate step).
+  (blocking gate step). The sweep `MemberWriteSweepTest` compares the router to a named table in both
+  directions (every `^/api/` write is decided: 403, open with its dedicated test, or out of club
+  scope) and `MemberReadsAreSideEffectFreeTest` proves the opened reads write and send nothing.
+  A member never triggers an outbound call (FFBB, geocoding stay manager-only; an unstored opponent
+  logo is not downloaded for them) and never receives a coach's personal wish link.
 - **Connection separation (wired):** runtime = `amateo_app` (`DATABASE_URL`), migrations/ops/fixtures = `amateo_owner` via the Doctrine `admin` connection (`DATABASE_ADMIN_URL`). `amateo_owner` bypasses RLS — that is the deliberate superadmin supervision door (see `docs/security/rls.md`).
 - ⚠ pgbouncer transaction-pooling is incompatible with the session-scoped GUC — redesign before introducing a pooler.
 

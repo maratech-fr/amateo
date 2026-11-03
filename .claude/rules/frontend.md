@@ -436,3 +436,27 @@ paths:
   (`tests/e2e/superadmin.setup.ts`) fige UNE session par run (`storageState`), réutilisée sans
   retry par le projet `superadmin` ; un login par spec, multiplié par les retries, brûle le
   quota `admin_auth` (5/15 min par IP) et déguise un 429 en régression produit (P4-201).
+
+## Rôle Membre — écrans en consultation
+
+Un Membre lit tout, ne modifie rien : le serveur refuse (403), l'écran n'offre même pas le geste.
+Primitives dans `src/shared/session/` et `shared/components/ui/`, jamais réécrites écran par écran :
+
+- `useCanManage()` — vrai pour un gestionnaire dont l'adhésion est active ; miroir d'AFFICHAGE
+  (`isManagementRole`), le serveur reste seul juge.
+- `ManagerOnly` — masque ses enfants (absents du DOM, jamais grisés) pour un Membre : boutons
+  d'écriture, « Copier le lien », relance, envoi.
+- `ReadOnlyNotice` — bandeau « Consultation : réservé aux gestionnaires » (texte dans
+  `SESSION_TEXTS`) sur chaque écran de SAISIE ; pas sur les écrans de lecture (Accueil, Planning,
+  Consulter, Conflits…).
+- `ReadOnlyFieldset` (`ui/read-only-fieldset.tsx`) — `<fieldset disabled>` pour les zones de saisie
+  PURES, sans grisage ; filtres, onglets, tri, « voir » et export restent HORS du fieldset.
+- `ClubClosingBanner` (dans `AppLayout`) — date d'effacement d'un club sans gestionnaire
+  (`me.club.closingOn`), sans bouton.
+- ⚠ **Chaque écran lit `useCanManage` lui-même** : jamais d'état de rôle passé en prop depuis un
+  parent, jamais un garde global — un écran oublié rend un 403 dans un toast, c'est le signal.
+- Un Membre ne déclenche aucun appel sortant : les requêtes FFBB, géocodage et contrôle de
+  localisation d'un gymnase sont désarmées (`enabled: canManage`) ; aucun littéral de texte nouveau
+  hors `SESSION_TEXTS` / `WIZARD_TEXTS`.
+- La preuve est le spec e2e `tests/e2e/member-read-only.spec.ts` (aucun garde statique) : tout
+  nouvel écran d'écriture s'y ajoute.
