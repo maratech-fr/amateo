@@ -115,6 +115,9 @@ final class AdminClubRequestTest extends WebTestCase
             'INSERT INTO club_user (id, version, created_at, updated_at, joined_at, club_id, user_id, role, is_active) VALUES (:id, 1, NOW(), NOW(), NOW(), :club, :user, :role, FALSE)',
             ['id' => $membershipId, 'club' => $clubId, 'user' => $userId, 'role' => 'admin'],
         );
+        // Chantier Membre (PR 1) : le club a un gestionnaire actif — la console n'active pas
+        // une adhésion sur un club SANS gestionnaire (testActivateIsRefusedOnAManagerlessClub).
+        $this->seedActiveManager($clubId, $ara);
 
         // Listée…
         $this->client->request('GET', '/api/admin/pending-memberships', [], [], ['REMOTE_ADDR' => $this->requestIp]);
@@ -143,6 +146,35 @@ final class AdminClubRequestTest extends WebTestCase
         $this->client->request('POST', "/api/admin/pending-memberships/{$membershipId}/activate", [], [], ['HTTP_X_CSRF_TOKEN' => $csrf, 'REMOTE_ADDR' => $this->requestIp]);
         self::assertResponseStatusCodeSame(404, 'désactivé → la console ne contourne pas le geste club');
         self::assertFalse((bool) $this->admin()->fetchOne('SELECT is_active FROM club_user WHERE id = :id', ['id' => $membershipId]));
+    }
+
+    /**
+     * La console n'« active » pas une adhésion sur un club SANS gestionnaire : ce serait reprendre
+     * le club sans la preuve de l'adresse officielle. 409 nommé, la ligne reste en attente.
+     */
+    public function testActivateIsRefusedOnAManagerlessClub(): void
+    {
+        [$secret] = $this->createSuperAdmin('noman@example.test', 'VeryStrongPassword!');
+        $csrf = $this->authenticate('noman@example.test', 'VeryStrongPassword!', $secret);
+
+        $clubId = Uuid::v4()->toRfc4122();
+        $ara = 'NMG' . strtoupper(substr(md5(uniqid()), 0, 7));
+        $this->clubAras[] = $ara;
+        $this->admin()->executeStatement(
+            'INSERT INTO club (id, version, created_at, updated_at, name, slug, generation_count_season, timezone, locale, onboarding_completed, ffbb_club_code) VALUES (:id, 1, NOW(), NOW(), :name, :slug, 0, :tz, :loc, FALSE, :ara)',
+            ['id' => $clubId, 'name' => 'Club Sans Gestionnaire', 'slug' => 'club-nmg-' . strtolower($ara), 'tz' => 'Europe/Paris', 'loc' => 'fr', 'ara' => $ara],
+        );
+        // Un Membre actif reste (le club n'est pas vide) : seul un GESTIONNAIRE compte.
+        $this->seedMembership($clubId, 'member', true, $ara . 'm');
+        $membershipId = $this->seedMembership($clubId, 'admin', false, $ara . 'p');
+
+        $this->client->request('POST', "/api/admin/pending-memberships/{$membershipId}/activate", [], [], ['HTTP_X_CSRF_TOKEN' => $csrf, 'REMOTE_ADDR' => $this->requestIp]);
+        self::assertResponseStatusCodeSame(409);
+        self::assertSame(
+            'La reprise d\'un club sans gestionnaire passe par l\'approbation du club.',
+            json_decode((string) $this->client->getResponse()->getContent(), true)['error'] ?? null,
+        );
+        self::assertFalse((bool) $this->admin()->fetchOne('SELECT is_active FROM club_user WHERE id = :id', ['id' => $membershipId]), 'l\'adhésion reste en attente');
     }
 
     protected function setUp(): void
@@ -186,6 +218,30 @@ final class AdminClubRequestTest extends WebTestCase
         $this->em->flush();
 
         return $request;
+    }
+
+    private function seedActiveManager(string $clubId, string $ara): void
+    {
+        $this->seedMembership($clubId, 'admin', true, $ara . 'g');
+    }
+
+    /** Un utilisateur + son adhésion, semés par la porte ADMIN (même connexion que la console). @return string l'id d'adhésion */
+    private function seedMembership(string $clubId, string $role, bool $active, string $tag): string
+    {
+        $userId = Uuid::v4()->toRfc4122();
+        $this->userIds[] = $userId;
+        $this->admin()->executeStatement(
+            'INSERT INTO app_user (id, version, created_at, updated_at, email, password_hash, first_name, last_name) VALUES (:id, 1, NOW(), NOW(), :email, :hash, :fn, :ln)',
+            ['id' => $userId, 'email' => 'seed-' . strtolower($tag) . '@t.fr', 'hash' => 'x', 'fn' => 'Seed', 'ln' => 'Member'],
+        );
+        $membershipId = Uuid::v4()->toRfc4122();
+        $this->admin()->executeStatement(
+            'INSERT INTO club_user (id, version, created_at, updated_at, joined_at, club_id, user_id, role, is_active) VALUES (:id, 1, NOW(), NOW(), NOW(), :club, :user, :role, :active)',
+            ['id' => $membershipId, 'club' => $clubId, 'user' => $userId, 'role' => $role, 'active' => $active],
+            ['active' => ParameterType::BOOLEAN],
+        );
+
+        return $membershipId;
     }
 
     private function seedUser(): User

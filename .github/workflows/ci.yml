@@ -1188,6 +1188,16 @@ jobs:
       - name: AccountErasureTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/AccountErasureTest.php --group phase1'
 
+      # Axe auth & memberships (chantier Membre, PR 1) — une demande d'adhésion prévient les
+      # gestionnaires ACTIFS (jamais un Membre), groupée par transaction, plafonnée par club
+      # (synthèse puis silence), le demandeur apprend l'issue en UN mail ; un club sans
+      # GESTIONNAIRE ferme (Membres prévenus J0/J-7 avant l'adresse officielle, purge retenue
+      # sans rappel parti, revalidée sous le verrou d'approbation, annulée par une invitation
+      # gestionnaire acceptée). Sans ce gate, des clubs seraient effacés sans préavis, ou des
+      # inconnus entreraient sans qu'aucun gestionnaire le sache.
+      - name: MembershipRequestNotificationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/MembershipRequestNotificationTest.php --group phase1'
+
       # Axe auth & memberships (P4-301) — un compte qui a perdu son dernier club : le retrait
       # du dernier accès (désactivation/refus/purge de club) envoie un préavis ET pose un stamp,
       # le cron l'anonymise 30 j APRÈS un envoi réussi (jamais sans mail), la réactivation annule

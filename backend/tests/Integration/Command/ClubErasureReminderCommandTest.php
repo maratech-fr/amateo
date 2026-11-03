@@ -20,7 +20,7 @@ use Symfony\Component\Mime\Email;
 /**
  * app:clubs:erasure-remind — rappel J-7 avant la suppression définitive d'un club
  * orphelin : fenêtre [échéance-7j, échéance[, idempotent (un seul rappel par échéance),
- * saute un club dont un membre actif est revenu, et n'envoie rien sans adresse connue.
+ * saute un club dont un gestionnaire actif est revenu, et n'envoie rien sans destinataire connu.
  */
 #[Group('integration')]
 final class ClubErasureReminderCommandTest extends KernelTestCase
@@ -57,7 +57,8 @@ final class ClubErasureReminderCommandTest extends KernelTestCase
         self::assertNull($club->getErasureReminderSentAt(), 'échéance à 20 jours → hors fenêtre, pas de rappel');
     }
 
-    public function testSkipsClubWithAnActiveMember(): void
+    /** Un GESTIONNAIRE actif est revenu → aucune alarme (chantier Membre : un Membre seul ne suffit plus, il est prévenu). */
+    public function testSkipsClubWithAnActiveManager(): void
     {
         $clubId = $this->seedScheduledClub('+2 days', contactEmail: 'used@club.fr', withActiveMember: true);
 
@@ -65,7 +66,7 @@ final class ClubErasureReminderCommandTest extends KernelTestCase
 
         $club = $this->em()->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
-        self::assertNull($club->getErasureReminderSentAt(), 'un membre actif est revenu → aucune alarme');
+        self::assertNull($club->getErasureReminderSentAt(), 'un gestionnaire actif est revenu → aucune alarme');
     }
 
     public function testSendsNothingWithoutAKnownAddress(): void
@@ -143,7 +144,8 @@ final class ClubErasureReminderCommandTest extends KernelTestCase
                 $membership = new ClubUser;
                 $membership->setClubId($clubId);
                 $membership->setUserId('00000000-0000-4000-8000-' . substr(md5(uniqid('', true)), 0, 12));
-                $membership->setRole('manager');
+                // `admin` = ClubRole::MANAGER (l'ancien `manager` n'a jamais été un rôle de gestion).
+                $membership->setRole('admin');
                 $membership->setIsActive(true);
                 $em->persist($membership);
                 $em->flush();

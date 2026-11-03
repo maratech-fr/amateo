@@ -15,6 +15,7 @@ use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -27,11 +28,12 @@ use Symfony\Component\Mime\Email;
  *
  * (a) un compte effacé ne peut plus s'authentifier (login KO, JWT inerte) —
  *     et l'effacement exige une ré-authentification (mot de passe) ;
- * (b) dernier membre actif effacé → purge du club programmée (+30 j) ;
- * (c) un membre actif restant — MÊME non-management (editor) → PAS programmé ;
+ * (b) dernier GESTIONNAIRE actif effacé → fermeture du club programmée (+30 j) ;
+ * (c) un membre NON gestionnaire restant ne retient PAS le club (chantier Membre, PR 1 —
+ *     « un club sans gestionnaire ferme ») ; un Membre effacé ne ferme jamais ;
  * (d) app:clubs:purge-erased vide le workspace du club échu SANS toucher un
  *     autre club (tenant) et ÉPARGNE l'identité publique FFBB (fiche club) ;
- * (e) la commande REVALIDE à l'échéance : un membre actif revenu → annulation ;
+ * (e) la commande REVALIDE à l'échéance : un gestionnaire actif revenu → annulation ;
  * (f) win-back : ré-inscription sur l'ARA d'un club purgé (sans membre) →
  *     reprise directe du club (owner actif), pas de pending inapprouvable.
  */
@@ -162,39 +164,83 @@ final class AccountErasureTest extends WebTestCase
         self::assertSame('Inscrire un gestionnaire', $headers->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
     }
 
-    public function testRemainingActiveMemberEvenNonManagementPreventsTheClubPurge(): void
+    /**
+     * INVERSÉ (chantier Membre, PR 1 — décision fondateur « un club sans gestionnaire ferme ») :
+     * un membre actif NON gestionnaire (ici un `editor` historique, lu comme un Membre) ne retient
+     * plus le club. Le dernier GESTIONNAIRE effacé → fermeture programmée à +30 j ; le membre
+     * restant garde la consultation et est prévenu (MembershipRequestNotificationTest).
+     */
+    public function testRemainingNonManagerMemberDoesNotPreventTheClubClosure(): void
     {
         [$token, $userId, $email] = $this->registerVerified('ERAC');
         $em = $this->em();
         $clubId = $this->clubIdOf($userId);
 
-        // Un membre actif NON-management (editor) : il utilise le workspace —
-        // sa présence doit suffire à bloquer la programmation de la purge.
         $this->insertActiveMember($clubId, 'other-' . strtolower($email), 'editor');
 
         $this->request('DELETE', '/api/me', $token, ['password' => 'Password123!']);
         self::assertResponseIsSuccessful();
         $payload = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertFalse($payload['clubPurgeScheduled']);
+        self::assertTrue($payload['clubPurgeScheduled'], 'le dernier gestionnaire est parti → le club ferme');
 
         $em->clear();
         $club = $em->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
-        self::assertNull($club->getErasureScheduledAt(), 'un membre actif reste (editor) → pas de purge programmée');
+        self::assertNotNull($club->getErasureScheduledAt(), 'un membre non gestionnaire reste → fermeture programmée quand même');
+        self::assertGreaterThan(new DateTimeImmutable('+29 days'), $club->getErasureScheduledAt(), 'délai de grâce ~30 j');
     }
 
-    public function testDuePurgeIsCancelledWhenAnActiveMemberReturned(): void
+    /**
+     * L'effacement d'un MEMBRE ne ferme jamais le club : seul le départ du dernier GESTIONNAIRE
+     * ferme. Décor le plus piégeux : aucun gestionnaire actif n'existe déjà (état historique —
+     * gestionnaire désactivé avant la règle du dernier gestionnaire), le Membre est le dernier
+     * compte actif. Une règle qui ne lirait pas le rôle de l'effacé fermerait ici.
+     */
+    public function testErasingAMemberNeverSchedulesClosure(): void
+    {
+        [, $managerId, $email] = $this->registerVerified('ERAM');
+        $clubId = $this->clubIdOf($managerId);
+        $memberEmail = 'member-' . strtolower($email);
+        $this->insertActiveMember($clubId, $memberEmail, 'member');
+        $this->scopeGucToClub($clubId);
+        $this->em()->getConnection()->executeStatement('UPDATE club_user SET is_active = false, deactivated_at = NOW() WHERE user_id = :u', ['u' => $managerId]);
+        $this->clearGuc();
+        $member = $this->em()->getRepository(User::class)->findOneBy(['email' => $memberEmail]);
+        self::assertInstanceOf(User::class, $member);
+        $member->setPasswordHash(self::getContainer()->get('security.user_password_hasher')->hashPassword($member, 'Password123!'));
+        $this->em()->flush();
+        $memberToken = self::getContainer()->get(JWTTokenManagerInterface::class)->create($member);
+
+        $this->client->getCookieJar()->clear();
+        $this->request('DELETE', '/api/me', $memberToken, ['password' => 'Password123!']);
+        self::assertResponseIsSuccessful();
+        $payload = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertFalse($payload['clubPurgeScheduled'], 'un Membre effacé ne ferme jamais le club');
+
+        $this->em()->clear();
+        $club = $this->em()->getRepository(Club::class)->find($clubId);
+        self::assertInstanceOf(Club::class, $club);
+        self::assertNull($club->getErasureScheduledAt());
+    }
+
+    /**
+     * ADAPTÉ (chantier Membre, PR 1) : c'est un GESTIONNAIRE revenu qui annule la fermeture à
+     * l'échéance (un Membre revenu ne suffit plus). Le rappel J-7 est posé : la purge n'est pas
+     * retenue faute de rappel, elle revalide et annule.
+     */
+    public function testDuePurgeIsCancelledWhenAnActiveManagerReturned(): void
     {
         [, $userId, $email] = $this->registerVerified('ERAF');
         $em = $this->em();
         $clubId = $this->clubIdOf($userId);
         $seasonId = $this->currentSeasonId($clubId);
 
-        // Club programmé, échéance passée… mais un membre actif est revenu
-        // (réactivation support pendant la grâce).
+        // Club programmé, échéance passée, rappel J-7 parti… mais un gestionnaire actif est
+        // revenu (réactivation support pendant la grâce).
         $club = $em->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
         $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        $club->setErasureReminderSentAt(new DateTimeImmutable('-8 days'));
         $em->flush();
         $this->insertActiveMember($clubId, 'back-' . strtolower($email), 'admin');
         $em->clear();
@@ -206,7 +252,7 @@ final class AccountErasureTest extends WebTestCase
         $em->clear();
         $club = $em->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
-        self::assertNull($club->getErasureScheduledAt(), 'membre revenu → programmation auto-annulée');
+        self::assertNull($club->getErasureScheduledAt(), 'gestionnaire revenu → programmation auto-annulée');
         self::assertNull($club->getUnsubscribedAt(), 'pas de purge exécutée');
         $this->scopeGucToClub($clubId);
         self::assertNotNull(
@@ -226,6 +272,8 @@ final class AccountErasureTest extends WebTestCase
         $club = $em->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
         $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        // B4 (chantier Membre) : le rappel J-7 est PARTI — sans lui, la purge serait retenue.
+        $club->setErasureReminderSentAt(new DateTimeImmutable('-8 days'));
         // Désactive le membre (l'effacement l'aurait fait) pour rendre le club orphelin.
         $this->scopeGucToClub($clubId);
         $em->getConnection()->executeStatement('UPDATE club_user SET is_active = false WHERE club_id = :cid', ['cid' => $clubId]);
@@ -299,6 +347,8 @@ final class AccountErasureTest extends WebTestCase
         self::assertInstanceOf(Club::class, $club);
         $club->setName('B CHARPENNES TEST');
         $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        // B4 (chantier Membre) : le rappel J-7 est PARTI — sans lui, la purge serait retenue.
+        $club->setErasureReminderSentAt(new DateTimeImmutable('-8 days'));
         // Le vrai flux (erase) désactive les memberships — sans quoi la
         // revalidation de la commande auto-annulerait (un membre actif reste).
         $this->scopeGucToClub($clubA);
@@ -381,6 +431,8 @@ final class AccountErasureTest extends WebTestCase
         $club->setLatitude(45.75);
         $club->setLongitude(4.85);
         $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        // B4 (chantier Membre) : le rappel J-7 est PARTI — sans lui, la purge serait retenue.
+        $club->setErasureReminderSentAt(new DateTimeImmutable('-8 days'));
         // Vrai flux : les memberships sont désactivés (sinon la commande auto-annule la purge).
         $this->scopeGucToClub($clubId);
         $em->getConnection()->executeStatement('UPDATE club_user SET is_active = false WHERE club_id = :cid', ['cid' => $clubId]);

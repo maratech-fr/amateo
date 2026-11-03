@@ -72,6 +72,7 @@ final class ActionMailCtaInventoryTest extends TestCase
         'src/Service/ClubApprovalService.php' => 'foyer demande (CTA {base}/club-approval/{token} « Examiner la demande ») + foyer décision bi-branche (approuvée : CTA {base}/login « Me connecter » ; refusée : EXEMPT)',
         'src/Service/CoachWishMailBuilder.php' => 'foyer unique email() servant buildCoachLink (DÉJÀ câblé /doleances) + buildDigest/buildFinalRecap (CTA {base}/ « Ouvrir le cockpit »)',
         'src/Service/FeedbackMailBuilder.php' => 'build() accusé (EXEMPT) + buildTreated() (CTA {base}/nouveautes « Voir les nouveautés »)',
+        'src/Service/MembershipRequestMailBuilder.php' => 'foyer unique email() : demandes + synthèse (CTA {base}/club « Voir les demandes »), accepté (CTA {base}/login « Me connecter »), fermeture J0/J-7 aux Membres (CTA {base}/register « Inscrire un gestionnaire ») ; refusé : EXEMPT',
     ];
 
     /**
@@ -106,6 +107,9 @@ final class ActionMailCtaInventoryTest extends TestCase
         'src/Service/ConflictCoachMailBuilder.php' => 1,
         'src/Service/FeedbackMailBuilder.php' => 2,
         'src/Service/InactivityMailBuilder.php' => 1,
+        // Chantier Membre (PR 1) — un seul foyer `new Email` attendu (helper email() partagé,
+        // patron CoachWishMailBuilder) ; si NEO en pose davantage, recompter ici mécaniquement.
+        'src/Service/MembershipRequestMailBuilder.php' => 1,
         'src/Service/OrphanAccountMailBuilder.php' => 1,
         'src/Service/PeriodReminderMailBuilder.php' => 1,
         'src/Service/PlacementRunEmailBuilder.php' => 1,

@@ -177,6 +177,8 @@ final class OrphanAccountLifecycleTest extends WebTestCase
         $club = $em->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
         $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        // B4 (chantier Membre) : le rappel J-7 est PARTI — sans lui, la purge serait retenue.
+        $club->setErasureReminderSentAt(new DateTimeImmutable('-8 days'));
         $this->scopeGucToClub($clubId);
         $em->getConnection()->executeStatement('UPDATE club_user SET is_active = false WHERE club_id = :cid', ['cid' => $clubId]);
         $this->clearGuc();
