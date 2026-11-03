@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 import { dayLabelLong, isoDayOf } from "@/shared/lib/days";
 
@@ -90,6 +91,20 @@ describe("ClosureImpactPanel — l'aperçu d'une fermeture (C3)", () => {
     renderPanel({ impact: null, state: "failed" });
     expect(screen.getByText(COCKPIT_TEXTS.closureImpactFailed)).toBeInTheDocument();
     expect(screen.queryByText(COCKPIT_TEXTS.closureImpactNone)).not.toBeInTheDocument();
+  });
+
+  /**
+   * Défaut relevé par SWITCH (`fermetures/02-form-08-echec.png`) : « Impact non évalué — réessayez. »
+   * sans aucun moyen de réessayer. Patron `LoadErrorHint` : le message ET un bouton « Réessayer » qui
+   * relance la lecture (prop `onRetry`, servie par le formulaire).
+   */
+  it("lecture en échec : un bouton « Réessayer » relance la lecture (patron LoadErrorHint)", async () => {
+    const onRetry = vi.fn();
+    render(<ClosureImpactPanel venueName="Mistral" impact={null} state="failed" {...({ onRetry } as object)} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /réessayer/i }));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it("au repos ou hors saison : n'affirme rien sur l'impact", () => {

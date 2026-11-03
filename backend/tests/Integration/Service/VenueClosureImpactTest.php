@@ -115,7 +115,12 @@ final class VenueClosureImpactTest extends WebTestCase
         $closureEntryId = $this->savedClosure($d);
         $this->regenerateHolidayWithoutMistralTuesday($d, versionBornAfterClosure: true);
 
-        self::assertTrue($this->holidayLine($d, $closureEntryId)['regeneratedWithout']);
+        $line = $this->holidayLine($d, $closureEntryId);
+        self::assertTrue($line['regeneratedWithout']);
+        // Correction finale 2 + défaut SWITCH : la confirmation de suppression NOMME les jours à
+        // retrouver (« … pour retrouver le mardi ») — les jours ISO où le socle avait une séance à
+        // Mistral et que la version régénérée n'a plus, SERVIS (jamais recalculés par le front).
+        self::assertSame([2], $line['regeneratedWithoutWeekdays'] ?? null, 'le mardi est le jour à retrouver');
     }
 
     /** Correction finale 2 (b) — une version née AVANT la fermeture n'a pas été « régénérée sans » : pas de ligne. */

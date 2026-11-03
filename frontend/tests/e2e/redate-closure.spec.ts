@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 
 import { expect, test } from "./fixtures";
-import { firstHolidayFreeMonday, forceTheme, settleVeil, watchFailedApiCalls } from "./support";
+import { firstHolidayFreeMonday, forceTheme, settleVeil, sweepCalendarEntriesTitled, watchFailedApiCalls } from "./support";
 
 /**
  * Contraste (WCAG 1.4.3) PLEINE PAGE — élargi en P4-179 (l'aperçu D3 v2 était volontairement scopé à
@@ -130,7 +130,10 @@ async function goToClosureMonth(page: import("./fixtures").Page): Promise<void> 
 /** Ouvre le dialogue du jour sur une case COUVERTE par la fermeture (son titre est dans l'aria-label). */
 async function openClosureDay(page: import("./fixtures").Page): Promise<void> {
   await goToClosureMonth(page);
-  const dayCell = page.getByRole("button", { name: new RegExp(`${TITLE}.*(?<!passé \\(non modifiable\\))$`) }).filter({ hasNotText: "passé" });
+  // Une CASE-JOUR du calendrier : son nom commence par le numéro du jour (« 18 Mai … »). Sans cette
+  // ancre, le locator attrapait aussi le bouton corbeille « Supprimer {titre} » de la carte des
+  // fermetures (VenueClosureCard), et `.first()` cliquait la suppression (défaut relevé par SWITCH).
+  const dayCell = page.getByRole("button", { name: new RegExp(`^\\d{1,2} .*${TITLE}.*(?<!passé \\(non modifiable\\))$`) }).filter({ hasNotText: "passé" });
   await expect(dayCell.first(), "une case-jour couverte par la fermeture doit être cliquable").toBeVisible({ timeout: 30_000 });
   await dayCell.first().click();
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 15_000 });
@@ -150,9 +153,10 @@ test("re-dater une fermeture d'un bloc depuis le cockpit aboutit (succès annonc
   const failed = watchFailedApiCalls(page);
 
   await login(page);
-  let entryId = "";
+  // Un résidu d'un run précédent ferait DEUX cases au même titre : on part d'une base propre.
+  await sweepCalendarEntriesTitled(page, TITLE);
   try {
-    entryId = await createClosureWithPlan(page);
+    await createClosureWithPlan(page);
 
     await openCockpit(page);
     await openClosureDay(page);
@@ -170,10 +174,9 @@ test("re-dater une fermeture d'un bloc depuis le cockpit aboutit (succès annonc
     // l'empreinte de structure servie par plan et s'affiche sur l'écran /planning (bannière), pour une
     // version NON validée seulement. Plus rien à vérifier au cockpit ici que le succès du re-datage.
   } finally {
-    // IDEMPOTENCE : on retire la fermeture créée (cascade son plan) — aucun résidu dans la base e2e.
-    if ("" !== entryId) {
-      await page.request.delete(`/api/calendar_entries/${entryId}`);
-    }
+    // IDEMPOTENCE : on retire TOUTE fermeture à ce titre (cascade son plan), suppression VÉRIFIÉE —
+    // aucun résidu dans la base e2e, même après un run interrompu.
+    await sweepCalendarEntriesTitled(page, TITLE);
   }
 });
 
@@ -339,9 +342,11 @@ test("re-dater une indisponibilité découpée : aperçu (contraste clair ET som
       `la confirmation doit réussir et l'annoncer${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`,
     ).toBeVisible({ timeout: 30_000 });
   } finally {
-    // Idempotence : on retire la mère (cascade son plan/ses enfants) ET chaque enfant, dans l'ordre inverse.
+    // Idempotence : on retire la mère (cascade son plan/ses enfants) ET chaque enfant, dans l'ordre
+    // inverse, puis on balaie tout résidu au même titre (suppressions vérifiées).
     for (const id of ids.reverse()) {
       await page.request.delete(`/api/calendar_entries/${id}`);
     }
+    await sweepCalendarEntriesTitled(page, SPLIT_TITLE);
   }
 });

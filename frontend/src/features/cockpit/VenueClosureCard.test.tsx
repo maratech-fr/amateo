@@ -174,6 +174,18 @@ describe("VenueClosureCard — un gymnase qui ferme = un seul fait (C1, C8)", ()
     expect(within(confirmDialog()).getByText(COCKPIT_TEXTS.deleteClosureSplit(3))).toBeInTheDocument();
   });
 
+  /** Défaut SWITCH (`fermetures/15-confirmation-supprimer-semaines-decoupees.png`) : « Ses 1 semaines » → le singulier. */
+  it("fermeture découpée en UNE semaine : la confirmation est au singulier", async () => {
+    const user = userEvent.setup();
+    entriesData = [entry(), entry({ id: "c1", parentEntryId: "e1", title: "Mistral indisponible — semaine du 9/3" })];
+    renderWithProviders(<VenueClosureCard />);
+    await user.click(deleteButton());
+
+    const dialog = confirmDialog();
+    expect(within(dialog).getByText(COCKPIT_TEXTS.deleteClosureSplit(1))).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent(/1 semaines|Ses 1\b|leurs plannings/);
+  });
+
   it("E4 — « rien n'est remis » SEULEMENT si la déclaration a réellement retiré des épingles", async () => {
     const user = userEvent.setup();
     entryImpactData = impact({ removedAtDeclaration: true });
@@ -197,14 +209,19 @@ describe("VenueClosureCard — un gymnase qui ferme = un seul fait (C1, C8)", ()
     const user = userEvent.setup();
     entryImpactData = impact({
       removedAtDeclaration: true,
-      governingPlans: [{ entryId: "e-mars", title: "Vacances de mars", startDate: "2999-03-02", endDate: "2999-03-22", chosenScheduleId: "s-mars", loadedScheduleId: "s-mars", hasVersions: true, sessions: [], toRemove: { locks: 0, reservations: [] }, regeneratedWithout: true }],
+      // `regeneratedWithoutWeekdays` : les jours ISO où le socle avait une séance à ce gymnase et que
+      // la version régénérée n'a plus (correction finale 2) — servis, jamais recalculés ici.
+      governingPlans: [{ entryId: "e-mars", title: "Vacances de mars", startDate: "2999-03-02", endDate: "2999-03-22", chosenScheduleId: "s-mars", loadedScheduleId: "s-mars", hasVersions: true, sessions: [], toRemove: { locks: 0, reservations: [] }, regeneratedWithout: true, regeneratedWithoutWeekdays: [2] }],
     });
     deleteMutate.mockImplementation((_id: string, options?: { onSuccess?: () => void }) => options?.onSuccess?.());
     renderWithProviders(<VenueClosureCard />);
     await user.click(deleteButton());
 
     const dialog = confirmDialog();
-    expect(within(dialog).getByText(COCKPIT_TEXTS.deleteClosureRegeneratedWithout("Vacances de mars", "Mistral"))).toBeInTheDocument();
+    // Défaut SWITCH (`fermetures/12-confirmation-supprimer-avec-retraits-et-regenere-sans.png`) : la
+    // ligne NOMME les jours à retrouver (« … pour retrouver le mardi »), pas « ses séances ».
+    expect(within(dialog).getByText(COCKPIT_TEXTS.deleteClosureRegeneratedWithout("Vacances de mars", "Mistral", [2] as never))).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/retrouver le mardi/);
     await user.click(within(dialog).getByRole("button", { name: "Supprimer" }));
 
     expect(deleteMutate).toHaveBeenCalledWith("e1", expect.anything());

@@ -72,7 +72,20 @@ describe("invalidationKeysFor — FRT-04", () => {
       ["wizard", "schedule_status", "s1"],
       ["slots", "s1"],
       ["diagnostics", "s1"],
+      ["calendar-entries", "impact"],
     ]);
+  });
+
+  /**
+   * Fermetures PR 1 — défaut relevé par SWITCH (captures `fermetures/10-plan-regenere-sans-gymnase.png`
+   * vs `10b-…-apres-rechargement.png`) : après « Régénérer », la bannière « périmé par une fermeture »
+   * (lue sur `/calendar-entries/{id}/impact`, clé `["calendar-entries","impact", id]`) restait jusqu'au
+   * rechargement. Une génération TERMINÉE rend cet impact périmé : on le relit (préfixe, la version
+   * ne sait pas quelle fermeture la gouverne). Un événement d'avancement, lui, ne le touche pas.
+   */
+  it("un statut terminal rend aussi périmé l'impact des fermetures (la bannière « périmé » se relit)", () => {
+    expect(invalidationKeysFor({ scheduleId: "s1", status: "COMPLETED", terminal: true })).toContainEqual(["calendar-entries", "impact"]);
+    expect(invalidationKeysFor({ scheduleId: "s1", status: "GENERATING", terminal: false })).not.toContainEqual(["calendar-entries", "impact"]);
   });
 
   it("sans scheduleId (défense), on élargit au préfixe plutôt que de figer un écran", () => {
@@ -81,6 +94,7 @@ describe("invalidationKeysFor — FRT-04", () => {
       ["wizard", "schedule_status"],
       ["slots"],
       ["diagnostics"],
+      ["calendar-entries", "impact"],
     ]);
   });
 });

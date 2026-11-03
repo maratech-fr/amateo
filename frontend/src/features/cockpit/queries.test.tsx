@@ -21,6 +21,7 @@ vi.mock("./api", () => ({
   getPlannedWindows: vi.fn().mockResolvedValue([]),
   createCalendarEntry: vi.fn().mockResolvedValue({ id: "e1" }),
   deleteCalendarEntry: vi.fn(),
+  getClosureImpactPreview: vi.fn(),
 }));
 vi.mock("@/features/wizard/api", () => ({
   createConstraint: vi.fn(),
@@ -206,5 +207,29 @@ describe("useCreateVenueClosure — Enregistrer vaut geste (C3bis)", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(cockpitApi.deleteCalendarEntry).toHaveBeenCalledWith("e-new");
     await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(COCKPIT_TEXTS.generationInProgress));
+  });
+});
+
+/**
+ * Défaut relevé par SWITCH (`fermetures/02-form-08-echec.png`) : l'échec de lecture de l'aperçu est
+ * DÉJÀ dit dans le formulaire (« Impact non évalué — réessayez » + « Réessayer ») ; le filet global
+ * `QueryCache.onError` (`shared/lib/queryClient.ts`) y ajoutait un toast générique EN DOUBLE. L'aperçu
+ * possède son échec : aucun toast. Exercé avec le VRAI client de l'app (c'est lui qui porte le filet).
+ */
+describe("useClosureImpactPreview — l'échec de lecture n'est dit qu'une fois (dans le formulaire)", () => {
+  it("une lecture en échec ne pose AUCUN toast générique", async () => {
+    const { queryClient } = await import("@/shared/lib/queryClient");
+    const { useClosureImpactPreview } = await import("./queries");
+    vi.mocked(cockpitApi.getClosureImpactPreview).mockRejectedValue(new Error("Problème de connexion"));
+    useToastStore.setState({ toasts: [] });
+    const { result } = renderHook(() => useClosureImpactPreview({ venueId: "v-mistral", startDate: "2999-01-05", endDate: "2999-01-09" }), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 5_000 });
+    // Laisse au filet global le temps de résoudre son message (il passe par une promesse).
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(useToastStore.getState().toasts).toEqual([]);
+    queryClient.clear();
   });
 });

@@ -337,6 +337,21 @@ describe("ClosureWindowDialog — « Confirmer » n'applique QUE l'aperçu vu", 
     expect(applyMutateAsync).not.toHaveBeenCalled();
   });
 
+  /** Défaut SWITCH : le toast de l'élargissement dit les nombres RETIRÉS (`removed` du POST /window), comme l'enregistrement. */
+  it("confirmé : le toast dit les verrous et réservations retirés", async () => {
+    const user = userEvent.setup();
+    open();
+    await loadPreview(user);
+
+    applyMutateAsync.mockResolvedValueOnce({ id: PLAN.id, removed: { locks: 3, reservations: 1 } });
+    await user.click(screen.getByRole("button", { name: "Confirmer" }));
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    const message = toastSuccess.mock.calls.flat().join(" ");
+    expect(message).toMatch(/3 verrous/);
+    expect(message).toMatch(/1 réservation/);
+  });
+
   it("témoin : un aperçu sans retrait n'annonce aucun verrou retiré", async () => {
     const user = userEvent.setup();
     open();

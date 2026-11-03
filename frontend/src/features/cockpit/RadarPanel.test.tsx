@@ -1121,6 +1121,48 @@ describe("RadarPanel — fermeture gouvernée par un plan de période (C4/C5)", 
     expect(screen.getByText("Vacances de mars")).toBeInTheDocument();
   });
 
+  /**
+   * Défaut relevé par SWITCH (`fermetures/11a-radar-adapter-ouvrir-le-plan-cockpit-complet.png`) : la
+   * carte d'une fermeture GOUVERNÉE par un plan de période disait « planning secondaire absent » —
+   * faux, un plan existe et c'est lui qu'on ouvre. Elle nomme ce plan.
+   */
+  it("fermeture gouvernée : la carte ne dit jamais « planning secondaire absent », elle nomme le plan qui gouverne", () => {
+    entryImpactData = impactOf();
+    renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
+
+    const card = screen.getByText("Mistral indisponible").parentElement as HTMLElement;
+    expect(card).not.toHaveTextContent(/planning secondaire absent/);
+    expect(card).toHaveTextContent(/Vacances de mars/);
+  });
+
+  /**
+   * Défaut relevé par SWITCH (`fermetures/11b-radar-apres-plans.png`) : une fois le plan régénéré sans
+   * le gymnase, l'impact SERVI ne compte plus aucune séance et aucun plan périmé — il n'y a plus rien à
+   * traiter, donc plus de carte (le radar est une liste de choses à faire). La visibilité lit `/impact`
+   * (même vérité que l'aperçu), pas l'ancien `/conflicts`, qui compte encore une date ici.
+   */
+  it("plus rien à traiter selon /impact (aucune séance, aucun plan périmé) : ni carte de fermeture, ni carte de plan", () => {
+    entryImpactData = impactOf({ trainingOccurrences: 0, teams: [], governingPlans: [{ ...marsPlan, sessions: [] }] });
+    renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
+
+    expect(screen.queryByText("Mistral indisponible")).not.toBeInTheDocument();
+    expect(screen.queryByText("Vacances de mars")).not.toBeInTheDocument();
+  });
+
+  /**
+   * Défaut relevé par SWITCH (`fermetures/11c-radar-carte-plan-perime-hiver.png`) : la carte du plan
+   * périmé disait un générique « une fermeture touche ses séances ». Elle dit, avec les MÊMES mots que
+   * la bannière de l'écran du plan (`PLANNING_TEXTS.staleByClosure`), quel gymnase est fermé, quand,
+   * et quelles équipes y ont une séance.
+   */
+  it("la carte du plan périmé nomme le gymnase, les dates et les équipes, comme la bannière", () => {
+    entryImpactData = impactOf({ governingPlans: [{ ...marsPlan, sessions: [{ teamId: "t-sm1", teamName: "SM1", date: "2999-01-06", venueId: "gym-1" }] }] });
+    renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
+
+    const card = screen.getByText("Vacances de mars").parentElement as HTMLElement;
+    expect(card).toHaveTextContent(/Armand est fermé le 6\/1 \(SM1 y a une séance\)/);
+  });
+
   it("le CHIFFRE de la carte vient de /impact (même chiffre que l'aperçu), pas de /conflicts", () => {
     // /conflicts dit 1 séance ; /impact (la vérité de l'aperçu, jours rouverts et capture inversée
     // compris) en dit 3. Le radar affiche 3.

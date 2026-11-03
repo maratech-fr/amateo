@@ -23,7 +23,7 @@ import { VenueClosureForm } from "./VenueClosureForm";
  * de ce 409 vit au niveau HOOK (`queries.test.tsx`), le formulaire, lui, reste ouvert.
  */
 
-type PreviewState = { data: unknown; isPending: boolean; isFetching: boolean; isError: boolean; isSuccess: boolean };
+type PreviewState = { data: unknown; isPending: boolean; isFetching: boolean; isError: boolean; isSuccess: boolean; refetch?: () => unknown };
 const inFlight: PreviewState = { data: undefined, isPending: true, isFetching: true, isError: false, isSuccess: false };
 const failed: PreviewState = { data: undefined, isPending: false, isFetching: false, isError: true, isSuccess: false };
 const readyImpact = {
@@ -124,6 +124,28 @@ describe("VenueClosureForm — Enregistrer vaut geste (C3)", () => {
     expect(isInert(saveButton())).toBe(true);
     await user.click(saveButton());
     expect(createMutate).not.toHaveBeenCalled();
+  });
+
+  /** Défaut SWITCH (`02-form-08-echec.png`) : l'échec de lecture offre « Réessayer », qui relance l'aperçu. */
+  it("aperçu EN ÉCHEC : « Réessayer » relance la lecture de l'aperçu", async () => {
+    const user = userEvent.setup();
+    const refetch = vi.fn();
+    previewState = { ...failed, refetch };
+    renderWithProviders(<VenueClosureForm initialStartDate={null} onDone={onDone} />);
+    await fillForm(user, "2999-01-05", "2999-01-09");
+
+    await user.click(await screen.findByRole("button", { name: /réessayer/i }));
+
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  /** Défaut SWITCH (`02-form-01-vide.png`) : « Enregistrer » grisé à vide doit DIRE pourquoi (A11Y-30, `disabledReason`). */
+  it("formulaire vide : « Enregistrer » est inactif ET porte son motif (découvrable, pas qu'au survol)", () => {
+    renderWithProviders(<VenueClosureForm initialStartDate={null} onDone={onDone} />);
+
+    expect(isInert(saveButton())).toBe(true);
+    expect(saveButton()).toHaveAttribute("aria-disabled", "true");
+    expect(saveButton().getAttribute("title") ?? "").not.toBe("");
   });
 
   it("aperçu LU : « Enregistrer » s'active et envoie gymnase + dates", async () => {

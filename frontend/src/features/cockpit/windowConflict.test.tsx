@@ -8,8 +8,9 @@ import { api } from "@/shared/api/client";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CalendarEntry } from "./api";
-import { asWindowAlreadyPlanned, createSchedulePlan, updateCalendarEntry, WindowAlreadyPlannedError } from "./api";
-import { useCreatePeriodPlan, useRedateEntry } from "./queries";
+import { asWindowAlreadyPlanned, createSchedulePlan, deleteCalendarEntry, updateCalendarEntry, WindowAlreadyPlannedError } from "./api";
+import { useCreatePeriodPlan, useCreateVenueClosure, useDeleteEntry, useRedateEntry } from "./queries";
+import { COCKPIT_TEXTS } from "./texts";
 
 // On teste la PROD : le vrai `createSchedulePlan` / les vrais hooks contre le client ky mocké.
 vi.mock("@/shared/api/client", () => ({ api: { post: vi.fn(), put: vi.fn(), get: vi.fn(), delete: vi.fn() } }));
@@ -199,5 +200,63 @@ describe("useRedateEntry — le hook POSSÈDE son feedback (D3 v1 PR-2)", () => 
     result.current.mutate({ entry: closureEntry(), startDate: "2026-05-12", endDate: "2027-09-01" });
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La fenêtre sort de la saison."));
+  });
+});
+
+/**
+ * Défaut relevé par SWITCH (captures `fermetures/03-form-09-generation-en-cours-message-faux.png`) :
+ * `DELETE /api/calendar_entries/{id}` répond 204 SANS corps, et ky 2 fait `JSON.parse('')` sur
+ * `.json()` (`node_modules/ky/distribution/core/Ky.js:228`) → il LÈVE. Une suppression RÉUSSIE passe
+ * donc pour un échec : le rollback d'une fermeture refusée (409 génération en cours) annonce
+ * « l'annulation a échoué », et `useDeleteEntry` toaste une erreur sur un succès.
+ *
+ * Le double de ky reproduit EXACTEMENT ce comportement : une `Response` 204 vide, dont `.json()`
+ * relit le texte et le parse (donc lève) — jamais un `.json()` truqué.
+ */
+function kyResponse(status: number, body: string | null) {
+  const response = new Response(body, { status });
+  return Object.assign(Promise.resolve(response), {
+    json: async () => JSON.parse(await response.clone().text()) as unknown,
+  });
+}
+
+describe("une suppression réussie (204 sans corps) n'est jamais un échec", () => {
+  const mockDelete = vi.mocked(api.delete);
+
+  afterEach(() => {
+    mockDelete.mockReset();
+  });
+
+  it("deleteCalendarEntry se résout sur un 204 sans corps", async () => {
+    mockDelete.mockReturnValue(kyResponse(204, null) as never);
+
+    await deleteCalendarEntry("e1"); // lève aujourd'hui (SyntaxError du JSON.parse('')) → test rouge
+    expect(mockDelete).toHaveBeenCalledWith("calendar_entries/e1");
+  });
+
+  it("useDeleteEntry : un 204 est un succès, sans toast d'erreur", async () => {
+    mockDelete.mockReturnValue(kyResponse(204, null) as never);
+    const { result } = renderHook(() => useDeleteEntry(), { wrapper });
+
+    result.current.mutate("e1");
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("fermeture refusée pendant une génération : le rollback (204) réussit et le toast dit la génération en cours, pas un faux échec d'annulation", async () => {
+    mockPost.mockImplementation(((path: string) =>
+      "calendar_entries" === path
+        ? { json: () => Promise.resolve(closureEntry({ id: "e-new", redatable: false })) }
+        : { json: () => Promise.reject(httpError(409, { code: "generation_in_progress", error: COCKPIT_TEXTS.generationInProgress })) }) as never);
+    mockDelete.mockReturnValue(kyResponse(204, null) as never);
+    const { result } = renderHook(() => useCreateVenueClosure(), { wrapper });
+
+    result.current.mutate({ title: "Mistral — fermé", startDate: "2999-01-05", endDate: "2999-01-09", venueId: "v-mistral" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockDelete).toHaveBeenCalledWith("calendar_entries/e-new");
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(COCKPIT_TEXTS.generationInProgress));
+    expect(vi.mocked(toast.error).mock.calls.flat().join(" ")).not.toMatch(/annulation a échoué/);
   });
 });

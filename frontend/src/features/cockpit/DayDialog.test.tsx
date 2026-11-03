@@ -1108,6 +1108,27 @@ describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  /**
+   * Défaut SWITCH : le toast du re-datage taisait ce que le geste a RETIRÉ, là où l'enregistrement
+   * d'une fermeture le dit (« … 1 verrou retiré à Mistral »). Le PUT renvoie `removed` : le toast le dit.
+   */
+  it("succès d'un re-datage qui a retiré des épingles : le toast dit les nombres retirés", async () => {
+    const { toast } = await import("@/shared/stores/toastStore");
+    redateMutateAsync.mockResolvedValueOnce({ ...incident(), endDate: "2026-06-20", removed: { locks: 2, reservations: 1 } });
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    const message = vi.mocked(toast.success).mock.calls.flat().join(" ");
+    expect(message).toMatch(/2 verrous/);
+    expect(message).toMatch(/1 réservation/);
+  });
+
   it("le refus est RÉINITIALISÉ à la soumission suivante (une nouvelle tentative ne colle pas l'ancien refus)", async () => {
     const { WindowAlreadyPlannedError } = await import("./api");
     redateMutateAsync.mockRejectedValueOnce(new WindowAlreadyPlannedError("déjà planifié", "toussaint-entry"));

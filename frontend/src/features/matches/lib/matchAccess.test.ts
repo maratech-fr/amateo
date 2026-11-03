@@ -67,6 +67,19 @@ describe("venueAccessError — fermeture du calendrier (P4-300)", () => {
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, true, closures)?.level).toBe("error");
   });
 
+  /**
+   * Défaut SWITCH : une fermeture saisie par le formulaire unique porte un titre qui COMMENCE par le
+   * gymnase (« Alpha — travaux », `VenueClosureForm`) ; le motif répétait alors le nom
+   * (« Alpha est fermée du … — Alpha — travaux. »). Le gymnase n'est nommé qu'une fois, la raison reste.
+   */
+  it("le motif ne nomme le gymnase qu'UNE fois quand le titre de la fermeture le porte déjà", () => {
+    const titled: VenueClosure[] = [{ id: "c1", venueId: "venue-1", title: "Alpha — travaux", startDate: "2026-08-31", endDate: "2026-10-16" }];
+    const message = venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, false, titled)?.message ?? "";
+
+    expect(message.match(/Alpha/g) ?? []).toHaveLength(1);
+    expect(message).toMatch(/travaux/);
+  });
+
   it("date hors de l'intervalle de fermeture : la fermeture ne gêne pas", () => {
     const closed: VenueClosure[] = [{ id: "c1", venueId: "venue-1", title: "T", startDate: "2026-11-01", endDate: "2026-11-30" }];
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, false, closed)).toBeNull();
