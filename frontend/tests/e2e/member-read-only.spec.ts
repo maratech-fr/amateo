@@ -233,6 +233,8 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       const bannerButtons = closing.getByRole("button");
       await expect(bannerButtons).toHaveCount(1);
       await expect(bannerButtons.first()).toHaveAccessibleName(SESSION_TEXTS.requestManagerRole);
+      // Relevé SWITCH : UN seul geste à l'écran — la carte « Mon rôle » de /club ne le répète pas.
+      await expect(page.getByRole("button", { name: SESSION_TEXTS.requestManagerRole }), "/club (club qui ferme) : le geste de demande est répété").toHaveCount(1);
       await expect(page.getByRole("button", { name: WRITE_BUTTON }), "/club (club qui ferme) : un bouton d'écriture est offert au Membre").toHaveCount(0);
       expect(watch.violations, `le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
     } finally {

@@ -513,6 +513,33 @@ describe("ClubPage — carte « Mon rôle » (Membre)", () => {
     cancelManagerRequest.mockClear();
   });
 
+  /**
+   * Relevé SWITCH (PR 3) : club FERMÉ — le bandeau de fermeture (`AppLayout`, `ClubClosingBanner`)
+   * porte déjà le geste et la phrase d'état. La carte de `/club` ne les répète pas : UN geste
+   * « Demander à devenir gestionnaire », UNE phrase d'état à l'écran.
+   */
+  it("club fermé, aucune demande : la carte ne répète pas le bouton du bandeau", () => {
+    me.data = { role: "member", club: { ...baseClub, closingOn: "2026-12-03" }, seasons: [], currentSeasonId: null, managerRequest: null };
+    render(<ClubPage />);
+    expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole })).not.toBeInTheDocument();
+  });
+
+  it("club fermé, demande transmise / expirée / refusée : la carte ne répète ni la phrase d'état ni le bouton", () => {
+    const cases: [MeResponse["managerRequest"], string][] = [
+      [{ status: "club_pending", since: SINCE, escalated: false, clubEmailKnown: true }, CLUB_TEXTS.managerRequestSentToOfficial("03/11/2026")],
+      [{ status: "club_pending", since: SINCE, escalated: false, clubEmailKnown: false }, CLUB_TEXTS.managerRequestNoOfficialAddress],
+      [{ status: "expired", since: SINCE, escalated: false }, CLUB_TEXTS.managerRequestExpired("03/11/2026")],
+      [{ status: "refused", since: SINCE, escalated: false, until: "2026-12-03" }, CLUB_TEXTS.managerRequestRefused("03/11/2026", "03/12/2026")],
+    ];
+    for (const [managerRequest, sentence] of cases) {
+      me.data = { role: "member", club: { ...baseClub, closingOn: "2026-12-03" }, seasons: [], currentSeasonId: null, managerRequest };
+      const { unmount } = render(<ClubPage />);
+      expect(screen.queryByText(sentence), `${managerRequest?.status} : phrase répétée`).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole }), `${managerRequest?.status} : bouton répété`).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it("aucune demande : le bouton « Demander à devenir gestionnaire » envoie la demande", async () => {
     asMember(null);
     render(<ClubPage />);

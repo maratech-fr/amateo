@@ -90,6 +90,16 @@ describe("ClubClosingBanner", () => {
     expect(screen.queryByRole("button", { name: SESSION_TEXTS.requestManagerRole })).not.toBeInTheDocument();
   });
 
+  it("sans adresse officielle connue : « le support validera », jamais « transmise à l'adresse officielle »", async () => {
+    // Relevé SWITCH (PR 3) : rien n'est parti au club quand son adresse est inconnue — le bandeau
+    // ne doit pas l'affirmer.
+    renderBanner(meWith({ status: "club_pending", since: SINCE, escalated: false, clubEmailKnown: false }));
+
+    expect(await screen.findByText(SESSION_TEXTS.managerRequestNoOfficialAddress)).toBeInTheDocument();
+    expect(screen.queryByText(SESSION_TEXTS.repriseRequestSent("03/11/2026"))).not.toBeInTheDocument();
+    expect(screen.queryByText(/transmise .*à l'adresse officielle/)).not.toBeInTheDocument();
+  });
+
   it("expirée : la phrase de la carte et le bouton pour renvoyer ; refusée : les deux dates, sans bouton", async () => {
     const { unmount } = renderBanner(meWith({ status: "expired", since: SINCE, escalated: false }));
     expect(await screen.findByText(SESSION_TEXTS.managerRequestExpired("03/11/2026"))).toBeInTheDocument();

@@ -42,7 +42,9 @@ describe("ClubApprovalPage (P3-4 PR C — page publique)", () => {
 
     expect(await screen.findByText("Sonia Saison")).toBeInTheDocument();
     expect(screen.getByText("BC Testville")).toBeInTheDocument();
-    expect(screen.getByText(/expire le 2026-09-12/)).toBeInTheDocument();
+    // Relevé SWITCH (PR 3) : la date d'expiration s'écrit JJ/MM/AAAA, jamais en ISO (`Y-m-d` servi par l'API).
+    expect(screen.getByText(AUTH_TEXTS.clubApprovalExpiresOn("12/09/2026"))).toBeInTheDocument();
+    expect(screen.queryByText(/2026-09-12/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approuver" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refuser" })).toBeInTheDocument();
   });
