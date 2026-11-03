@@ -8,9 +8,11 @@ use App\Entity\Club;
 use App\Enum\ClubRole;
 use App\Mail\ClubBusinessMail;
 use App\Mail\ClubMailMetadata;
+use App\Mail\MailSafeName;
 use App\Service\MembershipRequestMailBuilder;
 use App\Service\ProductIdentity;
 use App\Tests\AssertsActionMailCta;
+use App\Tests\Security\ManagerRoleRequestTest;
 use App\Tests\Security\MembershipRequestNotificationTest;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
@@ -25,8 +27,12 @@ use Symfony\Component\Mime\Email;
  * lettres sous horloge simulée, identité du club sur la carte) ; ceux qui portent une action ont
  * leur bouton, le refus n'en a aucun.
  *
+ * PR 3 ajoute les mails d'une demande de RÔLE (gestionnaires prévenus, nommé gestionnaire, refus,
+ * demande dépassée, adresse officielle muette 7 jours) et remplace le paragraphe « comment conserver
+ * l'espace » du mail de fermeture (le Membre demande depuis le bandeau).
+ *
  * Le câblage (qui reçoit quoi, quand) est prouvé par
- * {@see MembershipRequestNotificationTest} ; ici, le TEXTE seul.
+ * {@see MembershipRequestNotificationTest} et {@see ManagerRoleRequestTest} ; ici, le TEXTE seul.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -127,14 +133,105 @@ final class MembershipRequestMailBuilderTest extends KernelTestCase
         $body = (string) $j0->getTextBody();
         self::assertStringStartsWith('Bonjour', $body);
         self::assertStringContainsString("Le dernier gestionnaire de l'espace {$p} du club BC Testville a quitté le service. Sans reprise par un gestionnaire, cet espace sera supprimé définitivement le 03/12/2026.", $body);
-        self::assertStringContainsString("Vous gardez un accès en consultation jusque-là. Pour conserver l'espace, un gestionnaire du club doit s'inscrire sur {$p} avec le code FFBB du club : sa demande sera validée par l'adresse officielle du club.", $body);
-        $this->assertCtaHeadersPointToBodyLink($j0, self::BASE . '/register', 'Inscrire un gestionnaire');
+        // PR 3 : le Membre n'est plus renvoyé à l'inscription — il demande lui-même depuis le bandeau.
+        self::assertStringContainsString('Vous gardez un accès en consultation jusque-là. Si vous êtes gestionnaire du club, cliquez « Demander à devenir gestionnaire » dans le bandeau de l\'application : l\'adresse officielle du club validera.', $body);
+        self::assertStringNotContainsString('Pour conserver l\'espace, un gestionnaire du club doit s\'inscrire', $body, 'l\'ancien paragraphe (PR 1) est remplacé');
+        $this->assertCtaHeadersPointToBodyLink($j0, self::BASE . '/club', 'Ouvrir l\'application');
         $this->assertClubBusiness($j0);
 
         $j7 = $this->builder()->buildClubClosing('paul@test.fr', $this->club(), 'Paul', new DateTimeImmutable('2026-12-03'), true);
         self::assertStringStartsWith('Rappel — ', (string) $j7->getSubject());
         self::assertStringContainsString('supprimé définitivement le 03/12/2026, dans 7 jours.', (string) $j7->getTextBody());
+        self::assertStringContainsString('cliquez « Demander à devenir gestionnaire » dans le bandeau de l\'application', (string) $j7->getTextBody());
+        $this->assertCtaHeadersPointToBodyLink($j7, self::BASE . '/club', 'Ouvrir l\'application');
         $this->assertClubBusiness($j7);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // PR 3 — un Membre demande à devenir gestionnaire (plan §4.3, mot pour mot). Le câblage
+    // (qui reçoit quoi, quand) est prouvé par {@see ManagerRoleRequestTest}.
+    // ---------------------------------------------------------------------------------------
+
+    public function testRoleRequestTellsManagersWhoAsksAndWhereToDecide(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildRoleRequest('marc@club.fr', $this->club(), 'Paul Martin', 'paul@test.fr');
+
+        self::assertSame('Paul Martin demande à devenir gestionnaire de BC Testville', $mail->getSubject());
+        self::assertSame(
+            "Bonjour,\n\nPaul Martin (paul@test.fr), membre de l'espace {$p} du club BC Testville, demande à en devenir gestionnaire.\n\n"
+            . "Connectez-vous pour accepter ou refuser dans l'écran Club, section « Membres » :\n" . self::BASE . "/club\n\n"
+            . "Un gestionnaire peut tout modifier : n'acceptez que si vous connaissez cette personne.\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCtaHeadersPointToBodyLink($mail, self::BASE . '/club', 'Voir les membres');
+        $this->assertClubBusiness($mail);
+    }
+
+    /** Le nom passé au builder est déjà nettoyé par l'appelant ; un nom hostile n'y est jamais réinterprété en lien. */
+    public function testRoleRequestNeverTurnsAHostileNameIntoALink(): void
+    {
+        $mail = $this->builder()->buildRoleRequest('marc@club.fr', $this->club(), MailSafeName::of('Gagnez', 'evil.com'), 'paul@test.fr');
+
+        self::assertSame('Un demandeur demande à devenir gestionnaire de BC Testville', $mail->getSubject());
+        self::assertStringNotContainsString('evil.com', (string) $mail->getTextBody());
+    }
+
+    public function testRoleGrantedSaysTheRequesterIsNowManager(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildRoleGranted('paul@test.fr', $this->club(), 'Paul');
+
+        self::assertSame('BC Testville vous a nommé gestionnaire', $mail->getSubject());
+        self::assertSame(
+            "Bonjour Paul,\n\nLe club BC Testville a accepté votre demande : vous êtes maintenant gestionnaire de son espace {$p}.\n\nConnectez-vous :\n" . self::BASE . "/login\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCtaHeadersPointToBodyLink($mail, self::BASE . '/login', 'Me connecter');
+        $this->assertClubBusiness($mail);
+    }
+
+    public function testRoleRefusedKeepsTheConsultationAndHasNothingToClick(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildRoleRefused('paul@test.fr', $this->club(), 'Paul');
+
+        self::assertSame('BC Testville n\'a pas donné suite à votre demande', $mail->getSubject());
+        self::assertSame(
+            "Bonjour Paul,\n\nLe club BC Testville n'a pas donné suite à votre demande de devenir gestionnaire. Vous gardez votre accès en consultation.\n\n"
+            . "Si vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club.\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCarriesNoCtaHeaders($mail);
+        $this->assertClubBusiness($mail);
+    }
+
+    public function testSupersededSaysSomeoneElseTookOverAndHowToAskAgain(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildSuperseded('lea@test.fr', $this->club(), 'Léa');
+
+        self::assertSame('BC Testville a déjà retrouvé un gestionnaire', $mail->getSubject());
+        self::assertSame(
+            "Bonjour Léa,\n\nUn gestionnaire a repris l'espace {$p} du club BC Testville avant que votre demande ne soit examinée. Vous pouvez lui demander à devenir gestionnaire depuis l'application.\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCarriesNoCtaHeaders($mail);
+        $this->assertClubBusiness($mail);
+    }
+
+    public function testOfficialExpiredNamesTheRequestDateAndTheWayOut(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildOfficialExpired('paul@test.fr', $this->club(), 'Paul', new DateTimeImmutable('2026-11-03'));
+
+        self::assertSame('Le club BC Testville n\'a pas répondu à votre demande', $mail->getSubject());
+        self::assertSame(
+            "Bonjour Paul,\n\nL'adresse officielle du club BC Testville n'a pas répondu à votre demande de reprise du 03/11/2026 dans les 7 jours. Vous pouvez la renvoyer depuis l'application, ou contacter le support.\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCarriesNoCtaHeaders($mail);
+        $this->assertClubBusiness($mail);
     }
 
     protected function setUp(): void

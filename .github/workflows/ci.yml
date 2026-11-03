@@ -1229,6 +1229,16 @@ jobs:
       - name: MembershipRequestNotificationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/MembershipRequestNotificationTest.php --group phase1'
 
+      # Axe auth & memberships (chantier Membre, PR 3) — un Membre demande à devenir gestionnaire :
+      # club géré → ses gestionnaires acceptent (promotion, mail, audit) ou refusent ; club sans
+      # gestionnaire → l'adresse officielle décide (premier approuvé gagne, demandes sœurs closes,
+      # refus = 30 j, expiration prévenue, purge retenue une fois). Une demande à la fois, seaux
+      # utilisateur et club, démo/sans code refusés, stamp effacé à la promotion/désactivation/
+      # effacement. Sans ce gate, un Membre pourrait se faire gestionnaire sans que personne qui en
+      # a le droit l'ait décidé, ou un club fermerait malgré une reprise en cours.
+      - name: ManagerRoleRequestTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ManagerRoleRequestTest.php --group phase1'
+
       # Axe auth & memberships (P4-301) — un compte qui a perdu son dernier club : le retrait
       # du dernier accès (désactivation/refus/purge de club) envoie un préavis ET pose un stamp,
       # le cron l'anonymise 30 j APRÈS un envoi réussi (jamais sans mail), la réactivation annule
