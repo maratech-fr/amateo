@@ -93,7 +93,10 @@ filet.
 déjà déclaré pour cette portée, case déjà occupée au-delà de sa capacité (le groupe compte pour UNE
 occupation), Σ des séances communes dépassant le volume hebdomadaire effectif d'une équipe, équipe
 déjà placée sans séance désignée, équipe rejoignante siégeant déjà à la case d'ancrage par une
-AUTRE séance (une équipe ne siège jamais deux fois à la même case — `TeamCaseOccupancyGuard`).
+AUTRE séance (une équipe ne siège jamais deux fois à la même case — `TeamCaseOccupancyGuard`),
+ou s'entraînant déjà ce jour-là (une équipe ne s'entraîne qu'une fois par jour, chevauchement ou non —
+`TeamCaseOccupancyGuard::otherSessionOnDay`, hors la séance désignée comme remplacée ; depuis la fiche, la
+phrase de refus nomme la séance à désigner). Un groupe vaut UNE équipe pour cette règle.
 
 ### 2.3 Déplacer / retirer / défaire un groupe déjà ancré
 
@@ -109,7 +112,8 @@ AUTRE séance (une équipe ne siège jamais deux fois à la même case — `Team
   groupe ou hors case cible (`evict_target_mismatch`), occupant verrouillé (`target_locked`,
   D3 souverain), occupant lui-même une séance de GROUPE (`evict_target_is_group` — deux groupes se
   gèrent par Échanger/Mutualiser, §2.4) ; un membre déplacé siégeant DÉJÀ à la case cible par une
-  AUTRE séance que l'éviction ne libère pas reste un refus `team_already_at_case`, aucun des N
+  AUTRE séance que l'éviction ne libère pas reste un refus `team_already_at_case`, et un membre
+  qui s'entraîne déjà le jour d'arrivée un refus `team_already_trains_that_day`, aucun des N
   créneaux ne bouge.
 - **Retirer la séance de la case courante** : `POST /api/schedule-slots/remove-group` — retire la
   séance de groupe SANS toucher au bloc ni à ses adhésions (distinct de la suppression du bloc).

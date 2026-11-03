@@ -2963,7 +2963,7 @@ final class BcclSeeder
             // ===================== SEMAINE DU 24 AOÛT — Armand + JDR =====================
             // Transcription de business/5-donnees/plannings-bccl/planning-reprise-24-aout.txt
             // (exercice solveur CLOS le 2026-09-01, gestes validés un à un en sandbox, chemin
-            // manuel prouvé). 35 cases, 40 séances-équipe, 16 équipes.
+            // manuel prouvé). 34 cases, 39 séances-équipe, 16 équipes.
             [
                 'title' => 'Reprise du 24 août',
                 'monday' => '2026-08-24',
@@ -2997,12 +2997,8 @@ final class BcclSeeder
                     ['U18M1', 'vJdr', 3, '18:15', 75],
                     ['U18F2', 'vJdr', 3, '19:30', 75],
                     ['SF1', 'vJdr', 3, '20:45', 75],
-                    // JEUDI — Armand 20:30 = SM2 SOLO, en plus du bloc SM à JDR 20:45 (même équipe
-                    // deux fois le même soir, chevauchement ASSUMÉ par le fondateur ; les verrous
-                    // et la transcription le portent).
                     ['U13F2', 'vArmand', 4, '17:30', 90],
                     ['U18M1', 'vArmand', 4, '19:00', 90],
-                    ['SM2', 'vArmand', 4, '20:30', 90],
                     ['U13M1', 'vJdr', 4, '17:15', 60],
                     ['U13F1', 'vJdr', 4, '18:15', 75],
                     ['U18F1', 'vJdr', 4, '19:30', 75],
@@ -3054,8 +3050,8 @@ final class BcclSeeder
                 ],
                 // Seuls les créneaux CHOISIS sont figés (blocs fanion — « on les impose au modèle »,
                 // exercice solveur du 2026-09-01) : le bloc SM (lun/mar Armand 20:30 + jeu JDR
-                // 20:45), la séance SOLO de SM2 jeu Armand 20:30, et les deux SF2 (lun/mar JDR
-                // 20:45). Le reste appartient au solveur + contraintes — 9 lignes exactement.
+                // 20:45) et les deux SF2 (lun/mar JDR 20:45). Le reste appartient au solveur +
+                // contraintes — 8 lignes exactement.
                 'reservations' => [
                     ['SM1', 'vArmand', 1, '20:30', 90],
                     ['SM2', 'vArmand', 1, '20:30', 90],
@@ -3063,7 +3059,6 @@ final class BcclSeeder
                     ['SM2', 'vArmand', 2, '20:30', 90],
                     ['SM1', 'vJdr', 4, '20:45', 105],
                     ['SM2', 'vJdr', 4, '20:45', 105],
-                    ['SM2', 'vArmand', 4, '20:30', 90],
                     ['SF2', 'vJdr', 1, '20:45', 75],
                     ['SF2', 'vJdr', 2, '20:45', 75],
                 ],

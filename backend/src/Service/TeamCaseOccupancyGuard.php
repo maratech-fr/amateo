@@ -8,6 +8,7 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Exception\TeamAlreadyAtCaseException;
+use App\Exception\TeamAlreadyTrainsThatDayException;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -25,11 +26,15 @@ use Doctrine\ORM\EntityManagerInterface;
  *
  * Le filet ultime est l'index UNIQUE en base (`schedule_slot_template`) ; cette garde rend le refus
  * explicite et NOMMÉ avant d'y toucher.
+ *
+ * Seconde question, posée APRÈS celle de la case : « cette équipe s'entraîne-t-elle déjà ce JOUR-LÀ ? »
+ * Deux séances le même jour sont impossibles, chevauchement ou non (décision fondateur). Une séance de
+ * groupe compte pour chacun de ses membres : chaque membre a sa propre ligne, la règle se lit par équipe.
  */
 final class TeamCaseOccupancyGuard
 {
     /** @var array<int, string> ISO-8601 : 1 = lundi (jamais d'identifiant interne dans un texte lu par un humain). */
-    private const array DAY_LABELS = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
+    public const array DAY_LABELS = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
 
     public function __construct(private readonly EntityManagerInterface $entityManager) {}
 
@@ -74,6 +79,53 @@ final class TeamCaseOccupancyGuard
         $sentence = $this->conflictSentence($scheduleId, $teamId, $venueId, $dayOfWeek, $startTime, $excludedSlotIds);
         if (null !== $sentence) {
             throw new TeamAlreadyAtCaseException($sentence . $trailer);
+        }
+    }
+
+    /**
+     * Une AUTRE séance de l'équipe ce jour-là, hors créneaux exclus (ceux engagés dans le geste).
+     *
+     * @param list<string> $excludedSlotIds
+     */
+    public function otherSessionOnDay(string $scheduleId, string $teamId, int $dayOfWeek, array $excludedSlotIds = []): ?ScheduleSlotTemplate
+    {
+        $excluded = array_fill_keys($excludedSlotIds, true);
+        foreach ($this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $scheduleId, 'teamId' => $teamId, 'dayOfWeek' => $dayOfWeek], ['startTime' => 'ASC']) as $slot) {
+            if (!isset($excluded[$slot->getId()])) {
+                return $slot;
+            }
+        }
+
+        return null;
+    }
+
+    /** « U15 s'entraîne déjà le mardi : une seule séance par jour. » */
+    public function oneSessionPerDaySentence(string $teamId, int $dayOfWeek): string
+    {
+        $teamName = $this->entityManager->getRepository(Team::class)->find($teamId)?->getName() ?? 'Cette équipe';
+
+        return \sprintf('%s s\'entraîne déjà le %s : une seule séance par jour.', $teamName, self::DAY_LABELS[$dayOfWeek] ?? 'jour ' . $dayOfWeek);
+    }
+
+    /** La consigne de la fiche Mutualiser : quelle séance désigner pour garder une seule séance ce jour-là. */
+    public function designateThatSessionHint(ScheduleSlotTemplate $slot): string
+    {
+        $venueName = $this->entityManager->getRepository(Venue::class)->find($slot->getVenueId())?->getName() ?? 'ce gymnase';
+
+        return \sprintf('Désignez sa séance du %s %s à %s comme séance remplacée.', self::DAY_LABELS[$slot->getDayOfWeek()] ?? 'jour ' . $slot->getDayOfWeek(), $slot->getStartTime()->format('H:i'), $venueName);
+    }
+
+    /**
+     * Refuse (→ 422 `team_already_trains_that_day`) si l'équipe s'entraîne déjà ce jour-là, hors créneaux exclus.
+     *
+     * @param list<string> $excludedSlotIds
+     *
+     * @throws TeamAlreadyTrainsThatDayException l'équipe a déjà une séance ce jour-là (→ 422), rien n'est écrit
+     */
+    public function assertTeamFreeOnDay(string $scheduleId, string $teamId, int $dayOfWeek, array $excludedSlotIds = []): void
+    {
+        if ($this->otherSessionOnDay($scheduleId, $teamId, $dayOfWeek, $excludedSlotIds) instanceof ScheduleSlotTemplate) {
+            throw new TeamAlreadyTrainsThatDayException($this->oneSessionPerDaySentence($teamId, $dayOfWeek));
         }
     }
 

@@ -834,6 +834,8 @@ export interface ValidateResult {
    * PR B ne renvoie pas la clé.
    */
   blockers?: string[];
+  /** Les réservations à retirer pour rendre à une équipe une seule séance par jour (Récap de saison). */
+  doubledReservationIds?: string[];
   /**
    * Avertissements formulés par le serveur — « "X" vise le gymnase Y, désactivé pour
    * cette période : elle ne sera pas appliquée ». Ils n'invalident RIEN (règle #8) et

@@ -818,6 +818,8 @@ export function useDeleteReservation() {
     mutationFn: (id: string) => wizardApi.deleteReservation(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] });
+      // Le verdict du Récap (blocages, lignes désignées) dépend des réservations : il se rafraîchit au retrait.
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "constraint_validation"] });
       invalidateSoloBudgets(queryClient);
     },
   });

@@ -402,7 +402,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * Les plans de REPRISE du seed dev sont cohérents — un seul seed prouve deux facettes read-only
      * (P5-13) :
      *  1. chaque plan de reprise POINTE (chosen) une version COMPLETED transcrivant sa semaine au
-     *     bon nombre de créneaux (25 le 17 août, 40 le 24), et porte ses groupes de mutualisation
+     *     bon nombre de créneaux (25 le 17 août, 39 le 24), et porte ses groupes de mutualisation
      *     ANCRÉS au plan : {SM1,SM2}+{SF1,SF2} le 17 ; {SM1,SM2}+{U18F1,U18F2} le 24 (SF1/SF2 s'y
      *     entraînent séparément) ;
      *  2. post-modèle bloc (fondateur 2026-09-01) — les grilles comptent un groupe mutualisé pour UN
@@ -417,7 +417,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
 
         // ── Facette 1 — chaque plan de reprise pointe une version COMPLETED avec ses groupes. ──
-        foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 40, 2]] as [$planName, $expectedSlots, $expectedGroups]) {
+        foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 39, 2]] as [$planName, $expectedSlots, $expectedGroups]) {
             $row = $this->connection->fetchAssociative(
                 'SELECT s.status, (SELECT COUNT(*) FROM schedule_slot_template t WHERE t.schedule_id = s.id) AS slot_count '
                 . 'FROM schedule_plan sp JOIN schedule s ON s.id = sp.chosen_schedule_id '
@@ -478,8 +478,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // cap 2) et la semaine du 17 décoche les indispos coach héritées que son réel contredit.
         // Falsifiable : remettre `++capacity` par séance, ou retirer un nom de `deactivatedConstraints`. ──
 
-        // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 40 − 5 = 35 le 24.
-        foreach ([['Reprise du 17 août', 20], ['Reprise du 24 août', 35]] as [$planName, $expectedSlots]) {
+        // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 39 − 5 = 34 le 24.
+        foreach ([['Reprise du 17 août', 20], ['Reprise du 24 août', 34]] as [$planName, $expectedSlots]) {
             $grid = $this->connection->fetchAssociative(
                 'SELECT COUNT(*) AS slots, MAX(s.capacity) AS max_capacity '
                 . 'FROM venue_training_slot s JOIN schedule_plan sp ON sp.id = s.schedule_plan_id '
@@ -513,8 +513,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * sont figés (bloc SM1+SM2 lun/mar/jeu 20:45, bloc SF1+SF2 mer/ven 19:30 — 10 lignes), le
      * reste appartient au solveur + contraintes (« je ne veux pas tout mettre en réservation »).
      * La semaine du 24 (exercice solveur CLOS le 2026-09-01) ne fige elle aussi que ses créneaux
-     * fanion : le bloc SM (lun/mar Armand 20:30 + jeu JDR 20:45), la séance SOLO de SM2 (jeu Armand
-     * 20:30) et les deux SF2 (lun/mar JDR 20:45) — 9 lignes exactement, plus les 38 d'antan.
+     * fanion : le bloc SM (lun/mar Armand 20:30 + jeu JDR 20:45) et les deux SF2 (lun/mar JDR 20:45) —
+     * 8 lignes exactement : une équipe ne s'entraîne jamais deux fois le même jour, la séance seule de
+     * SM2 le jeudi à Armand est retirée.
      * Idempotence stricte : purge-puis-réinsertion — une ligne retirée de la liste ne survit pas
      * à un re-run sur base déjà seedée. Falsifiable : re-brancher `$week['sessions']` comme
      * source des réservations du 17 rend ce test ROUGE (25 ≠ 10).
@@ -555,17 +556,17 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $expected24 = [
             ['SM1', 1, '20:30'], ['SM2', 1, '20:30'], ['SF2', 1, '20:45'],
             ['SM1', 2, '20:30'], ['SM2', 2, '20:30'], ['SF2', 2, '20:45'],
-            ['SM2', 4, '20:30'], ['SM1', 4, '20:45'], ['SM2', 4, '20:45'],
+            ['SM1', 4, '20:45'], ['SM2', 4, '20:45'],
         ];
         self::assertSame(
             $expected24,
             array_map(static fn (array $row): array => [(string) $row['team'], (int) $row['day_of_week'], (string) $row['start']], $rows24),
-            'les réservations du 24 sont exactement les 9 créneaux fanion (bloc SM lun/mar/jeu, SM2 solo jeudi, SF2 lun/mar) — rien d\'autre',
+            'les réservations du 24 sont exactement les 8 créneaux fanion (bloc SM lun/mar/jeu, SF2 lun/mar) — rien d\'autre',
         );
 
         // Idempotence : un second run purge-réinsère, mêmes comptes, pas de résurrection.
         $this->seeder->run($this->em, BcclSeedProfile::dev());
-        foreach ([['Reprise du 17 août', 10], ['Reprise du 24 août', 9]] as [$planName, $expectedCount]) {
+        foreach ([['Reprise du 17 août', 10], ['Reprise du 24 août', 8]] as [$planName, $expectedCount]) {
             $count = (int) $this->connection->fetchOne(
                 'SELECT COUNT(*) FROM reservation r JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
                 . 'WHERE sp.club_id = ? AND sp.name = ?',
@@ -573,6 +574,34 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             );
             self::assertSame($expectedCount, $count, \sprintf('un second seed laisse exactement %d réservations sur « %s »', $expectedCount, $planName));
         }
+    }
+
+    /**
+     * Le club de test ne porte aucune équipe deux fois le même jour : ni réservée, ni placée dans la version de reprise du 24.
+     * Sans quoi le seed fabriquerait un planning impossible à reproduire au geste, ou un Récap bloqué.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testNoTeamTrainsTwiceTheSameDayInTheSeed(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        $doubledReservations = $this->connection->fetchAllAssociative(
+            'SELECT sp.name AS plan, t.name AS team, r.day_of_week FROM reservation r JOIN team t ON t.id = r.team_id '
+            . 'LEFT JOIN schedule_plan sp ON sp.id = r.schedule_plan_id WHERE r.club_id = ? '
+            . 'GROUP BY sp.name, t.name, r.day_of_week HAVING COUNT(DISTINCT (r.venue_id, r.start_time)) > 1 ORDER BY 1, 2, 3',
+            [$club->getId()],
+        );
+        self::assertSame([], $doubledReservations, 'aucune équipe réservée deux fois le même jour');
+
+        $doubledSessions = $this->connection->fetchAllAssociative(
+            'SELECT sp.name AS plan, t.name AS team, s.day_of_week FROM schedule_slot_template s JOIN team t ON t.id = s.team_id '
+            . 'JOIN schedule sc ON sc.id = s.schedule_id JOIN schedule_plan sp ON sp.id = sc.schedule_plan_id '
+            . 'WHERE s.club_id = ? AND sp.name = ? '
+            . 'GROUP BY sp.name, t.name, s.schedule_id, s.day_of_week HAVING COUNT(DISTINCT (s.venue_id, s.start_time)) > 1 ORDER BY 1, 2, 3',
+            [$club->getId(), 'Reprise du 24 août'],
+        );
+        self::assertSame([], $doubledSessions, 'la transcription du 24 août ne porte pas non plus de seconde séance le même jour');
     }
 
     /**

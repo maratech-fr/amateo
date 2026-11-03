@@ -355,7 +355,7 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
     // rien (règle #8), donc ils arrivent précisément avec `valid: true`. Pas de
     // `humanizeConstraintError` : le serveur nomme déjà la contrainte ET le gymnase,
     // l'humaniser effacerait ce qui permet d'agir. Le récap les rend dans son accordéon.
-    return { errors, warnings: constraintValidation?.warnings ?? [], notices, pending: constraintNeeded && constraintQuery.isLoading };
+    return { errors, warnings: constraintValidation?.warnings ?? [], notices, doubledReservationIds: constraintValidation?.doubledReservationIds ?? [], pending: constraintNeeded && constraintQuery.isLoading };
   }
   return okValidation();
 }

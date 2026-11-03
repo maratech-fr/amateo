@@ -43,10 +43,12 @@ final readonly class PreSolvePreventionWarnings
 
     /**
      * @param array<string, mixed> $payload
+     * @param list<string>|null    $reservationIds  les épingles du payload qui sont des réservations ; null = toutes
+     * @param list<string>         $coveredTeamDays les « équipe|jour » déjà bloqués par « une seule séance par jour »
      *
      * @return list<string>
      */
-    public function detect(array $payload): array
+    public function detect(array $payload, ?array $reservationIds = null, array $coveredTeamDays = []): array
     {
         $venues = $this->listOf($payload, 'venues');
         $teams = $this->listOf($payload, 'teams');
@@ -64,7 +66,7 @@ final readonly class PreSolvePreventionWarnings
             ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
             ...$this->assistantsWithoutMainCoach($payload, $teams, $constraints),
             ...$this->daysWithoutAnyAvailableEmployee($payload, $venues, $constraints),
-            ...$this->teamReservedOnOverlappingCases($payload),
+            ...$this->teamReservedOnOverlappingCases($payload, $reservationIds, $coveredTeamDays),
         ];
     }
 
@@ -447,12 +449,19 @@ final readonly class PreSolvePreventionWarnings
      * produit quand même le planning (la réservation gagne) : le gestionnaire le lit avant de générer.
      * Intervalles demi-ouverts : deux séances qui s'enchaînent ne se chevauchent pas.
      *
+     * Une équipe et un jour déjà bloqués par « une seule séance par jour » se taisent : le blocage dit
+     * tout. Une paire qui compte un verrou ne se dit jamais « réservée » : l'équipe « a deux séances ».
+     *
      * @param array<string, mixed> $payload
+     * @param list<string>|null    $reservationIds  les épingles qui sont des réservations ; null = toutes
+     * @param list<string>         $coveredTeamDays les « équipe|jour » à taire
      *
      * @return list<string>
      */
-    private function teamReservedOnOverlappingCases(array $payload): array
+    private function teamReservedOnOverlappingCases(array $payload, ?array $reservationIds = null, array $coveredTeamDays = []): array
     {
+        $isReservation = null === $reservationIds ? null : array_fill_keys($reservationIds, true);
+        $covered = array_fill_keys($coveredTeamDays, true);
         $teamNames = [];
         foreach ($this->listOf($payload, 'teams') as $team) {
             $teamNames[$this->stringOf($team, 'id')] = $this->nameOf($team);
@@ -468,11 +477,16 @@ final readonly class PreSolvePreventionWarnings
             if ('HARD' !== ($slot['lockLevel'] ?? null) || !isset($teamNames[$teamId])) {
                 continue;
             }
+            $day = (int) ($slot['dayOfWeek'] ?? 0);
+            if (isset($covered[$teamId . '|' . $day])) {
+                continue;
+            }
             $start = $this->minutesOf($this->stringOf($slot, 'startTime'));
-            $reserved[$teamId][(int) ($slot['dayOfWeek'] ?? 0)][] = [
+            $reserved[$teamId][$day][] = [
                 'start' => $start,
                 'end' => $start + (int) ($slot['durationMinutes'] ?? 0),
                 'venueId' => $this->stringOf($slot, 'venueId'),
+                'reservation' => null === $isReservation || isset($isReservation[$this->stringOf($slot, 'id')]),
             ];
         }
 
@@ -489,7 +503,9 @@ final readonly class PreSolvePreventionWarnings
                         $secondRange = $this->clockRange($second['start'], $second['end']);
                         $firstVenue = $venueNames[$first['venueId']] ?? 'Sans nom';
                         $messages[] = \sprintf(
-                            '%s est réservée deux fois le %s sur des créneaux qui se chevauchent : %s.',
+                            $first['reservation'] && $second['reservation']
+                                ? '%s est réservée deux fois le %s sur des créneaux qui se chevauchent : %s.'
+                                : '%s a deux séances le %s sur des créneaux qui se chevauchent : %s.',
                             $teamNames[$teamId],
                             self::DAY_NAMES[$day] ?? (string) $day,
                             $first['venueId'] === $second['venueId']

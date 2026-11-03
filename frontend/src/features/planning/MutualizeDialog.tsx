@@ -88,10 +88,11 @@ export function MutualizeDialog({ anchor, teams, tiers, slots, isSocle = false, 
     }
     setAttached((prev) => [...prev, teamId]);
     const teamSlots = slotsByTeam.get(teamId) ?? [];
-    // Pré-sélection déterministe de la séance remplacée dès l'ajout (première séance) : pour une
-    // équipe à séance unique c'est le « pris par défaut » annoncé ; pour plusieurs, le défaut du Select.
+    // Pré-sélection déterministe de la séance remplacée dès l'ajout : sa séance du jour de l'ancre s'il y
+    // en a une (une seule séance par jour), sinon la première. Séance unique : le « pris par défaut » annoncé.
     if (teamSlots.length >= 1) {
-      setReplacedByTeam((prev) => ({ ...prev, [teamId]: teamSlots[0].id }));
+      const preselected = teamSlots.find((s) => s.dayOfWeek === anchor.dayOfWeek) ?? teamSlots[0];
+      setReplacedByTeam((prev) => ({ ...prev, [teamId]: preselected.id }));
     }
   };
 

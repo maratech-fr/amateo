@@ -24,6 +24,12 @@ export const WIZARD_TEXTS = {
   mutualizedTrainingTag: "· entraînement mutualisé",
   removalToValidate: "retrait à valider",
   freeSlotTag: "· créneau libre",
+  /** Le motif d'une réservation que le serveur désigne : l'équipe a une autre séance ce jour-là. */
+  secondSessionSameDay: (day: string) => `Deux séances le ${day}`,
+  removeReservationLabel: (team: string, where: string) => `Retirer la réservation de ${team} · ${where}`,
+  removeLotLabel: (teams: string, where: string) => `Retirer l'entraînement mutualisé ${teams} · ${where}`,
+  /** Confirmation de retrait : nomme la séance, et la période seulement quand c'en est une. */
+  removeConfirmDescription: (name: string, where: string, inPeriod: boolean) => `« ${name} » (${where}) sera retiré${inPeriod ? " de la période" : ""}.`,
   retry: "Réessayer",
   groupOccupiesSlotNotice: "Un entraînement mutualisé occupe seul ce créneau. Retirez-le pour ajouter des équipes.",
   addTeamLabel: "Ajouter une équipe",

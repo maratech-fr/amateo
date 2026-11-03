@@ -109,6 +109,13 @@ describe("useStepValidation — les avertissements du serveur remontent au réca
     expect(result.current.warnings).toEqual(["« Pas le lundi » vise le gymnase Debarros, désactivé pour cette période : elle ne sera pas appliquée."]);
   });
 
+  it("transmet les réservations que le serveur désigne pour une seconde séance le même jour", () => {
+    constraintValidation = q({ valid: false, errors: {}, conflicts: [], blockers: ["U15 est réservée deux fois le mardi"], doubledReservationIds: ["r1", "r2"] });
+    const { result } = renderHook(() => useStepValidation("recap"));
+
+    expect(result.current.doubledReservationIds).toEqual(["r1", "r2"]);
+  });
+
   it("la mention « tenue par » du serveur devient une information grise, jamais une alerte", () => {
     // La réservation voulue (B tient les U15) se mentionne sans crier : ton `muted`, que le rail
     // ne compte pas en avertissement (`railState.test.ts`), et rien dans `warnings` ni `errors`.
