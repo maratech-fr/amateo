@@ -6,12 +6,15 @@ namespace App\Mail;
 
 /**
  * Le nom qu'un inconnu saisit à l'inscription, rendu SÛR pour un mail envoyé à un club (sujet
- * compris) : aucun lien, aucune adresse, aucun domaine n'y survit — c'est le vecteur
+ * compris) : aucun lien, aucune adresse, aucun domaine n'y entre — c'est le vecteur
  * d'hameçonnage d'un mail « X demande à rejoindre votre club ».
  *
- * Tout mot (suite sans espace) qui porte `://`, `www.`, `@` ou une forme de domaine
- * (`.fr`, `.com/chemin`…) est retiré, partie par partie puis sur le tout, jusqu'à stabilité.
- * Un nom réduit à rien devient « Un demandeur » ; un nom démesuré est borné à 80 caractères.
+ * LISTE BLANCHE : un prénom ou un nom n'accepte que des lettres (accents compris), des espaces,
+ * des traits d'union et des apostrophes (droite ou typographique). Un seul autre caractère
+ * (point, virgule, barre, deux-points, arobase, ponctuation, chiffre…) dans l'un ou l'autre, et
+ * le nom ENTIER devient « Un demandeur » — jamais nettoyé mot à mot (une liste noire de formes de
+ * domaine laissait passer « x.com, » que les messageries rendent cliquable). Un nom vide devient
+ * aussi « Un demandeur » ; un nom démesuré est borné à 80 caractères.
  */
 final class MailSafeName
 {
@@ -19,28 +22,25 @@ final class MailSafeName
 
     private const string FALLBACK = 'Un demandeur';
 
-    /** Un mot porteur de lien : schéma, www, arobase, ou domaine (point + 2 lettres, en fin ou suivi de / : ? #). */
-    private const string LINK_WORD = '~(?:://|www\.|@|\.[a-z]{2,}(?:[/:?#]|$))~iu';
+    /** Lettres (et leurs marques combinantes), espaces, traits d'union, apostrophes ' et ’. */
+    private const string ALLOWED = '~^[\p{L}\p{M} \'’-]*$~u';
 
     public static function of(string $first, string $last): string
     {
-        $name = self::clean(self::clean($first) . ' ' . self::clean($last));
-        if ('' === $name) {
+        $parts = [];
+        foreach ([$first, $last] as $part) {
+            $part = trim((string) preg_replace('~\s+~u', ' ', $part));
+            if (1 !== preg_match(self::ALLOWED, $part)) {
+                return self::FALLBACK;
+            }
+            if ('' !== $part) {
+                $parts[] = $part;
+            }
+        }
+        if ([] === $parts) {
             return self::FALLBACK;
         }
 
-        return rtrim(mb_substr($name, 0, self::MAX_LENGTH));
-    }
-
-    private static function clean(string $value): string
-    {
-        do {
-            $before = $value;
-            $words = preg_split('~\s+~u', trim($value), -1, \PREG_SPLIT_NO_EMPTY);
-            $kept = array_filter(\is_array($words) ? $words : [], static fn (string $word): bool => 1 !== preg_match(self::LINK_WORD, $word));
-            $value = implode(' ', $kept);
-        } while ($value !== $before);
-
-        return $value;
+        return rtrim(mb_substr(implode(' ', $parts), 0, self::MAX_LENGTH));
     }
 }
