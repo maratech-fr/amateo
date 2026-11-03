@@ -1,14 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HTTPError } from "ky";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Conflict } from "./api";
+import { useToastStore } from "@/shared/stores/toastStore";
+
+import type { Conflict, ConflictMailingResult } from "./api";
 import * as matchesApi from "./api";
 import { ConflictsPage } from "./ConflictsPage";
 import { useMatchesStore } from "./store";
 import { MATCHES_TEXTS } from "./texts";
+import { MATCHES_CONFLICTS_MAIL_TEXTS as MAIL } from "./texts/conflictsMail";
 
 function side(fixtureId: string, teamId: string, matchDate = "2026-10-03") {
   return { fixtureId, teamId, homeAway: "HOME" as const, matchDate, kickoffTime: "16:00", windowStart: "", windowEnd: "" };
@@ -22,16 +26,29 @@ const DEFAULT_CONFLICTS: Conflict[] = [
   { type: "VENUE_UNAVAILABLE", severity: 1, resolution: null, fixture: side("fx-1", "team-1", "2026-10-03") },
 ];
 
-const state = vi.hoisted(() => ({ conflicts: [] as Conflict[], held: [] as unknown[] }));
+// Envoi aux coachs — `coachMailing` est servi par défaut (contrat complet) ; `undefined` le RETIRE
+// de la réponse (cas « champ absent ⇒ bouton désactivé »).
+const DEFAULT_COACH_MAILING = { personConflictCount: 3, pendingRecipientCount: 0, last: null };
+const state = vi.hoisted(() => ({ conflicts: [] as Conflict[], held: [] as unknown[], coachMailing: undefined as unknown }));
 
 // P4-207 — gestionnaire par défaut : l'éditeur de traitement est proposé (« Traiter »).
-const meState = vi.hoisted(() => ({ role: "admin" as string | null }));
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { role: meState.role } }) }));
+// Envoi aux coachs : le club (démo ?) et la saison de travail (nom, archivée ?) viennent de la session.
+const meState = vi.hoisted(() => ({ role: "admin" as string | null, isDemo: false, seasonReadonly: false }));
+vi.mock("@/shared/session/queries", () => {
+  const season = () => ({ id: "s", name: "2026-2027", startDate: "2026-08-01", endDate: "2027-07-15", isCurrent: true, isReadonly: meState.seasonReadonly });
+  return {
+    useMe: () => ({ data: { role: meState.role, club: { id: "c", isDemo: meState.isDemo }, seasons: [season()], currentSeasonId: "s" } }),
+    useWorkingSeason: () => season(),
+  };
+});
 
 const compState = vi.hoisted(() => ({ competitions: [] as unknown[] }));
 
 vi.mock("./api", () => ({
-  getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: state.conflicts, held: state.held })),
+  getConflicts: vi.fn(() =>
+    Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: state.conflicts, held: state.held, ...(undefined === state.coachMailing ? {} : { coachMailing: state.coachMailing }) }),
+  ),
+  mailConflictsToCoaches: vi.fn(),
   getCompetitions: vi.fn(() => Promise.resolve(compState.competitions)),
   putConflictResolution: vi.fn(() => Promise.resolve({ fingerprint: "fp", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } })),
   deleteConflictResolution: vi.fn(() => Promise.resolve(undefined)),
@@ -42,7 +59,13 @@ vi.mock("./api", () => ({
     ]),
   ),
   getVenues: vi.fn(() => Promise.resolve([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }])),
-  getCoaches: vi.fn(() => Promise.resolve([{ id: "coach-1", firstName: "Mara", lastName: "" }])),
+  getCoaches: vi.fn(() =>
+    Promise.resolve([
+      { id: "coach-1", firstName: "Mara", lastName: "" },
+      { id: "coach-karim", firstName: "Karim", lastName: "Benali" },
+      { id: "coach-emma", firstName: "Emma", lastName: "Durand" },
+    ]),
+  ),
   getFixtures: vi.fn(() =>
     Promise.resolve([
       { id: "fx-1", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Adv", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null, neutralGround: false, reviewState: "NEW", reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
@@ -84,8 +107,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.conflicts = DEFAULT_CONFLICTS;
   state.held = [];
+  state.coachMailing = DEFAULT_COACH_MAILING;
   compState.competitions = [];
   meState.role = "admin";
+  meState.isDemo = false;
+  meState.seasonReadonly = false;
+  useToastStore.setState({ toasts: [] });
   useMatchesStore.setState({ selectedWeekend: null, conflictsPivot: "coach", conflictsFamilies: null, conflictsTreatments: null, conflictsHomeOnly: false, consultKinds: null, consultAway: false });
 });
 
@@ -699,5 +726,176 @@ describe("ConflictsPage — filet des chemins de lecture (FRT-36)", () => {
     expect(await screen.findByLabelText("Chargement")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText("Aucun conflit sur la saison")).not.toBeInTheDocument();
+  });
+});
+
+// ── Envoyer les conflits aux coachs ─────────────────────────────────────────────────────────
+// Le serveur calcule TOUT (`coachMailing` du GET, résultat du POST) ; l'écran n'affiche que ça.
+// Textes : clés de `texts/conflictsMail.ts`, jamais la phrase recopiée.
+
+const SENT_AT = "2026-11-03T14:32:00+01:00"; // affiché « 03/11/2026 à 14:32 » (heure murale servie)
+
+function mailingResult(over: Partial<ConflictMailingResult> = {}): ConflictMailingResult {
+  return { sentAt: SENT_AT, conflictCount: 0, recipients: [], cleared: [], skipped: [], failed: [], ...over };
+}
+const recipient = (n: number) => ({ coachId: `r-${n}`, firstName: `Coach${n}`, lastName: "Liste", conflictCount: 1 });
+const clearedCoach = (n: number) => ({ coachId: `c-${n}`, firstName: `Coach${n}`, lastName: "Plus" });
+const KARIM = { coachId: "coach-karim", firstName: "Karim", lastName: "Benali" };
+const EMMA = { coachId: "coach-emma", firstName: "Emma", lastName: "Durand" };
+const LEA = { coachId: "coach-lea", firstName: "Léa", lastName: "Roux" };
+
+function httpError(status: number, data: unknown): HTTPError {
+  const response = new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
+  const error = new HTTPError(response, new Request("http://localhost/api/fixtures/conflicts/mail-coaches", { method: "POST" }), {} as never);
+  (error as unknown as { data?: unknown }).data = data;
+  return error;
+}
+
+const findSendButton = () => screen.findByRole("button", { name: MAIL.sendButton });
+const lastToast = () => useToastStore.getState().toasts.at(-1);
+const statusPrefix = () => MAIL.statusLine({ date: "§", time: "§", sender: null, mailedCount: 1, skippedNames: [] }).split("§")[0];
+
+describe("ConflictsPage — envoyer les conflits aux coachs : qui voit le bouton", () => {
+  it("un gestionnaire voit « Envoyer aux coachs », actif quand il y a des conflits de personne", async () => {
+    renderAt();
+    const button = await findSendButton();
+    expect(button).not.toHaveAttribute("aria-disabled");
+    expect(button).toBeEnabled();
+  });
+
+  it("un membre n'a pas le bouton mais lit la ligne du dernier envoi", async () => {
+    meState.role = "member";
+    state.coachMailing = { ...DEFAULT_COACH_MAILING, last: { sentAt: SENT_AT, sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: [] } };
+    renderAt();
+    expect(await screen.findByText(MAIL.statusLine({ date: "03/11/2026", time: "14:32", sender: "Nadia", mailedCount: 7, skippedNames: [] }))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: MAIL.sendButton })).not.toBeInTheDocument();
+  });
+
+  it("saison sans conflit : le bouton et la ligne d'état restent rendus au-dessus de l'état vide", async () => {
+    state.conflicts = [];
+    state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, last: { sentAt: SENT_AT, sentByFirstName: "Nadia", mailedCount: 2, skippedCoachIds: [] } };
+    renderAt();
+    const button = await findSendButton();
+    expect(screen.getByText(MATCHES_TEXTS.noSeasonConflictsTitle)).toBeInTheDocument();
+    expect(screen.getByText(MAIL.statusLine({ date: "03/11/2026", time: "14:32", sender: "Nadia", mailedCount: 2, skippedNames: [] }))).toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription(MAIL.disabledNothingToSend);
+  });
+
+  it("zéro conflit de personne mais un coach à prévenir (« plus aucun conflit ») : le bouton reste ACTIF", async () => {
+    state.conflicts = [];
+    state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 1, last: { sentAt: SENT_AT, sentByFirstName: "Nadia", mailedCount: 2, skippedCoachIds: [] } };
+    renderAt();
+    const button = await findSendButton();
+    expect(button).not.toHaveAttribute("aria-disabled");
+    expect(button).toBeEnabled();
+  });
+});
+
+describe("ConflictsPage — envoyer aux coachs : désactivé, avec sa raison découvrable", () => {
+  it.each([
+    ["rien à envoyer ni personne à prévenir", () => (state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, last: null }), () => MAIL.disabledNothingToSend],
+    ["club de démonstration", () => (meState.isDemo = true), () => MAIL.disabledDemo],
+    ["saison archivée (saison de travail en lecture seule)", () => (meState.seasonReadonly = true), () => MAIL.disabledArchived],
+    ["réponse sans `coachMailing`", () => (state.coachMailing = undefined), () => MAIL.disabledUnavailable],
+  ])("%s : bouton désactivé, raison annoncée, le clic n'ouvre rien", async (_label, arrange, reason) => {
+    arrange();
+    const user = userEvent.setup();
+    renderAt();
+    const button = await findSendButton();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription(reason());
+    await user.click(button);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(matchesApi.mailConflictsToCoaches).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConflictsPage — envoyer aux coachs : confirmation puis envoi", () => {
+  it("le clic ouvre une confirmation qui nomme la saison ; « Annuler » n'envoie rien", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await findSendButton());
+    const dialog = screen.getByRole("dialog", { name: MAIL.confirmTitle });
+    expect(within(dialog).getByText(MAIL.confirmBody("2026-2027"))).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: MAIL.confirmCancel }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(matchesApi.mailConflictsToCoaches).not.toHaveBeenCalled();
+  });
+
+  it("« Envoyer » poste UNE fois ; pendant la requête « Envoi… » est désactivé ; au retour le radar est relu", async () => {
+    let resolve: (value: ConflictMailingResult) => void = () => undefined;
+    vi.mocked(matchesApi.mailConflictsToCoaches).mockReturnValueOnce(
+      new Promise<ConflictMailingResult>((r) => {
+        resolve = r;
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await findSendButton());
+    const dialog = screen.getByRole("dialog", { name: MAIL.confirmTitle });
+    await user.click(within(dialog).getByRole("button", { name: MAIL.confirmAction }));
+
+    const pending = await within(dialog).findByRole("button", { name: MAIL.sending });
+    expect(pending).toBeDisabled();
+    await user.click(pending);
+    expect(matchesApi.mailConflictsToCoaches).toHaveBeenCalledTimes(1);
+
+    const readsBefore = vi.mocked(matchesApi.getConflicts).mock.calls.length;
+    resolve(mailingResult({ recipients: [recipient(1), recipient(2)] }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(vi.mocked(matchesApi.getConflicts).mock.calls.length).toBeGreaterThan(readsBefore));
+  });
+
+  it("un refus serveur `{detail}` (409 socle rouvert) s'affiche tel quel en toast d'erreur", async () => {
+    const detail = "Validez le planning principal avant de créer un match ou un planning secondaire.";
+    vi.mocked(matchesApi.mailConflictsToCoaches).mockRejectedValueOnce(httpError(409, { detail }));
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await findSendButton());
+    await user.click(within(screen.getByRole("dialog", { name: MAIL.confirmTitle })).getByRole("button", { name: MAIL.confirmAction }));
+    await waitFor(() => expect(lastToast()?.message).toBe(detail));
+    expect(lastToast()?.variant).toBe("error");
+  });
+});
+
+describe("ConflictsPage — envoyer aux coachs : le toast dit ce qui est parti", () => {
+  it.each([
+    ["un e-mail", mailingResult({ recipients: [recipient(1)] }), { mailedCount: 1, skippedNames: [] as string[], failedNames: [] as string[] }],
+    ["listes ET « plus aucun conflit » comptent ensemble", mailingResult({ recipients: [1, 2, 3, 4, 5].map(recipient), cleared: [clearedCoach(6), clearedCoach(7)] }), { mailedCount: 7, skippedNames: [], failedNames: [] }],
+    ["un coach sans adresse nommé", mailingResult({ recipients: [1, 2, 3, 4, 5, 6, 7].map(recipient), skipped: [{ ...KARIM, kind: "conflicts" }] }), { mailedCount: 7, skippedNames: ["Karim B."], failedNames: [] }],
+    [
+      "deux e-mails non partis nommés (dont un « plus aucun »)",
+      mailingResult({ recipients: [1, 2, 3, 4, 5, 6, 7].map(recipient), failed: [{ ...LEA, kind: "conflicts" }, { ...EMMA, kind: "cleared" }] }),
+      { mailedCount: 7, skippedNames: [], failedNames: ["Léa R.", "Emma D."] },
+    ],
+    ["rien enfilé, deux sans adresse", mailingResult({ sentAt: null, skipped: [{ ...KARIM, kind: "conflicts" }, { ...EMMA, kind: "cleared" }] }), { mailedCount: 0, skippedNames: ["Karim B.", "Emma D."], failedNames: [] }],
+  ])("%s", async (_label, result, expected) => {
+    vi.mocked(matchesApi.mailConflictsToCoaches).mockResolvedValueOnce(result);
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await findSendButton());
+    await user.click(within(screen.getByRole("dialog", { name: MAIL.confirmTitle })).getByRole("button", { name: MAIL.confirmAction }));
+    await waitFor(() => expect(lastToast()?.message).toBe(MAIL.toastResult(expected)));
+  });
+});
+
+describe("ConflictsPage — envoyer aux coachs : la ligne « Envoyé le … »", () => {
+  it.each([
+    ["un e-mail, par Nadia", { sentByFirstName: "Nadia", mailedCount: 1, skippedCoachIds: [] as string[] }, { sender: "Nadia" as string | null, mailedCount: 1, skippedNames: [] as string[] }],
+    ["auteur disparu : sans « par »", { sentByFirstName: null, mailedCount: 7, skippedCoachIds: [] }, { sender: null, mailedCount: 7, skippedNames: [] }],
+    ["un coach sans adresse à cet envoi", { sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: ["coach-karim"] }, { sender: "Nadia", mailedCount: 7, skippedNames: ["Karim B."] }],
+    ["deux coachs sans adresse", { sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: ["coach-karim", "coach-emma"] }, { sender: "Nadia", mailedCount: 7, skippedNames: ["Karim B.", "Emma D."] }],
+    ["un coach supprimé depuis : « un coach retiré »", { sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: ["coach-disparu"] }, { sender: "Nadia", mailedCount: 7, skippedNames: [MAIL.coachRemoved] }],
+  ])("%s", async (_label, last, expected) => {
+    state.coachMailing = { ...DEFAULT_COACH_MAILING, last: { sentAt: SENT_AT, ...last } };
+    renderAt();
+    expect(await screen.findByText(MAIL.statusLine({ date: "03/11/2026", time: "14:32", ...expected }))).toBeInTheDocument();
+  });
+
+  it("aucun envoi encore : pas de ligne « Envoyé le »", async () => {
+    renderAt();
+    await findSendButton();
+    expect(screen.queryByText((text) => text.startsWith(statusPrefix()))).not.toBeInTheDocument();
   });
 });

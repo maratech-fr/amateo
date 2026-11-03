@@ -82,6 +82,7 @@ final class ActionMailCtaInventoryTest extends TestCase
     private const array OTHER_SITES = [
         'src/Controller/AuthController.php' => 'confirmation de changement d\'e-mail (DÉJÀ câblé) + avis à l\'ancienne adresse (EXEMPT)',
         'src/Controller/PasswordController.php' => 'réinitialisation du mot de passe (DÉJÀ câblé)',
+        'src/Service/ConflictCoachMailBuilder.php' => 'conflits aux coachs + « plus aucun conflit » (EXEMPT : le mail informe à titre indicatif, il n\'y a rien à faire — un coach n\'a pas de compte)',
         'src/Service/Registration/RegisterService.php' => 'vérification d\'inscription (DÉJÀ câblé) + « ce compte existe déjà » (EXEMPT)',
     ];
 
@@ -102,6 +103,7 @@ final class ActionMailCtaInventoryTest extends TestCase
         'src/Service/ClubApprovalService.php' => 2,
         'src/Service/ClubInvitationMailer.php' => 1,
         'src/Service/CoachWishMailBuilder.php' => 1,
+        'src/Service/ConflictCoachMailBuilder.php' => 1,
         'src/Service/FeedbackMailBuilder.php' => 2,
         'src/Service/InactivityMailBuilder.php' => 1,
         'src/Service/OrphanAccountMailBuilder.php' => 1,

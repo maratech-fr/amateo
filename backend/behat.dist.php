@@ -6,6 +6,7 @@ use App\Tests\Behat\ClosureStraddleContext;
 use App\Tests\Behat\CoachLateRelayContext;
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConflictResolutionContext;
+use App\Tests\Behat\ConflictsToCoachesContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\DemoRetainedContext;
@@ -171,6 +172,11 @@ return (new Config)
                 new Suite('conflits-verite')
                     ->withPaths('%paths.base%/features/les-conflits-d-un-match-disent-la-verite.feature')
                     ->withContexts(ConflictTruthContext::class),
+            )
+            ->withSuite(
+                new Suite('conflits-aux-coachs')
+                    ->withPaths('%paths.base%/features/les-conflits-partent-aux-coachs.feature')
+                    ->withContexts(ConflictsToCoachesContext::class),
             )
             ->withSuite(
                 new Suite('conflits-resolution')
