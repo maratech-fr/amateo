@@ -164,6 +164,16 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       }
       for (const step of ["teams", "venues", "coaches", "constraints", "recap", "generate"]) {
         await visit(page, watch, `/wizard?step=${step}`, true);
+        if ("venues" === step) {
+          // Le Membre CONSULTE le gymnase localisé sans adresse (choisir un gymnase est une lecture) :
+          // sa carte s'affiche repliée « Localisé », sans retrouver l'adresse par un appel sortant.
+          await settleVeil(page);
+          await page.locator("#venue-picker").click();
+          await page.getByRole("option", { name: /Gymnase coordonnées/ }).click();
+          await expect(page.getByText(/Gymnase coordonnées/).first(), "témoin : la carte du gymnase localisé est ouverte").toBeVisible();
+          await expect(page.getByRole("link", { name: "Voir sur la carte" }).first(), "témoin : la vue repliée « Localisé » est rendue").toBeVisible();
+          expect(watch.violations, `gymnase localisé sans adresse : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
+        }
       }
       await visit(page, watch, "/club", true);
       // `/club` : ni Demandes d'adhésion, ni Invitations, ni Membres.
