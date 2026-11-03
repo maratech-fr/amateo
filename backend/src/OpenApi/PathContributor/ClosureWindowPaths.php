@@ -121,6 +121,7 @@ final readonly class ClosureWindowPaths implements CustomPathContributor
                     ]]],
                 ]],
                 'regeneratedWithout' => ['type' => 'boolean', 'description' => 'The pointed version, born after the closure, no longer trains at the closed venue on days the season calendar did'],
+                'regeneratedWithoutWeekdays' => ['type' => 'array', 'items' => ['type' => 'integer'], 'description' => 'Those ISO weekdays (1 = Monday)'],
             ],
         ];
         $impact = [

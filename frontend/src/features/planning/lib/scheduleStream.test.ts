@@ -165,7 +165,7 @@ describe("acquireScheduleStream — FRT-04", () => {
     FakeEventSource.instances[0]!.onmessage?.({ data: JSON.stringify({ scheduleId: "s1", status: "COMPLETED" }) } as MessageEvent<string>);
 
     const keys = vi.mocked(queryClient.invalidateQueries).mock.calls.map(([filter]) => filter?.queryKey);
-    expect(keys).toEqual([["schedules"], ["wizard", "schedule_status", "s1"], ["slots", "s1"], ["diagnostics", "s1"]]);
+    expect(keys).toEqual([["schedules"], ["wizard", "schedule_status", "s1"], ["slots", "s1"], ["diagnostics", "s1"], ["calendar-entries", "impact"]]);
     release();
   });
 

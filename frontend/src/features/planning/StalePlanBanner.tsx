@@ -3,10 +3,7 @@ import { useEntryImpactList } from "@/features/cockpit/queries";
 import { useVenueClosures } from "@/features/matches/queries";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 
-import { PLANNING_TEXTS } from "./texts";
-
-/** « 10/3 » — jour/mois sans zéro de tête. */
-const dayMonth = (iso: string): string => `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}`;
+import { staleByClosureMessage } from "./lib/staleByClosure";
 
 /**
  * Fermetures de gymnase (C5) — sur l'écran d'un plan de période qu'une fermeture DÉCLARÉE rend
@@ -20,18 +17,8 @@ export function StalePlanBanner({ impact, planEntryId }: { impact: ClosureImpact
   if (undefined === plan || !plan.hasVersions || 0 === plan.sessions.length) {
     return null;
   }
-  const dates = [...new Set(plan.sessions.map((s) => s.date))].sort();
-  const teams = [...new Set(plan.sessions.map((s) => s.teamName))];
-  const venueId = plan.sessions[0].venueId;
-  const venue = impact?.closedSessions.find((s) => s.venueId === venueId)?.venueName ?? "";
-  return (
-    <NoticeBanner
-      tone="warning"
-      role="status"
-      className="mb-4"
-      message={PLANNING_TEXTS.staleByClosure(venue, dayMonth(dates[0]), dayMonth(dates[dates.length - 1]), teams, plan.sessions.length)}
-    />
-  );
+  const venueNameOf = (venueId: string): string => impact?.closedSessions.find((s) => s.venueId === venueId)?.venueName ?? "";
+  return <NoticeBanner tone="warning" role="status" className="mb-4" message={staleByClosureMessage(plan, venueNameOf)} />;
 }
 
 /**

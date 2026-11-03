@@ -1,3 +1,4 @@
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { dayLabelLong, isoDayOf } from "@/shared/lib/days";
 
 import type { ClosureImpact, PinRemoval } from "./api";
@@ -18,16 +19,13 @@ const dayMonth = (iso: string): string => `${Number(iso.slice(8, 10))}/${Number(
  * `/api/venue-closure-impact` — le serveur seul calcule (règle d'or : le front n'invente rien).
  * `venueName` vient du formulaire (le gestionnaire vient de choisir le gymnase).
  */
-export function ClosureImpactPanel({ impact, state, venueName }: { impact: ClosureImpact | null; state: ClosureImpactState; venueName: string }) {
+export function ClosureImpactPanel({ impact, state, venueName, onRetry }: { impact: ClosureImpact | null; state: ClosureImpactState; venueName: string; onRetry?: () => void }) {
   if ("idle" === state || "out_of_season" === state) {
     return null;
   }
   if ("failed" === state) {
-    return (
-      <p role="status" className="text-xs text-destructive">
-        {COCKPIT_TEXTS.closureImpactFailed}
-      </p>
-    );
+    // Patron LoadErrorHint : le message ET de quoi réessayer (jamais un échec sans issue).
+    return <LoadErrorHint onRetry={onRetry}>{COCKPIT_TEXTS.closureImpactFailed}</LoadErrorHint>;
   }
   if ("loading" === state || null === impact) {
     return (

@@ -19,6 +19,8 @@ import { isHolidayAnchor } from "./lib/markers";
 import { seasonLockTitle, useSocleValidated } from "./lib/socle";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { WeekPickerDialog } from "./WeekPickerDialog";
+import { useVenues } from "@/features/matches/queries";
+import { staleByClosureMessage } from "@/features/planning/lib/staleByClosure";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { CoachWishesHub } from "@/features/coach-wishes/CoachWishesHub";
 import { RadarCoachWishBadge } from "@/features/coach-wishes/RadarCoachWishBadge";
@@ -318,8 +320,8 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // seule laisserait le panneau vide SANS son « Rien à l'horizon »).
   const closureImpacts = useEntryConflictsList(closures.map((e) => e.id));
   // Fermetures de gymnase (C4/C5) — l'impact SERVI de chaque fermeture (`/impact`, même chiffre
-  // que l'aperçu du formulaire) : le chiffre de la carte, « Ouvrir le plan » quand un plan de
-  // période gouverne toute la fermeture, et les plans de période qu'elle rend périmés.
+  // que l'aperçu du formulaire) : la visibilité et le chiffre de la carte, « Ouvrir le plan » quand
+  // un plan de période gouverne toute la fermeture, et les plans de période qu'elle rend périmés.
   const closureEntryImpacts = useEntryImpactList(closures.map((e) => e.id));
   const visibleClosures = closures.filter((entry, i) => {
     if (childrenByParent.has(entry.id)) {
@@ -330,6 +332,12 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
     }
     if (startedEntryIds.has(entry.id)) {
       return true; // travail commencé, non validé : toujours à traiter (jamais masqué)
+    }
+    // `/impact` lu : la même vérité que l'aperçu — une séance encore touchée, ou un plan de période
+    // qu'elle rend périmé. Plus rien des deux : plus rien à traiter, plus de carte.
+    const served = closureEntryImpacts[i]?.data;
+    if (undefined !== served) {
+      return served.trainingOccurrences > 0 || served.governingPlans.some((p) => p.hasVersions && p.sessions.length > 0);
     }
     const impact = closureImpacts[i];
     if (impact?.isPending) {
@@ -375,6 +383,8 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   }
   // Fermetures de gymnase (C5) — les plans de période qu'une fermeture visible rend PÉRIMÉS
   // (ils gardent des séances au gymnase fermé ces jours-là) : une carte chacun, sans doublon.
+  const venuesQuery = useVenues();
+  const venueNameOf = (venueId: string): string => (venuesQuery.data ?? []).find((v) => v.id === venueId)?.name ?? "";
   const stalePlans = new Map<string, ClosureGoverningPlan>();
   closures.forEach((entry, i) => {
     if (!visibleClosures.includes(entry)) return;
@@ -700,7 +710,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       {[...stalePlans.values()].map((plan) => {
         const versionId = plan.chosenScheduleId ?? plan.loadedScheduleId;
         return (
-          <RadarCard key={`stale-${plan.entryId}`} icon={<AlertTriangle className="size-4 text-destructive" />} title={plan.title} detail={COCKPIT_TEXTS.planStaleByClosureDetail}>
+          <RadarCard key={`stale-${plan.entryId}`} icon={<AlertTriangle className="size-4 text-destructive" />} title={plan.title} detail={staleByClosureMessage(plan, venueNameOf)}>
             {null !== plan.chosenScheduleId && null !== versionId ? (
               <Button variant="outline" size="sm" onClick={() => viewOverlay(versionId)}>
                 {COCKPIT_TEXTS.openPlanCta}
@@ -872,7 +882,9 @@ function ClosureRadarItem({
       ? "Impact non évalué · réessayez"
       : planIncomplete
         ? "Planning de la saison incomplet · impact non évalué"
-        : `${count} séance${count > 1 ? "s" : ""} à replacer · ${inProgress ? "planning en cours — à finaliser" : "planning secondaire absent"}`;
+        : null !== governing
+          ? COCKPIT_TEXTS.closureGovernedBy(count, governing.title)
+          : `${count} séance${count > 1 ? "s" : ""} à replacer · ${inProgress ? "planning en cours — à finaliser" : "planning secondaire absent"}`;
 
   return (
     <RadarCard

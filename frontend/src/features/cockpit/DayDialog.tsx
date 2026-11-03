@@ -850,8 +850,9 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
     setWindowConflict(null); // réinitialisé à chaque tentative (jamais un refus périmé collé au geste)
     setPinRemoval(null);
     try {
-      await redate.mutateAsync(confirmPinRemoval ? { entry, startDate, endDate, confirmPinRemoval: true } : { entry, startDate, endDate });
-      toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
+      const redated = await redate.mutateAsync(confirmPinRemoval ? { entry, startDate, endDate, confirmPinRemoval: true } : { entry, startDate, endDate });
+      const removed = redated?.removed ?? null;
+      toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}` + (null !== removed ? COCKPIT_TEXTS.removedSuffix(removed.locks, removed.reservations) : ""));
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {

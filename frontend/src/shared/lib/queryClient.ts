@@ -47,6 +47,11 @@ export const queryClient = new QueryClient({
       if (query.meta?.silent404 === true && error instanceof HTTPError && error.response.status === 404) {
         return;
       }
+      // Queries flagged meta.ownsError SAY their failure themselves (with a retry) — the generic
+      // toast would only double it (aperçu d'une fermeture de gymnase).
+      if (query.meta?.ownsError === true) {
+        return;
+      }
       report(error);
     },
   }),

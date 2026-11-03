@@ -119,6 +119,9 @@ export const COCKPIT_TEXTS = {
   closureNoVenue: "Aucun gymnase : sans effet sur le planning.",
   closureImpactEvaluating: "Évaluation de l'impact…",
   confirmPinRemoval: "Retirer et enregistrer",
+  closureSaveNeedsInput: "Choisissez le gymnase et les dates de la fermeture.",
+  closureSaveOutOfSeason: "Ces dates sortent de la saison.",
+  closureGovernedBy: (count: number, plan: string) => `${count} séance${count > 1 ? "s" : ""} à replacer · planning « ${plan} » à régénérer`,
   closureSaveNeedsPreview: "L'aperçu de ce que la fermeture retire doit d'abord être lu.",
   dateFrom: "Du",
   dateUntil: "Jusqu'au",
@@ -144,6 +147,24 @@ export const COCKPIT_TEXTS = {
   planInProgressClosedFuture: (plan: string) => `Le plan « ${plan} » est en cours : ouvrez-le et régénérez-le après l'enregistrement.`,
   closureOutOfSeason: (start: string, end: string) => `Ces dates sortent de la saison (du ${start} au ${end}).`,
   closureSeasonClipped: (start: string, seasonEnd: string) => `Seules les dates du ${start} au ${seasonEnd} comptent (fin de saison).`,
+  /** « — 3 verrous et 1 réservation retirés » (vide si rien retiré) : suffixe des toasts de re-datage et d'élargissement. */
+  removedSuffix: (locks: number, reservations: number) => {
+    if (0 === locks && 0 === reservations) return "";
+    const parts = [
+      ...(locks > 0 ? [`${locks} ${plural(locks, "verrou", "verrous")}`] : []),
+      ...(reservations > 0 ? [`${reservations} ${plural(reservations, "réservation", "réservations")}`] : []),
+    ];
+    return ` — ${parts.join(" et ")} ${plural(locks + reservations, "retiré", "retirés")}${0 === locks && 1 === reservations ? "e" : ""}`;
+  },
+  /** « 3 verrous et 1 réservation retirés. » (vide si rien retiré) : phrase ajoutée au toast d'élargissement. */
+  removedSentence: (locks: number, reservations: number) => {
+    if (0 === locks && 0 === reservations) return "";
+    const parts = [
+      ...(locks > 0 ? [`${locks} ${plural(locks, "verrou", "verrous")}`] : []),
+      ...(reservations > 0 ? [`${reservations} ${plural(reservations, "réservation", "réservations")}`] : []),
+    ];
+    return ` ${parts.join(" et ")} ${plural(locks + reservations, "retiré", "retirés")}${0 === locks && 1 === reservations ? "e" : ""}.`;
+  },
   closureSavedToast: (locks: number, reservations: number, venue: string) => {
     if (0 === locks && 0 === reservations) return "Indisponibilité enregistrée.";
     const parts = [
@@ -154,14 +175,14 @@ export const COCKPIT_TEXTS = {
   },
   generationInProgress: "Une génération est en cours pour ce club : réessayez quand elle est terminée.",
   openPlanCta: "Ouvrir le plan",
-  planStaleByClosureDetail: "Périmé : une fermeture de gymnase touche ses séances — ouvrez-le, puis régénérez.",
   deleteClosureTitle: (title: string) => `Supprimer « ${title} » ?`,
   deleteClosureWithPlan: (versions: number) => `Son planning de période (validé, ${versions} ${plural(versions, "version", "versions")}) sera supprimé aussi.`,
   deleteClosureInProgress: (versions: number) => `Son planning de période (en cours, ${versions} ${plural(versions, "version", "versions")}) sera supprimé aussi.`,
-  deleteClosureSplit: (weeks: number) => `Ses ${weeks} semaines et leurs plannings seront supprimés aussi.`,
+  deleteClosureSplit: (weeks: number) => (1 === weeks ? "Sa semaine et son planning seront supprimés aussi." : `Ses ${weeks} semaines et leurs plannings seront supprimés aussi.`),
   deleteClosureBare: "Cette indisponibilité sera retirée du calendrier.",
   deleteClosureNothingRestored: "Les verrous et réservations retirés à sa déclaration ne sont pas remis.",
-  deleteClosureRegeneratedWithout: (plan: string, venue: string) => `Le plan « ${plan} » a été régénéré sans ${venue} : régénérez-le pour retrouver ses séances.`,
+  deleteClosureRegeneratedWithout: (plan: string, venue: string, weekdays: number[]) =>
+    `Le plan « ${plan} » a été régénéré sans ${venue} : régénérez-le pour retrouver ${0 === weekdays.length ? "ses séances" : weekdays.map((d) => `le ${dayLabelLong(d)}`).join(", ")}.`,
   closureDeletedToast: (venue: string, regeneratedPlan?: string) =>
     undefined !== regeneratedPlan
       ? `Indisponibilité supprimée — les séances de ${venue} reprennent, sauf dans « ${regeneratedPlan} » (régénéré sans ${venue}).`

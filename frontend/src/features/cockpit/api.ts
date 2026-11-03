@@ -68,6 +68,8 @@ export interface CalendarEntry {
    * EXCLUSIF de `redatable`. Toujours servi (défaut `false`).
    */
   redateNeedsPreview: boolean;
+  /** Fermetures (C3bis) — ce qu'un re-datage a retiré des plans de période ; servi seulement par ce geste. */
+  removed?: { locks: number; reservations: number } | null;
 }
 
 /** D3 v2 — le VERDICT d'un effet du re-datage d'une mère découpée (le backend le calcule, le front l'affiche). */
@@ -268,7 +270,8 @@ export const getCalendarEntry = (id: string): Promise<CalendarEntry> => api.get(
 export const createCalendarEntry = (json: Record<string, unknown>): Promise<CalendarEntry> =>
   api.post("calendar_entries", { json }).json();
 
-export const deleteCalendarEntry = (id: string): Promise<unknown> => api.delete(`calendar_entries/${id}`).json();
+/** 204 sans corps : jamais de `.json()` (ky lèverait sur `JSON.parse('')` et un succès passerait pour un échec). */
+export const deleteCalendarEntry = (id: string): Promise<void> => api.delete(`calendar_entries/${id}`).then(() => undefined);
 
 /**
  * D3 v1 PR-2 — RE-DATER une racine fermeture à plan (PUT). Corps MINIMAL mais complet : le DTO
@@ -452,9 +455,9 @@ export const previewClosureWindow = async (planId: string, dates: { startDate: s
  * + confirmation manuelle) et chevauchement ({@link WindowAlreadyPlannedError}, « Ouvrir le planning en
  * place »). Tout autre échec remonte tel quel (le hook `useApplyClosureWindow` toaste le transport).
  */
-export const applyClosureWindow = async (planId: string, dates: { startDate: string; endDate: string; previewToken: string }): Promise<SchedulePlan> => {
+export const applyClosureWindow = async (planId: string, dates: { startDate: string; endDate: string; previewToken: string }): Promise<SchedulePlan & { removed?: ClosureRemoved | null }> => {
   try {
-    return await api.post(`schedule_plans/${planId}/window`, { json: dates }).json<SchedulePlan>();
+    return await api.post(`schedule_plans/${planId}/window`, { json: dates }).json<SchedulePlan & { removed?: ClosureRemoved | null }>();
   } catch (error) {
     const conflict = asWindowAlreadyPlanned(error);
     if (null !== conflict) {
@@ -484,6 +487,8 @@ export interface ClosureGoverningPlan {
   sessions: { teamId: string; teamName: string; date: string; venueId: string }[];
   toRemove: { locks: number; reservations: { teamId: string | null; teamName: string; dayOfWeek: number }[] };
   regeneratedWithout: boolean;
+  /** Les jours ISO où le socle avait une séance à ce gymnase et que la version régénérée n'a plus (servis). */
+  regeneratedWithoutWeekdays?: number[];
 }
 
 /** Ce qu'une fermeture touche — l'aperçu AVANT « Enregistrer » et l'impact APRÈS disent le même chiffre. */

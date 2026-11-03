@@ -110,8 +110,13 @@ export function VenueClosureForm({ initialStartDate, onDone }: { initialStartDat
       </div>
       {outOfSeason && null !== season ? <p className="text-xs text-destructive">{COCKPIT_TEXTS.closureOutOfSeason(dayMonth(season.startDate), dayMonth(season.endDate))}</p> : null}
       {clipped && null !== season ? <p className="text-xs text-muted-foreground">{COCKPIT_TEXTS.closureSeasonClipped(dayMonth(startDate), dayMonth(season.endDate))}</p> : null}
-      <ClosureImpactPanel impact={"ready" === state ? (preview.data ?? null) : null} state={state} venueName={venueName} />
-      <Button className="w-full" onClick={submit} disabled={!canSave} disabledReason={"ready" !== state && null !== params ? COCKPIT_TEXTS.closureSaveNeedsPreview : undefined}>
+      <ClosureImpactPanel impact={"ready" === state ? (preview.data ?? null) : null} state={state} venueName={venueName} onRetry={() => void preview.refetch()} />
+      <Button
+        className="w-full"
+        onClick={submit}
+        disabled={!canSave}
+        disabledReason={canSave ? undefined : outOfSeason ? COCKPIT_TEXTS.closureSaveOutOfSeason : null === params ? COCKPIT_TEXTS.closureSaveNeedsInput : COCKPIT_TEXTS.closureSaveNeedsPreview}
+      >
         {COCKPIT_TEXTS.save}
       </Button>
     </div>

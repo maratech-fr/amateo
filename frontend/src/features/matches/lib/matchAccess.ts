@@ -118,6 +118,15 @@ export interface VenueAccessIssue {
 }
 
 /**
+ * La raison d'une fermeture, sans répéter le gymnase : la saisie unique intitule une fermeture
+ * « {gymnase} — {raison} » ; le motif nomme déjà le gymnase, il n'en garde que la raison.
+ */
+function closureReason(title: string, venueName: string): string {
+  const reason = title.startsWith(venueName) ? title.slice(venueName.length).replace(/^\s*—\s*/, "").trim() : title;
+  return "" === reason ? "" : ` — ${reason}`;
+}
+
+/**
  * The capacity guard of the placement gesture (cadrage P1-4 §5) — the CLUB's own
  * declarations, no mapping ambiguity (contrary to the league envelope). Returns
  * the issue to show, or null when the placement is fully clean.
@@ -158,7 +167,7 @@ export function venueAccessError(
       return {
         level: "error",
         reason: "closed",
-        message: `${venueName} est fermée du ${frDateShortNoYear(closure.startDate)} au ${frDateShortNoYear(closure.endDate)} — ${closure.title}.`,
+        message: `${venueName} est fermée du ${frDateShortNoYear(closure.startDate)} au ${frDateShortNoYear(closure.endDate)}${closureReason(closure.title, venueName)}.`,
       };
     }
   }

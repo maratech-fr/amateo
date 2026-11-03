@@ -387,8 +387,18 @@ export function useClosureImpactPreview(params: cockpitApi.ClosureImpactParams |
     queryFn: () => cockpitApi.getClosureImpactPreview(debounced.params as cockpitApi.ClosureImpactParams),
     enabled: null !== debounced.params,
     staleTime: 0,
+    // Le formulaire DIT l'échec lui-même (« Impact non évalué » + « Réessayer ») : pas de toast générique.
+    meta: { ownsError: true },
   });
-  return { data: query.data, isPending: query.isPending || !settled, isError: query.isError, isFetching: query.isFetching || !settled, isSuccess: query.isSuccess && settled };
+  const { refetch } = query;
+  return {
+    data: query.data,
+    isPending: query.isPending || !settled,
+    isError: query.isError,
+    isFetching: query.isFetching || !settled,
+    isSuccess: query.isSuccess && settled,
+    refetch,
+  };
 }
 
 /** Fermetures de gymnase (C4/C5/C8) — l'impact SERVI d'une fermeture enregistrée (même chiffre que son aperçu). */

@@ -71,7 +71,7 @@ export function VenueClosureCard() {
     const name = venueNamesOf(entry.id)[0] ?? "";
     for (const governing of impact?.governingPlans ?? []) {
       if (governing.regeneratedWithout) {
-        lines.push(COCKPIT_TEXTS.deleteClosureRegeneratedWithout(governing.title, name));
+        lines.push(COCKPIT_TEXTS.deleteClosureRegeneratedWithout(governing.title, name, governing.regeneratedWithoutWeekdays ?? []));
       }
     }
     return lines;

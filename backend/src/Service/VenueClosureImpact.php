@@ -63,7 +63,7 @@ final class VenueClosureImpact
      *   teams: list<array{teamId: string, teamName: string, tierLabel: string, tierWeight: int, occurrences: int}>,
      *   trainingOccurrences: int, trainingSlotCount: int,
      *   matchesToMove: list<array{fixtureId: string, teamId: string, teamName: string, opponentLabel: string, matchDate: string, kickoffTime: string|null}>,
-     *   governingPlans: list<array{entryId: string, title: string, startDate: string, endDate: string, chosenScheduleId: string|null, loadedScheduleId: string|null, hasVersions: bool, sessions: list<array{teamId: string, teamName: string, date: string, venueId: string}>, toRemove: array{locks: int, reservations: list<array{teamId: string|null, teamName: string, dayOfWeek: int}>}, regeneratedWithout: bool}>,
+     *   governingPlans: list<array{entryId: string, title: string, startDate: string, endDate: string, chosenScheduleId: string|null, loadedScheduleId: string|null, hasVersions: bool, sessions: list<array{teamId: string, teamName: string, date: string, venueId: string}>, toRemove: array{locks: int, reservations: list<array{teamId: string|null, teamName: string, dayOfWeek: int}>}, regeneratedWithout: bool, regeneratedWithoutWeekdays: list<int>}>,
      *   fullyGoverned: bool,
      *   closedSessions: list<array{constraintId: string, venueId: string, venueName: string, closureTitle: string, date: string, teamId: string, teamName: string}>,
      *   removedAtDeclaration: bool
@@ -182,6 +182,7 @@ final class VenueClosureImpact
                     'sessions' => [],
                     'toRemove' => ['locks' => 0, 'reservations' => []],
                     'regeneratedWithout' => false,
+                    'regeneratedWithoutWeekdays' => [],
                 ];
                 $removal = $toRemoveByEntry[$entryId] ?? null;
                 if (null !== $removal) {
@@ -192,8 +193,12 @@ final class VenueClosureImpact
                 }
                 $sessions = $archived ? [] : $this->planSessions($line['planId'], $line['chosenScheduleId'] ?? $line['loadedScheduleId'], $venueId, $dates, $line['startDate'], $line['endDate'], $today, $publicHolidays, $teamName);
                 $plans[$entryId]['sessions'] = [...$plans[$entryId]['sessions'], ...$sessions];
-                if (null !== $closure && $this->regeneratedWithout($line['planId'], $line['chosenScheduleId'], $venueId, $dates, $line['startDate'], $line['endDate'], $context['seasonScheduleId'], $closure['createdAt'])) {
+                $lostWeekdays = null !== $closure ? $this->regeneratedWithout($line['planId'], $line['chosenScheduleId'], $venueId, $dates, $line['startDate'], $line['endDate'], $context['seasonScheduleId'], $closure['createdAt']) : [];
+                if ([] !== $lostWeekdays) {
                     $plans[$entryId]['regeneratedWithout'] = true;
+                    $merged = array_values(array_unique([...$plans[$entryId]['regeneratedWithoutWeekdays'], ...$lostWeekdays]));
+                    sort($merged);
+                    $plans[$entryId]['regeneratedWithoutWeekdays'] = $merged;
                 }
             }
         }
@@ -360,17 +365,20 @@ final class VenueClosureImpact
      * Correction finale 2 — le plan a été « régénéré sans » le gymnase : (a) sa version pointée est
      * née APRÈS la fermeture, (b) la fermeture recoupe la fenêtre du plan, (c) le gymnase n'y est pas
      * désactivé, et un jour fermé où le socle avait une séance à ce gymnase n'en a plus dans la version.
+     * Rend ces jours ISO (vide = pas « régénéré sans ») — la confirmation de suppression les nomme.
      *
      * @param list<string> $dates
+     *
+     * @return list<int>
      */
-    private function regeneratedWithout(string $planId, ?string $chosenScheduleId, string $venueId, array $dates, string $planStart, string $planEnd, ?string $seasonScheduleId, DateTimeImmutable $closureCreatedAt): bool
+    private function regeneratedWithout(string $planId, ?string $chosenScheduleId, string $venueId, array $dates, string $planStart, string $planEnd, ?string $seasonScheduleId, DateTimeImmutable $closureCreatedAt): array
     {
         if (null === $chosenScheduleId || null === $seasonScheduleId || $this->venueDisabled($planId, $venueId)) {
-            return false;
+            return [];
         }
         $version = $this->entityManager->getRepository(Schedule::class)->find($chosenScheduleId);
         if (!$version instanceof Schedule || $version->getCreatedAt() <= $closureCreatedAt) {
-            return false;
+            return [];
         }
         $weekdays = [];
         foreach ($dates as $iso) {
@@ -379,7 +387,7 @@ final class VenueClosureImpact
             }
         }
         if ([] === $weekdays) {
-            return false;
+            return [];
         }
         $daysOf = function (string $scheduleId) use ($venueId): array {
             $days = [];
@@ -391,13 +399,15 @@ final class VenueClosureImpact
         };
         $socleDays = $daysOf($seasonScheduleId);
         $versionDays = $daysOf($chosenScheduleId);
+        $lost = [];
         foreach (array_keys($weekdays) as $weekday) {
             if (isset($socleDays[$weekday]) && !isset($versionDays[$weekday])) {
-                return true;
+                $lost[] = $weekday;
             }
         }
+        sort($lost);
 
-        return false;
+        return $lost;
     }
 
     /**

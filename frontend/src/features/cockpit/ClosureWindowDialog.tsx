@@ -130,9 +130,11 @@ export function ClosureWindowDialog({ plan, onClose, onApplied, onOpenConflict, 
     const token = loaded.token;
     setWindowConflict(null);
     try {
-      await apply.mutateAsync({ planId: plan.id, startDate, endDate, previewToken: token });
+      const applied = await apply.mutateAsync({ planId: plan.id, startDate, endDate, previewToken: token });
       // Toast de succès posé ICI (le hook est muet sur le succès) — jamais dans un onError de mutate().
-      toast.success(fromList ? COCKPIT_TEXTS.datesChangedToastFromList : COCKPIT_TEXTS.datesChangedToast);
+      // Fermetures (C3bis) — il dit aussi ce que l'élargissement a RETIRÉ (`removed` du POST /window).
+      const removed = applied?.removed ?? null;
+      toast.success((fromList ? COCKPIT_TEXTS.datesChangedToastFromList : COCKPIT_TEXTS.datesChangedToast) + (null !== removed ? COCKPIT_TEXTS.removedSentence(removed.locks, removed.reservations) : ""));
       onApplied();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {
