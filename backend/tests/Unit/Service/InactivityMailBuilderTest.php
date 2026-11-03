@@ -48,6 +48,23 @@ final class InactivityMailBuilderTest extends TestCase
         self::assertStringNotContainsString('dernier gestionnaire', (string) $plain->getTextBody());
     }
 
+    /**
+     * PROMESSE (chantier Membre PR 3, prévention D3) : le dernier gestionnaire prévenu de son
+     * inactivité se voit proposer d'éviter la fermeture en nommant un autre gestionnaire — UNE
+     * fois, après la phrase du club ; un compte qui n'est le dernier gestionnaire de rien ne la lit pas.
+     */
+    public function testInactivityWarningProposesToNameASuccessor(): void
+    {
+        $sentence = 'Pour éviter cette fermeture, connectez-vous et nommez un autre gestionnaire dans l\'écran Club, section « Membres ».';
+        $body = (string) new InactivityMailBuilder('https://app.example.test')->build('x@y.fr', 'Camille', ['BC Testville'])->getTextBody();
+
+        self::assertSame(1, substr_count($body, $sentence));
+        self::assertGreaterThan(strpos($body, 'Vous êtes le dernier gestionnaire de BC Testville'), strpos($body, $sentence), 'après la phrase qui nomme le club');
+
+        $plain = (string) new InactivityMailBuilder('https://app.example.test')->build('x@y.fr', 'Camille', [])->getTextBody();
+        self::assertStringNotContainsString('nommez un autre gestionnaire', $plain);
+    }
+
     public function testNoCtaWhenNoFrontendBaseIsConfigured(): void
     {
         // Sans base front, aucun lien cliquable n'est posé → pas de bouton (patron des crons).

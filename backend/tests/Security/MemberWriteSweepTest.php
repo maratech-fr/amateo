@@ -54,18 +54,6 @@ final class MemberWriteSweepTest extends WebTestCase
     private const string DUMMY = '11111111-1111-4111-8111-111111111111';
 
     /**
-     * Les quatre routes de la demande « devenir gestionnaire » (PR 3 du chantier) : leur décision
-     * est déjà prise, elles sont tolérées ABSENTES du routeur jusqu'à leur livraison. Une fois
-     * livrées, cette liste se vide et la table les garde comme les autres.
-     */
-    private const array ABSENT_UNTIL_MANAGER_REQUEST = [
-        'POST /api/memberships/me/manager-request',
-        'DELETE /api/memberships/me/manager-request',
-        'POST /api/memberships/{id}/manager-request/accept',
-        'POST /api/memberships/{id}/manager-request/refuse',
-    ];
-
-    /**
      * Préfixes hors club, jamais joués : console superadmin (firewall séparé, un JWT club ne la
      * franchit pas — `AdminRequestBoundaryTest`) et raccourcis de dev (absents en prod).
      */
@@ -114,7 +102,6 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/memberships/{id}/reactivate' => ['/api/memberships/{membership}/reactivate', '{}', 403],
         'POST /api/memberships/{id}/reject' => ['/api/memberships/{membership}/reject', '{}', 403],
         'POST /api/memberships/{id}/role' => ['/api/memberships/{membership}/role', '{"role":"admin"}', 403],
-        'POST /api/memberships/{id}/manager-request/accept' => ['/api/memberships/{membership}/manager-request/accept', '{}', 403],
         'POST /api/memberships/{id}/manager-request/refuse' => ['/api/memberships/{membership}/manager-request/refuse', '{}', 403],
         'POST /api/invitations' => ['/api/invitations', '{"email":"invite-sweep@test.fr","role":"admin"}', 403],
         'DELETE /api/invitations/{id}' => ['/api/invitations/{invitation}', null, 403],
@@ -287,7 +274,9 @@ final class MemberWriteSweepTest extends WebTestCase
         $undecided = array_values(array_diff($router, $table));
         self::assertSame([], $undecided, "Écritures du routeur sans décision dans MemberWriteSweepTest::ROUTES :\n  - " . implode("\n  - ", $undecided));
 
-        $dead = array_values(array_diff($table, $router, self::ABSENT_UNTIL_MANAGER_REQUEST));
+        // Chantier Membre PR 3 livrée : plus aucune route tolérée absente (la demande, son
+        // annulation et le refus gestionnaire sont au routeur ; « Accepter » = `/role`).
+        $dead = array_values(array_diff($table, $router));
         self::assertSame([], $dead, "Lignes de la table sans route au routeur :\n  - " . implode("\n  - ", $dead));
     }
 
@@ -302,7 +291,7 @@ final class MemberWriteSweepTest extends WebTestCase
         $played = 0;
         foreach (self::ROUTES as $key => [$path, $body, $decision]) {
             if (403 !== $decision || !\in_array($key, $router, true)) {
-                continue; // `open:`/`skip:` jamais jouées ; une route encore absente (PR 3) non plus
+                continue; // `open:`/`skip:` jamais jouées (une route absente rougit déjà dans le sens table → routeur)
             }
             [$method] = explode(' ', $key, 2);
             if ('@get' === $body) {

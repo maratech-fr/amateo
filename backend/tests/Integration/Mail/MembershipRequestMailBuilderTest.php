@@ -161,7 +161,7 @@ final class MembershipRequestMailBuilderTest extends KernelTestCase
         self::assertSame(
             "Bonjour,\n\nPaul Martin (paul@test.fr), membre de l'espace {$p} du club BC Testville, demande à en devenir gestionnaire.\n\n"
             . "Connectez-vous pour accepter ou refuser dans l'écran Club, section « Membres » :\n" . self::BASE . "/club\n\n"
-            . "Un gestionnaire peut tout modifier : n'acceptez que si vous connaissez cette personne.\n\n{$p}",
+            . "Un gestionnaire peut tout modifier : n'acceptez que si vous connaissez cette personne. Sans réponse sous 14 jours, la demande sera transmise à l'adresse officielle du club.\n\n{$p}",
             (string) $mail->getTextBody(),
         );
         $this->assertCtaHeadersPointToBodyLink($mail, self::BASE . '/club', 'Voir les membres');
@@ -227,7 +227,65 @@ final class MembershipRequestMailBuilderTest extends KernelTestCase
 
         self::assertSame('Le club BC Testville n\'a pas répondu à votre demande', $mail->getSubject());
         self::assertSame(
-            "Bonjour Paul,\n\nL'adresse officielle du club BC Testville n'a pas répondu à votre demande de reprise du 03/11/2026 dans les 7 jours. Vous pouvez la renvoyer depuis l'application, ou contacter le support.\n\n{$p}",
+            "Bonjour Paul,\n\nL'adresse officielle du club BC Testville n'a pas répondu à votre demande du 03/11/2026 dans les 7 jours. Vous pouvez la renvoyer depuis l'application, ou contacter le support.\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCarriesNoCtaHeaders($mail);
+        $this->assertClubBusiness($mail);
+    }
+
+    /** Refus de l'ADRESSE OFFICIELLE : le corps du refus + la date à partir de laquelle redemander (30 jours). */
+    public function testOfficialRefusalTellsTheRenewalDate(): void
+    {
+        $p = $this->product();
+        $body = (string) $this->builder()->buildRoleRefused('paul@test.fr', $this->club(), 'Paul', new DateTimeImmutable('2026-12-03'))->getTextBody();
+
+        self::assertStringStartsWith("Bonjour Paul,\n\nLe club BC Testville n'a pas donné suite à votre demande de devenir gestionnaire. Vous gardez votre accès en consultation.", $body);
+        self::assertSame(1, substr_count($body, 'Vous pourrez renouveler votre demande à partir du 03/12/2026.'));
+        self::assertStringContainsString("Si vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club.", $body);
+        self::assertStringEndsWith("\n\n{$p}", $body);
+    }
+
+    public function testRoleDigestSpeaksOfMembersNotOfNewcomers(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildRoleDigest('marc@club.fr', $this->club());
+
+        self::assertSame('Plusieurs demandes de gestionnaire aujourd\'hui — BC Testville', $mail->getSubject());
+        self::assertSame(
+            "Bonjour,\n\nPlusieurs membres ont demandé aujourd'hui à devenir gestionnaire de l'espace {$p} du club BC Testville. Vous ne recevrez plus de message individuel avant demain.\n\n"
+            . "Retrouvez ces demandes dans l'écran Club, section « Membres » :\n" . self::BASE . "/club\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCtaHeadersPointToBodyLink($mail, self::BASE . '/club', 'Voir les membres');
+        $this->assertClubBusiness($mail);
+    }
+
+    public function testEscalationTellsManagersTheRequestWentToTheOfficialAddress(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildRoleEscalatedToManagers('marc@club.fr', $this->club(), 'Léa Martin');
+
+        self::assertSame('La demande de Léa Martin est transmise à l\'adresse officielle de BC Testville', $mail->getSubject());
+        self::assertSame(
+            "Bonjour,\n\nSans réponse depuis 14 jours, la demande de Léa Martin de devenir gestionnaire de BC Testville a été transmise à l'adresse officielle du club, qui peut l'accepter. Vous pouvez toujours la traiter dans l'écran Club, section « Membres » :\n" . self::BASE . "/club\n\n{$p}",
+            (string) $mail->getTextBody(),
+        );
+        $this->assertCtaHeadersPointToBodyLink($mail, self::BASE . '/club', 'Voir les membres');
+        $this->assertClubBusiness($mail);
+
+        $hostile = $this->builder()->buildRoleEscalatedToManagers('marc@club.fr', $this->club(), MailSafeName::of('Gagnez', 'evil.com'));
+        self::assertStringNotContainsString('evil.com', (string) $hostile->getSubject() . (string) $hostile->getTextBody(), 'le nom passe par MailSafeName');
+    }
+
+    public function testEscalationTellsTheRequesterTheClubWillDecide(): void
+    {
+        $p = $this->product();
+        $mail = $this->builder()->buildRoleEscalatedToRequester('lea@test.fr', $this->club(), 'Léa', new DateTimeImmutable('2026-10-20'));
+
+        self::assertSame('Votre demande est transmise au club BC Testville', $mail->getSubject());
+        self::assertSame(
+            "Bonjour Léa,\n\nLes gestionnaires de BC Testville n'ont pas répondu à votre demande du 20/10/2026. Elle est transmise à l'adresse officielle du club, qui peut l'accepter sous 7 jours.\n\n{$p}",
             (string) $mail->getTextBody(),
         );
         $this->assertCarriesNoCtaHeaders($mail);

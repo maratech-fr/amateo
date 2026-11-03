@@ -6,11 +6,14 @@ namespace App\Tests\Security;
 
 use App\Entity\Club;
 use App\Entity\ClubCreationRequest;
+use App\Entity\ClubInvitation;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Enum\AuditAction;
 use App\Mail\ClubBusinessMail;
+use App\Mail\EmailTemplateRenderer;
 use App\Service\ClubProvisioner;
+use App\Service\MembershipRequestNotifier;
 use App\Service\ProductIdentity;
 use App\Service\TenantConnectionContext;
 use App\Tests\AssertsActionMailCta;
@@ -31,6 +34,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -105,7 +109,7 @@ final class ManagerRoleRequestTest extends WebTestCase
             self::assertSame(
                 "Bonjour,\n\nPaul Temoin ({$paul['email']}), membre de l'espace {$product} du club {$clubName}, demande à en devenir gestionnaire.\n\n"
                 . "Connectez-vous pour accepter ou refuser dans l'écran Club, section « Membres » :\n{$this->base()}/club\n\n"
-                . "Un gestionnaire peut tout modifier : n'acceptez que si vous connaissez cette personne.\n\n{$product}",
+                . "Un gestionnaire peut tout modifier : n'acceptez que si vous connaissez cette personne. Sans réponse sous 14 jours, la demande sera transmise à l'adresse officielle du club.\n\n{$product}",
                 (string) $mails[0]->getTextBody(),
             );
             $this->assertCtaHeadersPointToBodyLink($mails[0], $this->base() . '/club', 'Voir les membres');
@@ -120,6 +124,48 @@ final class ManagerRoleRequestTest extends WebTestCase
         $details = $this->auditDetails($club['clubId'], AuditAction::MEMBERSHIP_ROLE_REQUESTED);
         self::assertStringNotContainsString($paul['email'], $details, 'audit : ids seulement, jamais l\'adresse');
         self::assertStringNotContainsString('Paul', $details, 'audit : ids seulement, jamais le nom');
+
+        // Budget SÉPARÉ (écart 3) : une seconde demande de rôle — à deux, elles épuiseraient le
+        // plafond de test des ADHÉSIONS (2/jour) si elles le consommaient. L'adhésion suivante
+        // doit encore partir en mail INDIVIDUEL.
+        $lea = $this->insertMember($club['clubId'], 'Léa', 'member');
+        $this->api('POST', self::ROUTE, $this->jwtFor($lea['userId']));
+        self::assertResponseStatusCodeSame(201);
+        $this->sentEmails();
+        $this->notifier()->notifyManagers($club['clubId'], [$kim['userId']]);
+        $adhesion = $this->mailsTo($this->sentEmails(), $marc['email']);
+        self::assertCount(1, $adhesion);
+        self::assertStringStartsWith('Demande d\'adhésion — ', (string) $adhesion[0]->getSubject(), 'le budget des adhésions est intact (sinon synthèse ou silence)');
+    }
+
+    /**
+     * Les demandes de rôle ont LEUR budget de mails et LEUR synthèse (« Membres ») : au-delà du
+     * plafond quotidien du club, UNE synthèse puis silence — sans jamais toucher au budget des
+     * adhésions. Plafond de test `manager_role_request_notify` = 2.
+     */
+    public function testRoleRequestsHaveTheirOwnManagerBucketAndDigest(): void
+    {
+        $club = $this->bareClub('RDIG');
+        $marc = $this->insertMember($club['clubId'], 'Marc', 'admin');
+        $clubName = $this->clubName($club['clubId']);
+        $subjects = [];
+        foreach (['Alpha', 'Bravo', 'Charlie', 'Delta'] as $name) {
+            $member = $this->insertMember($club['clubId'], $name, 'member');
+            $this->api('POST', self::ROUTE, $this->jwtFor($member['userId']));
+            self::assertResponseStatusCodeSame(201);
+            $subjects[] = array_map(static fn (Email $m): string => (string) $m->getSubject(), $this->mailsTo($this->sentEmails(), $marc['email']));
+        }
+
+        self::assertSame([\sprintf('Alpha Temoin demande à devenir gestionnaire de %s', $clubName)], $subjects[0]);
+        self::assertSame([\sprintf('Bravo Temoin demande à devenir gestionnaire de %s', $clubName)], $subjects[1]);
+        self::assertSame([\sprintf('Plusieurs demandes de gestionnaire aujourd\'hui — %s', $clubName)], $subjects[2], 'plafond atteint : UNE synthèse « Membres »');
+        self::assertSame([], $subjects[3], 'après la synthèse : silence');
+
+        $paul = $this->insertMember($club['clubId'], 'Paul', 'member', active: false);
+        $this->notifier()->notifyManagers($club['clubId'], [$paul['userId']]);
+        $adhesion = $this->mailsTo($this->sentEmails(), $marc['email']);
+        self::assertCount(1, $adhesion);
+        self::assertStringStartsWith('Demande d\'adhésion — ', (string) $adhesion[0]->getSubject(), 'le budget des adhésions n\'a jamais été touché');
     }
 
     /**
@@ -217,8 +263,13 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertSame([], $this->sentEmails(), 'l\'annulation n\'envoie aucun mail');
     }
 
-    /** « Accepter » fait du demandeur un gestionnaire, efface le stamp, le prévient et se trace ; un Membre ne peut pas accepter. */
-    public function testManagerAcceptPromotesMailsAndAudits(): void
+    /**
+     * « Accepter » EST le geste du sélecteur de rôle (`POST /api/memberships/{id}/role {admin}`) :
+     * même verrou, même code. Il promeut, efface les stamps, prévient le demandeur (seulement s'il
+     * avait demandé) et se trace (acteur = le gestionnaire). Un Membre reçoit 403 ; refaire le geste
+     * ne renvoie pas de second mail ; une promotion spontanée (sans demande) est tracée, sans mail.
+     */
+    public function testAcceptingIsTheRoleSelectorGesture(): void
     {
         $club = $this->bareClub('ACPT');
         $marc = $this->insertMember($club['clubId'], 'Marc', 'admin');
@@ -227,17 +278,19 @@ final class ManagerRoleRequestTest extends WebTestCase
         $this->api('POST', self::ROUTE, $this->jwtFor($paul['userId']));
         self::assertResponseStatusCodeSame(201);
         $membershipId = $this->membershipId($club['clubId'], $paul['userId']);
-        $accept = '/api/memberships/' . $membershipId . '/manager-request/accept';
+        $accept = '/api/memberships/' . $membershipId . '/role';
+        $this->sentEmails();
 
-        $this->api('POST', $accept, $this->jwtFor($kim['userId']));
+        $this->api('POST', $accept, $this->jwtFor($kim['userId']), ['role' => 'admin']);
         self::assertResponseStatusCodeSame(403, 'un Membre n\'accepte jamais une demande');
         self::assertSame('member', $this->role($club['clubId'], $paul['userId']));
 
-        $body = $this->api('POST', $accept, $this->jwtFor($marc['userId']));
+        $body = $this->api('POST', $accept, $this->jwtFor($marc['userId']), ['role' => 'admin']);
         self::assertResponseIsSuccessful();
         self::assertSame(['id' => $membershipId, 'role' => 'admin', 'isActive' => true, 'isSelf' => false], $body);
         self::assertSame('admin', $this->role($club['clubId'], $paul['userId']), 'promu gestionnaire');
         self::assertNull($this->stamp($club['clubId'], $paul['userId']), 'stamp effacé');
+        self::assertNull($this->escalatedStamp($club['clubId'], $paul['userId']), 'stamp d\'escalade effacé');
 
         $mails = $this->mailsTo($this->sentEmails(), $paul['email']);
         self::assertCount(1, $mails, 'le demandeur est prévenu');
@@ -252,9 +305,15 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertSame($marc['userId'], $row['actor_user_id'], 'l\'acteur est le gestionnaire qui accepte');
         self::assertStringContainsString('manager', (string) $row['details'], 'source : un gestionnaire');
 
-        $again = $this->api('POST', $accept, $this->jwtFor($marc['userId']));
-        self::assertResponseStatusCodeSame(409);
-        self::assertSame('Aucune demande en cours.', $again['error'] ?? null);
+        $this->api('POST', $accept, $this->jwtFor($marc['userId']), ['role' => 'admin']);
+        self::assertResponseIsSuccessful('refaire le geste est sans effet (idempotent)');
+        self::assertSame([], $this->mailsTo($this->sentEmails(), $paul['email']), 'jamais un second mail');
+
+        // Promotion spontanée (Kim n'a rien demandé) : tracée, mais aucun mail « a accepté votre demande ».
+        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $kim['userId']) . '/role', $this->jwtFor($marc['userId']), ['role' => 'admin']);
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->mailsTo($this->sentEmails(), $kim['email']), 'sans demande, aucun mail');
+        self::assertGreaterThanOrEqual(2, $this->auditCount($club['clubId'], AuditAction::MEMBERSHIP_ROLE_GRANTED), 'toute promotion est tracée');
     }
 
     /** « Refuser » efface le stamp, prévient et se trace ; le Membre garde sa consultation et peut redemander le jour même (aucun délai dans l'app). */
@@ -306,27 +365,28 @@ final class ManagerRoleRequestTest extends WebTestCase
         $this->api('POST', self::ROUTE, $jwt);
         self::assertResponseStatusCodeSame(201, '2e demande : le 409 n\'a rien consommé');
         $this->api('DELETE', self::ROUTE, $jwt);
-        $this->api('POST', self::ROUTE, $jwt);
-        self::assertResponseStatusCodeSame(429, 'seau utilisateur épuisé');
+        $userCapped = $this->api('POST', self::ROUTE, $jwt);
+        self::assertResponseStatusCodeSame(429, 'seau utilisateur `manager_role_request_user` épuisé');
+        self::assertSame('Vous avez atteint votre limite de demandes pour aujourd\'hui.', $userCapped['error'] ?? null);
         self::assertNull($this->stamp($club['clubId'], $paul['userId']), 'refusé par le seau : aucun stamp');
 
-        // Seau club — club sans gestionnaire, 5 demandes/jour vers l'adresse officielle.
+        // Seau club `manager_role_request_official` — club sans gestionnaire, 2/jour en test.
         $closing = $this->closingClub('BKTC');
         $first = $this->insertMember($closing['clubId'], 'Alpha', 'member');
         $this->api('POST', self::ROUTE, $this->jwtFor($first['userId']));
         self::assertResponseStatusCodeSame(201);
         $this->api('POST', self::ROUTE, $this->jwtFor($first['userId']));
         self::assertResponseStatusCodeSame(409, 'demande déjà vivante sur le code : refusée d\'office');
-        foreach (['Bravo', 'Charlie', 'Delta', 'Echo'] as $name) {
-            $member = $this->insertMember($closing['clubId'], $name, 'member');
-            $this->api('POST', self::ROUTE, $this->jwtFor($member['userId']));
-            self::assertResponseStatusCodeSame(201, \sprintf('%s : sous le plafond club (le 409 n\'a rien consommé)', $name));
-        }
-        $sixth = $this->insertMember($closing['clubId'], 'Foxtrot', 'member');
-        $body = $this->api('POST', self::ROUTE, $this->jwtFor($sixth['userId']));
+        $second = $this->insertMember($closing['clubId'], 'Bravo', 'member');
+        $this->api('POST', self::ROUTE, $this->jwtFor($second['userId']));
+        self::assertResponseStatusCodeSame(201, 'sous le plafond club : le 409 n\'a rien consommé');
+        $third = $this->insertMember($closing['clubId'], 'Charlie', 'member');
+        $this->sentEmails();
+        $body = $this->api('POST', self::ROUTE, $this->jwtFor($third['userId']));
         self::assertResponseStatusCodeSame(429);
         self::assertSame('Le club a atteint sa limite de demandes pour aujourd\'hui.', $body['error'] ?? null);
-        self::assertSame(0, (int) $this->sql('SELECT COUNT(*) FROM club_creation_request WHERE user_id = :u', ['u' => $sixth['userId']], fetch: true), 'au-delà du plafond : aucune demande ouverte');
+        self::assertSame(0, (int) $this->sql('SELECT COUNT(*) FROM club_creation_request WHERE user_id = :u', ['u' => $third['userId']], fetch: true), 'au-delà du plafond : aucune demande ouverte');
+        self::assertSame([], $this->sentEmails(), 'au-delà du plafond : aucun mail');
     }
 
     /**
@@ -370,8 +430,10 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
         $other = $this->bareClub('AUTR');
         $zed = $this->insertMember($other['clubId'], 'Zed', 'admin');
-        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/manager-request/accept', $this->jwtFor($zed['userId']));
+        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/role', $this->jwtFor($zed['userId']), ['role' => 'admin']);
         self::assertResponseStatusCodeSame(404, 'cible d\'un autre club : introuvable, rien ne fuit');
+        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/manager-request/refuse', $this->jwtFor($zed['userId']));
+        self::assertResponseStatusCodeSame(404, 'refus depuis un autre club : introuvable');
         self::assertSame('member', $this->role($club['clubId'], $paul['userId']));
         self::assertNotNull($this->stamp($club['clubId'], $paul['userId']), 'la demande est intacte');
     }
@@ -560,10 +622,10 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertSame(1, $this->auditCount($closing['clubId'], AuditAction::MEMBERSHIP_ROLE_REFUSED), 'le refus officiel est tracé');
         $mails = $this->mailsTo($this->sentEmails(), $paul['email']);
         self::assertCount(1, $mails, 'UN mail de refus');
-        self::assertSame(
-            \sprintf("Bonjour,\n\nLe club %s n'a pas donné suite à votre demande de reprise. Vous gardez votre accès en consultation ; vous pourrez renouveler votre demande à partir du %s.\n\n%s", $this->clubName($closing['clubId']), $renew->format('d/m/Y'), $this->product()),
-            (string) $mails[0]->getTextBody(),
-        );
+        // Texte exact : `MembershipRequestMailBuilderTest::testOfficialRefusalTellsTheRenewalDate`.
+        $refusal = (string) $mails[0]->getTextBody();
+        self::assertStringContainsString(\sprintf('Le club %s n\'a pas donné suite à votre demande de devenir gestionnaire. Vous gardez votre accès en consultation.', $this->clubName($closing['clubId'])), $refusal);
+        self::assertStringContainsString(\sprintf('Vous pourrez renouveler votre demande à partir du %s.', $renew->format('d/m/Y')), $refusal);
         $this->assertCarriesNoCtaHeaders($mails[0]);
 
         $me = $this->api('GET', '/api/me', $jwt)['managerRequest'];
@@ -616,7 +678,8 @@ final class ManagerRoleRequestTest extends WebTestCase
 
     /**
      * Un lien échu répond 410 ; un lien décidé ne décide qu'une fois ; à l'échéance (7 j sans
-     * réponse), le demandeur est prévenu, `/api/me` dit « expirée » et il peut renvoyer sa demande.
+     * réponse), le demandeur est prévenu et `/api/me` dit « expirée ». Le renvoi : voir
+     * {@see testRenewingAnExpiredRequestReturns201AndCancelsTheOldOne}.
      */
     public function testExpiredLinkIs410TokenSingleUseAndExpiryTellsTheRequester(): void
     {
@@ -638,7 +701,7 @@ final class ManagerRoleRequestTest extends WebTestCase
         $mails = $this->mailsTo($this->sentEmails(), $paul['email']);
         self::assertCount(1, $mails, 'le demandeur apprend l\'expiration');
         self::assertSame(\sprintf('Le club %s n\'a pas répondu à votre demande', $this->clubName($closing['clubId'])), $mails[0]->getSubject());
-        self::assertStringContainsString(\sprintf('votre demande de reprise du %s dans les 7 jours', $requestedAt->format('d/m/Y')), (string) $mails[0]->getTextBody());
+        self::assertStringContainsString(\sprintf('votre demande du %s dans les 7 jours', $requestedAt->format('d/m/Y')), (string) $mails[0]->getTextBody());
         $this->assertCarriesNoCtaHeaders($mails[0]);
 
         $me = $this->api('GET', '/api/me', $jwt)['managerRequest'];
@@ -646,17 +709,35 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertSame('expired', $me['status'] ?? null);
         self::assertStringStartsWith($requestedAt->format('Y-m-d'), (string) ($me['since'] ?? ''), '`since` = date de la demande expirée');
 
-        $this->api('POST', self::ROUTE, $jwt);
-        self::assertResponseStatusCodeSame(201, '« Vous pouvez la renvoyer » : une demande expirée n\'interdit pas d\'en envoyer une nouvelle');
-        self::assertSame(1, (int) $this->sql('SELECT COUNT(*) FROM club_creation_request WHERE user_id = :u AND ara = :a AND status IN (\'pending\', \'expired\')', ['u' => $paul['userId'], 'a' => $closing['ara']], fetch: true), 'une seule demande vivante à la fois sur le code');
-
-        // Usage unique du lien.
-        $fresh = $this->liveRequest($paul['userId'], $closing['ara']);
+        // Usage unique du lien (sur une demande fraîche).
+        $fresh = $this->insertClubRequest($paul['userId'], $closing['ara'], null);
         $this->publicDecision($fresh['token'], 'refuse');
         self::assertSame(['status' => 'refused'], $this->responseJson());
         $this->publicDecision($fresh['token'], 'approve');
         self::assertResponseStatusCodeSame(404, 'une décision par lien');
         self::assertSame('member', $this->role($closing['clubId'], $paul['userId']));
+    }
+
+    /**
+     * « Vous pouvez la renvoyer » : une demande EXPIRÉE ne bloque pas (seule une `pending` répond
+     * 409) — le renvoi rend 201 et l'ancienne passe `cancelled` (son lien meurt) : jamais deux
+     * demandes vivantes sur le code.
+     */
+    public function testRenewingAnExpiredRequestReturns201AndCancelsTheOldOne(): void
+    {
+        $closing = $this->closingClub('RENW');
+        $paul = $this->insertMember($closing['clubId'], 'Paul', 'member');
+        $jwt = $this->jwtFor($paul['userId']);
+        $old = $this->insertClubRequest($paul['userId'], $closing['ara'], null, ClubCreationRequest::STATUS_EXPIRED);
+
+        $body = $this->api('POST', self::ROUTE, $jwt);
+        self::assertResponseStatusCodeSame(201, 'une expirée se renvoie');
+        self::assertSame('club_pending', $body['status'] ?? null);
+        self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $this->requestStatus($old['id']), 'l\'ancienne est close');
+        self::assertSame(1, (int) $this->sql('SELECT COUNT(*) FROM club_creation_request WHERE user_id = :u AND ara = :a AND status IN (\'pending\', \'expired\')', ['u' => $paul['userId'], 'a' => $closing['ara']], fetch: true), 'une seule demande vivante sur le code');
+
+        $this->api('POST', self::ROUTE, $jwt);
+        self::assertResponseStatusCodeSame(409, 'une demande PENDING, elle, bloque');
     }
 
     /**
@@ -817,9 +898,21 @@ final class ManagerRoleRequestTest extends WebTestCase
             self::assertNotNull($this->stamp($club['clubId'], $member['userId']), 'témoin : stamp posé');
         }
 
+        // Paul a été escaladé (14 j sans réponse) : une demande officielle vit sur le code.
+        $this->sql('UPDATE club_user SET manager_request_escalated_at = NOW() WHERE club_id = :c AND user_id = :u', ['c' => $club['clubId'], 'u' => $paul['userId']]);
+        $official = $this->insertClubRequest($paul['userId'], $club['ara'], 'officiel@club.test');
+        $this->sentEmails();
+
         $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/role', $marcJwt, ['role' => 'admin']);
         self::assertResponseIsSuccessful();
         self::assertNull($this->stamp($club['clubId'], $paul['userId']), 'promotion : stamp effacé');
+        self::assertNull($this->escalatedStamp($club['clubId'], $paul['userId']), 'promotion : stamp d\'escalade effacé');
+        self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $this->requestStatus($official['id']), 'promotion : la demande officielle vivante est close');
+        $sent = $this->sentEmails();
+        self::assertSame([], $this->mailsTo($sent, 'officiel@club.test'), 'clôture sans mail à l\'adresse officielle');
+        self::assertCount(1, $this->mailsTo($sent, $paul['email']), 'le demandeur apprend sa promotion');
+        $unknown = $this->linkGet(str_repeat('f', 64));
+        self::assertSame($unknown, $this->linkGet($official['token']), 'le lien officiel meurt (404 byte-identique)');
 
         $leaId = $this->membershipId($club['clubId'], $lea['userId']);
         $this->api('POST', '/api/memberships/' . $leaId . '/deactivate', $marcJwt);
@@ -858,7 +951,8 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
         $this->sql('UPDATE app_user SET anonymized_at = NOW() WHERE id = :id', ['id' => $paul['userId']]);
 
-        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/manager-request/accept', $this->jwtFor($marc['userId']));
+        // « Accepter » = le sélecteur de rôle : la garde RGPD existante doit le couvrir aussi.
+        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/role', $this->jwtFor($marc['userId']), ['role' => 'admin']);
         self::assertResponseStatusCodeSame(409);
         self::assertSame('member', $this->role($club['clubId'], $paul['userId']), 'jamais promu');
         self::assertSame([], $this->mailsTo($this->sentEmails(), $paul['email']));
@@ -879,14 +973,17 @@ final class ManagerRoleRequestTest extends WebTestCase
         $request = $this->api('GET', '/api/me', $jwt)['managerRequest'];
         self::assertIsArray($request);
         self::assertSame('pending', $request['status'] ?? null);
+        self::assertFalse($request['escalated'] ?? null, 'pas encore transmise au club');
         $this->assertIsoNow($request['since'] ?? null);
 
         $members = $this->api('GET', '/api/memberships', $this->jwtFor($marc['userId']))['members'] ?? [];
         self::assertIsArray($members);
         $byUser = array_column($members, null, 'userId');
         self::assertArrayHasKey('managerRequestedAt', $byUser[$kim['userId']], 'le champ existe sur chaque ligne');
+        self::assertArrayHasKey('managerRequestEscalatedAt', $byUser[$kim['userId']]);
         self::assertNull($byUser[$kim['userId']]['managerRequestedAt']);
         $this->assertIsoNow($byUser[$paul['userId']]['managerRequestedAt'] ?? null);
+        self::assertNull($byUser[$paul['userId']]['managerRequestEscalatedAt']);
     }
 
     /** L'export art. 15 du Membre porte la date de sa demande (donnée personnelle). */
@@ -905,6 +1002,263 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertCount(1, $rows);
         self::assertArrayHasKey('manager_requested_at', $rows[0]);
         self::assertNotNull($rows[0]['manager_requested_at'], 'la date de la demande est exportée');
+        self::assertArrayHasKey('manager_request_escalated_at', $rows[0], 'la date d\'escalade aussi (donnée personnelle)');
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Gestionnaires sans réponse (D1) — escalade à 14 jours vers l'adresse officielle
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * 14 jours sans réponse des gestionnaires : la relève quotidienne transmet la demande à
+     * l'adresse officielle, UNE fois (J+13 rien, J+14 une demande + 3 mails, J+15 rien, après
+     * expiration rien) ; seau club épuisé → rien n'est écrit, nouvel essai le lendemain.
+     */
+    public function testUnansweredRequestIsEscalatedOnceAfterFourteenDays(): void
+    {
+        ['club' => $club, 'marc' => $marc, 'lea' => $lea] = $this->escalatableRequest();
+        $clubName = $this->clubName($club['clubId']);
+        $product = $this->product();
+
+        $this->ageRequest($club['clubId'], $lea['userId'], '13 days');
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(0, $this->requestCount($lea['userId'], $club['ara']), 'J+13 : rien');
+        self::assertNull($this->escalatedStamp($club['clubId'], $lea['userId']));
+        self::assertSame([], $this->sentEmails());
+
+        $this->ageRequest($club['clubId'], $lea['userId'], '14 days 1 hour');
+        $this->runCommand('app:club-approvals:digest');
+        $sent = $this->sentEmails();
+        self::assertSame(1, $this->requestCount($lea['userId'], $club['ara']), 'J+14 : une demande officielle');
+        self::assertNotNull($this->escalatedStamp($club['clubId'], $lea['userId']), 'escalade marquée (une seule par demande)');
+        self::assertNotNull($this->stamp($club['clubId'], $lea['userId']), 'la demande dans l\'app reste ouverte : Marc peut toujours la traiter');
+        self::assertSame(1, $this->auditCount($club['clubId'], AuditAction::MEMBERSHIP_ROLE_REQUEST_ESCALATED));
+
+        $official = $this->mailsTo($sent, FfbbHttpClientStub::CLUB_EMAIL);
+        self::assertCount(1, $official, 'l\'adresse officielle reçoit la demande');
+        self::assertSame(\sprintf('Léa Temoin demande à devenir gestionnaire de l\'espace %s de %s', $product, $clubName), $official[0]->getSubject());
+        $officialBody = (string) $official[0]->getTextBody();
+        self::assertStringContainsString('Les gestionnaires actuels n\'ont pas répondu depuis 14 jours.', $officialBody);
+        self::assertStringContainsString($this->base() . '/club-approval/' . $this->liveRequest($lea['userId'], $club['ara'])['token'], $officialBody);
+        self::assertStringNotContainsString('personne n\'est retiré', $officialBody, 'rien ne l\'assure : la phrase est retirée');
+        self::assertSame('Examiner la demande', $official[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        $toLea = $this->mailsTo($sent, $lea['email']);
+        self::assertCount(1, $toLea, 'le demandeur est prévenu');
+        self::assertSame(\sprintf('Votre demande est transmise au club %s', $clubName), $toLea[0]->getSubject());
+        $toMarc = $this->mailsTo($sent, $marc['email']);
+        self::assertCount(1, $toMarc, 'les gestionnaires sont informés');
+        self::assertSame(\sprintf('La demande de Léa Temoin est transmise à l\'adresse officielle de %s', $clubName), $toMarc[0]->getSubject());
+
+        $me = $this->api('GET', '/api/me', $this->jwtFor($lea['userId']))['managerRequest'];
+        self::assertIsArray($me);
+        self::assertSame('club_pending', $me['status'] ?? null);
+        self::assertTrue($me['escalated'] ?? null);
+
+        $this->sentEmails();
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(1, $this->requestCount($lea['userId'], $club['ara']), 'J+15 : aucune seconde escalade');
+        self::assertSame([], $this->mailsTo($this->sentEmails(), FfbbHttpClientStub::CLUB_EMAIL));
+
+        // Expirée sans réponse : le demandeur l'apprend, AUCUNE ré-escalade.
+        $this->sql('UPDATE club_creation_request SET expires_at = NOW() - INTERVAL \'1 day\' WHERE user_id = :u AND ara = :a', ['u' => $lea['userId'], 'a' => $club['ara']]);
+        $this->runCommand('app:club-approvals:digest');
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(1, $this->requestCount($lea['userId'], $club['ara']), 'après expiration : aucune nouvelle demande officielle');
+        self::assertNotNull($this->stamp($club['clubId'], $lea['userId']), 'les stamps restent (pas de ré-escalade)');
+
+        // Seau club épuisé : rien n'est écrit, nouvel essai le lendemain (seau libre).
+        ['club' => $capped, 'lea' => $nina] = $this->escalatableRequest('Nina');
+        $this->ageRequest($capped['clubId'], $nina['userId'], '14 days 1 hour');
+        $this->limiter('limiter.manager_role_request_official')->create($capped['clubId'])->consume(2);
+        $this->sentEmails();
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(0, $this->requestCount($nina['userId'], $capped['ara']), 'seau épuisé : aucune demande');
+        self::assertNull($this->escalatedStamp($capped['clubId'], $nina['userId']), 'seau épuisé : escalade non marquée');
+        self::assertSame([], $this->sentEmails(), 'seau épuisé : aucun mail');
+        $this->limiter('limiter.manager_role_request_official')->create($capped['clubId'])->reset();
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(1, $this->requestCount($nina['userId'], $capped['ara']), 'le lendemain (seau libre) : l\'escalade a lieu');
+    }
+
+    /**
+     * L'adresse officielle approuve une demande escaladée : le Membre devient gestionnaire À CÔTÉ
+     * de Marc (qui le reste), stamps effacés, tracé `official_address`, prévenu. Le lien ouvert
+     * par un visiteur d'un autre club écrit sous la GUC du club demandeur (une ligne exactement).
+     */
+    public function testOfficialApprovalOfAnEscalatedRequestPromotesAlongsideExistingManagers(): void
+    {
+        ['club' => $club, 'marc' => $marc, 'lea' => $lea] = $this->escalatedRequest();
+        $elsewhere = $this->bareClub('VSTP');
+        $visitor = $this->insertMember($elsewhere['clubId'], 'Visiteur', 'admin');
+        $this->sentEmails();
+
+        $this->publicDecision($this->liveRequest($lea['userId'], $club['ara'])['token'], 'approve', $this->jwtFor($visitor['userId']));
+        self::assertSame(['status' => 'approved'], $this->responseJson());
+
+        self::assertSame('admin', $this->role($club['clubId'], $lea['userId']), 'Léa est gestionnaire');
+        self::assertSame('admin', $this->role($club['clubId'], $marc['userId']), 'Marc le reste');
+        self::assertTrue($this->isActive($club['clubId'], $marc['userId']));
+        self::assertSame(1, (int) $this->sql('SELECT COUNT(*) FROM club_user WHERE club_id = :c AND user_id = :u', ['c' => $club['clubId'], 'u' => $lea['userId']], fetch: true), 'sa ligne promue, jamais doublée');
+        self::assertNull($this->stamp($club['clubId'], $lea['userId']));
+        self::assertNull($this->escalatedStamp($club['clubId'], $lea['userId']));
+        self::assertSame('admin', $this->api('GET', '/api/me', $this->jwtFor($lea['userId']))['role'] ?? null);
+
+        $this->scopeGucToClub($club['clubId']);
+        $row = $this->conn()->fetchAssociative('SELECT actor_user_id, details FROM audit_log WHERE club_id = :c AND action = :a', ['c' => $club['clubId'], 'a' => AuditAction::MEMBERSHIP_ROLE_GRANTED->value]);
+        $this->clearGuc();
+        self::assertIsArray($row, 'la promotion officielle est tracée');
+        self::assertNull($row['actor_user_id']);
+        self::assertStringContainsString('official_address', (string) $row['details']);
+        $mails = $this->mailsTo($this->sentEmails(), $lea['email']);
+        self::assertCount(1, $mails);
+        self::assertSame(\sprintf('%s vous a nommé gestionnaire', $this->clubName($club['clubId'])), $mails[0]->getSubject());
+    }
+
+    /** F6 vaut aussi pour l'escalade : un refus officiel de moins de 30 jours sur ce code empêche de transmettre. */
+    public function testEscalationRespectsTheThirtyDayOfficialRefusal(): void
+    {
+        ['club' => $club, 'lea' => $lea] = $this->escalatableRequest();
+        $refused = $this->insertClubRequest($lea['userId'], $club['ara'], FfbbHttpClientStub::CLUB_EMAIL, ClubCreationRequest::STATUS_REFUSED);
+        $this->sql('UPDATE club_creation_request SET decided_at = NOW() - INTERVAL \'10 days\' WHERE id = :id', ['id' => $refused['id']]);
+        $this->ageRequest($club['clubId'], $lea['userId'], '15 days');
+
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(0, $this->requestCount($lea['userId'], $club['ara']), 'refus officiel il y a 10 jours : pas d\'escalade');
+        self::assertNull($this->escalatedStamp($club['clubId'], $lea['userId']));
+
+        $this->sql('UPDATE club_creation_request SET decided_at = NOW() - INTERVAL \'31 days\' WHERE id = :id', ['id' => $refused['id']]);
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(1, $this->requestCount($lea['userId'], $club['ara']), 'au-delà de 30 jours : l\'escalade a lieu');
+    }
+
+    /** La page publique dit ce qu'on approuve : `kind` (création / reprise / promotion) et l'adresse du demandeur pour une reprise ou une promotion. */
+    public function testOfficialPageExposesKindAndEmailForPromotion(): void
+    {
+        ['club' => $club, 'lea' => $lea] = $this->escalatedRequest();
+        $show = json_decode($this->linkGet($this->liveRequest($lea['userId'], $club['ara'])['token']), true);
+        self::assertResponseIsSuccessful();
+        self::assertIsArray($show);
+        self::assertSame('promotion', $show['kind'] ?? null);
+        self::assertSame($lea['email'], $show['requesterEmail'] ?? null);
+
+        $nobody = $this->insertUser('Neuf');
+        $create = $this->insertClubRequest($nobody['userId'], $this->uniq('NEUF'), null);
+        $show = json_decode($this->linkGet($create['token']), true);
+        self::assertIsArray($show);
+        self::assertSame('create', $show['kind'] ?? null);
+        self::assertNull($show['requesterEmail'] ?? null, 'création : l\'adresse n\'est pas exposée');
+    }
+
+    /** Correction 1 : le refus dans l'app tue aussi la demande officielle vivante (lien 404, aucun mail au club). */
+    public function testManagerRefusalKillsTheEscalatedLink(): void
+    {
+        ['club' => $club, 'marc' => $marc, 'lea' => $lea] = $this->escalatedRequest();
+        $official = $this->liveRequest($lea['userId'], $club['ara']);
+        $this->sentEmails();
+
+        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $lea['userId']) . '/manager-request/refuse', $this->jwtFor($marc['userId']));
+        self::assertResponseIsSuccessful();
+        self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $this->requestStatus($official['id']));
+        self::assertNull($this->escalatedStamp($club['clubId'], $lea['userId']));
+        self::assertSame([], $this->mailsTo($this->sentEmails(), FfbbHttpClientStub::CLUB_EMAIL));
+        self::assertSame($this->linkGet(str_repeat('a', 64)), $this->linkGet($official['token']), 'lien mort : 404 byte-identique');
+    }
+
+    /** Correction 1 : la désactivation du demandeur tue la demande officielle vivante (lien 404). */
+    public function testDeactivationKillsTheEscalatedLink(): void
+    {
+        ['club' => $club, 'marc' => $marc, 'lea' => $lea] = $this->escalatedRequest();
+        $official = $this->liveRequest($lea['userId'], $club['ara']);
+
+        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $lea['userId']) . '/deactivate', $this->jwtFor($marc['userId']));
+        self::assertResponseIsSuccessful();
+        self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $this->requestStatus($official['id']));
+        self::assertSame($this->linkGet(str_repeat('b', 64)), $this->linkGet($official['token']), 'lien mort : 404 byte-identique');
+        self::assertNull($this->stamp($club['clubId'], $lea['userId']));
+        self::assertNull($this->escalatedStamp($club['clubId'], $lea['userId']));
+    }
+
+    /**
+     * Correction 2 : un Membre déjà promu (par le sélecteur) dont un lien officiel traîne → le lien
+     * ne fait rien (404, aucune écriture, aucun mail) ; et `Promoted` exige les deux stamps. Une
+     * invitation gestionnaire acceptée promeut aussi : stamps effacés, lien fermé, audit `invitation`.
+     */
+    public function testOfficialApprovalOfAnAlreadyPromotedMemberIsANoOp(): void
+    {
+        // (a) Déjà gestionnaire : NoOp.
+        ['club' => $club, 'lea' => $lea] = $this->escalatedRequest();
+        $this->sql('UPDATE club_user SET role = \'admin\', manager_requested_at = NULL, manager_request_escalated_at = NULL WHERE club_id = :c AND user_id = :u', ['c' => $club['clubId'], 'u' => $lea['userId']]);
+        $stale = $this->liveRequest($lea['userId'], $club['ara']);
+        $auditsBefore = $this->auditCount($club['clubId'], AuditAction::MEMBERSHIP_ROLE_GRANTED);
+        $this->sentEmails();
+        $this->publicDecision($stale['token'], 'approve');
+        self::assertResponseStatusCodeSame(404, 'déjà gestionnaire : le lien ne décide rien');
+        self::assertSame($auditsBefore, $this->auditCount($club['clubId'], AuditAction::MEMBERSHIP_ROLE_GRANTED), 'aucune écriture');
+        self::assertSame([], $this->sentEmails(), 'aucun mail');
+
+        // (b) Membre actif SANS stamps (demande vivante orpheline) : jamais promu, « dépassée ».
+        ['club' => $club2, 'lea' => $kim] = $this->escalatedRequest('Kim');
+        $this->sql('UPDATE club_user SET manager_requested_at = NULL, manager_request_escalated_at = NULL WHERE club_id = :c AND user_id = :u', ['c' => $club2['clubId'], 'u' => $kim['userId']]);
+        $this->publicDecision($this->liveRequest($kim['userId'], $club2['ara'])['token'], 'approve');
+        self::assertSame(['status' => 'superseded'], $this->responseJson(), '`Promoted` exige les deux stamps');
+        self::assertSame('member', $this->role($club2['clubId'], $kim['userId']));
+
+        // (c) Invitation gestionnaire acceptée par le demandeur connecté.
+        ['club' => $club3, 'marc' => $marc3, 'lea' => $zoe] = $this->escalatedRequest('Zoe');
+        $official = $this->liveRequest($zoe['userId'], $club3['ara']);
+        $raw = $this->seedInvitation($club3['clubId'], $zoe['email'], 'admin', $marc3['userId']);
+        $this->api('POST', '/api/invitations/' . $raw . '/accept', $this->jwtFor($zoe['userId']));
+        self::assertResponseIsSuccessful();
+        self::assertSame('admin', $this->role($club3['clubId'], $zoe['userId']));
+        self::assertNull($this->stamp($club3['clubId'], $zoe['userId']), 'invitation : stamps effacés');
+        self::assertNull($this->escalatedStamp($club3['clubId'], $zoe['userId']));
+        self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $this->requestStatus($official['id']), 'invitation : lien officiel fermé');
+        $this->scopeGucToClub($club3['clubId']);
+        $details = (string) $this->conn()->fetchOne('SELECT details::text FROM audit_log WHERE club_id = :c AND action = :a', ['c' => $club3['clubId'], 'a' => AuditAction::MEMBERSHIP_ROLE_GRANTED->value]);
+        $this->clearGuc();
+        self::assertStringContainsString('invitation', $details, 'promotion par invitation tracée, source `invitation`');
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Prévention (D3) et invitation (écart 7)
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Le seul gestionnaire voit qu'il l'est (`/api/me` liste les clubs où il est seul gestionnaire) ;
+     * nommer un successeur (même geste que le sélecteur) l'en retire, et son effacement ne ferme
+     * alors plus rien.
+     */
+    public function testSoleManagerSeesSuccessorsAndNamingOneAvoidsClosure(): void
+    {
+        $club = $this->bareClub('SOLE');
+        $marc = $this->insertMember($club['clubId'], 'Marc', 'admin');
+        $lea = $this->insertMember($club['clubId'], 'Léa', 'member');
+        $marcJwt = $this->jwtFor($marc['userId']);
+
+        $sole = $this->api('GET', '/api/me', $marcJwt)['soleManagerClubs'] ?? null;
+        self::assertSame([['id' => $club['clubId'], 'name' => $this->clubName($club['clubId'])]], $sole, 'seul gestionnaire de ce club');
+        self::assertSame([], $this->api('GET', '/api/me', $this->jwtFor($lea['userId']))['soleManagerClubs'] ?? null, 'un Membre n\'est seul gestionnaire de rien');
+
+        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $lea['userId']) . '/role', $marcJwt, ['role' => 'admin']);
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->api('GET', '/api/me', $marcJwt)['soleManagerClubs'] ?? null, 'un successeur nommé : plus seul');
+
+        $this->eraseAccount($marcJwt);
+        self::assertNull($this->scheduledAt($club['clubId']), 'Marc parti, Léa gère : rien ne ferme');
+    }
+
+    /** Écart 7 : une vieille invitation « Membre » acceptée par le dernier gestionnaire ne le rétrograde jamais (le club ne se vide pas). */
+    public function testAcceptedMemberInvitationNeverDemotesTheLastManager(): void
+    {
+        $club = $this->bareClub('INVD');
+        $marc = $this->insertMember($club['clubId'], 'Marc', 'admin');
+        $raw = $this->seedInvitation($club['clubId'], $marc['email'], 'member', $marc['userId']);
+
+        $this->api('POST', '/api/invitations/' . $raw . '/accept', $this->jwtFor($marc['userId']));
+        self::assertResponseIsSuccessful();
+        self::assertSame('admin', $this->role($club['clubId'], $marc['userId']), 'une invitation ne rétrograde jamais');
+        self::assertTrue($this->isActive($club['clubId'], $marc['userId']));
+        self::assertNull($this->api('GET', '/api/me', $this->jwtFor($marc['userId']))['club']['closingOn'] ?? null, 'le club garde son gestionnaire');
     }
 
     protected function setUp(): void
@@ -1032,6 +1386,64 @@ final class ManagerRoleRequestTest extends WebTestCase
         return ['id' => $request->getId(), 'token' => $request->getToken()];
     }
 
+    /**
+     * Un club RÉEL géré (Marc) sur le code connu du stub FFBB (adresse officielle connue), et un
+     * Membre qui vient de demander à devenir gestionnaire (stamp posé). Mails de la demande vidés.
+     *
+     * @return array{club: array{clubId: string, ara: string}, marc: array{userId: string, email: string}, lea: array{userId: string, email: string}}
+     */
+    private function escalatableRequest(string $memberName = 'Léa'): array
+    {
+        $club = $this->bareClub('', stubCode: true);
+        $marc = $this->insertMember($club['clubId'], 'Marc', 'admin');
+        $lea = $this->insertMember($club['clubId'], $memberName, 'member');
+        $this->api('POST', self::ROUTE, $this->jwtFor($lea['userId']));
+        self::assertResponseStatusCodeSame(201);
+        $this->sentEmails();
+
+        return ['club' => $club, 'marc' => $marc, 'lea' => $lea];
+    }
+
+    /**
+     * {@see escalatableRequest} vieillie de 14 jours et transmise par la relève quotidienne : une
+     * demande officielle vit sur le code.
+     *
+     * @return array{club: array{clubId: string, ara: string}, marc: array{userId: string, email: string}, lea: array{userId: string, email: string}}
+     */
+    private function escalatedRequest(string $memberName = 'Léa'): array
+    {
+        $decor = $this->escalatableRequest($memberName);
+        $this->ageRequest($decor['club']['clubId'], $decor['lea']['userId'], '14 days 1 hour');
+        $this->runCommand('app:club-approvals:digest');
+        self::assertSame(1, $this->requestCount($decor['lea']['userId'], $decor['club']['ara']), 'témoin : la demande est transmise au club');
+        $this->sentEmails();
+
+        return $decor;
+    }
+
+    private function ageRequest(string $clubId, string $userId, string $interval): void
+    {
+        $this->sql('UPDATE club_user SET manager_requested_at = NOW() - CAST(:i AS INTERVAL) WHERE club_id = :c AND user_id = :u', ['i' => $interval, 'c' => $clubId, 'u' => $userId]);
+    }
+
+    private function seedInvitation(string $clubId, string $email, string $role, string $invitedBy): string
+    {
+        $raw = bin2hex(random_bytes(32));
+        $this->scopeGucToClub($clubId);
+        $invitation = new ClubInvitation;
+        $invitation->setClubId($clubId);
+        $invitation->setEmail($email);
+        $invitation->setRole($role);
+        $invitation->setTokenHash(hash('sha256', $raw));
+        $invitation->setExpiresAt(new DateTimeImmutable('+7 days'));
+        $invitation->setInvitedByUserId($invitedBy);
+        $this->em()->persist($invitation);
+        $this->em()->flush();
+        $this->clearGuc();
+
+        return $raw;
+    }
+
     private function insertSuperAdmin(string $email): void
     {
         $this->admin()->executeStatement(
@@ -1137,6 +1549,33 @@ final class ManagerRoleRequestTest extends WebTestCase
     private function stamp(string $clubId, string $userId): mixed
     {
         return $this->sql('SELECT manager_requested_at FROM club_user WHERE club_id = :c AND user_id = :u', ['c' => $clubId, 'u' => $userId], fetch: true);
+    }
+
+    private function escalatedStamp(string $clubId, string $userId): mixed
+    {
+        return $this->sql('SELECT manager_request_escalated_at FROM club_user WHERE club_id = :c AND user_id = :u', ['c' => $clubId, 'u' => $userId], fetch: true);
+    }
+
+    /** Demandes VIVANTES (`pending` ou `expired`) de l'utilisateur sur ce code. */
+    private function requestCount(string $userId, string $ara): int
+    {
+        return (int) $this->sql('SELECT COUNT(*) FROM club_creation_request WHERE user_id = :u AND ara = :a AND status IN (\'pending\', \'expired\')', ['u' => $userId, 'a' => $ara], fetch: true);
+    }
+
+    private function limiter(string $service): RateLimiterFactory
+    {
+        $limiter = self::getContainer()->get($service);
+        \assert($limiter instanceof RateLimiterFactory);
+
+        return $limiter;
+    }
+
+    private function notifier(): MembershipRequestNotifier
+    {
+        $notifier = self::getContainer()->get(MembershipRequestNotifier::class);
+        \assert($notifier instanceof MembershipRequestNotifier);
+
+        return $notifier;
     }
 
     private function role(string $clubId, string $userId): mixed
