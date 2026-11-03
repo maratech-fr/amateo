@@ -14,6 +14,7 @@ use App\Enum\ConflictResolutionStatus;
 use App\Enum\FbiCorrectionField;
 use App\Repository\ConflictMailingRepository;
 use App\Repository\ConflictResolutionRepository;
+use App\Service\ClubDay;
 use App\Service\ConflictCoachMailing;
 use App\Service\ConflictFeedAssembler;
 use App\Service\FbiCorrectionLedger;
@@ -61,6 +62,7 @@ final class FixtureConflictsController extends AbstractController
         private readonly ConflictResolutionRepository $resolutionRepository,
         private readonly ConflictMailingRepository $mailingRepository,
         private readonly ConflictCoachMailing $coachMailing,
+        private readonly ClubDay $clubDay,
         private readonly FbiCorrectionLedger $fbiCorrectionLedger,
         private readonly ClockInterface $clock,
     ) {}
@@ -296,7 +298,7 @@ final class FixtureConflictsController extends AbstractController
             $sender = null !== $row->getSentByUserId() ? $this->entityManager->getRepository(User::class)->find($row->getSentByUserId()) : null;
             $club = $this->entityManager->getRepository(Club::class)->find($clubId);
             $last = [
-                'sentAt' => ConflictCoachMailController::wallClock($row->getSentAt(), $club instanceof Club ? $club : null),
+                'sentAt' => $club instanceof Club ? $row->getSentAt()->setTimezone($this->clubDay->timezoneFor($club))->format(DateTimeInterface::ATOM) : $row->getSentAt()->format(DateTimeInterface::ATOM),
                 'sentByFirstName' => $sender instanceof User ? $sender->getFirstName() : null,
                 'mailedCount' => $row->getMailedCount(),
                 'skippedCoachIds' => $row->getSkippedCoachIds(),

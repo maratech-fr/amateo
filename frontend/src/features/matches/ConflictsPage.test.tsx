@@ -794,10 +794,10 @@ describe("ConflictsPage — envoyer les conflits aux coachs : qui voit le bouton
 
 describe("ConflictsPage — envoyer aux coachs : désactivé, avec sa raison découvrable", () => {
   it.each([
-    ["rien à envoyer ni personne à prévenir", () => (state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, last: null }), () => MAIL.disabledNothingToSend],
-    ["club de démonstration", () => (meState.isDemo = true), () => MAIL.disabledDemo],
-    ["saison archivée (saison de travail en lecture seule)", () => (meState.seasonReadonly = true), () => MAIL.disabledArchived],
-    ["réponse sans `coachMailing`", () => (state.coachMailing = undefined), () => MAIL.disabledUnavailable],
+    ["rien à envoyer ni personne à prévenir", (): void => { state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, last: null }; }, (): string => MAIL.disabledNothingToSend],
+    ["club de démonstration", (): void => { meState.isDemo = true; }, (): string => MAIL.disabledDemo],
+    ["saison archivée (saison de travail en lecture seule)", (): void => { meState.seasonReadonly = true; }, (): string => MAIL.disabledArchived],
+    ["réponse sans `coachMailing`", (): void => { state.coachMailing = undefined; }, (): string => MAIL.disabledUnavailable],
   ])("%s : bouton désactivé, raison annoncée, le clic n'ouvre rien", async (_label, arrange, reason) => {
     arrange();
     const user = userEvent.setup();

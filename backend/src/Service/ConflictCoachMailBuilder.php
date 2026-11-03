@@ -121,7 +121,7 @@ final class ConflictCoachMailBuilder
         return $this->email($to, \sprintf('Plus aucun conflit sur un match ne vous concerne — %s', $label), $text, $club, $senderFirstName);
     }
 
-    /** Le seul foyer `new Email` de l'envoi aux coachs (inventaire des CTA : EXEMPT). */
+    /** L'unique construction d'e-mail de l'envoi aux coachs (inventaire des CTA : EXEMPT, sans bouton). */
     private function email(string $to, string $subject, string $text, Club $club, string $senderFirstName): Email
     {
         $from = $this->mailFrom->addressAs(\sprintf('%s (%s) via %s', $senderFirstName, $club->emailLabel(), $this->productIdentity->name()));

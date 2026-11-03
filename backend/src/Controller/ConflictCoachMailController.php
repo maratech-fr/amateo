@@ -22,7 +22,6 @@ use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use DateTimeImmutable;
 use DateTimeInterface;
-use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -74,14 +73,6 @@ final class ConflictCoachMailController extends AbstractController implements Se
         private readonly ClubDay $clubDay,
         private readonly RateLimiterFactory $conflictMailSendLimiter,
     ) {}
-
-    /** L'instant servi à l'écran : ATOM à l'heure murale du club (l'écran découpe la chaîne). */
-    public static function wallClock(DateTimeImmutable $at, ?Club $club): string
-    {
-        $zone = $club instanceof Club && '' !== $club->getTimezone() ? $club->getTimezone() : 'Europe/Paris';
-
-        return $at->setTimezone(new DateTimeZone($zone))->format(DateTimeInterface::ATOM);
-    }
 
     /** Écriture de COLLECTION : la saison du header (ou courante) gouverne. */
     public function writeTargetSeasonId(Request $request): ?string
@@ -201,7 +192,8 @@ final class ConflictCoachMailController extends AbstractController implements Se
                     ->setSkippedCoachIds(array_column($skipped, 'coachId'))
                     ->setMailedCount(\count($recipients) + \count($cleared)),
             );
-            $sentAt = self::wallClock($now, $club);
+            // L'instant servi à l'écran : ATOM à l'heure murale du club (l'écran découpe la chaîne).
+            $sentAt = $now->setTimezone($this->clubDay->timezoneFor($club))->format(DateTimeInterface::ATOM);
         }
 
         return $this->json([

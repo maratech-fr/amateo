@@ -62,19 +62,26 @@ final readonly class ClubDay
             return new DateTimeImmutable($simulated->format('Y-m-d'));
         }
 
-        $timezone = self::FALLBACK_TIMEZONE;
+        $now = DateTimeImmutable::createFromInterface($this->clock->now());
+
+        return new DateTimeImmutable($now->setTimezone($this->timezoneFor($club))->format('Y-m-d'));
+    }
+
+    /**
+     * Le fuseau du club (repli FFBB sur une timezone absente ou invalide) — pour poser un instant
+     * à l'heure murale du club (p. ex. la ligne « Envoyé le … » de l'envoi aux coachs).
+     */
+    public function timezoneFor(Club $club): DateTimeZone
+    {
         if ('' !== $club->getTimezone()) {
             try {
-                new DateTimeZone($club->getTimezone());
-                $timezone = $club->getTimezone();
+                return new DateTimeZone($club->getTimezone());
             } catch (Throwable) {
                 // Fuseau stocké invalide → repli FFBB, jamais d'explosion sur une donnée.
             }
         }
 
-        $now = DateTimeImmutable::createFromInterface($this->clock->now());
-
-        return new DateTimeImmutable($now->setTimezone(new DateTimeZone($timezone))->format('Y-m-d'));
+        return new DateTimeZone(self::FALLBACK_TIMEZONE);
     }
 
     /** Raccourci pour les comparaisons date-à-date, la forme que tous les appelants utilisent. */
