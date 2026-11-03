@@ -296,6 +296,8 @@ export interface AdminClubRequest {
   requesterEmail: string;
   createdAt: string;
   expiresAt: string;
+  /** Chantier Membre (PR 3) — la nature de la demande : création, reprise (club sans gestionnaire), promotion (gestionnaires sans réponse). */
+  kind: "create" | "reprise" | "promotion";
 }
 
 export interface AdminClubRequestsResponse {

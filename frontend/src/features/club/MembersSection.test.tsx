@@ -25,8 +25,8 @@ vi.mock("@/shared/stores/toastStore", () => ({ toast }));
 import { CLUB_TEXTS } from "./texts";
 import { MembersSection } from "./MembersSection";
 
-const self = { id: "self", userId: "us", email: "boss@club.fr", firstName: "Grace", lastName: "Hopper", role: "admin", isSelf: true };
-const bob = { id: "m-bob", userId: "ub", email: "bob@club.fr", firstName: "Bob", lastName: "Martin", role: "member", isSelf: false };
+const self = { id: "self", userId: "us", email: "boss@club.fr", firstName: "Grace", lastName: "Hopper", role: "admin", isSelf: true, managerRequestedAt: null, managerRequestEscalatedAt: null };
+const bob = { id: "m-bob", userId: "ub", email: "bob@club.fr", firstName: "Bob", lastName: "Martin", role: "member", isSelf: false, managerRequestedAt: null, managerRequestEscalatedAt: null };
 
 function renderSection(data: MembersResponse) {
   api.getMembers.mockResolvedValue(data);

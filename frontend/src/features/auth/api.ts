@@ -112,6 +112,10 @@ export interface ActiveMember {
   lastName: string;
   role: string;
   isSelf: boolean;
+  /** Chantier Membre (PR 3) — sa demande à devenir gestionnaire (RFC 3339), null sans demande. */
+  managerRequestedAt: string | null;
+  /** La demande, sans réponse 14 jours, a été transmise à l'adresse officielle du club (RFC 3339). */
+  managerRequestEscalatedAt: string | null;
 }
 
 /** Un membre DÉSACTIVÉ (réactivable) — même forme, sans geste sur soi. */
@@ -223,6 +227,11 @@ export async function reactivateMember(id: string): Promise<void> {
   await api.post(`memberships/${id}/reactivate`);
 }
 
+/** Chantier Membre (PR 3) — refuser la demande d'un Membre à devenir gestionnaire (« Accepter » = `changeMemberRole(id, "admin")`). */
+export function refuseManagerRequest(id: string): Promise<unknown> {
+  return api.post(`memberships/${id}/manager-request/refuse`).json();
+}
+
 export async function rejectMember(id: string): Promise<void> {
   await api.post(`memberships/${id}/reject`);
 }
@@ -233,6 +242,13 @@ export interface ClubApprovalInfo {
   ara: string;
   requesterName: string;
   expiresAt: string;
+  /**
+   * Chantier Membre (PR 3) — ce qu'on approuve : une création, une reprise (club sans
+   * gestionnaire) ou une promotion (gestionnaires sans réponse 14 jours).
+   */
+  kind?: "create" | "reprise" | "promotion";
+  /** L'adresse du demandeur — servie pour une reprise ou une promotion, null pour une création. */
+  requesterEmail?: string | null;
 }
 
 export function getClubApproval(token: string): Promise<ClubApprovalInfo> {

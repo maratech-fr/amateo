@@ -70,6 +70,7 @@ vi.mock("@/features/auth/queries", () => ({
   useChangeMemberRole: () => ({ mutate: vi.fn(), isPending: false }),
   useDeactivateMember: () => ({ mutate: vi.fn(), isPending: false }),
   useReactivateMember: () => ({ mutate: vi.fn(), isPending: false }),
+  useRefuseManagerRequest: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 const ffbbImport = vi.fn();

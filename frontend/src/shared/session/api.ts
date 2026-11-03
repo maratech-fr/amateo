@@ -101,6 +101,23 @@ export interface MeResponse {
    * l'affiche à un désactivé / orphelin / refusé pour dire la date butoir.
    */
   accountDeletionScheduledFor?: string | null;
+  /**
+   * Chantier Membre (PR 3) — la demande du Membre à devenir gestionnaire de son club courant,
+   * calculée par le SERVEUR (null : aucune demande, ou compte gestionnaire). `pending` : auprès des
+   * gestionnaires ; `club_pending` : à l'adresse officielle du club (club sans gestionnaire, ou
+   * `escalated` après 14 jours sans réponse — `since` est alors la date de transmission) ;
+   * `expired` : l'adresse officielle n'a pas répondu (renvoyable) ; `refused` : refus officiel,
+   * renouvelable à partir de `until`. Dates RFC 3339.
+   */
+  managerRequest?: {
+    status: "pending" | "club_pending" | "expired" | "refused";
+    since: string;
+    escalated: boolean;
+    until?: string;
+    clubEmailKnown?: boolean;
+  } | null;
+  /** Les clubs dont ce compte est le SEUL gestionnaire actif (ils fermeraient s'il partait). */
+  soleManagerClubs?: { id: string; name: string }[];
   club: {
     id: string;
     name: string;
@@ -173,4 +190,24 @@ export function getMe(): Promise<MeResponse> {
  */
 export function setClubClock(body: { date: string } | { clear: true }): Promise<{ simulatedToday: string | null }> {
   return api.post("club/clock", { json: body }).json();
+}
+
+/** Réponse d'une demande à devenir gestionnaire (`POST /api/memberships/me/manager-request`). */
+export interface ManagerRequestResponse {
+  status: "pending" | "club_pending";
+  since: string;
+  clubEmailKnown?: boolean;
+}
+
+/**
+ * Chantier Membre (PR 3) — un Membre ACTIF demande à devenir gestionnaire de son club courant
+ * (club géré : ses gestionnaires décident ; club sans gestionnaire : l'adresse officielle).
+ */
+export function requestManagerRole(): Promise<ManagerRequestResponse> {
+  return api.post("memberships/me/manager-request").json();
+}
+
+/** Le Membre annule sa demande (204). */
+export async function cancelManagerRequest(): Promise<void> {
+  await api.delete("memberships/me/manager-request");
 }

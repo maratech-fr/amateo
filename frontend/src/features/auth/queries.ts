@@ -259,6 +259,11 @@ export function useChangeMemberRole() {
   return useMembershipMutation(({ id, role }: { id: string; role: AssignableRole }) => authApi.changeMemberRole(id, role));
 }
 
+/** Chantier Membre (PR 3) — refuser la demande d'un Membre à devenir gestionnaire. */
+export function useRefuseManagerRequest() {
+  return useMembershipMutation((id: string) => authApi.refuseManagerRequest(id));
+}
+
 export function useDeactivateMember() {
   return useMembershipMutation((id: string) => authApi.deactivateMember(id));
 }

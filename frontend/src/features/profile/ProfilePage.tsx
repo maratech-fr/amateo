@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 
-import { useLogout } from "@/features/auth/queries";
-import { useMe } from "@/shared/session/queries";
+import { useLogout, useMembers } from "@/features/auth/queries";
+import { useCanManage, useMe } from "@/shared/session/queries";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { FichePage } from "@/shared/components/ui/fiche-page";
@@ -25,6 +25,7 @@ import {
   useRequestEmailChange,
   useUpdateProfile,
 } from "./queries";
+import { SuccessorPicker } from "./SuccessorPicker";
 import { PROFILE_TEXTS } from "./texts";
 
 function ProfileForm({
@@ -210,7 +211,26 @@ function ExportSection() {
  * délai de grâce de 30 jours (annulé si un gestionnaire reprend le club avant
  * l'échéance) — les autres membres en sont prévenus.
  */
-function DangerZone({ readOnly }: { readOnly: boolean }) {
+/**
+ * Chantier Membre (PR 3, prévention) — l'avertissement « vous êtes le seul gestionnaire » vient du
+ * SERVEUR (`me.soleManagerClubs`, tous les clubs nommés) ; le sélecteur de successeur ne propose
+ * que les Membres actifs du club COURANT. `/api/memberships` n'est interrogé que par qui peut gérer
+ * (un Membre y recevrait un 403).
+ */
+function SoleManagerNotice({ soleManagerClubs }: { soleManagerClubs: { id: string; name: string }[] }) {
+  const canManage = useCanManage();
+  const members = useMembers(canManage);
+  return (
+    <div className="space-y-3">
+      {soleManagerClubs.map((club) => (
+        <NoticeBanner key={club.id} tone="warning" message={PROFILE_TEXTS.soleManagerWarning(club.name)} />
+      ))}
+      {canManage && members.data ? <SuccessorPicker members={members.data.members} /> : null}
+    </div>
+  );
+}
+
+function DangerZone({ readOnly, soleManagerClubs }: { readOnly: boolean; soleManagerClubs: { id: string; name: string }[] }) {
   const deleteAccount = useDeleteAccount();
   const logout = useLogout();
   const [password, setPassword] = useState("");
@@ -232,7 +252,8 @@ function DangerZone({ readOnly }: { readOnly: boolean }) {
       <CardHeader>
         <CardTitle className="text-destructive">Supprimer mon compte</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {soleManagerClubs.length > 0 ? <SoleManagerNotice soleManagerClubs={soleManagerClubs} /> : null}
         <form className="space-y-3" onSubmit={submit}>
           <p className="text-sm text-muted-foreground">
             {PROFILE_TEXTS.deleteWarningLead}
@@ -291,7 +312,7 @@ export function ProfilePage() {
       <ProfileForm firstName={data.firstName} lastName={data.lastName} email={data.email} pendingEmail={data.pendingEmail} readOnly={readOnly} />
       <PasswordForm readOnly={readOnly} />
       <ExportSection />
-      <DangerZone readOnly={readOnly} />
+      <DangerZone readOnly={readOnly} soleManagerClubs={data.soleManagerClubs ?? []} />
     </FichePage>
   );
 }

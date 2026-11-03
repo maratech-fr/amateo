@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
-import { useCanManage, useMe } from "@/shared/session/queries";
+import { useCancelManagerRequest, useCanManage, useMe, useRequestManagerRole } from "@/shared/session/queries";
 import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import type { FfbbOrganisme, MeResponse } from "@/shared/session/api";
@@ -14,6 +14,7 @@ import { AccordionSection } from "@/shared/components/ui/accordion";
 import { AddressGeocodeField } from "@/shared/components/ui/address-geocode-field";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { Card, CardContent } from "@/shared/components/ui/card";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FichePage } from "@/shared/components/ui/fiche-page";
@@ -24,6 +25,7 @@ import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { useCredits } from "@/shared/credits/useCredits";
 import { readableForeground } from "@/shared/lib/color";
+import { frDateSlashed } from "@/shared/lib/date";
 import { dayLabelLongCap, dayLabelShort } from "@/shared/lib/days";
 import { PRODUCT_ACCENT } from "@/shared/lib/product";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -737,6 +739,76 @@ function OfferSection({ me }: { me: MeResponse }) {
   );
 }
 
+/** Date (JJ/MM/AAAA) d'un horodatage RFC 3339 ou d'une date Y-m-d servis par le serveur. */
+function requestDay(value: string): string {
+  return frDateSlashed(value.slice(0, 10));
+}
+
+/**
+ * Chantier Membre (PR 3) — la carte « Mon rôle » d'un Membre : où en est sa demande à devenir
+ * gestionnaire, dans l'état que le SERVEUR a calculé (`me.managerRequest`, jamais redérivé).
+ * Aucune demande ou demande expirée → le bouton ; en cours → la date et l'annulation ; refusée par
+ * l'adresse officielle → la date de renouvellement, sans bouton.
+ */
+function MyRoleCard({ me }: { me: MeResponse }) {
+  const request = useRequestManagerRole();
+  const cancel = useCancelManagerRequest();
+  const managerRequest = me.managerRequest ?? null;
+  const busy = request.isPending || cancel.isPending;
+
+  const lines: string[] = [];
+  let canAsk = false;
+  let canCancel = false;
+  if (null === managerRequest) {
+    canAsk = true;
+  } else if ("pending" === managerRequest.status) {
+    lines.push(CLUB_TEXTS.managerRequestPending(requestDay(managerRequest.since)));
+    canCancel = true;
+  } else if ("club_pending" === managerRequest.status) {
+    lines.push(
+      managerRequest.escalated
+        ? CLUB_TEXTS.managerRequestEscalated(requestDay(managerRequest.since))
+        : CLUB_TEXTS.managerRequestSentToOfficial(requestDay(managerRequest.since)),
+    );
+    if (false === managerRequest.clubEmailKnown) {
+      lines.push(CLUB_TEXTS.managerRequestNoOfficialAddress);
+    }
+    canCancel = true;
+  } else if ("expired" === managerRequest.status) {
+    lines.push(CLUB_TEXTS.managerRequestExpired(requestDay(managerRequest.since)));
+    canAsk = true;
+  } else {
+    lines.push(CLUB_TEXTS.managerRequestRefused(requestDay(managerRequest.since), requestDay(managerRequest.until ?? managerRequest.since)));
+  }
+
+  return (
+    <Card className="mb-3">
+      <CardContent className="flex flex-col gap-3 py-4">
+        <h2 className="text-sm font-semibold">{CLUB_TEXTS.myRoleTitle}</h2>
+        {lines.map((line) => (
+          <p key={line} className="text-sm text-muted-foreground">
+            {line}
+          </p>
+        ))}
+        {canAsk || canCancel ? (
+          <div className="flex flex-wrap gap-2">
+            {canAsk ? (
+              <Button size="sm" disabled={busy} onClick={() => request.mutate()}>
+                {CLUB_TEXTS.requestManagerRole}
+              </Button>
+            ) : null}
+            {canCancel ? (
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => cancel.mutate()}>
+                {CLUB_TEXTS.cancelManagerRequest}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ClubHub({ me }: { me: MeResponse }) {
   // Une seule question : « peut-il modifier ? » (gestion = owner|admin, SEC-07). Un Membre LIT la
   // fiche, le visuel, l'offre, les contacts et l'usage des gymnases, sous la bannière de
@@ -751,6 +823,7 @@ function ClubHub({ me }: { me: MeResponse }) {
     <FichePage>
       <PageHeader className="mb-4" title={CLUB_TEXTS.clubManagementTitle} screen="/club" subtitle={me.club?.name ?? "—"} />
       <ReadOnlyNotice />
+      {canManage ? null : <MyRoleCard me={me} />}
       <div className="space-y-3">
         <AccordionSection title={CLUB_TEXTS.sectionOffer} defaultOpen>
           <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.offerSectionHint}</p>

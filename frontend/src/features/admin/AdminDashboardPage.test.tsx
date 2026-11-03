@@ -255,6 +255,7 @@ const newClubRequest: AdminClubRequestsResponse = {
   items: [
     {
       id: "req-new",
+      kind: "create",
       clubName: "AS Val de Marne",
       ara: "ARA909",
       clubEmail: null,
