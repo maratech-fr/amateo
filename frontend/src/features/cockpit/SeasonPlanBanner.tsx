@@ -2,6 +2,7 @@ import { AlertTriangle, CalendarClock } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useMe } from "@/shared/session/queries";
 import { STATUS_LABELS, type Schedule } from "@/features/planning/api";
 import { usePlacedConflicts } from "@/features/planning/queries";
@@ -126,9 +127,11 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
           Ouvrir
         </Button>
         {socleValidated ? (
-          <Button variant="ghost" size="sm" onClick={editClubData}>
-            Modifier les données du club
-          </Button>
+          <ManagerOnly>
+            <Button variant="ghost" size="sm" onClick={editClubData}>
+              Modifier les données du club
+            </Button>
+          </ManagerOnly>
         ) : null}
         <Button variant="ghost" size="sm" onClick={() => setListOpen(true)}>
           Tous les plannings ({planCount})

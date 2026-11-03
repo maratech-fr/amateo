@@ -28,6 +28,8 @@ const readOf = (state: { data: unknown; loading: boolean; failed: boolean }) => 
 // D4 — l'onglet « Entente (CTC) » règle l'entente par un PUT d'équipe complet (useUpdateTeam).
 const updateMut = vi.fn();
 
+// Chantier Membre (PR 2) : les cas de ce fichier sont joués en gestionnaire (`useCanManage`).
+vi.mock("@/shared/session/queries", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/shared/session/queries")>()), useCanManage: () => true }));
 vi.mock("../queries", () => ({
   useTeamPeriodOverrides: () => ({ data: [] }),
   // P2-51 — le BLOC est la SEULE notion de mutualisation montée dans la modale.

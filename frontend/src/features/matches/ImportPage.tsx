@@ -9,6 +9,8 @@ import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { todayISO } from "@/shared/lib/clock";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { toast } from "@/shared/stores/toastStore";
 
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
@@ -92,6 +94,8 @@ export function ImportPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Un Membre lit la fraîcheur et la file ; aucun import, aucun appel FFBB. */}
+      <ReadOnlyNotice />
       {/* 1. Les entrées de données de match. */}
       <Card>
         <CardHeader>
@@ -102,6 +106,7 @@ export function ImportPage() {
             L'export FBI complet du club (début de saison ou de phase), le Canal FFBB (souvent
             des amicaux) et les engagements. L'import FBI fait foi.
           </p>
+          <ManagerOnly>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
               <Upload className="size-4" />
@@ -116,6 +121,7 @@ export function ImportPage() {
               Engagements FFBB
             </Button>
           </div>
+          </ManagerOnly>
           <p className={cn("mt-3 flex items-center gap-1.5 text-sm", staleFreshness ? "text-warning" : "text-muted-foreground")}>
             <Clock className="size-4 shrink-0" aria-hidden="true" />
             {null === latest || null === freshDays ? "Aucun dépôt FBI cette saison." : `Dernier dépôt FBI : ${relativeDepositLabel(freshDays)}.`}

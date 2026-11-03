@@ -136,6 +136,11 @@ export interface MeResponse {
     ffbbLeague: FfbbOrganisme | null;
     /** P1-3 — droits de l'offre effective ; absent tant qu'aucune saison n'est résolue. */
     entitlements?: ClubEntitlements;
+    /**
+     * Date (Y-m-d) d'effacement du club quand il n'a PLUS de gestionnaire actif — null dès qu'un
+     * gestionnaire est actif. Le bandeau `ClubClosingBanner` l'annonce sur chaque écran.
+     */
+    closingOn?: string | null;
   } | null;
   /**
    * THE season's plan (ADR-0002) for the SELECTED season (X-Season-Id), else the

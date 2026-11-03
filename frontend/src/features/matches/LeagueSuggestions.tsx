@@ -1,5 +1,6 @@
 import { Button } from "@/shared/components/ui/button";
 import { dayLabelLong } from "@/shared/lib/days";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 
 import type { LeagueWindowSuggestionCombination, LeagueWindowSuggestionItem } from "./api";
 import { useApplyLeagueWindowSuggestions, useLeagueWindowSuggestions } from "./queries";
@@ -58,14 +59,16 @@ export function LeagueSuggestions() {
     <section className="flex flex-col gap-2 rounded-md border border-accent/40 bg-surface-accent px-3 py-3" aria-label="Plages suggérées">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-foreground">Plages suggérées (estimation)</h3>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={apply.isPending}
-          onClick={() => apply.mutate(data.items.map(toCombination))}
-        >
-          Tout appliquer
-        </Button>
+        <ManagerOnly>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={apply.isPending}
+            onClick={() => apply.mutate(data.items.map(toCombination))}
+          >
+            Tout appliquer
+          </Button>
+        </ManagerOnly>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -78,9 +81,11 @@ export function LeagueSuggestions() {
               <span className="text-xs text-muted-foreground">{sourceNote(item)}</span>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <Button size="sm" variant="outline" disabled={apply.isPending} onClick={() => apply.mutate([toCombination(item)])}>
-                Appliquer
-              </Button>
+              <ManagerOnly>
+                <Button size="sm" variant="outline" disabled={apply.isPending} onClick={() => apply.mutate([toCombination(item)])}>
+                  Appliquer
+                </Button>
+              </ManagerOnly>
             </div>
           </div>
         ))}

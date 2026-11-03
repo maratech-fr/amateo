@@ -8,6 +8,8 @@ import { axe } from "vitest-axe";
 import type { CalendarEntry, PublicHoliday, SchoolHoliday } from "./api";
 import { MonthCalendar } from "./MonthCalendar";
 
+// Chantier Membre (PR 2) : les cas de ce fichier sont joués en gestionnaire (`useCanManage`).
+vi.mock("@/shared/session/queries", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/shared/session/queries")>()), useCanManage: () => true }));
 vi.mock("./queries", () => ({
   useCreateEvent: () => ({ mutate: vi.fn(), isPending: false }),
   useCreatePeriodPlan: () => ({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }),

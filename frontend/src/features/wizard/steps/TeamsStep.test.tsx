@@ -119,6 +119,7 @@ vi.mock("@/shared/lib/socle", () => ({
 // La modale d'import du parc n'est pas rendue ici (parcOpen reste faux) ; on la neutralise pour
 // isoler TeamsStep de tout le graphe de modules de parcImport.
 vi.mock("../parcImport/ParcImportModal", () => ({ ParcImportModal: () => null }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/shared/session/queries")>()), useCanManage: () => true }));
 
 import { TeamsStep } from "./TeamsStep";
 import { useWizardStore } from "../store";

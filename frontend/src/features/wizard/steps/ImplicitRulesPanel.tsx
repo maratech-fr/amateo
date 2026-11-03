@@ -1,7 +1,7 @@
 import { Check, Route } from "lucide-react";
 import { useEffect, useRef } from "react";
 
-import { useWorkingSeason } from "@/shared/session/queries";
+import { useCanManage, useWorkingSeason } from "@/shared/session/queries";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -263,7 +263,9 @@ export function TravelRuleNotice() {
   // évite une requête inutile chez un club sans matrice.
   const settingQuery = useTravelRuleSetting(hasMatrix);
   const update = useUpdateTravelRuleSetting();
-  const readOnly = true === useWorkingSeason()?.isReadonly;
+  // Saison archivée OU Membre (consultation) : tout se lit, rien ne se règle.
+  const canManage = useCanManage();
+  const readOnly = true === useWorkingSeason()?.isReadonly || !canManage;
 
   const intensity: VenueTravelRuleIntensity = settingQuery.data?.intensity ?? "PREFERRED";
   const tolerance = settingQuery.data?.toleranceMinutes ?? 20;
@@ -394,7 +396,9 @@ export function WellbeingRulesPanel({ ruleTarget = null, schedulePlanId = null }
   const seasonQuery = useImplicitRuleSettings(null);
   const update = useUpdateImplicitRuleSetting(schedulePlanId);
   const reset = useResetImplicitRuleSetting(schedulePlanId);
-  const readOnly = true === useWorkingSeason()?.isReadonly;
+  // Saison archivée OU Membre (consultation) : tout se lit, rien ne se règle.
+  const canManage = useCanManage();
+  const readOnly = true === useWorkingSeason()?.isReadonly || !canManage;
 
   const settings = settingsQuery.data ?? [];
   const byKey = new Map(settings.map((s) => [s.ruleKey, s]));

@@ -17,6 +17,8 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { readState } from "@/shared/lib/readState";
 import { useTravelStream } from "@/shared/lib/travelStream";
 import { cn } from "@/shared/lib/utils";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { OpponentClub, OpponentUnmatchedLabel, OpponentVenue } from "./api";
@@ -143,16 +145,20 @@ export function OpponentsPage() {
 
   return (
     <section className="flex flex-col gap-4">
+      {/* Un Membre lit les adversaires et leurs trajets ; aucun geste (mise à jour, appariement, actions). */}
+      <ReadOnlyNotice />
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-base font-semibold text-foreground">{MATCHES_TEXTS.opponentsTitle}</h2>
           <p className="text-sm text-muted-foreground">{MATCHES_TEXTS.opponentsIntro}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Button variant="outline" size="sm" className="shrink-0" disabled={update.isPending || computing} onClick={update.run}>
-            <RefreshCw className={cn("size-4", update.isPending ? "animate-spin motion-reduce:animate-none" : "")} aria-hidden="true" />
-            {updateLabel}
-          </Button>
+          <ManagerOnly>
+            <Button variant="outline" size="sm" className="shrink-0" disabled={update.isPending || computing} onClick={update.run}>
+              <RefreshCw className={cn("size-4", update.isPending ? "animate-spin motion-reduce:animate-none" : "")} aria-hidden="true" />
+              {updateLabel}
+            </Button>
+          </ManagerOnly>
           {"ready" === state && clubGeolocated && totalTravel > 0 ? (
             <div className="flex flex-col items-end">
               <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
@@ -203,9 +209,11 @@ export function OpponentsPage() {
             </span>
           }
         >
-          <Button variant="outline" size="sm" disabled={retry.isPending} onClick={() => retry.mutate()}>
-            {MATCHES_TEXTS.retryMissing}
-          </Button>
+          <ManagerOnly>
+            <Button variant="outline" size="sm" disabled={retry.isPending} onClick={() => retry.mutate()}>
+              {MATCHES_TEXTS.retryMissing}
+            </Button>
+          </ManagerOnly>
         </NoticeBanner>
       ) : null}
 
@@ -440,10 +448,12 @@ function ClubTbody({
               `<span sr-only>`, pour que la ligne CLUB tienne à 360 px sans défilement horizontal (décision :
               ordinateur d'abord, garde 360 px conservé). Le bouton n'est PAS `size="icon"` (garde
               `addButtonLabelGuard`) ; carré 36 px de cible sous `@md` (`w-9 px-0`, hauteur `h-9` de `sm`). */}
-          <Button variant="ghost" size="sm" className="w-9 px-0 @md:w-auto @md:px-3" onClick={onAddVenue}>
-            <Plus className="size-3.5" aria-hidden="true" />
-            <span className="sr-only @md:not-sr-only">{MATCHES_TEXTS.addVenue}</span>
-          </Button>
+          <ManagerOnly>
+            <Button variant="ghost" size="sm" className="w-9 px-0 @md:w-auto @md:px-3" onClick={onAddVenue}>
+              <Plus className="size-3.5" aria-hidden="true" />
+              <span className="sr-only @md:not-sr-only">{MATCHES_TEXTS.addVenue}</span>
+            </Button>
+          </ManagerOnly>
         </TableCell>
       </TableRow>
 
@@ -464,6 +474,7 @@ function ClubTbody({
           </TableCell>
           <TableCell className="hidden text-right tabular-nums @md:table-cell">{venue.fixtureCount}</TableCell>
           <TableCell className="text-right">
+            <ManagerOnly>
             <Menu label={MATCHES_TEXTS.venueActionsMenu(venue.label, club.name)} trigger={<MoreHorizontal className="size-4" aria-hidden="true" />} triggerClassName="size-11 rounded-md @md:size-8">
               <MenuItem onSelect={() => onRepoint(venue)}>{MATCHES_TEXTS.editVenue}</MenuItem>
               {club.venues
@@ -475,6 +486,7 @@ function ClubTbody({
                 ))}
               <MenuItem onSelect={() => onRemove(venue)}>{MATCHES_TEXTS.removeVenue}</MenuItem>
             </Menu>
+            </ManagerOnly>
           </TableCell>
         </TableRow>
       ))}
@@ -517,9 +529,11 @@ function UnmatchedRow({ unmatched, onPair }: { unmatched: OpponentUnmatchedLabel
       </TableCell>
       <TableCell className="hidden text-right tabular-nums @md:table-cell">{unmatched.fixtureCount}</TableCell>
       <TableCell className="text-right">
-        <Button variant="ghost" size="sm" onClick={onPair}>
-          {MATCHES_TEXTS.pair}
-        </Button>
+        <ManagerOnly>
+          <Button variant="ghost" size="sm" onClick={onPair}>
+            {MATCHES_TEXTS.pair}
+          </Button>
+        </ManagerOnly>
       </TableCell>
     </TableRow>
   );

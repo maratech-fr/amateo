@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
 import { periodAdjustWeeks } from "@/features/cockpit/lib/date";
-import { useWorkingSeason } from "@/shared/session/queries";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage, useWorkingSeason } from "@/shared/session/queries";
 import { ResourceFilter } from "@/features/planning/ResourceFilter";
 import { usePriorityTiers, useWizardCoachPlayers, useWizardCoaches, useWizardTeamCoaches, useWizardTeams } from "@/features/wizard/queries";
 import { groupedCoaches } from "@/features/wizard/lib/ranking";
@@ -93,6 +94,8 @@ export function WishesTab({
   onTransferStateChange?: (state: WishTransferFooter | null) => void;
 }) {
   const season = useWorkingSeason();
+  // Un Membre lit les doléances : ni ajout, ni modification, ni suppression, ni transfert.
+  const canManage = useCanManage();
   const { data: wishes = [] } = useCoachWishes(mother.id);
   const teamsQuery = useWizardTeams();
   // Mémorisé sur `teamsQuery.data` : stable d'un rendu à l'autre (sinon le `?? []` fabriquerait un
@@ -267,13 +270,13 @@ export function WishesTab({
   const selectedCount = selectedVisible.length;
   const transferPending = transfer.isPending;
   useEffect(() => {
-    if (0 === visibleCount) {
+    if (0 === visibleCount || !canManage) {
       onTransferStateChange?.(null);
       return;
     }
     onTransferStateChange?.({ count: selectedCount, pending: transferPending, run: () => doTransferRef.current() });
     return () => onTransferStateChange?.(null);
-  }, [onTransferStateChange, visibleCount, selectedCount, transferPending]);
+  }, [onTransferStateChange, visibleCount, selectedCount, transferPending, canManage]);
 
   const submit = (payload: CoachWishPayload) => {
     const after = () => {
@@ -317,6 +320,7 @@ export function WishesTab({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <ResourceFilter viewMode="coach" groups={coachGroups} selected={coachFilter} onToggle={(id) => setCoachFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))} onClear={() => setCoachFilter([])} />
         <ResourceFilter viewMode="equipe" groups={teamGroups} selected={teamFilter} onToggle={(id) => setTeamFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))} onClear={() => setTeamFilter([])} />
+        <ManagerOnly>
         <Button
           type="button"
           size="sm"
@@ -332,11 +336,12 @@ export function WishesTab({
           <Plus className="size-4" />
           {TEXTS.add}
         </Button>
+        </ManagerOnly>
       </div>
 
       {/* P2-63 PR 5 — le geste de MASSE vit dans le PIED de la fenêtre (retour fondateur 2026-10-11) :
           ici, juste l'aide qui explique les cases (prose → corps défilant, jamais le pied). */}
-      {visible.length > 0 ? (
+      {visible.length > 0 && canManage ? (
         <p className="mt-2 text-xs text-muted-foreground">{TEXTS.transferHelp}</p>
       ) : null}
 
@@ -386,7 +391,7 @@ export function WishesTab({
                     <li key={w.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
                       {/* Case de SÉLECTION du transfert, à gauche. Une doléance TRAITÉE est déjà
                           transférée : elle n'a plus de case (retour fondateur 2026-10-11). */}
-                      {w.done ? null : (
+                      {w.done || !canManage ? null : (
                         <input type="checkbox" aria-label={TEXTS.selectWish(teamName.get(w.teamId) ?? TEXTS.teamFallbackLower, frDate(week.startDate))} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
                       )}
                       <div className="min-w-0 flex-1">
@@ -423,6 +428,7 @@ export function WishesTab({
                           </StatusPill>
                         ) : null}
                       </div>
+                      <ManagerOnly>
                       <div className="flex shrink-0 items-center gap-1">
                         {/* Le marquage « traité / non traité » passe par le crayon (formulaire),
                             retour fondateur 2026-10-11 : plus de coche « traité » ici. */}
@@ -443,6 +449,7 @@ export function WishesTab({
                           <Trash2 className="size-4" />
                         </Button>
                       </div>
+                      </ManagerOnly>
                     </li>
                   ))}
                 </ul>
@@ -456,6 +463,7 @@ export function WishesTab({
       <section className="mt-5 border-t border-border pt-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-semibold">{TEXTS.mutualizationsTitle}</h3>
+          <ManagerOnly>
           <Button
             type="button"
             size="sm"
@@ -471,6 +479,7 @@ export function WishesTab({
             <Plus className="size-4" />
             {TEXTS.addMutualization}
           </Button>
+          </ManagerOnly>
         </div>
 
         {mutFormOpen && teamsWithMainCoach.length > 0 ? (
@@ -499,7 +508,7 @@ export function WishesTab({
           <ul className="mt-2 space-y-1">
             {visibleMut.map((m) => (
               <li key={m.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                <input type="checkbox" aria-label={TEXTS.treatedMutualization(teamName.get(m.teamId) ?? TEXTS.teamFallbackLower)} className="mt-1 size-4" checked={m.done} onChange={() => toggleMutDone(m)} />
+                <input type="checkbox" aria-label={TEXTS.treatedMutualization(teamName.get(m.teamId) ?? TEXTS.teamFallbackLower)} className="mt-1 size-4" checked={m.done} disabled={!canManage} onChange={() => toggleMutDone(m)} />
                 <div className={cn("min-w-0 flex-1", m.done && "line-through")}>
                   <p className="font-medium">
                     {teamById.get(m.teamId)?.isCtc ? <CtcMark partner={teamById.get(m.teamId)?.ctcPartner} /> : null}
@@ -507,6 +516,7 @@ export function WishesTab({
                   </p>
                   <p className="text-xs text-muted-foreground">{TEXTS.mutualizationLine(m.sharedSlots, m.partnerTeamIds.map((id) => teamName.get(id) ?? TEXTS.teamFallbackLower))}</p>
                 </div>
+                <ManagerOnly>
                 <div className="flex shrink-0 gap-1">
                   <Button
                     type="button"
@@ -525,6 +535,7 @@ export function WishesTab({
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
+                </ManagerOnly>
               </li>
             ))}
           </ul>

@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 
+import { isManagementRole } from "@/shared/lib/roles";
 import { useAuthStore } from "@/shared/stores/authStore";
 import { useSeasonStore } from "@/shared/stores/seasonStore";
 
@@ -37,4 +38,15 @@ export function useWorkingSeason(): MeSeason | null {
     ?? me?.seasons.find((sn) => sn.isCurrent)
     ?? null
   );
+}
+
+/**
+ * LA question d'affichage « ce compte peut-il modifier ? » (chantier Membre) : vrai pour une
+ * adhésion ACTIVE de gestion (miroir `shared/lib/roles.ts`), faux pour un Membre, une adhésion
+ * non active ou une session pas encore chargée — on ne propose jamais un geste voué au 403.
+ * Affichage seul : le serveur reste seul juge (`ManagementAccessGuard`).
+ */
+export function useCanManage(): boolean {
+  const { data: me } = useMe();
+  return "active" === me?.membershipStatus && isManagementRole(me.role);
 }

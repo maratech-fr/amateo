@@ -80,7 +80,7 @@ class FakeEventSource {
 }
 
 const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined, role: undefined as string | undefined }));
-vi.mock("@/shared/session/queries", () => ({
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => "admin" === meState.role || "owner" === meState.role,
   useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "s1", hasFinishedVersion: true }, club: meState.club, role: meState.role } }),
   // PR2 — la pose un jour férié lit les fériés de la saison de travail (fenêtre du feed public-holidays).
   useWorkingSeason: () => ({ id: "season-1", name: "2026-2027", startDate: "2026-09-01", endDate: "2027-06-30", isCurrent: true, isReadonly: false }),

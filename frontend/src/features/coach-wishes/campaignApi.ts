@@ -15,8 +15,8 @@ export interface CampaignCoach {
   lastName: string;
   /** Préparé pour C3 (envoi email) — aucun effet en C2. */
   email: string | null;
-  /** Secret 64 hex, sert à bâtir le lien personnel. */
-  token: string;
+  /** Secret 64 hex, sert à bâtir le lien personnel — servi au GESTIONNAIRE seulement (absent pour un Membre). */
+  token?: string;
   /** ISO 8601, ou null si le coach n'a pas encore répondu. */
   respondedAt: string | null;
   /** Dernier envoi du lien par email (C3) — null = jamais envoyé. */

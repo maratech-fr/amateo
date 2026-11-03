@@ -17,7 +17,7 @@ vi.mock("../queries", () => ({
   useUpdateTravelRuleSetting: () => ({ mutate: updateMutate, isPending: false }),
 }));
 
-vi.mock("@/shared/session/queries", () => ({
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true,
   useWorkingSeason: () => ({ isReadonly: readonlyState.value }),
 }));
 

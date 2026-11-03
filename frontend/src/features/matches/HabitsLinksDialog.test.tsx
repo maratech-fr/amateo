@@ -14,6 +14,8 @@ const deleteLink = vi.fn();
 const linksState: { data: TeamLink[] } = { data: [] };
 
 // Le dialog n'affiche plus que les PASSERELLES (P4-271) : on pilote leurs hooks, jamais le réseau.
+// Chantier Membre (PR 2) : les cas de ce fichier sont joués en gestionnaire (`useCanManage`).
+vi.mock("@/shared/session/queries", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/shared/session/queries")>()), useCanManage: () => true }));
 vi.mock("./queries", () => ({
   useTeamLinks: () => ({ data: linksState.data, isError: false }),
   useCreateTeamLink: () => ({ mutate: createLink, isPending: false }),

@@ -11,6 +11,7 @@ import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { dayLabelLongCap } from "@/shared/lib/days";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { compareTeamsByRank, type TeamLike, type TierLike } from "@/shared/lib/teamTiers";
 
 import type { ClubRuleCoherenceRuleRef, MatchWeek, TeamMatchHabit, Venue } from "./api";
@@ -120,6 +121,7 @@ export function IdealSlotsEditor<T extends TeamLike>({
               onDone={() => setAdding(false)}
             />
           ) : (
+            <ManagerOnly>
             <Button
               variant="outline"
               size="sm"
@@ -131,6 +133,7 @@ export function IdealSlotsEditor<T extends TeamLike>({
               <Plus className="size-4" aria-hidden="true" />
               Ajouter un créneau idéal
             </Button>
+            </ManagerOnly>
           )}
         </>
       )}
@@ -289,6 +292,7 @@ function IdealSlotRow<T extends TeamLike>({
             {team.name}
           </span>
           {null !== habit ? <span className="truncate text-sm text-muted-foreground">{slotSummary(habit, venuesById, weekendAlternates)}</span> : null}
+          <ManagerOnly>
           <Button variant="ghost" size="icon" className="ml-auto size-8" aria-label={`Modifier le créneau idéal de ${team.name}`} title="Modifier" onClick={openEdit}>
             <Pencil className="size-4" />
           </Button>
@@ -305,6 +309,7 @@ function IdealSlotRow<T extends TeamLike>({
               <Trash2 className="size-4" />
             </Button>
           ) : null}
+          </ManagerOnly>
         </div>
       )}
 

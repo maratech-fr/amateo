@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router";
 
 import { OfflineScreen } from "@/app/OfflineScreen";
 import { ServerErrorScreen } from "@/app/ServerErrorScreen";
-import { useMe } from "@/shared/session/queries";
+import { useCanManage, useMe } from "@/shared/session/queries";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { useOnline } from "@/shared/lib/online";
 import { useAuthStore } from "@/shared/stores/authStore";
@@ -48,7 +48,9 @@ export function AuthGuard() {
   // reopening a plan must not send an established club back to onboarding.
   const membershipActive = "active" === data?.membershipStatus;
   const onboardingLocked = Boolean(data) && !data?.seasonPlan?.hasFinishedVersion;
-  const showCockpitHint = membershipActive && onboardingLocked && "/" === location.pathname;
+  // Un Membre ne peut pas générer : l'inviter à le faire serait un mensonge (toast ssi gestionnaire).
+  const canManage = useCanManage();
+  const showCockpitHint = canManage && membershipActive && onboardingLocked && "/" === location.pathname;
   useEffect(() => {
     if (showCockpitHint) {
       toast.info("Lancez votre première génération d'abord.");

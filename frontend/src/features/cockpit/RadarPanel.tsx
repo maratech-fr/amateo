@@ -1,6 +1,7 @@
 import { AlertTriangle, CalendarClock, CalendarOff, ChevronDown, MapPin, MessageSquare, OctagonX, PartyPopper, Pencil } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useWorkingSeason } from "@/shared/session/queries";
 import { useUnavailabilityImpact, useVenueClosures, useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
 import { useSchedules, useSlots } from "@/features/planning/queries";
@@ -507,9 +508,11 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
           <RadarCard key={`wip-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail={COCKPIT_TEXTS.resumePlanning}>
-            <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
-              {COCKPIT_TEXTS.resume}
-            </Button>
+            <ManagerOnly>
+              <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
+                {COCKPIT_TEXTS.resume}
+              </Button>
+            </ManagerOnly>
           </RadarCard>
         );
       })}
@@ -519,9 +522,11 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
           <RadarCard key={`orphan-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail={COCKPIT_TEXTS.weekPlanningToFinalize}>
-            <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
-              {COCKPIT_TEXTS.resume}
-            </Button>
+            <ManagerOnly>
+              <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
+                {COCKPIT_TEXTS.resume}
+              </Button>
+            </ManagerOnly>
           </RadarCard>
         );
       })}
@@ -578,16 +583,17 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
               const child = group.child;
               if (null === child) {
                 return (
-                  <Button
-                    key={group.key}
-                    variant="outline"
-                    size="sm"
-                    disabled={createWeekChildren.isPending || !socleValidated}
-                    disabledReason={!socleValidated ? lockTitle : undefined}
-                    onClick={() => createOneWeek(m, group.weeks[0])}
-                  >
-                    {`+ sem. du ${frDateShort(group.startDate)}`}
-                  </Button>
+                  <ManagerOnly key={group.key}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={createWeekChildren.isPending || !socleValidated}
+                      disabledReason={!socleValidated ? lockTitle : undefined}
+                      onClick={() => createOneWeek(m, group.weeks[0])}
+                    >
+                      {`+ sem. du ${frDateShort(group.startDate)}`}
+                    </Button>
+                  </ManagerOnly>
                 );
               }
               const activeId = activeByEntry.get(child.id) ?? null;
@@ -645,10 +651,13 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                 {COCKPIT_TEXTS.viewPlanning}
               </Button>
             ) : entry ? (
-              <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
-                {COCKPIT_TEXTS.adapt}
-              </Button>
+              <ManagerOnly>
+                <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
+                  {COCKPIT_TEXTS.adapt}
+                </Button>
+              </ManagerOnly>
             ) : (
+              <ManagerOnly>
               <Button
                 variant="outline"
                 size="sm"
@@ -671,6 +680,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
               >
                 {COCKPIT_TEXTS.adapt}
               </Button>
+              </ManagerOnly>
             )}
           </RadarCard>
         );
@@ -718,6 +728,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
             title={`${venueNameOf(u.venueId)} indisponible${null !== u.label ? ` (${u.label})` : ""}`}
             detail={`${when} · ${what}`}
           >
+            <ManagerOnly>
             <Button
               variant="outline"
               size="sm"
@@ -741,6 +752,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
             >
               {COCKPIT_TEXTS.adapt}
             </Button>
+            </ManagerOnly>
           </RadarCard>
         );
       })}
@@ -889,16 +901,20 @@ function ClosureRadarItem({ entry, activeScheduleId, inProgress = false, seasonU
           </Button>
           {/* Overlay validé → « Ajuster » retouche un secondaire existant (pas une
               création) : jamais bloqué par le gating saison. */}
-          <Button variant="ghost" size="sm" onClick={onAdapt}>
-            {COCKPIT_TEXTS.adjust}
-          </Button>
+          <ManagerOnly>
+            <Button variant="ghost" size="sm" onClick={onAdapt}>
+              {COCKPIT_TEXTS.adjust}
+            </Button>
+          </ManagerOnly>
         </>
       ) : (
         // Gating seulement sur une fermeture À DÉMARRER (« Adapter ») ; « Reprendre »
         // (travail en cours) reste actif même si la saison est rouverte.
-        <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} disabledReason={!inProgress && seasonUnvalidated ? adaptTitle : undefined} onClick={onAdapt}>
-          {inProgress ? "Reprendre" : "Adapter"}
-        </Button>
+        <ManagerOnly>
+          <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} disabledReason={!inProgress && seasonUnvalidated ? adaptTitle : undefined} onClick={onAdapt}>
+            {inProgress ? "Reprendre" : "Adapter"}
+          </Button>
+        </ManagerOnly>
       )}
     </RadarCard>
   );

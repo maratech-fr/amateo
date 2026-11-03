@@ -9,6 +9,8 @@ import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import type { TeamLike } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
 
 import type { Competition } from "./api";
 import { frShortDate } from "./lib/deadlineLabel";
@@ -36,6 +38,8 @@ import { MATCHES_ENTRY_DEADLINES_TEXTS as TEXTS } from "./texts/entryDeadlines";
  */
 export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }: { competitions: Competition[]; teams: T[] }) {
   const setDeadlines = useSetEntryDeadlines();
+  // Un Membre lit les échéances : ni cases, ni saisie groupée.
+  const canManage = useCanManage();
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"missing" | "all">("all");
   const [date, setDate] = useState("");
@@ -118,7 +122,8 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
 
       {visibleRows.length > 0 ? (
         <>
-          {/* La barre de saisie groupée : une date, appliquée aux lignes cochées. */}
+          {/* La barre de saisie groupée : une date, appliquée aux lignes cochées. Gestionnaire seul. */}
+          <ManagerOnly>
           <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border px-3 py-2">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {TEXTS.deadlineLabel}
@@ -141,11 +146,13 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
               {allChecked ? TEXTS.uncheckAll : TEXTS.checkAll}
             </Button>
           </div>
+          </ManagerOnly>
 
           <ul className="flex flex-col gap-1.5">
             {visibleRows.map((c) => (
               <li key={c.id} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
                 <label className="flex min-w-0 flex-1 items-center gap-3">
+                  {canManage ? (
                   <input
                     type="checkbox"
                     aria-label={TEXTS.rowAria(c.name, teamName(c.teamId))}
@@ -153,6 +160,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
                     checked={checked.has(c.id)}
                     onChange={() => toggle(c.id)}
                   />
+                  ) : null}
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{c.name}</span>
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">

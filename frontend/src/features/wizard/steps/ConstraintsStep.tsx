@@ -24,6 +24,7 @@ import { groupTagsByAxis, tagLabel } from "../lib/tagLabels";
 import { WIZARD_TEXTS } from "../texts";
 import { excludeTagNames, targetTagNames } from "@/shared/lib/tagTeamIds";
 import { cn } from "@/shared/lib/utils";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 
 import type { Constraint, ConstraintFamily, ConstraintPayload, ConstraintRuleType } from "../api";
 import { dayLabelLong } from "@/shared/lib/days";
@@ -858,6 +859,8 @@ export function ConstraintsStep() {
               rangée 1 = la sélection (cible/coach · mode · type de règle), rangée 2 = les valeurs
               concrètes + le bouton d'action à droite (`ml-auto`). Plus de `flex-wrap` unique où le
               bouton tombe en orphelin dès que la ligne déborde à 1280 px (P4-283). */}
+          {/* Formulaire d'ajout/édition : geste de gestionnaire, absent pour un Membre (il lit la liste). */}
+          <ManagerOnly>
           <div ref={formRef} className="mb-4 flex w-full flex-col gap-2 rounded-lg border border-border bg-card p-3">
             {/* Rangée 1 — la sélection (cible/coach · mode · type de règle). */}
             <div className="flex flex-wrap items-center gap-2">
@@ -1025,6 +1028,7 @@ export function ConstraintsStep() {
               )}
             </div>
           </div>
+          </ManagerOnly>
 
       {/* List for the active family — grouped by group (tag) then team (ranked). */}
       {0 === list.length ? (
@@ -1118,6 +1122,7 @@ export function ConstraintsStep() {
                           // `p-1.5 -m-1.5` : 28 px cliquables autour d'une icône de 16, SANS
                           // épaissir la ligne — la passe de design nommait `w-6 h-6` comme le
                           // mauvais exemple de cible de clic.
+                          <ManagerOnly>
                           <div className="flex items-center justify-end gap-1">
                             <button type="button" aria-label={`Modifier la contrainte « ${RULE_LABEL[c.ruleType]} »`} className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-foreground" onClick={() => editConstraint(c)}>
                               <Pencil className="size-4" />
@@ -1126,6 +1131,7 @@ export function ConstraintsStep() {
                               <Trash2 className="size-4" />
                             </button>
                           </div>
+                          </ManagerOnly>
                         )}
                       </TableCell>
                     </TableRow>

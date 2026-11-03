@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 
 /** « 4 févr. » from Y-m-d. */
 const frDate = (ymd: string): string => new Date(`${ymd}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
@@ -59,6 +60,7 @@ export function VenueUnavailabilityCard() {
           <CalendarOff className="size-4 text-warning" />
           Indisponibilités gymnase
         </h2>
+        <ManagerOnly>
         <Button
           variant="outline"
           size="sm"
@@ -73,6 +75,7 @@ export function VenueUnavailabilityCard() {
           <Plus className="size-4" />
           Déclarer
         </Button>
+        </ManagerOnly>
       </div>
 
       {unavailabilitiesQuery.isError ? (
@@ -108,6 +111,7 @@ export function VenueUnavailabilityCard() {
                       <p className="text-xs text-destructive">Impact non évalué — rechargez la page.</p>
                     ) : null}
                   </div>
+                  <ManagerOnly>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -118,6 +122,7 @@ export function VenueUnavailabilityCard() {
                   >
                     <Trash2 className="size-4" />
                   </Button>
+                  </ManagerOnly>
                 </div>
               </li>
             );

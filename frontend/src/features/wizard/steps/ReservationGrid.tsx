@@ -14,6 +14,8 @@ interface Props {
   slotKeyOf: (slot: VenueTrainingSlot) => string;
   capacityOf: (slot: VenueTrainingSlot) => number;
   onSelectSlot: (slot: VenueTrainingSlot) => void;
+  /** Consultation (Membre) : les cases se lisent mais ne s'ouvrent pas. Faux par défaut. */
+  readOnly?: boolean;
   /**
    * Fermetures de gymnase (P2-22, D1/D2) — venue-scoped. Un créneau d'un jour fermé est barré ;
    * SANS réservation il est désactivé (rien à y ajouter), AVEC réservation il reste cliquable
@@ -41,7 +43,7 @@ interface Props {
  * not create them), and each slot shows the team(s) reserved on it + its
  * remaining capacity, click → the assign modal.
  */
-export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capacityOf, onSelectSlot, closures = [], blockCompleteSlots, blockLabels }: Props) {
+export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capacityOf, onSelectSlot, closures = [], blockCompleteSlots, blockLabels, readOnly = false }: Props) {
   const color = venue.color ?? "var(--accent)";
 
   // Dynamic vertical range: only the hours that actually hold slots for THIS
@@ -112,11 +114,12 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
             <button
               key={slot.id}
               type="button"
-              disabled={disabled}
+              disabled={disabled || readOnly}
               onClick={() => onSelectSlot(slot)}
-              aria-label={`${dayLabel} ${hhmm(slot.startTime)} · ${venue.name}${"" !== groupLabel ? ` · ${groupLabel}` : ""} · ${occupancyText}${closedBy ? ` · ${closedText}` : ""} — cliquer pour gérer`}
+              aria-label={`${dayLabel} ${hhmm(slot.startTime)} · ${venue.name}${"" !== groupLabel ? ` · ${groupLabel}` : ""} · ${occupancyText}${closedBy ? ` · ${closedText}` : ""}${readOnly ? "" : " — cliquer pour gérer"}`}
               className={cn(
-                "z-10 m-px flex flex-col items-start gap-0.5 overflow-hidden rounded border border-border border-l-4 px-1 py-0.5 text-left text-[10px] leading-tight hover:ring-1 hover:ring-accent",
+                "z-10 m-px flex flex-col items-start gap-0.5 overflow-hidden rounded border border-border border-l-4 px-1 py-0.5 text-left text-[10px] leading-tight",
+                readOnly ? "" : "hover:ring-1 hover:ring-accent",
                 closedBy ? "line-through" : "",
               )}
               style={{ gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, borderLeftColor: color, backgroundColor: `color-mix(in oklch, ${color} 30%, var(--card))` }}

@@ -78,7 +78,7 @@ vi.mock("../store", () => ({
 
 import { VenuesStep } from "./VenuesStep";
 
-const GYM: Venue = { id: "v1", name: "Gymnase Un", color: "#E6194B", canSplit: false, isActive: true, externalRef: "S123", address: null, latitude: 45.7, longitude: 4.8 };
+const GYM: Venue = { id: "v1", name: "Gymnase Un", color: "#E6194B", canSplit: false, isActive: true, externalRef: "S123", address: null, latitude: "45.7", longitude: "4.8" };
 
 function Harness() {
   const [extra, setExtra] = useState<ReactNode>(null);

@@ -12,7 +12,7 @@ import { useNavTransition } from "@/shared/stores/navTransitionStore";
 // à null (état 2 : version terminée, non pointée) pour exercer le wizard ENCORE éditable — le socle
 // validé verrouille Contraintes/Génération et passe la grille des créneaux en lecture seule (P4-268).
 let socleChosen: string | null = "b1";
-vi.mock("@/shared/session/queries", () => ({
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true,
   useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: socleChosen, hasFinishedVersion: true }, club: { id: "c", name: "C", onboardingCompleted: true } } }),
   // Le panneau des règles du système (dans l'étape Contraintes) lit la saison de travail pour
   // savoir si elle est archivée (lecture seule). Non-archivée par défaut ici.

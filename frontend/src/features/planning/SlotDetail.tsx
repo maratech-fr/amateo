@@ -1,5 +1,6 @@
 import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, Move, Trash2, Users, X } from "lucide-react";
 
+import { useCanManage } from "@/shared/session/queries";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useState } from "react";
 
@@ -146,6 +147,9 @@ const noName = (): string | undefined => undefined;
 
 export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, teamMainCoaches, busy, moveState = { status: "idle" }, readOnly = false, gesturesBlockedReason = null, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
   const gesturesBlocked = null !== gesturesBlockedReason;
+  // Un Membre lit la séance (équipe, gymnase, coach, contraintes) : aucun geste de retouche,
+  // quoi que l'écran passe en `readOnly` (la session suffit).
+  const canManage = useCanManage();
   const blockedReasonProp = gesturesBlockedReason ?? undefined;
   // Repliées par défaut : ouvrir un créneau ne doit pas agrandir l'aside (retour fondateur).
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
@@ -246,7 +250,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           ) : null}
         </div>
 
-        {readOnly ? (
+        {!canManage ? null : readOnly ? (
           <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{PLANNING_TEXTS.readOnlyPlanningSlot}</p>
         ) : (
         <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
@@ -376,7 +380,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
             MOTIF découvrable au clavier (disabledReason) si le planning est validé (lecture seule) ou
             si la séance fait déjà partie d'un groupe. Rendu même en lecture seule pour porter son
             motif, contrairement aux gestes Déplacer/Verrouiller (qui disparaissent). */}
-        {undefined !== onMutualize ? (
+        {undefined !== onMutualize && canManage ? (
           <div className="mt-3 border-t border-border pt-3">
             <Button
               size="sm"

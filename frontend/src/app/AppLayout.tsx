@@ -15,6 +15,7 @@ import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { CreditBadge } from "@/shared/credits/CreditBadge";
 import { CreditsBanner } from "@/shared/credits/CreditsBanner";
 import { DeploymentNoticeBanner } from "@/shared/deployment/DeploymentNoticeBanner";
+import { ClubClosingBanner } from "@/shared/session/ClubClosingBanner";
 import { useApplyClubTheme } from "@/shared/hooks/useApplyClubTheme";
 import { useApplySentryIdentity } from "@/shared/hooks/useApplySentryIdentity";
 import { useApplySimulatedClock } from "@/shared/hooks/useApplySimulatedClock";
@@ -203,6 +204,7 @@ export function AppLayout() {
         </div>
       </header>
       <main className="px-4 py-8 lg:px-6 xl:px-8" aria-busy={navigating}>
+        <ClubClosingBanner />
         <ReadonlySeasonBanner />
         <SeasonTransitionBanner />
         <CreditsBanner />

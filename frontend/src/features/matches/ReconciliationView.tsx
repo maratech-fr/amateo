@@ -2,6 +2,8 @@ import { ArrowLeft, CalendarPlus, FileWarning, Info, Radar } from "lucide-react"
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
@@ -46,6 +48,7 @@ export function ReconciliationView() {
   if (null === payload) {
     return (
       <div className="flex flex-col gap-3">
+        <ReadOnlyNotice />
         <EmptyState
           icon={FileWarning}
           title="Rien à examiner"
@@ -89,6 +92,8 @@ export function ReconciliationView() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Un Membre lit les rencontres publiées ; il n'intègre rien. */}
+      <ReadOnlyNotice />
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h2 className="text-base font-semibold">Rencontres publiées par la FFBB</h2>
         {/* Provenance — le gestionnaire sait toujours d'où vient ce qu'il regarde. */}
@@ -124,9 +129,11 @@ export function ReconciliationView() {
         <Button variant="ghost" size="sm" onClick={backToLoop}>
           Abandonner
         </Button>
-        <Button size="sm" disabled={applyFfbb.isPending || nothingToApply} onClick={integrate}>
-          {applyFfbb.isPending ? "Intégration…" : "Intégrer"}
-        </Button>
+        <ManagerOnly>
+          <Button size="sm" disabled={applyFfbb.isPending || nothingToApply} onClick={integrate}>
+            {applyFfbb.isPending ? "Intégration…" : "Intégrer"}
+          </Button>
+        </ManagerOnly>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 
 import { Button } from "@/shared/components/ui/button";
@@ -209,17 +210,21 @@ export function SharedTrainingBlockPanel({
           {listedBlocks.map((b) => (
             <li key={b.id} className={cn("flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm", editingId === b.id ? "border-accent ring-1 ring-accent" : "border-border")}>
               <span className="flex-1">{displayNameOf(b)}</span>
+              <ManagerOnly>
               <button type="button" aria-label={T.blockEditAria(blockNames(b.teamIds))} className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => editBlock(b)}>
                 <Pencil className="size-4" />
               </button>
               <button type="button" aria-label={T.blockDeleteAria(blockNames(b.teamIds))} className="rounded p-1 text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(b)}>
                 <Trash2 className="size-4" />
               </button>
+              </ManagerOnly>
             </li>
           ))}
         </ul>
       )}
 
+      {/* Créer / modifier un groupe : geste de gestionnaire, absent pour un Membre. */}
+      <ManagerOnly>
       <div ref={formRef} className="mt-4">
         <AccordionSection title={null !== editingId ? T.blockEditTitle : T.blockNewTitle} open={formOpen} onToggle={toggleForm}>
           {0 === candidates.length ? (
@@ -310,6 +315,7 @@ export function SharedTrainingBlockPanel({
           )}
         </AccordionSection>
       </div>
+      </ManagerOnly>
 
       <ConfirmDialog
         open={pendingDelete !== null}

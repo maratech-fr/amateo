@@ -2,6 +2,7 @@ import { ChevronDown, Pencil } from "lucide-react";
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -146,6 +147,8 @@ export function ConfigurationPage() {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Un Membre lit la configuration ; chaque éditeur masque lui-même ses gestes. */}
+      <ReadOnlyNotice />
       {/* 1. Les échéances de saisie ligue/comité — une par compétition. */}
       <AccordionSection {...sectionProps("echeances")} title={sectionTitle("Échéances de saisie", deadlinesSummary(competitions.data))}>
         <SectionBody query={competitions} render={(data) => <EntryDeadlinesEditor competitions={data} teams={teamsData} />} />

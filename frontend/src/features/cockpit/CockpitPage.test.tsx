@@ -11,7 +11,7 @@ import { PUBLIC_HOLIDAY_HORIZON_DAYS } from "./RadarPanel";
 
 let meData: { seasonPlan: { id: string; name: string; chosenScheduleId: string | null; hasFinishedVersion: boolean } } | null = null;
 
-vi.mock("@/shared/session/queries", () => ({
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true,
   useMe: () => ({ data: meData, isLoading: false }),
   useWorkingSeason: () => ({ id: "sn1", name: "2026-2027", startDate: "2026-08-01", endDate: "2027-07-31", isCurrent: true, isReadonly: false }),
 }));

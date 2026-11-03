@@ -4,12 +4,14 @@ import { type ReactNode, useId, useRef, useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useTodayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
-import { useWorkingSeason } from "@/shared/session/queries";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage, useWorkingSeason } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import { type ClosureWindowEffect, type ClosureWindowEffectKind, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
@@ -50,6 +52,8 @@ interface ClosureWindowDialogProps {
 export function ClosureWindowDialog({ plan, onClose, onApplied, onOpenConflict, fromList = false }: ClosureWindowDialogProps) {
   const today = useTodayISO();
   const workingSeason = useWorkingSeason();
+  // Un Membre lit la fenêtre de fermeture, ne la re-date pas.
+  const canManage = useCanManage();
   const preview = useClosureWindowPreview();
   const apply = useApplyClosureWindow();
 
@@ -166,7 +170,7 @@ export function ClosureWindowDialog({ plan, onClose, onApplied, onOpenConflict, 
       onClose={onClose}
       size="md"
       footer={
-        <>
+        <ManagerOnly>
           <Button variant="outline" disabled={!changed || !valid || busy} disabledReason={busy ? COCKPIT_TEXTS.loadingEffects : undefined} onClick={() => void loadPreview()}>
             {busy ? <Spinner className="size-4" /> : null}
             {COCKPIT_TEXTS.seeEffects}
@@ -179,11 +183,11 @@ export function ClosureWindowDialog({ plan, onClose, onApplied, onOpenConflict, 
           >
             {COCKPIT_TEXTS.confirm}
           </Button>
-        </>
+        </ManagerOnly>
       }
     >
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-2">
+        <ReadOnlyFieldset readOnly={!canManage} className="grid grid-cols-2 gap-2">
           <label className="block text-xs text-muted-foreground">
             Du
             <Input
@@ -201,7 +205,7 @@ export function ClosureWindowDialog({ plan, onClose, onApplied, onOpenConflict, 
             Jusqu'au
             <Input type="date" className="mt-1" value={endDate} min={plan.minEndDate} max={workingSeason?.endDate} onChange={(e) => changeEnd(e.target.value)} />
           </label>
-        </div>
+        </ReadOnlyFieldset>
         {started ? (
           <p id={hintId} className="text-xs text-muted-foreground">
             {COCKPIT_TEXTS.startFrozenHint}

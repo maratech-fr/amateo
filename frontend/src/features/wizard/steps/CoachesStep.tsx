@@ -12,6 +12,7 @@ import { TeamSelect } from "@/shared/components/ui/team-select";
 import { coachFullName } from "@/shared/lib/coachName";
 import { capitalizeWord, COACH_GENDER_OPTIONS, playerWord, salariedWord, vehicledWord } from "@/shared/lib/coachWording";
 import { stripDiacritics } from "@/shared/lib/utils";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 
 import type { Coach, CoachPlayerMembership, PriorityTier, Team, TeamCoach, TeamCoachRole } from "../api";
 import {
@@ -110,7 +111,9 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
     }
   };
 
+  // Éditer / supprimer : gestes de gestionnaire, absents pour un Membre (qui lit la carte).
   const actions = (
+    <ManagerOnly>
     <div className="flex shrink-0 items-center gap-1">
       <Button size="sm" variant={editing ? "outline" : "ghost"} aria-label={editing ? "Terminer l'édition" : "Éditer le coach"} onClick={onToggleEdit}>
         {editing ? <Check className="size-4" /> : <Pencil className="size-4" />}
@@ -120,6 +123,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
         <Trash2 className="size-4" />
       </Button>
     </div>
+    </ManagerOnly>
   );
 
   return (
@@ -424,6 +428,7 @@ function CoachesEditor() {
           (planning en vigueur), on le SIGNALE ici, rafraîchi après chaque mutation de lien. */}
       <PlacedConflictsNotice conflicts={placedConflicts?.conflicts ?? []} role="status" className="mb-4" />
 
+      <ManagerOnly>
       <form onSubmit={add} className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
         <Input
           ref={firstRef}
@@ -451,6 +456,7 @@ function CoachesEditor() {
           Ajouter le coach
         </Button>
       </form>
+      </ManagerOnly>
 
       {/* AUD-A11Y-13 — `aria-invalid` disait « ce champ est fautif » sans jamais dire
           POURQUOI : le message existait à côté, non relié. Un lecteur d'écran l'annonce

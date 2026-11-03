@@ -7,6 +7,7 @@ import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import type { TeamLike, TierLike } from "@/shared/lib/teamTiers";
+import { useCanManage } from "@/shared/session/queries";
 
 import type { TeamLink, TeamLinkIntensity, TeamLinkType } from "./api";
 import { useCreateTeamLink, useDeleteTeamLink, useTeamLinks, useUpdateTeamLink } from "./queries";
@@ -39,13 +40,17 @@ export function TeamLinksSection<T extends TeamLike>({
   teams,
   tiers,
   filterTeamId,
-  readOnly = false,
+  readOnly: periodReadOnly = false,
 }: {
   teams: T[];
   tiers: TierLike[];
   filterTeamId?: string;
   readOnly?: boolean;
 }) {
+  // Lecture seule : structure de saison vue d'une période (prop de l'écran), OU Membre (la session
+  // suffit, sans que l'écran ait à le dire).
+  const canManage = useCanManage();
+  const readOnly = periodReadOnly || !canManage;
   const linksQuery = useTeamLinks();
   const links = linksQuery.data ?? [];
   const filteredLinks = undefined === filterTeamId ? links : links.filter((l) => l.teamAId === filterTeamId || l.teamBId === filterTeamId);

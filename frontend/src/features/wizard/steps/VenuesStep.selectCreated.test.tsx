@@ -68,7 +68,7 @@ vi.mock("../queries", () => ({
 
 vi.mock("@/features/matches/queries", () => ({ useVenueMatchWindows: () => ({ data: [] }) }));
 vi.mock("@/features/matches/MatchWindowsEditor", () => ({ MatchWindowsEditor: () => null }));
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: { id: "club-1", postalCode: "69100" } } }), useWorkingSeason: () => undefined }));
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true, useMe: () => ({ data: { club: { id: "club-1", postalCode: "69100" } } }), useWorkingSeason: () => undefined }));
 // La modale d'import du parc n'est pas rendue ici (parcOpen reste faux) ; on la neutralise pour
 // isoler VenuesStep de tout son graphe de modules.
 vi.mock("../parcImport/ParcImportModal", () => ({ ParcImportModal: () => null }));

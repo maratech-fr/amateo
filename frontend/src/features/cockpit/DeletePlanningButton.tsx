@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSchedules } from "@/features/planning/queries";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { toast } from "@/shared/stores/toastStore";
 
 import { useDeleteEntry, useSchedulePlanForEntry } from "./queries";
@@ -58,8 +59,9 @@ export function DeletePlanningButton({ calendarEntryId, schedulePlanId, title, o
     setConfirming(false);
   };
 
+  // Un Membre ne supprime aucun planning : le bouton n'existe pas pour lui.
   return (
-    <>
+    <ManagerOnly>
       {iconOnly ? (
         <Button variant="ghost" size="icon" className={className ?? "size-8 text-muted-foreground hover:text-destructive"} aria-label={`Supprimer ${title}`} title="Supprimer" disabled={deleteEntry.isPending} onClick={() => setConfirming(true)}>
           <Trash2 className="size-4" />
@@ -84,6 +86,6 @@ export function DeletePlanningButton({ calendarEntryId, schedulePlanId, title, o
         onConfirm={confirmDelete}
         onCancel={() => setConfirming(false)}
       />
-    </>
+    </ManagerOnly>
   );
 }

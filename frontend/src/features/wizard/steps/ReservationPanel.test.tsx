@@ -6,6 +6,8 @@ import { ReservationPanel } from "./ReservationPanel";
 
 // Les hooks de données sont mockés : ce test ne porte que sur le TEXTE d'intro du panneau
 // (la survie des verrous à la régénération), pas sur la grille elle-même.
+// Chantier Membre (PR 2) : les cas de ce fichier sont joués en gestionnaire (`useCanManage`).
+vi.mock("@/shared/session/queries", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/shared/session/queries")>()), useCanManage: () => true }));
 vi.mock("../queries", () => ({
   useGridSlots: () => ({ data: [] }),
   useReservations: () => ({ data: [] }),

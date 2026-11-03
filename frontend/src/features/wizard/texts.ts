@@ -261,4 +261,5 @@ export const WIZARD_TEXTS = {
   reservationCoachUnavailable: (coach: string) => `${coach} est indisponible à cette heure`,
   blockNamePlaceholder: "Nom du groupe (facultatif)",
   generationBlocked: "Des conditions bloquent la génération",
+  readOnlyIncomplete: "Configuration incomplète : un gestionnaire doit la compléter avant de générer.",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

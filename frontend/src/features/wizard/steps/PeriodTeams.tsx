@@ -14,9 +14,12 @@ import { Button } from "@/shared/components/ui/button";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/lib/utils";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { Team, TeamPeriodOverride } from "../api";
@@ -82,6 +85,8 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   const update = useUpdateTeamPeriodOverride(schedulePlanId);
   const del = useDeleteTeamPeriodOverride(schedulePlanId);
   const [busy, setBusy] = useState(false);
+  // Un Membre lit la sélection : jamais d'amorçage (écriture au montage), aucun réglage.
+  const canManage = useCanManage();
   // P2-51 — le repère « mutualisée » DOIT figurer aussi en période, sinon il mentirait par
   // omission : les blocs de mutualisation de CETTE période (schedulePlanId derrière PeriodAnchorGate).
   const { data: sharedBlocks = [] } = useSharedTrainingBlocks(schedulePlanId);
@@ -181,7 +186,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
     // désactivait la moitié du club EN ARRIÈRE-PLAN, pendant que l'écran affichait
     // « Impossible de charger la sélection ». Le gestionnaire ne voyait rien, et
     // retrouvait une sélection qu'il n'avait pas faite (ou générait sans le savoir).
-    if (isLoading || overridesFailed || planLoading || undefined === entry || 0 === teams.length || overrides.length > 0 || null === topTierId || false !== plan?.teamSelectionInitialized || periodSeedWasClaimed(calendarEntryId)) {
+    if (!canManage || isLoading || overridesFailed || planLoading || undefined === entry || 0 === teams.length || overrides.length > 0 || null === topTierId || false !== plan?.teamSelectionInitialized || periodSeedWasClaimed(calendarEntryId)) {
       return;
     }
     claimPeriodSeed(calendarEntryId);
@@ -196,7 +201,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: gate the controls while the async default-selection writes settle
     setBusy(true);
     void Promise.allSettled(toDeactivate.map((t) => create.mutateAsync({ schedulePlanId: plan.id, teamId: t.id, isActive: false }))).finally(() => setBusy(false));
-  }, [isLoading, overridesFailed, planLoading, plan, entry, isClosure, teams, tiers, overrides, topTierId, calendarEntryId, create]);
+  }, [canManage, isLoading, overridesFailed, planLoading, plan, entry, isClosure, teams, tiers, overrides, topTierId, calendarEntryId, create]);
 
   const toggle = (t: Team, value: boolean) => upsert(t, { isActive: value, sessions: overrideOf.get(t.id)?.sessionsPerWeek ?? null });
   const setSessions = (t: Team, raw: number) => {
@@ -271,6 +276,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
           </>
         )}
       </p>
+      <ManagerOnly>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void rampTo(0)}>
           Fanion seul
@@ -290,6 +296,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
           </span>
         ) : null}
       </div>
+      </ManagerOnly>
 
       <div className="flex flex-col gap-1.5">
         {groups.map((g) => (
@@ -300,7 +307,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                 <div key={t.id} className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 text-sm last:border-0">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={active} disabled={busy} onChange={(e) => toggle(t, e.target.checked)} aria-label={`${t.name} active cette période`} />
+                      <input type="checkbox" checked={active} disabled={busy || !canManage} onChange={(e) => toggle(t, e.target.checked)} aria-label={`${t.name} active cette période`} />
                       <span className={cn("flex items-center", !active && "text-muted-foreground line-through")}>
                         {true === t.isCtc ? <CtcMark partner={t.ctcPartner} /> : null}
                         {t.name}
@@ -316,6 +323,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                     {seasonSlotConstraintOf.has(t.id) ? (
                       <span className="inline-flex items-center gap-1">
                         <StatusPill variant="neutral">garde ses créneaux de saison</StatusPill>
+                        <ManagerOnly>
                         <Button
                           size="icon-sm"
                           variant="ghost"
@@ -325,10 +333,12 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                         >
                           <X className="size-3.5" />
                         </Button>
+                        </ManagerOnly>
                       </span>
                     ) : null}
                   </div>
                   <div className="flex items-center gap-2">
+                    <ReadOnlyFieldset readOnly={!canManage}>
                     <label className={cn("flex items-center gap-1 text-xs text-muted-foreground", !active && "opacity-50")}>
                       séances
                       <Input
@@ -343,6 +353,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                         aria-label={`Séances de ${t.name} cette période`}
                       />
                     </label>
+                    </ReadOnlyFieldset>
                     {/* P2-45 — l'affordance « Liens » (même geste qu'en saison) : passerelles (lecture
                         seule ici) + mutualisation (éditable, ancrée au plan de la période). */}
                     <Button size="icon" variant="ghost" className="size-8" aria-label={`Liens de ${t.name}`} onClick={() => setLinksTeam(t)}>
