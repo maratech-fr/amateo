@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\Entity\CalendarEntry;
+use App\Entity\Club;
 use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
+use App\Entity\Season;
+use App\Entity\User;
 use App\Enum\AuditAction;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -313,8 +316,8 @@ final class ClosureRemovesPinsAtomicallyTest extends WebTestCase
     {
         $club = $d['club'];
         $season = $d['season'];
-        self::assertInstanceOf(\App\Entity\Club::class, $club);
-        self::assertInstanceOf(\App\Entity\Season::class, $season);
+        self::assertInstanceOf(Club::class, $club);
+        self::assertInstanceOf(Season::class, $season);
         $this->scopeGucToClub($club->getId());
         $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::CLOSURE)->setTitle('Mistral en travaux')
@@ -347,7 +350,7 @@ final class ClosureRemovesPinsAtomicallyTest extends WebTestCase
     private function putEntryDates(array $d, string $entryId, string $start, string $end, array $extra = []): void
     {
         $user = $d['user'];
-        self::assertInstanceOf(\App\Entity\User::class, $user);
+        self::assertInstanceOf(User::class, $user);
         $this->client->request('PUT', '/api/calendar_entries/' . $entryId, [], [], $this->decorHeaders($user), json_encode([
             'kind' => 'period', 'periodType' => 'closure', 'title' => 'Mistral en travaux', 'startDate' => $start, 'endDate' => $end,
         ] + $extra, \JSON_THROW_ON_ERROR));
@@ -372,7 +375,7 @@ final class ClosureRemovesPinsAtomicallyTest extends WebTestCase
         return $id;
     }
 
-    private function servedStructureHash(\App\Entity\User $user, string $planId): ?string
+    private function servedStructureHash(User $user, string $planId): ?string
     {
         $this->client->request('GET', '/api/schedule_plans/' . $planId . '/structure-hash', [], [], $this->decorHeaders($user));
         self::assertResponseIsSuccessful();

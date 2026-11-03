@@ -23,7 +23,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 /**
  * Capacity layer HTTP contract (P1-4 PR B): venue match windows CRUD with their
  * business validations. (Venue unavailabilities and their impact feed are gone: a
- * calendar closure is the single fact entered — its impact lives in VenueClosureImpact.)
+ * calendar closure is the single fact entered — its impact lives in VenueClosureImpact.).
  */
 #[Group('integration')]
 final class VenueCapacityApiTest extends WebTestCase

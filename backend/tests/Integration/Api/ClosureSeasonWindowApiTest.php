@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\User;
 use App\Tests\ClosurePinDecorTrait;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -55,7 +56,7 @@ final class ClosureSeasonWindowApiTest extends WebTestCase
         parent::tearDown();
     }
 
-    private function postClosureEntry(\App\Entity\User $user, string $start, string $end): void
+    private function postClosureEntry(User $user, string $start, string $end): void
     {
         $this->client->request('POST', '/api/calendar_entries', [], [], $this->decorHeaders($user), json_encode([
             'kind' => 'period', 'periodType' => 'closure', 'title' => 'Mistral indisponible', 'startDate' => $start, 'endDate' => $end,
