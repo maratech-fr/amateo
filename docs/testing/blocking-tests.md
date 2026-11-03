@@ -193,6 +193,8 @@ refusé 409, route sous les gardes rôle+tenant) ·
 `Security/MemberRoleTest` (rôles Gestionnaire/Membre, dernier gestionnaire ; garde aussi, P4-77,
 qu'un compte EFFACÉ RGPD — `User::anonymizedAt` — ne se réactive ni ne s'approuve, 409 dans les
 deux cas) ·
+`Security/MemberWriteSweepTest` (axe *auth & memberships* : un Membre ne modifie rien — le routeur est confronté dans les deux sens à une table nominative où chaque écriture `^/api/` est décidée ; chaque ligne `403` est jouée par un Membre aux ids réels d'un club semé, 403 exact, empreinte des tables du club, mails et files inchangés ; les quatre routes de la demande « devenir gestionnaire » sont inscrites et tolérées absentes jusqu'à leur livraison) ·
+`Security/MemberReadsAreSideEffectFreeTest` (axe *auth & memberships* : un Membre lit tout et lire ne change rien — les lectures ouvertes répondent 200 sans écriture, message ni appel sortant ; les lectures sortantes FFBB/géocodage restent 403 sans appel ; le lien personnel d'un coach n'est jamais servi au Membre, ni dans la campagne ni dans l'aperçu ; un logo adverse non stocké n'est pas téléchargé pour lui ; « Générer » refusé ne consomme pas le cap du club ; l'export reste ouvert, le PDF compté sur le club) ·
 `Security/ScheduleCapabilityParityTest` (capacité affichée == verdict) ·
 `Security/TeamTagScopeTest` (portée d'un tag = ce que le solveur applique) ·
 `Integration/Service/LockOriginProvenanceTest` (origine d'un verrou VRAIE : réservation → RESERVATION, épinglage → MANUAL — y compris un verrou MANUAL HÉRITÉ de la version SOURCE à « Régénérer » (V1), jamais dégradé en UNKNOWN (ce qui faussait aussi le compteur de la saison) —, indécidable → UNKNOWN, jamais deviné) ·
