@@ -24,7 +24,12 @@ final class InactivityMailBuilder
         private readonly ProductIdentity $productIdentity = new ProductIdentity,
     ) {}
 
-    public function build(string $to, string $firstName): Email
+    /**
+     * @param list<string> $clubsWhereLastManager les clubs dont le titulaire est le SEUL
+     *                                            gestionnaire actif : son effacement les fermerait
+     *                                            (une phrase par club)
+     */
+    public function build(string $to, string $firstName, array $clubsWhereLastManager): Email
     {
         $product = $this->productIdentity->name();
         $lines = [
@@ -33,9 +38,15 @@ final class InactivityMailBuilder
             "Votre compte {$product} est inactif depuis presque deux ans.",
             'Conformément à notre politique de conservation des données (RGPD), il sera',
             'anonymisé définitivement dans un mois si vous ne vous reconnectez pas d\'ici là.',
-            '',
-            'Un simple login suffit à conserver votre compte.',
         ];
+        if ([] !== $clubsWhereLastManager) {
+            $lines[] = '';
+            foreach ($clubsWhereLastManager as $clubName) {
+                $lines[] = \sprintf('Vous êtes le dernier gestionnaire de %s : sans reconnexion, cet espace sera ensuite supprimé.', $clubName);
+            }
+        }
+        $lines[] = '';
+        $lines[] = 'Un simple login suffit à conserver votre compte.';
         $link = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/login' : null;
         if (null !== $link) {
             $lines[] = '';

@@ -100,6 +100,18 @@ describe("WaitingApprovalPage", () => {
     expect(screen.queryByText("Demande en attente")).not.toBeInTheDocument();
   });
 
+  // Chantier Membre (PR 1) — une demande de club DÉPASSÉE (le club existait déjà : elle est devenue
+  // une adhésion transmise aux gestionnaires) ne se lit jamais comme une création en attente ni un
+  // refus. Écran non migré vers texts.ts : la phrase validée au plan est recopiée (tolérance charte).
+  it("dépassée (superseded) : dit que le club existe et que les gestionnaires décident — jamais « en attente du club »", async () => {
+    renderPage({ membershipStatus: "club_pending", clubRequest: request("superseded") });
+    expect(
+      await screen.findByText(/Le club existe déjà : votre demande d'adhésion est transmise à ses gestionnaires\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("En attente du club")).not.toBeInTheDocument();
+    expect(screen.queryByText("Demande refusée")).not.toBeInTheDocument();
+  });
+
   it("refus : l'échéance de suppression s'ajoute au message", async () => {
     renderPage({ membershipStatus: "none", clubRequest: request("refused"), accountDeletionScheduledFor: "2026-11-03" });
     expect(await screen.findByText("Demande refusée")).toBeInTheDocument();

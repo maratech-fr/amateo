@@ -191,6 +191,12 @@ final class AuthController extends AbstractController
                     // Le club est-il un club de DÉMONSTRATION ? Le front pose la pastille
                     // « Démo » de l'en-tête dessus (décision fondateur : une démo se dit).
                     'isDemo' => $clubEntity->isDemo(),
+                    // Chantier Membre — un club SANS gestionnaire ferme : la date (Y-m-d) de sa
+                    // suppression, tant qu'aucun gestionnaire actif n'existe. Null dès qu'un
+                    // gestionnaire est là, même si l'échéance est encore posée (la purge l'annulera).
+                    'closingOn' => $clubEntity->getErasureScheduledAt() instanceof DateTimeImmutable && !$this->clubUserRepository->hasActiveManager($clubEntity->getId())
+                        ? $clubEntity->getErasureScheduledAt()->format('Y-m-d')
+                        : null,
                 ];
 
                 // FFBB club info: management-only (the /club section is admin-only).
@@ -683,8 +689,17 @@ final class AuthController extends AbstractController
         if (null !== $clubUser) {
             return null;
         }
-        $request = $this->entityManager->getRepository(ClubCreationRequest::class)
-            ->findOneBy(['userId' => $userId], ['createdAt' => 'DESC']);
+        // Chantier Membre : une demande ANNULÉE (compte effacé) ou DÉPASSÉE (le club a retrouvé
+        // un gestionnaire) n'est plus une issue à montrer — la plus récente parmi les autres.
+        $request = $this->entityManager->getRepository(ClubCreationRequest::class)->createQueryBuilder('r')
+            ->where('r.userId = :userId')
+            ->andWhere('r.status NOT IN (:closed)')
+            ->setParameter('userId', $userId)
+            ->setParameter('closed', [ClubCreationRequest::STATUS_CANCELLED, ClubCreationRequest::STATUS_SUPERSEDED])
+            ->orderBy('r.createdAt', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
 
         return $request instanceof ClubCreationRequest ? [
             'status' => $request->getStatus(),

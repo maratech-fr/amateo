@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\User;
 use App\Enum\AuditAction;
+use App\Repository\ClubUserRepository;
 use App\Service\AccountErasureService;
 use App\Service\AuditTrail;
 use App\Service\InactivityMailBuilder;
@@ -56,6 +57,7 @@ final class PurgeInactiveUsersCommand extends Command
         private readonly ClockInterface $clock,
         private readonly ManagerRegistry $managerRegistry,
         private readonly AuditTrail $auditTrail,
+        private readonly ClubUserRepository $clubUserRepository,
     ) {
         parent::__construct();
     }
@@ -116,7 +118,10 @@ final class PurgeInactiveUsersCommand extends Command
                 continue;
             }
             try {
-                $this->mailer->send($this->mailBuilder->build($user->getEmail(), $user->getFirstName()));
+                // Chantier Membre : le dernier gestionnaire d'un club apprend que l'espace partira
+                // avec son compte (une phrase par club qu'il est seul à gérer).
+                $soleManaged = array_column($this->clubUserRepository->clubsWhereSoleActiveManager($userId), 'name');
+                $this->mailer->send($this->mailBuilder->build($user->getEmail(), $user->getFirstName(), $soleManaged));
                 $user->setInactivityWarnedAt($now);
                 $this->entityManager->flush();
                 // Compté seulement si le préavis est réellement émis ET persisté

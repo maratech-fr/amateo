@@ -153,6 +153,9 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                                 'accentColorDark' => ['type' => 'string', 'nullable' => true],
                                 'accentPalette' => ['type' => 'array', 'nullable' => true, 'items' => ['type' => 'string']],
                                 'isDemo' => ['type' => 'boolean'],
+                                // Date (Y-m-d) de suppression d'un club SANS gestionnaire actif ;
+                                // null dès qu'un gestionnaire actif existe.
+                                'closingOn' => ['type' => ['string', 'null']],
                             ]],
                             // ADR-0002 : le plan de saison — le calendrier de base. null si
                             // la saison n'en a pas encore. `chosenScheduleId` = la version

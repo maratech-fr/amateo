@@ -8,6 +8,7 @@ use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
+use App\Service\MembershipRequestNotifier;
 use App\Service\OrphanAccountNotifier;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -39,6 +40,7 @@ final class MembershipController extends AbstractController
         private readonly ClubUserRepository $clubUserRepository,
         private readonly RequestStack $requestStack,
         private readonly OrphanAccountNotifier $orphanAccountNotifier,
+        private readonly MembershipRequestNotifier $membershipRequestNotifier,
     ) {}
 
     #[Route('/api/memberships', name: 'api_memberships_list', methods: ['GET'])]
@@ -138,6 +140,10 @@ final class MembershipController extends AbstractController
         $this->orphanAccountNotifier->cancelFor($target->getUserId());
         $this->entityManager->flush();
 
+        // Chantier Membre : le demandeur apprend qu'il est accepté, et avec quel rôle (après
+        // le flush, best-effort).
+        $this->membershipRequestNotifier->notifyAccepted($target);
+
         return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()]);
     }
 
@@ -158,12 +164,15 @@ final class MembershipController extends AbstractController
         }
 
         // P4-301 — capturé AVANT la suppression : un refus d'adhésion peut laisser la
-        // cible sans aucun accès (orpheline). Notifié APRÈS le flush, best-effort.
+        // cible sans aucun accès (orpheline). Notifiée APRÈS le flush, best-effort.
         $targetUserId = $target->getUserId();
+        $clubId = $target->getClubId();
         $this->entityManager->remove($target);
         $this->entityManager->flush();
 
-        $this->orphanAccountNotifier->notifyAccessRemoved($targetUserId);
+        // Chantier Membre : UN seul mail au demandeur refusé — il porte le préavis « compte
+        // sans club » (et en pose le stamp) quand le refus le laisse orphelin.
+        $this->membershipRequestNotifier->notifyRefused($clubId, $targetUserId);
 
         return $this->json(null, 204);
     }

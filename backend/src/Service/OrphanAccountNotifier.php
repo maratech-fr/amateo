@@ -8,12 +8,14 @@ use App\Entity\ClubCreationRequest;
 use App\Entity\User;
 use App\Repository\ClubCreationRequestRepository;
 use App\Repository\ClubUserRepository;
+use Closure;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
 use Throwable;
 
 /**
@@ -116,30 +118,54 @@ final class OrphanAccountNotifier
         $this->notify($userId, clubDeleted: true);
     }
 
+    /**
+     * Variante « accès retiré » dont le MAIL est fourni par l'appelant (refus d'adhésion : un seul
+     * mail au demandeur, qui porte l'échéance du compte s'il devient orphelin). Même règle que
+     * {@see notifyAccessRemoved} : compte orphelin sans préavis en cours → le mail construit pour
+     * l'échéance est envoyé, puis le stamp posé.
+     *
+     * @param Closure(DateTimeImmutable): Email $buildEmail construit le mail pour l'échéance annoncée
+     *
+     * @return bool vrai si ce mail (préavis compris) est réellement parti ; faux sinon — l'appelant
+     *              envoie alors son mail sans échéance
+     */
+    public function notifyAccessRemovedWith(string $userId, Closure $buildEmail): bool
+    {
+        return $this->notifyWith($userId, static fn (User $user, DateTimeImmutable $deadline): Email => $buildEmail($deadline));
+    }
+
     private function notify(string $userId, bool $clubDeleted): void
+    {
+        $this->notifyWith($userId, fn (User $user, DateTimeImmutable $deadline): Email => $clubDeleted
+            ? $this->mailBuilder->buildClubDeleted($user->getEmail(), $user->getFirstName(), $deadline)
+            : $this->mailBuilder->buildAccessRemoved($user->getEmail(), $user->getFirstName(), $deadline));
+    }
+
+    /** @param Closure(User, DateTimeImmutable): Email $buildEmail */
+    private function notifyWith(string $userId, Closure $buildEmail): bool
     {
         try {
             $user = $this->entityManager->getRepository(User::class)->find($userId);
             if (!$user instanceof User || !$this->isOrphan($user)) {
-                return;
+                return false;
             }
             // Un préavis déjà en cours : ne pas re-stamper (l'échéance promise tient).
             if ($user->getOrphanNoticeSentAt() instanceof DateTimeImmutable) {
-                return;
+                return false;
             }
             $now = DateTimeImmutable::createFromInterface($this->clock->now());
-            $deadline = $now->modify(self::GRACE_PERIOD);
-            $email = $clubDeleted
-                ? $this->mailBuilder->buildClubDeleted($user->getEmail(), $user->getFirstName(), $deadline)
-                : $this->mailBuilder->buildAccessRemoved($user->getEmail(), $user->getFirstName(), $deadline);
-            $this->mailer->send($email);
+            $this->mailer->send($buildEmail($user, $now->modify(self::GRACE_PERIOD)));
             // Stamp posé SEULEMENT après un envoi réussi (jamais de suppression sans mail).
             $user->setOrphanNoticeSentAt($now);
             $this->entityManager->flush();
+
+            return true;
         } catch (Throwable $e) {
             // Best-effort : un échec d'envoi ne pose pas le stamp et ne fait jamais
             // échouer le geste appelant. Le cron rattrapera le stock au prochain tick.
             $this->logger->warning('Orphan-account notice failed', ['userId' => $userId, 'error' => $e->getMessage()]);
+
+            return false;
         }
     }
 

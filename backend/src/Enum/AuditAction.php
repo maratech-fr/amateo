@@ -30,4 +30,7 @@ enum AuditAction: string
     // du club démo précédent. Tracé GLOBALEMENT (club_id null) pour rester lisible même
     // après la suppression des lignes club détruites (M-3).
     case DEMO_SHORTCUT = 'demo.shortcut';
+    // Chantier Membre — la fermeture programmée d'un club sans gestionnaire est ANNULÉE (reprise,
+    // invitation gestionnaire acceptée, gestionnaire revenu à l'échéance). Ids seulement.
+    case CLUB_CLOSURE_CANCELLED = 'club.closure_cancelled';
 }

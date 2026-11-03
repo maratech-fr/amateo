@@ -31,6 +31,10 @@ class ClubCreationRequest
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REFUSED = 'refused';
     public const STATUS_EXPIRED = 'expired';
+    /** Close sans décision : compte du demandeur effacé (aucun mail, lien mort). */
+    public const STATUS_CANCELLED = 'cancelled';
+    /** Dépassée : un gestionnaire a repris le club avant l'examen de la demande. */
+    public const STATUS_SUPERSEDED = 'superseded';
 
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]

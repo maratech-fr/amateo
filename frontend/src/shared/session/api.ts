@@ -84,8 +84,17 @@ export interface MeResponse {
   isDemo: boolean;
   membershipStatus: MembershipStatus;
   role: string | null;
-  /** P3-4 : la demande de CRÉATION du club (la plus récente) — null dès qu'un membership existe. */
-  clubRequest: { status: "pending" | "approved" | "refused" | "expired"; clubName: string; ara: string; clubEmailKnown: boolean } | null;
+  /**
+   * P3-4 : la demande de CRÉATION du club (la plus récente) — null dès qu'un membership existe.
+   * `superseded` : le club existait déjà, la demande est devenue une adhésion transmise à ses
+   * gestionnaires ; `cancelled` (compte effacé) n'est jamais servi, mais fait partie du contrat.
+   */
+  clubRequest: {
+    status: "pending" | "approved" | "refused" | "expired" | "superseded" | "cancelled";
+    clubName: string;
+    ara: string;
+    clubEmailKnown: boolean;
+  } | null;
   /**
    * P4-301 — échéance (Y-m-d) de suppression d'un compte sans club (préavis + 30 j).
    * null si aucun préavis n'est en cours ou si le compte est actif. La salle d'attente

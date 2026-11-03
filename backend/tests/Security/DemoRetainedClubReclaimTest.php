@@ -132,9 +132,10 @@ final class DemoRetainedClubReclaimTest extends WebTestCase
         $userId = $this->seedUserViaEm('repreneur-' . uniqid() . '@test.fr');
         $request = $this->openRequestViaEm($userId, $ara, 'Nom Saisi Au Register');
 
-        $club = $this->approval()->approve($request);
+        $this->approval()->approve($request);
+        $clubId = $this->realClubIdOf($ara);
 
-        self::assertSame($retainedId, $club->getId(), 'le club conservé est REPRIS — jamais un 2e club');
+        self::assertSame($retainedId, $clubId, 'le club conservé est REPRIS — jamais un 2e club');
         self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM club WHERE ffbb_club_code = :a', ['a' => $ara]), 'un seul club porte le code');
         $this->em->clear();
         $fresh = $this->em->getRepository(Club::class)->find($retainedId);
@@ -161,9 +162,10 @@ final class DemoRetainedClubReclaimTest extends WebTestCase
         $userId = $this->seedUserViaEm('prospect-' . uniqid() . '@test.fr');
         $request = $this->openRequestViaEm($userId, $ara, 'Nom Register');
 
-        $club = $this->approval()->approve($request);
+        $this->approval()->approve($request);
+        $clubId = $this->realClubIdOf($ara);
 
-        self::assertSame($realId, $club->getId(), 'le club RÉEL garde la priorité');
+        self::assertSame($realId, $clubId, 'le club RÉEL garde la priorité');
         $this->em->clear();
         // La demande devient une adhésion pending sur le VRAI club, jamais sur la démo.
         $onReal = $this->em->getRepository(ClubUser::class)->findOneBy(['clubId' => $realId, 'userId' => $userId]);
@@ -185,9 +187,10 @@ final class DemoRetainedClubReclaimTest extends WebTestCase
         $userId = $this->seedUserViaEm('recent-' . uniqid() . '@test.fr');
         $request = $this->openRequestViaEm($userId, $ara, 'Nom Register');
 
-        $club = $this->approval()->approve($request);
+        $this->approval()->approve($request);
+        $clubId = $this->realClubIdOf($ara);
 
-        self::assertSame($newer, $club->getId(), 'le conservé le PLUS RÉCENT est repris');
+        self::assertSame($newer, $clubId, 'le conservé le PLUS RÉCENT est repris');
         $this->em->clear();
         self::assertFalse($this->em->getRepository(Club::class)->find($newer)?->isDemo(), 'le récent redevient réel');
         self::assertTrue($this->em->getRepository(Club::class)->find($older)?->isDemo(), 'l\'ancien reste démo (il expirera à son échéance)');
@@ -242,6 +245,15 @@ final class DemoRetainedClubReclaimTest extends WebTestCase
             $this->admin()->executeStatement('DELETE FROM super_admin WHERE id = :id', ['id' => $this->adminId]);
         }
         parent::tearDown();
+    }
+
+    /** Le club RÉEL portant le code, après l'approbation (le service rend l'issue, plus le club). */
+    private function realClubIdOf(string $ara): string
+    {
+        $id = $this->em->getConnection()->fetchOne('SELECT id FROM club WHERE ffbb_club_code = :a AND is_demo = false', ['a' => $ara]);
+        self::assertIsString($id);
+
+        return $id;
     }
 
     private function approval(): ClubApprovalService

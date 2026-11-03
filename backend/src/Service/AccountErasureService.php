@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubCreationRequest;
 use App\Entity\EmailChangeToken;
 use App\Entity\EmailVerificationToken;
 use App\Entity\ResetPasswordRequest;
 use App\Entity\User;
 use App\Mail\ClubMailMetadata;
 use App\Mail\EmailTemplateRenderer;
+use App\Repository\ClubCreationRequestRepository;
 use App\Repository\ClubUserRepository;
 use App\Service\Basketball\FfbbClubDirectory;
 use DateTimeImmutable;
@@ -30,11 +32,12 @@ use Throwable;
  * DELETE : ClubUser garde une ligne inactive pointant sur un User vidé, ce qui
  * préserve l'intégrité référentielle sans conserver de donnée personnelle.
  *
- * Si, après cet effacement, un club n'a PLUS AUCUN membre actif (quel que soit
- * le rôle — un editor actif suffit à bloquer : on ne détruit jamais un
- * workspace utilisé), sa purge est PROGRAMMÉE (erasureScheduledAt = +30 j,
- * délai de grâce) et exécutée par app:clubs:purge-erased — qui REVALIDE à
- * l'échéance et auto-annule si un membre actif est revenu entre-temps.
+ * Chantier Membre — si l'effacé était le SEUL GESTIONNAIRE actif d'un club, ce
+ * club FERME, même si des Membres restent (ils gardent la consultation et sont
+ * prévenus J0/J-7) : sa purge est PROGRAMMÉE (erasureScheduledAt = +30 j, délai
+ * de grâce) et exécutée par app:clubs:purge-erased — qui REVALIDE à l'échéance
+ * et annule si un gestionnaire actif est revenu entre-temps. Un Membre effacé ne
+ * ferme jamais un club.
  * L'identité publique FFBB du club survit à la purge (ErasedClubPurger).
  *
  * Tout le flux s'exécute dans UNE transaction : un échec à mi-course (flush,
@@ -62,6 +65,8 @@ final class AccountErasureService
         private readonly MailFrom $mailFrom,
         private readonly ProductIdentity $productIdentity,
         private readonly LoggerInterface $logger,
+        private readonly MembershipRequestMailBuilder $membershipMailBuilder,
+        private readonly ClubCreationRequestRepository $clubCreationRequests,
         // Origine navigateur pour le lien d'inscription du préavis orphelin — bind global
         // `$frontendBaseUrl` (%env(FRONTEND_BASE_URL)%) ; vide → lien omis (patron des crons).
         private readonly string $frontendBaseUrl = '',
@@ -88,17 +93,6 @@ final class AccountErasureService
         $this->notifyOrphanedClubs($scheduled);
 
         return $scheduled;
-    }
-
-    /** Membre actif, TOUS rôles confondus (raw DBAL — lecture cross-tenant par design). */
-    public function hasActiveMember(string $clubId): bool
-    {
-        $count = $this->entityManager->getConnection()->fetchOne(
-            'SELECT COUNT(*) FROM club_user WHERE club_id = :cid AND is_active = true',
-            ['cid' => $clubId],
-        );
-
-        return ((int) $count) > 0;
     }
 
     /** @return list<string> */
@@ -147,6 +141,10 @@ final class AccountErasureService
         //    is_active=false AND deactivated_at IS NULL) — une adhésion fantôme.
         //    `deactivated_at` sépare « sorti » de « en attente » (ClubUser).
         $clubIds = $this->clubUserRepository->findActiveClubIds($user->getId());
+        // Chantier Membre — le RÔLE est lu AVANT la désactivation : seuls les clubs dont
+        // l'effacé était le SEUL gestionnaire actif peuvent fermer (un Membre effacé ne ferme
+        // jamais un club, même s'il en était le dernier compte actif).
+        $soleManagedClubIds = array_column($this->clubUserRepository->clubsWhereSoleActiveManager($user->getId()), 'id');
         foreach ($clubIds as $clubId) {
             $this->tenantConnectionContext->setClubId($clubId);
             $this->entityManager->getConnection()->executeStatement(
@@ -172,6 +170,13 @@ final class AccountErasureService
         }
         $this->tenantConnectionContext->clear();
 
+        // Chantier Membre — ses demandes de club VIVANTES (pending/expired) meurent avec le
+        // compte : statut `cancelled`, lien d'approbation mort (404 identique), aucun mail.
+        foreach ($this->clubCreationRequests->findBy(['userId' => $user->getId(), 'status' => [ClubCreationRequest::STATUS_PENDING, ClubCreationRequest::STATUS_EXPIRED]]) as $request) {
+            $request->setStatus(ClubCreationRequest::STATUS_CANCELLED);
+            $request->setDecidedAt($now);
+        }
+
         // 3. Anonymisation : l'email devient un jeton non-adressable, le hash un
         //    aléa jamais valide. random_bytes garantit qu'aucun mot de passe ne
         //    matchera jamais ce "hash" (ce n'est pas un hash bcrypt/argon).
@@ -183,12 +188,12 @@ final class AccountErasureService
         $user->setAnonymizedAt($now);
         $this->entityManager->flush();
 
-        // 4. Clubs orphelins : plus AUCUN membre actif, tous rôles confondus
-        //    (un editor/viewer actif utilise encore le workspace — on ne
-        //    programme pas sa destruction sous ses pieds) → purge à +30 j.
+        // 4. Clubs sans gestionnaire : l'effacé en était le SEUL gestionnaire actif et aucun
+        //    autre n'est revenu entre-temps → fermeture à +30 j, même si des Membres restent
+        //    (ils gardent la consultation et sont prévenus). Revalidée à l'échéance par la purge.
         $scheduled = [];
-        foreach ($clubIds as $clubId) {
-            if ($this->hasActiveMember($clubId)) {
+        foreach ($soleManagedClubIds as $clubId) {
+            if ($this->clubUserRepository->hasActiveManager($clubId)) {
                 continue;
             }
             $club = $this->entityManager->getRepository(Club::class)->find($clubId);
@@ -206,10 +211,11 @@ final class AccountErasureService
     }
 
     /**
-     * Prévient le contact officiel de chaque club orphelin de la suppression à venir —
-     * mail institutionnel FFBB (même ancre que l'approbation), repli `Club.contactEmail`
-     * si la FFBB est muette/introuvable. Ni l'un ni l'autre → rien à envoyer (le
-     * superadmin voit la demande). Best-effort : un échec d'envoi est tracé, jamais fatal.
+     * Prévient de la fermeture de chaque club devenu sans gestionnaire : les MEMBRES restants
+     * d'abord (ils gardent la consultation jusqu'à l'échéance), PUIS le contact officiel — mail
+     * institutionnel FFBB (même ancre que l'approbation), repli `Club.contactEmail`. L'absence
+     * d'adresse officielle ne prive jamais les Membres de leur avis. Best-effort : un échec
+     * d'envoi est tracé, jamais fatal.
      *
      * @param list<string> $clubIds
      */
@@ -224,6 +230,15 @@ final class AccountErasureService
             if (!$deadline instanceof DateTimeImmutable) {
                 continue;
             }
+
+            foreach ($this->clubUserRepository->findActiveMemberRecipients($clubId) as $member) {
+                try {
+                    $this->mailer->send($this->membershipMailBuilder->buildClubClosing($member['email'], $club, $member['firstName'], $deadline, false));
+                } catch (Throwable $e) {
+                    $this->logger->warning('Managerless-club member notice failed', ['clubId' => $clubId, 'error' => $e->getMessage()]);
+                }
+            }
+
             $ffbbCode = $club->getFfbbClubCode();
             $to = (null !== $ffbbCode ? $this->ffbbClubDirectory->lookupClubEmail($ffbbCode) : null) ?? $club->getContactEmail();
             if (null === $to || '' === $to) {
@@ -240,7 +255,7 @@ final class AccountErasureService
                     ->to($to)
                     ->subject(\sprintf('L\'espace %s du club %s va être supprimé', $product, $club->getName()))
                     ->text(\sprintf(
-                        "Bonjour,\n\nLe dernier gestionnaire de l'espace {$product} du club %s vient de supprimer son compte : cet espace n'a plus de gestionnaire.\n\nSans reprise, il sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.%s\n\n{$product}",
+                        "Bonjour,\n\nLe dernier gestionnaire de l'espace {$product} du club %s a quitté le service : cet espace n'a plus de gestionnaire.\n\nSans reprise, il sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.%s\n\n{$product}",
                         $club->getName(),
                         $deadline->format('d/m/Y'),
                         $registerBlock,

@@ -25,15 +25,33 @@ final class InactivityMailBuilderTest extends TestCase
 
     public function testInactivityNoticeCarriesALoginCta(): void
     {
-        $email = new InactivityMailBuilder('https://app.example.test')->build('x@y.fr', 'Camille');
+        $email = new InactivityMailBuilder('https://app.example.test')->build('x@y.fr', 'Camille', []);
 
         $this->assertCtaHeadersPointToBodyLink($email, 'https://app.example.test/login', 'Me connecter');
+    }
+
+    /**
+     * PROMESSE (chantier Membre, PR 1) : le dernier gestionnaire d'un club, prévenu de son
+     * inactivité, apprend que l'espace du club partira avec son compte — une phrase PAR club.
+     * Un compte qui n'est le dernier gestionnaire de rien ne lit aucune annonce de suppression.
+     */
+    public function testLastManagerWarningNamesEachClubThatWouldClose(): void
+    {
+        $email = new InactivityMailBuilder('https://app.example.test')->build('x@y.fr', 'Camille', ['BC Testville', 'AS Autreville']);
+        $body = (string) $email->getTextBody();
+
+        self::assertStringContainsString('Vous êtes le dernier gestionnaire de BC Testville : sans reconnexion, cet espace sera ensuite supprimé.', $body);
+        self::assertStringContainsString('Vous êtes le dernier gestionnaire de AS Autreville : sans reconnexion, cet espace sera ensuite supprimé.', $body);
+        $this->assertCtaHeadersPointToBodyLink($email, 'https://app.example.test/login', 'Me connecter');
+
+        $plain = new InactivityMailBuilder('https://app.example.test')->build('x@y.fr', 'Camille', []);
+        self::assertStringNotContainsString('dernier gestionnaire', (string) $plain->getTextBody());
     }
 
     public function testNoCtaWhenNoFrontendBaseIsConfigured(): void
     {
         // Sans base front, aucun lien cliquable n'est posé → pas de bouton (patron des crons).
-        $email = new InactivityMailBuilder('')->build('x@y.fr', 'Camille');
+        $email = new InactivityMailBuilder('')->build('x@y.fr', 'Camille', []);
 
         $this->assertCarriesNoCtaHeaders($email);
         self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::CTA_URL_HEADER));

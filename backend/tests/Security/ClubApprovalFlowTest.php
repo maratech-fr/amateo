@@ -9,15 +9,21 @@ use App\Entity\ClubCreationRequest;
 use App\Entity\ClubUser;
 use App\Entity\EmailVerificationToken;
 use App\Entity\User;
+use App\Mail\EmailTemplateRenderer;
 use App\Repository\ClubCreationRequestRepository;
+use App\Service\ClubApprovalService;
 use App\Service\EmailVerifier;
+use App\Service\ProductIdentity;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\ReadsJwtCookie;
 use App\Tests\TenantGucTrait;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
+use Symfony\Component\Mime\Email;
 
 /**
  * NR P3-4 (axe auth & memberships — décision fondateur 2026-08-05) : le premier
@@ -137,10 +143,299 @@ final class ClubApprovalFlowTest extends WebTestCase
         $this->deleteClubByAra($ara);
     }
 
+    /**
+     * Le mail au demandeur dit ce que l'approbation a VRAIMENT fait : club créé, club sans
+     * gestionnaire repris, ou demande devenue une adhésion transmise aux gestionnaires en place.
+     */
+    public function testOutcomeMailsSayCreatedRepriseOrPending(): void
+    {
+        $product = $this->product();
+
+        // Créé — ARA inconnu, le demandeur devient gestionnaire d'un club neuf.
+        $ara = 'OUT' . strtoupper(substr(md5(uniqid()), 0, 7));
+        [, $created] = $this->registerAndVerify('created-' . uniqid() . '@t.fr', $ara, 'Club Neuf');
+        $this->decide($this->pendingRequestFor($created['user']['id'])->getToken(), 'approve');
+        self::assertSame(['status' => 'approved'], $this->responseJson());
+        $mails = $this->mailsTo($created['user']['email']);
+        self::assertCount(1, $mails);
+        self::assertStringContainsString(\sprintf('l\'espace %s de Club Neuf est créé et vous en êtes gestionnaire', $product), (string) $mails[0]->getTextBody());
+
+        // Repris — club RÉEL (adresse officielle connue du stub FFBB) dont le dernier gestionnaire
+        // est parti ; un Membre reste. La demande de Nadia part à l'adresse officielle en « reprendre ».
+        $stubAra = FfbbHttpClientStub::CLUB_CODE;
+        $this->deleteClubByAra($stubAra);
+        [$marcJwt, $marc] = $this->registerAndVerify('marc-' . uniqid() . '@t.fr', $stubAra, 'Club Stub');
+        $this->decide($this->pendingRequestFor($marc['user']['id'])->getToken(), 'approve');
+        self::assertResponseIsSuccessful();
+        $club = $this->em->getRepository(Club::class)->findOneBy(['ffbbClubCode' => $stubAra]);
+        self::assertInstanceOf(Club::class, $club);
+        $clubId = $club->getId();
+        $clubName = $club->getName();
+        $paulId = $this->insertActiveMember($clubId, 'member');
+        $this->client->getCookieJar()->clear();
+        $this->client->request('DELETE', '/api/me', [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer ' . $marcJwt, 'REMOTE_ADDR' => $this->ip()], (string) json_encode(['password' => 'Password123!']));
+        self::assertResponseIsSuccessful();
+
+        $nadiaEmail = 'nadia-' . uniqid() . '@t.fr';
+        [, $nadia] = $this->registerAndVerify($nadiaEmail, $stubAra, 'ignored', 'Nadia', 'Reprise');
+        self::assertSame('club_pending', $nadia['membershipStatus'], 'club sans GESTIONNAIRE (un Membre reste) → demande à l\'adresse officielle');
+        $request = $this->pendingRequestFor($nadia['user']['id']);
+        $official = $this->mailsTo(FfbbHttpClientStub::CLUB_EMAIL);
+        self::assertCount(1, $official);
+        self::assertSame(\sprintf('Nadia Reprise demande à reprendre l\'espace %s de %s', $product, $clubName), $official[0]->getSubject());
+        $link = 'http://localhost:5173/club-approval/' . $request->getToken();
+        self::assertSame(
+            \sprintf("Bonjour,\n\nNadia Reprise (%s) demande à reprendre la gestion de l'espace %s du club %s (code FFBB %s), qui n'a plus de gestionnaire.\n\nSi cette personne est bien un gestionnaire de votre club, approuvez sa demande :\n%s\n\nSinon, refusez-la. Ce lien expire le %s.\n\n%s", $nadiaEmail, $product, $clubName, $stubAra, $link, $request->getExpiresAt()->format('d/m/Y'), $product),
+            (string) $official[0]->getTextBody(),
+        );
+        self::assertSame('Examiner la demande', $official[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+
+        $this->decide($request->getToken(), 'approve');
+        self::assertSame(['status' => 'approved'], $this->responseJson());
+        $mails = $this->mailsTo($nadiaEmail);
+        self::assertCount(1, $mails);
+        self::assertSame(\sprintf("Bonjour,\n\nVotre demande a été approuvée : vous reprenez l'espace %s de %s et vous en êtes gestionnaire.\n\nConnectez-vous :\nhttp://localhost:5173/login\n\n%s", $product, $clubName, $product), (string) $mails[0]->getTextBody());
+        self::assertSame('Me connecter', $mails[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        $paul = $this->em->getRepository(ClubUser::class)->findOneBy(['clubId' => $clubId, 'userId' => $paulId]);
+        self::assertInstanceOf(ClubUser::class, $paul);
+        self::assertSame('member', $paul->getRole(), 'le Membre restant reste Membre');
+        $this->deleteClubByAra($stubAra);
+
+        // Transmise — club peuplé, une demande extérieure devient une adhésion pending.
+        [, $lea, $peopledName] = $this->populatedClubWithOutsiderRequest();
+        $this->decide($lea['token'], 'approve');
+        self::assertResponseIsSuccessful();
+        $mails = $this->mailsTo($lea['email']);
+        self::assertCount(1, $mails);
+        self::assertSame(\sprintf("Bonjour,\n\nLe club %s existe déjà sur %s : votre demande d'adhésion est transmise à ses gestionnaires, qui l'accepteront ou la refuseront.\n\n%s", $peopledName, $product, $product), (string) $mails[0]->getTextBody());
+        self::assertFalse($mails[0]->getHeaders()->has(EmailTemplateRenderer::CTA_URL_HEADER), 'rien à cliquer : EXEMPT');
+    }
+
+    /** Un refus par le club = UN seul mail au demandeur, qui porte l'échéance du compte quand il devient orphelin. */
+    public function testRefusalSendsExactlyOneMail(): void
+    {
+        $ara = 'RFO' . strtoupper(substr(md5(uniqid()), 0, 7));
+        $email = 'refused-' . uniqid() . '@t.fr';
+        [, $body] = $this->registerAndVerify($email, $ara, 'Club Refus');
+        $this->decide($this->pendingRequestFor($body['user']['id'])->getToken(), 'refuse');
+        self::assertSame(['status' => 'refused'], $this->responseJson());
+
+        $mails = $this->mailsTo($email);
+        self::assertCount(1, $mails, 'UN seul mail : le refus porte le préavis orphelin, jamais deux mails');
+        $text = (string) $mails[0]->getTextBody();
+        self::assertStringContainsString('Votre demande de création de l\'espace Club Refus a été refusée par le club.', $text);
+        self::assertMatchesRegularExpression('~supprimé le \d{2}/\d{2}/\d{4}~', $text, 'le demandeur orphelin lit l\'échéance de son compte');
+    }
+
+    /**
+     * Deux clics sur le même lien d'approbation : le premier gagne ; le second — qui avait lu la
+     * demande AVANT que le premier ne commite — relit sous verrou, ne touche à rien, et le lien
+     * répond 404 byte-identique. Simulé : la demande en mémoire est « pending », la base dit « approved ».
+     */
+    public function testDoubleApproveSameLinkKeepsWinnerAndAnswers404(): void
+    {
+        $ara = 'DBA' . strtoupper(substr(md5(uniqid()), 0, 7));
+        $email = 'double-' . uniqid() . '@t.fr';
+        [, $body] = $this->registerAndVerify($email, $ara, 'Club Double');
+        $request = $this->pendingRequestFor($body['user']['id']);
+        $token = $request->getToken();
+        $requestId = $request->getId();
+
+        $this->decide($token, 'approve');
+        self::assertSame(['status' => 'approved'], $this->responseJson(), 'le premier clic gagne');
+
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $stale = $em->find(ClubCreationRequest::class, $requestId);
+        self::assertInstanceOf(ClubCreationRequest::class, $stale);
+        $this->makeStale($em, $stale, ClubCreationRequest::STATUS_PENDING);
+
+        // Le transport du container courant porte DÉJÀ le mail du gagnant (« … est prêt ») :
+        // on mesure ce que le perdant AJOUTE.
+        $mailsBeforeLoser = \count($this->mailsTo($email));
+        $outcome = $this->approvalService()->approve($stale);
+        self::assertSame('NoOp', $outcome->name, 'le perdant relit la demande sous verrou : rien à faire');
+        self::assertSame(1, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM club WHERE ffbb_club_code = :a', ['a' => $ara]), 'un seul club');
+        self::assertSame(1, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM club_user WHERE user_id = :u', ['u' => $body['user']['id']]), 'une seule adhésion pour le gagnant');
+        self::assertSame(ClubCreationRequest::STATUS_APPROVED, $em->getConnection()->fetchOne('SELECT status FROM club_creation_request WHERE id = :id', ['id' => $requestId]));
+        self::assertCount($mailsBeforeLoser, $this->mailsTo($email), 'le perdant n\'envoie aucun mail');
+
+        $this->client->request('POST', '/api/club-approvals/' . str_repeat('b', 64), [], [], ['REMOTE_ADDR' => $this->ip(), 'CONTENT_TYPE' => 'application/json'], (string) json_encode(['decision' => 'approve']));
+        $unknown = (string) $this->client->getResponse()->getContent();
+        $this->decide($token, 'approve');
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($unknown, (string) $this->client->getResponse()->getContent(), '404 byte-identique à un lien inconnu');
+        $this->deleteClubByAra($ara);
+    }
+
+    /** Une demande annulée (compte effacé, demande retirée) ne s'approuve ni ne se refuse plus : aucune écriture, aucun mail. */
+    public function testApproveAfterCancelIsANoOp(): void
+    {
+        $ara = 'CAN' . strtoupper(substr(md5(uniqid()), 0, 7));
+        $email = 'cancel-' . uniqid() . '@t.fr';
+        [, $body] = $this->registerAndVerify($email, $ara, 'Club Annule');
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $request = $em->getRepository(ClubCreationRequest::class)->findOneBy(['userId' => $body['user']['id']]);
+        self::assertInstanceOf(ClubCreationRequest::class, $request);
+        $em->getConnection()->executeStatement('UPDATE club_creation_request SET status = :s WHERE id = :id', ['s' => ClubCreationRequest::STATUS_CANCELLED, 'id' => $request->getId()]);
+
+        self::assertSame('NoOp', $this->approvalService()->approve($request)->name);
+        self::assertSame(0, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM club WHERE ffbb_club_code = :a', ['a' => $ara]), 'aucun club né d\'une demande annulée');
+
+        $this->approvalService()->refuse($request);
+        self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $em->getConnection()->fetchOne('SELECT status FROM club_creation_request WHERE id = :id', ['id' => $request->getId()]), 'le refus ne réécrit pas une demande annulée');
+        self::assertSame([], $this->mailsTo($email), 'aucun mail sur une demande annulée');
+    }
+
+    /** Un demandeur dont le compte a été anonymisé n'est jamais approuvé : sa demande est annulée, le lien répond 404. */
+    public function testAnonymizedRequesterIsNeverApproved(): void
+    {
+        $ara = 'ANO' . strtoupper(substr(md5(uniqid()), 0, 7));
+        [, $body] = $this->registerAndVerify('anon-' . uniqid() . '@t.fr', $ara, 'Club Anonyme');
+        $request = $this->pendingRequestFor($body['user']['id']);
+        $this->em->getConnection()->executeStatement('UPDATE app_user SET anonymized_at = NOW() WHERE id = :id', ['id' => $body['user']['id']]);
+
+        $this->client->request('POST', '/api/club-approvals/' . str_repeat('c', 64), [], [], ['REMOTE_ADDR' => $this->ip(), 'CONTENT_TYPE' => 'application/json'], (string) json_encode(['decision' => 'approve']));
+        $unknown = (string) $this->client->getResponse()->getContent();
+        $this->decide($request->getToken(), 'approve');
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($unknown, (string) $this->client->getResponse()->getContent(), 'demandeur anonymisé → 404 byte-identique');
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM club WHERE ffbb_club_code = :a', ['a' => $ara]), 'aucun club pour un compte effacé');
+        self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $this->em->getConnection()->fetchOne('SELECT status FROM club_creation_request WHERE id = :id', ['id' => $request->getId()]));
+    }
+
+    /** Une approbation qui n'a fait qu'ouvrir une adhésion (club déjà géré) ne répond pas « approved » mais « superseded », et prévient les gestionnaires. */
+    public function testSupersededDecisionDoesNotAnswerApproved(): void
+    {
+        [$managerEmail, $lea, $clubName, $clubId] = $this->populatedClubWithOutsiderRequest();
+
+        $this->decide($lea['token'], 'approve');
+        self::assertResponseIsSuccessful();
+        self::assertSame(['status' => 'superseded'], $this->responseJson(), 'la page publique ne dit pas « approuvée » quand le club existait déjà');
+        $pending = $this->em->getRepository(ClubUser::class)->findOneBy(['clubId' => $clubId, 'userId' => $lea['userId']]);
+        self::assertInstanceOf(ClubUser::class, $pending);
+        self::assertFalse($pending->getIsActive(), 'une adhésion EN ATTENTE, au choix des gestionnaires');
+        $notice = $this->mailsTo($managerEmail);
+        self::assertCount(1, $notice, 'les gestionnaires en place sont prévenus');
+        self::assertSame(\sprintf('Demande d\'adhésion — Léa Dehors souhaite rejoindre %s', $clubName), $notice[0]->getSubject());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * Un club géré (Marc gestionnaire, né par le vrai rail) + une demande de club VIVANTE d'une
+     * personne extérieure (Léa) sur le même code — le cas d'une demande ouverte avant que le club
+     * ne retrouve un gestionnaire.
+     *
+     * @return array{0: string, 1: array{userId: string, email: string, token: string}, 2: string, 3: string} [email du gestionnaire, Léa, nom du club, id du club]
+     */
+    private function populatedClubWithOutsiderRequest(): array
+    {
+        $ara = 'POP' . strtoupper(substr(md5(uniqid()), 0, 7));
+        $managerEmail = 'manager-' . uniqid() . '@t.fr';
+        [, $manager] = $this->registerAndVerify($managerEmail, $ara, 'Club Peuple');
+        $this->decide($this->pendingRequestFor($manager['user']['id'])->getToken(), 'approve');
+        self::assertResponseIsSuccessful();
+        $club = $this->em->getRepository(Club::class)->findOneBy(['ffbbClubCode' => $ara]);
+        self::assertInstanceOf(Club::class, $club);
+
+        $leaEmail = 'lea-' . uniqid() . '@t.fr';
+        $lea = new User;
+        $lea->setEmail($leaEmail);
+        $lea->setFirstName('Léa');
+        $lea->setLastName('Dehors');
+        $lea->setPasswordHash('x');
+        $lea->setEmailVerifiedAt(new DateTimeImmutable);
+        $this->em->persist($lea);
+        $request = new ClubCreationRequest;
+        $request->setUserId($lea->getId());
+        $request->setAra($ara);
+        $request->setClubName('Club Peuple');
+        $this->em->persist($request);
+        $this->em->flush();
+
+        return [$managerEmail, ['userId' => $lea->getId(), 'email' => $leaEmail, 'token' => $request->getToken()], $club->getName(), $club->getId()];
+    }
+
+    private function insertActiveMember(string $clubId, string $role): string
+    {
+        $user = new User;
+        $user->setEmail('member-' . uniqid() . '@t.fr');
+        $user->setFirstName('Paul');
+        $user->setLastName('Membre');
+        $user->setPasswordHash('x');
+        $user->setEmailVerifiedAt(new DateTimeImmutable);
+        $this->em->persist($user);
+        $this->scopeGucToClub($clubId);
+        $membership = new ClubUser;
+        $membership->setClubId($clubId);
+        $membership->setUserId($user->getId());
+        $membership->setRole($role);
+        $membership->setIsActive(true);
+        $this->em->persist($membership);
+        $this->em->flush();
+        $this->clearGuc();
+
+        return $user->getId();
+    }
+
+    /** La demande en mémoire porte `$status` alors que la base dit autre chose (lue avant le commit du concurrent). */
+    private function makeStale(EntityManagerInterface $em, ClubCreationRequest $request, string $status): void
+    {
+        $request->setStatus($status);
+        $em->getUnitOfWork()->setOriginalEntityProperty(spl_object_id($request), 'status', $status);
+    }
+
+    private function decide(string $token, string $decision): void
+    {
+        $this->client->getCookieJar()->clear();
+        $this->client->request('POST', '/api/club-approvals/' . $token, [], [], ['REMOTE_ADDR' => $this->ip(), 'CONTENT_TYPE' => 'application/json'], (string) json_encode(['decision' => $decision]));
+    }
+
+    /** @return array<string, mixed> */
+    private function responseJson(): array
+    {
+        return (array) json_decode((string) $this->client->getResponse()->getContent(), true);
+    }
+
+    private function approvalService(): ClubApprovalService
+    {
+        $service = self::getContainer()->get(ClubApprovalService::class);
+        \assert($service instanceof ClubApprovalService);
+
+        return $service;
+    }
+
+    /** @return list<Email> les mails enfilés (container courant) adressés à `$address` */
+    private function mailsTo(string $address): array
+    {
+        $transport = self::getContainer()->get('messenger.transport.mailer_in_memory');
+        \assert($transport instanceof InMemoryTransport);
+        $out = [];
+        foreach ($transport->getSent() as $envelope) {
+            $message = $envelope->getMessage();
+            if (!method_exists($message, 'getMessage') || !$message->getMessage() instanceof Email) {
+                continue;
+            }
+            foreach ($message->getMessage()->getTo() as $to) {
+                if (strtolower($to->getAddress()) === strtolower($address)) {
+                    $out[] = $message->getMessage();
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    private function product(): string
+    {
+        $product = self::getContainer()->get(ProductIdentity::class);
+        \assert($product instanceof ProductIdentity);
+
+        return $product->name();
     }
 
     /**
@@ -149,10 +444,11 @@ final class ClubApprovalFlowTest extends WebTestCase
      *
      * @return array{0: string, 1: array{membershipStatus: string, user: array{id: string}}}
      */
-    private function registerAndVerify(string $email, string $ara, string $clubName): array
+    private function registerAndVerify(string $email, string $ara, string $clubName, string $firstName = 'Ana', string $lastName = 'Approb'): array
     {
+        $this->client->getCookieJar()->clear();
         $this->client->request('POST', '/api/register', [], [], ['CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $this->ip()], (string) json_encode([
-            'email' => $email, 'password' => 'Password123!', 'firstName' => 'Ana', 'lastName' => 'Approb',
+            'email' => $email, 'password' => 'Password123!', 'firstName' => $firstName, 'lastName' => $lastName,
             'ara' => $ara, 'club_name' => $clubName, 'consent' => true,
         ]));
         self::assertResponseStatusCodeSame(202);

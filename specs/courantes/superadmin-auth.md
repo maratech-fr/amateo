@@ -347,7 +347,7 @@ approuve (provisionne, comme la page publique) ou refuse — mêmes gardes que l
 passation n'a pas lieu (gestionnaire parti fâché — décision fondateur). ⚠ Depuis P1-1 PR B
 (2026-08-10), la porte ne voit et n'active que les adhésions **en attente** (`deactivated_at IS NULL`) —
 un membre **désactivé par son club** ne se restaure que par le geste club
-(`POST /api/memberships/{id}/reactivate`) : la console ne contourne pas la décision du club. Le job planifié
+(`POST /api/memberships/{id}/reactivate`) : la console ne contourne pas la décision du club. Chantier Membre : sur un club **sans gestionnaire actif**, l'activation répond **409** (« La reprise d'un club sans gestionnaire passe par l'approbation du club. ») — un tel club ne se reprend que par l'approbation de son adresse officielle, la console ne la remplace pas ; approuver une demande de club depuis la console (`decision`) reste possible, et rend 404 si la demande a déjà été décidée ou annulée. Le job planifié
 `club-approval-digest` (quotidien 08:30, relançable) porte les relances (3 j restants +
 jour J) et l'expiration.
 

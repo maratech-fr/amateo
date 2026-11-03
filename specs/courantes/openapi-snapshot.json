@@ -3644,6 +3644,12 @@
                                                 },
                                                 "isDemo": {
                                                     "type": "boolean"
+                                                },
+                                                "closingOn": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
                                                 }
                                             }
                                         },

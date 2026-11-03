@@ -21,6 +21,8 @@ use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Mailer\Event\MessageEvent;
 use Symfony\Component\Mailer\Messenger\SendEmailMessage;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use Symfony\Component\Mime\Email;
@@ -177,6 +179,8 @@ final class OrphanAccountLifecycleTest extends WebTestCase
         $club = $em->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
         $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        // B4 (chantier Membre) : le rappel J-7 est PARTI — sans lui, la purge serait retenue.
+        $club->setErasureReminderSentAt(new DateTimeImmutable('-8 days'));
         $this->scopeGucToClub($clubId);
         $em->getConnection()->executeStatement('UPDATE club_user SET is_active = false WHERE club_id = :cid', ['cid' => $clubId]);
         $this->clearGuc();
@@ -194,6 +198,54 @@ final class OrphanAccountLifecycleTest extends WebTestCase
         $emails = $this->emailsTo($member->getEmail());
         self::assertNotEmpty($emails, 'un préavis « espace supprimé » part au membre');
         self::assertStringContainsString('a été supprimé', (string) end($emails)->getTextBody());
+    }
+
+    /**
+     * Le préavis « espace supprimé » ne part qu'APRÈS le commit de la purge de CE club : envoyé
+     * dans la transaction (verrou d'approbation + revalidation + purge), il partirait même si la
+     * transaction échouait ensuite — un mail « supprimé » pour un club qui ne l'est pas.
+     * Témoin : la profondeur de transaction de la connexion au moment où le mail est enfilé
+     * (0 = transaction de purge refermée). Jumeau du contenu du préavis :
+     * {@see testPurgingAClubNotifiesItsNowOrphanedMembers}.
+     */
+    public function testClubDeletedNoticeLeavesOnlyAfterThePurgeCommitted(): void
+    {
+        [, , $clubId] = $this->registerManager('ORPC');
+        $member = $this->insertMember($clubId, 'member-orpc-' . uniqid() . '@test.fr', 'editor', false, new DateTimeImmutable);
+
+        $em = $this->em();
+        $club = $em->getRepository(Club::class)->find($clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        $club->setErasureReminderSentAt(new DateTimeImmutable('-8 days'));
+        $this->scopeGucToClub($clubId);
+        $em->getConnection()->executeStatement('UPDATE club_user SET is_active = false WHERE club_id = :cid', ['cid' => $clubId]);
+        $this->clearGuc();
+        $em->flush();
+        $em->clear();
+
+        $connection = $this->em()->getConnection();
+        $baseline = $connection->getTransactionNestingLevel();
+        $levelsAtSend = [];
+        $dispatcher = self::getContainer()->get('event_dispatcher');
+        \assert($dispatcher instanceof EventDispatcherInterface);
+        $dispatcher->addListener(MessageEvent::class, static function (MessageEvent $event) use ($connection, $member, &$levelsAtSend): void {
+            $message = $event->getMessage();
+            if (!$event->isQueued() || !$message instanceof Email) {
+                return;
+            }
+            foreach ($message->getTo() as $to) {
+                if (strtolower($to->getAddress()) === strtolower($member->getEmail())) {
+                    $levelsAtSend[] = $connection->getTransactionNestingLevel();
+                }
+            }
+        }, 1000);
+
+        $tester = new CommandTester(new Application(self::$kernel)->find('app:clubs:purge-erased'));
+        self::assertSame(0, $tester->execute([]));
+
+        self::assertCount(1, $levelsAtSend, 'témoin : le préavis « espace supprimé » part bien au membre');
+        self::assertSame([$baseline], $levelsAtSend, 'le préavis part APRÈS le commit de la purge, jamais dans sa transaction');
     }
 
     public function testMultiClubWithOneActiveMembershipIsNeverOrphanAndMeStaysActive(): void

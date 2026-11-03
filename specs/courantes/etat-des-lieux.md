@@ -373,6 +373,41 @@ cron `app:users:purge-orphaned`, `/api/me` expose `accountDeletionScheduledFor`.
 [`backend-controllers.md`](../../backend/docs/backend-controllers.md) § Approbation des membres ·
 [`commands.md`](../../backend/docs/commands.md)
 
+**Demandes d'adhésion & club sans gestionnaire (chantier Membre, PR 1, livré le 2026-11-03)** :
+- *Les gestionnaires sont prévenus.* Une demande d'adhésion à un club déjà géré (inscription vérifiée, ou
+  demande de création transformée en adhésion `pending`) envoie, APRÈS le commit, un mail aux gestionnaires
+  ACTIFS — jamais à un Membre, jamais à un désactivé (`MembershipRequestNotifier::notifyManagers`). Les
+  adhésions nées dans la même transaction tiennent dans UN mail ; plafond par club (`membership_request_notify`,
+  5 mails/jour) puis UNE synthèse par jour (`membership_request_digest`), puis silence ; sans gestionnaire,
+  aucun budget n'est consommé ; un double clic n'envoie qu'un mail. Le demandeur apprend l'issue en un mail
+  (accepté avec son rôle, refusé — avec l'échéance de son compte s'il devient orphelin ;
+  `MembershipRequestNotifier::notifyAccepted/notifyRefused`). Le nom saisi par l'inconnu est assaini avant
+  d'entrer dans un sujet ou un corps (`App\Mail\MailSafeName` : aucun lien, adresse ni domaine n'atteint le mail ;
+  « Un demandeur » pour un nom inexploitable). Sous horloge simulée, un destinataire du club va dans la boîte
+  aux lettres, un destinataire extérieur part réellement.
+- *Un club sans GESTIONNAIRE ferme* (et non plus « sans membre ») : le dernier gestionnaire actif effacé —
+  par `DELETE /api/me` ou par une purge d'inactivité/d'orphelin — programme la suppression à +30 j même si des
+  Membres restent ; l'effacement d'un Membre ne ferme jamais un club
+  (`ClubUserRepository::hasActiveManager`, prédicat unique). Les Membres restants sont prévenus à J0 puis J-7,
+  AVANT l'adresse officielle et même sans elle ; le préavis d'inactivité (23 mois) nomme le club dont le compte
+  est le dernier gestionnaire. La purge est **retenue** tant que le rappel J-7 n'est jamais parti (échéance
+  repoussée de 7 jours, rappel remis à zéro), et revalidée sous le verrou `club-approval:<code>`.
+  `ClubWinBackService::cancelClosure` est la maison unique de l'annulation (reprise par l'adresse officielle,
+  invitation GESTIONNAIRE acceptée, gestionnaire revenu à l'échéance), auditée `CLUB_CLOSURE_CANCELLED`.
+  `/api/me.club.closingOn` expose la date tant qu'aucun gestionnaire actif n'existe.
+- *Page publique d'approbation.* La décision est relue sous verrou : une demande déjà décidée, annulée (compte du
+  demandeur effacé → statut `cancelled`) ou un perdant de double clic rend le 404 byte-identique et n'écrit rien ;
+  la réponse dit l'issue réelle (`approved`, `superseded` si le club est déjà géré, `refused`) et le mail au
+  demandeur aussi (club créé, repris, transmis aux gestionnaires). La console superadmin refuse (409) d'activer
+  une adhésion sur un club sans gestionnaire. Un compte déjà inscrit qui retente un code FFBB de club sans
+  gestionnaire reçoit, dans le mail « compte existant », l'indication de contacter le support.
+- *Pas encore* : bandeau de fermeture côté front, lectures ouvertes au Membre, demande de devenir gestionnaire
+  (PR suivantes du chantier) ; console des purges retenues et audit des changements de rôle → roadmap.
+→ [`rgpd.md`](../../docs/security/rgpd.md) §2 (purge différée, win-back, demandes d'adhésion) ·
+[`backend-controllers.md`](../../backend/docs/backend-controllers.md) (approbation de club, `/api/me`) ·
+[`commands.md`](../../backend/docs/commands.md) (`purge-erased`, `erasure-remind`) ·
+NR `MembershipRequestNotificationTest` ([`blocking-tests.md`](../../docs/testing/blocking-tests.md))
+
 → [`TENANT.md`](../../backend/docs/TENANT.md) (couche rôle) · [`superadmin-auth.md`](superadmin-auth.md)
 (porte d'activation) · roadmap : P4-76 (polish UX Membre), parking « invitations email »
 
@@ -836,6 +871,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-11-03 | P4-379 | **Demandes d'adhésion : les gestionnaires actifs sont prévenus, un club sans gestionnaire ferme.** Exemple : une personne demande à rejoindre un club, ses deux gestionnaires reçoivent chacun un mail, son Membre aucun ; le dernier gestionnaire s'efface alors que deux Membres restent : le club ferme à 30 jours, les Membres sont prévenus à J0 et J-7. Absorbe la ligne roadmap « aucun mail aux gestionnaires » ; reste ouvert : console des purges retenues, audit des changements de rôle. Snapshot OpenAPI recalé (`closingOn`, champs de capacité de version, code `team_already_trains_that_day`) | §1.12 ci-dessus ; `docs/security/rgpd.md` ; `backend/docs/backend-controllers.md` |
 | 2026-11-03 | M10 (ex-P4-367, envoi aux coachs) | **Le gestionnaire envoie aux coachs les conflits de personne qui les concernent.** Bouton « Envoyer aux coachs » sur l'onglet Conflits (`POST /api/fixtures/conflicts/mail-coaches`, `ConflictCoachMailController`) : chaque coach reçoit, à titre indicatif, SES conflits de personne sur un match (`MATCH_MATCH`, `MATCH_TRAINING`, `MATCH_COACH_UNAVAILABLE`, datés d'aujourd'hui ou à venir), en tuiles HTML ; destinataires = la personne et les coachs principaux de chaque équipe du côté (groupe mutualisé compris), jamais les adjoints. Exemple : Karim, principal U15, joue en SM2 et est en double un samedi → lui et Emma (principale SM2) reçoivent la tuile ; Léa, qui avait reçu une liste lundi et dont le conflit disparaît vendredi, reçoit « plus aucun conflit » dès qu'elle a une adresse. Mémoire du dernier envoi par saison (`conflict_mailing`), règle unique sous verrou Redis par club ; coach sans adresse sauté et nommé ; plafond `conflict_mail_send` 200 e-mails / 24 h par club ; démo refusée 403 ; Membre voit la ligne « Envoyé le … » sans le bouton. Opt-out = le club retire l'adresse du coach (`docs/security/rgpd.md` §2). Moteur de calcul unique `ConflictCoachMailing` (GET et POST), fil radar partagé `ConflictFeedAssembler`, fragment HTML enveloppé par `EmailSignatureListener`. **Renoncements nommés** : pas de contact du club adverse ni de match extérieur « à appeler » envoyé au coach (repris en roadmap), pas de conflits entraînement × entraînement dans le mail, pas de suivi ni de réponse du coach. **Limites déclarées** : le verrou ne protège que deux envois simultanés (deux clics espacés envoient deux fois la liste à jour) ; mails en file puis échec de l'upsert = 500, un nouveau clic renvoie ; « envoyé » = mis en file. | [`module-matchs-radar-et-placement.md`](module-matchs-radar-et-placement.md) §2 · [`backend-controllers.md`](../../backend/docs/backend-controllers.md) · [`rgpd.md`](../../docs/security/rgpd.md) · [`test-coverage-map.md`](../../docs/testing/test-coverage-map.md) |
 | 2026-11-03 | P4-328, P4-423 (part gardes) | **Une séance par jour.** Les cinq gestes refusent une seconde séance le même jour (`team_already_trains_that_day`, `TeamAlreadyTrainsThatDayException`) ; le Récap de saison bloque (`SecondSessionSameDayDetector`, via `GenerationBlockersGuard::blockersFor`) ; `/api/constraints/validate` sert `doubledReservationIds`, le Récap nomme les lignes « Deux séances le {jour} » et se rafraîchit au retrait d'une réservation ; l'alerte de chevauchement (`PreSolvePreventionWarnings`) se tait sur un jour bloqué et dit « a deux séances » quand un verrou est en cause. Seed du club de test corrigé (SM2 sans séance solo le jeudi à la reprise du 24 août) : base de dev à recréer, `make -C backend db-empty && make -C backend seed-bccl`. | [`backend-controllers.md`](../../backend/docs/backend-controllers.md) · [`mutualisation.md`](mutualisation.md) · [`frontend-wizard.md`](../../frontend/docs/frontend-wizard.md) · [`blocking-tests.md`](../../docs/testing/blocking-tests.md) |
 | 2026-11-03 | Version chargée | **Seule la version chargée (l'étoile) se modifie, se valide, part au moteur et compte pour les verrous à la génération de saison ; même règle pour la version source d'un plan de période, les autres se consultent.** Exemple : je regarde V2 alors que V4 est chargée : toute retouche, « Valider » et « Combler » sont refusés « Chargez cette version… » ; « Régénérer » repart de V4. L'écran de saison atterrit sur la chargée, sauf génération en cours ou échec dans la session (remplace la règle du 2026-08-19). Déploiement : rejouer `app:schedule:dedupe-snapshot-pins`. | [`planning-lifecycle-validated.md`](planning-lifecycle-validated.md) §3.5, [`adr-0002`](../../docs/architecture/adr-0002-pattern-plan.md), [`deploy.md`](../../docs/ops/deploy.md) |

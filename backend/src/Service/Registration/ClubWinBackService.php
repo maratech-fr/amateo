@@ -6,23 +6,26 @@ namespace App\Service\Registration;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Enum\AuditAction;
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
+use App\Service\AuditTrail;
 use App\Service\ClubProvisioner;
 use App\Service\OrphanAccountNotifier;
 use App\Service\TenantConnectionContext;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * Reprise d'un club existant sans membre actif (workspace purgé après effacement,
- * seule la fiche FFBB survit).
+ * Reprise d'un club existant sans GESTIONNAIRE actif (fermeture programmée, ou workspace purgé
+ * après effacement — seule la fiche FFBB survit).
  *
  * Décision fondateur (2026-10-03) : la reprise passe désormais par l'APPROBATION
  * P3-4 du contact officiel — la vérification d'e-mail ne reprend plus le club en
  * direct, elle ouvre une demande (club_pending). C'est {@see ClubApprovalService}
- * qui, à l'approbation d'un club existant SANS membre actif, appelle `reprise()` :
+ * qui, à l'approbation d'un club existant SANS gestionnaire actif, appelle `reprise()` :
  * le repreneur devient Gestionnaire actif, l'effacement/rappel programmés sont
- * annulés, et le workspace re-seedé s'il avait été purgé. `isMemberless()` sépare
+ * annulés, et le workspace re-seedé s'il avait été purgé. `isManagerless()` sépare
  * ce cas (→ reprise) de l'adhésion PENDING à un club encore peuplé.
  *
  * ⚠ RLS : l'appelant ouvre la transaction et relâche le GUC en `finally` ; ce
@@ -36,21 +39,40 @@ final class ClubWinBackService
         private readonly ClubProvisioner $clubProvisioner,
         private readonly ClubUserRepository $clubUserRepository,
         private readonly OrphanAccountNotifier $orphanAccountNotifier,
+        private readonly AuditTrail $auditTrail,
     ) {}
 
-    /** Aucun membre actif, tous rôles confondus (raw DBAL — club_user se lit cross-tenant). */
-    public function isMemberless(string $clubId): bool
+    /**
+     * Aucun GESTIONNAIRE actif (chantier Membre : un club sans gestionnaire ferme, même si des
+     * Membres restent — un Membre seul ne retient pas le club et ne le reprend pas).
+     */
+    public function isManagerless(string $clubId): bool
     {
-        $count = $this->entityManager->getConnection()->fetchOne(
-            'SELECT COUNT(*) FROM club_user WHERE club_id = :cid AND is_active = true',
-            ['cid' => $clubId],
-        );
-
-        return 0 === (int) $count;
+        return !$this->clubUserRepository->hasActiveManager($clubId);
     }
 
     /**
-     * Reprise d'un club sans membre actif : le repreneur en devient Gestionnaire,
+     * Maison UNIQUE de l'annulation d'une fermeture : échéance d'effacement, rappel J-7 et
+     * désinscription remis à null, audit `CLUB_CLOSURE_CANCELLED` (ids seulement) quand une
+     * fermeture était réellement en cours. Appelée par la reprise, l'acceptation d'une invitation
+     * gestionnaire et la purge qui trouve un gestionnaire revenu à l'échéance.
+     *
+     * Aucun flush ici (l'appelant possède sa transaction) ; l'audit exige le GUC du club posé.
+     */
+    public function cancelClosure(Club $club, ?string $actorUserId, string $source): void
+    {
+        $wasClosing = $club->getErasureScheduledAt() instanceof DateTimeImmutable
+            || $club->getUnsubscribedAt() instanceof DateTimeImmutable;
+        $club->setUnsubscribedAt(null);
+        $club->setErasureScheduledAt(null);
+        $club->setErasureReminderSentAt(null);
+        if ($wasClosing) {
+            $this->auditTrail->record(AuditAction::CLUB_CLOSURE_CANCELLED, $actorUserId, $club->getId(), 'Club', $club->getId(), ['source' => $source]);
+        }
+    }
+
+    /**
+     * Reprise d'un club sans gestionnaire actif : le repreneur en devient Gestionnaire,
      * actif d'office (l'approbation du contact officiel a fait la preuve). Annule
      * l'effacement/désinscription programmés ET le rappel J-7 (nouveau cycle propre),
      * et re-seede uniquement si le workspace a réellement été purgé (repreneur PENDANT
@@ -78,9 +100,7 @@ final class ClubWinBackService
         } else {
             $this->clubProvisioner->createMembership($existingClub->getId(), $userId, true, ClubRole::MANAGER);
         }
-        $existingClub->setUnsubscribedAt(null);
-        $existingClub->setErasureScheduledAt(null);
-        $existingClub->setErasureReminderSentAt(null);
+        $this->cancelClosure($existingClub, null, 'official_address');
         if ($this->clubHasNoSeason($existingClub->getId())) {
             $this->clubProvisioner->seedWorkspace($existingClub);
         }

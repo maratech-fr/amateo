@@ -467,8 +467,9 @@ trait SmallClubFixtureTrait
 
         // 1. Plus aucun membre actif → la purge ne s'auto-annule pas (revalidation du cron).
         $this->dbalExec(\sprintf('UPDATE club_user SET is_active=false WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
-        // 2. Échéance d'effacement dans le passé → éligible à la purge RGPD.
-        $this->dbalExec(\sprintf('UPDATE club SET erasure_scheduled_at = now() - interval \'1 day\' WHERE id=\'%s\'', $this->smallClubId), admin: true);
+        // 2. Échéance d'effacement dans le passé ET rappel J-7 posé → éligible à la purge RGPD
+        //    (sans rappel parti, la purge est retenue et l'échéance repoussée de 7 jours).
+        $this->dbalExec(\sprintf('UPDATE club SET erasure_scheduled_at = now() - interval \'1 day\', erasure_reminder_sent_at = now() - interval \'8 days\' WHERE id=\'%s\'', $this->smallClubId), admin: true);
         // 3. Purge canonique (vide toutes les tables tenant du workspace ; la coquille FFBB survit).
         $this->runConsole(['php', 'bin/console', 'app:clubs:purge-erased']);
         // 4. Retrait des résidus : coquille FFBB + audit + compte gestionnaire (hors purge RGPD).

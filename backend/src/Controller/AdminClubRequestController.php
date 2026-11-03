@@ -8,7 +8,9 @@ use App\Entity\ClubCreationRequest;
 use App\Entity\SuperAdmin;
 use App\Entity\User;
 use App\Repository\ClubCreationRequestRepository;
+use App\Repository\ClubRepository;
 use App\Security\AdminSessionCsrf;
+use App\Service\ApprovalOutcome;
 use App\Service\ClubApprovalService;
 use App\Service\TenantConnectionContext;
 use Doctrine\DBAL\Connection;
@@ -46,6 +48,7 @@ final readonly class AdminClubRequestController
         private TokenStorageInterface $tokens,
         private ManagerRegistry $managerRegistry,
         private TenantConnectionContext $tenantContext,
+        private ClubRepository $clubs,
     ) {}
 
     #[Route('/club-requests', methods: ['GET'])]
@@ -98,11 +101,16 @@ final readonly class AdminClubRequestController
 
         try {
             if ('approve' === $decision) {
-                $club = $this->approvalService->approve($creationRequest);
+                if (ApprovalOutcome::NoOp === $this->approvalService->approve($creationRequest)) {
+                    return new JsonResponse(['error' => 'Request not found.'], 404);
+                }
+                $club = $this->clubs->findRealByFfbbCode($creationRequest->getAra());
 
-                return new JsonResponse(['status' => 'approved', 'clubId' => $club->getId()]);
+                return new JsonResponse(['status' => 'approved', 'clubId' => $club?->getId()]);
             }
-            $this->approvalService->refuse($creationRequest);
+            if (!$this->approvalService->refuse($creationRequest)) {
+                return new JsonResponse(['error' => 'Request not found.'], 404);
+            }
 
             return new JsonResponse(['status' => 'refused']);
         } finally {
@@ -158,6 +166,24 @@ final readonly class AdminClubRequestController
         // DÉSACTIVÉ par son gestionnaire (deactivated_at posé) ne se « réactive »
         // que par le geste club dédié (POST /api/memberships/{id}/reactivate),
         // sinon la console contournerait la décision du club.
+        $clubId = $this->admin()->fetchOne(
+            'SELECT club_id FROM club_user WHERE id = :id AND is_active = false AND deactivated_at IS NULL',
+            ['id' => $id],
+        );
+        if (!\is_string($clubId)) {
+            return new JsonResponse(['error' => 'Membership not found.'], 404);
+        }
+        // Chantier Membre : un club SANS gestionnaire actif ne se reprend que par l'approbation de
+        // son adresse officielle — activer ici ferait entrer quelqu'un dans un club sans la preuve.
+        // Lu par la porte ADMIN (même connexion que l'écriture) — prédicat de
+        // ClubUserRepository::hasActiveManager (rôles de gestion owner/admin).
+        $hasActiveManager = (int) $this->admin()->fetchOne(
+            'SELECT COUNT(*) FROM club_user WHERE club_id = :club AND is_active = true AND role IN (\'owner\', \'admin\')',
+            ['club' => $clubId],
+        ) > 0;
+        if (!$hasActiveManager) {
+            return new JsonResponse(['error' => 'La reprise d\'un club sans gestionnaire passe par l\'approbation du club.'], 409);
+        }
         $updated = $this->admin()->executeStatement(
             'UPDATE club_user SET is_active = true, updated_at = NOW() WHERE id = :id AND is_active = false AND deactivated_at IS NULL',
             ['id' => $id],

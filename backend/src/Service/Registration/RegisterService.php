@@ -10,6 +10,7 @@ use App\Entity\User;
 use App\Enum\AuditAction;
 use App\Mail\EmailTemplateRenderer;
 use App\Repository\ClubRepository;
+use App\Repository\ClubUserRepository;
 use App\Security\TurnstileVerifier;
 use App\Service\AuditTrail;
 use App\Service\Basketball\FfbbApiClient;
@@ -45,6 +46,7 @@ final class RegisterService
         private readonly EntityManagerInterface $entityManager,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly ClubRepository $clubRepository,
+        private readonly ClubUserRepository $clubUserRepository,
         private readonly RateLimiterFactory $authRegisterLimiter,
         // P4-304 (Q1) — horloge RÉELLE : `termsAcceptedAt` est la preuve RGPD du
         // consentement, un horodatage de SÉCURITÉ. La route publique /api/register
@@ -203,7 +205,14 @@ final class RegisterService
                 // (5/15min in prod) — network jitter dwarfs the sub-ms DB delta; not worth
                 // faking writes for. The response body/status stay identical.
                 $this->passwordHasher->hashPassword($existingUser, $password);
-                $this->sendAccountExistsEmail($existingUser->getEmail());
+                // Chantier Membre : le code soumis est celui d'un club réel SANS gestionnaire —
+                // une personne déjà inscrite (désactivée, en attente) qui voudrait le reprendre
+                // est orientée vers le support, qui traite la demande depuis la console. L'ARA
+                // est public et la réponse reste identique : rien ne fuit sur le compte.
+                $this->sendAccountExistsEmail(
+                    $existingUser->getEmail(),
+                    $existingClub instanceof Club && !$this->clubUserRepository->hasActiveManager($existingClub->getId()),
+                );
             }
 
             return $this->verificationPendingResponse();
@@ -307,8 +316,12 @@ final class RegisterService
         }
     }
 
-    private function sendAccountExistsEmail(string $email): void
+    private function sendAccountExistsEmail(string $email, bool $managerlessClub): void
     {
+        $text = "Une inscription vient d’être tentée avec cette adresse, mais un compte existe déjà.\n\nConnectez-vous, ou réinitialisez votre mot de passe si vous l’avez oublié.";
+        if ($managerlessClub) {
+            $text .= "\n\nCe club n'a plus de gestionnaire. Si vous en êtes un, contactez le support depuis la page Confidentialité : il peut traiter votre demande.";
+        }
         // mailer->send ne fait plus qu'ENFILER un SendEmailMessage sur le bus ; un échec
         // SMTP surgit chez le worker (le failure transport le retient). Seul un échec de
         // DISPATCH (Redis down) tomberait ici — avalé : un 500 sur cette seule branche
@@ -319,7 +332,7 @@ final class RegisterService
                     ->from($this->mailFrom->address())
                     ->to($email)
                     ->subject(\sprintf('Tentative d’inscription sur %s', $this->productIdentity->name()))
-                    ->text("Une inscription vient d’être tentée avec cette adresse, mais un compte existe déjà.\n\nConnectez-vous, ou réinitialisez votre mot de passe si vous l’avez oublié."),
+                    ->text($text),
             );
         } catch (Throwable $e) {
             // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
